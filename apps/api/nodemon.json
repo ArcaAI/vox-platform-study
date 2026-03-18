@@ -1,0 +1,12 @@
+{
+  "watch": [
+    "src",
+    "../../packages/applications/dist"
+  ],
+  "ext": "ts,js,json",
+  "ignore": [
+    "src/**/*.spec.ts",
+    "dist"
+  ],
+  "exec": "nest start"
+}

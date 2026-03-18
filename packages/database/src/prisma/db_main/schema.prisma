@@ -1,0 +1,14 @@
+// Driver declaration
+// Note: In Prisma 7, the connection URL is provided via the driver adapter
+// in the application code, not in the schema file.
+datasource db {
+  provider = "postgresql"
+  schemas  = ["public", "core"]
+}
+
+// Client declaration - Prisma 7 uses the new prisma-client provider
+generator client {
+  provider        = "prisma-client"
+  output          = "../../generated/core-prisma-client"
+  previewFeatures = ["fullTextSearchPostgres", "postgresqlExtensions", "relationJoins", "views", "typedSql"]
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@arcaai/config-rollup",
+  "version": "1.0.0",
+  "private": true,
+  "main": "base.js",
+  "types": "base.d.ts",
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@rollup/plugin-babel": "^6.0.4",
+    "@rollup/plugin-commonjs": "^28.0.3",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-replace": "^6.0.2",
+    "rollup-plugin-node-builtins": "^2.1.2",
+    "rollup-plugin-node-externals": "^8.0.0",
+    "rollup-plugin-node-globals": "^1.4.0",
+    "rollup-plugin-obfuscator": "^1.1.0",
+    "rollup-plugin-terser": "^7.0.2",
+    "rollup-plugin-typescript2": "^0.36.0"
+  }
+}

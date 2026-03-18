@@ -1,0 +1,81 @@
+// API Key Management Models for SDK Authentication
+// Supports API key generation, validation, and access control
+
+enum ApiKeyStatus {
+    ACTIVE
+    INACTIVE
+    REVOKED
+    EXPIRED
+    @@schema("core")
+}
+
+enum ApiKeyType {
+    SDK
+    WEBHOOK
+    INTEGRATION
+    SERVICE_ACCOUNT
+    @@schema("core")
+}
+
+model ApiKey {
+    // Meta fields (following BaseEntity pattern)
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant fields
+    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+
+    // Core API key fields
+    keyName         String       // Human readable name for the key
+    keyHash         String       @unique // SHA-256 hash of the API key (never store plaintext)
+    keyPrefix       String       // First 12 characters for identification (e.g., "hope_sk_a5c5")
+    keyChecksum     String?      // Last 6 digits for fast validation without DB lookup
+    keyType         ApiKeyType   @default(SDK)
+    keyStatus       ApiKeyStatus @default(ACTIVE)
+
+    // Access control
+    scopes          Json?       @db.JsonB // Array of permissions/scopes
+    allowedIps      Json?       @db.JsonB // Array of allowed IP addresses
+    rateLimit       Int?        // Requests per minute limit
+
+    // Expiration and usage
+    expiresAt       DateTime?   // Optional expiration date
+    lastUsedAt      DateTime?   // Last time the key was used
+    usageCount      Int         @default(0) // Total number of uses
+
+    // Key Rotation
+    rotatedFromKeyId    String?   @map("rotated_from_key_id")
+    rotatedToKeyId      String?   @map("rotated_to_key_id")
+    rotationExpiresAt   DateTime? @map("rotation_expires_at")
+    originalCreatorId   String?   @map("original_creator_id")
+
+    // Metadata
+    description     String?     // Description of the key's purpose
+    environment     String?     // dev, staging, production
+
+    // Relations
+    userId          String?     // User who created the key
+    user            User?       @relation("_User_ApiKeys", fields: [userId], references: [id], onDelete: SetNull)
+
+    // Resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // Audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Indexing for performance
+    @@index([keyHash], name: "ApiKey_keyHash_idx")
+    @@index([keyPrefix], name: "ApiKey_keyPrefix_idx")
+    @@index([tenantId], name: "ApiKey_tenantId_idx")
+    @@index([keyStatus], name: "ApiKey_keyStatus_idx")
+    @@index([userId], name: "ApiKey_userId_idx")
+    @@index([expiresAt], name: "ApiKey_expiresAt_idx")
+    @@index([lastUsedAt], name: "ApiKey_lastUsedAt_idx")
+    @@schema("core")
+}

@@ -1,0 +1,41 @@
+model GlobalSetting {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // multi tenant fields
+    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+
+    // core fields
+    locked       Boolean  @default(false)
+    name         String
+    description  String?
+    key          String
+    defaultValue String?
+    value        String
+    dataType     ValueType @default(String)
+    namespace    String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // tags
+    tags String[] @default([])
+
+    // relations
+
+    // indexing
+    @@unique([tenantId, name, key], name: "GlobalSetting_tenantId_name_key_unique")
+    @@index(tenantId, name: "GlobalSetting_tenantId_idx")
+    @@index([tenantId, name, key], name: "GlobalSetting_tenantId_key_idx")
+    @@schema("core")
+}

@@ -1,0 +1,591 @@
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { createPrismaAbility, PrismaQuery, accessibleBy } from '@casl/prisma';
+import { PureAbility } from '@casl/ability';
+import { CoreDatabaseService, ResourceStatusType } from '@arcaai/domains';
+import { IRedisCacheService } from '../services/baseServices/redis';
+
+/**
+ * CASL Ability type for the application
+ */
+export type AppAbility = PureAbility<[string, string], PrismaQuery>;
+
+/**
+ * Policy rule structure (stored in database as JSON)
+ */
+export interface PolicyRule {
+    action: string;
+    subject: string;
+    conditions?: Record<string, unknown>;
+    fields?: string[];
+    inverted?: boolean;
+    reason?: string;
+}
+
+/**
+ * Context for building abilities
+ */
+export interface PolicyContext {
+    userId: string;
+    tenantId?: string;
+    params?: Record<string, unknown>;
+}
+
+/**
+ * Scope overrides that can be applied per user-role assignment
+ */
+interface ScopeOverrides {
+    additionalRules?: PolicyRule[];
+    excludedPolicies?: string[];
+}
+
+/**
+ * PolicyEngine - Core authorization engine
+ *
+ * Responsibilities:
+ * - Load policies from database for a user
+ * - Build CASL abilities from policy rules
+ * - Cache abilities in Redis for performance
+ * - Resolve dynamic variables in conditions
+ * - Provide accessibleBy filters for Prisma queries
+ *
+ * @example
+ * ```typescript
+ * const ability = await policyEngine.buildAbility({
+ *   userId: 'user-123',
+ *   tenantId: 'tenant-456',
+ * });
+ *
+ * if (ability.can('read', 'User')) {
+ *   // User has permission
+ * }
+ *
+ * // Get Prisma filter for accessible records
+ * const filter = policyEngine.getAccessibleBy(ability, 'read');
+ * const users = await prisma.user.findMany({
+ *   where: filter.User,
+ * });
+ * ```
+ */
+@Injectable()
+export class PolicyEngine {
+    private readonly logger = new Logger(PolicyEngine.name);
+    private readonly CACHE_TTL = 300; // 5 minutes
+    private readonly CACHE_PREFIX = 'policy:ability:';
+
+    constructor(
+        @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
+        @Optional() @Inject(IRedisCacheService) private readonly cache?: IRedisCacheService,
+    ) {
+        if (this.cache) {
+            this.logger.log({
+                message: 'PolicyEngine initialized',
+                caching: 'enabled',
+            });
+        } else {
+            this.logger.warn({
+                message: 'PolicyEngine initialized',
+                caching: 'disabled',
+                impact: 'performance',
+            });
+        }
+    }
+
+    /**
+     * Build CASL ability for a user
+     *
+     * @param context - Policy context with user info
+     * @returns CASL ability instance
+     */
+    async buildAbility(context: PolicyContext): Promise<AppAbility> {
+        const cacheKey = this.getCacheKey(context);
+
+        // Try cache first (if Redis is available)
+        if (this.cache?.isConnected()) {
+            try {
+                const cached = await this.cache.get(cacheKey);
+                if (cached) {
+                    this.logger.debug({
+                        message: 'Cache hit',
+                        userId: context.userId,
+                        tenantId: context.tenantId,
+                    });
+                    const rules = JSON.parse(cached) as PolicyRule[];
+                    return createPrismaAbility(rules);
+                }
+            } catch (error) {
+                this.logger.warn({
+                    message: 'Cache read failed',
+                    userId: context.userId,
+                    fallback: 'database',
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+        }
+
+        // Load policies from database
+        const rules = await this.loadUserPolicies(context);
+
+        // Build ability
+        const ability = createPrismaAbility(rules);
+
+        // Cache the rules (if Redis is available)
+        if (this.cache?.isConnected()) {
+            try {
+                await this.cache.setex(cacheKey, this.CACHE_TTL, JSON.stringify(rules));
+                this.logger.debug({
+                    message: 'Cache set',
+                    userId: context.userId,
+                    tenantId: context.tenantId,
+                    ttl: this.CACHE_TTL,
+                });
+            } catch (error) {
+                this.logger.warn({
+                    message: 'Cache write failed',
+                    userId: context.userId,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+        }
+
+        this.logger.debug({
+            message: 'Ability built',
+            userId: context.userId,
+            tenantId: context.tenantId,
+            rulesCount: rules.length,
+        });
+
+        return ability;
+    }
+
+    /**
+     * Get cache key for a policy context
+     */
+    private getCacheKey(context: PolicyContext): string {
+        return `${this.CACHE_PREFIX}${context.userId}:${context.tenantId || 'global'}`;
+    }
+
+    /**
+     * Get accessible filter for Prisma queries
+     *
+     * @param ability - CASL ability instance
+     * @param action - Action to check (default: 'read')
+     * @returns Object with filters for each subject
+     *
+     * @example
+     * ```typescript
+     * const filter = policyEngine.getAccessibleBy(ability, 'read');
+     * const users = await prisma.user.findMany({
+     *   where: filter.User,
+     * });
+     * ```
+     */
+    getAccessibleBy(ability: AppAbility, action: string = 'read') {
+        return accessibleBy(ability, action);
+    }
+
+    /**
+     * Get permitted fields for a subject
+     *
+     * @param ability - CASL ability instance
+     * @param action - Action to check
+     * @param subject - Subject/model name
+     * @returns Array of permitted field names, or undefined if no field restrictions
+     */
+    getPermittedFields(ability: AppAbility, action: string, subject: string): string[] | undefined {
+        const rule = ability.relevantRuleFor(action, subject);
+        return rule?.fields;
+    }
+
+    /**
+     * Check if user can perform action on subject
+     * Convenience method that wraps ability.can()
+     */
+    can(ability: AppAbility, action: string, subject: string, resource?: Record<string, unknown>): boolean {
+        if (resource) {
+            return ability.can(action, subject as any, resource as any);
+        }
+        return ability.can(action, subject);
+    }
+
+    /**
+     * Check if user cannot perform action on subject
+     * Convenience method that wraps ability.cannot()
+     */
+    cannot(ability: AppAbility, action: string, subject: string, resource?: Record<string, unknown>): boolean {
+        return !this.can(ability, action, subject, resource);
+    }
+
+    /**
+     * Load all policies for a user from database
+     *
+     * This method loads policies from:
+     * 1. Direct user role assignments (UserRoleAssignment)
+     * 2. Parent role inheritance
+     */
+    private async loadUserPolicies(context: PolicyContext): Promise<PolicyRule[]> {
+        const prisma = this.databaseService.client;
+
+        // 1. Get user's direct role assignments with policies
+        // Using separate queries for Prisma 7 compatibility
+        const directAssignments = await prisma.userRoleAssignment.findMany({
+            where: {
+                userId: context.userId,
+                resourceStatus: ResourceStatusType.ENABLED,
+                OR: [
+                    { tenantId: null }, // Global assignments
+                    { tenantId: context.tenantId }, // Tenant-specific
+                ],
+            },
+        });
+
+        // Collect all role IDs
+        const roleIds = new Set<string>();
+        for (const assignment of directAssignments) {
+            roleIds.add(assignment.roleId);
+        }
+
+        // 2. Load all roles with their policies
+        const roles = await prisma.role.findMany({
+            where: {
+                id: { in: Array.from(roleIds) },
+                resourceStatus: ResourceStatusType.ENABLED,
+            },
+            include: {
+                RolePolicies: {
+                    where: { resourceStatus: ResourceStatusType.ENABLED },
+                    include: {
+                        Policy: true,
+                    },
+                    orderBy: { priority: 'asc' },
+                },
+                ParentRole: {
+                    include: {
+                        RolePolicies: {
+                            where: { resourceStatus: ResourceStatusType.ENABLED },
+                            include: {
+                                Policy: true,
+                            },
+                            orderBy: { priority: 'asc' },
+                        },
+                    },
+                },
+            },
+        });
+
+        // Create role map for quick lookup
+        const roleMap = new Map(roles.map(r => [r.id, r]));
+
+        // 3. Collect all rules from all policies
+        const allRules: PolicyRule[] = [];
+        const processedPolicies = new Set<string>();
+
+        // Process direct role assignments
+        for (const assignment of directAssignments) {
+            const scopeOverrides = assignment.scopeOverrides as ScopeOverrides | null;
+            const excludedPolicies = new Set(scopeOverrides?.excludedPolicies || []);
+            const role = roleMap.get(assignment.roleId);
+
+            if (role) {
+                // Process role's policies
+                this.collectPoliciesFromRole(
+                    role,
+                    allRules,
+                    processedPolicies,
+                    excludedPolicies,
+                    context
+                );
+
+                // Process inherited policies from parent role
+                if (role.ParentRole) {
+                    this.collectPoliciesFromRole(
+                        role.ParentRole,
+                        allRules,
+                        processedPolicies,
+                        excludedPolicies,
+                        context
+                    );
+                }
+            }
+
+            // Apply scope overrides (additional rules)
+            if (scopeOverrides?.additionalRules) {
+                for (const rule of scopeOverrides.additionalRules) {
+                    allRules.push(this.resolveRule(rule, context));
+                }
+            }
+        }
+
+        return allRules;
+    }
+
+    /**
+     * Collect policies from a role
+     */
+    private collectPoliciesFromRole(
+        role: {
+            RolePolicies?: Array<{
+                Policy?: { id: string; rules: unknown; resourceStatus: string } | null;
+            }>;
+        },
+        allRules: PolicyRule[],
+        processedPolicies: Set<string>,
+        excludedPolicies: Set<string>,
+        context: PolicyContext
+    ): void {
+        for (const rolePolicy of role.RolePolicies || []) {
+            const policy = rolePolicy.Policy;
+
+            // Skip if no policy or already processed
+            if (!policy) continue;
+            if (processedPolicies.has(policy.id)) continue;
+            if (excludedPolicies.has(policy.id)) continue;
+
+            processedPolicies.add(policy.id);
+
+            // Process each rule in the policy
+            const rules = policy.rules as PolicyRule[];
+            if (Array.isArray(rules)) {
+                for (const rule of rules) {
+                    allRules.push(this.resolveRule(rule, context));
+                }
+            }
+        }
+    }
+
+    /**
+     * Resolve dynamic variables in rule conditions
+     */
+    private resolveRule(rule: PolicyRule, context: PolicyContext): PolicyRule {
+        if (!rule.conditions) return rule;
+
+        const resolvedConditions = this.resolveConditions(rule.conditions, context);
+        return { ...rule, conditions: resolvedConditions };
+    }
+
+    /**
+     * Resolve template variables in conditions recursively
+     */
+    private resolveConditions(
+        conditions: Record<string, unknown>,
+        context: PolicyContext
+    ): Record<string, unknown> {
+        const resolved: Record<string, unknown> = {};
+
+        for (const [key, value] of Object.entries(conditions)) {
+            if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
+                resolved[key] = this.resolveVariable(value, context);
+            } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                resolved[key] = this.resolveConditions(value as Record<string, unknown>, context);
+            } else {
+                resolved[key] = value;
+            }
+        }
+
+        return resolved;
+    }
+
+    /**
+     * Resolve a single template variable
+     *
+     * Supported variables:
+     * - ${user.id} - Current user's ID
+     * - ${user.tenantId} - Current user's tenant ID
+     * - ${context.tenantId} - Request tenant context
+     * - ${params.xxx} - Route parameters
+     */
+    private resolveVariable(template: string, context: PolicyContext): unknown {
+        const varName = template.slice(2, -1); // Remove ${ and }
+
+        const variables: Record<string, unknown> = {
+            'user.id': context.userId,
+            'user.tenantId': context.tenantId,
+            'context.tenantId': context.tenantId,
+        };
+
+        // Add params to variables
+        if (context.params) {
+            for (const [key, value] of Object.entries(context.params)) {
+                variables[`params.${key}`] = value;
+            }
+        }
+
+        const resolved = variables[varName];
+        if (resolved === undefined) {
+            this.logger.warn({
+                message: 'Unknown variable in policy rule',
+                template,
+                varName,
+                availableVars: Object.keys(variables),
+            });
+            return null;
+        }
+
+        return resolved;
+    }
+
+    /**
+     * Invalidate cache for a user
+     *
+     * @param userId - User ID to invalidate cache for
+     */
+    async invalidateUser(userId: string): Promise<void> {
+        if (!this.cache?.isConnected()) {
+            this.logger.debug({
+                message: 'Cache invalidation skipped',
+                userId,
+                reason: 'no_cache',
+            });
+            return;
+        }
+
+        try {
+            const pattern = `${this.CACHE_PREFIX}${userId}:*`;
+            const keys = await this.cache.keys(pattern);
+
+            if (keys.length > 0) {
+                await this.cache.delMany(keys);
+                this.logger.debug({
+                    message: 'Cache invalidated',
+                    userId,
+                    keysCount: keys.length,
+                });
+            }
+        } catch (error) {
+            this.logger.error({
+                message: 'Cache invalidation failed',
+                userId,
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    }
+
+    /**
+     * Invalidate cache for all users with a specific role
+     *
+     * @param roleId - Role ID to invalidate cache for
+     */
+    async invalidateRole(roleId: string): Promise<void> {
+        const prisma = this.databaseService.client;
+
+        // Get all users with this role via direct assignment
+        const directAssignments = await prisma.userRoleAssignment.findMany({
+            where: { roleId },
+            select: { userId: true },
+        });
+
+        // Collect all unique user IDs
+        const userIds = new Set<string>();
+
+        for (const { userId } of directAssignments) {
+            userIds.add(userId);
+        }
+
+        // Invalidate each user's cache in parallel
+        await Promise.all(
+            Array.from(userIds).map(userId => this.invalidateUser(userId))
+        );
+
+        this.logger.debug({
+            message: 'Cache invalidated for role',
+            roleId,
+            usersAffected: userIds.size,
+        });
+    }
+
+    /**
+     * Invalidate cache for all users with a specific policy
+     *
+     * @param policyId - Policy ID to invalidate cache for
+     */
+    async invalidatePolicy(policyId: string): Promise<void> {
+        const prisma = this.databaseService.client;
+
+        // Get all roles with this policy
+        const rolePolicies = await prisma.rolePolicy.findMany({
+            where: { policyId },
+            select: { roleId: true },
+        });
+
+        // Invalidate each role in parallel
+        await Promise.all(
+            rolePolicies.map(({ roleId }) => this.invalidateRole(roleId))
+        );
+
+        this.logger.debug({
+            message: 'Cache invalidated for policy',
+            policyId,
+            rolesAffected: rolePolicies.length,
+        });
+    }
+
+    /**
+     * Invalidate cache for all users in a tenant
+     *
+     * @param tenantId - Tenant ID to invalidate cache for
+     */
+    async invalidateTenant(tenantId: string): Promise<void> {
+        if (!this.cache?.isConnected()) {
+            this.logger.debug({
+                message: 'Cache invalidation skipped',
+                tenantId,
+                reason: 'no_cache',
+            });
+            return;
+        }
+
+        try {
+            const pattern = `${this.CACHE_PREFIX}*:${tenantId}`;
+            const keys = await this.cache.keys(pattern);
+
+            if (keys.length > 0) {
+                await this.cache.delMany(keys);
+                this.logger.debug({
+                    message: 'Cache invalidated for tenant',
+                    tenantId,
+                    keysCount: keys.length,
+                });
+            }
+        } catch (error) {
+            this.logger.error({
+                message: 'Cache invalidation failed',
+                tenantId,
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    }
+
+    /**
+     * Invalidate all cached abilities
+     * Use with caution - this clears all authorization cache
+     */
+    async invalidateAll(): Promise<void> {
+        if (!this.cache?.isConnected()) {
+            this.logger.debug({
+                message: 'Cache invalidation skipped',
+                scope: 'all',
+                reason: 'no_cache',
+            });
+            return;
+        }
+
+        try {
+            const pattern = `${this.CACHE_PREFIX}*`;
+            const keys = await this.cache.keys(pattern);
+
+            if (keys.length > 0) {
+                await this.cache.delMany(keys);
+                this.logger.warn({
+                    message: 'Cache invalidated',
+                    scope: 'all',
+                    keysCount: keys.length,
+                });
+            }
+        } catch (error) {
+            this.logger.error({
+                message: 'Cache invalidation failed',
+                scope: 'all',
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    }
+}

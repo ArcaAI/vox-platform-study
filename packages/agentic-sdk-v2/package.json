@@ -1,0 +1,114 @@
+{
+  "name": "@arcaai/vox",
+  "version": "2.0.0",
+  "description": "ARCAAI Vox SDK for medical consultation workflows",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.mjs",
+      "require": "./dist/core.js"
+    },
+    "./plugins": {
+      "types": "./dist/plugins.d.ts",
+      "import": "./dist/plugins.mjs",
+      "require": "./dist/plugins.js"
+    },
+    "./plugins/med-ner": {
+      "types": "./dist/plugins-med-ner.d.ts",
+      "import": "./dist/plugins-med-ner.mjs",
+      "require": "./dist/plugins-med-ner.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "core": [
+        "./dist/core.d.ts"
+      ],
+      "plugins": [
+        "./dist/plugins.d.ts"
+      ],
+      "plugins/med-ner": [
+        "./dist/plugins-med-ner.d.ts"
+      ]
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rimraf dist tsconfig.tsbuildinfo e2e/fixtures/dist",
+    "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo e2e/fixtures/dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint src --ext .ts,.tsx",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "pnpm build && playwright test --config=e2e/playwright.config.ts",
+    "test:e2e:ui": "pnpm build && playwright test --config=e2e/playwright.config.ts --ui",
+    "test:e2e:headed": "pnpm build && playwright test --config=e2e/playwright.config.ts --headed",
+    "test:e2e:chromium": "pnpm build && playwright test --config=e2e/playwright.config.ts --project=chromium"
+  },
+  "dependencies": {
+    "@arcaai/noise-filter": "workspace:*",
+    "@arcaai/room": "workspace:*",
+    "@arcaai/stt": "workspace:*",
+    "@arcaai/vad": "workspace:*",
+    "deepmerge-ts": "^7.1.5",
+    "diff": "^8.0.2",
+    "eventemitter3": "^5.0.1",
+    "valibot": "^1.0.0",
+    "zustand": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@arcaai/med-ner": "workspace:*",
+    "highlight.run": "^9.0.0",
+    "react": "^18.3.0 || ^19.0.4",
+    "react-dom": "^18.3.0 || ^19.0.4"
+  },
+  "peerDependenciesMeta": {
+    "@arcaai/med-ner": {
+      "optional": true
+    },
+    "highlight.run": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@arcaai/config-eslint": "workspace:*",
+    "@arcaai/config-ts": "workspace:*",
+    "@arcaai/med-ner": "workspace:*",
+    "@playwright/test": "^1.58.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.5.2",
+    "http-server": "^14.1.1",
+    "jsdom": "^28.1.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "rimraf": "^6.1.3",
+    "tsup": "^8.5.1",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.17"
+  },
+  "keywords": [
+    "arcaai",
+    "vox",
+    "medical",
+    "consultation",
+    "speech-to-text",
+    "react",
+    "hooks",
+    "plugin",
+    "personalization"
+  ],
+  "license": "MIT"
+}

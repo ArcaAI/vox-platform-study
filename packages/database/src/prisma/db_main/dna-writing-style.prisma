@@ -1,0 +1,135 @@
+// ============================================================================
+// DNA Writing Style — Reports, Versioning, and Usage Tracking
+// Tracks per-doctor writing style analysis with version history
+// ============================================================================
+
+model DnaWritingStyleReport {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String @default("50000000-0000-0000-0000-000000000000")
+
+    // Doctor (FK to User)
+    doctorId String
+    Doctor   User   @relation("DoctorDnaReports", fields: [doctorId], references: [id])
+
+    // Report content
+    reportData Json?   @db.JsonB
+    styleText  String? @db.Text
+
+    // Version tracking
+    isLatest             Boolean @default(true)
+    currentVersionNumber Int     @default(1)
+
+    // Resource status + Audit
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    // Relations
+    Versions DnaWritingStyleVersion[]
+
+    // Indexes
+    @@index([tenantId], name: "DnaWritingStyleReport_tenantId_idx")
+    @@index([doctorId], name: "DnaWritingStyleReport_doctorId_idx")
+    @@index([doctorId, isLatest], name: "DnaWritingStyleReport_doctor_latest_idx")
+    @@schema("core")
+}
+
+model DnaWritingStyleVersion {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String @default("50000000-0000-0000-0000-000000000000")
+
+    // Parent report
+    dnaReportId            String
+    DnaWritingStyleReport  DnaWritingStyleReport @relation(fields: [dnaReportId], references: [id])
+
+    // Version content snapshot
+    versionNumber Int
+    reportData    Json?   @db.JsonB
+    styleText     String? @db.Text
+
+    // Change tracking
+    changeReason String?
+    changedBy    String?
+
+    // Timestamps
+    createdAt DateTime @default(now())
+
+    // Constraints
+    @@unique([dnaReportId, versionNumber])
+
+    // Indexes
+    @@index([dnaReportId], name: "DnaWritingStyleVersion_dnaReportId_idx")
+    @@schema("core")
+}
+
+// ============================================================================
+// Usage Records — Lightweight audit logs (plain IDs, NO foreign keys)
+// Track who used which version in which consultation
+// ============================================================================
+
+model DnaUsageRecord {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String @default("50000000-0000-0000-0000-000000000000")
+
+    // Usage facts — plain IDs, NO FK relations
+    doctorId         String
+    dnaReportId      String
+    dnaVersionNumber Int?
+    consultationId   String?
+    departmentId     String?
+
+    // Timestamps
+    createdAt DateTime @default(now())
+
+    // Indexes
+    @@index([tenantId], name: "DnaUsageRecord_tenantId_idx")
+    @@index([doctorId], name: "DnaUsageRecord_doctorId_idx")
+    @@index([dnaReportId], name: "DnaUsageRecord_dnaReportId_idx")
+    @@index([consultationId], name: "DnaUsageRecord_consultationId_idx")
+    @@schema("core")
+}
+
+model PromptUsageRecord {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String @default("50000000-0000-0000-0000-000000000000")
+
+    // Usage facts — plain IDs, NO FK relations
+    promptTemplateId    String
+    promptVersionNumber Int?
+    consultationId      String?
+    doctorId            String?
+    departmentId        String?
+
+    // Timestamps
+    createdAt DateTime @default(now())
+
+    // Indexes
+    @@index([tenantId], name: "PromptUsageRecord_tenantId_idx")
+    @@index([promptTemplateId], name: "PromptUsageRecord_promptTemplateId_idx")
+    @@index([consultationId], name: "PromptUsageRecord_consultationId_idx")
+    @@schema("core")
+}

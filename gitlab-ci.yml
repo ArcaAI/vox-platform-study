@@ -1,0 +1,119 @@
+stages:
+  - build
+
+variables:
+  DOCKER_HOST: unix:///var/run/docker.sock
+  DOCKER_TLS_CERTDIR: ""
+  REGISTRY: 10.10.1.110:5050
+  IMAGE_TAG_SHA: $CI_COMMIT_SHORT_SHA
+  IMAGE_TAG_BRANCH: $CI_COMMIT_REF_SLUG
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+# ── TEMPLATE ─────────────────────────────────────────────────────────────────
+
+.build-template:
+  stage: build
+  tags: [build, docker]
+  image: docker:27
+  variables:
+    SERVICE_NAME: ""
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: ""
+    BUILD_TARGET: ""
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$REGISTRY"
+  script:
+    - |
+      set -eu
+
+      image_repo="$REGISTRY/$CI_PROJECT_PATH/$SERVICE_NAME"
+      image_tag_sha="$SERVICE_NAME-$IMAGE_TAG_SHA"
+      image_tag_branch="$SERVICE_NAME-$IMAGE_TAG_BRANCH"
+
+      build_target_arg=""
+      if [ -n "$BUILD_TARGET" ]; then
+        build_target_arg="--target $BUILD_TARGET"
+      fi
+
+      echo "Building service=$SERVICE_NAME context=$DOCKER_CONTEXT dockerfile=$DOCKERFILE target=${BUILD_TARGET:-default}"
+      docker build \
+        --label org.opencontainers.image.source=$CI_PROJECT_URL \
+        --label org.opencontainers.image.revision=$CI_COMMIT_SHA \
+        --label org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+        $build_target_arg \
+        -f "$DOCKERFILE" \
+        -t "$image_repo:$image_tag_sha" \
+        -t "$image_repo:$image_tag_branch" \
+        "$DOCKER_CONTEXT"
+
+      docker push "$image_repo:$image_tag_sha"
+      docker push "$image_repo:$image_tag_branch"
+
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        docker tag "$image_repo:$image_tag_sha" "$image_repo:latest"
+        docker push "$image_repo:latest"
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
+
+# ── JOBS ─────────────────────────────────────────────────────────────
+
+api:
+  extends: .build-template
+  variables:
+    SERVICE_NAME: api
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: apps/api/Dockerfile
+
+ui-playground:
+  extends: .build-template
+  variables:
+    SERVICE_NAME: ui-playground
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: apps/ui-playground/Dockerfile
+
+nlp:
+  extends: .build-template
+  variables:
+    SERVICE_NAME: nlp
+    DOCKER_CONTEXT: apps/nlp
+    DOCKERFILE: apps/nlp/Dockerfile
+
+smr:
+  extends: .build-template
+  variables:
+    SERVICE_NAME: smr
+    DOCKER_CONTEXT: apps/smr
+    DOCKERFILE: apps/smr/Dockerfile
+
+stt-v2:
+  extends: .build-template
+  variables:
+    SERVICE_NAME: stt-v2-ml-runtime
+    DOCKER_CONTEXT: apps/stt-v2
+    DOCKERFILE: apps/stt-v2/docker/Dockerfile
+    BUILD_TARGET: ml-runtime
+
+stt-v2-worker:
+  extends: .build-template
+  variables:
+    SERVICE_NAME: stt-v2-worker
+    DOCKER_CONTEXT: apps/stt-v2
+    DOCKERFILE: apps/stt-v2/docker/Dockerfile
+    BUILD_TARGET: worker
+
+database:
+  extends: .build-template
+  variables:
+    SERVICE_NAME: database
+    DOCKER_CONTEXT: packages/database
+    DOCKERFILE: packages/database/Dockerfile

@@ -1,0 +1,80 @@
+{
+  "name": "@arcaai/room",
+  "version": "0.1.0",
+  "description": "React-based audio processing package with configurable features and plugin architecture",
+  "private": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint \"src/**/*.ts*\" --max-warnings 0",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test --config=e2e/playwright.config.ts",
+    "test:e2e:headed": "playwright test --config=e2e/playwright.config.ts --headed",
+    "test:e2e:debug": "playwright test --config=e2e/playwright.config.ts --debug",
+    "test:e2e:chromium": "playwright test --config=e2e/playwright.config.ts --project=chromium",
+    "test:e2e:firefox": "playwright test --config=e2e/playwright.config.ts --project=firefox",
+    "test:e2e:webkit": "playwright test --config=e2e/playwright.config.ts --project=webkit",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "audio",
+    "processing",
+    "react",
+    "webrtc",
+    "vad",
+    "transcription",
+    "speaker-recognition",
+    "web-audio",
+    "microphone",
+    "audio-capture"
+  ],
+  "author": "ARCAAI",
+  "license": "MIT",
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.4"
+  },
+  "dependencies": {
+    "eventemitter3": "^5.0.1"
+  },
+  "devDependencies": {
+    "@arcaai/config-eslint": "workspace:*",
+    "@arcaai/config-ts": "workspace:*",
+    "@playwright/test": "^1.58.2",
+    "@types/react": "^19.2.14",
+    "http-server": "^14.1.1",
+    "@testing-library/react": "^16.3.2",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "rimraf": "^6.1.3",
+    "tsup": "^8.5.1",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.17"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArcaAI/Arca-AgenticSDK.git"
+  },
+  "type": "module"
+}

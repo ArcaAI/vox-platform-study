@@ -1,0 +1,36 @@
+model Tag {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // multi tenant fields
+    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+
+    // core fields
+    resourceTypeName String?
+    resourceId       String?
+    tagKey           String?
+    tagValue         String
+    description      String?
+    color            String?
+    icon             String?
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // tags
+
+    // relations
+
+    // indexing
+    @@schema("core")
+}

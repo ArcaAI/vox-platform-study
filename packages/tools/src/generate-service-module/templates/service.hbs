@@ -1,0 +1,223 @@
+import { Injectable } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+    ResourceType,
+    SysEventType,
+    EntityId,
+    {{ entityName }},
+    {{ factoryName }},
+    {{ repositoryName }}
+} from '@arcaai/domains';
+import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
+import { {{ interfaceName }} } from './{{ interfaceName }}';
+import { {{ createDtoName }}, {{ updateDtoName }} } from './dto';
+import {
+    BaseService,
+    FetchResponse,
+    PaginatedQuery,
+    withFormattedPaginatedProps
+} from '../../common';
+import { IActiveUserContext } from '../../interfaces';
+
+// TODO: Implement this service based on your specific requirements
+
+@Injectable()
+export class {{ className }}Service extends BaseService implements {{ interfaceName }} {
+    constructor(
+        private readonly {{ repositoryPropertyName }}: {{ repositoryName }},
+        protected override readonly eventEmitter: EventEmitter2,
+        protected override readonly clsService: ClsService<IActiveUserContext>,
+    ) {
+        super(eventEmitter, clsService, ResourceType.{{ resourceTypeName }});
+    }
+
+    async create(
+        request: {{ createDtoName }},
+    ): Promise<{{ entityName }}> {
+        const new{{ className }} = {{ factoryName }}.{{ factoryFuncName }}({
+            ...request,
+            tenantId: this.requestUser.tenantId || request.tenantId,
+            createdBy: this.requestUser?.id,
+        });
+
+        const {{ individualEntityPropertyName }} =
+            await this.{{ repositoryPropertyName }}.create(new{{ className }});
+
+        if (!{{ individualEntityPropertyName }}) {
+            throw new InternalServerErrorException(
+                `Failed to create {{ entityName }}: ${request}`,
+            );
+        }
+
+        this.broadcastSysEvent(SysEventType.ResourceCreated, {
+            resourceId: {{ individualEntityPropertyName }}.id,
+            createdAt: {{ individualEntityPropertyName }}.createdAt,
+            data: {{ individualEntityPropertyName }}.toObject() as object,
+        });
+        return {{ individualEntityPropertyName }};
+    }
+
+    async createMany(
+        request: {{ createDtoName }}[],
+    ): Promise<{{ entityName }}[]> {
+        const new{{ className }} = request.map(r => {{ factoryName }}.{{ factoryFuncName }}({
+            ...r,
+            tenantId: this.requestUser.tenantId || r.tenantId,
+            createdBy: this.requestUser?.id,
+        }));
+
+        const {{ multipleEntitiesPropertyName }} =
+            await this.{{ repositoryPropertyName }}.createManyAndReturn(new{{ className }});
+
+        if (!{{ multipleEntitiesPropertyName }}) {
+            throw new InternalServerErrorException(
+                `Failed to create many {{ entityName }}: ${request}`,
+            );
+        }
+
+        this.broadcastSysEvent(SysEventType.ResourceCreated, {
+            resourceIds: {{ multipleEntitiesPropertyName }}.map(x => x.id),
+            createdAt: new Date(),
+            data: {{ multipleEntitiesPropertyName }}.map(x => x.toObject()) as object[],
+        });
+        return {{ multipleEntitiesPropertyName }};
+    }
+
+    async fetchAll(
+        props: PaginatedQuery,
+    ): Promise<FetchResponse<{{ entityName }}>> {
+        const { limit, page, search } = props;
+        const {{ multipleEntitiesPropertyName }} = await this.{{ repositoryPropertyName }}.findAll(
+            withFormattedPaginatedProps(props),
+        );
+
+        const count = await this.{{ repositoryPropertyName }}.count({
+            search,
+        });
+
+        this.broadcastSysEvent(SysEventType.ResourceViewed, {
+            data: {
+                items: {{ multipleEntitiesPropertyName }}.map(
+                    ({{ individualEntityPropertyName }}: {{ entityName }}) => {{ individualEntityPropertyName }}.id,
+                ),
+            },
+        });
+        return new FetchResponse<{{ entityName }}>({
+            data: {{ multipleEntitiesPropertyName }},
+            count,
+            limit,
+            page,
+        });
+    }
+
+    async fetchAllByTenantId(
+        props: PaginatedQuery & { tenantId: string },
+    ): Promise<FetchResponse<{{ entityName }}>> {
+        const { tenantId, limit, page, search } = props;
+        const {{ multipleEntitiesPropertyName }} = await this.{{ repositoryPropertyName }}.findAll({
+            ...withFormattedPaginatedProps(props),
+            where: {
+                tenantId,
+            },
+        });
+        const count = await this.{{ repositoryPropertyName }}.count({
+            search,
+            where: {
+                tenantId,
+            },
+        });
+
+        this.broadcastSysEvent(SysEventType.ResourceViewed, {
+            data: {
+                tenantId,
+                items: {{ multipleEntitiesPropertyName }}.map(
+                    ({{ individualEntityPropertyName }}: {{ entityName }}) => {{ individualEntityPropertyName }}.id,
+                ),
+            },
+        });
+        return new FetchResponse<{{ entityName }}>({
+            data: {{ multipleEntitiesPropertyName }},
+            count,
+            limit,
+            page,
+        });
+    }
+
+    async fetchAllCreatedByUser(
+        props: PaginatedQuery & { userId: string },
+    ): Promise<FetchResponse<{{ entityName }}>> {
+        const { userId, limit, page, search } = props;
+        const {{ multipleEntitiesPropertyName }} = await this.{{ repositoryPropertyName }}.findAll({
+            ...withFormattedPaginatedProps(props),
+            where: {
+                createdBy: userId,
+            },
+        });
+        const count = await this.{{ repositoryPropertyName }}.count({
+            search,
+            where: {
+                createdBy: userId,
+            },
+        });
+
+        this.broadcastSysEvent(SysEventType.ResourceViewed, {
+            data: {
+                createdBy: userId,
+                items: {{ multipleEntitiesPropertyName }}.map(
+                    ({{ individualEntityPropertyName }}: {{ entityName }}) => {{ individualEntityPropertyName }}.id,
+                ),
+            },
+        });
+        return new FetchResponse<{{ entityName }}>({
+            data: {{ multipleEntitiesPropertyName }},
+            count,
+            limit,
+            page,
+        });
+    }
+
+    async fetchById(id: EntityId): Promise<{{ entityName }}> {
+        const {{ individualEntityPropertyName }} = await this.{{ repositoryPropertyName }}.findById(id);
+
+        this.broadcastSysEvent(SysEventType.ResourceViewed, {
+            responsibleEntityId: this.clsService.get('user')?.id,
+            data: {{ individualEntityPropertyName }}.toObject() as object,
+        });
+        return {{ individualEntityPropertyName }};
+    }
+
+    async update(
+        id: EntityId,
+        request: {{ updateDtoName }},
+    ): Promise<{{ entityName }}> {
+        const {{ individualEntityPropertyName }} = await this.{{ repositoryPropertyName }}.findById(id);
+
+        this.updateEntity({{ individualEntityPropertyName }}, request);
+
+        if (!{{ individualEntityPropertyName }}.hasChanges) {
+            throw new ArgumentInvalidException(`No changes to write to.`);
+        }
+        const updated{{ className }} = await this.{{ repositoryPropertyName }}.update(
+            id,
+            {{ individualEntityPropertyName }},
+        );
+
+        this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+            resourceId: updated{{ className }}.id,
+            data: {{ individualEntityPropertyName }}.changes,
+            previousData: updated{{ className }}.toObject() as object,
+        });
+        return updated{{ className }};
+    }
+
+    async deleteById(id: EntityId): Promise<{{ entityName }}> {
+        const {{ individualEntityPropertyName }} = await this.{{ repositoryPropertyName }}.softDelete(id);
+
+        this.broadcastSysEvent(SysEventType.ResourceDeleted, {
+            resourceId: {{ individualEntityPropertyName }}.id,
+            data: {{ individualEntityPropertyName }}.toObject() as object,
+        });
+        return {{ individualEntityPropertyName }};
+    }
+}

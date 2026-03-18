@@ -1,0 +1,202 @@
+# ============================================================================
+# Test Infrastructure - Docker Compose
+# ============================================================================
+# This Docker Compose file provides ISOLATED test infrastructure.
+# All services use different ports from development to avoid conflicts.
+#
+# Port Mapping (Test vs Dev):
+#   PostgreSQL: 5433 (test) vs 5432 (dev)
+#   Redis:      6380 (test) vs 6379 (dev)
+#   MinIO:      9002 (test) vs 9000 (dev)
+#   Qdrant:     6335 (test) vs 6333 (dev)
+#
+# Usage:
+#   Start:  pnpm docker:test:up
+#   Stop:   pnpm docker:test:down
+#   Logs:   pnpm docker:test:logs
+#   Status: pnpm docker:test:status
+#
+# ============================================================================
+
+name: hope-test
+
+services:
+  # ==========================================================================
+  # PostgreSQL 18 Test Database (Minimal Resources)
+  # ==========================================================================
+  # Using official PostgreSQL 18 Alpine (lightweight, fast startup)
+  # Note: Switch to timescale/timescaledb-ha:pg18-all if TimescaleDB/pgvector needed
+  postgres-test:
+    image: postgres:18-alpine
+    container_name: hope-postgres-test
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: hope_test
+    ports:
+      - '5433:5432'
+    # Minimal memory + disabled durability for fast ephemeral tests
+    command: >
+      postgres
+      -c fsync=off
+      -c synchronous_commit=off
+      -c full_page_writes=off
+      -c shared_buffers=64MB
+      -c effective_cache_size=128MB
+      -c work_mem=4MB
+      -c max_connections=100
+      -c log_statement=none
+    tmpfs:
+      - /var/lib/postgresql:size=512M
+    shm_size: 64mb
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U test -d hope_test']
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - hope-test-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  # ==========================================================================
+  # Redis Test Cache & Message Queue (Minimal Resources)
+  # ==========================================================================
+  redis-test:
+    image: redis:8-alpine
+    container_name: hope-redis-test
+    ports:
+      - '6380:6379'
+    environment:
+      REDIS_PASSWORD: test_redis_pass
+    command: >
+      redis-server
+      --requirepass test_redis_pass
+      --maxmemory 32mb
+      --maxmemory-policy allkeys-lru
+      --appendonly no
+      --save ""
+    healthcheck:
+      test: ['CMD', 'sh', '-c', 'redis-cli -a test_redis_pass ping']
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    tmpfs:
+      - /data
+    networks:
+      - hope-test-network
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+        reservations:
+          memory: 16M
+
+  # ==========================================================================
+  # MinIO Test Storage (Minimal Resources)
+  # ==========================================================================
+  minio-test:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: hope-minio-test
+    ports:
+      - '9002:9000'
+      - '9003:9001'
+    environment:
+      MINIO_ROOT_USER: test
+      MINIO_ROOT_PASSWORD: testpassword
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    tmpfs:
+      - /data:size=512M
+    networks:
+      - hope-test-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+
+  minio-createbuckets:
+    image: minio/mc:latest
+    container_name: hope-minio-createbuckets
+    depends_on:
+      minio-test:
+        condition: service_healthy
+    restart: 'no'
+    entrypoint: >
+      /bin/sh -c "
+      until /usr/bin/mc alias set local http://minio-test:9000 test testpassword; do
+        echo 'MinIO not ready, waiting...';
+        sleep 3;
+      done;
+      /usr/bin/mc mb --ignore-existing local/mlflow;
+      /usr/bin/mc mb --ignore-existing local/recordings;
+      /usr/bin/mc mb --ignore-existing local/generated-audio;
+      /usr/bin/mc mb --ignore-existing local/documents;
+      /usr/bin/mc mb --ignore-existing local/backups;
+      /usr/bin/mc policy set public local/recordings;
+      /usr/bin/mc policy set public local/generated-audio;
+      echo 'Test buckets created successfully';
+      exit 0;
+      "
+    networks:
+      - hope-test-network
+
+  # ==========================================================================
+  # Qdrant Test Vector Database (Minimal Resources)
+  # ==========================================================================
+  qdrant-test:
+    image: qdrant/qdrant:v1.16
+    container_name: hope-qdrant-test
+    ports:
+      - '6335:6333'
+      - '6336:6334'
+    tmpfs:
+      - /qdrant/storage:size=128M
+    healthcheck:
+      test: ['CMD-SHELL', 'bash -c "echo > /dev/tcp/localhost/6333"']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - hope-test-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+
+  # Qdrant Collection Initialization (mirrors dev infrastructure)
+  qdrant-init-test:
+    container_name: hope-qdrant-init-test
+    image: python:3.11-slim
+    depends_on:
+      qdrant-test:
+        condition: service_healthy
+    restart: 'no'
+    environment:
+      QDRANT_HOST: qdrant-test
+      QDRANT_PORT: 6333
+    volumes:
+      - ../infrastructure/docker/scripts/init-qdrant-collections.py:/scripts/init.py:ro
+    command: sh -c "pip install -q qdrant-client && python /scripts/init.py"
+    networks:
+      - hope-test-network
+
+networks:
+  hope-test-network:
+    driver: bridge

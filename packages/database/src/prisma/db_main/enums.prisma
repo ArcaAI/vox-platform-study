@@ -1,0 +1,252 @@
+enum ValueType {
+    String // For TEXT, VARCHAR
+    Integer // For INTEGER
+    Float // For FLOAT
+    Double // For DOUBLE PRECISION
+    Decimal // For DECIMAL
+    Boolean // For BOOLEAN
+    Json // For JSON, JSONB
+    Date // For DATE
+    DateTime // For TIMESTAMP
+    Array // For ARRAY types
+    Uuid // For UUID
+    Binary // For BYTEA
+    Enum // For custom ENUM types
+    Hstore // For HSTORE key-value pairs
+    Inet // For IP addresses
+    Citext // For case-insensitive text
+    Interval // For time intervals
+
+    @@schema("core")
+}
+
+enum ResourceStatusType {
+    ENABLED
+    DISABLED
+    ARCHIVED
+    DELETED
+
+    @@schema("core")
+}
+
+enum ResourceSubscriptionType {
+    CREATOR
+    SUBSCRIBER
+    MENTIONED
+
+    @@schema("core")
+}
+
+enum PermissionAction {
+    MANAGE // Full access (includes all actions)
+    CREATE
+    READ
+    LIST   // List/query multiple resources
+    UPDATE
+    DELETE
+    ARCHIVE
+    EXPORT // Export data
+
+    @@schema("core")
+}
+
+enum PolicyScope {
+    GLOBAL // System-wide permission
+    TENANT // Tenant-scoped permission
+
+    @@schema("core")
+}
+
+enum ModelType {
+    BASE_MODEL
+    FINETUNED_MODEL
+    QUANTIZED_MODEL
+    UNKNOWN
+
+    @@schema("core")
+}
+
+enum ModelCategory {
+    MULTI_MODAL
+    VISION
+    NLP
+    AUDIO
+    TABULAR
+    UNKNOWN
+
+    @@schema("core")
+}
+
+enum ModelTaskType {
+    // Multimodal
+    IMAGE_TEXT_TO_TEXT
+    VISUAL_QUESTION_ANSWERING
+    DOCUMENT_QUESTION_ANSWERING
+    VIDEO_TEXT_TO_TEXT
+    ANY_TO_ANY
+
+    // Vision
+    DEPTH_ESTIMATION
+    IMAGE_CLASSIFICATION
+    OBJECT_DETECTION
+    IMAGE_SEGMENTATION
+    TEXT_TO_IMAGE
+    IMAGE_TO_TEXT
+    IMAGE_TO_IMAGE
+    IMAGE_TO_VIDEO
+    UNCONDITIONAL_IMAGE_GENERATION
+    VIDEO_CLASSIFICATION
+    TEXT_TO_VIDEO
+    ZERO_SHOT_IMAGE_CLASSIFICATION
+    MASK_GENERATION
+    ZERO_SHOT_OBJECT_DETECTION
+    TEXT_TO_3D
+    IMAGE_TO_3D
+    IMAGE_FEATURE_EXTRACTION
+    KEYPOINT_DETECTION
+
+    // NLP
+    TEXT_CLASSIFICATION
+    TOKEN_CLASSIFICATION
+    TABLE_QUESTION_ANSWERING
+    QUESTION_ANSWERING
+    ZERO_SHOT_CLASSIFICATION
+    TRANSLATION
+    SUMMARIZATION
+    FEATURE_EXTRACTION
+    TEXT_GENERATION
+    TEXT2TEXT_GENERATION
+    FILL_MASK
+    SENTENCE_SIMILARITY
+
+    // Audio
+    TEXT_TO_SPEECH
+    TEXT_TO_AUDIO
+    AUTOMATIC_SPEECH_RECOGNITION
+    AUDIO_TO_AUDIO
+    AUDIO_CLASSIFICATION
+    VOICE_ACTIVITY_DETECTION
+
+    // Tabular
+    TABULAR_CLASSIFICATION
+    TABULAR_REGRESSION
+    TIME_SERIES_FORECASTING
+
+    // Unknown
+    UNKNOWN
+
+    @@schema("core")
+}
+
+enum ModelJobStatus {
+    SCHEDULED
+    RUNNING
+    COMPLETED
+    FAILED
+    CANCELLED
+
+    @@schema("core")
+}
+
+enum WebhookRunStatus {
+    SUCCESS
+    FAILED
+
+    @@schema("core")
+}
+
+enum NotificationType {
+    STANDARD
+    LINK
+    ACTION
+
+    @@schema("core")
+}
+
+// =============================================================================
+// TENANT STORAGE ENUMS
+// =============================================================================
+
+enum TenantBucketType {
+    SYSTEM               // Auto-provisioned on tenant creation (audio_recordings, uploaded_recordings)
+    CUSTOM               // Created by tenant admin for business needs
+
+    @@schema("core")
+}
+
+// =============================================================================
+// CONSULTATION CONTEXT ENUMS
+// =============================================================================
+
+enum ContextItemType {
+    AUDIO_RECORDING      // Audio recordings from consultation
+    WORKNOTE             // User-entered work notes
+    RAW_SUMMARY          // AI-generated final summary
+    MODIFIED_SUMMARY     // User-modified summary
+    PRE_SUMMARY          // AI-generated pre-summary (summarizes case notes for final summarization)
+    NAMED_ENTITY         // Recognized named entities (container)
+    TRANSCRIPT           // Transcription of audio
+    CASE_NOTE            // Case notes - shared across linked consultations as additional context
+    ATTACHMENT           // Other attachments
+
+    @@schema("core")
+}
+
+enum ContextItemSource {
+    USER                 // User-entered
+    AI                   // AI-generated
+    SYSTEM               // System-generated
+    TRANSCRIPTION        // From transcription service
+
+    @@schema("core")
+}
+
+
+// =============================================================================
+// STT SERVICE ENUMS
+// =============================================================================
+
+enum AiModelSource {
+    HUGGINGFACE          // HuggingFace Hub
+    GITHUB               // GitHub releases/raw files
+    MLFLOW               // Self-hosted MLFlow registry
+    LOCAL                // Local filesystem
+
+    @@schema("core")
+}
+
+enum AiModelFormat {
+    SAFETENSOR           // HuggingFace SafeTensors (Transformers)
+    ONNX                 // ONNX Runtime
+    NEMO                 // NVIDIA NeMo
+    PYTORCH              // Raw PyTorch (.pt, .pth)
+
+    @@schema("core")
+}
+
+enum AiModelDownloadStatus {
+    NOT_DOWNLOADED
+    DOWNLOADING
+    DOWNLOADED
+    DOWNLOAD_FAILED
+
+    @@schema("core")
+}
+
+enum TranscriptionJobType {
+    BATCH                // File upload transcription
+    STREAMING            // Live audio stream
+
+    @@schema("core")
+}
+
+enum TranscriptionJobStatus {
+    QUEUED               // In queue, waiting for worker
+    PROCESSING           // Worker picked up, in progress
+    COMPLETED            // Successfully finished
+    FAILED               // Failed (may retry)
+    CANCELLED            // Manually cancelled
+    DEAD                 // Max retries exceeded
+
+    @@schema("core")
+}

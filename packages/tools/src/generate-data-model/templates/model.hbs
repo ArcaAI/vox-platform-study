@@ -1,0 +1,75 @@
+{{#if hasDecimal}}
+/* eslint-disable unused-imports/no-unused-imports */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import Decimal from 'decimal.js';
+{{else}}
+/* eslint-disable unused-imports/no-unused-imports */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+{{/if}}
+
+{{#if enumValues.length}}
+
+export enum {{className}} {
+    {{#each enumValues}}
+    {{name}} = '{{name}}',
+    {{/each}}
+}
+
+{{else if baseModel}}
+
+{{#if relationFields.length}}
+import { {{baseModel}}, VirtualDbProperty } from '../../../common';{{else}}import { {{baseModel}} } from '../../../common';{{/if}}
+import { JsonValue } from '../../../interfaces';
+import * as Enums from '../../../enums';
+import * as Models from './';
+
+export class {{className}} extends {{baseModel}} {
+    {{#each scalarFields}}
+    public {{name}}: {{type}};
+    {{/each}}
+    {{#each relationFields}}
+    @VirtualDbProperty()
+    public {{name}}: {{type}} | undefined;
+    {{/each}}
+
+    constructor(data: {{className}} & {{baseModel}}) {
+        super(data);
+        {{#each scalarFields}}
+        this.{{name}} = data.{{name}};
+        {{/each}}
+        {{#each relationFields}}
+        this.{{name}} = data.{{name}};
+        {{/each}}
+    }
+}
+
+{{else}}
+
+{{#if relationFields.length}}
+import { VirtualDbProperty } from '../../../common';{{/if}}
+import { JsonValue } from '../../../interfaces';
+import * as Enums from '../../../enums';
+import * as Models from './';
+
+export class {{className}} {
+    {{#each scalarFields}}
+    public {{name}}: {{type}};
+    {{/each}}
+    {{#each relationFields}}
+    @VirtualDbProperty()
+    public {{name}}: {{type}} | undefined;
+    {{/each}}
+
+    constructor(data: {{className}}) {
+        {{#each scalarFields}}
+        this.{{name}} = data.{{name}};
+        {{/each}}
+        {{#each relationFields}}
+        this.{{name}} = data.{{name}};
+        {{/each}}
+    }
+}
+
+{{/if}}

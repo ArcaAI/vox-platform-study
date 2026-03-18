@@ -1,0 +1,145 @@
+// ============================================================================
+// RBAC Models - Policy-Based Authorization
+// ============================================================================
+// This schema implements a policy-based RBAC system using CASL.
+// 
+// Key concepts:
+// - Role: A named collection of policies (e.g., ADMIN, MANAGER, USER)
+// - Policy: A set of CASL rules stored as JSON (e.g., can read User, can manage Consultation)
+// - RolePolicy: Links roles to policies with priority
+// - UserRoleAssignment: Assigns roles to users (with optional tenant scope)
+//
+// Authorization flow:
+// 1. User authenticates
+// 2. PolicyEngine loads user's roles via UserRoleAssignment
+// 3. For each role, load associated policies via RolePolicy
+// 4. Build CASL ability from all policy rules
+// 5. Check permissions using ability.can(action, subject)
+// ============================================================================
+
+model Role {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // core fields
+    name         String
+    description  String?
+    externalName String? // Display name for UI
+    externalId   String? // External system integration ID
+
+    // System role flag (built-in roles cannot be deleted)
+    isSystemRole Boolean @default(false)
+
+    // Role hierarchy - child roles inherit parent's policies
+    parentRoleId String?
+    ParentRole   Role?   @relation("_Role_ParentRole", fields: [parentRoleId], references: [id])
+    ChildRoles   Role[]  @relation("_Role_ParentRole")
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // relations
+    RolePolicies        RolePolicy[]         @relation("_Role_RolePolicies")
+    UserRoleAssignments UserRoleAssignment[] @relation("_Role_UserRoleAssignments")
+
+    // indexing
+    @@unique([name], name: "Role_name_unique")
+    @@index([parentRoleId], name: "Role_parentRoleId_idx")
+    @@schema("core")
+}
+
+model Policy {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // core fields
+    name        String
+    description String?
+
+    // CASL rules stored as JSON array
+    // Each rule follows CASL format:
+    // {
+    //   "action": "read" | "create" | "update" | "delete" | "manage" | "list" | "archive" | "export",
+    //   "subject": "User" | "Consultation" | "Media" | "all" | etc.,
+    //   "conditions": { "tenantId": "${context.tenantId}", "createdBy": "${user.id}" },
+    //   "fields": ["id", "name", "email"],  // Optional: restrict to specific fields
+    //   "inverted": false,                   // Optional: true = "cannot" rule
+    //   "reason": "You can only access your own data"  // Optional: shown on denial
+    // }
+    //
+    // Template variables:
+    // - ${user.id} - Current user's ID
+    // - ${user.tenantId} - Current user's tenant ID
+    // - ${context.tenantId} - Request tenant context
+    // - ${params.xxx} - Route parameters
+    rules Json @db.JsonB
+
+    // Policy scope
+    scope PolicyScope @default(TENANT)
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // relations
+    RolePolicies RolePolicy[] @relation("_Policy_RolePolicies")
+
+    // indexing
+    @@unique([name], name: "Policy_name_unique")
+    @@index([scope], name: "Policy_scope_idx")
+    @@schema("core")
+}
+
+model RolePolicy {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // core fields
+    // Priority determines order of rule evaluation (lower = higher priority)
+    // Useful when policies have conflicting rules
+    priority Int @default(0)
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // relations
+    roleId   String
+    Role     Role   @relation("_Role_RolePolicies", fields: [roleId], references: [id], onDelete: Cascade)
+    policyId String
+    Policy   Policy @relation("_Policy_RolePolicies", fields: [policyId], references: [id], onDelete: Cascade)
+
+    // indexing
+    @@unique([roleId, policyId], name: "RolePolicy_roleId_policyId_unique")
+    @@index([roleId], name: "RolePolicy_roleId_idx")
+    @@index([policyId], name: "RolePolicy_policyId_idx")
+    @@schema("core")
+}

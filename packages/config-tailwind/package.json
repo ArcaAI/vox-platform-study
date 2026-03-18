@@ -1,0 +1,14 @@
+{
+    "name": "@arcaai/config-tailwind",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "main": "tailwind.config.ts",
+    "peerDependencies": {
+        "typescript": "^5.0.0"
+    },
+    "devDependencies": {
+        "@arcaai/config-ts": "workspace:*",
+        "tailwindcss": "^4.2.1"
+    }
+}

@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>@arcaai/vad E2E Test Fixture</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    h1 { color: #00d4ff; }
+    h3 { color: #00d4ff; margin-bottom: 10px; }
+    .section {
+      background: #16213e;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    .status { font-family: monospace; }
+    .status.success { color: #00ff88; }
+    .status.error { color: #ff4444; }
+    .status.pending { color: #ffaa00; }
+    .status.speaking { color: #00ff88; font-weight: bold; }
+    button {
+      background: #00d4ff;
+      color: #1a1a2e;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+      font-weight: bold;
+    }
+    button:hover { background: #00b8e6; }
+    button:disabled { background: #666; cursor: not-allowed; }
+    #speech-indicator {
+      width: 100%;
+      height: 40px;
+      background: #0f0f1a;
+      border-radius: 20px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+    #probability-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #2196F3, #00d4ff);
+      border-radius: 20px;
+      transition: width 0.1s ease;
+    }
+    #probability-bar.speaking {
+      background: linear-gradient(90deg, #4CAF50, #00ff88);
+    }
+    #logs {
+      background: #0f0f1a;
+      padding: 10px;
+      border-radius: 5px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 5px 0;
+      border-bottom: 1px solid #333;
+    }
+    .speech-segments {
+      background: #0f0f1a;
+      padding: 10px;
+      border-radius: 5px;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    .speech-segment {
+      padding: 5px;
+      margin: 5px 0;
+      background: #16213e;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 10px 0;
+    }
+    .slider-container input[type="range"] {
+      flex: 1;
+    }
+    .slider-value {
+      min-width: 50px;
+      text-align: right;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>@arcaai/vad E2E Test Fixture</h1>
+
+  <div class="section">
+    <h3>Browser Support</h3>
+    <div id="browser-support" class="grid">
+      <div>WebAssembly: <span id="wasm-support" class="status pending">checking...</span></div>
+      <div>AudioContext: <span id="audio-support" class="status pending">checking...</span></div>
+      <div>AudioWorklet: <span id="worklet-support" class="status pending">checking...</span></div>
+      <div>MediaDevices: <span id="media-support" class="status pending">checking...</span></div>
+      <div>SharedArrayBuffer: <span id="sab-support" class="status pending">checking...</span></div>
+      <div>Cross-Origin Isolated: <span id="coi-support" class="status pending">checking...</span></div>
+    </div>
+    <div style="margin-top: 10px;">
+      VAD Supported: <span id="vad-support" class="status pending">checking...</span>
+      | Recommended Model: <span id="recommended-model" class="status pending">-</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>VAD Controls</h3>
+    <div>
+      <button id="btn-init-vad" disabled>Initialize VAD</button>
+      <button id="btn-start-vad" disabled>Start VAD</button>
+      <button id="btn-pause-vad" disabled>Pause VAD</button>
+      <button id="btn-destroy-vad" disabled>Destroy VAD</button>
+    </div>
+    <div style="margin-top: 10px;">
+      <button id="btn-reset-stats" disabled>Reset Stats</button>
+      <button id="btn-get-stats" disabled>Get Stats</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Configuration</h3>
+    <div class="slider-container">
+      <label>Model:</label>
+      <select id="model-select">
+        <option value="v5" selected>v5 (512 frame)</option>
+        <option value="legacy">Legacy (1536 frame)</option>
+      </select>
+    </div>
+    <div class="slider-container">
+      <label>Positive Threshold:</label>
+      <input type="range" id="pos-threshold" min="0" max="100" value="50" />
+      <span class="slider-value" id="pos-threshold-value">0.50</span>
+    </div>
+    <div class="slider-container">
+      <label>Negative Threshold:</label>
+      <input type="range" id="neg-threshold" min="0" max="100" value="35" />
+      <span class="slider-value" id="neg-threshold-value">0.35</span>
+    </div>
+    <div class="slider-container">
+      <label>Min Speech (ms):</label>
+      <input type="range" id="min-speech" min="50" max="1000" value="250" step="50" />
+      <span class="slider-value" id="min-speech-value">250</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Status</h3>
+    <div class="grid">
+      <div>State: <span id="vad-state" class="status">uninitialized</span></div>
+      <div>Speaking: <span id="speaking-status" class="status">No</span></div>
+      <div>Active: <span id="active-status" class="status">No</span></div>
+      <div>Model: <span id="current-model" class="status">-</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Speech Probability</h3>
+    <div id="speech-indicator">
+      <div id="probability-bar"></div>
+    </div>
+    <div style="text-align: center;">
+      <span id="probability-value" style="font-size: 24px; font-weight: bold;">0.0%</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Statistics</h3>
+    <div class="grid">
+      <div class="stat-item">
+        <span>Frames Processed:</span>
+        <span id="stat-frames">0</span>
+      </div>
+      <div class="stat-item">
+        <span>Speech Segments:</span>
+        <span id="stat-segments">0</span>
+      </div>
+      <div class="stat-item">
+        <span>Misfires:</span>
+        <span id="stat-misfires">0</span>
+      </div>
+      <div class="stat-item">
+        <span>Avg Probability:</span>
+        <span id="stat-avg-prob">0.0%</span>
+      </div>
+      <div class="stat-item">
+        <span>Current Duration:</span>
+        <span id="stat-duration">0 ms</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Detected Speech Segments</h3>
+    <div id="speech-segments" class="speech-segments">
+      <div style="color: #666;">No speech segments detected yet...</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Event Logs</h3>
+    <div id="logs"></div>
+  </div>
+
+  <!-- Test results exposed to Playwright -->
+  <script>
+    // Global test results for Playwright
+    window.testResults = {
+      browserSupport: null,
+      vadProcessor: null,
+      speechSegments: [],
+      misfires: [],
+      errors: [],
+      events: [],
+      initialized: false,
+      started: false,
+      stats: null,
+    };
+
+    // Logging helper
+    function log(message, type = 'info') {
+      const logs = document.getElementById('logs');
+      const time = new Date().toISOString().split('T')[1].slice(0, 12);
+      const color = type === 'error' ? '#ff4444' :
+                    type === 'success' ? '#00ff88' :
+                    type === 'speech' ? '#00d4ff' : '#888';
+      logs.innerHTML = `<div style="color: ${color}">[${time}] ${message}</div>` + logs.innerHTML;
+      window.testResults.events.push({ time, message, type });
+    }
+
+    // Status helpers
+    function setStatus(id, value, success) {
+      const el = document.getElementById(id);
+      el.textContent = value;
+      el.className = 'status ' + (success ? 'success' : success === false ? 'error' : 'pending');
+    }
+
+    function updateProbability(probability, isSpeaking) {
+      const bar = document.getElementById('probability-bar');
+      const value = document.getElementById('probability-value');
+      const status = document.getElementById('speaking-status');
+
+      bar.style.width = `${probability * 100}%`;
+      bar.className = isSpeaking ? 'speaking' : '';
+      value.textContent = `${(probability * 100).toFixed(1)}%`;
+
+      status.textContent = isSpeaking ? '🎤 Yes' : 'No';
+      status.className = 'status ' + (isSpeaking ? 'speaking' : '');
+    }
+
+    function updateStats(stats) {
+      if (!stats) return;
+      window.testResults.stats = stats;
+      document.getElementById('stat-frames').textContent = stats.framesProcessed;
+      document.getElementById('stat-segments').textContent = stats.speechSegmentsDetected;
+      document.getElementById('stat-misfires').textContent = stats.misfireCount;
+      document.getElementById('stat-avg-prob').textContent = `${(stats.averageSpeechProbability * 100).toFixed(1)}%`;
+      document.getElementById('stat-duration').textContent = `${stats.currentSpeechDuration} ms`;
+    }
+
+    function addSpeechSegment(segment) {
+      window.testResults.speechSegments.push(segment);
+      const container = document.getElementById('speech-segments');
+      if (window.testResults.speechSegments.length === 1) {
+        container.innerHTML = '';
+      }
+      const el = document.createElement('div');
+      el.className = 'speech-segment';
+      el.innerHTML = `
+        <strong>Segment #${window.testResults.speechSegments.length}</strong>
+        <div>Duration: ${(segment.durationSec ?? 0).toFixed(3)}s | Segment #${segment.segmentNumber ?? '?'} | Samples: ${segment.audio.length}</div>
+      `;
+      container.insertBefore(el, container.firstChild);
+    }
+
+    // Slider updates
+    document.getElementById('pos-threshold').oninput = (e) => {
+      document.getElementById('pos-threshold-value').textContent = (e.target.value / 100).toFixed(2);
+    };
+    document.getElementById('neg-threshold').oninput = (e) => {
+      document.getElementById('neg-threshold-value').textContent = (e.target.value / 100).toFixed(2);
+    };
+    document.getElementById('min-speech').oninput = (e) => {
+      document.getElementById('min-speech-value').textContent = e.target.value;
+    };
+
+    // Check browser support
+    async function checkBrowserSupport() {
+      log('Checking browser support...');
+
+      const support = {
+        webAssembly: typeof WebAssembly !== 'undefined',
+        audioContext: typeof AudioContext !== 'undefined' || typeof webkitAudioContext !== 'undefined',
+        audioWorklet: false,
+        mediaDevices: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+        sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
+        crossOriginIsolated: typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated,
+      };
+
+      // Check AudioWorklet
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          support.audioWorklet = 'audioWorklet' in ctx;
+          ctx.close();
+        }
+      } catch (e) {
+        support.audioWorklet = false;
+      }
+
+      // VAD requires WASM + AudioContext + (AudioWorklet or ScriptProcessor)
+      support.vadSupported = support.webAssembly && support.audioContext;
+
+      setStatus('wasm-support', support.webAssembly ? 'Supported' : 'Not supported', support.webAssembly);
+      setStatus('audio-support', support.audioContext ? 'Supported' : 'Not supported', support.audioContext);
+      setStatus('worklet-support', support.audioWorklet ? 'Supported' : 'Not supported', support.audioWorklet);
+      setStatus('media-support', support.mediaDevices ? 'Supported' : 'Not supported', support.mediaDevices);
+      setStatus('sab-support', support.sharedArrayBuffer ? 'Supported' : 'Not supported', support.sharedArrayBuffer);
+      setStatus('coi-support', support.crossOriginIsolated ? 'Yes' : 'No', support.crossOriginIsolated);
+      setStatus('vad-support', support.vadSupported ? 'Yes' : 'No', support.vadSupported);
+      setStatus('recommended-model', support.audioWorklet ? 'v5' : 'legacy', true);
+
+      window.testResults.browserSupport = support;
+      log('Browser support checked', 'success');
+
+      // Enable init button if VAD is supported
+      document.getElementById('btn-init-vad').disabled = !support.vadSupported;
+
+      return support;
+    }
+
+    // Initialize VAD
+    async function initializeVAD() {
+      try {
+        log('Initializing VAD...');
+        setStatus('vad-state', 'initializing...', null);
+
+        // Dynamic import of the VAD module
+        const vadModule = await import('/dist/index.mjs');
+        const { VADProcessor, getVADBrowserSupport } = vadModule;
+
+        // Check detailed browser support
+        const browserSupport = getVADBrowserSupport();
+        log(`VAD Support: ${JSON.stringify(browserSupport)}`, 'info');
+
+        // Get configuration from UI
+        const model = document.getElementById('model-select').value;
+        const positiveSpeechThreshold = parseInt(document.getElementById('pos-threshold').value) / 100;
+        const negativeSpeechThreshold = parseInt(document.getElementById('neg-threshold').value) / 100;
+        const minSpeechMs = parseInt(document.getElementById('min-speech').value);
+
+        // Create VAD processor
+        const vad = new VADProcessor({
+          model,
+          positiveSpeechThreshold,
+          negativeSpeechThreshold,
+          minSpeechMs,
+          preSpeechPadMs: 300,
+          postSpeechPadMs: 300,
+          redemptionMs: 1400,
+          enableStats: true,
+          statsInterval: 500,
+          onSpeechStart: () => {
+            log('Speech started', 'speech');
+            updateProbability(vad.getSpeechProbability(), true);
+          },
+          onSpeechRealStart: () => {
+            log('Real speech confirmed', 'speech');
+          },
+          onSpeechEnd: (audio) => {
+            const duration = (audio.length / 16000) * 1000;
+            log(`Speech ended: ${audio.length} samples (${duration.toFixed(0)}ms)`, 'success');
+            addSpeechSegment({ audio, duration: Math.round(duration), timestamp: Date.now() });
+            updateProbability(vad.getSpeechProbability(), false);
+          },
+          onVADMisfire: () => {
+            log('VAD misfire - speech too short', 'error');
+            window.testResults.misfires.push({ timestamp: Date.now() });
+          },
+          onFrameProcessed: (probabilities, frame) => {
+            updateProbability(probabilities.isSpeech, vad.isSpeaking());
+          },
+        });
+
+        window.testResults.vadProcessor = vad;
+        window.testResults.initialized = true;
+
+        setStatus('vad-state', 'initialized', true);
+        setStatus('current-model', model, true);
+        setStatus('active-status', 'No', false);
+
+        // Update button states
+        document.getElementById('btn-init-vad').disabled = true;
+        document.getElementById('btn-start-vad').disabled = false;
+        document.getElementById('btn-destroy-vad').disabled = false;
+        document.getElementById('btn-get-stats').disabled = false;
+        document.getElementById('btn-reset-stats').disabled = false;
+
+        log(`VAD initialized with model: ${model}`, 'success');
+        return vad;
+      } catch (error) {
+        log(`Init error: ${error.message}`, 'error');
+        window.testResults.errors.push({ message: error.message, timestamp: Date.now() });
+        setStatus('vad-state', 'error', false);
+        throw error;
+      }
+    }
+
+    // Start VAD processing
+    async function startVAD() {
+      try {
+        if (!window.testResults.vadProcessor) {
+          throw new Error('VAD not initialized');
+        }
+
+        log('Starting VAD...');
+
+        // Get microphone access
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 16000,
+          }
+        });
+
+        // Create audio context
+        const audioContext = new AudioContext({ sampleRate: 16000 });
+
+        // Create media stream source
+        const source = audioContext.createMediaStreamSource(stream);
+        const track = stream.getAudioTracks()[0];
+
+        // Initialize and attach the VAD processor
+        // Note: In real usage, this would be done through @arcaai/room
+        // For testing, we simulate the attachment
+        await window.testResults.vadProcessor.onInit({
+          audioContext,
+          track,
+        });
+
+        window.testResults.started = true;
+        window.testResults.audioContext = audioContext;
+        window.testResults.mediaStream = stream;
+
+        setStatus('vad-state', 'running', true);
+        setStatus('active-status', 'Yes', true);
+
+        document.getElementById('btn-start-vad').disabled = true;
+        document.getElementById('btn-pause-vad').disabled = false;
+
+        // Start stats polling
+        window.statsInterval = setInterval(() => {
+          if (window.testResults.vadProcessor) {
+            updateStats(window.testResults.vadProcessor.getStats());
+          }
+        }, 500);
+
+        log('VAD started', 'success');
+      } catch (error) {
+        log(`Start error: ${error.message}`, 'error');
+        window.testResults.errors.push({ message: error.message, timestamp: Date.now() });
+        throw error;
+      }
+    }
+
+    // Pause VAD
+    function pauseVAD() {
+      if (!window.testResults.vadProcessor) return;
+
+      window.testResults.vadProcessor.pause();
+      window.testResults.started = false;
+
+      setStatus('vad-state', 'paused', null);
+      setStatus('active-status', 'No', false);
+
+      document.getElementById('btn-start-vad').disabled = false;
+      document.getElementById('btn-pause-vad').disabled = true;
+
+      log('VAD paused', 'info');
+    }
+
+    // Destroy VAD
+    async function destroyVAD() {
+      try {
+        if (window.statsInterval) {
+          clearInterval(window.statsInterval);
+        }
+
+        if (window.testResults.vadProcessor) {
+          log('Destroying VAD...');
+          await window.testResults.vadProcessor.onDestroy();
+        }
+
+        if (window.testResults.mediaStream) {
+          window.testResults.mediaStream.getTracks().forEach(t => t.stop());
+        }
+
+        if (window.testResults.audioContext) {
+          await window.testResults.audioContext.close();
+        }
+
+        window.testResults.vadProcessor = null;
+        window.testResults.initialized = false;
+        window.testResults.started = false;
+        window.testResults.audioContext = null;
+        window.testResults.mediaStream = null;
+
+        setStatus('vad-state', 'destroyed', false);
+        setStatus('active-status', 'No', false);
+        setStatus('speaking-status', 'No', false);
+        setStatus('current-model', '-', null);
+        updateProbability(0, false);
+
+        document.getElementById('btn-init-vad').disabled = false;
+        document.getElementById('btn-start-vad').disabled = true;
+        document.getElementById('btn-pause-vad').disabled = true;
+        document.getElementById('btn-destroy-vad').disabled = true;
+        document.getElementById('btn-get-stats').disabled = true;
+        document.getElementById('btn-reset-stats').disabled = true;
+
+        log('VAD destroyed', 'success');
+      } catch (error) {
+        log(`Destroy error: ${error.message}`, 'error');
+        window.testResults.errors.push({ message: error.message, timestamp: Date.now() });
+        throw error;
+      }
+    }
+
+    // Get stats
+    function getStats() {
+      if (!window.testResults.vadProcessor) return null;
+      const stats = window.testResults.vadProcessor.getStats();
+      updateStats(stats);
+      log(`Stats: frames=${stats.framesProcessed}, segments=${stats.speechSegmentsDetected}`, 'info');
+      return stats;
+    }
+
+    // Reset stats
+    function resetStats() {
+      if (!window.testResults.vadProcessor) return;
+      window.testResults.vadProcessor.resetStats();
+      updateStats(window.testResults.vadProcessor.getStats());
+      log('Stats reset', 'info');
+    }
+
+    // Bind button handlers
+    document.getElementById('btn-init-vad').onclick = initializeVAD;
+    document.getElementById('btn-start-vad').onclick = startVAD;
+    document.getElementById('btn-pause-vad').onclick = pauseVAD;
+    document.getElementById('btn-destroy-vad').onclick = destroyVAD;
+    document.getElementById('btn-get-stats').onclick = getStats;
+    document.getElementById('btn-reset-stats').onclick = resetStats;
+
+    // Expose test helpers for Playwright
+    window.vadTestHelpers = {
+      checkBrowserSupport,
+      initializeVAD,
+      startVAD,
+      pauseVAD,
+      destroyVAD,
+      getStats,
+      resetStats,
+      updateProbability,
+      log,
+    };
+
+    // Initialize on load
+    checkBrowserSupport();
+  </script>
+</body>
+</html>

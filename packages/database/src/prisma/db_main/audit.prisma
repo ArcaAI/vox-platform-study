@@ -1,0 +1,129 @@
+model AuditLog {
+    // Meta fields (BaseEntity pattern)
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+
+    // Actor information
+    responsibleUserId String?
+    responsibleIp     String?
+
+    // Resource identification
+    resourceType     ResourceType
+    resourceId       String?
+    resourceDatabase String?
+
+    // Event correlation (for distributed tracing)
+    correlationId String?
+    causationId   String?
+
+    // Action and event categorization
+    action    AuditAction
+    eventType String?     // Categorizes audit events (e.g., 'AUTHORIZATION', 'RESOURCE', 'SYSTEM')
+    success   Boolean?    // Tracks success/failure of operations
+
+    // Data payloads
+    data         Json  @db.JsonB
+    previousData Json  @db.JsonB
+    metadata     Json? @db.JsonB
+
+    // Resource status (standard fields)
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // Audit fields
+    createdBy String?
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // =============================================================================
+    // INDEXES - Optimized for high-performance querying
+    // =============================================================================
+
+    // Primary query patterns
+    @@index([tenantId], name: "AuditLog_tenantId_idx")
+    @@index([createdAt], name: "AuditLog_createdAt_idx")
+    @@index([responsibleUserId], name: "AuditLog_responsibleUserId_idx")
+
+    // Resource-based queries
+    @@index([resourceType, resourceId], name: "AuditLog_resource_idx")
+    @@index([action, resourceType], name: "AuditLog_action_resource_idx")
+
+    // Event categorization queries
+    @@index([eventType], name: "AuditLog_eventType_idx")
+    @@index([success], name: "AuditLog_success_idx")
+
+    // Distributed tracing
+    @@index([correlationId], name: "AuditLog_correlationId_idx")
+
+    // Composite indexes for common query patterns
+    @@index([tenantId, createdAt], name: "AuditLog_tenant_createdAt_idx")
+    @@index([tenantId, resourceType, createdAt], name: "AuditLog_tenant_resource_time_idx")
+    @@index([eventType, responsibleUserId, createdAt], name: "AuditLog_event_user_time_idx")
+    @@index([tenantId, eventType, success, createdAt], name: "AuditLog_tenant_event_success_time_idx")
+
+    // Additional indexes for high-performance querying
+    @@index([tenantId, action, createdAt], name: "AuditLog_tenant_action_time_idx")
+    @@index([resourceId], name: "AuditLog_resourceId_idx")
+
+    @@schema("core")
+}
+
+enum AuditAction {
+    CREATE
+    READ
+    UPDATE
+    DELETE
+    ARCHIVE
+    LOGIN
+    LOGOUT
+
+    @@schema("core")
+}
+
+enum ResourceType {
+    // AUDIT LOG
+
+    AuditLog
+
+    // CORE
+
+    ApiKey
+    GlobalSetting
+    IntegrationPackage
+    IntegrationItem
+    Media
+    Notification
+    ResourceSubscription
+    Role
+    Permission
+    RolePermission
+    Tag
+    Tenant
+    UserRoleAssignment
+    User
+    UserSettings
+    UserProfile
+    UserMedia
+    Webhook
+    WebhookRunHistory
+    Session
+    SessionEvent
+    SessionSyncLog
+
+    // CONSULTATION
+
+    Consultation
+    ContextItem
+    ContextItemVersion
+    AudioRecording
+    SummaryMeta
+    NamedEntity
+
+    @@schema("core")
+}

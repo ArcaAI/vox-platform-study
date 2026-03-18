@@ -1,0 +1,23 @@
+{
+  "extends": "@arcaai/config-ts/nestjs.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2015",
+      "DOM"
+    ],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/__tests__",
+    "src/integration"
+  ]
+}

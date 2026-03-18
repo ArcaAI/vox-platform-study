@@ -1,0 +1,25 @@
+import { AutoClassMapper, {{ entityName }} } from '@arcaai/domains';
+import { {{ responseDtoName }}, {{ paginatedResponseDtoName }} } from './dto';
+import { FetchResponse } from '../../common';
+
+// TODO: Implement the mapper as per your specific requirements
+
+export class {{ dtoMapperName }} {
+    static ToResponse(entity: {{ entityName }}): {{ responseDtoName }} {
+        return AutoClassMapper(entity, {{ responseDtoName }});
+    }
+
+    static ToPaginatedResponse({
+        page,
+        limit,
+        count,
+        data,
+    }: FetchResponse<{{ entityName }}>): {{ paginatedResponseDtoName }} {
+        return new {{ paginatedResponseDtoName }}({
+            page,
+            limit,
+            count,
+            data: data.map(({{ name }}) => this.ToResponse({{ name }})),
+        });
+    }
+}

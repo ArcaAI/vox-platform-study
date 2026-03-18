@@ -1,0 +1,677 @@
+import { Main } from '@/components/layout/main';
+import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/auth-store';
+import { Badge } from '@arcaai/ui/badge';
+import { Button } from '@arcaai/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/dialog';
+import { Input } from '@arcaai/ui/input';
+import {
+  type MultiColumnConfig,
+  type MultiColumnContentConfig,
+  MultiColumnLayout,
+  type MultiColumnState,
+} from '@arcaai/ui/multi-column-layout';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
+import { Separator } from '@arcaai/ui/separator';
+import type { ColumnDef } from '@tanstack/react-table';
+import {
+  Building2,
+  FolderPlus,
+  Grid3X3,
+  List,
+  Loader2,
+  Plus,
+  Upload,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import {
+  type TenantBucketObject,
+  useCreateTenantBucket,
+  useCreateTenantFolder,
+  useTenantBucketObjects,
+  useTenantBuckets,
+  useTenantBucketTree,
+  useUploadTenantObject
+} from '../api/tenant-storage';
+import {
+  type Tenant,
+  useTenantsInfinite,
+} from '../api/tenants';
+import { AdminDataTable, StatusBadge } from '../components';
+import { FolderTreeView } from '../components/folder-tree-view';
+
+const PAGE_SIZE = 50;
+
+function formatDate(date?: string) {
+  if (!date) return '—';
+  return new Date(date).toLocaleString();
+}
+
+function formatBytes(bytes: number) {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const idx = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** idx).toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
+}
+
+export default function StorageManagementPage() {
+  const roles = useAuthStore((s: { user?: { roles?: string[] } | null }) => s.user?.roles ?? []);
+  const tenantId = useAuthStore((s: { tenantId: string }) => s.tenantId);
+  const tenantName = useAuthStore((s: { tenantName: string }) => s.tenantName);
+  const isSuperOrGlobalAdmin = roles.includes('SUPER_ADMIN') || roles.includes('GLOBAL_ADMIN');
+
+  const [tenantSearch, setTenantSearch] = useState('');
+  const [selectedTenantId, setSelectedTenantId] = useState<string>(tenantId || '');
+  const [bucketSearch, setBucketSearch] = useState('');
+  const [bucketSort, setBucketSort] = useState<'name' | 'created' | 'updated'>('name');
+  const [selectedBucketId, setSelectedBucketId] = useState<string>('');
+  const [selectedFolderPath, setSelectedFolderPath] = useState('');
+  const [objectSearch, setObjectSearch] = useState('');
+  const [objectSort, setObjectSort] = useState<'name' | 'updated'>('updated');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [createBucketOpen, setCreateBucketOpen] = useState(false);
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
+  const [newBucketSlug, setNewBucketSlug] = useState('');
+  const [newBucketDescription, setNewBucketDescription] = useState('');
+  const [newFolderName, setNewFolderName] = useState('');
+  const [visibleBucketCount, setVisibleBucketCount] = useState(PAGE_SIZE);
+  const [visibleObjectCount, setVisibleObjectCount] = useState(PAGE_SIZE);
+
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const uploadFolderInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    data: tenantsPages,
+    isLoading: tenantsLoading,
+    hasNextPage: tenantsHasMore,
+    fetchNextPage: fetchNextTenants,
+    isFetchingNextPage: tenantsLoadingMore,
+    refetch: refetchTenants,
+  } = useTenantsInfinite(25, {
+    enabled: isSuperOrGlobalAdmin,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const tenantList = useMemo<Tenant[]>(() => {
+    if (!isSuperOrGlobalAdmin) {
+      if (!tenantId) return [];
+      return [{
+        id: tenantId,
+        name: tenantName || tenantId,
+        key: tenantId,
+        resourceStatus: 'ENABLED',
+        createdAt: '',
+        updatedAt: '',
+      } as Tenant];
+    }
+    return tenantsPages?.pages.flatMap((page) => page.data) ?? [];
+  }, [isSuperOrGlobalAdmin, tenantId, tenantName, tenantsPages]);
+
+  const filteredTenants = useMemo(
+    () =>
+      tenantList.filter((item) =>
+        `${item.name} ${item.key}`.toLowerCase().includes(tenantSearch.toLowerCase()),
+      ),
+    [tenantList, tenantSearch],
+  );
+
+  const effectiveTenantId = isSuperOrGlobalAdmin ? selectedTenantId : tenantId;
+  const { data: bucketsData = [], isLoading: bucketsLoading, refetch: refetchBuckets } = useTenantBuckets(
+    effectiveTenantId || '',
+    {
+      enabled: !!effectiveTenantId,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    },
+  );
+  const createBucket = useCreateTenantBucket(effectiveTenantId || '');
+  const createFolder = useCreateTenantFolder();
+  const uploadObject = useUploadTenantObject();
+
+  const selectedBucket = useMemo(
+    () => bucketsData.find((bucket) => bucket.id === selectedBucketId),
+    [bucketsData, selectedBucketId],
+  );
+
+  const { data: bucketTree, refetch: refetchBucketTree } = useTenantBucketTree(
+    effectiveTenantId || '',
+    selectedBucketId,
+    '',
+    {
+      enabled: !!effectiveTenantId && !!selectedBucketId,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    },
+  );
+  const { data: objects = [], isLoading: objectsLoading, refetch: refetchObjects } = useTenantBucketObjects(
+    effectiveTenantId || '',
+    selectedBucket?.name || '',
+    selectedFolderPath,
+    {
+      enabled: !!effectiveTenantId && !!selectedBucket?.name,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    },
+  );
+
+  useEffect(() => {
+    if (isSuperOrGlobalAdmin) return;
+    if (tenantId && tenantId !== selectedTenantId) {
+      setSelectedTenantId(tenantId);
+    }
+  }, [isSuperOrGlobalAdmin, selectedTenantId, tenantId]);
+
+  const filteredBuckets = useMemo(() => {
+    const rows = bucketsData.filter((bucket) =>
+      `${bucket.slug} ${bucket.name}`.toLowerCase().includes(bucketSearch.toLowerCase()),
+    );
+    return rows.sort((a, b) => {
+      if (bucketSort === 'created') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      if (bucketSort === 'updated') return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      return a.slug.localeCompare(b.slug);
+    });
+  }, [bucketSearch, bucketSort, bucketsData]);
+  const visibleBuckets = useMemo(
+    () => filteredBuckets.slice(0, visibleBucketCount),
+    [filteredBuckets, visibleBucketCount],
+  );
+
+  const filteredObjects = useMemo(() => {
+    const rows = objects.filter((item) =>
+      item.key.toLowerCase().includes(objectSearch.toLowerCase()),
+    );
+    return rows.sort((a, b) => {
+      if (objectSort === 'updated') {
+        return new Date(b.lastModified ?? 0).getTime() - new Date(a.lastModified ?? 0).getTime();
+      }
+      return a.key.localeCompare(b.key);
+    });
+  }, [objects, objectSearch, objectSort]);
+  const visibleObjects = useMemo(
+    () => filteredObjects.slice(0, visibleObjectCount),
+    [filteredObjects, visibleObjectCount],
+  );
+
+  useEffect(() => {
+    setVisibleBucketCount(PAGE_SIZE);
+  }, [bucketSearch, bucketSort, effectiveTenantId]);
+
+  useEffect(() => {
+    setVisibleObjectCount(PAGE_SIZE);
+  }, [objectSearch, objectSort, selectedBucketId, selectedFolderPath]);
+
+  const objectColumns = useMemo<ColumnDef<TenantBucketObject, unknown>[]>(
+    () => [
+      {
+        accessorKey: 'key',
+        header: 'Name',
+        cell: ({ row }) => <span className="font-medium">{row.original.key}</span>,
+      },
+      {
+        accessorKey: 'size',
+        header: 'Size',
+        cell: ({ row }) => formatBytes(row.original.size ?? 0),
+      },
+      {
+        accessorKey: 'lastModified',
+        header: 'Updated',
+        cell: ({ row }) => formatDate(row.original.lastModified),
+      },
+    ],
+    [],
+  );
+
+  const loadMoreOnScroll = (
+    event: React.UIEvent<HTMLDivElement>,
+    setCount: React.Dispatch<React.SetStateAction<number>>,
+  ) => {
+    const element = event.currentTarget;
+    const nearBottom =
+      element.scrollTop + element.clientHeight >= element.scrollHeight - 48;
+    if (nearBottom) {
+      setCount((prev) => prev + PAGE_SIZE);
+    }
+  };
+
+  const handleCreateBucket = () => {
+    if (!newBucketSlug.trim()) {
+      toast.error('Bucket slug is required.');
+      return;
+    }
+    createBucket.mutate(
+      { slug: newBucketSlug.trim(), description: newBucketDescription.trim() || undefined },
+      {
+        onSuccess: () => {
+          toast.success('Bucket created.');
+          setCreateBucketOpen(false);
+          setNewBucketSlug('');
+          setNewBucketDescription('');
+          void refetchBuckets();
+        },
+        onError: (error) => toast.error(error.message),
+      },
+    );
+  };
+
+  const handleCreateFolder = () => {
+    if (!effectiveTenantId || !selectedBucket) return;
+    createFolder.mutate(
+      {
+        tenantId: effectiveTenantId,
+        bucketName: selectedBucket.name,
+        folderName: newFolderName,
+        path: selectedFolderPath,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Folder created.');
+          setCreateFolderOpen(false);
+          setNewFolderName('');
+          void refetchBucketTree();
+          void refetchObjects();
+        },
+        onError: (error) => toast.error(error.message),
+      },
+    );
+  };
+
+  const uploadFiles = (files: FileList | null) => {
+    if (!files?.length || !effectiveTenantId || !selectedBucket) return;
+    const uploadJobs = Array.from(files).map((file) =>
+      uploadObject.mutateAsync({
+        tenantId: effectiveTenantId,
+        bucketName: selectedBucket.name,
+        file,
+        fileName: file.name,
+        path: selectedFolderPath,
+      }),
+    );
+    void Promise.all(uploadJobs)
+      .then(() => {
+        toast.success(`Uploaded ${files.length} item(s).`);
+        void refetchBucketTree();
+        void refetchObjects();
+      })
+      .catch((error: Error) => toast.error(error.message));
+  };
+
+  const handleTenantSelect = useCallback((id: string) => {
+    if (!isSuperOrGlobalAdmin) return;
+    if (id === selectedTenantId) return;
+    setSelectedTenantId(id);
+    setSelectedBucketId('');
+    setSelectedFolderPath('');
+  }, [isSuperOrGlobalAdmin, selectedTenantId]);
+
+  const handleBucketSelect = useCallback((id: string) => {
+    if (id === selectedBucketId) return;
+    setSelectedBucketId(id);
+    setSelectedFolderPath('');
+  }, [selectedBucketId]);
+
+  const handleFolderSelect = useCallback((path: string) => {
+    if (path === selectedFolderPath) return;
+    setSelectedFolderPath(path);
+  }, [selectedFolderPath]);
+
+  const tenantsColumn: MultiColumnConfig<Tenant> = {
+    id: 'storage-tenants',
+    title: 'Tenants',
+    subtitle: 'Select tenant',
+    width: '220px',
+    showItemCount: true,
+    keyExtractor: (item: Tenant) => item.id,
+    estimateItemSize: 62,
+    onRefresh: () => {
+      if (!isSuperOrGlobalAdmin) return;
+      void refetchTenants();
+    },
+    headerControls: (
+      <Input
+        value={tenantSearch}
+        onChange={(event: React.ChangeEvent<HTMLInputElement>) => setTenantSearch(event.target.value)}
+        placeholder="Search tenant..."
+      />
+    ),
+    emptyTitle: 'No tenants',
+    emptyDescription: 'No tenant matched your search.',
+    emptyIcon: <Building2 className="size-4" />,
+    renderItem: (item: Tenant) => (
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{item.name}</p>
+          <p className="text-muted-foreground truncate text-xs">{item.key}</p>
+        </div>
+        <StatusBadge status={item.resourceStatus ?? 'ENABLED'} />
+      </div>
+    ),
+  };
+
+  const tenantsState: MultiColumnState<Tenant> = {
+    data: filteredTenants,
+    isLoading: tenantsLoading,
+    selectedId: isSuperOrGlobalAdmin ? selectedTenantId : tenantId,
+    onSelect: handleTenantSelect,
+    hasMore: !!tenantsHasMore,
+    onLoadMore: () => fetchNextTenants(),
+    isLoadingMore: tenantsLoadingMore,
+  };
+
+  const bucketsColumn: MultiColumnContentConfig = {
+    type: 'content',
+    id: 'storage-buckets',
+    title: 'Buckets & Folders',
+    subtitle: effectiveTenantId ? `${filteredBuckets.length} bucket(s)` : 'Select tenant',
+    width: '340px',
+    onRefresh: () => {
+      if (!effectiveTenantId) return;
+      void refetchBuckets();
+      if (selectedBucketId) {
+        void refetchBucketTree();
+      }
+      if (selectedBucket?.name) {
+        void refetchObjects();
+      }
+    },
+    renderContent: () => (
+      <div className="flex h-full flex-col gap-3 p-3">
+        <div className="flex items-center gap-2">
+          <Input
+            value={bucketSearch}
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+              setBucketSearch(event.target.value)
+            }
+            placeholder="Search bucket..."
+          />
+          <Select
+            value={bucketSort}
+            onValueChange={(value: 'name' | 'created' | 'updated') => setBucketSort(value)}
+          >
+            <SelectTrigger className="w-34">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name">Name</SelectItem>
+              <SelectItem value="created">Created</SelectItem>
+              <SelectItem value="updated">Updated</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => setCreateBucketOpen(true)}>
+            <Plus data-icon="inline-start" />
+            Bucket
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setCreateFolderOpen(true)}
+            disabled={!selectedBucket}
+          >
+            <FolderPlus data-icon="inline-start" />
+            Subfolder
+          </Button>
+        </div>
+        <div
+          className="grid max-h-56 gap-2 overflow-auto"
+          onScroll={(event: React.UIEvent<HTMLDivElement>) =>
+            loadMoreOnScroll(event, setVisibleBucketCount)
+          }
+        >
+          {bucketsLoading ? (
+            <div className="text-muted-foreground text-sm">Loading buckets...</div>
+          ) : (
+            visibleBuckets.map((bucket) => (
+              <button
+                key={bucket.id}
+                type="button"
+                className={cn(
+                  'hover:bg-muted flex items-center justify-between rounded-md border px-2 py-2 text-left',
+                  selectedBucketId === bucket.id && 'bg-muted',
+                )}
+                onClick={() => {
+                  handleBucketSelect(bucket.id);
+                }}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{bucket.slug}</p>
+                  <p className="text-muted-foreground truncate text-xs">{bucket.name}</p>
+                </div>
+                <Badge variant="outline">{bucket.bucketType}</Badge>
+              </button>
+            ))
+          )}
+        </div>
+        {visibleBuckets.length < filteredBuckets.length && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setVisibleBucketCount((prev) => prev + PAGE_SIZE)}
+          >
+            Load More
+          </Button>
+        )}
+        <Separator />
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <FolderTreeView
+            nodes={bucketTree?.nodes ?? []}
+            selectedPath={selectedFolderPath}
+            onSelect={(node) => handleFolderSelect(node.path)}
+          />
+        </div>
+      </div>
+    ),
+  };
+
+  const bucketsState: MultiColumnState<never> = {
+    data: [],
+    isLoading: false,
+    selectedId: null,
+    onSelect: () => {},
+    enabled: !!effectiveTenantId,
+  };
+
+  const objectsColumn: MultiColumnContentConfig = {
+    type: 'content',
+    id: 'storage-objects',
+    title: 'Blobs',
+    subtitle: selectedBucket ? `${selectedBucket.slug} / ${selectedFolderPath || 'root'}` : 'Select bucket',
+    width: '1fr',
+    onRefresh: () => {
+      if (!selectedBucket?.name) return;
+      void refetchObjects();
+    },
+    renderContent: () => (
+      <div className="flex h-full flex-col gap-3 p-3">
+        <div className="flex items-center gap-2">
+          <Input
+            value={objectSearch}
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+              setObjectSearch(event.target.value)
+            }
+            placeholder="Search object..."
+          />
+          <Select
+            value={objectSort}
+            onValueChange={(value: 'name' | 'updated') => setObjectSort(value)}
+          >
+            <SelectTrigger className="w-34">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name">Name</SelectItem>
+              <SelectItem value="updated">Updated</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setViewMode((prev) => (prev === 'list' ? 'grid' : 'list'))}
+          >
+            {viewMode === 'list' ? <Grid3X3 /> : <List />}
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => uploadInputRef.current?.click()}
+            disabled={!selectedBucket || uploadObject.isPending}
+          >
+            {uploadObject.isPending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Upload data-icon="inline-start" />}
+            Upload Files
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => uploadFolderInputRef.current?.click()}
+            disabled={!selectedBucket || uploadObject.isPending}
+          >
+            <Upload data-icon="inline-start" />
+            Upload Folder
+          </Button>
+          <input
+            ref={uploadInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            title="Upload files"
+            aria-label="Upload files"
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+              uploadFiles(event.target.files);
+              event.currentTarget.value = '';
+            }}
+          />
+          <input
+            ref={uploadFolderInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            title="Upload folder"
+            aria-label="Upload folder"
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+              uploadFiles(event.target.files);
+              event.currentTarget.value = '';
+            }}
+          />
+        </div>
+        {viewMode === 'list' ? (
+          <div className="flex flex-col gap-2">
+            <AdminDataTable
+              data={visibleObjects}
+              columns={objectColumns}
+              isLoading={objectsLoading}
+              emptyMessage="No blobs found."
+            />
+            {visibleObjects.length < filteredObjects.length && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setVisibleObjectCount((prev) => prev + PAGE_SIZE)}
+              >
+                Load More
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div
+            className="grid grid-cols-1 gap-2 overflow-auto sm:grid-cols-2 lg:grid-cols-3"
+            onScroll={(event: React.UIEvent<HTMLDivElement>) =>
+              loadMoreOnScroll(event, setVisibleObjectCount)
+            }
+          >
+            {visibleObjects.map((item) => (
+              <div key={item.key} className="rounded-md border p-3">
+                <p className="truncate text-sm font-medium">{item.key}</p>
+                <p className="text-muted-foreground text-xs">{formatBytes(item.size ?? 0)}</p>
+                <p className="text-muted-foreground text-xs">{formatDate(item.lastModified)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    ),
+  };
+
+  const objectsState: MultiColumnState<never> = {
+    data: [],
+    isLoading: false,
+    selectedId: null,
+    onSelect: () => {},
+    enabled: !!selectedBucket,
+  };
+
+  return (
+    <Main>
+      <div className="mb-4">
+        <h2 className="text-2xl font-bold tracking-tight">Storage Management</h2>
+        <p className="text-muted-foreground mt-1">
+          Manage tenant buckets, folder tree, and blob objects via admin APIs.
+        </p>
+      </div>
+      <MultiColumnLayout
+        columns={[tenantsColumn, bucketsColumn, objectsColumn]}
+        columnStates={[tenantsState, bucketsState, objectsState]}
+        height="calc(100vh - 12rem)"
+      />
+
+      <Dialog open={createBucketOpen} onOpenChange={setCreateBucketOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Bucket</DialogTitle>
+            <DialogDescription>Create a tenant custom bucket.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <Input
+              placeholder="bucket slug"
+              value={newBucketSlug}
+              onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                setNewBucketSlug(event.target.value)
+              }
+            />
+            <Input
+              placeholder="description (optional)"
+              value={newBucketDescription}
+              onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                setNewBucketDescription(event.target.value)
+              }
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateBucketOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateBucket} disabled={createBucket.isPending}>
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={createFolderOpen} onOpenChange={setCreateFolderOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Subfolder</DialogTitle>
+            <DialogDescription>
+              Create a folder in <span className="font-medium">{selectedFolderPath || 'root'}</span>.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            placeholder="folder-name"
+            value={newFolderName}
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+              setNewFolderName(event.target.value)
+            }
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateFolderOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateFolder} disabled={createFolder.isPending}>
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Main>
+  );
+}

@@ -1,0 +1,80 @@
+model Notification {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // multi tenant fields
+    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+
+    // core fields
+    title           String
+    messageText     String?
+    messageRichText String?
+    messageContent  Json?            @db.JsonB
+    type            NotificationType
+    read            Boolean          @default(false)
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // tags
+    tags     String[]
+
+    // relations
+    resourceSubscriptionId String?
+    ResourceSubscription   ResourceSubscription? @relation("_Subscription_Notification", fields: [resourceSubscriptionId], references: [id])
+    targetUserId           String
+    TargetUser             User                  @relation("_User_UserNotification", fields: [targetUserId], references: [id])
+
+    // indexing
+    @@index([tenantId], name: "Notification_tenantId_index")
+    @@schema("core")
+}
+
+model ResourceSubscription {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // multi tenant fields
+    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+
+    // core fields
+    resourceId           String?
+    resourceTypeName     String?
+    subscriptionType     ResourceSubscriptionType
+    targetUserId         String
+    subscriptionMetadata Json?                    @db.JsonB
+
+    // resource status fields
+    resourceStatus                ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt       DateTime?
+    resourceStatusUpdatedBy       String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // tags
+    tags     String[]
+
+    // relations
+    Subscribers   User[]         @relation("_User_Subscription")
+    Notifications Notification[] @relation("_Subscription_Notification")
+
+    // indexing
+    @@index([tenantId], name: "ResourceSubscription_tenantId_index")
+    @@schema("core")
+}

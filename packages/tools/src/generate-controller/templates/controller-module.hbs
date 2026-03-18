@@ -1,0 +1,9 @@
+import { Module } from '@nestjs/common';
+import { {{serviceModuleName}} } from '@arcaai/applications';
+import { {{controllerName}} } from './{{controllerFileName}}';
+
+@Module({
+    imports: [{{serviceModuleName}}],
+    controllers: [{{controllerName}}],
+})
+export class {{controllerModuleName}} {}

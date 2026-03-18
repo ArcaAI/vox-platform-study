@@ -1,0 +1,57 @@
+[project]
+name = "nlp"
+version = "0.1.0"
+description = "Medical Entity Recognition & NLP Service for AgenticSDK"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # --- Web framework ---
+    "fastapi>=0.133.0",
+    "uvicorn[standard]>=0.41.0",
+    # --- Data validation ---
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    # --- NLP / ML ---
+    "spacy>=3.8.0",
+    "transformers>=4.48.0",
+    "torch>=2.1.0",
+    "numpy>=2.0.0",
+    "pandas>=2.1.0",
+    "scikit-learn>=1.3.0",
+    # --- Async / HTTP ---
+    "aiofiles>=25.1.0",
+    "python-multipart>=0.0.22",
+    "httpx>=0.28.1",
+    # --- Auth ---
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    # --- Text processing ---
+    "symspellpy>=6.9.0",
+    # --- Observability ---
+    "prometheus-fastapi-instrumentator>=7.1.0",
+    "opentelemetry-api>=1.39.1",
+    "opentelemetry-sdk>=1.39.1",
+    "opentelemetry-instrumentation>=0.60b1",
+    "opentelemetry-instrumentation-fastapi>=0.60b1",
+    "opentelemetry-instrumentation-logging>=0.60b1",
+    "opentelemetry-exporter-otlp>=1.39.0",
+    "opentelemetry-exporter-jaeger-thrift>=1.21.0",
+    "deprecated>=1.2.18",
+]
+# CONDA-MANAGED PACKAGES (installed via conda, not pip):
+#   ffmpeg 6.1.2, av 13.1.0, numpy 2.4.2, scipy 1.17.1, libiconv 1.18
+# av (PyAV) is a transitive dependency of transformers (video_classification
+# pipeline imports it at module load time). It MUST be installed via conda
+# to avoid native library symbol conflicts (libiconv) on macOS.
+# See scripts/setup-python-env.sh for the authoritative install sequence.
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
+
+[project.scripts]
+nlp = "nlp.main:main"
+
+[tool.uv]
+package = true

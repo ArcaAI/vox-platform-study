@@ -1,0 +1,88 @@
+{
+  "name": "@arcaai/noise-filter",
+  "version": "0.1.0",
+  "description": "AI-powered noise cancellation plugin for @arcaai/room using RNNoise WebAssembly",
+  "private": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./worklet": {
+      "types": "./dist/worklets/rnnoise.worklet.d.ts",
+      "import": "./dist/worklets/rnnoise.worklet.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint \"src/**/*.ts*\" --max-warnings 0",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test --config=e2e/playwright.config.ts",
+    "test:e2e:ui": "playwright test --config=e2e/playwright.config.ts --ui",
+    "test:e2e:headed": "playwright test --config=e2e/playwright.config.ts --headed",
+    "test:e2e:chromium": "playwright test --config=e2e/playwright.config.ts --project=chromium",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "audio",
+    "noise-cancellation",
+    "noise-suppression",
+    "rnnoise",
+    "webassembly",
+    "wasm",
+    "web-audio",
+    "audioworklet",
+    "arcaai",
+    "room"
+  ],
+  "author": "ARCAAI",
+  "license": "MIT",
+  "peerDependencies": {
+    "@arcaai/room": "^0.1.0",
+    "react": "^18.3.0 || ^19.0.4"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@jitsi/rnnoise-wasm": "^0.2.1"
+  },
+  "devDependencies": {
+    "@arcaai/config-eslint": "workspace:*",
+    "@arcaai/config-ts": "workspace:*",
+    "@arcaai/room": "workspace:*",
+    "@playwright/test": "^1.58.2",
+    "@types/audioworklet": "^0.0.96",
+    "@types/react": "^19.2.14",
+    "http-server": "^14.1.1",
+    "react": "^19.2.4",
+    "rimraf": "^6.1.3",
+    "tsup": "^8.5.1",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.17"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArcaAI/Arca-AgenticSDK.git"
+  },
+  "type": "module"
+}

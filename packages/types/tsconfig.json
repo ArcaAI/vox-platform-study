@@ -1,0 +1,17 @@
+{
+  "extends": "@arcaai/config-ts/base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "noEmit": false,
+    "emitDeclarationOnly": false,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

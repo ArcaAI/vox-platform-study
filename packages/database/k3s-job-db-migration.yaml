@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migration
+  namespace: apps
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      dnsPolicy: ClusterFirst
+      containers:
+      - name: migration
+        image: gitlab-server:5000/vuvu/4bits:migration-c2027727
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              key: DB_CONNECTION_STRING
+              name: apps-secrets
+        - name: NODE_ENV
+          value: "production"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
