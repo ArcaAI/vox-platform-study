@@ -1,0 +1,14 @@
+import { ApiProperty } from '@nestjs/swagger';
+import { PaginatedResponse } from '../../../common';
+import { {{ responseDtoName }} } from './{{ fileName }}.response';
+
+// TODO: Implement any additional properties if needed
+
+export class {{ paginatedResponseDtoName }} extends PaginatedResponse<{{ responseDtoName }}> {
+    @ApiProperty({ type: [{{ responseDtoName }}] })
+    readonly data!: {{ responseDtoName }}[];
+
+    constructor(props: { page: number; limit: number; count: number; data: {{ responseDtoName }}[] }) {
+        super(props);
+    }
+}

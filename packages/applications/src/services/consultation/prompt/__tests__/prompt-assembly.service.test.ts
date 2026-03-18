@@ -1,0 +1,332 @@
+/**
+ * PromptAssemblyService Unit Tests (TDD — RED first)
+ *
+ * Tests the prompt assembly pipeline:
+ * 1. Resolve template by department + visit type
+ * 2. Load template content + hyperparameters + JSON schema
+ * 3. Substitute variables
+ * 4. Build SMR payload with all parameters
+ *
+ * Coverage: E2 (Prompt Assembly & Variable Substitution)
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// ============================================================================
+// Mocks
+// ============================================================================
+
+const mockPromptResolutionService = {
+    resolve: vi.fn(),
+};
+
+const mockPromptTemplateRepository = {
+    findById: vi.fn(),
+};
+
+const mockDnaWritingStyleRepository = {
+    findById: vi.fn(),
+};
+
+function createMockPromptTemplate(overrides: Partial<{
+    id: string;
+    name: string;
+    content: string;
+    variables: Record<string, unknown>;
+    metaData: Record<string, unknown>;
+}> = {}) {
+    return {
+        id: overrides.id ?? 'template-001',
+        name: overrides.name ?? 'Surgery-NewReferral',
+        content: overrides.content ?? 'Summarize for {conversation_language}. Style: {style_DNA_doctor_department_surgery}.',
+        variables: overrides.variables ?? {
+            conversation_language: { type: 'string', required: true },
+            style_DNA_doctor_department_surgery: { type: 'string', required: false },
+        },
+        metaData: overrides.metaData ?? {
+            promptConfig: {
+                hyperparameters: { temperature: 0.1, max_tokens: 6000, top_p: 0.95 },
+                outputSchema: {
+                    type: 'object',
+                    properties: { subjective: { type: 'string' }, objective: { type: 'string' } },
+                    required: ['subjective', 'objective'],
+                    title: 'SurgeryNote',
+                },
+            },
+        },
+    };
+}
+
+function createMockDnaStyle(overrides: Partial<{
+    id: string;
+    styleText: string;
+}> = {}) {
+    return {
+        id: overrides.id ?? 'dna-001',
+        styleText: overrides.styleText ?? 'Use bullet points. Be concise.',
+    };
+}
+
+// ============================================================================
+// Test Suite
+// ============================================================================
+
+describe('PromptAssemblyService', () => {
+    let service: any;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+
+        mockPromptResolutionService.resolve.mockResolvedValue({
+            template: 'Surgery-NewReferral',
+            promptId: 'template-001',
+            contextVariables: {},
+            resolvedFrom: 'department',
+            resolutionTrace: { usedDefaults: [] },
+        });
+
+        mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate());
+        mockDnaWritingStyleRepository.findById.mockResolvedValue(createMockDnaStyle());
+    });
+
+    async function getService() {
+        const { PromptAssemblyService } = await import('../prompt-assembly.service');
+        return new PromptAssemblyService(
+            mockPromptResolutionService as any,
+            mockPromptTemplateRepository as any,
+            mockDnaWritingStyleRepository as any,
+        );
+    }
+
+    // ── Module existence ──
+
+    it('should be importable', async () => {
+        const { PromptAssemblyService } = await import('../prompt-assembly.service');
+        expect(PromptAssemblyService).toBeDefined();
+    });
+
+    // ── Core assembly ──
+
+    describe('assemble()', () => {
+        it('should resolve prompt template and return assembled payload', async () => {
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient presents with knee pain...',
+                conversationLanguage: 'English',
+            });
+
+            expect(result).toBeDefined();
+            expect(result.userPrompt).toBeDefined();
+            expect(result.systemPrompt).toBeDefined();
+            expect(result.hyperparameters).toBeDefined();
+        });
+
+        it('should substitute {conversation_language} in template content', async () => {
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient presents...',
+                conversationLanguage: 'French',
+            });
+
+            expect(result.userPrompt).toContain('French');
+            expect(result.userPrompt).not.toContain('{conversation_language}');
+        });
+
+        it('should substitute {style_DNA_*} when dnaStyleId is provided', async () => {
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient presents...',
+                conversationLanguage: 'English',
+                dnaStyleId: 'dna-001',
+            });
+
+            expect(result.userPrompt).toContain('Use bullet points. Be concise.');
+            expect(result.userPrompt).not.toContain('{style_DNA_doctor_department_surgery}');
+        });
+
+        it('should load hyperparameters from template metaData.promptConfig', async () => {
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient presents...',
+                conversationLanguage: 'English',
+            });
+
+            expect(result.hyperparameters.temperature).toBe(0.1);
+            expect(result.hyperparameters.max_tokens).toBe(6000);
+            expect(result.hyperparameters.top_p).toBe(0.95);
+        });
+
+        it('should include outputSchema when template has one', async () => {
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient presents...',
+                conversationLanguage: 'English',
+            });
+
+            expect(result.responseFormat).toBeDefined();
+            expect(result.responseFormat.type).toBe('json_schema');
+            expect(result.responseFormat.json_schema.title).toBe('SurgeryNote');
+        });
+
+        it('should set responseFormat to null when template has no outputSchema', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({
+                    metaData: { promptConfig: { hyperparameters: { temperature: 0.1 } } },
+                }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient presents...',
+                conversationLanguage: 'English',
+            });
+
+            expect(result.responseFormat).toBeNull();
+        });
+
+        it('should append transcript to the user prompt', async () => {
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient complains of headache',
+                conversationLanguage: 'English',
+            });
+
+            expect(result.userPrompt).toContain('Patient complains of headache');
+        });
+    });
+
+    // ── Edge cases ──
+
+    describe('edge cases', () => {
+        it('should use default hyperparameters when template has no promptConfig', async () => {
+            mockPromptTemplateRepository.findById.mockReset();
+            mockPromptTemplateRepository.findById.mockResolvedValue({
+                id: 'template-no-config',
+                name: 'Basic',
+                content: 'Simple template for {conversation_language}.',
+                variables: {},
+                metaData: null,
+            });
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'test',
+                conversationLanguage: 'English',
+            });
+
+            expect(result.hyperparameters).toEqual({});
+        });
+
+        it('should handle missing template gracefully with fallback', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(null);
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient presents...',
+                conversationLanguage: 'English',
+            });
+
+            expect(result.userPrompt).toContain('Patient presents...');
+            expect(result.hyperparameters).toEqual({});
+        });
+
+        it('should handle missing dnaStyleId gracefully', async () => {
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'test',
+                conversationLanguage: 'English',
+            });
+
+            expect(result.userPrompt).toBeDefined();
+            expect(mockDnaWritingStyleRepository.findById).not.toHaveBeenCalled();
+        });
+
+        it('should handle dnaStyleId when style not found in DB', async () => {
+            mockDnaWritingStyleRepository.findById.mockResolvedValue(null);
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'test',
+                conversationLanguage: 'English',
+                dnaStyleId: 'nonexistent',
+            });
+
+            expect(result.userPrompt).toBeDefined();
+        });
+
+        it('should include preSummaryText when provided', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({
+                    content: 'Template with {pre_summary_text}. Language: {conversation_language}.',
+                }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'test',
+                conversationLanguage: 'English',
+                preSummaryText: 'Previous notes: HbA1c 7.2%',
+            });
+
+            expect(result.userPrompt).toContain('Previous notes: HbA1c 7.2%');
+            expect(result.userPrompt).not.toContain('{pre_summary_text}');
+        });
+
+        it('should include sameDayPrequelSummary when provided', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({
+                    content: 'Template with {same_day_prequel_summary}. Language: {conversation_language}.',
+                }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'test',
+                conversationLanguage: 'English',
+                sameDayPrequelSummary: 'Earlier visit: vitals stable',
+            });
+
+            expect(result.userPrompt).toContain('Earlier visit: vitals stable');
+        });
+    });
+
+    // ── Return shape ──
+
+    describe('return shape', () => {
+        it('should return all required fields', async () => {
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'test',
+                conversationLanguage: 'English',
+            });
+
+            expect(result).toHaveProperty('userPrompt');
+            expect(result).toHaveProperty('systemPrompt');
+            expect(result).toHaveProperty('hyperparameters');
+            expect(result).toHaveProperty('responseFormat');
+            expect(result).toHaveProperty('resolvedFrom');
+        });
+    });
+});

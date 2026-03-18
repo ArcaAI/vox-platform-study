@@ -1,0 +1,1062 @@
+/**
+ * ChainSummaryService Unit Tests — GAP-4 Implementation
+ *
+ * Tests for the comprehensive cross-chain summary generation service.
+ * Verifies:
+ *   - Linked consultation resolution (chain + same-day strategies)
+ *   - Section gathering across multiple consultations
+ *   - NER entity aggregation
+ *   - SMR service integration
+ *   - Context item persistence
+ *   - Error handling
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { ChainSummaryService } from '../chain-summary.service';
+import { SysEventType } from '@arcaai/domains';
+
+// Mock ContextItemFactory
+vi.mock('@arcaai/domains', async () => {
+    const actual = await vi.importActual('@arcaai/domains');
+    return {
+        ...actual,
+        ContextItemFactory: {
+            CreateRawSummary: vi.fn((tenantId, consultationId, content, dnaStyleId, createdBy) => ({
+                id: 'ctx-comprehensive-1',
+                tenantId,
+                consultationId,
+                content,
+                dnaWritingStyleId: dnaStyleId,
+                type: 'RAW_SUMMARY',
+                createdBy,
+                createdAt: new Date('2026-02-17T10:00:00Z'),
+                updatedAt: new Date('2026-02-17T10:00:00Z'),
+            })),
+        },
+        SummaryMetaFactory: {
+            CreateSummaryMeta: vi.fn((props) => ({
+                id: 'meta-1',
+                ...props,
+            })),
+        },
+    };
+});
+
+// ============================================
+// Mock Factories
+// ============================================
+
+const createMockClsService = () => ({
+    get: vi.fn().mockImplementation((key: string) => {
+        if (key === 'tenantId') return 'tenant-1';
+        if (key === 'user') return { id: 'doctor-A', firstName: 'Dr', lastName: 'A' };
+        return null;
+    }),
+    set: vi.fn(),
+});
+
+const createMockEventEmitter = () => ({
+    emit: vi.fn(),
+});
+
+const createMockContextItemRepository = () => ({
+    findById: vi.fn(),
+    findTranscripts: vi.fn().mockResolvedValue([]),
+    findSummaries: vi.fn().mockResolvedValue([]),
+    findCaseNotes: vi.fn().mockResolvedValue([]),
+    findPreSummaries: vi.fn().mockResolvedValue([]),
+    findSharedContext: vi.fn().mockResolvedValue([]),
+    create: vi.fn().mockImplementation((item) => Promise.resolve(item)),
+});
+
+const createMockConsultationRepository = () => ({
+    findById: vi.fn(),
+    findConsultationChain: vi.fn().mockResolvedValue([]),
+    findByPatientAndDate: vi.fn().mockResolvedValue([]),
+});
+
+const createMockSummaryMetaRepository = () => ({
+    create: vi.fn().mockResolvedValue({ id: 'meta-1' }),
+});
+
+const createMockNamedEntityRepository = () => ({
+    findByContextItem: vi.fn().mockResolvedValue([]),
+});
+
+const createMockHttpService = () => ({
+    axiosRef: {
+        post: vi.fn(),
+    },
+});
+
+const createMockConfigService = () => ({
+    get: vi.fn().mockImplementation((key: string) => {
+        if (key === 'SMR_URL') return 'http://smr:8862';
+        return null;
+    }),
+});
+
+const createMockPromptAssemblyService = () => ({
+    assemble: vi.fn().mockImplementation((params: { transcript?: string }) => Promise.resolve({
+        userPrompt: params.transcript ?? 'assembled prompt text',
+        systemPrompt: '',
+        hyperparameters: {},
+        responseFormat: null,
+        resolvedFrom: 'default',
+    })),
+});
+
+// ============================================
+// Test Helpers
+// ============================================
+
+const createConsultation = (overrides: Record<string, unknown> = {}) => ({
+    id: 'consultation-A',
+    tenantId: 'tenant-1',
+    patientId: 'patient-1',
+    doctorId: 'doctor-A',
+    departmentId: 'dept-general',
+    appointmentDate: new Date('2026-02-17'),
+    parentConsultationId: null,
+    metadata: null,
+    Doctor: { username: 'Dr. A' },
+    Department: { name: 'General Medicine' },
+    ...overrides,
+});
+
+const createContextItem = (overrides: Record<string, unknown> = {}) => ({
+    id: 'ctx-1',
+    consultationId: 'consultation-A',
+    type: 'TRANSCRIPT',
+    content: 'Patient presents with headache.',
+    createdAt: new Date('2026-02-17T09:00:00Z'),
+    ...overrides,
+});
+
+const createNamedEntity = (overrides: Record<string, unknown> = {}) => ({
+    id: 'ne-1',
+    contextItemId: 'ctx-1',
+    text: 'Aspirin 75mg',
+    className: 'MEDICATION',
+    confidence: 0.95,
+    ...overrides,
+});
+
+// ============================================
+// Instantiate service with mocks
+// ============================================
+
+function createService() {
+    const contextItemRepo = createMockContextItemRepository();
+    const consultationRepo = createMockConsultationRepository();
+    const summaryMetaRepo = createMockSummaryMetaRepository();
+    const namedEntityRepo = createMockNamedEntityRepository();
+    const httpService = createMockHttpService();
+    const configService = createMockConfigService();
+    const eventEmitter = createMockEventEmitter();
+    const clsService = createMockClsService();
+    const promptAssemblyService = createMockPromptAssemblyService();
+
+    const service = new ChainSummaryService(
+        contextItemRepo as any,
+        consultationRepo as any,
+        summaryMetaRepo as any,
+        namedEntityRepo as any,
+        httpService as any,
+        configService as any,
+        eventEmitter as any,
+        clsService as any,
+        promptAssemblyService as any,
+    );
+
+    return {
+        service,
+        contextItemRepo,
+        consultationRepo,
+        summaryMetaRepo,
+        namedEntityRepo,
+        httpService,
+        configService,
+        eventEmitter,
+        clsService,
+        promptAssemblyService,
+    };
+}
+
+// ============================================
+// Tests
+// ============================================
+
+describe('ChainSummaryService', () => {
+    let mocks: ReturnType<typeof createService>;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks = createService();
+    });
+
+    describe('resolveLinkedConsultations', () => {
+        it('should combine chain-based and date-based strategies', async () => {
+            const consultationA = createConsultation({ id: 'A' });
+            const consultationB = createConsultation({ id: 'B', parentConsultationId: 'A', departmentId: 'dept-hematology' });
+            const consultationC = createConsultation({ id: 'C', doctorId: 'doctor-C', departmentId: 'dept-lab' });
+
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultationA, consultationB]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultationA, consultationC]);
+
+            const result = await mocks.service.resolveLinkedConsultations(consultationA as any);
+
+            expect(result).toHaveLength(3);
+            expect(result.map(c => c.id)).toEqual(expect.arrayContaining(['A', 'B', 'C']));
+        });
+
+        it('should deduplicate when chain and date overlap', async () => {
+            const consultationA = createConsultation({ id: 'A' });
+            const consultationB = createConsultation({ id: 'B', parentConsultationId: 'A' });
+
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultationA, consultationB]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultationA, consultationB]);
+
+            const result = await mocks.service.resolveLinkedConsultations(consultationA as any);
+
+            expect(result).toHaveLength(2);
+        });
+
+        it('should return chain-only when no same-day consultations exist', async () => {
+            const consultationA = createConsultation({ id: 'A' });
+
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultationA]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultationA]);
+
+            const result = await mocks.service.resolveLinkedConsultations(consultationA as any);
+
+            expect(result).toHaveLength(1);
+            expect(result[0].id).toBe('A');
+        });
+    });
+
+    describe('gatherSections', () => {
+        it('should prefer summaries over raw transcripts', async () => {
+            const consultation = createConsultation() as any;
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ id: 'summary-1', type: 'RAW_SUMMARY', content: 'Summary of consultation.' }),
+            ]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([
+                createContextItem({ id: 'transcript-1', content: 'Raw transcript text.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            const sections = await mocks.service.gatherSections([consultation]);
+
+            expect(sections).toHaveLength(1);
+            expect(sections[0].type).toBe('summary');
+            expect(sections[0].content).toBe('Summary of consultation.');
+        });
+
+        it('should fall back to transcripts when no summary exists', async () => {
+            const consultation = createConsultation() as any;
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([
+                createContextItem({ id: 'transcript-1', content: 'Raw transcript text.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            const sections = await mocks.service.gatherSections([consultation]);
+
+            expect(sections).toHaveLength(1);
+            expect(sections[0].type).toBe('transcript');
+        });
+
+        it('should include case notes alongside summaries', async () => {
+            const consultation = createConsultation() as any;
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ type: 'RAW_SUMMARY', content: 'Summary.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([
+                createContextItem({ type: 'CASE_NOTE', content: 'Historical case note.' }),
+            ]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            const sections = await mocks.service.gatherSections([consultation]);
+
+            expect(sections).toHaveLength(2);
+            expect(sections.map(s => s.type)).toEqual(['summary', 'case_note']);
+        });
+
+        it('should gather from multiple consultations', async () => {
+            const consultationA = createConsultation({ id: 'A' }) as any;
+            const consultationB = createConsultation({ id: 'B', departmentId: 'dept-hematology', Doctor: { username: 'Dr. B' }, Department: { name: 'Hematology' } }) as any;
+
+            // Consultation A: has summary
+            mocks.contextItemRepo.findSummaries
+                .mockResolvedValueOnce([createContextItem({ consultationId: 'A', type: 'RAW_SUMMARY', content: 'Summary A.' })])
+                .mockResolvedValueOnce([createContextItem({ consultationId: 'B', type: 'RAW_SUMMARY', content: 'Summary B.' })]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            const sections = await mocks.service.gatherSections([consultationA, consultationB]);
+
+            expect(sections).toHaveLength(2);
+            expect(sections[0].department).toBe('General Medicine');
+            expect(sections[1].department).toBe('Hematology');
+        });
+
+        it('should skip empty content items', async () => {
+            const consultation = createConsultation() as any;
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ content: '' }),
+                createContextItem({ content: '   ' }),
+            ]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            const sections = await mocks.service.gatherSections([consultation]);
+
+            expect(sections).toHaveLength(0);
+        });
+
+        it('should include pre-summaries', async () => {
+            const consultation = createConsultation() as any;
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([
+                createContextItem({ type: 'PRE_SUMMARY', content: 'Pre-summary of case notes.' }),
+            ]);
+
+            const sections = await mocks.service.gatherSections([consultation]);
+
+            expect(sections).toHaveLength(1);
+            expect(sections[0].type).toBe('pre_summary');
+        });
+    });
+
+    describe('gatherSections — edge cases', () => {
+        it('should use departmentId when Department relation is null', async () => {
+            const consultation = createConsultation({
+                Department: null,
+                departmentId: 'dept-xyz',
+                Doctor: null,
+                doctorId: 'doc-123',
+            }) as any;
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([
+                createContextItem({ content: 'Transcript.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            const sections = await mocks.service.gatherSections([consultation]);
+
+            expect(sections).toHaveLength(1);
+            expect(sections[0].department).toBe('dept-xyz');
+            expect(sections[0].doctor).toBe('doc-123');
+        });
+
+        it('should handle null content in context items', async () => {
+            const consultation = createConsultation() as any;
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([
+                createContextItem({ content: null }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([
+                createContextItem({ content: null }),
+            ]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            const sections = await mocks.service.gatherSections([consultation]);
+
+            expect(sections).toHaveLength(0);
+        });
+
+        it('should include multiple transcripts when no summary exists', async () => {
+            const consultation = createConsultation() as any;
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([
+                createContextItem({ id: 't1', content: 'Transcript 1.' }),
+                createContextItem({ id: 't2', content: 'Transcript 2.' }),
+                createContextItem({ id: 't3', content: 'Transcript 3.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            const sections = await mocks.service.gatherSections([consultation]);
+
+            expect(sections).toHaveLength(3);
+            expect(sections.every(s => s.type === 'transcript')).toBe(true);
+        });
+
+        it('should only use latest summary even when multiple exist', async () => {
+            const consultation = createConsultation() as any;
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ id: 's1', content: 'Old summary.' }),
+                createContextItem({ id: 's2', content: 'Latest summary.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            const sections = await mocks.service.gatherSections([consultation]);
+
+            // Should use the LAST one (latest)
+            expect(sections).toHaveLength(1);
+            expect(sections[0].content).toBe('Latest summary.');
+            expect(sections[0].type).toBe('summary');
+        });
+
+        it('should return empty array for empty consultation list', async () => {
+            const sections = await mocks.service.gatherSections([]);
+
+            expect(sections).toHaveLength(0);
+        });
+    });
+
+    describe('gatherNamedEntities', () => {
+        it('should aggregate entities by class from all consultations', async () => {
+            mocks.contextItemRepo.findSummaries
+                .mockResolvedValueOnce([createContextItem({ id: 'sum-A' })])
+                .mockResolvedValueOnce([createContextItem({ id: 'sum-B' })]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([]);
+
+            mocks.namedEntityRepo.findByContextItem
+                .mockResolvedValueOnce([
+                    createNamedEntity({ text: 'Aspirin 75mg', className: 'MEDICATION' }),
+                    createNamedEntity({ text: 'Hypertension', className: 'CONDITION' }),
+                ])
+                .mockResolvedValueOnce([
+                    createNamedEntity({ text: 'Metformin 500mg', className: 'MEDICATION' }),
+                ]);
+
+            const result = await mocks.service.gatherNamedEntities(['consultation-A', 'consultation-B']);
+
+            expect(result['MEDICATION']).toHaveLength(2);
+            expect(result['CONDITION']).toHaveLength(1);
+            expect(result['MEDICATION'].map(e => e.text)).toEqual(
+                expect.arrayContaining(['Aspirin 75mg', 'Metformin 500mg']),
+            );
+        });
+
+        it('should deduplicate entities from the same consultation', async () => {
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ id: 'sum-1' }),
+            ]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([
+                createContextItem({ id: 'trans-1' }),
+            ]);
+
+            mocks.namedEntityRepo.findByContextItem
+                .mockResolvedValueOnce([createNamedEntity({ text: 'Aspirin', className: 'MEDICATION' })])
+                .mockResolvedValueOnce([createNamedEntity({ text: 'Aspirin', className: 'MEDICATION' })]);
+
+            const result = await mocks.service.gatherNamedEntities(['consultation-A']);
+
+            expect(result['MEDICATION']).toHaveLength(1);
+        });
+
+        it('should return empty map when no entities exist', async () => {
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([]);
+
+            const result = await mocks.service.gatherNamedEntities(['consultation-A']);
+
+            expect(Object.keys(result)).toHaveLength(0);
+        });
+
+        it('should allow same text from different consultations (not dedup cross-consultation)', async () => {
+            // Consultation A has "Aspirin", Consultation B also has "Aspirin"
+            // They should NOT be deduplicated because they come from different consultations
+            mocks.contextItemRepo.findSummaries
+                .mockResolvedValueOnce([createContextItem({ id: 'sum-A' })]) // A
+                .mockResolvedValueOnce([createContextItem({ id: 'sum-B' })]); // B
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([]);
+
+            mocks.namedEntityRepo.findByContextItem
+                .mockResolvedValueOnce([createNamedEntity({ text: 'Aspirin', className: 'MEDICATION' })]) // from A
+                .mockResolvedValueOnce([createNamedEntity({ text: 'Aspirin', className: 'MEDICATION' })]); // from B
+
+            const result = await mocks.service.gatherNamedEntities(['consultation-A', 'consultation-B']);
+
+            // Both should be present — different sourceConsultationId
+            expect(result['MEDICATION']).toHaveLength(2);
+            expect(result['MEDICATION'][0].sourceConsultationId).toBe('consultation-A');
+            expect(result['MEDICATION'][1].sourceConsultationId).toBe('consultation-B');
+        });
+
+        it('should handle null className by defaulting to UNKNOWN', async () => {
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ id: 'sum-1' }),
+            ]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([]);
+
+            mocks.namedEntityRepo.findByContextItem.mockResolvedValue([
+                createNamedEntity({ text: 'Something', className: null }),
+            ]);
+
+            const result = await mocks.service.gatherNamedEntities(['consultation-A']);
+
+            expect(result['UNKNOWN']).toHaveLength(1);
+            expect(result['UNKNOWN'][0].text).toBe('Something');
+        });
+
+        it('should handle null entity text by storing empty string', async () => {
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ id: 'sum-1' }),
+            ]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([]);
+
+            mocks.namedEntityRepo.findByContextItem.mockResolvedValue([
+                createNamedEntity({ text: null, className: 'MEDICATION' }),
+            ]);
+
+            const result = await mocks.service.gatherNamedEntities(['consultation-A']);
+
+            expect(result['MEDICATION']).toHaveLength(1);
+            expect(result['MEDICATION'][0].text).toBe('');
+        });
+
+        it('should gather entities from transcripts too, not just summaries', async () => {
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([
+                createContextItem({ id: 'trans-1' }),
+            ]);
+
+            mocks.namedEntityRepo.findByContextItem.mockResolvedValue([
+                createNamedEntity({ text: 'Ibuprofen', className: 'MEDICATION' }),
+            ]);
+
+            const result = await mocks.service.gatherNamedEntities(['consultation-A']);
+
+            expect(result['MEDICATION']).toHaveLength(1);
+            expect(result['MEDICATION'][0].text).toBe('Ibuprofen');
+        });
+
+        it('should return empty map for empty consultation ID list', async () => {
+            const result = await mocks.service.gatherNamedEntities([]);
+
+            expect(Object.keys(result)).toHaveLength(0);
+        });
+    });
+
+    describe('SMR input composition', () => {
+        it('should include section headers with department, doctor, type in the text sent to SMR', async () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ content: 'Important findings here.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Result.' },
+            });
+
+            await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
+
+            const callArgs = mocks.httpService.axiosRef.post.mock.calls[0];
+            const payload = callArgs[1] as Record<string, unknown>;
+            const text = payload.text as string;
+
+            expect(text).toContain('--- Section 1 ---');
+            expect(text).toContain('Department: General Medicine');
+            expect(text).toContain('Doctor: Dr. A');
+            expect(text).toContain('Type: summary');
+            expect(text).toContain('Important findings here.');
+        });
+
+        it('should append NER context to the text when entities exist', async () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+
+            mocks.contextItemRepo.findSummaries
+                .mockResolvedValueOnce([createContextItem({ content: 'Summary.' })]) // gatherSections
+                .mockResolvedValueOnce([createContextItem({ id: 'sum-1' })]); // gatherNamedEntities
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([]);
+
+            mocks.namedEntityRepo.findByContextItem.mockResolvedValue([
+                createNamedEntity({ text: 'Aspirin 75mg', className: 'MEDICATION' }),
+                createNamedEntity({ text: 'Hypertension', className: 'CONDITION' }),
+            ]);
+
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Result.' },
+            });
+
+            await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: true });
+
+            const callArgs = mocks.httpService.axiosRef.post.mock.calls[0];
+            const payload = callArgs[1] as Record<string, unknown>;
+            const text = payload.text as string;
+
+            expect(text).toContain('--- Named Entities (auto-extracted) ---');
+            expect(text).toContain('MEDICATION: Aspirin 75mg');
+            expect(text).toContain('CONDITION: Hypertension');
+        });
+
+        it('should set isComprehensiveSummary and sourceConsultationCount in options', async () => {
+            const consultationA = createConsultation({ id: 'A' });
+            const consultationB = createConsultation({ id: 'B', parentConsultationId: 'A', Department: { name: 'Hematology' } });
+
+            mocks.consultationRepo.findById.mockResolvedValue(consultationA);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultationA, consultationB]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultationA, consultationB]);
+
+            mocks.contextItemRepo.findSummaries
+                .mockResolvedValueOnce([createContextItem({ consultationId: 'A', content: 'A.' })])
+                .mockResolvedValueOnce([createContextItem({ consultationId: 'B', content: 'B.' })]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Result.' },
+            });
+
+            await mocks.service.generateComprehensiveSummary('A', { includeNER: false });
+
+            const callArgs = mocks.httpService.axiosRef.post.mock.calls[0];
+            const payload = callArgs[1] as Record<string, unknown>;
+            const options = payload.options as Record<string, unknown>;
+
+            expect(options.isComprehensiveSummary).toBe(true);
+            expect(options.sectionCount).toBe(2);
+            expect(options.sourceConsultationCount).toBe(2);
+        });
+
+        it('should default template to comprehensive when not specified', async () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ content: 'Summary.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Result.' },
+            });
+
+            await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
+
+            const callArgs = mocks.httpService.axiosRef.post.mock.calls[0];
+            const payload = callArgs[1] as Record<string, unknown>;
+
+            expect(payload.template).toBe('comprehensive');
+        });
+    });
+
+    describe('generateComprehensiveSummary', () => {
+        it('should generate a comprehensive summary across linked consultations', async () => {
+            const consultationA = createConsultation({ id: 'A' });
+            const consultationB = createConsultation({
+                id: 'B',
+                parentConsultationId: 'A',
+                departmentId: 'dept-hematology',
+                Doctor: { username: 'Dr. B' },
+                Department: { name: 'Hematology' },
+            });
+
+            mocks.consultationRepo.findById.mockResolvedValue(consultationA);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultationA, consultationB]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultationA, consultationB]);
+
+            // Consultation A: has summary
+            mocks.contextItemRepo.findSummaries
+                .mockResolvedValueOnce([createContextItem({ consultationId: 'A', content: 'Summary A.' })])
+                .mockResolvedValueOnce([createContextItem({ consultationId: 'B', content: 'Summary B.' })])
+                .mockResolvedValueOnce([createContextItem({ id: 'sum-A' })]) // for NER gathering
+                .mockResolvedValueOnce([createContextItem({ id: 'sum-B' })]); // for NER gathering
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([]); // for NER gathering
+            mocks.namedEntityRepo.findByContextItem.mockResolvedValue([]);
+
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: {
+                    summary: 'Comprehensive summary spanning General Medicine and Hematology.',
+                    modelName: 'gpt-4o',
+                    processingTimeMs: 5000,
+                    inputTokens: 1500,
+                    outputTokens: 500,
+                },
+            });
+
+            const result = await mocks.service.generateComprehensiveSummary('A', {
+                includeNER: true,
+            });
+
+            expect(result.id).toBe('ctx-comprehensive-1');
+            expect(result.content).toBe('Comprehensive summary spanning General Medicine and Hematology.');
+            expect(result.sourceConsultationIds).toEqual(expect.arrayContaining(['A', 'B']));
+            expect(result.sectionCount).toBe(2);
+            expect(result.structuredData?.modelName).toBe('gpt-4o');
+
+            // Verify SMR was called
+            expect(mocks.httpService.axiosRef.post).toHaveBeenCalledWith(
+                'http://smr:8862/api/v1/summary/sync',
+                expect.objectContaining({
+                    template: 'comprehensive',
+                }),
+                expect.objectContaining({ timeout: 180000 }),
+            );
+
+            // Verify context item was persisted
+            expect(mocks.contextItemRepo.create).toHaveBeenCalled();
+            expect(mocks.summaryMetaRepo.create).toHaveBeenCalled();
+
+            // Verify SysEvent was broadcast
+            expect(mocks.eventEmitter.emit).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        type: 'comprehensive_summary',
+                        sourceConsultationIds: expect.arrayContaining(['A', 'B']),
+                    }),
+                }),
+            );
+        });
+
+        it('should throw NotFoundException when consultation not found', async () => {
+            mocks.consultationRepo.findById.mockResolvedValue(null);
+
+            await expect(
+                mocks.service.generateComprehensiveSummary('nonexistent', {}),
+            ).rejects.toThrow(NotFoundException);
+        });
+
+        it('should throw BadRequestException when tenant ID is missing', async () => {
+            mocks.clsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                return null;
+            });
+            const service = new ChainSummaryService(
+                mocks.contextItemRepo as any,
+                mocks.consultationRepo as any,
+                mocks.summaryMetaRepo as any,
+                mocks.namedEntityRepo as any,
+                mocks.httpService as any,
+                mocks.configService as any,
+                mocks.eventEmitter as any,
+                mocks.clsService as any,
+                mocks.promptAssemblyService as any,
+            );
+
+            mocks.consultationRepo.findById.mockResolvedValue(createConsultation());
+
+            await expect(
+                service.generateComprehensiveSummary('A', {}),
+            ).rejects.toThrow(BadRequestException);
+        });
+
+        it('should throw BadRequestException when no content available', async () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+
+            // All empty
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            await expect(
+                mocks.service.generateComprehensiveSummary('consultation-A', {}),
+            ).rejects.toThrow(BadRequestException);
+        });
+
+        it('should skip NER gathering when includeNER is false', async () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ content: 'Summary.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Result.', modelName: 'gpt-4o' },
+            });
+
+            const result = await mocks.service.generateComprehensiveSummary('consultation-A', {
+                includeNER: false,
+            });
+
+            expect(result.namedEntities).toBeUndefined();
+            expect(mocks.namedEntityRepo.findByContextItem).not.toHaveBeenCalled();
+        });
+
+        it('should use custom dnaStyleId and template when provided', async () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ content: 'Summary.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Custom result.' },
+            });
+
+            await mocks.service.generateComprehensiveSummary('consultation-A', {
+                dnaStyleId: 'style_hematology',
+                template: 'SOAP',
+                includeNER: false,
+            });
+
+            expect(mocks.httpService.axiosRef.post).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    dnaStyleId: 'style_hematology',
+                    template: 'SOAP',
+                }),
+                expect.any(Object),
+            );
+        });
+
+        it('should throw BadRequestException when SMR service fails', async () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ content: 'Summary.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            mocks.httpService.axiosRef.post.mockRejectedValue(new Error('SMR timeout'));
+
+            await expect(
+                mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false }),
+            ).rejects.toThrow(BadRequestException);
+        });
+
+        it('should default includeNER to true when not specified', async () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+
+            mocks.contextItemRepo.findSummaries
+                .mockResolvedValueOnce([createContextItem({ content: 'Summary.' })]) // gatherSections
+                .mockResolvedValueOnce([createContextItem({ id: 'sum-1' })]); // gatherNamedEntities
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+            mocks.contextItemRepo.findTranscripts.mockResolvedValue([]);
+            mocks.namedEntityRepo.findByContextItem.mockResolvedValue([]);
+
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Result.' },
+            });
+
+            // Empty request — includeNER defaults to true (not false)
+            const result = await mocks.service.generateComprehensiveSummary('consultation-A', {});
+
+            // namedEntities should be defined (even if empty) because NER was gathered
+            expect(result.namedEntities).toBeDefined();
+            expect(mocks.namedEntityRepo.findByContextItem).toHaveBeenCalled();
+        });
+
+        it('should use llmProvider as fallback when modelName is undefined', async () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ content: 'Summary.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: {
+                    summary: 'Result.',
+                    llmProvider: 'anthropic',
+                    modelName: undefined,
+                    processingTimeMs: 2000,
+                },
+            });
+
+            const result = await mocks.service.generateComprehensiveSummary('consultation-A', {
+                includeNER: false,
+            });
+
+            expect(result.structuredData?.modelName).toBe('anthropic');
+        });
+
+        it('should pass correct fields to SummaryMetaFactory.CreateSummaryMeta', async () => {
+            const { SummaryMetaFactory } = await import('@arcaai/domains');
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ content: 'Summary.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: {
+                    summary: 'Result.',
+                    modelName: 'gpt-4o',
+                    processingTimeMs: 3500,
+                    inputTokens: 800,
+                    outputTokens: 200,
+                },
+            });
+
+            await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
+
+            expect(SummaryMetaFactory.CreateSummaryMeta).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    tenantId: 'tenant-1',
+                    contextItemId: 'ctx-comprehensive-1',
+                    aiModelId: 'gpt-4o',
+                    processingTimeMs: 3500,
+                    inputTokens: 800,
+                    outputTokens: 200,
+                }),
+            );
+        });
+
+        it('should pass ContextItemFactory correct arguments', async () => {
+            const { ContextItemFactory } = await import('@arcaai/domains');
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ content: 'Summary.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Generated comprehensive.' },
+            });
+
+            await mocks.service.generateComprehensiveSummary('consultation-A', {
+                dnaStyleId: 'my-style',
+                includeNER: false,
+            });
+
+            expect(ContextItemFactory.CreateRawSummary).toHaveBeenCalledWith(
+                'tenant-1',          // tenantId
+                'consultation-A',    // consultationId
+                'Generated comprehensive.', // content from SMR
+                'my-style',          // dnaStyleId from request
+                'doctor-A',          // userId from CLS
+            );
+        });
+
+        it('should return complete response shape with all required fields', async () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([
+                createContextItem({ content: 'Summary.' }),
+            ]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Result.' },
+            });
+
+            const result = await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
+
+            // All fields from ComprehensiveSummaryResponse must be present
+            expect(result).toHaveProperty('id');
+            expect(result).toHaveProperty('consultationId');
+            expect(result).toHaveProperty('type');
+            expect(result).toHaveProperty('content');
+            expect(result).toHaveProperty('sourceConsultationIds');
+            expect(result).toHaveProperty('sectionCount');
+            expect(result).toHaveProperty('createdAt');
+            expect(result).toHaveProperty('updatedAt');
+            expect(typeof result.createdAt).toBe('string'); // ISO string, not Date
+            expect(typeof result.updatedAt).toBe('string');
+        });
+
+        it('should handle realistic multi-department workflow (3 consultations)', async () => {
+            const consultationA = createConsultation({ id: 'A', Department: { name: 'General Medicine' } });
+            const consultationB = createConsultation({ id: 'B', parentConsultationId: 'A', Department: { name: 'Hematology' }, Doctor: { username: 'Dr. B' } });
+            const consultationC = createConsultation({ id: 'C', Department: { name: 'Laboratory' }, Doctor: { username: 'Lab Tech' } });
+
+            mocks.consultationRepo.findById.mockResolvedValue(consultationA);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultationA, consultationB]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultationA, consultationB, consultationC]);
+
+            // gatherSections iterates A, B, C in order. For each:
+            //   findSummaries → findTranscripts (if no summaries) → findCaseNotes → findPreSummaries
+            // Then gatherNamedEntities iterates A, B, C and for each:
+            //   findSummaries → findTranscripts
+            mocks.contextItemRepo.findSummaries
+                // gatherSections pass
+                .mockResolvedValueOnce([createContextItem({ consultationId: 'A', content: 'Summary A.' })]) // A: has summary
+                .mockResolvedValueOnce([createContextItem({ consultationId: 'B', content: 'Summary B.' })]) // B: has summary
+                .mockResolvedValueOnce([]) // C: no summary — will fall back to transcripts
+                // gatherNamedEntities pass
+                .mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+            // findTranscripts: only called for C during gatherSections (A and B have summaries)
+            mocks.contextItemRepo.findTranscripts
+                .mockResolvedValueOnce([createContextItem({ consultationId: 'C', content: 'Lab results: CBC normal.' })]) // C fallback
+                // gatherNamedEntities pass
+                .mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+            mocks.namedEntityRepo.findByContextItem.mockResolvedValue([]);
+
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: {
+                    summary: 'Comprehensive multi-department summary.',
+                    modelName: 'gpt-4o',
+                    processingTimeMs: 8000,
+                },
+            });
+
+            const result = await mocks.service.generateComprehensiveSummary('A', { includeNER: true });
+
+            expect(result.sourceConsultationIds).toHaveLength(3);
+            expect(result.sectionCount).toBe(3); // Summary A + Summary B + Transcript C
+        });
+    });
+});

@@ -1,0 +1,42 @@
+/* eslint-disable unused-imports/no-unused-imports */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+{{#if hasDecimal}}
+import { Decimal } from 'decimal.js';
+{{/if}}
+import { generateId } from '../../../utils';
+import { BaseEntityFactoryCreateProps } from '../../../common';
+import { {{ entityName }}, {{ entityInterfaceName }} } from '../../../entities';
+import * as Enums from '../../../enums';
+import * as Entities from '../../../entities';
+
+export interface Create{{removeEntitySuffix entityName}}Props extends BaseEntityFactoryCreateProps {
+    {{#each properties}}
+    {{ name }}{{#if isOptional}}?{{/if}}: {{ ../entityInterfaceName }}['{{ name }}'];
+    {{/each}}
+
+    createdAt?: {{ entityInterfaceName }}['createdAt'];
+    updatedAt?: {{ entityInterfaceName }}['updatedAt'];
+    createdBy?: {{ entityInterfaceName }}['createdBy'];
+    updatedBy?: {{ entityInterfaceName }}['updatedBy'];
+}
+
+export class {{ factoryName }} {
+    static Create{{removeEntitySuffix entityName}}(props: Create{{removeEntitySuffix entityName}}Props): {{ entityName }} {
+        const id = generateId();
+        const now = new Date();
+
+        return new {{ entityName }}({
+            id,
+
+            createdAt: props.createdAt || now,
+            updatedAt: props.updatedAt || now,
+            createdBy: props.createdBy ?? null,
+            updatedBy: props.updatedBy || null,
+
+            {{#each properties}}
+            {{ name }}: props.{{ name }}{{#if isOptional}} ?? {{{ defaultValue }}}{{/if}},
+            {{/each}}
+        });
+    }
+}

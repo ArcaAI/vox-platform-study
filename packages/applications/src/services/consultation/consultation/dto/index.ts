@@ -1,0 +1,5 @@
+// Consultation DTOs
+export * from './open-consultation.request';
+export * from './consultation.response';
+export * from './paginated-consultation.response';
+export * from './consultation-history.query';

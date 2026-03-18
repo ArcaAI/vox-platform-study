@@ -1,0 +1,51 @@
+{
+  "name": "@arcaai/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "prisma": {
+    "schema": "src/prisma/db_main"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/generated/core-prisma-client/index.d.ts",
+      "default": "./dist/generated/core-prisma-client/index.js"
+    }
+  },
+  "scripts": {
+    "db:generate": "prisma generate && pnpm --filter @arcaai/tools generate-prisma-index",
+    "db:migrate": "prisma migrate dev --skip-generate",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:push:force": "prisma db push --force-reset --accept-data-loss",
+    "db:studio": "prisma studio",
+    "seed": "tsx src/index.ts",
+    "build": "tsc",
+    "clean": "rimraf dist tsconfig.tsbuildinfo src/generated",
+    "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo src/generated"
+  },
+  "devDependencies": {
+    "@arcaai/config-eslint": "workspace:*",
+    "@arcaai/config-ts": "workspace:*",
+    "@types/node": "^25.3.2",
+    "@types/pg": "^8.15.4",
+    "tsconfig-paths": "^4.2.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.4.2",
+    "@prisma/client": "^7.4.1",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.3.1",
+    "pg": "^8.19.0",
+    "prisma": "^7.4.1",
+    "tsx": "^4.19.2"
+  }
+}

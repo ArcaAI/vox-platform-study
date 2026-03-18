@@ -1,0 +1,18 @@
+import { EntityId, {{ entityName }} } from '@arcaai/domains';
+import { FetchResponse, PaginatedQuery } from '../../common';
+import { IBaseService } from '../../interfaces';
+import { {{ createDtoName }}, {{ updateDtoName }} } from './dto';
+
+// TODO: Implement this interface based on your requirements
+
+export interface {{ interfaceName }} extends IBaseService {
+    create(request: {{ createDtoName }}): Promise<{{ entityName }}>;
+    createMany(request: {{ createDtoName }}[]): Promise<{{ entityName }}[]>;
+    fetchAll(props: PaginatedQuery): Promise<FetchResponse<{{ entityName }}>>;
+    fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<{{ entityName }}>>;
+    fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<{{ entityName }}>>;
+    fetchById(id: EntityId): Promise<{{ entityName }}>;
+    update(id: EntityId, request: {{ updateDtoName }}): Promise<{{ entityName }}>;
+    deleteById(id: EntityId): Promise<{{ entityName }}>;
+}
+export const {{ interfaceName }} = Symbol('{{ interfaceName }}');

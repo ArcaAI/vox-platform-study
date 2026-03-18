@@ -1,0 +1,28 @@
+{
+  "extends": "@arcaai/config-ts/react-library.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "outDir": "dist",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "ESNext.Intl"],
+    "paths": {
+      "@/components/ui/*": [
+        "./src/components/shadcn/*"
+      ],
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "playwright/**/*.ts",
+    "playwright/**/*.tsx",
+    "playwright-ct.config.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
+}

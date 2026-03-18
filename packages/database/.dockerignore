@@ -1,0 +1,10 @@
+node_modules
+.turbo
+dist
+.env
+.env.*
+!.env.production
+*.log
+.DS_Store
+README.md
+tsconfig.tsbuildinfo

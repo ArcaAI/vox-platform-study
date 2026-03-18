@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "packages/agentic-sdk-v2/examples/*"
+
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/adapter-pg"
+  - "@prisma/engines"
+  - prisma

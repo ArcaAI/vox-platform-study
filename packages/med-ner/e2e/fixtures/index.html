@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>@arcaai/med-ner E2E Tests</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+    .section {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .section h2 {
+      margin-top: 0;
+      color: #555;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    button.primary {
+      background: #2196F3;
+      color: white;
+    }
+    button.primary:hover:not(:disabled) {
+      background: #1976D2;
+    }
+    button.secondary {
+      background: #eee;
+      color: #333;
+    }
+    button.secondary:hover:not(:disabled) {
+      background: #ddd;
+    }
+    button.success {
+      background: #4CAF50;
+      color: white;
+    }
+    button.success:hover:not(:disabled) {
+      background: #388E3C;
+    }
+    button.danger {
+      background: #f44336;
+      color: white;
+    }
+    button.danger:hover:not(:disabled) {
+      background: #d32f2f;
+    }
+    textarea {
+      width: 100%;
+      min-height: 150px;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 14px;
+      resize: vertical;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: #2196F3;
+    }
+    .status {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin: 15px 0;
+    }
+    .status-item {
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .status-item.ready {
+      background: #E8F5E9;
+      color: #2E7D32;
+    }
+    .status-item.loading {
+      background: #FFF3E0;
+      color: #EF6C00;
+    }
+    .status-item.processing {
+      background: #E3F2FD;
+      color: #1565C0;
+    }
+    .status-item.error {
+      background: #FFEBEE;
+      color: #C62828;
+    }
+    .status-item.info {
+      background: #F3E5F5;
+      color: #7B1FA2;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #eee;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+    .progress-bar .fill {
+      height: 100%;
+      background: #2196F3;
+      transition: width 0.3s;
+    }
+    .entities-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .entity-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+    }
+    .entity-item:last-child {
+      border-bottom: none;
+    }
+    .entity-text {
+      font-weight: 500;
+      flex: 1;
+    }
+    .entity-type {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .entity-type.DISEASE { background: #FFCDD2; color: #C62828; }
+    .entity-type.MEDICATION { background: #C8E6C9; color: #2E7D32; }
+    .entity-type.PROCEDURE { background: #BBDEFB; color: #1565C0; }
+    .entity-type.ANATOMY { background: #FFE0B2; color: #EF6C00; }
+    .entity-type.LAB_VALUE { background: #E1BEE7; color: #7B1FA2; }
+    .entity-type.SYMPTOM { background: #B2DFDB; color: #00796B; }
+    .entity-type.DOSAGE { background: #F0F4C3; color: #689F38; }
+    .entity-type.GENE { background: #D1C4E9; color: #512DA8; }
+    .entity-type.OTHER { background: #CFD8DC; color: #455A64; }
+    .entity-score {
+      font-size: 12px;
+      color: #666;
+      min-width: 60px;
+      text-align: right;
+    }
+    .entity-position {
+      font-size: 12px;
+      color: #999;
+      min-width: 80px;
+    }
+    .highlighted-text {
+      line-height: 1.8;
+      padding: 15px;
+      background: #fafafa;
+      border-radius: 4px;
+      margin-top: 10px;
+    }
+    .highlighted-text span.ner-entity {
+      padding: 2px 4px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .highlighted-text span.ner-entity--disease { background: #FFCDD2; }
+    .highlighted-text span.ner-entity--medication { background: #C8E6C9; }
+    .highlighted-text span.ner-entity--procedure { background: #BBDEFB; }
+    .highlighted-text span.ner-entity--anatomy { background: #FFE0B2; }
+    .highlighted-text span.ner-entity--lab_value { background: #E1BEE7; }
+    .highlighted-text span.ner-entity--symptom { background: #B2DFDB; }
+    .highlighted-text span.ner-entity--dosage { background: #F0F4C3; }
+    .highlighted-text span.ner-entity--gene { background: #D1C4E9; }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+    }
+    .stat-card {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      margin-top: 5px;
+    }
+    .log {
+      background: #263238;
+      color: #ECEFF1;
+      padding: 15px;
+      border-radius: 4px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .log-entry {
+      margin-bottom: 5px;
+    }
+    .log-entry.info { color: #81D4FA; }
+    .log-entry.success { color: #A5D6A7; }
+    .log-entry.warn { color: #FFE082; }
+    .log-entry.error { color: #EF9A9A; }
+    .model-select {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      min-width: 200px;
+    }
+    .options-row {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .options-row label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+    .options-row input[type="range"] {
+      width: 150px;
+    }
+    .sample-texts {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .sample-text-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      background: #E3F2FD;
+      border: 1px solid #BBDEFB;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .sample-text-btn:hover {
+      background: #BBDEFB;
+    }
+  </style>
+</head>
+<body>
+  <h1>🏥 @arcaai/med-ner E2E Tests</h1>
+
+  <!-- Browser Support Section -->
+  <div class="section" id="support-section">
+    <h2>Browser Support</h2>
+    <div id="browser-support-status" class="status">
+      <span class="status-item loading">Checking...</span>
+    </div>
+  </div>
+
+  <!-- Processor Section -->
+  <div class="section" id="processor-section">
+    <h2>NER Processor</h2>
+
+    <div class="options-row">
+      <label>
+        Model:
+        <select id="model-select" class="model-select">
+          <option value="default">Default (bert-base-NER)</option>
+          <option value="biomedical">Biomedical NER</option>
+          <option value="clinical">Clinical NER</option>
+        </select>
+      </label>
+      <label>
+        Threshold:
+        <input type="range" id="threshold-slider" min="0" max="100" value="50">
+        <span id="threshold-value">0.5</span>
+      </label>
+    </div>
+
+    <div class="controls">
+      <button id="btn-init" class="primary">Initialize</button>
+      <button id="btn-destroy" class="danger" disabled>Destroy</button>
+    </div>
+
+    <div class="status" id="processor-status">
+      <span class="status-item info" id="status-ready">Not Ready</span>
+      <span class="status-item info" id="status-loading" style="display:none">Loading...</span>
+    </div>
+
+    <div id="progress-container" style="display:none">
+      <div class="progress-bar">
+        <div class="fill" id="progress-fill" style="width: 0%"></div>
+      </div>
+      <div id="progress-text">Downloading model...</div>
+    </div>
+  </div>
+
+  <!-- Text Input Section -->
+  <div class="section" id="input-section">
+    <h2>Input Text</h2>
+
+    <div class="sample-texts">
+      <button class="sample-text-btn" data-text="Patient diagnosed with Type 2 Diabetes Mellitus and prescribed Metformin 500mg twice daily.">
+        Diabetes Example
+      </button>
+      <button class="sample-text-btn" data-text="CT scan of the chest revealed a 2cm nodule in the right upper lobe. Patient reports shortness of breath and chronic cough.">
+        Radiology Example
+      </button>
+      <button class="sample-text-btn" data-text="Lab results show elevated WBC count of 15,000 and glucose level of 180 mg/dL. Started patient on Lisinopril 10mg for hypertension.">
+        Lab Results Example
+      </button>
+      <button class="sample-text-btn" data-text="The BRCA1 gene mutation was detected. Patient scheduled for prophylactic mastectomy to reduce breast cancer risk.">
+        Genetic Example
+      </button>
+    </div>
+
+    <textarea id="input-text" placeholder="Enter medical text to analyze...">Patient presents with severe chest pain and shortness of breath. ECG shows ST elevation. Started on Aspirin 325mg and Heparin drip. Scheduled for cardiac catheterization.</textarea>
+
+    <div class="controls" style="margin-top: 15px;">
+      <button id="btn-extract" class="success" disabled>Extract Entities</button>
+      <button id="btn-clear" class="secondary">Clear</button>
+    </div>
+  </div>
+
+  <!-- Results Section -->
+  <div class="section" id="results-section">
+    <h2>Extracted Entities</h2>
+
+    <div class="status" id="results-status">
+      <span class="status-item info" id="entity-count">0 entities</span>
+      <span class="status-item info" id="processing-time">-</span>
+    </div>
+
+    <div id="highlighted-text-container" style="display:none">
+      <h3>Highlighted Text</h3>
+      <div id="highlighted-text" class="highlighted-text"></div>
+    </div>
+
+    <div id="entities-container">
+      <h3>Entity List</h3>
+      <div id="entities-list" class="entities-list">
+        <p style="color:#999; text-align:center; padding:20px;">No entities extracted yet</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Statistics Section -->
+  <div class="section" id="stats-section">
+    <h2>Statistics</h2>
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-texts">0</div>
+        <div class="stat-label">Texts Processed</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-entities">0</div>
+        <div class="stat-label">Total Entities</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-avg-time">0ms</div>
+        <div class="stat-label">Avg Processing Time</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-avg-conf">0%</div>
+        <div class="stat-label">Avg Confidence</div>
+      </div>
+    </div>
+    <div class="controls" style="margin-top:15px;">
+      <button id="btn-reset-stats" class="secondary">Reset Stats</button>
+    </div>
+  </div>
+
+  <!-- Log Section -->
+  <div class="section" id="log-section">
+    <h2>Event Log</h2>
+    <div id="log" class="log"></div>
+    <div class="controls" style="margin-top:15px;">
+      <button id="btn-clear-log" class="secondary">Clear Log</button>
+    </div>
+  </div>
+
+  <!-- Load the library -->
+  <script type="module">
+    // Import from local build
+    import {
+      createMedNER,
+      getMedNERBrowserSupport,
+      highlightEntities,
+      MedicalEntityType,
+    } from './dist/index.js';
+
+    // State
+    let processor = null;
+
+    // DOM Elements
+    const btnInit = document.getElementById('btn-init');
+    const btnDestroy = document.getElementById('btn-destroy');
+    const btnExtract = document.getElementById('btn-extract');
+    const btnClear = document.getElementById('btn-clear');
+    const btnResetStats = document.getElementById('btn-reset-stats');
+    const btnClearLog = document.getElementById('btn-clear-log');
+    const modelSelect = document.getElementById('model-select');
+    const thresholdSlider = document.getElementById('threshold-slider');
+    const thresholdValue = document.getElementById('threshold-value');
+    const inputText = document.getElementById('input-text');
+    const statusReady = document.getElementById('status-ready');
+    const statusLoading = document.getElementById('status-loading');
+    const progressContainer = document.getElementById('progress-container');
+    const progressFill = document.getElementById('progress-fill');
+    const progressText = document.getElementById('progress-text');
+    const entityCount = document.getElementById('entity-count');
+    const processingTime = document.getElementById('processing-time');
+    const highlightedTextContainer = document.getElementById('highlighted-text-container');
+    const highlightedText = document.getElementById('highlighted-text');
+    const entitiesList = document.getElementById('entities-list');
+    const logContainer = document.getElementById('log');
+
+    // Logging
+    function log(message, level = 'info') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${level}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logContainer.appendChild(entry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    // Check browser support
+    function checkBrowserSupport() {
+      const support = getMedNERBrowserSupport();
+      const container = document.getElementById('browser-support-status');
+
+      container.innerHTML = `
+        <span class="status-item ${support.webAssembly ? 'ready' : 'error'}">
+          WebAssembly: ${support.webAssembly ? '✓' : '✗'}
+        </span>
+        <span class="status-item ${support.indexedDB ? 'ready' : 'error'}">
+          IndexedDB: ${support.indexedDB ? '✓' : '✗'}
+        </span>
+        <span class="status-item ${support.fetch ? 'ready' : 'error'}">
+          Fetch: ${support.fetch ? '✓' : '✗'}
+        </span>
+        <span class="status-item ${support.nerSupported ? 'ready' : 'error'}">
+          NER: ${support.nerSupported ? 'Supported' : 'Not Supported'}
+        </span>
+        <span class="status-item info">
+          Recommended: ${support.recommendedDtype}
+        </span>
+      `;
+
+      log(`Browser support check: ${support.nerSupported ? 'OK' : 'FAIL'}`,
+          support.nerSupported ? 'success' : 'error');
+
+      if (!support.nerSupported) {
+        log(`Reason: ${support.unsupportedReason}`, 'error');
+        btnInit.disabled = true;
+      }
+
+      // Expose for testing
+      window.browserSupport = support;
+    }
+
+    // Initialize processor
+    async function initProcessor() {
+      try {
+        btnInit.disabled = true;
+        statusLoading.style.display = 'inline-block';
+        progressContainer.style.display = 'block';
+        progressFill.style.width = '0%';
+
+        log(`Initializing processor with model: ${modelSelect.value}...`);
+
+        processor = createMedNER({
+          model: modelSelect.value,
+          threshold: parseFloat(thresholdSlider.value) / 100,
+          enableStats: true,
+          onProgress: (progress) => {
+            if (progress.progress !== undefined) {
+              progressFill.style.width = `${progress.progress}%`;
+              progressText.textContent = `${progress.status}: ${progress.file || ''} (${Math.round(progress.progress)}%)`;
+            }
+            if (progress.status === 'ready') {
+              progressContainer.style.display = 'none';
+            }
+          },
+          onEntitiesExtracted: (result) => {
+            log(`Extracted ${result.entities.length} entities in ${result.processingTime.toFixed(2)}ms`, 'success');
+          },
+          onError: (error) => {
+            log(`Error: ${error.message}`, 'error');
+          },
+        });
+
+        // Listen for events
+        processor.on('data', (payload) => {
+          if (payload.type === 'ner-stats') {
+            updateStats(payload.data);
+          }
+        });
+
+        await processor.init();
+
+        statusReady.textContent = 'Ready';
+        statusReady.className = 'status-item ready';
+        statusLoading.style.display = 'none';
+        btnDestroy.disabled = false;
+        btnExtract.disabled = false;
+
+        log('Processor initialized successfully!', 'success');
+
+        // Expose for testing
+        window.nerProcessor = processor;
+
+      } catch (error) {
+        log(`Initialization failed: ${error.message}`, 'error');
+        statusReady.textContent = 'Error';
+        statusReady.className = 'status-item error';
+        statusLoading.style.display = 'none';
+        progressContainer.style.display = 'none';
+        btnInit.disabled = false;
+      }
+    }
+
+    // Destroy processor
+    async function destroyProcessor() {
+      if (processor) {
+        await processor.destroy();
+        processor = null;
+        window.nerProcessor = null;
+
+        statusReady.textContent = 'Not Ready';
+        statusReady.className = 'status-item info';
+        btnInit.disabled = false;
+        btnDestroy.disabled = true;
+        btnExtract.disabled = true;
+
+        log('Processor destroyed', 'info');
+      }
+    }
+
+    // Extract entities
+    async function extractEntities() {
+      if (!processor || !processor.isInitialized()) {
+        log('Processor not initialized', 'error');
+        return;
+      }
+
+      const text = inputText.value.trim();
+      if (!text) {
+        log('No text to process', 'warn');
+        return;
+      }
+
+      try {
+        btnExtract.disabled = true;
+        statusReady.textContent = 'Processing...';
+        statusReady.className = 'status-item processing';
+
+        const result = await processor.extract(text);
+
+        // Update UI
+        entityCount.textContent = `${result.entities.length} entities`;
+        processingTime.textContent = `${result.processingTime.toFixed(2)}ms`;
+
+        // Show highlighted text
+        if (result.entities.length > 0) {
+          highlightedTextContainer.style.display = 'block';
+          highlightedText.innerHTML = highlightEntities(text, result.entities);
+        } else {
+          highlightedTextContainer.style.display = 'none';
+        }
+
+        // Show entity list
+        displayEntities(result.entities);
+
+        statusReady.textContent = 'Ready';
+        statusReady.className = 'status-item ready';
+        btnExtract.disabled = false;
+
+        // Expose for testing
+        window.lastResult = result;
+
+      } catch (error) {
+        log(`Extraction failed: ${error.message}`, 'error');
+        statusReady.textContent = 'Error';
+        statusReady.className = 'status-item error';
+        btnExtract.disabled = false;
+      }
+    }
+
+    // Display entities
+    function displayEntities(entities) {
+      if (entities.length === 0) {
+        entitiesList.innerHTML = '<p style="color:#999; text-align:center; padding:20px;">No entities found</p>';
+        return;
+      }
+
+      entitiesList.innerHTML = entities.map(entity => `
+        <div class="entity-item">
+          <span class="entity-text">${entity.text}</span>
+          <span class="entity-type ${entity.type}">${entity.type}</span>
+          <span class="entity-score">${(entity.score * 100).toFixed(1)}%</span>
+          <span class="entity-position">[${entity.start}-${entity.end}]</span>
+        </div>
+      `).join('');
+    }
+
+    // Update statistics
+    function updateStats(stats) {
+      document.getElementById('stat-texts').textContent = stats.textsProcessed;
+      document.getElementById('stat-entities').textContent = stats.entitiesExtracted;
+      document.getElementById('stat-avg-time').textContent = `${stats.averageProcessingTime.toFixed(1)}ms`;
+      document.getElementById('stat-avg-conf').textContent = `${(stats.averageConfidence * 100).toFixed(1)}%`;
+    }
+
+    // Event listeners
+    btnInit.addEventListener('click', initProcessor);
+    btnDestroy.addEventListener('click', destroyProcessor);
+    btnExtract.addEventListener('click', extractEntities);
+
+    btnClear.addEventListener('click', () => {
+      inputText.value = '';
+      highlightedTextContainer.style.display = 'none';
+      entitiesList.innerHTML = '<p style="color:#999; text-align:center; padding:20px;">No entities extracted yet</p>';
+      entityCount.textContent = '0 entities';
+      processingTime.textContent = '-';
+      window.lastResult = null;
+    });
+
+    btnResetStats.addEventListener('click', () => {
+      if (processor) {
+        processor.resetStats();
+        updateStats(processor.getStats());
+        log('Statistics reset', 'info');
+      }
+    });
+
+    btnClearLog.addEventListener('click', () => {
+      logContainer.innerHTML = '';
+    });
+
+    thresholdSlider.addEventListener('input', () => {
+      const value = parseFloat(thresholdSlider.value) / 100;
+      thresholdValue.textContent = value.toFixed(2);
+      if (processor) {
+        processor.updateOptions({ threshold: value });
+        log(`Threshold updated to ${value.toFixed(2)}`, 'info');
+      }
+    });
+
+    // Sample text buttons
+    document.querySelectorAll('.sample-text-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        inputText.value = btn.dataset.text;
+      });
+    });
+
+    // Initialize
+    checkBrowserSupport();
+    log('Page loaded. Click "Initialize" to start.', 'info');
+
+    // Expose utilities for testing
+    window.MedicalEntityType = MedicalEntityType;
+    window.highlightEntities = highlightEntities;
+  </script>
+</body>
+</html>

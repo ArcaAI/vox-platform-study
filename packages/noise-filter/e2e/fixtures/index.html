@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>@arcaai/noise-filter E2E Test Fixture</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    h1 { color: #00d4ff; }
+    h3 { color: #00b8e6; margin-bottom: 10px; }
+    .section {
+      background: #16213e;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    .status { font-family: monospace; }
+    .status.success { color: #00ff88; }
+    .status.error { color: #ff4444; }
+    .status.pending { color: #ffaa00; }
+    .status.info { color: #00d4ff; }
+    button {
+      background: #00d4ff;
+      color: #1a1a2e;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+      font-weight: bold;
+    }
+    button:hover { background: #00b8e6; }
+    button:disabled { background: #666; cursor: not-allowed; }
+    .level-btn { min-width: 80px; }
+    .level-btn.active { background: #00ff88; }
+    #audio-visualizer {
+      background: #0f0f1a;
+      border-radius: 5px;
+      display: block;
+      width: 100%;
+      height: 100px;
+    }
+    #logs {
+      background: #0f0f1a;
+      padding: 10px;
+      border-radius: 5px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .stat-item {
+      background: #0f0f1a;
+      padding: 10px;
+      border-radius: 5px;
+    }
+    .stat-label { font-size: 12px; color: #888; }
+    .stat-value { font-size: 18px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>@arcaai/noise-filter E2E Test Fixture</h1>
+
+  <div class="section">
+    <h3>Browser Support</h3>
+    <div id="browser-support">
+      <div>WebAssembly: <span id="wasm-support" class="status pending">checking...</span></div>
+      <div>AudioContext: <span id="audio-context-support" class="status pending">checking...</span></div>
+      <div>AudioWorklet: <span id="audio-worklet-support" class="status pending">checking...</span></div>
+      <div>ScriptProcessor: <span id="script-processor-support" class="status pending">checking...</span></div>
+      <div>SharedArrayBuffer: <span id="sab-support" class="status pending">checking...</span></div>
+      <div>MediaStreamTrack: <span id="media-track-support" class="status pending">checking...</span></div>
+      <div>Native Noise Suppression: <span id="native-ns-support" class="status pending">checking...</span></div>
+      <div>RNNoise Supported: <span id="rnnoise-support" class="status pending">checking...</span></div>
+      <div>Recommended Mode: <span id="recommended-mode" class="status info">-</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Noise Filter Controls</h3>
+    <div>
+      <button id="btn-create" disabled>Create Processor</button>
+      <button id="btn-start" disabled>Start Processing</button>
+      <button id="btn-stop" disabled>Stop Processing</button>
+      <button id="btn-destroy" disabled>Destroy</button>
+    </div>
+    <div style="margin-top: 10px;">
+      <strong>Noise Level:</strong>
+      <button id="btn-level-low" class="level-btn" disabled>Low</button>
+      <button id="btn-level-medium" class="level-btn" disabled>Medium</button>
+      <button id="btn-level-high" class="level-btn" disabled>High</button>
+    </div>
+    <div style="margin-top: 10px;">
+      <label>
+        <input type="checkbox" id="chk-enable" disabled> Enable Noise Cancellation
+      </label>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Status</h3>
+    <div>State: <span id="processor-state" class="status">uninitialized</span></div>
+    <div>Processing Mode: <span id="processing-mode" class="status">-</span></div>
+    <div>Using Fallback: <span id="using-fallback" class="status">-</span></div>
+    <div>Current Level: <span id="current-level" class="status">-</span></div>
+  </div>
+
+  <div class="section">
+    <h3>Audio Visualization</h3>
+    <canvas id="audio-visualizer"></canvas>
+  </div>
+
+  <div class="section">
+    <h3>Processing Statistics</h3>
+    <div class="stats-grid">
+      <div class="stat-item">
+        <div class="stat-label">Frames Processed</div>
+        <div class="stat-value" id="stat-frames">0</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Noise Reduction (dB)</div>
+        <div class="stat-value" id="stat-reduction">0</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">VAD Probability</div>
+        <div class="stat-value" id="stat-vad">0%</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Latency (ms)</div>
+        <div class="stat-value" id="stat-latency">0</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">CPU Load</div>
+        <div class="stat-value" id="stat-cpu">0%</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Is Active</div>
+        <div class="stat-value" id="stat-active">No</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Event Logs</h3>
+    <div id="logs"></div>
+  </div>
+
+  <!-- Test results exposed to Playwright -->
+  <script>
+    // Global test results object for Playwright access
+    window.testResults = {
+      browserSupport: null,
+      noiseFilterProcessor: null,
+      stats: [],
+      errors: [],
+      events: [],
+      created: false,
+      processing: false,
+      audioContext: null,
+      mediaStream: null,
+    };
+
+    // Helper functions
+    function log(message, type = 'info') {
+      const logs = document.getElementById('logs');
+      const time = new Date().toISOString().split('T')[1].slice(0, 12);
+      const color = type === 'error' ? '#ff4444' : type === 'success' ? '#00ff88' : '#888';
+      logs.innerHTML = `<div style="color: ${color}">[${time}] ${message}</div>` + logs.innerHTML;
+      window.testResults.events.push({ time, message, type });
+    }
+
+    function setStatus(id, value, success) {
+      const el = document.getElementById(id);
+      el.textContent = value;
+      el.className = 'status ' + (success === true ? 'success' : success === false ? 'error' : 'info');
+    }
+
+    function updateLevelButtons(level) {
+      document.querySelectorAll('.level-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      const activeBtn = document.getElementById(`btn-level-${level}`);
+      if (activeBtn) activeBtn.classList.add('active');
+      setStatus('current-level', level, true);
+    }
+
+    function updateStats(stats) {
+      document.getElementById('stat-frames').textContent = stats.framesProcessed || 0;
+      document.getElementById('stat-reduction').textContent = (stats.noiseReductionDb || 0).toFixed(1);
+      document.getElementById('stat-vad').textContent = ((stats.vadProbability || 0) * 100).toFixed(0) + '%';
+      document.getElementById('stat-latency').textContent = (stats.latencyMs || 0).toFixed(1);
+      document.getElementById('stat-cpu').textContent = ((stats.cpuLoad || 0) * 100).toFixed(0) + '%';
+      document.getElementById('stat-active').textContent = stats.isActive ? 'Yes' : 'No';
+      window.testResults.stats.push(stats);
+    }
+
+    // Check browser support using inline implementation (before module loads)
+    async function checkBrowserSupport() {
+      const support = {
+        webAssembly: false,
+        audioContext: false,
+        audioWorklet: false,
+        scriptProcessor: false,
+        sharedArrayBuffer: false,
+        mediaStreamTrack: false,
+        nativeNoiseSuppression: false,
+        rnnoiseSupported: false,
+      };
+
+      // WebAssembly
+      try {
+        if (typeof WebAssembly === 'object') {
+          const module = new WebAssembly.Module(
+            new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
+          );
+          support.webAssembly = module instanceof WebAssembly.Module;
+        }
+      } catch (e) {}
+
+      // AudioContext
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      support.audioContext = typeof AudioContextCtor !== 'undefined';
+
+      // AudioWorklet
+      if (AudioContextCtor) {
+        support.audioWorklet = 'audioWorklet' in AudioContextCtor.prototype;
+        support.scriptProcessor = 'createScriptProcessor' in AudioContextCtor.prototype;
+      }
+
+      // SharedArrayBuffer
+      try {
+        if (typeof SharedArrayBuffer !== 'undefined') {
+          new SharedArrayBuffer(1);
+          support.sharedArrayBuffer = true;
+        }
+      } catch (e) {}
+
+      // MediaStreamTrack
+      support.mediaStreamTrack = typeof MediaStreamTrack !== 'undefined';
+
+      // Native noise suppression
+      try {
+        if (navigator.mediaDevices?.getSupportedConstraints) {
+          const constraints = navigator.mediaDevices.getSupportedConstraints();
+          support.nativeNoiseSuppression = constraints.noiseSuppression === true;
+        }
+      } catch (e) {}
+
+      // RNNoise supported
+      support.rnnoiseSupported = support.webAssembly && support.audioContext &&
+        (support.audioWorklet || support.scriptProcessor);
+
+      // Update UI
+      setStatus('wasm-support', support.webAssembly ? 'Supported' : 'Not supported', support.webAssembly);
+      setStatus('audio-context-support', support.audioContext ? 'Supported' : 'Not supported', support.audioContext);
+      setStatus('audio-worklet-support', support.audioWorklet ? 'Supported' : 'Not supported', support.audioWorklet);
+      setStatus('script-processor-support', support.scriptProcessor ? 'Supported' : 'Not supported', support.scriptProcessor);
+      setStatus('sab-support', support.sharedArrayBuffer ? 'Supported' : 'Not supported', support.sharedArrayBuffer);
+      setStatus('media-track-support', support.mediaStreamTrack ? 'Supported' : 'Not supported', support.mediaStreamTrack);
+      setStatus('native-ns-support', support.nativeNoiseSuppression ? 'Supported' : 'Not supported', support.nativeNoiseSuppression);
+      setStatus('rnnoise-support', support.rnnoiseSupported ? 'Supported' : 'Not supported', support.rnnoiseSupported);
+
+      // Recommended mode
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const cores = navigator.hardwareConcurrency || 2;
+      const recommendedMode = (isMobile || cores < 4) ? 'performance' : 'quality';
+      setStatus('recommended-mode', recommendedMode, null);
+
+      window.testResults.browserSupport = support;
+      log('Browser support checked', 'success');
+
+      // Enable create button if supported
+      document.getElementById('btn-create').disabled = !support.rnnoiseSupported;
+
+      return support;
+    }
+
+    // Create noise filter processor
+    async function createNoiseFilter(options = {}) {
+      try {
+        log('Creating noise filter processor...');
+        setStatus('processor-state', 'creating...', null);
+
+        // Try to load the module dynamically
+        const module = await import('/dist/index.js');
+        const { createNoiseFilter, getNoiseFilterBrowserSupport, getRecommendedProcessingMode } = module;
+
+        // Get browser support from module
+        const moduleSupport = getNoiseFilterBrowserSupport();
+        const recommendedMode = getRecommendedProcessingMode();
+        setStatus('recommended-mode', recommendedMode, null);
+
+        // Create processor
+        const processor = createNoiseFilter({
+          noiseCancellation: true,
+          noiseCancellationLevel: options.level || 'medium',
+          processingMode: options.mode || recommendedMode,
+          enableStats: true,
+          statsInterval: 500,
+          ...options,
+        });
+
+        window.testResults.noiseFilterProcessor = processor;
+        window.testResults.created = true;
+
+        // Update UI
+        setStatus('processor-state', 'created', true);
+        setStatus('processing-mode', processor.getOptions().processingMode, null);
+        updateLevelButtons(processor.getNoiseLevel());
+
+        // Enable controls
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-destroy').disabled = false;
+        document.getElementById('btn-level-low').disabled = false;
+        document.getElementById('btn-level-medium').disabled = false;
+        document.getElementById('btn-level-high').disabled = false;
+        document.getElementById('chk-enable').disabled = false;
+        document.getElementById('chk-enable').checked = true;
+        document.getElementById('btn-create').disabled = true;
+
+        log('Noise filter processor created', 'success');
+        return processor;
+      } catch (error) {
+        log(`Create error: ${error.message}`, 'error');
+        window.testResults.errors.push({ message: error.message, code: error.code });
+        setStatus('processor-state', 'error', false);
+        throw error;
+      }
+    }
+
+    // Start audio processing
+    async function startProcessing() {
+      try {
+        log('Starting audio processing...');
+        setStatus('processor-state', 'starting...', null);
+
+        const processor = window.testResults.noiseFilterProcessor;
+        if (!processor) throw new Error('Processor not created');
+
+        // Get microphone access
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false, // We use RNNoise instead
+            autoGainControl: true,
+            sampleRate: 48000,
+          }
+        });
+        window.testResults.mediaStream = stream;
+
+        // Create audio context
+        const audioContext = new AudioContext({ sampleRate: 48000 });
+        window.testResults.audioContext = audioContext;
+
+        // Initialize processor
+        const track = stream.getAudioTracks()[0];
+        await processor.init({
+          audioContext,
+          track,
+          kind: 'audio',
+        });
+
+        window.testResults.processing = true;
+        setStatus('processor-state', 'processing', true);
+        setStatus('using-fallback', processor.isUsingFallback() ? 'Yes' : 'No', null);
+
+        // Update UI
+        document.getElementById('btn-start').disabled = true;
+        document.getElementById('btn-stop').disabled = false;
+
+        // Start visualization
+        startVisualization(audioContext, stream);
+
+        log('Audio processing started', 'success');
+      } catch (error) {
+        log(`Start error: ${error.message}`, 'error');
+        window.testResults.errors.push({ message: error.message, code: error.code });
+        setStatus('processor-state', 'error', false);
+        throw error;
+      }
+    }
+
+    // Stop audio processing
+    async function stopProcessing() {
+      try {
+        log('Stopping audio processing...');
+
+        const processor = window.testResults.noiseFilterProcessor;
+        if (processor) {
+          await processor.disable();
+        }
+
+        // Stop media tracks
+        if (window.testResults.mediaStream) {
+          window.testResults.mediaStream.getTracks().forEach(track => track.stop());
+          window.testResults.mediaStream = null;
+        }
+
+        // Close audio context
+        if (window.testResults.audioContext) {
+          await window.testResults.audioContext.close();
+          window.testResults.audioContext = null;
+        }
+
+        window.testResults.processing = false;
+        setStatus('processor-state', 'stopped', null);
+
+        // Update UI
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-stop').disabled = true;
+
+        log('Audio processing stopped', 'success');
+      } catch (error) {
+        log(`Stop error: ${error.message}`, 'error');
+        window.testResults.errors.push({ message: error.message, code: error.code });
+        throw error;
+      }
+    }
+
+    // Destroy processor
+    async function destroyProcessor() {
+      try {
+        log('Destroying noise filter processor...');
+
+        await stopProcessing();
+
+        const processor = window.testResults.noiseFilterProcessor;
+        if (processor) {
+          await processor.destroy();
+        }
+
+        window.testResults.noiseFilterProcessor = null;
+        window.testResults.created = false;
+        setStatus('processor-state', 'destroyed', null);
+        setStatus('processing-mode', '-', null);
+        setStatus('using-fallback', '-', null);
+        setStatus('current-level', '-', null);
+
+        // Update UI
+        document.getElementById('btn-create').disabled = false;
+        document.getElementById('btn-start').disabled = true;
+        document.getElementById('btn-stop').disabled = true;
+        document.getElementById('btn-destroy').disabled = true;
+        document.getElementById('btn-level-low').disabled = true;
+        document.getElementById('btn-level-medium').disabled = true;
+        document.getElementById('btn-level-high').disabled = true;
+        document.getElementById('chk-enable').disabled = true;
+        document.querySelectorAll('.level-btn').forEach(btn => btn.classList.remove('active'));
+
+        log('Noise filter processor destroyed', 'success');
+      } catch (error) {
+        log(`Destroy error: ${error.message}`, 'error');
+        window.testResults.errors.push({ message: error.message, code: error.code });
+        throw error;
+      }
+    }
+
+    // Set noise level
+    async function setNoiseLevel(level) {
+      try {
+        const processor = window.testResults.noiseFilterProcessor;
+        if (!processor) return;
+
+        await processor.setNoiseLevel(level);
+        updateLevelButtons(level);
+        log(`Noise level set to: ${level}`, 'success');
+      } catch (error) {
+        log(`Set level error: ${error.message}`, 'error');
+        window.testResults.errors.push({ message: error.message, code: error.code });
+      }
+    }
+
+    // Toggle noise cancellation
+    async function toggleNoiseCancellation(enabled) {
+      try {
+        const processor = window.testResults.noiseFilterProcessor;
+        if (!processor) return;
+
+        if (enabled) {
+          await processor.enable();
+        } else {
+          await processor.disable();
+        }
+        log(`Noise cancellation ${enabled ? 'enabled' : 'disabled'}`, 'success');
+      } catch (error) {
+        log(`Toggle error: ${error.message}`, 'error');
+        window.testResults.errors.push({ message: error.message, code: error.code });
+      }
+    }
+
+    // Audio visualization
+    let visualizerAnimationId = null;
+    function startVisualization(audioContext, stream) {
+      const canvas = document.getElementById('audio-visualizer');
+      const ctx = canvas.getContext('2d');
+      canvas.width = canvas.offsetWidth * 2;
+      canvas.height = canvas.offsetHeight * 2;
+
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      function draw() {
+        visualizerAnimationId = requestAnimationFrame(draw);
+
+        analyser.getByteFrequencyData(dataArray);
+
+        ctx.fillStyle = '#0f0f1a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const barWidth = (canvas.width / bufferLength) * 2.5;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          const barHeight = (dataArray[i] / 255) * canvas.height;
+
+          const gradient = ctx.createLinearGradient(0, canvas.height - barHeight, 0, canvas.height);
+          gradient.addColorStop(0, '#00d4ff');
+          gradient.addColorStop(1, '#00ff88');
+
+          ctx.fillStyle = gradient;
+          ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+          x += barWidth + 1;
+        }
+      }
+
+      draw();
+    }
+
+    function stopVisualization() {
+      if (visualizerAnimationId) {
+        cancelAnimationFrame(visualizerAnimationId);
+        visualizerAnimationId = null;
+      }
+    }
+
+    // Bind button handlers
+    document.getElementById('btn-create').onclick = () => createNoiseFilter();
+    document.getElementById('btn-start').onclick = startProcessing;
+    document.getElementById('btn-stop').onclick = stopProcessing;
+    document.getElementById('btn-destroy').onclick = destroyProcessor;
+    document.getElementById('btn-level-low').onclick = () => setNoiseLevel('low');
+    document.getElementById('btn-level-medium').onclick = () => setNoiseLevel('medium');
+    document.getElementById('btn-level-high').onclick = () => setNoiseLevel('high');
+    document.getElementById('chk-enable').onchange = (e) => toggleNoiseCancellation(e.target.checked);
+
+    // Expose functions for Playwright
+    window.noiseFilterTestHelpers = {
+      checkBrowserSupport,
+      createNoiseFilter,
+      startProcessing,
+      stopProcessing,
+      destroyProcessor,
+      setNoiseLevel,
+      toggleNoiseCancellation,
+      updateStats,
+    };
+
+    // Initialize on load
+    checkBrowserSupport();
+  </script>
+</body>
+</html>

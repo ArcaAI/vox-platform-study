@@ -1,0 +1,141 @@
+enum FedlRoundStatus {
+  PENDING
+  AGGREGATING
+  COMPLETED
+  FAILED
+
+  @@schema("core")
+}
+
+model FedlClient {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // core fields
+  clientId                  String   @unique @map("client_id") @db.VarChar(64)
+  lastUpdate                DateTime? @map("last_update")
+  totalUpdates              Int      @default(0) @map("total_updates")
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // relations
+  Updates FedlUpdate[]
+
+  // indexing
+  @@map("clients")
+  @@schema("core")
+}
+
+model FedlRound {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // core fields
+  roundId               Int            @unique @map("round_id")
+  status                FedlRoundStatus @default(PENDING) @map("status")
+  startedAt             DateTime        @map("started_at")
+  completedAt           DateTime?       @map("completed_at")
+  updatesCount          Int             @default(0) @map("updates_count")
+  minUpdatesRequired    Int             @default(3) @map("min_updates_required")
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // relations
+  Updates FedlUpdate[]
+
+  // indexing
+  @@index([status], name: "FedlRound_status_idx")
+  @@index([startedAt], name: "FedlRound_startedAt_idx")
+  @@map("rounds")
+  @@schema("core")
+}
+
+model FedlUpdate {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // core fields
+  updateId               Int      @unique @map("update_id")
+  clientId               String   @map("client_id") @db.VarChar(64)
+  roundId                Int      @map("round_id")
+  weightHash             String   @map("weight_hash") @db.VarChar(64)
+  numSamples             Int      @default(1) @map("num_samples")
+  metrics                Json?    @map("metrics")
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // relations
+  Client FedlClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  Round  FedlRound  @relation(fields: [roundId], references: [roundId], onDelete: Cascade)
+
+  // indexing
+  @@unique([clientId, roundId], name: "FedlUpdate_clientId_roundId_key")
+  @@index([clientId], name: "FedlUpdate_clientId_idx")
+  @@index([roundId], name: "FedlUpdate_roundId_idx")
+  @@map("updates")
+  @@schema("core")
+}
+
+model FedlModelVersion {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // core fields
+  versionId  Int      @unique @map("version_id")
+  weightHash String   @map("weight_hash") @db.VarChar(64)
+  isCurrent  Boolean  @default(false) @map("is_current")
+  mlflowRunId      String? @map("mlflow_run_id") @db.VarChar(64)
+  mlflowVersion    String? @map("mlflow_version") @db.VarChar(32)
+  mlflowArtifactUri String? @map("mlflow_artifact_uri") @db.Text
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // indexing
+  @@index([isCurrent], name: "FedlModelVersion_isCurrent_idx")
+  @@map("model_versions")
+  @@schema("core")
+}

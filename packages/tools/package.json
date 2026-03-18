@@ -1,0 +1,49 @@
+{
+  "name": "@arcaai/tools",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@prisma/client": "^7.4.1",
+    "@prisma/generator-helper": "^7.4.2",
+    "@prisma/internals": "^7.4.2",
+    "chalk": "^4.1.2",
+    "commander": "^12.0.0",
+    "figlet": "^1.7.0",
+    "glob": "^10.3.10",
+    "handlebars": "^4.7.8",
+    "inquirer": "^8.2.6",
+    "ora": "^5.4.1",
+    "pg": "^8.19.0",
+    "ts-morph": "^21.0.1"
+  },
+  "devDependencies": {
+    "@types/figlet": "^1.5.8",
+    "@types/inquirer": "^8.2.10",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/ms": "^2.1.0",
+    "@types/node": "^25.3.2",
+    "@types/yargs": "^17.0.33",
+    "@types/pg": "^8.15.4",
+    "dotenv": "^17.3.1",
+    "jsonwebtoken": "^9.0.3",
+    "ms": "^2.1.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3",
+    "yargs": "^17.7.2"
+  },
+  "scripts": {
+    "prisma-commander": "ts-node src/prisma-commander/index.ts",
+    "generate-prisma-index": "ts-node src/generate-prisma-index.ts",
+    "generate-data-model": "ts-node src/generate-data-model/index.ts --overwrite true",
+    "generate-data-entity": "ts-node src/generate-data-entity/index.ts --overwrite true",
+    "generate-mapper": "ts-node src/generate-mapper/index.ts",
+    "generate-repository": "ts-node src/generate-repository/index.ts --overwrite true",
+    "generate-factory": "ts-node src/generate-factory/index.ts --overwrite true",
+    "generate-service-module": "ts-node src/generate-service-module/index.ts",
+    "generate-controller": "ts-node src/generate-controller/index.ts",
+    "gen-dev-token": "ts-node src/gen-dev-token/index.ts",
+    "gen-api-key": "ts-node src/gen-api-key/index.ts create"
+  }
+}

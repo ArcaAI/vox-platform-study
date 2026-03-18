@@ -1,0 +1,93 @@
+// Tenant-Scoped Blob Storage
+// Each tenant gets isolated storage buckets with system defaults + custom buckets
+
+model TenantBucket {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String
+
+    // Bucket identity
+    name        String           // Physical S3 bucket name (e.g., "arcaai-audio-recordings")
+    slug        String           // Logical name (e.g., "audio_recordings")
+    description String?
+    bucketType  TenantBucketType // SYSTEM or CUSTOM
+
+    // Path layout for file organization within the bucket
+    pathPattern String @default("{yyyy}/{MM}/{dd}/{user_name}")
+
+    // Resource status + Audit
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    // Tags
+    tags String[] @default([])
+
+    // Relations
+    Medias           Media[]
+    StorageAccessKeys StorageAccessKey[] @relation("BucketAccessKeys")
+
+    // Constraints: one slug per tenant
+    @@unique([tenantId, slug], name: "TenantBucket_tenant_slug_unique")
+    @@unique([name], name: "TenantBucket_name_unique")
+
+    // Indexes
+    @@index([tenantId], name: "TenantBucket_tenantId_idx")
+    @@index([bucketType], name: "TenantBucket_bucketType_idx")
+    @@index([tenantId, bucketType], name: "TenantBucket_tenant_type_idx")
+    @@schema("core")
+}
+
+model StorageAccessKey {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String
+
+    // Key identity
+    name        String
+    description String?
+
+    // Credentials (encrypted at application layer)
+    accessKeyId     String @unique
+    secretAccessKey String
+
+    // Scoping
+    permissions String[] @default(["read"]) // "read", "write", "delete", "list"
+    bucketIds   String[] @default([])       // Empty = all tenant buckets
+
+    // Lifecycle
+    expiresAt  DateTime?
+    lastUsedAt DateTime?
+    lastUsedIp String?
+
+    // Resource status + Audit
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    // Relations
+    Buckets TenantBucket[] @relation("BucketAccessKeys")
+
+    // Indexes
+    @@index([tenantId], name: "StorageAccessKey_tenantId_idx")
+    @@index([accessKeyId], name: "StorageAccessKey_accessKeyId_idx")
+    @@index([expiresAt], name: "StorageAccessKey_expiresAt_idx")
+    @@index([tenantId, resourceStatus], name: "StorageAccessKey_tenant_status_idx")
+    @@schema("core")
+}

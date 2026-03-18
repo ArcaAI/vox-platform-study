@@ -1,0 +1,19 @@
+import { Module } from '@nestjs/common';
+import { CoreDatabaseModule } from '@arcaai/domains';
+import { CommonServiceModule } from '../baseServices';
+import { {{ className }}Service } from './{{ serviceFileName }}';
+import { {{ interfaceName }} } from './{{ interfaceName }}';
+
+// TODO: Implement this module for your specific requirements
+
+@Module({
+    imports: [CommonServiceModule, CoreDatabaseModule],
+    providers: [
+        {
+            provide: {{ interfaceName }},
+            useClass: {{ className }}Service,
+        },
+    ],
+    exports: [{{ interfaceName }}],
+})
+export class {{ serviceModuleName }} {}

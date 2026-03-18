@@ -1,0 +1,577 @@
+/**
+ * DepartmentService Unit Tests
+ *
+ * Tests for the DepartmentService that handles department management operations.
+ */
+
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { DepartmentService } from '../department.service';
+import { SysEventType } from '@arcaai/domains';
+
+// Mock ClsService
+const mockClsService = {
+    get: vi.fn(),
+    set: vi.fn(),
+};
+
+// Mock EventEmitter
+const mockEventEmitter = {
+    emit: vi.fn(),
+};
+
+// Mock DepartmentRepository
+const mockDepartmentRepository = {
+    findAllByTenant: vi.fn(),
+    findById: vi.fn(),
+    findByCode: vi.fn(),
+    findRootDepartments: vi.fn(),
+    findChildren: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+};
+
+// Helper to create mock department entity
+const createMockDepartmentEntity = (overrides: Partial<{
+    id: string;
+    tenantId: string;
+    code: string | null;
+    name: string | null;
+    description: string | null;
+    parentDepartmentId: string | null;
+    isRootDepartment: boolean;
+    resourceStatus: string;
+    createdAt: Date;
+    updatedAt: Date;
+}> = {}) => ({
+    id: overrides.id ?? 'department-id-1',
+    tenantId: overrides.tenantId ?? 'tenant-1',
+    code: overrides.code ?? 'CARDIO',
+    name: overrides.name ?? 'Cardiology',
+    description: overrides.description ?? 'Cardiology Department',
+    parentDepartmentId: overrides.parentDepartmentId ?? null,
+    isRootDepartment: overrides.isRootDepartment ?? true,
+    resourceStatus: overrides.resourceStatus ?? 'ENABLED',
+    createdAt: overrides.createdAt ?? new Date('2026-01-29T10:00:00Z'),
+    updatedAt: overrides.updatedAt ?? new Date('2026-01-29T10:00:00Z'),
+});
+
+// Mock DepartmentFactory
+vi.mock('@arcaai/domains', async () => {
+    const actual = await vi.importActual('@arcaai/domains');
+    return {
+        ...actual,
+        DepartmentFactory: {
+            CreateDepartment: vi.fn((data) => ({
+                ...data,
+                id: 'new-department-id',
+                isRootDepartment: !data.parentDepartmentId,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            })),
+        },
+    };
+});
+
+describe('DepartmentService', () => {
+    let service: DepartmentService;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+
+        // Default: return valid user and tenant from CLS
+        mockClsService.get.mockImplementation((key: string) => {
+            switch (key) {
+                case 'user':
+                    return { id: 'user-id-1' };
+                case 'tenantId':
+                    return 'tenant-1';
+                case 'correlationId':
+                    return 'corr-123';
+                case 'requestIp':
+                    return '192.168.1.1';
+                default:
+                    return null;
+            }
+        });
+
+        // Create service instance with mocks
+        service = new DepartmentService(
+            mockDepartmentRepository as any,
+            mockEventEmitter as any,
+            mockClsService as any,
+        );
+    });
+
+    describe('getAll', () => {
+        it('should throw BadRequestException when tenant ID is not available', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                if (key === 'user') return { id: 'user-id-1' };
+                return null;
+            });
+
+            await expect(service.getAll()).rejects.toThrow(BadRequestException);
+            await expect(service.getAll()).rejects.toThrow('Tenant ID is required');
+        });
+
+        it('should return empty array when no departments exist', async () => {
+            mockDepartmentRepository.findAllByTenant.mockResolvedValue([]);
+
+            const result = await service.getAll();
+
+            expect(result).toEqual([]);
+            expect(mockDepartmentRepository.findAllByTenant).toHaveBeenCalledWith('tenant-1', {
+                includeDisabled: undefined,
+            });
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceViewed,
+                expect.objectContaining({
+                    data: { count: 0 },
+                })
+            );
+        });
+
+        it('should return all departments for tenant', async () => {
+            const departments = [
+                createMockDepartmentEntity({ id: 'dept-1', code: 'CARDIO', name: 'Cardiology' }),
+                createMockDepartmentEntity({ id: 'dept-2', code: 'NEURO', name: 'Neurology' }),
+                createMockDepartmentEntity({ id: 'dept-3', code: 'ORTHO', name: 'Orthopedics' }),
+            ];
+            mockDepartmentRepository.findAllByTenant.mockResolvedValue(departments);
+
+            const result = await service.getAll();
+
+            expect(result).toHaveLength(3);
+            expect(result[0].code).toBe('CARDIO');
+            expect(result[1].code).toBe('NEURO');
+            expect(result[2].code).toBe('ORTHO');
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceViewed,
+                expect.objectContaining({
+                    data: { count: 3 },
+                })
+            );
+        });
+
+        it('should pass includeDisabled: true to repository when option is set', async () => {
+            mockDepartmentRepository.findAllByTenant.mockResolvedValue([]);
+
+            await service.getAll({ includeDisabled: true });
+
+            expect(mockDepartmentRepository.findAllByTenant).toHaveBeenCalledWith('tenant-1', {
+                includeDisabled: true,
+            });
+        });
+
+        it('should pass includeDisabled: false to repository when option is explicitly false', async () => {
+            mockDepartmentRepository.findAllByTenant.mockResolvedValue([]);
+
+            await service.getAll({ includeDisabled: false });
+
+            expect(mockDepartmentRepository.findAllByTenant).toHaveBeenCalledWith('tenant-1', {
+                includeDisabled: false,
+            });
+        });
+
+        it('should return mixed ENABLED and DISABLED departments when includeDisabled is true', async () => {
+            const departments = [
+                createMockDepartmentEntity({ id: 'dept-1', name: 'Cardiology', resourceStatus: 'ENABLED' }),
+                createMockDepartmentEntity({ id: 'dept-2', name: 'Neurology', resourceStatus: 'DISABLED' }),
+                createMockDepartmentEntity({ id: 'dept-3', name: 'Orthopedics', resourceStatus: 'ENABLED' }),
+            ];
+            mockDepartmentRepository.findAllByTenant.mockResolvedValue(departments);
+
+            const result = await service.getAll({ includeDisabled: true });
+
+            expect(result).toHaveLength(3);
+            expect(result[0].resourceStatus).toBe('ENABLED');
+            expect(result[1].resourceStatus).toBe('DISABLED');
+            expect(result[2].resourceStatus).toBe('ENABLED');
+        });
+
+        it('should include resourceStatus in every response DTO', async () => {
+            const departments = [
+                createMockDepartmentEntity({ id: 'dept-1', resourceStatus: 'DISABLED' }),
+            ];
+            mockDepartmentRepository.findAllByTenant.mockResolvedValue(departments);
+
+            const result = await service.getAll({ includeDisabled: true });
+
+            expect(result).toHaveLength(1);
+            expect(result[0]).toHaveProperty('resourceStatus');
+            expect(result[0].resourceStatus).toBe('DISABLED');
+        });
+
+        it('should treat empty options object same as no options (includeDisabled defaults to undefined)', async () => {
+            mockDepartmentRepository.findAllByTenant.mockResolvedValue([]);
+
+            await service.getAll({});
+
+            expect(mockDepartmentRepository.findAllByTenant).toHaveBeenCalledWith('tenant-1', {
+                includeDisabled: undefined,
+            });
+        });
+
+        it('should not filter out DISABLED departments when repository returns them with includeDisabled: true', async () => {
+            const allDisabled = [
+                createMockDepartmentEntity({ id: 'dept-1', name: 'Dept A', resourceStatus: 'DISABLED' }),
+                createMockDepartmentEntity({ id: 'dept-2', name: 'Dept B', resourceStatus: 'DISABLED' }),
+            ];
+            mockDepartmentRepository.findAllByTenant.mockResolvedValue(allDisabled);
+
+            const result = await service.getAll({ includeDisabled: true });
+
+            expect(result).toHaveLength(2);
+            expect(result.every(d => d.resourceStatus === 'DISABLED')).toBe(true);
+        });
+    });
+
+    describe('getById', () => {
+        it('should return null when department not found', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(null);
+
+            const result = await service.getById('non-existent-id');
+
+            expect(result).toBeNull();
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+        });
+
+        it('should return department when found', async () => {
+            const department = createMockDepartmentEntity();
+            mockDepartmentRepository.findById.mockResolvedValue(department);
+
+            const result = await service.getById('department-id-1');
+
+            expect(result).not.toBeNull();
+            expect(result?.id).toBe('department-id-1');
+            expect(result?.code).toBe('CARDIO');
+            expect(result?.name).toBe('Cardiology');
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceViewed,
+                expect.objectContaining({
+                    resourceId: 'department-id-1',
+                })
+            );
+        });
+    });
+
+    describe('getByCode', () => {
+        it('should throw BadRequestException when tenant ID is not available', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                if (key === 'user') return { id: 'user-id-1' };
+                return null;
+            });
+
+            await expect(service.getByCode('CARDIO')).rejects.toThrow(BadRequestException);
+        });
+
+        it('should return null when department with code not found', async () => {
+            mockDepartmentRepository.findByCode.mockResolvedValue(null);
+
+            const result = await service.getByCode('NON_EXISTENT');
+
+            expect(result).toBeNull();
+            expect(mockDepartmentRepository.findByCode).toHaveBeenCalledWith(
+                'tenant-1',
+                'NON_EXISTENT'
+            );
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+        });
+
+        it('should return department when found by code', async () => {
+            const department = createMockDepartmentEntity();
+            mockDepartmentRepository.findByCode.mockResolvedValue(department);
+
+            const result = await service.getByCode('CARDIO');
+
+            expect(result).not.toBeNull();
+            expect(result?.code).toBe('CARDIO');
+            expect(mockDepartmentRepository.findByCode).toHaveBeenCalledWith(
+                'tenant-1',
+                'CARDIO'
+            );
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceViewed,
+                expect.objectContaining({
+                    resourceId: 'department-id-1',
+                })
+            );
+        });
+    });
+
+    describe('getRootDepartments', () => {
+        it('should throw BadRequestException when tenant ID is not available', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                if (key === 'user') return { id: 'user-id-1' };
+                return null;
+            });
+
+            await expect(service.getRootDepartments()).rejects.toThrow(BadRequestException);
+        });
+
+        it('should return empty array when no root departments exist', async () => {
+            mockDepartmentRepository.findRootDepartments.mockResolvedValue([]);
+
+            const result = await service.getRootDepartments();
+
+            expect(result).toEqual([]);
+            expect(mockDepartmentRepository.findRootDepartments).toHaveBeenCalledWith('tenant-1');
+        });
+
+        it('should return only root departments (no parent)', async () => {
+            const rootDepartments = [
+                createMockDepartmentEntity({ id: 'root-1', isRootDepartment: true }),
+                createMockDepartmentEntity({ id: 'root-2', isRootDepartment: true }),
+            ];
+            mockDepartmentRepository.findRootDepartments.mockResolvedValue(rootDepartments);
+
+            const result = await service.getRootDepartments();
+
+            expect(result).toHaveLength(2);
+            expect(result[0].isRootDepartment).toBe(true);
+            expect(result[1].isRootDepartment).toBe(true);
+        });
+    });
+
+    describe('getChildren', () => {
+        it('should return empty array when no children exist', async () => {
+            mockDepartmentRepository.findChildren.mockResolvedValue([]);
+
+            const result = await service.getChildren('parent-id');
+
+            expect(result).toEqual([]);
+            expect(mockDepartmentRepository.findChildren).toHaveBeenCalledWith('parent-id');
+        });
+
+        it('should return child departments', async () => {
+            const children = [
+                createMockDepartmentEntity({
+                    id: 'child-1',
+                    parentDepartmentId: 'parent-id',
+                    isRootDepartment: false,
+                }),
+                createMockDepartmentEntity({
+                    id: 'child-2',
+                    parentDepartmentId: 'parent-id',
+                    isRootDepartment: false,
+                }),
+            ];
+            mockDepartmentRepository.findChildren.mockResolvedValue(children);
+
+            const result = await service.getChildren('parent-id');
+
+            expect(result).toHaveLength(2);
+            expect(result[0].parentDepartmentId).toBe('parent-id');
+            expect(result[1].parentDepartmentId).toBe('parent-id');
+        });
+    });
+
+    describe('create', () => {
+        it('should throw BadRequestException when tenant ID is not available', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                if (key === 'user') return { id: 'user-id-1' };
+                return null;
+            });
+
+            await expect(
+                service.create({ name: 'New Department' })
+            ).rejects.toThrow(BadRequestException);
+        });
+
+        it('should throw BadRequestException when code already exists', async () => {
+            const existingDepartment = createMockDepartmentEntity({ code: 'EXISTING' });
+            mockDepartmentRepository.findByCode.mockResolvedValue(existingDepartment);
+
+            await expect(
+                service.create({ code: 'EXISTING', name: 'New Department' })
+            ).rejects.toThrow(BadRequestException);
+            await expect(
+                service.create({ code: 'EXISTING', name: 'New Department' })
+            ).rejects.toThrow("Department with code 'EXISTING' already exists");
+        });
+
+        it('should throw NotFoundException when parent department not found', async () => {
+            mockDepartmentRepository.findByCode.mockResolvedValue(null);
+            mockDepartmentRepository.findById.mockResolvedValue(null);
+
+            await expect(
+                service.create({
+                    name: 'Child Department',
+                    parentDepartmentId: 'non-existent-parent',
+                })
+            ).rejects.toThrow(NotFoundException);
+            await expect(
+                service.create({
+                    name: 'Child Department',
+                    parentDepartmentId: 'non-existent-parent',
+                })
+            ).rejects.toThrow('Parent department non-existent-parent not found');
+        });
+
+        it('should create root department without code', async () => {
+            mockDepartmentRepository.findByCode.mockResolvedValue(null);
+            const newDepartment = createMockDepartmentEntity({
+                id: 'new-department-id',
+                code: null,
+                name: 'New Department',
+            });
+            mockDepartmentRepository.create.mockResolvedValue(newDepartment);
+
+            const result = await service.create({ name: 'New Department' });
+
+            expect(result.id).toBe('new-department-id');
+            expect(result.name).toBe('New Department');
+            expect(mockDepartmentRepository.create).toHaveBeenCalled();
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceCreated,
+                expect.objectContaining({
+                    resourceId: 'new-department-id',
+                    data: { code: undefined, name: 'New Department' },
+                })
+            );
+        });
+
+        it('should create department with code', async () => {
+            mockDepartmentRepository.findByCode.mockResolvedValue(null);
+            const newDepartment = createMockDepartmentEntity({
+                id: 'new-department-id',
+                code: 'NEW_DEPT',
+                name: 'New Department',
+            });
+            mockDepartmentRepository.create.mockResolvedValue(newDepartment);
+
+            const result = await service.create({
+                code: 'NEW_DEPT',
+                name: 'New Department',
+                description: 'A new department',
+            });
+
+            expect(result.id).toBe('new-department-id');
+            expect(result.code).toBe('NEW_DEPT');
+            expect(mockDepartmentRepository.findByCode).toHaveBeenCalledWith(
+                'tenant-1',
+                'NEW_DEPT'
+            );
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceCreated,
+                expect.objectContaining({
+                    data: { code: 'NEW_DEPT', name: 'New Department' },
+                })
+            );
+        });
+
+        it('should create child department with valid parent', async () => {
+            mockDepartmentRepository.findByCode.mockResolvedValue(null);
+            const parentDepartment = createMockDepartmentEntity({ id: 'parent-id' });
+            mockDepartmentRepository.findById.mockResolvedValue(parentDepartment);
+            const newDepartment = createMockDepartmentEntity({
+                id: 'new-department-id',
+                name: 'Child Department',
+                parentDepartmentId: 'parent-id',
+                isRootDepartment: false,
+            });
+            mockDepartmentRepository.create.mockResolvedValue(newDepartment);
+
+            const result = await service.create({
+                name: 'Child Department',
+                parentDepartmentId: 'parent-id',
+            });
+
+            expect(result.id).toBe('new-department-id');
+            expect(result.parentDepartmentId).toBe('parent-id');
+            expect(result.isRootDepartment).toBe(false);
+            expect(mockDepartmentRepository.findById).toHaveBeenCalledWith('parent-id');
+        });
+
+        it('should skip code uniqueness check when code is not provided', async () => {
+            const newDepartment = createMockDepartmentEntity({
+                id: 'new-department-id',
+                code: null,
+            });
+            mockDepartmentRepository.create.mockResolvedValue(newDepartment);
+
+            await service.create({ name: 'No Code Department' });
+
+            expect(mockDepartmentRepository.findByCode).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('updatePromptConfig', () => {
+        it('should throw NotFoundException when department not found', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(null);
+
+            await expect(
+                service.updatePromptConfig('non-existent-id', {
+                    preSummaryPromptId: 'prompt-1',
+                })
+            ).rejects.toThrow(NotFoundException);
+            await expect(
+                service.updatePromptConfig('non-existent-id', {
+                    preSummaryPromptId: 'prompt-1',
+                })
+            ).rejects.toThrow('Department non-existent-id not found');
+        });
+
+        it('should throw ArgumentInvalidException when no changes provided', async () => {
+            const department = createMockDepartmentEntityWithChanges({ hasChanges: false });
+            mockDepartmentRepository.findById.mockResolvedValue(department);
+
+            const { ArgumentInvalidException } = await import('@arcaai/exceptions');
+
+            await expect(
+                service.updatePromptConfig('dept-1', {})
+            ).rejects.toThrow(ArgumentInvalidException);
+            await expect(
+                service.updatePromptConfig('dept-1', {})
+            ).rejects.toThrow('No changes to write to.');
+        });
+
+        it('should update prompt config and return updated department', async () => {
+            const department = createMockDepartmentEntityWithChanges({
+                hasChanges: true,
+                changes: { preSummaryPromptId: 'pre-1', newPatientPromptId: 'np-1' },
+            });
+            mockDepartmentRepository.findById.mockResolvedValue(department);
+            const updatedDept = createMockDepartmentEntity({
+                id: 'dept-1',
+                code: 'CARD',
+                name: 'Cardiology',
+            });
+            mockDepartmentRepository.update.mockResolvedValue(updatedDept);
+
+            const result = await service.updatePromptConfig('dept-1', {
+                preSummaryPromptId: 'pre-1',
+                newPatientPromptId: 'np-1',
+            });
+
+            expect(result).toBeDefined();
+            expect(result.id).toBe('dept-1');
+            expect(mockDepartmentRepository.update).toHaveBeenCalledWith('dept-1', department);
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceUpdated,
+                expect.objectContaining({
+                    resourceId: 'dept-1',
+                    data: { preSummaryPromptId: 'pre-1', newPatientPromptId: 'np-1' },
+                })
+            );
+        });
+    });
+});
+
+// Helper for updatePromptConfig tests - entity with change tracking
+function createMockDepartmentEntityWithChanges(overrides: {
+    hasChanges?: boolean;
+    changes?: Record<string, unknown>;
+} = {}) {
+    const base = createMockDepartmentEntity();
+    return {
+        ...base,
+        hasChanges: overrides.hasChanges ?? true,
+        changes: overrides.changes ?? {},
+    };
+}
+

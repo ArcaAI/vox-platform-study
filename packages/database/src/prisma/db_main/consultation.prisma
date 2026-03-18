@@ -1,0 +1,314 @@
+// Consultation Domain Models
+// Consultation is the top-level entity for SDK v2
+
+model Consultation {
+    // Meta fields (BaseEntity pattern)
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String @default("50000000-0000-0000-0000-000000000000")
+
+    // Patient (external system - no FK)
+    patientId       String
+    appointmentDate DateTime @db.Date
+
+    // Doctor (FK to User)
+    doctorId String
+    Doctor   User   @relation("DoctorConsultations", fields: [doctorId], references: [id])
+
+    // Department (FK to lookup table)
+    departmentId String?
+    Department   Department? @relation(fields: [departmentId], references: [id])
+
+    // Visit linking: NULL = initial visit, NOT NULL = follow-up/referral
+    parentConsultationId String?
+    ParentConsultation   Consultation?  @relation("ConsultationChain", fields: [parentConsultationId], references: [id])
+    ChildConsultations   Consultation[] @relation("ConsultationChain")
+
+    // Flexible metadata (scheduling info, external refs, etc.)
+    metadata Json? @db.JsonB
+
+    // Resource status + Audit (standard fields)
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    // Relations
+    ContextItems ContextItem[]
+
+    // Indexes (no unique constraint - allows multiple visits same doctor/day)
+    @@index([tenantId], name: "Consultation_tenantId_idx")
+    @@index([patientId], name: "Consultation_patientId_idx")
+    @@index([appointmentDate], name: "Consultation_appointmentDate_idx")
+    @@index([doctorId], name: "Consultation_doctorId_idx")
+    @@index([departmentId], name: "Consultation_departmentId_idx")
+    @@index([parentConsultationId], name: "Consultation_parentId_idx")
+    // Composite for common query pattern
+    @@index([tenantId, patientId, appointmentDate], name: "Consultation_tenant_patient_date_idx")
+    @@schema("core")
+}
+
+// =============================================================================
+// CORE CONTEXT ITEM (Base/Parent for all consultation content)
+// =============================================================================
+
+model ContextItem {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String @default("50000000-0000-0000-0000-000000000000")
+
+    // Parent consultation
+    consultationId String
+    Consultation   Consultation @relation(fields: [consultationId], references: [id])
+
+    // Type discriminator (enum for type safety)
+    type   ContextItemType
+    source ContextItemSource @default(USER)
+
+    // Current version tracking
+    currentVersionNumber Int @default(1)
+
+    // Common content field (for text-based types: worknotes, summaries, transcripts)
+    content String? @db.Text
+
+    // DNA Writing Style (reference ID, similar to mediaId pattern)
+    dnaWritingStyleId String?
+
+    // Qdrant sync status (for semantic search)
+    qdrantSynced   Boolean   @default(false)
+    qdrantSyncedAt DateTime?
+
+    // Resource status + Audit
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    // Relations to type-specific data
+    AudioRecordings AudioRecording[]
+    SummaryMeta     SummaryMeta?
+    NamedEntities   NamedEntity[]
+    Versions        ContextItemVersion[]
+
+    // Indexes
+    @@index([tenantId], name: "ContextItem_tenantId_idx")
+    @@index([consultationId], name: "ContextItem_consultationId_idx")
+    @@index([type], name: "ContextItem_type_idx")
+    @@index([source], name: "ContextItem_source_idx")
+    @@index([createdAt], name: "ContextItem_createdAt_idx")
+    @@index([qdrantSynced], name: "ContextItem_qdrantSynced_idx")
+    @@index([dnaWritingStyleId], name: "ContextItem_dnaWritingStyleId_idx")
+    // Composite for common queries
+    @@index([consultationId, type], name: "ContextItem_consultation_type_idx")
+    @@index([tenantId, type, createdAt], name: "ContextItem_tenant_type_created_idx")
+    @@schema("core")
+}
+
+// =============================================================================
+// AUDIO RECORDINGS (Multiple per consultation)
+// Supports multiple audio recordings with ordering
+// =============================================================================
+
+model AudioRecording {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String @default("50000000-0000-0000-0000-000000000000")
+
+    // Parent context item (type should be AUDIO_RECORDING)
+    contextItemId String
+    ContextItem   ContextItem @relation(fields: [contextItemId], references: [id])
+
+    // Reference to Media table (stores actual file info)
+    mediaId String
+
+    // Audio-specific metadata
+    duration   Int?    // Duration in milliseconds
+    format     String? // e.g., "wav", "mp3", "webm"
+    sampleRate Int?    // e.g., 44100, 48000
+    channels   Int?    // 1 = mono, 2 = stereo
+    bitrate    Int?    // e.g., 128000
+    language   String? // Detected or specified language
+
+    // Ordering for multiple recordings in a consultation
+    sequenceNumber Int @default(1)
+
+    // Recording timestamp (when the audio was recorded, not created in system)
+    recordedAt DateTime?
+
+    // Timestamps
+    createdAt DateTime @default(now())
+
+    // Indexes
+    @@index([tenantId], name: "AudioRecording_tenantId_idx")
+    @@index([contextItemId], name: "AudioRecording_contextItemId_idx")
+    @@index([mediaId], name: "AudioRecording_mediaId_idx")
+    @@index([contextItemId, sequenceNumber], name: "AudioRecording_sequence_idx")
+    @@schema("core")
+}
+
+// =============================================================================
+// SUMMARY METADATA (AI generation context and cost tracking)
+// One-to-one relationship with ContextItem of type RAW_SUMMARY, MODIFIED_SUMMARY, or PRE_SUMMARY
+// =============================================================================
+
+model SummaryMeta {
+    // Meta fields
+    id String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String @default("50000000-0000-0000-0000-000000000000")
+
+    // Parent context item (1:1 relationship)
+    contextItemId String      @unique
+    ContextItem   ContextItem @relation(fields: [contextItemId], references: [id])
+
+    // AI Model information
+    aiModelId      String? // Reference to AI model registry
+    aiModelVersion String? // Version of the model used
+    promptVersion  String? // Version of the prompt template used
+
+    // Cost tracking (time-based - duration in milliseconds)
+    processingTimeMs Int? // Time taken by AI model to complete the task
+
+    // Token usage (for analytics)
+    inputTokens  Int? // Tokens used for input
+    outputTokens Int? // Tokens generated
+
+    // Context used for generation (IDs of related items)
+    caseNoteIds        String[] @default([]) // IDs of case notes used as context
+    preSummaryIds      String[] @default([]) // IDs of pre-summaries used
+    previousSummaryIds String[] @default([]) // IDs of previous consultation summaries
+
+    // Generation metadata
+    generatedAt DateTime? // When the summary was generated
+
+    // Timestamps
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Indexes
+    @@index([tenantId], name: "SummaryMeta_tenantId_idx")
+    @@index([contextItemId], name: "SummaryMeta_contextItemId_idx")
+    @@index([aiModelId], name: "SummaryMeta_aiModelId_idx")
+    @@index([generatedAt], name: "SummaryMeta_generatedAt_idx")
+    @@schema("core")
+}
+
+// =============================================================================
+// NAMED ENTITIES (NER results from AI recognition)
+// Stores recognized entities with confidence scores and AI model info
+// =============================================================================
+
+model NamedEntity {
+    // Meta fields
+    id String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String @default("50000000-0000-0000-0000-000000000000")
+
+    // Parent context item (typically linked to TRANSCRIPT or RAW_SUMMARY)
+    contextItemId String
+    ContextItem   ContextItem @relation(fields: [contextItemId], references: [id])
+
+    // Entity information
+    text           String  // The recognized text span
+    className      String  // Entity class (e.g., "MEDICATION", "CONDITION", "PROCEDURE", "ANATOMY")
+    normalizedText String? // Normalized/canonical form (e.g., standard drug name)
+
+    // Location in source text
+    startOffset Int? // Character offset start
+    endOffset   Int? // Character offset end
+
+    // Confidence and scoring
+    confidence Float? // Confidence score (0.0 - 1.0)
+
+    // AI Model used for recognition
+    aiModelId      String?
+    aiModelVersion String?
+
+    // Cost tracking (time-based - duration in milliseconds)
+    processingTimeMs Int? // Time taken for recognition
+
+    // Additional metadata (e.g., linked codes like ICD-10, SNOMED, synonyms)
+    metadata Json? @db.JsonB
+
+    // Timestamps
+    createdAt DateTime @default(now())
+
+    // Indexes
+    @@index([tenantId], name: "NamedEntity_tenantId_idx")
+    @@index([contextItemId], name: "NamedEntity_contextItemId_idx")
+    @@index([className], name: "NamedEntity_className_idx")
+    @@index([text], name: "NamedEntity_text_idx")
+    @@index([confidence], name: "NamedEntity_confidence_idx")
+    @@index([contextItemId, className], name: "NamedEntity_item_class_idx")
+    @@schema("core")
+}
+
+// =============================================================================
+// CONTEXT ITEM VERSION (Snapshot history for content changes)
+// Tracks version history with diff support for analytics
+// =============================================================================
+
+model ContextItemVersion {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String @default("50000000-0000-0000-0000-000000000000")
+
+    // Parent context item
+    contextItemId String
+    ContextItem   ContextItem @relation(fields: [contextItemId], references: [id])
+
+    // Version number (1, 2, 3...)
+    versionNumber Int
+
+    // Snapshot of content at this version
+    content String? @db.Text
+
+    // Content diff for analytics (JSON diff or text diff from previous version)
+    contentDiff String? @db.Text
+
+    // Change metadata
+    changeReason  String? // e.g., "user_edit", "ai_regeneration", "correction", "typo_fix"
+    changeSummary String? // Brief human-readable description of what changed
+    changedBy     String? // User ID or "system"
+    changeSource  String? // e.g., "manual", "ai_model_v2", "bulk_update", "api"
+
+    // For modified summaries: track specific field changes
+    fieldChanges Json? @db.JsonB // { field: { old: "...", new: "..." } }
+
+    // Timestamp
+    createdAt DateTime @default(now())
+
+    // Indexes
+    @@index([tenantId], name: "ContextItemVersion_tenantId_idx")
+    @@index([contextItemId], name: "ContextItemVersion_contextItemId_idx")
+    @@index([versionNumber], name: "ContextItemVersion_versionNumber_idx")
+    @@index([createdAt], name: "ContextItemVersion_createdAt_idx")
+    @@index([changedBy], name: "ContextItemVersion_changedBy_idx")
+    // Composite for fetching version history
+    @@index([contextItemId, versionNumber], name: "ContextItemVersion_item_version_idx")
+    // Unique: one version number per context item
+    @@unique([contextItemId, versionNumber])
+    @@schema("core")
+}
+

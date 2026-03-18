@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'smr-v2'
+    static_configs:
+      - targets: ['smr-v2:8862']
+    metrics_path: '/metrics'
+    scrape_interval: 10s

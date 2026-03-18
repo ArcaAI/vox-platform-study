@@ -1,0 +1,52 @@
+import {
+    AutoClassMapper,
+    AutoEntityChangeMapper,
+    BaseMapper,
+    createMapperHandlers,
+} from '../../../common';
+import * as Entities from '../../../entities';
+import * as Models from '../../../models';
+import * as Mappers from '../../../mappers';
+
+export class {{mapperName}} extends BaseMapper<{{entityName}}, {{modelName}}> {
+    constructor() {
+        super();
+    }
+
+    public toPersistence(entity: {{entityName}}): {{modelName}} {
+        return AutoClassMapper(
+            entity,
+            {{modelName}},
+            {{mapperName}}Handlers.$toPersistence,
+        );
+    }
+
+    public toPersistenceChanges(entity: {{entityName}}): Partial<{{modelName}}> {
+        return AutoEntityChangeMapper(
+            entity,
+            {{modelName}},
+            {{mapperName}}Handlers.$toPersistence,
+        );
+    }
+
+    public toDomainEntity(dataModel: {{modelName}}): {{entityName}} {
+        return AutoClassMapper(
+            dataModel,
+            {{entityName}},
+            {{mapperName}}Handlers.$toDomain,
+        );
+    }
+}
+
+export const {{mapperName}}Handlers = createMapperHandlers<{{entityName}}, {{modelName}}>({
+    $toPersistence: {
+        {{#each toPersistenceHandlers}}
+        {{name}}: {{{code}}},
+        {{/each}}
+    },
+    $toDomain: {
+        {{#each toDomainHandlers}}
+        {{name}}: {{{code}}},
+        {{/each}}
+    },
+});

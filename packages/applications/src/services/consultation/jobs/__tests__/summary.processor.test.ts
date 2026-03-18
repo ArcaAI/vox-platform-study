@@ -1,0 +1,1214 @@
+/**
+ * SummaryProcessor Unit Tests
+ *
+ * Tests for the SummaryProcessor that handles async summary generation jobs.
+ * The processor gathers transcripts/context items and calls the SMR service.
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Job } from 'bullmq';
+import { SummaryProcessor } from '../processors/summary.processor';
+import { GenerateSummaryJobPayload, SummaryJobResult } from '../dto';
+
+// Mock consultation job service
+const createMockJobService = () => ({
+    notifyProgress: vi.fn().mockResolvedValue(undefined),
+    notifyComplete: vi.fn().mockResolvedValue(undefined),
+    notifyFailed: vi.fn().mockResolvedValue(undefined),
+});
+
+// Mock repositories
+const createMockContextItemRepository = () => ({
+    findById: vi.fn(),
+    findTranscripts: vi.fn(),
+    findLatestPreSummary: vi.fn().mockResolvedValue(null),
+    create: vi.fn(),
+});
+
+const createMockConsultationRepository = () => ({
+    findById: vi.fn(),
+});
+
+// Mock HTTP service
+const createMockHttpService = () => ({
+    axiosRef: {
+        post: vi.fn(),
+    },
+});
+
+// Mock config service
+const createMockConfigService = () => ({
+    get: vi.fn().mockImplementation((key: string) => {
+        if (key === 'SMR_URL') return 'http://localhost:8862';
+        return undefined;
+    }),
+});
+
+// Mock EventEmitter2
+const createMockEventEmitter = () => ({
+    emit: vi.fn(),
+});
+
+// Mock PromptResolutionService
+const createMockPromptResolutionService = () => ({
+    resolve: vi.fn().mockResolvedValue({
+        template: 'SOAP',
+        promptId: 'prompt_default',
+        contextVariables: {},
+        resolvedFrom: 'default',
+        resolutionTrace: { usedDefaults: ['template', 'promptId', 'contextVariables'] },
+    }),
+});
+
+// Mock PromptAssemblyService
+const createMockPromptAssemblyService = () => ({
+    assemble: vi.fn().mockImplementation((params: { transcript?: string }) => Promise.resolve({
+        userPrompt: params.transcript ?? 'assembled prompt text',
+        systemPrompt: '',
+        hyperparameters: {},
+        responseFormat: null,
+        resolvedFrom: 'default',
+    })),
+});
+
+// Mock JobMetricsService
+const createMockJobMetrics = () => ({
+    recordJobStart: vi.fn().mockReturnValue(vi.fn().mockReturnValue(5.0)),
+    recordJobComplete: vi.fn(),
+    recordJobFailed: vi.fn(),
+    recordWaitingDuration: vi.fn(),
+    recordSmrCallDuration: vi.fn(),
+});
+
+// Helper to create mock job
+const createMockJob = (data: GenerateSummaryJobPayload): Job<GenerateSummaryJobPayload> =>
+    ({
+        data,
+        id: data.jobId,
+        name: 'generate',
+        timestamp: Date.now(),
+    }) as unknown as Job<GenerateSummaryJobPayload>;
+
+// Helper to create mock consultation
+const createMockConsultation = (overrides: Partial<any> = {}) => ({
+    id: overrides.id ?? 'consultation-123',
+    tenantId: overrides.tenantId ?? 'tenant-1',
+    patientId: overrides.patientId ?? 'patient-1',
+    doctorId: overrides.doctorId ?? 'doctor-1',
+    ...overrides,
+});
+
+// Helper to create mock context item
+const createMockContextItem = (overrides: Partial<any> = {}) => ({
+    id: overrides.id ?? 'ctx-item-123',
+    consultationId: overrides.consultationId ?? 'consultation-123',
+    type: overrides.type ?? 'TRANSCRIPT',
+    content: overrides.content ?? 'Doctor: How are you feeling today?\nPatient: I have a headache.',
+    tenantId: overrides.tenantId ?? 'tenant-1',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+});
+
+describe('SummaryProcessor', () => {
+    let processor: SummaryProcessor;
+    let mockJobService: ReturnType<typeof createMockJobService>;
+    let mockContextItemRepository: ReturnType<typeof createMockContextItemRepository>;
+    let mockConsultationRepository: ReturnType<typeof createMockConsultationRepository>;
+    let mockHttpService: ReturnType<typeof createMockHttpService>;
+    let mockConfigService: ReturnType<typeof createMockConfigService>;
+    let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
+    let mockPromptResolutionService: ReturnType<typeof createMockPromptResolutionService>;
+    let mockPromptAssemblyService: ReturnType<typeof createMockPromptAssemblyService>;
+    let mockJobMetrics: ReturnType<typeof createMockJobMetrics>;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+
+        mockJobService = createMockJobService();
+        mockContextItemRepository = createMockContextItemRepository();
+        mockConsultationRepository = createMockConsultationRepository();
+        mockHttpService = createMockHttpService();
+        mockConfigService = createMockConfigService();
+        mockEventEmitter = createMockEventEmitter();
+        mockPromptResolutionService = createMockPromptResolutionService();
+        mockPromptAssemblyService = createMockPromptAssemblyService();
+        mockJobMetrics = createMockJobMetrics();
+
+        processor = new SummaryProcessor(
+            mockJobService as any,
+            mockContextItemRepository as any,
+            mockConsultationRepository as any,
+            mockHttpService as any,
+            mockConfigService as any,
+            mockEventEmitter as any,
+            mockPromptResolutionService as any,
+            mockPromptAssemblyService as any,
+            mockJobMetrics as any,
+        );
+    });
+
+    // ===========================================================================
+    // Successful Processing Tests
+    // ===========================================================================
+
+    describe('Successful Job Processing', () => {
+        it('should process summary job with specific contextItemIds', async () => {
+            const ctx1 = createMockContextItem({ id: 'ctx-1', content: 'Transcript part 1' });
+            const ctx2 = createMockContextItem({ id: 'ctx-2', content: 'Transcript part 2' });
+
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findById
+                .mockResolvedValueOnce(ctx1)
+                .mockResolvedValueOnce(ctx2);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: {
+                    summary: 'Generated clinical summary',
+                    modelName: 'gpt-4',
+                    processingTimeMs: 4500,
+                    inputTokens: 350,
+                    outputTokens: 120,
+                },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'new-summary-id',
+                content: 'Generated clinical summary',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {
+                    contextItemIds: ['ctx-1', 'ctx-2'],
+                    dnaStyleId: 'clinical-style',
+                    template: 'soap-note',
+                    includeNER: true,
+                },
+            };
+
+            const result = await processor.process(createMockJob(payload));
+
+            expect(result).toEqual({
+                contextItemId: 'new-summary-id',
+                content: 'Generated clinical summary',
+                summaryMeta: {
+                    aiModelId: 'gpt-4',
+                    processingTimeMs: 4500,
+                    inputTokens: 350,
+                    outputTokens: 120,
+                },
+            });
+
+            expect(mockJobService.notifyProgress).toHaveBeenCalledTimes(3);
+            expect(mockJobService.notifyComplete).toHaveBeenCalledWith('job-123', result);
+        });
+
+        it('should process summary job using all transcripts when no contextItemIds provided', async () => {
+            const transcripts = [
+                createMockContextItem({ id: 'trans-1', content: 'Transcript 1' }),
+                createMockContextItem({ id: 'trans-2', content: 'Transcript 2' }),
+            ];
+
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue(transcripts);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: {
+                    summary: 'Summary from all transcripts',
+                    modelName: 'claude-3',
+                    processingTimeMs: 5000,
+                },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'new-summary-id',
+                content: 'Summary from all transcripts',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-456',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {}, // No contextItemIds
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockContextItemRepository.findTranscripts).toHaveBeenCalledWith('consultation-123');
+        });
+
+        it('should send correct payload to SMR service with all options', async () => {
+            const transcript = createMockContextItem({ content: 'Full consultation transcript' });
+
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([transcript]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Summary', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-id',
+                content: 'Summary',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-789',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {
+                    dnaStyleId: 'formal-style',
+                    template: 'discharge-summary',
+                    includeNER: true,
+                    options: { maxTokens: 2000, temperature: 0.5 },
+                },
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                'http://localhost:8862/api/v1/summary/sync',
+                expect.objectContaining({
+                    text: 'Full consultation transcript',
+                    dnaStyleId: 'formal-style',
+                    template: 'discharge-summary',
+                    includeNER: true,
+                    options: expect.objectContaining({ maxTokens: 2000, temperature: 0.5 }),
+                }),
+                {
+                    timeout: 120000,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Service-Token': '',
+                        'X-Request-ID': 'job-789',
+                    },
+                },
+            );
+        });
+
+        it('should notify progress at each step', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Test content' }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Summary', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-id',
+                content: 'Summary',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-progress',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockJobService.notifyProgress).toHaveBeenNthCalledWith(
+                1,
+                'job-progress',
+                10,
+                'Gathering context',
+            );
+            expect(mockJobService.notifyProgress).toHaveBeenNthCalledWith(
+                2,
+                'job-progress',
+                30,
+                'Generating summary with AI',
+            );
+            expect(mockJobService.notifyProgress).toHaveBeenNthCalledWith(
+                3,
+                'job-progress',
+                70,
+                'Saving results',
+            );
+        });
+
+        it('should join multiple context items with double newlines', async () => {
+            const contexts = [
+                createMockContextItem({ content: 'First part' }),
+                createMockContextItem({ content: 'Second part' }),
+                createMockContextItem({ content: 'Third part' }),
+            ];
+
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue(contexts);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Combined summary', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-id',
+                content: 'Combined summary',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-multi',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    text: 'First part\n\nSecond part\n\nThird part',
+                }),
+                expect.any(Object),
+            );
+        });
+
+        it('should handle includeNER flag as false', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Transcript' }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Summary without NER', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-id',
+                content: 'Summary without NER',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-no-ner',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {
+                    includeNER: false,
+                },
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    includeNER: false,
+                }),
+                expect.any(Object),
+            );
+        });
+    });
+
+    // ===========================================================================
+    // Error Handling Tests
+    // ===========================================================================
+
+    describe('Error Handling', () => {
+        it('should fail when consultation not found', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(null);
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-not-found',
+                consultationId: 'non-existent',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            };
+
+            await expect(processor.process(createMockJob(payload))).rejects.toThrow(
+                'Consultation non-existent not found',
+            );
+
+            expect(mockJobService.notifyFailed).toHaveBeenCalledWith(
+                'job-not-found',
+                'Consultation non-existent not found',
+            );
+        });
+
+        it('should fail when no transcripts available', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([]);
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-no-transcripts',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            };
+
+            await expect(processor.process(createMockJob(payload))).rejects.toThrow(
+                'No content available for summary generation',
+            );
+
+            expect(mockJobService.notifyFailed).toHaveBeenCalledWith(
+                'job-no-transcripts',
+                'No content available for summary generation',
+            );
+        });
+
+        it('should fail when all context items have empty content', async () => {
+            const emptyContexts = [
+                createMockContextItem({ content: '' }),
+                createMockContextItem({ content: '   ' }),
+                createMockContextItem({ content: '\t\n' }),
+            ];
+
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue(emptyContexts);
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-empty',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            };
+
+            await expect(processor.process(createMockJob(payload))).rejects.toThrow(
+                'No content available for summary generation',
+            );
+        });
+
+        it('should fail when specific contextItemIds not found', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findById.mockResolvedValue(null);
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-missing-ids',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {
+                    contextItemIds: ['missing-1', 'missing-2'],
+                },
+            };
+
+            await expect(processor.process(createMockJob(payload))).rejects.toThrow(
+                'No content available for summary generation',
+            );
+        });
+
+        it('should fail when SMR service call fails', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Valid content' }),
+            ]);
+            mockHttpService.axiosRef.post.mockRejectedValue(new Error('Connection refused'));
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-smr-error',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            };
+
+            await expect(processor.process(createMockJob(payload))).rejects.toThrow(
+                'Failed to generate summary from AI service',
+            );
+
+            expect(mockJobService.notifyFailed).toHaveBeenCalledWith(
+                'job-smr-error',
+                'Failed to generate summary from AI service',
+            );
+        });
+
+        it('should fail when SMR service returns 500 error', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Valid content' }),
+            ]);
+            mockHttpService.axiosRef.post.mockRejectedValue({
+                response: { status: 500, data: { error: 'Internal error' } },
+                message: 'Request failed with status 500',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-smr-500',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            };
+
+            await expect(processor.process(createMockJob(payload))).rejects.toThrow(
+                'Failed to generate summary from AI service',
+            );
+        });
+
+        it('should fail when SMR service times out', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Valid content' }),
+            ]);
+            mockHttpService.axiosRef.post.mockRejectedValue({
+                code: 'ETIMEDOUT',
+                message: 'timeout of 120000ms exceeded',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-timeout',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            };
+
+            await expect(processor.process(createMockJob(payload))).rejects.toThrow(
+                'Failed to generate summary from AI service',
+            );
+        });
+
+        it('should handle repository create failure', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Valid content' }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Generated summary', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockRejectedValue(
+                new Error('Database connection lost'),
+            );
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-db-error',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            };
+
+            await expect(processor.process(createMockJob(payload))).rejects.toThrow(
+                'Database connection lost',
+            );
+
+            expect(mockJobService.notifyFailed).toHaveBeenCalledWith(
+                'job-db-error',
+                'Database connection lost',
+            );
+        });
+    });
+
+    // ===========================================================================
+    // Edge Cases Tests
+    // ===========================================================================
+
+    describe('Edge Cases', () => {
+        it('should filter out null context items when using specific IDs', async () => {
+            const validCtx = createMockContextItem({
+                id: 'ctx-2',
+                content: 'Valid transcript content',
+            });
+
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findById
+                .mockResolvedValueOnce(null) // ctx-1 not found
+                .mockResolvedValueOnce(validCtx) // ctx-2 found
+                .mockResolvedValueOnce(null); // ctx-3 not found
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Summary from valid context', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-id',
+                content: 'Summary from valid context',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-partial',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {
+                    contextItemIds: ['ctx-1', 'ctx-2', 'ctx-3'],
+                },
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    text: 'Valid transcript content',
+                }),
+                expect.any(Object),
+            );
+        });
+
+        it('should use default SMR URL when not configured', async () => {
+            const configServiceWithoutUrl = {
+                get: vi.fn().mockReturnValue(undefined),
+            };
+
+            const processorWithDefaultUrl = new SummaryProcessor(
+                mockJobService as any,
+                mockContextItemRepository as any,
+                mockConsultationRepository as any,
+                mockHttpService as any,
+                configServiceWithoutUrl as any,
+                mockEventEmitter as any,
+                mockPromptResolutionService as any,
+                mockPromptAssemblyService as any,
+                mockJobMetrics as any,
+            );
+
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Content' }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Summary', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-id',
+                content: 'Summary',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-default-url',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            };
+
+            await processorWithDefaultUrl.process(createMockJob(payload));
+
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                'http://localhost:8862/api/v1/summary/sync',
+                expect.any(Object),
+                expect.any(Object),
+            );
+        });
+
+        it('should handle very long transcript content', async () => {
+            const longContent = 'Transcript: ' + 'x'.repeat(100000);
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: longContent }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Summary of long transcript', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-id',
+                content: 'Summary of long transcript',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-long',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    text: longContent,
+                }),
+                expect.any(Object),
+            );
+        });
+
+        it('should handle special characters and unicode in transcript', async () => {
+            const specialContent = `
+Doctor: Good morning, Mr. García. ¿Cómo está?
+Patient: Tengo dolor de cabeza 頭痛がします
+Notes: Temperature < 38°C, SpO₂ > 95%
+Assessment: "Alert" & oriented × 3
+            `.trim();
+
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: specialContent }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Multilingual summary', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-id',
+                content: 'Multilingual summary',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-special',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    text: specialContent,
+                }),
+                expect.any(Object),
+            );
+        });
+
+        it('should handle SMR service returning partial response', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Test content' }),
+            ]);
+            // Response without optional fields
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: {
+                    summary: 'Minimal summary response',
+                    // No modelName, processingTimeMs, etc.
+                },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-id',
+                content: 'Minimal summary response',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-partial-response',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            };
+
+            const result = await processor.process(createMockJob(payload));
+
+            expect(result.summaryMeta).toEqual({
+                aiModelId: undefined,
+                processingTimeMs: undefined,
+                inputTokens: undefined,
+                outputTokens: undefined,
+            });
+        });
+
+        it('should handle empty contextItemIds array', async () => {
+            const transcripts = [createMockContextItem({ content: 'Default transcript' })];
+
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue(transcripts);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Summary', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-id',
+                content: 'Summary',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-empty-ids',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {
+                    contextItemIds: [],
+                },
+            };
+
+            await processor.process(createMockJob(payload));
+
+            // Empty array should fall through to findTranscripts
+            expect(mockContextItemRepository.findTranscripts).toHaveBeenCalled();
+        });
+
+        it('should handle multiple templates', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Transcript' }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'SOAP formatted summary', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-id',
+                content: 'SOAP formatted summary',
+            });
+
+            const templates = ['soap-note', 'discharge-summary', 'referral-letter', 'progress-note'];
+
+            for (const template of templates) {
+                vi.clearAllMocks();
+
+                const payload: GenerateSummaryJobPayload = {
+                    jobId: `job-${template}`,
+                    consultationId: 'consultation-123',
+                    tenantId: 'tenant-1',
+                    userId: 'user-1',
+                    request: { template },
+                };
+
+                await processor.process(createMockJob(payload));
+
+                expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                    expect.any(String),
+                    expect.objectContaining({ template }),
+                    expect.any(Object),
+                );
+            }
+        });
+
+        it('should handle consultation with mixed content types', async () => {
+            // Even though finding transcripts, the IDs could be mixed
+            const mixedContexts = [
+                createMockContextItem({ id: 'ctx-1', type: 'TRANSCRIPT', content: 'Transcript 1' }),
+                createMockContextItem({ id: 'ctx-2', type: 'CASE_NOTE', content: 'Case note' }),
+                createMockContextItem({ id: 'ctx-3', type: 'TRANSCRIPT', content: 'Transcript 2' }),
+            ];
+
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findById
+                .mockResolvedValueOnce(mixedContexts[0])
+                .mockResolvedValueOnce(mixedContexts[1])
+                .mockResolvedValueOnce(mixedContexts[2]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Mixed content summary', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-id',
+                content: 'Mixed content summary',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-mixed',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {
+                    contextItemIds: ['ctx-1', 'ctx-2', 'ctx-3'],
+                },
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    text: 'Transcript 1\n\nCase note\n\nTranscript 2',
+                }),
+                expect.any(Object),
+            );
+        });
+    });
+
+    // ===========================================================================
+    // GAP-1: SummaryGenerated Pipeline Event Emission
+    // ===========================================================================
+
+    describe('SummaryGenerated pipeline event (GAP-1)', () => {
+        const setupSuccessfulJob = () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Transcript content' }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Generated summary', modelName: 'gpt-4', processingTimeMs: 3000 },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'summary-ctx-001',
+                content: 'Generated summary',
+            });
+        };
+
+        it('should emit SummaryGenerated event after successful processing', async () => {
+            setupSuccessfulJob();
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                request: { dnaStyleId: 'style-A', template: 'SOAP' },
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                'consultation.summary.generated',
+                expect.objectContaining({
+                    consultationId: 'consultation-123',
+                    tenantId: 'tenant-1',
+                    userId: 'doctor-1',
+                    contextItemId: 'summary-ctx-001',
+                    jobId: 'job-123',
+                    dnaStyleId: 'style-A',
+                    template: 'SOAP',
+                }),
+            );
+        });
+
+        it('should set isAutoGenerated=true when options.autoGenerated is true', async () => {
+            setupSuccessfulJob();
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                request: {
+                    options: { autoGenerated: true, correlationId: 'corr-abc' },
+                },
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                'consultation.summary.generated',
+                expect.objectContaining({
+                    isAutoGenerated: true,
+                    correlationId: 'corr-abc',
+                }),
+            );
+        });
+
+        it('should set isAutoGenerated=false when options.autoGenerated is absent', async () => {
+            setupSuccessfulJob();
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                request: {},
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                'consultation.summary.generated',
+                expect.objectContaining({
+                    isAutoGenerated: false,
+                }),
+            );
+        });
+
+        it('should include summaryMeta in event payload', async () => {
+            setupSuccessfulJob();
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                request: {},
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                'consultation.summary.generated',
+                expect.objectContaining({
+                    summaryMeta: expect.objectContaining({
+                        aiModelId: 'gpt-4',
+                        processingTimeMs: 3000,
+                    }),
+                }),
+            );
+        });
+
+        it('should NOT emit event when processing fails', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(null);
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                request: {},
+            };
+
+            await expect(processor.process(createMockJob(payload))).rejects.toThrow();
+
+            // eventEmitter.emit should NOT have been called with the pipeline event
+            const pipelineCalls = mockEventEmitter.emit.mock.calls.filter(
+                (c: any[]) => c[0] === 'consultation.summary.generated',
+            );
+            expect(pipelineCalls).toHaveLength(0);
+        });
+
+        it('should include ISO timestamp in event payload', async () => {
+            setupSuccessfulJob();
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                request: {},
+            };
+
+            await processor.process(createMockJob(payload));
+
+            const pipelineCall = mockEventEmitter.emit.mock.calls.find(
+                (c: any[]) => c[0] === 'consultation.summary.generated',
+            );
+            expect(pipelineCall).toBeDefined();
+            const ts = pipelineCall![1].timestamp;
+            expect(ts).toBeDefined();
+            expect(new Date(ts).toISOString()).toBe(ts);
+        });
+    });
+
+    // ===========================================================================
+    // GAP-3: Prompt Resolution Integration
+    // ===========================================================================
+
+    describe('Prompt resolution fallback (GAP-3)', () => {
+        const setupSuccessfulJob = () => {
+            mockConsultationRepository.findById.mockResolvedValue(
+                createMockConsultation({
+                    doctorId: 'dr-smith-001',
+                    departmentId: 'dept-card-001',
+                    parentConsultationId: null,
+                }),
+            );
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Patient transcript content' }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Generated summary', modelName: 'gpt-4', processingTimeMs: 3000 },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'summary-ctx-001',
+                content: 'Generated summary',
+            });
+        };
+
+        it('should call PromptResolutionService when template is missing', async () => {
+            setupSuccessfulJob();
+            mockPromptResolutionService.resolve.mockResolvedValue({
+                template: 'Cardiology-Report',
+                promptId: 'prompt_card_new',
+                contextVariables: {},
+                resolvedFrom: 'department',
+                resolutionTrace: { usedDefaults: [] },
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                request: {}, // template missing
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    departmentId: 'dept-card-001',
+                }),
+            );
+        });
+
+        it('should call PromptResolutionService when template is missing (dnaStyleId provided)', async () => {
+            setupSuccessfulJob();
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                request: { dnaStyleId: 'style-explicit' }, // template missing
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    departmentId: 'dept-card-001',
+                }),
+            );
+        });
+
+        it('should NOT call PromptResolutionService when template is provided', async () => {
+            setupSuccessfulJob();
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                request: { dnaStyleId: 'style-explicit', template: 'SOAP' },
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockPromptResolutionService.resolve).not.toHaveBeenCalled();
+        });
+
+        it('should use resolved template in SMR service call when request has none', async () => {
+            setupSuccessfulJob();
+            mockPromptResolutionService.resolve.mockResolvedValue({
+                template: 'Cardiology-Report',
+                promptId: 'prompt_card_new',
+                contextVariables: {},
+                resolvedFrom: 'department',
+                resolutionTrace: { usedDefaults: [] },
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                request: {}, // both missing
+            };
+
+            await processor.process(createMockJob(payload));
+
+            // Verify SMR was called with resolved template (dnaStyleId not resolved, so undefined)
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                expect.stringContaining('/api/v1/summary/sync'),
+                expect.objectContaining({
+                    template: 'Cardiology-Report',
+                }),
+
+                expect.any(Object),
+            );
+        });
+
+        it('should pass departmentId when consultation has parentConsultationId', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(
+                createMockConsultation({
+                    doctorId: 'dr-jones-001',
+                    departmentId: 'dept-hema-001',
+                    parentConsultationId: 'consultation-parent-001',
+                }),
+            );
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Follow-up transcript' }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Follow-up summary', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'summary-ctx-002',
+                content: 'Follow-up summary',
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-456',
+                consultationId: 'consultation-456',
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                request: {}, // no explicit dnaStyleId/template
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    departmentId: 'dept-hema-001',
+                }),
+            );
+        });
+    });
+});

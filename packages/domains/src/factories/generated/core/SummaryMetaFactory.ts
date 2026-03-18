@@ -1,0 +1,109 @@
+/* eslint-disable unused-imports/no-unused-imports */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { generateId } from '../../../utils';
+import { BaseEntityFactoryCreateProps } from '../../../common';
+import { SummaryMetaEntity, ISummaryMetaEntity } from '../../../entities';
+
+export interface CreateSummaryMetaProps extends BaseEntityFactoryCreateProps {
+    contextItemId: ISummaryMetaEntity['contextItemId'];
+    aiModelId?: ISummaryMetaEntity['aiModelId'];
+    aiModelVersion?: ISummaryMetaEntity['aiModelVersion'];
+    promptVersion?: ISummaryMetaEntity['promptVersion'];
+    processingTimeMs?: ISummaryMetaEntity['processingTimeMs'];
+    inputTokens?: ISummaryMetaEntity['inputTokens'];
+    outputTokens?: ISummaryMetaEntity['outputTokens'];
+    caseNoteIds?: ISummaryMetaEntity['caseNoteIds'];
+    preSummaryIds?: ISummaryMetaEntity['preSummaryIds'];
+    previousSummaryIds?: ISummaryMetaEntity['previousSummaryIds'];
+    generatedAt?: ISummaryMetaEntity['generatedAt'];
+    tenantId?: ISummaryMetaEntity['tenantId'];
+
+    createdAt?: ISummaryMetaEntity['createdAt'];
+}
+
+export class SummaryMetaFactory {
+    /**
+     * Create a summary metadata record
+     */
+    static CreateSummaryMeta(props: CreateSummaryMetaProps): SummaryMetaEntity {
+        const id = generateId();
+        const now = new Date();
+
+        return new SummaryMetaEntity({
+            id,
+
+            createdAt: props.createdAt || now,
+            updatedAt: now,
+            createdBy: null,
+            updatedBy: null,
+
+            contextItemId: props.contextItemId,
+            aiModelId: props.aiModelId ?? null,
+            aiModelVersion: props.aiModelVersion ?? null,
+            promptVersion: props.promptVersion ?? null,
+            processingTimeMs: props.processingTimeMs ?? null,
+            inputTokens: props.inputTokens ?? null,
+            outputTokens: props.outputTokens ?? null,
+            caseNoteIds: props.caseNoteIds ?? [],
+            preSummaryIds: props.preSummaryIds ?? [],
+            previousSummaryIds: props.previousSummaryIds ?? [],
+            generatedAt: props.generatedAt ?? null,
+            tenantId: props.tenantId ?? '',
+        });
+    }
+
+    /**
+     * Create summary metadata with AI model info
+     */
+    static CreateWithAiModel(
+        tenantId: string,
+        contextItemId: string,
+        aiModelId: string,
+        aiModelVersion: string,
+        promptVersion?: string,
+        processingTimeMs?: number,
+        inputTokens?: number,
+        outputTokens?: number
+    ): SummaryMetaEntity {
+        return this.CreateSummaryMeta({
+            tenantId,
+            contextItemId,
+            aiModelId,
+            aiModelVersion,
+            promptVersion,
+            processingTimeMs,
+            inputTokens,
+            outputTokens,
+            generatedAt: new Date(),
+        });
+    }
+
+    /**
+     * Create summary metadata with context references
+     */
+    static CreateWithContext(
+        tenantId: string,
+        contextItemId: string,
+        aiModelId: string,
+        aiModelVersion: string,
+        context: {
+            caseNoteIds?: string[];
+            preSummaryIds?: string[];
+            previousSummaryIds?: string[];
+        },
+        processingTimeMs?: number
+    ): SummaryMetaEntity {
+        return this.CreateSummaryMeta({
+            tenantId,
+            contextItemId,
+            aiModelId,
+            aiModelVersion,
+            caseNoteIds: context.caseNoteIds,
+            preSummaryIds: context.preSummaryIds,
+            previousSummaryIds: context.previousSummaryIds,
+            processingTimeMs,
+            generatedAt: new Date(),
+        });
+    }
+}

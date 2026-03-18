@@ -1,0 +1,1342 @@
+"""Unit tests for the streaming architecture Phase 1 components.
+
+Covers:
+- schemas.py: AudioFrame, SegmentResult, SessionControl, SessionMetadata
+- execution_profile.py: ExecutionProfile, detect_execution_profile()
+- capacity_guard.py: CapacityGuard
+- session.py: StreamSession
+- redis_streams.py: IngestionConsumer, ResultPublisher, ControlListener
+- session_manager.py: SessionManager
+- _runtime.py: singleton accessors
+"""
+
+import asyncio
+import json
+import time
+from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import numpy as np
+import pytest
+
+# ---------------------------------------------------------------------------
+# Schema Tests
+# ---------------------------------------------------------------------------
+
+
+class TestAudioFrame:
+    """Tests for AudioFrame serialization/deserialization."""
+
+    def test_to_redis_dict(self):
+        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame
+
+        frame = AudioFrame(
+            seq=42,
+            sr=16000,
+            enc=AudioEncoding.PCM_S16LE,
+            ch=1,
+            data=b"\x00\x01\x02\x03",
+            final=False,
+            ts=1738800000.123,
+        )
+        d = frame.to_redis_dict()
+        assert d["seq"] == "42"
+        assert d["sr"] == "16000"
+        assert d["enc"] == "pcm_s16le"
+        assert d["ch"] == "1"
+        assert d["data"] == b"\x00\x01\x02\x03"
+        assert d["final"] == "0"
+        assert d["ts"] == "1738800000.123"
+
+    def test_from_redis_dict_str_keys(self):
+        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame
+
+        d = {
+            "seq": "42",
+            "sr": "16000",
+            "enc": "pcm_s16le",
+            "ch": "1",
+            "data": b"\x00\x01\x02\x03",
+            "final": "1",
+            "ts": "1738800000.123",
+        }
+        frame = AudioFrame.from_redis_dict(d)
+        assert frame.seq == 42
+        assert frame.sr == 16000
+        assert frame.enc == AudioEncoding.PCM_S16LE
+        assert frame.ch == 1
+        assert frame.data == b"\x00\x01\x02\x03"
+        assert frame.final is True
+        assert frame.ts == pytest.approx(1738800000.123)
+
+    def test_from_redis_dict_bytes_keys(self):
+        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame
+
+        d = {
+            b"seq": b"10",
+            b"sr": b"48000",
+            b"enc": b"pcm_f32le",
+            b"ch": b"1",
+            b"data": b"\xff\xfe",
+            b"final": b"0",
+            b"ts": b"1000.5",
+        }
+        frame = AudioFrame.from_redis_dict(d)
+        assert frame.seq == 10
+        assert frame.sr == 48000
+        assert frame.enc == AudioEncoding.PCM_F32LE
+        assert frame.ch == 1
+        assert frame.final is False
+
+    def test_roundtrip(self):
+        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame
+
+        original = AudioFrame(
+            seq=99, sr=16000, enc=AudioEncoding.PCM_S16LE,
+            ch=1, data=b"\xab\xcd" * 480, final=True, ts=time.time(),
+        )
+        d = original.to_redis_dict()
+        restored = AudioFrame.from_redis_dict(d)
+        assert restored.seq == original.seq
+        assert restored.sr == original.sr
+        assert restored.enc == original.enc
+        assert restored.data == original.data
+        assert restored.final == original.final
+
+    def test_from_redis_dict_missing_field_raises(self):
+        from stt_v2.streaming.schemas import AudioFrame
+
+        with pytest.raises(KeyError, match="seq"):
+            AudioFrame.from_redis_dict({"sr": "16000"})
+
+
+class TestSegmentResult:
+    """Tests for SegmentResult serialization/deserialization."""
+
+    def test_to_redis_dict(self):
+        from stt_v2.streaming.schemas import SegmentResult
+
+        result = SegmentResult(
+            text="Hello world",
+            speaker_id="spk_123",
+            speaker_confidence=0.95,
+            start_time=1.5,
+            end_time=3.2,
+            is_final=True,
+        )
+        d = result.to_redis_dict()
+        assert d["type"] == "segment"
+        assert d["text"] == "Hello world"
+        assert d["speaker_id"] == "spk_123"
+        assert d["is_final"] == "1"
+
+    def test_from_redis_dict(self):
+        from stt_v2.streaming.schemas import SegmentResult
+
+        d = {
+            "type": "segment",
+            "text": "Test text",
+            "speaker_id": "spk_abc",
+            "speaker_confidence": "0.85",
+            "start_time": "2.0",
+            "end_time": "4.5",
+            "is_final": "0",
+        }
+        result = SegmentResult.from_redis_dict(d)
+        assert result.text == "Test text"
+        assert result.speaker_id == "spk_abc"
+        assert result.speaker_confidence == pytest.approx(0.85)
+        assert result.is_final is False
+
+    def test_roundtrip(self):
+        from stt_v2.streaming.schemas import SegmentResult
+
+        original = SegmentResult(
+            text="Patient reports headache",
+            speaker_id="spk_dr_smith",
+            speaker_confidence=0.92,
+            start_time=12.5,
+            end_time=17.3,
+            is_final=True,
+        )
+        d = original.to_redis_dict()
+        restored = SegmentResult.from_redis_dict(d)
+        assert restored.text == original.text
+        assert restored.speaker_id == original.speaker_id
+        assert restored.is_final == original.is_final
+
+    def test_no_speaker(self):
+        from stt_v2.streaming.schemas import SegmentResult
+
+        result = SegmentResult(text="No speaker info")
+        d = result.to_redis_dict()
+        assert d["speaker_id"] == ""
+        restored = SegmentResult.from_redis_dict(d)
+        assert restored.speaker_id is None
+
+    def test_word_timestamps_and_language_roundtrip(self):
+        from stt_v2.streaming.schemas import SegmentResult
+
+        original = SegmentResult(
+            text="hello mọi người",
+            start_time=0.352,
+            end_time=0.544,
+            word_timestamps=[
+                {
+                    "word": "hello",
+                    "start_time": 0.352,
+                    "end_time": 0.416,
+                    "confidence": 0.98,
+                    "language": "en",
+                },
+                {
+                    "word": "mọi",
+                    "start_time": 0.416,
+                    "end_time": 0.48,
+                    "confidence": 0.98,
+                    "language": "vi",
+                },
+            ],
+        )
+
+        d = original.to_redis_dict()
+        assert "language" not in d
+        assert "word_timestamps_json" in d
+
+        restored = SegmentResult.from_redis_dict(d)
+        assert len(restored.word_timestamps) == 2
+        assert restored.word_timestamps[0]["word"] == "hello"
+        assert restored.word_timestamps[0]["language"] == "en"
+
+    def test_invalid_word_timestamps_json_is_ignored(self):
+        from stt_v2.streaming.schemas import SegmentResult
+
+        restored = SegmentResult.from_redis_dict({
+            "text": "hello",
+            "word_timestamps_json": "{not-json",
+        })
+        assert restored.word_timestamps == []
+
+
+class TestSessionControl:
+    """Tests for SessionControl serialization/deserialization."""
+
+    def test_all_actions(self):
+        from stt_v2.streaming.schemas import ControlAction, SessionControl
+
+        for action in ControlAction:
+            ctrl = SessionControl(action=action)
+            d = ctrl.to_redis_dict()
+            assert d["action"] == action.value
+            restored = SessionControl.from_redis_dict(d)
+            assert restored.action == action
+
+    def test_from_redis_dict_bytes(self):
+        from stt_v2.streaming.schemas import ControlAction, SessionControl
+
+        d = {b"action": b"finalize"}
+        ctrl = SessionControl.from_redis_dict(d)
+        assert ctrl.action == ControlAction.FINALIZE
+
+    def test_missing_action_raises(self):
+        from stt_v2.streaming.schemas import SessionControl
+
+        with pytest.raises(KeyError, match="action"):
+            SessionControl.from_redis_dict({})
+
+
+class TestStreamingInferenceWorker:
+    """Realtime streaming inference behavior tests."""
+
+    @pytest.mark.asyncio
+    async def test_process_utterance_publishes_inference_and_word_timestamps(self):
+        from stt_v2.streaming.inference import StreamingInferenceWorker
+        from stt_v2.streaming.preprocessor import AudioUtterance
+
+        async def fake_pipeline(samples, sample_rate):
+            await asyncio.sleep(0.01)
+            return {
+                "text": "hello world",
+                "word_timestamps": [
+                    {"word": "hello", "start": 0.0, "end": 0.3, "confidence": 0.98},
+                    {"word": "world", "start": 0.31, "end": 0.62, "confidence": 0.97},
+                ],
+            }
+
+        publisher = MagicMock()
+        publisher.publish = AsyncMock(return_value="1-0")
+
+        worker = StreamingInferenceWorker(
+            result_publisher=publisher,
+            asr_pipeline=fake_pipeline,
+        )
+
+        utterance = AudioUtterance(
+            samples=np.zeros(16000, dtype=np.float32),
+            sample_rate=16000,
+            start_time=1.0,
+            end_time=2.0,
+            utterance_index=0,
+            is_final=True,
+        )
+
+        result = await worker.process_utterance("sess-1", utterance)
+
+        assert result.text == "hello world"
+        assert result.inference_ms > 0
+        assert len(result.word_timestamps) == 2
+
+        publisher.publish.assert_awaited_once()
+        published_result = publisher.publish.await_args.args[0]
+        payload = published_result.to_redis_dict()
+
+        assert "inference_ms" in payload
+        assert float(payload["inference_ms"]) > 0
+        assert "word_timestamps_json" in payload
+
+        parsed_word_ts = json.loads(payload["word_timestamps_json"])
+        assert len(parsed_word_ts) == 2
+        assert parsed_word_ts[0]["word"] == "hello"
+
+    @pytest.mark.asyncio
+    async def test_process_utterance_with_string_pipeline_still_sets_inference(self):
+        from stt_v2.streaming.inference import StreamingInferenceWorker
+        from stt_v2.streaming.preprocessor import AudioUtterance
+
+        def fake_pipeline(samples, sample_rate):
+            return "plain transcript"
+
+        worker = StreamingInferenceWorker(asr_pipeline=fake_pipeline)
+        utterance = AudioUtterance(
+            samples=np.zeros(8000, dtype=np.float32),
+            sample_rate=16000,
+            start_time=0.0,
+            end_time=0.5,
+            utterance_index=1,
+            is_final=True,
+        )
+
+        result = await worker.process_utterance("sess-2", utterance)
+
+        assert result.text == "plain transcript"
+        assert result.inference_ms >= 0
+        assert result.word_timestamps == []
+        payload = result.to_redis_dict()
+        assert "inference_ms" in payload
+        assert "word_timestamps_json" not in payload
+
+    @pytest.mark.asyncio
+    async def test_phrase_level_timestamp_is_split_to_per_word_for_streaming(self):
+        from stt_v2.streaming.inference import StreamingInferenceWorker
+        from stt_v2.streaming.preprocessor import AudioUtterance
+
+        async def fake_pipeline(samples, sample_rate):
+            return {
+                "text": "How are you?",
+                "word_timestamps": [
+                    {
+                        "word": " How are you?",
+                        "start": 0,
+                        "end": 1.6,
+                        "confidence": 1,
+                    }
+                ],
+            }
+
+        worker = StreamingInferenceWorker(asr_pipeline=fake_pipeline)
+        utterance = AudioUtterance(
+            samples=np.zeros(16000, dtype=np.float32),
+            sample_rate=16000,
+            start_time=0.0,
+            end_time=1.6,
+            utterance_index=2,
+            is_final=True,
+        )
+
+        result = await worker.process_utterance("sess-3", utterance)
+
+        assert [wt["word"] for wt in result.word_timestamps] == ["How", "are", "you?"]
+        assert result.word_timestamps[0]["start"] == pytest.approx(0.0, abs=1e-4)
+        assert result.word_timestamps[-1]["end"] == pytest.approx(1.6, abs=1e-4)
+
+
+class TestSessionMetadata:
+    """Tests for SessionMetadata serialization/deserialization."""
+
+    def test_to_redis_dict(self):
+        from stt_v2.streaming.schemas import SessionMetadata, SessionStatus
+
+        meta = SessionMetadata(
+            session_id="sess_123",
+            tenant_id="tenant_1",
+            pipeline_id="pipe_abc",
+            consultation_id="consult_456",
+            status=SessionStatus.ACTIVE,
+            sample_rate=16000,
+        )
+        d = meta.to_redis_dict()
+        assert d["session_id"] == "sess_123"
+        assert d["tenant_id"] == "tenant_1"
+        assert d["status"] == "active"
+        assert "created_at" in d
+        assert "last_activity" in d
+
+    def test_roundtrip(self):
+        from stt_v2.streaming.schemas import SessionMetadata, SessionStatus
+
+        original = SessionMetadata(
+            session_id="sess_round",
+            tenant_id="t1",
+            pipeline_id="p1",
+            consultation_id="c1",
+            total_samples_received=480000,
+            total_duration_seconds=30.0,
+            utterance_count=7,
+            last_seq=1000,
+            sample_rate=16000,
+            worker_id="worker-abc",
+        )
+        d = original.to_redis_dict()
+        restored = SessionMetadata.from_redis_dict(d)
+        assert restored.session_id == original.session_id
+        assert restored.total_samples_received == original.total_samples_received
+        assert restored.last_seq == original.last_seq
+        assert restored.worker_id == original.worker_id
+
+    def test_auto_timestamps(self):
+        from stt_v2.streaming.schemas import SessionMetadata
+
+        meta = SessionMetadata(
+            session_id="s1", tenant_id="t1", pipeline_id="p1"
+        )
+        assert meta.created_at != ""
+        assert meta.last_activity != ""
+
+    def test_optional_fields_absent(self):
+        from stt_v2.streaming.schemas import SessionMetadata
+
+        meta = SessionMetadata(
+            session_id="s1", tenant_id="t1", pipeline_id="p1"
+        )
+        d = meta.to_redis_dict()
+        # Optional fields should NOT be in the dict when None
+        assert "closed_at" not in d
+        assert "raw_audio_uri" not in d
+        assert "transcript_uri" not in d
+
+    def test_language_and_code_switching_to_redis_dict(self):
+        from stt_v2.streaming.schemas import SessionMetadata
+
+        meta = SessionMetadata(
+            session_id="s1", tenant_id="t1", pipeline_id="p1",
+            language="ml", code_switching=True,
+        )
+        d = meta.to_redis_dict()
+        assert d["language"] == "ml"
+        assert d["code_switching"] == "1"
+
+    def test_language_none_to_redis_dict(self):
+        from stt_v2.streaming.schemas import SessionMetadata
+
+        meta = SessionMetadata(
+            session_id="s1", tenant_id="t1", pipeline_id="p1",
+            language=None, code_switching=False,
+        )
+        d = meta.to_redis_dict()
+        assert d["language"] == ""
+        assert d["code_switching"] == "0"
+
+    def test_language_and_code_switching_roundtrip(self):
+        from stt_v2.streaming.schemas import SessionMetadata
+
+        original = SessionMetadata(
+            session_id="s1", tenant_id="t1", pipeline_id="p1",
+            language="en-US", code_switching=True,
+        )
+        d = original.to_redis_dict()
+        restored = SessionMetadata.from_redis_dict(d)
+        assert restored.language == "en-US"
+        assert restored.code_switching is True
+
+    def test_code_switching_false_roundtrip(self):
+        from stt_v2.streaming.schemas import SessionMetadata
+
+        original = SessionMetadata(
+            session_id="s1", tenant_id="t1", pipeline_id="p1",
+            language=None, code_switching=False,
+        )
+        d = original.to_redis_dict()
+        restored = SessionMetadata.from_redis_dict(d)
+        assert restored.language is None
+        assert restored.code_switching is False
+
+    def test_language_empty_string_from_redis_becomes_none(self):
+        from stt_v2.streaming.schemas import SessionMetadata
+
+        d = {
+            "session_id": "s1",
+            "tenant_id": "t1",
+            "pipeline_id": "p1",
+            "status": "active",
+            "created_at": "2024-01-01T00:00:00",
+            "last_activity": "2024-01-01T00:00:00",
+            "language": "",
+            "code_switching": "0",
+        }
+        restored = SessionMetadata.from_redis_dict(d)
+        assert restored.language is None
+        assert restored.code_switching is False
+
+    def test_code_switching_from_redis_bytes_keys(self):
+        from stt_v2.streaming.schemas import SessionMetadata
+
+        d = {
+            b"session_id": b"s1",
+            b"tenant_id": b"t1",
+            b"pipeline_id": b"p1",
+            b"status": b"active",
+            b"created_at": b"2024-01-01T00:00:00",
+            b"last_activity": b"2024-01-01T00:00:00",
+            b"language": b"ml",
+            b"code_switching": b"1",
+        }
+        restored = SessionMetadata.from_redis_dict(d)
+        assert restored.language == "ml"
+        assert restored.code_switching is True
+
+    def test_code_switching_defaults(self):
+        from stt_v2.streaming.schemas import SessionMetadata
+
+        meta = SessionMetadata(
+            session_id="s1", tenant_id="t1", pipeline_id="p1",
+        )
+        assert meta.language is None
+        assert meta.code_switching is False
+
+
+# ---------------------------------------------------------------------------
+# Execution Profile Tests
+# ---------------------------------------------------------------------------
+
+
+class TestExecutionProfile:
+    """Tests for ExecutionProfile and detect_execution_profile()."""
+
+    def test_cpu_profile_creation(self):
+        from stt_v2.streaming.execution_profile import _build_cpu_profile
+
+        profile = _build_cpu_profile()
+        assert profile.platform.value == "cpu"
+        assert profile.gpu_count == 0
+        assert profile.total_vram_gb == 0.0
+        assert profile.asr_device == "cpu"
+        assert profile.asr_compute_type == "float32"
+        assert profile.multi_gpu_strategy == "none"
+        assert profile.max_concurrent_streams >= 1
+
+    def test_apple_silicon_profile_48gb(self):
+        from stt_v2.streaming.execution_profile import _build_apple_silicon_profile
+
+        profile = _build_apple_silicon_profile(48.0)
+        assert profile.platform.value == "mps"
+        assert profile.asr_device == "mps"
+        assert profile.max_concurrent_streams == 15
+        assert profile.asr_max_batch_size == 4
+
+    def test_apple_silicon_profile_16gb(self):
+        from stt_v2.streaming.execution_profile import _build_apple_silicon_profile
+
+        profile = _build_apple_silicon_profile(16.0)
+        assert profile.max_concurrent_streams == 5
+        assert profile.asr_max_batch_size == 2
+
+    def test_a100_profile(self):
+        from stt_v2.streaming.execution_profile import _build_a100_h100_profile
+
+        profile = _build_a100_h100_profile(1, 80.0, "NVIDIA A100-SXM4-80GB")
+        assert profile.max_concurrent_streams == 100
+        assert profile.asr_max_batch_size == 32
+        assert profile.asr_compute_type == "float16"
+
+    def test_multi_gpu_profile(self):
+        from stt_v2.streaming.execution_profile import _build_multi_gpu_profile
+
+        profile = _build_multi_gpu_profile(2, 32.0, "NVIDIA RTX A2000")
+        assert profile.max_concurrent_streams == 40
+        assert profile.embedding_device == "cuda:1"
+        assert profile.multi_gpu_strategy == "split"
+
+    def test_rtx_a2000_profile(self):
+        from stt_v2.streaming.execution_profile import _build_rtx_a2000_profile
+
+        profile = _build_rtx_a2000_profile("NVIDIA RTX A2000", 16.0)
+        assert profile.max_concurrent_streams == 20
+        assert profile.embedding_device == "cpu"
+        assert profile.asr_model_quantization == "q4"
+
+    def test_settings_override_max_concurrent(self):
+        from stt_v2.streaming.execution_profile import (
+            ExecutionProfile,
+            _apply_settings_overrides,
+            _build_cpu_profile,
+        )
+
+        profile = _build_cpu_profile()
+        settings = MagicMock()
+        settings.streaming_max_concurrent = 42
+        settings.streaming_max_batch_size = 0
+        settings.streaming_batch_wait_ms = 0
+        settings.streaming_embedding_device = "auto"
+        settings.streaming_multi_gpu_strategy = "auto"
+
+        overridden = _apply_settings_overrides(profile, settings)
+        assert overridden.max_concurrent_streams == 42
+        # Other fields should be unchanged
+        assert overridden.asr_device == profile.asr_device
+
+    def test_settings_override_all_fields(self):
+        from stt_v2.streaming.execution_profile import (
+            _apply_settings_overrides,
+            _build_cpu_profile,
+        )
+
+        profile = _build_cpu_profile()
+        settings = MagicMock()
+        settings.streaming_max_concurrent = 10
+        settings.streaming_max_batch_size = 16
+        settings.streaming_batch_wait_ms = 500
+        settings.streaming_embedding_device = "cuda:1"
+        settings.streaming_multi_gpu_strategy = "split"
+
+        overridden = _apply_settings_overrides(profile, settings)
+        assert overridden.max_concurrent_streams == 10
+        assert overridden.asr_max_batch_size == 16
+        assert overridden.batch_scheduler_max_wait_ms == 500
+        assert overridden.embedding_device == "cuda:1"
+        assert overridden.multi_gpu_strategy == "split"
+
+    def test_settings_override_no_changes(self):
+        from stt_v2.streaming.execution_profile import (
+            _apply_settings_overrides,
+            _build_cpu_profile,
+        )
+
+        profile = _build_cpu_profile()
+        settings = MagicMock()
+        settings.streaming_max_concurrent = 0
+        settings.streaming_max_batch_size = 0
+        settings.streaming_batch_wait_ms = 0
+        settings.streaming_embedding_device = "auto"
+        settings.streaming_multi_gpu_strategy = "auto"
+
+        overridden = _apply_settings_overrides(profile, settings)
+        assert overridden is profile  # no changes, same object returned
+
+    @patch("stt_v2.streaming.execution_profile.detect_platform")
+    @patch("stt_v2.streaming.execution_profile.get_settings")
+    def test_detect_execution_profile_cpu(self, mock_settings, mock_detect):
+        from stt_v2.core.platform import PlatformType
+        from stt_v2.streaming.execution_profile import detect_execution_profile
+
+        mock_detect.return_value = PlatformType.CPU
+        settings = MagicMock()
+        settings.streaming_max_concurrent = 0
+        settings.streaming_max_batch_size = 0
+        settings.streaming_batch_wait_ms = 0
+        settings.streaming_embedding_device = "auto"
+        settings.streaming_multi_gpu_strategy = "auto"
+        mock_settings.return_value = settings
+
+        profile = detect_execution_profile()
+        assert profile.platform == PlatformType.CPU
+        assert profile.asr_device == "cpu"
+
+    @patch("stt_v2.streaming.execution_profile.detect_platform")
+    @patch("stt_v2.streaming.execution_profile._get_mps_unified_memory_gb")
+    @patch("stt_v2.streaming.execution_profile.get_settings")
+    def test_detect_execution_profile_mps(
+        self, mock_settings, mock_mem, mock_detect
+    ):
+        from stt_v2.core.platform import PlatformType
+        from stt_v2.streaming.execution_profile import detect_execution_profile
+
+        mock_detect.return_value = PlatformType.MPS
+        mock_mem.return_value = 48.0
+        settings = MagicMock()
+        settings.streaming_max_concurrent = 0
+        settings.streaming_max_batch_size = 0
+        settings.streaming_batch_wait_ms = 0
+        settings.streaming_embedding_device = "auto"
+        settings.streaming_multi_gpu_strategy = "auto"
+        mock_settings.return_value = settings
+
+        profile = detect_execution_profile()
+        assert profile.platform == PlatformType.MPS
+        assert profile.asr_device == "mps"
+        assert profile.max_concurrent_streams == 15
+
+
+# ---------------------------------------------------------------------------
+# Capacity Guard Tests
+# ---------------------------------------------------------------------------
+
+
+class TestCapacityGuard:
+    """Tests for CapacityGuard."""
+
+    async def test_acquire_and_release(self):
+        from stt_v2.streaming.capacity_guard import CapacityGuard
+
+        guard = CapacityGuard(max_streams=3)
+        assert guard.active_count == 0
+        assert guard.available_slots == 3
+
+        assert await guard.try_acquire("s1")
+        assert guard.active_count == 1
+        assert guard.available_slots == 2
+
+        assert await guard.try_acquire("s2")
+        assert await guard.try_acquire("s3")
+        assert guard.active_count == 3
+        assert guard.available_slots == 0
+
+        # At capacity — should reject
+        assert not await guard.try_acquire("s4")
+        assert guard.active_count == 3
+
+        # Release and re-acquire
+        await guard.release("s1")
+        assert guard.active_count == 2
+        assert await guard.try_acquire("s4")
+        assert guard.active_count == 3
+
+    async def test_idempotent_acquire(self):
+        from stt_v2.streaming.capacity_guard import CapacityGuard
+
+        guard = CapacityGuard(max_streams=2)
+        assert await guard.try_acquire("s1")
+        assert await guard.try_acquire("s1")  # idempotent
+        assert guard.active_count == 1
+
+    async def test_idempotent_release(self):
+        from stt_v2.streaming.capacity_guard import CapacityGuard
+
+        guard = CapacityGuard(max_streams=2)
+        assert await guard.try_acquire("s1")
+        await guard.release("s1")
+        await guard.release("s1")  # no-op
+        assert guard.active_count == 0
+
+    async def test_release_unknown_session(self):
+        from stt_v2.streaming.capacity_guard import CapacityGuard
+
+        guard = CapacityGuard(max_streams=2)
+        await guard.release("nonexistent")  # should not raise
+        assert guard.active_count == 0
+
+    async def test_active_session_ids(self):
+        from stt_v2.streaming.capacity_guard import CapacityGuard
+
+        guard = CapacityGuard(max_streams=5)
+        await guard.try_acquire("s1")
+        await guard.try_acquire("s2")
+        ids = guard.active_session_ids
+        assert isinstance(ids, frozenset)
+        assert ids == frozenset({"s1", "s2"})
+
+    async def test_to_dict(self):
+        from stt_v2.streaming.capacity_guard import CapacityGuard
+
+        guard = CapacityGuard(max_streams=10)
+        await guard.try_acquire("s1")
+        d = guard.to_dict()
+        assert d["active_sessions"] == 1
+        assert d["max_concurrent_streams"] == 10
+        assert d["available_slots"] == 9
+
+    def test_invalid_max_streams(self):
+        from stt_v2.streaming.capacity_guard import CapacityGuard
+
+        with pytest.raises(ValueError, match="max_streams must be >= 1"):
+            CapacityGuard(max_streams=0)
+
+    async def test_concurrent_access(self):
+        """Test that concurrent acquire/release is safe."""
+        from stt_v2.streaming.capacity_guard import CapacityGuard
+
+        guard = CapacityGuard(max_streams=50)
+
+        async def acquire_release(i: int) -> bool:
+            sid = f"s{i}"
+            acquired = await guard.try_acquire(sid)
+            if acquired:
+                await asyncio.sleep(0.001)  # simulate some work
+                await guard.release(sid)
+            return acquired
+
+        results = await asyncio.gather(*[acquire_release(i) for i in range(100)])
+        # All should have been able to acquire (capacity = 50, but tasks finish fast)
+        assert guard.active_count == 0  # all released
+
+
+# ---------------------------------------------------------------------------
+# StreamSession Tests
+# ---------------------------------------------------------------------------
+
+
+class TestStreamSession:
+    """Tests for StreamSession."""
+
+    def _make_session(self, session_id: str = "sess_test") -> "StreamSession":
+        from stt_v2.streaming.schemas import SessionMetadata, SessionStatus
+        from stt_v2.streaming.session import StreamSession
+
+        meta = SessionMetadata(
+            session_id=session_id,
+            tenant_id="t1",
+            pipeline_id="p1",
+            status=SessionStatus.ACTIVE,
+        )
+        redis_mock = AsyncMock()
+        return StreamSession(metadata=meta, redis=redis_mock, persist_interval_s=5.0)
+
+    def test_properties(self):
+        session = self._make_session()
+        assert session.session_id == "sess_test"
+        assert session.tenant_id == "t1"
+        assert session.pipeline_id == "p1"
+        assert session.status.value == "active"
+        assert session.total_samples_received == 0
+        assert session.total_duration_seconds == 0.0
+
+    def test_record_frame(self):
+        session = self._make_session()
+        data = b"\x00\x00" * 480  # 480 samples at 16-bit = 960 bytes
+        session.record_frame(seq=1, data=data, sample_rate=16000)
+        assert session.total_samples_received == 480
+        assert session.total_duration_seconds == pytest.approx(0.03, abs=0.001)
+        assert session.last_seq == 1
+        assert len(session.ring_buffer) == 960
+
+    def test_ring_buffer_overflow(self):
+        session = self._make_session()
+        # Fill ring buffer beyond 30s limit (16000 * 2 * 30 = 960,000 bytes)
+        chunk = b"\x00\x00" * 16000  # 1 second of audio = 32,000 bytes
+        for i in range(35):  # 35 seconds
+            session.record_frame(seq=i, data=chunk, sample_rate=16000)
+        # Ring buffer should be capped at ~30 seconds per TASK-014 design
+        max_bytes = 16000 * 2 * 30
+        assert len(session.ring_buffer) <= max_bytes
+
+    def test_ring_buffer_overflow_logging_is_throttled(self):
+        session = self._make_session()
+        chunk = b"\x00\x00" * 16000  # 1 second of audio = 32,000 bytes
+
+        with patch("stt_v2.streaming.session.logger") as logger_mock:
+            # First overflow burst within the same throttle window => one log.
+            with patch("stt_v2.streaming.session.time.monotonic", return_value=100.0):
+                for i in range(40):  # Trigger many overflows
+                    session.record_frame(seq=i, data=chunk, sample_rate=16000)
+
+            # Advance time past throttle interval => one additional summary log.
+            with patch("stt_v2.streaming.session.time.monotonic", return_value=131.0):
+                for i in range(40, 45):
+                    session.record_frame(seq=i, data=chunk, sample_rate=16000)
+
+        # Overflow trimming is expected for long sessions and should not spam warnings.
+        logger_mock.warning.assert_not_called()
+        assert logger_mock.info.call_count == 2
+
+    def test_add_result(self):
+        from stt_v2.streaming.schemas import SegmentResult
+
+        session = self._make_session()
+        result = SegmentResult(text="Hello", start_time=0.0, end_time=1.0)
+        session.add_result(result)
+        assert len(session.results) == 1
+        assert session.results[0].text == "Hello"
+
+    async def test_persist_if_needed_respects_interval(self):
+        session = self._make_session()
+        session._persist_interval_s = 1000  # very long interval
+        # First call: _last_persisted_at=0 means interval has "elapsed" — persists
+        result = await session.persist_if_needed()
+        assert result is True
+        # Second call: interval not yet elapsed — should skip
+        result = await session.persist_if_needed()
+        assert result is False
+
+    async def test_force_persist(self):
+        session = self._make_session()
+        await session.force_persist()
+        session._redis.hset.assert_called_once()
+        call_args = session._redis.hset.call_args
+        assert call_args.args[0] == "stt:session:sess_test"
+
+    async def test_finalize(self):
+        from stt_v2.streaming.schemas import SessionStatus
+
+        session = self._make_session()
+        await session.finalize()
+        assert session.status == SessionStatus.FINALIZING
+        session._redis.hset.assert_called()
+
+    async def test_close_sets_ttl(self):
+        from stt_v2.streaming.schemas import SessionStatus
+
+        session = self._make_session()
+        await session.close(
+            raw_audio_uri="minio://audio/raw.wav",
+            processed_audio_uri="minio://audio/processed.wav",
+            transcript_uri="minio://audio/transcript.json",
+        )
+        assert session.status == SessionStatus.CLOSED
+        assert session._metadata.closed_at is not None
+        assert session._metadata.raw_audio_uri == "minio://audio/raw.wav"
+        # Should have called expire on stream keys
+        assert session._redis.expire.call_count >= 4  # 3 streams + 1 metadata
+
+    def test_to_dict(self):
+        session = self._make_session()
+        d = session.to_dict()
+        assert d["session_id"] == "sess_test"
+        assert d["status"] == "active"
+        assert "ring_buffer_bytes" in d
+        assert "pending_segments" in d
+
+
+# ---------------------------------------------------------------------------
+# Redis Streams Tests
+# ---------------------------------------------------------------------------
+
+
+class TestRedisStreamKeys:
+    """Tests for Redis key helpers."""
+
+    def test_key_functions(self):
+        from stt_v2.streaming.redis_streams import (
+            audio_stream_key,
+            control_stream_key,
+            result_stream_key,
+            session_meta_key,
+            worker_key,
+        )
+
+        assert audio_stream_key("s1") == "stt:audio:s1"
+        assert result_stream_key("s1") == "stt:result:s1"
+        assert control_stream_key("s1") == "stt:control:s1"
+        assert session_meta_key("s1") == "stt:session:s1"
+        assert worker_key("w1") == "stt:worker:w1"
+
+
+class TestIngestionConsumer:
+    """Tests for IngestionConsumer."""
+
+    async def test_start_stop(self):
+        from stt_v2.streaming.redis_streams import IngestionConsumer
+
+        redis_mock = AsyncMock()
+
+        async def slow_xread(*args, **kwargs):
+            await asyncio.sleep(0.05)  # simulate blocking XREAD
+            return []
+
+        redis_mock.xread.side_effect = slow_xread
+
+        on_frame = AsyncMock()
+        consumer = IngestionConsumer(
+            redis=redis_mock, session_id="s1", on_frame=on_frame, block_ms=100
+        )
+
+        assert not consumer.is_running
+        await consumer.start()
+        assert consumer.is_running
+        await asyncio.sleep(0.15)  # let the loop run a couple times
+        await consumer.stop()
+        assert not consumer.is_running
+
+    async def test_processes_frames(self):
+        from stt_v2.streaming.redis_streams import IngestionConsumer
+
+        frame_data = {
+            b"seq": b"1",
+            b"sr": b"16000",
+            b"enc": b"pcm_s16le",
+            b"ch": b"1",
+            b"data": b"\x00\x01",
+            b"final": b"0",
+            b"ts": b"1000.0",
+        }
+
+        redis_mock = AsyncMock()
+        call_count = 0
+
+        async def fake_xread(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return [[b"stt:audio:s1", [(b"1-0", frame_data)]]]
+            await asyncio.sleep(0.05)  # yield control for subsequent calls
+            return []
+
+        redis_mock.xread.side_effect = fake_xread
+
+        frames_received = []
+
+        async def on_frame(frame):
+            frames_received.append(frame)
+
+        consumer = IngestionConsumer(
+            redis=redis_mock, session_id="s1", on_frame=on_frame, block_ms=50
+        )
+        await consumer.start()
+        await asyncio.sleep(0.2)
+        await consumer.stop()
+
+        assert len(frames_received) == 1
+        assert frames_received[0].seq == 1
+
+
+class TestResultPublisher:
+    """Tests for ResultPublisher."""
+
+    async def test_publish(self):
+        from stt_v2.streaming.redis_streams import ResultPublisher
+        from stt_v2.streaming.schemas import SegmentResult
+
+        redis_mock = AsyncMock()
+        redis_mock.xadd.return_value = b"1-0"
+
+        publisher = ResultPublisher(redis=redis_mock, session_id="s1")
+        result = SegmentResult(text="Hello", is_final=True)
+        entry_id = await publisher.publish(result)
+        assert entry_id == "1-0"
+        redis_mock.xadd.assert_called_once()
+
+    async def test_publish_error(self):
+        from stt_v2.streaming.redis_streams import ResultPublisher
+
+        redis_mock = AsyncMock()
+        redis_mock.xadd.return_value = b"2-0"
+
+        publisher = ResultPublisher(redis=redis_mock, session_id="s1")
+        entry_id = await publisher.publish_error("Something went wrong")
+        assert entry_id == "2-0"
+
+    async def test_publish_status(self):
+        from stt_v2.streaming.redis_streams import ResultPublisher
+
+        redis_mock = AsyncMock()
+        redis_mock.xadd.return_value = "3-0"
+
+        publisher = ResultPublisher(redis=redis_mock, session_id="s1")
+        entry_id = await publisher.publish_status("finalizing")
+        assert entry_id == "3-0"
+
+
+class TestControlListener:
+    """Tests for ControlListener."""
+
+    async def test_start_stop(self):
+        from stt_v2.streaming.redis_streams import ControlListener
+
+        redis_mock = AsyncMock()
+
+        async def slow_xread(*args, **kwargs):
+            await asyncio.sleep(0.05)
+            return []
+
+        redis_mock.xread.side_effect = slow_xread
+
+        on_control = AsyncMock()
+        listener = ControlListener(
+            redis=redis_mock, session_id="s1", on_control=on_control, block_ms=50
+        )
+        await listener.start()
+        assert listener.is_running
+        await asyncio.sleep(0.15)
+        await listener.stop()
+        assert not listener.is_running
+
+    async def test_processes_control_commands(self):
+        from stt_v2.streaming.redis_streams import ControlListener
+
+        redis_mock = AsyncMock()
+        call_count = 0
+
+        async def fake_xread(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return [
+                    [b"stt:control:s1", [(b"1-0", {b"action": b"finalize"})]]
+                ]
+            await asyncio.sleep(0.05)  # yield control for subsequent calls
+            return []
+
+        redis_mock.xread.side_effect = fake_xread
+
+        controls_received = []
+
+        async def on_control(ctrl):
+            controls_received.append(ctrl)
+
+        listener = ControlListener(
+            redis=redis_mock, session_id="s1", on_control=on_control, block_ms=50
+        )
+        await listener.start()
+        await asyncio.sleep(0.2)
+        await listener.stop()
+
+        assert len(controls_received) == 1
+        assert controls_received[0].action.value == "finalize"
+
+
+class TestXaddAudioFrame:
+    """Tests for the xadd_audio_frame helper."""
+
+    async def test_xadd_with_maxlen(self):
+        from stt_v2.streaming.redis_streams import xadd_audio_frame
+        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame
+
+        redis_mock = AsyncMock()
+        redis_mock.xadd.return_value = b"1-0"
+
+        frame = AudioFrame(
+            seq=1, sr=16000, enc=AudioEncoding.PCM_S16LE,
+            ch=1, data=b"\x00" * 960, final=False, ts=1000.0,
+        )
+
+        entry_id = await xadd_audio_frame(redis_mock, "s1", frame, maxlen=2000)
+        assert entry_id == "1-0"
+        redis_mock.xadd.assert_called_once()
+        call_kwargs = redis_mock.xadd.call_args.kwargs
+        assert call_kwargs["maxlen"] == 2000
+        assert call_kwargs["approximate"] is True
+
+
+# ---------------------------------------------------------------------------
+# Runtime Singleton Tests
+# ---------------------------------------------------------------------------
+
+
+class TestRuntime:
+    """Tests for _runtime.py singleton accessors."""
+
+    def test_initial_state(self):
+        from stt_v2.streaming._runtime import (
+            clear_runtime,
+            get_execution_profile,
+            get_session_manager,
+        )
+
+        clear_runtime()
+        assert get_session_manager() is None
+        assert get_execution_profile() is None
+
+    def test_set_and_get_session_manager(self):
+        from stt_v2.streaming._runtime import (
+            clear_runtime,
+            get_session_manager,
+            set_session_manager,
+        )
+
+        clear_runtime()
+        mgr = MagicMock()
+        set_session_manager(mgr)
+        assert get_session_manager() is mgr
+        clear_runtime()
+        assert get_session_manager() is None
+
+    def test_set_and_get_execution_profile(self):
+        from stt_v2.streaming._runtime import (
+            clear_runtime,
+            get_execution_profile,
+            set_execution_profile,
+        )
+
+        clear_runtime()
+        profile = MagicMock()
+        set_execution_profile(profile)
+        assert get_execution_profile() is profile
+        clear_runtime()
+
+
+# ---------------------------------------------------------------------------
+# SessionManager Tests
+# ---------------------------------------------------------------------------
+
+
+class TestSessionManager:
+    """Tests for SessionManager."""
+
+    def _make_manager(self) -> "SessionManager":
+        from stt_v2.core.platform import PlatformType
+        from stt_v2.streaming.execution_profile import ExecutionProfile
+        from stt_v2.streaming.session_manager import SessionManager
+
+        profile = ExecutionProfile(
+            platform=PlatformType.CPU,
+            device_name="Test CPU",
+            gpu_count=0,
+            total_vram_gb=0.0,
+            total_ram_gb=16.0,
+            cpu_cores=4,
+            asr_device="cpu",
+            asr_compute_type="float32",
+            asr_max_batch_size=2,
+            asr_model_quantization="q4",
+            embedding_device="cpu",
+            embedding_batch_size=4,
+            preprocess_pool_size=4,
+            denoise_enabled_default=False,
+            max_concurrent_streams=5,
+            batch_scheduler_max_wait_ms=2000,
+            vad_silence_threshold_ms=500,
+            multi_gpu_strategy="none",
+        )
+        redis_mock = AsyncMock()
+        redis_mock.scan.return_value = (0, [])  # no sessions to recover
+        redis_mock.hset.return_value = True
+        redis_mock.expire.return_value = True
+        redis_mock.delete.return_value = 1
+        redis_mock.xadd.return_value = b"1-0"
+        redis_mock.exists.return_value = False
+
+        # Make xread yield control so consumer tasks don't spin-loop
+        async def _slow_xread(*args, **kwargs):
+            await asyncio.sleep(0.05)
+            return []
+
+        redis_mock.xread.side_effect = _slow_xread
+
+        return SessionManager(
+            redis=redis_mock, profile=profile, worker_id="test-worker-1"
+        )
+
+    async def test_create_session(self):
+        mgr = self._make_manager()
+        # Don't call start() to avoid recovery / heartbeat
+        session = await mgr.create_session(
+            session_id="s1",
+            tenant_id="t1",
+            pipeline_id="p1",
+        )
+        assert session is not None
+        assert session.session_id == "s1"
+        assert mgr.active_session_count == 1
+
+        # Clean up consumers that were started
+        await mgr.remove_session("s1")
+
+    async def test_capacity_rejection(self):
+        mgr = self._make_manager()
+        # Create up to capacity (5)
+        sessions = []
+        for i in range(5):
+            s = await mgr.create_session(f"s{i}", "t1", "p1")
+            assert s is not None
+            sessions.append(s)
+
+        # 6th should be rejected
+        s6 = await mgr.create_session("s5", "t1", "p1")
+        assert s6 is None
+        assert mgr.active_session_count == 5
+
+        # Clean up
+        for i in range(5):
+            await mgr.remove_session(f"s{i}")
+
+    async def test_get_session(self):
+        mgr = self._make_manager()
+        await mgr.create_session("s1", "t1", "p1")
+        assert mgr.get_session("s1") is not None
+        assert mgr.get_session("nonexistent") is None
+        await mgr.remove_session("s1")
+
+    async def test_remove_session(self):
+        mgr = self._make_manager()
+        await mgr.create_session("s1", "t1", "p1")
+        assert mgr.active_session_count == 1
+        await mgr.remove_session("s1")
+        assert mgr.active_session_count == 0
+        assert mgr.get_session("s1") is None
+
+    async def test_list_sessions(self):
+        mgr = self._make_manager()
+        await mgr.create_session("s1", "t1", "p1")
+        await mgr.create_session("s2", "t1", "p2")
+        sessions = mgr.list_sessions()
+        assert len(sessions) == 2
+        session_ids = {s["session_id"] for s in sessions}
+        assert session_ids == {"s1", "s2"}
+        await mgr.remove_session("s1")
+        await mgr.remove_session("s2")
+
+    async def test_to_dict(self):
+        mgr = self._make_manager()
+        d = mgr.to_dict()
+        assert d["worker_id"] == "test-worker-1"
+        assert "capacity" in d
+        assert "profile" in d
+        assert d["profile"]["platform"] == "cpu"
+
+    async def test_worker_registration(self):
+        mgr = self._make_manager()
+        await mgr._register_worker()
+        mgr._redis.hset.assert_called()
+        mgr._redis.expire.assert_called()
+
+        await mgr._unregister_worker()
+        mgr._redis.delete.assert_called()
+
+    async def test_reap_expired_sessions(self):
+        mgr = self._make_manager()
+        s = await mgr.create_session("s1", "t1", "p1")
+
+        # Artificially set last_activity to 120s ago
+        old_time = (datetime.utcnow() - timedelta(seconds=120)).isoformat()
+        s._metadata.last_activity = old_time
+
+        count = await mgr._reap_expired_sessions(timeout_s=60)
+        assert count == 1
+        assert mgr.active_session_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Settings Tests (streaming fields)
+# ---------------------------------------------------------------------------
+
+
+class TestStreamingSettings:
+    """Tests for the streaming settings added to Settings."""
+
+    def test_default_values(self, monkeypatch):
+        from stt_v2.core.config.settings import Settings
+
+        # Ensure LOG_LEVEL is uppercase to satisfy Settings validation
+        monkeypatch.setenv("LOG_LEVEL", "INFO")
+        s = Settings()
+        assert s.streaming_max_concurrent == 0
+        assert s.streaming_max_batch_size == 0
+        assert s.streaming_batch_wait_ms == 0
+        assert s.streaming_embedding_device == "auto"
+        assert s.streaming_multi_gpu_strategy == "auto"
+        assert s.streaming_session_persist_interval_s == 5.0
+        assert s.streaming_session_timeout_s == 60
+        assert s.streaming_reaper_interval_s == 300
+        assert s.streaming_worker_heartbeat_s == 10
+        assert s.streaming_worker_heartbeat_ttl_s == 30
+        assert s.streaming_audio_stream_maxlen == 2000
+        assert s.streaming_result_stream_expire_s == 3600
+        assert s.streaming_session_metadata_expire_s == 86400
+
+    def test_override_via_env(self, monkeypatch):
+        from stt_v2.core.config.settings import Settings
+
+        monkeypatch.setenv("LOG_LEVEL", "INFO")
+        monkeypatch.setenv("STREAMING_MAX_CONCURRENT", "42")
+        monkeypatch.setenv("STREAMING_EMBEDDING_DEVICE", "cuda:1")
+        s = Settings()
+        assert s.streaming_max_concurrent == 42
+        assert s.streaming_embedding_device == "cuda:1"

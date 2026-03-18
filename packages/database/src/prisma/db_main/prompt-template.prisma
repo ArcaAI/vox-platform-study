@@ -1,0 +1,94 @@
+// ============================================================================
+// Prompt Template & Versioning
+// Manages reusable prompt templates with version history for AI interactions
+// ============================================================================
+
+enum PromptTemplateCategory {
+    SYSTEM
+    SUMMARY
+    DNA_ANALYSIS
+    CUSTOM
+
+    @@schema("core")
+}
+
+model PromptTemplate {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String @default("50000000-0000-0000-0000-000000000000")
+
+    // Template content
+    name        String
+    description String?
+    content     String  @db.Text
+    category    PromptTemplateCategory
+    variables   Json?   @db.JsonB
+
+    // Version tracking
+    currentVersionNumber Int @default(1)
+
+    // Department assignment (optional)
+    departmentId String?
+    Department   Department? @relation(fields: [departmentId], references: [id])
+
+    // Resource status + Audit
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    // Tags
+    tags String[] @default([])
+
+    // Relations
+    Versions PromptVersion[]
+
+    // Constraints
+    @@unique([tenantId, name])
+
+    // Indexes
+    @@index([tenantId], name: "PromptTemplate_tenantId_idx")
+    @@index([departmentId], name: "PromptTemplate_departmentId_idx")
+    @@index([category], name: "PromptTemplate_category_idx")
+    @@schema("core")
+}
+
+model PromptVersion {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String @default("50000000-0000-0000-0000-000000000000")
+
+    // Parent template
+    promptTemplateId String
+    PromptTemplate   PromptTemplate @relation(fields: [promptTemplateId], references: [id])
+
+    // Version content snapshot
+    versionNumber Int
+    content       String  @db.Text
+    variables     Json?   @db.JsonB
+
+    // Change tracking
+    changeReason String?
+    changedBy    String?
+
+    // Timestamps
+    createdAt DateTime @default(now())
+
+    // Constraints
+    @@unique([promptTemplateId, versionNumber])
+
+    // Indexes
+    @@index([promptTemplateId], name: "PromptVersion_promptTemplateId_idx")
+    @@schema("core")
+}

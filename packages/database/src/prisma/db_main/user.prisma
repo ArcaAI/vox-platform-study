@@ -1,0 +1,213 @@
+// ============================================================================
+// User Role Assignment - Links users to roles
+// ============================================================================
+// Users can have multiple role assignments, each scoped to a tenant.
+// This allows a user to have different roles in different tenants.
+// ============================================================================
+
+model UserRoleAssignment {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // multi tenant fields
+    // null = global assignment (applies to all tenants)
+    // specific ID = tenant-scoped assignment
+    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+
+    // core fields
+    // Optional: Override/extend policies for this specific assignment
+    // Example: { "additionalRules": [...], "excludedPolicies": ["policy-id"] }
+    scopeOverrides Json? @db.JsonB
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // relations
+    userId String
+    User   User   @relation("_User_UserRoleAssignments", fields: [userId], references: [id], onDelete: Cascade)
+    roleId String
+    Role   Role   @relation("_Role_UserRoleAssignments", fields: [roleId], references: [id], onDelete: Cascade)
+
+    // indexing
+    @@unique([userId, roleId, tenantId], name: "UserRoleAssignment_userId_roleId_tenantId_unique")
+    @@index([tenantId], name: "UserRoleAssignment_tenantId_idx")
+    @@index([userId], name: "UserRoleAssignment_userId_idx")
+    @@index([roleId], name: "UserRoleAssignment_roleId_idx")
+    @@schema("core")
+}
+
+// ============================================================================
+// User Model
+// ============================================================================
+
+model User {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // core fields
+    username         String    @unique
+    password         String
+    lastLoginAt      DateTime?
+    lastActiveAt     DateTime?
+    externalId       String?   @unique
+    // as service account
+    isServiceAccount Boolean   @default(false)
+    secret1          String?
+    secret1Expiry    DateTime?
+    secret2          String?
+    secret2Expiry    DateTime?
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // tags
+    tags String[] @default([])
+
+    // relations
+    UserProfile           UserProfile?           @relation("_User_UserProfile")
+    UserSettings          UserSettings[]         @relation("_User_UserSettings")
+    UserRoleAssignments   UserRoleAssignment[]   @relation("_User_UserRoleAssignments")
+    UserNotifications     Notification[]         @relation("_User_UserNotification")
+    ResourceSubscriptions ResourceSubscription[] @relation("_User_Subscription")
+    UserMedias            UserMedia[]            @relation("_User_UserMedia")
+    DoctorConsultations   Consultation[]         @relation("DoctorConsultations")
+    DoctorDnaReports      DnaWritingStyleReport[] @relation("DoctorDnaReports")
+    ApiKeys               ApiKey[]                @relation("_User_ApiKeys")
+
+    // indexing
+    @@index([username], name: "User_username_idx")
+    @@schema("core")
+}
+
+// ============================================================================
+// User Settings Model
+// ============================================================================
+
+model UserSettings {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // core fields
+    name      String
+    key       String
+    value     String
+    dataType  ValueType
+    namespace String?
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // relations
+    userId String
+    User   User   @relation("_User_UserSettings", fields: [userId], references: [id], onDelete: Cascade)
+
+    // indexing
+    @@index([userId], name: "UserSettings_userId_idx")
+    @@schema("core")
+}
+
+// ============================================================================
+// User Profile Model
+// ============================================================================
+
+model UserProfile {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // core fields
+    firstName String?
+    lastName  String?
+    email     String?
+    phone     String?
+    avatarId  String?
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // relations
+    userId String @unique
+    User   User   @relation("_User_UserProfile", fields: [userId], references: [id], onDelete: Cascade)
+
+    // indexing
+    @@index([email], name: "UserProfile_email_idx")
+    @@schema("core")
+}
+
+// ============================================================================
+// User Media Model
+// ============================================================================
+
+model UserMedia {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // core fields
+    sharedAt DateTime?
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // tags
+    tags String[] @default([])
+
+    // relations
+    userId  String
+    User    User   @relation("_User_UserMedia", fields: [userId], references: [id], onDelete: Cascade)
+    mediaId String
+    Media   Media  @relation("_Media_UserMedia", fields: [mediaId], references: [id], onDelete: Cascade)
+
+    // indexing
+    @@unique([userId, mediaId], name: "UserMedia_userId_mediaId_unique")
+    @@index([userId], name: "UserMedia_userId_index")
+    @@schema("core")
+}

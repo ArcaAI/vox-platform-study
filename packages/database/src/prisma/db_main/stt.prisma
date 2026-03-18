@@ -1,0 +1,182 @@
+// =============================================================================
+// STT SERVICE DOMAIN MODELS
+// Speech-to-Text service data models for ASR pipelines, AI models, and jobs
+// =============================================================================
+
+// =============================================================================
+// ASR PIPELINE DEFINITION
+// Stores ASR pipeline configurations managed by administrators
+// Models are referenced by slug in configYaml, no FK relationships to AiModel
+// =============================================================================
+
+model AsrPipeline {
+    // Meta fields (BaseEntity pattern)
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant (system-wide or tenant-specific)
+    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+
+    // Core fields
+    name        String   // e.g., "whisper-large-v3-medical"
+    slug        String   // URL-friendly unique identifier
+    description String?
+
+    // Pipeline configuration (YAML stored as text, validated on write)
+    // Contains model references by slug: models.asr, models.vad, models.denoise
+    configYaml String @db.Text
+
+    // Resource status + Audit
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime           @default(now())
+    updatedAt               DateTime           @updatedAt
+
+    // Tags
+    tags String[] @default([])
+
+    // Relations (only TranscriptionJob references pipeline)
+    TranscriptionJobs TranscriptionJob[]
+
+    // Indexes
+    @@unique([tenantId, slug], name: "AsrPipeline_tenant_slug_unique")
+    @@index([tenantId], name: "AsrPipeline_tenantId_idx")
+    @@index([resourceStatus], name: "AsrPipeline_status_idx")
+    @@schema("core")
+}
+
+// =============================================================================
+// AI MODEL REGISTRY
+// Standalone registry for AI models (ASR, VAD, Noise Reduction, etc.)
+// No direct relationships - referenced by slug in pipeline configYaml
+// =============================================================================
+
+model AiModel {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+
+    // Core identification
+    name        String // e.g., "Whisper Large V3"
+    slug        String // e.g., "whisper-large-v3" (used in pipeline YAML)
+    description String?
+
+    // Model classification (using existing enums)
+    category ModelCategory // AUDIO
+    taskType ModelTaskType // AUTOMATIC_SPEECH_RECOGNITION, VOICE_ACTIVITY_DETECTION
+    modelType ModelType    // BASE_MODEL, FINETUNED_MODEL, QUANTIZED_MODEL
+
+    // Model source and location
+    source         AiModelSource // HUGGINGFACE, GITHUB, MLFLOW, LOCAL
+    sourceUri      String        // e.g., "openai/whisper-large-v3" or MLFlow URI
+    sourceRevision String?       // Git revision, MLFlow version, etc.
+
+    // Model format for loader selection
+    format AiModelFormat // SAFETENSOR, ONNX, NEMO, PYTORCH
+
+    // Resource requirements (for scheduling/allocation)
+    memorySizeMb Int?    // Estimated GPU/CPU memory in MB
+    computeType  String? // float32, float16, int8
+
+    // Download/cache status
+    downloadStatus AiModelDownloadStatus @default(NOT_DOWNLOADED)
+    localPath      String?               // Local cache path after download
+    downloadedAt   DateTime?
+    fileSizeMb     Int?
+    checksum       String?               // SHA256 for verification
+
+    // Resource status + Audit
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime           @default(now())
+    updatedAt               DateTime           @updatedAt
+
+    // Tags
+    tags String[] @default([])
+
+    // NO RELATIONS - models are referenced by slug in pipeline YAML
+
+    // Indexes
+    @@unique([tenantId, slug], name: "AiModel_tenant_slug_unique")
+    @@index([tenantId], name: "AiModel_tenantId_idx")
+    @@index([category], name: "AiModel_category_idx")
+    @@index([taskType], name: "AiModel_taskType_idx")
+    @@index([source], name: "AiModel_source_idx")
+    @@index([format], name: "AiModel_format_idx")
+    @@index([resourceStatus], name: "AiModel_status_idx")
+    @@schema("core")
+}
+
+// =============================================================================
+// TRANSCRIPTION JOB
+// Tracks transcription job status and progress
+// =============================================================================
+
+model TranscriptionJob {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String @default("50000000-0000-0000-0000-000000000000")
+
+    // Job type
+    jobType TranscriptionJobType // BATCH, STREAMING
+
+    // Related entities (external references, no FK to Consultation/ContextItem)
+    consultationId String? // Target consultation
+    contextItemId  String? // Created ContextItem (after completion)
+    mediaId        String? // Source audio file (for batch)
+
+    // Pipeline used (FK relationship)
+    pipelineId String
+    Pipeline   AsrPipeline @relation(fields: [pipelineId], references: [id])
+
+    // Job status
+    status   TranscriptionJobStatus @default(QUEUED)
+    progress Int                    @default(0) // 0-100
+
+    // Timing
+    queuedAt    DateTime  @default(now())
+    startedAt   DateTime?
+    completedAt DateTime?
+
+    // Results (on completion)
+    resultText     String? @db.Text
+    resultMetadata Json?   @db.JsonB // confidence, word timestamps, etc.
+
+    // Error handling
+    errorMessage String?
+    errorCode    String?
+    retryCount   Int     @default(0)
+    maxRetries   Int     @default(3)
+
+    // Worker info
+    workerId String? // Which worker processed this
+
+    // Audit
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Indexes
+    @@index([tenantId], name: "TranscriptionJob_tenantId_idx")
+    @@index([status], name: "TranscriptionJob_status_idx")
+    @@index([pipelineId], name: "TranscriptionJob_pipelineId_idx")
+    @@index([consultationId], name: "TranscriptionJob_consultationId_idx")
+    @@index([createdAt], name: "TranscriptionJob_createdAt_idx")
+    @@index([tenantId, status, createdAt], name: "TranscriptionJob_tenant_status_created_idx")
+    @@schema("core")
+}

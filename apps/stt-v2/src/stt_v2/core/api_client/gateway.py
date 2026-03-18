@@ -1,0 +1,347 @@
+"""HTTP client for write operations through API Gateway."""
+
+from datetime import datetime
+from functools import lru_cache
+from typing import Any
+
+import httpx
+import structlog
+
+from stt_v2.core.config.settings import get_settings
+from stt_v2.core.exceptions import APIGatewayError
+
+logger = structlog.get_logger(__name__)
+settings = get_settings()
+
+
+class APIGatewayClient:
+    """HTTP client for write operations through API Gateway.
+
+    All database writes go through the API Gateway to ensure:
+    - Proper validation
+    - Audit logging
+    - Consistent data handling
+    """
+
+    def __init__(self, base_url: str, api_key: str, timeout: int = 30) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.timeout = timeout
+        self._client: httpx.AsyncClient | None = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create the HTTP client."""
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=self.timeout,
+                headers={
+                    "X-Internal-Service-Key": self.api_key,
+                    "Content-Type": "application/json",
+                },
+            )
+        return self._client
+
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        json: dict | None = None,
+        params: dict | None = None,
+    ) -> dict[str, Any]:
+        """Make an HTTP request to the API Gateway."""
+        client = await self._get_client()
+
+        try:
+            response = await client.request(
+                method=method,
+                url=path,
+                json=json,
+                params=params,
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "API Gateway request failed",
+                method=method,
+                path=path,
+                status_code=e.response.status_code,
+                response_text=e.response.text[:500],
+            )
+            raise APIGatewayError(
+                f"API Gateway request failed: {e.response.status_code}",
+                details={"status_code": e.response.status_code, "path": path},
+            ) from e
+        except httpx.RequestError as e:
+            logger.error(
+                "API Gateway connection error",
+                method=method,
+                path=path,
+                error=str(e),
+            )
+            raise APIGatewayError(f"API Gateway connection error: {e}") from e
+
+    # =========================================================================
+    # Transcription Job Lifecycle
+    # =========================================================================
+
+    async def start_job(
+        self,
+        job_id: str,
+        worker_id: str,
+    ) -> dict[str, Any]:
+        """Mark a transcription job as PROCESSING.
+
+        Calls NestJS ``PATCH /internal/stt/jobs/{id}/start`` which expects
+        an ``InternalStartJobRequest`` body with ``workerId``.
+        """
+        return await self._request(
+            "PATCH",
+            f"/internal/stt/jobs/{job_id}/start",
+            json={"workerId": worker_id},
+        )
+
+    async def update_job_progress(
+        self,
+        job_id: str,
+        progress: int,
+    ) -> dict[str, Any]:
+        """Update job processing progress (0-100).
+
+        Calls NestJS ``PATCH /internal/stt/jobs/{id}/progress`` which expects
+        an ``InternalUpdateProgressRequest`` body with ``progress``.
+        """
+        return await self._request(
+            "PATCH",
+            f"/internal/stt/jobs/{job_id}/progress",
+            json={"progress": progress},
+        )
+
+    async def complete_job(
+        self,
+        job_id: str,
+        result_text: str,
+        result_metadata: dict | None = None,
+    ) -> dict[str, Any]:
+        """Mark a transcription job as COMPLETED with results.
+
+        Calls NestJS ``PATCH /internal/stt/jobs/{id}/complete`` which expects
+        an ``InternalCompleteJobRequest`` body with ``resultText`` and
+        optional ``resultMetadata``.
+        """
+        payload: dict[str, Any] = {"resultText": result_text}
+        if result_metadata is not None:
+            payload["resultMetadata"] = result_metadata
+
+        return await self._request(
+            "PATCH",
+            f"/internal/stt/jobs/{job_id}/complete",
+            json=payload,
+        )
+
+    async def fail_job(
+        self,
+        job_id: str,
+        error_message: str,
+        error_code: str | None = None,
+    ) -> dict[str, Any]:
+        """Mark a transcription job as FAILED.
+
+        Calls NestJS ``PATCH /internal/stt/jobs/{id}/fail`` which expects
+        an ``InternalFailJobRequest`` body with ``errorMessage`` and
+        optional ``errorCode``.
+        """
+        payload: dict[str, Any] = {"errorMessage": error_message}
+        if error_code:
+            payload["errorCode"] = error_code
+
+        return await self._request(
+            "PATCH",
+            f"/internal/stt/jobs/{job_id}/fail",
+            json=payload,
+        )
+
+    # =========================================================================
+    # Legacy Status Update (kept for backward compatibility)
+    # =========================================================================
+
+    async def update_job_status(
+        self,
+        job_id: str,
+        status: str,
+        progress: int | None = None,
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        worker_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Update transcription job status (legacy generic endpoint)."""
+        payload: dict[str, Any] = {"status": status}
+
+        if progress is not None:
+            payload["progress"] = progress
+        if started_at:
+            payload["startedAt"] = started_at.isoformat()
+        if completed_at:
+            payload["completedAt"] = completed_at.isoformat()
+        if error_code:
+            payload["errorCode"] = error_code
+        if error_message:
+            payload["errorMessage"] = error_message
+        if worker_id:
+            payload["workerId"] = worker_id
+
+        return await self._request(
+            "PATCH",
+            f"/internal/stt/jobs/{job_id}/status",
+            json=payload,
+        )
+
+    # =========================================================================
+    # Transcript Creation
+    # =========================================================================
+
+    async def create_transcript(
+        self,
+        job_id: str,
+        transcript_text: str,
+        metadata: dict | None = None,
+        consultation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a transcript context item for a completed job.
+
+        Calls NestJS ``POST /internal/stt/transcripts`` which expects
+        a ``CreateTranscriptRequest`` body.
+
+        Args:
+            job_id: Transcription job ID.
+            transcript_text: Full transcript text.
+            metadata: Optional metadata (word timestamps, confidence, etc.).
+            consultation_id: Optional consultation to associate the transcript with.
+        """
+        payload: dict[str, Any] = {
+            "jobId": job_id,
+            "transcriptText": transcript_text,
+        }
+        if metadata is not None:
+            payload["metadata"] = metadata
+        if consultation_id:
+            payload["consultationId"] = consultation_id
+
+        return await self._request(
+            "POST",
+            "/internal/stt/transcripts",
+            json=payload,
+        )
+
+    # =========================================================================
+    # Audio Recording Creation
+    # =========================================================================
+
+    async def create_audio_recording(
+        self,
+        context_item_id: str,
+        media_id: str,
+        tenant_id: str,
+        duration: int | None = None,
+        format: str | None = None,
+        sample_rate: int | None = None,
+        channels: int | None = None,
+        bitrate: int | None = None,
+        language: str | None = None,
+        sequence_number: int = 1,
+        recorded_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Create an AudioRecording linked to a ContextItem."""
+        payload = {
+            "contextItemId": context_item_id,
+            "mediaId": media_id,
+            "tenantId": tenant_id,
+            "sequenceNumber": sequence_number,
+        }
+
+        if duration is not None:
+            payload["duration"] = duration
+        if format:
+            payload["format"] = format
+        if sample_rate:
+            payload["sampleRate"] = sample_rate
+        if channels:
+            payload["channels"] = channels
+        if bitrate:
+            payload["bitrate"] = bitrate
+        if language:
+            payload["language"] = language
+        if recorded_at:
+            payload["recordedAt"] = recorded_at.isoformat()
+
+        return await self._request(
+            "POST",
+            "/internal/stt/audio-recordings",
+            json=payload,
+        )
+
+    # =========================================================================
+    # Media Creation
+    # =========================================================================
+
+    async def create_media(
+        self,
+        tenant_id: str,
+        name: str,
+        uri: str,
+        extension: str,
+        mime_type: str,
+        size: int,
+        hash: str,
+        created_by: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a Media record for an audio file."""
+        payload = {
+            "tenantId": tenant_id,
+            "name": name,
+            "uri": uri,
+            "extension": extension,
+            "mimeType": mime_type,
+            "size": size,
+            "hash": hash,
+        }
+
+        if created_by:
+            payload["createdBy"] = created_by
+
+        return await self._request(
+            "POST",
+            "/internal/stt/media",
+            json=payload,
+        )
+
+    # =========================================================================
+    # Health Check
+    # =========================================================================
+
+    async def health_check(self) -> bool:
+        """Check if API Gateway is reachable."""
+        try:
+            await self._request("GET", "/health")
+            return True
+        except APIGatewayError:
+            return False
+
+
+@lru_cache
+def get_api_client() -> APIGatewayClient:
+    """Get the API Gateway client instance."""
+    return APIGatewayClient(
+        base_url=settings.api_gateway_url,
+        api_key=settings.api_gateway_key,
+        timeout=settings.api_gateway_timeout,
+    )

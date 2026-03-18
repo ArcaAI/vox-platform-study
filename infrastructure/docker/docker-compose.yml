@@ -1,0 +1,167 @@
+# ============================================================================
+# HOPE Infrastructure - Core Services
+# ============================================================================
+# This Docker Compose file provides core infrastructure for local development.
+#
+# USAGE (from monorepo root):
+#   Start:    docker compose -f infrastructure/docker/docker-compose.yml up -d
+#   Stop:     docker compose -f infrastructure/docker/docker-compose.yml down
+#   Logs:     docker compose -f infrastructure/docker/docker-compose.yml logs -f
+#   Status:   docker compose -f infrastructure/docker/docker-compose.yml ps
+#
+# ENVIRONMENT:
+#   This file automatically loads variables from the root .env file.
+#   Copy .env.example to .env and update values as needed.
+# ============================================================================
+
+name: hope-infra
+
+networks:
+    hope-network:
+        name: hope-network
+        driver: bridge
+
+volumes:
+    postgres-data:
+        name: hope-postgres-data-pg18
+
+services:
+    # ============================================================================
+    # Core Data Services
+    # ============================================================================
+
+    # PostgreSQL 18 - Primary Database
+    # Using official PostgreSQL 18 Alpine image (lightweight, production-ready)
+    # Note: Switch to timescale/timescaledb-ha:pg18-all if TimescaleDB/pgvector needed
+    postgres:
+        container_name: hope-postgres
+        image: postgres:18-alpine
+        networks:
+            - hope-network
+        restart: unless-stopped
+        ports:
+            - '${POSTGRES_PORT:-5432}:5432'
+        environment:
+            POSTGRES_DB: ${POSTGRES_DB:-postgres}
+            POSTGRES_USER: ${POSTGRES_USER:-postgres}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+            POSTGRES_INITDB_ARGS: '--encoding=UTF-8 --lc-collate=C --lc-ctype=C'
+        volumes:
+            # PostgreSQL 18+ requires mount at /var/lib/postgresql (not /data subdirectory)
+            # See: https://github.com/docker-library/postgres/pull/1259
+            - postgres-data:/var/lib/postgresql
+        # Minimal PostgreSQL tuning for local development (low resource usage)
+        command: >
+            postgres
+            -c shared_buffers=64MB
+            -c effective_cache_size=128MB
+            -c work_mem=4MB
+            -c maintenance_work_mem=32MB
+            -c max_connections=50
+            -c wal_level=minimal
+            -c max_wal_senders=0
+            -c log_min_duration_statement=500
+        shm_size: 64mb
+        healthcheck:
+            test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
+        deploy:
+            resources:
+                limits:
+                    memory: 512M
+                reservations:
+                    memory: 128M
+
+    minio:
+        container_name: hope-minio
+        image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+        networks:
+            - hope-network
+        restart: unless-stopped
+        ports:
+            - '${MINIO_PORT:-9000}:9000'
+            - '${MINIO_CONSOLE_PORT:-9001}:9001'
+        environment:
+            MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
+            MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_admin}
+        command: server /data --console-address ":9001"
+        healthcheck:
+            test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 10s
+        deploy:
+            resources:
+                limits:
+                    memory: 256M
+                reservations:
+                    memory: 64M
+
+    # MinIO Bucket Setup
+    minio-setup:
+        container_name: hope-minio-setup
+        image: minio/mc:latest
+        networks:
+            - hope-network
+        depends_on:
+            minio:
+                condition: service_healthy
+        restart: 'no'
+        environment:
+            MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
+            MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_admin}
+        entrypoint: >
+            /bin/sh -c "
+            echo 'Setting up MinIO buckets and policies...';
+            until /usr/bin/mc alias set minio http://minio:9000 ${MINIO_ROOT_USER:-minio_admin} ${MINIO_ROOT_PASSWORD:-minio_admin}; do
+              echo 'MinIO not ready, waiting 5 seconds...';
+              sleep 5;
+            done;
+            echo 'MinIO is ready, creating buckets...';
+            /usr/bin/mc mb minio/mlflow --ignore-existing;
+            /usr/bin/mc mb minio/recordings --ignore-existing;
+            /usr/bin/mc mb minio/generated-audio --ignore-existing;
+            /usr/bin/mc mb minio/documents --ignore-existing;
+            /usr/bin/mc mb minio/backups --ignore-existing;
+            echo 'Setting bucket policies...';
+            /usr/bin/mc policy set public minio/recordings;
+            /usr/bin/mc policy set public minio/generated-audio;
+            echo 'MinIO setup completed successfully';
+            exit 0;
+            "
+
+    # Redis - Caching & Message Queue
+    redis:
+        container_name: hope-redis
+        image: redis:8-alpine
+        networks:
+            - hope-network
+        restart: unless-stopped
+        ports:
+            - '${REDIS_PORT:-6379}:6379'
+        environment:
+            REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+        # Minimal Redis config for local development
+        command: >
+            redis-server
+            ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORD:-redis_password}}
+            --maxmemory 64mb
+            --maxmemory-policy allkeys-lru
+            --appendonly no
+            --save ""
+        healthcheck:
+            test: ['CMD', 'sh', '-c', 'redis-cli ${REDIS_PASSWORD:+-a ${REDIS_PASSWORD:-redis_password}} ping']
+            interval: 10s
+            timeout: 5s
+            retries: 3
+            start_period: 5s
+        deploy:
+            resources:
+                limits:
+                    memory: 128M
+                reservations:
+                    memory: 32M

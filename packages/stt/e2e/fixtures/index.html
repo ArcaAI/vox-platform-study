@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>@arcaai/stt E2E Test Fixture</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    h1 { color: #00d4ff; }
+    .section {
+      background: #16213e;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    .status { font-family: monospace; }
+    .status.success { color: #00ff88; }
+    .status.error { color: #ff4444; }
+    .status.pending { color: #ffaa00; }
+    button {
+      background: #00d4ff;
+      color: #1a1a2e;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+      font-weight: bold;
+    }
+    button:hover { background: #00b8e6; }
+    button:disabled { background: #666; cursor: not-allowed; }
+    #transcription {
+      background: #0f0f1a;
+      padding: 15px;
+      border-radius: 5px;
+      min-height: 100px;
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+    #logs {
+      background: #0f0f1a;
+      padding: 10px;
+      border-radius: 5px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>@arcaai/stt E2E Test Fixture</h1>
+
+  <div class="section">
+    <h3>Browser Support</h3>
+    <div id="browser-support">
+      <div>WebAssembly: <span id="wasm-support" class="status pending">checking...</span></div>
+      <div>WebGPU: <span id="webgpu-support" class="status pending">checking...</span></div>
+      <div>AudioContext: <span id="audio-support" class="status pending">checking...</span></div>
+      <div>WebSocket: <span id="ws-support" class="status pending">checking...</span></div>
+      <div>MediaStream: <span id="media-support" class="status pending">checking...</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>STT Controls</h3>
+    <button id="btn-init-local" disabled>Init Local STT</button>
+    <button id="btn-init-remote" disabled>Init Remote STT</button>
+    <button id="btn-start" disabled>Start</button>
+    <button id="btn-stop" disabled>Stop</button>
+    <button id="btn-destroy" disabled>Destroy</button>
+  </div>
+
+  <div class="section">
+    <h3>Status</h3>
+    <div>Provider: <span id="provider-type" class="status">none</span></div>
+    <div>State: <span id="stt-state" class="status">uninitialized</span></div>
+    <div>Session ID: <span id="session-id" class="status">-</span></div>
+  </div>
+
+  <div class="section">
+    <h3>Transcription</h3>
+    <div id="transcription">Waiting for transcription...</div>
+  </div>
+
+  <div class="section">
+    <h3>Event Logs</h3>
+    <div id="logs"></div>
+  </div>
+
+  <!-- Test results exposed to Playwright -->
+  <script>
+    window.testResults = {
+      browserSupport: null,
+      sttProcessor: null,
+      transcriptions: [],
+      errors: [],
+      events: [],
+      initialized: false,
+      started: false,
+    };
+
+    function log(message, type = 'info') {
+      const logs = document.getElementById('logs');
+      const time = new Date().toISOString().split('T')[1].slice(0, 12);
+      const color = type === 'error' ? '#ff4444' : type === 'success' ? '#00ff88' : '#888';
+      logs.innerHTML = `<div style="color: ${color}">[${time}] ${message}</div>` + logs.innerHTML;
+      window.testResults.events.push({ time, message, type });
+    }
+
+    function setStatus(id, value, success) {
+      const el = document.getElementById(id);
+      el.textContent = value;
+      el.className = 'status ' + (success ? 'success' : 'error');
+    }
+
+    // Check browser support
+    async function checkBrowserSupport() {
+      const support = {
+        webAssembly: typeof WebAssembly !== 'undefined',
+        webGPU: 'gpu' in navigator,
+        audioContext: typeof AudioContext !== 'undefined' || typeof webkitAudioContext !== 'undefined',
+        webSocket: typeof WebSocket !== 'undefined',
+        mediaDevices: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+      };
+
+      setStatus('wasm-support', support.webAssembly ? 'Supported' : 'Not supported', support.webAssembly);
+      setStatus('webgpu-support', support.webGPU ? 'Supported' : 'Not supported', support.webGPU);
+      setStatus('audio-support', support.audioContext ? 'Supported' : 'Not supported', support.audioContext);
+      setStatus('ws-support', support.webSocket ? 'Supported' : 'Not supported', support.webSocket);
+      setStatus('media-support', support.mediaDevices ? 'Supported' : 'Not supported', support.mediaDevices);
+
+      window.testResults.browserSupport = support;
+      log('Browser support checked', 'success');
+
+      // Enable init buttons based on support
+      document.getElementById('btn-init-local').disabled = !support.webAssembly;
+      document.getElementById('btn-init-remote').disabled = !support.webSocket;
+
+      return support;
+    }
+
+    // Initialize STT with dynamic import
+    async function initSTT(providerType) {
+      try {
+        log(`Initializing STT with provider: ${providerType}`);
+        document.getElementById('stt-state').textContent = 'initializing...';
+
+        // Dynamic import of the STT module
+        const sttModule = await import('/dist/index.mjs');
+        const { STTProcessor, generateSessionId } = sttModule;
+
+        const options = {
+          sessionId: generateSessionId(),
+          audio: {
+            language: 'en-US',
+            sampleRate: 16000,
+            channels: 1,
+          },
+          features: {
+            provider: providerType,
+            returnTimestamps: true,
+          },
+        };
+
+        // For local provider, add model config
+        if (providerType === 'local') {
+          options.features.modelId = 'tiny';
+          options.features.device = 'wasm'; // Use WASM for broader compatibility
+        }
+
+        // For remote provider, add socket URL
+        if (providerType === 'remote') {
+          options.sttSocket = 'ws://localhost:8080/ws/stt';
+        }
+
+        const stt = new STTProcessor(options);
+
+        // Set up event listeners
+        stt.on('data', (payload) => {
+          if (payload.type === 'stt-transcription') {
+            const text = payload.data.text;
+            document.getElementById('transcription').textContent = text;
+            window.testResults.transcriptions.push(payload.data);
+            log(`Transcription: ${text}`, 'success');
+          }
+        });
+
+        stt.on('error', (payload) => {
+          const error = payload.error;
+          window.testResults.errors.push(error);
+          log(`Error: ${error.message}`, 'error');
+        });
+
+        stt.on('state-change', (payload) => {
+          const state = payload.state;
+          document.getElementById('stt-state').textContent = state;
+          log(`State changed: ${state}`);
+        });
+
+        window.testResults.sttProcessor = stt;
+        window.testResults.initialized = true;
+
+        document.getElementById('provider-type').textContent = providerType;
+        document.getElementById('session-id').textContent = options.sessionId;
+        document.getElementById('stt-state').textContent = 'initialized';
+
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-destroy').disabled = false;
+        document.getElementById('btn-init-local').disabled = true;
+        document.getElementById('btn-init-remote').disabled = true;
+
+        log(`STT initialized with ${providerType} provider`, 'success');
+        return stt;
+      } catch (error) {
+        log(`Init error: ${error.message}`, 'error');
+        window.testResults.errors.push(error);
+        document.getElementById('stt-state').textContent = 'error';
+        throw error;
+      }
+    }
+
+    // Start STT processing
+    async function startSTT() {
+      try {
+        if (!window.testResults.sttProcessor) {
+          throw new Error('STT not initialized');
+        }
+
+        log('Starting STT...');
+
+        // Get microphone access
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 16000,
+          }
+        });
+
+        // Create audio context and connect
+        const audioContext = new AudioContext({ sampleRate: 16000 });
+        const source = audioContext.createMediaStreamSource(stream);
+
+        // For testing, we'll process audio directly
+        // In real usage, this would be handled by @arcaai/room pipeline
+
+        window.testResults.started = true;
+        document.getElementById('stt-state').textContent = 'running';
+        document.getElementById('btn-start').disabled = true;
+        document.getElementById('btn-stop').disabled = false;
+
+        log('STT started', 'success');
+      } catch (error) {
+        log(`Start error: ${error.message}`, 'error');
+        window.testResults.errors.push(error);
+        throw error;
+      }
+    }
+
+    // Stop STT processing
+    async function stopSTT() {
+      try {
+        if (!window.testResults.sttProcessor) {
+          throw new Error('STT not initialized');
+        }
+
+        log('Stopping STT...');
+        await window.testResults.sttProcessor.stop();
+
+        window.testResults.started = false;
+        document.getElementById('stt-state').textContent = 'stopped';
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-stop').disabled = true;
+
+        log('STT stopped', 'success');
+      } catch (error) {
+        log(`Stop error: ${error.message}`, 'error');
+        window.testResults.errors.push(error);
+        throw error;
+      }
+    }
+
+    // Destroy STT
+    async function destroySTT() {
+      try {
+        if (window.testResults.sttProcessor) {
+          log('Destroying STT...');
+          await window.testResults.sttProcessor.destroy();
+        }
+
+        window.testResults.sttProcessor = null;
+        window.testResults.initialized = false;
+        window.testResults.started = false;
+
+        document.getElementById('stt-state').textContent = 'destroyed';
+        document.getElementById('provider-type').textContent = 'none';
+        document.getElementById('session-id').textContent = '-';
+        document.getElementById('btn-start').disabled = true;
+        document.getElementById('btn-stop').disabled = true;
+        document.getElementById('btn-destroy').disabled = true;
+        document.getElementById('btn-init-local').disabled = false;
+        document.getElementById('btn-init-remote').disabled = false;
+
+        log('STT destroyed', 'success');
+      } catch (error) {
+        log(`Destroy error: ${error.message}`, 'error');
+        window.testResults.errors.push(error);
+        throw error;
+      }
+    }
+
+    // Bind button handlers
+    document.getElementById('btn-init-local').onclick = () => initSTT('local');
+    document.getElementById('btn-init-remote').onclick = () => initSTT('remote');
+    document.getElementById('btn-start').onclick = startSTT;
+    document.getElementById('btn-stop').onclick = stopSTT;
+    document.getElementById('btn-destroy').onclick = destroySTT;
+
+    // Expose functions for Playwright
+    window.sttTestHelpers = {
+      checkBrowserSupport,
+      initSTT,
+      startSTT,
+      stopSTT,
+      destroySTT,
+    };
+
+    // Initialize on load
+    checkBrowserSupport();
+  </script>
+</body>
+</html>

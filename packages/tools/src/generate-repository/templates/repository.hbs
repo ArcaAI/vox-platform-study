@@ -1,0 +1,16 @@
+import { Injectable } from '@nestjs/common';
+
+import { Repository } from '../../../common';
+import { {{mapperName}} } from '../../../mappers';
+import { {{entityName}} } from '../../../entities';
+import { {{modelName}} } from '../../../models';
+import { {{domain}}UnitOfWorkService } from '../../../common/unitsOfWork/{{lowercase domain}}';
+
+@Injectable()
+export class {{repositoryName}} extends Repository<{{entityName}}, {{modelName}}> {
+    constructor(
+        private readonly unitOfWorkService: {{domain}}UnitOfWorkService
+    ) {
+        super(unitOfWorkService, '{{modelInstanceName}}', {{mapperName}}.getInstance());
+    }
+}

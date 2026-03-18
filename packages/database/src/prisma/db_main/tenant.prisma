@@ -1,0 +1,29 @@
+model Tenant {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // core fields
+    name        String
+    key         String @unique
+    description String?
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // tags
+    tags String[] @default([])
+
+    // indexing
+    @@unique([name, key], name: "Tenant_name_key_unique")
+    @@schema("core")
+}
