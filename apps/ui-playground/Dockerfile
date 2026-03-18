@@ -34,7 +34,16 @@ COPY apps/ui-playground/ ./apps/ui-playground/
 ARG VITE_API_URL
 ENV VITE_API_URL=${VITE_API_URL}
 
-RUN pnpm --filter @arcaai/ui build 2>/dev/null || true && \
+# [TODO] The below is a temporary workaround for the "JavaScript heap out of memory", need to check @arcaai/vox pakgage.
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
+RUN pnpm --filter @arcaai/ui build && \
+    pnpm --filter @arcaai/room build && \
+    pnpm --filter @arcaai/vad build && \
+    pnpm --filter @arcaai/stt build && \
+    pnpm --filter @arcaai/noise-filter build && \
+    pnpm --filter @arcaai/med-ner build && \
+    pnpm --filter @arcaai/vox build && \
     pnpm --filter @arcaai/ui-playground build
 
 # -- PRODUCTION STAGE --

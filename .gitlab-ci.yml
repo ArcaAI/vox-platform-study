@@ -59,11 +59,6 @@ workflow:
         docker tag "$image_repo:$image_tag_sha" "$image_repo:latest"
         docker push "$image_repo:latest"
       fi
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      when: manual
-      allow_failure: true
 
 # ── JOBS ─────────────────────────────────────────────────────────────
 
@@ -73,6 +68,33 @@ api:
     SERVICE_NAME: api
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/api/Dockerfile
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/api/**/*
+        - packages/application/**/*
+        - packages/database/**/*
+        - packages/domain/**/*
+        - packages/exception/**/*
+        - packages/logger/**/*
+        - packages/tools/**/*
+        - packages/config-eslint/**/*
+        - packages/config-rollup/**/*
+        - packages/config-ts/**/*
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - apps/api/**/*
+        - packages/application/**/*
+        - packages/database/**/*
+        - packages/domain/**/*
+        - packages/exception/**/*
+        - packages/logger/**/*
+        - packages/tools/**/*
+        - packages/config-eslint/**/*
+        - packages/config-rollup/**/*
+        - packages/config-ts/**/*
+      when: manual
+      allow_failure: true
 
 ui-playground:
   extends: .build-template
@@ -80,6 +102,29 @@ ui-playground:
     SERVICE_NAME: ui-playground
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/ui-playground/Dockerfile
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/ui-playground/**/*
+        - packages/ui/**/*
+        - packages/room/**/*
+        - packages/vad/**/*
+        - packages/stt/**/*
+        - packages/noise-filter/**/*
+        - packages/med-ner/**/*
+        - packages/vox/**/*
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - apps/ui-playground/**/*
+        - packages/ui/**/*
+        - packages/room/**/*
+        - packages/vad/**/*
+        - packages/stt/**/*
+        - packages/noise-filter/**/*
+        - packages/med-ner/**/*
+        - packages/vox/**/*
+      when: manual
+      allow_failure: true
 
 nlp:
   extends: .build-template
@@ -87,6 +132,15 @@ nlp:
     SERVICE_NAME: nlp
     DOCKER_CONTEXT: apps/nlp
     DOCKERFILE: apps/nlp/Dockerfile
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/nlp/**/*
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - apps/nlp/**/*
+      when: manual
+      allow_failure: true
 
 smr:
   extends: .build-template
@@ -94,6 +148,15 @@ smr:
     SERVICE_NAME: smr
     DOCKER_CONTEXT: apps/smr
     DOCKERFILE: apps/smr/Dockerfile
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/smr/**/*
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - apps/smr/**/*
+      when: manual
+      allow_failure: true
 
 stt-v2:
   extends: .build-template
@@ -102,6 +165,15 @@ stt-v2:
     DOCKER_CONTEXT: apps/stt-v2
     DOCKERFILE: apps/stt-v2/docker/Dockerfile
     BUILD_TARGET: ml-runtime
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/stt-v2/**/*
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - apps/stt-v2/**/*
+      when: manual
+      allow_failure: true
 
 stt-v2-worker:
   extends: .build-template
@@ -110,10 +182,28 @@ stt-v2-worker:
     DOCKER_CONTEXT: apps/stt-v2
     DOCKERFILE: apps/stt-v2/docker/Dockerfile
     BUILD_TARGET: worker
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/stt-v2/**/*
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - apps/stt-v2/**/*
+      when: manual
+      allow_failure: true
 
 database:
   extends: .build-template
   variables:
     SERVICE_NAME: database
-    DOCKER_CONTEXT: packages/database
+    DOCKER_CONTEXT: .
     DOCKERFILE: packages/database/Dockerfile
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - packages/database/**/*
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - packages/database/**/*
+      when: manual
+      allow_failure: true
