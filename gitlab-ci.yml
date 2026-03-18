@@ -19,7 +19,7 @@ workflow:
 
 .build-template:
   stage: build
-  tags: [build, docker]
+  tags: [build]
   image: docker:27
   variables:
     SERVICE_NAME: ""
