@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
         - name: ui
-          image: gitlab-server:5000/arca:ui-playground-latest
+          image: hope-v2/ui-playground:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 3000

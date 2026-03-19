@@ -1,19 +1,17 @@
 stages:
   - build
+  - deploy
+  - promote
 
 variables:
   DOCKER_HOST: unix:///var/run/docker.sock
   DOCKER_TLS_CERTDIR: ""
   REGISTRY: 10.10.1.110:5050
-  IMAGE_TAG_SHA: $CI_COMMIT_SHORT_SHA
-  IMAGE_TAG_BRANCH: $CI_COMMIT_REF_SLUG
 
 workflow:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
-      when: never
-    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 # ── TEMPLATE ─────────────────────────────────────────────────────────────────
 
@@ -33,32 +31,30 @@ workflow:
       set -eu
 
       image_repo="$REGISTRY/$CI_PROJECT_PATH/$SERVICE_NAME"
-      image_tag_sha="$SERVICE_NAME-$IMAGE_TAG_SHA"
-      image_tag_branch="$SERVICE_NAME-$IMAGE_TAG_BRANCH"
+
+      # Compute tag based on trigger type
+      if [ -n "${CI_COMMIT_TAG:-}" ]; then
+        IMAGE_TAG="${CI_COMMIT_TAG#v}"      # v1.0.0 → 1.0.0
+      else
+        IMAGE_TAG="latest"                  # dev branch
+      fi
 
       build_target_arg=""
       if [ -n "$BUILD_TARGET" ]; then
         build_target_arg="--target $BUILD_TARGET"
       fi
 
-      echo "Building service=$SERVICE_NAME context=$DOCKER_CONTEXT dockerfile=$DOCKERFILE target=${BUILD_TARGET:-default}"
+      echo "Building service=$SERVICE_NAME tag=$IMAGE_TAG context=$DOCKER_CONTEXT"
       docker build \
         --label org.opencontainers.image.source=$CI_PROJECT_URL \
         --label org.opencontainers.image.revision=$CI_COMMIT_SHA \
         --label org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
         $build_target_arg \
         -f "$DOCKERFILE" \
-        -t "$image_repo:$image_tag_sha" \
-        -t "$image_repo:$image_tag_branch" \
+        -t "$image_repo:$IMAGE_TAG" \
         "$DOCKER_CONTEXT"
 
-      docker push "$image_repo:$image_tag_sha"
-      docker push "$image_repo:$image_tag_branch"
-
-      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
-        docker tag "$image_repo:$image_tag_sha" "$image_repo:latest"
-        docker push "$image_repo:latest"
-      fi
+      docker push "$image_repo:$IMAGE_TAG"
 
 # ── JOBS ─────────────────────────────────────────────────────────────
 
@@ -69,6 +65,7 @@ api:
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/api/Dockerfile
   rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - apps/api/**/*
@@ -81,20 +78,6 @@ api:
         - packages/config-eslint/**/*
         - packages/config-rollup/**/*
         - packages/config-ts/**/*
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        - apps/api/**/*
-        - packages/application/**/*
-        - packages/database/**/*
-        - packages/domain/**/*
-        - packages/exception/**/*
-        - packages/logger/**/*
-        - packages/tools/**/*
-        - packages/config-eslint/**/*
-        - packages/config-rollup/**/*
-        - packages/config-ts/**/*
-      when: manual
-      allow_failure: true
 
 ui-playground:
   extends: .build-template
@@ -103,6 +86,7 @@ ui-playground:
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/ui-playground/Dockerfile
   rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - apps/ui-playground/**/*
@@ -113,18 +97,6 @@ ui-playground:
         - packages/noise-filter/**/*
         - packages/med-ner/**/*
         - packages/vox/**/*
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        - apps/ui-playground/**/*
-        - packages/ui/**/*
-        - packages/room/**/*
-        - packages/vad/**/*
-        - packages/stt/**/*
-        - packages/noise-filter/**/*
-        - packages/med-ner/**/*
-        - packages/vox/**/*
-      when: manual
-      allow_failure: true
 
 nlp:
   extends: .build-template
@@ -133,14 +105,10 @@ nlp:
     DOCKER_CONTEXT: apps/nlp
     DOCKERFILE: apps/nlp/Dockerfile
   rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - apps/nlp/**/*
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        - apps/nlp/**/*
-      when: manual
-      allow_failure: true
 
 smr:
   extends: .build-template
@@ -149,14 +117,10 @@ smr:
     DOCKER_CONTEXT: apps/smr
     DOCKERFILE: apps/smr/Dockerfile
   rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - apps/smr/**/*
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        - apps/smr/**/*
-      when: manual
-      allow_failure: true
 
 stt-v2:
   extends: .build-template
@@ -166,14 +130,10 @@ stt-v2:
     DOCKERFILE: apps/stt-v2/docker/Dockerfile
     BUILD_TARGET: ml-runtime
   rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - apps/stt-v2/**/*
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        - apps/stt-v2/**/*
-      when: manual
-      allow_failure: true
 
 stt-v2-worker:
   extends: .build-template
@@ -183,14 +143,10 @@ stt-v2-worker:
     DOCKERFILE: apps/stt-v2/docker/Dockerfile
     BUILD_TARGET: worker
   rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - apps/stt-v2/**/*
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        - apps/stt-v2/**/*
-      when: manual
-      allow_failure: true
 
 database:
   extends: .build-template
@@ -199,11 +155,73 @@ database:
     DOCKER_CONTEXT: .
     DOCKERFILE: packages/database/Dockerfile
   rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - packages/database/**/*
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        - packages/database/**/*
-      when: manual
-      allow_failure: true
+
+# ── DEPLOY ───────────────────────────────────────────────────────────────────
+
+deploy-dev:
+  stage: deploy
+  image: argoproj/argocd:latest
+  tags: [build]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  needs:
+    - job: api
+      optional: true
+    - job: ui-playground
+      optional: true
+    - job: nlp
+      optional: true
+    - job: smr
+      optional: true
+    - job: stt-v2
+      optional: true
+    - job: stt-v2-worker
+      optional: true
+    - job: database
+      optional: true
+  script:
+    - argocd login "$ARGOCD_SERVER" --auth-token "$ARGOCD_AUTH_TOKEN" --grpc-web --insecure
+    - argocd app get hope-dev --hard-refresh
+    - argocd app sync hope-dev --prune --timeout 300
+    - argocd app wait hope-dev --timeout 300
+
+# ── PROMOTE ──────────────────────────────────────────────────────────────────
+
+promote-prod:
+  stage: promote
+  image: alpine/git:latest
+  tags: [build]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+  needs:
+    - job: api
+    - job: ui-playground
+    - job: nlp
+    - job: smr
+    - job: stt-v2
+    - job: stt-v2-worker
+    - job: database
+  variables:
+    GIT_STRATEGY: clone
+    GIT_CHECKOUT: "true"
+  script:
+    - |
+      set -eu
+      VERSION="${CI_COMMIT_TAG#v}"   # v1.0.0 → 1.0.0
+      OVERLAY="deployment/k3s/overlays/prod/kustomization.yaml"
+
+      # Update all newTag values in prod overlay
+      sed -i "s/newTag: .*/newTag: \"$VERSION\"/" "$OVERLAY"
+
+      # Commit and push
+      git config user.email "ci@hope.local"
+      git config user.name "GitLab CI"
+      git remote set-url origin "https://ci-token:${CI_GIT_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      git checkout -b ci/promote-$VERSION
+      git add "$OVERLAY"
+      git commit -m "release: promote v$VERSION to production [skip ci]"
+      git push origin ci/promote-$VERSION:$CI_DEFAULT_BRANCH

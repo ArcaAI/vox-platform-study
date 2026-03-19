@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
         - name: smr
-          image: gitlab-server:5000/arca:smr-latest
+          image: hope-v2/smr:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8862

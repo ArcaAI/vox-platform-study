@@ -1,6 +1,6 @@
 # HOPE Platform - Deployment Guide
 
-All deployments are automated via **GitLab CI/CD**. Pushing to `dev`, `test`, or `prod` branches triggers the pipeline automatically.
+All deployments are managed via **ArgoCD** using GitOps. Pushing to `dev` or `main` branch triggers ArgoCD sync automatically (dev) or manually (prod).
 
 ## Architecture Overview
 
@@ -8,12 +8,12 @@ All deployments are automated via **GitLab CI/CD**. Pushing to `dev`, `test`, or
 ┌─────────────────────────────────────────────────────────────┐
 │  VM 200 (128GB RAM, 64 CPU, 300GB SSD) - Kubernetes        │
 │                                                             │
-│  Namespaces: hope-dev │ hope-test │ hope-prod               │
+│  Namespaces: hope-dev │ hope-prod                           │
 │                                                             │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │  hope-api    │  │  hope-ui     │  │  hope-nlp    │      │
 │  │  (NestJS)    │  │  (React/Vite)│  │  (Python)    │      │
-│  │  :8868       │  │  :5175       │  │  :8864       │      │
+│  │  :8868       │  │  :3000       │  │  :8864       │      │
 │  └──────┬───────┘  └──────┬───────┘  └──────────────┘      │
 │         │                 │                                  │
 │  ┌──────┴───────┐  ┌──────┴───────┐                         │
@@ -28,6 +28,7 @@ All deployments are automated via **GitLab CI/CD**. Pushing to `dev`, `test`, or
 │  └──────────────┘  └──────────────┘                         │
 │                                                             │
 │  Traefik Ingress (managed by Rancher)                       │
+│  ArgoCD (GitOps controller)                                 │
 └─────────────────────────────────────────────────────────────┘
 
 External:
@@ -35,68 +36,78 @@ External:
   VM 410 - GitLab
   VM 411 - GitLab Runner
   VM 400 - Rancher
-
-Public endpoints (via Cloudflare):
-  - hope-api   → api-{env}.<your-domain>
-  - hope-ui    → {env}.<your-domain>
 ```
 
 ## Environments
 
-| Environment | Branch | Namespace | NODE_ENV | Image Tag Suffix |
-|-------------|--------|-----------|----------|------------------|
-| Development | `dev` | `hope-dev` | `development` | `dev` |
-| Testing | `test` | `hope-test` | `test` | `test` |
-| Production | `prod` | `hope-prod` | `production` | `prod` |
-
-**Ingress hostnames per environment (Traefik on K3s):**
-
-| Environment | UI Hostname | API Hostname |
-|-------------|-------------|--------------|
-| dev | `dev.hope.local` | `api-dev.hope.local` |
-| test | `test.hope.local` | `api-test.hope.local` |
-| prod | `prod.hope.local` | `api-prod.hope.local` |
-
-> Each environment gets unique hostnames to avoid Traefik routing conflicts across namespaces on the same K3s cluster.
-
-## Services
-
-| Service | Type | Port | Image Tag Pattern | Public |
-|---------|------|------|-------------------|--------|
-| api | NestJS backend | 8868 | `api-{env}-latest` | Yes |
-| ui-playground | React/Vite frontend | 5175 | `ui-playground-{env}-latest` | Yes |
-| nlp | Python NLP service | 8864 | `nlp-{env}-latest` | No |
-| smr | Python summarization | 8862 | `smr-{env}-latest` | No |
-| stt-v2 | Python speech-to-text | 8861 | `stt-v2-{env}-latest` | No |
+| Environment | Branch | Namespace  | ArgoCD Sync | Ingress Hostnames                          |
+|-------------|--------|------------|-------------|--------------------------------------------|
+| Development | `dev`  | `hope-dev` | Auto        | `api-dev.hope.local`, `ui-dev.hope.local`  |
+| Production  | `main` | `hope-prod`| Manual      | `api.hope.local`, `ui.hope.local`          |
 
 ## Directory Structure
 
 ```
-infrastructure/deploy/
-├── README.md                    # This file
-├── gitlab-ci.yml                # GitLab CI/CD pipeline definition
+deployment/
+├── README.md                        # This file
+├── argocd/
+│   └── bootstrap.yaml               # AppProject + ApplicationSet (apply once)
 └── k3s/
-    ├── namespace/
-    │   └── namespace.yaml       # Namespace (uses __NAMESPACE__ placeholder)
-    ├── config/
-    │   ├── configmap.yaml       # Non-sensitive configuration (templated)
-    │   └── secrets.yaml.template # Template for environment secrets
-    ├── infra/
-    │   ├── postgres.yaml        # PostgreSQL StatefulSet + Service
-    │   └── redis.yaml           # Redis StatefulSet + Service
-    ├── services/
-    │   ├── api.yaml             # API Deployment + Service + Ingress
-    │   ├── nlp.yaml             # NLP Deployment + Service
-    │   ├── smr.yaml             # SMR Deployment + Service
-    │   ├── stt-v2.yaml          # STT-V2 Deployment + Service + PVC
-    │   └── ui-playground.yaml   # UI Deployment + Service + Ingress
-    └── jobs/
-        └── db-migrate.yaml      # Database migration Job
+    ├── base/                        # Shared Kustomize base
+    │   ├── kustomization.yaml
+    │   ├── namespace.yaml
+    │   ├── configmap.yaml
+    │   ├── postgres.yaml            # StatefulSet + Service
+    │   ├── redis.yaml               # StatefulSet + Service
+    │   ├── api.yaml                 # Deployment + Service + Ingress
+    │   ├── nlp.yaml                 # Deployment + Service
+    │   ├── smr.yaml                 # Deployment + Service
+    │   ├── stt-v2.yaml              # Deployment + Service
+    │   ├── stt-v2-worker.yaml       # Deployment (no service)
+    │   ├── ui.yaml                  # Deployment + Service + Ingress
+    │   └── db-migrate.yaml          # Job (ArgoCD PreSync hook)
+    ├── components/
+    │   └── registry/
+    │       └── kustomization.yaml   # Image registry rewrites
+    └── overlays/
+        ├── dev/
+        │   └── kustomization.yaml   # Dev patches + image tags
+        └── prod/
+            └── kustomization.yaml   # Prod patches + image tags
 ```
 
-**Manifest templating:** All YAML manifests use placeholders (`__NAMESPACE__`, `__ENV__`, `__NODE_ENV__`, `__IMAGE_TAG__`) that are substituted at deploy time via `sed` in the CI pipeline.
+## How It Works
 
----
+1. **CI pipeline** builds images, pushes to GitLab Container Registry, and updates image tags in the appropriate overlay's `kustomization.yaml`
+2. **ArgoCD** watches the Git repo and detects changes:
+   - **Dev**: Auto-syncs with prune + self-heal on `dev` branch changes
+   - **Prod**: Manual sync only on `main` branch changes (RollingSync: dev first, then prod)
+3. **PreSync hook** (`db-migrate.yaml`) runs database migrations before each deployment
+4. **Kustomize overlays** patch environment-specific values (config, hostnames, replicas, image tags)
+
+## Bootstrap
+
+```bash
+# One-time setup: apply ArgoCD bootstrap
+kubectl apply -f deployment/argocd/bootstrap.yaml -n argocd
+
+# Pre-create secrets in each namespace
+kubectl apply -f secrets.dev.yaml  -n hope-dev
+kubectl apply -f secrets.prod.yaml -n hope-prod
+```
+
+## Services
+
+| Service         | Type            | Port | Public |
+|-----------------|-----------------|------|--------|
+| api             | NestJS backend  | 8868 | Yes    |
+| ui-playground   | React/Vite      | 3000 | Yes    |
+| nlp             | Python NLP      | 8864 | No     |
+| smr             | Python summary  | 8862 | No     |
+| stt-v2          | Python STT      | 8861 | No     |
+| stt-v2-worker   | Python worker   | —    | No     |
+| postgres        | PostgreSQL 18   | 5432 | No     |
+| redis           | Redis 8         | 6379 | No     |
 
 ## GitLab CI/CD Pipeline
 

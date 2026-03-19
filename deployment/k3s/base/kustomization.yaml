@@ -13,6 +13,6 @@ resources:
   - nlp.yaml
   - smr.yaml
   - stt-v2.yaml
+  - stt-v2-worker.yaml
   - ui.yaml
-  # db-migrate is excluded from continuous sync — run as a one-off job
-  # - db-migrate.yaml
+  - db-migrate.yaml
