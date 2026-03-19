@@ -11,7 +11,7 @@
 #
 # Prerequisites:
 #   1. ArgoCD installed on the K3s cluster
-#   2. Git repo registered in ArgoCD (Settings → Repositories)
+#   2. Git repo credentials configured in ArgoCD (UI/CLI or Secret below)
 #   3. Secrets pre-created in each namespace:
 #        kubectl apply -f secrets.dev.yaml  -n hope-v2-dev
 #        kubectl apply -f secrets.prod.yaml -n hope-v2-prod
@@ -33,6 +33,21 @@ metadata:
   name: hope-v2-prod
   labels:
     app.kubernetes.io/part-of: project-hope
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hope-v2-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: "https://git.taphuynh.dev/arca/hope-v2.git"
+  username: "<REPLACE_WITH_USERNAME>"
+  password: "<REPLACE_WITH_PASSWORD_OR_TOKEN>"
 
 ---
 # -- AppProject scoping --
@@ -78,10 +93,10 @@ spec:
         elements:
           - env: dev
             autoSync: "true"
-            branch: dev
+            branch: main
           - env: prod
             autoSync: "false"
-            branch: main
+            branch: prod
   template:
     metadata:
       name: "hope-v2-{{ .env }}"
