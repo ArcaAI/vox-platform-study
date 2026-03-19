@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+commonLabels:
+  app.kubernetes.io/part-of: project-hope
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - postgres.yaml
+  - redis.yaml
+  - api.yaml
+  - nlp.yaml
+  - smr.yaml
+  - stt-v2.yaml
+  - ui.yaml
+  # db-migrate is excluded from continuous sync — run as a one-off job
+  # - db-migrate.yaml

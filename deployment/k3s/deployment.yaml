@@ -1,0 +1,100 @@
+# =============================================================================
+# ArgoCD ApplicationSet — Project HOPE multi-environment deployment
+# =============================================================================
+# This ApplicationSet generates one ArgoCD Application per environment (dev, prod).
+# Each Application uses Kustomize overlays to render environment-specific manifests.
+#
+# Prerequisites:
+#   1. ArgoCD installed on the K3s cluster
+#   2. Git repo registered in ArgoCD (Settings → Repositories)
+#   3. Secrets pre-created in each namespace (kubectl apply -f secrets.<env>.yaml)
+#
+# Usage:
+#   kubectl apply -f deployment.yaml -n argocd
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: project-hope
+  namespace: argocd
+spec:
+  description: Project HOPE platform
+  sourceRepos:
+    - "https://gitlab.example.com/group/hope-v2.git"
+  destinations:
+    - server: https://192.168.1.100:6443
+      namespace: hope-dev
+    - server: https://192.168.1.100:6443
+      namespace: hope-prod
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: "*"
+    - group: apps
+      kind: "*"
+    - group: batch
+      kind: "*"
+    - group: networking.k8s.io
+      kind: "*"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: hope-platform
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - env: dev
+            namespace: hope-dev
+            server: https://192.168.1.100:6443
+            syncPolicy: automated
+          - env: prod
+            namespace: hope-prod
+            server: https://192.168.1.100:6443
+            syncPolicy: manual
+  template:
+    metadata:
+      name: "hope-{{.env}}"
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: project-hope
+        environment: "{{.env}}"
+    spec:
+      project: project-hope
+      source:
+        repoURL: "https://gitlab.example.com/group/hope-v2.git"
+        targetRevision: HEAD
+        path: "infrastructure/deploy/k3s/overlays/{{.env}}"
+      destination:
+        server: "{{.server}}"
+        namespace: "{{.namespace}}"
+      syncPolicy:
+        # Dev: auto-sync on push. Prod: manual approval required.
+        {{- if eq .syncPolicy "automated" }}
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+        {{- end }}
+        syncOptions:
+          - CreateNamespace=true
+          - PruneLast=true
+          - ApplyOutOfSyncOnly=true
+          - ServerSideApply=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+      ignoreDifferences:
+        - group: apps
+          kind: Deployment
+          jsonPointers:
+            - /spec/replicas

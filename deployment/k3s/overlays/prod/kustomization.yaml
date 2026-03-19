@@ -1,0 +1,65 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: hope-prod
+
+namePrefix: ""
+
+commonLabels:
+  environment: prod
+
+resources:
+  - ../../base
+
+patches:
+  # --- ConfigMap: prod-specific values ---
+  - target:
+      kind: ConfigMap
+      name: hope-config
+    patch: |
+      - op: replace
+        path: /data/NODE_ENV
+        value: production
+      - op: replace
+        path: /data/LOG_LEVEL
+        value: warn
+      - op: replace
+        path: /data/DEBUG
+        value: "false"
+      - op: replace
+        path: /data/OTEL_TRACES_ENABLED
+        value: "true"
+      - op: replace
+        path: /data/OTEL_METRICS_ENABLED
+        value: "true"
+
+  # --- API: scale up for prod ---
+  - target:
+      kind: Deployment
+      name: hope-api
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+
+  # --- API Ingress: prod hostname ---
+  - target:
+      kind: Ingress
+      name: hope-api
+    patch: |
+      - op: replace
+        path: /spec/rules/0/host
+        value: api.hope.local
+
+  # --- UI Ingress: prod hostname ---
+  - target:
+      kind: Ingress
+      name: hope-ui
+    patch: |
+      - op: replace
+        path: /spec/rules/0/host
+        value: ui.hope.local
+
+images:
+  - name: gitlab-server:5000/arca
+    newTag: prod-latest

@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-nlp
+  labels:
+    app: hope-nlp
+    app.kubernetes.io/part-of: project-hope
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: hope-nlp
+  template:
+    metadata:
+      labels:
+        app: hope-nlp
+    spec:
+      containers:
+        - name: nlp
+          image: gitlab-server:5000/arca:nlp-latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8864
+          envFrom:
+            - configMapRef:
+                name: hope-config
+            - secretRef:
+                name: hope-secrets
+          env:
+            - name: PORT
+              value: "8864"
+            - name: OTEL_SERVICE_NAME
+              value: hope-nlp
+          startupProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8864
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8864
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8864
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-nlp
+  labels:
+    app: hope-nlp
+spec:
+  selector:
+    app: hope-nlp
+  ports:
+    - name: http
+      port: 8864
+      targetPort: 8864
+  type: ClusterIP
