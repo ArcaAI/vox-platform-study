@@ -1,0 +1,135 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-api
+  namespace: __NAMESPACE__
+  labels:
+    app: hope-api
+    app.kubernetes.io/part-of: project-hope
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: hope-api
+  template:
+    metadata:
+      labels:
+        app: hope-api
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: api
+          image: gitlab-server:5000/arca:api-__IMAGE_TAG__-latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8868
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 10"]
+          envFrom:
+            - configMapRef:
+                name: hope-config
+            - secretRef:
+                name: hope-secrets
+          env:
+            - name: PORT
+              value: "8868"
+            - name: OTEL_SERVICE_NAME
+              value: hope-api
+            - name: ENABLE_SWAGGER
+              value: "true"
+            - name: STT_V2_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-config
+                  key: STT_V2_URL
+            - name: SMR_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-config
+                  key: SMR_URL
+            - name: NLP_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-config
+                  key: NLP_URL
+            - name: REDIS_URL
+              value: "redis://:$(REDIS_PASS)@hope-redis:6379/0"
+            - name: DB_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: DATABASE_URL
+          startupProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8868
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8868
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8868
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-api
+  namespace: __NAMESPACE__
+  labels:
+    app: hope-api
+spec:
+  selector:
+    app: hope-api
+  ports:
+    - name: http
+      port: 8868
+      targetPort: 8868
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-api
+  namespace: __NAMESPACE__
+  labels:
+    app: hope-api
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: api-__ENV__.hope.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hope-api
+                port:
+                  number: 8868
