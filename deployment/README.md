@@ -93,6 +93,10 @@ kubectl apply -f deployment/argocd/bootstrap.yaml -n argocd
 # Apply secrets in each namespace (namespaces are created by bootstrap)
 kubectl apply -f secrets.dev.yaml  -n hope-v2-dev
 kubectl apply -f secrets.prod.yaml -n hope-v2-prod
+
+# Registry pull credentials are included as `hope-registry-creds`
+# inside secrets.dev.yaml and secrets.prod.yaml.
+# Fill placeholders in those files before applying.
 ```
 
 ## Services
@@ -244,8 +248,11 @@ kubectl logs <pod-name> -n hope-v2-dev --previous
 ### Image pull errors
 
 ```bash
-# Verify image exists in registry
-curl -s http://gitlab-server:5000/v2/arca/tags/list | python3 -m json.tool
+# Verify pull secret exists
+kubectl get secret hope-registry-creds -n hope-v2-dev
+
+# If credentials rotated, update secrets.dev.yaml and re-apply
+kubectl apply -f secrets.dev.yaml -n hope-v2-dev
 
 # Check pod events
 kubectl describe pod <pod-name> -n hope-v2-dev | grep -A5 Events
