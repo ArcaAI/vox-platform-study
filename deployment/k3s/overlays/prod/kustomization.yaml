@@ -3,8 +3,6 @@ kind: Kustomization
 
 namespace: hope-prod
 
-namePrefix: ""
-
 commonLabels:
   environment: prod
 
@@ -60,6 +58,22 @@ patches:
         path: /spec/rules/0/host
         value: ui.hope.local
 
+components:
+  - ../../components/registry
+
+# newTag values are auto-updated by the CI promote-prod job on each v* tag push.
 images:
-  - name: gitlab-server:5000/arca
-    newTag: prod-latest
+  - name: hope-v2/api
+    newTag: "0.0.0"
+  - name: hope-v2/ui-playground
+    newTag: "0.0.0"
+  - name: hope-v2/nlp
+    newTag: "0.0.0"
+  - name: hope-v2/smr
+    newTag: "0.0.0"
+  - name: hope-v2/stt-v2-ml-runtime
+    newTag: "0.0.0"
+  - name: hope-v2/stt-v2-worker
+    newTag: "0.0.0"
+  - name: hope-v2/database
+    newTag: "0.0.0"

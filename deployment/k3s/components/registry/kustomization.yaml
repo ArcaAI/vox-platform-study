@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+images:
+  - name: hope-v2/api
+    newName: 10.10.1.110:5050/group/hope-v2/api
+  - name: hope-v2/ui-playground
+    newName: 10.10.1.110:5050/group/hope-v2/ui-playground
+  - name: hope-v2/nlp
+    newName: 10.10.1.110:5050/group/hope-v2/nlp
+  - name: hope-v2/smr
+    newName: 10.10.1.110:5050/group/hope-v2/smr
+  - name: hope-v2/stt-v2-ml-runtime
+    newName: 10.10.1.110:5050/group/hope-v2/stt-v2-ml-runtime
+  - name: hope-v2/stt-v2-worker
+    newName: 10.10.1.110:5050/group/hope-v2/stt-v2-worker
+  - name: hope-v2/database
+    newName: 10.10.1.110:5050/group/hope-v2/database

@@ -24,7 +24,7 @@ spec:
       terminationGracePeriodSeconds: 60
       initContainers:
         - name: init-hf-cache
-          image: gitlab-server:5000/arca:stt-v2-latest
+          image: hope-v2/stt-v2-ml-runtime:latest
           command: ["/bin/sh", "-c"]
           args:
             - mkdir -p /models/hf-cache && chown -R app:app /models
@@ -36,7 +36,7 @@ spec:
               mountPath: /models
       containers:
         - name: stt-v2
-          image: gitlab-server:5000/arca:stt-v2-latest
+          image: hope-v2/stt-v2-ml-runtime:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8861

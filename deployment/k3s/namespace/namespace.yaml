@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: __NAMESPACE__
-  labels:
-    app.kubernetes.io/part-of: project-hope
-    environment: __ENV__

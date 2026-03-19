@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
         - name: nlp
-          image: gitlab-server:5000/arca:nlp-latest
+          image: hope-v2/nlp:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8864

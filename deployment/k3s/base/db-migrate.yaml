@@ -5,6 +5,10 @@ metadata:
   labels:
     app: hope-db-migrate
     app.kubernetes.io/part-of: project-hope
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   backoffLimit: 3
   ttlSecondsAfterFinished: 300
@@ -16,7 +20,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: migrate
-          image: gitlab-server:5000/arca:migration-latest
+          image: hope-v2/database:latest
           imagePullPolicy: Always
           env:
             - name: DATABASE_URL
