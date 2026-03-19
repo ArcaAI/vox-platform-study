@@ -76,12 +76,11 @@ spec:
         namespace: "{{.namespace}}"
       syncPolicy:
         # Dev: auto-sync on push. Prod: manual approval required.
-        {{- if eq .syncPolicy "automated" }}
+        # To disable auto-sync for prod, remove automated block via ArgoCD UI
         automated:
           prune: true
           selfHeal: true
           allowEmpty: false
-        {{- end }}
         syncOptions:
           - CreateNamespace=true
           - PruneLast=true
