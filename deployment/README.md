@@ -8,7 +8,7 @@ All deployments are managed via **ArgoCD** using GitOps. Pushing to `dev` or `ma
 ┌─────────────────────────────────────────────────────────────┐
 │  VM 200 (128GB RAM, 64 CPU, 300GB SSD) - Kubernetes        │
 │                                                             │
-│  Namespaces: hope-dev │ hope-prod                           │
+│  Namespaces: hope-v2-dev │ hope-v2-prod                     │
 │                                                             │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │  hope-api    │  │  hope-ui     │  │  hope-nlp    │      │
@@ -42,8 +42,8 @@ External:
 
 | Environment | Branch | Namespace  | ArgoCD Sync | Ingress Hostnames                          |
 |-------------|--------|------------|-------------|--------------------------------------------|
-| Development | `dev`  | `hope-dev` | Auto        | `api-dev.hope.local`, `ui-dev.hope.local`  |
-| Production  | `main` | `hope-prod`| Manual      | `api.hope.local`, `ui.hope.local`          |
+| Development | `dev`  | `hope-v2-dev` | Auto      | `api-dev.hope.local`, `ui-dev.hope.local`  |
+| Production  | `main` | `hope-v2-prod`| Manual    | `api.hope.local`, `ui.hope.local`          |
 
 ## Directory Structure
 
@@ -55,7 +55,6 @@ deployment/
 └── k3s/
     ├── base/                        # Shared Kustomize base
     │   ├── kustomization.yaml
-    │   ├── namespace.yaml
     │   ├── configmap.yaml
     │   ├── postgres.yaml            # StatefulSet + Service
     │   ├── redis.yaml               # StatefulSet + Service
@@ -91,9 +90,9 @@ deployment/
 # One-time setup: apply ArgoCD bootstrap
 kubectl apply -f deployment/argocd/bootstrap.yaml -n argocd
 
-# Pre-create secrets in each namespace
-kubectl apply -f secrets.dev.yaml  -n hope-dev
-kubectl apply -f secrets.prod.yaml -n hope-prod
+# Apply secrets in each namespace (namespaces are created by bootstrap)
+kubectl apply -f secrets.dev.yaml  -n hope-v2-dev
+kubectl apply -f secrets.prod.yaml -n hope-v2-prod
 ```
 
 ## Services
@@ -157,9 +156,9 @@ Each build job only runs when its relevant source files change. For example, `bu
    ```
    Then apply them to the cluster:
    ```bash
-   kubectl apply -f secrets.dev.yaml -n hope-dev
+  kubectl apply -f secrets.dev.yaml -n hope-v2-dev
    kubectl apply -f secrets.test.yaml -n hope-test
-   kubectl apply -f secrets.prod.yaml -n hope-prod
+  kubectl apply -f secrets.prod.yaml -n hope-v2-prod
    ```
 
 ### Deploying
@@ -167,9 +166,9 @@ Each build job only runs when its relevant source files change. For example, `bu
 Push to the target branch — the pipeline handles everything:
 
 ```bash
-git push origin dev    # → builds & deploys to hope-dev
+git push origin dev    # → builds & deploys to hope-v2-dev
 git push origin test   # → builds & deploys to hope-test
-git push origin prod   # → builds & deploys to hope-prod
+git push origin prod   # → builds & deploys to hope-v2-prod
 ```
 
 ### Pipeline Stages
@@ -187,47 +186,47 @@ git push origin prod   # → builds & deploys to hope-prod
 ### Rollback a Service
 
 ```bash
-kubectl rollout undo deployment/hope-api -n hope-dev
+kubectl rollout undo deployment/hope-api -n hope-v2-dev
 
 # Check rollout history
-kubectl rollout history deployment/hope-api -n hope-dev
+kubectl rollout history deployment/hope-api -n hope-v2-dev
 ```
 
 ### View Logs
 
 ```bash
-# Follow logs (replace hope-dev with target namespace)
-kubectl logs -f deployment/hope-api -n hope-dev
+# Follow logs (replace hope-v2-dev with target namespace)
+kubectl logs -f deployment/hope-api -n hope-v2-dev
 
 # Last 100 lines
-kubectl logs --tail=100 deployment/hope-api -n hope-dev
+kubectl logs --tail=100 deployment/hope-api -n hope-v2-dev
 
 # All containers in a pod
-kubectl logs -f <pod-name> -n hope-dev --all-containers
+kubectl logs -f <pod-name> -n hope-v2-dev --all-containers
 ```
 
 ### Shell into a Pod
 
 ```bash
-kubectl exec -it deployment/hope-api -n hope-dev -- sh
-kubectl exec -it hope-postgres-0 -n hope-dev -- psql -U <user> -d hope
-kubectl exec -it hope-redis-0 -n hope-dev -- redis-cli -a <password>
+kubectl exec -it deployment/hope-api -n hope-v2-dev -- sh
+kubectl exec -it hope-postgres-0 -n hope-v2-dev -- psql -U <user> -d hope
+kubectl exec -it hope-redis-0 -n hope-v2-dev -- redis-cli -a <password>
 ```
 
 ### Scale a Service
 
 ```bash
-kubectl scale deployment/hope-api -n hope-dev --replicas=2
+kubectl scale deployment/hope-api -n hope-v2-dev --replicas=2
 ```
 
 ### Port-Forward for Local Testing
 
 ```bash
 # Access API locally
-kubectl port-forward svc/hope-api -n hope-dev 8868:8868
+kubectl port-forward svc/hope-api -n hope-v2-dev 8868:8868
 
 # Access PostgreSQL locally
-kubectl port-forward svc/hope-postgres -n hope-dev 5432:5432
+kubectl port-forward svc/hope-postgres -n hope-v2-dev 5432:5432
 ```
 
 ---
@@ -237,9 +236,9 @@ kubectl port-forward svc/hope-postgres -n hope-dev 5432:5432
 ### Pod stuck in CrashLoopBackOff
 
 ```bash
-# Check error (replace hope-dev with target namespace)
-kubectl describe pod <pod-name> -n hope-dev
-kubectl logs <pod-name> -n hope-dev --previous
+# Check error (replace hope-v2-dev with target namespace)
+kubectl describe pod <pod-name> -n hope-v2-dev
+kubectl logs <pod-name> -n hope-v2-dev --previous
 ```
 
 ### Image pull errors
@@ -249,17 +248,17 @@ kubectl logs <pod-name> -n hope-dev --previous
 curl -s http://gitlab-server:5000/v2/arca/tags/list | python3 -m json.tool
 
 # Check pod events
-kubectl describe pod <pod-name> -n hope-dev | grep -A5 Events
+kubectl describe pod <pod-name> -n hope-v2-dev | grep -A5 Events
 ```
 
 ### Database connection issues
 
 ```bash
 # Verify postgres is running
-kubectl get pods -n hope-dev -l app=hope-postgres
+kubectl get pods -n hope-v2-dev -l app=hope-postgres
 
 # Test connectivity from another pod
-kubectl exec -it deployment/hope-api -n hope-dev -- \
+kubectl exec -it deployment/hope-api -n hope-v2-dev -- \
   sh -c 'wget -qO- http://hope-postgres:5432 || echo "Port open"'
 ```
 
@@ -267,18 +266,18 @@ kubectl exec -it deployment/hope-api -n hope-dev -- \
 
 ```bash
 # Check service endpoints
-kubectl get endpoints -n hope-dev
+kubectl get endpoints -n hope-v2-dev
 
 # Check ingress
-kubectl get ingress -n hope-dev
-kubectl describe ingress hope-api -n hope-dev
+kubectl get ingress -n hope-v2-dev
+kubectl describe ingress hope-api -n hope-v2-dev
 ```
 
 ### Reset an environment
 
 ```bash
 # Delete all resources for an environment (DESTRUCTIVE)
-kubectl delete namespace hope-dev
+kubectl delete namespace hope-v2-dev
 
 # Re-trigger pipeline to redeploy
 git push origin dev
@@ -361,7 +360,7 @@ Update these hostnames in the Ingress manifests when configuring Cloudflare DNS 
 
 ### Rancher Namespace Visibility
 
-After deploying a new environment, the namespace appears in Rancher automatically. To organize them, go to **Rancher UI → Cluster → Projects/Namespaces** and move the `hope-dev`, `hope-test`, `hope-prod` namespaces into a shared Rancher project.
+After deploying a new environment, the namespace appears in Rancher automatically. To organize them, go to **Rancher UI → Cluster → Projects/Namespaces** and move the `hope-v2-dev`, `hope-test`, `hope-v2-prod` namespaces into a shared Rancher project.
 
 ---
 
