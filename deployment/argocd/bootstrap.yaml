@@ -17,6 +17,24 @@
 #        kubectl apply -f secrets.prod.yaml -n hope-v2-prod
 # =============================================================================
 
+---
+# -- Namespaces --
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hope-v2-dev
+  labels:
+    app.kubernetes.io/part-of: project-hope
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hope-v2-prod
+  labels:
+    app.kubernetes.io/part-of: project-hope
+
+---
 # -- AppProject scoping --
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject

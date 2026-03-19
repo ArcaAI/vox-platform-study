@@ -5,7 +5,6 @@ commonLabels:
   app.kubernetes.io/part-of: project-hope
 
 resources:
-  - namespace.yaml
   - configmap.yaml
   - postgres.yaml
   - redis.yaml
