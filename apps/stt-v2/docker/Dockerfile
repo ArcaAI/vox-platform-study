@@ -61,14 +61,16 @@ RUN apt-get update \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Make python3.11 the default python3/pip3
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+# Create a venv so all packages install to a known, self-contained path.
+# This avoids Debian dist-packages vs site-packages path confusion.
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
 # Install GPU variant (includes onnxruntime-gpu instead of onnxruntime).
-RUN python3 -m pip install \
+RUN pip install \
     --no-cache-dir \
     --no-compile \
     --timeout 300 \
@@ -143,17 +145,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     python3.11 \
     python3.11-venv \
-    python3-pip \
     libsndfile1 \
     ffmpeg \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
-
-# Copy pre-built GPU Python packages from the gpu-builder stage.
-COPY --from=gpu-builder /usr/local/lib/python3.11/dist-packages /usr/local/lib/python3.11/dist-packages
-COPY --from=gpu-builder /usr/local/bin /usr/local/bin
+# Copy the complete venv from the gpu-builder stage.
+COPY --from=gpu-builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application source code only.
 COPY src/ ./src/
@@ -185,7 +184,7 @@ EXPOSE 8861
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
     CMD curl -f http://localhost:8861/api/v1/health || exit 1
 
-CMD ["python3", "-m", "uvicorn", "stt_v2.main:app", "--host", "0.0.0.0", "--port", "8861"]
+CMD ["uvicorn", "stt_v2.main:app", "--host", "0.0.0.0", "--port", "8861"]
 
 # =============================================================================
 # Stage 5: Worker — Dramatiq worker extending ml-runtime
@@ -193,4 +192,4 @@ CMD ["python3", "-m", "uvicorn", "stt_v2.main:app", "--host", "0.0.0.0", "--port
 FROM ml-runtime AS worker
 
 # No additional layers needed — just override the entrypoint.
-CMD ["python3", "-m", "dramatiq", "stt_v2.worker", "--processes", "2", "--threads", "4"]
+CMD ["dramatiq", "stt_v2.worker", "--processes", "2", "--threads", "4"]
