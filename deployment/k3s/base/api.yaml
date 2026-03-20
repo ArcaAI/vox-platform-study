@@ -107,7 +107,8 @@ spec:
     - name: http
       port: 8868
       targetPort: 8868
-  type: ClusterIP
+      nodePort: 30088
+  type: NodePort
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
