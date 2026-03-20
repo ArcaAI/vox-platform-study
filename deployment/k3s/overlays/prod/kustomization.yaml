@@ -9,6 +9,9 @@ commonLabels:
 resources:
   - ../../base
 
+components:
+  - ../../components/registry
+
 patches:
   # --- ConfigMap: prod-specific values ---
   - target:
