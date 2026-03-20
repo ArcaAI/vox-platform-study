@@ -28,6 +28,9 @@ patches:
         path: /data/DEBUG
         value: "true"
       - op: replace
+        path: /data/ENABLE_PRISMA_STUDIO
+        value: "true"
+      - op: replace
         path: /data/OTEL_TRACES_ENABLED
         value: "false"
       - op: replace

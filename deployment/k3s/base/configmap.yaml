@@ -9,6 +9,8 @@ data:
   NODE_ENV: "production"
   LOG_LEVEL: "info"
   DEBUG: "false"
+  CORS_ALLOWED_ORIGINS: "*"
+  ENABLE_PRISMA_STUDIO: "false"
 
   # -- Ports --
   API_PORT: "8868"
