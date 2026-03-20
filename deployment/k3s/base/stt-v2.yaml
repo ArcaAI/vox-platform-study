@@ -21,6 +21,7 @@ spec:
       labels:
         app: hope-stt-v2
     spec:
+      runtimeClassName: nvidia
       terminationGracePeriodSeconds: 60
       initContainers:
         - name: init-hf-cache
@@ -95,7 +96,7 @@ spec:
             - name: API_GATEWAY_URL
               value: "http://hope-api:8868"
             - name: STT_PROVIDER
-              value: "azure"
+              value: "whisper"
             - name: OTEL_SERVICE_NAME
               value: hope-stt-v2
           startupProbe:
@@ -122,9 +123,11 @@ spec:
             requests:
               cpu: "500m"
               memory: "1Gi"
+              nvidia.com/gpu: "1"
             limits:
               cpu: "2"
               memory: "4Gi"
+              nvidia.com/gpu: "1"
           volumeMounts:
             - name: models-cache
               mountPath: /models
