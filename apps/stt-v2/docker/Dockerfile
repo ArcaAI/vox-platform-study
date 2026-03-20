@@ -66,6 +66,12 @@ RUN apt-get update \
 RUN python3.11 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+RUN pip install \
+    --no-cache-dir \
+    --timeout 300 \
+    --retries 3 \
+    --upgrade "pip>=25.0" setuptools wheel
+
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
