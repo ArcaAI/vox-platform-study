@@ -68,7 +68,7 @@ COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
 # Install GPU variant (includes onnxruntime-gpu instead of onnxruntime).
-RUN pip install \
+RUN python3 -m pip install \
     --no-cache-dir \
     --no-compile \
     --timeout 300 \
@@ -185,7 +185,7 @@ EXPOSE 8861
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
     CMD curl -f http://localhost:8861/api/v1/health || exit 1
 
-CMD ["uvicorn", "stt_v2.main:app", "--host", "0.0.0.0", "--port", "8861"]
+CMD ["python3", "-m", "uvicorn", "stt_v2.main:app", "--host", "0.0.0.0", "--port", "8861"]
 
 # =============================================================================
 # Stage 5: Worker — Dramatiq worker extending ml-runtime
