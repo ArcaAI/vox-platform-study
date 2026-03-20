@@ -25,10 +25,11 @@ spec:
       terminationGracePeriodSeconds: 60
       initContainers:
         - name: init-hf-cache
-          image: hope-v2/stt-v2-ml-runtime:latest
+          image: busybox:1.36.1
+          imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
-            - mkdir -p /models/hf-cache && chown -R app:app /models
+            - mkdir -p /models/hf-cache && chown -R 1000:1000 /models
           securityContext:
             runAsUser: 0
             runAsGroup: 0

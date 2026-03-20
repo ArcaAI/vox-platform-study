@@ -113,8 +113,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application source code (nothing else — tests, configs stay out).
 COPY src/ ./src/
 
-# Create a non-root user and hand over ownership in a single layer.
-RUN useradd --create-home --shell /bin/bash app \
+# Create a non-root user with a stable UID/GID and hand over ownership in a single layer.
+RUN groupadd --gid 1000 app \
+    && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash app \
     && chown -R app:app /app
 
 USER app
@@ -164,7 +165,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY src/ ./src/
 
 # Create non-root user + model cache directory in a single layer.
-RUN useradd --create-home --shell /bin/bash app \
+RUN groupadd --gid 1000 app \
+    && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash app \
     && mkdir -p /models \
     && chown -R app:app /app /models
 
