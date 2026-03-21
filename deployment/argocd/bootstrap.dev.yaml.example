@@ -1,0 +1,195 @@
+# =============================================================================
+# ArgoCD Bootstrap — Project HOPE DEV environment (TEMPLATE)
+# =============================================================================
+# ⚠️  Copy this file to bootstrap.dev.yaml and fill in all <REPLACE_*> values.
+#     DO NOT commit the filled-in version to Git.
+#
+# Apply once to bootstrap:
+#
+#   kubectl apply -f deployment/argocd/bootstrap.dev.yaml -n argocd
+#
+# Prerequisites:
+#   1. ArgoCD installed on the K3s cluster
+#   2. Secrets pre-created:
+#        kubectl apply -f secrets.dev.yaml -n hope-v2-dev
+#   3. Argo CD Image Updater v2 (CRD-based) installed + registry config mounted:
+#        kubectl apply -n argocd \
+#          -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+#        kubectl -n argocd patch deployment argocd-image-updater-controller --type=strategic -p '
+#          {"spec":{"template":{"spec":{
+#            "volumes":[{"name":"registries-config","configMap":{"name":"argocd-image-updater-config","optional":true}}],
+#            "containers":[{"name":"argocd-image-updater-controller","volumeMounts":[{"name":"registries-config","mountPath":"/app/config"}]}]
+#          }}}}'
+# =============================================================================
+
+---
+# -- Namespace --
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hope-v2-dev
+  labels:
+    app.kubernetes.io/part-of: project-hope
+
+---
+# -- Shared: Git repo credentials --
+apiVersion: v1
+kind: Secret
+metadata:
+  name: repo-creds
+  namespace: argocd
+type: Opaque
+stringData:
+  type: git
+  url: "https://git.taphuynh.dev/arca/hope-v2.git"
+  username: "<GIT_USERNAME>"
+  password: "<GIT_PASSWORD_OR_TOKEN>"
+
+---
+# -- Shared: Image Updater registry credentials --
+apiVersion: v1
+kind: Secret
+metadata:
+  name: registry-creds
+  namespace: argocd
+type: Opaque
+stringData:
+  credentials: "<REGISTRY_USER>:<REGISTRY_TOKEN>"
+
+---
+# -- Shared: Image Updater registry configuration --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-config
+  namespace: argocd
+data:
+  registries.conf: |
+    registries:
+      - name: GitLab Registry
+        api_url: https://registry.taphuynh.dev
+        prefix: registry.taphuynh.dev
+        credentials: secret:argocd/registry-creds#credentials
+        default: true
+
+---
+# -- Shared: AppProject scoping --
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: hope-v2
+  namespace: argocd
+spec:
+  description: HOPE v2
+  sourceRepos:
+    - "https://git.taphuynh.dev/arca/hope-v2.git"
+  destinations:
+    - server: https://rancher.taphuynh.dev/k8s/clusters/<DEV_CLUSTER_ID>
+      namespace: hope-v2-dev
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: "*"
+    - group: apps
+      kind: "*"
+    - group: batch
+      kind: "*"
+    - group: networking.k8s.io
+      kind: "*"
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: Secret
+
+---
+# -- Dev Application: auto-sync with prune + self-heal --
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hope-v2-dev
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: hope-v2
+    environment: dev
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: hope-v2
+  source:
+    repoURL: "https://git.taphuynh.dev/arca/hope-v2.git"
+    targetRevision: main
+    path: "deployment/k3s/overlays/dev"
+  destination:
+    server: https://rancher.taphuynh.dev/k8s/clusters/c-nfhxq
+    namespace: hope-v2-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+
+---
+# -- Dev Image Updater: digest strategy, tracks :latest tag changes --
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: hope-v2-dev-image-updater
+  namespace: argocd
+spec:
+  commonUpdateSettings:
+    updateStrategy: "digest"
+    allowTags: "regexp:^latest$"
+  writeBackConfig:
+    method: "git:secret:argocd/repo-creds"
+    gitConfig:
+      branch: "main"
+  applicationRefs:
+    - namePattern: "hope-v2-dev"
+      images:
+        - alias: "api"
+          imageName: "registry.taphuynh.dev/arca/hope-v2/api:latest"
+          manifestTargets:
+            kustomize:
+              name: "hope-v2/api"
+        - alias: "ui"
+          imageName: "registry.taphuynh.dev/arca/hope-v2/ui-playground:latest"
+          manifestTargets:
+            kustomize:
+              name: "hope-v2/ui-playground"
+        - alias: "smr"
+          imageName: "registry.taphuynh.dev/arca/hope-v2/smr:latest"
+          manifestTargets:
+            kustomize:
+              name: "hope-v2/smr"
+        - alias: "stt"
+          imageName: "registry.taphuynh.dev/arca/hope-v2/stt-v2-ml-runtime:latest"
+          manifestTargets:
+            kustomize:
+              name: "hope-v2/stt-v2-ml-runtime"
+        - alias: "stt-worker"
+          imageName: "registry.taphuynh.dev/arca/hope-v2/stt-v2-worker:latest"
+          manifestTargets:
+            kustomize:
+              name: "hope-v2/stt-v2-worker"
+        - alias: "db"
+          imageName: "registry.taphuynh.dev/arca/hope-v2/database:latest"
+          manifestTargets:
+            kustomize:
+              name: "hope-v2/database"
