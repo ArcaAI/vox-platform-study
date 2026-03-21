@@ -10,7 +10,6 @@ resources:
   - redis.yaml
   - ollama.yaml
   - api.yaml
-  - nlp.yaml
   - smr.yaml
   - stt-v2.yaml
   - stt-v2-worker.yaml
