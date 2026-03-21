@@ -52,7 +52,7 @@ class TestInlineModelDef:
             hf_model_id="snakers4/silero-vad",
             engine=AiModelFormat.ONNX,
             revision="main",
-            version="v6.0",
+            version="main",
             compute_type="float32",
             device="cuda",
         )
@@ -82,7 +82,7 @@ class TestInlineModelDef:
         inline = InlineModelDef(
             hf_model_id="snakers4/silero-vad",
             engine=AiModelFormat.ONNX,
-            version="v6.0",
+            version="main",
         )
         config = inline.to_ai_model_config(ModelTaskType.VOICE_ACTIVITY_DETECTION)
 
@@ -277,7 +277,7 @@ class TestModelRefs:
         inline_vad = InlineModelDef(
             hf_model_id="snakers4/silero-vad",
             engine=AiModelFormat.ONNX,
-            version="v6.0",
+            version="main",
         )
         refs = ModelRefs(
             asr=ModelRef(inline=inline_asr),
@@ -559,7 +559,7 @@ class TestPipelineConfig:
                 vad=ModelRef(inline=InlineModelDef(
                     hf_model_id="snakers4/silero-vad",
                     engine=AiModelFormat.ONNX,
-                    version="v6.0",
+                    version="main",
                 )),
             ),
             preprocessing=PreprocessingConfig(),

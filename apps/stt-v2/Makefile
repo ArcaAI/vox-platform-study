@@ -218,10 +218,10 @@ install-ml-apple:
 # =============================================================================
 
 run:
-	$(CONDA_RUN) uvicorn stt_v2.main:app --host 0.0.0.0 --port 8001 --reload
+	$(CONDA_RUN) uvicorn stt_v2.main:app --host 0.0.0.0 --port 8861 --reload
 
 run-worker:
-	$(CONDA_RUN) dramatiq stt_v2.worker --processes 1 --threads 4 --watch src
+	$(CONDA_RUN) dramatiq stt_v2.worker --processes 1 --threads 4
 
 # =============================================================================
 # Testing (using conda run)

@@ -303,7 +303,7 @@ class TestWorkerPubSubHappyPath:
     async def test_publisher_closed_in_finally_block(self, pubsub_capture):
         """Verify publisher.close() is called even on success."""
         mock_redis = pubsub_capture.mock_redis()
-        p1, p2, p3, p4, *_ = _patch_worker_deps()
+        p1, p2, p3, p4, api, *_ = _patch_worker_deps()
 
         with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
             await _transcribe_file_async(
@@ -319,6 +319,7 @@ class TestWorkerPubSubHappyPath:
         # Since we can't easily inspect internal state post-close,
         # verify no exceptions were raised (implicit)
         assert len(pubsub_capture.messages) > 0  # Events were published
+        api.close.assert_awaited_once()
 
 
 # =============================================================================
@@ -535,6 +536,7 @@ class TestWorkerErrorPaths:
 
         # Events were still published before the error
         assert len(pubsub_capture.messages) >= 1
+        api.close.assert_awaited_once()
 
 
 # =============================================================================

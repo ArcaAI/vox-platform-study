@@ -1,0 +1,415 @@
+# HOPE Platform - Deployment Guide
+
+All deployments are managed via **ArgoCD** using GitOps. Pushing to `dev` or `main` branch triggers ArgoCD sync automatically (dev) or manually (prod).
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  VM 200 (128GB RAM, 64 CPU, 300GB SSD) - Kubernetes        │
+│                                                             │
+│  Namespaces: hope-v2-dev │ hope-v2-prod                     │
+│                                                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │  hope-api    │  │  hope-ui     │  │  hope-nlp    │      │
+│  │  (NestJS)    │  │  (React/Vite)│  │  (Python)    │      │
+│  │  :8868       │  │  :3000       │  │  :8864       │      │
+│  └──────┬───────┘  └──────┬───────┘  └──────────────┘      │
+│         │                 │                                  │
+│  ┌──────┴───────┐  ┌──────┴───────┐                         │
+│  │  hope-smr    │  │  hope-stt-v2 │                         │
+│  │  (Python)    │  │  (Python)    │                         │
+│  │  :8862       │  │  :8861       │                         │
+│  └──────────────┘  └──────────────┘                         │
+│                                                             │
+│  ┌──────────────┐  ┌──────────────┐                         │
+│  │  PostgreSQL  │  │  Redis       │                         │
+│  │  :5432       │  │  :6379       │                         │
+│  └──────────────┘  └──────────────┘                         │
+│                                                             │
+│  Traefik Ingress (managed by Rancher)                       │
+│  ArgoCD (GitOps controller)                                 │
+└─────────────────────────────────────────────────────────────┘
+
+External:
+  VM 402 - MinIO (object storage)
+  VM 410 - GitLab
+  VM 411 - GitLab Runner
+  VM 400 - Rancher
+```
+
+## Environments
+
+| Environment | Branch | Namespace  | ArgoCD Sync | Ingress Hostnames                          |
+|-------------|--------|------------|-------------|--------------------------------------------|
+| Development | `dev`  | `hope-v2-dev` | Auto      | `api-dev.hope.local`, `ui-dev.hope.local`  |
+| Production  | `main` | `hope-v2-prod`| Manual    | `api.hope.local`, `ui.hope.local`          |
+
+## Directory Structure
+
+```
+deployment/
+├── README.md                        # This file
+├── argocd/
+│   └── bootstrap.yaml               # AppProject + ApplicationSet (apply once)
+└── k3s/
+    ├── base/                        # Shared Kustomize base
+    │   ├── kustomization.yaml
+    │   ├── configmap.yaml
+    │   ├── postgres.yaml            # StatefulSet + Service
+    │   ├── redis.yaml               # StatefulSet + Service
+    │   ├── api.yaml                 # Deployment + Service + Ingress
+    │   ├── nlp.yaml                 # Deployment + Service
+    │   ├── smr.yaml                 # Deployment + Service
+    │   ├── stt-v2.yaml              # Deployment + Service
+    │   ├── stt-v2-worker.yaml       # Deployment (no service)
+    │   ├── ui.yaml                  # Deployment + Service + Ingress
+    │   └── db-migrate.yaml          # Job (ArgoCD PreSync hook)
+    ├── components/
+    │   └── registry/
+    │       └── kustomization.yaml   # Image registry rewrites
+    └── overlays/
+        ├── dev/
+        │   └── kustomization.yaml   # Dev patches + image tags
+        └── prod/
+            └── kustomization.yaml   # Prod patches + image tags
+```
+
+## How It Works
+
+1. **CI pipeline** builds images, pushes to GitLab Container Registry, and updates image tags in the appropriate overlay's `kustomization.yaml`
+2. **ArgoCD** watches the Git repo and detects changes:
+   - **Dev**: Auto-syncs with prune + self-heal on `dev` branch changes
+   - **Prod**: Manual sync only on `main` branch changes (RollingSync: dev first, then prod)
+3. **PreSync hook** (`db-migrate.yaml`) runs database migrations before each deployment
+4. **Kustomize overlays** patch environment-specific values (config, hostnames, replicas, image tags)
+
+## Bootstrap
+
+```bash
+# One-time setup: apply ArgoCD bootstrap
+kubectl apply -f deployment/argocd/bootstrap.yaml -n argocd
+
+# Apply secrets in each namespace (namespaces are created by bootstrap)
+kubectl apply -f secrets.dev.yaml  -n hope-v2-dev
+kubectl apply -f secrets.prod.yaml -n hope-v2-prod
+
+# Registry pull credentials are included as `hope-registry-creds`
+# inside secrets.dev.yaml and secrets.prod.yaml.
+# Fill placeholders in those files before applying.
+```
+
+## Services
+
+| Service         | Type            | Port | Public |
+|-----------------|-----------------|------|--------|
+| api             | NestJS backend  | 8868 | Yes    |
+| ui-playground   | React/Vite      | 3000 | Yes    |
+| nlp             | Python NLP      | 8864 | No     |
+| smr             | Python summary  | 8862 | No     |
+| stt-v2          | Python STT      | 8861 | No     |
+| stt-v2-worker   | Python worker   | —    | No     |
+| postgres        | PostgreSQL 18   | 5432 | No     |
+| redis           | Redis 8         | 6379 | No     |
+
+## GitLab CI/CD Pipeline
+
+### How It Works
+
+```
+git push to branch (dev / test / prod)
+  └─> build stage (only changed services, parallel, env-tagged)
+        └─> migrate stage (if packages/database/** changed)
+              └─> deploy stage (rolling update to hope-{env} namespace)
+```
+
+**Image tagging convention:**
+```
+{service}-{env}-latest      e.g., api-dev-latest, stt-v2-prod-latest
+{service}-{env}-{sha}       e.g., api-dev-abc1234
+```
+
+Each build job only runs when its relevant source files change. For example, `build-api` triggers on changes to `apps/api/**`, `packages/applications/**`, `packages/database/**`, etc.
+
+### Setup (One-Time)
+
+1. **Copy the CI config to the repo root:**
+   ```bash
+   cp infrastructure/deploy/gitlab-ci.yml .gitlab-ci.yml
+   ```
+
+2. **Set GitLab CI/CD variables** (Settings > CI/CD > Variables):
+
+   | Variable | Value | Protected | Masked |
+   |----------|-------|-----------|--------|
+   | `KUBECONFIG_CONTENT` | Base64-encoded kubeconfig | Yes | Yes |
+   | `CI_REGISTRY_USER` | GitLab username | No | No |
+   | `CI_REGISTRY_PASSWORD` | GitLab password/token | Yes | Yes |
+
+   Generate `KUBECONFIG_CONTENT`:
+   ```bash
+   base64 -i ~/.kube/config | tr -d '\n'
+   ```
+
+3. **Create Kubernetes secrets** for each environment (these are applied via kubectl, not committed to git):
+   ```bash
+   cd infrastructure/deploy/k3s/config
+   cp secrets.yaml.template secrets.dev.yaml   # Edit and fill values
+   cp secrets.yaml.template secrets.test.yaml   # Edit and fill values
+   cp secrets.yaml.template secrets.prod.yaml   # Edit and fill values
+   ```
+   Then apply them to the cluster:
+   ```bash
+  kubectl apply -f secrets.dev.yaml -n hope-v2-dev
+   kubectl apply -f secrets.test.yaml -n hope-test
+  kubectl apply -f secrets.prod.yaml -n hope-v2-prod
+   ```
+
+### Deploying
+
+Push to the target branch — the pipeline handles everything:
+
+```bash
+git push origin dev    # → builds & deploys to hope-v2-dev
+git push origin test   # → builds & deploys to hope-test
+git push origin prod   # → builds & deploys to hope-v2-prod
+```
+
+### Pipeline Stages
+
+| Stage | What It Does | When It Runs |
+|-------|-------------|--------------|
+| **build** | Builds Docker images, pushes to GitLab registry | Changed source files for each service |
+| **migrate** | Runs database migration job | `packages/database/**` changed |
+| **deploy** | Applies K3s manifests, rolling restart | Changed service or infra files |
+
+---
+
+## Common Operations
+
+### Rollback a Service
+
+```bash
+kubectl rollout undo deployment/hope-api -n hope-v2-dev
+
+# Check rollout history
+kubectl rollout history deployment/hope-api -n hope-v2-dev
+```
+
+### View Logs
+
+```bash
+# Follow logs (replace hope-v2-dev with target namespace)
+kubectl logs -f deployment/hope-api -n hope-v2-dev
+
+# Last 100 lines
+kubectl logs --tail=100 deployment/hope-api -n hope-v2-dev
+
+# All containers in a pod
+kubectl logs -f <pod-name> -n hope-v2-dev --all-containers
+```
+
+### Shell into a Pod
+
+```bash
+kubectl exec -it deployment/hope-api -n hope-v2-dev -- sh
+kubectl exec -it hope-postgres-0 -n hope-v2-dev -- psql -U <user> -d hope
+kubectl exec -it hope-redis-0 -n hope-v2-dev -- redis-cli -a <password>
+```
+
+### Scale a Service
+
+```bash
+kubectl scale deployment/hope-api -n hope-v2-dev --replicas=2
+```
+
+### Port-Forward for Local Testing
+
+```bash
+# Access API locally
+kubectl port-forward svc/hope-api -n hope-v2-dev 8868:8868
+
+# Access PostgreSQL locally
+kubectl port-forward svc/hope-postgres -n hope-v2-dev 5432:5432
+```
+
+---
+
+## Troubleshooting
+
+### Pod stuck in CrashLoopBackOff
+
+```bash
+# Check error (replace hope-v2-dev with target namespace)
+kubectl describe pod <pod-name> -n hope-v2-dev
+kubectl logs <pod-name> -n hope-v2-dev --previous
+```
+
+### Image pull errors
+
+```bash
+# Verify pull secret exists
+kubectl get secret hope-registry-creds -n hope-v2-dev
+
+# If credentials rotated, update secrets.dev.yaml and re-apply
+kubectl apply -f secrets.dev.yaml -n hope-v2-dev
+
+# Check pod events
+kubectl describe pod <pod-name> -n hope-v2-dev | grep -A5 Events
+```
+
+### Database connection issues
+
+```bash
+# Verify postgres is running
+kubectl get pods -n hope-v2-dev -l app=hope-postgres
+
+# Test connectivity from another pod
+kubectl exec -it deployment/hope-api -n hope-v2-dev -- \
+  sh -c 'wget -qO- http://hope-postgres:5432 || echo "Port open"'
+```
+
+### Service not reachable
+
+```bash
+# Check service endpoints
+kubectl get endpoints -n hope-v2-dev
+
+# Check ingress
+kubectl get ingress -n hope-v2-dev
+kubectl describe ingress hope-api -n hope-v2-dev
+```
+
+### Reset an environment
+
+```bash
+# Delete all resources for an environment (DESTRUCTIVE)
+kubectl delete namespace hope-v2-dev
+
+# Re-trigger pipeline to redeploy
+git push origin dev
+```
+
+---
+
+## Resource Allocation (VM 200: 128GB RAM, 64 CPU)
+
+**Per environment:**
+
+| Component | CPU Request | CPU Limit | Memory Request | Memory Limit |
+|-----------|-------------|-----------|----------------|--------------|
+| PostgreSQL | 1 | 4 | 2Gi | 8Gi |
+| Redis | 250m | 1 | 256Mi | 1Gi |
+| API | 500m | 2 | 512Mi | 2Gi |
+| NLP | 250m | 1 | 256Mi | 1Gi |
+| SMR | 500m | 2 | 512Mi | 2Gi |
+| STT-V2 | 4 | 8 | 8Gi | 16Gi |
+| UI | 100m | 500m | 64Mi | 256Mi |
+| **Total/env** | **~6.6** | **~18.5** | **~11.6Gi** | **~30.3Gi** |
+
+**Multi-environment capacity (all 3 envs at limits):**
+
+| | CPU Limit | Memory Limit | Storage (PVC) |
+|--|-----------|--------------|---------------|
+| Per environment | ~18.5 | ~30.3Gi | ~155Gi (100Gi PG + 5Gi Redis + 50Gi STT models) |
+| 3 environments | ~55.5 | ~90.9Gi | ~465Gi |
+| VM 200 capacity | 64 CPU | 128Gi RAM | 300Gi SSD |
+
+> **Storage warning:** 3 full environments would request ~465Gi on a 300GB SSD. Consider:
+> - Sharing PostgreSQL across envs (separate DBs, same instance)
+> - Sharing the STT-V2 model PVC across envs (ReadOnlyMany)
+> - Or: only running 1-2 environments at full scale
+
+---
+
+## K3s & Rancher Notes
+
+### Storage Class
+
+K3s ships with the `local-path` provisioner (StorageClass: `local-path`). All PVCs in the manifests use the cluster default StorageClass. Verify it's set:
+
+```bash
+kubectl get storageclass
+# Should show local-path (default)
+```
+
+### Insecure Registry for K3s (containerd)
+
+K3s uses **containerd** (not Docker). To pull images from the insecure GitLab registry, the `/etc/rancher/k3s/registries.yaml` on **VM 200** must include the registry used in image tags:
+
+```yaml
+# /etc/rancher/k3s/registries.yaml on VM 200
+mirrors:
+  "gitlab-server:5000":
+    endpoint:
+      - "http://gitlab-server:5000"
+```
+
+Also ensure VM 200 can resolve `gitlab-server` — add to `/etc/hosts` if needed:
+```bash
+echo "172.30.0.25 gitlab-server" | sudo tee -a /etc/hosts
+```
+
+After editing registries.yaml, restart K3s:
+```bash
+sudo systemctl restart k3s
+```
+
+### Traefik Ingress (K3s default)
+
+K3s bundles Traefik as the default ingress controller. All Ingress resources use `ingressClassName: traefik`. Each environment has unique hostnames to prevent routing conflicts:
+
+- `dev.hope.local` / `api-dev.hope.local`
+- `test.hope.local` / `api-test.hope.local`
+- `prod.hope.local` / `api-prod.hope.local`
+
+Update these hostnames in the Ingress manifests when configuring Cloudflare DNS with your actual domain.
+
+### Rancher Namespace Visibility
+
+After deploying a new environment, the namespace appears in Rancher automatically. To organize them, go to **Rancher UI → Cluster → Projects/Namespaces** and move the `hope-v2-dev`, `hope-test`, `hope-v2-prod` namespaces into a shared Rancher project.
+
+---
+
+## Rancher Agent Troubleshooting
+
+### Check Rancher Agent Logs
+
+> 📍 **Run on: VM 200** via SSH
+
+```bash
+# List agent pods
+kubectl get pods -n cattle-system
+
+# Check logs for a specific agent pod
+kubectl logs <pod-name> -n cattle-system
+```
+
+### Re-import Cluster into Rancher
+
+> 📍 **Run on: VM 200** via SSH
+
+If the Rancher agent fails to connect (e.g., TLS or hostname issues), re-import using the internal IP:
+
+```bash
+# Download the import manifest
+curl --insecure -sfL http://10.10.1.100/v3/import/<RANCHER_TOKEN>.yaml > /tmp/cluster.yaml
+
+# Patch the manifest to use the internal Rancher IP instead of the public hostname
+sed -i 's|https://rancher.taphuynh.dev|http://10.10.1.100|g' /tmp/cluster.yaml
+
+# Clear the CA checksum (not needed for HTTP)
+sed -i 's|CATTLE_CA_CHECKSUM:.*|CATTLE_CA_CHECKSUM: ""|g' /tmp/cluster.yaml
+
+# Apply the patched manifest
+kubectl apply -f /tmp/cluster.yaml
+```
+
+### Clean Up Rancher Agent
+
+> 📍 **Run on: VM 200** via SSH — ⚠️ **DESTRUCTIVE: removes Rancher agent from the cluster**
+
+```bash
+kubectl delete namespace cattle-system
+kubectl delete namespace fleet-system 2>/dev/null
+```

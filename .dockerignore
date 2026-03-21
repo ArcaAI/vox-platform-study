@@ -1,0 +1,51 @@
+# Dependencies (installed inside the container)
+node_modules
+**/node_modules
+
+# Build outputs (rebuilt inside the container)
+**/dist
+**/.next
+**/storybook-static
+
+# Version control
+.git
+.gitignore
+
+# IDE / OS
+.vscode
+.idea
+**/.DS_Store
+
+# CI/CD
+.gitlab-ci.yml
+
+# Documentation & config not needed in builds
+*.md
+LICENSE
+docs/
+knowledge/
+research/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Test artifacts
+coverage/
+**/coverage
+**/__tests__
+**/*.test.*
+**/*.spec.*
+
+# Turborepo
+.turbo
+
+# Python caches (for nlp/smr apps)
+**/__pycache__
+**/*.pyc
+**/.venv
+**/venv
+
+# Misc
+.github

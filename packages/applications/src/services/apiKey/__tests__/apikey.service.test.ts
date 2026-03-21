@@ -13,11 +13,11 @@
  * - Audit event logging
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createHash, createHmac } from 'crypto';
-import { UnauthorizedException, ForbiddenException } from '@nestjs/common';
-import { ApiKeyService } from '../apikey.service';
 import { ApiKeyStatus, ApiKeyType, AuditAction, SysEventType } from '@arcaai/domains';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { createHash, createHmac } from 'crypto';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiKeyService } from '../apikey.service';
 
 // Mock ClsService
 const mockClsService = {
@@ -1463,6 +1463,11 @@ describe('ApiKeyService', () => {
             expect(service.extractApiKeyFromRequest(request)).toBe('my-api-key-3');
         });
 
+        it('should return key from x-internal-service-key header', () => {
+            const request = { headers: { 'x-internal-service-key': 'my-api-key-4' }, query: {} };
+            expect(service.extractApiKeyFromRequest(request)).toBe('my-api-key-4');
+        });
+
         it('should return null when no key present', () => {
             const request = { headers: {}, query: {} };
             expect(service.extractApiKeyFromRequest(request)).toBeNull();
@@ -1524,6 +1529,11 @@ describe('ApiKeyService', () => {
         it('should return key from headers', () => {
             const request = { headers: { 'x-api-key': 'ws-key' } };
             expect(service.extractApiKeyFromWebSocket(request)).toBe('ws-key');
+        });
+
+        it('should return key from x-internal-service-key header', () => {
+            const request = { headers: { 'x-internal-service-key': 'ws-key-2' } };
+            expect(service.extractApiKeyFromWebSocket(request)).toBe('ws-key-2');
         });
 
         it('should return key from URL query param apiKey', () => {

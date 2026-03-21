@@ -170,7 +170,7 @@ models:
   vad:
     hf_model_id: "snakers4/silero-vad"
     engine: "onnx"
-    version: "v6.0"
+    version: "main"
   denoise:
     hf_model_id: "nickolay/rnnoise"
     engine: "onnx"
@@ -590,7 +590,7 @@ models:
   vad:
     hf_model_id: "snakers4/silero-vad"
     engine: "onnx"
-    version: "v6.0"
+    version: "main"
   denoise:
     hf_model_id: "nickolay/rnnoise"
     engine: "onnx"

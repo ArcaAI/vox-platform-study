@@ -1,5 +1,5 @@
 /** @type {import("prettier").Config} */
 module.exports = {
     ...require('@arcaai/config-eslint/prettier-base'),
-    tabWidth: 4,
+    tabWidth: 2,
 };

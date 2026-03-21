@@ -116,10 +116,10 @@ export const TRANSCRIPTION_MODELS: ModelRegistryEntry[] = [
     priority: ModelPriority.RECOMMENDED,
     version: '1.0',
     size: 40000000, // ~40MB
-    url: 'https://huggingface.co/onnx-community/whisper-tiny.en',
+    url: 'https://huggingface.co/onnx-community/whisper-tiny',
     sources: {
-      remote: 'https://huggingface.co/onnx-community/whisper-tiny.en',
-      local: '/models/transcription/whisper-tiny.en',
+      remote: 'https://huggingface.co/onnx-community/whisper-tiny',
+      local: '/models/transcription/whisper-tiny',
     },
     format: 'onnx',
     quantization: 'fp32',

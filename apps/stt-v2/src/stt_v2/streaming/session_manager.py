@@ -419,6 +419,13 @@ class SessionManager:
             active_sessions=self.active_session_count,
         )
 
+    async def force_end_all_sessions(self) -> list[str]:
+        """Force-end all active sessions and return removed session IDs."""
+        session_ids = list(self._sessions.keys())
+        for session_id in session_ids:
+            await self.remove_session(session_id)
+        return session_ids
+
     def list_sessions(self) -> list[dict[str, Any]]:
         """Return diagnostic snapshots for all active sessions."""
         return [s.to_dict() for s in self._sessions.values()]

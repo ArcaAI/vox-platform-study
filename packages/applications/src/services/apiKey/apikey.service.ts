@@ -1,9 +1,4 @@
-import { Injectable, Logger, UnauthorizedException, ForbiddenException } from '@nestjs/common';
-import { ClsService } from 'nestjs-cls';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { createHash, createHmac, randomBytes } from 'crypto';
 import {
-    ResourceType,
     ApiKeyEntity,
     ApiKeyFactory,
     ApiKeyRepository,
@@ -11,23 +6,28 @@ import {
     ApiKeyType,
     AuditAction,
     EntityId,
+    ResourceType,
     SysEventType,
 } from '@arcaai/domains';
 import {
-    InternalServerErrorException,
     ArgumentInvalidException,
+    InternalServerErrorException,
     NotFoundException,
 } from '@arcaai/exceptions';
-import { IApiKeyService, CreateApiKeyResult } from './IApiKeyService';
-import { CreateApiKeyRequest, UpdateApiKeyRequest } from './dto';
+import { ForbiddenException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { createHash, createHmac, randomBytes } from 'crypto';
+import { ClsService } from 'nestjs-cls';
 import {
     BaseService,
     FetchResponse,
     PaginatedQuery,
-    withFormattedPaginatedProps,
     withFormattedCountProps,
+    withFormattedPaginatedProps,
 } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { CreateApiKeyResult, IApiKeyService } from './IApiKeyService';
+import { CreateApiKeyRequest, UpdateApiKeyRequest } from './dto';
 
 /**
  * Key prefix used for all generated API keys.
@@ -783,7 +783,8 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
         const apiKey =
             (request.headers['apikey'] as string) ||
             (request.headers['api-key'] as string) ||
-            (request.headers['x-api-key'] as string);
+            (request.headers['x-api-key'] as string) ||
+            (request.headers['x-internal-service-key'] as string);
 
         if (!apiKey && request.query?.apiKey) {
             const allowQueryParam = process.env.API_KEY_ALLOW_QUERY_PARAM === 'true';
@@ -805,7 +806,8 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
         const apiKey =
             (request.headers['apikey'] as string) ||
             (request.headers['api-key'] as string) ||
-            (request.headers['x-api-key'] as string);
+            (request.headers['x-api-key'] as string) ||
+            (request.headers['x-internal-service-key'] as string);
 
         if (!apiKey && request.url) {
             const url = new URL(request.url, 'http://localhost');

@@ -1027,7 +1027,7 @@ class TestBatchServiceInlineModelLoading:
                 vad=ModelRef(inline=InlineModelDef(
                     hf_model_id="snakers4/silero-vad",
                     engine=AiModelFormat.ONNX,
-                    version="v6.0",
+                    version="main",
                 )),
                 denoise=ModelRef(inline=InlineModelDef(
                     hf_model_id="nickolay/rnnoise",
@@ -1987,7 +1987,7 @@ class TestNormalizeWhisperOffsets:
         assert result[0]["end"] == 1.5
         assert result[0]["start_time"] == 0.0
         assert result[0]["end_time"] == 1.5
-        assert result[0]["confidence"] == 1.0
+        assert result[0]["confidence"] is None
 
         assert result[1]["start"] == 1.6
         assert result[1]["end"] == 2.8
@@ -2883,6 +2883,41 @@ class TestCodeSwitchingInference:
         call_kwargs = loaded_model.model.generate.call_args[1]
         assert "language" in call_kwargs
         assert call_kwargs["language"] == "fr"
+
+    @pytest.mark.asyncio
+    async def test_transformers_requests_and_forwards_attention_mask(self, service):
+        """Transformers path should request attention_mask and pass it to generate()."""
+        pipeline_config = create_complete_pipeline_config(language="en")
+        pipeline_config.spec.inference.code_switching = False
+
+        loaded_model = self._create_transformers_loaded_model()
+        samples = np.zeros(16000, dtype=np.float32)
+        config = pipeline_config.spec.inference
+
+        input_features = MagicMock()
+        input_features.is_floating_point.return_value = True
+        input_features.to.return_value = input_features
+
+        attention_mask = MagicMock()
+        attention_mask.is_floating_point.return_value = False
+        attention_mask.to.return_value = attention_mask
+
+        loaded_model.processor.return_value = {
+            "input_features": input_features,
+            "attention_mask": attention_mask,
+        }
+
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}):
+            await service._run_transformers_inference(
+                samples, 16000, loaded_model, config, None
+            )
+
+        processor_kwargs = loaded_model.processor.call_args.kwargs
+        assert processor_kwargs["return_attention_mask"] is True
+
+        call_kwargs = loaded_model.model.generate.call_args[1]
+        assert "attention_mask" in call_kwargs
+        assert call_kwargs["attention_mask"] is attention_mask
 
     @pytest.mark.asyncio
     async def test_nemo_code_switching_logs_warning(self, service, caplog):

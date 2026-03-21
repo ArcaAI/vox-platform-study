@@ -19,7 +19,7 @@ class OllamaConfig(BaseSettings):
 
     enabled: bool = False
     base_url: str = "http://localhost:11434"
-    default_model: str = "llama3.2:latest"
+    default_model: str = "qwen3.5:2b"
     timeout_s: int = 300
     max_concurrent: int = 4
     queue_backoff_s: float = 2.0
