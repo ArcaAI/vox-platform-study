@@ -75,8 +75,8 @@ spec:
               value: "redis://:$(REDIS_PASS)@hope-redis:6379/0"
             - name: MINIO_ENDPOINT
               valueFrom:
-                configMapKeyRef:
-                  name: hope-config
+                secretKeyRef:
+                  name: hope-secrets
                   key: MINIO_ENDPOINT
             - name: MINIO_SECURE
               value: "false"
