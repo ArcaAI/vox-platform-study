@@ -85,7 +85,9 @@ spec:
               cpu: "4"
               memory: "8Gi"
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes:
