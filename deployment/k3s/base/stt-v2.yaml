@@ -1,0 +1,152 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-stt-v2
+  labels:
+    app: hope-stt-v2
+    app.kubernetes.io/part-of: project-hope
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: hope-stt-v2
+  template:
+    metadata:
+      labels:
+        app: hope-stt-v2
+    spec:
+      runtimeClassName: nvidia
+      terminationGracePeriodSeconds: 60
+      initContainers:
+        - name: init-hf-cache
+          image: busybox:1.36.1
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - mkdir -p /models/hf-cache && chown -R 1000:1000 /models
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+            - name: models-cache
+              mountPath: /models
+      containers:
+        - name: stt-v2
+          image: hope-v2/stt-v2-ml-runtime:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8861
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 10"]
+          envFrom:
+            - configMapRef:
+                name: hope-config
+            - secretRef:
+                name: hope-secrets
+          env:
+            - name: APP_NAME
+              value: stt-v2
+            - name: APP_VERSION
+              value: "2.0.0"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "8861"
+            - name: CORS_ORIGINS
+              value: '["*"]'
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: STT_V2_DATABASE_URL
+            - name: DATABASE_POOL_SIZE
+              value: "5"
+            - name: DATABASE_MAX_OVERFLOW
+              value: "10"
+            - name: REDIS_URL
+              value: "redis://:$(REDIS_PASS)@hope-redis:6379/0"
+            - name: MINIO_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: MINIO_ENDPOINT
+            - name: MINIO_SECURE
+              value: "false"
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: MINIO_SECRET_KEY
+            - name: MINIO_AUDIO_BUCKET
+              value: hope-audio
+            - name: MINIO_CHUNK_BUCKET
+              value: hope-audio-chunks
+            - name: API_GATEWAY_URL
+              value: "http://hope-api:8868"
+            - name: STT_PROVIDER
+              value: "whisper"
+            - name: OTEL_SERVICE_NAME
+              value: hope-stt-v2
+          startupProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8861
+            failureThreshold: 60
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8861
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8861
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: models-cache
+              mountPath: /models
+      volumes:
+        - name: models-cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-stt-v2
+  labels:
+    app: hope-stt-v2
+spec:
+  selector:
+    app: hope-stt-v2
+  ports:
+    - name: http
+      port: 8861
+      targetPort: 8861
+  type: ClusterIP

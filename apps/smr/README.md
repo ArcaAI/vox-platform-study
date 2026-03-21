@@ -372,7 +372,7 @@ python run_dev.py
 **Option 3: Using uvicorn directly**
 
 ```bash
-uvicorn smr.main:app --host 0.0.0.0 --port 5006 --reload
+uvicorn smr_v2.main:app --host 0.0.0.0 --port 8862 --reload
 ```
 
 #### 7. Start Celery Worker (for async processing)

@@ -1,0 +1,76 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: hope-v2-dev
+
+commonLabels:
+  environment: dev
+
+resources:
+  - ../../base
+
+components:
+  - ../../components/registry
+
+patches:
+  # --- ConfigMap: dev-specific values ---
+  - target:
+      kind: ConfigMap
+      name: hope-config
+    patch: |
+      - op: replace
+        path: /data/NODE_ENV
+        value: development
+      - op: replace
+        path: /data/LOG_LEVEL
+        value: debug
+      - op: replace
+        path: /data/DEBUG
+        value: "true"
+      - op: replace
+        path: /data/ENABLE_PRISMA_STUDIO
+        value: "true"
+      - op: replace
+        path: /data/OTEL_TRACES_ENABLED
+        value: "false"
+      - op: replace
+        path: /data/OTEL_METRICS_ENABLED
+        value: "false"
+
+  # --- API Ingress: dev hostname ---
+  - target:
+      kind: Ingress
+      name: hope-api
+    patch: |
+      - op: replace
+        path: /spec/rules/0/host
+        value: api-dev.hope.local
+
+  # --- UI Ingress: dev hostname ---
+  - target:
+      kind: Ingress
+      name: hope-ui
+    patch: |
+      - op: replace
+        path: /spec/rules/0/host
+        value: ui-dev.hope.local
+
+components:
+  - ../../components/registry
+
+# newTag values are auto-updated by the CI pipeline on each dev branch push.
+images:
+  - name: hope-v2/api
+    newTag: dev
+  - name: hope-v2/ui-playground
+    newTag: dev
+  - name: hope-v2/nlp
+    newTag: dev
+  - name: hope-v2/smr
+    newTag: dev
+  - name: hope-v2/stt-v2-ml-runtime
+    newTag: dev
+  - name: hope-v2/stt-v2-worker
+    newTag: dev
+  - name: hope-v2/database
+    newTag: dev

@@ -12,7 +12,6 @@
         "build:sdk": "turbo run build --filter=@arcaai/vox...",
         "clean": "turbo run clean && rimraf \"**/dist\" \"**/tsconfig.tsbuildinfo\"",
         "nuke": "rimraf pnpm-lock.yaml && turbo run nuke && pnpm install",
-
         "------------ DEV SERVERS ------------": "",
         "dev:api": "NODE_ENV=development turbo run dev --filter=@arcaai/api",
         "dev:api:watch": "NODE_ENV=development turbo run dev:watch --filter=@arcaai/api --filter=@arcaai/applications",
@@ -20,7 +19,6 @@
         "dev:smr-v2": "conda run -n arcaenv --no-capture-output uvicorn smr_v2.main:app --host 0.0.0.0 --port 8862 --reload --app-dir apps/smr/src",
         "dev:nlp": "conda run -n arcaenv --no-capture-output uvicorn --factory nlp.app:get_app --host 0.0.0.0 --port 8864 --reload --app-dir apps/nlp/src",
         "dev:ui-playground": "pnpm --filter @arcaai/ui-playground dev",
-
         "------------ DATABASE ------------": "",
         "db:generate": "pnpm --filter @arcaai/database db:generate",
         "db:migrate": "pnpm --filter @arcaai/database db:migrate",
@@ -31,21 +29,18 @@
         "db:seed": "pnpm --filter @arcaai/database seed",
         "db:all": "pnpm gen:prisma push --all --force && pnpm gen:prisma generate --all && pnpm db:seed",
         "ok": "pnpm db:all && turbo run build",
-
         "------------ DOCKER (Dev Infrastructure) ------------": "",
         "docker:dev:up": "./scripts/start-infra.sh",
         "docker:dev:up:all": "./scripts/start-infra.sh --all",
         "docker:dev:down": "./scripts/start-infra.sh --stop",
         "docker:dev:logs": "./scripts/start-infra.sh --logs",
         "docker:dev:status": "./scripts/start-infra.sh --status",
-
         "------------ DOCKER (Test Infrastructure) ------------": "",
         "docker:test:up": "./scripts/start-test-infra.sh",
         "docker:test:down": "./scripts/start-test-infra.sh --stop",
         "docker:test:logs": "./scripts/start-test-infra.sh --logs",
         "docker:test:status": "./scripts/start-test-infra.sh --status",
         "docker:test:validate": "./scripts/start-test-infra.sh --validate",
-
         "------------ CODE GENERATION ------------": "",
         "gen:prisma": "pnpm --filter @arcaai/tools prisma-commander",
         "gen:model": "pnpm --filter @arcaai/tools generate-data-model",
@@ -57,7 +52,6 @@
         "gen:controller": "pnpm --filter @arcaai/tools generate-controller",
         "gen:token": "pnpm --filter @arcaai/tools gen-dev-token",
         "gen:api-key": "pnpm --filter @arcaai/tools gen-api-key",
-
         "------------ TESTS (TypeScript) ------------": "",
         "test:api:up": "./scripts/start-test-api.sh",
         "test:stt-v2:up": "./scripts/start-test-stt-v2.sh",
@@ -76,7 +70,6 @@
         "test:db:push": "dotenv -e .env.test -- pnpm --filter @arcaai/database db:push:force",
         "test:db:seed": "dotenv -e .env.test -- pnpm --filter @arcaai/database seed",
         "test:db:reset": "pnpm test:db:push && pnpm test:db:seed",
-
         "------------ TESTS (Python - STT-v2) ------------": "",
         "py:stt-v2:setup": "make -C apps/stt-v2 setup-cpu",
         "py:stt-v2:setup:apple": "make -C apps/stt-v2 setup-apple",
@@ -87,24 +80,20 @@
         "py:stt-v2:test:cov": "make -C apps/stt-v2 test-cov",
         "py:stt-v2:lint": "make -C apps/stt-v2 lint",
         "py:stt-v2:format": "make -C apps/stt-v2 format",
-
         "------------ TESTS (Python - SMR-v2) ------------": "",
         "py:smr-v2:test": "conda run -n arcaenv --no-capture-output pytest apps/smr/src/smr_v2/tests/ -v --tb=short",
         "py:smr-v2:test:unit": "conda run -n arcaenv --no-capture-output pytest apps/smr/src/smr_v2/tests/unit/ -v --tb=short",
         "py:smr-v2:test:cov": "conda run -n arcaenv --no-capture-output pytest apps/smr/src/smr_v2/tests/ --cov=apps/smr/src/smr_v2 --cov-report=term-missing",
         "py:smr-v2:lint": "conda run -n arcaenv --no-capture-output ruff check apps/smr/src/",
         "py:smr-v2:format": "conda run -n arcaenv --no-capture-output black apps/smr/src/",
-
         "------------ TESTS (Python - NLP) ------------": "",
         "py:nlp:test": "conda run -n arcaenv --no-capture-output pytest apps/nlp/tests/ -v --tb=short",
         "py:nlp:lint": "conda run -n arcaenv --no-capture-output ruff check apps/nlp/src/ apps/nlp/tests/",
-
         "------------ PYTHON SETUP ------------": "",
         "py:setup": "./scripts/setup-python-env.sh",
         "py:setup:check": "./scripts/setup-python-env.sh --check",
         "py:setup:apple": "./scripts/setup-python-env.sh --apple",
         "py:setup:gpu": "./scripts/setup-python-env.sh --gpu",
-
         "------------ CODE QUALITY ------------": "",
         "lint": "turbo run lint",
         "format": "prettier --write \"**/*.{ts,tsx,md}\""
@@ -116,7 +105,7 @@
     "keywords": [],
     "author": "",
     "license": "ISC",
-    "packageManager": "pnpm@10.6.5",
+    "packageManager": "pnpm@10.31.0+sha512.e3927388bfaa8078ceb79b748ffc1e8274e84d75163e67bc22e06c0d3aed43dd153151cbf11d7f8301ff4acb98c68bdc5cadf6989532801ffafe3b3e4a63c268",
     "devDependencies": {
         "@arcaai/config-eslint": "workspace:*",
         "@arcaai/config-rollup": "workspace:*",

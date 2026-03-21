@@ -144,3 +144,6 @@ packages/agentic-sdk/examples/public/onnx
 
 *storybook.log
 storybook-static
+
+# Deployment secrets (never commit)
+infrastructure/deploy/k8s/config/secrets.*.yaml

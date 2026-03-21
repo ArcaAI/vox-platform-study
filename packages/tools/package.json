@@ -44,6 +44,6 @@
     "generate-service-module": "ts-node src/generate-service-module/index.ts",
     "generate-controller": "ts-node src/generate-controller/index.ts",
     "gen-dev-token": "ts-node src/gen-dev-token/index.ts",
-    "gen-api-key": "ts-node src/gen-api-key/index.ts"
+    "gen-api-key": "ts-node src/gen-api-key/index.ts create"
   }
 }

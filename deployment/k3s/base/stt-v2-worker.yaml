@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-stt-v2-worker
+  labels:
+    app: hope-stt-v2-worker
+    app.kubernetes.io/part-of: project-hope
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: hope-stt-v2-worker
+  template:
+    metadata:
+      labels:
+        app: hope-stt-v2-worker
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: worker
+          image: hope-v2/stt-v2-worker:latest
+          imagePullPolicy: Always
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 10"]
+          envFrom:
+            - configMapRef:
+                name: hope-config
+            - secretRef:
+                name: hope-secrets
+          env:
+            - name: APP_NAME
+              value: stt-v2-worker
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: STT_V2_DATABASE_URL
+            - name: REDIS_URL
+              value: "redis://:$(REDIS_PASS)@hope-redis:6379/0"
+            - name: MINIO_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: MINIO_ENDPOINT
+            - name: MINIO_SECURE
+              value: "false"
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: MINIO_SECRET_KEY
+            - name: MINIO_AUDIO_BUCKET
+              value: hope-audio
+            - name: MINIO_CHUNK_BUCKET
+              value: hope-audio-chunks
+            - name: API_GATEWAY_URL
+              value: "http://hope-api:8868"
+            - name: OTEL_SERVICE_NAME
+              value: hope-stt-v2-worker
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"

@@ -49,12 +49,14 @@ RUN set -ex; \
     # Ensure no stale Prisma engines remain and generate client for correct targets
     rm -rf /app/node_modules/.prisma && \
     pnpm exec prisma generate --schema=packages/database/src/prisma/db_main/schema.prisma; \
-    cd packages/tools && pnpm prisma-commander --all-domains; \
+    cd packages/tools && pnpm prisma-commander generate --all; \
     cd /app && pnpm build:packages && pnpm build:modules && pnpm build:api; \
     # Verify build artifacts exist
     test -f apps/api/dist/main.js || { echo "Build failed: main.js not found"; exit 1; }; \
     # Preserve ALL Prisma schema domains for production image (initContainers)
     mkdir -p /app/build-artifacts/prisma && cp -r packages/database/src/prisma/* /app/build-artifacts/prisma/; \
+    # Prisma v7 may not generate /app/node_modules/.prisma; keep path for production COPY compatibility
+    mkdir -p /app/node_modules/.prisma; \
     # Clean up unnecessary files to reduce layer size
     find packages/ -name "src" -type d -exec rm -rf {} + 2>/dev/null || true; \
     pnpm store prune

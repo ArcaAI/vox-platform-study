@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-ui
+  labels:
+    app: hope-ui
+    app.kubernetes.io/part-of: project-hope
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: hope-ui
+  template:
+    metadata:
+      labels:
+        app: hope-ui
+    spec:
+      containers:
+        - name: ui
+          image: hope-v2/ui-playground:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-ui
+  labels:
+    app: hope-ui
+spec:
+  selector:
+    app: hope-ui
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      nodePort: 30080
+  type: NodePort
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hope-ui
+  labels:
+    app: hope-ui
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: ui.hope.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hope-ui
+                port:
+                  number: 3000

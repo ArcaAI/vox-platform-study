@@ -43,6 +43,7 @@ def mock_session_manager():
     mgr._guard.max_streams = 10
     mgr._guard.active_count = 2
     mgr._guard.available_slots = 8
+    mgr.capacity_guard = mgr._guard
     return mgr
 
 
@@ -300,6 +301,79 @@ class TestDeleteSession:
 
     def test_delete_session_not_initialized(self, client_no_streaming):
         resp = client_no_streaming.delete("/internal/streaming/sessions/sess-001")
+        assert resp.status_code == 503
+
+
+# =========================================================================
+# Tests: GET /internal/streaming/sessions/active
+# =========================================================================
+
+
+class TestListActiveSessions:
+    """Tests for listing active sessions."""
+
+    def test_list_active_sessions_success(self, client, mock_session_manager):
+        mock_session_manager.list_sessions = MagicMock(
+            return_value=[
+                {"session_id": "sess-001", "status": "active"},
+                {"session_id": "sess-002", "status": "active"},
+            ]
+        )
+
+        resp = client.get("/internal/streaming/sessions/active")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["active_count"] == 2
+        assert len(data["sessions"]) == 2
+
+    def test_list_active_sessions_empty(self, client, mock_session_manager):
+        mock_session_manager.list_sessions = MagicMock(return_value=[])
+
+        resp = client.get("/internal/streaming/sessions/active")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["active_count"] == 0
+        assert data["sessions"] == []
+
+    def test_list_active_sessions_not_initialized(self, client_no_streaming):
+        resp = client_no_streaming.get("/internal/streaming/sessions/active")
+        assert resp.status_code == 503
+
+
+# =========================================================================
+# Tests: POST /internal/streaming/sessions/{session_id}/end
+# =========================================================================
+
+
+class TestEndActiveSession:
+    """Tests for ending an active session by ID."""
+
+    def test_end_active_session_success(self, client, mock_session_manager, mock_session):
+        mock_session_manager.get_session = MagicMock(return_value=mock_session)
+        mock_session_manager.remove_session = AsyncMock()
+
+        resp = client.post("/internal/streaming/sessions/sess-001/end")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["session_id"] == "sess-001"
+        mock_session_manager.remove_session.assert_awaited_once_with("sess-001")
+
+    def test_end_active_session_not_found(self, client, mock_session_manager):
+        mock_session_manager.get_session = MagicMock(return_value=None)
+
+        resp = client.post("/internal/streaming/sessions/sess-999/end")
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Session not found"
+
+    def test_end_active_session_not_initialized(self, client_no_streaming):
+        resp = client_no_streaming.post("/internal/streaming/sessions/sess-001/end")
         assert resp.status_code == 503
 
 

@@ -1,0 +1,160 @@
+# =============================================================================
+# ArgoCD Bootstrap — Project HOPE multi-environment deployment
+# =============================================================================
+# This file creates an AppProject and an ApplicationSet that generates
+# one ArgoCD Application per environment (dev, prod).
+#
+# This file lives OUTSIDE the ArgoCD sync-path (deployment/k3s/).
+# Apply it ONCE manually to bootstrap:
+#
+#   kubectl apply -f deployment/argocd/bootstrap.yaml -n argocd
+#
+# Prerequisites:
+#   1. ArgoCD installed on the K3s cluster
+#   2. Git repo credentials configured in ArgoCD (UI/CLI or Secret below)
+#   3. Secrets pre-created in each namespace:
+#        kubectl apply -f secrets.dev.yaml  -n hope-v2-dev
+#        kubectl apply -f secrets.prod.yaml -n hope-v2-prod
+# =============================================================================
+
+---
+# -- Namespaces --
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hope-v2-dev
+  labels:
+    app.kubernetes.io/part-of: project-hope
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hope-v2-prod
+  labels:
+    app.kubernetes.io/part-of: project-hope
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hope-v2-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: "https://git.taphuynh.dev/arca/hope-v2.git"
+  username: "<REPLACE_WITH_USERNAME>"
+  password: "<REPLACE_WITH_PASSWORD_OR_TOKEN>"
+
+---
+# -- AppProject scoping --
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: hope-v2
+  namespace: argocd
+spec:
+  description: HOPE v2
+  sourceRepos:
+    - "https://git.taphuynh.dev/arca/hope-v2.git"
+  destinations:
+    - server: https://rancher.taphuynh.dev/k8s/clusters/c-nfhxq
+      namespace: hope-v2-dev
+    - server: https://rancher.taphuynh.dev/k8s/clusters/c-nfhxq
+      namespace: hope-v2-prod
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: "*"
+    - group: apps
+      kind: "*"
+    - group: batch
+      kind: "*"
+    - group: networking.k8s.io
+      kind: "*"
+
+---
+# -- ApplicationSet: generates hope-v2-dev (auto-sync) & hope-v2-prod (manual) --
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: hope-v2
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - env: dev
+            autoSync: "true"
+            branch: main
+          - env: prod
+            autoSync: "false"
+            branch: prod
+  template:
+    metadata:
+      name: "hope-v2-{{ .env }}"
+      labels:
+        app.kubernetes.io/part-of: hope-v2
+        environment: "{{ .env }}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: hope-v2
+      source:
+        repoURL: "https://git.taphuynh.dev/arca/hope-v2.git"
+        targetRevision: "{{ .branch }}"
+        path: "deployment/k3s/overlays/{{ .env }}"
+      destination:
+        server: https://rancher.taphuynh.dev/k8s/clusters/c-nfhxq
+        namespace: "hope-v2-{{ .env }}"
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true
+          - PruneLast=true
+          - ApplyOutOfSyncOnly=true
+          - ServerSideApply=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+      ignoreDifferences:
+        - group: apps
+          kind: Deployment
+          jsonPointers:
+            - /spec/replicas
+  # -- Per-environment sync strategy overrides --
+  # Dev: auto-sync with prune + self-heal
+  # Prod: manual sync only (no automated block)
+  strategy:
+    type: RollingSync
+    rollingSync:
+      steps:
+        - matchExpressions:
+            - key: environment
+              operator: In
+              values:
+                - dev
+        - matchExpressions:
+            - key: environment
+              operator: In
+              values:
+                - prod
+  # -- Template overrides per environment --
+  templatePatch: |
+    {{- if eq .autoSync "true" }}
+    spec:
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+    {{- end }}
