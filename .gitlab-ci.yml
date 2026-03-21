@@ -1,10 +1,13 @@
 stages:
   - build
+  - github-backup
 
 variables:
   DOCKER_HOST: unix:///var/run/docker.sock
   DOCKER_TLS_CERTDIR: ""
   REGISTRY: 10.10.1.110:5050
+  GITHUB_REPO_URL: "https://github.com/4bits-vn/project-hope-v2.git"
+  GITHUB_BACKUP_BRANCH: "back-up"
 
 workflow:
   rules:
@@ -160,3 +163,45 @@ database:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - packages/database/**/*
+
+# ── GITHUB BACKUP JOB ───────────────────────────────────────────────────────
+
+github-backup:
+  stage: github-backup
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache git
+    - git config --global user.name "GitLab CI"
+    - git config --global user.email "ci@gitlab.com"
+  script:
+    - |
+      set -eu
+      
+      # Clone the repository
+      git clone $CI_PROJECT_URL .
+      git checkout $CI_COMMIT_SHA
+      
+      # Add GitHub remote with authentication
+      GITHUB_AUTH_URL="https://VuVux520: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@github.com/4bits-vn/project-hope-v2.git"
+      git remote add github $GITHUB_AUTH_URL
+      
+      # Fetch existing branches from GitHub
+      git fetch github --all
+      
+      # Check if backup branch exists on GitHub
+      if git show-ref --verify --quiet refs/remotes/github/$GITHUB_BACKUP_BRANCH; then
+        echo "Branch $GITHUB_BACKUP_BRANCH exists on GitHub, checking out..."
+        git checkout -b $GITHUB_BACKUP_BRANCH github/$GITHUB_BACKUP_BRANCH
+        git merge $CI_COMMIT_SHA --no-ff -m "Merge $CI_COMMIT_REF_NAME into $GITHUB_BACKUP_BRANCH"
+      else
+        echo "Branch $GITHUB_BACKUP_BRANCH does not exist on GitHub, creating it..."
+        git checkout -b $GITHUB_BACKUP_BRANCH
+      fi
+      
+      # Push to GitHub
+      git push github $GITHUB_BACKUP_BRANCH --force
+      
+      echo "Successfully pushed changes to GitHub branch: $GITHUB_BACKUP_BRANCH"
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
