@@ -184,7 +184,7 @@ github-backup:
       git remote add github $GITHUB_AUTH_URL
       
       # Fetch existing branches from GitHub
-      git fetch github --all
+      git fetch github
       
       # Check if backup branch exists on GitHub
       if git show-ref --verify --quiet refs/remotes/github/$GITHUB_BACKUP_BRANCH; then
