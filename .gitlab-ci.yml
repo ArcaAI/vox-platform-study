@@ -178,11 +178,7 @@ github-backup:
     - |
       set -eu
       
-      # Clean workspace and clone the repository
-      rm -rf ./*
-      git clone $CI_PROJECT_URL .
-      git checkout $CI_COMMIT_SHA
-      
+      # Repository is already cloned by GitLab Runner
       # Add GitHub remote with authentication
       GITHUB_AUTH_URL="https://VuVux520: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@github.com/4bits-vn/project-hope-v2.git"
       git remote add github $GITHUB_AUTH_URL
