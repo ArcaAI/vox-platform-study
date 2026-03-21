@@ -77,8 +77,8 @@ describe('Seed Constants (00-constants)', () => {
         expect(SEED_DEPARTMENT_IDS.SONC).toBeDefined();
     });
 
-    it('should define 15 policy IDs including new prompt/audit/settings policies', () => {
-        expect(Object.keys(SEED_POLICY_IDS).length).toBe(15);
+    it('should define 16 policy IDs including new prompt/audit/settings policies', () => {
+        expect(Object.keys(SEED_POLICY_IDS).length).toBe(16);
         expect(SEED_POLICY_IDS.PROMPT_TEMPLATE_MANAGE).toBeDefined();
         expect(SEED_POLICY_IDS.GLOBAL_SETTINGS_MANAGE).toBeDefined();
         expect(SEED_POLICY_IDS.AUDIT_LOG_READ).toBeDefined();
@@ -211,8 +211,8 @@ describe('Policy Seed Data', () => {
     });
 
     describe('Default Policies', () => {
-        it('should define 15 policies', () => {
-            expect(DEFAULT_POLICIES.length).toBe(15);
+        it('should define 16 policies', () => {
+            expect(DEFAULT_POLICIES.length).toBe(16);
         });
 
         it('should include system-full-access policy', () => {
