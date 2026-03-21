@@ -1,29 +1,29 @@
 import { Authorize, IActiveUserContext, ITenantService } from '@arcaai/applications';
 import {
-    ContextItemRepository,
-    DepartmentRepository,
-    DnaWritingStyleReportRepository,
-    PromptTemplateRepository,
+  ContextItemRepository,
+  DepartmentRepository,
+  DnaWritingStyleReportRepository,
+  PromptTemplateRepository,
 } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import {
-    BadRequestException,
-    Body,
-    Controller,
-    ForbiddenException,
-    Get,
-    HttpException,
-    HttpStatus,
-    Inject,
-    Logger,
-    NotFoundException,
-    Param,
-    Post,
-    Res,
-    UnauthorizedException,
-    UseGuards,
+  BadRequestException,
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  HttpException,
+  HttpStatus,
+  Inject,
+  Logger,
+  NotFoundException,
+  Param,
+  Post,
+  Res,
+  UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { AxiosError } from 'axios';
 import type { Response } from 'express';
 import { ClsService } from 'nestjs-cls';
@@ -296,6 +296,7 @@ export class SmrProxyController {
 
   @Post('generate')
   @Authorize()
+  @ApiExcludeEndpoint()
   @ApiOperation({ summary: 'Generate text via SMR v2 (sync or streaming)' })
   async generate(@Body() body: SmrGenerateRequest): Promise<any> {
     const base = this.getSmrBaseUrl();
