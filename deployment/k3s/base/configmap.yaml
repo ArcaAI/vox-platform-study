@@ -33,7 +33,6 @@ data:
   REDIS_PORT: "6379"
 
   # -- MinIO --
-  MINIO_ENDPOINT: "http://10.10.1.102:9000"
   MINIO_USE_SSL: "false"
   MINIO_AUDIO_BUCKET: "hope-audio"
   MINIO_CHUNK_BUCKET: "hope-audio-chunks"
