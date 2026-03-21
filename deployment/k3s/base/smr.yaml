@@ -48,7 +48,9 @@ spec:
             - name: SMR_V2_REDIS_URL
               value: "redis://:$(REDIS_PASS)@hope-redis:6379/0"
             - name: SMR_V2_AZURE_ENABLED
-              value: "true"
+              value: "false"
+            - name: SMR_V2_AZURE_API_VERSION
+              value: "2024-10-21"
             - name: SMR_V2_AZURE_API_KEY
               valueFrom:
                 secretKeyRef:
