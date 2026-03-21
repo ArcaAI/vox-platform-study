@@ -180,7 +180,7 @@ github-backup:
       
       # Repository is already cloned by GitLab Runner
       # Add GitHub remote with authentication
-      GITHUB_AUTH_URL="https://VuVux520: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@github.com/4bits-vn/project-hope-v2.git"
+      GITHUB_AUTH_URL="https://VuVux520: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@github.com/4bits-vn/project-hope-v2.git"
       git remote add github $GITHUB_AUTH_URL
       
       # Fetch existing branches from GitHub
