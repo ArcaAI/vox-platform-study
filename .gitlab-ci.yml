@@ -169,6 +169,7 @@ database:
 github-backup:
   stage: github-backup
   image: alpine:latest
+  tags: [deploy]
   before_script:
     - apk add --no-cache git
     - git config --global user.name "GitLab CI"
