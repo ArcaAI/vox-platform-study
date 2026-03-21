@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hope-ollama
+  labels:
+    app: hope-ollama
+    app.kubernetes.io/part-of: project-hope
+spec:
+  serviceName: hope-ollama
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hope-ollama
+  template:
+    metadata:
+      labels:
+        app: hope-ollama
+    spec:
+      containers:
+        - name: ollama
+          image: ollama/ollama:0.18.2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 11434
+          volumeMounts:
+            - name: data
+              mountPath: /root/.ollama
+          readinessProbe:
+            httpGet:
+              path: /api/tags
+              port: 11434
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/tags
+              port: 11434
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "4"
+              memory: "4Gi"
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-ollama
+  labels:
+    app: hope-ollama
+spec:
+  clusterIP: None
+  selector:
+    app: hope-ollama
+  ports:
+    - name: http
+      port: 11434
+      targetPort: 11434

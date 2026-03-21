@@ -50,7 +50,7 @@ data:
 
   # -- SMR V2 --
   SMR_V2_OLLAMA_ENABLED: "true"
-  SMR_V2_OLLAMA_BASE_URL: "http://localhost:11434"
+  SMR_V2_OLLAMA_BASE_URL: "http://hope-ollama:11434"
   SMR_V2_OLLAMA_DEFAULT_MODEL: "qwen2.5:0.5b"
   SMR_V2_OLLAMA_TIMEOUT_S: "300"
   SMR_V2_OPENAI_COMPAT_ENABLED: "false"
