@@ -1,0 +1,299 @@
+image: docker:25.0.3
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_HOST: unix:///var/run/docker.sock
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_REGISTRY_PLAINHTTP: "1"
+
+  CI_REGISTRY: "gitlab-server:5000"
+  CI_REGISTRY_IMAGE: "gitlab-server:5000/$CI_PROJECT_PATH"
+
+  DOCKER_BUILDKIT: "1"
+  BUILDKIT_PROGRESS: "plain"
+
+stages:
+  - build
+  - migrate
+
+.docker-before: &docker_before
+  # Wait for Docker daemon
+  - |
+    echo "Waiting for Docker daemon..."
+    for i in $(seq 1 30); do
+      if docker info >/dev/null 2>&1; then
+        echo "Docker daemon is ready"
+        break
+      fi
+      sleep 2
+    done
+  # Insecure registry/env prep
+  - |
+    echo "Configuring insecure registry via environment..."
+    export DOCKER_CONTENT_TRUST=0
+  - echo "Checking Docker daemon configuration..."
+  - docker info
+  - |
+    echo "Insecure registries on daemon:" 
+    docker info | awk '/Insecure Registries:/, /^[[:space:]]*$/'
+  - |
+    export REGISTRY="gitlab-server:5000"
+    echo "Using registry: $REGISTRY"
+    echo "Mapping gitlab-server -> 172.30.0.25 for internal realm access"
+    echo "172.30.0.25 gitlab-server" >> /etc/hosts
+    echo "Disabling TLS/proxy env for Docker client (use plain HTTP)"
+    unset DOCKER_TLS_VERIFY DOCKER_CERT_PATH HTTPS_PROXY HTTP_PROXY https_proxy http_proxy NO_PROXY no_proxy
+    export DOCKER_REGISTRY_PLAINHTTP=1
+    echo "Adding Docker Hub DNS entries..."
+    echo "54.198.170.192 auth.docker.io" >> /etc/hosts
+    echo "54.198.170.192 registry-1.docker.io" >> /etc/hosts
+    echo "54.198.170.192 index.docker.io" >> /etc/hosts
+  - |
+    echo "Pre-pulling base images..."
+    docker pull python:3.11-slim || (sleep 3 && docker pull python:3.11-slim)
+    docker pull node:22-slim || (sleep 3 && docker pull node:22-slim)
+  - echo "Testing connectivity to gitlab-server:5000..."
+  - wget -O- http://gitlab-server:5000/v2/ || echo "Failed to reach registry (expected 401)"
+  - nslookup gitlab-server || echo "DNS lookup failed"
+  - echo "Testing external DNS (Docker Hub)..."
+  - nslookup registry-1.docker.io || echo "External DNS lookup failed"
+  - echo "Testing connectivity to resolved registry ($REGISTRY)..."
+  - wget -O- http://$REGISTRY/v2/ || echo "Failed to reach resolved registry (expected 401)"
+  - echo "Checking dockerd process for insecure-registry flag..."
+  - ps aux | grep dockerd || echo "Cannot see dockerd process"
+  - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$REGISTRY"
+  - cat /root/.docker/config.json || echo "No docker config found"
+
+.build-and-push: &build_push_fn |
+  repo="$REGISTRY/${CI_PROJECT_PATH}"
+  sha_tag="${SERVICE}-${CI_COMMIT_SHORT_SHA}"
+  echo "Building $repo:$sha_tag from $CONTEXT"
+  build_flags=""
+  if [ "$FORCE_REBUILD" = "true" ]; then
+    echo "FORCE_REBUILD=true -> building with --no-cache --pull"
+    build_flags="--no-cache --pull"
+  fi
+  docker build $build_flags ${BUILD_ARGS:-} -f "$DOCKERFILE" -t "$repo:$sha_tag" "$CONTEXT"
+  echo "Pushing $repo:$sha_tag"
+  docker images | grep "$sha_tag" || echo "Image not found"
+  docker push "$repo:$sha_tag" || (echo "Push failed, checking registry connectivity..." && wget -O- http://$REGISTRY/v2/ && exit 1)
+  if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+    latest_tag="${SERVICE}-latest"
+    echo "Tagging $repo:$latest_tag"
+    docker tag "$repo:$sha_tag" "$repo:$latest_tag"
+    docker push "$repo:$latest_tag"
+  fi
+
+build-mlflow:
+  stage: build
+  tags: [4bits-runner]
+  variables:
+    SERVICE: "mlflow"
+    CONTEXT: "apps/mlflow"
+    DOCKERFILE: "apps/mlflow/Dockerfile"
+  before_script: *docker_before
+  script:
+    - *build_push_fn
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $FORCE_REBUILD == "true"'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - apps/mlflow/**/*
+        - apps/mlflow/Dockerfile
+        - apps/mlflow/pyproject.toml
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - scheduler_failure
+
+build-tts:
+  stage: build
+  tags: [4bits-runner]
+  variables:
+    SERVICE: "tts"
+    CONTEXT: "apps/tts"
+    DOCKERFILE: "apps/tts/Dockerfile"
+  before_script: *docker_before
+  script:
+    - *build_push_fn
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $FORCE_REBUILD == "true"'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - apps/tts/**/*
+        - apps/tts/Dockerfile
+        - apps/tts/pyproject.toml
+        - apps/tts/uv.lock
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - scheduler_failure
+
+build-smr:
+  stage: build
+  tags: [4bits-runner]
+  variables:
+    SERVICE: "smr"
+    CONTEXT: "apps/smr"
+    DOCKERFILE: "apps/smr/Dockerfile"
+  before_script: *docker_before
+  script:
+    - *build_push_fn
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $FORCE_REBUILD == "true"'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - apps/smr/**/*
+        - apps/smr/Dockerfile
+        - apps/smr/pyproject.toml
+        - apps/smr/uv.lock
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - scheduler_failure
+
+build-api:
+  stage: build
+  tags: [4bits-runner]
+  variables:
+    SERVICE: "api"
+    CONTEXT: "."
+    DOCKERFILE: "apps/api/Dockerfile"
+  before_script: *docker_before
+  script:
+    - *build_push_fn
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $FORCE_REBUILD == "true"'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - apps/api/**          # NestJS API app
+        - apps/api/package.json
+        - package.json
+        - apps/api/tsconfig*.json
+        - packages/applications/**   # shared app services used by API
+        - packages/domains/**        # domains package used by API
+        - packages/logger/**         # if API depends on it
+        - packages/exceptions/**     # if API depends on it
+        - packages/database/**       # Prisma schema / migrations
+        - packages/tools/**          # prisma-commander etc.
+        - Dockerfile
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - scheduler_failure
+
+build-admin:
+  stage: build
+  tags: [4bits-runner]
+  variables:
+    SERVICE: "admin"
+    CONTEXT: "."
+    DOCKERFILE: "apps/admin/Dockerfile"
+    BUILD_ARGS: "--build-arg VITE_API_URL=$API_URL"
+  before_script: *docker_before
+  script:
+    - *build_push_fn
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $FORCE_REBUILD == "true"'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - apps/admin/**          # React/Vite admin app
+        - apps/admin/Dockerfile
+        - apps/admin/package.json
+        - apps/admin/tsconfig*.json
+        - packages/applications/**   # shared services used by admin
+        - packages/domains/**        # domain models used by admin
+        - turbo.json
+        - package.json
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - scheduler_failure
+
+build-feedback:
+  stage: build
+  tags: [4bits-runner]
+  variables:
+    SERVICE: "feedback"
+    CONTEXT: "apps/feedback"
+    DOCKERFILE: "apps/feedback/Dockerfile"
+  before_script: *docker_before
+  script:
+    - *build_push_fn
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $FORCE_REBUILD == "true"'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - apps/feedback/**
+        - apps/feedback/Dockerfile
+        - apps/feedback/pyproject.toml
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - scheduler_failure
+
+build-fedl:
+  stage: build
+  tags: [4bits-runner]
+  variables:
+    SERVICE: "fedl"
+    CONTEXT: "apps/fedl"
+    DOCKERFILE: "apps/fedl/Dockerfile"
+  before_script: *docker_before
+  script:
+    - *build_push_fn
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $FORCE_REBUILD == "true"'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - apps/fedl/**
+        - apps/fedl/Dockerfile
+        - apps/fedl/pyproject.toml
+        - apps/fedl/uv.lock
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - scheduler_failure
+
+build-migration:
+  stage: build
+  tags: [4bits-runner]
+  variables:
+    SERVICE: "migration"
+    CONTEXT: "."
+    DOCKERFILE: "packages/database/Dockerfile"
+    BUILD_ARGS: "--build-arg DATABASE_URL=$DATABASE_URL"
+  before_script: *docker_before
+  script:
+    - *build_push_fn
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - packages/database/**
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - scheduler_failure

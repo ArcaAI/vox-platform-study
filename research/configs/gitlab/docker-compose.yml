@@ -1,0 +1,37 @@
+##############################################################################
+# GitLab CE — Docker Compose (Production Homelab)
+#
+# Location on VM 410: ~/gitlab/docker-compose.yml
+# Config file:        /srv/gitlab/config/gitlab.rb  (mounted, managed separately)
+#
+# Usage:
+#   docker compose up -d          # Start
+#   docker compose pull && docker compose up -d   # Upgrade (change image tag first)
+#   docker compose down            # Stop
+#   docker compose logs -f gitlab  # Logs
+#
+# After editing /srv/gitlab/config/gitlab.rb:
+#   docker exec -it gitlab gitlab-ctl reconfigure
+##############################################################################
+
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:18.8.6-ce.0
+    container_name: gitlab
+    hostname: git.taphuynh.dev
+    restart: unless-stopped
+
+    ports:
+      - "80:80"       # HTTP (Cloudflare terminates TLS)
+      - "443:443"     # HTTPS (unused with Cloudflare, but kept for direct access)
+      - "2222:2222"   # Git SSH
+      - "5050:5050"   # Container Registry
+      - "8090:8090"   # GitLab Pages
+
+    volumes:
+      - /srv/gitlab/config:/etc/gitlab      # gitlab.rb + secrets live here
+      - /srv/gitlab/logs:/var/log/gitlab
+      - /srv/gitlab/data:/var/opt/gitlab
+      - /srv/gitlab/backups:/var/opt/gitlab/backups
+
+    shm_size: '256m'

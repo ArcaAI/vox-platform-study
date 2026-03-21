@@ -1,0 +1,146 @@
+# TimescaleDB HA Cluster — Docker Compose
+# Uses timescale/timescaledb-ha which bundles PG 17 + TimescaleDB 2.25 + Patroni 4.1.0 + pgBackRest
+#
+# Usage:
+#   1. Copy this entire postgres-ha/ directory to ~/postgres-ha on each VM
+#   2. Copy .env.example to .env, set NODE_NAME and NODE_IP per node
+#   3. Start services in order: etcd → patroni → haproxy → pgbouncer → postgres-exporter
+#
+# Node mapping:
+#   VM 500 (pg-node1): NODE_NAME=pg-node1  NODE_IP=10.10.1.200
+#   VM 501 (pg-node2): NODE_NAME=pg-node2  NODE_IP=10.10.1.201
+#   VM 502 (pg-node3): NODE_NAME=pg-node3  NODE_IP=10.10.1.202
+
+services:
+
+  # ── etcd (Distributed Configuration Store) ──
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.21
+    container_name: etcd
+    hostname: etcd-${NODE_NAME}
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      ETCD_NAME: etcd-${NODE_NAME}
+      ETCD_DATA_DIR: /etcd-data
+      ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://${NODE_IP}:2380
+      ETCD_ADVERTISE_CLIENT_URLS: http://${NODE_IP}:2379
+      ETCD_INITIAL_CLUSTER: etcd-pg-node1=http://${PEER1_IP}:2380,etcd-pg-node2=http://${PEER2_IP}:2380,etcd-pg-node3=http://${PEER3_IP}:2380
+      ETCD_INITIAL_CLUSTER_STATE: new
+      ETCD_INITIAL_CLUSTER_TOKEN: hope-pg-cluster
+      ETCD_AUTO_COMPACTION_RETENTION: "1"
+      ETCD_QUOTA_BACKEND_BYTES: "8589934592"
+      ETCD_HEARTBEAT_INTERVAL: "1000"
+      ETCD_ELECTION_TIMEOUT: "5000"
+      ETCD_SNAPSHOT_COUNT: "10000"
+    volumes:
+      - /data/etcd:/etcd-data
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Patroni + TimescaleDB (PG 17) ──
+  # Image bundles: PG 17, TimescaleDB 2.25, Patroni 4.1.0, pgBackRest, PostGIS, pgvector, pg_cron, etc.
+  patroni:
+    image: timescale/timescaledb-ha:pg17-all-amd64
+    container_name: patroni
+    hostname: ${NODE_NAME}
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PATRONI_NAME: ${NODE_NAME}
+      PATRONI_SCOPE: hope-cluster
+      PATRONI_NAMESPACE: /service
+      PATRONI_RESTAPI_LISTEN: 0.0.0.0:8008
+      PATRONI_RESTAPI_CONNECT_ADDRESS: ${NODE_IP}:8008
+      PATRONI_POSTGRESQL_LISTEN: 0.0.0.0:5432
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: ${NODE_IP}:5432
+      PATRONI_POSTGRESQL_DATA_DIR: /home/postgres/pgdata/data
+      PATRONI_ETCD3_HOSTS: "'${PEER1_IP}:2379','${PEER2_IP}:2379','${PEER3_IP}:2379'"
+      PATRONI_SUPERUSER_USERNAME: postgres
+      PATRONI_SUPERUSER_PASSWORD: ${PG_PASSWORD}
+      PATRONI_REPLICATION_USERNAME: replicator
+      PATRONI_REPLICATION_PASSWORD: ${REPL_PASSWORD}
+    volumes:
+      - /data/postgresql:/home/postgres/pgdata
+      - ./patroni/patroni.yml:/etc/patroni/patroni.yml:ro
+      - /dev/watchdog:/dev/watchdog
+    devices:
+      - /dev/watchdog:/dev/watchdog
+    depends_on:
+      etcd:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8008/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ── HAProxy (Load Balancer) ──
+  # Deploy on VM 500 and VM 501 only (Keepalived manages VIP between them)
+  haproxy:
+    image: haproxy:3.1-alpine
+    container_name: haproxy
+    hostname: haproxy-${NODE_NAME}
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      patroni:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:7000/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    profiles:
+      - haproxy
+
+  # ── PgBouncer (Connection Pooler) ──
+  pgbouncer:
+    image: edoburu/pgbouncer:1.23.1
+    container_name: pgbouncer
+    hostname: pgbouncer-${NODE_NAME}
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      DATABASE_URL: "postgres://postgres:${PG_PASSWORD}@127.0.0.1:5432/postgres"
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 25
+      MIN_POOL_SIZE: 5
+      RESERVE_POOL_SIZE: 5
+      RESERVE_POOL_TIMEOUT: 3
+      SERVER_LIFETIME: 3600
+      SERVER_IDLE_TIMEOUT: 600
+      LOG_CONNECTIONS: 1
+      LOG_DISCONNECTIONS: 1
+      LISTEN_PORT: 6432
+    depends_on:
+      patroni:
+        condition: service_healthy
+    profiles:
+      - pgbouncer
+
+  # ── Prometheus postgres_exporter ──
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: postgres-exporter
+    hostname: pg-exporter-${NODE_NAME}
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:${PG_PASSWORD}@127.0.0.1:5432/postgres?sslmode=disable"
+    depends_on:
+      patroni:
+        condition: service_healthy
+    profiles:
+      - monitoring

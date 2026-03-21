@@ -1,0 +1,310 @@
+##############################################################################
+# GitLab Runner — Production Configuration (Multi-Runner)
+#
+# Location on VM 411:  /etc/gitlab-runner/config.toml
+# Managed copy:        docs/research/configs/gitlab-runner/config.toml
+#
+# Architecture:
+#   4 specialized runners on the SAME host, each with different tags and
+#   concurrency. Fast jobs (lint, typecheck) never queue behind slow builds.
+#
+# Runner tokens: create 4 separate runners in GitLab Admin UI:
+#   Admin → CI/CD → Runners → New instance runner (repeat 4 times)
+#
+# After editing this file, restart the runner:
+#   sudo gitlab-runner restart
+#   sudo gitlab-runner verify
+#
+# Reference: https://docs.gitlab.com/runner/configuration/advanced-configuration.html
+##############################################################################
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## GLOBAL — Applies to all runners registered on this host
+## ═══════════════════════════════════════════════════════════════════════════
+
+# Total parallel jobs across ALL [[runners]] sections.
+# 8 vCPU host: fast(3) + build(2) + test(2) + deploy(1) = 8 max slots.
+# In practice not all will fire simultaneously, so 8 is safe.
+concurrent = 16
+
+check_interval = 3
+shutdown_timeout = 0
+log_level = "info"
+log_format = "text"
+
+[session_server]
+  session_timeout = 1800
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## RUNNER 1 — FAST (lint, typecheck, unit tests)
+## ═══════════════════════════════════════════════════════════════════════════
+##
+## For quick jobs that finish in <2 minutes.
+## High concurrency so these never queue behind heavy builds.
+##
+## GitLab Admin UI:
+##   Tags: fast,lint,typecheck,unit
+##   Run untagged jobs: NO
+##   Description: fast-runner-01
+
+[[runners]]
+  name = "fast-runner-01"
+  url = "http://10.10.1.110"
+  id = 1
+  token = "glrt-umRZcnhJXo7aUR_h1FPJNm86MQp0OjEKdToyCw.01.120e1ck0n"
+  token_obtained_at = 2026-03-17T00:00:00Z
+  token_expires_at = 0001-01-01T00:00:00Z
+  executor = "docker"
+  limit = 3
+  clone_url = "http://10.10.1.110"
+  builds_dir = "/builds/fast"
+  environment = [
+    "DOCKER_TLS_CERTDIR=",
+    "GIT_STRATEGY=clone"
+  ]
+
+  [runners.docker]
+    tls_verify = false
+    image = "node:22-alpine"
+    privileged = false
+    disable_entrypoint_overwrite = false
+    oom_kill_disable = false
+    disable_cache = false
+    volumes = ["/cache:/cache"]
+    shm_size = 0
+    pull_policy = ["if-not-present"]
+    wait_for_services_timeout = 30
+    dns = ["8.8.8.8", "1.1.1.1"]
+    extra_hosts = [
+      "registry.taphuynh.dev:10.10.1.110",
+      "pages.taphuynh.dev:10.10.1.110"
+    ]
+
+  [runners.cache]
+    MaxUploadedArchiveSize = 0
+    Type = "s3"
+    Shared = true
+    [runners.cache.s3]
+      ServerAddress = "10.10.1.102:9000"
+      AccessKey = "VAK1EE5PBL9ASRK3S91X"
+      SecretKey = "Q+MtHJbRr0su1mUXtkaid+mm17wQ7AU5+GLW5SV1"
+      BucketName = "gitlab-runner-cache"
+      Insecure = true
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## RUNNER 2 — BUILD (Docker image builds)
+## ═══════════════════════════════════════════════════════════════════════════
+##
+## For heavy Docker builds. Privileged mode + socket mount.
+## Lower concurrency — each build is CPU + disk I/O intensive.
+##
+## GitLab Admin UI:
+##   Tags: build,docker
+##   Run untagged jobs: NO
+##   Description: build-runner-01
+
+[[runners]]
+  name = "build-runner-01"
+  url = "http://10.10.1.110"
+  id = 2
+  token = "glrt-M2Xiw1X7C8a4JYzZXc2I0m86MQp0OjEKdToyCw.01.121amy2q1"
+  token_obtained_at = 2026-03-17T00:00:00Z
+  token_expires_at = 0001-01-01T00:00:00Z
+  executor = "docker"
+  limit = 3
+  clone_url = "http://10.10.1.110"
+  builds_dir = "/builds/build"
+  environment = [
+    "DOCKER_TLS_CERTDIR=",
+    "GIT_STRATEGY=clone",
+    "DOCKER_BUILDKIT=1"
+  ]
+
+  [runners.docker]
+    tls_verify = false
+    image = "docker:27-dind"
+    privileged = true
+    disable_entrypoint_overwrite = false
+    oom_kill_disable = false
+    disable_cache = false
+    volumes = [
+      "/var/run/docker.sock:/var/run/docker.sock",
+      "/cache:/cache"
+    ]
+    shm_size = 268435456
+    pull_policy = ["if-not-present"]
+    wait_for_services_timeout = 30
+    dns = ["8.8.8.8", "1.1.1.1"]
+    extra_hosts = [
+      "registry.taphuynh.dev:10.10.1.110",
+      "pages.taphuynh.dev:10.10.1.110"
+    ]
+
+  [runners.cache]
+    MaxUploadedArchiveSize = 0
+    Type = "s3"
+    Shared = true
+    [runners.cache.s3]
+      ServerAddress = "10.10.1.102:9000"
+      AccessKey = "VAK1EE5PBL9ASRK3S91X"
+      SecretKey = "Q+MtHJbRr0su1mUXtkaid+mm17wQ7AU5+GLW5SV1"
+      BucketName = "gitlab-runner-cache"
+      Insecure = true
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## RUNNER 3 — TEST (E2E, integration, Playwright)
+## ═══════════════════════════════════════════════════════════════════════════
+##
+## For browser-based E2E tests that need extra shared memory.
+## 256 MB shm_size prevents Chrome/Playwright OOM.
+##
+## GitLab Admin UI:
+##   Tags: test,e2e,playwright,integration
+##   Run untagged jobs: NO
+##   Description: test-runner-01
+
+[[runners]]
+  name = "test-runner-01"
+  url = "http://10.10.1.110"
+  id = 3
+  token = "glrt-wHNzlLs3tPxyiRySBstsXW86MQp0OjEKdToyCw.01.1205jygez"
+  token_obtained_at = 2026-03-17T00:00:00Z
+  token_expires_at = 0001-01-01T00:00:00Z
+  executor = "docker"
+  limit = 3
+  clone_url = "http://10.10.1.110"
+  builds_dir = "/builds/test"
+  environment = [
+    "DOCKER_TLS_CERTDIR=",
+    "GIT_STRATEGY=clone"
+  ]
+
+  [runners.docker]
+    tls_verify = false
+    image = "mcr.microsoft.com/playwright:v1.52.0-noble"
+    privileged = false
+    disable_entrypoint_overwrite = false
+    oom_kill_disable = false
+    disable_cache = false
+    volumes = ["/cache:/cache"]
+    shm_size = 536870912
+    pull_policy = ["if-not-present"]
+    wait_for_services_timeout = 30
+    dns = ["8.8.8.8", "1.1.1.1"]
+    extra_hosts = [
+      "registry.taphuynh.dev:10.10.1.110",
+      "pages.taphuynh.dev:10.10.1.110"
+    ]
+
+  [runners.cache]
+    MaxUploadedArchiveSize = 0
+    Type = "s3"
+    Shared = true
+    [runners.cache.s3]
+      ServerAddress = "10.10.1.102:9000"
+      AccessKey = "VAK1EE5PBL9ASRK3S91X"
+      SecretKey = "Q+MtHJbRr0su1mUXtkaid+mm17wQ7AU5+GLW5SV1"
+      BucketName = "gitlab-runner-cache"
+      Insecure = true
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## RUNNER 4 — DEPLOY (production deployments)
+## ═══════════════════════════════════════════════════════════════════════════
+##
+## Serialized (limit=1) so only one deployment runs at a time.
+## Privileged for docker compose operations on target hosts.
+##
+## GitLab Admin UI:
+##   Tags: deploy
+##   Run untagged jobs: NO
+##   Description: deploy-runner-01
+
+[[runners]]
+  name = "deploy-runner-01"
+  url = "http://10.10.1.110"
+  id = 4
+  token = "glrt-g4TchRxTGZRYe7Tg8M1BmG86MQp0OjEKdToyCw.01.121cpi4id"
+  token_obtained_at = 2026-03-17T00:00:00Z
+  token_expires_at = 0001-01-01T00:00:00Z
+  executor = "docker"
+  limit = 1
+  clone_url = "http://10.10.1.110"
+  builds_dir = "/builds/deploy"
+  environment = [
+    "DOCKER_TLS_CERTDIR=",
+    "GIT_STRATEGY=clone"
+  ]
+
+  [runners.docker]
+    tls_verify = false
+    image = "docker:27"
+    privileged = true
+    disable_entrypoint_overwrite = false
+    oom_kill_disable = false
+    disable_cache = false
+    volumes = [
+      "/var/run/docker.sock:/var/run/docker.sock",
+      "/cache:/cache"
+    ]
+    shm_size = 0
+    pull_policy = ["if-not-present"]
+    wait_for_services_timeout = 30
+    dns = ["8.8.8.8", "1.1.1.1"]
+    extra_hosts = [
+      "registry.taphuynh.dev:10.10.1.110",
+      "pages.taphuynh.dev:10.10.1.110"
+    ]
+
+  [runners.cache]
+    MaxUploadedArchiveSize = 0
+    Type = "s3"
+    Shared = true
+    [runners.cache.s3]
+      ServerAddress = "10.10.1.102:9000"
+      AccessKey = "VAK1EE5PBL9ASRK3S91X"
+      SecretKey = "Q+MtHJbRr0su1mUXtkaid+mm17wQ7AU5+GLW5SV1"
+      BucketName = "gitlab-runner-cache"
+      Insecure = true
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## RUNNER 5 — Kubernetes Executor (GPU workloads on VM 200) — FUTURE
+## ═══════════════════════════════════════════════════════════════════════════
+##
+## Uncomment after K3s is running on VM 200 with GPU support.
+## Create a separate runner token in GitLab:
+##   Admin → CI/CD → Runners → New instance runner
+##   Tags: kubernetes,gpu
+##
+# [[runners]]
+#   name = "k8s-runner-01"
+#   url = "http://10.10.1.110"
+#   id = 5
+#   token = "glrt-K8S_TOKEN_HERE"
+#   token_obtained_at = 2026-03-17T00:00:00Z
+#   token_expires_at = 0001-01-01T00:00:00Z
+#   executor = "kubernetes"
+#   limit = 2
+#
+#   [runners.kubernetes]
+#     host = "https://10.10.1.10:6443"
+#     namespace = "gitlab-ci"
+#     service_account = "gitlab-runner"
+#     bearer_token_overwrite_allowed = false
+#     image = "alpine:3.20"
+#     privileged = false
+#
+#   [runners.cache]
+#     Type = "s3"
+#     Shared = true
+#     [runners.cache.s3]
+#       ServerAddress = "10.10.1.102:9000"
+#       AccessKey = "VAK1EE5PBL9ASRK3S91X"
+#       SecretKey = "Q+MtHJbRr0su1mUXtkaid+mm17wQ7AU5+GLW5SV1"
+#       BucketName = "gitlab-runner-cache"
+#       Insecure = true

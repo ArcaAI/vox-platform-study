@@ -1,0 +1,68 @@
+model Webhook {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // multi tenant fields
+    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+
+    // core fields
+    name                 String  @unique
+    url                  String
+    hashedSecret         String?
+    resourceTypeName     String
+    resourceId           String?
+    subscriptionMetadata Json?   @db.JsonB
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // tags
+    tags String[] @default([])
+
+    // relations
+    WebhookRunHistorys WebhookRunHistory[] @relation("_Webhook_RunHistory")
+
+    // indexing
+    @@index([tenantId], name: "Webhook_tenantId_index")
+    @@schema("core")
+}
+
+model WebhookRunHistory {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // core fields
+    status            WebhookRunStatus
+    response          Json?
+    responeStatusCode Int?
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // relations
+    webhookId String
+    Webhook   Webhook @relation("_Webhook_RunHistory", fields: [webhookId], references: [id])
+
+    // indexing
+    @@schema("core")
+}

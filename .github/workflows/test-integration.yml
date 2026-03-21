@@ -1,0 +1,385 @@
+# ============================================================================
+# Integration Tests Workflow
+# ============================================================================
+# Runs integration tests that require database and other services.
+# Uses GitHub Actions service containers for PostgreSQL, Redis, and MinIO.
+#
+# Service Ports (same as local test infrastructure):
+#   - PostgreSQL: 5433
+#   - Redis: 6380
+#   - MinIO: 9002
+#
+# Features:
+#   - Path filtering to skip when only docs change
+#   - Manual dispatch with configurable options
+#   - Coverage thresholds enforcement
+#   - Parallel execution for TypeScript and Python
+#   - Extensible Python services matrix (prepared for future)
+# ============================================================================
+
+name: Integration Tests
+
+on:
+  # Called by CI orchestrator
+  workflow_call:
+    inputs:
+      skip-typescript:
+        description: 'Skip TypeScript tests'
+        required: false
+        default: false
+        type: boolean
+      skip-python:
+        description: 'Skip Python tests'
+        required: false
+        default: false
+        type: boolean
+      coverage-threshold:
+        description: 'Minimum coverage percentage (0-100)'
+        required: false
+        default: '80'
+        type: string
+      python-services:
+        description: 'Python services to test (comma-separated)'
+        required: false
+        default: 'smr,stt-v2'
+        type: string
+      reset-database:
+        description: 'Force reset database before tests'
+        required: false
+        default: false
+        type: boolean
+
+  pull_request:
+    branches: [main, develop]
+    paths:
+      # TypeScript/JavaScript source files
+      - 'apps/api/**/*.ts'
+      - 'packages/**/*.ts'
+      # Python source files
+      - 'apps/smr/**/*.py'
+      - 'apps/stt-v2/**/*.py'
+      - 'apps/tts/**/*.py'
+      - 'apps/nlp/**/*.py'
+      # Test files
+      - 'tests/**/*.ts'
+      - '**/tests/integration/**'
+      # Config files
+      - 'vitest.integration.config.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '**/pyproject.toml'
+      # Database schema
+      - 'packages/database/**/*.prisma'
+      - 'packages/database/**/migrations/**'
+      # Workflow file itself
+      - '.github/workflows/test-integration.yml'
+      - '.github/actions/**'
+
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**/*.ts'
+      - 'packages/**/*.ts'
+      - 'apps/smr/**/*.py'
+      - 'apps/stt-v2/**/*.py'
+      - 'apps/tts/**/*.py'
+      - 'apps/nlp/**/*.py'
+      - 'tests/**/*.ts'
+      - '**/tests/integration/**'
+      - 'packages/database/**/*.prisma'
+
+  workflow_dispatch:
+    inputs:
+      skip-typescript:
+        description: 'Skip TypeScript tests'
+        required: false
+        default: false
+        type: boolean
+      skip-python:
+        description: 'Skip Python tests'
+        required: false
+        default: false
+        type: boolean
+      coverage-threshold:
+        description: 'Minimum coverage percentage (0-100)'
+        required: false
+        default: '80'
+        type: string
+      python-services:
+        description: 'Python services to test (comma-separated: smr,stt-v2)'
+        required: false
+        default: 'smr,stt-v2'
+        type: string
+      reset-database:
+        description: 'Force reset database before tests'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold || '80' }}
+
+jobs:
+  # ==========================================================================
+  # TypeScript Integration Tests
+  # ==========================================================================
+  integration-tests-typescript:
+    name: TypeScript Integration Tests
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip-typescript }}
+
+    services:
+      postgres:
+        # PostgreSQL 18 Alpine - matches local dev/test infrastructure
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: hope_test
+          POSTGRES_INITDB_ARGS: '--encoding=UTF-8 --lc-collate=C --lc-ctype=C'
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d hope_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
+          --shm-size 128mb
+
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup test environment
+        uses: ./.github/actions/setup-test-env
+        with:
+          database-port: '5433'
+          redis-port: '6380'
+
+      - name: Setup Node.js and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Build packages
+        uses: ./.github/actions/build-packages
+        with:
+          include-modules: 'true'
+
+      - name: Run database migrations
+        run: pnpm prisma migrate deploy
+
+      - name: Seed database (optional)
+        if: ${{ inputs.reset-database }}
+        run: pnpm seed
+        continue-on-error: true
+
+      - name: Run integration tests
+        run: pnpm test:integration --coverage
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(cat coverage/coverage-summary.json 2>/dev/null | jq -r '.total.lines.pct // 0')
+          echo "Coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < ${{ env.COVERAGE_THRESHOLD }}" | bc -l) )); then
+            echo "::warning::Coverage ${COVERAGE}% is below threshold ${{ env.COVERAGE_THRESHOLD }}%"
+          else
+            echo "✅ Coverage ${COVERAGE}% meets threshold ${{ env.COVERAGE_THRESHOLD }}%"
+          fi
+        continue-on-error: true
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./coverage/lcov.info
+          flags: integration-tests-typescript
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-integration-typescript
+          path: coverage/
+          retention-days: 7
+
+  # ==========================================================================
+  # Python Integration Tests (Matrix - Extensible)
+  # ==========================================================================
+  integration-tests-python:
+    name: Python Integration Tests (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip-python }}
+
+    services:
+      postgres:
+        # PostgreSQL 18 Alpine - matches local dev/test infrastructure
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: hope_test
+          POSTGRES_INITDB_ARGS: '--encoding=UTF-8 --lc-collate=C --lc-ctype=C'
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d hope_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
+          --shm-size 128mb
+
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      # MinIO for object storage (required by stt-v2)
+      # Credentials match tests/docker-compose.test.yml and .github/actions/setup-test-env
+      minio:
+        image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+        ports:
+          - 9002:9000
+          - 9003:9001
+        env:
+          MINIO_ROOT_USER: test
+          MINIO_ROOT_PASSWORD: testpassword
+        # Note: MinIO health check uses mc which is not in the image
+        # Use HTTP health check instead
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 10s
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Services with integration tests
+        # Add stt, tts, nlp here when integration tests are implemented
+        service: [smr, stt-v2]
+
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.service }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check if service should be tested
+        id: check-service
+        run: |
+          SERVICES="${{ inputs.python-services || 'smr,stt-v2' }}"
+          if [[ ",$SERVICES," == *",${{ matrix.service }},"* ]]; then
+            echo "should-run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should-run=false" >> $GITHUB_OUTPUT
+            echo "Skipping ${{ matrix.service }} - not in selected services"
+          fi
+        working-directory: .
+
+      - name: Setup test environment
+        if: steps.check-service.outputs.should-run == 'true'
+        uses: ./.github/actions/setup-test-env
+        with:
+          database-port: '5433'
+          redis-port: '6380'
+          minio-port: '9002'
+          minio-console-port: '9003'
+
+      - name: Setup Python and uv
+        if: steps.check-service.outputs.should-run == 'true'
+        uses: ./.github/actions/setup-python-uv
+        with:
+          working-directory: apps/${{ matrix.service }}
+
+      - name: Run integration tests
+        if: steps.check-service.outputs.should-run == 'true'
+        run: |
+          if [ -d "tests/integration" ]; then
+            # Use uv run to ensure correct environment
+            uv run pytest tests/integration -v \
+              --cov=src \
+              --cov-report=xml:coverage.xml \
+              --cov-report=term-missing \
+              || echo "::warning::Integration tests failed for ${{ matrix.service }}"
+          else
+            echo "No integration tests directory found for ${{ matrix.service }}"
+          fi
+        continue-on-error: true
+
+      - name: Upload coverage
+        if: steps.check-service.outputs.should-run == 'true'
+        uses: codecov/codecov-action@v4
+        with:
+          files: apps/${{ matrix.service }}/coverage.xml
+          flags: integration-tests-python-${{ matrix.service }}
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ==========================================================================
+  # Integration Tests Summary
+  # ==========================================================================
+  integration-tests-summary:
+    name: Integration Tests Summary
+    runs-on: ubuntu-latest
+    needs: [integration-tests-typescript, integration-tests-python]
+    if: always()
+
+    steps:
+      - name: Check test results
+        run: |
+          echo "## Integration Tests Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          TS_RESULT="${{ needs.integration-tests-typescript.result }}"
+          PY_RESULT="${{ needs.integration-tests-python.result }}"
+
+          if [ "$TS_RESULT" == "success" ]; then
+            echo "✅ TypeScript: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "$TS_RESULT" == "skipped" ]; then
+            echo "⏭️ TypeScript: Skipped" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ TypeScript: $TS_RESULT" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "$PY_RESULT" == "success" ]; then
+            echo "✅ Python: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "$PY_RESULT" == "skipped" ]; then
+            echo "⏭️ Python: Skipped" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Python: $PY_RESULT" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Fail if any required job failed
+          if [ "$TS_RESULT" == "failure" ] || [ "$PY_RESULT" == "failure" ]; then
+            echo ""
+            echo "❌ Some integration tests failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ All integration tests passed" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,66 @@
+# =============================================================================
+# STT-V2 Docker Build Context Exclusions
+# =============================================================================
+# Keeps the build context small and prevents secrets/dev artifacts from leaking
+# into the image. The Dockerfile only needs: pyproject.toml, README.md, src/
+
+# --- Version control ---
+.git
+.gitignore
+
+# --- Python artifacts ---
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+*.egg
+dist/
+build/
+.eggs/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+.conda/
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# --- Test & coverage ---
+tests/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Docker (avoid recursive context) ---
+docker/
+!docker/Dockerfile
+
+# --- Lock files & dev configs ---
+uv.lock
+Makefile
+
+# --- Scripts (not needed in image) ---
+scripts/
+
+# --- Documentation ---
+docs/
+*.md
+!README.md
+
+# --- Misc ---
+*.log
+*.tmp

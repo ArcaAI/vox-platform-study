@@ -1,0 +1,86 @@
+services:
+  smr-v2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hope-smr-v2
+    ports:
+      - "${SMR_PORT:-8862}:8862"
+    env_file:
+      - .env.example
+    environment:
+      - SMR_V2_HOST=0.0.0.0
+      - SMR_V2_PORT=8862
+      - SMR_V2_REDIS_URL=redis://redis:6379/0
+      - SMR_V2_LOG_LEVEL=info
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - smr-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: hope-smr-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - redis-data:/data
+    networks:
+      - smr-network
+
+  # Monitoring stack (optional, activate with: docker compose --profile monitoring up)
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    container_name: hope-smr-otel
+    profiles: ["monitoring"]
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - smr-network
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: hope-smr-prometheus
+    profiles: ["monitoring"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - smr-network
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: hope-smr-grafana
+    profiles: ["monitoring"]
+    ports:
+      - "3001:8868/api/v1"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ../../infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ../../infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - smr-network
+
+volumes:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  smr-network:
+    driver: bridge

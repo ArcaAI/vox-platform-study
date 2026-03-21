@@ -1,0 +1,27 @@
+{
+    "name": "@arcaai/exceptions",
+    "version": "0.0.1",
+    "private": true,
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "scripts": {
+        "build": "tsc",
+        "clean": "rimraf dist tsconfig.tsbuildinfo",
+        "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
+        "dev": "tsc -w",
+        "lint": "ESLINT_USE_FLAT_CONFIG=false eslint \"src/**/*.ts*\" --max-warnings 0"
+    },
+    "devDependencies": {
+        "@arcaai/config-eslint": "workspace:*",
+        "@arcaai/config-ts": "workspace:*",
+        "@types/node": "^25.3.2",
+        "@typescript-eslint/eslint-plugin": "^8.56.1",
+        "@typescript-eslint/parser": "^8.56.1",
+        "eslint": "^9.39.1",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.8.3"
+    },
+    "dependencies": {
+        "nestjs-cls": "^5.4.2"
+    }
+}

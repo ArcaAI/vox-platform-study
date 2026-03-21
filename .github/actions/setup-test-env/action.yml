@@ -1,0 +1,157 @@
+# ============================================================================
+# Shared Test Environment Setup Action
+# ============================================================================
+# This composite action sets up test environment variables for CI pipelines.
+# These values MUST match the .env.test file used for local development.
+#
+# IMPORTANT: Keep in sync with:
+#   - .env.test (local development)
+#   - tests/docker-compose.test.yml (test containers)
+#
+# Test Infrastructure Ports (ISOLATED from dev):
+#   - PostgreSQL: 5433 (dev uses 5432)
+#   - Redis:      6380 (dev uses 6379)
+#   - MinIO:      9002 (dev uses 9000)
+#   - Qdrant:     6335 (dev uses 6333)
+#
+# Usage:
+#   - uses: ./.github/actions/setup-test-env
+#     with:
+#       database-port: '5433'
+#       redis-port: '6380'
+# ============================================================================
+
+name: 'Setup Test Environment'
+description: 'Sets up test environment variables for HOPE platform (mirrors .env.test)'
+
+inputs:
+  database-port:
+    description: 'PostgreSQL port for test database (default: 5433)'
+    required: false
+    default: '5433'
+  redis-port:
+    description: 'Redis port for test cache (default: 6380)'
+    required: false
+    default: '6380'
+  minio-port:
+    description: 'MinIO port for test storage (default: 9002)'
+    required: false
+    default: '9002'
+  log-level:
+    description: 'Log level for tests (default: error)'
+    required: false
+    default: 'error'
+  enable-file-logging:
+    description: 'Enable file logging during tests'
+    required: false
+    default: 'false'
+
+outputs:
+  database-url:
+    description: 'Full database connection URL'
+    value: ${{ steps.set-env.outputs.database-url }}
+  redis-url:
+    description: 'Full Redis connection URL'
+    value: ${{ steps.set-env.outputs.redis-url }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: set-env
+      shell: bash
+      run: |
+        echo "🔧 Setting up test environment (CI mode)..."
+        echo "   Database port: ${{ inputs.database-port }}"
+        echo "   Redis port: ${{ inputs.redis-port }}"
+        echo "   MinIO port: ${{ inputs.minio-port }}"
+
+        # =============================================================================
+        # Core Environment
+        # =============================================================================
+        echo "NODE_ENV=test" >> $GITHUB_ENV
+        echo "CI=true" >> $GITHUB_ENV
+
+        # =============================================================================
+        # Database Configuration (matches .env.test)
+        # =============================================================================
+        DB_URL="postgresql://test:test@localhost:${{ inputs.database-port }}/hope_test?schema=public"
+        echo "DATABASE_URL=${DB_URL}" >> $GITHUB_ENV
+        echo "DATABASE_URL_DIRECT=${DB_URL}" >> $GITHUB_ENV
+        echo "database-url=${DB_URL}" >> $GITHUB_OUTPUT
+
+        # =============================================================================
+        # Redis Configuration (matches .env.test)
+        # =============================================================================
+        REDIS_URL="redis://:test_redis_pass@localhost:${{ inputs.redis-port }}"
+        echo "REDIS_URL=${REDIS_URL}" >> $GITHUB_ENV
+        echo "REDIS_HOST=localhost" >> $GITHUB_ENV
+        echo "REDIS_PORT=${{ inputs.redis-port }}" >> $GITHUB_ENV
+        echo "REDIS_PASS=test_redis_pass" >> $GITHUB_ENV
+        echo "redis-url=${REDIS_URL}" >> $GITHUB_OUTPUT
+
+        # =============================================================================
+        # MinIO Configuration (matches .env.test)
+        # =============================================================================
+        echo "MINIO_ENDPOINT=localhost:${{ inputs.minio-port }}" >> $GITHUB_ENV
+        echo "MINIO_ACCESS_KEY=test" >> $GITHUB_ENV
+        echo "MINIO_SECRET_KEY=testpassword" >> $GITHUB_ENV
+        echo "MINIO_USE_SSL=false" >> $GITHUB_ENV
+
+        # =============================================================================
+        # API Configuration (matches .env.test)
+        # =============================================================================
+        echo "PORT=8868" >> $GITHUB_ENV
+        echo "API_PORT=8868" >> $GITHUB_ENV
+        echo "API_URL=http://localhost:8868" >> $GITHUB_ENV
+
+        # =============================================================================
+        # JWT/Security Configuration (matches .env.test - test-only secrets)
+        # =============================================================================
+        echo "JWT_SECRET=test-jwt-secret-for-testing-only-do-not-use-in-production" >> $GITHUB_ENV
+        echo "JWT_EXPIRES_IN=1h" >> $GITHUB_ENV
+        echo "JWT_REFRESH_SECRET=test-refresh-secret-for-testing-only" >> $GITHUB_ENV
+        echo "JWT_REFRESH_EXPIRES_IN=7d" >> $GITHUB_ENV
+        echo "SESSION_SECRET_KEY=test-session-secret" >> $GITHUB_ENV
+
+        # =============================================================================
+        # Microservice URLs (matches .env.test)
+        # =============================================================================
+        echo "STT_V2_PORT=8861" >> $GITHUB_ENV
+        echo "STT_V2_URL=http://localhost:8861" >> $GITHUB_ENV
+        echo "SMR_PORT=8862" >> $GITHUB_ENV
+        echo "SMR_URL=http://localhost:8862" >> $GITHUB_ENV
+        echo "TTS_PORT=8863" >> $GITHUB_ENV
+        echo "TTS_URL=http://localhost:8863" >> $GITHUB_ENV
+        echo "NLP_PORT=8864" >> $GITHUB_ENV
+        echo "NLP_URL=http://localhost:8864" >> $GITHUB_ENV
+
+        # =============================================================================
+        # Logging Configuration (matches .env.test)
+        # =============================================================================
+        echo "LOG_LEVEL=${{ inputs.log-level }}" >> $GITHUB_ENV
+        echo "LOG_FILE_ENABLED=${{ inputs.enable-file-logging }}" >> $GITHUB_ENV
+        echo "LOG_FILE_PATH=./logs" >> $GITHUB_ENV
+
+        # =============================================================================
+        # MQTT Configuration (matches .env.test - disabled for tests)
+        # =============================================================================
+        echo "MQTT_HOST=localhost" >> $GITHUB_ENV
+        echo "MQTT_PORT=1883" >> $GITHUB_ENV
+        echo "MQTT_USER=" >> $GITHUB_ENV
+        echo "MQTT_PASS=" >> $GITHUB_ENV
+
+        # =============================================================================
+        # Observability (matches .env.test - disabled for tests)
+        # =============================================================================
+        echo "OTEL_TRACES_ENABLED=false" >> $GITHUB_ENV
+        echo "OTEL_METRICS_ENABLED=false" >> $GITHUB_ENV
+
+        # =============================================================================
+        # Test-specific Configuration (matches .env.test)
+        # =============================================================================
+        echo "DEFAULT_TENANT_ID=50000000-0000-0000-0000-000000000000" >> $GITHUB_ENV
+        echo "SYSTEM_USER_ID=60000000-0000-0000-0000-000000000000" >> $GITHUB_ENV
+        echo "DEBUG_PRISMA=false" >> $GITHUB_ENV
+        echo "SKIP_SEED=false" >> $GITHUB_ENV
+
+        echo "✅ Test environment setup complete!"

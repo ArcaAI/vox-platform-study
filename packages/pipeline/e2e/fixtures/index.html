@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>@arcaai/pipeline E2E Tests</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 { color: #333; margin-bottom: 20px; }
+    .section {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .section h2 {
+      margin-top: 0;
+      color: #555;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    button.primary { background: #2196F3; color: white; }
+    button.primary:hover:not(:disabled) { background: #1976D2; }
+    button.success { background: #4CAF50; color: white; }
+    button.success:hover:not(:disabled) { background: #388E3C; }
+    button.warning { background: #FF9800; color: white; }
+    button.warning:hover:not(:disabled) { background: #F57C00; }
+    button.danger { background: #f44336; color: white; }
+    button.danger:hover:not(:disabled) { background: #d32f2f; }
+    button.secondary { background: #eee; color: #333; }
+    button.secondary:hover:not(:disabled) { background: #ddd; }
+    .status {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin: 15px 0;
+    }
+    .status-item {
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .status-item.idle { background: #E3F2FD; color: #1565C0; }
+    .status-item.running { background: #FFF3E0; color: #EF6C00; }
+    .status-item.paused { background: #FCE4EC; color: #C2185B; }
+    .status-item.completed { background: #E8F5E9; color: #2E7D32; }
+    .status-item.error { background: #FFEBEE; color: #C62828; }
+    .status-item.info { background: #F3E5F5; color: #7B1FA2; }
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #eee;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+    .progress-bar .fill {
+      height: 100%;
+      background: #2196F3;
+      transition: width 0.3s;
+    }
+    .stages-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .stage-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+    }
+    .stage-item:last-child { border-bottom: none; }
+    .stage-name { font-weight: 500; flex: 1; }
+    .stage-status {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .stage-status.pending { background: #E0E0E0; color: #616161; }
+    .stage-status.running { background: #FFF3E0; color: #EF6C00; }
+    .stage-status.completed { background: #E8F5E9; color: #2E7D32; }
+    .stage-status.failed { background: #FFEBEE; color: #C62828; }
+    .stage-status.skipped { background: #ECEFF1; color: #546E7A; }
+    .stage-time { font-size: 12px; color: #666; min-width: 80px; text-align: right; }
+    .events-list {
+      max-height: 200px;
+      overflow-y: auto;
+      background: #263238;
+      color: #ECEFF1;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 12px;
+    }
+    .event-item { margin-bottom: 5px; }
+    .event-item.started { color: #81D4FA; }
+    .event-item.completed { color: #A5D6A7; }
+    .event-item.paused { color: #FFE082; }
+    .event-item.resumed { color: #80DEEA; }
+    .event-item.cancelled { color: #EF9A9A; }
+    .event-item.error { color: #EF9A9A; }
+    .event-item.stage { color: #CE93D8; }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+    }
+    .stat-card {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      margin-top: 5px;
+    }
+    .input-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .input-row label { min-width: 100px; }
+    .input-row input, .input-row select {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .results-container {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 4px;
+      margin-top: 10px;
+    }
+    .result-item {
+      padding: 8px;
+      border-bottom: 1px solid #eee;
+    }
+    .result-item:last-child { border-bottom: none; }
+  </style>
+</head>
+<body>
+  <h1>🔄 @arcaai/pipeline E2E Tests</h1>
+
+  <!-- Sequential Pipeline Section -->
+  <div class="section" id="sequential-section">
+    <h2>Sequential Pipeline</h2>
+    
+    <div class="input-row">
+      <label>Input Value:</label>
+      <input type="number" id="seq-input" value="10">
+    </div>
+    
+    <div class="controls">
+      <button id="btn-seq-create" class="primary">Create Pipeline</button>
+      <button id="btn-seq-add-stages" class="secondary" disabled>Add Stages</button>
+      <button id="btn-seq-execute" class="success" disabled>Execute</button>
+      <button id="btn-seq-pause" class="warning" disabled>Pause</button>
+      <button id="btn-seq-resume" class="primary" disabled>Resume</button>
+      <button id="btn-seq-cancel" class="danger" disabled>Cancel</button>
+      <button id="btn-seq-reset" class="secondary" disabled>Reset</button>
+      <button id="btn-seq-destroy" class="danger" disabled>Destroy</button>
+    </div>
+
+    <div class="status" id="seq-status">
+      <span class="status-item idle" id="seq-state">IDLE</span>
+      <span class="status-item info" id="seq-progress">0%</span>
+      <span class="status-item info" id="seq-stages">0 stages</span>
+    </div>
+
+    <div class="progress-bar">
+      <div class="fill" id="seq-progress-bar" style="width: 0%"></div>
+    </div>
+
+    <h3>Stages</h3>
+    <div id="seq-stages-list" class="stages-list">
+      <p style="color:#999; text-align:center; padding:20px;">No stages added</p>
+    </div>
+
+    <h3>Result</h3>
+    <div id="seq-result" class="results-container">
+      <p style="color:#999;">Execute pipeline to see result</p>
+    </div>
+  </div>
+
+  <!-- Parallel Pipeline Section -->
+  <div class="section" id="parallel-section">
+    <h2>Parallel Pipeline</h2>
+    
+    <div class="input-row">
+      <label>Input Text:</label>
+      <input type="text" id="par-input" value="hello world">
+    </div>
+    
+    <div class="controls">
+      <button id="btn-par-create" class="primary">Create Pipeline</button>
+      <button id="btn-par-add-stages" class="secondary" disabled>Add Stages</button>
+      <button id="btn-par-execute" class="success" disabled>Execute</button>
+      <button id="btn-par-trigger-manual" class="warning" disabled>Trigger Manual</button>
+      <button id="btn-par-cancel" class="danger" disabled>Cancel</button>
+      <button id="btn-par-reset" class="secondary" disabled>Reset</button>
+      <button id="btn-par-destroy" class="danger" disabled>Destroy</button>
+    </div>
+
+    <div class="status" id="par-status">
+      <span class="status-item idle" id="par-state">IDLE</span>
+      <span class="status-item info" id="par-results-count">0 results</span>
+      <span class="status-item info" id="par-errors-count">0 errors</span>
+    </div>
+
+    <h3>Stages</h3>
+    <div id="par-stages-list" class="stages-list">
+      <p style="color:#999; text-align:center; padding:20px;">No stages added</p>
+    </div>
+
+    <h3>Results</h3>
+    <div id="par-results" class="results-container">
+      <p style="color:#999;">Execute pipeline to see results</p>
+    </div>
+  </div>
+
+  <!-- Orchestrator Section -->
+  <div class="section" id="orchestrator-section">
+    <h2>Pipeline Orchestrator</h2>
+    
+    <div class="controls">
+      <button id="btn-orch-create" class="primary">Create Orchestrator</button>
+      <button id="btn-orch-register" class="secondary" disabled>Register Pipelines</button>
+      <button id="btn-orch-connect" class="secondary" disabled>Connect Pipelines</button>
+      <button id="btn-orch-init" class="primary" disabled>Initialize</button>
+      <button id="btn-orch-execute" class="success" disabled>Execute Chain</button>
+      <button id="btn-orch-pause-all" class="warning" disabled>Pause All</button>
+      <button id="btn-orch-resume-all" class="primary" disabled>Resume All</button>
+      <button id="btn-orch-cancel-all" class="danger" disabled>Cancel All</button>
+      <button id="btn-orch-destroy" class="danger" disabled>Destroy</button>
+    </div>
+
+    <div class="status" id="orch-status">
+      <span class="status-item idle" id="orch-state">IDLE</span>
+      <span class="status-item info" id="orch-initialized">Not Initialized</span>
+      <span class="status-item info" id="orch-pipelines">0 pipelines</span>
+      <span class="status-item info" id="orch-can-close">Can Close: Yes</span>
+    </div>
+
+    <h3>Registered Pipelines</h3>
+    <div id="orch-pipelines-list" class="stages-list">
+      <p style="color:#999; text-align:center; padding:20px;">No pipelines registered</p>
+    </div>
+
+    <h3>Orchestrator Result</h3>
+    <div id="orch-result" class="results-container">
+      <p style="color:#999;">Execute to see result</p>
+    </div>
+  </div>
+
+  <!-- Events Section -->
+  <div class="section" id="events-section">
+    <h2>Event Log</h2>
+    <div id="events-list" class="events-list"></div>
+    <div class="controls" style="margin-top:15px;">
+      <button id="btn-clear-events" class="secondary">Clear Events</button>
+    </div>
+  </div>
+
+  <!-- Statistics Section -->
+  <div class="section" id="stats-section">
+    <h2>Statistics</h2>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-executions">0</div>
+        <div class="stat-label">Total Executions</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-completed">0</div>
+        <div class="stat-label">Completed</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-failed">0</div>
+        <div class="stat-label">Failed</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-cancelled">0</div>
+        <div class="stat-label">Cancelled</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-avg-time">0ms</div>
+        <div class="stat-label">Avg Duration</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load the library -->
+  <script type="module">
+    import {
+      PipelineStage,
+      SequentialPipeline,
+      ParallelPipeline,
+      PipelineOrchestrator,
+      PipelineEvent,
+      OrchestratorEvent,
+      PipelineError,
+      PipelineErrorCode,
+    } from './dist/index.js';
+
+    // === Custom Stage Implementations ===
+    class AddStage extends PipelineStage {
+      constructor(name, addValue) {
+        super(name);
+        this.addValue = addValue;
+      }
+      async onExecute(input) {
+        await this.delay(100); // Simulate work
+        return input + this.addValue;
+      }
+      delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+    }
+
+    class MultiplyStage extends PipelineStage {
+      constructor(name, multiplier) {
+        super(name);
+        this.multiplier = multiplier;
+      }
+      async onExecute(input) {
+        await this.delay(150);
+        return input * this.multiplier;
+      }
+      delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+    }
+
+    class SlowStage extends PipelineStage {
+      constructor(name, delayMs) {
+        super(name);
+        this.delayMs = delayMs;
+      }
+      async onExecute(input) {
+        await new Promise(resolve => setTimeout(resolve, this.delayMs));
+        return input;
+      }
+    }
+
+    class UppercaseStage extends PipelineStage {
+      constructor(name = 'uppercase') {
+        super(name);
+      }
+      async onExecute(input) {
+        await this.delay(50);
+        return input.toUpperCase();
+      }
+      delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+    }
+
+    class ReverseStage extends PipelineStage {
+      constructor(name = 'reverse') {
+        super(name);
+      }
+      async onExecute(input) {
+        await this.delay(50);
+        return input.split('').reverse().join('');
+      }
+      delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+    }
+
+    class LengthStage extends PipelineStage {
+      constructor(name = 'length') {
+        super(name);
+      }
+      async onExecute(input) {
+        await this.delay(30);
+        return `${input} (length: ${input.length})`;
+      }
+      delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+    }
+
+    class ManualStage extends PipelineStage {
+      constructor(name = 'manual') {
+        super(name);
+      }
+      async onExecute(input) {
+        await this.delay(50);
+        return `[MANUAL] ${input}`;
+      }
+      delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+    }
+
+    // === State ===
+    let seqPipeline = null;
+    let parPipeline = null;
+    let orchestrator = null;
+    const stats = {
+      executions: 0,
+      completed: 0,
+      failed: 0,
+      cancelled: 0,
+      totalTime: 0,
+    };
+
+    // === DOM Elements ===
+    const seqInput = document.getElementById('seq-input');
+    const parInput = document.getElementById('par-input');
+    const eventsListEl = document.getElementById('events-list');
+
+    // === Logging ===
+    function logEvent(message, type = 'info') {
+      const entry = document.createElement('div');
+      entry.className = `event-item ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      eventsListEl.appendChild(entry);
+      eventsListEl.scrollTop = eventsListEl.scrollHeight;
+    }
+
+    // === Update UI Functions ===
+    function updateSeqUI() {
+      if (!seqPipeline) {
+        document.getElementById('seq-state').textContent = 'IDLE';
+        document.getElementById('seq-state').className = 'status-item idle';
+        document.getElementById('seq-progress').textContent = '0%';
+        document.getElementById('seq-stages').textContent = '0 stages';
+        document.getElementById('seq-progress-bar').style.width = '0%';
+        document.getElementById('seq-stages-list').innerHTML = '<p style="color:#999; text-align:center; padding:20px;">No stages added</p>';
+        return;
+      }
+
+      const state = seqPipeline.getState();
+      const stages = seqPipeline.getStages();
+
+      document.getElementById('seq-state').textContent = state.status;
+      document.getElementById('seq-state').className = `status-item ${state.status.toLowerCase()}`;
+      document.getElementById('seq-progress').textContent = `${Math.round(state.progress)}%`;
+      document.getElementById('seq-stages').textContent = `${stages.length} stages`;
+      document.getElementById('seq-progress-bar').style.width = `${state.progress}%`;
+
+      if (stages.length === 0) {
+        document.getElementById('seq-stages-list').innerHTML = '<p style="color:#999; text-align:center; padding:20px;">No stages added</p>';
+      } else {
+        document.getElementById('seq-stages-list').innerHTML = stages.map((stage, i) => `
+          <div class="stage-item">
+            <span class="stage-name">${i + 1}. ${stage.name}</span>
+            <span class="stage-status ${stage.enabled ? 'pending' : 'skipped'}">${stage.enabled ? 'Ready' : 'Disabled'}</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    function updateParUI() {
+      if (!parPipeline) {
+        document.getElementById('par-state').textContent = 'IDLE';
+        document.getElementById('par-state').className = 'status-item idle';
+        document.getElementById('par-results-count').textContent = '0 results';
+        document.getElementById('par-errors-count').textContent = '0 errors';
+        document.getElementById('par-stages-list').innerHTML = '<p style="color:#999; text-align:center; padding:20px;">No stages added</p>';
+        return;
+      }
+
+      const state = parPipeline.getState();
+      const stages = parPipeline.getStages();
+
+      document.getElementById('par-state').textContent = state.status;
+      document.getElementById('par-state').className = `status-item ${state.status.toLowerCase()}`;
+
+      if (stages.length === 0) {
+        document.getElementById('par-stages-list').innerHTML = '<p style="color:#999; text-align:center; padding:20px;">No stages added</p>';
+      } else {
+        document.getElementById('par-stages-list').innerHTML = stages.map(stage => `
+          <div class="stage-item">
+            <span class="stage-name">${stage.name}</span>
+            <span class="stage-status ${stage.enabled ? 'pending' : 'skipped'}">${stage.enabled ? 'Ready' : 'Disabled'}</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    function updateOrchUI() {
+      if (!orchestrator) {
+        document.getElementById('orch-state').textContent = 'IDLE';
+        document.getElementById('orch-initialized').textContent = 'Not Initialized';
+        document.getElementById('orch-pipelines').textContent = '0 pipelines';
+        document.getElementById('orch-can-close').textContent = 'Can Close: Yes';
+        document.getElementById('orch-pipelines-list').innerHTML = '<p style="color:#999; text-align:center; padding:20px;">No pipelines registered</p>';
+        return;
+      }
+
+      const state = orchestrator.getState();
+
+      document.getElementById('orch-state').textContent = state.status;
+      document.getElementById('orch-state').className = `status-item ${state.status.toLowerCase()}`;
+      document.getElementById('orch-initialized').textContent = state.initialized ? 'Initialized' : 'Not Initialized';
+      document.getElementById('orch-pipelines').textContent = `${state.pipelines.size} pipelines`;
+      document.getElementById('orch-can-close').textContent = `Can Close: ${orchestrator.canClose() ? 'Yes' : 'No'}`;
+
+      if (state.pipelines.size === 0) {
+        document.getElementById('orch-pipelines-list').innerHTML = '<p style="color:#999; text-align:center; padding:20px;">No pipelines registered</p>';
+      } else {
+        let html = '';
+        state.pipelines.forEach((pState, name) => {
+          html += `
+            <div class="stage-item">
+              <span class="stage-name">${name}</span>
+              <span class="stage-status ${pState.status.toLowerCase()}">${pState.status}</span>
+            </div>
+          `;
+        });
+        document.getElementById('orch-pipelines-list').innerHTML = html;
+      }
+    }
+
+    function updateStats() {
+      document.getElementById('stat-executions').textContent = stats.executions;
+      document.getElementById('stat-completed').textContent = stats.completed;
+      document.getElementById('stat-failed').textContent = stats.failed;
+      document.getElementById('stat-cancelled').textContent = stats.cancelled;
+      const avgTime = stats.executions > 0 ? Math.round(stats.totalTime / stats.executions) : 0;
+      document.getElementById('stat-avg-time').textContent = `${avgTime}ms`;
+    }
+
+    // === Sequential Pipeline ===
+    document.getElementById('btn-seq-create').addEventListener('click', () => {
+      seqPipeline = new SequentialPipeline('sequential-demo');
+
+      // Subscribe to events
+      seqPipeline.on(PipelineEvent.Started, ({ runId }) => {
+        logEvent(`Sequential: Started (${runId})`, 'started');
+        stats.executions++;
+        updateStats();
+      });
+
+      seqPipeline.on(PipelineEvent.Completed, ({ durationMs }) => {
+        logEvent(`Sequential: Completed in ${durationMs}ms`, 'completed');
+        stats.completed++;
+        stats.totalTime += durationMs;
+        updateStats();
+      });
+
+      seqPipeline.on(PipelineEvent.Paused, () => {
+        logEvent('Sequential: Paused', 'paused');
+      });
+
+      seqPipeline.on(PipelineEvent.Resumed, () => {
+        logEvent('Sequential: Resumed', 'resumed');
+      });
+
+      seqPipeline.on(PipelineEvent.Cancelled, () => {
+        logEvent('Sequential: Cancelled', 'cancelled');
+        stats.cancelled++;
+        updateStats();
+      });
+
+      seqPipeline.on(PipelineEvent.Error, ({ error }) => {
+        logEvent(`Sequential: Error - ${error.message}`, 'error');
+        stats.failed++;
+        updateStats();
+      });
+
+      seqPipeline.on(PipelineEvent.StateChange, () => {
+        updateSeqUI();
+      });
+
+      seqPipeline.on(PipelineEvent.StageStarted, ({ stageName }) => {
+        logEvent(`Sequential: Stage '${stageName}' started`, 'stage');
+      });
+
+      seqPipeline.on(PipelineEvent.StageCompleted, ({ stageName, durationMs, result }) => {
+        logEvent(`Sequential: Stage '${stageName}' completed in ${durationMs}ms (result: ${result})`, 'stage');
+      });
+
+      document.getElementById('btn-seq-create').disabled = true;
+      document.getElementById('btn-seq-add-stages').disabled = false;
+      document.getElementById('btn-seq-destroy').disabled = false;
+
+      logEvent('Sequential pipeline created', 'completed');
+      updateSeqUI();
+
+      window.seqPipeline = seqPipeline;
+    });
+
+    document.getElementById('btn-seq-add-stages').addEventListener('click', async () => {
+      seqPipeline.addStage(new AddStage('add-5', 5), { priority: 10 });
+      seqPipeline.addStage(new MultiplyStage('multiply-2', 2), { priority: 20 });
+      seqPipeline.addStage(new AddStage('add-10', 10), { priority: 30 });
+
+      document.getElementById('btn-seq-add-stages').disabled = true;
+      document.getElementById('btn-seq-execute').disabled = false;
+
+      logEvent('Added 3 stages to sequential pipeline', 'completed');
+      updateSeqUI();
+    });
+
+    document.getElementById('btn-seq-execute').addEventListener('click', async () => {
+      const input = parseInt(seqInput.value, 10);
+      document.getElementById('btn-seq-execute').disabled = true;
+      document.getElementById('btn-seq-pause').disabled = false;
+      document.getElementById('btn-seq-cancel').disabled = false;
+
+      try {
+        const result = await seqPipeline.execute(input);
+        document.getElementById('seq-result').innerHTML = `
+          <p><strong>Input:</strong> ${input}</p>
+          <p><strong>Result:</strong> ${result}</p>
+          <p><strong>Formula:</strong> ((${input} + 5) × 2) + 10 = ${result}</p>
+        `;
+        window.seqResult = result;
+      } catch (error) {
+        document.getElementById('seq-result').innerHTML = `<p style="color:red;">Error: ${error.message}</p>`;
+      }
+
+      document.getElementById('btn-seq-execute').disabled = false;
+      document.getElementById('btn-seq-pause').disabled = true;
+      document.getElementById('btn-seq-cancel').disabled = true;
+      document.getElementById('btn-seq-reset').disabled = false;
+    });
+
+    document.getElementById('btn-seq-pause').addEventListener('click', () => {
+      seqPipeline.pause();
+      document.getElementById('btn-seq-pause').disabled = true;
+      document.getElementById('btn-seq-resume').disabled = false;
+    });
+
+    document.getElementById('btn-seq-resume').addEventListener('click', () => {
+      seqPipeline.resume();
+      document.getElementById('btn-seq-pause').disabled = false;
+      document.getElementById('btn-seq-resume').disabled = true;
+    });
+
+    document.getElementById('btn-seq-cancel').addEventListener('click', () => {
+      seqPipeline.cancel();
+    });
+
+    document.getElementById('btn-seq-reset').addEventListener('click', () => {
+      seqPipeline.reset();
+      document.getElementById('seq-result').innerHTML = '<p style="color:#999;">Execute pipeline to see result</p>';
+      updateSeqUI();
+      logEvent('Sequential pipeline reset', 'info');
+    });
+
+    document.getElementById('btn-seq-destroy').addEventListener('click', async () => {
+      await seqPipeline.destroy();
+      seqPipeline = null;
+      window.seqPipeline = null;
+
+      document.getElementById('btn-seq-create').disabled = false;
+      document.getElementById('btn-seq-add-stages').disabled = true;
+      document.getElementById('btn-seq-execute').disabled = true;
+      document.getElementById('btn-seq-pause').disabled = true;
+      document.getElementById('btn-seq-resume').disabled = true;
+      document.getElementById('btn-seq-cancel').disabled = true;
+      document.getElementById('btn-seq-reset').disabled = true;
+      document.getElementById('btn-seq-destroy').disabled = true;
+      document.getElementById('seq-result').innerHTML = '<p style="color:#999;">Execute pipeline to see result</p>';
+
+      logEvent('Sequential pipeline destroyed', 'completed');
+      updateSeqUI();
+    });
+
+    // === Parallel Pipeline ===
+    document.getElementById('btn-par-create').addEventListener('click', () => {
+      parPipeline = new ParallelPipeline('parallel-demo');
+
+      parPipeline.on(PipelineEvent.Started, ({ runId }) => {
+        logEvent(`Parallel: Started (${runId})`, 'started');
+        stats.executions++;
+        updateStats();
+      });
+
+      parPipeline.on(PipelineEvent.Completed, ({ durationMs }) => {
+        logEvent(`Parallel: Completed in ${durationMs}ms`, 'completed');
+        stats.completed++;
+        stats.totalTime += durationMs;
+        updateStats();
+      });
+
+      parPipeline.on(PipelineEvent.Cancelled, () => {
+        logEvent('Parallel: Cancelled', 'cancelled');
+        stats.cancelled++;
+        updateStats();
+      });
+
+      parPipeline.on(PipelineEvent.Error, ({ error }) => {
+        logEvent(`Parallel: Error - ${error.message}`, 'error');
+      });
+
+      parPipeline.on(PipelineEvent.StateChange, () => {
+        updateParUI();
+      });
+
+      parPipeline.on(PipelineEvent.StageCompleted, ({ stageName, result }) => {
+        logEvent(`Parallel: Stage '${stageName}' completed (result: ${result})`, 'stage');
+      });
+
+      document.getElementById('btn-par-create').disabled = true;
+      document.getElementById('btn-par-add-stages').disabled = false;
+      document.getElementById('btn-par-destroy').disabled = false;
+
+      logEvent('Parallel pipeline created', 'completed');
+      updateParUI();
+
+      window.parPipeline = parPipeline;
+    });
+
+    document.getElementById('btn-par-add-stages').addEventListener('click', () => {
+      parPipeline.addStage(new UppercaseStage('uppercase'), { triggerMode: 'auto' });
+      parPipeline.addStage(new ReverseStage('reverse'), { triggerMode: 'auto' });
+      parPipeline.addStage(new LengthStage('length'), { triggerMode: 'auto' });
+      parPipeline.addStage(new ManualStage('manual'), { triggerMode: 'manual' });
+
+      document.getElementById('btn-par-add-stages').disabled = true;
+      document.getElementById('btn-par-execute').disabled = false;
+
+      logEvent('Added 4 stages to parallel pipeline (3 auto, 1 manual)', 'completed');
+      updateParUI();
+    });
+
+    document.getElementById('btn-par-execute').addEventListener('click', async () => {
+      const input = parInput.value;
+      document.getElementById('btn-par-execute').disabled = true;
+      document.getElementById('btn-par-cancel').disabled = false;
+
+      try {
+        const result = await parPipeline.execute(input);
+
+        document.getElementById('par-results-count').textContent = `${result.results.size} results`;
+        document.getElementById('par-errors-count').textContent = `${result.errors.size} errors`;
+
+        let html = `<p><strong>Input:</strong> ${input}</p><p><strong>Success:</strong> ${result.success}</p>`;
+        result.results.forEach((value, key) => {
+          html += `<div class="result-item"><strong>${key}:</strong> ${value}</div>`;
+        });
+        if (result.errors.size > 0) {
+          result.errors.forEach((err, key) => {
+            html += `<div class="result-item" style="color:red;"><strong>${key}:</strong> ${err.message}</div>`;
+          });
+        }
+        document.getElementById('par-results').innerHTML = html;
+
+        document.getElementById('btn-par-trigger-manual').disabled = false;
+
+        window.parResult = result;
+
+      } catch (error) {
+        document.getElementById('par-results').innerHTML = `<p style="color:red;">Error: ${error.message}</p>`;
+      }
+
+      document.getElementById('btn-par-execute').disabled = false;
+      document.getElementById('btn-par-cancel').disabled = true;
+      document.getElementById('btn-par-reset').disabled = false;
+    });
+
+    document.getElementById('btn-par-trigger-manual').addEventListener('click', async () => {
+      try {
+        const result = await parPipeline.triggerStage('manual');
+        logEvent(`Manual stage triggered: ${result}`, 'completed');
+
+        // Update results display
+        const parResultsEl = document.getElementById('par-results');
+        parResultsEl.innerHTML += `<div class="result-item"><strong>manual (triggered):</strong> ${result}</div>`;
+
+        window.manualResult = result;
+
+      } catch (error) {
+        logEvent(`Manual trigger failed: ${error.message}`, 'error');
+      }
+    });
+
+    document.getElementById('btn-par-cancel').addEventListener('click', () => {
+      parPipeline.cancel();
+    });
+
+    document.getElementById('btn-par-reset').addEventListener('click', () => {
+      parPipeline.reset();
+      document.getElementById('par-results').innerHTML = '<p style="color:#999;">Execute pipeline to see results</p>';
+      document.getElementById('par-results-count').textContent = '0 results';
+      document.getElementById('par-errors-count').textContent = '0 errors';
+      document.getElementById('btn-par-trigger-manual').disabled = true;
+      updateParUI();
+      logEvent('Parallel pipeline reset', 'info');
+    });
+
+    document.getElementById('btn-par-destroy').addEventListener('click', async () => {
+      await parPipeline.destroy();
+      parPipeline = null;
+      window.parPipeline = null;
+
+      document.getElementById('btn-par-create').disabled = false;
+      document.getElementById('btn-par-add-stages').disabled = true;
+      document.getElementById('btn-par-execute').disabled = true;
+      document.getElementById('btn-par-trigger-manual').disabled = true;
+      document.getElementById('btn-par-cancel').disabled = true;
+      document.getElementById('btn-par-reset').disabled = true;
+      document.getElementById('btn-par-destroy').disabled = true;
+      document.getElementById('par-results').innerHTML = '<p style="color:#999;">Execute pipeline to see results</p>';
+
+      logEvent('Parallel pipeline destroyed', 'completed');
+      updateParUI();
+    });
+
+    // === Orchestrator ===
+    document.getElementById('btn-orch-create').addEventListener('click', () => {
+      orchestrator = new PipelineOrchestrator();
+
+      orchestrator.on(OrchestratorEvent.PipelineRegistered, ({ pipelineName }) => {
+        logEvent(`Orchestrator: Pipeline '${pipelineName}' registered`, 'stage');
+        updateOrchUI();
+      });
+
+      orchestrator.on(OrchestratorEvent.PipelineUnregistered, ({ pipelineName }) => {
+        logEvent(`Orchestrator: Pipeline '${pipelineName}' unregistered`, 'stage');
+        updateOrchUI();
+      });
+
+      orchestrator.on(OrchestratorEvent.Initialized, () => {
+        logEvent('Orchestrator: Initialized', 'completed');
+        updateOrchUI();
+      });
+
+      orchestrator.on(OrchestratorEvent.StateChange, () => {
+        updateOrchUI();
+      });
+
+      orchestrator.on(OrchestratorEvent.DataFlow, ({ sourcePipeline, targetPipeline }) => {
+        logEvent(`Orchestrator: Data flow ${sourcePipeline} → ${targetPipeline}`, 'stage');
+      });
+
+      orchestrator.on(OrchestratorEvent.Error, ({ error, pipeline }) => {
+        logEvent(`Orchestrator: Error in '${pipeline}' - ${error.message}`, 'error');
+        stats.failed++;
+        updateStats();
+      });
+
+      document.getElementById('btn-orch-create').disabled = true;
+      document.getElementById('btn-orch-register').disabled = false;
+      document.getElementById('btn-orch-destroy').disabled = false;
+
+      logEvent('Orchestrator created', 'completed');
+      updateOrchUI();
+
+      window.orchestrator = orchestrator;
+    });
+
+    document.getElementById('btn-orch-register').addEventListener('click', () => {
+      // Create two pipelines for chaining
+      const processPipeline = new SequentialPipeline('process');
+      processPipeline.addStage(new AddStage('add-100', 100));
+      processPipeline.addStage(new MultiplyStage('multiply-3', 3));
+
+      const finalizePipeline = new SequentialPipeline('finalize');
+      finalizePipeline.addStage(new AddStage('add-50', 50));
+
+      orchestrator.register('process', processPipeline);
+      orchestrator.register('finalize', finalizePipeline);
+
+      document.getElementById('btn-orch-register').disabled = true;
+      document.getElementById('btn-orch-connect').disabled = false;
+
+      logEvent('Registered 2 pipelines: process, finalize', 'completed');
+      updateOrchUI();
+    });
+
+    document.getElementById('btn-orch-connect').addEventListener('click', () => {
+      orchestrator.connect('process', 'finalize', { autoExecute: true });
+
+      document.getElementById('btn-orch-connect').disabled = true;
+      document.getElementById('btn-orch-init').disabled = false;
+
+      logEvent('Connected: process → finalize (autoExecute)', 'completed');
+    });
+
+    document.getElementById('btn-orch-init').addEventListener('click', async () => {
+      await orchestrator.init();
+
+      document.getElementById('btn-orch-init').disabled = true;
+      document.getElementById('btn-orch-execute').disabled = false;
+      document.getElementById('btn-orch-pause-all').disabled = false;
+      document.getElementById('btn-orch-cancel-all').disabled = false;
+
+      updateOrchUI();
+    });
+
+    document.getElementById('btn-orch-execute').addEventListener('click', async () => {
+      const input = 10;
+      document.getElementById('btn-orch-execute').disabled = true;
+
+      try {
+        stats.executions++;
+        updateStats();
+
+        const result = await orchestrator.execute('process', input);
+
+        // Result from process: (10 + 100) * 3 = 330
+        // After finalize (autoExecute): 330 + 50 = 380
+        document.getElementById('orch-result').innerHTML = `
+          <p><strong>Input:</strong> ${input}</p>
+          <p><strong>Process Result:</strong> ${result}</p>
+          <p><strong>Formula:</strong> ((${input} + 100) × 3) = ${result}</p>
+          <p><em>Finalize pipeline auto-executed on completion</em></p>
+        `;
+
+        stats.completed++;
+        stats.totalTime += 500; // Approximate
+        updateStats();
+
+        window.orchResult = result;
+
+      } catch (error) {
+        document.getElementById('orch-result').innerHTML = `<p style="color:red;">Error: ${error.message}</p>`;
+      }
+
+      document.getElementById('btn-orch-execute').disabled = false;
+    });
+
+    document.getElementById('btn-orch-pause-all').addEventListener('click', () => {
+      orchestrator.pauseAll();
+      document.getElementById('btn-orch-pause-all').disabled = true;
+      document.getElementById('btn-orch-resume-all').disabled = false;
+      logEvent('Orchestrator: Paused all pipelines', 'paused');
+    });
+
+    document.getElementById('btn-orch-resume-all').addEventListener('click', () => {
+      orchestrator.resumeAll();
+      document.getElementById('btn-orch-pause-all').disabled = false;
+      document.getElementById('btn-orch-resume-all').disabled = true;
+      logEvent('Orchestrator: Resumed all pipelines', 'resumed');
+    });
+
+    document.getElementById('btn-orch-cancel-all').addEventListener('click', () => {
+      orchestrator.cancelAll();
+      stats.cancelled++;
+      updateStats();
+      logEvent('Orchestrator: Cancelled all pipelines', 'cancelled');
+    });
+
+    document.getElementById('btn-orch-destroy').addEventListener('click', async () => {
+      await orchestrator.destroy();
+      orchestrator = null;
+      window.orchestrator = null;
+
+      document.getElementById('btn-orch-create').disabled = false;
+      document.getElementById('btn-orch-register').disabled = true;
+      document.getElementById('btn-orch-connect').disabled = true;
+      document.getElementById('btn-orch-init').disabled = true;
+      document.getElementById('btn-orch-execute').disabled = true;
+      document.getElementById('btn-orch-pause-all').disabled = true;
+      document.getElementById('btn-orch-resume-all').disabled = true;
+      document.getElementById('btn-orch-cancel-all').disabled = true;
+      document.getElementById('btn-orch-destroy').disabled = true;
+      document.getElementById('orch-result').innerHTML = '<p style="color:#999;">Execute to see result</p>';
+
+      logEvent('Orchestrator destroyed', 'completed');
+      updateOrchUI();
+    });
+
+    // === Clear Events ===
+    document.getElementById('btn-clear-events').addEventListener('click', () => {
+      eventsListEl.innerHTML = '';
+    });
+
+    // Expose classes for testing
+    window.PipelineStage = PipelineStage;
+    window.SequentialPipeline = SequentialPipeline;
+    window.ParallelPipeline = ParallelPipeline;
+    window.PipelineOrchestrator = PipelineOrchestrator;
+    window.PipelineEvent = PipelineEvent;
+    window.OrchestratorEvent = OrchestratorEvent;
+    window.PipelineError = PipelineError;
+    window.PipelineErrorCode = PipelineErrorCode;
+    window.AddStage = AddStage;
+    window.MultiplyStage = MultiplyStage;
+    window.SlowStage = SlowStage;
+
+    logEvent('Page loaded. Create pipelines to start testing.', 'info');
+  </script>
+</body>
+</html>

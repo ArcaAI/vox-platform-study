@@ -1,0 +1,90 @@
+# ============================================================================
+# HOPE Infrastructure - Extended Services (Vault, Qdrant)
+# ============================================================================
+# Additional infrastructure services for STT and advanced features.
+# NOTE: Kafka has been removed - using Redis for job queues and PostgreSQL for audit logs.
+#
+# USAGE (from monorepo root):
+#   Start both together (recommended):
+#     docker compose -f infrastructure/docker/docker-compose.yml \
+#                    -f infrastructure/docker/docker-compose.dev.yml up -d
+#
+#   Or use the convenience script:
+#     ./scripts/start-infra.sh --all
+#
+#   Start separately (if core is already running):
+#     docker compose -f infrastructure/docker/docker-compose.dev.yml up -d
+#
+# ENVIRONMENT:
+#   This file automatically loads variables from the root .env file.
+#   Copy .env.example to .env and update values as needed.
+# ============================================================================
+
+name: hope-infra-dev
+
+networks:
+  hope-network:
+    # When used standalone, create the network
+    # When used with docker-compose.yml, this merges with the existing definition
+    name: hope-network
+    driver: bridge
+
+volumes:
+  vault-data:
+  qdrant-data:
+
+services:
+  # HashiCorp Vault - Secret Management
+  vault:
+    container_name: hope-vault
+    image: hashicorp/vault:1.15
+    networks:
+      - hope-network
+    restart: unless-stopped
+    ports:
+      - '8200:8200'
+    volumes:
+      - vault-data:/vault/file
+    environment:
+      VAULT_ADDR: 'http://0.0.0.0:8200'
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN:-root}
+    command: server -dev -dev-root-token-id="${VAULT_DEV_ROOT_TOKEN:-root}"
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test: ['CMD', 'vault', 'status']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Qdrant - Vector Database
+  qdrant:
+    container_name: hope-qdrant
+    image: qdrant/qdrant:v1.16
+    networks:
+      - hope-network
+    restart: unless-stopped
+    ports:
+      - '6333:6333'  # HTTP API
+      - '6334:6334'  # gRPC API
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  # Qdrant Collection Initialization
+  qdrant-init:
+    container_name: hope-qdrant-init
+    image: python:3.11-slim
+    networks:
+      - hope-network
+    depends_on:
+      - qdrant
+    restart: 'no'
+    environment:
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+    volumes:
+      - ./scripts/init-qdrant-collections.py:/scripts/init.py:ro
+    command: sh -c "pip install -q qdrant-client && python /scripts/init.py"
+
+

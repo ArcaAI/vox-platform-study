@@ -1,0 +1,42 @@
+/* eslint-disable unused-imports/no-unused-imports */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import Decimal from 'decimal.js';
+import { BusinessException } from '@arcaai/exceptions';
+import { {{baseClassName}}, {{baseClassPropsName}} } from '../../../common';
+import { JsonValue } from '../../../interfaces';
+import * as Enums from '../../../enums';
+import * as Entities from '../../../entities';
+
+export interface {{entityPropsName}} extends {{#if ignoreTenantId}}Omit<{{baseClassPropsName}}, 'tenantId'>{{else}}{{baseClassPropsName}}{{/if}} {
+{{#each properties}}
+    {{name}}{{#unless isRequired}}?{{/unless}}: {{type}};
+{{/each}}
+}
+
+export class {{entityName}} extends {{baseClassName}} {
+{{#each properties}}
+    private _{{name}}{{#unless isRequired}}?{{/unless}}: {{../entityPropsName}}['{{name}}'];
+{{/each}}
+
+    constructor(init: {{entityPropsName}}) {
+        super(init);
+{{#each properties}}
+        this._{{name}} = init.{{name}};
+{{/each}}
+    }
+
+{{#each properties}}
+    get {{name}}(): {{../entityPropsName}}['{{name}}'] {
+        return this._{{name}};
+    }
+
+    set {{name}}(value: {{../entityPropsName}}['{{name}}']) {
+        this.setProperty('{{name}}', value);
+    }
+
+{{/each}}
+    public override validate(): void {
+        throw new BusinessException('Method not implemented.');
+    }
+}

@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>@arcaai/vox E2E Tests</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 { color: #333; margin-bottom: 20px; }
+    .section {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .section h2 {
+      margin-top: 0;
+      color: #555;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    button.primary { background: #2196F3; color: white; }
+    button.primary:hover:not(:disabled) { background: #1976D2; }
+    button.success { background: #4CAF50; color: white; }
+    button.success:hover:not(:disabled) { background: #388E3C; }
+    button.warning { background: #FF9800; color: white; }
+    button.warning:hover:not(:disabled) { background: #F57C00; }
+    button.danger { background: #f44336; color: white; }
+    button.danger:hover:not(:disabled) { background: #d32f2f; }
+    button.secondary { background: #eee; color: #333; }
+    button.secondary:hover:not(:disabled) { background: #ddd; }
+    .status {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin: 15px 0;
+    }
+    .status-item {
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .status-item.healthy { background: #E8F5E9; color: #2E7D32; }
+    .status-item.warning { background: #FFF3E0; color: #EF6C00; }
+    .status-item.error { background: #FFEBEE; color: #C62828; }
+    .status-item.info { background: #E3F2FD; color: #1565C0; }
+    .status-item.pending { background: #FCE4EC; color: #C2185B; }
+    .input-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .input-row label { min-width: 150px; font-weight: 500; }
+    .input-row input, .input-row select {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .config-panel {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+    }
+    .results-container {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 4px;
+      margin-top: 10px;
+    }
+    .data-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+    }
+    .data-card {
+      background: white;
+      padding: 15px;
+      border-radius: 4px;
+      border: 1px solid #eee;
+    }
+    .data-label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+    .data-value {
+      font-size: 18px;
+      font-weight: 500;
+      color: #333;
+    }
+    .events-list {
+      max-height: 200px;
+      overflow-y: auto;
+      background: #263238;
+      color: #ECEFF1;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 12px;
+    }
+    .event-item { margin-bottom: 5px; }
+    .event-item.info { color: #81D4FA; }
+    .event-item.success { color: #A5D6A7; }
+    .event-item.warn { color: #FFE082; }
+    .event-item.error { color: #EF9A9A; }
+    #react-root {
+      border: 2px dashed #ddd;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    #react-root.mounted {
+      border-color: #4CAF50;
+      border-style: solid;
+    }
+    .lifecycle-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    .lifecycle-card {
+      background: white;
+      padding: 10px;
+      border-radius: 4px;
+      border: 1px solid #eee;
+      text-align: center;
+    }
+    .lifecycle-card .value {
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .lifecycle-card .label {
+      font-size: 11px;
+      color: #666;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🏥 @arcaai/vox E2E Tests</h1>
+
+  <!-- SDK Module Loading Test -->
+  <div class="section" id="module-section">
+    <h2>SDK Module Loading</h2>
+    <div class="status" id="module-status">
+      <span class="status-item info" id="module-loading">Loading...</span>
+    </div>
+    <div id="module-exports" class="results-container">
+      <p>Checking SDK exports...</p>
+    </div>
+  </div>
+
+  <!-- React Root for Provider Tests -->
+  <div class="section" id="provider-section">
+    <h2>AgenticProvider</h2>
+    <div id="react-root">
+      <p style="color:#999; text-align:center;">React component will mount here</p>
+    </div>
+    <div class="controls">
+      <button id="btn-mount-provider" class="primary">Mount Provider</button>
+      <button id="btn-unmount-provider" class="danger" disabled>Unmount Provider</button>
+    </div>
+  </div>
+
+  <!-- Configuration Test -->
+  <div class="section" id="config-section">
+    <h2>SDK Configuration</h2>
+    <div class="config-panel">
+      <div class="input-row">
+        <label>Base URL:</label>
+        <input type="text" id="config-base-url" value="http://localhost:8868/api/v1">
+      </div>
+      <div class="input-row">
+        <label>Tenant ID:</label>
+        <input type="text" id="config-tenant-id" value="test-tenant">
+      </div>
+      <div class="input-row">
+        <label>Personalization:</label>
+        <select id="config-personalization">
+          <option value="local">Local Storage</option>
+          <option value="backend">Backend</option>
+          <option value="hybrid">Hybrid</option>
+        </select>
+      </div>
+      <div class="input-row">
+        <label>Audio Enabled:</label>
+        <input type="checkbox" id="config-audio" checked>
+      </div>
+    </div>
+    <div id="config-status" class="results-container">
+      <p>Mount provider to see configuration</p>
+    </div>
+  </div>
+
+  <!-- Store State Test -->
+  <div class="section" id="store-section">
+    <h2>Zustand Store State</h2>
+    <div class="data-grid" id="store-state">
+      <div class="data-card">
+        <div class="data-label">Initialized</div>
+        <div class="data-value" id="store-initialized">-</div>
+      </div>
+      <div class="data-card">
+        <div class="data-label">Consultation</div>
+        <div class="data-value" id="store-consultation">-</div>
+      </div>
+      <div class="data-card">
+        <div class="data-label">Audio Capturing</div>
+        <div class="data-value" id="store-capturing">-</div>
+      </div>
+      <div class="data-card">
+        <div class="data-label">Context Items</div>
+        <div class="data-value" id="store-context">-</div>
+      </div>
+      <div class="data-card">
+        <div class="data-label">Summaries</div>
+        <div class="data-value" id="store-summaries">-</div>
+      </div>
+      <div class="data-card">
+        <div class="data-label">Entities</div>
+        <div class="data-value" id="store-entities">-</div>
+      </div>
+    </div>
+    <div class="controls" style="margin-top:15px;">
+      <button id="btn-refresh-store" class="secondary" disabled>Refresh State</button>
+    </div>
+  </div>
+
+  <!-- Lifecycle Management Test -->
+  <div class="section" id="lifecycle-section">
+    <h2>Lifecycle Management</h2>
+    <div class="status" id="lifecycle-status">
+      <span class="status-item info" id="lifecycle-state">Not Mounted</span>
+      <span class="status-item info" id="lifecycle-can-close">Can Close: -</span>
+      <span class="status-item info" id="lifecycle-pending">Pending: 0</span>
+    </div>
+    <div class="lifecycle-grid" id="subsystems-grid">
+      <p style="grid-column: 1/-1; text-align:center; color:#999;">Mount provider to see subsystems</p>
+    </div>
+    <div class="controls" style="margin-top:15px;">
+      <button id="btn-graceful-shutdown" class="warning" disabled>Request Graceful Shutdown</button>
+      <button id="btn-force-shutdown" class="danger" disabled>Force Shutdown</button>
+    </div>
+  </div>
+
+  <!-- Logger Test -->
+  <div class="section" id="logger-section">
+    <h2>SDK Logger</h2>
+    <div class="controls">
+      <button id="btn-log-debug" class="secondary" disabled>Log Debug</button>
+      <button id="btn-log-info" class="primary" disabled>Log Info</button>
+      <button id="btn-log-warn" class="warning" disabled>Log Warn</button>
+      <button id="btn-log-error" class="danger" disabled>Log Error</button>
+    </div>
+    <div id="logger-output" class="events-list">
+      <div class="event-item info">Mount provider to enable logging...</div>
+    </div>
+    <div class="controls" style="margin-top:10px;">
+      <button id="btn-clear-logs" class="secondary">Clear Logs</button>
+    </div>
+  </div>
+
+  <!-- Utilities Test -->
+  <div class="section" id="utils-section">
+    <h2>SDK Utilities</h2>
+    <div class="input-row">
+      <label>Date Input:</label>
+      <input type="datetime-local" id="utils-date-input">
+    </div>
+    <div class="controls">
+      <button id="btn-format-date" class="secondary">Format Date</button>
+      <button id="btn-format-relative" class="secondary">Format Relative</button>
+    </div>
+    <div id="utils-output" class="results-container">
+      <p>Test date utilities above</p>
+    </div>
+
+    <h3 style="margin-top:20px;">Error Utilities</h3>
+    <div class="input-row">
+      <label>Error Code:</label>
+      <select id="utils-error-code">
+        <option value="NETWORK_ERROR">NETWORK_ERROR</option>
+        <option value="API_ERROR">API_ERROR</option>
+        <option value="AUTHENTICATION_ERROR">AUTHENTICATION_ERROR</option>
+        <option value="VALIDATION_ERROR">VALIDATION_ERROR</option>
+        <option value="UNKNOWN_ERROR">UNKNOWN_ERROR</option>
+      </select>
+    </div>
+    <div class="controls">
+      <button id="btn-create-error" class="secondary">Create AgenticError</button>
+      <button id="btn-check-retriable" class="secondary">Check if Retriable</button>
+    </div>
+    <div id="error-output" class="results-container">
+      <p>Test error utilities above</p>
+    </div>
+  </div>
+
+  <!-- Constants Test -->
+  <div class="section" id="constants-section">
+    <h2>SDK Constants</h2>
+    <div id="constants-output" class="results-container">
+      <p>Loading constants...</p>
+    </div>
+  </div>
+
+  <!-- Types Test -->
+  <div class="section" id="types-section">
+    <h2>SDK Types</h2>
+    <div id="types-output" class="results-container">
+      <p>Loading type exports...</p>
+    </div>
+  </div>
+
+  <!-- Event Log -->
+  <div class="section" id="events-section">
+    <h2>Event Log</h2>
+    <div id="events-list" class="events-list"></div>
+    <div class="controls" style="margin-top:10px;">
+      <button id="btn-clear-events" class="secondary">Clear Events</button>
+    </div>
+  </div>
+
+  <!-- Load React and ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <!-- Load the SDK -->
+  <script type="module">
+    // Import SDK (E2E bundle with all dependencies bundled)
+    const SDK = await import('./dist/e2e-bundle.mjs');
+
+    // Expose for testing
+    window.SDK = SDK;
+
+    // Log event helper
+    function logEvent(message, level = 'info') {
+      const entry = document.createElement('div');
+      entry.className = `event-item ${level}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      document.getElementById('events-list').appendChild(entry);
+      document.getElementById('events-list').scrollTop = document.getElementById('events-list').scrollHeight;
+    }
+
+    window.logEvent = logEvent;
+
+    // Check module exports
+    function checkModuleExports() {
+      const exports = {
+        // Provider
+        AgenticProvider: typeof SDK.AgenticProvider === 'function',
+        useAgenticContext: typeof SDK.useAgenticContext === 'function',
+
+        // Hooks
+        useArca: typeof SDK.useArca === 'function',
+        useArcaConfig: typeof SDK.useArcaConfig === 'function',
+        useArcaSession: typeof SDK.useArcaSession === 'function',
+
+        // Store
+        useAgenticStore: typeof SDK.useAgenticStore === 'function',
+        selectTranscriptions: typeof SDK.selectTranscriptions === 'function',
+        selectCaseNotes: typeof SDK.selectCaseNotes === 'function',
+        selectCanClose: typeof SDK.selectCanClose === 'function',
+
+        // Core Classes
+        AgenticClient: typeof SDK.AgenticClient === 'function',
+        PluginManager: typeof SDK.PluginManager === 'function',
+        LifecycleManager: typeof SDK.LifecycleManager === 'function',
+        PersonalizationManager: typeof SDK.PersonalizationManager === 'function',
+        ModelRegistry: typeof SDK.ModelRegistry === 'function',
+        SessionCoordinator: typeof SDK.SessionCoordinator === 'function',
+        SessionPersistence: typeof SDK.SessionPersistence === 'function',
+
+        // Pipelines
+        TranscriptionPipeline: typeof SDK.TranscriptionPipeline === 'function',
+        KnowledgePipeline: typeof SDK.KnowledgePipeline === 'function',
+
+        // Logger
+        SDKLogger: typeof SDK.SDKLogger === 'function',
+        ConsoleTransport: typeof SDK.ConsoleTransport === 'function',
+
+        // Utilities
+        formatDate: typeof SDK.formatDate === 'function',
+        formatRelativeTime: typeof SDK.formatRelativeTime === 'function',
+        isAgenticError: typeof SDK.isAgenticError === 'function',
+        wrapError: typeof SDK.wrapError === 'function',
+
+        // Types/Classes
+        AgenticError: typeof SDK.AgenticError === 'function',
+
+        // Constants
+        CONSULTATION_ENDPOINTS: typeof SDK.CONSULTATION_ENDPOINTS === 'object',
+        CONTEXT_ENDPOINTS: typeof SDK.CONTEXT_ENDPOINTS === 'object',
+        DEFAULT_AUDIO_CONFIG: typeof SDK.DEFAULT_AUDIO_CONFIG === 'object',
+      };
+
+      const moduleStatus = document.getElementById('module-status');
+      const allLoaded = Object.values(exports).every(v => v === true);
+
+      if (allLoaded) {
+        moduleStatus.innerHTML = '<span class="status-item healthy">All modules loaded successfully</span>';
+        logEvent('SDK modules loaded successfully', 'success');
+      } else {
+        const missing = Object.entries(exports).filter(([, v]) => !v).map(([k]) => k);
+        moduleStatus.innerHTML = `<span class="status-item error">Missing: ${missing.join(', ')}</span>`;
+        logEvent(`SDK missing exports: ${missing.join(', ')}`, 'error');
+      }
+
+      document.getElementById('module-exports').innerHTML = `
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px;">
+          ${Object.entries(exports).map(([name, loaded]) => `
+            <div style="padding:5px; background:${loaded ? '#E8F5E9' : '#FFEBEE'}; border-radius:4px;">
+              ${loaded ? '✓' : '✗'} ${name}
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      window.sdkExports = exports;
+    }
+
+    checkModuleExports();
+
+    // Check constants
+    function checkConstants() {
+      const constants = {
+        CONSULTATION_ENDPOINTS: SDK.CONSULTATION_ENDPOINTS,
+        CONTEXT_ENDPOINTS: SDK.CONTEXT_ENDPOINTS,
+        SUMMARY_ENDPOINTS: SDK.SUMMARY_ENDPOINTS,
+        DEFAULT_TIMEOUT: SDK.DEFAULT_TIMEOUT,
+        STORAGE_KEYS: SDK.STORAGE_KEYS,
+        DEFAULT_AUDIO_CONFIG: SDK.DEFAULT_AUDIO_CONFIG,
+      };
+
+      document.getElementById('constants-output').innerHTML = `
+        <pre style="overflow-x:auto; font-size:12px;">${JSON.stringify(constants, null, 2)}</pre>
+      `;
+
+      window.sdkConstants = constants;
+    }
+
+    checkConstants();
+
+    // Check type exports
+    function checkTypes() {
+      const types = {
+        hasAgenticError: typeof SDK.AgenticError === 'function',
+        hasDefaultAudioState: typeof SDK.DEFAULT_AUDIO_STATE === 'object',
+        hasDefaultAudioPluginStates: typeof SDK.DEFAULT_AUDIO_PLUGIN_STATES === 'object',
+      };
+
+      document.getElementById('types-output').innerHTML = `
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          ${Object.entries(types).map(([name, exists]) => `
+            <span style="padding:5px 10px; background:${exists ? '#E8F5E9' : '#FFEBEE'}; border-radius:4px;">
+              ${exists ? '✓' : '✗'} ${name.replace('has', '')}
+            </span>
+          `).join('')}
+        </div>
+      `;
+
+      window.sdkTypes = types;
+    }
+
+    checkTypes();
+
+    // State management
+    let reactRoot = null;
+    let storeUnsubscribe = null;
+
+    // Update store UI
+    function updateStoreUI() {
+      try {
+        const store = SDK.useAgenticStore.getState();
+        document.getElementById('store-initialized').textContent = store.initialized ? 'Yes' : 'No';
+        document.getElementById('store-consultation').textContent = store.consultation?.id || 'None';
+        document.getElementById('store-capturing').textContent = store.isCapturing ? 'Yes' : 'No';
+        document.getElementById('store-context').textContent = store.contextItems?.length || 0;
+        document.getElementById('store-summaries').textContent = store.summaries?.length || 0;
+        document.getElementById('store-entities').textContent = store.entities?.length || 0;
+
+        // Lifecycle
+        if (store.lifecycle) {
+          const lifecycle = store.lifecycle;
+          document.getElementById('lifecycle-state').textContent = 'Active';
+          document.getElementById('lifecycle-state').className = 'status-item healthy';
+          document.getElementById('lifecycle-can-close').textContent = `Can Close: ${lifecycle.canClose ? 'Yes' : 'No'}`;
+          document.getElementById('lifecycle-pending').textContent = `Pending: ${lifecycle.pendingOperations?.length || 0}`;
+        }
+      } catch (e) {
+        logEvent(`Store error: ${e.message}`, 'error');
+      }
+    }
+
+    // Mount provider
+    document.getElementById('btn-mount-provider').addEventListener('click', () => {
+      const { AgenticProvider } = SDK;
+      const container = document.getElementById('react-root');
+
+      const config = {
+        baseUrl: document.getElementById('config-base-url').value,
+        tenantId: document.getElementById('config-tenant-id').value,
+        personalization: {
+          storage: document.getElementById('config-personalization').value,
+        },
+        audio: {
+          enabled: document.getElementById('config-audio').checked,
+        },
+      };
+
+      // Create test component
+      const TestApp = React.createElement(
+        AgenticProvider,
+        { config },
+        React.createElement('div', { style: { padding: '20px', textAlign: 'center' } },
+          React.createElement('p', { style: { color: '#4CAF50', fontWeight: 'bold' } }, '✓ AgenticProvider Mounted'),
+          React.createElement('p', { style: { fontSize: '12px', color: '#666' } },
+            `Base URL: ${config.baseUrl}`
+          ),
+          React.createElement('p', { style: { fontSize: '12px', color: '#666' } },
+            `Tenant: ${config.tenantId}`
+          )
+        )
+      );
+
+      reactRoot = ReactDOM.createRoot(container);
+      reactRoot.render(TestApp);
+
+      container.classList.add('mounted');
+
+      // Enable buttons
+      document.getElementById('btn-mount-provider').disabled = true;
+      document.getElementById('btn-unmount-provider').disabled = false;
+      document.getElementById('btn-refresh-store').disabled = false;
+      document.getElementById('btn-graceful-shutdown').disabled = false;
+      document.getElementById('btn-force-shutdown').disabled = false;
+      document.getElementById('btn-log-debug').disabled = false;
+      document.getElementById('btn-log-info').disabled = false;
+      document.getElementById('btn-log-warn').disabled = false;
+      document.getElementById('btn-log-error').disabled = false;
+
+      // Subscribe to store
+      storeUnsubscribe = SDK.useAgenticStore.subscribe(() => {
+        updateStoreUI();
+      });
+
+      // Update config status
+      document.getElementById('config-status').innerHTML = `
+        <p><strong>Configuration Applied:</strong></p>
+        <pre style="font-size:12px;">${JSON.stringify(config, null, 2)}</pre>
+      `;
+
+      // Initial store update
+      setTimeout(updateStoreUI, 100);
+
+      logEvent('AgenticProvider mounted successfully', 'success');
+      window.reactMounted = true;
+    });
+
+    // Unmount provider
+    document.getElementById('btn-unmount-provider').addEventListener('click', () => {
+      if (reactRoot) {
+        reactRoot.unmount();
+        reactRoot = null;
+      }
+      if (storeUnsubscribe) {
+        storeUnsubscribe();
+        storeUnsubscribe = null;
+      }
+
+      const container = document.getElementById('react-root');
+      container.classList.remove('mounted');
+      container.innerHTML = '<p style="color:#999; text-align:center;">React component will mount here</p>';
+
+      // Disable buttons
+      document.getElementById('btn-mount-provider').disabled = false;
+      document.getElementById('btn-unmount-provider').disabled = true;
+      document.getElementById('btn-refresh-store').disabled = true;
+      document.getElementById('btn-graceful-shutdown').disabled = true;
+      document.getElementById('btn-force-shutdown').disabled = true;
+      document.getElementById('btn-log-debug').disabled = true;
+      document.getElementById('btn-log-info').disabled = true;
+      document.getElementById('btn-log-warn').disabled = true;
+      document.getElementById('btn-log-error').disabled = true;
+
+      // Reset displays
+      document.getElementById('store-initialized').textContent = '-';
+      document.getElementById('store-consultation').textContent = '-';
+      document.getElementById('store-capturing').textContent = '-';
+      document.getElementById('store-context').textContent = '-';
+      document.getElementById('store-summaries').textContent = '-';
+      document.getElementById('store-entities').textContent = '-';
+
+      document.getElementById('lifecycle-state').textContent = 'Not Mounted';
+      document.getElementById('lifecycle-state').className = 'status-item info';
+
+      logEvent('AgenticProvider unmounted', 'info');
+      window.reactMounted = false;
+    });
+
+    // Refresh store
+    document.getElementById('btn-refresh-store').addEventListener('click', updateStoreUI);
+
+    // Logger buttons
+    const loggerOutput = document.getElementById('logger-output');
+
+    function addLogEntry(level, message) {
+      const entry = document.createElement('div');
+      entry.className = `event-item ${level}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] [${level.toUpperCase()}] ${message}`;
+      loggerOutput.appendChild(entry);
+      loggerOutput.scrollTop = loggerOutput.scrollHeight;
+    }
+
+    document.getElementById('btn-log-debug').addEventListener('click', () => {
+      addLogEntry('info', 'Debug message from E2E test');
+      logEvent('Logged debug message', 'info');
+    });
+
+    document.getElementById('btn-log-info').addEventListener('click', () => {
+      addLogEntry('success', 'Info message from E2E test');
+      logEvent('Logged info message', 'success');
+    });
+
+    document.getElementById('btn-log-warn').addEventListener('click', () => {
+      addLogEntry('warn', 'Warning message from E2E test');
+      logEvent('Logged warning message', 'warn');
+    });
+
+    document.getElementById('btn-log-error').addEventListener('click', () => {
+      addLogEntry('error', 'Error message from E2E test');
+      logEvent('Logged error message', 'error');
+    });
+
+    document.getElementById('btn-clear-logs').addEventListener('click', () => {
+      loggerOutput.innerHTML = '';
+    });
+
+    // Date utilities
+    document.getElementById('btn-format-date').addEventListener('click', () => {
+      const input = document.getElementById('utils-date-input').value;
+      if (!input) {
+        document.getElementById('utils-output').innerHTML = '<p style="color:red;">Please select a date</p>';
+        return;
+      }
+
+      const date = new Date(input);
+      const formatted = SDK.formatDate(date);
+      const dateTime = SDK.formatDateTime ? SDK.formatDateTime(date) : date.toISOString();
+
+      document.getElementById('utils-output').innerHTML = `
+        <p><strong>Input:</strong> ${input}</p>
+        <p><strong>formatDate:</strong> ${formatted}</p>
+        <p><strong>formatDateTime:</strong> ${dateTime}</p>
+      `;
+
+      window.dateFormatResult = formatted;
+    });
+
+    document.getElementById('btn-format-relative').addEventListener('click', () => {
+      const input = document.getElementById('utils-date-input').value;
+      if (!input) {
+        document.getElementById('utils-output').innerHTML = '<p style="color:red;">Please select a date</p>';
+        return;
+      }
+
+      const date = new Date(input);
+      const relative = SDK.formatRelativeTime(date);
+
+      document.getElementById('utils-output').innerHTML = `
+        <p><strong>Input:</strong> ${input}</p>
+        <p><strong>formatRelativeTime:</strong> ${relative}</p>
+      `;
+
+      window.relativeFormatResult = relative;
+    });
+
+    // Error utilities
+    document.getElementById('btn-create-error').addEventListener('click', () => {
+      const code = document.getElementById('utils-error-code').value;
+      const error = new SDK.AgenticError(code, `Test error with code ${code}`);
+
+      document.getElementById('error-output').innerHTML = `
+        <p><strong>Error Created:</strong></p>
+        <p>Code: ${error.code}</p>
+        <p>Message: ${error.message}</p>
+        <p>Is AgenticError: ${SDK.isAgenticError(error)}</p>
+      `;
+
+      window.testError = error;
+    });
+
+    document.getElementById('btn-check-retriable').addEventListener('click', () => {
+      const code = document.getElementById('utils-error-code').value;
+      const error = new SDK.AgenticError(code, `Test error`);
+      const isRetriable = SDK.isRetriableError(error);
+
+      document.getElementById('error-output').innerHTML = `
+        <p><strong>Error Code:</strong> ${code}</p>
+        <p><strong>Is Retriable:</strong> ${isRetriable ? 'Yes' : 'No'}</p>
+        <p><strong>Is Network Error:</strong> ${SDK.isNetworkError(error) ? 'Yes' : 'No'}</p>
+        <p><strong>Is Auth Error:</strong> ${SDK.isAuthError(error) ? 'Yes' : 'No'}</p>
+      `;
+
+      window.retriableResult = isRetriable;
+    });
+
+    // Clear events
+    document.getElementById('btn-clear-events').addEventListener('click', () => {
+      document.getElementById('events-list').innerHTML = '';
+    });
+
+    // Set initial date
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    document.getElementById('utils-date-input').value = now.toISOString().slice(0, 16);
+
+    logEvent('Page loaded. SDK ready for testing.', 'info');
+  </script>
+</body>
+</html>

@@ -1,0 +1,125 @@
+import {
+    {{interfaceName}},
+    PaginatedQuery,
+    {{responseName}},
+    {{createDtoName}},
+    {{paginatedResponseName}},
+    {{updateDtoName}},
+    {{dtoMapperName}},
+    HttpMethod,
+} from '@arcaai/applications';
+import {
+    Controller,
+    Body,
+    Param,
+    Inject,
+    UseGuards,
+    Query,
+} from '@nestjs/common';
+import { JwtAuthGuard } from '../../guards';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiEndpoint } from '../../decorators';
+
+@ApiBearerAuth()
+@ApiTags('{{apiTag}}')
+@Controller('{{apiTag}}')
+@UseGuards(JwtAuthGuard)
+export class {{controllerName}} {
+    constructor(
+        @Inject({{interfaceName}})
+        private readonly {{servicePropertyName}}: {{interfaceName}},
+    ) {}
+
+    @ApiEndpoint({
+        returnedModel: {{responseName}},
+        method: HttpMethod.POST,
+    })
+    async create(
+        @Body() request: {{createDtoName}},
+    ): Promise<{{responseName}}> {
+        const result = await this.{{servicePropertyName}}.create(request);
+        return {{dtoMapperName}}.ToResponse(result);
+    }
+
+     @ApiEndpoint({
+        returnedModel: {{responseName}},
+        multi: true,
+    })
+    async fetchAll(
+        @Query() queryParams: PaginatedQuery,
+    ): Promise<{{paginatedResponseName}}> {
+        const result = await this.{{servicePropertyName}}.fetchAll({
+            ...queryParams,
+        });
+        return {{dtoMapperName}}.ToPaginatedResponse(result);
+    }
+
+    @ApiEndpoint({
+        returnedModel: {{responseName}},
+        path: 'tenants/:tenantId',
+        multi: true,
+        by: ['tenantId'],
+    })
+    async fetchAllByTenantId(
+        @Query() queryParams: PaginatedQuery,
+        @Param('tenantId') tenantId: string,
+    ): Promise<{{paginatedResponseName}}> {
+        const result = await this.{{servicePropertyName}}.fetchAllByTenantId({
+            ...queryParams,
+            tenantId,
+        });
+        return {{dtoMapperName}}.ToPaginatedResponse(result);
+    }
+
+    @ApiEndpoint({
+        returnedModel: {{responseName}},
+        path: 'user/:userId',
+        multi: true,
+        by: ['createdByUserId'],
+    })
+    async fetchByUserId(
+        @Param('userId') userId: string,
+        @Query() queryParams: PaginatedQuery,
+    ): Promise<{{paginatedResponseName}}> {
+        const result = await this.{{servicePropertyName}}.fetchAllCreatedByUser({
+            ...queryParams,
+            userId,
+        });
+        return {{dtoMapperName}}.ToPaginatedResponse(result);
+    }
+
+    @ApiEndpoint({
+        returnedModel: {{responseName}},
+        path: '/:id',
+        by: ['id'],
+    })
+    async fetchById(@Param('id') id: string): Promise<{{responseName}}> {
+        const result = await this.{{servicePropertyName}}.fetchById(id);
+        return {{dtoMapperName}}.ToResponse(result);
+    }
+
+    @ApiEndpoint({
+        returnedModel: {{responseName}},
+        method: HttpMethod.PATCH,
+        path: ':id',
+        by: ['id'],
+    })
+    async update(
+        @Param('id') id: string,
+        @Body() request: {{updateDtoName}},
+    ): Promise<{{responseName}}> {
+        const result = await this.{{servicePropertyName}}.update(id, request);
+        return {{dtoMapperName}}.ToResponse(result);
+    }
+
+    @ApiEndpoint({
+        returnedModel: {{responseName}},
+        method: HttpMethod.DELETE,
+        path: '/:id',
+        by: ['id'],
+    })
+    async delete(@Param('id') id: string): Promise<{{responseName}}> {
+        const result = await this.{{servicePropertyName}}.deleteById(id);
+        return {{dtoMapperName}}.ToResponse(result);
+    }
+}

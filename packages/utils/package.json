@@ -1,0 +1,38 @@
+{
+  "name": "@arcaai/utils",
+  "version": "0.1.0",
+  "description": "Shared utility functions for ArcaAI / HOPE",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest run --coverage"
+  },
+  "keywords": [
+    "arcaai",
+    "utils",
+    "utilities"
+  ],
+  "author": "ArcaAI Team",
+  "license": "MIT",
+  "dependencies": {
+    "@arcaai/types": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.17"
+  }
+}

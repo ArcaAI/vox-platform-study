@@ -1,0 +1,54 @@
+# ============================================================================
+# Setup Python and uv Composite Action
+# ============================================================================
+# Reusable action for setting up Python with uv package manager and caching.
+#
+# Usage:
+#   - uses: ./.github/actions/setup-python-uv
+#     with:
+#       python-version: '3.11'  # optional, defaults to 3.11
+#       working-directory: 'apps/smr'  # required
+# ============================================================================
+
+name: 'Setup Python and uv'
+description: 'Sets up Python and uv with dependency caching for HOPE Python services'
+
+inputs:
+  python-version:
+    description: 'Python version to use'
+    required: false
+    default: '3.11'
+  working-directory:
+    description: 'Working directory for the Python service'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+
+    - name: Cache uv dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/uv
+          ${{ inputs.working-directory }}/.venv
+        key: uv-${{ runner.os }}-${{ inputs.working-directory }}-${{ hashFiles(format('{0}/pyproject.toml', inputs.working-directory), format('{0}/uv.lock', inputs.working-directory)) }}
+        restore-keys: |
+          uv-${{ runner.os }}-${{ inputs.working-directory }}-
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "🐍 Setting up Python ${{ inputs.python-version }} environment..."
+        uv venv --python ${{ inputs.python-version }}
+        uv pip install -e ".[dev,test]" 2>/dev/null || uv pip install -e ".[dev]" 2>/dev/null || uv pip install pytest pytest-cov pytest-asyncio pytest-mock httpx
+        echo "✅ Python environment ready"
+        uv run python --version

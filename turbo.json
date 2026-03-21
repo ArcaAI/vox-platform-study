@@ -1,0 +1,101 @@
+{
+    "$schema": "https://turbo.build/schema.json",
+    "globalDependencies": ["**/.env.*local"],
+    "tasks": {
+        "build": {
+            "dependsOn": ["^build", "^db:generate"],
+            "cache": false,
+            "outputs": ["dist/**", ".next/**", "!.next/cache/**", "public/dist/**", "storybook-static/**", "pkg/**"],
+            "env": ["NEXT_PUBLIC_API_HOST"]
+        },
+        "lint": {
+            "dependsOn": ["^build"]
+        },
+        "dev": {
+            "cache": false,
+            "persistent": true,
+            "dependsOn": ["^db:generate"]
+        },
+        "dev:watch": {
+            "cache": false,
+            "persistent": true,
+            "dependsOn": ["^dev:watch"]
+        },
+        "start": {
+            "dependsOn": ["^build"]
+        },
+        "clean": {
+            "cache": false
+        },
+        "test:e2e": {},
+        "test": {
+            "dependsOn": ["build"],
+            "outputs": [],
+            "inputs": ["src/**/*.tsx", "src/**/*.ts", "__tests__/**/*.ts", "__tests__/**/*.tsx", "test/**/*.ts", "test/**/*.tsx"]
+        },
+        "test:watch": {
+            "cache": false,
+            "persistent": true
+        },
+        "db:generate": {
+            "cache": false,
+            "outputs": ["src/generated/**"]
+        },
+        "db:push": {
+            "cache": false,
+            "dependsOn": ["db:generate"]
+        },
+        "db:push:force": {
+            "cache": false,
+            "dependsOn": ["db:generate"]
+        },
+        "db:migrate": {
+            "cache": false,
+            "persistent": true,
+            "dependsOn": ["db:generate"]
+        },
+        "db:migrate:deploy": {
+            "cache": false
+        },
+        "db:studio": {
+            "cache": false,
+            "persistent": true
+        },
+        "seed": {
+            "cache": false,
+            "dependsOn": ["db:generate"]
+        },
+        "prisma-commander": {
+            "cache": false
+        },
+        "generate-prisma-index": {
+            "cache": false
+        },
+        "gen-dev-token": {
+            "cache": false
+        },
+        "nuke": {
+            "cache": false
+        },
+        "storybook": {
+            "dependsOn": ["@arcaai/ui#build"]
+        }
+    },
+    "globalEnv": [
+        "NEXT_PUBLIC_API_HOST",
+        "NODE_ENV",
+        "DATABASE_URL",
+        "PORT",
+        "STT_V2_URL",
+        "LLM_URL",
+        "NLP_URL",
+        "NLP_SERVICE_URL",
+        "NLP_SERVICE_URL_HTTP",
+        "SMR_SERVICE_URL_HTTP",
+        "SMR_URL",
+        "SESSION_SECRET_KEY",
+        "REDIS_HOST",
+        "REDIS_PORT",
+        "REDIS_PASS"
+    ]
+}
