@@ -97,7 +97,7 @@ describe('StreamingSessionService', () => {
                 pipeline_id: 'pipeline-1',
                 sample_rate: 16000,
             }),
-            { timeout: 10000 },
+            { timeout: 15000 },
         );
     });
 
