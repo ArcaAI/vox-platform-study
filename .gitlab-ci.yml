@@ -178,7 +178,8 @@ github-backup:
     - |
       set -eu
       
-      # Clone the repository
+      # Clean workspace and clone the repository
+      rm -rf ./*
       git clone $CI_PROJECT_URL .
       git checkout $CI_COMMIT_SHA
       
