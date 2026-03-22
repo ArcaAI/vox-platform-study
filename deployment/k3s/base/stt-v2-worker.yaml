@@ -21,6 +21,7 @@ spec:
       labels:
         app: hope-stt-v2-worker
     spec:
+      runtimeClassName: nvidia
       terminationGracePeriodSeconds: 60
       containers:
         - name: worker
@@ -72,8 +73,10 @@ spec:
               value: hope-stt-v2-worker
           resources:
             requests:
-              cpu: "250m"
-              memory: "512Mi"
+              cpu: "2"
+              memory: "4Gi"
+              nvidia.com/gpu: "1"
             limits:
-              cpu: "1"
-              memory: "2Gi"
+              cpu: "4"
+              memory: "8Gi"
+              nvidia.com/gpu: "1"

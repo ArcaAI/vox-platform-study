@@ -16,6 +16,7 @@ spec:
       labels:
         app: hope-ollama
     spec:
+      runtimeClassName: nvidia
       containers:
         - name: ollama
           image: ollama/ollama:0.18.2
@@ -60,11 +61,13 @@ spec:
             failureThreshold: 10
           resources:
             requests:
-              cpu: "1"
-              memory: "2Gi"
+              cpu: "4"
+              memory: "16Gi"
+              nvidia.com/gpu: "1"
             limits:
-              cpu: "8"
-              memory: "32Gi"
+              cpu: "12"
+              memory: "48Gi"
+              nvidia.com/gpu: "1"
   volumeClaimTemplates:
     - apiVersion: v1
       kind: PersistentVolumeClaim
