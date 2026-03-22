@@ -1,32 +1,22 @@
-# Patroni Configuration Reference — DO NOT MOUNT DIRECTLY
-#
-# This file documents the Patroni settings used by the cluster.
-# The actual config is generated at container startup from environment
-# variables (see the patroni service command in docker-compose.yml).
-#
-# Patroni's YAML parser does NOT expand shell variables like ${NODE_IP}.
-# That's why docker-compose.yml generates this file inline using a bash
-# heredoc, which substitutes the env vars before writing the YAML.
-#
-# To view the running config:
-#   docker exec patroni patronictl -c /home/postgres/postgres.yml show-config
-#
-# To edit dynamic settings after bootstrap:
-#   docker exec -it patroni patronictl -c /home/postgres/postgres.yml edit-config
+#!/bin/bash
+set -e
 
+install -m 0700 -d "${PGDATA}"
+
+cat > /home/postgres/postgres.yml <<YAML
 scope: hope-cluster
 namespace: /service
-name: <NODE_NAME>
+name: ${PATRONI_NAME}
 
 restapi:
   listen: 0.0.0.0:8008
-  connect_address: <NODE_IP>:8008
+  connect_address: ${NODE_IP}:8008
 
 etcd3:
   hosts:
-    - <PEER1_IP>:2379
-    - <PEER2_IP>:2379
-    - <PEER3_IP>:2379
+    - ${PEER1_IP}:2379
+    - ${PEER2_IP}:2379
+    - ${PEER3_IP}:2379
 
 bootstrap:
   dcs:
@@ -42,32 +32,26 @@ bootstrap:
       use_pg_rewind: true
       use_slots: true
       parameters:
-        # TimescaleDB
         shared_preload_libraries: "timescaledb"
         timescaledb.max_background_workers: 16
         timescaledb.telemetry_level: "off"
-        # Replication
         wal_level: replica
         hot_standby: "on"
         max_wal_senders: 10
         max_replication_slots: 10
         wal_log_hints: "on"
         archive_mode: "on"
-        archive_command: 'pgbackrest --stanza=hope-cluster archive-push "%p"'
+        archive_command: "pgbackrest --stanza=hope-cluster archive-push \"%p\""
         archive_timeout: 60
-        # Workers (3 + 16 bg workers + 8 parallel = 27)
         max_worker_processes: 27
         max_parallel_workers: 8
-        # Security
         password_encryption: scram-sha-256
       recovery_conf:
         recovery_target_timeline: latest
-        restore_command: 'pgbackrest --stanza=hope-cluster archive-get %f "%p"'
-
+        restore_command: "pgbackrest --stanza=hope-cluster archive-get %f \"%p\""
   initdb:
     - encoding: UTF8
     - data-checksums
-
   pg_hba:
     - local all all peer
     - host all all 127.0.0.1/32 scram-sha-256
@@ -78,17 +62,17 @@ bootstrap:
 
 postgresql:
   listen: 0.0.0.0:5432
-  connect_address: <NODE_IP>:5432
+  connect_address: ${NODE_IP}:5432
   data_dir: /home/postgres/pgdata/data
   bin_dir: /usr/lib/postgresql/18/bin
   pgpass: /tmp/pgpass0
   authentication:
     superuser:
       username: postgres
-      password: <PG_PASSWORD>
+      password: "${PG_PASSWORD}"
     replication:
       username: replicator
-      password: <REPL_PASSWORD>
+      password: "${REPL_PASSWORD}"
   parameters:
     shared_preload_libraries: "timescaledb"
     timescaledb.max_background_workers: 16
@@ -113,7 +97,7 @@ postgresql:
     wal_level: replica
     wal_log_hints: "on"
     archive_mode: "on"
-    archive_command: 'pgbackrest --stanza=hope-cluster archive-push "%p"'
+    archive_command: "pgbackrest --stanza=hope-cluster archive-push \"%p\""
     archive_timeout: 60
     log_min_duration_statement: 1000
     log_checkpoints: "on"
@@ -145,3 +129,13 @@ tags:
   noloadbalance: false
   clonefrom: false
   nosync: false
+YAML
+
+chown postgres:postgres /home/postgres/postgres.yml
+
+if [ -f "${PGDATA}/postmaster.pid" ]; then
+  rm "${PGDATA}/postmaster.pid"
+  sleep 5
+fi
+
+exec patroni /home/postgres/postgres.yml

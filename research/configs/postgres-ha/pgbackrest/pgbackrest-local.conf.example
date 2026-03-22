@@ -1,0 +1,30 @@
+# pgBackRest Configuration — Local Disk Repository (fallback)
+# Use this if MinIO is not available or for testing
+#
+# To use: rename to pgbackrest.conf and restart patroni on all nodes
+
+[global]
+repo1-path=/var/lib/pgbackrest
+repo1-retention-full=2
+repo1-retention-diff=7
+
+repo1-bundle=y
+repo1-block=y
+
+compress-type=zst
+compress-level=6
+process-max=4
+start-fast=y
+delta=y
+
+archive-async=y
+spool-path=/tmp/pgbackrest
+archive-push-queue-max=4GiB
+
+log-level-console=info
+log-level-file=detail
+
+[hope-cluster]
+pg1-path=/home/postgres/pgdata/data
+pg1-port=5432
+pg1-user=postgres

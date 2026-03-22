@@ -302,6 +302,70 @@ mc ls homelab
 
 Expected output: 11 buckets listed.
 
+## 9b. Create pgBackRest Service Account & Bucket
+
+pgBackRest on the PostgreSQL HA cluster (VMs 500–502) stores backups in MinIO.
+
+### 9b.1 — Create Bucket
+
+```bash
+mc mb homelab/pgbackrest --ignore-existing
+```
+
+### 9b.2 — Create User & Policy
+
+```bash
+# Create service account
+PGBACKREST_SVC_PASSWORD=$(openssl rand -base64 32)
+echo "pgBackRest service account password: $PGBACKREST_SVC_PASSWORD"
+echo "Save this — you'll need it for pgbackrest.conf"
+
+mc admin user add homelab pgbackrest-svc "$PGBACKREST_SVC_PASSWORD"
+```
+
+Create a policy scoped to the `pgbackrest` bucket only:
+
+```bash
+cat > /tmp/pgbackrest-policy.json << 'POLICY'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:ListBucketMultipartUploads",
+        "s3:ListMultipartUploadParts",
+        "s3:AbortMultipartUpload"
+      ],
+      "Resource": [
+        "arn:aws:s3:::pgbackrest",
+        "arn:aws:s3:::pgbackrest/*"
+      ]
+    }
+  ]
+}
+POLICY
+
+mc admin policy create homelab pgbackrest-policy /tmp/pgbackrest-policy.json
+mc admin policy attach homelab pgbackrest-policy --user pgbackrest-svc
+rm /tmp/pgbackrest-policy.json
+```
+
+### 9b.3 — Create Access Keys
+
+```bash
+mc admin user svcacct add homelab pgbackrest-svc \
+  --name "pgbackrest-s3" \
+  --description "pgBackRest backup storage"
+```
+
+Save the `Access Key` and `Secret Key` — enter them in `pgbackrest/pgbackrest.conf` as `repo1-s3-key` and `repo1-s3-key-secret`.
+
 ## 10. Configure Bucket Lifecycle (Optional)
 
 Set expiration policies to prevent unbounded growth:
@@ -385,7 +449,298 @@ sudo chmod +x /usr/local/bin/minio-backup.sh
 (sudo crontab -l 2>/dev/null; echo '0 2 * * * /usr/local/bin/minio-backup.sh') | sudo crontab -
 ```
 
-## 14. Upgrading MinIO
+## 14. Enable TLS (Self-Signed Certificate)
+
+pgBackRest requires HTTPS for S3 — it cannot connect over plain HTTP. MinIO auto-detects TLS when certificate files are present in its certs directory. Both the S3 API (9000) and Console (9001) are served over HTTPS from the same certificate.
+
+### 14.1 Generate Certificates
+
+Run on VM 402 (or your Mac, then copy):
+
+```bash
+mkdir -p ~/minio-certs/{ca,server}
+cd ~/minio-certs
+```
+
+**Step 1 — Create CA (ECDSA P-256, 10-year validity):**
+
+```bash
+openssl ecparam -genkey -name prime256v1 -noout -out ca/ca.key
+chmod 600 ca/ca.key
+
+openssl req -new -x509 -sha256 -days 3650 \
+  -key ca/ca.key \
+  -out ca/ca.crt \
+  -subj "/C=AU/ST=Victoria/L=Melbourne/O=ARCAAI/OU=Infrastructure/CN=ARCAAI Internal CA"
+```
+
+**Step 2 — Create server certificate with SANs:**
+
+```bash
+cat > server/server.cnf << 'EOF'
+[req]
+default_bits       = 256
+prompt             = no
+default_md         = sha256
+distinguished_name = dn
+req_extensions     = v3_req
+
+[dn]
+C  = AU
+ST = Victoria
+L  = Melbourne
+O  = ARCAAI
+OU = Infrastructure
+CN = s3.taphuynh.dev
+
+[v3_req]
+basicConstraints     = CA:FALSE
+keyUsage             = digitalSignature, keyEncipherment
+extendedKeyUsage     = serverAuth
+subjectAltName       = @alt_names
+
+[alt_names]
+DNS.1 = s3.taphuynh.dev
+DNS.2 = s3-console.taphuynh.dev
+DNS.3 = localhost
+DNS.4 = minio
+IP.1  = 10.10.1.102
+IP.2  = 127.0.0.1
+EOF
+
+openssl ecparam -genkey -name prime256v1 -noout -out server/private.key
+chmod 600 server/private.key
+
+openssl req -new -sha256 \
+  -key server/private.key \
+  -out server/server.csr \
+  -config server/server.cnf
+
+openssl x509 -req -sha256 -days 730 \
+  -in server/server.csr \
+  -CA ca/ca.crt \
+  -CAkey ca/ca.key \
+  -CAcreateserial \
+  -out server/public.crt \
+  -extfile server/server.cnf \
+  -extensions v3_req
+```
+
+**Step 3 — Verify the certificate:**
+
+```bash
+# Check SANs
+openssl x509 -in server/public.crt -noout -text | grep -A1 "Subject Alternative Name"
+# Expected: DNS:s3.taphuynh.dev, DNS:s3-console.taphuynh.dev, DNS:localhost, DNS:minio, IP:10.10.1.102, IP:127.0.0.1
+
+# Verify chain
+openssl verify -CAfile ca/ca.crt server/public.crt
+# Expected: server/public.crt: OK
+```
+
+### 14.2 Deploy Certificates to MinIO
+
+MinIO requires exact file names: `public.crt`, `private.key`, and CA certs in `CAs/`.
+
+```bash
+# Create the certs directory for MinIO
+mkdir -p ~/minio/certs/CAs
+
+# Copy the cert files
+cp ~/minio-certs/server/public.crt ~/minio/certs/public.crt
+cp ~/minio-certs/server/private.key ~/minio/certs/private.key
+cp ~/minio-certs/ca/ca.crt ~/minio/certs/CAs/ca.crt
+
+# Verify structure
+tree ~/minio/certs/
+# certs/
+# ├── CAs/
+# │   └── ca.crt
+# ├── private.key
+# └── public.crt
+```
+
+### 14.3 Update Docker Compose
+
+Edit `~/minio/docker-compose.yml` — add the certs volume mount and `--certs-dir`:
+
+```yaml
+services:
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001" --certs-dir /certs
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    env_file:
+      - .env
+    volumes:
+      - /srv/minio/data:/data
+      - ./certs:/certs:ro
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local", "--insecure"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+```
+
+Changes from the HTTP version:
+- `command:` added `--certs-dir /certs`
+- `volumes:` added `./certs:/certs:ro`
+- `healthcheck:` added `--insecure` flag (self-signed cert)
+
+### 14.4 Restart MinIO
+
+```bash
+cd ~/minio
+docker compose down
+docker compose up -d
+docker logs minio --tail 20
+```
+
+Expect output containing:
+
+```
+API: https://0.0.0.0:9000
+Console: https://0.0.0.0:9001
+```
+
+If you still see `http://` instead of `https://`, the certs were not detected. Check file names and permissions.
+
+### 14.5 Verify TLS
+
+```bash
+# Health check (skip cert verification for self-signed)
+curl -sk https://10.10.1.102:9000/minio/health/live
+# → 200 OK (no body)
+
+# Check the certificate details
+openssl s_client -connect 10.10.1.102:9000 -servername s3.taphuynh.dev < /dev/null 2>/dev/null | \
+  openssl x509 -noout -subject -issuer -dates
+# subject=CN = s3.taphuynh.dev
+# issuer=CN = ARCAAI Internal CA
+# notBefore=...
+# notAfter=...
+```
+
+### 14.6 Update mc Alias
+
+```bash
+# Option A: Trust the CA in mc's cert store (recommended)
+mkdir -p ~/.mc/certs/CAs/
+cp ~/minio-certs/ca/ca.crt ~/.mc/certs/CAs/minio-ca.crt
+
+mc alias set homelab https://10.10.1.102:9000 minioadmin 'minioadmin'
+mc admin info homelab
+
+# Option B: Use --insecure (quick, less secure)
+mc --insecure alias set homelab https://10.10.1.102:9000 minioadmin 'minioadmin'
+mc --insecure admin info homelab
+```
+
+### 14.7 Update Cloudflare Tunnel
+
+The tunnel currently routes `s3.taphuynh.dev → http://10.10.1.102:9000`. Since MinIO now serves HTTPS, update the tunnel:
+
+1. Go to [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)
+2. Navigate to **Networks** → **Tunnels** → **hope-homelab** → **Public Hostnames**
+3. Edit `s3.taphuynh.dev`:
+   - Change Type from **HTTP** to **HTTPS**
+   - Change URL to `10.10.1.102:9000`
+   - Expand **Additional application settings** → **TLS**
+   - Enable **No TLS Verify** (cloudflared will accept the self-signed cert)
+   - Keep **Disable chunked encoding** enabled
+4. Edit `s3-console.taphuynh.dev`:
+   - Change Type from **HTTP** to **HTTPS**
+   - Change URL to `10.10.1.102:9001`
+   - Enable **No TLS Verify** under TLS settings
+
+5. Verify:
+
+```bash
+# From your Mac
+curl -s https://s3.taphuynh.dev/minio/health/live
+# → 200 OK
+
+# Console should load in browser
+open https://s3-console.taphuynh.dev
+```
+
+> **Security note**: `No TLS Verify` only affects the `cloudflared → MinIO` hop on your trusted internal network (`10.10.1.x`). The `browser → Cloudflare edge → cloudflared` hop is always encrypted with a valid Cloudflare certificate.
+
+### 14.8 Update Internal Clients
+
+Any VM connecting to MinIO on the internal network needs to switch from `http://` to `https://`:
+
+| Client | Old URL | New URL | Cert Handling |
+|--------|---------|---------|---------------|
+| GitLab (VM 410) | `http://10.10.1.102:9000` | `https://10.10.1.102:9000` | Install CA cert system-wide (see below) |
+| pgBackRest (VMs 500-502) | N/A (was local disk) | `https://10.10.1.102:9000` | `repo1-storage-verify-tls=n` in pgbackrest.conf |
+| mc on VM 402 | `http://10.10.1.102:9000` | `https://10.10.1.102:9000` | CA cert in `~/.mc/certs/CAs/` |
+
+**Install CA cert system-wide** (for GitLab and other system clients):
+
+```bash
+# Copy the CA cert to VM 410 (GitLab) via Cloudflare Tunnel alias
+scp ~/minio-certs/ca/ca.crt ssh-git:/tmp/minio-ca.crt
+
+# SSH into VM 410 and install the CA cert
+ssh ssh-git
+sudo cp /tmp/minio-ca.crt /usr/local/share/ca-certificates/minio-ca.crt
+sudo mkdir -p /srv/gitlab/config/trusted-certs
+sudo cp /tmp/minio-ca.crt /srv/gitlab/config/trusted-certs/minio-ca.crt
+sudo update-ca-certificates
+```
+
+For GitLab, update the object store endpoint in `/srv/gitlab/config/gitlab.rb` from `http://` to `https://`:
+
+```ruby
+# In /srv/gitlab/config/gitlab.rb — change endpoint from http to https
+gitlab_rails['object_store']['connection'] = {
+  'provider'              => 'AWS',
+  'endpoint'              => 'https://10.10.1.102:9000',
+  'aws_access_key_id'     => 'YOUR_MINIO_ACCESS_KEY',
+  'aws_secret_access_key' => 'YOUR_MINIO_SECRET_KEY',
+  'region'                => 'us-east-1',
+  'path_style'            => true
+}
+```
+
+Then reconfigure: `docker exec -it gitlab gitlab-ctl reconfigure`
+Then restart registry: `docker exec gitlab gitlab-ctl restart registry`
+Then check registry logs — the x509 error should be gone: `docker exec gitlab gitlab-ctl tail registry`
+
+
+### 14.9 Distribute CA Certificate
+
+Keep the CA cert accessible for all internal clients. Copy it to a shared location:
+
+```bash
+# From VM 402, distribute to all VMs that need it
+for vm in db0 db1 db2; do
+  scp ~/minio-certs/ca/ca.crt ${vm}:~/postgres-ha/certs/minio-ca.crt
+done
+```
+
+The `ca.crt` file is **not secret** — it's a public certificate. Only `ca.key` must be kept private (stay on VM 402 only).
+
+---
+
+## 15. Upgrading MinIO
 
 ```bash
 cd ~/minio
@@ -402,39 +757,43 @@ docker compose up -d
 
 # 4. Verify
 docker logs minio --tail 10
-curl -s http://10.10.1.102:9000/minio/health/ready
+curl -sk https://10.10.1.102:9000/minio/health/ready
 ```
 
-## 15. Verification Checklist
+## 16. Verification Checklist
 
 ```bash
 # Service running
 docker compose ps
 # → minio  running (healthy)
 
-# S3 API reachable
-curl -sI http://10.10.1.102:9000/minio/health/live
+# S3 API reachable (TLS)
+curl -skI https://10.10.1.102:9000/minio/health/live
 # → HTTP/1.1 200 OK
 
-# Console reachable
-curl -sI http://10.10.1.102:9001
+# Console reachable (TLS)
+curl -skI https://10.10.1.102:9001
 # → HTTP/1.1 200 OK
 
 # mc can list buckets
 mc ls homelab
-# → 11 gitlab-* buckets listed
+# → 11+ buckets listed
 
 # Service account works
-mc alias set gitlab-test http://10.10.1.102:9000 <ACCESS_KEY> <SECRET_KEY>
+mc alias set gitlab-test https://10.10.1.102:9000 <ACCESS_KEY> <SECRET_KEY>
 mc ls gitlab-test
 # → lists buckets allowed by policy
+
+# External access via Cloudflare Tunnel
+curl -s https://s3.taphuynh.dev/minio/health/live
+# → 200 OK
 
 # Disk space
 df -h /
 # → ~195 GB available
 ```
 
-## 16. Next Steps
+## 17. Next Steps
 
 After MinIO is verified:
 
@@ -449,10 +808,12 @@ After MinIO is verified:
 ```
 VM 402 — MinIO Object Storage
   IP:        10.10.1.102
-  S3 API:    http://10.10.1.102:9000  (s3.taphuynh.dev via tunnel)
-  Console:   http://10.10.1.102:9001
+  S3 API:    https://10.10.1.102:9000  (s3.taphuynh.dev via tunnel)
+  Console:   https://10.10.1.102:9001  (s3-console.taphuynh.dev via tunnel)
+  TLS:       Self-signed (ECDSA P-256), CA at ~/minio-certs/ca/ca.crt
   Data:      /srv/minio/data
+  Certs:     ~/minio/certs/ (public.crt, private.key, CAs/ca.crt)
   Compose:   ~/minio/docker-compose.yml
   Backup:    daily 02:00 → /mnt/shared/backups/minio/
-  Buckets:   11 gitlab-* buckets
+  Buckets:   11+ gitlab-* buckets + pgbackrest
 ```

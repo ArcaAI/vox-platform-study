@@ -238,7 +238,7 @@ gitlab_rails['object_store']['enabled'] = true
 gitlab_rails['object_store']['proxy_download'] = true
 gitlab_rails['object_store']['connection'] = {
   'provider'              => 'AWS',
-  'endpoint'              => 'http://10.10.1.102:9000',
+  'endpoint'              => 'https://10.10.1.102:9000',
   'aws_access_key_id'     => 'Z10LR5DPC2GNBWTNU7M6',
   'aws_secret_access_key' => '2n+Lc0fHpsO0O+b5qLCZEduUWzj5SeCrI2smF23O',
   'region'                => 'us-east-1',
@@ -260,7 +260,7 @@ registry['storage'] = {
     'accesskey'      => 'Z10LR5DPC2GNBWTNU7M6',
     'secretkey'      => '2n+Lc0fHpsO0O+b5qLCZEduUWzj5SeCrI2smF23O',
     'region'         => 'us-east-1',
-    'regionendpoint' => 'http://10.10.1.102:9000',
+    'regionendpoint' => 'https://10.10.1.102:9000',
     'bucket'         => 'gitlab-registry',
     'pathstyle'      => true
   },
@@ -271,7 +271,7 @@ registry['storage'] = {
 ### Backups to MinIO
 gitlab_rails['backup_upload_connection'] = {
   'provider'              => 'AWS',
-  'endpoint'              => 'http://10.10.1.102:9000',
+  'endpoint'              => 'https://10.10.1.102:9000',
   'aws_access_key_id'     => 'Z10LR5DPC2GNBWTNU7M6',
   'aws_secret_access_key' => '2n+Lc0fHpsO0O+b5qLCZEduUWzj5SeCrI2smF23O',
   'region'                => 'us-east-1',
