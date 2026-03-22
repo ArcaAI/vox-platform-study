@@ -1,5 +1,5 @@
 # TimescaleDB HA Cluster — Docker Compose
-# Uses timescale/timescaledb-ha which bundles PG 17 + TimescaleDB 2.25 + Patroni 4.1.0 + pgBackRest
+# Uses timescale/timescaledb-ha which bundles PG 18 + TimescaleDB 2.25 + Patroni 4.1.0 + pgBackRest
 #
 # Usage:
 #   1. Copy this entire postgres-ha/ directory to ~/postgres-ha on each VM
@@ -44,31 +44,38 @@ services:
       retries: 3
       start_period: 10s
 
-  # ── Patroni + TimescaleDB (PG 17) ──
-  # Image bundles: PG 17, TimescaleDB 2.25, Patroni 4.1.0, pgBackRest, PostGIS, pgvector, pg_cron, etc.
+  # ── Patroni + TimescaleDB (PG 18) ──
+  # Image bundles: PG 18, TimescaleDB 2.25, Patroni 4.1.0, pgBackRest, PostGIS, pgvector, pg_cron, etc.
+  #
+  # IMPORTANT: The image has two entrypoints:
+  #   /docker-entrypoint.sh      — standard postgres (requires POSTGRES_PASSWORD, no Patroni)
+  #   /timescaledb_entrypoint.sh — Patroni mode (reads /home/postgres/postgres.yml)
+  #
+  # We use patroni/entrypoint.sh which generates postgres.yml from env vars, then execs Patroni.
+  # This avoids the POSTGRES_PASSWORD requirement and lets Patroni manage initialization.
   patroni:
-    image: timescale/timescaledb-ha:pg17-all-amd64
+    image: timescale/timescaledb-ha:pg18-all-amd64
     container_name: patroni
     hostname: ${NODE_NAME}
     restart: unless-stopped
     network_mode: host
+    entrypoint: ["/bin/bash", "/patroni-entrypoint.sh"]
     environment:
       PATRONI_NAME: ${NODE_NAME}
-      PATRONI_SCOPE: hope-cluster
-      PATRONI_NAMESPACE: /service
-      PATRONI_RESTAPI_LISTEN: 0.0.0.0:8008
-      PATRONI_RESTAPI_CONNECT_ADDRESS: ${NODE_IP}:8008
-      PATRONI_POSTGRESQL_LISTEN: 0.0.0.0:5432
-      PATRONI_POSTGRESQL_CONNECT_ADDRESS: ${NODE_IP}:5432
-      PATRONI_POSTGRESQL_DATA_DIR: /home/postgres/pgdata/data
-      PATRONI_ETCD3_HOSTS: "'${PEER1_IP}:2379','${PEER2_IP}:2379','${PEER3_IP}:2379'"
-      PATRONI_SUPERUSER_USERNAME: postgres
-      PATRONI_SUPERUSER_PASSWORD: ${PG_PASSWORD}
-      PATRONI_REPLICATION_USERNAME: replicator
-      PATRONI_REPLICATION_PASSWORD: ${REPL_PASSWORD}
+      NODE_IP: ${NODE_IP}
+      PEER1_IP: ${PEER1_IP}
+      PEER2_IP: ${PEER2_IP}
+      PEER3_IP: ${PEER3_IP}
+      PG_PASSWORD: ${PG_PASSWORD}
+      REPL_PASSWORD: ${REPL_PASSWORD}
+      PGDATA: /home/postgres/pgdata/data
+      PGBACKREST_CONFIG: /etc/pgbackrest/pgbackrest.conf
     volumes:
+      - ./patroni/entrypoint.sh:/patroni-entrypoint.sh:ro
+      - ./pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
+      - ./pgbackrest/minio-ca.crt:/etc/pgbackrest/minio-ca.crt:ro
       - /data/postgresql:/home/postgres/pgdata
-      - ./patroni/patroni.yml:/etc/patroni/patroni.yml:ro
+      - /data/pgbackrest:/var/lib/pgbackrest
       - /dev/watchdog:/dev/watchdog
     devices:
       - /dev/watchdog:/dev/watchdog
@@ -96,17 +103,17 @@ services:
       patroni:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:7000/ || exit 1"]
-      interval: 5s
-      timeout: 3s
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7000/ > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
       retries: 3
-      start_period: 5s
+      start_period: 10s
     profiles:
       - haproxy
 
   # ── PgBouncer (Connection Pooler) ──
   pgbouncer:
-    image: edoburu/pgbouncer:1.23.1
+    image: edoburu/pgbouncer:latest
     container_name: pgbouncer
     hostname: pgbouncer-${NODE_NAME}
     restart: unless-stopped

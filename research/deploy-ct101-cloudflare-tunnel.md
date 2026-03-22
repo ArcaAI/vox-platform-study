@@ -12,169 +12,119 @@ CT 101 runs `cloudflared` as a systemd service inside an LXC container on the Pr
 
 All external access to the homelab flows through this tunnel. Internal VM-to-VM traffic stays on `10.10.1.x` and never touches Cloudflare.
 
+All tunnel public hostnames are managed via the **Cloudflare Zero Trust Dashboard** ([one.dash.cloudflare.com](https://one.dash.cloudflare.com/) → **Networks** → **Tunnels** → **hope-homelab** → **Public Hostnames**). DNS CNAME records are created automatically when you add a public hostname in the dashboard.
+
 ---
 
-## Ingress Rules
+## Public Hostnames
 
-Edit `/etc/cloudflared/config.yml` on CT 101. All rules go **before** the catch-all `- service: http_status:404` at the bottom.
+All entries below are configured in the Zero Trust Dashboard under the **hope-homelab** tunnel's **Public Hostnames** tab.
 
 ### VM 200 — ubuntu-live-gpu (AI + GPU)
 
-```yaml
-  - hostname: server-gpu.taphuynh.dev
-    service: ssh://10.10.1.10:22
-
-  - hostname: api-staging.taphuynh.dev
-    service: http://10.10.1.10:30080
-    originRequest:
-      disableChunkedEncoding: true
-```
+| Subdomain | Domain | Type | URL | Notes |
+|-----------|--------|------|-----|-------|
+| `server-gpu` | `taphuynh.dev` | SSH | `ssh://10.10.1.10:22` | |
+| `api-staging` | `taphuynh.dev` | HTTP | `http://10.10.1.10:30080` | Disable chunked encoding |
 
 ### VM 400 — master (Rancher + Argo)
 
-```yaml
-  - hostname: rancher.taphuynh.dev
-    service: http://10.10.1.100:80
-    originRequest:
-      disableChunkedEncoding: true
-
-  - hostname: ssh-master.taphuynh.dev
-    service: ssh://10.10.1.100:22
-```
+| Subdomain | Domain | Type | URL | Notes |
+|-----------|--------|------|-----|-------|
+| `rancher` | `taphuynh.dev` | HTTP | `http://10.10.1.100:80` | Disable chunked encoding |
+| `ssh-master` | `taphuynh.dev` | SSH | `ssh://10.10.1.100:22` | |
 
 ### VM 401 — vuvu (AI, no GPU)
 
-```yaml
-  - hostname: ssh-vuvu.taphuynh.dev
-    service: ssh://10.10.1.101:22
-```
+| Subdomain | Domain | Type | URL | Notes |
+|-----------|--------|------|-----|-------|
+| `ssh-vuvu` | `taphuynh.dev` | SSH | `ssh://10.10.1.101:22` | |
 
 ### VM 402 — minio
 
-```yaml
-  - hostname: s3.taphuynh.dev
-    service: http://10.10.1.102:9000
-    originRequest:
-      disableChunkedEncoding: true
-
-  - hostname: s3-console.taphuynh.dev
-    service: http://10.10.1.102:9001
-
-  - hostname: ssh-minio.taphuynh.dev
-    service: ssh://10.10.1.102:22
-```
+| Subdomain | Domain | Type | URL | Notes |
+|-----------|--------|------|-----|-------|
+| `s3` | `taphuynh.dev` | HTTPS | `https://10.10.1.102:9000` | Disable chunked encoding, No TLS Verify |
+| `s3-console` | `taphuynh.dev` | HTTPS | `https://10.10.1.102:9001` | No TLS Verify |
+| `ssh-minio` | `taphuynh.dev` | SSH | `ssh://10.10.1.102:22` | |
 
 ### VM 410 — gitlab
 
-```yaml
-  - hostname: git.taphuynh.dev
-    service: http://10.10.1.110:80
-    originRequest:
-      disableChunkedEncoding: true
-      noHappyEyeballs: true
-
-  - hostname: registry.taphuynh.dev
-    service: http://10.10.1.110:5050
-    originRequest:
-      disableChunkedEncoding: true
-
-  - hostname: pages.taphuynh.dev
-    service: http://10.10.1.110:8090
-
-  - hostname: ssh-git.taphuynh.dev
-    service: ssh://10.10.1.110:22
-
-  - hostname: git-remote.taphuynh.dev
-    service: ssh://10.10.1.110:2222
-```
+| Subdomain | Domain | Type | URL | Notes |
+|-----------|--------|------|-----|-------|
+| `git` | `taphuynh.dev` | HTTP | `http://10.10.1.110:80` | Disable chunked encoding, no happy eyeballs |
+| `registry` | `taphuynh.dev` | HTTP | `http://10.10.1.110:5050` | Disable chunked encoding |
+| `pages` | `taphuynh.dev` | HTTP | `http://10.10.1.110:8090` | |
+| `ssh-git` | `taphuynh.dev` | SSH | `ssh://10.10.1.110:22` | |
+| `git-remote` | `taphuynh.dev` | SSH | `ssh://10.10.1.110:2222` | Git SSH transport |
 
 ### VM 411 — gitlab-runner
 
-```yaml
-  - hostname: ssh-git-runner.taphuynh.dev
-    service: ssh://10.10.1.111:22
-```
+| Subdomain | Domain | Type | URL | Notes |
+|-----------|--------|------|-----|-------|
+| `ssh-git-runner` | `taphuynh.dev` | SSH | `ssh://10.10.1.111:22` | |
 
 ### VMs 500–502 — database cluster
 
-```yaml
-  - hostname: ssh-db0.taphuynh.dev
-    service: ssh://10.10.1.200:22
+See [Database Access via Cloudflare Tunnel](./setup-database-access-cloudflare-tunnel.md) for full setup guide.
 
-  - hostname: ssh-db1.taphuynh.dev
-    service: ssh://10.10.1.201:22
+> **Firewall**: VMs 500–502 run UFW with a default `DROP` policy. CT 101 (`10.10.1.2`) must be explicitly allowed on each VM: `sudo ufw allow from 10.10.1.2 to any`. Without this, all tunnel traffic to the DB cluster will silently hang. See [Section 6.5](./deploy-vm500-502-postgres-ha.md#65-configure-firewall).
 
-  - hostname: ssh-db2.taphuynh.dev
-    service: ssh://10.10.1.202:22
-```
-
-### Catch-All (Must Be Last)
-
-```yaml
-  - service: http_status:404
-```
+| Subdomain | Domain | Type | URL | Notes |
+|-----------|--------|------|-----|-------|
+| `ssh-db0` | `taphuynh.dev` | SSH | `ssh://10.10.1.200:22` | VM 500 |
+| `ssh-db1` | `taphuynh.dev` | SSH | `ssh://10.10.1.201:22` | VM 501 |
+| `ssh-db2` | `taphuynh.dev` | SSH | `ssh://10.10.1.202:22` | VM 502 |
+| `db` | `taphuynh.dev` | TCP | `tcp://10.10.1.250:5000` | PG R/W (primary via HAProxy VIP) |
+| `db-ro` | `taphuynh.dev` | TCP | `tcp://10.10.1.250:5001` | PG RO (replicas via HAProxy VIP) |
+| `ha-db` | `taphuynh.dev` | HTTP | `http://10.10.1.250:7000` | HAProxy stats dashboard |
 
 ---
 
 ## Route Summary
 
-| Hostname | Service Target | VM |
-|----------|---------------|----|
-| `server-gpu.taphuynh.dev` | `ssh://10.10.1.10:22` | VM 200 |
-| `api-staging.taphuynh.dev` | `http://10.10.1.10:30080` | VM 200 |
-| `ssh-master.taphuynh.dev` | `ssh://10.10.1.100:22` | VM 400 |
-| `rancher.taphuynh.dev` | `http://10.10.1.100:80` | VM 400 |
-| `ssh-vuvu.taphuynh.dev` | `ssh://10.10.1.101:22` | VM 401 |
-| `ssh-minio.taphuynh.dev` | `ssh://10.10.1.102:22` | VM 402 |
-| `s3.taphuynh.dev` | `http://10.10.1.102:9000` | VM 402 |
-| `s3-console.taphuynh.dev` | `http://10.10.1.102:9001` | VM 402 |
-| `ssh-git.taphuynh.dev` | `ssh://10.10.1.110:22` | VM 410 |
-| `git-remote.taphuynh.dev` | `ssh://10.10.1.110:2222` | VM 410 |
-| `git.taphuynh.dev` | `http://10.10.1.110:80` | VM 410 |
-| `registry.taphuynh.dev` | `http://10.10.1.110:5050` | VM 410 |
-| `pages.taphuynh.dev` | `http://10.10.1.110:8090` | VM 410 |
-| `ssh-git-runner.taphuynh.dev` | `ssh://10.10.1.111:22` | VM 411 |
-| `ssh-db0.taphuynh.dev` | `ssh://10.10.1.200:22` | VM 500 |
-| `ssh-db1.taphuynh.dev` | `ssh://10.10.1.201:22` | VM 501 |
-| `ssh-db2.taphuynh.dev` | `ssh://10.10.1.202:22` | VM 502 |
+| Hostname | Type | Service Target | VM |
+|----------|------|---------------|----|
+| `server-gpu.taphuynh.dev` | SSH | `ssh://10.10.1.10:22` | VM 200 |
+| `api-staging.taphuynh.dev` | HTTP | `http://10.10.1.10:30080` | VM 200 |
+| `ssh-master.taphuynh.dev` | SSH | `ssh://10.10.1.100:22` | VM 400 |
+| `rancher.taphuynh.dev` | HTTP | `http://10.10.1.100:80` | VM 400 |
+| `ssh-vuvu.taphuynh.dev` | SSH | `ssh://10.10.1.101:22` | VM 401 |
+| `ssh-minio.taphuynh.dev` | SSH | `ssh://10.10.1.102:22` | VM 402 |
+| `s3.taphuynh.dev` | HTTPS | `https://10.10.1.102:9000` | VM 402 |
+| `s3-console.taphuynh.dev` | HTTPS | `https://10.10.1.102:9001` | VM 402 |
+| `ssh-git.taphuynh.dev` | SSH | `ssh://10.10.1.110:22` | VM 410 |
+| `git-remote.taphuynh.dev` | SSH | `ssh://10.10.1.110:2222` | VM 410 |
+| `git.taphuynh.dev` | HTTP | `http://10.10.1.110:80` | VM 410 |
+| `registry.taphuynh.dev` | HTTP | `http://10.10.1.110:5050` | VM 410 |
+| `pages.taphuynh.dev` | HTTP | `http://10.10.1.110:8090` | VM 410 |
+| `ssh-git-runner.taphuynh.dev` | SSH | `ssh://10.10.1.111:22` | VM 411 |
+| `ssh-db0.taphuynh.dev` | SSH | `ssh://10.10.1.200:22` | VM 500 |
+| `ssh-db1.taphuynh.dev` | SSH | `ssh://10.10.1.201:22` | VM 501 |
+| `ssh-db2.taphuynh.dev` | SSH | `ssh://10.10.1.202:22` | VM 502 |
+| `db.taphuynh.dev` | TCP | `tcp://10.10.1.250:5000` | VIP (PG R/W) |
+| `db-ro.taphuynh.dev` | TCP | `tcp://10.10.1.250:5001` | VIP (PG RO) |
+| `ha-db.taphuynh.dev` | HTTP | `http://10.10.1.250:7000` | VIP (HAProxy Stats) |
 
 ---
 
-## Create DNS Records
+## Adding a New Public Hostname
 
-Only create CNAME records for hostnames that don't already exist. Run from inside CT 101:
+1. Go to [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)
+2. Navigate to **Networks** → **Tunnels** → **hope-homelab**
+3. Go to the **Public Hostnames** tab
+4. Click **Add a public hostname**
+5. Fill in subdomain, domain, type, and URL
+6. Save — the CNAME DNS record is created automatically
 
-```bash
-cloudflared tunnel route dns hope-homelab server-gpu.taphuynh.dev
-cloudflared tunnel route dns hope-homelab api-staging.taphuynh.dev
-cloudflared tunnel route dns hope-homelab ssh-master.taphuynh.dev
-cloudflared tunnel route dns hope-homelab rancher.taphuynh.dev
-cloudflared tunnel route dns hope-homelab ssh-vuvu.taphuynh.dev
-cloudflared tunnel route dns hope-homelab ssh-minio.taphuynh.dev
-cloudflared tunnel route dns hope-homelab s3.taphuynh.dev
-cloudflared tunnel route dns hope-homelab s3-console.taphuynh.dev
-cloudflared tunnel route dns hope-homelab ssh-git.taphuynh.dev
-cloudflared tunnel route dns hope-homelab git-remote.taphuynh.dev
-cloudflared tunnel route dns hope-homelab git.taphuynh.dev
-cloudflared tunnel route dns hope-homelab registry.taphuynh.dev
-cloudflared tunnel route dns hope-homelab pages.taphuynh.dev
-cloudflared tunnel route dns hope-homelab ssh-git-runner.taphuynh.dev
-cloudflared tunnel route dns hope-homelab ssh-db0.taphuynh.dev
-cloudflared tunnel route dns hope-homelab ssh-db1.taphuynh.dev
-cloudflared tunnel route dns hope-homelab ssh-db2.taphuynh.dev
-```
+For services that need it, expand **Additional application settings** and configure:
 
----
+**Origin configuration:**
+- **Disable chunked encoding** — for services that don't support chunked transfer encoding (GitLab, MinIO API)
+- **No happy eyeballs** — for services that have issues with IPv6 fallback
 
-## Restart Tunnel
-
-After any config change:
-
-```bash
-systemctl restart cloudflared
-systemctl status cloudflared
-journalctl -u cloudflared --no-pager -n 30
-```
+**TLS settings:**
+- **No TLS Verify** — for HTTPS origins with self-signed certificates (MinIO). Only affects the `cloudflared → origin` hop on the internal network.
 
 ---
 
@@ -196,7 +146,7 @@ Cloudflare Free plan rejects any HTTP request body larger than **100 MB**. This 
 | 8 | Runner (411) | GitLab API | `http://10.10.1.110` (internal) | **No** | — | None |
 | 9 | Runner CI jobs | Git clone/fetch | Depends on DNS resolution | **Maybe** | Packfile | **Mitigated below** |
 | 10 | Runner CI jobs | Docker push to registry | Depends on DNS resolution | **Maybe** | Image layers | **Mitigated below** |
-| 11 | GitLab (410) | MinIO (402) | `http://10.10.1.102:9000` (internal) | **No** | — | None |
+| 11 | GitLab (410) | MinIO (402) | `https://10.10.1.102:9000` (internal, self-signed TLS) | **No** | — | None |
 | 12 | Master (400) | GitLab registry | Depends on DNS resolution | **Maybe** | Image pulls | **Mitigated below** |
 
 ### Workaround Strategy
@@ -241,20 +191,13 @@ ssh -T git@git.taphuynh.dev
 
 ---
 
-## Operational Notes
-
-### Adding a New Service
-
-1. Add an ingress rule to `/etc/cloudflared/config.yml` (before the catch-all)
-2. Create the DNS CNAME: `cloudflared tunnel route dns hope-homelab <hostname>`
-3. Restart: `systemctl restart cloudflared`
-
-### Logs
+## Logs
 
 ```bash
+# On CT 101
 journalctl -u cloudflared -f --no-pager
 ```
 
-### Tunnel Status
+## Tunnel Status
 
-Check tunnel health in the [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com/) → Networks → Tunnels.
+Check tunnel health in the [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com/) → **Networks** → **Tunnels** → **hope-homelab** → **Connectors** tab.

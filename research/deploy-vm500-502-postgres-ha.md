@@ -3,11 +3,11 @@
 **Date**: 2026-03-18
 **VMs**: 500 (`10.10.1.200`), 501 (`10.10.1.201`), 502 (`10.10.1.202`)
 **Bridge**: vmbr1 | **Specs**: 8 vCPU / 16 GB RAM / 64 GB OS disk + data disk (each)
-**Config files**: [`configs/postgres-ha/`](./configs/postgres-ha/) — docker-compose, patroni.yml, haproxy.cfg, keepalived
+**Config files**: [`configs/postgres-ha/`](./configs/postgres-ha/) — docker-compose (generates patroni config at startup), haproxy.cfg, keepalived
 **Cloudflare SSH**: `ssh-db0.taphuynh.dev` (VM 500) | `ssh-db1.taphuynh.dev` (VM 501) | `ssh-db2.taphuynh.dev` (VM 502)
-**Related**: [Infrastructure Overview](./proxmox-infrastructure-gitlab-rancher-plan.md) | [MinIO (VM 402)](./deploy-vm402-minio.md) | [GitLab (VM 410)](./deploy-vm410-gitlab.md) | [Runner (VM 411)](./deploy-vm411-gitlab-runner.md) | [Cloudflare Tunnel](./deploy-ct101-cloudflare-tunnel.md)
+**Related**: [Infrastructure Overview](./proxmox-infrastructure-gitlab-rancher-plan.md) | [MinIO (VM 402)](./deploy-vm402-minio.md) | [GitLab (VM 410)](./deploy-vm410-gitlab.md) | [Runner (VM 411)](./deploy-vm411-gitlab-runner.md) | [Cloudflare Tunnel](./deploy-ct101-cloudflare-tunnel.md) | [Database Access & Domains](./setup-database-access-cloudflare-tunnel.md)
 
-> **TimescaleDB** is a PostgreSQL extension for time-series data. The `timescale/timescaledb-ha` Docker image bundles PostgreSQL 17 + TimescaleDB 2.25 + Patroni 4.1.0 + pgBackRest in a single production-ready image — no custom Dockerfile needed. All standard PostgreSQL features, tools, and clients work unchanged.
+> **TimescaleDB** is a PostgreSQL extension for time-series data. The `timescale/timescaledb-ha` Docker image bundles PostgreSQL 18 + TimescaleDB 2.25 + Patroni 4.1.0 + pgBackRest in a single production-ready image — no custom Dockerfile needed. All standard PostgreSQL features, tools, and clients work unchanged.
 
 ---
 
@@ -54,7 +54,7 @@ Three Ubuntu 24.04 VMs, each running the full stack co-located. A floating VIP p
    │  10.10.1.200   │     │  10.10.1.201  │ │  10.10.1.202 │          │
    ├────────────────┤     ├───────────────┤ ├──────────────┤          │
    │ TimescaleDB    │     │ TimescaleDB   │ │ TimescaleDB  │          │
-   │ + PG 17        │     │ + PG 17       │ │ + PG 17      │          │
+   │ + PG 18        │     │ + PG 18       │ │ + PG 18      │          │
    │ (PRIMARY)      │     │ (REPLICA)     │ │ (REPLICA)    │          │
    │                │     │               │ │              │          │
    │ Patroni        │     │ Patroni       │ │ Patroni      │          │
@@ -105,7 +105,7 @@ Three Ubuntu 24.04 VMs, each running the full stack co-located. A floating VIP p
 | ----------------- | ---------- | ----------------------------------------------- |
 | Ubuntu            | 24.04 LTS  | Proxmox template                                |
 | **TimescaleDB**   | **2.25.2** | Bundled in `timescale/timescaledb-ha` image     |
-| PostgreSQL        | 17.x       | Bundled in `timescale/timescaledb-ha` image     |
+| PostgreSQL        | 18.x       | Bundled in `timescale/timescaledb-ha` image     |
 | Patroni           | 4.1.0      | Bundled in `timescale/timescaledb-ha` image     |
 | pgBackRest        | 2.54.x     | Bundled in `timescale/timescaledb-ha` image     |
 | etcd              | 3.5.21     | `quay.io/coreos/etcd:v3.5.21`                   |
@@ -114,7 +114,7 @@ Three Ubuntu 24.04 VMs, each running the full stack co-located. A floating VIP p
 | Keepalived        | 2.x        | apt package (host-level)                        |
 | postgres_exporter | 0.16.0     | `prometheuscommunity/postgres-exporter:v0.16.0` |
 
-> The `timescale/timescaledb-ha:pg17-all-amd64` image bundles TimescaleDB + PostgreSQL + Patroni + pgBackRest + 30+ extensions (PostGIS, pgvector, pg_cron, etc.) in a single image. No custom Dockerfile required.
+> The `timescale/timescaledb-ha:pg18-all-amd64` image bundles TimescaleDB + PostgreSQL + Patroni + pgBackRest + 30+ extensions (PostGIS, pgvector, pg_cron, etc.) in a single image. No custom Dockerfile required.
 
 ### Why TimescaleDB
 
@@ -132,7 +132,7 @@ The **Community Edition (TSL)** is free for self-hosted use. The only restrictio
 
 | Decision          | Choice                        | Rationale                                                                                     |
 | ----------------- | ----------------------------- | --------------------------------------------------------------------------------------------- |
-| Database          | **TimescaleDB 2.25 on PG 17** | PostgreSQL superset with time-series, compression, and continuous aggregates                  |
+| Database          | **TimescaleDB 2.25 on PG 18** | PostgreSQL superset with time-series, compression, and continuous aggregates; PG 18 adds async I/O, UUIDv7, virtual generated columns, and data checksums by default |
 | Docker image      | **timescale/timescaledb-ha**  | Production-ready: bundles Patroni + pgBackRest + 30+ extensions, maintained by Timescale      |
 | HA orchestrator   | **Patroni 4.1.0**             | Industry standard, bundled in the HA image, native Prometheus metrics                         |
 | DCS               | **etcd**                      | Lightest footprint (~50MB RAM), best Patroni integration, used by ~85% of Patroni deployments |
@@ -146,7 +146,7 @@ The **Community Edition (TSL)** is free for self-hosted use. The only restrictio
 ## 3. Prerequisites
 
 - VMs 500, 501, 502 running Ubuntu 24.04 Server
-- SSH access: `ssh hope@10.10.1.200`, `ssh hope@10.10.1.201`, `ssh hope@10.10.1.202`
+- SSH access via Cloudflare Tunnel: `ssh db0`, `ssh db1`, `ssh db2` (aliases for `ssh-db0.taphuynh.dev`, `ssh-db1.taphuynh.dev`, `ssh-db2.taphuynh.dev` — see `~/.ssh/config`)
 - Docker and Docker Compose installed on all 3 VMs
 - Static IPs configured on all 3 VMs (already done via Proxmox/cloud-init)
 - (Optional) MinIO on VM 402 for pgBackRest S3 backup target
@@ -347,7 +347,17 @@ df -h /data/
 
 ### 6.5 Configure Firewall
 
+> **Docker + UFW conflict**: Docker modifies iptables directly, bypassing UFW. Even with UFW enabled, Docker-published ports are reachable from any network. Step 2 below adds a `DOCKER-USER` iptables rule to restrict Docker-published ports to the private subnet only.
+
+**Step 1 — UFW rules** (run on **all 3 VMs**):
+
 ```bash
+# Install UFW (not included in Ubuntu Server minimal/cloud images)
+sudo apt-get update && sudo apt-get install -y ufw
+
+# Allow SSH first — prevents lockout when UFW is enabled
+sudo ufw allow OpenSSH
+
 # Allow cluster communication between nodes
 sudo ufw allow from 10.10.1.200 to any
 sudo ufw allow from 10.10.1.201 to any
@@ -356,11 +366,83 @@ sudo ufw allow from 10.10.1.202 to any
 # Allow VIP
 sudo ufw allow from 10.10.1.250 to any
 
+# Allow CT 101 (Cloudflare Tunnel) — required for ha-db.taphuynh.dev, db.taphuynh.dev, etc.
+sudo ufw allow from 10.10.1.2 to any comment "CT 101 - Cloudflare Tunnel"
+
 # Allow VRRP (Keepalived)
 sudo ufw allow proto vrrp from 10.10.1.0/24
 
-# Verify
-sudo ufw status
+# Enable the firewall (type 'y' when prompted)
+sudo ufw enable
+
+# Verify — should show Status: active with the rules listed
+sudo ufw status verbose
+```
+
+**Step 2 — Restrict Docker-published ports** (run on **all 3 VMs**):
+
+> `iptables-persistent` and `ufw` are **mutually exclusive** packages — installing one removes the other. Use UFW's `before.rules` to persist the Docker iptables rule instead.
+
+```bash
+# Find your interface name (likely ens18 on Proxmox VMs)
+ip -br a
+
+# Add the DOCKER-USER rule to UFW's before.rules (persists across reboots)
+# Replace ens18 with your actual interface name from the command above
+# The grep guard makes this idempotent — safe to run multiple times
+IFACE="enp6s18"
+if ! grep -q "DOCKER-USER -i ${IFACE}" /etc/ufw/before.rules; then
+  sudo sed -i '/^COMMIT$/i \
+# Restrict Docker-published ports to private subnet only\
+-I DOCKER-USER -i '"${IFACE}"' ! -s 10.10.1.0/24 -j DROP' /etc/ufw/before.rules
+  echo "Rule added to before.rules for interface ${IFACE}"
+else
+  echo "Rule already exists in before.rules for interface ${IFACE} — skipping"
+fi
+
+# Apply the iptables rule immediately (so it takes effect without reboot)
+# Only add if not already present in the live chain
+if ! sudo iptables -L DOCKER-USER -n | grep -q "${IFACE}"; then
+  sudo iptables -I DOCKER-USER -i "${IFACE}" ! -s 10.10.1.0/24 -j DROP
+fi
+
+# Reload UFW to pick up the before.rules change
+sudo ufw reload
+```
+
+> **Fixing duplicate rules**: If you already ran the old (non-idempotent) version and have duplicate entries, clean them up:
+>
+> ```bash
+> # 1. Remove ALL duplicate DOCKER-USER lines from before.rules, keep only one
+> sudo sed -i '0,/DOCKER-USER/{//!b}; /DOCKER-USER/d' /etc/ufw/before.rules
+> # That's fragile — easier to just edit manually:
+> sudo nano /etc/ufw/before.rules
+> # Search for "DOCKER-USER" and delete all duplicate lines, keeping exactly one
+>
+> # 2. Flush the live DOCKER-USER chain and re-add the single correct rule
+> sudo iptables -F DOCKER-USER
+> sudo iptables -A DOCKER-USER -j RETURN
+> IFACE="enp6s18"  # replace with your actual interface
+> sudo iptables -I DOCKER-USER -i "${IFACE}" ! -s 10.10.1.0/24 -j DROP
+>
+> # 3. Reload UFW so before.rules is re-applied cleanly
+> sudo ufw reload
+> ```
+
+Verify:
+
+```bash
+sudo ufw status verbose
+sudo iptables -L DOCKER-USER -n -v
+```
+
+Expected output — exactly **one** DROP rule for your interface, plus the default RETURN:
+
+```
+Chain DOCKER-USER (1 references)
+ pkts bytes target     prot opt in     out     source               destination
+    0     0 DROP       0    --  ens18  *      !10.10.1.0/24         0.0.0.0/0
+    0     0 RETURN     0    --  *      *       0.0.0.0/0            0.0.0.0/0
 ```
 
 ### 6.6 Enable Watchdog Module
@@ -415,20 +497,95 @@ sudo sysctl -p /etc/sysctl.d/99-postgres-ha.conf
 
 etcd provides the distributed consensus layer. Patroni uses it for leader election and cluster state storage.
 
-### 7.1 Deploy on All 3 Nodes
+### 7.1 Copy Config Files to All Nodes
 
-Copy the config files from `configs/postgres-ha/` to each VM, then deploy node-by-node.
+From your **workstation**, copy the config directory to each VM via Cloudflare Tunnel:
 
 ```bash
-# On each VM, create the project directory
-mkdir -p ~/postgres-ha
-cd ~/postgres-ha
-
-# Copy configs (adjust per node — see configs/postgres-ha/README)
-# scp from your workstation, or git clone, etc.
+# From your workstation (VMs are behind Cloudflare Tunnel — use SSH aliases, not raw IPs)
+scp -r research/configs/postgres-ha/ db0:~/   # VM 500
+scp -r research/configs/postgres-ha/ db1:~/   # VM 501
+scp -r research/configs/postgres-ha/ db2:~/   # VM 502
 ```
 
-The etcd service is defined in each node's `docker-compose.yml`. Start etcd on **all 3 nodes simultaneously** (or within a few seconds of each other):
+### 7.2 Create the .env File (Each Node)
+
+The `docker-compose.yml` reads `NODE_NAME`, `NODE_IP`, and peer IPs from a `.env` file. **This file must exist before starting any service** — etcd, Patroni, HAProxy, and PgBouncer all depend on it.
+
+First, generate passwords (run once, use the same values on all 3 nodes):
+
+```bash
+# Run on your workstation or any node — save these values
+openssl rand -base64 24   # → PG_PASSWORD
+openssl rand -base64 24   # → REPL_PASSWORD
+openssl rand -base64 24   # → APP_PASSWORD
+openssl rand -base64 24   # → PGBOUNCER_PASSWORD
+```
+
+Then SSH into **each VM** and create the `.env`:
+
+**VM 500 (pg-node1):**
+
+```bash
+ssh db0
+cd ~/postgres-ha
+cp .env.example .env
+```
+
+Edit `.env` — set the node-specific values:
+
+```env
+NODE_NAME=pg-node1
+NODE_IP=10.10.1.200
+```
+
+Set the passwords (same on all 3 nodes):
+
+```env
+PG_PASSWORD=<your-generated-superuser-password>
+REPL_PASSWORD=<your-generated-replicator-password>
+APP_PASSWORD=<your-generated-app-password>
+PGBOUNCER_PASSWORD=<your-generated-pgbouncer-password>
+```
+
+Leave `PEER*_IP`, `APP_DB`, `APP_USER`, and `VIP` at their defaults.
+
+**VM 501 (pg-node2):**
+
+```bash
+ssh db1
+cd ~/postgres-ha
+cp .env.example .env
+# Edit .env — only NODE_NAME and NODE_IP differ:
+#   NODE_NAME=pg-node2
+#   NODE_IP=10.10.1.201
+# Passwords must match VM 500
+```
+
+**VM 502 (pg-node3):**
+
+```bash
+ssh db2
+cd ~/postgres-ha
+cp .env.example .env
+# Edit .env — only NODE_NAME and NODE_IP differ:
+#   NODE_NAME=pg-node3
+#   NODE_IP=10.10.1.202
+# Passwords must match VM 500
+```
+
+> **Verify** before proceeding — on each VM, confirm the variables are set:
+>
+> ```bash
+> grep -E '^(NODE_NAME|NODE_IP)=' .env
+> # VM 500 should show: NODE_NAME=pg-node1  NODE_IP=10.10.1.200
+> # VM 501 should show: NODE_NAME=pg-node2  NODE_IP=10.10.1.201
+> # VM 502 should show: NODE_NAME=pg-node3  NODE_IP=10.10.1.202
+> ```
+
+### 7.3 Start etcd on All 3 Nodes
+
+Start etcd on **all 3 nodes simultaneously** (or within a few seconds of each other):
 
 ```bash
 # On VM 500
@@ -444,7 +601,7 @@ cd ~/postgres-ha
 docker compose up -d etcd
 ```
 
-### 7.2 Verify etcd Cluster
+### 7.4 Verify etcd Cluster
 
 ```bash
 # From any node
@@ -466,33 +623,26 @@ docker exec etcd etcdctl member list \
 
 ## 8. Deploy Patroni + TimescaleDB Cluster
 
-The `timescale/timescaledb-ha:pg17-all-amd64` image includes everything pre-installed — no build step needed. It bundles:
+The `timescale/timescaledb-ha:pg18-all-amd64` image includes everything pre-installed — no build step needed. It bundles:
 
-- PostgreSQL 17 with TimescaleDB 2.25.2
+- PostgreSQL 18 with TimescaleDB 2.25.2
 - Patroni 4.1.0 (HA orchestrator)
 - pgBackRest (backup)
 - 30+ extensions: PostGIS 3, pgvector, pg_cron, timescaledb_toolkit, pgai, and more
+
+> **PG 18 highlights**: Async I/O (up to 3x faster sequential scans/vacuum), `uuidv7()` for time-ordered UUIDs, virtual generated columns, temporal constraints, OAuth 2.0 auth, data checksums enabled by default, and `pg_upgrade` now retains optimizer statistics.
 
 ### 8.1 Pull the Image
 
 On **all 3 nodes**:
 
 ```bash
-docker pull timescale/timescaledb-ha:pg17-all-amd64
+docker pull timescale/timescaledb-ha:pg18-all-amd64
 ```
 
-### 8.2 Create the .env File
+### 8.2 Start Patroni — Node by Node
 
-Copy `.env.example` to `.env` on each node and fill in passwords:
-
-```bash
-cp .env.example .env
-# Edit .env — set strong passwords for PG_PASSWORD, REPL_PASSWORD
-```
-
-> **Security**: use `openssl rand -base64 24` to generate passwords. Never commit `.env` to version control.
-
-### 8.3 Start Patroni — Node by Node
+> The `.env` file was already created in [section 7.2](#72-create-the-env-file-each-node). Patroni uses the same `NODE_NAME`, `NODE_IP`, and password variables.
 
 Start the **first node** (VM 500) first — it will bootstrap as the primary:
 
@@ -515,11 +665,11 @@ docker compose up -d patroni
 docker compose up -d patroni
 ```
 
-### 8.4 Verify Patroni Cluster
+### 8.3 Verify Patroni Cluster
 
 ```bash
 # From any node — install patronictl (or exec into the container)
-docker exec patroni patronictl -c /etc/patroni/patroni.yml list
+docker exec patroni patronictl -c /home/postgres/postgres.yml list
 
 # Expected output:
 # + Cluster: hope-cluster -------+---------+---------+----+-----------+
@@ -534,79 +684,25 @@ docker exec patroni patronictl -c /etc/patroni/patroni.yml list
 curl -s http://10.10.1.200:8008/cluster | python3 -m json.tool
 ```
 
-### 8.5 Configure Dynamic Settings
+### 8.4 Verify Dynamic Settings
 
-After the cluster is bootstrapped, apply production settings via `patronictl`:
+The bootstrap DCS settings and PostgreSQL parameters are defined in [`patroni/entrypoint.sh`](./configs/postgres-ha/patroni/entrypoint.sh), which generates `/home/postgres/postgres.yml` from `.env` variables at container startup. A reference copy is at [`patroni/patroni.yml`](./configs/postgres-ha/patroni/patroni.yml). No manual `edit-config` step is needed for initial setup.
+
+To view or adjust settings after bootstrap:
 
 ```bash
-docker exec -it patroni patronictl -c /etc/patroni/patroni.yml edit-config
+# View current dynamic config
+docker exec patroni patronictl -c /home/postgres/postgres.yml show-config
 
-# This opens an editor. Set:
+# Edit dynamic config (if tuning is needed post-bootstrap)
+docker exec -it patroni patronictl -c /home/postgres/postgres.yml edit-config
 ```
 
-```yaml
-loop_wait: 10
-ttl: 30
-retry_timeout: 10
-maximum_lag_on_failover: 1048576
-synchronous_mode: true
-synchronous_mode_strict: false
-synchronous_node_count: 1
-failsafe_mode: true
-postgresql:
-    use_pg_rewind: true
-    use_slots: true
-    parameters:
-        # TimescaleDB (MUST be in shared_preload_libraries)
-        shared_preload_libraries: 'timescaledb'
-        timescaledb.max_background_workers: 16
-        timescaledb.telemetry_level: 'off'
-        # Memory (16 GB RAM per node)
-        shared_buffers: 4GB
-        effective_cache_size: 12GB
-        work_mem: 128MB
-        maintenance_work_mem: 1GB
-        wal_buffers: 64MB
-        # WAL
-        max_wal_size: 4GB
-        min_wal_size: 1GB
-        # Connections
-        max_connections: 200
-        max_wal_senders: 10
-        max_replication_slots: 10
-        # Workers (formula: 3 + timescaledb.max_background_workers + max_parallel_workers)
-        max_worker_processes: 27
-        max_parallel_workers: 8
-        max_parallel_workers_per_gather: 4
-        max_parallel_maintenance_workers: 4
-        # Checkpoints
-        checkpoint_completion_target: 0.9
-        checkpoint_timeout: 15min
-        # I/O
-        random_page_cost: 1.1
-        effective_io_concurrency: 200
-        # Replication
-        hot_standby: 'on'
-        wal_level: replica
-        wal_log_hints: 'on'
-        archive_mode: 'on'
-        archive_command: '/bin/true'
-        # Logging
-        log_min_duration_statement: 1000
-        log_checkpoints: 'on'
-        log_connections: 'on'
-        log_disconnections: 'on'
-        log_lock_waits: 'on'
-        # Security
-        password_encryption: scram-sha-256
-        huge_pages: try
-```
+**Key design decisions in the config** (see `docker-compose.yml` and reference `patroni/patroni.yml` for full values):
 
-> **TimescaleDB worker processes**: `max_worker_processes` must be at least `3 + timescaledb.max_background_workers + max_parallel_workers`. For 8 CPUs with 16 background workers: 3 + 16 + 8 = 27.
-
-> **work_mem raised to 128MB**: TimescaleDB compression/decompression and aggregation over chunks are more memory-intensive than vanilla PostgreSQL queries.
-
-> **Synchronous replication**: With `synchronous_mode: true` and `synchronous_node_count: 1`, every commit waits for at least one replica to confirm — zero data loss (RPO=0) during normal operation. `synchronous_mode_strict: false` allows fallback to async if all replicas are down, maintaining availability at the cost of potential data loss during that degraded state.
+- **TimescaleDB worker processes**: `max_worker_processes` = 27 (formula: 3 + `timescaledb.max_background_workers` 16 + `max_parallel_workers` 8)
+- **work_mem = 128MB**: TimescaleDB compression/decompression and chunk aggregation are more memory-intensive than vanilla PostgreSQL
+- **Synchronous replication**: `synchronous_mode: true` with `synchronous_node_count: 1` — every commit waits for at least one replica (RPO=0). `synchronous_mode_strict: false` allows fallback to async if all replicas are down
 
 ---
 
@@ -616,14 +712,14 @@ HAProxy routes connections to the correct PostgreSQL node. Keepalived provides a
 
 ### 9.1 Start HAProxy
 
-HAProxy is defined in the docker-compose on **VM 500 and VM 501** only:
+HAProxy is configured in [`docker-compose.yml`](./configs/postgres-ha/docker-compose.yml) under the `haproxy` profile, with routing rules in [`haproxy/haproxy.cfg`](./configs/postgres-ha/haproxy/haproxy.cfg). Deploy on **VM 500 and VM 501** only:
 
 ```bash
 # VM 500
-docker compose up -d haproxy
+docker compose --profile haproxy up -d
 
 # VM 501
-docker compose up -d haproxy
+docker compose --profile haproxy up -d
 ```
 
 Verify:
@@ -633,7 +729,7 @@ Verify:
 curl -s http://10.10.1.200:7000/stats | head -5
 
 # Test primary routing
-docker exec haproxy bash -c 'echo "SELECT 1;" | timeout 3 nc -q1 127.0.0.1 5000' 2>/dev/null
+docker exec haproxy sh -c 'echo "SELECT 1;" | timeout 3 nc -q1 127.0.0.1 5000' 2>/dev/null
 
 # Or from any machine on the network:
 psql -h 10.10.1.200 -p 5000 -U postgres -c "SELECT inet_server_addr();"
@@ -643,81 +739,24 @@ Open the HAProxy stats dashboard: `http://10.10.1.200:7000/` — you should see 
 
 ### 9.2 Install and Configure Keepalived
 
-Keepalived runs on the **host** (not in Docker) because it needs direct access to the network interface for VRRP.
+Keepalived runs on the **host** (not in Docker) because it needs direct access to the network interface for VRRP. Config files are in [`configs/postgres-ha/keepalived/`](./configs/postgres-ha/keepalived/).
 
-**On VM 500 and VM 501:**
+> **Note**: Before copying, check your interface name with `ip a` — if it's not `eth0` (likely `ens18` on Proxmox VMs), edit the conf file after copying.
+
+**On VM 500 (MASTER) and VM 501 (BACKUP):**
 
 ```bash
 sudo apt-get install -y keepalived
+
+# VM 500 — use the MASTER config
+sudo cp ~/postgres-ha/keepalived/keepalived-master.conf /etc/keepalived/keepalived.conf
+
+# VM 501 — use the BACKUP config
+sudo cp ~/postgres-ha/keepalived/keepalived-backup.conf /etc/keepalived/keepalived.conf
+
+# On both: edit interface name if needed (default is eth0)
+sudo nano /etc/keepalived/keepalived.conf
 ```
-
-**VM 500** (`/etc/keepalived/keepalived.conf`) — MASTER:
-
-```
-vrrp_script check_haproxy {
-    script "/usr/bin/docker inspect --format='{{.State.Health.Status}}' haproxy | grep -q healthy"
-    interval 3
-    weight -20
-    fall 3
-    rise 2
-}
-
-vrrp_instance VI_PG {
-    state MASTER
-    interface eth0
-    virtual_router_id 51
-    priority 100
-    advert_int 1
-
-    authentication {
-        auth_type PASS
-        auth_pass hopepgha
-    }
-
-    virtual_ipaddress {
-        10.10.1.250/24
-    }
-
-    track_script {
-        check_haproxy
-    }
-}
-```
-
-**VM 501** (`/etc/keepalived/keepalived.conf`) — BACKUP:
-
-```
-vrrp_script check_haproxy {
-    script "/usr/bin/docker inspect --format='{{.State.Health.Status}}' haproxy | grep -q healthy"
-    interval 3
-    weight -20
-    fall 3
-    rise 2
-}
-
-vrrp_instance VI_PG {
-    state BACKUP
-    interface eth0
-    virtual_router_id 51
-    priority 90
-    advert_int 1
-
-    authentication {
-        auth_type PASS
-        auth_pass hopepgha
-    }
-
-    virtual_ipaddress {
-        10.10.1.250/24
-    }
-
-    track_script {
-        check_haproxy
-    }
-}
-```
-
-> **Note**: Replace `eth0` with your actual interface name (`ip a` to check — may be `ens18` on Proxmox VMs).
 
 Start Keepalived:
 
@@ -738,12 +777,10 @@ psql -h 10.10.1.250 -p 5000 -U postgres -c "SELECT 1;"
 
 ## 10. Deploy PgBouncer (Optional)
 
-PgBouncer sits between applications and PostgreSQL, multiplexing many client connections onto fewer database connections. Recommended for any application with more than ~50 concurrent connections.
-
-PgBouncer is defined in each node's docker-compose. Start on **all 3 nodes**:
+PgBouncer is configured in [`docker-compose.yml`](./configs/postgres-ha/docker-compose.yml) under the `pgbouncer` profile. Start on **all 3 nodes**:
 
 ```bash
-docker compose up -d pgbouncer
+docker compose --profile pgbouncer up -d
 ```
 
 Verify:
@@ -753,7 +790,7 @@ Verify:
 psql -h 10.10.1.200 -p 6432 -U postgres -c "SELECT 1;"
 
 # Check PgBouncer stats
-psql -h 10.10.1.200 -p 6432 -U pgbouncer -d pgbouncer -c "SHOW POOLS;"
+psql -h 10.10.1.200 -p 6432 -U postgres -d pgbouncer -c "SHOW POOLS;"
 ```
 
 ---
@@ -762,10 +799,10 @@ psql -h 10.10.1.200 -p 6432 -U pgbouncer -d pgbouncer -c "SHOW POOLS;"
 
 The postgres_exporter exposes PostgreSQL metrics for Prometheus. Patroni 4.1.0 also exposes its own `/metrics` endpoint on port 8008.
 
-Start on **all 3 nodes**:
+Configured in [`docker-compose.yml`](./configs/postgres-ha/docker-compose.yml) under the `monitoring` profile. Start on **all 3 nodes**:
 
 ```bash
-docker compose up -d postgres-exporter
+docker compose --profile monitoring up -d
 ```
 
 Verify:
@@ -825,74 +862,326 @@ scrape_configs:
 
 ## 12. Backup with pgBackRest
 
-pgBackRest provides block-level incremental backups with parallel processing and S3 support.
+pgBackRest is bundled in the `timescaledb-ha` image. It provides block-level incremental backups with parallel processing, zstd compression, and S3 support. Backups are stored in MinIO S3 (`10.10.1.102:9000`, bucket `pgbackrest`). The config is mounted from [`pgbackrest/pgbackrest.conf`](./configs/postgres-ha/pgbackrest/pgbackrest.conf) into the container at `/etc/pgbackrest/pgbackrest.conf`. The `PGBACKREST_CONFIG` environment variable overrides the image's default path (`/home/postgres/pgdata/backup/pgbackrest.conf`). A local-disk fallback config is available at [`pgbackrest-local.conf.example`](./configs/postgres-ha/pgbackrest/pgbackrest-local.conf.example).
 
-### 12.1 Configure pgBackRest
+### How It Works
 
-On the **primary node** (wherever it is — Patroni manages this), create the pgBackRest config:
-
-```bash
-# Inside the patroni container
-docker exec -it patroni bash
-
-cat > /etc/pgbackrest/pgbackrest.conf << 'EOF'
-[global]
-repo1-path=/var/lib/pgbackrest
-repo1-retention-full=2
-repo1-retention-diff=7
-compress-type=zst
-compress-level=6
-process-max=4
-log-level-console=info
-log-level-file=detail
-start-fast=y
-delta=y
-
-[hope-cluster]
-pg1-path=/home/postgres/pgdata/data
-pg1-port=5432
-pg1-user=postgres
-EOF
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Patroni Container                                                   │
+│                                                                     │
+│  PostgreSQL ──archive_command──► pgBackRest archive-push ──► MinIO  │
+│                                                                     │
+│  Repo: MinIO S3 (10.10.1.102:9000, bucket: pgbackrest)             │
+│  Fallback: local disk /var/lib/pgbackrest (see local.conf.example) │
+│                                                                     │
+│  Cron (host) ──docker exec──► pgbackrest backup ──► MinIO           │
+│                                                                     │
+│  Restore: pgbackrest restore ──► PGDATA                             │
+│  Replicas: Patroni uses pgbackrest as create_replica_method         │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-> **For MinIO S3 backup target** (if VM 402 is available), replace `repo1-path` with:
->
-> ```ini
-> repo1-type=s3
-> repo1-s3-endpoint=10.10.1.102:9000
-> repo1-s3-bucket=pgbackrest
-> repo1-s3-key=<minio-access-key>
-> repo1-s3-key-secret=<minio-secret-key>
-> repo1-s3-region=us-east-1
-> repo1-s3-uri-style=path
-> repo1-s3-verify-tls=n
-> ```
+**Key integration points** (already configured in [`patroni/entrypoint.sh`](./configs/postgres-ha/patroni/entrypoint.sh)):
 
-### 12.2 Create Stanza and Initial Backup
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `archive_command` | `pgbackrest --stanza=hope-cluster archive-push "%p"` | Continuous WAL archiving |
+| `archive_timeout` | `60` | Force archive every 60s even if WAL not full |
+| `restore_command` | `pgbackrest --stanza=hope-cluster archive-get %f "%p"` | Replicas and PITR fetch WAL from repo |
+| `create_replica_methods` | `pgbackrest, basebackup` | Replicas bootstrap from pgBackRest first (faster), fallback to pg_basebackup |
+
+### 12.1 Prerequisites — MinIO Service Account & CA Certificate
+
+Before configuring pgBackRest, set up MinIO access:
+
+**1. Create service account and bucket** — follow [deploy-vm402-minio.md section 9b](./deploy-vm402-minio.md):
+- Create the `pgbackrest` bucket
+- Create the `pgbackrest-svc` user with a scoped policy
+- Generate access keys
+
+**2. Edit `configs/postgres-ha/pgbackrest/pgbackrest.conf`** and set:
+- `repo1-s3-key` = your MinIO access key
+- `repo1-s3-key-secret` = your MinIO secret key
+
+**3. Copy the MinIO CA certificate** into the pgbackrest config directory. The CA cert was generated during MinIO TLS setup ([deploy-vm402-minio.md section 14](./deploy-vm402-minio.md)):
 
 ```bash
-# Create the stanza
+# From the machine where you generated the MinIO certs (or from any VM that has it)
+scp ssh-minio:~/minio-certs/ca/ca.crt configs/postgres-ha/pgbackrest/minio-ca.crt
+```
+
+> The CA cert is mounted into the Patroni container at `/etc/pgbackrest/minio-ca.crt` and referenced by `repo1-storage-ca-file` in `pgbackrest.conf`. This enables proper TLS verification instead of skipping it.
+
+**4. Copy the updated config to all VMs:**
+
+```bash
+scp -r configs/postgres-ha/ db0:~/postgres-ha/
+scp -r configs/postgres-ha/ db1:~/postgres-ha/
+scp -r configs/postgres-ha/ db2:~/postgres-ha/
+```
+
+### 12.2 Verify pgBackRest Is Available
+
+```bash
+docker exec patroni pgbackrest version
+# Expected: pgBackRest 2.54.x or higher
+```
+
+### 12.3 Create Stanza and Initial Full Backup
+
+Run on the **primary node** (VM 500 if it's still the leader):
+
+```bash
+# Create the stanza (registers this cluster with pgBackRest)
 docker exec patroni pgbackrest --stanza=hope-cluster stanza-create
+
+# Verify stanza
+docker exec patroni pgbackrest --stanza=hope-cluster check
 
 # Run initial full backup
 docker exec patroni pgbackrest --stanza=hope-cluster --type=full backup
 
-# Verify
+# Check backup info
 docker exec patroni pgbackrest --stanza=hope-cluster info
 ```
 
-### 12.3 Schedule Automated Backups
+Expected output from `info`:
 
-Add cron jobs on the primary VM (or on all nodes — pgBackRest is smart enough to only backup from the primary):
+```
+stanza: hope-cluster
+    status: ok
+    cipher: none
+
+    db (current)
+        wal archive min/max (18): 000000010000000000000001/000000010000000000000005
+
+        full backup: 20260322-020000F
+            timestamp start/stop: 2026-03-22 02:00:00+00 / 2026-03-22 02:01:30+00
+            wal start/stop: 000000010000000000000003 / 000000010000000000000003
+            database size: 150MB, database backup size: 150MB
+            repo1: backup set size: 25MB, backup size: 25MB
+```
+
+### 12.4 Schedule Automated Backups
+
+Install cron on **all 3 nodes**. Each job checks if the node is the current primary before running — this way backups automatically follow the leader after failover.
 
 ```bash
-# /etc/cron.d/pgbackrest
-# Full backup every Sunday at 02:00
-0 2 * * 0 root docker exec patroni pgbackrest --stanza=hope-cluster --type=full backup >> /var/log/pgbackrest-full.log 2>&1
+# On ALL 3 VMs — create the cron file
+sudo tee /etc/cron.d/pgbackrest << 'EOF'
+# pgBackRest automated backups — only runs on the current Patroni primary
+# The pg_is_in_recovery() check ensures only the primary executes the backup
 
-# Differential backup every day at 02:00 (except Sunday)
-0 2 * * 1-6 root docker exec patroni pgbackrest --stanza=hope-cluster --type=diff backup >> /var/log/pgbackrest-diff.log 2>&1
+# Full backup — Sunday 02:00 UTC
+0 2 * * 0 root docker exec patroni bash -c 'if [ "$(psql -U postgres -tAc "SELECT NOT pg_is_in_recovery()")" = "t" ]; then pgbackrest --stanza=hope-cluster --type=full backup 2>&1 | tail -5; fi' >> /var/log/pgbackrest.log 2>&1
+
+# Differential backup — Mon-Sat 02:00 UTC
+0 2 * * 1-6 root docker exec patroni bash -c 'if [ "$(psql -U postgres -tAc "SELECT NOT pg_is_in_recovery()")" = "t" ]; then pgbackrest --stanza=hope-cluster --type=diff backup 2>&1 | tail -5; fi' >> /var/log/pgbackrest.log 2>&1
+
+# Verify backup integrity — Sunday 06:00 UTC (after full backup completes)
+0 6 * * 0 root docker exec patroni bash -c 'if [ "$(psql -U postgres -tAc "SELECT NOT pg_is_in_recovery()")" = "t" ]; then pgbackrest --stanza=hope-cluster verify 2>&1 | tail -5; fi' >> /var/log/pgbackrest.log 2>&1
+EOF
+
+sudo chmod 644 /etc/cron.d/pgbackrest
 ```
+
+**Backup schedule summary:**
+
+| Day | Time (UTC) | Type | What It Does |
+|-----|-----------|------|-------------|
+| Sunday | 02:00 | Full | Complete backup, resets the chain |
+| Mon–Sat | 02:00 | Differential | Only changes since last full |
+| Sunday | 06:00 | Verify | Integrity check of all backups |
+
+**Retention**: 2 full backups + 7 differential backups. When a full backup expires, all its dependent diffs also expire. This gives ~2 weeks of recovery window.
+
+### 12.5 Verify WAL Archiving Is Working
+
+WAL archiving should start automatically after the stanza is created:
+
+```bash
+# Check WAL archive status from PostgreSQL
+docker exec patroni psql -U postgres -c "SELECT * FROM pg_stat_archiver;"
+
+# Check pgBackRest sees the WAL files
+docker exec patroni pgbackrest --stanza=hope-cluster check
+
+# If archiving was previously set to /bin/true, apply the new config:
+docker exec patroni patronictl -c /home/postgres/postgres.yml reload hope-cluster
+```
+
+### 12.6 Fallback to Local Disk (If MinIO Is Unavailable)
+
+If MinIO is down or not yet deployed, switch to local disk storage:
+
+```bash
+# 1. On your local machine, copy the local config
+cp configs/postgres-ha/pgbackrest/pgbackrest-local.conf.example \
+   configs/postgres-ha/pgbackrest/pgbackrest.conf
+
+# 2. Copy to all VMs
+scp -r configs/postgres-ha/ db0:~/postgres-ha/
+scp -r configs/postgres-ha/ db1:~/postgres-ha/
+scp -r configs/postgres-ha/ db2:~/postgres-ha/
+
+# 3. Restart patroni on all nodes (replicas first, primary last)
+ssh db1 "cd ~/postgres-ha && docker compose up -d patroni"
+ssh db2 "cd ~/postgres-ha && docker compose up -d patroni"
+ssh db0 "cd ~/postgres-ha && docker compose up -d patroni"
+
+# 4. Re-create the stanza for the local repo
+ssh db0 "docker exec patroni pgbackrest --stanza=hope-cluster stanza-create"
+
+# 5. Run a full backup
+ssh db0 "docker exec patroni pgbackrest --stanza=hope-cluster --type=full backup"
+```
+
+> **Note**: Local disk backups are stored at `/data/pgbackrest` on each VM. This is only suitable for short-term use — backups are not replicated across nodes and are lost if the disk fails.
+
+### 12.7 Manual Backup Commands
+
+```bash
+# Full backup (complete copy — use weekly or before major changes)
+docker exec patroni pgbackrest --stanza=hope-cluster --type=full backup
+
+# Differential backup (changes since last full — use daily)
+docker exec patroni pgbackrest --stanza=hope-cluster --type=diff backup
+
+# Incremental backup (changes since last any backup — smallest, fastest)
+docker exec patroni pgbackrest --stanza=hope-cluster --type=incr backup
+
+# Check backup status
+docker exec patroni pgbackrest --stanza=hope-cluster info
+
+# Detailed JSON output (for scripting)
+docker exec patroni pgbackrest --stanza=hope-cluster info --output=json
+
+# Verify backup integrity
+docker exec patroni pgbackrest --stanza=hope-cluster verify
+```
+
+### 12.8 Restore Procedures
+
+#### Point-in-Time Recovery (PITR)
+
+Restore the database to a specific point in time (e.g., just before an accidental `DROP TABLE`):
+
+```bash
+# 1. Stop Patroni on ALL nodes
+ssh db0 "cd ~/postgres-ha && docker compose stop patroni"
+ssh db1 "cd ~/postgres-ha && docker compose stop patroni"
+ssh db2 "cd ~/postgres-ha && docker compose stop patroni"
+
+# 2. Remove the cluster state from etcd
+ssh db0 "docker exec etcd etcdctl del /service/hope-cluster --prefix"
+
+# 3. On the target primary (VM 500), restore to a specific time
+ssh db0 "docker exec patroni pgbackrest --stanza=hope-cluster \
+  --delta \
+  --type=time \
+  --target='2026-03-22 14:30:00+00' \
+  --target-action=promote \
+  restore"
+
+# 4. Clear data on replica nodes (they will re-bootstrap from the restored primary)
+ssh db1 "sudo rm -rf /data/postgresql/data/*"
+ssh db2 "sudo rm -rf /data/postgresql/data/*"
+
+# 5. Start Patroni on the primary first
+ssh db0 "cd ~/postgres-ha && docker compose up -d patroni"
+# Wait for "server is ready to accept connections" in logs
+
+# 6. Start replicas (they will bootstrap from pgBackRest or basebackup)
+ssh db1 "cd ~/postgres-ha && docker compose up -d patroni"
+ssh db2 "cd ~/postgres-ha && docker compose up -d patroni"
+
+# 7. Verify cluster
+ssh db0 "docker exec patroni patronictl -c /home/postgres/postgres.yml list"
+```
+
+#### Full Cluster Restore (Latest Backup)
+
+```bash
+# 1. Stop Patroni on ALL nodes
+ssh db0 "cd ~/postgres-ha && docker compose stop patroni"
+ssh db1 "cd ~/postgres-ha && docker compose stop patroni"
+ssh db2 "cd ~/postgres-ha && docker compose stop patroni"
+
+# 2. Remove cluster state from etcd
+ssh db0 "docker exec etcd etcdctl del /service/hope-cluster --prefix"
+
+# 3. Restore on the target primary
+ssh db0 "docker exec patroni pgbackrest --stanza=hope-cluster --delta restore"
+
+# 4. Clear replica data and start all nodes (primary first)
+ssh db1 "sudo rm -rf /data/postgresql/data/*"
+ssh db2 "sudo rm -rf /data/postgresql/data/*"
+ssh db0 "cd ~/postgres-ha && docker compose up -d patroni"
+# Wait, then:
+ssh db1 "cd ~/postgres-ha && docker compose up -d patroni"
+ssh db2 "cd ~/postgres-ha && docker compose up -d patroni"
+```
+
+#### Single Database Restore
+
+PostgreSQL physical backups cannot selectively restore a single database. Use this workaround:
+
+```bash
+# 1. Restore the full cluster to a temporary container
+docker run -d --name pg-restore-test \
+  -e PGDATA=/home/postgres/pgdata/data \
+  -v /tmp/restore-test:/home/postgres/pgdata \
+  -v ~/postgres-ha/pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro \
+  -v /data/pgbackrest:/var/lib/pgbackrest \
+  timescale/timescaledb-ha:pg18-all-amd64 bash -c "sleep infinity"
+
+# 2. Restore into the temp container
+docker exec pg-restore-test pgbackrest --stanza=hope-cluster --archive-mode=off --delta restore
+
+# 3. Start PostgreSQL (not Patroni) in the temp container
+docker exec pg-restore-test pg_ctl start -D /home/postgres/pgdata/data
+
+# 4. Dump the specific database
+docker exec pg-restore-test pg_dump -U postgres -d hope -F c -f /tmp/hope.dump
+
+# 5. Restore into production
+docker cp pg-restore-test:/tmp/hope.dump /tmp/hope.dump
+psql -h 10.10.1.250 -p 5000 -U postgres -c "DROP DATABASE IF EXISTS hope; CREATE DATABASE hope;"
+pg_restore -h 10.10.1.250 -p 5000 -U postgres -d hope /tmp/hope.dump
+
+# 6. Clean up
+docker stop pg-restore-test && docker rm pg-restore-test
+sudo rm -rf /tmp/restore-test /tmp/hope.dump
+```
+
+### 12.9 Monitoring Backups
+
+Check backup health regularly:
+
+```bash
+# Quick status check
+docker exec patroni pgbackrest --stanza=hope-cluster info
+
+# Verify integrity (reads and checksums all backup files)
+docker exec patroni pgbackrest --stanza=hope-cluster verify
+
+# Check WAL archiving is current
+docker exec patroni psql -U postgres -c \
+  "SELECT archived_count, failed_count, last_archived_wal, last_archived_time FROM pg_stat_archiver;"
+
+# Check backup repo disk usage (local repo)
+du -sh /data/pgbackrest/
+```
+
+**Warning signs to watch for:**
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `failed_count` increasing in `pg_stat_archiver` | WAL archiving failing | Check `docker logs patroni` for pgBackRest errors |
+| `last_archived_time` more than 2 minutes old | Archive lag | Check disk space, pgBackRest process |
+| `pgbackrest info` shows no recent backups | Cron not running or primary check failing | Verify cron file, check `pg_is_in_recovery()` |
+| `pgbackrest verify` reports errors | Corrupted backup files | Run a new full backup immediately |
 
 ---
 
@@ -900,22 +1189,12 @@ Add cron jobs on the primary VM (or on all nodes — pgBackRest is smart enough 
 
 ### 13.1 PostgreSQL Authentication
 
-The Patroni bootstrap config sets `scram-sha-256` for password encryption. After bootstrap, verify `pg_hba.conf`:
+The `pg_hba.conf` rules are defined in the Patroni bootstrap config (generated at startup from [`docker-compose.yml`](./configs/postgres-ha/docker-compose.yml)) under `bootstrap.pg_hba` and applied automatically at cluster initialization. A reference copy is in [`patroni/patroni.yml`](./configs/postgres-ha/patroni/patroni.yml). Password encryption is set to `scram-sha-256`.
+
+After bootstrap, verify the generated `pg_hba.conf` matches:
 
 ```bash
 docker exec patroni cat /home/postgres/pgdata/data/pg_hba.conf
-```
-
-The Patroni config generates a `pg_hba.conf` with these entries:
-
-```
-# TYPE    DATABASE    USER          ADDRESS         METHOD
-local     all         all                           peer
-host      all         all           127.0.0.1/32    scram-sha-256
-host      all         all           ::1/128         scram-sha-256
-host      replication replicator    10.10.1.0/24    scram-sha-256
-host      all         all           10.10.1.0/24    scram-sha-256
-host      all         all           0.0.0.0/0       reject
 ```
 
 ### 13.2 Create Application Databases and Users
@@ -980,7 +1259,7 @@ docker exec etcd etcdctl endpoint health --cluster \
   --endpoints=http://10.10.1.200:2379,http://10.10.1.201:2379,http://10.10.1.202:2379
 
 # 2. Patroni cluster status
-docker exec patroni patronictl -c /etc/patroni/patroni.yml list
+docker exec patroni patronictl -c /home/postgres/postgres.yml list
 
 # 3. TimescaleDB version
 psql -h 10.10.1.250 -p 5000 -U postgres -d hope -c \
@@ -1026,14 +1305,14 @@ curl -s http://10.10.1.200:8008/metrics | grep patroni
 
 ```bash
 # Switchover primary to pg-node2
-docker exec patroni patronictl -c /etc/patroni/patroni.yml switchover \
+docker exec patroni patronictl -c /home/postgres/postgres.yml switchover \
   --master pg-node1 --candidate pg-node2 --force
 
 # Verify new primary
-docker exec patroni patronictl -c /etc/patroni/patroni.yml list
+docker exec patroni patronictl -c /home/postgres/postgres.yml list
 
 # Switchover back
-docker exec patroni patronictl -c /etc/patroni/patroni.yml switchover \
+docker exec patroni patronictl -c /home/postgres/postgres.yml switchover \
   --master pg-node2 --candidate pg-node1 --force
 ```
 
@@ -1044,7 +1323,7 @@ docker exec patroni patronictl -c /etc/patroni/patroni.yml switchover \
 docker stop patroni
 
 # On VM 501 or 502 — watch failover (should take ~30-40 seconds)
-watch -n 2 'docker exec patroni patronictl -c /etc/patroni/patroni.yml list'
+watch -n 2 'docker exec patroni patronictl -c /home/postgres/postgres.yml list'
 
 # After failover, pg-node2 or pg-node3 should be the new leader
 # Applications connected via VIP (10.10.1.250:5000) should reconnect automatically
@@ -1066,7 +1345,7 @@ docker exec etcd etcdctl endpoint health --cluster \
   --endpoints=http://10.10.1.201:2379,http://10.10.1.202:2379
 
 # Patroni should continue operating normally
-docker exec patroni patronictl -c /etc/patroni/patroni.yml list
+docker exec patroni patronictl -c /home/postgres/postgres.yml list
 
 # Bring etcd back
 docker start etcd
@@ -1080,28 +1359,28 @@ docker start etcd
 
 ```bash
 # Cluster status
-docker exec patroni patronictl -c /etc/patroni/patroni.yml list
+docker exec patroni patronictl -c /home/postgres/postgres.yml list
 
 # Show cluster config
-docker exec patroni patronictl -c /etc/patroni/patroni.yml show-config
+docker exec patroni patronictl -c /home/postgres/postgres.yml show-config
 
 # Edit dynamic config
-docker exec -it patroni patronictl -c /etc/patroni/patroni.yml edit-config
+docker exec -it patroni patronictl -c /home/postgres/postgres.yml edit-config
 
 # Planned switchover
-docker exec patroni patronictl -c /etc/patroni/patroni.yml switchover
+docker exec patroni patronictl -c /home/postgres/postgres.yml switchover
 
 # Restart PostgreSQL on a specific node (applies pending config changes)
-docker exec patroni patronictl -c /etc/patroni/patroni.yml restart hope-cluster pg-node1
+docker exec patroni patronictl -c /home/postgres/postgres.yml restart hope-cluster pg-node1
 
 # Reinitialize a broken replica (destroys data on that replica and re-clones)
-docker exec patroni patronictl -c /etc/patroni/patroni.yml reinit hope-cluster pg-node2
+docker exec patroni patronictl -c /home/postgres/postgres.yml reinit hope-cluster pg-node2
 
 # Pause automatic failover (for maintenance)
-docker exec patroni patronictl -c /etc/patroni/patroni.yml pause
+docker exec patroni patronictl -c /home/postgres/postgres.yml pause
 
 # Resume automatic failover
-docker exec patroni patronictl -c /etc/patroni/patroni.yml resume
+docker exec patroni patronictl -c /home/postgres/postgres.yml resume
 ```
 
 ### Startup Order (After Full Cluster Restart)
@@ -1158,7 +1437,7 @@ The API Gateway connects through the VIP. Prisma handles connection pooling, so 
 | Symptom                                       | Likely Cause                             | Fix                                                                                    |
 | --------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------- |
 | `etcdctl: command not found` in container     | Using wrong image or entrypoint          | Verify etcd container is running: `docker ps`                                          |
-| Patroni won't start — "etcd is not reachable" | etcd not ready or wrong endpoints        | Check etcd health, verify IP addresses in patroni.yml                                  |
+| Patroni won't start — "etcd is not reachable" | etcd not ready or wrong endpoints        | Check etcd health, verify IP addresses in `.env`                                       |
 | All nodes show as "Replica"                   | No leader elected — etcd quorum lost     | Check etcd cluster health, restart etcd if needed                                      |
 | "Pending restart" on patronictl list          | Dynamic config changed, PG needs restart | Run `patronictl restart hope-cluster <node>`                                           |
 | Replication lag growing                       | Network issue or replica overloaded      | Check `pg_stat_replication`, network latency, disk I/O                                 |
@@ -1166,7 +1445,7 @@ The API Gateway connects through the VIP. Prisma handles connection pooling, so 
 | PgBouncer "Auth failed"                       | Password mismatch                        | Verify PgBouncer userlist.txt matches PG passwords                                     |
 | "FATAL: no pg_hba.conf entry"                 | Client IP not in allowed range           | Check `pg_hba.conf` via Patroni config                                                 |
 | Watchdog: "No such device"                    | softdog module not loaded                | Run `sudo modprobe softdog`, check `/dev/watchdog`                                     |
-| `FATAL: could not load library "timescaledb"` | `shared_preload_libraries` not set       | Must be in patroni.yml `postgresql.parameters` section                                 |
+| `FATAL: could not load library "timescaledb"` | `shared_preload_libraries` not set       | Already set in docker-compose.yml Patroni config — check `show-config`                 |
 | Continuous aggregates stuck after failover    | Known TimescaleDB bug #9360              | See [Known Issue](#known-issue-continuous-aggregate-refresh-jobs-after-failover) below |
 
 ### Known Issue: Continuous Aggregate Refresh Jobs After Failover
