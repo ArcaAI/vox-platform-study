@@ -174,13 +174,24 @@ async def _check_minio() -> ComponentHealth:
 
 
 async def _check_redis() -> ComponentHealth:
-    """Check Redis connectivity via the Dramatiq broker's underlying client."""
-    start = time.monotonic()
-    try:
-        from stt_v2.core.messaging.broker import get_broker
+    """Check Redis connectivity"""
+    import redis.asyncio as aioredis
 
-        broker = get_broker()
-        broker.client.ping()
+    from stt_v2.streaming._runtime import get_redis_client
+
+    start = time.monotonic()
+    owned_client: aioredis.Redis | None = None
+    try:
+        client = get_redis_client()
+        if client is None:
+            owned_client = aioredis.from_url(
+                settings.redis_url,
+                socket_connect_timeout=2,
+                socket_timeout=2,
+            )
+            client = owned_client
+
+        await client.ping()
         latency = (time.monotonic() - start) * 1000
         return ComponentHealth(
             name="redis",
@@ -196,6 +207,9 @@ async def _check_redis() -> ComponentHealth:
             latency_ms=latency,
             message=str(e)[:200],
         )
+    finally:
+        if owned_client is not None:
+            await owned_client.aclose()
 
 
 def _check_streaming() -> dict:
