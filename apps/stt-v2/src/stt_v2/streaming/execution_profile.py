@@ -92,7 +92,7 @@ def _get_cuda_vram_gb(device_index: int = 0) -> float:
         if not torch.cuda.is_available() or device_index >= torch.cuda.device_count():
             return 0.0
         props = torch.cuda.get_device_properties(device_index)
-        return round(props.total_mem / (1024**3), 1)
+        return round(props.total_memory / (1024**3), 1)
     except (ImportError, Exception):
         return 0.0
 
@@ -107,7 +107,7 @@ def _get_total_cuda_vram_gb() -> float:
         total = 0.0
         for i in range(torch.cuda.device_count()):
             props = torch.cuda.get_device_properties(i)
-            total += props.total_mem / (1024**3)
+            total += props.total_memory / (1024**3)
         return round(total, 1)
     except (ImportError, Exception):
         return 0.0
