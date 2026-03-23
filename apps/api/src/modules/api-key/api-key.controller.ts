@@ -14,6 +14,7 @@ import { Body, Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanCreate, CanRead, CanUpdate, CanDelete } from '../../decorators';
+import { CreateApiKeyResponse, ApiKeyUsageResponse } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('admin-api-keys')
@@ -37,10 +38,10 @@ export class ApiKeyController {
         returnedModel: ApiKeyResponse,
         method: HttpMethod.POST,
     })
-    @ApiResponse({ status: 201, description: 'API key created. Raw key returned only once.' })
+    @ApiResponse({ status: 201, description: 'API key created. Raw key returned only once.', type: CreateApiKeyResponse })
     @ApiResponse({ status: 400, description: 'Bad request - invalid input' })
     @CanCreate('ApiKey')
-    async create(@Body() request: CreateApiKeyRequest): Promise<{ apiKey: ApiKeyResponse; rawKey: string }> {
+    async create(@Body() request: CreateApiKeyRequest): Promise<CreateApiKeyResponse> {
         const result = await this.apiKeyService.create(request);
         return {
             apiKey: ApiKeyDtoMapper.ToResponse(result.apiKey),
@@ -131,14 +132,10 @@ export class ApiKeyController {
         by: ['id'],
     })
     @ApiParam({ name: 'id', description: 'API Key ID', type: String })
-    @ApiResponse({ status: 200, description: 'API key usage statistics' })
+    @ApiResponse({ status: 200, description: 'API key usage statistics', type: ApiKeyUsageResponse })
     @ApiResponse({ status: 404, description: 'API key not found' })
     @CanRead('ApiKey')
-    async getUsage(@Param('id') id: string): Promise<{
-        totalCalls: number;
-        lastUsedAt: Date | null;
-        rateLimit: number;
-    }> {
+    async getUsage(@Param('id') id: string): Promise<ApiKeyUsageResponse> {
         const apiKey = await this.apiKeyService.fetchById(id);
         const mapped = ApiKeyDtoMapper.ToResponse(apiKey);
         return {

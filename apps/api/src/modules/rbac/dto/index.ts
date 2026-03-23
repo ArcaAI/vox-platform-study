@@ -9,3 +9,6 @@ export * from './user-role.dto';
 
 // Permission Check DTOs
 export * from './permission-check.dto';
+
+// Extra response DTOs
+export * from './permission-extra.dto';

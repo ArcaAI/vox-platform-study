@@ -15,6 +15,7 @@ import {
     ApiTags,
 } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize } from '../../decorators';
+import { ValidateYamlRequest, ValidateYamlResponse } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('audio-pipelines')
@@ -113,10 +114,10 @@ export class AudioPipelineController {
         method: HttpMethod.POST,
         path: 'validate-yaml',
     })
-    @ApiResponse({ status: 200, description: 'YAML validation result' })
+    @ApiResponse({ status: 200, description: 'YAML validation result', type: ValidateYamlResponse })
     async validateYaml(
-        @Body() body: { yaml: string },
-    ): Promise<{ valid: boolean; errors?: string[] }> {
+        @Body() body: ValidateYamlRequest,
+    ): Promise<ValidateYamlResponse> {
         return this.pipelineService.validateYaml(body.yaml);
     }
 }

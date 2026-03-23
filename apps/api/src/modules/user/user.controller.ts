@@ -19,13 +19,13 @@ import { Controller, Body, Param, Inject, Query, Get, Patch } from '@nestjs/comm
 import {
     ApiTags,
     ApiBearerAuth,
-    ApiBody,
     ApiParam,
     ApiQuery,
     ApiResponse,
     ApiOperation,
 } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize } from '../../decorators';
+import { UpdateUserStatusRequest, BulkDeleteUsersRequest } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('admin-users')
@@ -120,22 +120,10 @@ export class UserController {
         append: '(enable/disable)',
     })
     @ApiParam({ name: 'id', description: 'User ID', type: String })
-    @ApiBody({
-        schema: {
-            type: 'object',
-            properties: {
-                resourceStatus: {
-                    type: 'string',
-                    enum: ['ENABLED', 'DISABLED'],
-                },
-            },
-            required: ['resourceStatus'],
-        },
-    })
     @ApiResponse({ status: 404, description: 'User not found' })
     async updateStatus(
         @Param('id') id: string,
-        @Body() body: { resourceStatus: string },
+        @Body() body: UpdateUserStatusRequest,
     ): Promise<UserResponse> {
         const result = await this.userService.update(id, {
             resourceStatus: body.resourceStatus,
@@ -162,17 +150,8 @@ export class UserController {
         path: 'bulk',
         append: '(bulk delete)',
     })
-    @ApiBody({
-        schema: {
-            type: 'object',
-            properties: {
-                ids: { type: 'array', items: { type: 'string' } },
-            },
-            required: ['ids'],
-        },
-    })
     async bulkDelete(
-        @Body() body: { ids: string[] },
+        @Body() body: BulkDeleteUsersRequest,
     ): Promise<UserResponse[]> {
         const results: UserResponse[] = [];
         for (const id of body.ids) {

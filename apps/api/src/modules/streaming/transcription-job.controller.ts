@@ -15,7 +15,7 @@ import {
     UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Observable } from 'rxjs';
 import type { MessageEvent } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
@@ -26,6 +26,7 @@ import {
     StreamingSessionService,
 } from '@arcaai/applications';
 import type { IActiveUserContext } from '@arcaai/applications';
+import { TranscribeFileRequest, CreateStreamSessionRequest, StreamSessionResponse } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('transcription-jobs')
@@ -90,13 +91,7 @@ export class TranscriptionJobController {
     @UseInterceptors(FileInterceptor('file'))
     async transcribeFile(
         @UploadedFile() file: Express.Multer.File,
-        @Body() body: {
-            pipelineId: string;
-            consultationId?: string;
-            language?: string;
-            codeSwitching?: string;
-            diarization?: string;
-        },
+        @Body() body: TranscribeFileRequest,
     ) {
         const job = await this.jobService.createStreamingJob({
             pipelineId: body.pipelineId,
@@ -227,15 +222,9 @@ export class TranscriptionJobController {
     @Post('stream/session')
     @HttpCode(201)
     @ApiOperation({ summary: 'Create a WebSocket streaming session' })
+    @ApiResponse({ status: 201, description: 'Streaming session created', type: StreamSessionResponse })
     async createStreamSession(
-        @Body() body: {
-            pipelineId: string;
-            consultationId?: string;
-            sampleRate?: number;
-            language?: string;
-            codeSwitching?: boolean;
-            diarization?: boolean;
-        },
+        @Body() body: CreateStreamSessionRequest,
     ) {
         const sessionId = uuidv7();
         const tenantId = this.getTenantId();

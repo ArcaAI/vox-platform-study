@@ -14,6 +14,7 @@ import {
     CheckPermissionsBulkDto,
     CheckPermissionResponse,
     CheckPermissionsBulkResponse,
+    MyPermissionsResponse,
 } from './dto';
 
 /**
@@ -170,12 +171,8 @@ export class PermissionCheckController {
     @Post('my-permissions')
     @Authorize()
     @ApiOperation({ summary: 'Get current user\'s effective permissions' })
-    @ApiResponse({ status: 200, description: 'User\'s effective permissions' })
-    async getMyPermissions(): Promise<{
-        userId: string;
-        tenantId?: string;
-        permissions: Array<{ action: string; subject: string; conditions?: unknown }>;
-    }> {
+    @ApiResponse({ status: 200, description: 'User\'s effective permissions', type: MyPermissionsResponse })
+    async getMyPermissions(): Promise<MyPermissionsResponse> {
         const currentUser = this.cls.get('user');
 
         if (!currentUser) {

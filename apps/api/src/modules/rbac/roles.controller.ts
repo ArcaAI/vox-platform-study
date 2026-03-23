@@ -28,6 +28,7 @@ import {
     AssignPolicyToRoleDto,
     RoleResponse,
     PaginatedRoleResponse,
+    AssignPolicyResponse,
 } from './dto';
 
 /**
@@ -453,13 +454,13 @@ export class RolesController {
     @Post(':roleId/policies/:policyId')
     @CanManage('RolePolicy')
     @ApiOperation({ summary: 'Assign a policy to a role' })
-    @ApiResponse({ status: 201, description: 'Policy assigned to role' })
+    @ApiResponse({ status: 201, description: 'Policy assigned to role', type: AssignPolicyResponse })
     @ApiResponse({ status: 404, description: 'Role or policy not found' })
     async assignPolicy(
         @Param('roleId') roleId: string,
         @Param('policyId') policyId: string,
         @Body() dto: AssignPolicyToRoleDto,
-    ): Promise<{ message: string }> {
+    ): Promise<AssignPolicyResponse> {
         const prisma = this.databaseService.client;
         const user = this.cls.get('user');
 
