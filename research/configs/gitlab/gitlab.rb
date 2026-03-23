@@ -254,6 +254,15 @@ gitlab_rails['object_store']['objects']['ci_secure_files']['bucket'] = 'gitlab-c
 gitlab_rails['object_store']['objects']['pages']['bucket'] = 'gitlab-pages'
 gitlab_rails['object_store']['objects']['dependency_proxy']['bucket'] = 'gitlab-dependency-proxy'
 
+### Registry metadata database (GitLab 18.3+)
+### Stores manifest/tag metadata in PostgreSQL instead of parsing S3 on every
+### request. Enables OCI manifest support, online GC, and fixes the
+### "Invalid tag: missing manifest digest" UI issue with BuildKit images.
+### See: docs.gitlab.com/administration/packages/container_registry_metadata_database
+registry['database'] = {
+  'enabled' => true
+}
+
 ### Registry on MinIO (separate from consolidated config)
 registry['storage'] = {
   's3' => {
@@ -267,6 +276,8 @@ registry['storage'] = {
   'delete' => { 'enabled' => true },
   'redirect' => { 'disable' => true }
 }
+### Registry TLS — trust system CA store (includes MinIO self-signed CA)
+registry['env'] = { 'SSL_CERT_DIR' => '/etc/ssl/certs' }
 
 ### Backups to MinIO
 gitlab_rails['backup_upload_connection'] = {

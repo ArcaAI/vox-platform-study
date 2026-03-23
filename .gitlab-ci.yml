@@ -5,6 +5,7 @@ stages:
 variables:
   DOCKER_HOST: unix:///var/run/docker.sock
   DOCKER_TLS_CERTDIR: ""
+  DOCKER_BUILDKIT: "1"
   REGISTRY: 10.10.1.110:5050
   GITHUB_REPO_URL: "https://github.com/4bits-vn/project-hope-v2.git"
   GITHUB_BACKUP_BRANCH: "back-up"
@@ -13,6 +14,7 @@ workflow:
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+/
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
 
 # ── TEMPLATE ─────────────────────────────────────────────────────────────────
 
@@ -20,6 +22,7 @@ workflow:
   stage: build
   tags: [build]
   image: docker:27
+  timeout: 30m
   variables:
     SERVICE_NAME: ""
     DOCKER_CONTEXT: "."
@@ -28,17 +31,35 @@ workflow:
     BUILD_ARGS: ""
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$REGISTRY"
+    - |
+      printf '[registry."%s"]\nhttp = true\ninsecure = true\n' "$REGISTRY" > /tmp/buildkitd.toml
+      if ! docker buildx inspect cibuilder >/dev/null 2>&1; then
+        docker buildx create --name cibuilder --driver docker-container \
+          --config /tmp/buildkitd.toml
+      fi
+      docker buildx use cibuilder
+      docker buildx inspect --bootstrap
   script:
     - |
       set -eu
 
       image_repo="$REGISTRY/$CI_PROJECT_PATH/$SERVICE_NAME"
+      cache_repo="$image_repo/cache"
+      short_sha=$(echo "$CI_COMMIT_SHA" | cut -c1-8)
+      created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-      # Compute tag based on trigger type
+      # ── Compute tags ──────────────────────────────────────────────────
+      #   Semver tag:      1.2.3  + latest + <sha>
+      #   Default branch:  main-<sha> + <sha> + latest
+      #   Feature branch:  devops-foo-<sha> + <sha>   (no latest)
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
-        IMAGE_TAG="${CI_COMMIT_TAG#v}"      # v1.0.0 → 1.0.0
+        SEMVER_TAG="${CI_COMMIT_TAG#v}"
+        TAGS="$SEMVER_TAG latest $short_sha"
+      elif [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        TAGS="main-${short_sha} ${short_sha} latest"
       else
-        IMAGE_TAG="latest"                  # dev branch
+        BRANCH_SLUG=$(echo "$CI_COMMIT_BRANCH" | sed 's/[^a-zA-Z0-9]/-/g')
+        TAGS="${BRANCH_SLUG}-${short_sha} ${short_sha}"
       fi
 
       build_target_arg=""
@@ -46,18 +67,38 @@ workflow:
         build_target_arg="--target $BUILD_TARGET"
       fi
 
-      echo "Building service=$SERVICE_NAME tag=$IMAGE_TAG context=$DOCKER_CONTEXT"
-      docker build \
+      # ── Build tag list for buildx --tag flags ─────────────────────────
+      tag_args=""
+      for tag in $TAGS; do
+        tag_args="$tag_args --tag $image_repo:$tag"
+      done
+
+      primary_tag=$(echo "$TAGS" | awk '{print $1}')
+      echo "Building service=$SERVICE_NAME primary_tag=$primary_tag all_tags=$TAGS"
+      echo "  commit=$CI_COMMIT_SHA branch=${CI_COMMIT_BRANCH:-} git_tag=${CI_COMMIT_TAG:-}"
+
+      # ── Build + push with registry cache ──────────────────────────────
+      # mode=max caches ALL intermediate stages (deps, builder, etc.),
+      # not just the final target. This means apt-get, uv pip install,
+      # and torch download layers are reused across CI runs.
+      docker buildx build \
+        --push \
+        --cache-from type=registry,ref=$cache_repo \
+        --cache-to   type=registry,ref=$cache_repo,mode=max,compression=zstd \
         --label org.opencontainers.image.source=$CI_PROJECT_URL \
         --label org.opencontainers.image.revision=$CI_COMMIT_SHA \
-        --label org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+        --label org.opencontainers.image.created=$created_at \
+        --label org.opencontainers.image.version=$primary_tag \
         $build_target_arg \
         $BUILD_ARGS \
+        $tag_args \
         -f "$DOCKERFILE" \
-        -t "$image_repo:$IMAGE_TAG" \
         "$DOCKER_CONTEXT"
 
-      docker push "$image_repo:$IMAGE_TAG"
+      echo "  pushed tags:"
+      for tag in $TAGS; do
+        echo "    $image_repo:$tag"
+      done
 
 # ── JOBS ─────────────────────────────────────────────────────────────
 
@@ -69,6 +110,7 @@ api:
     DOCKERFILE: apps/api/Dockerfile
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - apps/api/**/*
@@ -91,6 +133,7 @@ ui-playground:
     BUILD_ARGS: "--build-arg VITE_API_URL=$VITE_API_URL"
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - apps/ui-playground/**/*
@@ -110,6 +153,7 @@ nlp:
     DOCKERFILE: apps/nlp/Dockerfile
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - apps/nlp/**/*
@@ -122,6 +166,7 @@ smr:
     DOCKERFILE: apps/smr/Dockerfile
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - apps/smr/**/*
@@ -135,6 +180,7 @@ stt-v2:
     BUILD_TARGET: ml-runtime
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - apps/stt-v2/**/*
@@ -148,6 +194,7 @@ stt-v2-worker:
     BUILD_TARGET: worker
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - apps/stt-v2/**/*
@@ -160,6 +207,7 @@ database:
     DOCKERFILE: packages/database/Dockerfile
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - packages/database/**/*
@@ -178,15 +226,11 @@ github-backup:
     - |
       set -eu
       
-      # Repository is already cloned by GitLab Runner
-      # Add GitHub remote with authentication
-      GITHUB_AUTH_URL="https://VuVux520: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@github.com/4bits-vn/project-hope-v2.git"
+      GITHUB_AUTH_URL="https://${GITHUB_BACKUP_USER}:${GITHUB_BACKUP_TOKEN}@github.com/4bits-vn/project-hope-v2.git"
       git remote add github $GITHUB_AUTH_URL
       
-      # Fetch existing branches from GitHub
       git fetch github
       
-      # Check if backup branch exists on GitHub
       if git show-ref --verify --quiet refs/remotes/github/$GITHUB_BACKUP_BRANCH; then
         echo "Branch $GITHUB_BACKUP_BRANCH exists on GitHub, checking out..."
         git checkout -b $GITHUB_BACKUP_BRANCH github/$GITHUB_BACKUP_BRANCH
@@ -196,7 +240,6 @@ github-backup:
         git checkout -b $GITHUB_BACKUP_BRANCH
       fi
       
-      # Push to GitHub
       git push github $GITHUB_BACKUP_BRANCH --force
       
       echo "Successfully pushed changes to GitHub branch: $GITHUB_BACKUP_BRANCH"
