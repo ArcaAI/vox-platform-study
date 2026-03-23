@@ -65,8 +65,8 @@ spec:
               memory: "16Gi"
               nvidia.com/gpu: "1"
             limits:
-              cpu: "12"
-              memory: "48Gi"
+              cpu: "8"
+              memory: "32Gi"
               nvidia.com/gpu: "1"
   volumeClaimTemplates:
     - apiVersion: v1
