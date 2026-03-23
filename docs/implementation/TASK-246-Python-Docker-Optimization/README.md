@@ -95,3 +95,53 @@ Large Docker images increase deployment time, storage costs, and CI/CD pipeline 
 |------|-------------|-------|
 | 2026-03-23 | Initial optimization of all Python Dockerfiles | See files changed above |
 | 2026-03-23 | Replace `latest`-only tagging with commit-pinned multi-tag strategy | `.gitlab-ci.yml`, `apps/stt-v2/Makefile`, `apps/stt-v2/scripts/validate-build.sh` |
+| 2026-03-23 | Phase 2: Comprehensive review & optimization pass | See below |
+
+### Phase 2: Review & Optimization (2026-03-23)
+
+Comprehensive review against 2025-2026 Docker best practices with research from official uv docs, PythonSpeed, and BuildKit documentation.
+
+#### SMR Dockerfile (`apps/smr/Dockerfile`)
+- Added `# syntax=docker/dockerfile:1` BuildKit directive
+- Upgraded base from `python:3.11-slim` to `python:3.11-slim-trixie` (latest Debian)
+- Added `UV_COMPILE_BYTECODE=1`, `UV_LINK_MODE=copy`, `UV_PYTHON_DOWNLOADS=never`
+- Replaced `COPY pyproject.toml uv.lock` with `--mount=type=bind` for dependency layer
+- Added `--no-editable` flag to prevent broken `.pth` references
+- Added apt cache mounts (`--mount=type=cache,target=/var/cache/apt,sharing=locked`)
+- Fixed cleanup: removed `*.dist-info` from exclusion list (breaks `importlib.metadata`)
+- Added `PATH="/app/.venv/bin:$PATH"` for proper venv activation
+- Increased healthcheck `start-period` from 10s to 30s
+- Changed healthcheck to exec form (JSON array) for proper signal handling
+
+#### NLP Dockerfile (`apps/nlp/Dockerfile`)
+- Replaced hardcoded `uv pip install` with lockfile-based `uv sync --locked` for reproducible builds
+- `editdistpy` build issue now handled by `[tool.uv.extra-build-dependencies]` in pyproject.toml
+- Replaced distroless production stage with `python:3.11-slim-trixie` + non-root user for better operability
+- Added healthcheck to production stage (was missing — distroless had no shell)
+- Increased debug healthcheck `start-period` from 5s to 60s (spaCy model loading)
+- Replaced `curl` healthcheck with `python -c urllib` (removes 9.3MB curl dependency)
+- Added `PATH` env var for proper venv activation in production stage
+
+#### STT-V2 Dockerfile (`apps/stt-v2/docker/Dockerfile`)
+- Added `# syntax=docker/dockerfile:1` BuildKit directive
+- Replaced `rm -rf /var/lib/apt/lists/*` with `--mount=type=cache,target=/var/cache/apt,sharing=locked` across all stages (builder, ml-builder, gpu-builder, cpu-runtime-base, ml-runtime)
+
+#### GitLab CI (`.gitlab-ci.yml`)
+- **SECURITY FIX**: Removed hardcoded GitHub PAT, replaced with `$GITHUB_BACKUP_USER` / `$GITHUB_BACKUP_TOKEN` CI variables
+- Added `compression=zstd` to registry cache for 30-50% faster cache push/pull
+
+#### .dockerignore Files
+- Standardized SMR and NLP `.dockerignore` to match STT-V2 structure
+- Added CI/CD exclusions (`.github/`, `.gitlab-ci.yml`) to all services
+- Added `.gitattributes` exclusion
+
+#### Files Modified
+| File | Change Type |
+|------|-------------|
+| `apps/smr/Dockerfile` | Optimized |
+| `apps/smr/.dockerignore` | Standardized |
+| `apps/nlp/Dockerfile` | Rewritten |
+| `apps/nlp/.dockerignore` | Standardized |
+| `apps/stt-v2/docker/Dockerfile` | Optimized |
+| `apps/stt-v2/.dockerignore` | Updated |
+| `.gitlab-ci.yml` | Security fix + optimization |

@@ -1,8 +1,15 @@
-# Version control
+# =============================================================================
+# SMR Docker Build Context Exclusions
+# =============================================================================
+# Keeps the build context small and prevents secrets/dev artifacts from leaking
+# into the image. The Dockerfile only needs: pyproject.toml, uv.lock, src/
+
+# --- Version control ---
 .git
 .gitignore
+.gitattributes
 
-# Python artifacts
+# --- Python artifacts ---
 __pycache__
 *.pyc
 *.pyo
@@ -13,13 +20,13 @@ dist/
 build/
 .eggs/
 
-# Virtual environments
+# --- Virtual environments ---
 .venv/
 venv/
 env/
 .conda/
 
-# IDE / editor
+# --- IDE / editor ---
 .vscode/
 .idea/
 *.swp
@@ -27,28 +34,33 @@ env/
 *~
 .DS_Store
 
-# Test & coverage
+# --- Test & coverage ---
+tests/
 .pytest_cache/
 .coverage
 coverage.xml
 htmlcov/
 
-# Environment & secrets
+# --- Environment & secrets ---
 .env
 .env.*
 !.env.example
 
-# Docker (avoid recursive context)
+# --- Docker (avoid recursive context) ---
 docker-compose*.yml
 
-# Lock files & dev configs
+# --- Dev configs ---
 Makefile
 
-# Documentation
+# --- CI/CD ---
+.github/
+.gitlab-ci.yml
+
+# --- Documentation ---
 docs/
 *.md
 !README.md
 
-# Misc
+# --- Misc ---
 *.log
 *.tmp
