@@ -64,11 +64,14 @@ help:
 	@echo "  type-check      Run type checking (mypy)"
 	@echo ""
 	@echo "Docker:"
-	@echo "  docker-build    Build runtime Docker image"
-	@echo "  docker-build-ml Build ML runtime Docker image"
-	@echo "  docker-run      Run service in Docker"
-	@echo "  docker-stop     Stop Docker container"
-	@echo "  validate-build  Validate Docker build"
+	@echo "  docker-build        Build runtime Docker image (no ML)"
+	@echo "  docker-build-ml     Build ML runtime Docker image (GPU/CUDA)"
+	@echo "  docker-build-ml-cpu Build ML runtime Docker image (CPU only)"
+	@echo "  docker-build-worker Build Dramatiq worker image (GPU)"
+	@echo "  docker-build-worker-cpu Build Dramatiq worker image (CPU)"
+	@echo "  docker-run          Run service in Docker"
+	@echo "  docker-stop         Stop Docker container"
+	@echo "  validate-build      Validate Docker build"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  clean           Clean build artifacts"
@@ -328,10 +331,24 @@ docker-build-ml:
 		-f docker/Dockerfile \
 		.
 
+docker-build-ml-cpu:
+	docker build \
+		--target ml-runtime-cpu \
+		-t $(DOCKER_IMAGE):$(DOCKER_TAG)-ml-cpu \
+		-f docker/Dockerfile \
+		.
+
 docker-build-worker:
 	docker build \
 		--target worker \
 		-t $(DOCKER_IMAGE):$(DOCKER_TAG)-worker \
+		-f docker/Dockerfile \
+		.
+
+docker-build-worker-cpu:
+	docker build \
+		--target worker-cpu \
+		-t $(DOCKER_IMAGE):$(DOCKER_TAG)-worker-cpu \
 		-f docker/Dockerfile \
 		.
 
@@ -418,6 +435,11 @@ ci-build:
 	docker build \
 		--target runtime \
 		-t $(DOCKER_IMAGE):$(DOCKER_TAG) \
+		-f docker/Dockerfile \
+		.
+	docker build \
+		--target ml-runtime-cpu \
+		-t $(DOCKER_IMAGE):$(DOCKER_TAG)-ml-cpu \
 		-f docker/Dockerfile \
 		.
 	docker build \

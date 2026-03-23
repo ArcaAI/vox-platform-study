@@ -1,131 +1,135 @@
 # -- Builder stage --
 FROM python:3.11-slim AS builder
 
-# Build optimization environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PIP_NO_CACHE_DIR=1
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install build dependencies with version pinning for security
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential=12.* \
-    libasound2-dev=1.* \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    build-essential \
+    libasound2-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install uv package manager with specific version for reproducibility
-RUN pip install --no-cache-dir uv==0.4.29
+COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /bin/
 
-# Set working directory
 WORKDIR /app
 
-# Copy dependency files for better layer caching
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies and create a clean virtual environment
-RUN uv sync --frozen --no-dev
-
-# Create a minimal Python installation directory with better cleanup
-RUN mkdir -p /opt/app && \
-    cp -r /app/.venv /opt/app/ && \
-    find /opt/app/.venv -name "*.pyc" -delete && \
-    find /opt/app/.venv -name "__pycache__" -type d -exec rm -rf {} + || true && \
-    find /opt/app/.venv -name "*.pyo" -delete
+# Use uv pip install (system-wide) instead of uv sync because editdistpy
+# (symspellpy dep) requires pkg_resources at build time but doesn't declare it.
+# uv pip install --system avoids the build-isolation issue.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system --no-cache \
+        "fastapi>=0.133.0" \
+        "uvicorn[standard]>=0.41.0" \
+        "pydantic>=2.12.5" \
+        "pydantic-settings>=2.13.1" \
+        "spacy>=3.8.0" \
+        "transformers>=4.48.0" \
+        "torch>=2.1.0" \
+        "numpy>=2.0.0" \
+        "pandas>=2.1.0" \
+        "scikit-learn>=1.3.0" \
+        "aiofiles>=25.1.0" \
+        "python-multipart>=0.0.22" \
+        "httpx>=0.28.1" \
+        "python-jose[cryptography]>=3.3.0" \
+        "passlib[bcrypt]>=1.7.4" \
+        "symspellpy>=6.9.0" \
+        "prometheus-fastapi-instrumentator>=7.1.0" \
+        "opentelemetry-api>=1.39.1" \
+        "opentelemetry-sdk>=1.39.1" \
+        "opentelemetry-instrumentation>=0.60b1" \
+        "opentelemetry-instrumentation-fastapi>=0.60b1" \
+        "opentelemetry-instrumentation-logging>=0.60b1" \
+        "opentelemetry-exporter-otlp>=1.39.0" \
+        "opentelemetry-exporter-jaeger-thrift>=1.21.0" \
+        "deprecated>=1.2.18" \
+    && find /usr/local/lib/python3.11/site-packages \( \
+        -name "*.pyc" -o -name "*.pyo" -o -name "__pycache__" \
+        -o -name "*.egg-info" \
+    \) -exec rm -rf {} + 2>/dev/null; \
+    find /usr/local/lib/python3.11/site-packages -name "*.so" \
+        -exec strip --strip-unneeded {} + 2>/dev/null; \
+    rm -rf /usr/local/lib/python3.11/site-packages/nvidia \
+           /usr/local/lib/python3.11/site-packages/torch/lib/libtorch_cuda*.so \
+           /usr/local/lib/python3.11/site-packages/torch/lib/libcudnn*.so* \
+           /usr/local/lib/python3.11/site-packages/torch/lib/libnccl*.so* \
+           /usr/local/lib/python3.11/site-packages/torch/lib/libcublas*.so* \
+           /usr/local/lib/python3.11/site-packages/torch/lib/libcufft*.so* \
+           /usr/local/lib/python3.11/site-packages/torch/lib/libcurand*.so* \
+           /usr/local/lib/python3.11/site-packages/torch/lib/libcusparse*.so* \
+           /usr/local/lib/python3.11/site-packages/torch/lib/libcusolver*.so* \
+    2>/dev/null; true
 
 # -- Debug stage (optional for development) --
 FROM python:3.11-slim AS debug
 
-# Copy virtual environment from builder
-COPY --from=builder /opt/app/.venv /app/.venv
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Install minimal debugging tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl=7.* \
-    procps=2:* \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    curl \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy source code
 COPY src/nlp/ /app/src/
 
 WORKDIR /app
 
-# Add virtual environment to Python path
-ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app"
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH="/app" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
-# Create non-root user for security
 RUN groupadd --gid 1001 nlpuser && \
     useradd --uid 1001 --gid nlpuser --shell /bin/bash --create-home nlpuser && \
     chown -R nlpuser:nlpuser /app
 
 USER nlpuser
 
-# Expose port
 EXPOSE 8864
 
-# Health check for debug builds
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8864/api/v1/health || exit 1
 
-# Use Python entrypoint
-ENTRYPOINT ["/usr/bin/python3", "/app/src/main.py"]
+ENTRYPOINT ["python", "-m", "nlp.main"]
 
 # -- Production stage --
-FROM gcr.io/distroless/python3-debian12:latest AS production
+FROM gcr.io/distroless/python3-debian12:nonroot AS production
 
-# Add comprehensive build metadata
-LABEL maintainer="HOPE Team"
-LABEL service="nlp"
-LABEL version="1.0.0"
-LABEL description="HOPE NLP Service"
-LABEL stage="production"
-LABEL org.opencontainers.image.title="HOPE NLP Service"
-LABEL org.opencontainers.image.description="Real-time NLP service with Azure Cognitive Services"
-LABEL org.opencontainers.image.version="1.0.0"
-LABEL org.opencontainers.image.vendor="HOPE Team"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL maintainer="HOPE Team" \
+    service="nlp" \
+    version="1.0.0" \
+    description="HOPE NLP Service" \
+    stage="production" \
+    org.opencontainers.image.title="HOPE NLP Service" \
+    org.opencontainers.image.description="Real-time NLP service with Azure Cognitive Services" \
+    org.opencontainers.image.version="1.0.0" \
+    org.opencontainers.image.vendor="HOPE Team" \
+    org.opencontainers.image.licenses="MIT" \
+    org.opencontainers.image.expose.8864/tcp="NLP Service API"
 
-# Set secure environment variables
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONHASHSEED=random
+ENV PYTHONPATH="/usr/local/lib/python3.11/site-packages:/app" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONHASHSEED=random
 
-# Observability environment variables with consistent naming
-ENV OTEL_SERVICE_NAME=hope-nlp
-ENV OTEL_SERVICE_VERSION=1.0.0
-ENV OTEL_RESOURCE_ATTRIBUTES=service.name=hope-nlp,service.version=1.0.0,service.namespace=hope,deployment.environment=production
-ENV OTEL_TRACES_ENABLED=true
-ENV OTEL_METRICS_ENABLED=true
-ENV LOG_LEVEL=info
+ENV OTEL_SERVICE_NAME=hope-nlp \
+    OTEL_SERVICE_VERSION=1.0.0 \
+    OTEL_RESOURCE_ATTRIBUTES=service.name=hope-nlp,service.version=1.0.0,service.namespace=hope,deployment.environment=production \
+    OTEL_TRACES_ENABLED=true \
+    OTEL_METRICS_ENABLED=true \
+    LOG_LEVEL=info
 
-# Copy the virtual environment from builder with proper ownership
-COPY --from=builder --chown=1001:1001 /opt/app/.venv /app/.venv
+COPY --from=builder --chown=65534:65534 /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --chown=65534:65534 src/ /app/src/
 
-# Copy source code with proper ownership
-COPY --chown=1001:1001 src/ /app/src/
-
-# Set working directory
 WORKDIR /app
 
-# Switch to non-root user (distroless uses numeric IDs)
-USER 1001
+USER 65534
 
-# Add virtual environment to Python path
-ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app"
-
-# Expose port with documentation
 EXPOSE 8864
 
-# Add metadata about the exposed port
-LABEL org.opencontainers.image.expose.8864/tcp="NLP Service API"
-
-# Note: Distroless doesn't have curl, so we remove healthcheck for production
-# Use external monitoring instead (Kubernetes liveness/readiness probes)
-# Kubernetes probe endpoints: /api/health (liveness), /api/health?detailed=true (readiness)
-
-# Use the distroless Python entrypoint with explicit path
 ENTRYPOINT ["/usr/bin/python3", "/app/src/main.py"]
