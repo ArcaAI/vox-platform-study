@@ -19,6 +19,18 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CanRead, CanCreate, CanUpdate, CanDelete } from '../../decorators';
+import {
+    CreateBucketRequest,
+    CreateBucketResponse,
+    UpdateBucketRequest,
+    UpdateBucketResponse,
+    BucketInfoResponse,
+    DeleteBucketResponse,
+    BucketWithFilesResponse,
+    FileUploadResponse,
+    FileInfoResponse,
+    DeleteFileResponse,
+} from './dto';
 
 @ApiBearerAuth()
 @ApiTags('storage')
@@ -32,19 +44,19 @@ export class StorageController {
 
     @Get('buckets')
     @ApiOperation({ summary: 'List all storage buckets' })
-    @ApiResponse({ status: 200, description: 'List of all buckets' })
+    @ApiResponse({ status: 200, description: 'List of all buckets', type: [BucketInfoResponse] })
     @CanRead('Storage')
-    async listBuckets(): Promise<{ name: string; creationDate?: string }[]> {
+    async listBuckets(): Promise<BucketInfoResponse[]> {
         return this.s3Service.listAllBuckets();
     }
 
     @Post('buckets')
     @ApiOperation({ summary: 'Create a new storage bucket' })
-    @ApiResponse({ status: 201, description: 'Bucket created' })
+    @ApiResponse({ status: 201, description: 'Bucket created', type: CreateBucketResponse })
     @CanCreate('Storage')
     async createBucket(
-        @Body() body: { name: string; type?: string },
-    ): Promise<{ name: string; created: boolean }> {
+        @Body() body: CreateBucketRequest,
+    ): Promise<CreateBucketResponse> {
         if (!body.name?.trim()) {
             throw new BadRequestException('Bucket name is required');
         }
@@ -58,9 +70,9 @@ export class StorageController {
     @Delete('buckets/:name')
     @ApiOperation({ summary: 'Delete a storage bucket' })
     @ApiParam({ name: 'name', description: 'Bucket name', type: String })
-    @ApiResponse({ status: 200, description: 'Bucket deleted' })
+    @ApiResponse({ status: 200, description: 'Bucket deleted', type: DeleteBucketResponse })
     @CanDelete('Storage')
-    async deleteBucket(@Param('name') name: string): Promise<{ name: string; deleted: boolean }> {
+    async deleteBucket(@Param('name') name: string): Promise<DeleteBucketResponse> {
         if (/[.]{2}|[/\\]/.test(name)) {
             throw new BadRequestException('Invalid bucket name');
         }
@@ -71,12 +83,12 @@ export class StorageController {
     @Patch('buckets/:name')
     @ApiOperation({ summary: 'Update bucket metadata' })
     @ApiParam({ name: 'name', description: 'Bucket name', type: String })
-    @ApiResponse({ status: 200, description: 'Bucket metadata updated' })
+    @ApiResponse({ status: 200, description: 'Bucket metadata updated', type: UpdateBucketResponse })
     @CanUpdate('Storage')
     async updateBucket(
         @Param('name') name: string,
-        @Body() body: { description?: string; resourceStatus?: string },
-    ): Promise<{ name: string; description?: string; resourceStatus?: string }> {
+        @Body() body: UpdateBucketRequest,
+    ): Promise<UpdateBucketResponse> {
         if (/[.]{2}|[/\\]/.test(name)) {
             throw new BadRequestException('Invalid bucket name');
         }
@@ -86,9 +98,9 @@ export class StorageController {
     @Get('buckets/:name')
     @ApiOperation({ summary: 'Get bucket info' })
     @ApiParam({ name: 'name', description: 'Bucket name', type: String })
-    @ApiResponse({ status: 200, description: 'Bucket info' })
+    @ApiResponse({ status: 200, description: 'Bucket info', type: BucketWithFilesResponse })
     @CanRead('Storage')
-    async getBucket(@Param('name') name: string): Promise<{ name: string; files: unknown[] }> {
+    async getBucket(@Param('name') name: string): Promise<BucketWithFilesResponse> {
         if (/[.]{2}|[/\\]/.test(name)) {
             throw new BadRequestException('Invalid bucket name');
         }
@@ -113,7 +125,7 @@ export class StorageController {
     @ApiOperation({ summary: 'Upload file to bucket' })
     @ApiParam({ name: 'name', description: 'Bucket name', type: String })
     @ApiConsumes('multipart/form-data')
-    @ApiResponse({ status: 201, description: 'File uploaded' })
+    @ApiResponse({ status: 201, description: 'File uploaded', type: FileUploadResponse })
     @UseInterceptors(FileInterceptor('file'))
     @CanCreate('Storage')
     async uploadFile(
@@ -128,7 +140,7 @@ export class StorageController {
         )
         file: Express.Multer.File,
         @Query('key') key?: string,
-    ): Promise<{ key: string; size: number; contentType: string }> {
+    ): Promise<FileUploadResponse> {
         const fileKey = key || file.originalname;
         if (/[.]{2}|[/\\]/.test(fileKey)) {
             throw new BadRequestException('Invalid file key: path traversal not allowed');
@@ -145,12 +157,12 @@ export class StorageController {
     @ApiOperation({ summary: 'Get file info with presigned download URL' })
     @ApiParam({ name: 'name', description: 'Bucket name', type: String })
     @ApiParam({ name: 'key', description: 'File key/path', type: String })
-    @ApiResponse({ status: 200, description: 'File info with presigned download URL' })
+    @ApiResponse({ status: 200, description: 'File info with presigned download URL', type: FileInfoResponse })
     @CanRead('Storage')
     async getFileInfo(
         @Param('name') bucketName: string,
         @Param('key') key: string,
-    ): Promise<{ key: string; url: string }> {
+    ): Promise<FileInfoResponse> {
         const url = await this.s3Service.signUrl(bucketName, key, 'get');
         return { key, url };
     }
@@ -159,12 +171,12 @@ export class StorageController {
     @ApiOperation({ summary: 'Delete file from bucket' })
     @ApiParam({ name: 'name', description: 'Bucket name', type: String })
     @ApiParam({ name: 'key', description: 'File key/path', type: String })
-    @ApiResponse({ status: 200, description: 'File deleted' })
+    @ApiResponse({ status: 200, description: 'File deleted', type: DeleteFileResponse })
     @CanDelete('Storage')
     async deleteFile(
         @Param('name') bucketName: string,
         @Param('key') key: string,
-    ): Promise<{ deleted: boolean; key: string }> {
+    ): Promise<DeleteFileResponse> {
         await this.s3Service.deleteFile(bucketName, key);
         return { deleted: true, key };
     }

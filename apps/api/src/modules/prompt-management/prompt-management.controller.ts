@@ -16,6 +16,7 @@ import {
     ApiResponse,
 } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize } from '../../decorators';
+import { PaginatedPromptTemplateResponse, PromptUsageStatsResponse } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('prompt-templates')
@@ -48,7 +49,7 @@ export class PromptManagementController {
     @ApiQuery({ name: 'limit', required: false, type: Number })
     async list(
         @Query() queryParams: { category?: string; departmentId?: string; search?: string; includeDisabled?: string; page?: number; limit?: number },
-    ): Promise<{ data: PromptTemplateResponse[]; count: number; limit: number; page: number }> {
+    ): Promise<PaginatedPromptTemplateResponse> {
         const templates = await this.promptService.listPromptTemplates({
             category: queryParams.category,
             departmentId: queryParams.departmentId,
@@ -141,9 +142,10 @@ export class PromptManagementController {
     @Get(':id/usage')
     @ApiOperation({ summary: 'Get usage statistics for a prompt template' })
     @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
+    @ApiResponse({ status: 200, description: 'Usage statistics', type: PromptUsageStatsResponse })
     async getUsageStats(
         @Param('id') id: string,
-    ): Promise<{ totalUsages: number; lastUsedAt: string | null }> {
+    ): Promise<PromptUsageStatsResponse> {
         const svc = this.promptService as any;
         return svc.getUsageStats(id);
     }

@@ -8,6 +8,7 @@ import {
     type DnaJobResponse,
 } from '@arcaai/applications';
 import { DnaJobResponseDto, DnaJobStatusResponseDto } from './dna-writing-style.dto';
+import { PaginatedDnaReportResponse } from './dto';
 import { JobQueue } from '@arcaai/domains';
 import {
     Controller,
@@ -66,7 +67,7 @@ export class DnaWritingStyleAdminController {
     @ApiQuery({ name: 'limit', required: false, type: Number })
     async list(
         @Query() queryParams: PaginatedQuery & { includeDisabled?: string },
-    ): Promise<{ data: DnaReportResponse[]; count: number; limit: number; page: number }> {
+    ): Promise<PaginatedDnaReportResponse> {
         const reports = await this.dnaService.listReports({
             includeDisabled: queryParams?.includeDisabled === 'true',
         });

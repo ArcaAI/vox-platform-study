@@ -18,7 +18,7 @@ import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { ClsService } from 'nestjs-cls';
 import { Authorize } from '../../decorators';
-import { LoginRequest, LoginResponse, LoginUserResponse, LogoutResponse, MeResponse, ImpersonateRequest, ImpersonateResponse, ImpersonateUserResponse } from './dto';
+import { LoginRequest, LoginResponse, LoginUserResponse, LogoutResponse, MeResponse, ImpersonateRequest, ImpersonateResponse, ImpersonateUserResponse, RefreshTokenRequest, RefreshTokenResponse, RevokeImpersonationResponse } from './dto';
 
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
@@ -382,9 +382,9 @@ export class AuthController {
     @Post('refresh')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Refresh access token' })
-    @ApiResponse({ status: 200, description: 'Token refreshed' })
+    @ApiResponse({ status: 200, description: 'Token refreshed', type: RefreshTokenResponse })
     @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
-    async refresh(@Body() body: { refreshToken: string }): Promise<{ token: string; refreshToken: string }> {
+    async refresh(@Body() body: RefreshTokenRequest): Promise<RefreshTokenResponse> {
         if (!body.refreshToken) {
             throw new BadRequestException('Refresh token is required');
         }
@@ -437,9 +437,9 @@ export class AuthController {
     @Authorize()
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Revoke the current impersonation token' })
-    @ApiResponse({ status: 200, description: 'Impersonation token revoked' })
+    @ApiResponse({ status: 200, description: 'Impersonation token revoked', type: RevokeImpersonationResponse })
     @ApiResponse({ status: 401, description: 'Unauthorized' })
-    async revokeImpersonation(@Request() req: any): Promise<{ success: boolean }> {
+    async revokeImpersonation(@Request() req: any): Promise<RevokeImpersonationResponse> {
         const user = this.clsService.get('user');
         if (user) {
             await this.authService.trackAuthentication(user.id, {

@@ -38,6 +38,8 @@ import {
     ApiTags,
     ApiBearerAuth,
     ApiParam,
+    ApiProperty,
+    ApiPropertyOptional,
     ApiQuery,
     ApiResponse,
 } from '@nestjs/swagger';
@@ -49,12 +51,25 @@ import { IConsultationJobService } from '@arcaai/applications';
 import { GlobalSettingRepository } from '@arcaai/domains';
 
 class AsyncJobResponseDto {
+    @ApiProperty({ description: 'Async job ID' })
     jobId: string;
+
+    @ApiProperty({ description: 'Job status', enum: ['pending', 'processing', 'completed', 'failed'] })
     status: 'pending' | 'processing' | 'completed' | 'failed';
+
+    @ApiProperty({ description: 'Associated consultation ID' })
     consultationId: string;
+
+    @ApiProperty({ description: 'Job creation timestamp' })
     createdAt: string;
+
+    @ApiPropertyOptional({ description: 'Job progress percentage (0-100)' })
     progress?: number;
+
+    @ApiPropertyOptional({ description: 'Job result (partial summary)' })
     result?: Partial<SummaryResponse>;
+
+    @ApiPropertyOptional({ description: 'Error message if job failed' })
     errorMessage?: string;
 
     constructor(data: {
@@ -77,9 +92,16 @@ class AsyncJobResponseDto {
 }
 
 class SummaryApprovalResponseDto {
+    @ApiProperty({ description: 'Context item ID of the approved summary' })
     contextItemId: string;
+
+    @ApiProperty({ description: 'Approval status' })
     approvalStatus: string;
+
+    @ApiProperty({ description: 'User ID who approved' })
     approvedBy: string;
+
+    @ApiProperty({ description: 'Approval timestamp' })
     approvedAt: string;
 
     constructor(data: {
@@ -96,6 +118,7 @@ class SummaryApprovalResponseDto {
 }
 
 class OkResponseDto {
+    @ApiProperty({ description: 'Success indicator', example: true })
     ok: true;
 
     constructor() {

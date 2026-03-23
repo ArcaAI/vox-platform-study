@@ -28,6 +28,7 @@ import {
     ApiResponse
 } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize } from '../../decorators';
+import { TenantUsageResponse } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('admin-tenants')
@@ -87,14 +88,9 @@ export class TenantController {
     @Get(':id/usage')
     @ApiOperation({ summary: 'Get tenant usage statistics' })
     @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
-    @ApiResponse({ status: 200, description: 'Tenant usage statistics' })
+    @ApiResponse({ status: 200, description: 'Tenant usage statistics', type: TenantUsageResponse })
     @ApiResponse({ status: 404, description: 'Tenant not found' })
-    async getUsage(@Param('id') id: string): Promise<{
-        totalUsers: number;
-        totalDepartments: number;
-        totalPromptTemplates: number;
-        totalPipelines: number;
-    }> {
+    async getUsage(@Param('id') id: string): Promise<TenantUsageResponse> {
         return this.tenantService.getUsageStats(id);
     }
 
