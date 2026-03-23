@@ -85,6 +85,8 @@ Large Docker images increase deployment time, storage costs, and CI/CD pipeline 
 
 3. **Distroless for NLP production**: Kept `gcr.io/distroless/python3-debian12:nonroot` for the smallest attack surface. Required explicit `PYTHONPATH` since distroless doesn't include `/usr/local/lib/python3.11/site-packages` in default path.
 
+4. **Commit-pinned image tagging**: Replaced `latest`-only tagging in GitLab CI with a multi-tag strategy: every image gets a commit SHA tag (`a1b2c3d4`), a branch-SHA tag (`main-a1b2c3d4`), and `latest` as a convenience alias. Semver releases (`v1.0.0`) additionally get the version tag (`1.0.0`). This ensures every running container is traceable to the exact commit that built it.
+
 ---
 
 ## Change History
@@ -92,3 +94,4 @@ Large Docker images increase deployment time, storage costs, and CI/CD pipeline 
 | Date | Description | Files |
 |------|-------------|-------|
 | 2026-03-23 | Initial optimization of all Python Dockerfiles | See files changed above |
+| 2026-03-23 | Replace `latest`-only tagging with commit-pinned multi-tag strategy | `.gitlab-ci.yml`, `apps/stt-v2/Makefile`, `apps/stt-v2/scripts/validate-build.sh` |
