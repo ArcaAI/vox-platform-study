@@ -1,76 +1,66 @@
-# Git and version control
+# =============================================================================
+# NLP Docker Build Context Exclusions
+# =============================================================================
+# Keeps the build context small and prevents secrets/dev artifacts from leaking
+# into the image. The Dockerfile only needs: pyproject.toml, uv.lock, src/
+
+# --- Version control ---
 .git
 .gitignore
 .gitattributes
 
-# Python
+# --- Python artifacts ---
 __pycache__
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.pytest_cache/
-.coverage
-htmlcov/
-.nyc_output
-*.egg-info/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+*.egg
 dist/
 build/
+.eggs/
 
-# IDE and editors
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+.conda/
+
+# --- IDE / editor ---
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.DS_Store
 
-# Documentation
-*.md
-docs/
-README*
-CHANGELOG*
-LICENSE*
+# --- Test & coverage ---
+tests/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
 
-# CI/CD
-.github/
-.gitlab-ci.yml
-.travis.yml
-Jenkinsfile
-
-# Development tools
-Makefile
-docker-compose*.yml
+# --- Environment & secrets ---
 .env
 .env.*
+!.env.example
 
-# Testing
-tests/
-test/
-*_test.py
-test_*.py
+# --- Docker (avoid recursive context) ---
+docker-compose*.yml
 
-# Logs
+# --- Dev configs ---
+Makefile
+
+# --- CI/CD ---
+.github/
+.gitlab-ci.yml
+
+# --- Documentation ---
+docs/
+*.md
+!README.md
+
+# --- Misc ---
 *.log
-logs/
-*.log.*
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Temporary files
 *.tmp
-*.temp
-.cache/
-*.egg-info/

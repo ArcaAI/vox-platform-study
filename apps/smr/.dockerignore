@@ -1,12 +1,13 @@
 # =============================================================================
-# STT-V2 Docker Build Context Exclusions
+# SMR Docker Build Context Exclusions
 # =============================================================================
 # Keeps the build context small and prevents secrets/dev artifacts from leaking
-# into the image. The Dockerfile only needs: pyproject.toml, README.md, src/
+# into the image. The Dockerfile only needs: pyproject.toml, uv.lock, src/
 
 # --- Version control ---
 .git
 .gitignore
+.gitattributes
 
 # --- Python artifacts ---
 __pycache__
@@ -46,8 +47,7 @@ htmlcov/
 !.env.example
 
 # --- Docker (avoid recursive context) ---
-docker/
-!docker/Dockerfile
+docker-compose*.yml
 
 # --- Dev configs ---
 Makefile
@@ -55,9 +55,6 @@ Makefile
 # --- CI/CD ---
 .github/
 .gitlab-ci.yml
-
-# --- Scripts (not needed in image) ---
-scripts/
 
 # --- Documentation ---
 docs/
