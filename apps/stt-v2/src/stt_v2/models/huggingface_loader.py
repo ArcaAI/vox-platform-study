@@ -138,7 +138,7 @@ class HuggingFaceLoader(BaseModelLoader):
             try:
                 model = WhisperForConditionalGeneration.from_pretrained(
                     model_source,
-                    dtype=torch_dtype,
+                    torch_dtype=torch_dtype,
                     low_cpu_mem_usage=True,
                     **common_kwargs,
                 )
@@ -154,7 +154,7 @@ class HuggingFaceLoader(BaseModelLoader):
                 try:
                     model = AutoModelForSpeechSeq2Seq.from_pretrained(
                         model_source,
-                        dtype=torch_dtype,
+                        torch_dtype=torch_dtype,
                         low_cpu_mem_usage=True,
                         **common_kwargs,
                     )
@@ -162,7 +162,7 @@ class HuggingFaceLoader(BaseModelLoader):
                     # Try CTC model (Wav2Vec2, HuBERT)
                     model = AutoModelForCTC.from_pretrained(
                         model_source,
-                        dtype=torch_dtype,
+                        torch_dtype=torch_dtype,
                         low_cpu_mem_usage=True,
                         **common_kwargs,
                     )
@@ -185,7 +185,7 @@ class HuggingFaceLoader(BaseModelLoader):
             # VAD models (e.g., Silero VAD, pyannote)
             model = AutoModelForAudioClassification.from_pretrained(
                 model_source,
-                dtype=torch_dtype,
+                torch_dtype=torch_dtype,
                 **common_kwargs,
             )
             feature_extractor = AutoFeatureExtractor.from_pretrained(
@@ -196,7 +196,7 @@ class HuggingFaceLoader(BaseModelLoader):
             # Generic loading
             model = AutoModelForSpeechSeq2Seq.from_pretrained(
                 model_source,
-                dtype=torch_dtype,
+                torch_dtype=torch_dtype,
                 low_cpu_mem_usage=True,
                 **common_kwargs,
             )
