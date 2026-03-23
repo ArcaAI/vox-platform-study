@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 IMAGE_NAME="${IMAGE_NAME:-stt-v2}"
-IMAGE_TAG="${IMAGE_TAG:-test}"
+IMAGE_TAG="${IMAGE_TAG:-$(git rev-parse --short=8 HEAD 2>/dev/null || echo test)}"
 CONTAINER_NAME="stt-v2-validate"
 HEALTH_CHECK_TIMEOUT=60
 HEALTH_CHECK_INTERVAL=2

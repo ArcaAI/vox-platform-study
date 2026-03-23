@@ -33,12 +33,17 @@ workflow:
       set -eu
 
       image_repo="$REGISTRY/$CI_PROJECT_PATH/$SERVICE_NAME"
+      short_sha=$(echo "$CI_COMMIT_SHA" | cut -c1-8)
+      created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-      # Compute tag based on trigger type
+      # Compute tags based on trigger type.
+      # Every image gets a commit-pinned tag so deployments are always traceable.
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
-        IMAGE_TAG="${CI_COMMIT_TAG#v}"      # v1.0.0 → 1.0.0
+        SEMVER_TAG="${CI_COMMIT_TAG#v}"          # v1.0.0 → 1.0.0
+        TAGS="$SEMVER_TAG latest $short_sha"
       else
-        IMAGE_TAG="latest"                  # dev branch
+        BRANCH_SLUG=$(echo "$CI_COMMIT_BRANCH" | sed 's/[^a-zA-Z0-9]/-/g')
+        TAGS="${BRANCH_SLUG}-${short_sha} ${short_sha} latest"
       fi
 
       build_target_arg=""
@@ -46,18 +51,28 @@ workflow:
         build_target_arg="--target $BUILD_TARGET"
       fi
 
-      echo "Building service=$SERVICE_NAME tag=$IMAGE_TAG context=$DOCKER_CONTEXT"
+      # Build once, tag many.
+      primary_tag=$(echo "$TAGS" | awk '{print $1}')
+      echo "Building service=$SERVICE_NAME primary_tag=$primary_tag all_tags=$TAGS"
+      echo "  commit=$CI_COMMIT_SHA branch=${CI_COMMIT_BRANCH:-} git_tag=${CI_COMMIT_TAG:-}"
+
       docker build \
         --label org.opencontainers.image.source=$CI_PROJECT_URL \
         --label org.opencontainers.image.revision=$CI_COMMIT_SHA \
-        --label org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+        --label org.opencontainers.image.created=$created_at \
+        --label org.opencontainers.image.version=$primary_tag \
         $build_target_arg \
         $BUILD_ARGS \
         -f "$DOCKERFILE" \
-        -t "$image_repo:$IMAGE_TAG" \
+        -t "$image_repo:$primary_tag" \
         "$DOCKER_CONTEXT"
 
-      docker push "$image_repo:$IMAGE_TAG"
+      # Apply all additional tags and push each one.
+      for tag in $TAGS; do
+        docker tag "$image_repo:$primary_tag" "$image_repo:$tag"
+        docker push "$image_repo:$tag"
+        echo "  pushed $image_repo:$tag"
+      done
 
 # ── JOBS ─────────────────────────────────────────────────────────────
 

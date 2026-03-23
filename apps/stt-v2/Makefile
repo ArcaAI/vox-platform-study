@@ -315,7 +315,7 @@ quality: lint format-check type-check
 # =============================================================================
 
 DOCKER_IMAGE ?= stt-v2
-DOCKER_TAG ?= latest
+DOCKER_TAG ?= $(shell git rev-parse --short=8 HEAD 2>/dev/null || echo "dev")
 
 docker-build:
 	docker build \
