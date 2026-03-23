@@ -2,8 +2,8 @@
 
 **Date**: 2026-03-16
 **VM**: 410 | **IP**: 10.10.1.110 | **Bridge**: vmbr1 | **Specs**: 8c / 16 GB / 64 GB disk
-**Config files**: [`configs/gitlab/`](./configs/gitlab/) — `gitlab.rb` + `docker-compose.yml`
-**Related**: [Infrastructure Overview](./proxmox-infrastructure-gitlab-rancher-plan.md) | [MinIO Deployment](./deploy-vm402-minio.md) | [Runner Deployment](./deploy-vm411-gitlab-runner.md) | [Cloudflare Tunnel](./deploy-ct101-cloudflare-tunnel.md)
+**Config files**: [`configs/gitlab/`](../configs/gitlab/) — `gitlab.rb` + `docker-compose.yml`
+**Related**: [Infrastructure Overview](../infrastructure/proxmox-infrastructure-gitlab-rancher-plan.md) | [MinIO Deployment](./deploy-vm402-minio.md) | [Runner Deployment](./deploy-vm411-gitlab-runner.md) | [Cloudflare Tunnel](./deploy-ct101-cloudflare-tunnel.md)
 
 ---
 
@@ -89,7 +89,7 @@ mkdir -p ~/gitlab && cd ~/gitlab
 
 ### 5.1 — Omnibus Config (`gitlab.rb`)
 
-This is the single source of truth for all GitLab configuration. The managed copy lives at [`configs/gitlab/gitlab.rb`](./configs/gitlab/gitlab.rb) in this repo.
+This is the single source of truth for all GitLab configuration. The managed copy lives at [`configs/gitlab/gitlab.rb`](../configs/gitlab/gitlab.rb) in this repo.
 
 ```bash
 # Option A: SCP from your dev machine

@@ -1,6 +1,6 @@
 # TimescaleDB HA Cluster — Config Files
 
-Deployment guide: [`../../deploy-vm500-502-postgres-ha.md`](../../deploy-vm500-502-postgres-ha.md)
+Deployment guide: [`../../deployments/deploy-vm500-502-postgres-ha.md`](../../deployments/deploy-vm500-502-postgres-ha.md)
 
 ## Stack
 

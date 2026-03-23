@@ -3,7 +3,7 @@
 **Date**: 2026-03-21
 **Services**: PostgreSQL HA Cluster (VMs 500–502) + HAProxy Dashboard
 **Domains**: `db.taphuynh.dev` (PostgreSQL TCP) | `ha-db.taphuynh.dev` (HAProxy Stats HTTP)
-**Related**: [Cloudflare Tunnel (CT 101)](./deploy-ct101-cloudflare-tunnel.md) | [SSH Setup (Mac)](./ssh-cloudflared-setup-mac.md) | [PostgreSQL HA Deployment](./deploy-vm500-502-postgres-ha.md)
+**Related**: [Cloudflare Tunnel (CT 101)](../deployments/deploy-ct101-cloudflare-tunnel.md) | [SSH Setup (Mac)](./ssh-cloudflared-setup-mac.md) | [PostgreSQL HA Deployment](../deployments/deploy-vm500-502-postgres-ha.md)
 
 ---
 
@@ -267,7 +267,7 @@ The HAProxy stats dashboard is HTTP (port 7000), so it works natively with Cloud
 |-----------|--------|------|-----|
 | `ha-db` | `taphuynh.dev` | **HTTP** | `http://10.10.1.250:7000` |
 
-> **Prerequisite**: CT 101 (`10.10.1.2`) must be allowed through UFW on VMs 500–502. Without this, all TCP connections from the tunnel to the DB cluster will silently hang. See [Section 6.5 of the deployment guide](./deploy-vm500-502-postgres-ha.md#65-configure-firewall) for the full UFW setup, which includes `sudo ufw allow from 10.10.1.2 to any`.
+> **Prerequisite**: CT 101 (`10.10.1.2`) must be allowed through UFW on VMs 500–502. Without this, all TCP connections from the tunnel to the DB cluster will silently hang. See [Section 6.5 of the deployment guide](../deployments/deploy-vm500-502-postgres-ha.md#65-configure-firewall) for the full UFW setup, which includes `sudo ufw allow from 10.10.1.2 to any`.
 
 ### 6.2 Create Cloudflare Access Policy (Strongly Recommended)
 

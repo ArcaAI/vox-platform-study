@@ -2,8 +2,8 @@
 
 **Date**: 2026-03-16
 **VM**: 402 | **IP**: 10.10.1.102 | **Bridge**: vmbr1 | **Specs**: 8c / 16 GB / 64 GB disk
-**Config files**: [`configs/minio/`](./configs/minio/)
-**Related**: [Infrastructure Overview](./proxmox-infrastructure-gitlab-rancher-plan.md) | [GitLab Deployment](./deploy-vm410-gitlab.md) | [Cloudflare Tunnel](./deploy-ct101-cloudflare-tunnel.md)
+**Config files**: [`configs/minio/`](../configs/minio/)
+**Related**: [Infrastructure Overview](../infrastructure/proxmox-infrastructure-gitlab-rancher-plan.md) | [GitLab Deployment](./deploy-vm410-gitlab.md) | [Cloudflare Tunnel](./deploy-ct101-cloudflare-tunnel.md)
 
 ---
 
@@ -798,7 +798,7 @@ df -h /
 After MinIO is verified:
 
 1. **Deploy GitLab** → see [deploy-vm410-gitlab.md](./deploy-vm410-gitlab.md)
-2. **Enable object storage** → uncomment section 7 in [`configs/gitlab/gitlab.rb`](./configs/gitlab/gitlab.rb), fill in the access key/secret from step 8.3, then `docker exec -it gitlab gitlab-ctl reconfigure`
+2. **Enable object storage** → uncomment section 7 in [`configs/gitlab/gitlab.rb`](../configs/gitlab/gitlab.rb), fill in the access key/secret from step 8.3, then `docker exec -it gitlab gitlab-ctl reconfigure`
 3. **Deploy GitLab Runner** → see [deploy-vm411-gitlab-runner.md](./deploy-vm411-gitlab-runner.md)
 
 ---
