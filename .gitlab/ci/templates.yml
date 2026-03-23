@@ -1,0 +1,123 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Reusable job templates
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Node.js base ─────────────────────────────────────────────────────────────
+# Used by: install, validate (lint-ts, typecheck), test (test-api, test-packages)
+
+.node-base:
+  image: node:22-alpine
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@latest --activate
+    - pnpm config set store-dir .pnpm-store
+    - pnpm install --frozen-lockfile --prefer-offline
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - .pnpm-store
+      policy: pull
+      fallback_keys:
+        - pnpm-$CI_DEFAULT_BRANCH
+
+# ── Python base ──────────────────────────────────────────────────────────────
+# Used by: validate (lint-python), test (test-python)
+
+.python-base:
+  image: python:3.11-slim
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  cache:
+    - key: pip-${SERVICE}
+      paths:
+        - .pip-cache/
+      policy: pull
+      fallback_keys:
+        - pip-$CI_DEFAULT_BRANCH
+
+# ── Docker build template ───────────────────────────────────────────────────
+# Used by: build stage (all Docker image jobs)
+# Preserves the existing Buildx + registry cache strategy (mode=max, zstd).
+
+.build-template:
+  stage: build
+  tags: [build]
+  image: docker:27
+  timeout: 30m
+  interruptible: false
+  variables:
+    SERVICE_NAME: ""
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: ""
+    BUILD_TARGET: ""
+    BUILD_ARGS: ""
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$REGISTRY"
+    - |
+      printf '[registry."%s"]\nhttp = true\ninsecure = true\n' "$REGISTRY" > /tmp/buildkitd.toml
+      if ! docker buildx inspect cibuilder >/dev/null 2>&1; then
+        docker buildx create --name cibuilder --driver docker-container \
+          --config /tmp/buildkitd.toml
+      fi
+      docker buildx use cibuilder
+      docker buildx inspect --bootstrap
+  script:
+    - |
+      set -eu
+
+      image_repo="$REGISTRY/$CI_PROJECT_PATH/$SERVICE_NAME"
+      cache_repo="$image_repo/cache"
+      short_sha=$(echo "$CI_COMMIT_SHA" | cut -c1-8)
+      created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+      # ── Compute tags ──────────────────────────────────────────────────
+      if [ -n "${CI_COMMIT_TAG:-}" ]; then
+        SEMVER_TAG="${CI_COMMIT_TAG#v}"
+        TAGS="$SEMVER_TAG latest $short_sha"
+      elif [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        TAGS="main-${short_sha} ${short_sha} latest"
+      else
+        BRANCH_SLUG=$(echo "$CI_COMMIT_BRANCH" | sed 's/[^a-zA-Z0-9]/-/g')
+        TAGS="${BRANCH_SLUG}-${short_sha} ${short_sha}"
+      fi
+
+      build_target_arg=""
+      if [ -n "$BUILD_TARGET" ]; then
+        build_target_arg="--target $BUILD_TARGET"
+      fi
+
+      tag_args=""
+      for tag in $TAGS; do
+        tag_args="$tag_args --tag $image_repo:$tag"
+      done
+
+      primary_tag=$(echo "$TAGS" | awk '{print $1}')
+      echo "Building service=$SERVICE_NAME primary_tag=$primary_tag all_tags=$TAGS"
+      echo "  commit=$CI_COMMIT_SHA branch=${CI_COMMIT_BRANCH:-} git_tag=${CI_COMMIT_TAG:-}"
+
+      docker buildx build \
+        --push \
+        --cache-from type=registry,ref=$cache_repo \
+        --cache-to   type=registry,ref=$cache_repo,mode=max,compression=zstd \
+        --label org.opencontainers.image.source=$CI_PROJECT_URL \
+        --label org.opencontainers.image.revision=$CI_COMMIT_SHA \
+        --label org.opencontainers.image.created=$created_at \
+        --label org.opencontainers.image.version=$primary_tag \
+        $build_target_arg \
+        $BUILD_ARGS \
+        $tag_args \
+        -f "$DOCKERFILE" \
+        "$DOCKER_CONTEXT"
+
+      echo "  pushed tags:"
+      for tag in $TAGS; do
+        echo "    $image_repo:$tag"
+      done
+
+      # Export primary tag for downstream scan jobs
+      echo "IMAGE=$image_repo:$primary_tag" >> build.env
+  artifacts:
+    reports:
+      dotenv: build.env
