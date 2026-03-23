@@ -96,6 +96,9 @@ Large Docker images increase deployment time, storage costs, and CI/CD pipeline 
 | 2026-03-23 | Initial optimization of all Python Dockerfiles | See files changed above |
 | 2026-03-23 | Replace `latest`-only tagging with commit-pinned multi-tag strategy | `.gitlab-ci.yml`, `apps/stt-v2/Makefile`, `apps/stt-v2/scripts/validate-build.sh` |
 | 2026-03-23 | Phase 2: Comprehensive review & optimization pass | See below |
+| 2026-03-23 | Phase 3: STT-V2 GPU dependency optimization — eliminate ~2.9 GB redundant downloads | `apps/stt-v2/docker/Dockerfile` |
+| 2026-03-23 | Phase 4: GitLab Runner config review & security fixes | `research/configs/gitlab-runner/config.toml` |
+| 2026-03-23 | Phase 5: Registry metadata database migration — fix "missing manifest digest" | `research/configs/gitlab/gitlab.rb` |
 
 ### Phase 2: Review & Optimization (2026-03-23)
 
@@ -145,3 +148,127 @@ Comprehensive review against 2025-2026 Docker best practices with research from 
 | `apps/stt-v2/docker/Dockerfile` | Optimized |
 | `apps/stt-v2/.dockerignore` | Updated |
 | `.gitlab-ci.yml` | Security fix + optimization |
+
+### Phase 3: STT-V2 GPU Dependency Optimization (2026-03-23)
+
+#### Problem: ~2.9 GB Redundant NVIDIA Downloads
+
+The `stt-v2` and `stt-v2-worker` builds were downloading ~2.9 GB of `nvidia-*` pip packages and `triton` during every uncached build, only to uninstall them immediately after. The Phase 2 "install-then-uninstall" approach still wasted bandwidth and 10-12 minutes of build time.
+
+#### Codebase Audit Findings
+
+A thorough audit of `apps/stt-v2/src/` confirmed:
+
+- **Zero direct imports** of any `nvidia.*` Python package
+- **Zero `torch.compile()` calls** — `triton` not needed
+- **Zero distributed training** — `nccl` not needed
+- **All CUDA libraries** (`cublas`, `cudnn`, `cufft`, `curand`, `nvrtc`, `cusparse`, `cusolver`) are already provided as system libraries by the `nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04` base image
+- The codebase is **100% inference-only**: `torch.no_grad()`, `model.generate()`, `.to(device)`, `torch.cuda.is_available()` — no training, no autograd
+
+#### Solution: `uv` Override File
+
+Replaced the "download-then-uninstall" approach with a `uv pip install --override` strategy using `sys_platform == "never"` markers. This prevents `uv` from downloading the packages during dependency resolution.
+
+**Packages excluded via override** (15 total):
+`nvidia-cublas-cu12`, `nvidia-cuda-cupti-cu12`, `nvidia-cuda-nvrtc-cu12`, `nvidia-cuda-runtime-cu12`, `nvidia-cudnn-cu12`, `nvidia-cufft-cu12`, `nvidia-curand-cu12`, `nvidia-cusolver-cu12`, `nvidia-cusparse-cu12`, `nvidia-cusparselt-cu12`, `nvidia-nccl-cu12`, `nvidia-nvjitlink-cu12`, `nvidia-cufile-cu12`, `nvidia-nvtx-cu12`, `triton`
+
+**Impact**: Eliminates ~2.9 GB of wasted downloads and ~10-12 minutes of build time per uncached build. No changes to `pyproject.toml` or `uv.lock` — the override is Dockerfile-scoped.
+
+#### STT-V2 Dockerfile Architecture (Final)
+
+| Stage | Base Image | Purpose |
+|-------|-----------|---------|
+| `builder` | `python:3.11-slim-trixie` | Install core API dependencies via `uv sync` |
+| `ml-builder` | `nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04` | Install ML + GPU deps with NVIDIA override |
+| `runtime` | `python:3.11-slim-trixie` | CPU-only API server |
+| `ml-runtime` | `nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04` | GPU-capable ML inference server (with CPU fallback) |
+| `worker` | `ml-runtime` | Dramatiq worker for async ML tasks |
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `apps/stt-v2/docker/Dockerfile` | Replaced install-then-uninstall with `--override` strategy |
+
+---
+
+### Phase 4: GitLab Runner Config Review (2026-03-23)
+
+Reviewed `research/configs/gitlab-runner/config.toml` (VM 411) against the CI pipeline requirements.
+
+#### Changes Applied
+
+| Setting | Before | After | Reason |
+|---------|--------|-------|--------|
+| `concurrent` (global) | 16 | 9 | Match actual sum of runner limits (8 vCPU / 16 GB host) |
+| `build-runner-01` `limit` | 3 | 2 | Prevent resource saturation during heavy Docker builds |
+| `build-runner-01` `output_limit` | default (4096) | 20480 (20 MB) | Prevent log truncation for verbose ML builds |
+| `build-runner-01` `image` | `docker:27-dind` | `docker:27` | DinD not needed — runner uses host Docker socket |
+| `build-runner-01` `shm_size` | 256 MB | 512 MB | Prevent OOM in multi-stage BuildKit builds |
+| `build-runner-01` `GIT_STRATEGY` | `clone` | `fetch` | Faster CI starts — reuse existing repo |
+| `build-runner-01` `GIT_DEPTH` | unset | 1 | Shallow clone — only need current commit for builds |
+| `fast-runner-01` / `test-runner-01` `GIT_DEPTH` | unset | 10 | Shallow but enough history for test/lint operations |
+| `deploy-runner-01` `GIT_STRATEGY` | `clone` | `clone` (kept) | Deploy needs clean state for safety |
+
+#### Security Fixes
+
+- Redacted all hardcoded `glrt-...` runner tokens with `<REDACTED_*>` placeholders
+- Redacted MinIO S3 `AccessKey`/`SecretKey` credentials across all runner cache configs
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `research/configs/gitlab-runner/config.toml` | Performance tuning + credential redaction |
+
+---
+
+### Phase 5: Registry Metadata Database Migration (2026-03-23)
+
+#### Problem: "Invalid tag: missing manifest digest" on All Images
+
+All images in the GitLab Container Registry UI showed "Invalid tag: missing manifest digest" with 0B size. Images were actually pushed correctly and could be pulled — this was a UI/metadata parsing issue.
+
+#### Root Cause
+
+Docker BuildKit (used via `docker buildx build --push`) creates images with **OCI image index format** (`application/vnd.oci.image.index.v1+json`) and provenance attestations by default. GitLab's **legacy Container Registry** stores metadata only in object storage (MinIO S3) and cannot parse OCI index manifests when rendering the UI.
+
+#### Solution: Enable Registry Metadata Database
+
+Instead of adding `--provenance=false` to the CI pipeline (a workaround that suppresses OCI features), enabled the **Registry Metadata Database** — a PostgreSQL-backed metadata store available since GitLab 17.3+.
+
+On GitLab 18.3+ (current: 18.8.6), the database is auto-provisioned as a logical database within the main GitLab PostgreSQL instance. No external database setup required.
+
+#### Benefits
+
+- **OCI manifest support**: BuildKit images with provenance attestations display correctly
+- **Online garbage collection**: Automatic cleanup of untagged manifests (replaces manual `registry-garbage-collect -m`)
+- **Tag listing performance**: Metadata queries hit PostgreSQL instead of walking S3 objects
+- **Storage visibility**: Repository/project/group-level storage usage tracking
+- **No CI pipeline changes needed**: BuildKit defaults work as-is
+
+#### Migration Procedure (VM 410)
+
+The migration requires a brief **read-only window** for the registry (pulls work, pushes blocked):
+
+1. Add `registry['database'] = { 'enabled' => false }` and `'maintenance' => { 'readonly' => { 'enabled' => true } }` to `registry['storage']` in `gitlab.rb`, then `gitlab-ctl reconfigure`
+2. Run `sudo -u registry gitlab-ctl registry-database migrate up` to create schema
+3. Run `sudo -u registry gitlab-ctl registry-database import --log-to-stdout` to import existing metadata
+4. Set `registry['database'] = { 'enabled' => true }`, remove `maintenance` block, then `gitlab-ctl reconfigure`
+
+#### Important Notices
+
+| Notice | Detail |
+|--------|--------|
+| **One-way migration** | After enabling the database, it becomes the source of truth. Reverting requires restoring from a pre-migration backup |
+| **Timestamp reset** | `createdAt` / `publishedAt` timestamps on existing tags reset to the import date — the legacy registry does not track original tag publish dates |
+| **Backup coverage** | `gitlab-backup` does **not** separately back up the registry database. Since it's a logical database within the main GitLab PostgreSQL instance, it is covered by the main PostgreSQL backup. If using an external database, manual backup management is required |
+| **Read-only during import** | The registry must be in read-only mode during the import. Duration depends on the number of tagged images — typically minutes for small registries |
+| **No offline GC needed** | After migration, online GC runs automatically. The legacy `registry-garbage-collect` command safely exits when the database is enabled. Verify no third-party GC cron jobs are scheduled |
+| **Post-import GC load** | Expect ~48 hours of elevated database load after import as online GC drains its initial queues. Monitor via `registry_gc_*` Prometheus metrics |
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `research/configs/gitlab/gitlab.rb` | Added `registry['database'] = { 'enabled' => true }` block |

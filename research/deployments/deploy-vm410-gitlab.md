@@ -108,7 +108,7 @@ sudo nano /srv/gitlab/config/gitlab.rb
 | 1 | Core (URL, timezone) | Active |
 | 2 | NGINX (Cloudflare proxy, real IP) | Active |
 | 3 | SSH — gitlab-sshd on port 2222 (Go-based, replaces OpenSSH) | Active |
-| 4 | Container Registry (port 5050) | Active |
+| 4 | Container Registry (port 5050) + Metadata Database | Active — see section 9.1 for migration |
 | 5 | Performance Tuning (Puma, PG, Gitaly) | Active |
 | 6 | Security (signup off, rate limit) | Active |
 | 7 | Object Storage (MinIO) | Active — requires MinIO on VM 402 |
@@ -362,6 +362,119 @@ docker push registry.taphuynh.dev/arcaai/hope/test:latest
 
 > Create a personal access token in GitLab: User avatar → **Access tokens** → scope: `read_registry, write_registry`
 
+### 9.1 — Enable Registry Metadata Database
+
+The metadata database stores manifest/tag metadata in PostgreSQL instead of parsing S3 on every request. This is required for:
+
+- **OCI manifest support** — Docker BuildKit (used in CI) pushes images with OCI image index format. Without the metadata database, the GitLab UI shows "Invalid tag: missing manifest digest" for all BuildKit-pushed images.
+- **Online garbage collection** — automatic cleanup of untagged manifests (replaces the manual `registry-garbage-collect -m` cron job in section 13).
+- **Tag listing performance** — metadata queries hit PostgreSQL instead of walking S3 objects.
+
+On GitLab 18.3+ (current: 18.8.6), the database is auto-provisioned as a logical database within the main GitLab PostgreSQL instance. No external database setup required.
+
+> **Important notices before proceeding:**
+>
+> | Notice | Detail |
+> |--------|--------|
+> | **One-way migration** | After enabling the database, it becomes the source of truth. Reverting requires restoring from a pre-migration backup |
+> | **Timestamp reset** | `createdAt` / `publishedAt` timestamps on existing tags reset to the import date — the legacy registry does not track original tag publish dates |
+> | **Backup coverage** | `gitlab-backup` does **not** separately back up the registry database. Since it's a logical database within the main GitLab PostgreSQL instance, it is covered by the main PostgreSQL backup. If using an external database, manual backup management is required |
+> | **Read-only during import** | The registry must be in read-only mode during the import (pulls work, pushes blocked). Duration depends on the number of tagged images — typically minutes for small registries |
+> | **Post-import GC load** | Expect ~48 hours of elevated database load after import as online GC drains its initial queues. Monitor via `registry_gc_*` Prometheus metrics |
+
+**Step 1 — Add database config (disabled) + enable read-only mode**
+
+Edit `/srv/gitlab/config/gitlab.rb`. Add the `registry['database']` block before `registry['storage']`, and add `maintenance` to storage:
+
+```ruby
+registry['database'] = {
+  'enabled' => false,
+}
+
+registry['storage'] = {
+  's3' => {
+    'accesskey'      => '...',
+    'secretkey'      => '...',
+    'region'         => 'us-east-1',
+    'regionendpoint' => 'https://10.10.1.102:9000',
+    'bucket'         => 'gitlab-registry',
+    'pathstyle'      => true
+  },
+  'delete' => { 'enabled' => true },
+  'redirect' => { 'disable' => true },
+  'maintenance' => {
+    'readonly' => {
+      'enabled' => true
+    }
+  }
+}
+```
+
+```bash
+docker exec -it gitlab gitlab-ctl reconfigure
+```
+
+**Step 2 — Run database migrations**
+
+```bash
+docker exec -it gitlab sudo -u registry gitlab-ctl registry-database migrate up
+```
+
+**Step 3 — Import existing registry metadata**
+
+```bash
+docker exec -it gitlab sudo -u registry gitlab-ctl registry-database import --log-to-stdout
+```
+
+Watch the output — it logs each repository as it imports. Wait for it to complete successfully.
+
+**Step 4 — Enable database + disable read-only**
+
+Edit `/srv/gitlab/config/gitlab.rb`:
+
+```ruby
+registry['database'] = {
+  'enabled' => true,
+}
+
+registry['storage'] = {
+  's3' => {
+    'accesskey'      => '...',
+    'secretkey'      => '...',
+    'region'         => 'us-east-1',
+    'regionendpoint' => 'https://10.10.1.102:9000',
+    'bucket'         => 'gitlab-registry',
+    'pathstyle'      => true
+  },
+  'delete' => { 'enabled' => true },
+  'redirect' => { 'disable' => true }
+}
+```
+
+Remove the entire `'maintenance'` block and set `'enabled' => true` in the database block.
+
+```bash
+docker exec -it gitlab gitlab-ctl reconfigure
+```
+
+**Step 5 — Verify**
+
+```bash
+# Tags should now show proper digests, sizes, and timestamps in the GitLab UI
+
+# Push a test image to confirm writes work
+docker tag alpine:3.20 10.10.1.110:5050/arcaai/hope/test:metadata-db
+docker push 10.10.1.110:5050/arcaai/hope/test:metadata-db
+
+# Pull an existing image to confirm reads work
+docker pull 10.10.1.110:5050/arcaai/hope/test:metadata-db
+
+# Check online GC health (after ~24 hours)
+docker exec -it gitlab sudo -u registry gitlab-ctl registry-database gc-stats
+```
+
+> **Reference**: [GitLab Docs — Container registry metadata database](https://docs.gitlab.com/administration/packages/container_registry_metadata_database)
+
 ## 10. GitLab Pages Setup (Path-Based Mode)
 
 GitLab Pages serves static sites at `https://pages.taphuynh.dev/<namespace>/<project>/`.
@@ -589,10 +702,32 @@ ls -lah /srv/gitlab/backups/
 
 ## 13. Registry Garbage Collection
 
-Schedule weekly cleanup of deleted image layers:
+> **If the metadata database is enabled (section 9.1)**: Online garbage collection runs automatically — the cron job below is **not needed** and should be removed. The legacy `registry-garbage-collect` command safely exits when the database is enabled. Verify no third-party GC cron jobs are scheduled.
+>
+> To monitor online GC health:
+> ```bash
+> docker exec -it gitlab sudo -u registry gitlab-ctl registry-database gc-stats
+> ```
+>
+> If GC queues remain high after 48 hours, increase the worker frequency in `gitlab.rb`:
+> ```ruby
+> registry['gc'] = {
+>   'blobs' => { 'interval' => '1s' },
+>   'manifests' => { 'interval' => '1s' }
+> }
+> ```
+> Then `docker exec -it gitlab gitlab-ctl reconfigure`. Revert to `5s` after the backlog clears.
+
+**Legacy (without metadata database)** — schedule weekly cleanup of deleted image layers:
 
 ```bash
 (sudo crontab -l 2>/dev/null; echo '0 5 * * 0 docker exec -t gitlab gitlab-ctl registry-garbage-collect -m 2>&1 | logger -t gitlab-registry-gc') | sudo crontab -
+```
+
+**After enabling metadata database** — remove the legacy cron job:
+
+```bash
+sudo crontab -l | grep -v 'registry-garbage-collect' | sudo crontab -
 ```
 
 ## 14. Restore Procedure (Reference)
@@ -940,10 +1075,11 @@ Common issues:
 ## 20. Next Steps
 
 1. **Deploy GitLab Runner** → see [deploy-vm411-gitlab-runner.md](./deploy-vm411-gitlab-runner.md)
-2. **GitLab Pages** → configure Cloudflare `pages` CNAME + tunnel route (see step 10)
-3. **Enable MinIO** → fill in access keys in section 7 of `gitlab.rb` (see step 11)
-4. **Azure AD SSO** → complete steps 18.1–18.6 above
-5. **Email** → complete steps 19.1–19.10 above
+2. **Enable Registry Metadata Database** → section 9.1 above (fixes "missing manifest digest" and enables online GC)
+3. **GitLab Pages** → configure Cloudflare `pages` CNAME + tunnel route (see step 10)
+4. **Enable MinIO** → fill in access keys in section 7 of `gitlab.rb` (see step 11)
+5. **Azure AD SSO** → complete steps 18.1–18.6 above
+6. **Email** → complete steps 19.1–19.10 above
 
 ---
 
@@ -964,6 +1100,11 @@ VM 410 — GitLab CE 18.8.6
   Reconfigure: docker exec -it gitlab gitlab-ctl reconfigure
   Logs:       docker logs -f gitlab --tail 200
   Health:     curl http://10.10.1.110/-/readiness
+
+  Registry:   Metadata database enabled (section 9.1)
+              - OCI manifest support (BuildKit images display correctly)
+              - Online GC (automatic, replaces manual cron)
+              - GC health: docker exec -it gitlab sudo -u registry gitlab-ctl registry-database gc-stats
 
   SSO:        Azure AD (Entra ID) via OIDC
               - App Reg: "GitLab SSO" → openid, profile, email (delegated)
