@@ -1,12 +1,11 @@
 """Unit tests for Transcription DTOs."""
 
+
 import pytest
-from datetime import datetime, timedelta
 
 from stt_v2.transcription.dto import (
     AudioSegment,
     ProcessedAudio,
-    RawTranscription,
     SentenceTimestamp,
     StreamingChunkResult,
     StreamingSession,
@@ -576,7 +575,8 @@ class TestVadMergedWavSilencePadding:
 
     def test_default_no_padding(self, _make_processed_audio):
         """Default call (silence_padding_ms=0) produces no extra silence."""
-        import numpy as np, wave, io
+        import io
+        import wave
 
         pa = _make_processed_audio(
             segments=[AudioSegment(0.0, 0.5, is_speech=True)],
@@ -607,7 +607,8 @@ class TestVadMergedWavSilencePadding:
 
     def test_single_segment_with_500ms_padding(self, _make_processed_audio):
         """500ms silence before + after a single segment."""
-        import wave, io
+        import io
+        import wave
 
         pa = _make_processed_audio(
             segments=[AudioSegment(0.0, 0.5, is_speech=True)],
@@ -625,7 +626,10 @@ class TestVadMergedWavSilencePadding:
 
     def test_silence_regions_are_zeros(self, _make_processed_audio):
         """The padded silence regions must contain zero-valued samples."""
-        import numpy as np, wave, io, struct
+        import io
+        import wave
+
+        import numpy as np
 
         pa = _make_processed_audio(
             segments=[AudioSegment(0.0, 0.5, is_speech=True)],
@@ -657,7 +661,8 @@ class TestVadMergedWavSilencePadding:
 
     def test_multiple_segments_with_padding(self, _make_processed_audio):
         """Each segment gets its own before/after padding."""
-        import wave, io
+        import io
+        import wave
 
         seg1 = AudioSegment(0.0, 0.3, is_speech=True)
         seg2 = AudioSegment(0.5, 0.8, is_speech=True)
@@ -679,7 +684,8 @@ class TestVadMergedWavSilencePadding:
 
     def test_non_speech_segments_are_skipped(self, _make_processed_audio):
         """Segments with is_speech=False should not appear in output."""
-        import wave, io
+        import io
+        import wave
 
         segments = [
             AudioSegment(0.0, 0.3, is_speech=True),
@@ -708,7 +714,8 @@ class TestVadMergedWavSilencePadding:
 
     def test_custom_padding_250ms(self, _make_processed_audio):
         """Custom 250ms padding produces correct sample count."""
-        import wave, io
+        import io
+        import wave
 
         pa = _make_processed_audio(
             segments=[AudioSegment(0.0, 1.0, is_speech=True)],
@@ -727,7 +734,8 @@ class TestVadMergedWavSilencePadding:
 
     def test_custom_padding_1000ms(self, _make_processed_audio):
         """1000ms (1 second) padding per side."""
-        import wave, io
+        import io
+        import wave
 
         pa = _make_processed_audio(
             segments=[AudioSegment(0.0, 0.5, is_speech=True)],
@@ -786,7 +794,8 @@ class TestVadMergedWavSilencePadding:
 
     def test_padding_with_8khz_sample_rate(self, _make_processed_audio):
         """Silence padding works correctly at 8kHz sample rate."""
-        import wave, io
+        import io
+        import wave
 
         pa = _make_processed_audio(
             sample_rate=8000,

@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import time
 
-import pytest
-
 
 class TestCircuitBreakerStates:
     def test_initial_state_is_closed(self):

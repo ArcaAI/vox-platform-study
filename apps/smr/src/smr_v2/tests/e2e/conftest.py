@@ -8,7 +8,7 @@ management (we're testing LLM integration, not Redis).
 from __future__ import annotations
 
 import os
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import fakeredis.aioredis
 import httpx
@@ -166,7 +166,6 @@ def _create_e2e_app(redis) -> tuple:
     """
     import asyncio
 
-    from smr_v2.providers.base import ProviderRegistry
     from smr_v2.services.circuit_breaker import CircuitBreaker
     from smr_v2.services.provider_queue import ProviderQueue
     from smr_v2.services.rate_limiter import RateLimitTracker

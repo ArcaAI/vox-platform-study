@@ -7,7 +7,7 @@ then we write minimal code to make them pass (GREEN).
 from __future__ import annotations
 
 import pytest
-
+from pydantic import ValidationError
 
 # ── ResponseFormat model ──
 
@@ -51,7 +51,7 @@ class TestResponseFormat:
 
     def test_invalid_type_rejected(self):
         from smr_v2.models.requests import ResponseFormat
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ResponseFormat(type="xml")
 
     def test_serialization_roundtrip(self):
@@ -112,27 +112,27 @@ class TestGenerateRequestOptionalHyperparams:
 
     def test_temperature_above_2_rejected(self):
         from smr_v2.models.requests import GenerateRequest
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="hello", temperature=3.0)
 
     def test_max_tokens_zero_rejected(self):
         from smr_v2.models.requests import GenerateRequest
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="hello", max_tokens=0)
 
     def test_max_tokens_negative_rejected(self):
         from smr_v2.models.requests import GenerateRequest
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="hello", max_tokens=-1)
 
     def test_top_p_negative_rejected(self):
         from smr_v2.models.requests import GenerateRequest
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="hello", top_p=-0.1)
 
     def test_top_p_above_1_rejected(self):
         from smr_v2.models.requests import GenerateRequest
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="hello", top_p=1.1)
 
 
@@ -148,13 +148,13 @@ class TestGenerateRequestResponseFormat:
         assert req.response_format is None
 
     def test_response_format_accepts_text(self):
-        from smr_v2.models.requests import ResponseFormat, GenerateRequest
+        from smr_v2.models.requests import GenerateRequest, ResponseFormat
         fmt = ResponseFormat(type="text")
         req = GenerateRequest(prompt="hello", response_format=fmt)
         assert req.response_format.type == "text"
 
     def test_response_format_accepts_json_schema(self):
-        from smr_v2.models.requests import ResponseFormat, GenerateRequest
+        from smr_v2.models.requests import GenerateRequest, ResponseFormat
         schema = {"type": "object", "properties": {"assessment": {"type": "string"}}}
         fmt = ResponseFormat(type="json_schema", json_schema=schema)
         req = GenerateRequest(prompt="hello", response_format=fmt)
@@ -162,7 +162,7 @@ class TestGenerateRequestResponseFormat:
         assert req.response_format.json_schema == schema
 
     def test_full_request_with_all_new_fields(self):
-        from smr_v2.models.requests import ResponseFormat, GenerateRequest
+        from smr_v2.models.requests import GenerateRequest, ResponseFormat
         schema = {"type": "object", "properties": {"plan": {"type": "string"}}}
         req = GenerateRequest(
             prompt="Summarize this",
@@ -183,7 +183,7 @@ class TestGenerateRequestResponseFormat:
         assert req.stream is True
 
     def test_serialization_roundtrip_with_response_format(self):
-        from smr_v2.models.requests import ResponseFormat, GenerateRequest
+        from smr_v2.models.requests import GenerateRequest, ResponseFormat
         schema = {"type": "object", "properties": {"s": {"type": "string"}}}
         req = GenerateRequest(
             prompt="hello",
@@ -213,17 +213,17 @@ class TestGenerateRequestExistingValidation:
 
     def test_empty_prompt_rejected(self):
         from smr_v2.models.requests import GenerateRequest
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="")
 
     def test_whitespace_only_prompt_rejected(self):
         from smr_v2.models.requests import GenerateRequest
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="   ")
 
     def test_prompt_required(self):
         from smr_v2.models.requests import GenerateRequest
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest()
 
     def test_default_provider_is_ollama(self):

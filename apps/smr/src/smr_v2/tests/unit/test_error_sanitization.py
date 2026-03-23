@@ -12,7 +12,6 @@ tuple[str, dict] to match all concrete implementations.
 
 from __future__ import annotations
 
-import inspect
 from typing import get_type_hints
 from unittest.mock import AsyncMock, MagicMock
 
@@ -23,7 +22,6 @@ from httpx import ASGITransport, AsyncClient
 from smr_v2.models.stream import StreamChunk
 from smr_v2.models.task import TaskState, TaskStatus
 from smr_v2.providers.base import ProviderRegistry
-
 
 # ── Helpers ──
 

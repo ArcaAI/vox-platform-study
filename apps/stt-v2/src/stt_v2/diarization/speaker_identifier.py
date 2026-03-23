@@ -17,11 +17,10 @@ from typing import Any
 
 import numpy as np
 
-from ..core.config.settings import get_settings
 from ..core.exceptions import SpeakerIdentificationError
 from ..core.vectorstore.speaker_store import SpeakerEmbeddingStore, get_speaker_store
 from ..pipeline.dto import DiarizationConfig
-from .dto import DiarizedSegment, DiarizationResult, SpeakerEmbedding, SpeakerIdentification
+from .dto import DiarizationResult, DiarizedSegment, SpeakerEmbedding, SpeakerIdentification
 from .embedding_service import EmbeddingService, get_embedding_service
 
 logger = logging.getLogger(__name__)
@@ -222,7 +221,7 @@ class SpeakerIdentifier:
         speakers_seen: set[str] = set()
         new_speakers = 0
 
-        for emb, idx in zip(embeddings, batch_indices):
+        for emb, idx in zip(embeddings, batch_indices, strict=False):
             seg = segments[idx]
             start = seg.get("start", 0.0)
             end = seg.get("end", 0.0)

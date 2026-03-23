@@ -1,9 +1,6 @@
 from abc import ABC, abstractmethod
-from pathlib import Path
 from symspellpy import SymSpell, Verbosity
-from typing import Dict, List, Optional, Tuple
-from pydantic import BaseModel, Field
-import re
+from typing import Dict, Optional
 
 from nlp.core.logging import get_logger
 from nlp.schemas.correction import TextCorrectionResponse, SupportedLanguage, TextCorrectionRequest
@@ -46,7 +43,7 @@ class SymSpellCorrector(TextCorrector):
     async def initialize(self) -> None:
         """Load SymSpell instances and dictionaries for both languages"""
         try:
-            logger.info(f"Initializing text corrector service.")
+            logger.info("Initializing text corrector service.")
 
             # English
             language = SupportedLanguage.ENGLISH

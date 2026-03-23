@@ -1,6 +1,6 @@
 from enum import Enum
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import List
 
 from nlp.schemas.common import SupportedLanguage
 

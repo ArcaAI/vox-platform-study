@@ -1,8 +1,9 @@
 """E2E tests for full transcription flow."""
 
-import pytest
 import io
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
+
+import pytest
 
 
 @pytest.mark.e2e
@@ -114,8 +115,8 @@ class TestPreprocessingFlow:
     @pytest.mark.asyncio
     async def test_audio_preprocessing(self, sample_wav_audio):
         """Test audio preprocessing pipeline."""
+        from stt_v2.pipeline.dto import DenoiseConfig, PreprocessingConfig, VadConfig
         from stt_v2.transcription.preprocessing import get_preprocessor
-        from stt_v2.pipeline.dto import PreprocessingConfig, VadConfig, DenoiseConfig
 
         preprocessor = get_preprocessor()
 
@@ -144,10 +145,9 @@ class TestModelCacheFlow:
     @pytest.mark.asyncio
     async def test_cache_operations(self):
         """Test model cache put, get, and evict."""
-        from stt_v2.models.cache import ModelCache
         from stt_v2.models.base_loader import LoadedModel
+        from stt_v2.models.cache import ModelCache
         from stt_v2.pipeline.dto import AiModelFormat
-        from unittest.mock import MagicMock
 
         cache = ModelCache(max_models=3, max_memory_mb=5000, ttl_seconds=3600)
 
@@ -189,9 +189,9 @@ class TestTranscriptionResultFlow:
     def test_result_serialization(self):
         """Test transcription result to dict conversion."""
         from stt_v2.transcription.dto import (
+            SentenceTimestamp,
             TranscriptionResult,
             WordTimestamp,
-            SentenceTimestamp,
         )
 
         result = TranscriptionResult(
@@ -233,7 +233,7 @@ class TestStreamingSessionFlow:
 
     def test_session_lifecycle(self):
         """Test streaming session lifecycle."""
-        from stt_v2.transcription.dto import StreamingSession, StreamingChunkResult
+        from stt_v2.transcription.dto import StreamingChunkResult, StreamingSession
 
         # Create session
         session = StreamingSession(
@@ -276,8 +276,8 @@ class TestInlineModelConfigFlow:
     @pytest.mark.asyncio
     async def test_inline_yaml_parsing_and_validation(self):
         """Test parsing and validating inline model YAML configuration."""
-        from stt_v2.pipeline.yaml_parser import get_yaml_parser
         from stt_v2.pipeline.dto import AiModelFormat
+        from stt_v2.pipeline.yaml_parser import get_yaml_parser
 
         yaml_content = """
 version: "1.1"
@@ -385,10 +385,10 @@ models:
     async def test_inline_model_config_conversion(self):
         """Test converting inline model to AiModelConfig."""
         from stt_v2.pipeline.dto import (
-            InlineModelDef,
             AiModelFormat,
-            ModelTaskType,
             AiModelSource,
+            InlineModelDef,
+            ModelTaskType,
         )
 
         inline = InlineModelDef(

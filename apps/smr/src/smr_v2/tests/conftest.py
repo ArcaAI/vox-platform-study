@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
-from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from smr_v2.core.config import Settings

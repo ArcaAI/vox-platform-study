@@ -1,8 +1,8 @@
 """STT Service V2 - FastAPI Application Entry Point."""
 
 import signal
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 import structlog
 from fastapi import FastAPI
@@ -13,9 +13,10 @@ from stt_v2.core.config.settings import get_settings
 from stt_v2.core.database.connection import close_database, initialize_database
 from stt_v2.core.messaging.broker import close_redis, initialize_redis
 from stt_v2.core.storage.minio_client import close_minio, initialize_minio
-from stt_v2.health.api.routes import internal_router, router as health_router
-from stt_v2.streaming._runtime import initialize_streaming, shutdown_streaming
 from stt_v2.embedding.api.routes import router as embedding_router
+from stt_v2.health.api.routes import internal_router
+from stt_v2.health.api.routes import router as health_router
+from stt_v2.streaming._runtime import initialize_streaming, shutdown_streaming
 from stt_v2.streaming.api.routes import router as streaming_router
 from stt_v2.transcription.api.routes import router as transcription_router
 
@@ -94,7 +95,7 @@ async def _preload_pipeline_models() -> None:
         return
 
     import time
-    from stt_v2.models.cache import get_model_cache
+
     from stt_v2.pipeline.config_reader import get_pipeline_reader
     from stt_v2.transcription.batch_service import BatchTranscriptionService
 

@@ -46,6 +46,6 @@ class ShutdownManager:
         try:
             await asyncio.wait_for(self._drain_event.wait(), timeout=timeout)
             return False
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("shutdown.timeout", remaining_tasks=len(self._active_tasks))
             return True

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from smr_v2.core.dependencies import (
     get_http_client,
     get_provider_registry,

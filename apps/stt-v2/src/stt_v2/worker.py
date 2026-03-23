@@ -144,7 +144,6 @@ def main() -> None:
     """
     import os
     import threading
-    import time
 
     import dramatiq
     from dramatiq import Worker
