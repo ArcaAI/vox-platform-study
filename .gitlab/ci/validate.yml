@@ -1,0 +1,54 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Validate stage — fast feedback (lint + type-check)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── TypeScript linting (ESLint via Turborepo) ────────────────────────────────
+
+lint-ts:
+  stage: validate
+  extends: .node-base
+  needs:
+    - job: install-node
+      optional: true
+  script:
+    - pnpm turbo lint
+  rules:
+    - !reference [.rules-any-ts, rules]
+
+# ── TypeScript type-checking ─────────────────────────────────────────────────
+
+typecheck:
+  stage: validate
+  extends: .node-base
+  needs:
+    - job: install-node
+      optional: true
+  script:
+    - pnpm turbo build --filter=@arcaai/database
+    - pnpm turbo build --filter=@arcaai/exceptions
+    - pnpm turbo build --filter=@arcaai/logger
+    - pnpm turbo build --filter=@arcaai/domains
+    - pnpm turbo build --filter=@arcaai/applications
+    - pnpm --filter @arcaai/api exec tsc --noEmit
+  rules:
+    - !reference [.rules-any-ts, rules]
+
+# ── Python linting (ruff) ───────────────────────────────────────────────────
+
+lint-python:
+  stage: validate
+  image: python:3.11-slim
+  needs: []
+  script:
+    - pip install --quiet ruff
+    - echo "Linting Python services..."
+    - ruff check apps/stt-v2/src/ apps/stt-v2/tests/ --output-format=gitlab || LINT_FAILED=1
+    - ruff check apps/smr/src/ --output-format=gitlab || LINT_FAILED=1
+    - ruff check apps/nlp/src/ apps/nlp/tests/ --output-format=gitlab || LINT_FAILED=1
+    - |
+      if [ "${LINT_FAILED:-0}" = "1" ]; then
+        echo "Python lint errors found"
+        exit 1
+      fi
+  rules:
+    - !reference [.rules-any-python, rules]
