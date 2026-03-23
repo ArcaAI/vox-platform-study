@@ -78,40 +78,49 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
 
-# Phase 1: Install torch + torchaudio with --no-deps.
-# This prevents uv from pulling the bundled nvidia-* pip packages (~2.8 GB)
-# that duplicate what the CUDA base image already provides as system libraries.
+# Generate overrides that tell uv to skip all nvidia-* pip packages and triton.
+#
+# Why this is safe (verified by codebase audit of apps/stt-v2/src/):
+#   - Zero direct imports of any nvidia.* Python package
+#   - Zero torch.compile() calls → triton not needed
+#   - Zero distributed training → nccl not needed
+#   - All CUDA libs (cublas, cudnn, cufft, curand, nvrtc, cusparse, cusolver)
+#     are already provided as system libraries by the nvidia/cuda base image
+#   - The codebase is 100% inference-only: torch.no_grad(), model.generate(),
+#     .to(device), torch.cuda.is_available() — no training, no autograd
+#
+# This prevents ~2.9 GB of redundant downloads that the old approach
+# (install-then-uninstall) was wasting on every uncached build.
+RUN printf '%s\n' \
+        'nvidia-cublas-cu12 ; sys_platform == "never"' \
+        'nvidia-cuda-cupti-cu12 ; sys_platform == "never"' \
+        'nvidia-cuda-nvrtc-cu12 ; sys_platform == "never"' \
+        'nvidia-cuda-runtime-cu12 ; sys_platform == "never"' \
+        'nvidia-cudnn-cu12 ; sys_platform == "never"' \
+        'nvidia-cufft-cu12 ; sys_platform == "never"' \
+        'nvidia-curand-cu12 ; sys_platform == "never"' \
+        'nvidia-cusolver-cu12 ; sys_platform == "never"' \
+        'nvidia-cusparse-cu12 ; sys_platform == "never"' \
+        'nvidia-cusparselt-cu12 ; sys_platform == "never"' \
+        'nvidia-nccl-cu12 ; sys_platform == "never"' \
+        'nvidia-nvjitlink-cu12 ; sys_platform == "never"' \
+        'nvidia-cufile-cu12 ; sys_platform == "never"' \
+        'nvidia-nvtx-cu12 ; sys_platform == "never"' \
+        'triton ; sys_platform == "never"' \
+    > /tmp/cuda-overrides.txt
+
+# Install torch + torchaudio first (--no-deps) to avoid pulling their
+# nvidia-* transitive deps. Then install remaining ML-GPU deps with
+# --override to skip nvidia-*/triton entirely during resolution.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /opt/venv/bin/python --no-deps \
         "torch>=2.8.0,<2.9.0" \
         "torchaudio>=2.8.0,<2.9.0"
 
-# Phase 2: Install all remaining ML-GPU deps normally.
-# torch/torchaudio are already satisfied from Phase 1.
-# Then purge nvidia-* pip packages and inference-unnecessary libs:
-#   - nvidia-cublas, cusparse, cusolver, cufft, curand, nvrtc → in CUDA base
-#   - nvidia-cudnn → in cudnn8-runtime base
-#   - nvidia-nccl → multi-GPU comms, not needed for single-GPU inference
-#   - nvidia-nvjitlink, cufile, cusparselt → not needed for inference
-#   - triton → only for torch.compile() training
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --python /opt/venv/bin/python ".[ml-gpu]" \
-    && uv pip uninstall --python /opt/venv/bin/python \
-        nvidia-cublas-cu12 \
-        nvidia-cuda-cupti-cu12 \
-        nvidia-cuda-nvrtc-cu12 \
-        nvidia-cuda-runtime-cu12 \
-        nvidia-cudnn-cu12 \
-        nvidia-cufft-cu12 \
-        nvidia-curand-cu12 \
-        nvidia-cusolver-cu12 \
-        nvidia-cusparse-cu12 \
-        nvidia-cusparselt-cu12 \
-        nvidia-nccl-cu12 \
-        nvidia-nvjitlink-cu12 \
-        nvidia-cufile-cu12 \
-        triton \
-        2>/dev/null || true \
+    uv pip install --python /opt/venv/bin/python \
+        --override /tmp/cuda-overrides.txt \
+        ".[ml-gpu]" \
     && find /opt/venv \( \
         -name "*.pyc" -o -name "*.pyo" -o -name "__pycache__" \
         -o -name "*.egg-info" -o -name "tests" -o -name "test" \
