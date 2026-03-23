@@ -11,8 +11,6 @@ Tests cover:
 
 import io
 import uuid
-from dataclasses import field
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,17 +18,17 @@ from fastapi import UploadFile
 from fastapi.exceptions import HTTPException
 
 from stt_v2.transcription.api.routes import (
-    _build_response,
     _MAX_UPLOAD_BYTES,
+    _build_response,
     transcribe_audio,
 )
 from stt_v2.transcription.api.schemas import (
     ErrorResponse,
+    SegmentResponse,
+    SentenceTimestampResponse,
     TimingMetricsResponse,
     TranscriptionResponse,
     WordTimestampResponse,
-    SentenceTimestampResponse,
-    SegmentResponse,
 )
 from stt_v2.transcription.dto import (
     AudioSegment,
@@ -39,7 +37,6 @@ from stt_v2.transcription.dto import (
     TranscriptionResult,
     WordTimestamp,
 )
-
 
 # =============================================================================
 # Helpers
@@ -78,21 +75,21 @@ def _make_pipeline_mock(language: str | None = "en", slug: str = "test-pipeline"
 
 def _make_transcription_result(**overrides) -> TranscriptionResult:
     """Build a TranscriptionResult with sensible defaults."""
-    defaults = dict(
-        text="Hello world",
-        language="en",
-        language_probability=0.95,
-        duration_seconds=3.5,
-        processing_time_seconds=1.2,
-        word_timestamps=[
+    defaults = {
+        "text": "Hello world",
+        "language": "en",
+        "language_probability": 0.95,
+        "duration_seconds": 3.5,
+        "processing_time_seconds": 1.2,
+        "word_timestamps": [
             WordTimestamp(word="Hello", start_time=0.0, end_time=0.5, confidence=0.99),
             WordTimestamp(word="world", start_time=0.6, end_time=1.0, confidence=0.97),
         ],
-        sentence_timestamps=[
+        "sentence_timestamps": [
             SentenceTimestamp(text="Hello world", start_time=0.0, end_time=1.0),
         ],
-        segments=[],
-        metadata={
+        "segments": [],
+        "metadata": {
             "job_id": "test-job-1",
             "pipeline": "test-pipeline",
             "timing": TimingMetrics(
@@ -103,7 +100,7 @@ def _make_transcription_result(**overrides) -> TranscriptionResult:
                 total_seconds=1.2,
             ),
         },
-    )
+    }
     defaults.update(overrides)
     return TranscriptionResult(**defaults)
 

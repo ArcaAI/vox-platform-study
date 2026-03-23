@@ -10,7 +10,14 @@ Covers:
 - _runtime.py: singleton accessors
 """
 
+from __future__ import annotations
+
 import asyncio
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from stt_v2.streaming.session import StreamSession
+    from stt_v2.streaming.session_manager import SessionManager
 import json
 import time
 from datetime import datetime, timedelta
@@ -382,7 +389,7 @@ class TestSessionMetadata:
         assert "last_activity" in d
 
     def test_roundtrip(self):
-        from stt_v2.streaming.schemas import SessionMetadata, SessionStatus
+        from stt_v2.streaming.schemas import SessionMetadata
 
         original = SessionMetadata(
             session_id="sess_round",
@@ -576,7 +583,6 @@ class TestExecutionProfile:
 
     def test_settings_override_max_concurrent(self):
         from stt_v2.streaming.execution_profile import (
-            ExecutionProfile,
             _apply_settings_overrides,
             _build_cpu_profile,
         )
@@ -774,7 +780,7 @@ class TestCapacityGuard:
                 await guard.release(sid)
             return acquired
 
-        results = await asyncio.gather(*[acquire_release(i) for i in range(100)])
+        _results = await asyncio.gather(*[acquire_release(i) for i in range(100)])
         # All should have been able to acquire (capacity = 50, but tasks finish fast)
         assert guard.active_count == 0  # all released
 
@@ -787,7 +793,7 @@ class TestCapacityGuard:
 class TestStreamSession:
     """Tests for StreamSession."""
 
-    def _make_session(self, session_id: str = "sess_test") -> "StreamSession":
+    def _make_session(self, session_id: str = "sess_test") -> StreamSession:
         from stt_v2.streaming.schemas import SessionMetadata, SessionStatus
         from stt_v2.streaming.session import StreamSession
 
@@ -1170,7 +1176,7 @@ class TestRuntime:
 class TestSessionManager:
     """Tests for SessionManager."""
 
-    def _make_manager(self) -> "SessionManager":
+    def _make_manager(self) -> SessionManager:
         from stt_v2.core.platform import PlatformType
         from stt_v2.streaming.execution_profile import ExecutionProfile
         from stt_v2.streaming.session_manager import SessionManager

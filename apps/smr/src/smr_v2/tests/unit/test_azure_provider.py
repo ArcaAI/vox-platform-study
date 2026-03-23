@@ -6,7 +6,7 @@ RED: Written before implementation.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -92,7 +92,6 @@ class TestAzureGenerateStream:
     @pytest.mark.asyncio
     async def test_stream_yields_chunks(self, azure_config):
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
-        from smr_v2.models.stream import StreamChunk
 
         async def _mock_stream():
             for text in ["Hello", " from", " Azure"]:
@@ -177,7 +176,6 @@ class TestAzureStructuredOutput:
     @pytest.mark.asyncio
     async def test_stream_with_json_format(self, azure_config):
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
-        from smr_v2.models.stream import StreamChunk
 
         async def _mock_stream():
             chunk = MagicMock()
@@ -206,7 +204,6 @@ class TestAzureStructuredOutput:
     @pytest.mark.asyncio
     async def test_stream_with_json_schema_format(self, azure_config):
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
-        from smr_v2.models.stream import StreamChunk
 
         async def _mock_stream():
             chunk = MagicMock()

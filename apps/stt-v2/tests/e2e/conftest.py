@@ -1,11 +1,11 @@
 """E2E test fixtures using testcontainers and real monorepo infrastructure."""
 
 import asyncio
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from typing import AsyncGenerator, Generator
 
 # Directory containing real .wav audio fixtures
 _FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -81,7 +81,8 @@ async def configured_app(postgres_container, redis_container, minio_container):
     require ML dependencies (health, internal admin, streaming session tests).
     """
     import os
-    from httpx import AsyncClient, ASGITransport
+
+    from httpx import ASGITransport, AsyncClient
 
     # ------------------------------------------------------------------
     # Save global state so we can restore it after this test.
@@ -89,9 +90,9 @@ async def configured_app(postgres_container, redis_container, minio_container):
     # the session-scoped real_audio_client's DB engines / settings.
     # ------------------------------------------------------------------
     import stt_v2.core.database.connection as db_conn
+    import stt_v2.core.storage.minio_client as minio_mod
     import stt_v2.health.api.routes as health_routes
     import stt_v2.main as main_mod
-    import stt_v2.core.storage.minio_client as minio_mod
 
     _saved_env = {
         k: os.environ.get(k)
@@ -150,8 +151,9 @@ async def configured_app(postgres_container, redis_container, minio_container):
     # Create the "core" schema, required enum types, and all tables in the
     # testcontainer DB.  Without this, queries to core."AsrPipeline" etc.
     # return UndefinedTableError because the bare PostgreSQL has no schema.
-    from sqlalchemy.ext.asyncio import create_async_engine as _create_engine
     from sqlalchemy import text as _text
+    from sqlalchemy.ext.asyncio import create_async_engine as _create_engine
+
     from stt_v2.core.database.models import Base
 
     _tmp_engine = _create_engine(async_url)
@@ -255,7 +257,9 @@ async def real_audio_client():
         TEST_DATABASE_URL, TEST_REDIS_URL, TEST_MINIO_ENDPOINT
     """
     import os
-    from httpx import AsyncClient, ASGITransport
+
+    from httpx import ASGITransport, AsyncClient
+
     from stt_v2.core.config.settings import get_settings
 
     # Point at monorepo test containers (fallback to defaults matching
@@ -311,8 +315,8 @@ async def real_audio_client():
     # Verify the monorepo test infra is reachable before proceeding.
     # If not, skip all tests that depend on this fixture.
     db_url = os.environ["DATABASE_URL"]
-    from sqlalchemy.ext.asyncio import create_async_engine as _create_engine
     from sqlalchemy import text as _text
+    from sqlalchemy.ext.asyncio import create_async_engine as _create_engine
 
     _probe_engine = _create_engine(db_url, pool_pre_ping=True)
     try:
@@ -382,6 +386,7 @@ async def valid_pipeline_id(real_audio_client) -> str:
 
     # Verify the pipeline exists in the test DB (seeded by pnpm test:db:seed)
     from sqlalchemy import text
+
     from stt_v2.core.database.connection import get_session
 
     async with get_session() as session:
@@ -413,8 +418,9 @@ def valid_tenant_id() -> str:
 @pytest.fixture
 def sample_wav_audio() -> bytes:
     """Generate a sample WAV audio file for testing (2s 440 Hz sine wave)."""
-    import struct
     import io
+    import struct
+
     import numpy as np
 
     # Generate 2 seconds of a 440Hz sine wave at 16kHz

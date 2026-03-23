@@ -58,7 +58,7 @@ class Settings(BaseSettings):
             elif v.startswith("postgresql://") and "+asyncpg" not in v:
                 v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-            from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
+            from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
             parsed = urlparse(v)
             if parsed.query:

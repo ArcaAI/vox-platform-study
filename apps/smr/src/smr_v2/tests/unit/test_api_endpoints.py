@@ -7,17 +7,14 @@ RED: Written before implementation.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
-import httpx
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from smr_v2.core.config import Settings
 from smr_v2.models.provider import ModelInfo, ProviderInfo
-from smr_v2.models.stream import StreamChunk
 from smr_v2.models.task import TaskState, TaskStatus
 
 

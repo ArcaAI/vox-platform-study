@@ -139,7 +139,7 @@ async def transcribe_audio(
                 "error_code": "PIPELINE_NOT_FOUND",
                 "message": f"Pipeline '{pipeline_id}' not found or not enabled",
             },
-        )
+        ) from None
 
     # Validate and apply per-request language override
     if language:
@@ -187,7 +187,7 @@ async def transcribe_audio(
                 "error_code": exc.error_code,
                 "message": str(exc),
             },
-        )
+        ) from exc
     except ValidationError as exc:
         log.warning("Validation error", error=str(exc))
         raise HTTPException(
@@ -196,7 +196,7 @@ async def transcribe_audio(
                 "error_code": exc.error_code,
                 "message": str(exc),
             },
-        )
+        ) from exc
     except STTServiceError as exc:
         log.error("STT service error", error=str(exc), error_code=exc.error_code)
         raise HTTPException(
@@ -205,7 +205,7 @@ async def transcribe_audio(
                 "error_code": exc.error_code,
                 "message": str(exc),
             },
-        )
+        ) from exc
 
     # ------------------------------------------------------------------
     # 4. Build response from TranscriptionResult

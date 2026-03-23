@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import structlog
 from openai import APIConnectionError, APIError, APITimeoutError, AsyncAzureOpenAI, BadRequestError

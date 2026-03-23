@@ -1,7 +1,7 @@
 import uuid
 import torch
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
 
 from nlp.core.logging import get_logger
@@ -53,7 +53,7 @@ class TransformerTokenClassifier(TokenClassifier):
     async def initialize(self) -> None:
         """Load transformer token classification model"""
         try:
-            logger.info(f"Initializing TokenClassifier service.")
+            logger.info("Initializing TokenClassifier service.")
 
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModelForTokenClassification.from_pretrained(self.model_name)

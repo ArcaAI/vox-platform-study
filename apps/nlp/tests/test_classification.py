@@ -32,7 +32,7 @@ def fill_mask():
     print(pipe(text))
 
 def list_all_labels():
-    from transformers import AutoModelForTokenClassification, AutoModelForSequenceClassification
+    from transformers import AutoModelForSequenceClassification
 
     # model = AutoModelForTokenClassification.from_pretrained("blaze999/Medical-NER")
     model = AutoModelForSequenceClassification.from_pretrained("0208suin/disease-prediction-model")

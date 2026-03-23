@@ -11,7 +11,7 @@ a (2, 1, 128) float32 tensor = 1 KiB.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from .dto import VADSessionState
 from .silero_service import SileroVADService, get_vad_service
@@ -89,7 +89,7 @@ class VADSessionManager:
         Returns:
             Number of sessions cleaned up.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cutoff = now - timedelta(seconds=self._max_idle_seconds)
         expired: list[str] = []
 

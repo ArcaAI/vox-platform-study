@@ -11,6 +11,7 @@ Key design decisions:
 """
 
 import logging
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -212,9 +213,9 @@ class SileroVADService:
         session_state.h_state = ort_out[1]  # Carry forward LSTM state
         session_state.samples_processed += frame_size
 
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        session_state.last_activity = datetime.now(timezone.utc)
+        session_state.last_activity = datetime.now(UTC)
 
         return prob
 
@@ -251,7 +252,7 @@ class SileroVADService:
             raise RuntimeError(
                 "huggingface_hub is required to auto-download Silero VAD. "
                 "Install it or set VAD_MODEL_PATH to a local file."
-            )
+            ) from None
 
     @staticmethod
     def _probs_to_segments(

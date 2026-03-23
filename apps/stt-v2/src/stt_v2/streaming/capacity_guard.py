@@ -9,7 +9,6 @@ the API Gateway can return **HTTP 503** with a ``Retry-After`` header.
 from __future__ import annotations
 
 import asyncio
-from typing import Set
 
 import structlog
 
@@ -40,7 +39,7 @@ class CapacityGuard:
         if max_streams < 1:
             raise ValueError(f"max_streams must be >= 1, got {max_streams}")
         self._max_streams = max_streams
-        self._active_sessions: Set[str] = set()
+        self._active_sessions: set[str] = set()
         self._lock = asyncio.Lock()
 
     # ------------------------------------------------------------------

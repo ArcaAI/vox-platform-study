@@ -19,25 +19,22 @@ Anti-pattern prevention:
 import io
 import json
 import os
-import threading
 import wave
-from datetime import datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from stt_v2.transcription.batch_service import BatchTranscriptionService
-from stt_v2.transcription.dto import RawTranscription
-from stt_v2.models.base_loader import LoadedModel
-from stt_v2.pipeline.dto import AiModelFormat
 from stt_v2.core.exceptions import (
     CloudASRAuthError,
     CloudASRQuotaError,
     CloudASRTranscriptionError,
 )
-
+from stt_v2.models.base_loader import LoadedModel
+from stt_v2.pipeline.dto import AiModelFormat
+from stt_v2.transcription.batch_service import BatchTranscriptionService
+from stt_v2.transcription.dto import RawTranscription
 
 # =============================================================================
 # Realistic Azure SDK Mock Factories (Anti-pattern #4 prevention)
@@ -133,7 +130,7 @@ class TestAzureTranscribeSyncWavConversion:
         t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
         samples = np.sin(2 * np.pi * 440 * t).astype(np.float32) * 0.8
 
-        captured_wav_path = [None]
+        _captured_wav_path = [None]
 
         def mock_transcribe_capturing_wav(speech_config, audio_config):
             """Capture the WAV file path before Azure would consume it."""
@@ -143,7 +140,7 @@ class TestAzureTranscribeSyncWavConversion:
         # We need to intercept the temp file write. The cleanest way is to
         # mock the Azure SDK and capture what was written.
         mock_speech_config = MagicMock()
-        mock_audio_config_class = MagicMock()
+        _mock_audio_config_class = MagicMock()
         mock_transcriber = MagicMock()
 
         # Wire up callbacks to immediately fire session_stopped
