@@ -49,9 +49,12 @@ htmlcov/
 docker/
 !docker/Dockerfile
 
-# --- Lock files & dev configs ---
-uv.lock
+# --- Dev configs ---
 Makefile
+
+# --- CI/CD ---
+.github/
+.gitlab-ci.yml
 
 # --- Scripts (not needed in image) ---
 scripts/

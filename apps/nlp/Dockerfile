@@ -1,135 +1,127 @@
-# -- Builder stage --
-FROM python:3.11-slim AS builder
+# syntax=docker/dockerfile:1
+# ── NLP Service ──────────────────────────────────────────────────────────────
+# Multi-stage build: deps → builder → debug | production
+#
+# Build targets:
+#   docker build --target production -t nlp .
+#   docker build --target debug -t nlp:debug .
+# ─────────────────────────────────────────────────────────────────────────────
 
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+# ── Stage 1: deps — system libraries needed to compile native wheels ────────
+FROM python:3.11-slim-trixie AS deps
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libasound2-dev \
-    && rm -rf /var/lib/apt/lists/*
+    libasound2-dev
+
+# ── Stage 2: builder — install Python packages into a portable venv ─────────
+FROM deps AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /bin/
 
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never
+
 WORKDIR /app
+
+# Layer 1: Install torch CPU-only from PyTorch index.
+# Separated so this ~200MB layer is cached independently and only rebuilds
+# when the torch version constraint changes.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv venv /app/.venv && \
+    uv pip install --python /app/.venv \
+        --index-url https://download.pytorch.org/whl/cpu \
+        "torch>=2.1.0"
+
+# Layer 2: Install remaining deps from lockfile.
+# editdistpy's setuptools requirement is handled by
+# [tool.uv.extra-build-dependencies] in pyproject.toml.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --no-dev --no-install-project --no-editable \
+        --python /app/.venv/bin/python
 
 COPY pyproject.toml uv.lock ./
-
-# Use uv pip install (system-wide) instead of uv sync because editdistpy
-# (symspellpy dep) requires pkg_resources at build time but doesn't declare it.
-# uv pip install --system avoids the build-isolation issue.
+COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system --no-cache \
-        "fastapi>=0.133.0" \
-        "uvicorn[standard]>=0.41.0" \
-        "pydantic>=2.12.5" \
-        "pydantic-settings>=2.13.1" \
-        "spacy>=3.8.0" \
-        "transformers>=4.48.0" \
-        "torch>=2.1.0" \
-        "numpy>=2.0.0" \
-        "pandas>=2.1.0" \
-        "scikit-learn>=1.3.0" \
-        "aiofiles>=25.1.0" \
-        "python-multipart>=0.0.22" \
-        "httpx>=0.28.1" \
-        "python-jose[cryptography]>=3.3.0" \
-        "passlib[bcrypt]>=1.7.4" \
-        "symspellpy>=6.9.0" \
-        "prometheus-fastapi-instrumentator>=7.1.0" \
-        "opentelemetry-api>=1.39.1" \
-        "opentelemetry-sdk>=1.39.1" \
-        "opentelemetry-instrumentation>=0.60b1" \
-        "opentelemetry-instrumentation-fastapi>=0.60b1" \
-        "opentelemetry-instrumentation-logging>=0.60b1" \
-        "opentelemetry-exporter-otlp>=1.39.0" \
-        "opentelemetry-exporter-jaeger-thrift>=1.21.0" \
-        "deprecated>=1.2.18" \
-    && find /usr/local/lib/python3.11/site-packages \( \
-        -name "*.pyc" -o -name "*.pyo" -o -name "__pycache__" \
-        -o -name "*.egg-info" \
+    uv sync --locked --no-dev --no-editable
+
+RUN find /app/.venv/lib -type d \( \
+        -name "__pycache__" -o -name "*.egg-info" \
+        -o -name "tests" -o -name "test" \
     \) -exec rm -rf {} + 2>/dev/null; \
-    find /usr/local/lib/python3.11/site-packages -name "*.so" \
-        -exec strip --strip-unneeded {} + 2>/dev/null; \
-    rm -rf /usr/local/lib/python3.11/site-packages/nvidia \
-           /usr/local/lib/python3.11/site-packages/torch/lib/libtorch_cuda*.so \
-           /usr/local/lib/python3.11/site-packages/torch/lib/libcudnn*.so* \
-           /usr/local/lib/python3.11/site-packages/torch/lib/libnccl*.so* \
-           /usr/local/lib/python3.11/site-packages/torch/lib/libcublas*.so* \
-           /usr/local/lib/python3.11/site-packages/torch/lib/libcufft*.so* \
-           /usr/local/lib/python3.11/site-packages/torch/lib/libcurand*.so* \
-           /usr/local/lib/python3.11/site-packages/torch/lib/libcusparse*.so* \
-           /usr/local/lib/python3.11/site-packages/torch/lib/libcusolver*.so* \
-    2>/dev/null; true
+    find /app/.venv/lib -name "*.so" \
+        -exec strip --strip-unneeded {} + 2>/dev/null; true
 
-# -- Debug stage (optional for development) --
-FROM python:3.11-slim AS debug
+# ── Debug stage ─────────────────────────────────────────────────────────────
+FROM python:3.11-slim-trixie AS debug
 
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    curl procps
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    procps \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY src/nlp/ /app/src/
+COPY --from=builder /app/.venv /app/.venv
 
 WORKDIR /app
+COPY src/nlp/ /app/src/
 
-ENV PYTHONPATH="/app" \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+ENV PATH="/app/.venv/bin:$PATH" \
+    VIRTUAL_ENV=/app/.venv \
+    PYTHONPATH="/app" \
+    PYTHONUNBUFFERED=1
 
 RUN groupadd --gid 1001 nlpuser && \
     useradd --uid 1001 --gid nlpuser --shell /bin/bash --create-home nlpuser && \
     chown -R nlpuser:nlpuser /app
 
 USER nlpuser
-
 EXPOSE 8864
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8864/api/v1/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8864/api/v1/health')"]
 
 ENTRYPOINT ["python", "-m", "nlp.main"]
 
-# -- Production stage --
-FROM gcr.io/distroless/python3-debian12:nonroot AS production
+# ── Production stage ────────────────────────────────────────────────────────
+FROM python:3.11-slim-trixie AS production
 
 LABEL maintainer="HOPE Team" \
     service="nlp" \
-    version="1.0.0" \
     description="HOPE NLP Service" \
-    stage="production" \
     org.opencontainers.image.title="HOPE NLP Service" \
     org.opencontainers.image.description="Real-time NLP service with Azure Cognitive Services" \
-    org.opencontainers.image.version="1.0.0" \
     org.opencontainers.image.vendor="HOPE Team" \
-    org.opencontainers.image.licenses="MIT" \
-    org.opencontainers.image.expose.8864/tcp="NLP Service API"
+    org.opencontainers.image.licenses="MIT"
 
-ENV PYTHONPATH="/usr/local/lib/python3.11/site-packages:/app" \
+ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONHASHSEED=random
+    PYTHONHASHSEED=random \
+    PATH="/app/.venv/bin:$PATH"
 
 ENV OTEL_SERVICE_NAME=hope-nlp \
-    OTEL_SERVICE_VERSION=1.0.0 \
-    OTEL_RESOURCE_ATTRIBUTES=service.name=hope-nlp,service.version=1.0.0,service.namespace=hope,deployment.environment=production \
+    OTEL_RESOURCE_ATTRIBUTES="service.name=hope-nlp,service.namespace=hope,deployment.environment=production" \
     OTEL_TRACES_ENABLED=true \
     OTEL_METRICS_ENABLED=true \
     LOG_LEVEL=info
 
-COPY --from=builder --chown=65534:65534 /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --chown=65534:65534 src/ /app/src/
-
 WORKDIR /app
 
-USER 65534
+RUN groupadd --gid 1001 nlpuser && \
+    useradd --uid 1001 --gid nlpuser --shell /usr/sbin/nologin --no-create-home nlpuser
 
+COPY --from=builder --chown=nlpuser:nlpuser /app/.venv /app/.venv
+COPY --chown=nlpuser:nlpuser src/ /app/src/
+
+USER nlpuser
 EXPOSE 8864
 
-ENTRYPOINT ["/usr/bin/python3", "/app/src/main.py"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8864/api/v1/health')"]
+
+ENTRYPOINT ["python", "-m", "nlp.main"]

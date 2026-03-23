@@ -5,6 +5,7 @@ stages:
 variables:
   DOCKER_HOST: unix:///var/run/docker.sock
   DOCKER_TLS_CERTDIR: ""
+  DOCKER_BUILDKIT: "1"
   REGISTRY: 10.10.1.110:5050
   GITHUB_REPO_URL: "https://github.com/4bits-vn/project-hope-v2.git"
   GITHUB_BACKUP_BRANCH: "back-up"
@@ -21,6 +22,7 @@ workflow:
   stage: build
   tags: [build]
   image: docker:27
+  timeout: 30m
   variables:
     SERVICE_NAME: ""
     DOCKER_CONTEXT: "."
@@ -29,21 +31,29 @@ workflow:
     BUILD_ARGS: ""
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$REGISTRY"
+    - |
+      printf '[registry."%s"]\nhttp = true\ninsecure = true\n' "$REGISTRY" > /tmp/buildkitd.toml
+      if ! docker buildx inspect cibuilder >/dev/null 2>&1; then
+        docker buildx create --name cibuilder --driver docker-container \
+          --config /tmp/buildkitd.toml
+      fi
+      docker buildx use cibuilder
+      docker buildx inspect --bootstrap
   script:
     - |
       set -eu
 
       image_repo="$REGISTRY/$CI_PROJECT_PATH/$SERVICE_NAME"
+      cache_repo="$image_repo/cache"
       short_sha=$(echo "$CI_COMMIT_SHA" | cut -c1-8)
       created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-      # Compute tags based on trigger type.
-      # Every image gets a commit-pinned tag so deployments are always traceable.
-      #   - Semver tag:      1.2.3  + latest + <sha>
-      #   - Default branch:  main-<sha> + <sha> + latest
-      #   - Feature branch:  devops-foo-<sha> + <sha>   (no latest)
+      # ── Compute tags ──────────────────────────────────────────────────
+      #   Semver tag:      1.2.3  + latest + <sha>
+      #   Default branch:  main-<sha> + <sha> + latest
+      #   Feature branch:  devops-foo-<sha> + <sha>   (no latest)
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
-        SEMVER_TAG="${CI_COMMIT_TAG#v}"          # v1.0.0 → 1.0.0
+        SEMVER_TAG="${CI_COMMIT_TAG#v}"
         TAGS="$SEMVER_TAG latest $short_sha"
       elif [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
         TAGS="main-${short_sha} ${short_sha} latest"
@@ -57,27 +67,37 @@ workflow:
         build_target_arg="--target $BUILD_TARGET"
       fi
 
-      # Build once, tag many.
+      # ── Build tag list for buildx --tag flags ─────────────────────────
+      tag_args=""
+      for tag in $TAGS; do
+        tag_args="$tag_args --tag $image_repo:$tag"
+      done
+
       primary_tag=$(echo "$TAGS" | awk '{print $1}')
       echo "Building service=$SERVICE_NAME primary_tag=$primary_tag all_tags=$TAGS"
       echo "  commit=$CI_COMMIT_SHA branch=${CI_COMMIT_BRANCH:-} git_tag=${CI_COMMIT_TAG:-}"
 
-      docker build \
+      # ── Build + push with registry cache ──────────────────────────────
+      # mode=max caches ALL intermediate stages (deps, builder, etc.),
+      # not just the final target. This means apt-get, uv pip install,
+      # and torch download layers are reused across CI runs.
+      docker buildx build \
+        --push \
+        --cache-from type=registry,ref=$cache_repo \
+        --cache-to   type=registry,ref=$cache_repo,mode=max,compression=zstd \
         --label org.opencontainers.image.source=$CI_PROJECT_URL \
         --label org.opencontainers.image.revision=$CI_COMMIT_SHA \
         --label org.opencontainers.image.created=$created_at \
         --label org.opencontainers.image.version=$primary_tag \
         $build_target_arg \
         $BUILD_ARGS \
+        $tag_args \
         -f "$DOCKERFILE" \
-        -t "$image_repo:$primary_tag" \
         "$DOCKER_CONTEXT"
 
-      # Apply all additional tags and push each one.
+      echo "  pushed tags:"
       for tag in $TAGS; do
-        docker tag "$image_repo:$primary_tag" "$image_repo:$tag"
-        docker push "$image_repo:$tag"
-        echo "  pushed $image_repo:$tag"
+        echo "    $image_repo:$tag"
       done
 
 # ── JOBS ─────────────────────────────────────────────────────────────
@@ -206,15 +226,11 @@ github-backup:
     - |
       set -eu
       
-      # Repository is already cloned by GitLab Runner
-      # Add GitHub remote with authentication
-      GITHUB_AUTH_URL="https://VuVux520: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@github.com/4bits-vn/project-hope-v2.git"
+      GITHUB_AUTH_URL="https://${GITHUB_BACKUP_USER}:${GITHUB_BACKUP_TOKEN}@github.com/4bits-vn/project-hope-v2.git"
       git remote add github $GITHUB_AUTH_URL
       
-      # Fetch existing branches from GitHub
       git fetch github
       
-      # Check if backup branch exists on GitHub
       if git show-ref --verify --quiet refs/remotes/github/$GITHUB_BACKUP_BRANCH; then
         echo "Branch $GITHUB_BACKUP_BRANCH exists on GitHub, checking out..."
         git checkout -b $GITHUB_BACKUP_BRANCH github/$GITHUB_BACKUP_BRANCH
@@ -224,7 +240,6 @@ github-backup:
         git checkout -b $GITHUB_BACKUP_BRANCH
       fi
       
-      # Push to GitHub
       git push github $GITHUB_BACKUP_BRANCH --force
       
       echo "Successfully pushed changes to GitHub branch: $GITHUB_BACKUP_BRANCH"
