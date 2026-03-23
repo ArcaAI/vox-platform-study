@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-18
 **Container**: CT 101 (LXC) | **Bridges**: vmbr0, vmbr1, vmbr2, vmbr3, vmbr4 | **Multi-homed**
-**Related**: [Infrastructure Overview](./proxmox-infrastructure-gitlab-rancher-plan.md) | [Network Topology](./proxmox-network-topology-design.md) | [GitLab (VM 410)](./deploy-vm410-gitlab.md) | [MinIO (VM 402)](./deploy-vm402-minio.md) | [Rancher (VM 400)](./deploy-vm400-master.md)
+**Related**: [Infrastructure Overview](../infrastructure/proxmox-infrastructure-gitlab-rancher-plan.md) | [Network Topology](../infrastructure/proxmox-network-topology-design.md) | [GitLab (VM 410)](./deploy-vm410-gitlab.md) | [MinIO (VM 402)](./deploy-vm402-minio.md) | [Rancher (VM 400)](./deploy-vm400-master.md)
 
 ---
 
@@ -66,7 +66,7 @@ All entries below are configured in the Zero Trust Dashboard under the **hope-ho
 
 ### VMs 500–502 — database cluster
 
-See [Database Access via Cloudflare Tunnel](./setup-database-access-cloudflare-tunnel.md) for full setup guide.
+See [Database Access via Cloudflare Tunnel](../networking/setup-database-access-cloudflare-tunnel.md) for full setup guide.
 
 > **Firewall**: VMs 500–502 run UFW with a default `DROP` policy. CT 101 (`10.10.1.2`) must be explicitly allowed on each VM: `sudo ufw allow from 10.10.1.2 to any`. Without this, all tunnel traffic to the DB cluster will silently hang. See [Section 6.5](./deploy-vm500-502-postgres-ha.md#65-configure-firewall).
 

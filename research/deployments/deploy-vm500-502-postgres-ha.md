@@ -3,9 +3,9 @@
 **Date**: 2026-03-18
 **VMs**: 500 (`10.10.1.200`), 501 (`10.10.1.201`), 502 (`10.10.1.202`)
 **Bridge**: vmbr1 | **Specs**: 8 vCPU / 16 GB RAM / 64 GB OS disk + data disk (each)
-**Config files**: [`configs/postgres-ha/`](./configs/postgres-ha/) — docker-compose (generates patroni config at startup), haproxy.cfg, keepalived
+**Config files**: [`configs/postgres-ha/`](../configs/postgres-ha/) — docker-compose (generates patroni config at startup), haproxy.cfg, keepalived
 **Cloudflare SSH**: `ssh-db0.taphuynh.dev` (VM 500) | `ssh-db1.taphuynh.dev` (VM 501) | `ssh-db2.taphuynh.dev` (VM 502)
-**Related**: [Infrastructure Overview](./proxmox-infrastructure-gitlab-rancher-plan.md) | [MinIO (VM 402)](./deploy-vm402-minio.md) | [GitLab (VM 410)](./deploy-vm410-gitlab.md) | [Runner (VM 411)](./deploy-vm411-gitlab-runner.md) | [Cloudflare Tunnel](./deploy-ct101-cloudflare-tunnel.md) | [Database Access & Domains](./setup-database-access-cloudflare-tunnel.md)
+**Related**: [Infrastructure Overview](../infrastructure/proxmox-infrastructure-gitlab-rancher-plan.md) | [MinIO (VM 402)](./deploy-vm402-minio.md) | [GitLab (VM 410)](./deploy-vm410-gitlab.md) | [Runner (VM 411)](./deploy-vm411-gitlab-runner.md) | [Cloudflare Tunnel](./deploy-ct101-cloudflare-tunnel.md) | [Database Access & Domains](../networking/setup-database-access-cloudflare-tunnel.md)
 
 > **TimescaleDB** is a PostgreSQL extension for time-series data. The `timescale/timescaledb-ha` Docker image bundles PostgreSQL 18 + TimescaleDB 2.25 + Patroni 4.1.0 + pgBackRest in a single production-ready image — no custom Dockerfile needed. All standard PostgreSQL features, tools, and clients work unchanged.
 
@@ -686,7 +686,7 @@ curl -s http://10.10.1.200:8008/cluster | python3 -m json.tool
 
 ### 8.4 Verify Dynamic Settings
 
-The bootstrap DCS settings and PostgreSQL parameters are defined in [`patroni/entrypoint.sh`](./configs/postgres-ha/patroni/entrypoint.sh), which generates `/home/postgres/postgres.yml` from `.env` variables at container startup. A reference copy is at [`patroni/patroni.yml`](./configs/postgres-ha/patroni/patroni.yml). No manual `edit-config` step is needed for initial setup.
+The bootstrap DCS settings and PostgreSQL parameters are defined in [`patroni/entrypoint.sh`](../configs/postgres-ha/patroni/entrypoint.sh), which generates `/home/postgres/postgres.yml` from `.env` variables at container startup. A reference copy is at [`patroni/patroni.yml`](../configs/postgres-ha/patroni/patroni.yml). No manual `edit-config` step is needed for initial setup.
 
 To view or adjust settings after bootstrap:
 
@@ -712,7 +712,7 @@ HAProxy routes connections to the correct PostgreSQL node. Keepalived provides a
 
 ### 9.1 Start HAProxy
 
-HAProxy is configured in [`docker-compose.yml`](./configs/postgres-ha/docker-compose.yml) under the `haproxy` profile, with routing rules in [`haproxy/haproxy.cfg`](./configs/postgres-ha/haproxy/haproxy.cfg). Deploy on **VM 500 and VM 501** only:
+HAProxy is configured in [`docker-compose.yml`](../configs/postgres-ha/docker-compose.yml) under the `haproxy` profile, with routing rules in [`haproxy/haproxy.cfg`](../configs/postgres-ha/haproxy/haproxy.cfg). Deploy on **VM 500 and VM 501** only:
 
 ```bash
 # VM 500
@@ -739,7 +739,7 @@ Open the HAProxy stats dashboard: `http://10.10.1.200:7000/` — you should see 
 
 ### 9.2 Install and Configure Keepalived
 
-Keepalived runs on the **host** (not in Docker) because it needs direct access to the network interface for VRRP. Config files are in [`configs/postgres-ha/keepalived/`](./configs/postgres-ha/keepalived/).
+Keepalived runs on the **host** (not in Docker) because it needs direct access to the network interface for VRRP. Config files are in [`configs/postgres-ha/keepalived/`](../configs/postgres-ha/keepalived/).
 
 > **Note**: Before copying, check your interface name with `ip a` — if it's not `eth0` (likely `ens18` on Proxmox VMs), edit the conf file after copying.
 
@@ -777,7 +777,7 @@ psql -h 10.10.1.250 -p 5000 -U postgres -c "SELECT 1;"
 
 ## 10. Deploy PgBouncer (Optional)
 
-PgBouncer is configured in [`docker-compose.yml`](./configs/postgres-ha/docker-compose.yml) under the `pgbouncer` profile. Start on **all 3 nodes**:
+PgBouncer is configured in [`docker-compose.yml`](../configs/postgres-ha/docker-compose.yml) under the `pgbouncer` profile. Start on **all 3 nodes**:
 
 ```bash
 docker compose --profile pgbouncer up -d
@@ -799,7 +799,7 @@ psql -h 10.10.1.200 -p 6432 -U postgres -d pgbouncer -c "SHOW POOLS;"
 
 The postgres_exporter exposes PostgreSQL metrics for Prometheus. Patroni 4.1.0 also exposes its own `/metrics` endpoint on port 8008.
 
-Configured in [`docker-compose.yml`](./configs/postgres-ha/docker-compose.yml) under the `monitoring` profile. Start on **all 3 nodes**:
+Configured in [`docker-compose.yml`](../configs/postgres-ha/docker-compose.yml) under the `monitoring` profile. Start on **all 3 nodes**:
 
 ```bash
 docker compose --profile monitoring up -d
@@ -862,7 +862,7 @@ scrape_configs:
 
 ## 12. Backup with pgBackRest
 
-pgBackRest is bundled in the `timescaledb-ha` image. It provides block-level incremental backups with parallel processing, zstd compression, and S3 support. Backups are stored in MinIO S3 (`10.10.1.102:9000`, bucket `pgbackrest`). The config is mounted from [`pgbackrest/pgbackrest.conf`](./configs/postgres-ha/pgbackrest/pgbackrest.conf) into the container at `/etc/pgbackrest/pgbackrest.conf`. The `PGBACKREST_CONFIG` environment variable overrides the image's default path (`/home/postgres/pgdata/backup/pgbackrest.conf`). A local-disk fallback config is available at [`pgbackrest-local.conf.example`](./configs/postgres-ha/pgbackrest/pgbackrest-local.conf.example).
+pgBackRest is bundled in the `timescaledb-ha` image. It provides block-level incremental backups with parallel processing, zstd compression, and S3 support. Backups are stored in MinIO S3 (`10.10.1.102:9000`, bucket `pgbackrest`). The config is mounted from [`pgbackrest/pgbackrest.conf`](../configs/postgres-ha/pgbackrest/pgbackrest.conf) into the container at `/etc/pgbackrest/pgbackrest.conf`. The `PGBACKREST_CONFIG` environment variable overrides the image's default path (`/home/postgres/pgdata/backup/pgbackrest.conf`). A local-disk fallback config is available at [`pgbackrest-local.conf.example`](../configs/postgres-ha/pgbackrest/pgbackrest-local.conf.example).
 
 ### How It Works
 
@@ -882,7 +882,7 @@ pgBackRest is bundled in the `timescaledb-ha` image. It provides block-level inc
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-**Key integration points** (already configured in [`patroni/entrypoint.sh`](./configs/postgres-ha/patroni/entrypoint.sh)):
+**Key integration points** (already configured in [`patroni/entrypoint.sh`](../configs/postgres-ha/patroni/entrypoint.sh)):
 
 | Setting | Value | Purpose |
 |---------|-------|---------|
@@ -1189,7 +1189,7 @@ du -sh /data/pgbackrest/
 
 ### 13.1 PostgreSQL Authentication
 
-The `pg_hba.conf` rules are defined in the Patroni bootstrap config (generated at startup from [`docker-compose.yml`](./configs/postgres-ha/docker-compose.yml)) under `bootstrap.pg_hba` and applied automatically at cluster initialization. A reference copy is in [`patroni/patroni.yml`](./configs/postgres-ha/patroni/patroni.yml). Password encryption is set to `scram-sha-256`.
+The `pg_hba.conf` rules are defined in the Patroni bootstrap config (generated at startup from [`docker-compose.yml`](../configs/postgres-ha/docker-compose.yml)) under `bootstrap.pg_hba` and applied automatically at cluster initialization. A reference copy is in [`patroni/patroni.yml`](../configs/postgres-ha/patroni/patroni.yml). Password encryption is set to `scram-sha-256`.
 
 After bootstrap, verify the generated `pg_hba.conf` matches:
 

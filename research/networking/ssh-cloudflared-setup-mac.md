@@ -3,7 +3,7 @@
 **Date**: 2026-03-18
 **Client**: macOS (iTerm2 + cloudflared)
 **Target**: All VMs on Proxmox host (Dell 7920) via Cloudflare Tunnel
-**Related**: [Cloudflare Tunnel (CT 101)](./deploy-ct101-cloudflare-tunnel.md) | [Network Topology](./proxmox-network-topology-design.md)
+**Related**: [Cloudflare Tunnel (CT 101)](../deployments/deploy-ct101-cloudflare-tunnel.md) | [Network Topology](../infrastructure/proxmox-network-topology-design.md)
 
 ---
 
@@ -87,7 +87,7 @@ ssh gitlab-runner
 | macOS with Homebrew | `brew --version` |
 | cloudflared installed | `which cloudflared` → `/opt/homebrew/bin/cloudflared` |
 | iTerm2 installed | Application exists in /Applications |
-| Cloudflare Tunnel running on CT 101 | SSH hostnames resolve (see [CT 101 doc](./deploy-ct101-cloudflare-tunnel.md)) |
+| Cloudflare Tunnel running on CT 101 | SSH hostnames resolve (see [CT 101 doc](../deployments/deploy-ct101-cloudflare-tunnel.md)) |
 | User `dell` exists on all VMs | Created during VM provisioning |
 | Password auth currently works | Needed for initial key deployment |
 

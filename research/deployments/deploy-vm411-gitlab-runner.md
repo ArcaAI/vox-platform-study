@@ -3,8 +3,8 @@
 **Date**: 2026-03-17
 **VM**: 411 | **IP**: 10.10.1.111 | **Bridge**: vmbr1 | **Specs**: 8c / 16 GB / 64 GB disk
 **Architecture**: 4 specialized runners (fast / build / test / deploy) — 8 concurrent job slots
-**Config files**: [`configs/gitlab-runner/`](./configs/gitlab-runner/) — `config.toml`
-**Related**: [Infrastructure Overview](./proxmox-infrastructure-gitlab-rancher-plan.md) | [GitLab Deployment](./deploy-vm410-gitlab.md) | [MinIO Deployment](./deploy-vm402-minio.md) | [Cloudflare Tunnel](./deploy-ct101-cloudflare-tunnel.md)
+**Config files**: [`configs/gitlab-runner/`](../configs/gitlab-runner/) — `config.toml`
+**Related**: [Infrastructure Overview](../infrastructure/proxmox-infrastructure-gitlab-rancher-plan.md) | [GitLab Deployment](./deploy-vm410-gitlab.md) | [MinIO Deployment](./deploy-vm402-minio.md) | [Cloudflare Tunnel](./deploy-ct101-cloudflare-tunnel.md)
 
 ---
 
@@ -394,7 +394,7 @@ Also check the GitLab UI: **Admin** → **CI/CD** → **Runners** → all 4 shou
 
 ## 9. Production Configuration
 
-After registration, GitLab Runner creates a basic `config.toml` with all 4 runners. Replace it with the production config from [`configs/gitlab-runner/config.toml`](./configs/gitlab-runner/config.toml):
+After registration, GitLab Runner creates a basic `config.toml` with all 4 runners. Replace it with the production config from [`configs/gitlab-runner/config.toml`](../configs/gitlab-runner/config.toml):
 
 ```bash
 # Option A: SCP from your dev machine

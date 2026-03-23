@@ -58,7 +58,7 @@
 | `ssh-db1.taphuynh.dev` | `ssh://10.10.1.201:22` | VM 501 |
 | `ssh-db2.taphuynh.dev` | `ssh://10.10.1.202:22` | VM 502 |
 
-> Full tunnel configuration, ingress rules, DNS setup, and the Cloudflare Free Tier 100 MB upload limit analysis are in the [Cloudflare Tunnel deployment guide](./deploy-ct101-cloudflare-tunnel.md).
+> Full tunnel configuration, ingress rules, DNS setup, and the Cloudflare Free Tier 100 MB upload limit analysis are in the [Cloudflare Tunnel deployment guide](../deployments/deploy-ct101-cloudflare-tunnel.md).
 
 ---
 
@@ -68,13 +68,13 @@ Each service has a dedicated deployment guide with step-by-step instructions, co
 
 | Service | VM/CT | Deployment Guide | Config Files |
 |---------|-------|-----------------|--------------|
-| Cloudflare Tunnel | CT 101 | [deploy-ct101-cloudflare-tunnel.md](./deploy-ct101-cloudflare-tunnel.md) | `/etc/cloudflared/config.yml` on CT 101 |
-| K3s + GPU | VM 200 | [deploy-vm200-k3s-gpu.md](./deploy-vm200-k3s-gpu.md) | — |
-| Rancher + Argo | VM 400 | [deploy-vm400-master.md](./deploy-vm400-master.md) | — |
-| MinIO Object Storage | VM 402 | [deploy-vm402-minio.md](./deploy-vm402-minio.md) | [`configs/minio/`](./configs/minio/) |
-| GitLab CE | VM 410 | [deploy-vm410-gitlab.md](./deploy-vm410-gitlab.md) | [`configs/gitlab/`](./configs/gitlab/) — `gitlab.rb` + `docker-compose.yml` |
-| GitLab Runner | VM 411 | [deploy-vm411-gitlab-runner.md](./deploy-vm411-gitlab-runner.md) | [`configs/gitlab-runner/`](./configs/gitlab-runner/) — `config.toml` |
-| TimescaleDB HA | VMs 500–502 | [deploy-vm500-502-postgres-ha.md](./deploy-vm500-502-postgres-ha.md) | [`configs/postgres-ha/`](./configs/postgres-ha/) |
+| Cloudflare Tunnel | CT 101 | [deploy-ct101-cloudflare-tunnel.md](../deployments/deploy-ct101-cloudflare-tunnel.md) | `/etc/cloudflared/config.yml` on CT 101 |
+| K3s + GPU | VM 200 | [deploy-vm200-k3s-gpu.md](../deployments/deploy-vm200-k3s-gpu.md) | — |
+| Rancher + Argo | VM 400 | [deploy-vm400-master.md](../deployments/deploy-vm400-master.md) | — |
+| MinIO Object Storage | VM 402 | [deploy-vm402-minio.md](../deployments/deploy-vm402-minio.md) | [`configs/minio/`](../configs/minio/) |
+| GitLab CE | VM 410 | [deploy-vm410-gitlab.md](../deployments/deploy-vm410-gitlab.md) | [`configs/gitlab/`](../configs/gitlab/) — `gitlab.rb` + `docker-compose.yml` |
+| GitLab Runner | VM 411 | [deploy-vm411-gitlab-runner.md](../deployments/deploy-vm411-gitlab-runner.md) | [`configs/gitlab-runner/`](../configs/gitlab-runner/) — `config.toml` |
+| TimescaleDB HA | VMs 500–502 | [deploy-vm500-502-postgres-ha.md](../deployments/deploy-vm500-502-postgres-ha.md) | [`configs/postgres-ha/`](../configs/postgres-ha/) |
 
 > VM 201 (`rb` — marketing websites) and VM 401 (`vuvu` — non-GPU AI apps) do not have deployment guides yet.
 
