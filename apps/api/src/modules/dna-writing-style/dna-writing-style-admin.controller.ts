@@ -1,6 +1,7 @@
 import {
     IDnaWritingStyleService,
     DnaReportResponse,
+    DnaVersionResponse,
     GenerateDnaReportRequest,
     UpdateDnaReportRequest,
     PaginatedQuery,
@@ -112,6 +113,20 @@ export class DnaWritingStyleAdminController {
         @Body() dto: GenerateDnaReportRequest,
     ): Promise<DnaJobResponse> {
         return this.dnaService.generateDnaReport(doctorId, dto);
+    }
+
+    @ApiEndpoint({
+        returnedModel: DnaVersionResponse,
+        multi: true,
+        path: ':reportId/versions',
+        by: ['reportId'],
+    })
+    @ApiParam({ name: 'reportId', description: 'Report ID', type: String })
+    @ApiResponse({ status: 404, description: 'Report not found' })
+    async getVersions(
+        @Param('reportId') reportId: string,
+    ): Promise<DnaVersionResponse[]> {
+        return this.dnaService.getVersions(reportId);
     }
 
     @Get('jobs/:jobId')

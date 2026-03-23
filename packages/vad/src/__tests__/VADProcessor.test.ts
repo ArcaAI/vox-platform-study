@@ -188,7 +188,10 @@ describe('VADProcessor', () => {
       const stats2 = processor.getStats();
 
       expect(stats1).not.toBe(stats2);
-      expect(stats1).toEqual(expect.objectContaining(stats2));
+      const { timestamp: _t1, ...rest1 } = stats1;
+      const { timestamp: _t2, ...rest2 } = stats2;
+      expect(rest1).toEqual(rest2);
+      expect(Math.abs(stats1.timestamp - stats2.timestamp)).toBeLessThanOrEqual(5);
     });
   });
 
