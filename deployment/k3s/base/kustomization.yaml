@@ -6,7 +6,6 @@ commonLabels:
 
 resources:
   - configmap.yaml
-  - postgres.yaml
   - redis.yaml
   - ollama.yaml
   - api.yaml
