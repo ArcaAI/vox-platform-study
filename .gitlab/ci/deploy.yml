@@ -1,0 +1,127 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Deploy stage — Argo CD staging sync
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Triggered on `staging` branch after successful builds.
+# Updates image tags in the deployment repository, which Argo CD watches.
+#
+# ── Setup ────────────────────────────────────────────────────────────────────
+#
+# 1. Create a deployment repository (e.g. arcaai/hope-deployments):
+#
+#    hope-deployments/
+#    ├── apps/
+#    │   ├── api/
+#    │   │   ├── values-staging.yaml     # image.tag: "staging-<sha>"
+#    │   │   └── values-production.yaml
+#    │   ├── stt-v2-ml-runtime/
+#    │   ├── stt-v2-worker/
+#    │   ├── smr/
+#    │   ├── nlp/
+#    │   ├── ui-playground/
+#    │   └── database/
+#    └── applicationsets/
+#        └── staging.yaml
+#
+# 2. CI Variables needed (Settings → CI/CD → Variables):
+#
+#    DEPLOY_REPO_URL  — http://10.10.1.110/arcaai/hope-deployments.git
+#    DEPLOY_TOKEN     — Project Access Token with write_repository scope
+#    ARGOCD_SERVER    — Argo CD server URL (optional, for direct sync)
+#    ARGOCD_AUTH_TOKEN — Argo CD API token (optional, for direct sync)
+#
+# 3. Configure Argo CD to watch the deployment repo:
+#    - Add repo in Argo CD: Settings → Repositories → Connect Repo
+#    - Create ApplicationSet (see staging.yaml template below)
+#    - Enable webhook: Settings → Webhooks → Add GitLab webhook
+#
+# ══════════════════════════════════════════════════════════════════════════════
+
+deploy-staging:
+  stage: deploy
+  tags: [deploy]
+  image: alpine:3.20
+  interruptible: false
+  before_script:
+    - apk add --no-cache git curl jq
+    - git config --global user.email "ci@arcaai.com"
+    - git config --global user.name "GitLab CI"
+  script:
+    - |
+      set -eu
+      SHORT_SHA=$(echo "$CI_COMMIT_SHA" | cut -c1-8)
+      IMAGE_TAG="staging-${SHORT_SHA}"
+
+      echo "Deploying to staging with image tag: $IMAGE_TAG"
+      echo "  Pipeline: $CI_PIPELINE_URL"
+      echo "  Commit:   $CI_COMMIT_SHA"
+
+      # Clone deployment repo
+      DEPLOY_AUTH_URL=$(echo "$DEPLOY_REPO_URL" | sed "s|http://|http://gitlab-ci-token:${DEPLOY_TOKEN}@|")
+      git clone --depth 1 "$DEPLOY_AUTH_URL" /tmp/deploy
+      cd /tmp/deploy
+
+      # Update image tags for services that were built in this pipeline
+      UPDATED=0
+      for service in api ui-playground nlp smr stt-v2-ml-runtime stt-v2-worker database; do
+        values_file="apps/${service}/values-staging.yaml"
+        if [ -f "$values_file" ]; then
+          sed -i "s|tag:.*|tag: \"${IMAGE_TAG}\"|" "$values_file"
+          echo "  Updated $values_file → $IMAGE_TAG"
+          UPDATED=1
+        fi
+      done
+
+      if [ "$UPDATED" = "1" ]; then
+        git add -A
+        if ! git diff --cached --quiet; then
+          git commit -m "deploy(staging): ${IMAGE_TAG} from pipeline #${CI_PIPELINE_IID}
+
+Source: ${CI_PROJECT_URL}/-/commit/${CI_COMMIT_SHA}
+Pipeline: ${CI_PIPELINE_URL}"
+          git push origin main
+          echo "Deployment repo updated. Argo CD will sync automatically."
+        else
+          echo "No changes to deploy."
+        fi
+      else
+        echo "No deployment manifests found. Skipping."
+      fi
+  rules:
+    - if: $PIPELINE_TYPE == "staging"
+  environment:
+    name: staging
+    url: https://staging.hope.arcaai.com
+
+# ── Argo CD sync trigger (optional — use if webhook is not configured) ──────
+
+sync-argocd:
+  stage: deploy
+  tags: [deploy]
+  image: alpine:3.20
+  needs:
+    - job: deploy-staging
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - |
+      set -eu
+
+      if [ -z "${ARGOCD_SERVER:-}" ] || [ -z "${ARGOCD_AUTH_TOKEN:-}" ]; then
+        echo "Argo CD credentials not configured. Relying on webhook/polling sync."
+        exit 0
+      fi
+
+      echo "Triggering Argo CD sync for staging applications..."
+
+      for app in hope-staging-api hope-staging-stt-v2-ml-runtime hope-staging-stt-v2-worker hope-staging-smr hope-staging-nlp hope-staging-ui-playground hope-staging-database; do
+        echo "  Syncing $app..."
+        curl -sSf -X POST \
+          -H "Authorization: Bearer ${ARGOCD_AUTH_TOKEN}" \
+          -H "Content-Type: application/json" \
+          "https://${ARGOCD_SERVER}/api/v1/applications/${app}/sync" \
+          -d '{"prune": true}' || echo "  Warning: failed to sync $app (may not exist yet)"
+      done
+  allow_failure: true
+  rules:
+    - if: $PIPELINE_TYPE == "staging"
