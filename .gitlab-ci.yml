@@ -56,6 +56,7 @@ workflow:
 stages:
   - install
   - validate
+  - prepare
   - test
   - build
   - scan
@@ -67,18 +68,54 @@ default:
   interruptible: true
 
 variables:
+  # ── Docker / Registry ──────────────────────────────────────────────────────
   DOCKER_HOST: unix:///var/run/docker.sock
   DOCKER_TLS_CERTDIR: ""
   DOCKER_BUILDKIT: "1"
   REGISTRY: 10.10.1.110:5050
   GITHUB_REPO_URL: "https://github.com/4bits-vn/project-hope-v2.git"
   GITHUB_BACKUP_BRANCH: "back-up"
+  #
+  # ── Test environment ───────────────────────────────────────────────────────
+  # These provide defaults for test jobs. Secrets (DATABASE_URL, REDIS_PASS,
+  # JWT_SECRET, etc.) MUST be set in GitLab CI/CD Variables (masked+protected):
+  #
+  #   Settings → CI/CD → Variables:
+  #
+  #   Variable                 | Value                                                      | Flags
+  #   ─────────────────────────┼────────────────────────────────────────────────────────────┼──────────────────
+  #   CI_DATABASE_URL          | postgresql://ci_user:****@ha-postgres:5432/vox-staging     | masked, protected
+  #   CI_DATABASE_URL_DIRECT   | postgresql://ci_user:****@ha-postgres:5432/vox-staging     | masked, protected
+  #   CI_REDIS_URL             | redis://:****@ha-redis:6379                                | masked, protected
+  #   CI_REDIS_PASS            | ****                                                      | masked, protected
+  #   CI_JWT_SECRET            | <random 64-char string>                                   | masked, protected
+  #   CI_JWT_REFRESH_SECRET    | <random 64-char string>                                   | masked, protected
+  #   CI_API_KEY_PEPPER        | <random 32-char string>                                   | masked, protected
+  #
+  # Non-secret test defaults (safe to commit):
+  NODE_ENV: "test"
+  REDIS_HOST: "ha-redis"
+  REDIS_PORT: "6379"
+  LOG_LEVEL: "error"
+  LOG_FILE_ENABLED: "false"
+  OTEL_TRACES_ENABLED: "false"
+  OTEL_METRICS_ENABLED: "false"
+  MINIO_USE_SSL: "false"
+  API_KEY_ALLOW_QUERY_PARAM: "true"
+  API_KEY_MAX_LIFETIME_DAYS: "90"
+  JWT_EXPIRES_IN: "1h"
+  JWT_REFRESH_EXPIRES_IN: "7d"
+  DEBUG_PRISMA: "false"
+  SKIP_SEED: "false"
+  DEFAULT_TENANT_ID: "50000000-0000-0000-0000-000000000000"
+  SYSTEM_USER_ID: "60000000-0000-0000-0000-000000000000"
 
 include:
   - local: .gitlab/ci/templates.yml
   - local: .gitlab/ci/rules.yml
   - local: .gitlab/ci/install.yml
   - local: .gitlab/ci/validate.yml
+  - local: .gitlab/ci/prepare.yml
   - local: .gitlab/ci/test.yml
   - local: .gitlab/ci/build.yml
   - local: .gitlab/ci/scan.yml
