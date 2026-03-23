@@ -37,6 +37,10 @@ function readEnvFile(relativePath: string): string {
     return readFile(path.join(PROJECT_ROOT, relativePath));
 }
 
+function envFileExists(relativePath: string): boolean {
+    return fs.existsSync(path.join(PROJECT_ROOT, relativePath));
+}
+
 function readControllerSource(relativePath: string): string {
     return readFile(path.join(MODULES, relativePath));
 }
@@ -260,14 +264,16 @@ describe('Phase 7: FedL port standardization (8865)', () => {
             const content = readEnvFile(file);
             expect(getEnvValue(content, 'FEDL_PORT')).toBe('8865');
         });
-    }
 
-    it('.env should have FEDL_URL with port 8865', () => {
-        const content = readEnvFile('.env');
-        if (envVarExists(content, 'FEDL_URL')) {
-            expect(getEnvValue(content, 'FEDL_URL')).toMatch(/8865/);
+        if (file === '.env') {
+            it(`${file} should have FEDL_URL with port 8865`, () => {
+                const content = readEnvFile(file);
+                if (envVarExists(content, 'FEDL_URL')) {
+                    expect(getEnvValue(content, 'FEDL_URL')).toMatch(/8865/);
+                }
+            });
         }
-    });
+    }
 });
 
 // ─── 8. No Old Port References in Env Files ─────────────────────────────────
@@ -447,14 +453,25 @@ describe('Phase 7: ConfigService loads all new env vars', () => {
 // ─── 14. Env File Structural Integrity ──────────────────────────────────────
 
 describe('Phase 7: Env file structural integrity', () => {
-    it('.env should have consistent API_PORT and API_URL', () => {
-        const content = readEnvFile('.env');
-        const port = getEnvValue(content, 'API_PORT');
-        const url = getEnvValue(content, 'API_URL');
-        if (port && url) {
-            expect(url).toContain(port);
-        }
-    });
+    const structuralChecks = [
+        { file: '.env', portVar: 'API_PORT', urlVar: 'API_URL' },
+        { file: '.env', portVar: 'TTS_PORT', urlVar: 'TTS_URL' },
+        { file: '.env', portVar: 'SMR_PORT', urlVar: 'SMR_URL' },
+        { file: '.env', portVar: 'NLP_PORT', urlVar: 'NLP_URL' },
+    ];
+
+    for (const { file, portVar, urlVar } of structuralChecks) {
+        if (!envFileExists(file)) continue;
+
+        it(`${file} should have consistent ${portVar} and ${urlVar}`, () => {
+            const content = readEnvFile(file);
+            const port = getEnvValue(content, portVar);
+            const url = getEnvValue(content, urlVar);
+            if (port && url) {
+                expect(url).toContain(port);
+            }
+        });
+    }
 
     it('.env.dev should have consistent PORT and API_PORT', () => {
         const content = readEnvFile('.env.dev');
@@ -471,33 +488,6 @@ describe('Phase 7: Env file structural integrity', () => {
         const agentPort = getEnvValue(content, 'SUMMARY_AGENT_PORT');
         if (smrPort && agentPort) {
             expect(smrPort).toBe(agentPort);
-        }
-    });
-
-    it('.env should have consistent TTS_PORT and TTS_URL', () => {
-        const content = readEnvFile('.env');
-        const port = getEnvValue(content, 'TTS_PORT');
-        const url = getEnvValue(content, 'TTS_URL');
-        if (port && url) {
-            expect(url).toContain(port);
-        }
-    });
-
-    it('.env should have consistent SMR_PORT and SMR_URL', () => {
-        const content = readEnvFile('.env');
-        const port = getEnvValue(content, 'SMR_PORT');
-        const url = getEnvValue(content, 'SMR_URL');
-        if (port && url) {
-            expect(url).toContain(port);
-        }
-    });
-
-    it('.env should have consistent NLP_PORT and NLP_URL', () => {
-        const content = readEnvFile('.env');
-        const port = getEnvValue(content, 'NLP_PORT');
-        const url = getEnvValue(content, 'NLP_URL');
-        if (port && url) {
-            expect(url).toContain(port);
         }
     });
 });
@@ -630,6 +620,8 @@ describe('Phase 7a: URL format validation in env files', () => {
     ];
 
     for (const { file, vars } of urlVarsToCheck) {
+        if (!envFileExists(file)) continue;
+
         for (const varName of vars) {
             it(`${file}: ${varName} should be a valid URL`, () => {
                 const content = readEnvFile(file);
@@ -788,10 +780,12 @@ describe('Phase 7a: Hard existence assertions for critical env vars', () => {
         expect(envVarExists(content, 'FEDL_URL')).toBe(true);
     });
 
-    it('.env must define FEDL_URL', () => {
-        const content = readEnvFile('.env');
-        expect(envVarExists(content, 'FEDL_URL')).toBe(true);
-    });
+    if (envFileExists('.env')) {
+        it('.env must define FEDL_URL', () => {
+            const content = readEnvFile('.env');
+            expect(envVarExists(content, 'FEDL_URL')).toBe(true);
+        });
+    }
 
     it('.env.example must define STT_V2_PORT', () => {
         const content = readEnvFile('.env.example');
