@@ -104,11 +104,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: hope-stt-v2
             - name: OMP_NUM_THREADS
-              value: "4"
+              value: "8"
             - name: MKL_NUM_THREADS
-              value: "4"
+              value: "8"
             - name: TORCH_NUM_THREADS
-              value: "4"
+              value: "8"
           startupProbe:
             httpGet:
               path: /api/v1/health/ready
@@ -138,8 +138,8 @@ spec:
               memory: "4Gi"
               nvidia.com/gpu: "1"
             limits:
-              cpu: "4"
-              memory: "10Gi"
+              cpu: "8"
+              memory: "12Gi"
               nvidia.com/gpu: "1"
           volumeMounts:
             - name: models-cache
