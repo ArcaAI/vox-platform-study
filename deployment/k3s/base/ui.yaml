@@ -24,7 +24,7 @@ spec:
       containers:
         - name: ui
           image: hope-v2/ui-playground:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
           readinessProbe:

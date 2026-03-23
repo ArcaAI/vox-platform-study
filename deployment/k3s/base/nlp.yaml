@@ -24,7 +24,7 @@ spec:
       containers:
         - name: nlp
           image: hope-v2/nlp:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8864
           envFrom:
