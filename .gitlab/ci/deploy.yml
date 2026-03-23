@@ -75,10 +75,9 @@ deploy-staging:
       if [ "$UPDATED" = "1" ]; then
         git add -A
         if ! git diff --cached --quiet; then
-          git commit -m "deploy(staging): ${IMAGE_TAG} from pipeline #${CI_PIPELINE_IID}
-
-Source: ${CI_PROJECT_URL}/-/commit/${CI_COMMIT_SHA}
-Pipeline: ${CI_PIPELINE_URL}"
+          git commit -m "deploy(staging): ${IMAGE_TAG} from pipeline #${CI_PIPELINE_IID}" \
+            -m "Source: ${CI_PROJECT_URL}/-/commit/${CI_COMMIT_SHA}" \
+            -m "Pipeline: ${CI_PIPELINE_URL}"
           git push origin main
           echo "Deployment repo updated. Argo CD will sync automatically."
         else
