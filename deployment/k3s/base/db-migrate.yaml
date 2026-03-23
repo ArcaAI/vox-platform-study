@@ -21,7 +21,7 @@ spec:
       containers:
         - name: migrate
           image: hope-v2/database:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           env:
             - name: DATABASE_URL
               valueFrom:
