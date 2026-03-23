@@ -1,6 +1,49 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# HOPE v2 — GitLab CI/CD Pipeline
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Monorepo pipeline for:
+#   TypeScript: api (NestJS), ui-playground (React/Vite)
+#   Python:     stt-v2 (FastAPI), smr (FastAPI), nlp (FastAPI)
+#   Infra:      database (Prisma migrations)
+#
+# Pipeline types (set via workflow rules):
+#   release        — semver tag (v*)        → full pipeline + all builds
+#   merge_request  — MR opened/updated      → lint + test + scan (no builds)
+#   main           — push to default branch → lint + test + build (changed only)
+#   feature        — push to devops/*       → lint + test + build
+#
+# ══════════════════════════════════════════════════════════════════════════════
+
+workflow:
+  auto_cancel:
+    on_new_commit: interruptible
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+      variables:
+        PIPELINE_TYPE: "release"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        PIPELINE_TYPE: "merge_request"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      variables:
+        PIPELINE_TYPE: "main"
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
+      variables:
+        PIPELINE_TYPE: "feature"
+
 stages:
+  - install
+  - validate
+  - test
   - build
-  - github-backup
+  - scan
+  - notify
+
+default:
+  interruptible: true
 
 variables:
   DOCKER_HOST: unix:///var/run/docker.sock
@@ -10,239 +53,12 @@ variables:
   GITHUB_REPO_URL: "https://github.com/4bits-vn/project-hope-v2.git"
   GITHUB_BACKUP_BRANCH: "back-up"
 
-workflow:
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-
-# ── TEMPLATE ─────────────────────────────────────────────────────────────────
-
-.build-template:
-  stage: build
-  tags: [build]
-  image: docker:27
-  timeout: 30m
-  variables:
-    SERVICE_NAME: ""
-    DOCKER_CONTEXT: "."
-    DOCKERFILE: ""
-    BUILD_TARGET: ""
-    BUILD_ARGS: ""
-  before_script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$REGISTRY"
-    - |
-      printf '[registry."%s"]\nhttp = true\ninsecure = true\n' "$REGISTRY" > /tmp/buildkitd.toml
-      if ! docker buildx inspect cibuilder >/dev/null 2>&1; then
-        docker buildx create --name cibuilder --driver docker-container \
-          --config /tmp/buildkitd.toml
-      fi
-      docker buildx use cibuilder
-      docker buildx inspect --bootstrap
-  script:
-    - |
-      set -eu
-
-      image_repo="$REGISTRY/$CI_PROJECT_PATH/$SERVICE_NAME"
-      cache_repo="$image_repo/cache"
-      short_sha=$(echo "$CI_COMMIT_SHA" | cut -c1-8)
-      created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-      # ── Compute tags ──────────────────────────────────────────────────
-      #   Semver tag:      1.2.3  + latest + <sha>
-      #   Default branch:  main-<sha> + <sha> + latest
-      #   Feature branch:  devops-foo-<sha> + <sha>   (no latest)
-      if [ -n "${CI_COMMIT_TAG:-}" ]; then
-        SEMVER_TAG="${CI_COMMIT_TAG#v}"
-        TAGS="$SEMVER_TAG latest $short_sha"
-      elif [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
-        TAGS="main-${short_sha} ${short_sha} latest"
-      else
-        BRANCH_SLUG=$(echo "$CI_COMMIT_BRANCH" | sed 's/[^a-zA-Z0-9]/-/g')
-        TAGS="${BRANCH_SLUG}-${short_sha} ${short_sha}"
-      fi
-
-      build_target_arg=""
-      if [ -n "$BUILD_TARGET" ]; then
-        build_target_arg="--target $BUILD_TARGET"
-      fi
-
-      # ── Build tag list for buildx --tag flags ─────────────────────────
-      tag_args=""
-      for tag in $TAGS; do
-        tag_args="$tag_args --tag $image_repo:$tag"
-      done
-
-      primary_tag=$(echo "$TAGS" | awk '{print $1}')
-      echo "Building service=$SERVICE_NAME primary_tag=$primary_tag all_tags=$TAGS"
-      echo "  commit=$CI_COMMIT_SHA branch=${CI_COMMIT_BRANCH:-} git_tag=${CI_COMMIT_TAG:-}"
-
-      # ── Build + push with registry cache ──────────────────────────────
-      # mode=max caches ALL intermediate stages (deps, builder, etc.),
-      # not just the final target. This means apt-get, uv pip install,
-      # and torch download layers are reused across CI runs.
-      docker buildx build \
-        --push \
-        --cache-from type=registry,ref=$cache_repo \
-        --cache-to   type=registry,ref=$cache_repo,mode=max,compression=zstd \
-        --label org.opencontainers.image.source=$CI_PROJECT_URL \
-        --label org.opencontainers.image.revision=$CI_COMMIT_SHA \
-        --label org.opencontainers.image.created=$created_at \
-        --label org.opencontainers.image.version=$primary_tag \
-        $build_target_arg \
-        $BUILD_ARGS \
-        $tag_args \
-        -f "$DOCKERFILE" \
-        "$DOCKER_CONTEXT"
-
-      echo "  pushed tags:"
-      for tag in $TAGS; do
-        echo "    $image_repo:$tag"
-      done
-
-# ── JOBS ─────────────────────────────────────────────────────────────
-
-api:
-  extends: .build-template
-  variables:
-    SERVICE_NAME: api
-    DOCKER_CONTEXT: "."
-    DOCKERFILE: apps/api/Dockerfile
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - apps/api/**/*
-        - packages/application/**/*
-        - packages/database/**/*
-        - packages/domain/**/*
-        - packages/exception/**/*
-        - packages/logger/**/*
-        - packages/tools/**/*
-        - packages/config-eslint/**/*
-        - packages/config-rollup/**/*
-        - packages/config-ts/**/*
-
-ui-playground:
-  extends: .build-template
-  variables:
-    SERVICE_NAME: ui-playground
-    DOCKER_CONTEXT: "."
-    DOCKERFILE: apps/ui-playground/Dockerfile
-    BUILD_ARGS: "--build-arg VITE_API_URL=$VITE_API_URL"
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - apps/ui-playground/**/*
-        - packages/ui/**/*
-        - packages/room/**/*
-        - packages/vad/**/*
-        - packages/stt/**/*
-        - packages/noise-filter/**/*
-        - packages/med-ner/**/*
-        - packages/vox/**/*
-
-nlp:
-  extends: .build-template
-  variables:
-    SERVICE_NAME: nlp
-    DOCKER_CONTEXT: apps/nlp
-    DOCKERFILE: apps/nlp/Dockerfile
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - apps/nlp/**/*
-
-smr:
-  extends: .build-template
-  variables:
-    SERVICE_NAME: smr
-    DOCKER_CONTEXT: apps/smr
-    DOCKERFILE: apps/smr/Dockerfile
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - apps/smr/**/*
-
-stt-v2:
-  extends: .build-template
-  variables:
-    SERVICE_NAME: stt-v2-ml-runtime
-    DOCKER_CONTEXT: apps/stt-v2
-    DOCKERFILE: apps/stt-v2/docker/Dockerfile
-    BUILD_TARGET: ml-runtime
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - apps/stt-v2/**/*
-
-stt-v2-worker:
-  extends: .build-template
-  variables:
-    SERVICE_NAME: stt-v2-worker
-    DOCKER_CONTEXT: apps/stt-v2
-    DOCKERFILE: apps/stt-v2/docker/Dockerfile
-    BUILD_TARGET: worker
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - apps/stt-v2/**/*
-
-database:
-  extends: .build-template
-  variables:
-    SERVICE_NAME: database
-    DOCKER_CONTEXT: .
-    DOCKERFILE: packages/database/Dockerfile
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - packages/database/**/*
-
-# ── GITHUB BACKUP JOB ───────────────────────────────────────────────────────
-
-github-backup:
-  stage: github-backup
-  image: alpine:latest
-  tags: [deploy]
-  before_script:
-    - apk add --no-cache git git-lfs
-    - git config --global user.name "GitLab CI"
-    - git config --global user.email "ci@gitlab.com"
-  script:
-    - |
-      set -eu
-      
-      GITHUB_AUTH_URL="https://${GITHUB_BACKUP_USER}:${GITHUB_BACKUP_TOKEN}@github.com/4bits-vn/project-hope-v2.git"
-      git remote add github $GITHUB_AUTH_URL
-      
-      git fetch github
-      
-      if git show-ref --verify --quiet refs/remotes/github/$GITHUB_BACKUP_BRANCH; then
-        echo "Branch $GITHUB_BACKUP_BRANCH exists on GitHub, checking out..."
-        git checkout -b $GITHUB_BACKUP_BRANCH github/$GITHUB_BACKUP_BRANCH
-        git merge $CI_COMMIT_SHA --no-ff -m "Merge $CI_COMMIT_REF_NAME into $GITHUB_BACKUP_BRANCH"
-      else
-        echo "Branch $GITHUB_BACKUP_BRANCH does not exist on GitHub, creating it..."
-        git checkout -b $GITHUB_BACKUP_BRANCH
-      fi
-      
-      git push github $GITHUB_BACKUP_BRANCH --force
-      
-      echo "Successfully pushed changes to GitHub branch: $GITHUB_BACKUP_BRANCH"
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+include:
+  - local: .gitlab/ci/templates.yml
+  - local: .gitlab/ci/rules.yml
+  - local: .gitlab/ci/install.yml
+  - local: .gitlab/ci/validate.yml
+  - local: .gitlab/ci/test.yml
+  - local: .gitlab/ci/build.yml
+  - local: .gitlab/ci/scan.yml
+  - local: .gitlab/ci/notify.yml
