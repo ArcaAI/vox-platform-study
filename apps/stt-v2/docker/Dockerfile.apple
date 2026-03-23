@@ -11,76 +11,114 @@
 # =============================================================================
 # Stage 1: Builder (ARM64)
 # =============================================================================
-FROM --platform=linux/arm64 python:3.11-slim as builder
+FROM --platform=linux/arm64 python:3.11-slim AS builder
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
 WORKDIR /app
 
-# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    curl \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files
-COPY pyproject.toml ./
-COPY README.md ./
+COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /bin/
 
-# Install dependencies (without ML extras - MPS not available in Docker)
-RUN pip install --no-cache-dir ".[test]"
+COPY pyproject.toml uv.lock README.md ./
+COPY src/ ./src/
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /usr/local/bin/python3.11 \
+        --no-cache-dir \
+        ".[test]" \
+    && find /usr/local/lib/python3.11/site-packages \( \
+        -name "*.pyc" -o -name "*.pyo" -o -name "__pycache__" \
+        -o -name "*.egg-info" \
+    \) -exec rm -rf {} + 2>/dev/null || true
 
 # =============================================================================
 # Stage 2: Runtime (ARM64)
 # =============================================================================
-FROM --platform=linux/arm64 python:3.11-slim as runtime
+FROM --platform=linux/arm64 python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsndfile1 \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+    libsndfile1 ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --shell /bin/bash app
 
-# Copy installed packages from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=builder --chown=app:app /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder --chown=app:app /usr/local/bin /usr/local/bin
+COPY --chown=app:app src/ ./src/
+COPY --chown=app:app tests/ ./tests/
+COPY --chown=app:app pyproject.toml ./
 
-# Copy application code
-COPY src/ ./src/
-COPY tests/ ./tests/
-COPY pyproject.toml ./
-
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash app
-RUN chown -R app:app /app
 USER app
 
-# Environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONPATH=/app/src
-ENV TEST_PLATFORM=cpu
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app/src \
+    TEST_PLATFORM=cpu
 
-# Default command (run tests)
 CMD ["pytest", "tests/unit/", "-v", "--tb=short"]
 
 # =============================================================================
 # Stage 3: ML Runtime (ARM64 with PyTorch for CPU)
 # Note: MPS acceleration requires native macOS execution
 # =============================================================================
-FROM runtime as ml-runtime
+FROM --platform=linux/arm64 python:3.11-slim AS ml-builder-apple
 
-USER root
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
-# Install ML dependencies from pyproject.toml extras (CPU only in Docker)
-# This includes: torch, transformers, optimum[onnxruntime], onnxruntime,
-# soundfile, librosa, pyannote.audio, etc.
-RUN pip install --no-cache-dir ".[ml]"
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /bin/
+
+COPY pyproject.toml uv.lock README.md ./
+COPY src/ ./src/
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /usr/local/bin/python3.11 \
+        --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        ".[ml]" \
+    && find /usr/local/lib/python3.11/site-packages \( \
+        -name "*.pyc" -o -name "*.pyo" -o -name "__pycache__" \
+        -o -name "*.egg-info" \
+    \) -exec rm -rf {} + 2>/dev/null || true
+
+FROM --platform=linux/arm64 python:3.11-slim AS ml-runtime
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsndfile1 ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --shell /bin/bash app
+
+COPY --from=ml-builder-apple --chown=app:app /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=ml-builder-apple --chown=app:app /usr/local/bin /usr/local/bin
+COPY --chown=app:app src/ ./src/
+COPY --chown=app:app tests/ ./tests/
+COPY --chown=app:app pyproject.toml ./
 
 USER app
 
-# Override platform for ML tests (CPU in Docker, MPS native)
-ENV TEST_PLATFORM=cpu
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app/src \
+    TEST_PLATFORM=cpu
 
 CMD ["pytest", "tests/", "-v", "--tb=short", "-m", "not cuda"]

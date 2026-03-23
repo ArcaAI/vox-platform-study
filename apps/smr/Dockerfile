@@ -1,9 +1,6 @@
 # -- BUILD STAGE --
 FROM python:3.11-slim AS builder
 
-# Re-declare ARG after FROM to make it available in this stage
-ARG UV_VERSION=0.8.13
-
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONHASHSEED=random \
@@ -11,23 +8,23 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential=12.* gcc=4:* && \
-    rm -rf /var/lib/apt/lists/* && \
-    apt-get clean && \
-    pip install --no-cache-dir uv==0.8.13
+    apt-get install -y --no-install-recommends build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /bin/
 
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-COPY src/ ./src/
 
-RUN uv sync --frozen --no-dev
-
-RUN mkdir -p /opt/app && \
-    cp -r /app/.venv /opt/app/ && \
-    find /opt/app/.venv -name "*.pyc" -delete && \
-    find /opt/app/.venv -name "__pycache__" -type d -exec rm -rf {} + || true && \
-    find /opt/app/.venv -name "*.pyo" -delete
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project \
+    && find /app/.venv \( \
+        -name "*.pyc" -o -name "*.pyo" -o -name "__pycache__" \
+        -o -name "*.dist-info" -o -name "tests" -o -name "test" \
+        -o -name "*.egg-info" \
+    \) -exec rm -rf {} + 2>/dev/null || true \
+    && find /app/.venv -name "*.so" -exec strip --strip-unneeded {} + 2>/dev/null || true
 
 # -- PRODUCTION STAGE --
 FROM python:3.11-slim AS production
@@ -57,19 +54,16 @@ ENV LOG_LEVEL=info \
 
 WORKDIR /app
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends wget && \
-    rm -rf /var/lib/apt/lists/* && \
-    groupadd -g 1001 -r hope && \
+RUN groupadd -g 1001 -r hope && \
     useradd -r -u 1001 -g hope -s /usr/sbin/nologin -d /nonexistent smr
 
-COPY --from=builder --chown=smr:hope /opt/app/.venv /app/.venv
+COPY --from=builder --chown=smr:hope /app/.venv /app/.venv
 COPY --chown=smr:hope src/ /app/src/
 
 USER smr
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8862/api/v1/health/live || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8862/api/v1/health/live')" || exit 1
 
 EXPOSE 8862
 

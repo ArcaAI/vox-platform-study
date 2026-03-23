@@ -1,0 +1,54 @@
+# Version control
+.git
+.gitignore
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.conda/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test & coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Docker (avoid recursive context)
+docker-compose*.yml
+
+# Lock files & dev configs
+Makefile
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Misc
+*.log
+*.tmp
