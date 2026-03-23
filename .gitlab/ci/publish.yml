@@ -90,7 +90,7 @@
 publish-sdk:
   stage: publish
   extends: .node-base
-  tags: [node]
+  tags: [fast]
   interruptible: false
   variables:
     GIT_STRATEGY: clone
