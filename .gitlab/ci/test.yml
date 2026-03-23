@@ -92,7 +92,7 @@ test-sdk:
 test-stt-v2:
   stage: test
   image: python:3.11-slim
-  tags: [python]
+  tags: [fast]
   needs:
     - job: lint-python
       optional: true
@@ -123,7 +123,7 @@ test-stt-v2:
 test-smr:
   stage: test
   image: python:3.11-slim
-  tags: [python]
+  tags: [fast]
   needs:
     - job: lint-python
       optional: true
@@ -157,7 +157,7 @@ test-smr:
 test-nlp:
   stage: test
   image: python:3.11-slim
-  tags: [python]
+  tags: [fast]
   needs:
     - job: lint-python
       optional: true

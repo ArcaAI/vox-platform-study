@@ -103,7 +103,7 @@ scan-nlp:
 
 scan-source:
   stage: scan
-  tags: [node]
+  tags: [fast]
   image:
     name: aquasec/trivy:0.58.2
     entrypoint: [""]
