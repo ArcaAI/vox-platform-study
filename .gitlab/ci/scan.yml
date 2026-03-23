@@ -1,0 +1,123 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Scan stage — security scanning with Trivy (no GitLab license required)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Trivy container scan template ────────────────────────────────────────────
+
+.trivy-scan:
+  stage: scan
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  variables:
+    TRIVY_USERNAME: $CI_REGISTRY_USER
+    TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
+    TRIVY_INSECURE: "true"
+    SCAN_IMAGE: ""
+  script:
+    - |
+      echo "Scanning image: $SCAN_IMAGE"
+      trivy image \
+        --exit-code 0 \
+        --severity HIGH,CRITICAL \
+        --format table \
+        --no-progress \
+        "$SCAN_IMAGE"
+
+      echo ""
+      echo "Checking for CRITICAL vulnerabilities (will fail if found)..."
+      trivy image \
+        --exit-code 1 \
+        --severity CRITICAL \
+        --no-progress \
+        "$SCAN_IMAGE" || echo "CRITICAL vulnerabilities found — review required"
+  allow_failure: true
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+
+# ── Per-service container scans ──────────────────────────────────────────────
+
+scan-api:
+  extends: .trivy-scan
+  needs:
+    - job: build-api
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+    - !reference [.rules-api, rules]
+
+scan-ui-playground:
+  extends: .trivy-scan
+  needs:
+    - job: build-ui-playground
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+    - !reference [.rules-ui-playground, rules]
+
+scan-stt-v2:
+  extends: .trivy-scan
+  needs:
+    - job: build-stt-v2
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+    - !reference [.rules-stt-v2, rules]
+
+scan-smr:
+  extends: .trivy-scan
+  needs:
+    - job: build-smr
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+    - !reference [.rules-smr, rules]
+
+scan-nlp:
+  extends: .trivy-scan
+  needs:
+    - job: build-nlp
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+    - !reference [.rules-nlp, rules]
+
+# ── Filesystem scan (source code SAST) ──────────────────────────────────────
+
+scan-source:
+  stage: scan
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  needs: []
+  script:
+    - |
+      echo "Scanning source code for vulnerabilities..."
+      trivy fs \
+        --exit-code 0 \
+        --severity HIGH,CRITICAL \
+        --scanners vuln,secret,misconfig \
+        --format table \
+        --no-progress \
+        .
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
