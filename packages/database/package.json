@@ -33,19 +33,19 @@
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",
     "@arcaai/config-ts": "workspace:*",
-    "@types/node": "^25.3.2",
-    "@types/pg": "^8.15.4",
+    "@types/node": "^25.5.0",
+    "@types/pg": "^8.20.0",
     "tsconfig-paths": "^4.2.0",
     "tsup": "^8.5.1",
-    "typescript": "^5.8.3"
+    "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.4.2",
-    "@prisma/client": "^7.4.1",
+    "@prisma/adapter-pg": "^7.5.0",
+    "@prisma/client": "^7.5.0",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.3.1",
-    "pg": "^8.19.0",
-    "prisma": "^7.4.1",
-    "tsx": "^4.19.2"
+    "pg": "^8.20.0",
+    "prisma": "^7.5.0",
+    "tsx": "^4.21.0"
   }
 }
