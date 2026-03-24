@@ -39,6 +39,30 @@ function isValidJsonString(input: string): boolean {
   }
 }
 
+function normalizeJsonString(input: string): string {
+  if (input.trim().length === 0) {
+    return input;
+  }
+  try {
+    const parsed = JSON.parse(input);
+    return JSON.stringify(parsed);
+  } catch {
+    return input;
+  }
+}
+
+function isJsonDataType(dataType?: string | null): boolean {
+  return String(dataType ?? 'STRING').toUpperCase() === 'JSON';
+}
+
+function formatConfigValue(value: string, dataType?: string | null): string {
+  return isJsonDataType(dataType) ? tryFormatJsonString(value) : value;
+}
+
+function normalizeConfigValue(value: string, dataType?: string | null): string {
+  return isJsonDataType(dataType) ? normalizeJsonString(value) : value;
+}
+
 function ConfigValueEditor({
   config,
   value,
@@ -49,6 +73,7 @@ function ConfigValueEditor({
   onChange: (next: string) => void;
 }) {
   const type = String(config.dataType ?? 'STRING').toUpperCase();
+  const jsonInvalid = isJsonDataType(config.dataType) && value.trim().length > 0 && !isValidJsonString(value);
   if (type === 'BOOLEAN') {
     return (
       <select
@@ -71,10 +96,12 @@ function ConfigValueEditor({
         className="bg-background min-h-52 w-full rounded-md border p-2 font-mono text-sm"
         aria-label="Configuration value editor"
         title="Configuration value editor"
+        aria-invalid={jsonInvalid}
         value={value}
         onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) =>
           onChange(event.target.value)
         }
+        spellCheck={false}
       />
     );
   }
@@ -194,8 +221,11 @@ export default function ConfigurationManagementPage() {
   );
 
   const currentValue = selectedConfig ? draftValue : '';
-  const isDirty = !!selectedConfig && currentValue !== String(selectedConfig.value ?? '');
-  const isJsonType = String(selectedConfig?.dataType ?? 'STRING').toUpperCase() === 'JSON';
+  const originalValue = selectedConfig ? String(selectedConfig.value ?? '') : '';
+  const isJsonType = isJsonDataType(selectedConfig?.dataType);
+  const normalizedCurrentValue = normalizeConfigValue(currentValue, selectedConfig?.dataType);
+  const normalizedOriginalValue = normalizeConfigValue(originalValue, selectedConfig?.dataType);
+  const isDirty = !!selectedConfig && normalizedCurrentValue !== normalizedOriginalValue;
 
   useEffect(() => {
     if (!selectedConfig) {
@@ -211,7 +241,7 @@ export default function ConfigurationManagementPage() {
 
   const handleSave = () => {
     if (!selectedConfig) return;
-    if (String(selectedConfig.dataType ?? 'STRING').toUpperCase() === 'JSON') {
+    if (isJsonDataType(selectedConfig.dataType)) {
       if (currentValue.trim().length > 0 && !isValidJsonString(currentValue)) {
         setDraftError('Invalid JSON: please fix syntax before saving.');
         return;
@@ -220,11 +250,11 @@ export default function ConfigurationManagementPage() {
     if (isSuperOrGlobalAdmin) {
       updateTenantConfigs.mutate({
         identifier: effectiveTenantIdentifier,
-        configs: [{ id: selectedConfig.id, value: currentValue }],
+        configs: [{ id: selectedConfig.id, value: normalizedCurrentValue }],
       });
       return;
     }
-    updateMyTenantConfigs.mutate([{ id: selectedConfig.id, value: currentValue }]);
+    updateMyTenantConfigs.mutate([{ id: selectedConfig.id, value: normalizedCurrentValue }]);
   };
 
   const tenantColumn: MultiColumnConfig<Tenant> = {
@@ -315,8 +345,7 @@ export default function ConfigurationManagementPage() {
       setSelectedConfigId(id);
       const config = filteredConfigs.find((row) => row.id === id);
       const raw = String(config?.value ?? '');
-      const dt = String(config?.dataType ?? 'STRING').toUpperCase();
-      setDraftValue(dt === 'JSON' ? tryFormatJsonString(raw) : raw);
+      setDraftValue(formatConfigValue(raw, config?.dataType));
       setDraftError(null);
     },
   };
@@ -365,7 +394,7 @@ export default function ConfigurationManagementPage() {
             <Button
               variant="outline"
               disabled={!selectedConfig}
-              onClick={() => setDraftValue(String(selectedConfig.value ?? ''))}
+              onClick={() => setDraftValue(formatConfigValue(originalValue, selectedConfig.dataType))}
             >
               Reset
             </Button>
