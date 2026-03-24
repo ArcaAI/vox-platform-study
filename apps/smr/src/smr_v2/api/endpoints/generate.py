@@ -15,6 +15,7 @@ import structlog.contextvars
 from smr_v2.core.dependencies import (
     get_audit_logger,
     get_circuit_breakers,
+    get_external_guardrail_client,
     get_generation_audit_logger,
     get_guardrail_scanner,
     get_provider_queues,
@@ -59,6 +60,7 @@ from smr_v2.providers.base import ProviderNotFoundError, ProviderRegistry
 from smr_v2.core.config import Settings
 from smr_v2.services.audit import GuardrailAuditEvent, GuardrailAuditLogger
 from smr_v2.services.circuit_breaker import CircuitBreaker, CircuitState
+from smr_v2.services.external_guardrail import ExternalGuardrailClient
 from smr_v2.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
 from smr_v2.services.guardrails import PromptInjectionScanner
 from smr_v2.services.provider_queue import ProviderQueue, QueueFullError
@@ -107,6 +109,7 @@ async def generate(
     registry: ProviderRegistry = Depends(get_provider_registry),
     task_manager: TaskManager = Depends(get_task_manager),
     scanner: PromptInjectionScanner = Depends(get_guardrail_scanner),
+    external_guardrail: ExternalGuardrailClient = Depends(get_external_guardrail_client),
     audit_logger: GuardrailAuditLogger = Depends(get_audit_logger),
     generation_audit: GenerationAuditLogger = Depends(get_generation_audit_logger),
     rate_limiters: dict[str, RateLimitTracker] = Depends(get_rate_limiters),
@@ -169,6 +172,25 @@ async def generate(
         if blocked:
             GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="blocked").inc()
             raise ContentBlockedError("Request blocked by content safety filter.")
+
+    external_result = await external_guardrail.validate(
+        prompt=request_body.prompt,
+        system_prompt=request_body.system_prompt,
+    )
+
+    if not external_result.get("allowed", True):
+        logger.warning(
+            "guardrail.external_blocked",
+            provider=request_body.provider,
+            model=model,
+            reason=external_result.get("reason", "external_guardrail_blocked"),
+            confidence=external_result.get("confidence", 0.0),
+            is_medical=external_result.get("is_medical", False),
+        )
+        GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="blocked").inc()
+        raise ContentBlockedError(
+            "Request blocked by external medical validation guardrail."
+        )
 
     rate_limiter = rate_limiters.get(request_body.provider)
     queue = provider_queues.get(request_body.provider)

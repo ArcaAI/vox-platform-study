@@ -19,7 +19,8 @@
 
 .rules-api:
   rules:
-    - !reference [.rules-always, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
@@ -51,7 +52,8 @@
 
 .rules-ui-playground:
   rules:
-    - !reference [.rules-always, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
@@ -85,7 +87,8 @@
 
 .rules-stt-v2:
   rules:
-    - !reference [.rules-always, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
@@ -99,7 +102,8 @@
 
 .rules-smr:
   rules:
-    - !reference [.rules-always, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
@@ -113,7 +117,8 @@
 
 .rules-nlp:
   rules:
-    - !reference [.rules-always, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
@@ -123,11 +128,27 @@
       changes:
         - apps/nlp/**/*
 
+# ── Guardrail ────────────────────────────────────────────────────────────────
+
+.rules-guardrail:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/guardrail/**/*
+        compare_to: refs/heads/main
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/guardrail/**/*
+
 # ── Database (Prisma migrations) ────────────────────────────────────────────
 
 .rules-database:
   rules:
-    - !reference [.rules-always, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
@@ -141,7 +162,8 @@
 
 .rules-any-ts:
   rules:
-    - !reference [.rules-always, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
@@ -160,7 +182,8 @@
 
 .rules-any-python:
   rules:
-    - !reference [.rules-always, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:

@@ -76,6 +76,18 @@ class OpenAICompatConfig(BaseSettings):
     organization: str | None = None
 
 
+class ExternalGuardrailConfig(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="SMR_V2_EXTERNAL_GUARDRAIL_")
+
+    enabled: bool = False
+    base_url: str = "http://localhost:8863"
+    timeout_s: int = 10
+    fail_open: bool = False
+    require_medical: bool = True
+    include_reasoning: bool = False
+    service_token: SecretStr = SecretStr("")
+
+
 class RedisConfig(BaseSettings):
     """Redis configuration for task management."""
 
@@ -146,6 +158,7 @@ class Settings(BaseSettings):
     azure: AzureOpenAIConfig = Field(default_factory=AzureOpenAIConfig)
     bedrock: BedrockConfig = Field(default_factory=BedrockConfig)
     openai_compat: OpenAICompatConfig = Field(default_factory=OpenAICompatConfig)
+    external_guardrail: ExternalGuardrailConfig = Field(default_factory=ExternalGuardrailConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
     queue: QueueConfig = Field(default_factory=QueueConfig)

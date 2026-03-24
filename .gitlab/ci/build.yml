@@ -24,7 +24,34 @@ build-api:
   rules:
     - if: $PIPELINE_TYPE == "merge_request"
       when: never
-    - !reference [.rules-api, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/api/**/*
+          - packages/database/**/*
+          - packages/domains/**/*
+          - packages/applications/**/*
+          - packages/exceptions/**/*
+          - packages/logger/**/*
+          - packages/tools/**/*
+          - packages/config-eslint/**/*
+          - packages/config-rollup/**/*
+          - packages/config-ts/**/*
+        compare_to: refs/heads/main
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/api/**/*
+        - packages/database/**/*
+        - packages/domains/**/*
+        - packages/applications/**/*
+        - packages/exceptions/**/*
+        - packages/logger/**/*
+        - packages/tools/**/*
+        - packages/config-eslint/**/*
+        - packages/config-rollup/**/*
+        - packages/config-ts/**/*
 
 # ── UI Playground ────────────────────────────────────────────────────────────
 
@@ -43,7 +70,36 @@ build-ui-playground:
   rules:
     - if: $PIPELINE_TYPE == "merge_request"
       when: never
-    - !reference [.rules-ui-playground, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/ui-playground/**/*
+          - packages/ui/**/*
+          - packages/room/**/*
+          - packages/vad/**/*
+          - packages/stt/**/*
+          - packages/noise-filter/**/*
+          - packages/agentic-sdk-v2/**/*
+          - packages/med-ner/**/*
+          - packages/pipeline/**/*
+          - packages/utils/**/*
+          - packages/config-tailwind/**/*
+        compare_to: refs/heads/main
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/ui-playground/**/*
+        - packages/ui/**/*
+        - packages/room/**/*
+        - packages/vad/**/*
+        - packages/stt/**/*
+        - packages/noise-filter/**/*
+        - packages/agentic-sdk-v2/**/*
+        - packages/med-ner/**/*
+        - packages/pipeline/**/*
+        - packages/utils/**/*
+        - packages/config-tailwind/**/*
 
 # ── NLP ──────────────────────────────────────────────────────────────────────
 
@@ -59,7 +115,38 @@ build-nlp:
   rules:
     - if: $PIPELINE_TYPE == "merge_request"
       when: never
-    - !reference [.rules-nlp, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/nlp/**/*
+        compare_to: refs/heads/main
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/nlp/**/*
+
+# ── Guardrail ────────────────────────────────────────────────────────────────
+
+build-guardrail:
+  extends: .build-template
+  variables:
+    SERVICE_NAME: guardrail
+    DOCKER_CONTEXT: apps/guardrail
+    DOCKERFILE: apps/guardrail/Dockerfile
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/guardrail/**/*
+        compare_to: refs/heads/main
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/guardrail/**/*
 
 # ── SMR ──────────────────────────────────────────────────────────────────────
 
@@ -75,7 +162,16 @@ build-smr:
   rules:
     - if: $PIPELINE_TYPE == "merge_request"
       when: never
-    - !reference [.rules-smr, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/smr/**/*
+        compare_to: refs/heads/main
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/smr/**/*
 
 # ── STT-v2 ML Runtime ───────────────────────────────────────────────────────
 
@@ -92,7 +188,16 @@ build-stt-v2:
   rules:
     - if: $PIPELINE_TYPE == "merge_request"
       when: never
-    - !reference [.rules-stt-v2, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/stt-v2/**/*
+        compare_to: refs/heads/main
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/stt-v2/**/*
 
 # ── STT-v2 Worker ───────────────────────────────────────────────────────────
 
@@ -109,7 +214,16 @@ build-stt-v2-worker:
   rules:
     - if: $PIPELINE_TYPE == "merge_request"
       when: never
-    - !reference [.rules-stt-v2, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/stt-v2/**/*
+        compare_to: refs/heads/main
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - apps/stt-v2/**/*
 
 # ── Database (Prisma migrations image) ──────────────────────────────────────
 
@@ -125,4 +239,13 @@ build-database:
   rules:
     - if: $PIPELINE_TYPE == "merge_request"
       when: never
-    - !reference [.rules-database, rules]
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $CI_COMMIT_BRANCH =~ /^devops\//
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - packages/database/**/*
+        compare_to: refs/heads/main
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - packages/database/**/*

@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  guardrail:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8863:8863"
+    environment:
+      # Ollama Configuration
+      GUARDRAIL_OLLAMA_BASE_URL: http://ollama:11434
+      GUARDRAIL_OLLAMA_GUARDRAIL_MODEL: llama3.1:8b
+      GUARDRAIL_OLLAMA_ENABLED: true
+      GUARDRAIL_OLLAMA_TIMEOUT_S: 60
+      GUARDRAIL_OLLAMA_MAX_CONCURRENT: 4
+      GUARDRAIL_OLLAMA_TEMPERATURE: 0.1
+      GUARDRAIL_OLLAMA_MAX_TOKENS: 500
+      
+      # Redis Configuration
+      GUARDRAIL_REDIS_URL: redis://redis:6379/0
+      GUARDRAIL_REDIS_TASK_TTL_SECONDS: 3600
+      GUARDRAIL_REDIS_STREAM_MAX_LEN: 10000
+      GUARDRAIL_REDIS_CACHE_TTL_SECONDS: 1800
+      
+      # Application Configuration
+      GUARDRAIL_HOST: 0.0.0.0
+      GUARDRAIL_PORT: 8863
+      GUARDRAIL_DEBUG: false
+      GUARDRAIL_LOG_LEVEL: info
+      GUARDRAIL_CORS_ENABLED: true
+      GUARDRAIL_CORS_ORIGINS: '["http://localhost:3000", "http://localhost:8080"]'
+      
+      # Connection Pooling
+      GUARDRAIL_HTTPX_MAX_CONNECTIONS: 100
+      GUARDRAIL_HTTPX_MAX_KEEPALIVE: 50
+      
+      # Observability
+      GUARDRAIL_METRICS_ENABLED: true
+      GUARDRAIL_OTEL_ENABLED: false
+      
+      # Job Queue Configuration
+      GUARDRAIL_QUEUE_MAX_WAIT_S: 60.0
+      GUARDRAIL_QUEUE_MAX_RETRIES: 3
+      GUARDRAIL_QUEUE_RETRY_BACKOFF_S: 1.0
+      GUARDRAIL_QUEUE_BATCH_SIZE: 10
+    depends_on:
+      - redis
+      - ollama
+    restart: unless-stopped
+    networks:
+      - guardrail-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - guardrail-network
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+    networks:
+      - guardrail-network
+    # Uncomment the following lines if you want to auto-pull the model
+    # and add a health check
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 5
+
+volumes:
+  redis-data:
+    driver: local
+  ollama-data:
+    driver: local
+
+networks:
+  guardrail-network:
+    driver: bridge

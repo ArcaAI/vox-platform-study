@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from smr_v2.services.audit import GuardrailAuditLogger
     from smr_v2.services.generation_audit import GenerationAuditLogger
     from smr_v2.services.circuit_breaker import CircuitBreaker
+    from smr_v2.services.external_guardrail import ExternalGuardrailClient
     from smr_v2.services.guardrails import PromptInjectionScanner
     from smr_v2.services.provider_queue import ProviderQueue
     from smr_v2.services.rate_limiter import RateLimitTracker
@@ -55,6 +56,18 @@ def get_guardrail_scanner(request: Request) -> "PromptInjectionScanner":
     return Scanner(
         enabled=settings.guardrail_enabled,
         mode=settings.guardrail_mode,
+    )
+
+
+def get_external_guardrail_client(request: Request) -> "ExternalGuardrailClient":
+    """Create an ExternalGuardrailClient from current settings."""
+    from smr_v2.services.external_guardrail import ExternalGuardrailClient
+
+    settings = request.app.state.settings
+    http_client = request.app.state.http_client
+    return ExternalGuardrailClient(
+        settings=settings.external_guardrail,
+        http_client=http_client,
     )
 
 
