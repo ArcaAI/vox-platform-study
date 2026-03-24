@@ -267,13 +267,19 @@ describe('SummaryProcessor', () => {
             await processor.process(createMockJob(payload));
 
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
-                'http://localhost:8862/api/v1/summary/sync',
+                'http://localhost:8862/api/v1/generate',
                 expect.objectContaining({
-                    text: 'Full consultation transcript',
-                    dnaStyleId: 'formal-style',
-                    template: 'discharge-summary',
-                    includeNER: true,
-                    options: expect.objectContaining({ maxTokens: 2000, temperature: 0.5 }),
+                    prompt: 'Full consultation transcript',
+                    temperature: 0.5,
+                    max_tokens: 2000,
+                    context: expect.objectContaining({
+                        dnaStyleId: 'formal-style',
+                        template: 'discharge-summary',
+                        includeNER: true,
+                        maxTokens: 2000,
+                        temperature: 0.5,
+                        summaryType: 'summary',
+                    }),
                 }),
                 {
                     timeout: 120000,
@@ -359,7 +365,7 @@ describe('SummaryProcessor', () => {
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
                 expect.any(String),
                 expect.objectContaining({
-                    text: 'First part\n\nSecond part\n\nThird part',
+                    prompt: 'First part\n\nSecond part\n\nThird part',
                 }),
                 expect.any(Object),
             );
@@ -393,7 +399,9 @@ describe('SummaryProcessor', () => {
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
                 expect.any(String),
                 expect.objectContaining({
-                    includeNER: false,
+                    context: expect.objectContaining({
+                        includeNER: false,
+                    }),
                 }),
                 expect.any(Object),
             );
@@ -631,7 +639,7 @@ describe('SummaryProcessor', () => {
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
                 expect.any(String),
                 expect.objectContaining({
-                    text: 'Valid transcript content',
+                    prompt: 'Valid transcript content',
                 }),
                 expect.any(Object),
             );
@@ -677,7 +685,7 @@ describe('SummaryProcessor', () => {
             await processorWithDefaultUrl.process(createMockJob(payload));
 
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
-                'http://localhost:8862/api/v1/summary/sync',
+                'http://localhost:8862/api/v1/generate',
                 expect.any(Object),
                 expect.any(Object),
             );
@@ -710,7 +718,7 @@ describe('SummaryProcessor', () => {
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
                 expect.any(String),
                 expect.objectContaining({
-                    text: longContent,
+                    prompt: longContent,
                 }),
                 expect.any(Object),
             );
@@ -749,7 +757,7 @@ Assessment: "Alert" & oriented × 3
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
                 expect.any(String),
                 expect.objectContaining({
-                    text: specialContent,
+                    prompt: specialContent,
                 }),
                 expect.any(Object),
             );
@@ -849,7 +857,9 @@ Assessment: "Alert" & oriented × 3
 
                 expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
                     expect.any(String),
-                    expect.objectContaining({ template }),
+                    expect.objectContaining({
+                        context: expect.objectContaining({ template }),
+                    }),
                     expect.any(Object),
                 );
             }
@@ -891,7 +901,7 @@ Assessment: "Alert" & oriented × 3
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
                 expect.any(String),
                 expect.objectContaining({
-                    text: 'Transcript 1\n\nCase note\n\nTranscript 2',
+                    prompt: 'Transcript 1\n\nCase note\n\nTranscript 2',
                 }),
                 expect.any(Object),
             );
@@ -1056,9 +1066,9 @@ Assessment: "Alert" & oriented × 3
         });
     });
 
-    // ===========================================================================
+    // ==========================================================================='
     // GAP-3: Prompt Resolution Integration
-    // ===========================================================================
+    // ==========================================================================='
 
     describe('Prompt resolution fallback (GAP-3)', () => {
         const setupSuccessfulJob = () => {
@@ -1083,13 +1093,6 @@ Assessment: "Alert" & oriented × 3
 
         it('should call PromptResolutionService when template is missing', async () => {
             setupSuccessfulJob();
-            mockPromptResolutionService.resolve.mockResolvedValue({
-                template: 'Cardiology-Report',
-                promptId: 'prompt_card_new',
-                contextVariables: {},
-                resolvedFrom: 'department',
-                resolutionTrace: { usedDefaults: [] },
-            });
 
             const payload: GenerateSummaryJobPayload = {
                 jobId: 'job-123',
@@ -1166,11 +1169,12 @@ Assessment: "Alert" & oriented × 3
 
             // Verify SMR was called with resolved template (dnaStyleId not resolved, so undefined)
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
-                expect.stringContaining('/api/v1/summary/sync'),
+                expect.stringContaining('/api/v1/generate'),
                 expect.objectContaining({
-                    template: 'Cardiology-Report',
+                    context: expect.objectContaining({
+                        template: 'Cardiology-Report',
+                    }),
                 }),
-
                 expect.any(Object),
             );
         });

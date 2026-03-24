@@ -24,6 +24,7 @@ import {
     SummaryResponse,
 } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
+import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-v2-generate';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
@@ -92,11 +93,12 @@ export class SummaryService extends BaseService implements ISummaryService {
         });
 
         // Call SMR service
-        const smrResponse = await this.callSmrService('presummary', {
-            text: assembledPrompt.userPrompt,
-            dnaStyleId: request.dnaStyleId,
-            options: {
-                ...request.options,
+        const smrResponse = await this.callSmrService({
+            assembledPrompt,
+            options: request.options,
+            context: {
+                dnaStyleId: request.dnaStyleId,
+                summaryType: 'pre-summary',
                 promptResolvedFrom: assembledPrompt.resolvedFrom,
                 promptHyperparameters: assembledPrompt.hyperparameters,
             },
@@ -188,13 +190,14 @@ export class SummaryService extends BaseService implements ISummaryService {
         });
 
         // Call SMR service
-        const smrResponse = await this.callSmrService('summary', {
-            text: assembledPrompt.userPrompt,
-            dnaStyleId: request.dnaStyleId,
-            template: request.template,
-            includeNER: request.includeNER,
-            options: {
-                ...request.options,
+        const smrResponse = await this.callSmrService({
+            assembledPrompt,
+            options: request.options,
+            context: {
+                dnaStyleId: request.dnaStyleId,
+                template: request.template,
+                includeNER: request.includeNER,
+                summaryType: 'summary',
                 promptResolvedFrom: assembledPrompt.resolvedFrom,
                 promptHyperparameters: assembledPrompt.hyperparameters,
             },
@@ -451,19 +454,37 @@ export class SummaryService extends BaseService implements ISummaryService {
         });
     }
 
-    private async callSmrService(endpoint: string, payload: Record<string, unknown>): Promise<{
+    private async callSmrService(payload: {
+        assembledPrompt: {
+            userPrompt: string;
+            systemPrompt: string;
+            hyperparameters: Record<string, number>;
+            responseFormat: {
+                type: string;
+                json_schema: Record<string, unknown>;
+                strict: boolean;
+            } | null;
+            resolvedFrom: string;
+        };
+        options?: Record<string, unknown>;
+        context?: Record<string, unknown>;
+    }): Promise<{
         summary: string;
         llmProvider?: string;
         modelName?: string;
         processingTimeMs?: number;
         inputTokens?: number;
         outputTokens?: number;
-        entities?: Record<string, unknown>[];
     }> {
         try {
+            const smrPayload = buildSmrGeneratePayload(
+                payload.assembledPrompt,
+                payload.options,
+                payload.context,
+            );
             const response = await this.httpService.axiosRef.post(
-                `${this.smrServiceUrl}/api/v1/${endpoint}/sync`,
-                payload,
+                `${this.smrServiceUrl}/api/v1/generate`,
+                smrPayload,
                 {
                     headers: {
                         'Content-Type': 'application/json',
@@ -471,7 +492,7 @@ export class SummaryService extends BaseService implements ISummaryService {
                     },
                 },
             );
-            return response.data;
+            return mapSmrGenerateResponse(response.data);
         } catch (error) {
             throw new BadRequestException(`Failed to call SMR service: ${error}`);
         }
