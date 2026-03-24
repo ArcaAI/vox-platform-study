@@ -1,0 +1,22 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Install stage — dependency cache warming
+# ══════════════════════════════════════════════════════════════════════════════
+
+install-node:
+  stage: install
+  extends: .node-base
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - .pnpm-store
+      policy: pull-push
+      fallback_keys:
+        - pnpm-$CI_DEFAULT_BRANCH
+  script:
+    - echo "Node dependencies installed and cache warmed"
+    - pnpm --version
+    - node --version
+  rules:
+    - !reference [.rules-any-ts, rules]

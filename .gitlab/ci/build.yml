@@ -1,0 +1,128 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Build stage — Docker image build + push
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Builds only run on:
+#   - Tags (release)
+#   - Main branch (with change detection)
+#   - devops/* branches (feature)
+# MR pipelines skip builds — they only run lint + test + scan.
+
+# ── API Gateway ──────────────────────────────────────────────────────────────
+
+build-api:
+  extends: .build-template
+  needs:
+    - job: test-api
+      optional: true
+    - job: typecheck
+      optional: true
+  variables:
+    SERVICE_NAME: api
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: apps/api/Dockerfile
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+    - !reference [.rules-api, rules]
+
+# ── UI Playground ────────────────────────────────────────────────────────────
+
+build-ui-playground:
+  extends: .build-template
+  needs:
+    - job: test-sdk
+      optional: true
+    - job: typecheck
+      optional: true
+  variables:
+    SERVICE_NAME: ui-playground
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: apps/ui-playground/Dockerfile
+    BUILD_ARGS: "--build-arg VITE_API_URL=$VITE_API_URL"
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+    - !reference [.rules-ui-playground, rules]
+
+# ── NLP ──────────────────────────────────────────────────────────────────────
+
+build-nlp:
+  extends: .build-template
+  needs:
+    - job: test-nlp
+      optional: true
+  variables:
+    SERVICE_NAME: nlp
+    DOCKER_CONTEXT: apps/nlp
+    DOCKERFILE: apps/nlp/Dockerfile
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+    - !reference [.rules-nlp, rules]
+
+# ── SMR ──────────────────────────────────────────────────────────────────────
+
+build-smr:
+  extends: .build-template
+  needs:
+    - job: test-smr
+      optional: true
+  variables:
+    SERVICE_NAME: smr
+    DOCKER_CONTEXT: apps/smr
+    DOCKERFILE: apps/smr/Dockerfile
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+    - !reference [.rules-smr, rules]
+
+# ── STT-v2 ML Runtime ───────────────────────────────────────────────────────
+
+build-stt-v2:
+  extends: .build-template
+  needs:
+    - job: test-stt-v2
+      optional: true
+  variables:
+    SERVICE_NAME: stt-v2-ml-runtime
+    DOCKER_CONTEXT: apps/stt-v2
+    DOCKERFILE: apps/stt-v2/docker/Dockerfile
+    BUILD_TARGET: ml-runtime
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+    - !reference [.rules-stt-v2, rules]
+
+# ── STT-v2 Worker ───────────────────────────────────────────────────────────
+
+build-stt-v2-worker:
+  extends: .build-template
+  needs:
+    - job: test-stt-v2
+      optional: true
+  variables:
+    SERVICE_NAME: stt-v2-worker
+    DOCKER_CONTEXT: apps/stt-v2
+    DOCKERFILE: apps/stt-v2/docker/Dockerfile
+    BUILD_TARGET: worker
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+    - !reference [.rules-stt-v2, rules]
+
+# ── Database (Prisma migrations image) ──────────────────────────────────────
+
+build-database:
+  extends: .build-template
+  needs:
+    - job: test-packages
+      optional: true
+  variables:
+    SERVICE_NAME: database
+    DOCKER_CONTEXT: .
+    DOCKERFILE: packages/database/Dockerfile
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request"
+      when: never
+    - !reference [.rules-database, rules]

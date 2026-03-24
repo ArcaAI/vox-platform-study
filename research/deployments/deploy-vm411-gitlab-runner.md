@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-17
 **VM**: 411 | **IP**: 10.10.1.111 | **Bridge**: vmbr1 | **Specs**: 8c / 16 GB / 64 GB disk
-**Architecture**: 4 specialized runners (fast / build / test / deploy) — 8 concurrent job slots
+**Architecture**: 4 specialized runners (fast / build / test / deploy) — 9 concurrent job slots
 **Config files**: [`configs/gitlab-runner/`](../configs/gitlab-runner/) — `config.toml`
 **Related**: [Infrastructure Overview](../infrastructure/proxmox-infrastructure-gitlab-rancher-plan.md) | [GitLab Deployment](./deploy-vm410-gitlab.md) | [MinIO Deployment](./deploy-vm402-minio.md) | [Cloudflare Tunnel](./deploy-ct101-cloudflare-tunnel.md)
 
@@ -293,7 +293,7 @@ GitLab 17+ uses the new runner creation workflow. The old registration token is 
 ```
 ┌─────────────── VM 411 (10.10.1.111) ───────────────┐
 │                                                      │
-│  concurrent = 8 (total across all runners)           │
+│  concurrent = 9 (total across all runners)           │
 │                                                      │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐ │
 │  │ FAST (3) │ │ BUILD(2) │ │ TEST (2) │ │DEPLOY  │ │
@@ -432,7 +432,7 @@ Replace these placeholders:
 
 | Setting | Value | Why |
 |---------|-------|-----|
-| `concurrent = 8` | 8 total job slots | fast(3) + build(2) + test(2) + deploy(1) = 8 max |
+| `concurrent = 9` | 9 total job slots | fast(3) + build(2) + test(2) + deploy(1) + headroom(1) = 9 max |
 | `clone_url = "http://10.10.1.110"` | Internal GitLab URL | **Bypasses Cloudflare** — clones over vmbr1 directly |
 | `extra_hosts` | Internal IP mappings | Injects `/etc/hosts` into every CI container, **bypassing 100 MB Cloudflare limit** |
 | `limit = 3` (fast) | 3 concurrent fast jobs | Quick jobs never queue behind slow builds |
@@ -440,9 +440,14 @@ Replace these placeholders:
 | `limit = 2` (test) | 2 concurrent test suites | Browser-based tests use significant memory |
 | `limit = 1` (deploy) | 1 deployment at a time | Serialized to prevent conflicting deployments |
 | `privileged = true` (build/deploy) | Docker-in-Docker | Required for `docker build` and `docker compose` |
-| `shm_size = 536870912` (test) | 512 MB shared memory | Prevents Chrome/Playwright OOM |
+| `shm_size = 536870912` (build/test) | 512 MB shared memory | Prevents OOM in multi-stage BuildKit builds and Chrome/Playwright |
+| `output_limit = 20480` (build) | 20 MB log output | Prevents log truncation for verbose ML builds |
 | `pull_policy = ["if-not-present"]` | Cache images locally | Faster builds, less bandwidth |
-| `GIT_STRATEGY=fetch` | Incremental git updates | Faster than full clone each time |
+| `GIT_STRATEGY=fetch` (fast/build/test) | Incremental git updates | Faster than full clone each time |
+| `GIT_STRATEGY=clone` (deploy) | Full clone | Deploy needs clean state for safety |
+| `GIT_DEPTH=1` (build) | Shallow clone | Only need current commit for Docker builds |
+| `GIT_DEPTH=10` (fast/test) | Shallow with history | Enough history for test/lint operations |
+| `image = "docker:27"` (build) | Docker CLI only | DinD not needed — runner uses host Docker socket |
 | `cache.Type = "s3"` | MinIO-backed cache | Shared across all 4 runners, survives cleanup |
 
 ### 9.3 — Why `clone_url` and `extra_hosts` matter
@@ -749,7 +754,7 @@ sudo gitlab-runner register \
 ```
 
 4. Uncomment the `k8s-runner-01` section in `config.toml` and replace the token
-5. Update `concurrent` from `8` to `10` (adding 2 k8s slots)
+5. Update `concurrent` from `9` to `11` (adding 2 k8s slots)
 6. Restart: `sudo gitlab-runner restart && sudo gitlab-runner verify`
 
 ## 15. Monitoring
@@ -848,19 +853,19 @@ VM 411 — GitLab Runner (Multi-Runner Architecture)
   GitLab:      http://10.10.1.110    (internal, no tunnel needed)
   Config:      /etc/gitlab-runner/config.toml
   Managed:     configs/gitlab-runner/config.toml
-  Concurrent:  8 total (across 4 runners)
+  Concurrent:  9 total (across 4 runners)
   Cache:       S3 → MinIO (10.10.1.102) → gitlab-runner-cache bucket
   Cleanup:     weekly Sun 04:00
 
   Runners:
-  ┌─────────────────┬─────────────────────────────────┬───────┬──────────────────────┐
-  │ Name            │ Tags                            │ Limit │ Default Image        │
-  ├─────────────────┼─────────────────────────────────┼───────┼──────────────────────┤
-  │ fast-runner-01  │ fast,lint,typecheck,unit         │ 3     │ node:22-alpine       │
-  │ build-runner-01 │ build,docker                     │ 2     │ docker:27-dind       │
-  │ test-runner-01  │ test,e2e,playwright,integration  │ 2     │ playwright:v1.52.0   │
-  │ deploy-runner-01│ deploy                           │ 1     │ docker:27            │
-  └─────────────────┴─────────────────────────────────┴───────┴──────────────────────┘
+  ┌─────────────────┬─────────────────────────────────┬───────┬──────────────────────┬──────────────┬───────────┐
+  │ Name            │ Tags                            │ Limit │ Default Image        │ GIT_STRATEGY │ GIT_DEPTH │
+  ├─────────────────┼─────────────────────────────────┼───────┼──────────────────────┼──────────────┼───────────┤
+  │ fast-runner-01  │ fast,lint,typecheck,unit         │ 3     │ node:22-alpine       │ fetch        │ 10        │
+  │ build-runner-01 │ build,docker                     │ 2     │ docker:27            │ fetch        │ 1         │
+  │ test-runner-01  │ test,e2e,playwright,integration  │ 2     │ playwright:v1.52.0   │ fetch        │ 10        │
+  │ deploy-runner-01│ deploy                           │ 1     │ docker:27            │ clone        │ (full)    │
+  └─────────────────┴─────────────────────────────────┴───────┴──────────────────────┴──────────────┴───────────┘
 
   Logs:    sudo journalctl -u gitlab-runner -f
   Status:  sudo gitlab-runner verify

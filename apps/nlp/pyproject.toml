@@ -55,3 +55,6 @@ nlp = "nlp.main:main"
 
 [tool.uv]
 package = true
+
+[tool.uv.extra-build-dependencies]
+editdistpy = ["setuptools"]

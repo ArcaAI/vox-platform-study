@@ -1,0 +1,182 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Test stage — unit tests for all services
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── API unit tests (NestJS / Vitest) ─────────────────────────────────────────
+
+test-api:
+  stage: test
+  extends: .node-base
+  needs:
+    - job: lint-ts
+      optional: true
+  script:
+    - pnpm turbo build --filter=@arcaai/database
+    - pnpm turbo build --filter=@arcaai/exceptions
+    - pnpm turbo build --filter=@arcaai/logger
+    - pnpm turbo build --filter=@arcaai/domains
+    - pnpm turbo build --filter=@arcaai/applications
+    - pnpm --filter @arcaai/api test -- --reporter=junit --outputFile=junit-api.xml
+  artifacts:
+    when: always
+    reports:
+      junit: junit-api.xml
+    expire_in: 30 days
+  rules:
+    - !reference [.rules-api, rules]
+
+# ── Shared package tests (Vitest) ───────────────────────────────────────────
+
+test-packages:
+  stage: test
+  extends: .node-base
+  needs:
+    - job: lint-ts
+      optional: true
+  script:
+    - pnpm turbo build --filter=@arcaai/database
+    - pnpm turbo build --filter=@arcaai/exceptions
+    - pnpm turbo build --filter=@arcaai/logger
+    - pnpm turbo build --filter=@arcaai/domains
+    - pnpm turbo test --filter=@arcaai/logger --filter=@arcaai/utils --filter=@arcaai/pipeline
+  rules:
+    - !reference [.rules-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - packages/**/*
+        compare_to: refs/heads/main
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - packages/**/*
+
+# ── SDK + UI package tests (Vitest) ─────────────────────────────────────────
+
+test-sdk:
+  stage: test
+  extends: .node-base
+  needs:
+    - job: lint-ts
+      optional: true
+  script:
+    - pnpm turbo build --filter=@arcaai/utils
+    - pnpm turbo test --filter=@arcaai/vox --filter=@arcaai/room --filter=@arcaai/vad --filter=@arcaai/stt --filter=@arcaai/noise-filter --filter=@arcaai/med-ner --filter=@arcaai/ui
+  rules:
+    - !reference [.rules-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - packages/ui/**/*
+          - packages/room/**/*
+          - packages/vad/**/*
+          - packages/stt/**/*
+          - packages/noise-filter/**/*
+          - packages/agentic-sdk-v2/**/*
+          - packages/med-ner/**/*
+          - packages/utils/**/*
+        compare_to: refs/heads/main
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - packages/ui/**/*
+        - packages/room/**/*
+        - packages/vad/**/*
+        - packages/stt/**/*
+        - packages/noise-filter/**/*
+        - packages/agentic-sdk-v2/**/*
+        - packages/med-ner/**/*
+
+# ── STT-v2 tests (pytest) ───────────────────────────────────────────────────
+
+test-stt-v2:
+  stage: test
+  image: python:3.11-slim
+  needs:
+    - job: lint-python
+      optional: true
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  cache:
+    - key: pip-stt-v2
+      paths:
+        - .pip-cache/
+      policy: pull-push
+      fallback_keys:
+        - pip-$CI_DEFAULT_BRANCH
+  script:
+    - cd apps/stt-v2
+    - pip install --quiet -r requirements.txt -r requirements-dev.txt 2>/dev/null || pip install --quiet -r requirements.txt
+    - python -m pytest tests/unit/ -v --tb=short --junitxml=../../junit-stt-v2.xml || true
+    - python -m pytest tests/ -v --tb=short --junitxml=../../junit-stt-v2.xml --ignore=tests/e2e/ --ignore=tests/integration/ -x
+  artifacts:
+    when: always
+    reports:
+      junit: junit-stt-v2.xml
+    expire_in: 30 days
+  rules:
+    - !reference [.rules-stt-v2, rules]
+
+# ── SMR tests (pytest) ──────────────────────────────────────────────────────
+
+test-smr:
+  stage: test
+  image: python:3.11-slim
+  needs:
+    - job: lint-python
+      optional: true
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  cache:
+    - key: pip-smr
+      paths:
+        - .pip-cache/
+      policy: pull-push
+      fallback_keys:
+        - pip-$CI_DEFAULT_BRANCH
+  script:
+    - cd apps/smr
+    - pip install --quiet -r requirements.txt 2>/dev/null || true
+    - |
+      if [ -f requirements-dev.txt ]; then
+        pip install --quiet -r requirements-dev.txt 2>/dev/null || true
+      fi
+    - python -m pytest src/smr_v2/tests/ -v --tb=short --junitxml=../../junit-smr.xml -x
+  artifacts:
+    when: always
+    reports:
+      junit: junit-smr.xml
+    expire_in: 30 days
+  rules:
+    - !reference [.rules-smr, rules]
+
+# ── NLP tests (pytest) ──────────────────────────────────────────────────────
+
+test-nlp:
+  stage: test
+  image: python:3.11-slim
+  needs:
+    - job: lint-python
+      optional: true
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  cache:
+    - key: pip-nlp
+      paths:
+        - .pip-cache/
+      policy: pull-push
+      fallback_keys:
+        - pip-$CI_DEFAULT_BRANCH
+  script:
+    - cd apps/nlp
+    - pip install --quiet -r requirements.txt 2>/dev/null || true
+    - |
+      if [ -f requirements-dev.txt ]; then
+        pip install --quiet -r requirements-dev.txt 2>/dev/null || true
+      fi
+    - python -m pytest tests/ -v --tb=short --junitxml=../../junit-nlp.xml -x
+  artifacts:
+    when: always
+    reports:
+      junit: junit-nlp.xml
+    expire_in: 30 days
+  rules:
+    - !reference [.rules-nlp, rules]

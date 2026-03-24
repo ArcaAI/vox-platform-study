@@ -1,196 +1,204 @@
+# syntax=docker/dockerfile:1
 # STT Service V2 Dockerfile
 # Multi-stage build for optimized production image
 #
 # Build targets:
-#   - runtime:    Lightweight API server (no ML dependencies)
-#   - ml-runtime: Full ML runtime with GPU support
-#   - worker:     Dramatiq worker with ML dependencies
+#   - runtime:    Lightweight API server (no ML dependencies, CPU only)
+#   - ml-runtime: Full ML inference stack (CUDA GPU with automatic CPU fallback)
+#   - worker:     Dramatiq worker extending ml-runtime
+#
+# GPU/CPU behavior:
+#   ml-runtime and worker auto-detect GPU at runtime via torch.cuda.is_available().
+#   Run with `--gpus all` on NVIDIA hosts; omit for CPU-only fallback.
 #
 # Build examples:
-#   docker build -f docker/Dockerfile --target runtime    -t stt-v2:latest .
-#   docker build -f docker/Dockerfile --target ml-runtime -t stt-v2:ml-gpu .
+#   docker build -f docker/Dockerfile --target runtime    -t stt-v2:api .
+#   docker build -f docker/Dockerfile --target ml-runtime -t stt-v2:ml .
 #   docker build -f docker/Dockerfile --target worker     -t stt-v2:worker .
 
 # =============================================================================
-# Stage 1: Builder — install Python packages in an isolated stage
+# Stage 1: Builder — install base Python packages (CPU-only, no ML)
 # =============================================================================
-FROM python:3.11-slim AS builder
+FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS builder
 
-WORKDIR /build
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_NO_INSTALLER_METADATA=1 \
+    UV_PYTHON_DOWNLOADS=0
 
-# Install only the build-time system dependencies needed to compile wheels.
-# Combined into a single RUN to minimise layers.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
 
-# Copy dependency metadata first (maximises Docker layer cache).
-# README.md is required because pyproject.toml declares `readme = "README.md"`.
-COPY pyproject.toml README.md ./
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+    && apt-get install -y --no-install-recommends build-essential
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=README.md,target=README.md \
+    uv sync --locked --no-install-project --no-dev --no-editable
+
+COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
-
-# Install only base runtime dependencies for the lightweight `runtime` target.
-# --no-compile: skip .pyc generation — PYTHONDONTWRITEBYTECODE=1 is set at runtime.
-# --no-cache-dir: don't store pip's HTTP cache inside the image.
-RUN pip install \
-    --no-cache-dir \
-    --no-compile \
-    --timeout 300 \
-    --retries 3 \
-    ".[ml-gpu,dev,test]"
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev --no-editable
 
 # =============================================================================
-# Stage 2: GPU Builder — install ML-GPU packages in a CUDA-based stage
+# Stage 2: ML Builder — unified ML packages (CUDA-capable, CPU fallback)
 # =============================================================================
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04 AS gpu-builder
+# Uses the CUDA runtime base so compiled extensions link against system CUDA.
+# The cudnn8-runtime variant includes cuDNN (~725 MB in base layer), which
+# avoids pip downloading nvidia-cudnn-cu12 (658 MB) separately.
+#
+# PyTorch auto-detects GPU at runtime:
+#   - With --gpus all: torch.cuda.is_available() == True  → GPU inference
+#   - Without --gpus:  torch.cuda.is_available() == False → CPU fallback
+# =============================================================================
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS ml-builder
 
 WORKDIR /build
 
-# Install Python 3.11 + build toolchain inside the CUDA base image.
-RUN apt-get update \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
     && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-dev \
-    python3.11-venv \
-    python3-pip \
-    build-essential \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+        python3.11 python3.11-dev python3.11-venv \
+        build-essential
 
-# Create a venv so all packages install to a known, self-contained path.
-# This avoids Debian dist-packages vs site-packages path confusion.
 RUN python3.11 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-RUN pip install \
-    --no-cache-dir \
-    --timeout 300 \
-    --retries 3 \
-    --upgrade "pip>=25.0" setuptools wheel
+COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /bin/
 
-COPY pyproject.toml README.md ./
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_NO_INSTALLER_METADATA=1
+
+COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
 
-# Install GPU variant (includes onnxruntime-gpu instead of onnxruntime).
-RUN pip install \
-    --no-cache-dir \
-    --no-compile \
-    --timeout 300 \
-    --retries 3 \
-    ".[ml-gpu]"
+# Generate overrides that tell uv to skip all nvidia-* pip packages and triton.
+#
+# Why this is safe (verified by codebase audit of apps/stt-v2/src/):
+#   - Zero direct imports of any nvidia.* Python package
+#   - Zero torch.compile() calls → triton not needed
+#   - Zero distributed training → nccl not needed
+#   - All CUDA libs (cublas, cudnn, cufft, curand, nvrtc, cusparse, cusolver)
+#     are already provided as system libraries by the nvidia/cuda base image
+#   - The codebase is 100% inference-only: torch.no_grad(), model.generate(),
+#     .to(device), torch.cuda.is_available() — no training, no autograd
+#
+# This prevents ~2.9 GB of redundant downloads that the old approach
+# (install-then-uninstall) was wasting on every uncached build.
+RUN printf '%s\n' \
+        'nvidia-cublas-cu12 ; sys_platform == "never"' \
+        'nvidia-cuda-cupti-cu12 ; sys_platform == "never"' \
+        'nvidia-cuda-nvrtc-cu12 ; sys_platform == "never"' \
+        'nvidia-cuda-runtime-cu12 ; sys_platform == "never"' \
+        'nvidia-cudnn-cu12 ; sys_platform == "never"' \
+        'nvidia-cufft-cu12 ; sys_platform == "never"' \
+        'nvidia-curand-cu12 ; sys_platform == "never"' \
+        'nvidia-cusolver-cu12 ; sys_platform == "never"' \
+        'nvidia-cusparse-cu12 ; sys_platform == "never"' \
+        'nvidia-cusparselt-cu12 ; sys_platform == "never"' \
+        'nvidia-nccl-cu12 ; sys_platform == "never"' \
+        'nvidia-nvjitlink-cu12 ; sys_platform == "never"' \
+        'nvidia-cufile-cu12 ; sys_platform == "never"' \
+        'nvidia-nvtx-cu12 ; sys_platform == "never"' \
+        'triton ; sys_platform == "never"' \
+    > /tmp/cuda-overrides.txt
+
+# Install torch + torchaudio first (--no-deps) to avoid pulling their
+# nvidia-* transitive deps. Then install remaining ML-GPU deps with
+# --override to skip nvidia-*/triton entirely during resolution.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /opt/venv/bin/python --no-deps \
+        "torch>=2.8.0,<2.9.0" \
+        "torchaudio>=2.8.0,<2.9.0"
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /opt/venv/bin/python \
+        --override /tmp/cuda-overrides.txt \
+        ".[ml-gpu]" \
+    && find /opt/venv \( \
+        -name "*.pyc" -o -name "*.pyo" -o -name "__pycache__" \
+        -o -name "*.egg-info" -o -name "tests" -o -name "test" \
+    \) -type d -exec rm -rf {} + 2>/dev/null || true \
+    && find /opt/venv -name "*.so" -exec strip --strip-unneeded {} + 2>/dev/null || true
 
 # =============================================================================
 # Stage 3: Runtime — lightweight API server (CPU only, no ML deps)
 # =============================================================================
-FROM python:3.11-slim AS runtime
+FROM python:3.11-slim-bookworm AS runtime
 
-# -- OCI image labels --
 LABEL org.opencontainers.image.title="stt-v2" \
     org.opencontainers.image.description="High-availability Speech-to-Text service" \
-    org.opencontainers.image.version="2.0.0" \
-    org.opencontainers.image.vendor="ARCA AI" \
-    org.opencontainers.image.source="https://github.com/arcaai/hope"
+    org.opencontainers.image.vendor="ARCA AI"
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+    && apt-get install -y --no-install-recommends libsndfile1 ffmpeg \
+    && groupadd --gid 1000 app \
+    && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash app
 
 WORKDIR /app
 
-# Install minimal runtime system libraries + curl for HEALTHCHECK.
-# Single RUN + cleanup to keep the layer small.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-    libsndfile1 \
-    ffmpeg \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder --chown=app:app /app/.venv /app/.venv
+COPY --chown=app:app src/ ./src/
 
-# Copy pre-built Python packages from the builder stage.
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
-
-# Copy application source code (nothing else — tests, configs stay out).
-COPY src/ ./src/
-
-# Create a non-root user with a stable UID/GID and hand over ownership in a single layer.
-RUN groupadd --gid 1000 app \
-    && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash app \
-    && chown -R app:app /app
-
-USER app
-
-# Python runtime tuning
-ENV PYTHONUNBUFFERED=1 \
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app/src
 
+USER app
+
 EXPOSE 8861
 
-# Health check — generous start-period for model preloading.
-HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD curl -f http://localhost:8861/api/v1/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8861/api/v1/health')"]
 
 CMD ["uvicorn", "stt_v2.main:app", "--host", "0.0.0.0", "--port", "8861"]
 
 # =============================================================================
-# Stage 4: ML Runtime — full inference stack with NVIDIA CUDA GPU support
+# Stage 4: ML Runtime — full inference stack (GPU with CPU fallback)
 # =============================================================================
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04 AS ml-runtime
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS ml-runtime
 
 LABEL org.opencontainers.image.title="stt-v2-ml" \
-    org.opencontainers.image.description="STT V2 ML runtime with CUDA GPU support" \
-    org.opencontainers.image.version="2.0.0" \
-    org.opencontainers.image.vendor="ARCA AI" \
-    org.opencontainers.image.source="https://github.com/arcaai/hope"
+    org.opencontainers.image.description="STT V2 ML runtime (CUDA GPU with automatic CPU fallback)" \
+    org.opencontainers.image.vendor="ARCA AI"
 
 WORKDIR /app
 
-# Install Python runtime + audio libs + curl (for HEALTHCHECK).
-# No build-essential — all compilation happened in gpu-builder.
-RUN apt-get update \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
     && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-venv \
-    libsndfile1 \
-    ffmpeg \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy the complete venv from the gpu-builder stage.
-COPY --from=gpu-builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Copy application source code only.
-COPY src/ ./src/
-
-# Create non-root user + model cache directory in a single layer.
-RUN groupadd --gid 1000 app \
+        python3.11 python3.11-venv libsndfile1 ffmpeg \
+    && groupadd --gid 1000 app \
     && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash app \
-    && mkdir -p /models \
-    && chown -R app:app /app /models
+    && mkdir -p /models && chown -R app:app /app /models
+
+COPY --from=ml-builder --chown=app:app /opt/venv /opt/venv
+COPY --chown=app:app src/ ./src/
 
 USER app
 
-# Python + model cache configuration.
-# NOTE: TRANSFORMERS_CACHE is deprecated — HF_HOME is the canonical variable.
-ENV PYTHONUNBUFFERED=1 \
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app/src \
-    HF_HOME=/models/hf-cache
-
-# PyTorch / ONNX Runtime CPU threading — critical for Intel performance.
-# Set these in your K8s deployment to match the pod CPU limit.
-# Example for 8-core pods:
-#   OMP_NUM_THREADS=8
-#   MKL_NUM_THREADS=8
-#   TORCH_NUM_THREADS=8
-# If unset, the application auto-detects from os.cpu_count().
+    HF_HOME=/models/hf-cache \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
 EXPOSE 8861
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD curl -f http://localhost:8861/api/v1/health || exit 1
+    CMD ["python3.11", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8861/api/v1/health')"]
 
 CMD ["uvicorn", "stt_v2.main:app", "--host", "0.0.0.0", "--port", "8861"]
 
@@ -199,5 +207,4 @@ CMD ["uvicorn", "stt_v2.main:app", "--host", "0.0.0.0", "--port", "8861"]
 # =============================================================================
 FROM ml-runtime AS worker
 
-# No additional layers needed — just override the entrypoint.
 CMD ["dramatiq", "stt_v2.worker", "--processes", "2", "--threads", "4"]
