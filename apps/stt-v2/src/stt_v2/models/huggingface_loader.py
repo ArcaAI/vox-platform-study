@@ -1,5 +1,6 @@
 """HuggingFace model loader for SafeTensor/Transformers models."""
 
+import asyncio
 import logging
 import os
 from transformers import GenerationConfig
@@ -54,8 +55,9 @@ class HuggingFaceLoader(BaseModelLoader):
                 f"(device={device}, dtype={torch_dtype})"
             )
 
-            # Load model based on task type
-            model, tokenizer, processor, feature_extractor = await self._load_by_task(
+            # Load model in a thread pool to avoid blocking the event loop.
+            model, tokenizer, processor, feature_extractor = await asyncio.to_thread(
+                self._load_by_task,
                 model_source=model_source,
                 task_type=model_config.task_type,
                 device=device,
@@ -98,7 +100,7 @@ class HuggingFaceLoader(BaseModelLoader):
                 f"Failed to load HuggingFace model {model_config.slug}: {e}"
             ) from e
 
-    async def _load_by_task(
+    def _load_by_task(
         self,
         model_source: str,
         task_type: ModelTaskType,
