@@ -3,8 +3,9 @@
 import asyncio
 import logging
 import os
-from transformers import GenerationConfig
 from typing import Any
+
+from transformers import GenerationConfig
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
@@ -30,12 +31,12 @@ class HuggingFaceLoader(BaseModelLoader):
         settings = get_settings()
 
         try:
-            import torch
+            import torch  # noqa: F401
             from transformers import (
-                AutoFeatureExtractor,
-                AutoModelForSpeechSeq2Seq,
-                AutoProcessor,
-                AutoTokenizer,
+                AutoFeatureExtractor,  # noqa: F401
+                AutoModelForSpeechSeq2Seq,  # noqa: F401
+                AutoProcessor,  # noqa: F401
+                AutoTokenizer,  # noqa: F401
             )
 
             # Determine device and dtype
@@ -111,7 +112,6 @@ class HuggingFaceLoader(BaseModelLoader):
         token: str | None,
     ) -> tuple[Any, Any, Any, Any]:
         """Load model components based on task type."""
-        import torch
         from transformers import (
             AutoFeatureExtractor,
             AutoModelForAudioClassification,
@@ -119,7 +119,6 @@ class HuggingFaceLoader(BaseModelLoader):
             AutoModelForSpeechSeq2Seq,
             AutoProcessor,
             AutoTokenizer,
-            Wav2Vec2ForCTC,
             WhisperForConditionalGeneration,
             WhisperProcessor,
         )

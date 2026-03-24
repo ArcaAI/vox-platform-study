@@ -7,11 +7,9 @@ import yaml
 
 from .dto import (
     VALID_ONNX_QUANTIZATIONS,
-    AiModelFormat,
     DenoiseConfig,
     DiarizationConfig,
     InferenceConfig,
-    InlineModelDef,
     ModelRef,
     ModelRefs,
     PipelineSpec,
@@ -20,7 +18,6 @@ from .dto import (
     PunctuationConfig,
     TimestampConfig,
     VadConfig,
-    ValidationError,
     ValidationResult,
     is_valid_language_code,
 )

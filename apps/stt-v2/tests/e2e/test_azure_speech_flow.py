@@ -21,12 +21,10 @@ Usage:
     TEST_PLATFORM=all pytest tests/e2e/test_azure_speech_flow.py -v -k "real_azure"
 """
 
-import json
 import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -147,8 +145,8 @@ class TestAzureSpeechYamlParsing:
     @pytest.mark.asyncio
     async def test_azure_speech_yaml_parses_correctly(self):
         """Test that Azure Speech YAML is parsed with correct engine type."""
-        from stt_v2.pipeline.yaml_parser import get_yaml_parser
         from stt_v2.pipeline.dto import AiModelFormat
+        from stt_v2.pipeline.yaml_parser import get_yaml_parser
 
         parser = get_yaml_parser()
         spec = parser.parse(_pipeline_yaml_azure_basic())
@@ -165,8 +163,8 @@ class TestAzureSpeechYamlParsing:
     @pytest.mark.asyncio
     async def test_azure_alias_resolves_to_azure_speech(self):
         """Test that 'azure' alias maps to AZURE_SPEECH format."""
-        from stt_v2.pipeline.yaml_parser import get_yaml_parser
         from stt_v2.pipeline.dto import AiModelFormat
+        from stt_v2.pipeline.yaml_parser import get_yaml_parser
 
         parser = get_yaml_parser()
         spec = parser.parse(_pipeline_yaml_azure_alias())
@@ -178,7 +176,6 @@ class TestAzureSpeechYamlParsing:
         """Test converting Azure Speech inline model to AiModelConfig."""
         from stt_v2.pipeline.dto import (
             AiModelFormat,
-            AiModelSource,
             ModelTaskType,
         )
         from stt_v2.pipeline.yaml_parser import get_yaml_parser
@@ -240,13 +237,12 @@ class TestAzureSpeechFullFlowMocked:
         All real code runs except the Azure ConversationTranscriber which is
         mocked to return a realistic transcription response.
         """
-        from stt_v2.pipeline.yaml_parser import get_yaml_parser
+        from stt_v2.models.azure_speech_loader import AzureSpeechLoader
         from stt_v2.pipeline.dto import (
             AiModelFormat,
             ModelTaskType,
-            PipelineConfig,
         )
-        from stt_v2.models.azure_speech_loader import AzureSpeechLoader
+        from stt_v2.pipeline.yaml_parser import get_yaml_parser
         from stt_v2.transcription.batch_service import BatchTranscriptionService
         from stt_v2.transcription.dto import RawTranscription
 
@@ -327,9 +323,9 @@ class TestAzureSpeechFullFlowMocked:
     @pytest.mark.asyncio
     async def test_multilingual_pipeline_normalizes_language(self, mock_azure_env):
         """Test that multilingual config correctly normalizes language codes."""
-        from stt_v2.pipeline.yaml_parser import get_yaml_parser
-        from stt_v2.pipeline.dto import AiModelFormat, ModelTaskType
         from stt_v2.models.azure_speech_loader import AzureSpeechLoader
+        from stt_v2.pipeline.dto import ModelTaskType
+        from stt_v2.pipeline.yaml_parser import get_yaml_parser
         from stt_v2.transcription.batch_service import BatchTranscriptionService
         from stt_v2.transcription.dto import RawTranscription
 
@@ -369,13 +365,12 @@ class TestAzureSpeechFullFlowMocked:
     @pytest.mark.asyncio
     async def test_missing_credentials_raises_auth_error(self):
         """Test that missing Azure credentials surface as CloudASRAuthError."""
-        from stt_v2.pipeline.yaml_parser import get_yaml_parser
-        from stt_v2.pipeline.dto import ModelTaskType
-        from stt_v2.models.azure_speech_loader import AzureSpeechLoader
-        from stt_v2.core.exceptions import CloudASRAuthError
-
         # Clear any cached settings
         from stt_v2.core.config.settings import get_settings
+        from stt_v2.core.exceptions import CloudASRAuthError
+        from stt_v2.models.azure_speech_loader import AzureSpeechLoader
+        from stt_v2.pipeline.dto import ModelTaskType
+        from stt_v2.pipeline.yaml_parser import get_yaml_parser
         get_settings.cache_clear()
 
         parser = get_yaml_parser()
@@ -450,15 +445,14 @@ class TestAzureSpeechRealTranscription:
         4. Validates the returned text and timestamps
         5. Writes a report to tests/e2e/output/
         """
-        from stt_v2.pipeline.yaml_parser import get_yaml_parser
+        from stt_v2.core.config.settings import get_settings
+        from stt_v2.models.azure_speech_loader import AzureSpeechLoader
         from stt_v2.pipeline.dto import (
             AiModelFormat,
             ModelTaskType,
-            PipelineConfig,
         )
-        from stt_v2.models.azure_speech_loader import AzureSpeechLoader
+        from stt_v2.pipeline.yaml_parser import get_yaml_parser
         from stt_v2.transcription.batch_service import BatchTranscriptionService
-        from stt_v2.core.config.settings import get_settings
 
         get_settings.cache_clear()
 
@@ -520,7 +514,7 @@ class TestAzureSpeechRealTranscription:
             "",
             f"**Generated**: {datetime.now().isoformat()}",
             f"**Region**: {os.environ.get('AZURE_SPEECH_REGION', 'unknown')}",
-            f"**Language**: ml-IN (Malayalam)",
+            "**Language**: ml-IN (Malayalam)",
             "",
             "## Result",
             "",

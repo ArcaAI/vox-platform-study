@@ -1,14 +1,16 @@
 """Unit tests for Pipeline config reader."""
 
-import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from stt_v2.core.exceptions import NotFoundError, ValidationError
 from stt_v2.pipeline.config_reader import (
-    PipelineConfigReader,
     ModelRegistryReader,
-    get_pipeline_reader,
+    PipelineConfigReader,
     get_model_reader,
+    get_pipeline_reader,
 )
 from stt_v2.pipeline.dto import (
     AiModelConfig,
@@ -18,7 +20,6 @@ from stt_v2.pipeline.dto import (
     ModelTaskType,
     PipelineConfig,
 )
-from stt_v2.core.exceptions import NotFoundError, ValidationError
 
 
 class TestPipelineConfigReader:

@@ -1,7 +1,6 @@
 """Pipeline configuration reader from database."""
 
 import logging
-from typing import Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

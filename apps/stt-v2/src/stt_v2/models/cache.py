@@ -4,14 +4,14 @@ import asyncio
 import logging
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat, InlineModelDef, ModelRef, ModelTaskType
-from .base_loader import BaseModelLoader, LoadedModel
 from .azure_speech_loader import AzureSpeechLoader
+from .base_loader import BaseModelLoader, LoadedModel
 from .huggingface_loader import HuggingFaceLoader
 from .nemo_loader import NeMoLoader
 from .onnx_loader import ONNXLoader
@@ -330,7 +330,6 @@ class ModelCache:
                 break
 
         # Evict expired entries
-        now = datetime.utcnow()
         expired = [
             slug
             for slug, entry in self._cache.items()

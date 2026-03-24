@@ -9,7 +9,6 @@ import pytest
 from stt_v2.models.base_loader import LoadedModel
 from stt_v2.models.onnx_loader import ONNXLoader
 
-
 # =============================================================================
 # Standard ONNX Loader — _get_providers()
 # =============================================================================

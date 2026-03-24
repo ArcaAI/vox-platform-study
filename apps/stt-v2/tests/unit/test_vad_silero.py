@@ -1,14 +1,14 @@
 """Unit tests for Silero VAD v5 module."""
 
-import numpy as np
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
-from stt_v2.vad.dto import SpeechSegment, VADResult, VADSessionState
-from stt_v2.vad.silero_service import SileroVADService
-from stt_v2.vad.session_manager import VADSessionManager
+import numpy as np
+import pytest
 
+from stt_v2.vad.dto import SpeechSegment, VADResult, VADSessionState
+from stt_v2.vad.session_manager import VADSessionManager
+from stt_v2.vad.silero_service import SileroVADService
 
 # =============================================================================
 # DTO Tests
@@ -420,13 +420,13 @@ class TestVADSessionStateDatetimeAware:
         """created_at default should have timezone info (not naive)."""
         state = VADSessionState(session_id="tz-test")
         assert state.created_at.tzinfo is not None
-        assert state.created_at.tzinfo == timezone.utc
+        assert state.created_at.tzinfo == UTC
 
     def test_last_activity_is_timezone_aware(self):
         """last_activity default should have timezone info (not naive)."""
         state = VADSessionState(session_id="tz-test-2")
         assert state.last_activity.tzinfo is not None
-        assert state.last_activity.tzinfo == timezone.utc
+        assert state.last_activity.tzinfo == UTC
 
     def test_reset_updates_last_activity_with_timezone(self):
         """After reset, last_activity should still be timezone-aware."""
@@ -491,11 +491,11 @@ class TestVADSessionManager:
 
     async def test_cleanup_expired(self, mock_vad_service):
         mgr = VADSessionManager(vad_service=mock_vad_service, max_idle_seconds=60)
-        s1 = await mgr.get_or_create("recent")
+        _s1 = await mgr.get_or_create("recent")
         s2 = await mgr.get_or_create("old")
 
         # Make s2 appear expired
-        s2.last_activity = datetime.now(timezone.utc) - timedelta(seconds=120)
+        s2.last_activity = datetime.now(UTC) - timedelta(seconds=120)
 
         cleaned = await mgr.cleanup_expired()
         assert cleaned == 1
@@ -520,8 +520,8 @@ class TestVADSessionManager:
         mgr = VADSessionManager(vad_service=mock_vad_service, max_idle_seconds=60)
         s1 = await mgr.get_or_create("a")
         s2 = await mgr.get_or_create("b")
-        s1.last_activity = datetime.now(timezone.utc) - timedelta(seconds=120)
-        s2.last_activity = datetime.now(timezone.utc) - timedelta(seconds=120)
+        s1.last_activity = datetime.now(UTC) - timedelta(seconds=120)
+        s2.last_activity = datetime.now(UTC) - timedelta(seconds=120)
 
         cleaned = await mgr.cleanup_expired()
         assert cleaned == 2

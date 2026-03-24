@@ -9,23 +9,22 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
 
 
-class AudioEncoding(str, Enum):
+class AudioEncoding(StrEnum):
     """Supported audio encodings for streaming frames."""
 
     PCM_S16LE = "pcm_s16le"  # 16-bit signed little-endian PCM
     PCM_F32LE = "pcm_f32le"  # 32-bit float little-endian PCM
 
 
-class SessionStatus(str, Enum):
+class SessionStatus(StrEnum):
     """Streaming session lifecycle states."""
 
     ACTIVE = "active"
@@ -33,7 +32,7 @@ class SessionStatus(str, Enum):
     CLOSED = "closed"
 
 
-class ControlAction(str, Enum):
+class ControlAction(StrEnum):
     """Session control commands sent via ``stt:control:{session_id}``."""
 
     FINALIZE = "finalize"

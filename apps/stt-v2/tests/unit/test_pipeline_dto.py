@@ -3,6 +3,7 @@
 import pytest
 
 from stt_v2.pipeline.dto import (
+    VALID_WHISPER_LANGUAGES,
     AiModelConfig,
     AiModelDownloadStatus,
     AiModelFormat,
@@ -17,15 +18,10 @@ from stt_v2.pipeline.dto import (
     PipelineSpec,
     PostprocessingConfig,
     PreprocessingConfig,
-    PunctuationConfig,
-    TimestampConfig,
     VadConfig,
-    ValidationError,
     ValidationResult,
-    VALID_WHISPER_LANGUAGES,
     is_valid_language_code,
 )
-
 
 # =============================================================================
 # INLINE MODEL DEFINITION TESTS

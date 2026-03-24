@@ -1,11 +1,12 @@
 """Unit tests for Storage domain."""
 
-import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-from stt_v2.storage.path_resolver import StoragePathResolver, get_path_resolver
+import pytest
+
 from stt_v2.storage.blob_service import BlobService
+from stt_v2.storage.path_resolver import StoragePathResolver
 
 
 class TestStoragePathResolver:

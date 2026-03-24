@@ -17,9 +17,10 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from datetime import datetime
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 import numpy as np
 import structlog
@@ -657,7 +658,7 @@ class SessionManager:
             return
         try:
             await asyncio.wait_for(queue.join(), timeout=self._inference_drain_timeout_s)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "Inference queue drain timed out",
                 session_id=session_id,
@@ -675,7 +676,7 @@ class SessionManager:
                 if not force_cancel:
                     try:
                         await asyncio.wait_for(queue.put(None), timeout=1.0)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning(
                             "Timed out enqueueing inference sentinel",
                             session_id=session_id,
@@ -692,7 +693,7 @@ class SessionManager:
         if task is not None and not task.done():
             try:
                 await asyncio.wait_for(task, timeout=self._inference_stop_timeout_s)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if force_cancel:
                     task.cancel()
                     try:
@@ -860,7 +861,7 @@ class SessionManager:
                     await asyncio.wait_for(
                         queue.put(final_utt), timeout=self._inference_stop_timeout_s
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning(
                         "Timed out enqueueing final utterance; falling back to inline",
                         session_id=session.session_id,
@@ -907,7 +908,7 @@ class SessionManager:
             logger.error(
                 "Session finalization failed; forcing cleanup",
                 session_id=session.session_id,
-                status=status,
+                status=session.status.value,
                 error=str(exc),
             )
         finally:

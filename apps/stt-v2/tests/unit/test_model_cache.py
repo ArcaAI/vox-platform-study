@@ -1,16 +1,16 @@
 """Unit tests for Model Cache."""
 
-import pytest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from stt_v2.models.base_loader import LoadedModel
 from stt_v2.models.cache import (
     CacheEntry,
     CacheStats,
     ModelCache,
-    get_model_cache,
 )
-from stt_v2.models.base_loader import LoadedModel
 from stt_v2.pipeline.dto import (
     AiModelConfig,
     AiModelDownloadStatus,
