@@ -11,7 +11,7 @@ Design decisions:
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from ...core.config.settings import get_settings
@@ -149,7 +149,7 @@ class SpeakerEmbeddingStore:
         client = await self._client_manager.get_client()
 
         point_id = uuid.uuid4().hex
-        timestamp = int(datetime.now(timezone.utc).timestamp())
+        timestamp = int(datetime.now(UTC).timestamp())
 
         payload: dict[str, Any] = {
             "tenant_id": tenant_id,
@@ -359,11 +359,11 @@ class SpeakerEmbeddingStore:
         await self.ensure_collection()
         client = await self._client_manager.get_client()
 
-        cutoff = int((datetime.now(timezone.utc) - timedelta(days=expiration_days)).timestamp())
+        cutoff = int((datetime.now(UTC) - timedelta(days=expiration_days)).timestamp())
 
         try:
             # Use filter-based delete
-            result = await client.delete(
+            _result = await client.delete(
                 collection_name=self.collection_name,
                 points_selector=models.FilterSelector(
                     filter=models.Filter(

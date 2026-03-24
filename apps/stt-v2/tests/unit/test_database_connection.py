@@ -3,9 +3,10 @@
 Tests cover event loop handling, engine creation, and session management.
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 class TestDatabaseConnectionHelpers:
@@ -188,7 +189,7 @@ class TestDatabaseSession:
 
         with patch.object(conn_module, "_get_or_create_engine", return_value=(MagicMock(), mock_factory)):
             try:
-                async with conn_module.get_db_session() as session:
+                async with conn_module.get_db_session() as _session:
                     raise ValueError("Test error")
             except ValueError:
                 pass

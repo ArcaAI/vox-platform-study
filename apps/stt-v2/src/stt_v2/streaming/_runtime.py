@@ -12,7 +12,7 @@ to make it explicit that runtime state is mutable global state.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -22,8 +22,8 @@ from stt_v2.streaming.session_manager import SessionManager
 logger = structlog.get_logger(__name__)
 
 # Module-level singletons — set during ``initialize_streaming()``
-_session_manager: Optional[SessionManager] = None
-_execution_profile: Optional[ExecutionProfile] = None
+_session_manager: SessionManager | None = None
+_execution_profile: ExecutionProfile | None = None
 _redis_client: Any | None = None  # redis.asyncio.Redis
 
 

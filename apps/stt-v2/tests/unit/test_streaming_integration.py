@@ -8,26 +8,24 @@ actual StreamingPreprocessor and StreamingInferenceWorker instances
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
 
 from stt_v2.streaming.inference import StreamingInferenceWorker
 from stt_v2.streaming.preprocessor import AudioUtterance, StreamingPreprocessor
-from stt_v2.streaming.redis_streams import ResultPublisher
 from stt_v2.streaming.schemas import (
     AudioEncoding,
     AudioFrame,
     ControlAction,
+    SegmentResult,
     SessionControl,
     SessionMetadata,
     SessionStatus,
-    SegmentResult,
 )
 from stt_v2.streaming.session import StreamSession
 from stt_v2.streaming.session_manager import SessionManager
-
 
 # =========================================================================
 # Helpers

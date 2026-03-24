@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,7 +19,6 @@ from stt_v2.streaming._runtime import (
 )
 from stt_v2.streaming.api.routes import router
 from stt_v2.streaming.schemas import SessionMetadata, SessionStatus
-
 
 # =========================================================================
 # Fixtures

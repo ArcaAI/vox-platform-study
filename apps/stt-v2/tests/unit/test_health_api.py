@@ -3,23 +3,22 @@
 These tests cover health check endpoints and internal admin endpoints.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from stt_v2.health.api.routes import (
-    HealthStatus,
     ComponentHealth,
-    _component_to_dict,
+    HealthStatus,
     _check_database,
     _check_minio,
-    _check_redis,
-    health_check,
-    readiness_check,
-    liveness_check,
-    get_streaming_sessions,
+    _component_to_dict,
     cleanup_sessions,
+    get_streaming_sessions,
+    health_check,
+    liveness_check,
+    readiness_check,
 )
-
 
 # =============================================================================
 # Health Status and Component Tests

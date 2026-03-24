@@ -12,14 +12,13 @@ RED: Written before implementation.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from prometheus_client import (
     REGISTRY,
-    CollectorRegistry,
     Counter,
     Gauge,
     Histogram,
@@ -28,7 +27,6 @@ from prometheus_client import (
 from smr_v2.core.config import Settings
 from smr_v2.models.task import TaskState, TaskStatus
 from smr_v2.providers.base import ProviderRegistry
-
 
 # ── Helpers ──
 
@@ -45,15 +43,15 @@ def _get_sample_value(metric_name: str, labels: dict[str, str]) -> float:
 
 
 def _make_settings(**overrides) -> Settings:
-    defaults = dict(
-        host="127.0.0.1",
-        port=5099,
-        debug=True,
-        log_level="debug",
-        guardrail_enabled=True,
-        guardrail_mode="log",
-        metrics_enabled=False,
-    )
+    defaults = {
+        "host": "127.0.0.1",
+        "port": 5099,
+        "debug": True,
+        "log_level": "debug",
+        "guardrail_enabled": True,
+        "guardrail_mode": "log",
+        "metrics_enabled": False,
+    }
     defaults.update(overrides)
     return Settings(**defaults)
 

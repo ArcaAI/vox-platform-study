@@ -2,11 +2,11 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class ModelTaskType(str, Enum):
+class ModelTaskType(StrEnum):
     """Model task types for STT."""
 
     AUTOMATIC_SPEECH_RECOGNITION = "AUTOMATIC_SPEECH_RECOGNITION"
@@ -16,7 +16,7 @@ class ModelTaskType(str, Enum):
     SPEAKER_DIARIZATION = "SPEAKER_DIARIZATION"
 
 
-class AiModelSource(str, Enum):
+class AiModelSource(StrEnum):
     """Model source types."""
 
     HUGGINGFACE = "HUGGINGFACE"
@@ -26,7 +26,7 @@ class AiModelSource(str, Enum):
     LOCAL = "LOCAL"
 
 
-class AiModelFormat(str, Enum):
+class AiModelFormat(StrEnum):
     """Model format types / inference engines."""
 
     SAFETENSOR = "SAFETENSOR"
@@ -40,7 +40,7 @@ class AiModelFormat(str, Enum):
     AZURE_SPEECH = "AZURE_SPEECH"  # Azure Cognitive Services Speech
 
 
-class AiModelDownloadStatus(str, Enum):
+class AiModelDownloadStatus(StrEnum):
     """Model download status."""
 
     NOT_DOWNLOADED = "NOT_DOWNLOADED"

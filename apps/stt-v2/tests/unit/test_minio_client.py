@@ -3,19 +3,18 @@
 Tests cover all MinIO storage operations.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
-from io import BytesIO
+from unittest.mock import MagicMock, patch
 
+import pytest
 from minio.error import S3Error
 
+from stt_v2.core.exceptions import StorageError
 from stt_v2.core.storage.minio_client import (
     MinIOClient,
+    close_minio,
     get_minio_client,
     initialize_minio,
-    close_minio,
 )
-from stt_v2.core.exceptions import StorageError
 
 
 class TestMinIOClientInit:
@@ -26,7 +25,7 @@ class TestMinIOClientInit:
         with patch("stt_v2.core.storage.minio_client.Minio") as mock_minio:
             mock_minio.return_value = MagicMock()
 
-            client = MinIOClient(
+            _client = MinIOClient(
                 endpoint="localhost:9000",
                 access_key="access",
                 secret_key="secret",

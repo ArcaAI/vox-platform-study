@@ -1,7 +1,6 @@
 """Unit tests for application settings."""
 
 import os
-import pytest
 from unittest.mock import patch
 
 from stt_v2.core.config.settings import Settings, get_settings

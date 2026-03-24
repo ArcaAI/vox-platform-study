@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime
 
 import dramatiq
 
@@ -96,7 +95,7 @@ async def _transcribe_file_async(
     publishes real-time events to Redis Pub/Sub so the NestJS API
     Gateway can relay them to clients via SSE.
     """
-    settings = get_settings()
+    _settings = get_settings()
     api_client = get_api_client()
     blob_service = get_blob_service()
     pipeline_reader = get_pipeline_reader()

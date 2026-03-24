@@ -22,10 +22,8 @@ Environment:
 
 import asyncio
 import os
-import time
 import subprocess
-from typing import Optional
-from urllib.parse import urlparse
+import time
 
 # Test infrastructure ports (matching monorepo's tests/docker-compose.test.yml)
 TEST_DB_PORT = 5433
@@ -200,6 +198,7 @@ def _create_schema() -> None:
     """Create database schema using SQLAlchemy models."""
     try:
         from sqlalchemy import create_engine, text
+
         from stt_v2.core.database.models import Base
 
         engine = create_engine(get_db_url(sync=True), echo=False)
