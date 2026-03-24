@@ -4,7 +4,7 @@
 
 github-backup:
   stage: notify
-  image: alpine:latest
+  image: alpine:3.20
   tags: [deploy]
   interruptible: false
   before_script:
@@ -34,4 +34,4 @@ github-backup:
       echo "Successfully pushed changes to GitHub branch: $GITHUB_BACKUP_BRANCH"
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
