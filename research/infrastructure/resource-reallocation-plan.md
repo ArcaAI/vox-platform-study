@@ -703,8 +703,8 @@ docker ps | grep minio
 # Should show running
 
 # Verify MinIO health
-curl -s http://localhost:9000/minio/health/live    # Expected: OK
-curl -s http://localhost:9000/minio/health/ready   # Expected: OK
+curl -s https://localhost:9000/minio/health/live    # Expected: OK
+curl -s https://localhost:9000/minio/health/ready   # Expected: OK
 
 # Test S3 access (using mc if installed)
 # mc alias set local http://localhost:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
