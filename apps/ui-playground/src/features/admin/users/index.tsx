@@ -667,6 +667,30 @@ function isValidJsonString(input: string): boolean {
   }
 }
 
+function normalizeJsonString(input: string): string {
+  if (input.trim().length === 0) {
+    return input
+  }
+  try {
+    const parsed = JSON.parse(input)
+    return JSON.stringify(parsed)
+  } catch {
+    return input
+  }
+}
+
+function isJsonDataType(dataType?: string | null): boolean {
+  return String(dataType ?? 'STRING').toUpperCase() === 'JSON'
+}
+
+function formatSettingValue(value: string, dataType?: string | null): string {
+  return isJsonDataType(dataType) ? tryFormatJsonString(value) : value
+}
+
+function normalizeSettingValue(value: string, dataType?: string | null): string {
+  return isJsonDataType(dataType) ? normalizeJsonString(value) : value
+}
+
 function parseSettingValue(setting: UserSetting): unknown {
   const dt = String(setting.dataType ?? 'STRING').toUpperCase()
   if (dt === 'BOOLEAN') return setting.value === 'true'
@@ -689,6 +713,7 @@ function SettingValueEditor({
   onChange: (v: string) => void
 }) {
   const dt = String(setting.dataType ?? 'STRING').toUpperCase()
+  const jsonInvalid = isJsonDataType(setting.dataType) && value.trim().length > 0 && !isValidJsonString(value)
   if (dt === 'BOOLEAN') {
     return (
       <select
@@ -707,8 +732,10 @@ function SettingValueEditor({
       <textarea
         className="bg-background min-h-28 w-full rounded-md border p-2 font-mono text-sm"
         aria-label={`Value for ${setting.name || setting.key}`}
+        aria-invalid={jsonInvalid}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        spellCheck={false}
       />
     )
   }
@@ -732,12 +759,16 @@ function UserPreferencesSection({ userId }: { userId: string }) {
     () => (allSettings ?? []).filter((s) => s.namespace === SDK_NAMESPACE),
     [allSettings],
   )
+  const editingSetting = useMemo(
+    () => sdkSettings.find((s) => s.key === editingKey),
+    [editingKey, sdkSettings],
+  )
+  const normalizedDraftValue = normalizeSettingValue(draftValue, editingSetting?.dataType)
 
   const startEdit = useCallback((setting: UserSetting) => {
     setEditingKey(setting.key)
     const raw = String(setting.value ?? '')
-    const dt = String(setting.dataType ?? 'STRING').toUpperCase()
-    setDraftValue(dt === 'JSON' ? tryFormatJsonString(raw) : raw)
+    setDraftValue(formatSettingValue(raw, setting.dataType))
     setDraftError(null)
   }, [])
 
@@ -752,18 +783,16 @@ function UserPreferencesSection({ userId }: { userId: string }) {
       setDraftError(null)
       return
     }
-    const setting = sdkSettings.find((s) => s.key === editingKey)
-    const dt = String(setting?.dataType ?? 'STRING').toUpperCase()
-    if (dt === 'JSON' && draftValue.trim().length > 0 && !isValidJsonString(draftValue)) {
+    if (isJsonDataType(editingSetting?.dataType) && draftValue.trim().length > 0 && !isValidJsonString(draftValue)) {
       setDraftError('Invalid JSON: please fix syntax before saving.')
       return
     }
     setDraftError(null)
-  }, [draftValue, editingKey, sdkSettings])
+  }, [draftValue, editingKey, editingSetting])
 
   const handleSave = useCallback(
     (setting: UserSetting) => {
-      if (String(setting.dataType ?? 'STRING').toUpperCase() === 'JSON') {
+      if (isJsonDataType(setting.dataType)) {
         if (draftValue.trim().length > 0 && !isValidJsonString(draftValue)) {
           setDraftError('Invalid JSON: please fix syntax before saving.')
           return
@@ -774,7 +803,7 @@ function UserPreferencesSection({ userId }: { userId: string }) {
           userId,
           namespace: SDK_NAMESPACE,
           key: setting.key,
-          value: draftValue,
+          value: normalizeSettingValue(draftValue, setting.dataType),
           dataType: setting.dataType,
           name: setting.name,
         },
@@ -815,7 +844,10 @@ function UserPreferencesSection({ userId }: { userId: string }) {
         <div className="flex flex-col gap-2">
           {sdkSettings.map((setting) => {
             const isEditing = editingKey === setting.key
-            const isDirty = isEditing && draftValue !== String(setting.value ?? '')
+            const originalValue = String(setting.value ?? '')
+            const displayValue = formatSettingValue(originalValue, setting.dataType)
+            const isDirty = isEditing
+              && normalizedDraftValue !== normalizeSettingValue(originalValue, setting.dataType)
             return (
               <div
                 key={setting.id}
@@ -877,9 +909,15 @@ function UserPreferencesSection({ userId }: { userId: string }) {
                     )}
                   </div>
                 ) : (
-                  <p className="truncate font-mono text-xs">
-                    {String(setting.value ?? '')}
-                  </p>
+                  isJsonDataType(setting.dataType) ? (
+                    <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-all font-mono text-xs">
+                      {displayValue}
+                    </pre>
+                  ) : (
+                    <p className="truncate font-mono text-xs">
+                      {displayValue}
+                    </p>
+                  )
                 )}
               </div>
             )
