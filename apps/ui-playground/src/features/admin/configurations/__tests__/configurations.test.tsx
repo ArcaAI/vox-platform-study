@@ -328,6 +328,26 @@ describe('ConfigurationManagementPage', () => {
       expect(textarea).toBeInTheDocument();
       expect(textarea.tagName).toBe('TEXTAREA');
     });
+
+    it('should keep Save disabled when JSON is only reformatted for display', () => {
+      renderPage();
+      fireEvent.click(screen.getByTestId('config-item-cfg-03'));
+
+      const textarea = screen.getByLabelText(/configuration value editor/i) as HTMLTextAreaElement;
+      expect(textarea).toHaveValue('{\n  "timeout": 30\n}');
+      expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+    });
+
+    it('should show validation error and disable Save for invalid JSON', () => {
+      renderPage();
+      fireEvent.click(screen.getByTestId('config-item-cfg-03'));
+
+      const textarea = screen.getByLabelText(/configuration value editor/i);
+      fireEvent.change(textarea, { target: { value: '{"timeout":' } });
+
+      expect(screen.getByText(/invalid json/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -370,6 +390,28 @@ describe('ConfigurationManagementPage', () => {
           identifier: expect.any(String),
           configs: expect.arrayContaining([
             expect.objectContaining({ id: 'cfg-01', value: 'de' }),
+          ]),
+        }),
+      );
+    });
+
+    it('should normalize JSON string before saving', () => {
+      renderPage();
+      fireEvent.click(screen.getByTestId('config-item-cfg-03'));
+
+      const textarea = screen.getByLabelText(/configuration value editor/i);
+      fireEvent.change(textarea, {
+        target: {
+          value: '{\n  "timeout": 45,\n  "enabled": true\n}',
+        },
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /save/i }));
+
+      expect(mockMutateTenantConfigs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          configs: expect.arrayContaining([
+            expect.objectContaining({ id: 'cfg-03', value: '{"timeout":45,"enabled":true}' }),
           ]),
         }),
       );
