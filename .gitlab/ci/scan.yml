@@ -1,13 +1,17 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# Scan stage — security scanning with Trivy (no GitLab license required)
+# Scan stage — security scanning with Trivy
 # ══════════════════════════════════════════════════════════════════════════════
+#
+# Container scans run after builds on staging/main/tags (not cicd manual builds).
+# Source scan runs on all pipeline types except feature branches.
 
 # ── Trivy container scan template ────────────────────────────────────────────
 
 .trivy-scan:
   stage: scan
+  tags: [build]
   image:
-    name: aquasec/trivy:latest
+    name: aquasec/trivy:0.58.2
     entrypoint: [""]
   variables:
     TRIVY_USERNAME: $CI_REGISTRY_USER
@@ -25,16 +29,13 @@
         "$SCAN_IMAGE"
 
       echo ""
-      echo "Checking for CRITICAL vulnerabilities (will fail if found)..."
+      echo "Checking for CRITICAL vulnerabilities..."
       trivy image \
         --exit-code 1 \
         --severity CRITICAL \
         --no-progress \
         "$SCAN_IMAGE" || echo "CRITICAL vulnerabilities found — review required"
   allow_failure: true
-  rules:
-    - if: $PIPELINE_TYPE == "merge_request"
-      when: never
 
 # ── Per-service container scans ──────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ scan-api:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "release"
       when: never
     - !reference [.rules-api, rules]
 
@@ -58,7 +59,7 @@ scan-ui-playground:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "release"
       when: never
     - !reference [.rules-ui-playground, rules]
 
@@ -70,7 +71,7 @@ scan-stt-v2:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "release"
       when: never
     - !reference [.rules-stt-v2, rules]
 
@@ -82,7 +83,7 @@ scan-smr:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "release"
       when: never
     - !reference [.rules-smr, rules]
 
@@ -94,7 +95,7 @@ scan-nlp:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "release"
       when: never
     - !reference [.rules-nlp, rules]
 
@@ -102,8 +103,9 @@ scan-nlp:
 
 scan-source:
   stage: scan
+  tags: [fast]
   image:
-    name: aquasec/trivy:latest
+    name: aquasec/trivy:0.58.2
     entrypoint: [""]
   needs: []
   script:
@@ -118,6 +120,10 @@ scan-source:
         .
   allow_failure: true
   rules:
+    - if: $PIPELINE_TYPE == "feature"
+      when: never
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "cicd"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $PIPELINE_TYPE == "release"

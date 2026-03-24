@@ -2,24 +2,31 @@
 # Change-path rule templates
 # ══════════════════════════════════════════════════════════════════════════════
 #
-# Each service has a dedicated rule set that triggers on relevant file changes.
-# Use via:  rules: !reference [.rules-<service>, rules]
-#
-# NOTE: YAML anchors don't work across GitLab CI `include` files, so each
-# rule set lists its change paths explicitly.
+# Branch behavior:
+#   cicd    — all stages run (no change filtering), builds manual
+#   staging — only changed services trigger, builds auto
+#   release — SDK publish only
+#   main    — same as staging
+#   devops  — lint + test only
 
-# ── Always-run conditions (tags + devops branches) ───────────────────────────
+# ── Always-run conditions ───────────────────────────────────────────────────
 
 .rules-always:
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
+
+# ── cicd branch: always run everything ──────────────────────────────────────
+
+.rules-cicd-always:
+  rules:
+    - if: $PIPELINE_TYPE == "cicd"
 
 # ── API Gateway ──────────────────────────────────────────────────────────────
 
 .rules-api:
   rules:
     - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
@@ -34,7 +41,7 @@
           - packages/config-rollup/**/*
           - packages/config-ts/**/*
         compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
       changes:
         - apps/api/**/*
         - packages/database/**/*
@@ -46,12 +53,19 @@
         - packages/config-eslint/**/*
         - packages/config-rollup/**/*
         - packages/config-ts/**/*
+    - if: $PIPELINE_TYPE == "feature"
+      changes:
+        - apps/api/**/*
+        - packages/database/**/*
+        - packages/domains/**/*
+        - packages/applications/**/*
 
 # ── UI Playground ────────────────────────────────────────────────────────────
 
 .rules-ui-playground:
   rules:
     - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
@@ -67,7 +81,7 @@
           - packages/utils/**/*
           - packages/config-tailwind/**/*
         compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
       changes:
         - apps/ui-playground/**/*
         - packages/ui/**/*
@@ -80,18 +94,24 @@
         - packages/pipeline/**/*
         - packages/utils/**/*
         - packages/config-tailwind/**/*
+    - if: $PIPELINE_TYPE == "feature"
+      changes:
+        - apps/ui-playground/**/*
+        - packages/ui/**/*
+        - packages/agentic-sdk-v2/**/*
 
 # ── STT-v2 (Speech-to-Text) ─────────────────────────────────────────────────
 
 .rules-stt-v2:
   rules:
     - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
           - apps/stt-v2/**/*
         compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/stt-v2/**/*
 
@@ -100,12 +120,13 @@
 .rules-smr:
   rules:
     - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
           - apps/smr/**/*
         compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/smr/**/*
 
@@ -114,12 +135,13 @@
 .rules-nlp:
   rules:
     - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
           - apps/nlp/**/*
         compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/nlp/**/*
 
@@ -128,20 +150,22 @@
 .rules-database:
   rules:
     - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
           - packages/database/**/*
         compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - packages/database/**/*
 
-# ── Any TypeScript change (for monorepo-wide lint/typecheck) ─────────────────
+# ── Any TypeScript change ───────────────────────────────────────────────────
 
 .rules-any-ts:
   rules:
     - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
@@ -150,7 +174,7 @@
           - packages/**/*
           - "*.json"
         compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/api/**/*
         - apps/ui-playground/**/*
@@ -161,6 +185,7 @@
 .rules-any-python:
   rules:
     - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
@@ -174,8 +199,25 @@
           - "apps/smr/**/pyproject.toml"
           - "apps/nlp/**/pyproject.toml"
         compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - "apps/stt-v2/**/*.py"
         - "apps/smr/**/*.py"
         - "apps/nlp/**/*.py"
+
+# ── SDK packages (for publish stage) ────────────────────────────────────────
+
+.rules-sdk-publish:
+  rules:
+    - if: $PIPELINE_TYPE == "release"
+      changes:
+        - packages/agentic-sdk-v2/**/*
+        - packages/room/**/*
+        - packages/stt/**/*
+        - packages/vad/**/*
+        - packages/noise-filter/**/*
+        - packages/med-ner/**/*
+        - packages/pipeline/**/*
+        - packages/utils/**/*
+        - packages/types/**/*
+        - ".changeset/**/*"
