@@ -10,10 +10,12 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["vite/client"],
+    "types": ["vite/client", "vitest/globals"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@arcaai/vox": ["./node_modules/@arcaai/vox/src/index.ts"],
+      "@arcaai/vox/*": ["./node_modules/@arcaai/vox/src/*"]
     }
   },
   "include": ["src", "vite-env.d.ts"],
