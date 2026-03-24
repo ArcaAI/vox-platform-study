@@ -649,6 +649,24 @@ function RoleAssignmentSection({ user }: { user: AdminUser }) {
 
 const SDK_NAMESPACE = 'arcaai-sdk'
 
+function tryFormatJsonString(input: string): string {
+  try {
+    const parsed = JSON.parse(input)
+    return JSON.stringify(parsed, null, 2)
+  } catch {
+    return input
+  }
+}
+
+function isValidJsonString(input: string): boolean {
+  try {
+    JSON.parse(input)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function parseSettingValue(setting: UserSetting): unknown {
   const dt = String(setting.dataType ?? 'STRING').toUpperCase()
   if (dt === 'BOOLEAN') return setting.value === 'true'
@@ -708,6 +726,7 @@ function UserPreferencesSection({ userId }: { userId: string }) {
   const updateMut = useUpdateAdminUserSetting()
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [draftValue, setDraftValue] = useState('')
+  const [draftError, setDraftError] = useState<string | null>(null)
 
   const sdkSettings = useMemo(
     () => (allSettings ?? []).filter((s) => s.namespace === SDK_NAMESPACE),
@@ -716,16 +735,40 @@ function UserPreferencesSection({ userId }: { userId: string }) {
 
   const startEdit = useCallback((setting: UserSetting) => {
     setEditingKey(setting.key)
-    setDraftValue(String(setting.value ?? ''))
+    const raw = String(setting.value ?? '')
+    const dt = String(setting.dataType ?? 'STRING').toUpperCase()
+    setDraftValue(dt === 'JSON' ? tryFormatJsonString(raw) : raw)
+    setDraftError(null)
   }, [])
 
   const cancelEdit = useCallback(() => {
     setEditingKey(null)
     setDraftValue('')
+    setDraftError(null)
   }, [])
+
+  useEffect(() => {
+    if (!editingKey) {
+      setDraftError(null)
+      return
+    }
+    const setting = sdkSettings.find((s) => s.key === editingKey)
+    const dt = String(setting?.dataType ?? 'STRING').toUpperCase()
+    if (dt === 'JSON' && draftValue.trim().length > 0 && !isValidJsonString(draftValue)) {
+      setDraftError('Invalid JSON: please fix syntax before saving.')
+      return
+    }
+    setDraftError(null)
+  }, [draftValue, editingKey, sdkSettings])
 
   const handleSave = useCallback(
     (setting: UserSetting) => {
+      if (String(setting.dataType ?? 'STRING').toUpperCase() === 'JSON') {
+        if (draftValue.trim().length > 0 && !isValidJsonString(draftValue)) {
+          setDraftError('Invalid JSON: please fix syntax before saving.')
+          return
+        }
+      }
       updateMut.mutate(
         {
           userId,
@@ -739,6 +782,7 @@ function UserPreferencesSection({ userId }: { userId: string }) {
           onSuccess: () => {
             toast.success(`Updated ${setting.name || setting.key}`)
             setEditingKey(null)
+            setDraftError(null)
           },
           onError: (err) => toast.error(err.message),
         },
@@ -799,7 +843,7 @@ function UserPreferencesSection({ userId }: { userId: string }) {
                       <Button
                         size="sm"
                         className="h-7 text-xs"
-                        disabled={!isDirty || updateMut.isPending}
+                        disabled={!isDirty || !!draftError || updateMut.isPending}
                         onClick={() => handleSave(setting)}
                       >
                         Save
@@ -820,11 +864,18 @@ function UserPreferencesSection({ userId }: { userId: string }) {
                   {setting.key}
                 </p>
                 {isEditing ? (
-                  <SettingValueEditor
-                    setting={setting}
-                    value={draftValue}
-                    onChange={setDraftValue}
-                  />
+                  <div className="space-y-1">
+                    <SettingValueEditor
+                      setting={setting}
+                      value={draftValue}
+                      onChange={setDraftValue}
+                    />
+                    {draftError && (
+                      <p className="text-destructive text-xs" aria-live="polite" role="status">
+                        {draftError}
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <p className="truncate font-mono text-xs">
                     {String(setting.value ?? '')}
