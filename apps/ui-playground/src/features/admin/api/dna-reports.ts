@@ -69,7 +69,7 @@ export function useDnaReportVersions(tenantId: string, reportId: string) {
       }
 
       const response = await adminClient.get<DnaStyleVersion[]>(
-        `/dna-writing-styles/${reportId}/versions`,
+        `/admin/dna-writing-styles/${reportId}/versions`,
         { tenantId },
       );
 

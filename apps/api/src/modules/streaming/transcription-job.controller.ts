@@ -134,7 +134,7 @@ export class TranscriptionJobController {
         const url = `${sttBaseUrl}/api/v1/transcribe`;
 
         const formData = new FormData();
-        formData.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+        formData.append('file', new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }), file.originalname);
         formData.append('pipeline_id', pipelineId);
         formData.append('tenant_id', tenantId);
         if (language) {

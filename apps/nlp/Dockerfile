@@ -1,131 +1,127 @@
-# -- Builder stage --
-FROM python:3.11-slim AS builder
+# syntax=docker/dockerfile:1
+# ── NLP Service ──────────────────────────────────────────────────────────────
+# Multi-stage build: deps → builder → debug | production
+#
+# Build targets:
+#   docker build --target production -t nlp .
+#   docker build --target debug -t nlp:debug .
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Build optimization environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PIP_NO_CACHE_DIR=1
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+# ── Stage 1: deps — system libraries needed to compile native wheels ────────
+FROM python:3.11-slim-trixie AS deps
 
-# Install build dependencies with version pinning for security
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential=12.* \
-    libasound2-dev=1.* \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libasound2-dev
 
-# Install uv package manager with specific version for reproducibility
-RUN pip install --no-cache-dir uv==0.4.29
+# ── Stage 2: builder — install Python packages into a portable venv ─────────
+FROM deps AS builder
 
-# Set working directory
+COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /bin/
+
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never
+
 WORKDIR /app
 
-# Copy dependency files for better layer caching
+# Layer 1: Install torch CPU-only from PyTorch index.
+# Separated so this ~200MB layer is cached independently and only rebuilds
+# when the torch version constraint changes.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv venv /app/.venv && \
+    uv pip install --python /app/.venv \
+        --index-url https://download.pytorch.org/whl/cpu \
+        "torch>=2.1.0"
+
+# Layer 2: Install remaining deps from lockfile.
+# editdistpy's setuptools requirement is handled by
+# [tool.uv.extra-build-dependencies] in pyproject.toml.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --no-dev --no-install-project --no-editable \
+        --python /app/.venv/bin/python
+
 COPY pyproject.toml uv.lock ./
+COPY src/ ./src/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev --no-editable
 
-# Install dependencies and create a clean virtual environment
-RUN uv sync --frozen --no-dev
+RUN find /app/.venv/lib -type d \( \
+        -name "__pycache__" -o -name "*.egg-info" \
+        -o -name "tests" -o -name "test" \
+    \) -exec rm -rf {} + 2>/dev/null; \
+    find /app/.venv/lib -name "*.so" \
+        -exec strip --strip-unneeded {} + 2>/dev/null; true
 
-# Create a minimal Python installation directory with better cleanup
-RUN mkdir -p /opt/app && \
-    cp -r /app/.venv /opt/app/ && \
-    find /opt/app/.venv -name "*.pyc" -delete && \
-    find /opt/app/.venv -name "__pycache__" -type d -exec rm -rf {} + || true && \
-    find /opt/app/.venv -name "*.pyo" -delete
+# ── Debug stage ─────────────────────────────────────────────────────────────
+FROM python:3.11-slim-trixie AS debug
 
-# -- Debug stage (optional for development) --
-FROM python:3.11-slim AS debug
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    curl procps
 
-# Copy virtual environment from builder
-COPY --from=builder /opt/app/.venv /app/.venv
+COPY --from=builder /app/.venv /app/.venv
 
-# Install minimal debugging tools
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl=7.* \
-    procps=2:* \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
-
-# Copy source code
+WORKDIR /app
 COPY src/nlp/ /app/src/
 
-WORKDIR /app
+ENV PATH="/app/.venv/bin:$PATH" \
+    VIRTUAL_ENV=/app/.venv \
+    PYTHONPATH="/app" \
+    PYTHONUNBUFFERED=1
 
-# Add virtual environment to Python path
-ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app"
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-
-# Create non-root user for security
 RUN groupadd --gid 1001 nlpuser && \
     useradd --uid 1001 --gid nlpuser --shell /bin/bash --create-home nlpuser && \
     chown -R nlpuser:nlpuser /app
 
 USER nlpuser
-
-# Expose port
 EXPOSE 8864
 
-# Health check for debug builds
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8864/api/v1/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8864/api/v1/health')"]
 
-# Use Python entrypoint
-ENTRYPOINT ["/usr/bin/python3", "/app/src/main.py"]
+ENTRYPOINT ["python", "-m", "nlp.main"]
 
-# -- Production stage --
-FROM gcr.io/distroless/python3-debian12:latest AS production
+# ── Production stage ────────────────────────────────────────────────────────
+FROM python:3.11-slim-trixie AS production
 
-# Add comprehensive build metadata
-LABEL maintainer="HOPE Team"
-LABEL service="nlp"
-LABEL version="1.0.0"
-LABEL description="HOPE NLP Service"
-LABEL stage="production"
-LABEL org.opencontainers.image.title="HOPE NLP Service"
-LABEL org.opencontainers.image.description="Real-time NLP service with Azure Cognitive Services"
-LABEL org.opencontainers.image.version="1.0.0"
-LABEL org.opencontainers.image.vendor="HOPE Team"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL maintainer="HOPE Team" \
+    service="nlp" \
+    description="HOPE NLP Service" \
+    org.opencontainers.image.title="HOPE NLP Service" \
+    org.opencontainers.image.description="Real-time NLP service with Azure Cognitive Services" \
+    org.opencontainers.image.vendor="HOPE Team" \
+    org.opencontainers.image.licenses="MIT"
 
-# Set secure environment variables
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONHASHSEED=random
+ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONHASHSEED=random \
+    PATH="/app/.venv/bin:$PATH"
 
-# Observability environment variables with consistent naming
-ENV OTEL_SERVICE_NAME=hope-nlp
-ENV OTEL_SERVICE_VERSION=1.0.0
-ENV OTEL_RESOURCE_ATTRIBUTES=service.name=hope-nlp,service.version=1.0.0,service.namespace=hope,deployment.environment=production
-ENV OTEL_TRACES_ENABLED=true
-ENV OTEL_METRICS_ENABLED=true
-ENV LOG_LEVEL=info
+ENV OTEL_SERVICE_NAME=hope-nlp \
+    OTEL_RESOURCE_ATTRIBUTES="service.name=hope-nlp,service.namespace=hope,deployment.environment=production" \
+    OTEL_TRACES_ENABLED=true \
+    OTEL_METRICS_ENABLED=true \
+    LOG_LEVEL=info
 
-# Copy the virtual environment from builder with proper ownership
-COPY --from=builder --chown=1001:1001 /opt/app/.venv /app/.venv
-
-# Copy source code with proper ownership
-COPY --chown=1001:1001 src/ /app/src/
-
-# Set working directory
 WORKDIR /app
 
-# Switch to non-root user (distroless uses numeric IDs)
-USER 1001
+RUN groupadd --gid 1001 nlpuser && \
+    useradd --uid 1001 --gid nlpuser --shell /usr/sbin/nologin --no-create-home nlpuser
 
-# Add virtual environment to Python path
-ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app"
+COPY --from=builder --chown=nlpuser:nlpuser /app/.venv /app/.venv
+COPY --chown=nlpuser:nlpuser src/ /app/src/
 
-# Expose port with documentation
+USER nlpuser
 EXPOSE 8864
 
-# Add metadata about the exposed port
-LABEL org.opencontainers.image.expose.8864/tcp="NLP Service API"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8864/api/v1/health')"]
 
-# Note: Distroless doesn't have curl, so we remove healthcheck for production
-# Use external monitoring instead (Kubernetes liveness/readiness probes)
-# Kubernetes probe endpoints: /api/health (liveness), /api/health?detailed=true (readiness)
-
-# Use the distroless Python entrypoint with explicit path
-ENTRYPOINT ["/usr/bin/python3", "/app/src/main.py"]
+ENTRYPOINT ["python", "-m", "nlp.main"]

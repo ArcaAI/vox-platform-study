@@ -17,6 +17,7 @@ const createMockDnaService = () => ({
     getDnaReport: vi.fn(),
     updateDnaReport: vi.fn(),
     getVersions: vi.fn(),
+    getVersionsForDoctor: vi.fn(),
     listReports: vi.fn(),
 });
 
@@ -216,6 +217,58 @@ describe('DnaWritingStyleAdminController', () => {
 
             expect(mockDnaService.generateDnaReport).toHaveBeenCalledWith('doctor-5', dto);
             expect(result.jobId).toBe('job-admin-1');
+        });
+    });
+
+    describe('GET /admin/dna-writing-styles/:reportId/versions (getVersions)', () => {
+        it('should call service.getVersions without ownership check', async () => {
+            mockDnaService.getVersions.mockResolvedValue([
+                {
+                    id: 'version-1',
+                    dnaReportId: 'report-1',
+                    versionNumber: 1,
+                    reportData: { tone: 'informal' },
+                    styleText: 'Original style text.',
+                    changeReason: 'Initial generation',
+                    changedBy: 'system',
+                    createdAt: '2025-12-01T00:00:00.000Z',
+                },
+                {
+                    id: 'version-2',
+                    dnaReportId: 'report-1',
+                    versionNumber: 2,
+                    reportData: { tone: 'formal' },
+                    styleText: 'Updated style text.',
+                    changeReason: 'Refinement',
+                    changedBy: 'doctor-1',
+                    createdAt: '2025-12-15T00:00:00.000Z',
+                },
+            ]);
+
+            const result = await controller.getVersions('report-1');
+
+            expect(mockDnaService.getVersions).toHaveBeenCalledWith('report-1');
+            expect(result).toHaveLength(2);
+            expect(result[0].versionNumber).toBe(1);
+            expect(result[1].versionNumber).toBe(2);
+        });
+
+        it('should return empty array when no versions exist', async () => {
+            mockDnaService.getVersions.mockResolvedValue([]);
+
+            const result = await controller.getVersions('report-no-versions');
+
+            expect(mockDnaService.getVersions).toHaveBeenCalledWith('report-no-versions');
+            expect(result).toEqual([]);
+        });
+
+        it('should call getVersions (not getVersionsForDoctor) to bypass ownership', async () => {
+            mockDnaService.getVersions.mockResolvedValue([]);
+
+            await controller.getVersions('report-1');
+
+            expect(mockDnaService.getVersions).toHaveBeenCalledWith('report-1');
+            expect(mockDnaService.getVersionsForDoctor).not.toHaveBeenCalled();
         });
     });
 

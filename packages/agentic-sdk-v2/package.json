@@ -61,10 +61,10 @@
     "@arcaai/stt": "workspace:*",
     "@arcaai/vad": "workspace:*",
     "deepmerge-ts": "^7.1.5",
-    "diff": "^8.0.2",
-    "eventemitter3": "^5.0.1",
-    "valibot": "^1.0.0",
-    "zustand": "^5.0.0"
+    "diff": "^8.0.4",
+    "eventemitter3": "^5.0.4",
+    "valibot": "^1.3.1",
+    "zustand": "^5.0.12"
   },
   "peerDependencies": {
     "@arcaai/med-ner": "workspace:*",
@@ -88,16 +88,16 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.0.2",
-    "@vitejs/plugin-react": "^4.5.2",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
     "http-server": "^14.1.1",
     "jsdom": "^28.1.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "rimraf": "^6.1.3",
     "tsup": "^8.5.1",
-    "typescript": "^5.8.3",
-    "vitest": "^4.0.17"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.1"
   },
   "keywords": [
     "arcaai",

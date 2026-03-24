@@ -43,7 +43,7 @@
   "author": "ARCAAI",
   "license": "MIT",
   "dependencies": {
-    "eventemitter3": "^5.0.1"
+    "eventemitter3": "^5.0.4"
   },
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",
@@ -52,8 +52,8 @@
     "http-server": "^14.1.1",
     "rimraf": "^6.1.3",
     "tsup": "^8.5.1",
-    "typescript": "^5.8.3",
-    "vitest": "^4.0.17"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.1"
   },
   "publishConfig": {
     "access": "public",
