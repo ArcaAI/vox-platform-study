@@ -166,7 +166,7 @@ def main() -> None:
         broker=current_broker,
         queues=["stt_batch", "default"],
         worker_threads=settings.worker_threads,
-        worker_timeout=settings.worker_timeout_ms,
+        worker_timeout=settings.worker_poll_timeout_ms,
     )
 
     # Event to signal shutdown

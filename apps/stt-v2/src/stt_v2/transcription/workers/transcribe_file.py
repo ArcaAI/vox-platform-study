@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
     max_retries=3,
     min_backoff=10000,  # 10 seconds
     max_backoff=300000,  # 5 minutes
-    time_limit=600000,  # 10 minutes
+    time_limit=get_settings().transcription_timeout_seconds * 1000,
 )
 def transcribe_file(
     job_id: str,
