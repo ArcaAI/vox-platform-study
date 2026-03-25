@@ -1481,7 +1481,7 @@ class TestFinalizeSessionPendingSegments:
             side_effect=lambda: call_order.append("finalize")
         )
         session.close = AsyncMock(
-            side_effect=lambda: call_order.append("close")
+            side_effect=lambda **kwargs: call_order.append("close")
         )
 
         mgr._publishers["s-order"] = publisher
