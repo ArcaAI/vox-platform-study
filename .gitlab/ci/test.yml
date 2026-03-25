@@ -9,7 +9,7 @@
 
 test-api:
   stage: test
-  extends: .node-base
+  extends: .test-node-base
   needs:
     - job: lint-ts
       optional: true
@@ -54,7 +54,7 @@ test-api:
 
 test-packages:
   stage: test
-  extends: .node-base
+  extends: .test-node-base
   needs:
     - job: lint-ts
       optional: true
@@ -83,7 +83,7 @@ test-packages:
 
 test-sdk:
   stage: test
-  extends: .node-base
+  extends: .test-node-base
   needs:
     - job: lint-ts
       optional: true
@@ -120,7 +120,7 @@ test-sdk:
 test-stt-v2:
   stage: test
   image: python:3.11-slim
-  tags: [fast]
+  tags: [test]
   needs:
     - job: lint-python
       optional: true
@@ -152,7 +152,7 @@ test-stt-v2:
 test-smr:
   stage: test
   image: python:3.11-slim
-  tags: [fast]
+  tags: [test]
   needs:
     - job: lint-python
       optional: true
@@ -187,7 +187,7 @@ test-smr:
 test-nlp:
   stage: test
   image: python:3.11-slim
-  tags: [fast]
+  tags: [test]
   needs:
     - job: lint-python
       optional: true
