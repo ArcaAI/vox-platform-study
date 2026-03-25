@@ -3,8 +3,9 @@
 Tests cover broker setup, retry logic, and lifecycle management.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 
 
 class TestRetryLogic:
@@ -12,8 +13,8 @@ class TestRetryLogic:
 
     def test_should_retry_non_retryable_exception(self):
         """Test that non-retryable exceptions are not retried."""
-        from stt_v2.core.messaging.broker import should_retry
         from stt_v2.core.exceptions import ConfigurationError
+        from stt_v2.core.messaging.broker import should_retry
 
         # ConfigurationError is in NON_RETRYABLE_EXCEPTIONS
         exception = ConfigurationError("Bad config")
@@ -197,8 +198,8 @@ class TestNonRetryableExceptions:
 
     def test_validation_error_not_retryable(self):
         """Test ValidationError is not retried."""
-        from stt_v2.core.messaging.broker import should_retry
         from stt_v2.core.exceptions import ValidationError
+        from stt_v2.core.messaging.broker import should_retry
 
         exception = ValidationError("Invalid input")
 
@@ -208,8 +209,8 @@ class TestNonRetryableExceptions:
 
     def test_audio_processing_error_not_retryable(self):
         """Test AudioProcessingError is not retried."""
-        from stt_v2.core.messaging.broker import should_retry
         from stt_v2.core.exceptions import AudioProcessingError
+        from stt_v2.core.messaging.broker import should_retry
 
         exception = AudioProcessingError("Bad audio")
 
@@ -219,8 +220,8 @@ class TestNonRetryableExceptions:
 
     def test_job_cancelled_error_not_retryable(self):
         """Test JobCancelledError is not retried."""
-        from stt_v2.core.messaging.broker import should_retry
         from stt_v2.core.exceptions import JobCancelledError
+        from stt_v2.core.messaging.broker import should_retry
 
         exception = JobCancelledError("Job was cancelled")
 

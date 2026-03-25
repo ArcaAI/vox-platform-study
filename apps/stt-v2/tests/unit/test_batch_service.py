@@ -9,22 +9,14 @@ These tests focus on behavior verification:
 
 import logging
 import sys
-
-import pytest
-import numpy as np
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from stt_v2.transcription.batch_service import (
-    BatchTranscriptionService,
-    get_batch_service,
-)
-from stt_v2.transcription.dto import (
-    ProcessedAudio,
-    RawTranscription,
-    TranscriptionResult,
-    WordTimestamp,
-)
+import numpy as np
+import pytest
+
+from stt_v2.core.exceptions import TranscriptionError
+from stt_v2.models.base_loader import LoadedModel
 from stt_v2.pipeline.dto import (
     AiModelConfig,
     AiModelDownloadStatus,
@@ -39,12 +31,19 @@ from stt_v2.pipeline.dto import (
     PipelineSpec,
     PostprocessingConfig,
     PreprocessingConfig,
-    TimestampConfig,
     PunctuationConfig,
+    TimestampConfig,
 )
-from stt_v2.models.base_loader import LoadedModel
-from stt_v2.core.exceptions import TranscriptionError
-
+from stt_v2.transcription.batch_service import (
+    BatchTranscriptionService,
+    get_batch_service,
+)
+from stt_v2.transcription.dto import (
+    ProcessedAudio,
+    RawTranscription,
+    TranscriptionResult,
+    WordTimestamp,
+)
 
 # =============================================================================
 # Complete Test Fixtures (Anti-Pattern #4 Prevention)
@@ -165,9 +164,9 @@ def create_valid_wav_audio(
 
     Creates a sine wave tone, not just silence, to better simulate real audio.
     """
-    import struct
     import io
     import math
+    import struct
 
     num_samples = int(sample_rate * duration_seconds)
     samples = [
@@ -903,7 +902,7 @@ class TestBatchServiceInferenceMethods:
         with patch.object(service, "_run_transformers_inference", new_callable=AsyncMock) as mock_tf:
             mock_tf.return_value = RawTranscription(text="Test")
 
-            result = await service._run_inference(samples, 16000, model, config)
+            _result = await service._run_inference(samples, 16000, model, config)
 
             mock_tf.assert_called_once()
 
@@ -1502,7 +1501,7 @@ class TestPerSegmentInference:
         with patch.object(service, "_run_inference", new_callable=AsyncMock) as mock:
             mock.return_value = RawTranscription(text="hello")
 
-            result = await service._run_per_segment_inference(
+            _result = await service._run_per_segment_inference(
                 samples, 16000, segments, model, config, job_id="test"
             )
 
@@ -1622,7 +1621,7 @@ class TestTranscribeTimingMetrics:
                 text="Per-segment", duration_seconds=2.0,
             )
 
-            result = await service.transcribe(
+            _result = await service.transcribe(
                 job_id="j-vad-1", audio_bytes=audio_bytes,
                 pipeline_config=pipeline,
             )
@@ -1657,7 +1656,7 @@ class TestTranscribeTimingMetrics:
                 text="Full audio", duration_seconds=2.0,
             )
 
-            result = await service.transcribe(
+            _result = await service.transcribe(
                 job_id="j-full-1", audio_bytes=audio_bytes,
                 pipeline_config=pipeline,
             )
@@ -1685,7 +1684,6 @@ class TestPerSegmentInferenceEdgeCases:
     @pytest.mark.asyncio
     async def test_empty_segments_list_returns_empty_transcription(self, service):
         """When no segments are provided, should return empty text."""
-        from stt_v2.transcription.dto import AudioSegment
 
         samples = np.zeros(32000, dtype=np.float32)
         model = create_complete_loaded_model()
@@ -1830,7 +1828,6 @@ class TestTranscribeTimingEdgeCases:
     @pytest.mark.asyncio
     async def test_timing_total_gte_sum_of_parts(self, service):
         """Total time must be >= sum of individual steps (no negative slack)."""
-        from stt_v2.transcription.dto import TimingMetrics
 
         pipeline = create_complete_pipeline_config()
         loaded_model = create_complete_loaded_model()
@@ -1875,7 +1872,6 @@ class TestTranscribeTimingEdgeCases:
     @pytest.mark.asyncio
     async def test_ttfw_gte_model_loading_plus_preprocessing_plus_inference(self, service):
         """TTFW must be >= model_loading + preprocessing + inference time."""
-        from stt_v2.transcription.dto import TimingMetrics
 
         pipeline = create_complete_pipeline_config()
         loaded_model = create_complete_loaded_model()
@@ -1920,7 +1916,6 @@ class TestTranscribeTimingEdgeCases:
     @pytest.mark.asyncio
     async def test_vad_applied_with_empty_segments_falls_back_to_full_inference(self, service):
         """When VAD is applied but returns zero segments, should use full-audio ASR."""
-        from stt_v2.transcription.dto import AudioSegment as DtoAudioSegment
 
         pipeline = create_complete_pipeline_config()
         loaded_model = create_complete_loaded_model()
@@ -1949,7 +1944,7 @@ class TestTranscribeTimingEdgeCases:
                 text="Fallback", duration_seconds=2.0,
             )
 
-            result = await service.transcribe(
+            _result = await service.transcribe(
                 job_id="j-empty-vad", audio_bytes=audio_bytes,
                 pipeline_config=pipeline,
             )
@@ -2625,7 +2620,7 @@ class TestPerSegmentSubSplitting:
                 segment_merge_gap_threshold_s=0,  # disable merging for this test
             )
             with patch.object(service, "_run_inference", side_effect=mock_inference):
-                result = await service._run_per_segment_inference(
+                _result = await service._run_per_segment_inference(
                     samples, 16000, segments, model, config,
                     job_id="test",
                     chunk_callback=lambda c: chunks_received.append(c),
@@ -2771,7 +2766,7 @@ class TestCodeSwitchingInference:
             format=AiModelFormat.ONNX,
             memory_mb=760,
             device="cpu",
-            loaded_at=datetime.now(timezone.utc),
+            loaded_at=datetime.now(UTC),
             extra={"optimum": True},
         )
         loaded_model.processor.return_value = {"input_features": MagicMock()}
@@ -2840,7 +2835,7 @@ class TestCodeSwitchingInference:
             format=AiModelFormat.SAFETENSOR,
             memory_mb=100,
             device="cpu",
-            loaded_at=datetime.now(timezone.utc),
+            loaded_at=datetime.now(UTC),
         )
         loaded_model.processor.return_value = {"input_features": MagicMock()}
         loaded_model.processor.batch_decode = MagicMock(return_value=["transcribed"])
@@ -2936,7 +2931,7 @@ class TestCodeSwitchingInference:
             format=AiModelFormat.NEMO,
             memory_mb=100,
             device="cpu",
-            loaded_at=datetime.now(timezone.utc),
+            loaded_at=datetime.now(UTC),
         )
 
         samples = np.zeros(16000, dtype=np.float32)

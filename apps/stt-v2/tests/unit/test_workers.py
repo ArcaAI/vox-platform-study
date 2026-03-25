@@ -7,16 +7,16 @@ Focus on testing behavior outcomes:
 - NOT just that mocks were called
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from stt_v2.transcription.workers.transcribe_file import (
-    _transcribe_file_async,
-    _fail_job,
-)
-from stt_v2.transcription.dto import TranscriptionResult
-from stt_v2.core.exceptions import NotFoundError, TranscriptionError
+import pytest
 
+from stt_v2.core.exceptions import NotFoundError, TranscriptionError
+from stt_v2.transcription.dto import TranscriptionResult
+from stt_v2.transcription.workers.transcribe_file import (
+    _fail_job,
+    _transcribe_file_async,
+)
 
 # =============================================================================
 # Test Fixtures for Complete Response Structures

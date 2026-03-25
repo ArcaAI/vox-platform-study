@@ -11,7 +11,6 @@ from stt_v2.streaming.inference import StreamingInferenceWorker
 from stt_v2.streaming.preprocessor import AudioUtterance
 from stt_v2.streaming.schemas import SegmentResult
 
-
 # =========================================================================
 # Helpers
 # =========================================================================
@@ -208,7 +207,7 @@ class TestResultPublishing:
         )
         utt = _make_utterance()
 
-        result = await worker.process_utterance("sess-1", utt)
+        _result = await worker.process_utterance("sess-1", utt)
 
         publisher.publish.assert_awaited_once()
         published_result = publisher.publish.call_args[0][0]

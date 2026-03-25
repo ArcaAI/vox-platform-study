@@ -19,7 +19,6 @@ from smr_v2.core.config import AzureOpenAIConfig, Settings
 from smr_v2.main import create_app
 from smr_v2.models.provider import ModelInfo, ProviderInfo
 
-
 # ── AzureOpenAIConfig.api_key ──
 
 

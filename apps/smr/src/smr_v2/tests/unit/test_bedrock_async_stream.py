@@ -23,7 +23,6 @@ from smr_v2.core.config import BedrockConfig
 from smr_v2.models.requests import GenerateRequest
 from smr_v2.models.stream import StreamChunk
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -68,7 +67,7 @@ class ErrorEventStream:
         return event
 
 
-def _make_provider() -> "BedrockProvider":
+def _make_provider():
     """Create a BedrockProvider with mocked boto3 clients."""
     from smr_v2.providers.bedrock import BedrockProvider
 

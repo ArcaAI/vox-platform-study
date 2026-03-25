@@ -2,8 +2,8 @@
 
 import io
 import logging
+from collections.abc import AsyncGenerator
 from datetime import timedelta
-from typing import AsyncGenerator
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import StorageError

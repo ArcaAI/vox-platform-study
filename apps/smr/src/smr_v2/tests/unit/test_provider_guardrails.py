@@ -15,7 +15,6 @@ import pytest
 from smr_v2.core.config import AzureOpenAIConfig, BedrockConfig
 from smr_v2.models.requests import GenerateRequest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -165,6 +164,7 @@ class TestAzureContentFilterErrorHandling:
     @pytest.mark.asyncio
     async def test_azure_content_filter_error_logged(self, azure_config):
         from openai import BadRequestError
+
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
 
         provider = AzureOpenAIProvider(config=azure_config)
@@ -200,6 +200,7 @@ class TestAzureContentFilterErrorHandling:
     ):
         """Non-content-filter BadRequestError should NOT trigger filter logging."""
         from openai import BadRequestError
+
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
 
         provider = AzureOpenAIProvider(config=azure_config)

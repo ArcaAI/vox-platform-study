@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import structlog
-from openai import AsyncOpenAI, APIError, APIConnectionError, APITimeoutError
+from openai import APIConnectionError, APIError, APITimeoutError, AsyncOpenAI
 
 from smr_v2.core.config import OpenAICompatConfig
 from smr_v2.core.defaults import resolve_request_defaults

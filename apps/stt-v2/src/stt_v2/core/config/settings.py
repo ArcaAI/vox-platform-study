@@ -58,7 +58,7 @@ class Settings(BaseSettings):
             elif v.startswith("postgresql://") and "+asyncpg" not in v:
                 v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-            from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
+            from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
             parsed = urlparse(v)
             if parsed.query:
@@ -86,7 +86,7 @@ class Settings(BaseSettings):
 
     # API Gateway (internal communication)
     api_gateway_url: str = Field(
-        default="http://localhost:8868",
+        default="http://localhost:8868/api/v1",
         description="Internal API Gateway URL",
     )
     api_gateway_key: str = Field(
@@ -196,9 +196,9 @@ class Settings(BaseSettings):
         default=4,
         description="Number of Dramatiq worker threads (alias for worker_threads)",
     )
-    worker_timeout_ms: int = Field(
-        default=600000,
-        description="Worker job timeout in milliseconds (default: 10 minutes)",
+    worker_poll_timeout_ms: int = Field(
+        default=1000,
+        description="Dramatiq consumer poll interval max-backoff in milliseconds",
     )
     worker_max_retries: int = Field(
         default=3,
@@ -256,8 +256,8 @@ class Settings(BaseSettings):
 
     # Transcription settings
     transcription_timeout_seconds: int = Field(
-        default=300,
-        description="Maximum transcription job timeout",
+        default=600,
+        description="Maximum transcription job timeout in seconds (default: 10 min)",
     )
     transcription_chunk_length_s: int = Field(
         default=15,

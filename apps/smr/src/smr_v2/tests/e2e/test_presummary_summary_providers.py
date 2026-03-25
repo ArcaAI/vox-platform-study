@@ -100,10 +100,10 @@ class TestOllamaQwen35PreSummary:
         sse_resp = await e2e_client.get(body["stream_url"], timeout=180.0)
         assert sse_resp.status_code == 200
 
-        lines = [l for l in sse_resp.text.splitlines() if l.startswith("data: ")]
+        lines = [line for line in sse_resp.text.splitlines() if line.startswith("data: ")]
         assert len(lines) > 0, "SSE stream should produce data lines"
 
-        has_content = any('"content"' in l or '"text"' in l for l in lines)
+        has_content = any('"content"' in line or '"text"' in line for line in lines)
         assert has_content, "SSE stream should contain content chunks"
 
 
@@ -153,7 +153,7 @@ class TestOllamaQwen35Summary:
         sse_resp = await e2e_client.get(stream_url, timeout=180.0)
         assert sse_resp.status_code == 200
 
-        lines = [l for l in sse_resp.text.splitlines() if l.startswith("data: ")]
+        lines = [line for line in sse_resp.text.splitlines() if line.startswith("data: ")]
         assert len(lines) > 0
 
         accumulated = ""
@@ -245,7 +245,7 @@ class TestLmStudioQwen35PreSummary:
         sse_resp = await e2e_client.get(body["stream_url"], timeout=120.0)
         assert sse_resp.status_code == 200
 
-        lines = [l for l in sse_resp.text.splitlines() if l.startswith("data: ")]
+        lines = [line for line in sse_resp.text.splitlines() if line.startswith("data: ")]
         assert len(lines) > 0
 
 
@@ -294,7 +294,7 @@ class TestLmStudioQwen35Summary:
         sse_resp = await e2e_client.get(stream_url, timeout=120.0)
         assert sse_resp.status_code == 200
 
-        lines = [l for l in sse_resp.text.splitlines() if l.startswith("data: ")]
+        lines = [line for line in sse_resp.text.splitlines() if line.startswith("data: ")]
         assert len(lines) > 0
 
         accumulated = ""

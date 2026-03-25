@@ -8,8 +8,7 @@ RED: Written before implementation.
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -20,7 +19,6 @@ from smr_v2.models.provider import ModelInfo, ProviderInfo
 from smr_v2.models.stream import StreamChunk
 from smr_v2.models.task import TaskState, TaskStatus
 from smr_v2.providers.base import ProviderRegistry
-
 
 # ── Fixtures ──
 

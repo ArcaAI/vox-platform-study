@@ -10,13 +10,13 @@
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { FileTranscriptionService } from '../FileTranscriptionService';
-import { createMockLogger, mockFetch, createMockResponse, createMockErrorResponse } from '../../__tests__/setup';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMockErrorResponse, createMockLogger, createMockResponse, mockFetch } from '../../__tests__/setup';
+import type { TranscriptionJobResponse } from '../../types/stt-v2';
+import { TranscriptionJobStatus, TranscriptionJobType } from '../../types/stt-v2';
 import { AgenticClient } from '../AgenticClient';
 import { STT_V2_ENDPOINTS } from '../constants';
-import { TranscriptionJobStatus, TranscriptionJobType } from '../../types/stt-v2';
-import type { TranscriptionJobResponse } from '../../types/stt-v2';
+import { FileTranscriptionService } from '../FileTranscriptionService';
 
 // ===========================================================================
 // Fixtures
@@ -100,6 +100,44 @@ describe('FileTranscriptionService', () => {
 
       expect(result).toEqual(mockJob);
       expect(result.id).toBe('job-file-123');
+    });
+
+    it('should normalize batch transcribe response with id', async () => {
+      const file = createMockAudioFile();
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        id: 'job-batch-999',
+        status: 'QUEUED',
+        sseUrl: '/api/v1/audio/transcription-jobs/job-batch-999/stream',
+        audioUri: 's3://hope-audio/demo.wav',
+      }));
+
+      const result = await service.uploadAndTranscribe(file, {
+        pipelineId: 'whisper-default',
+      });
+
+      expect(result.id).toBe('job-batch-999');
+      expect(service.getActiveJobId()).toBe('job-batch-999');
+    });
+
+    it('should throw when transcribe response has no id', async () => {
+      const file = createMockAudioFile();
+      mockFetch.mockResolvedValueOnce(createMockResponse({ status: 'QUEUED' }));
+
+      await expect(service.uploadAndTranscribe(file, {
+        pipelineId: 'whisper-default',
+      })).rejects.toThrow('missing job id');
+    });
+
+    it('should throw when batch transcribe response has unknown status', async () => {
+      const file = createMockAudioFile();
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        id: 'job-batch-123',
+        status: 'UNKNOWN_STATUS',
+      }));
+
+      await expect(service.uploadAndTranscribe(file, {
+        pipelineId: 'whisper-default',
+      })).rejects.toThrow('Invalid transcription response status');
     });
 
     it('should call the TRANSCRIBE endpoint', async () => {

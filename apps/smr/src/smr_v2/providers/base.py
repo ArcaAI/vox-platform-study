@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import AsyncIterator, Protocol, runtime_checkable
+from collections.abc import AsyncIterator
+from typing import Protocol, runtime_checkable
 
 from smr_v2.models.provider import ProviderInfo
 from smr_v2.models.requests import GenerateRequest
@@ -47,7 +48,7 @@ class ProviderRegistry:
         try:
             return self._providers[name]
         except KeyError:
-            raise ProviderNotFoundError(f"Provider '{name}' not registered. Available: {list(self._providers)}")
+            raise ProviderNotFoundError(f"Provider '{name}' not registered. Available: {list(self._providers)}") from None
 
     def unregister(self, name: str) -> None:
         self._providers.pop(name, None)

@@ -16,11 +16,10 @@ Also covers the ``_check_streaming()`` health helper added to
 
 import asyncio
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -293,7 +292,6 @@ class TestLoadAsrPipeline:
         mgr._make_asr_callable = spy_make_asr
 
         # Use a real dataclass for inference_config so dataclasses.replace works
-        from dataclasses import dataclass
 
         @dataclass
         class FakeInferenceConfig:
@@ -335,7 +333,6 @@ class TestLoadAsrPipeline:
 
         mgr._make_asr_callable = spy_make_asr
 
-        from dataclasses import dataclass
 
         @dataclass
         class FakeInferenceConfig:
@@ -603,7 +600,7 @@ class TestCreateSessionModelWiring:
             MockConsumer.return_value = AsyncMock()
             MockListener.return_value = AsyncMock()
 
-            session = await mgr.create_session(
+            _session = await mgr.create_session(
                 session_id="s-5",
                 tenant_id="t-1",
                 pipeline_id="pipe-1",
@@ -1161,6 +1158,7 @@ class TestReaper:
     @pytest.mark.asyncio
     async def test_reap_expired_sessions(self):
         from datetime import datetime, timedelta
+
         from stt_v2.streaming.schemas import SessionStatus
 
         mgr = _make_manager()
@@ -1182,6 +1180,7 @@ class TestReaper:
     @pytest.mark.asyncio
     async def test_reap_skips_active_sessions(self):
         from datetime import datetime
+
         from stt_v2.streaming.schemas import SessionStatus
 
         mgr = _make_manager()
@@ -1202,6 +1201,7 @@ class TestReaper:
     @pytest.mark.asyncio
     async def test_reap_flushes_final_utterance_before_finalize(self):
         from datetime import datetime, timedelta
+
         from stt_v2.streaming.preprocessor import AudioUtterance
         from stt_v2.streaming.schemas import SessionStatus
 
@@ -1750,6 +1750,7 @@ class TestSessionLeakPrevention:
     async def test_skips_non_active_status_in_reaper(self):
         """Only ACTIVE sessions should be considered for reaping."""
         from datetime import datetime, timedelta
+
         from stt_v2.streaming.schemas import SessionStatus
 
         mgr = _make_manager()

@@ -1,7 +1,6 @@
 """MinIO client wrapper for object storage operations."""
 
 from io import BytesIO
-from typing import BinaryIO
 
 import structlog
 from minio import Minio

@@ -9,7 +9,6 @@ Tests cover:
 
 from __future__ import annotations
 
-import asyncio
 import json
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -28,7 +27,6 @@ from smr_v2.core.config import (
     Settings,
 )
 from smr_v2.models.requests import GenerateRequest
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

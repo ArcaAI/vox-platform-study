@@ -1,8 +1,9 @@
 """Unit tests for Qdrant vector store module."""
 
 import sys
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 # Inject mock qdrant_client into sys.modules BEFORE importing the modules under test.
 # The actual qdrant-client package is an optional dependency not installed in the
@@ -29,10 +30,9 @@ _mock_qdrant.models = _mock_qdrant_models
 sys.modules["qdrant_client"] = _mock_qdrant
 sys.modules["qdrant_client.models"] = _mock_qdrant_models
 
-from stt_v2.core.vectorstore.client import QdrantClientManager
-from stt_v2.core.vectorstore.speaker_store import SpeakerEmbeddingStore
-from stt_v2.core.exceptions import VectorStoreConnectionError, SpeakerEmbeddingError
-
+from stt_v2.core.exceptions import SpeakerEmbeddingError  # noqa: E402
+from stt_v2.core.vectorstore.client import QdrantClientManager  # noqa: E402
+from stt_v2.core.vectorstore.speaker_store import SpeakerEmbeddingStore  # noqa: E402
 
 # =============================================================================
 # QdrantClientManager Tests — inject mocks directly

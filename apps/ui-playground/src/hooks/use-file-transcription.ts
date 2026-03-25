@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-    useAgenticStore,
-    FileTranscriptionService,
-    SSEClient,
-    type TranscriptionJobResponse,
-} from '@arcaai/vox';
-import type { TranscriptEntry } from '@/store/audio-store';
 import { recordSpeakerObservation, resolveSpeakerLabel } from '@/features/audio/lib/speaker-profiles';
 import { upsertTranscriptEntry } from '@/features/audio/lib/transcript-state';
+import type { TranscriptEntry } from '@/store/audio-store';
+import {
+    FileTranscriptionService,
+    SSEClient,
+    useAgenticStore,
+    type TranscriptionJobResponse,
+} from '@arcaai/vox';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type FileTranscriptionStatus =
     | 'idle'
@@ -133,26 +133,23 @@ export function useFileTranscription(): UseFileTranscriptionReturn {
                         const text = typeof payload.text === 'string' ? payload.text.trim() : '';
                         if (!text) return;
 
-                        const isFinal = payload.isFinal ?? payload.is_final ?? true;
+                        const isFinal = payload.isFinal ?? true;
                         if (isFinal) {
                             segmentCounterRef.current += 1;
                         }
                         const segment = isFinal ? segmentCounterRef.current : segmentCounterRef.current + 1;
 
-                        const start = asNumber(payload.startTime ?? payload.start_time) ?? 0;
-                        const end = asNumber(payload.endTime ?? payload.end_time) ?? start;
+                        const start = asNumber(payload.startTime) ?? 0;
+                        const end = asNumber(payload.endTime) ?? start;
                         const rawSpeakerId = (
                             payload.speakerId
-                            ?? payload.speaker_id
                             ?? payload.speaker
                         ) as string | undefined;
                         const speakerId = rawSpeakerId?.trim() || undefined;
                         const speakerConfidence = asNumber(
-                            payload.speakerConfidence ?? payload.speaker_confidence,
+                            payload.speakerConfidence,
                         );
-                        const speakerEmbeddingRaw = (
-                            payload.speakerEmbedding ?? payload.speaker_embedding
-                        ) as unknown;
+                        const speakerEmbeddingRaw = payload.speakerEmbedding as unknown;
                         const speakerEmbedding = Array.isArray(speakerEmbeddingRaw)
                             ? speakerEmbeddingRaw.filter(
                                 (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value),
@@ -166,7 +163,7 @@ export function useFileTranscription(): UseFileTranscriptionReturn {
                             ? recordSpeakerObservation({
                                 route: 'job',
                                 speakerId,
-                                speakerLabel: payload.speakerLabel ?? payload.speaker_label,
+                                speakerLabel: payload.speakerLabel,
                                 speakerConfidence,
                                 startTime: start,
                                 endTime: end,
@@ -176,7 +173,7 @@ export function useFileTranscription(): UseFileTranscriptionReturn {
                             : null;
                         const speakerLabel = resolveSpeakerLabel(
                             speakerId,
-                            (payload.speakerLabel ?? payload.speaker_label ?? speakerProfile?.label) as string | undefined,
+                            (payload.speakerLabel ?? speakerProfile?.label) as string | undefined,
                         );
 
                         transcriptIdRef.current += 1;
@@ -204,7 +201,7 @@ export function useFileTranscription(): UseFileTranscriptionReturn {
                     }
                 };
 
-                sseClient.onEvent('transcript', handleTranscriptData);
+                // sseClient.onEvent('transcript', handleTranscriptData);
                 sseClient.onEvent('chunk', handleTranscriptData);
 
                 const handleComplete = () => {
@@ -249,7 +246,7 @@ export function useFileTranscription(): UseFileTranscriptionReturn {
                         const eventType = parsed.type;
                         const payload = parsed.data ?? parsed;
 
-                        if ((eventType === 'transcript' || eventType === 'chunk') && payload.text) {
+                        if (eventType === 'chunk' && payload.text) {
                             handleTranscriptData(data);
                         } else if (eventType === 'complete' || eventType === 'status') {
                             const status = payload.status ?? eventType;

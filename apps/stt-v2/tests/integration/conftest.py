@@ -12,20 +12,15 @@ Test Ports (matching monorepo infrastructure):
 - MinIO: 9002 (test) vs 9000 (dev)
 """
 
-import asyncio
-import os
 import pytest
-from typing import AsyncGenerator, Generator
 
 # Import centralized test helpers
 from tests.helpers.db import (
     get_db_url,
-    get_redis_url,
     get_minio_config,
+    get_redis_url,
     wait_for_database,
-    async_reset_database,
 )
-
 
 # =============================================================================
 # Session-level setup
@@ -57,8 +52,9 @@ def database_url():
 @pytest.fixture(scope="function")
 async def db_engine(database_url):
     """Create database engine for tests."""
-    from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
     from stt_v2.core.database.models import Base
 
     engine = create_async_engine(database_url, echo=False, pool_pre_ping=True)
@@ -127,8 +123,9 @@ def redis_url():
 @pytest.fixture(scope="function")
 def redis_client(redis_url):
     """Create Redis client for tests."""
-    import redis
     from urllib.parse import urlparse
+
+    import redis
 
     parsed = urlparse(redis_url)
     client = redis.Redis(
