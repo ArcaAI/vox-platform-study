@@ -1,15 +1,16 @@
-import { Module } from '@nestjs/common';
-import { HttpModule } from '@nestjs/axios';
 import {
+    S3ServiceModule,
+    StreamingSessionServiceModule,
     TenantServiceModule,
     TranscriptionJobServiceModule,
     TranscriptionRealtimeServiceModule,
-    StreamingSessionServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
+import { HttpModule } from '@nestjs/axios';
+import { Module } from '@nestjs/common';
+import { SmrProxyController } from './smr-proxy.controller';
 import { SttWsGateway } from './stt-ws.gateway';
 import { TranscriptionJobController } from './transcription-job.controller';
-import { SmrProxyController } from './smr-proxy.controller';
 
 @Module({
     imports: [
@@ -21,6 +22,7 @@ import { SmrProxyController } from './smr-proxy.controller';
         TranscriptionRealtimeServiceModule,
         StreamingSessionServiceModule,
         TenantServiceModule,
+        S3ServiceModule,
         CoreDatabaseModule,
     ],
     controllers: [TranscriptionJobController, SmrProxyController],

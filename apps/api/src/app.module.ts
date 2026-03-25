@@ -29,6 +29,7 @@ import { ConsultationModule } from './modules/consultation/consultation.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
 import { HealthModule } from './modules/health/health.module';
+import { InternalModule } from './modules/internal/internal.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
 import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { PromptManagementModule } from './modules/prompt-management/prompt-management.module';
@@ -111,6 +112,7 @@ const featureModules: any[] = [
     DepartmentModule,
     DnaWritingStyleModule,
     HealthModule,
+    InternalModule,
     MonitoringModule,
     PromptManagementModule,
     RbacModule,

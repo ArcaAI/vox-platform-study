@@ -15,16 +15,18 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@arcaai/ui/select';
-import { useAuth } from '@arcaai/vox';
+import { useAuth, usePipelines } from '@arcaai/vox';
 import {
+    AlertCircle,
     CloudUpload,
     FileAudio,
     Languages,
     RefreshCw,
+    Server,
     Trash2,
     Upload
 } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AudioImpersonationBanner, AudioPageHeaderAction } from './components/audio-page-chrome';
 import { AudioTranscriptItem } from './components/audio-transcript-item';
@@ -136,9 +138,22 @@ function FileUploadPanel({
 
 function BatchTranscriptPanel() {
     const fileTranscription = useFileTranscription();
-    const { diarizationEnabled, codeSwitchingEnabled } = useAudioStore();
+    const { diarizationEnabled, codeSwitchingEnabled, selectedPipelineId, setSelectedPipelineId } = useAudioStore();
+    const { pipelines, isLoading: pipelinesLoading, error: pipelinesError, list: listPipelines } = usePipelines();
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [language, setLanguage] = useState('en');
+
+    useEffect(() => {
+        listPipelines();
+    }, [listPipelines]);
+
+    useEffect(() => {
+        if (pipelinesLoading || pipelines.length === 0) return;
+        const currentValid = pipelines.some((p: { id: string }) => p.id === selectedPipelineId);
+        if (!selectedPipelineId || !currentValid) {
+            setSelectedPipelineId(pipelines[0].id);
+        }
+    }, [pipelinesLoading, pipelines, selectedPipelineId, setSelectedPipelineId]);
 
     const handleFileSelect = useCallback((file: File) => {
         setSelectedFile(file);
@@ -166,7 +181,7 @@ function BatchTranscriptPanel() {
         toast.info(`Uploading ${selectedFile.name}...`);
         try {
             await fileTranscription.upload(selectedFile, {
-                pipelineId: DEFAULT_TRANSCRIPTION_PIPELINE_ID,
+                pipelineId: selectedPipelineId || DEFAULT_TRANSCRIPTION_PIPELINE_ID,
                 language: language || undefined,
                 codeSwitching: codeSwitchingEnabled,
                 diarization: diarizationEnabled,
@@ -175,7 +190,7 @@ function BatchTranscriptPanel() {
         } catch (err) {
             toast.error(`Upload failed: ${err instanceof Error ? err.message : 'Unknown'}`);
         }
-    }, [selectedFile, fileTranscription, language, codeSwitchingEnabled, diarizationEnabled]);
+    }, [selectedFile, fileTranscription, language, codeSwitchingEnabled, diarizationEnabled, selectedPipelineId]);
 
     const handleReset = useCallback(() => {
         fileTranscription.reset();
@@ -198,6 +213,38 @@ function BatchTranscriptPanel() {
                     onLoadTestFile={handleLoadTestFile}
                     disabled={isProcessing}
                 />
+
+                <Card data-doc="audio-pipeline">
+                    <CardHeader className="pb-3">
+                        <div className="flex items-center gap-2">
+                            <Server className="size-4 text-blue-500" />
+                            <CardTitle className="text-sm">Audio Pipeline</CardTitle>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        {pipelinesLoading ? (
+                            <div className="bg-muted h-8 animate-pulse rounded-md" />
+                        ) : pipelinesError ? (
+                            <div className="bg-destructive/10 flex items-center gap-2 rounded-md p-2">
+                                <AlertCircle className="text-destructive size-4 shrink-0" />
+                                <span className="text-destructive text-[10px]">Failed to load pipelines</span>
+                            </div>
+                        ) : (
+                            <Select value={selectedPipelineId ?? undefined} onValueChange={setSelectedPipelineId} disabled={isProcessing}>
+                                <SelectTrigger className="h-8 w-full min-w-0 text-xs">
+                                    <SelectValue placeholder="Select a pipeline..." className="truncate" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {pipelines.map((pipeline: { id: string; name: string }) => (
+                                        <SelectItem key={pipeline.id} value={pipeline.id} className="text-xs">
+                                            <span className="block w-full truncate">{pipeline.name}</span>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                    </CardContent>
+                </Card>
 
                 <Card data-doc="language">
                     <CardHeader className="pb-3">

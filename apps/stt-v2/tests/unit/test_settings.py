@@ -87,7 +87,7 @@ class TestSettings:
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings()
 
-            assert settings.transcription_timeout_seconds == 300
+            assert settings.transcription_timeout_seconds == 600
             assert settings.transcription_chunk_length_s == 30  # From .env file
             assert settings.transcription_stride_length_s == "4,2"
 
