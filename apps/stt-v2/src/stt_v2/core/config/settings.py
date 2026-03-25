@@ -336,6 +336,17 @@ class Settings(BaseSettings):
         default=5.0,
         description="How often (seconds) to persist session metadata to Redis.",
     )
+    streaming_snapshot_interval_s: float = Field(
+        default=30.0,
+        description="Interval (seconds) between audio snapshot uploads to S3 "
+        "during active streaming sessions.",
+    )
+    streaming_max_audio_buffer_bytes: int = Field(
+        default=500_000_000,
+        description="Hard cap (bytes) on the in-memory audio buffer per session. "
+        "Once exceeded, new frames are silently dropped and a warning is logged. "
+        "Default ~500 MB ≈ ~87 min of 16 kHz mono s16le audio.",
+    )
     streaming_session_timeout_s: int = Field(
         default=60,
         description="Seconds of inactivity before a streaming session is auto-finalized by the reaper.",
