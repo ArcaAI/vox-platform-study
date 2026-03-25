@@ -1,15 +1,14 @@
-import { Injectable, Logger, Inject, MessageEvent } from '@nestjs/common';
-import { Observable, Subject, merge, of, map, takeWhile, finalize, startWith } from 'rxjs';
+import { Inject, Injectable, Logger, MessageEvent } from '@nestjs/common';
+import { Observable, finalize, map, takeWhile } from 'rxjs';
 import { uuidv7 } from 'uuidv7';
-import { TranscriptionJobType } from '@arcaai/domains';
-import { ITranscriptionRealtimeService } from './ITranscriptionRealtimeService';
-import { RedisSubscriberService } from './redisSubscriber.service';
+import { IRedisCacheService } from '../../baseServices/redis/redis-cache.service';
+import { TranscriptionJobService } from '../job/transcriptionJob.service';
 import {
     TranscriptionEvent,
     TranscriptionEventType,
 } from './dto';
-import { TranscriptionJobService } from '../job/transcriptionJob.service';
-import { IRedisCacheService } from '../../baseServices/redis/redis-cache.service';
+import { ITranscriptionRealtimeService } from './ITranscriptionRealtimeService';
+import { RedisSubscriberService } from './redisSubscriber.service';
 
 /**
  * Transcription Realtime Service
@@ -105,19 +104,36 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
      * - Otherwise, subscribes to Redis channel and streams events
      */
     subscribeToJob(jobId: string): Observable<MessageEvent> {
-        const channel = `${this.CHANNEL_PREFIX}${jobId}`;
+        const id = jobId?.trim();
+        if (!id) {
+            return new Observable<MessageEvent>((subscriber) => {
+                subscriber.next({
+                    data: JSON.stringify({
+                        type: TranscriptionEventType.ERROR,
+                        data: {
+                            jobId: null,
+                            errorCode: 'INVALID_JOB_ID',
+                            message: 'A valid jobId is required to subscribe to stream',
+                        },
+                    }),
+                } as MessageEvent);
+                subscriber.complete();
+            });
+        }
+
+        const channel = `${this.CHANNEL_PREFIX}${id}`;
 
         return new Observable<MessageEvent>((subscriber) => {
             // Check current job status
-            this.transcriptionJobService.getById(jobId).then(async (job) => {
+            this.transcriptionJobService.getById(id).then(async (job) => {
                 if (!job) {
                     subscriber.next({
                         data: JSON.stringify({
                             type: TranscriptionEventType.ERROR,
                             data: {
-                                jobId,
+                                jobId: id,
                                 errorCode: 'JOB_NOT_FOUND',
-                                message: `Job ${jobId} not found`,
+                                message: `Job ${id} not found`,
                             },
                         }),
                     } as MessageEvent);
@@ -132,7 +148,7 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
                         data: JSON.stringify({
                             type: TranscriptionEventType.STATUS,
                             data: {
-                                jobId,
+                                jobId: id,
                                 status: job.status,
                                 timestamp: new Date().toISOString(),
                             },
@@ -144,14 +160,14 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
 
                 // Job is still in progress — subscribe to Redis channel
                 const redisMessages$ = await this.redisSubscriber.subscribeToChannel(channel);
-                const sseStream$ = this.buildSseStream(jobId, channel, redisMessages$);
+                const sseStream$ = this.buildSseStream(id, channel, redisMessages$);
 
                 // Emit current status first, then forward Redis events
                 subscriber.next({
                     data: JSON.stringify({
                         type: TranscriptionEventType.STATUS,
                         data: {
-                            jobId,
+                            jobId: id,
                             status: job.status,
                             timestamp: new Date().toISOString(),
                         },
@@ -166,14 +182,14 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
             }).catch((error) => {
                 this.logger.error({
                     message: 'Error checking job status for reconnection',
-                    jobId,
+                    jobId: id,
                     error: error instanceof Error ? error.message : String(error),
                 });
                 subscriber.next({
                     data: JSON.stringify({
                         type: TranscriptionEventType.ERROR,
                         data: {
-                            jobId,
+                            jobId: id,
                             errorCode: 'RECONNECTION_ERROR',
                             message: 'Failed to reconnect to job stream',
                         },
@@ -331,7 +347,7 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
      * The message also requires a `redis_message_id` in options
      * (a separate UUID from message_id) per Dramatiq's protocol.
      */
-    private async dispatchDramatiqJob(params: {
+    async dispatchDramatiqJob(params: {
         jobId: string;
         tenantId: string;
         pipelineId: string;

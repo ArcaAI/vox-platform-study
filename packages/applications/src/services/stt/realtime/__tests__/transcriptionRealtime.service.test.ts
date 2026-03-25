@@ -13,13 +13,13 @@
  * - Test SSE stream behavior (message forwarding, terminal detection, cleanup)
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Subject, firstValueFrom, toArray, lastValueFrom } from 'rxjs';
-import { take } from 'rxjs/operators';
 import { MessageEvent } from '@nestjs/common';
-import { TranscriptionRealtimeService } from '../transcriptionRealtime.service';
-import { TranscriptionEventType } from '../dto';
+import { Subject, firstValueFrom, lastValueFrom, toArray } from 'rxjs';
+import { take } from 'rxjs/operators';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IRedisCacheService } from '../../../baseServices/redis/redis-cache.service';
+import { TranscriptionEventType } from '../dto';
+import { TranscriptionRealtimeService } from '../transcriptionRealtime.service';
 
 // Mock uuidv7 for deterministic message IDs
 vi.mock('uuidv7', () => ({
@@ -227,6 +227,17 @@ describe('TranscriptionRealtimeService', () => {
     // -----------------------------------------------------------------------
 
     describe('subscribeToJob', () => {
+        it('should emit INVALID_JOB_ID for empty id', async () => {
+            const events$ = service.subscribeToJob('   ');
+            const events = await lastValueFrom(events$.pipe(toArray()));
+
+            expect(events).toHaveLength(1);
+            const parsed = parseEvent(events[0]);
+            expect(parsed.type).toBe(TranscriptionEventType.ERROR);
+            expect(parsed.data.errorCode).toBe('INVALID_JOB_ID');
+            expect(mockTranscriptionJobService.getById).not.toHaveBeenCalled();
+        });
+
         it('should emit error when job not found', async () => {
             mockTranscriptionJobService.getById.mockResolvedValueOnce(null);
 

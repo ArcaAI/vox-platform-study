@@ -59,6 +59,20 @@ export interface ITranscriptionRealtimeService {
      * Emit an error event to the SSE stream for a given job.
      */
     emitErrorEvent(jobId: string, message: string): Promise<void>;
+
+    /**
+     * Dispatch a Dramatiq message to the stt_batch queue for a given job.
+     */
+    dispatchDramatiqJob(params: {
+        jobId: string;
+        tenantId: string;
+        pipelineId: string;
+        audioUri: string;
+        consultationId?: string;
+        mediaId?: string;
+        language?: string;
+        codeSwitching?: boolean;
+    }): Promise<void>;
 }
 
 export const ITranscriptionRealtimeService = Symbol('ITranscriptionRealtimeService');
