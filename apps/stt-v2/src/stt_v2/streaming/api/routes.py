@@ -181,7 +181,7 @@ async def delete_streaming_session(session_id: str) -> None:
         return
 
     logger.info("Removing streaming session via API", session_id=session_id)
-    await mgr.remove_session(session_id)
+    await mgr.end_session(session_id)
 
 
 # -------------------------------------------------------------------------
@@ -207,7 +207,7 @@ async def end_active_streaming_session(session_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Session not found")
 
     logger.info("Ending active streaming session via API", session_id=session_id)
-    await mgr.remove_session(session_id)
+    await mgr.end_session(session_id)
 
     return {
         "status": "ok",
