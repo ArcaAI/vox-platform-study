@@ -57,33 +57,35 @@ class APIGatewayClient:
     ) -> dict[str, Any]:
         """Make an HTTP request to the API Gateway."""
         client = await self._get_client()
+        normalized_path = path if path.startswith("/") else f"/{path}"
 
         try:
             response = await client.request(
                 method=method,
-                url=path,
+                url=normalized_path,
                 json=json,
                 params=params,
             )
+
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
             logger.error(
                 "API Gateway request failed",
                 method=method,
-                path=path,
+                path=normalized_path,
                 status_code=e.response.status_code,
                 response_text=e.response.text[:500],
             )
             raise APIGatewayError(
                 f"API Gateway request failed: {e.response.status_code}",
-                details={"status_code": e.response.status_code, "path": path},
+                details={"status_code": e.response.status_code, "path": normalized_path},
             ) from e
         except httpx.RequestError as e:
             logger.error(
                 "API Gateway connection error",
                 method=method,
-                path=path,
+                path=normalized_path,
                 error=str(e),
             )
             raise APIGatewayError(f"API Gateway connection error: {e}") from e
