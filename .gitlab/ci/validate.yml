@@ -38,6 +38,7 @@ typecheck:
 lint-python:
   stage: validate
   image: python:3.11-slim
+  tags: [fast]
   needs: []
   script:
     - pip install --quiet ruff

@@ -26,7 +26,6 @@ from smr_v2.core.config import Settings
 from smr_v2.models.task import TaskState, TaskStatus
 from smr_v2.providers.base import ProviderRegistry
 
-
 # ── Fixtures ──
 
 
@@ -136,14 +135,14 @@ def mock_task_manager():
 
 
 def _make_settings(**overrides) -> Settings:
-    defaults = dict(
-        host="127.0.0.1",
-        port=5099,
-        debug=True,
-        log_level="debug",
-        guardrail_enabled=True,
-        guardrail_mode="log",
-    )
+    defaults = {
+        "host": "127.0.0.1",
+        "port": 5099,
+        "debug": True,
+        "log_level": "debug",
+        "guardrail_enabled": True,
+        "guardrail_mode": "log",
+    }
     defaults.update(overrides)
     return Settings(**defaults)
 

@@ -3,7 +3,6 @@
 Tests verify that all expected constants are defined and have correct values.
 """
 
-import pytest
 
 
 class TestDatabaseNamespaces:

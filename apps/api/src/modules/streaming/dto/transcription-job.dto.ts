@@ -1,5 +1,24 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+
+export const AUDIO_BUCKET = 'hope-audio';
+export const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+
+export const ALLOWED_AUDIO_MIMES = new Set([
+    'audio/wav',
+    'audio/wave',
+    'audio/x-wav',
+    'audio/mpeg',
+    'audio/mp3',
+    'audio/mp4',
+    'audio/x-m4a',
+    'audio/ogg',
+    'audio/flac',
+    'audio/x-flac',
+    'audio/webm',
+    'audio/aac',
+]);
 
 export class TranscribeFileRequest {
     @ApiProperty({ description: 'Pipeline ID to use for transcription' })
@@ -8,7 +27,7 @@ export class TranscribeFileRequest {
     pipelineId!: string;
 
     @ApiPropertyOptional({ description: 'Associated consultation ID' })
-    @IsString()
+    @IsUUID()
     @IsOptional()
     consultationId?: string;
 
@@ -18,14 +37,16 @@ export class TranscribeFileRequest {
     language?: string;
 
     @ApiPropertyOptional({ description: 'Enable code switching', example: 'true' })
-    @IsString()
+    @Transform(({ value }) => value === 'true' || value === true)
+    @IsBoolean()
     @IsOptional()
-    codeSwitching?: string;
+    codeSwitching?: boolean;
 
     @ApiPropertyOptional({ description: 'Enable speaker diarization', example: 'true' })
-    @IsString()
+    @Transform(({ value }) => value === 'true' || value === true)
+    @IsBoolean()
     @IsOptional()
-    diarization?: string;
+    diarization?: boolean;
 }
 
 export class CreateStreamSessionRequest {
@@ -75,4 +96,18 @@ export class StreamSessionResponse {
 
     @ApiProperty({ description: 'Currently active sessions' })
     currentActive!: number;
+}
+
+export class BatchTranscribeResponse {
+    @ApiProperty({ description: 'Transcription job ID' })
+    id!: string;
+
+    @ApiProperty({ description: 'Current job status' })
+    status!: string;
+
+    @ApiProperty({ description: 'SSE stream URL for real-time updates' })
+    sseUrl!: string;
+
+    @ApiProperty({ description: 'Audio file URI in storage' })
+    audioUri!: string;
 }

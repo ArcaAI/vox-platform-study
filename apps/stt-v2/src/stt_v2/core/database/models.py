@@ -5,9 +5,8 @@ All write operations go through the API Gateway.
 """
 
 from datetime import datetime
-from typing import Optional
 
-from sqlalchemy import DateTime, Enum, Integer, String, Text
+from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -81,14 +80,14 @@ class GlobalSettingRead(Base):
     __table_args__ = {"schema": "core"}
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    tenant_id: Mapped[Optional[str]] = mapped_column("tenantId", String)
+    tenant_id: Mapped[str | None] = mapped_column("tenantId", String)
     name: Mapped[str] = mapped_column(String)
     key: Mapped[str] = mapped_column(String)
-    namespace: Mapped[Optional[str]] = mapped_column(String)
+    namespace: Mapped[str | None] = mapped_column(String)
     value: Mapped[str] = mapped_column(String)
-    default_value: Mapped[Optional[str]] = mapped_column("defaultValue", String)
+    default_value: Mapped[str | None] = mapped_column("defaultValue", String)
     data_type: Mapped[str] = mapped_column("dataType", String)
-    description: Mapped[Optional[str]] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(String)
     resource_status: Mapped[str] = mapped_column("resourceStatus", ResourceStatusType)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=[])
     created_at: Mapped[datetime] = mapped_column("createdAt", DateTime)
@@ -102,15 +101,15 @@ class AsrPipelineRead(Base):
     __table_args__ = {"schema": "core"}
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    tenant_id: Mapped[Optional[str]] = mapped_column("tenantId", String)
+    tenant_id: Mapped[str | None] = mapped_column("tenantId", String)
     name: Mapped[str] = mapped_column(String)
     slug: Mapped[str] = mapped_column(String)
-    description: Mapped[Optional[str]] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(String)
     config_yaml: Mapped[str] = mapped_column("configYaml", Text)
     resource_status: Mapped[str] = mapped_column("resourceStatus", ResourceStatusType)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=[])
     # Note: 'metadata' is reserved by SQLAlchemy DeclarativeBase, use 'extra_metadata' instead
-    extra_metadata: Mapped[Optional[dict]] = mapped_column("_metadata", JSONB)
+    extra_metadata: Mapped[dict | None] = mapped_column("_metadata", JSONB)
     version: Mapped[int] = mapped_column("_version", Integer, default=1)
     created_at: Mapped[datetime] = mapped_column("createdAt", DateTime)
     updated_at: Mapped[datetime] = mapped_column("updatedAt", DateTime)
@@ -123,28 +122,28 @@ class AiModelRead(Base):
     __table_args__ = {"schema": "core"}
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    tenant_id: Mapped[Optional[str]] = mapped_column("tenantId", String)
+    tenant_id: Mapped[str | None] = mapped_column("tenantId", String)
     name: Mapped[str] = mapped_column(String)
     slug: Mapped[str] = mapped_column(String)
-    description: Mapped[Optional[str]] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(String)
     category: Mapped[str] = mapped_column(ModelCategoryType)
     task_type: Mapped[str] = mapped_column("taskType", ModelTaskTypeEnum)
     model_type: Mapped[str] = mapped_column("modelType", ModelTypeEnum)
     source: Mapped[str] = mapped_column(AiModelSourceType)
     source_uri: Mapped[str] = mapped_column("sourceUri", String)
-    source_revision: Mapped[Optional[str]] = mapped_column("sourceRevision", String)
+    source_revision: Mapped[str | None] = mapped_column("sourceRevision", String)
     format: Mapped[str] = mapped_column(AiModelFormatType)
-    memory_size_mb: Mapped[Optional[int]] = mapped_column("memorySizeMb", Integer)
-    compute_type: Mapped[Optional[str]] = mapped_column("computeType", String)
+    memory_size_mb: Mapped[int | None] = mapped_column("memorySizeMb", Integer)
+    compute_type: Mapped[str | None] = mapped_column("computeType", String)
     download_status: Mapped[str] = mapped_column("downloadStatus", AiModelDownloadStatusType)
-    local_path: Mapped[Optional[str]] = mapped_column("localPath", String)
-    downloaded_at: Mapped[Optional[datetime]] = mapped_column("downloadedAt", DateTime)
-    file_size_mb: Mapped[Optional[int]] = mapped_column("fileSizeMb", Integer)
-    checksum: Mapped[Optional[str]] = mapped_column(String)
+    local_path: Mapped[str | None] = mapped_column("localPath", String)
+    downloaded_at: Mapped[datetime | None] = mapped_column("downloadedAt", DateTime)
+    file_size_mb: Mapped[int | None] = mapped_column("fileSizeMb", Integer)
+    checksum: Mapped[str | None] = mapped_column(String)
     resource_status: Mapped[str] = mapped_column("resourceStatus", ResourceStatusType)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=[])
     # Note: 'metadata' is reserved by SQLAlchemy DeclarativeBase, use 'extra_metadata' instead
-    extra_metadata: Mapped[Optional[dict]] = mapped_column("_metadata", JSONB)
+    extra_metadata: Mapped[dict | None] = mapped_column("_metadata", JSONB)
     version: Mapped[int] = mapped_column("_version", Integer, default=1)
     created_at: Mapped[datetime] = mapped_column("createdAt", DateTime)
     updated_at: Mapped[datetime] = mapped_column("updatedAt", DateTime)

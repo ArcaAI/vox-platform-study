@@ -6,14 +6,16 @@ Tests cover:
 - _resolve_region: region extraction from model config fields
 """
 
-import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
+import pytest
+
+from stt_v2.core.exceptions import CloudASRAuthError
 from stt_v2.models.azure_speech_loader import (
+    _LANGUAGE_ALIASES,
     AzureSpeechLoader,
     normalize_language_for_azure,
-    _LANGUAGE_ALIASES,
 )
 from stt_v2.models.base_loader import LoadedModel
 from stt_v2.pipeline.dto import (
@@ -23,8 +25,6 @@ from stt_v2.pipeline.dto import (
     AiModelSource,
     ModelTaskType,
 )
-from stt_v2.core.exceptions import CloudASRAuthError
-
 
 # =============================================================================
 # Fixtures
@@ -240,7 +240,7 @@ class TestAzureSpeechLoaderLoad:
                 azure_speech_region="centralus",
             )
 
-            result = await loader.load(config)
+            _result = await loader.load(config)
 
             # Should use settings region since source_uri looks like a URL
             mock_sc_class.assert_called_once_with(

@@ -47,7 +47,6 @@ from stt_v2.streaming.api.schemas import (
 )
 from stt_v2.transcription.api.schemas import TranscriptionResponse
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

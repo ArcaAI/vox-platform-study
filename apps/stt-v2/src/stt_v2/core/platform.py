@@ -20,10 +20,9 @@ Usage:
         pass
 """
 
+import platform
 from dataclasses import dataclass
 from enum import Enum
-import platform
-from typing import Optional
 
 
 class PlatformType(Enum):
@@ -98,8 +97,8 @@ class PlatformInfo:
     system: str
     machine: str
     python_version: str
-    cuda_version: Optional[str] = None
-    torch_version: Optional[str] = None
+    cuda_version: str | None = None
+    torch_version: str | None = None
 
     @property
     def is_apple_silicon(self) -> bool:

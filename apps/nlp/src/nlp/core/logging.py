@@ -3,7 +3,6 @@ import json
 import logging
 import logging.handlers
 from pathlib import Path
-from typing import Optional
 from datetime import datetime
 
 

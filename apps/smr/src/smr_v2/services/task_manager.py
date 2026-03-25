@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from typing import Any
-
 import uuid
+from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 
@@ -63,7 +62,7 @@ class TaskManager:
             provider=provider,
             model=model,
             max_retries=max_retries,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         await self._redis.set(
             self._task_key(task_id),

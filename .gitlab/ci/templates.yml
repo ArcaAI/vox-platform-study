@@ -3,10 +3,10 @@
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── Node.js base ─────────────────────────────────────────────────────────────
-# Used by: install, validate (lint-ts, typecheck), test (test-api, test-packages)
 
 .node-base:
   image: node:22-alpine
+  tags: [fast]
   before_script:
     - corepack enable
     - corepack prepare pnpm@latest --activate
@@ -23,10 +23,10 @@
         - pnpm-$CI_DEFAULT_BRANCH
 
 # ── Python base ──────────────────────────────────────────────────────────────
-# Used by: validate (lint-python), test (test-python)
 
 .python-base:
   image: python:3.11-slim
+  tags: [fast]
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
   cache:
@@ -38,8 +38,13 @@
         - pip-$CI_DEFAULT_BRANCH
 
 # ── Docker build template ───────────────────────────────────────────────────
-# Used by: build stage (all Docker image jobs)
-# Preserves the existing Buildx + registry cache strategy (mode=max, zstd).
+# Image versioning: NO `latest` tag.
+#
+# Tag strategy:
+#   semver tag (v1.2.3) → 1.2.3, 1.2, 1, sha-<sha8>
+#   staging branch      → staging-<sha8>, sha-<sha8>
+#   cicd branch         → cicd-<sha8>, sha-<sha8>
+#   other branches      → <branch>-<sha8>, sha-<sha8>
 
 .build-template:
   stage: build
@@ -72,15 +77,21 @@
       short_sha=$(echo "$CI_COMMIT_SHA" | cut -c1-8)
       created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-      # ── Compute tags ──────────────────────────────────────────────────
+      # ── Compute tags (NO `latest`) ────────────────────────────────────
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
         SEMVER_TAG="${CI_COMMIT_TAG#v}"
-        TAGS="$SEMVER_TAG latest $short_sha"
+        MAJOR=$(echo "$SEMVER_TAG" | cut -d. -f1)
+        MINOR=$(echo "$SEMVER_TAG" | cut -d. -f1-2)
+        TAGS="$SEMVER_TAG $MINOR $MAJOR sha-${short_sha}"
+      elif [ "$CI_COMMIT_BRANCH" = "staging" ]; then
+        TAGS="staging-${short_sha} sha-${short_sha}"
+      elif [ "$CI_COMMIT_BRANCH" = "cicd" ]; then
+        TAGS="cicd-${short_sha} sha-${short_sha}"
       elif [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
-        TAGS="main-${short_sha} ${short_sha} latest"
+        TAGS="main-${short_sha} sha-${short_sha}"
       else
         BRANCH_SLUG=$(echo "$CI_COMMIT_BRANCH" | sed 's/[^a-zA-Z0-9]/-/g')
-        TAGS="${BRANCH_SLUG}-${short_sha} ${short_sha}"
+        TAGS="${BRANCH_SLUG}-${short_sha} sha-${short_sha}"
       fi
 
       build_target_arg=""
@@ -116,7 +127,6 @@
         echo "    $image_repo:$tag"
       done
 
-      # Export primary tag for downstream scan jobs
       echo "IMAGE=$image_repo:$primary_tag" >> build.env
   artifacts:
     reports:

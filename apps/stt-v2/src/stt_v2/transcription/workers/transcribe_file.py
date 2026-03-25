@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime
 
 import dramatiq
 
@@ -24,7 +23,7 @@ logger = logging.getLogger(__name__)
     max_retries=3,
     min_backoff=10000,  # 10 seconds
     max_backoff=300000,  # 5 minutes
-    time_limit=600000,  # 10 minutes
+    time_limit=get_settings().transcription_timeout_seconds * 1000,
 )
 def transcribe_file(
     job_id: str,
@@ -96,7 +95,7 @@ async def _transcribe_file_async(
     publishes real-time events to Redis Pub/Sub so the NestJS API
     Gateway can relay them to clients via SSE.
     """
-    settings = get_settings()
+    _settings = get_settings()
     api_client = get_api_client()
     blob_service = get_blob_service()
     pipeline_reader = get_pipeline_reader()
