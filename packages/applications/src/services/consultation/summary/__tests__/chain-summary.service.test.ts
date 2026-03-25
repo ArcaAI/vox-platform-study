@@ -570,13 +570,13 @@ describe('ChainSummaryService', () => {
 
             const callArgs = mocks.httpService.axiosRef.post.mock.calls[0];
             const payload = callArgs[1] as Record<string, unknown>;
-            const text = payload.text as string;
+            const prompt = payload.prompt as string;
 
-            expect(text).toContain('--- Section 1 ---');
-            expect(text).toContain('Department: General Medicine');
-            expect(text).toContain('Doctor: Dr. A');
-            expect(text).toContain('Type: summary');
-            expect(text).toContain('Important findings here.');
+            expect(prompt).toContain('--- Section 1 ---');
+            expect(prompt).toContain('Department: General Medicine');
+            expect(prompt).toContain('Doctor: Dr. A');
+            expect(prompt).toContain('Type: summary');
+            expect(prompt).toContain('Important findings here.');
         });
 
         it('should append NER context to the text when entities exist', async () => {
@@ -605,11 +605,11 @@ describe('ChainSummaryService', () => {
 
             const callArgs = mocks.httpService.axiosRef.post.mock.calls[0];
             const payload = callArgs[1] as Record<string, unknown>;
-            const text = payload.text as string;
+            const prompt = payload.prompt as string;
 
-            expect(text).toContain('--- Named Entities (auto-extracted) ---');
-            expect(text).toContain('MEDICATION: Aspirin 75mg');
-            expect(text).toContain('CONDITION: Hypertension');
+            expect(prompt).toContain('--- Named Entities (auto-extracted) ---');
+            expect(prompt).toContain('MEDICATION: Aspirin 75mg');
+            expect(prompt).toContain('CONDITION: Hypertension');
         });
 
         it('should set isComprehensiveSummary and sourceConsultationCount in options', async () => {
@@ -634,11 +634,11 @@ describe('ChainSummaryService', () => {
 
             const callArgs = mocks.httpService.axiosRef.post.mock.calls[0];
             const payload = callArgs[1] as Record<string, unknown>;
-            const options = payload.options as Record<string, unknown>;
+            const context = payload.context as Record<string, unknown>;
 
-            expect(options.isComprehensiveSummary).toBe(true);
-            expect(options.sectionCount).toBe(2);
-            expect(options.sourceConsultationCount).toBe(2);
+            expect(context.isComprehensiveSummary).toBe(true);
+            expect(context.sectionCount).toBe(2);
+            expect(context.sourceConsultationCount).toBe(2);
         });
 
         it('should default template to comprehensive when not specified', async () => {
@@ -662,7 +662,7 @@ describe('ChainSummaryService', () => {
             const callArgs = mocks.httpService.axiosRef.post.mock.calls[0];
             const payload = callArgs[1] as Record<string, unknown>;
 
-            expect(payload.template).toBe('comprehensive');
+            expect((payload.context as Record<string, unknown>).template).toBe('comprehensive');
         });
     });
 
@@ -714,9 +714,15 @@ describe('ChainSummaryService', () => {
 
             // Verify SMR was called
             expect(mocks.httpService.axiosRef.post).toHaveBeenCalledWith(
-                'http://smr:8862/api/v1/summary/sync',
+                'http://smr:8862/api/v1/generate',
                 expect.objectContaining({
-                    template: 'comprehensive',
+                    prompt: expect.stringContaining('--- Section 1 ---'),
+                    context: expect.objectContaining({
+                        template: 'comprehensive',
+                        isComprehensiveSummary: true,
+                        sectionCount: 2,
+                        sourceConsultationCount: 2,
+                    }),
                 }),
                 expect.objectContaining({ timeout: 180000 }),
             );
@@ -799,7 +805,7 @@ describe('ChainSummaryService', () => {
             mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
 
             mocks.httpService.axiosRef.post.mockResolvedValue({
-                data: { summary: 'Result.', modelName: 'gpt-4o' },
+                data: { summary: 'Result.' },
             });
 
             const result = await mocks.service.generateComprehensiveSummary('consultation-A', {
@@ -835,8 +841,10 @@ describe('ChainSummaryService', () => {
             expect(mocks.httpService.axiosRef.post).toHaveBeenCalledWith(
                 expect.any(String),
                 expect.objectContaining({
-                    dnaStyleId: 'style_hematology',
-                    template: 'SOAP',
+                    context: expect.objectContaining({
+                        dnaStyleId: 'style_hematology',
+                        template: 'SOAP',
+                    }),
                 }),
                 expect.any(Object),
             );

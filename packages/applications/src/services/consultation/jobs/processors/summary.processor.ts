@@ -19,6 +19,7 @@ import {
 import { PromptResolutionService } from '../../prompt/prompt-resolution.service';
 import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
+import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
 
 @Processor(JobQueue.GenerateSummary)
 export class SummaryProcessor extends WorkerHost {
@@ -117,7 +118,7 @@ export class SummaryProcessor extends WorkerHost {
             // Step 2: Calling AI service (30%)
             await this.jobService.notifyProgress(jobId, 30, 'Generating summary with AI');
 
-            const smrResponse = await this.callSmrService(assembledPrompt.userPrompt, {
+            const smrResponse = await this.callSmrService(assembledPrompt, {
                 ...request,
                 options: {
                     ...request.options,
@@ -200,7 +201,17 @@ export class SummaryProcessor extends WorkerHost {
     }
 
     private async callSmrService(
-        content: string,
+        assembledPrompt: {
+            userPrompt: string;
+            systemPrompt: string;
+            hyperparameters: Record<string, number>;
+            responseFormat: {
+                type: string;
+                json_schema: Record<string, unknown>;
+                strict: boolean;
+            } | null;
+            resolvedFrom: string;
+        },
         request: GenerateSummaryJobPayload['request'],
         jobId?: string,
     ): Promise<{
@@ -213,15 +224,19 @@ export class SummaryProcessor extends WorkerHost {
     }> {
         try {
             const smrStart = Date.now();
-            const response = await this.httpService.axiosRef.post(
-                `${this.smrServiceUrl}/api/v1/summary/sync`,
+            const smrPayload = buildSmrGeneratePayload(
+                assembledPrompt,
+                request.options,
                 {
-                    text: content,
                     dnaStyleId: request.dnaStyleId,
                     template: request.template,
                     includeNER: request.includeNER,
-                    options: request.options,
+                    summaryType: 'summary',
                 },
+            );
+            const response = await this.httpService.axiosRef.post(
+                `${this.smrServiceUrl}/api/v1/generate`,
+                smrPayload,
                 {
                     timeout: 120000,
                     headers: {
@@ -231,8 +246,8 @@ export class SummaryProcessor extends WorkerHost {
                     },
                 },
             );
-            this.jobMetrics.recordSmrCallDuration(JobQueue.GenerateSummary, 'smr-v1', (Date.now() - smrStart) / 1000);
-            return response.data;
+            this.jobMetrics.recordSmrCallDuration(JobQueue.GenerateSummary, 'smr-v2', (Date.now() - smrStart) / 1000);
+            return mapSmrGenerateResponse(response.data);
         } catch (error) {
             this.logger.error({
                 message: 'SMR service call failed',
