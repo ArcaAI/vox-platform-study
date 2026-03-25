@@ -323,12 +323,16 @@ describe('ComprehensiveSummaryProcessor', () => {
 
             const [url, payload, config] = mocks.httpService.axiosRef.post.mock.calls[0];
 
-            expect(url).toBe('http://smr:8862/api/v1/summary/sync');
-            expect(payload.text).toContain('Section A content.');
-            expect(payload.text).toContain('Section B content.');
-            expect(payload.dnaStyleId).toBe('my-style');
-            expect(payload.template).toBe('SOAP');
-            expect(payload.options.isComprehensiveSummary).toBe(true);
+            expect(url).toBe('http://smr:8862/api/v1/generate');
+            expect(payload.prompt).toContain('Section A content.');
+            expect(payload.prompt).toContain('Section B content.');
+            expect(payload.context).toEqual(expect.objectContaining({
+                dnaStyleId: 'my-style',
+                template: 'SOAP',
+                includeNER: false,
+                summaryType: 'summary',
+                isComprehensiveSummary: true,
+            }));
             expect(config.timeout).toBe(180000);
         });
 
@@ -389,7 +393,7 @@ describe('ComprehensiveSummaryProcessor', () => {
             await processor.process(createMockJob(createDefaultPayload({ request: { includeNER: false } })));
 
             expect(mocks.httpService.axiosRef.post).toHaveBeenCalledWith(
-                'http://localhost:8862/api/v1/summary/sync',
+                'http://localhost:8862/api/v1/generate',
                 expect.any(Object),
                 expect.any(Object),
             );
@@ -411,12 +415,12 @@ describe('ComprehensiveSummaryProcessor', () => {
             await mocks.processor.process(createMockJob(createDefaultPayload({ request: { includeNER: false } })));
 
             const payload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-            expect(payload.text).toContain('--- Section 1 ---');
-            expect(payload.text).toContain('Department: Cardiology');
-            expect(payload.text).toContain('Doctor: Dr. Heart');
-            expect(payload.text).toContain('Type: transcript');
-            expect(payload.text).toContain('Date: 2026-02-17T08:30:00Z');
-            expect(payload.text).toContain('Patient has chest pain.');
+            expect(payload.prompt).toContain('--- Section 1 ---');
+            expect(payload.prompt).toContain('Department: Cardiology');
+            expect(payload.prompt).toContain('Doctor: Dr. Heart');
+            expect(payload.prompt).toContain('Type: transcript');
+            expect(payload.prompt).toContain('Date: 2026-02-17T08:30:00Z');
+            expect(payload.prompt).toContain('Patient has chest pain.');
         });
 
         it('should append NER context block when entities exist', async () => {
@@ -433,9 +437,9 @@ describe('ComprehensiveSummaryProcessor', () => {
             await mocks.processor.process(createMockJob(createDefaultPayload()));
 
             const payload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-            expect(payload.text).toContain('--- Named Entities (auto-extracted) ---');
-            expect(payload.text).toContain('MEDICATION: Aspirin 75mg, Metformin 500mg');
-            expect(payload.text).toContain('CONDITION: Hypertension');
+            expect(payload.prompt).toContain('--- Named Entities (auto-extracted) ---');
+            expect(payload.prompt).toContain('MEDICATION: Aspirin 75mg, Metformin 500mg');
+            expect(payload.prompt).toContain('CONDITION: Hypertension');
         });
 
         it('should default template to comprehensive when not specified', async () => {
@@ -446,7 +450,7 @@ describe('ComprehensiveSummaryProcessor', () => {
             })));
 
             const payload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-            expect(payload.template).toBe('comprehensive');
+            expect(payload.context.template).toBe('comprehensive');
         });
 
         it('should pass sourceConsultationCount in options', async () => {
@@ -466,8 +470,8 @@ describe('ComprehensiveSummaryProcessor', () => {
             await mocks.processor.process(createMockJob(createDefaultPayload({ request: { includeNER: false } })));
 
             const payload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-            expect(payload.options.sourceConsultationCount).toBe(3);
-            expect(payload.options.sectionCount).toBe(3);
+            expect(payload.context.sourceConsultationCount).toBe(3);
+            expect(payload.context.sectionCount).toBe(3);
         });
 
         it('should handle SMR returning partial response (no modelName)', async () => {
@@ -652,7 +656,7 @@ describe('ComprehensiveSummaryProcessor', () => {
             expect(result.sectionCount).toBe(5);
 
             const payload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-            expect(payload.options.sourceConsultationCount).toBe(5);
+            expect(payload.context.sourceConsultationCount).toBe(5);
         });
 
         it('should handle empty NER entities map', async () => {
@@ -668,7 +672,7 @@ describe('ComprehensiveSummaryProcessor', () => {
 
             // NER block should not appear in text when empty
             const payload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-            expect(payload.text).not.toContain('Named Entities');
+            expect(payload.prompt).not.toContain('Named Entities');
             expect(result.namedEntities).toEqual({});
         });
 
@@ -688,10 +692,10 @@ describe('ComprehensiveSummaryProcessor', () => {
             })));
 
             const payload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-            expect(payload.options.maxTokens).toBe(4000);
-            expect(payload.options.temperature).toBe(0.7);
-            expect(payload.options.customField).toBe('test');
-            expect(payload.options.isComprehensiveSummary).toBe(true);
+            expect(payload.context.maxTokens).toBe(4000);
+            expect(payload.context.temperature).toBe(0.7);
+            expect(payload.context.customField).toBe('test');
+            expect(payload.context.isComprehensiveSummary).toBe(true);
         });
 
         it('should pass correct dnaStyleId to ContextItemFactory', async () => {
@@ -773,7 +777,7 @@ describe('ComprehensiveSummaryProcessor', () => {
             expect(mocks.promptResolutionService.resolve).toHaveBeenCalledTimes(1);
 
             const smrPayload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-            expect(smrPayload.template).toBe('narrative');
+            expect(smrPayload.context?.template).toBe('narrative');
         });
 
         it('should not call PromptResolutionService when template is provided', async () => {
@@ -786,8 +790,10 @@ describe('ComprehensiveSummaryProcessor', () => {
             expect(mocks.promptResolutionService.resolve).not.toHaveBeenCalled();
 
             const smrPayload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-            expect(smrPayload.dnaStyleId).toBe('explicit-style');
-            expect(smrPayload.template).toBe('SOAP');
+            expect(smrPayload.context).toEqual(expect.objectContaining({
+                dnaStyleId: 'explicit-style',
+                template: 'SOAP',
+            }));
         });
 
         it('should resolve template from PromptResolutionService when not provided', async () => {
@@ -805,7 +811,7 @@ describe('ComprehensiveSummaryProcessor', () => {
             })));
 
             const smrPayload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-            expect(smrPayload.template).toBe('narrative');
+            expect(smrPayload.context?.template).toBe('narrative');
         });
     });
 
@@ -867,12 +873,12 @@ describe('ComprehensiveSummaryProcessor', () => {
 
             // Verify SMR was called with all sections
             const smrPayload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-            expect(smrPayload.text).toContain('Summary from Gen Med.');
-            expect(smrPayload.text).toContain('Hematology findings.');
-            expect(smrPayload.text).toContain('Lab results: CBC normal.');
-            expect(smrPayload.text).toContain('Previous visit notes.');
-            expect(smrPayload.text).toContain('MEDICATION: Aspirin 75mg, Metformin 500mg');
-            expect(smrPayload.text).toContain('PROCEDURE: CBC');
+            expect(smrPayload.prompt).toContain('Summary from Gen Med.');
+            expect(smrPayload.prompt).toContain('Hematology findings.');
+            expect(smrPayload.prompt).toContain('Lab results: CBC normal.');
+            expect(smrPayload.prompt).toContain('Previous visit notes.');
+            expect(smrPayload.prompt).toContain('MEDICATION: Aspirin 75mg, Metformin 500mg');
+            expect(smrPayload.prompt).toContain('PROCEDURE: CBC');
 
             // Verify full progress lifecycle
             expect(mocks.jobService.notifyProgress).toHaveBeenCalledTimes(5);
