@@ -136,7 +136,7 @@ test-stt-v2:
         - pip-$CI_DEFAULT_BRANCH
   script:
     - cd apps/stt-v2
-    - pip install --quiet -r requirements.txt -r requirements-dev.txt 2>/dev/null || pip install --quiet -r requirements.txt
+    - pip install --quiet ".[test]"
     - python -m pytest tests/unit/ -v --tb=short --junitxml=../../junit-stt-v2.xml || true
     - python -m pytest tests/ -v --tb=short --junitxml=../../junit-stt-v2.xml --ignore=tests/e2e/ --ignore=tests/integration/ -x
   artifacts:
