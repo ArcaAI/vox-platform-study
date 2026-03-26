@@ -1,5 +1,22 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# Test stage — unit tests for all services
+# Test stage — unit + integration tests for all services
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# External Test Infrastructure (on 10.10.1.0/24 — reachable from GitLab Runner):
+#   PostgreSQL HA:  10.10.1.250:5000  (HAProxy R/W VIP)
+#   Redis Dev:      10.10.1.120:6379  (DB 8 reserved for CI tests)
+#
+# All connection details are set via CI/CD variables (Settings → CI/CD → Variables):
+#   TEST_PG_HOST        = 10.10.1.250
+#   TEST_PG_PORT        = 5000
+#   TEST_PG_USER        = (set in CI/CD variables)
+#   TEST_PG_PASSWORD    = (set in CI/CD variables — masked)
+#   TEST_PG_DB          = vox_dev
+#   TEST_REDIS_HOST     = 10.10.1.120
+#   TEST_REDIS_PORT     = 6379
+#   TEST_REDIS_PASSWORD = (set in CI/CD variables — masked)
+#   TEST_REDIS_DB       = 8
+#
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Database-dependent tests (test-api) use CI_DATABASE_URL from GitLab Variables.
@@ -36,6 +53,7 @@ test-api:
     NLP_PORT: "8864"
     NLP_URL: "http://localhost:8864"
   script:
+    - *check-test-infra
     - pnpm turbo build --filter=@arcaai/database
     - pnpm turbo build --filter=@arcaai/exceptions
     - pnpm turbo build --filter=@arcaai/logger
@@ -62,6 +80,7 @@ test-packages:
     DATABASE_URL: $CI_DATABASE_URL
     DATABASE_URL_DIRECT: $CI_DATABASE_URL_DIRECT
   script:
+    - *check-test-infra
     - pnpm turbo build --filter=@arcaai/database
     - pnpm turbo build --filter=@arcaai/exceptions
     - pnpm turbo build --filter=@arcaai/logger
@@ -87,7 +106,10 @@ test-sdk:
   needs:
     - job: lint-ts
       optional: true
+  variables:
+    <<: *test-env
   script:
+    - *check-test-infra
     - pnpm turbo build --filter=@arcaai/utils
     - pnpm turbo test --filter=@arcaai/vox --filter=@arcaai/room --filter=@arcaai/vad --filter=@arcaai/stt --filter=@arcaai/noise-filter --filter=@arcaai/med-ner --filter=@arcaai/ui
   rules:
@@ -135,6 +157,7 @@ test-stt-v2:
       fallback_keys:
         - pip-$CI_DEFAULT_BRANCH
   script:
+    - *check-test-infra
     - cd apps/stt-v2
     - pip install --quiet ".[test]"
     - python -m pytest tests/unit/ -v --tb=short --junitxml=../../junit-stt-v2.xml || true
@@ -167,6 +190,7 @@ test-smr:
       fallback_keys:
         - pip-$CI_DEFAULT_BRANCH
   script:
+    - *check-test-infra
     - cd apps/smr
     - pip install --quiet -r requirements.txt 2>/dev/null || true
     - |
@@ -202,6 +226,7 @@ test-nlp:
       fallback_keys:
         - pip-$CI_DEFAULT_BRANCH
   script:
+    - *check-test-infra
     - cd apps/nlp
     - pip install --quiet -r requirements.txt 2>/dev/null || true
     - |
