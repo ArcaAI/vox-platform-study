@@ -29,7 +29,8 @@
 14. [Verify](#14-verify)
 15. [Operational Runbook](#15-operational-runbook)
 16. [Troubleshooting](#16-troubleshooting)
-17. [Appendix A: Alpine Linux Instead of Ubuntu](#appendix-a-alpine-linux-instead-of-ubuntu)
+17. [Disk Expansion](#17-disk-expansion)
+18. [Alpine Operational Reference](#18-alpine-operational-reference)
 
 ---
 
@@ -115,7 +116,7 @@ Redis logical databases (`SELECT N`) isolate concerns without running multiple p
 ## 4. Prerequisites
 
 - Proxmox host with available resources (4 vCPU / 6 GB RAM / 48 GB disk total for both VMs)
-- Ubuntu 24.04 Server cloud-init template — or Alpine Linux 3.21 (see [Appendix A](#appendix-a-alpine-linux-instead-of-ubuntu))
+- Alpine Linux 3.21 Virtual ISO (downloaded in Section 5.2)
 - SSH access to Proxmox host
 - Cloudflare Tunnel (CT 101) running — for SSH access only
 
@@ -155,66 +156,44 @@ Redis clients connect over TCP — they don't share memory with the Redis proces
 2. **Set fixed memory** — don't use min/max dynamic allocation
 3. **Tune `maxmemory`** in `redis.conf` to ~70% of VM RAM (leave room for OS, Docker, AOF rewrite buffers)
 
-### 5.2 — Clone from Template
+### 5.2 — Create VMs
+
+Download the Alpine **Virtual** ISO on the Proxmox host:
 
 ```bash
-# On Proxmox host (SSH or web shell)
+cd /var/lib/vz/template/iso/
+wget https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/alpine-virt-3.21.0-x86_64.iso
+```
 
+Create both VMs with all hardware best practices from 5.1:
+
+```bash
 # ── Dev VM (420) ──────────────────────────────────────────────────────
-qm clone <template-id> 420 --name redis-dev --full
-
-# CPU: 2 cores, host passthrough, no NUMA
-qm set 420 --cores 2 --cpu cputype=host --numa 0
-
-# Memory: 2 GB fixed, ballooning disabled
-qm set 420 --memory 2048 --balloon 0
-
-# Machine type: q35 (modern PCIe chipset)
-qm set 420 --machine q35
-
-# Network: virtio on internal bridge
-qm set 420 --net0 virtio,bridge=vmbr1
-
-# Disk: virtio-scsi-single with IO thread, SSD emulation, TRIM
-qm set 420 --scsihw virtio-scsi-single
-qm set 420 --scsi0 local-lvm:16,iothread=1,discard=on,ssd=1,cache=none
-
-# QEMU Guest Agent
-qm set 420 --agent 1
-
-# Auto-start on host boot
-qm set 420 --onboot 1
-
-# Cloud-init
-qm set 420 --ipconfig0 ip=10.10.1.120/24,gw=10.10.1.1
-
-qm start 420
+qm create 420 --name redis-dev \
+  --cores 2 --cpu cputype=host --numa 0 \
+  --memory 2048 --balloon 0 \
+  --machine q35 \
+  --net0 virtio,bridge=vmbr1 \
+  --scsihw virtio-scsi-single \
+  --scsi0 local-lvm:16,iothread=1,discard=on,ssd=1,cache=none \
+  --agent 1 --onboot 1 \
+  --ide2 local:iso/alpine-virt-3.21.0-x86_64.iso,media=cdrom \
+  --boot order=ide2
 
 # ── Staging VM (421) ─────────────────────────────────────────────────
-qm clone <template-id> 421 --name redis-staging --full
-
-qm set 421 --cores 2 --cpu cputype=host --numa 0
-qm set 421 --memory 4096 --balloon 0
-qm set 421 --machine q35
-qm set 421 --net0 virtio,bridge=vmbr1
-qm set 421 --scsihw virtio-scsi-single
-qm set 421 --scsi0 local-lvm:32,iothread=1,discard=on,ssd=1,cache=none
-qm set 421 --agent 1
-qm set 421 --onboot 1
-qm set 421 --ipconfig0 ip=10.10.1.121/24,gw=10.10.1.1
-
-qm start 421
+qm create 421 --name redis-staging \
+  --cores 2 --cpu cputype=host --numa 0 \
+  --memory 4096 --balloon 0 \
+  --machine q35 \
+  --net0 virtio,bridge=vmbr1 \
+  --scsihw virtio-scsi-single \
+  --scsi0 local-lvm:32,iothread=1,discard=on,ssd=1,cache=none \
+  --agent 1 --onboot 1 \
+  --ide2 local:iso/alpine-virt-3.21.0-x86_64.iso,media=cdrom \
+  --boot order=ide2
 ```
 
-> Replace `<template-id>` with your Ubuntu 24.04 (or Alpine 3.21) cloud-init template ID.
-
-#### Expected VM Config (verify with `qm config`)
-
-```bash
-qm config 420
-```
-
-Key lines to check:
+Verify with `qm config 420` — key lines:
 
 ```
 agent: 1
@@ -230,146 +209,526 @@ scsi0: local-lvm:vm-420-disk-0,discard=on,iothread=1,ssd=1,cache=none
 scsihw: virtio-scsi-single
 ```
 
-### 5.3 — Verify Connectivity
+### 5.3 — Install Alpine on VM 420 (Dev)
+
+Start the VM and open the Proxmox noVNC console:
 
 ```bash
-# From any VM on the internal network
-ping -c 3 10.10.1.120
-ping -c 3 10.10.1.121
-
-# SSH in
-ssh hope@10.10.1.120
-ssh hope@10.10.1.121
+qm start 420
+# Proxmox web UI → VM 420 → Console
 ```
+
+Login as `root` (no password) and run:
+
+```bash
+setup-alpine
+```
+
+#### IP Address Configuration
+
+The network prompts during `setup-alpine`:
+
+```
+Available interfaces are: eth0.
+Which one do you want to initialize? (or '?' or 'done') [eth0] eth0
+Ip address for eth0? (or 'dhcp', 'none', '?') [dhcp] 10.10.1.120/24
+Gateway? (or 'none') [none] 10.10.1.1
+Do you want to do any manual network configuration? [no] no
+DNS domain name? (e.g. 'bar.com') [] taphuynh.dev
+DNS nameserver(s)? [none] 8.8.8.8 8.8.4.4
+```
+
+#### Remaining Prompts
+
+| Prompt | Value |
+|--------|-------|
+| Keyboard layout | `us` |
+| Hostname | `redis-dev` |
+| Timezone | `UTC` |
+| Root password | Set a strong password |
+| SSH server | `openssh` |
+| Disk | `sda`, type `sys` |
+
+After the installer completes:
+
+```bash
+reboot
+```
+
+On the **Proxmox host**, detach the ISO and set boot order:
+
+```bash
+qm set 420 --ide2 none
+qm set 420 --boot order=scsi0
+```
+
+### 5.4 — Install Alpine on VM 421 (Staging)
+
+Same process, different hostname and IP:
+
+```bash
+qm start 421
+# Proxmox web UI → VM 421 → Console
+```
+
+```bash
+setup-alpine
+```
+
+Network prompts — use **`10.10.1.121/24`**:
+
+```
+Which one do you want to initialize? [eth0] eth0
+Ip address for eth0? [dhcp] 10.10.1.121/24
+Gateway? [none] 10.10.1.1
+Do you want to do any manual network configuration? [no] no
+DNS domain name? [] taphuynh.dev
+DNS nameserver(s)? [none] 8.8.8.8 8.8.4.4
+```
+
+| Prompt | Value |
+|--------|-------|
+| Hostname | **`redis-staging`** |
+| (all others) | Same as VM 420 |
+
+```bash
+reboot
+
+# On Proxmox host
+qm set 421 --ide2 none
+qm set 421 --boot order=scsi0
+```
+
+### 5.5 — Verify IP Address & Network (Both VMs)
+
+After reboot, login via Proxmox noVNC console as `root` on **each VM**:
+
+```bash
+# ── Check IP address ─────────────────────────────────────────────────
+ip addr show eth0 | grep "inet "
+# VM 420 → inet 10.10.1.120/24
+# VM 421 → inet 10.10.1.121/24
+
+# ── Check gateway ────────────────────────────────────────────────────
+ip route show default
+# → default via 10.10.1.1 dev eth0
+
+# ── Check hostname ───────────────────────────────────────────────────
+hostname
+# VM 420 → redis-dev
+# VM 421 → redis-staging
+
+# ── Check DNS ─────────────────────────────────────────────────────────
+cat /etc/resolv.conf
+# → nameserver 8.8.8.8
+# → nameserver 8.8.4.4
+
+# ── Test connectivity ─────────────────────────────────────────────────
+ping -c 2 10.10.1.1      # gateway
+ping -c 2 10.10.1.2      # CT 101 (cloudflare tunnel)
+ping -c 2 8.8.8.8        # internet
+ping -c 2 google.com     # DNS resolution
+```
+
+If any check fails, fix manually:
+
+```bash
+# ── Fix static IP ─────────────────────────────────────────────────────
+cat >   <<'EOF'
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet static
+    address 10.10.1.120/24
+    gateway 10.10.1.1
+EOF
+# For VM 421: change address to 10.10.1.121/24
+
+# ── Fix DNS ───────────────────────────────────────────────────────────
+cat > /etc/resolv.conf <<'EOF'
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+EOF
+
+# ── Fix hostname ──────────────────────────────────────────────────────
+echo "redis-dev" > /etc/hostname   # or redis-staging for VM 421
+hostname -F /etc/hostname
+
+# ── Fix /etc/hosts ────────────────────────────────────────────────────
+cat > /etc/hosts <<'EOF'
+127.0.0.1       localhost
+10.10.1.120     redis-dev
+10.10.1.121     redis-staging
+EOF
+
+# ── Apply ─────────────────────────────────────────────────────────────
+rc-service networking restart
+rc-update add networking boot
+
+# ── Verify ────────────────────────────────────────────────────────────
+ping -c 2 google.com
+```
+
+> **Troubleshooting**: If `ping` says `bad address` for domain names, check `/etc/resolv.conf` is not empty and has permissions `-rw-r--r-- root:root`. Alpine's `udhcpc` can overwrite this file — prevent it with `chattr +i /etc/resolv.conf` on static-IP VMs.
 
 ---
 
 ## 6. Prepare Each VM
 
-Run on **both VMs** (420 and 421).
+Run all steps in this section as **root** via Proxmox noVNC console on **both VMs** (420 and 421).
 
-### 6.1 Set Hostnames
+### 6.1 Enable Community Repository
 
 ```bash
-# VM 420
-sudo hostnamectl set-hostname redis-dev
-
-# VM 421
-sudo hostnamectl set-hostname redis-staging
+sed -i 's|#\(.*community\)|\1|' /etc/apk/repositories
+apk update && apk upgrade
 ```
 
-### 6.2 Install Docker
+### 6.2 Install All Packages
 
 ```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
+apk add \
+  openssh-server \
+  qemu-guest-agent \
+  docker docker-cli-compose \
+  iptables ip6tables awall \
+  sudo shadow \
+  bash zsh zsh-vcs curl wget git \
+  nano \
+  coreutils findutils grep \
+  dcron \
+  e2fsprogs-extra parted \
+  util-linux procps \
+  htop
+```
 
-# Log out and back in
+| Group | Packages | Purpose |
+|-------|----------|---------|
+| SSH | `openssh-server` | Remote access |
+| Virtualization | `qemu-guest-agent` | Proxmox guest agent — clean shutdown, IP reporting |
+| Docker | `docker docker-cli-compose` | Container runtime + Compose v2 |
+| Firewall | `iptables ip6tables awall` | Alpine Wall firewall |
+| User management | `sudo shadow` | `sudo` support, `useradd`/`usermod` |
+| Shell | `bash zsh zsh-vcs curl wget git` | Zsh + oh-my-zsh dependencies |
+| Editor | `nano` | Terminal text editor |
+| GNU utilities | `coreutils findutils grep` | GNU `date`, `find`, `grep` — BusyBox variants too limited |
+| Cron | `dcron` | Scheduled tasks (backup script) |
+| Disk tools | `e2fsprogs-extra parted` | Filesystem resize, partition management |
+| System tools | `util-linux procps htop` | `lsblk`, `ps`, `top` |
+
+### 6.3 Create the `dell` User
+
+All homelab VMs use `dell` for SSH — matches `~/.ssh/config` on your Mac (`User dell`).
+
+```bash
+adduser -D -s /bin/zsh dell
+passwd dell
+echo "dell ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/dell
+chmod 440 /etc/sudoers.d/dell
+addgroup dell docker
+```
+
+### 6.4 Deploy SSH Key
+
+From your **Mac**, deploy the homelab key. See [SSH & Cloudflared Setup](../networking/ssh-cloudflared-setup-mac.md) for the full guide.
+
+**Option A — Direct (on the same network):**
+
+```bash
+ssh-copy-id -i ~/.ssh/id_ed25519_homelab.pub dell@10.10.1.120   # Dev
+ssh-copy-id -i ~/.ssh/id_ed25519_homelab.pub dell@10.10.1.121   # Staging
+```
+
+**Option B — Via Cloudflare Tunnel (after CT 101 routes are added):**
+
+```bash
+# Terminal 1: start temporary tunnel
+cloudflared access tcp --hostname ssh-redis-01.taphuynh.dev --url localhost:22
+# Terminal 2: deploy the key
+ssh-copy-id -i ~/.ssh/id_ed25519_homelab.pub -p 22 dell@localhost
+```
+
+**Option C — Manual (via Proxmox console, as dell user):**
+
+```bash
+su - dell
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+cat >> ~/.ssh/authorized_keys <<'KEY'
+ssh-ed25519 AAAA... taphuynh@homelab
+KEY
+chmod 600 ~/.ssh/authorized_keys
 exit
-```
-
-```bash
-# Reconnect and verify
-docker --version
-docker compose version
-```
-
-### 6.3 Create Directories
-
-```bash
-sudo mkdir -p /opt/redis/{data,logs,backups}
-sudo chown -R $USER:$USER /opt/redis
-```
-
-### 6.4 Configure Firewall
-
-```bash
-sudo apt-get update && sudo apt-get install -y ufw
-
-# Allow SSH first
-sudo ufw allow OpenSSH
-
-# Redis from internal network only
-sudo ufw allow from 10.10.1.0/24 to any port 6379 proto tcp comment "Redis"
-
-# Prometheus scraping (redis-exporter)
-sudo ufw allow from 10.10.1.0/24 to any port 9121 proto tcp comment "redis-exporter"
-
-# Allow CT 101 (Cloudflare Tunnel) for SSH
-sudo ufw allow from 10.10.1.2 to any comment "CT 101 - Cloudflare Tunnel"
-
-sudo ufw enable
-sudo ufw status verbose
-```
-
-### 6.5 Restrict Docker-Published Ports
-
-Docker bypasses UFW by modifying iptables directly. Add a `DOCKER-USER` rule to restrict Docker-published ports to the private subnet:
-
-```bash
-# Find interface name (likely enp6s18 on Proxmox VMs)
-ip -br a
-
-IFACE="enp6s18"
-if ! grep -q "DOCKER-USER -i ${IFACE}" /etc/ufw/before.rules; then
-  sudo sed -i '/^COMMIT$/i \
-# Restrict Docker-published ports to private subnet only\
--I DOCKER-USER -i '"${IFACE}"' ! -s 10.10.1.0/24 -j DROP' /etc/ufw/before.rules
-  echo "Rule added to before.rules for interface ${IFACE}"
-else
-  echo "Rule already exists — skipping"
-fi
-
-# Apply immediately
-if ! sudo iptables -L DOCKER-USER -n | grep -q "${IFACE}"; then
-  sudo iptables -I DOCKER-USER -i "${IFACE}" ! -s 10.10.1.0/24 -j DROP
-fi
-
-sudo ufw reload
 ```
 
 Verify:
 
 ```bash
-sudo iptables -L DOCKER-USER -n -v
-# Expected: one DROP rule for your interface, plus the default RETURN
+# From your Mac
+ssh dell@10.10.1.120
+ssh dell@10.10.1.121
 ```
 
-### 6.6 Tune Kernel Parameters
+### 6.5 Configure SSH Server
 
 ```bash
-cat <<'EOF' | sudo tee /etc/sysctl.d/99-redis.conf
-# Redis recommended settings
+cat > /etc/ssh/sshd_config.d/hardened.conf <<'EOF'
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+MaxAuthTries 3
+X11Forwarding no
+AllowTcpForwarding yes
+ClientAliveInterval 30
+ClientAliveCountMax 3
+EOF
+
+rc-service sshd restart
+```
+
+> **Important**: Deploy your SSH key (step 6.5) **before** setting `PasswordAuthentication no`. If locked out, use the Proxmox noVNC console.
+
+### 6.6 Update Mac SSH Config
+
+Add Redis VM aliases to `~/.ssh/config` on your **Mac**, in the Homelab VM Aliases section before `Match host *.taphuynh.dev`:
+
+```ssh-config
+Host redis-dev
+    HostName ssh-redis-dev.taphuynh.dev
+Host redis-staging
+    HostName ssh-redis-staging.taphuynh.dev
+```
+
+The existing `Match host *.taphuynh.dev` block handles `ProxyCommand`, `User dell`, and `IdentityFile`.
+
+After adding:
+
+```bash
+ssh redis-dev      # → connects to VM 420
+ssh redis-staging  # → connects to VM 421
+```
+
+### 6.7 Install Oh My Zsh
+
+Run as `dell` on **each VM**:
+
+```bash
+su - dell
+
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+
+git clone https://github.com/zsh-users/zsh-autosuggestions \
+  ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+
+git clone https://github.com/zsh-users/zsh-syntax-highlighting \
+  ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+
+cat > ~/.zshrc <<'ZSHRC'
+export ZSH="$HOME/.oh-my-zsh"
+
+ZSH_THEME="robbyrussell"
+
+plugins=(
+  git
+  docker
+  docker-compose
+  zsh-autosuggestions
+  zsh-syntax-highlighting
+)
+
+source $ZSH/oh-my-zsh.sh
+
+alias ll='ls -lah'
+alias dc='docker compose'
+alias dps='docker compose ps'
+alias dlogs='docker compose logs -f'
+alias redis-cli='docker exec -it hope-redis redis-cli -a "$REDIS_PASS"'
+ZSHRC
+
+source ~/.zshrc
+exit
+```
+
+### 6.8 Enable Services
+
+```bash
+rc-update add qemu-guest-agent default
+rc-update add docker default
+rc-update add dcron default
+rc-update add sshd default
+rc-update add local default
+rc-update add networking boot
+
+service qemu-guest-agent start
+service docker start
+service dcron start
+
+rc-update show default
+```
+
+### 6.9 Create Redis Directories
+
+```bash
+mkdir -p /opt/redis/{data,logs,backups}
+chown -R dell:dell /opt/redis
+```
+
+### 6.10 Configure Firewall (awall)
+
+```bash
+cat > /etc/awall/optional/redis.json <<'POLICY'
+{
+  "description": "Redis server firewall policy",
+
+  "zone": {
+    "internal": { "iface": "eth0" }
+  },
+
+  "filter": [
+    {
+      "in": "internal",
+      "src": "10.10.1.0/24",
+      "dest": "_fw",
+      "service": { "proto": "tcp", "port": 22 },
+      "action": "accept",
+      "comment": "SSH from internal network"
+    },
+    {
+      "in": "internal",
+      "src": "10.10.1.0/24",
+      "dest": "_fw",
+      "service": { "proto": "tcp", "port": 6379 },
+      "action": "accept",
+      "comment": "Redis from internal network"
+    },
+    {
+      "in": "internal",
+      "src": "10.10.1.0/24",
+      "dest": "_fw",
+      "service": { "proto": "tcp", "port": 9121 },
+      "action": "accept",
+      "comment": "redis-exporter from internal network"
+    },
+    {
+      "in": "internal",
+      "src": "10.10.1.2",
+      "dest": "_fw",
+      "action": "accept",
+      "comment": "CT 101 Cloudflare Tunnel full access"
+    }
+  ],
+
+  "policy": [
+    { "in": "_fw", "action": "accept" },
+    { "in": "internal", "action": "drop" }
+  ]
+}
+POLICY
+
+awall enable redis
+awall activate
+
+rc-update add iptables
+rc-update add ip6tables
+```
+
+### 6.11 Restrict Docker-Published Ports
+
+```bash
+IFACE="eth0"
+
+cat > /etc/local.d/docker-firewall.start <<EOF
+#!/bin/sh
+iptables -I DOCKER-USER -i ${IFACE} ! -s 10.10.1.0/24 -j DROP 2>/dev/null || true
+EOF
+
+chmod +x /etc/local.d/docker-firewall.start
+/etc/local.d/docker-firewall.start
+
+iptables -L DOCKER-USER -n -v
+```
+
+### 6.12 Tune Kernel Parameters
+
+```bash
+cat > /etc/sysctl.d/99-redis.conf <<'EOF'
 vm.overcommit_memory = 1
 net.core.somaxconn = 65535
-
-# Disable THP (Redis warns about this)
-# Handled by systemd service below
 EOF
 
-sudo sysctl -p /etc/sysctl.d/99-redis.conf
+sysctl -p /etc/sysctl.d/99-redis.conf
 ```
 
-Disable Transparent Huge Pages (Redis performance recommendation):
+Disable Transparent Huge Pages:
 
 ```bash
-sudo tee /etc/systemd/system/disable-thp.service <<'EOF'
-[Unit]
-Description=Disable Transparent Huge Pages
-DefaultDependencies=no
-After=sysinit.target local-fs.target
-Before=docker.service
-
-[Service]
-Type=oneshot
-ExecStart=/bin/bash -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled && echo never > /sys/kernel/mm/transparent_hugepage/defrag'
-
-[Install]
-WantedBy=basic.target
+cat > /etc/local.d/disable-thp.start <<'EOF'
+#!/bin/sh
+echo never > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || true
+echo never > /sys/kernel/mm/transparent_hugepage/defrag 2>/dev/null || true
 EOF
 
-sudo systemctl daemon-reload
-sudo systemctl enable --now disable-thp.service
+chmod +x /etc/local.d/disable-thp.start
+/etc/local.d/disable-thp.start
+
+cat /sys/kernel/mm/transparent_hugepage/enabled
+# → always madvise [never]
+```
+
+### 6.13 Verification — VM Is Production-Ready
+
+Run on **each VM**:
+
+```bash
+# ── IP Address
+ip addr show eth0 | grep "inet "
+# Dev: 10.10.1.120/24  |  Staging: 10.10.1.121/24
+
+# ── Hostname
+hostname
+# Dev: redis-dev  |  Staging: redis-staging
+
+# ── OS
+cat /etc/alpine-release
+# → 3.21.x
+
+# ── User & Shell
+id dell
+# → groups=...docker
+getent passwd dell | cut -d: -f7
+# → /bin/zsh
+
+# ── Tools
+which nano docker zsh git curl htop
+docker --version && docker compose version
+
+# ── Oh My Zsh
+su - dell -c 'ls ~/.oh-my-zsh/oh-my-zsh.sh && echo OK'
+
+# ── QEMU Guest Agent
+service qemu-guest-agent status
+# On Proxmox host: qm agent 420 ping
+
+# ── Firewall
+awall list
+iptables -L DOCKER-USER -n -v
+
+# ── Kernel Tuning
+sysctl vm.overcommit_memory net.core.somaxconn
+cat /sys/kernel/mm/transparent_hugepage/enabled
+
+# ── Boot Services
+rc-update show default
+# → docker, qemu-guest-agent, dcron, sshd, local, iptables, ip6tables, networking
+
+# ── Directories
+ls -la /opt/redis/
+# → data/ logs/ backups/ owned by dell:dell
+
+# ── SSH (from your Mac)
+ssh redis-dev
+ssh redis-staging
 ```
 
 ---
@@ -380,15 +739,15 @@ sudo systemctl enable --now disable-thp.service
 
 ```bash
 # From your workstation
-scp -r research/configs/redis/ hope@10.10.1.120:/opt/redis/
-# Or via Cloudflare Tunnel
-scp -r research/configs/redis/ ssh-redis-dev:/opt/redis/
+scp -r research/configs/redis/ dell@10.10.1.120:/opt/redis/
+# Or via Cloudflare Tunnel alias
+scp -r research/configs/redis/ redis-dev:/opt/redis/
 ```
 
 ### 7.2 Create Environment File
 
 ```bash
-ssh hope@10.10.1.120
+ssh redis-dev   # or: ssh dell@10.10.1.120
 cd /opt/redis
 
 cat > .env <<'EOF'
@@ -444,13 +803,14 @@ curl -s http://10.10.1.120:9121/metrics | grep redis_up
 ### 8.1 Copy Config Files
 
 ```bash
-scp -r research/configs/redis/ hope@10.10.1.121:/opt/redis/
+scp -r research/configs/redis/ dell@10.10.1.121:/opt/redis/
+# Or via alias: scp -r research/configs/redis/ redis-staging:/opt/redis/
 ```
 
 ### 8.2 Create Environment File
 
 ```bash
-ssh hope@10.10.1.121
+ssh redis-staging   # or: ssh dell@10.10.1.121
 cd /opt/redis
 
 cat > .env <<'EOF'
@@ -530,7 +890,7 @@ docker compose down && docker compose up -d
 
 Redis is protected by three layers:
 
-1. **UFW** — only allows `10.10.1.0/24` on port 6379
+1. **awall** — only allows `10.10.1.0/24` on ports 22, 6379, 9121
 2. **Docker-USER iptables chain** — restricts Docker-published ports to `10.10.1.0/24`
 3. **Redis `requirepass`** — authentication required for all commands
 
@@ -783,8 +1143,8 @@ curl -s http://10.10.1.120:9121/metrics | grep redis_up
 # → redis_up 1
 
 # 9. Firewall rules active
-sudo ufw status verbose
-sudo iptables -L DOCKER-USER -n -v
+awall list
+iptables -L DOCKER-USER -n -v
 
 # 10. Not reachable from outside internal network
 # This should time out from any non-10.10.1.x machine
@@ -865,7 +1225,7 @@ docker exec hope-redis redis-cli -a "$REDIS_PASS" info server | grep redis_versi
 |---------|-------------|-----|
 | `NOAUTH Authentication required` | Missing or wrong password | Check `REDIS_PASS` in `.env`, verify `redis.conf` has matching `requirepass` |
 | `OOM command not allowed` | Memory limit reached, eviction policy can't free keys | Check `maxmemory-policy`, increase `maxmemory`, or flush unneeded databases |
-| `Connection refused` | Redis not running or firewall blocking | `docker compose ps`, check UFW rules, verify port 6379 is published |
+| `Connection refused` | Redis not running or firewall blocking | `docker compose ps`, check `awall list` / `iptables -L -n`, verify port 6379 is published |
 | High latency / slow commands | Large keys, blocking commands, or THP enabled | Check `slowlog`, verify THP is disabled, check `KEYS` usage |
 | AOF rewrite failing | Disk full | Check `df -h`, clean old backups, expand disk |
 | Exporter shows `redis_up 0` | Exporter can't connect | Verify exporter `REDIS_PASSWORD` matches, check container networking |
@@ -890,8 +1250,10 @@ tail -f /opt/redis/logs/backup.log
 ## Quick Reference
 
 ```
-VM 420 — Redis Dev
+VM 420 — Redis Dev (Alpine Linux 3.21)
   IP:         10.10.1.120
+  SSH alias:  ssh redis-dev       (via cloudflared → ssh-redis-dev.taphuynh.dev)
+  User:       dell                (zsh + oh-my-zsh)
   Port:       6379
   Exporter:   9121
   maxmemory:  512 MB
@@ -899,10 +1261,11 @@ VM 420 — Redis Dev
   Data:       /opt/redis/data/
   Backups:    /opt/redis/backups/ (3-day retention)
   Compose:    /opt/redis/docker-compose.yml
-  SSH:        ssh-redis-dev.taphuynh.dev
 
-VM 421 — Redis Staging
+VM 421 — Redis Staging (Alpine Linux 3.21)
   IP:         10.10.1.121
+  SSH alias:  ssh redis-staging   (via cloudflared → ssh-redis-staging.taphuynh.dev)
+  User:       dell                (zsh + oh-my-zsh)
   Port:       6379
   Exporter:   9121
   maxmemory:  2 GB
@@ -910,7 +1273,6 @@ VM 421 — Redis Staging
   Data:       /opt/redis/data/
   Backups:    /opt/redis/backups/ (7-day retention)
   Compose:    /opt/redis/docker-compose.yml
-  SSH:        ssh-redis-staging.taphuynh.dev
 ```
 
 ### Connection Strings
@@ -930,385 +1292,18 @@ VM 421 — Redis Staging
 | Staging | Celery (db4) | `redis://:password@10.10.1.121:6379/4` |
 | Staging | Dramatiq (db5) | `redis://:password@10.10.1.121:6379/5` |
 
+
 ---
 
-## Appendix A: Alpine Linux Instead of Ubuntu
+## 17. Disk Expansion
 
-Redis VMs are lightweight single-service hosts — ideal candidates for Alpine Linux. Alpine's ~150 MB footprint (vs ~2.5 GB Ubuntu) saves disk, reduces attack surface, and boots faster. This appendix provides the complete Alpine-specific instructions that **replace** sections 5 and 6 of the main guide.
-
-### A.1 Why Alpine for Redis VMs
-
-| Aspect | Ubuntu 24.04 | Alpine 3.21 |
-|--------|-------------|-------------|
-| Base install size | ~2.5 GB | ~150 MB |
-| Init system | systemd | OpenRC |
-| Package manager | apt | apk |
-| Firewall | UFW (iptables wrapper) | awall (iptables/nftables) |
-| Docker install | `docker-ce` from Docker repo | `docker` from community repo |
-| RAM overhead (idle) | ~300 MB | ~50 MB |
-| Security model | AppArmor | Musl libc + PaX (hardened kernel optional) |
-| Disk expansion | `growpart` + LVM | Manual `parted` + `resize2fs` |
-
-**Trade-offs**: Alpine uses musl libc instead of glibc, BusyBox instead of GNU coreutils, and OpenRC instead of systemd. This means:
-
-- No `systemctl` — use `rc-service` and `rc-update`
-- No `journalctl` — logs go to `/var/log/messages` (syslog)
-- No UFW — use `awall` (Alpine Wall) or raw iptables
-- Some GNU tool flags differ (BusyBox `sed`, `grep`, `find` are simpler)
-
-For a single-service Redis VM that only runs Docker containers, none of these are blockers.
-
-### A.2 Create Alpine VM (Proxmox Host)
-
-#### Option A — From Alpine ISO (Manual)
-
-Download the Alpine **Virtual** ISO from [alpinelinux.org/downloads](https://alpinelinux.org/downloads/):
-
-```bash
-# On Proxmox host — download Alpine Virtual ISO
-cd /var/lib/vz/template/iso/
-wget https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/alpine-virt-3.21.0-x86_64.iso
-```
-
-Create the VM with the same hardware best practices as section 5.1:
-
-```bash
-# Dev VM
-qm create 420 --name redis-dev \
-  --cores 2 --cpu cputype=host --numa 0 \
-  --memory 2048 --balloon 0 \
-  --machine q35 \
-  --net0 virtio,bridge=vmbr1 \
-  --scsihw virtio-scsi-single \
-  --scsi0 local-lvm:16,iothread=1,discard=on,ssd=1,cache=none \
-  --agent 1 --onboot 1 \
-  --ide2 local:iso/alpine-virt-3.21.0-x86_64.iso,media=cdrom \
-  --boot order=ide2
-
-# Staging VM
-qm create 421 --name redis-staging \
-  --cores 2 --cpu cputype=host --numa 0 \
-  --memory 4096 --balloon 0 \
-  --machine q35 \
-  --net0 virtio,bridge=vmbr1 \
-  --scsihw virtio-scsi-single \
-  --scsi0 local-lvm:32,iothread=1,discard=on,ssd=1,cache=none \
-  --agent 1 --onboot 1 \
-  --ide2 local:iso/alpine-virt-3.21.0-x86_64.iso,media=cdrom \
-  --boot order=ide2
-```
-
-Start and connect via Proxmox console:
-
-```bash
-qm start 420
-# Open noVNC console in Proxmox web UI → VM 420 → Console
-```
-
-Run the Alpine installer:
-
-```bash
-# Login as root (no password initially)
-setup-alpine
-```
-
-During `setup-alpine`, configure:
-
-| Prompt | Value |
-|--------|-------|
-| Keyboard layout | `us` |
-| Hostname | `redis-dev` (or `redis-staging`) |
-| Network interface | `eth0` |
-| IP address | `10.10.1.120/24` (or `.121`) |
-| Gateway | `10.10.1.1` |
-| DNS | `8.8.8.8 8.8.4.4` |
-| Timezone | `UTC` |
-| Root password | Set a strong password |
-| SSH server | `openssh` |
-| Disk | `sda`, type `sys` |
-
-After installation:
-
-```bash
-# Reboot and remove the ISO
-reboot
-
-# On Proxmox host — detach the ISO
-qm set 420 --ide2 none
-qm set 420 --boot order=scsi0
-```
-
-#### Option B — From Cloud-Init Template (Automated)
-
-If you have an Alpine cloud-init template already prepared:
-
-```bash
-# Dev VM
-qm clone <alpine-template-id> 420 --name redis-dev --full
-qm set 420 --cores 2 --cpu cputype=host --numa 0
-qm set 420 --memory 2048 --balloon 0
-qm set 420 --machine q35
-qm set 420 --net0 virtio,bridge=vmbr1
-qm set 420 --scsihw virtio-scsi-single
-qm set 420 --scsi0 local-lvm:16,iothread=1,discard=on,ssd=1,cache=none
-qm set 420 --agent 1 --onboot 1
-qm set 420 --ipconfig0 ip=10.10.1.120/24,gw=10.10.1.1
-qm start 420
-
-# Staging VM
-qm clone <alpine-template-id> 421 --name redis-staging --full
-qm set 421 --cores 2 --cpu cputype=host --numa 0
-qm set 421 --memory 4096 --balloon 0
-qm set 421 --machine q35
-qm set 421 --net0 virtio,bridge=vmbr1
-qm set 421 --scsihw virtio-scsi-single
-qm set 421 --scsi0 local-lvm:32,iothread=1,discard=on,ssd=1,cache=none
-qm set 421 --agent 1 --onboot 1
-qm set 421 --ipconfig0 ip=10.10.1.121/24,gw=10.10.1.1
-qm start 421
-```
-
-#### Creating an Alpine Cloud-Init Template
-
-If you don't have one yet, create a reusable template:
-
-```bash
-# 1. Install Alpine manually per Option A above (use a temporary VM ID)
-# 2. Inside the VM, install cloud-init:
-apk add cloud-init qemu-guest-agent e2fsprogs-extra util-linux
-
-# 3. Enable services
-rc-update add qemu-guest-agent
-rc-update add cloud-init-local boot
-rc-update add cloud-init default
-rc-update add cloud-config default
-rc-update add cloud-final default
-
-# 4. Configure cloud-init datasource
-cat > /etc/cloud/cloud.cfg.d/99-proxmox.cfg <<'EOF'
-datasource_list: [NoCloud, ConfigDrive]
-disable_root: false
-ssh_pwauth: true
-EOF
-
-# 5. Clean up and prepare for templating
-cloud-init clean
-rm -f /etc/machine-id
-truncate -s 0 /etc/hostname
-poweroff
-
-# 6. On Proxmox host — add cloud-init drive and convert to template
-qm set <temp-vm-id> --ide2 local-lvm:cloudinit
-qm template <temp-vm-id>
-```
-
-### A.3 Prepare Alpine VM (Replaces Section 6)
-
-SSH into the new VM and run the following setup.
-
-#### A.3.1 Enable Community Repository
-
-```bash
-# Uncomment the community repo line
-sed -i 's|#\(.*community\)|\1|' /etc/apk/repositories
-apk update
-```
-
-#### A.3.2 Install Essentials
-
-```bash
-apk add \
-  docker docker-cli-compose \
-  qemu-guest-agent \
-  iptables ip6tables \
-  awall \
-  curl \
-  bash \
-  sudo \
-  coreutils \
-  shadow
-```
-
-> `coreutils` provides GNU `date`, `find`, etc. needed by the backup script. `shadow` provides `useradd` for creating the `hope` user if not already done via cloud-init.
-
-#### A.3.3 Create Service User
-
-```bash
-# If not created during setup-alpine or cloud-init
-adduser -D hope
-echo "hope ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/hope
-addgroup hope docker
-```
-
-#### A.3.4 Enable Docker
-
-```bash
-rc-update add docker default
-rc-update add qemu-guest-agent
-service docker start
-service qemu-guest-agent start
-
-# Verify
-docker --version
-docker compose version
-```
-
-#### A.3.5 Create Directories
-
-```bash
-mkdir -p /opt/redis/{data,logs,backups}
-chown -R hope:hope /opt/redis
-```
-
-#### A.3.6 Configure Firewall (awall)
-
-Alpine uses **awall** (Alpine Wall), a JSON-based iptables frontend. It replaces UFW.
-
-```bash
-# Create the Redis firewall policy
-cat > /etc/awall/optional/redis.json <<'POLICY'
-{
-  "description": "Redis server firewall policy",
-
-  "zone": {
-    "internal": { "iface": "eth0" }
-  },
-
-  "filter": [
-    {
-      "in": "internal",
-      "src": "10.10.1.0/24",
-      "dest": "_fw",
-      "service": { "proto": "tcp", "port": 22 },
-      "action": "accept",
-      "comment": "SSH from internal network"
-    },
-    {
-      "in": "internal",
-      "src": "10.10.1.0/24",
-      "dest": "_fw",
-      "service": { "proto": "tcp", "port": 6379 },
-      "action": "accept",
-      "comment": "Redis from internal network"
-    },
-    {
-      "in": "internal",
-      "src": "10.10.1.0/24",
-      "dest": "_fw",
-      "service": { "proto": "tcp", "port": 9121 },
-      "action": "accept",
-      "comment": "redis-exporter from internal network"
-    },
-    {
-      "in": "internal",
-      "src": "10.10.1.2",
-      "dest": "_fw",
-      "action": "accept",
-      "comment": "CT 101 Cloudflare Tunnel full access"
-    }
-  ],
-
-  "policy": [
-    { "in": "_fw", "action": "accept" },
-    { "in": "internal", "action": "drop" }
-  ]
-}
-POLICY
-
-# Enable and activate
-awall enable redis
-awall activate
-
-# Persist across reboots
-rc-update add iptables
-rc-update add ip6tables
-```
-
-Verify:
-
-```bash
-awall list
-# → redis  enabled
-
-iptables -L -n
-# Should show ACCEPT rules for 22, 6379, 9121 from 10.10.1.0/24
-# and DROP for everything else
-```
-
-#### A.3.7 Restrict Docker-Published Ports
-
-Docker on Alpine also bypasses the host firewall. Add the `DOCKER-USER` chain restriction:
-
-```bash
-# Find interface name
-ip -br a
-# Likely eth0 on Alpine
-
-IFACE="eth0"
-
-# Create a local.d script (Alpine's equivalent of systemd oneshot)
-cat > /etc/local.d/docker-firewall.start <<EOF
-#!/bin/sh
-# Restrict Docker-published ports to private subnet only
-iptables -I DOCKER-USER -i ${IFACE} ! -s 10.10.1.0/24 -j DROP 2>/dev/null || true
-EOF
-
-chmod +x /etc/local.d/docker-firewall.start
-rc-update add local default
-
-# Apply immediately
-/etc/local.d/docker-firewall.start
-```
-
-Verify:
-
-```bash
-iptables -L DOCKER-USER -n -v
-# Expected: DROP rule for eth0, non-10.10.1.0/24 sources
-```
-
-#### A.3.8 Tune Kernel Parameters
-
-```bash
-cat > /etc/sysctl.d/99-redis.conf <<'EOF'
-vm.overcommit_memory = 1
-net.core.somaxconn = 65535
-EOF
-
-sysctl -p /etc/sysctl.d/99-redis.conf
-```
-
-Disable Transparent Huge Pages (Alpine uses `/etc/local.d/` instead of systemd):
-
-```bash
-cat > /etc/local.d/disable-thp.start <<'EOF'
-#!/bin/sh
-echo never > /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || true
-echo never > /sys/kernel/mm/transparent_hugepage/defrag 2>/dev/null || true
-EOF
-
-chmod +x /etc/local.d/disable-thp.start
-rc-update add local default
-
-# Apply now
-/etc/local.d/disable-thp.start
-
-# Verify
-cat /sys/kernel/mm/transparent_hugepage/enabled
-# → always madvise [never]
-```
-
-### A.4 Disk Expansion (Alpine)
-
-If you need to expand the disk later, the process differs from Ubuntu because Alpine typically uses a raw partition layout (no LVM):
+If you need to expand a Redis VM's disk later, Alpine uses a raw partition layout (no LVM by default):
 
 ```bash
 # On Proxmox host
 qm resize 420 scsi0 +8G
 
 # Inside the Alpine VM
-apk add parted e2fsprogs-extra
-
 # Check layout
 lsblk
 fdisk -l /dev/sda
@@ -1323,65 +1318,21 @@ resize2fs /dev/sda3
 df -h /
 ```
 
-> If Alpine was installed with LVM (`lvmsys` option), use the same LVM expansion commands as Ubuntu: `pvresize` → `lvextend` → `resize2fs`.
+> If Alpine was installed with LVM (`lvmsys` option), use LVM expansion commands: `pvresize` → `lvextend` → `resize2fs`.
 
-### A.5 Alpine-Specific Operational Differences
+---
 
-Once the VM is prepared, sections 7–16 of the main guide apply unchanged — Docker Compose, Redis config, backup script, and monitoring all work identically. The only differences are in host-level commands:
+## 18. Alpine Operational Reference
 
-| Task | Ubuntu (systemd) | Alpine (OpenRC) |
-|------|-----------------|-----------------|
-| Start a service | `sudo systemctl start docker` | `sudo service docker start` |
-| Enable at boot | `sudo systemctl enable docker` | `sudo rc-update add docker default` |
-| Check service status | `sudo systemctl status docker` | `sudo service docker status` |
-| View system logs | `journalctl -u docker -f` | `tail -f /var/log/messages` |
-| Reboot | `sudo systemctl reboot` | `sudo reboot` |
-| Firewall status | `sudo ufw status` | `awall list && iptables -L -n` |
-| Add firewall rule | `sudo ufw allow from ...` | Edit `/etc/awall/optional/redis.json` → `awall activate` |
-| Scheduled tasks | `crontab -e` or `/etc/cron.d/` | `crontab -e` (install `dcron`: `apk add dcron && rc-update add dcron default`) |
+Sections 7–16 of this guide use Docker Compose, which works identically on Alpine. The only differences are in host-level commands:
 
-### A.6 Install Cron (Required for Backups)
-
-Alpine doesn't include cron by default:
-
-```bash
-apk add dcron
-rc-update add dcron default
-service dcron start
-
-# Verify
-service dcron status
-```
-
-Then schedule the backup as described in section 12 of the main guide.
-
-### A.7 Alpine Verification Checklist
-
-```bash
-# OS info
-cat /etc/alpine-release
-# → 3.21.x
-
-# Docker
-docker --version && docker compose version
-
-# Firewall
-awall list
-iptables -L DOCKER-USER -n -v
-
-# Kernel tuning
-sysctl vm.overcommit_memory
-# → 1
-
-cat /sys/kernel/mm/transparent_hugepage/enabled
-# → always madvise [never]
-
-# Services enabled at boot
-rc-update show default
-# Should include: docker, qemu-guest-agent, local, dcron, iptables
-
-# Redis running
-docker compose -f /opt/redis/docker-compose.yml ps
-docker exec hope-redis redis-cli -a "$REDIS_PASS" ping
-# → PONG
-```
+| Task | Command |
+|------|---------|
+| Start a service | `sudo service docker start` |
+| Enable at boot | `sudo rc-update add docker default` |
+| Check service status | `sudo service docker status` |
+| View system logs | `tail -f /var/log/messages` |
+| Reboot | `sudo reboot` |
+| Firewall status | `awall list && iptables -L -n` |
+| Add firewall rule | Edit `/etc/awall/optional/redis.json` → `awall activate` |
+| Scheduled tasks | `crontab -e` |
