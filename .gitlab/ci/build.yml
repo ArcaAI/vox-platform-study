@@ -72,6 +72,30 @@ build-ui-playground:
         - packages/agentic-sdk-v2/**/*
         - packages/med-ner/**/*
 
+# ── Live Transcription Example UI ───────────────────────────────────────────
+
+build-example-ui:
+  extends: .build-template
+  needs:
+    - job: test-sdk
+      optional: true
+    - job: typecheck
+      optional: true
+  variables:
+    SERVICE_NAME: example-ui
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: apps/example/Dockerfile
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
+      when: never
+    - if: $PIPELINE_TYPE == "cicd"
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
+      changes:
+        - apps/example/**/*
+
 # ── NLP ──────────────────────────────────────────────────────────────────────
 
 build-nlp:
