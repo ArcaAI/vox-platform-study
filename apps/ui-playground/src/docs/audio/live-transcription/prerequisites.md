@@ -43,12 +43,12 @@ Settings vary by processing mode:
 |---------|----------|---------|-------------|
 | Microphone Sources | ✓ | ✓ | Select one or more input devices |
 | Audio Mixer | ✓ | ✓ | Mix multiple mic inputs with per-channel gain and mute |
-| Language | ✓ | ✓ | Set the transcription language |
+| Language | ✓ | Pipeline | Set the transcription language |
 | Whisper Model | ✓ | — | Choose model size (Tiny, Base, Small) |
 | Noise Cancellation | ✓ | ✓ | Toggle browser-level noise suppression with level control |
 | Voice Activity Detection | ✓ | — | Only transcribe detected speech segments |
-| Speaker Diarization | ✓ | ✓ | Identify and label different speakers |
-| Code-Switching | ✓ | ✓ | Detect multiple languages within a single stream |
+| Speaker Diarization | ✓ | Pipeline | Identify and label different speakers |
+| Code-Switching | ✓ | Pipeline | Detect multiple languages within a single stream |
 
 ---
 

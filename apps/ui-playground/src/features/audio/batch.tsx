@@ -30,7 +30,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AudioImpersonationBanner, AudioPageHeaderAction } from './components/audio-page-chrome';
 import { AudioTranscriptItem } from './components/audio-transcript-item';
-import { DEFAULT_TRANSCRIPTION_PIPELINE_ID, SUPPORTED_LANGUAGES } from './constants';
+import { DEFAULT_TRANSCRIPTION_PIPELINE_ID } from './constants';
 
 function FileUploadPanel({
     file,
@@ -138,10 +138,9 @@ function FileUploadPanel({
 
 function BatchTranscriptPanel() {
     const fileTranscription = useFileTranscription();
-    const { diarizationEnabled, codeSwitchingEnabled, selectedPipelineId, setSelectedPipelineId } = useAudioStore();
+    const { selectedPipelineId, setSelectedPipelineId } = useAudioStore();
     const { pipelines, isLoading: pipelinesLoading, error: pipelinesError, list: listPipelines } = usePipelines();
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [language, setLanguage] = useState('en');
 
     useEffect(() => {
         listPipelines();
@@ -182,15 +181,12 @@ function BatchTranscriptPanel() {
         try {
             await fileTranscription.upload(selectedFile, {
                 pipelineId: selectedPipelineId || DEFAULT_TRANSCRIPTION_PIPELINE_ID,
-                language: language || undefined,
-                codeSwitching: codeSwitchingEnabled,
-                diarization: diarizationEnabled,
             });
             toast.success(`Upload complete. Job: ${fileTranscription.jobId?.slice(0, 12) ?? ''}...`);
         } catch (err) {
             toast.error(`Upload failed: ${err instanceof Error ? err.message : 'Unknown'}`);
         }
-    }, [selectedFile, fileTranscription, language, codeSwitchingEnabled, diarizationEnabled, selectedPipelineId]);
+    }, [selectedFile, fileTranscription, selectedPipelineId]);
 
     const handleReset = useCallback(() => {
         fileTranscription.reset();
@@ -246,29 +242,6 @@ function BatchTranscriptPanel() {
                     </CardContent>
                 </Card>
 
-                <Card data-doc="language">
-                    <CardHeader className="pb-3">
-                        <div className="flex items-center gap-2">
-                            <Languages className="size-4" />
-                            <CardTitle className="text-sm">Language</CardTitle>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <Select value={language} onValueChange={setLanguage} disabled={isProcessing}>
-                            <SelectTrigger className="h-8 text-xs">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {SUPPORTED_LANGUAGES.map((lang) => (
-                                    <SelectItem key={lang.value} value={lang.value}>
-                                        {lang.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </CardContent>
-                </Card>
-
                 <Card>
                     <CardHeader className="pb-3">
                         <div className="flex items-center gap-2">
@@ -317,9 +290,6 @@ function BatchTranscriptPanel() {
                             <span className="text-muted-foreground text-[10px]">
                                 {fileTranscription.transcripts.length} segments | {wordCount} words
                             </span>
-                            <Badge variant={diarizationEnabled ? 'default' : 'outline'} className="text-[10px]">
-                                {diarizationEnabled ? 'Diarization on' : 'Diarization off'}
-                            </Badge>
                         </div>
                         <div className="flex items-center gap-2">
                             <Button

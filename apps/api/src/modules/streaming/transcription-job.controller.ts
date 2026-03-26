@@ -127,8 +127,6 @@ export class TranscriptionJobController {
             pipelineId: body.pipelineId,
             mediaId,
             consultationId: body.consultationId,
-            language: body.language,
-            codeSwitching: body.codeSwitching,
         });
 
         // 3. Build MinIO path (must match STT-v2 StoragePathResolver.audio_path)
@@ -162,8 +160,6 @@ export class TranscriptionJobController {
                 audioUri,
                 consultationId: body.consultationId,
                 mediaId,
-                language: body.language,
-                codeSwitching: body.codeSwitching,
             });
         } catch (error) {
             // If upload or dispatch fails, mark the job as failed
@@ -228,9 +224,6 @@ export class TranscriptionJobController {
             pipelineId: body.pipelineId,
             consultationId: body.consultationId,
             sampleRate: body.sampleRate ?? 16000,
-            language: body.language,
-            codeSwitching: body.codeSwitching,
-            diarization: body.diarization,
         });
 
         if (!result) {

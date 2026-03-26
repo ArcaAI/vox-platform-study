@@ -7,7 +7,7 @@ Identifies and labels different speakers in the transcript. Each segment is tagg
 ### How It Works
 
 - In Local AI mode, the Whisper model is configured with `diarization: true` and `numSpeakers: 2`
-- In Backend mode, the diarization flag is sent as part of the WebSocket session config
+- In Backend mode, diarization is configured in the pipeline
 - Speaker labels are resolved through a profile system and displayed as badges in the transcript
 
 <!-- @example -->
@@ -25,8 +25,8 @@ const stt = useSTT({
   },
 });
 
-// Backend
-await realtime.start({ diarization: true });
+// Backend — diarization is configured in the pipeline
+await realtime.start({ pipelineId: 'diarization-pipeline' });
 ```
 
 <!-- @/example -->

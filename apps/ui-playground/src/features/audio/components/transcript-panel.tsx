@@ -436,12 +436,9 @@ async function prepareMixedMicrophoneStream(
 
 function BackendSocketTranscript() {
     const {
-        language,
         sources,
         isMixing,
-        codeSwitchingEnabled,
         noiseFilterEnabled,
-        diarizationEnabled,
         selectedPipelineId,
     } = useAudioStore();
     const realtime = useRealtimeTranscription();
@@ -468,12 +465,9 @@ function BackendSocketTranscript() {
 
             await realtime.start({
                 pipelineId: selectedPipelineId || DEFAULT_TRANSCRIPTION_PIPELINE_ID,
-                language: language || undefined,
                 sampleRate: 16000,
                 deviceId: preparedMixedInput ? undefined : micSources[0]?.deviceId,
                 stream: preparedMixedInput?.stream,
-                codeSwitching: codeSwitchingEnabled || undefined,
-                diarization: diarizationEnabled,
                 echoCancellation: true,
                 noiseSuppression: noiseFilterEnabled,
                 autoGainControl: true,
@@ -486,13 +480,10 @@ function BackendSocketTranscript() {
             toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
     }, [
-        language,
         micSources,
         realtime,
         shouldUseMixedInput,
-        codeSwitchingEnabled,
         noiseFilterEnabled,
-        diarizationEnabled,
         selectedPipelineId,
     ]);
 

@@ -177,16 +177,12 @@ describe('TranscriptionJobController', () => {
 
             const result = await controller.createStreamSession({
                 pipelineId: 'pipe-1',
-                language: 'en-US',
-                diarization: true,
             });
 
             expect(mockSessionService.createSession).toHaveBeenCalledWith(
                 expect.objectContaining({
                     pipelineId: 'pipe-1',
                     tenantId: 'tenant-1',
-                    language: 'en-US',
-                    diarization: true,
                 }),
             );
             expect(result).toMatchObject({
