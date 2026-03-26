@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
 
@@ -24,7 +24,7 @@ class MedicalSuggester:
 
     async def initialize(self) -> None:
         try:
-            logger.info(f"Initializing MedicalSuggester service")
+            logger.info("Initializing MedicalSuggester service")
 
             tokenizer = AutoTokenizer.from_pretrained(self.config.tokenizer_name)
             model = AutoModelForSequenceClassification.from_pretrained(self.config.model_name)

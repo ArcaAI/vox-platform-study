@@ -1,14 +1,13 @@
 """Unit tests for updated Pipeline DTOs (diarization, KSERVE, and ONNX quantization)."""
 
-import pytest
 
 from stt_v2.pipeline.dto import (
     VALID_ONNX_QUANTIZATIONS,
     AiModelFormat,
     AiModelSource,
     DiarizationConfig,
-    InlineModelDef,
     InferenceConfig,
+    InlineModelDef,
     ModelRef,
     ModelRefs,
     ModelTaskType,
@@ -16,7 +15,6 @@ from stt_v2.pipeline.dto import (
     PostprocessingConfig,
     PreprocessingConfig,
 )
-
 
 # =============================================================================
 # DIARIZATION CONFIG TESTS

@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
-from nlp.schemas.common import ModelType, Entity, WebSocketMessageType, SupportedLanguage
+from nlp.schemas.common import Entity, SupportedLanguage
 
 # REST
 

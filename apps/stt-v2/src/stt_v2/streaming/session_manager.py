@@ -16,15 +16,18 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from datetime import datetime
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 import numpy as np
 import structlog
 
 from stt_v2.core.config.settings import get_settings
+from stt_v2.storage.blob_service import BlobService
 from stt_v2.streaming.capacity_guard import CapacityGuard
 from stt_v2.streaming.execution_profile import ExecutionProfile
 from stt_v2.streaming.inference import StreamingInferenceWorker
@@ -83,6 +86,11 @@ class SessionManager:
         self._inference_tasks: dict[str, asyncio.Task[None]] = {}
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._reaper_task: asyncio.Task[None] | None = None
+        self._snapshot_task: asyncio.Task[None] | None = None
+        self._blob_service: BlobService | None = None
+        self._last_snapshot_at: dict[str, float] = {}
+        self._chunk_indices: dict[str, int] = {}
+        self._chunk_offsets: dict[str, int] = {}
         self._running = False
 
         # Cache settings values at init time to avoid calling get_settings()
@@ -102,6 +110,7 @@ class SessionManager:
             self._inference_stop_timeout_s = float(
                 getattr(_settings, "streaming_inference_stop_timeout_s", 30.0)
             )
+            self._snapshot_interval_s = _settings.streaming_snapshot_interval_s
         except Exception:
             self._reaper_interval_s = 300
             self._session_timeout_s = 60
@@ -110,6 +119,7 @@ class SessionManager:
             self._inference_queue_maxsize = 64
             self._inference_drain_timeout_s = 60.0
             self._inference_stop_timeout_s = 30.0
+            self._snapshot_interval_s = 30.0
 
     # ------------------------------------------------------------------
     # Properties
@@ -153,6 +163,11 @@ class SessionManager:
             self._reaper_loop(), name="session-reaper"
         )
 
+        # Start audio snapshot loop
+        self._snapshot_task = asyncio.create_task(
+            self._snapshot_loop(), name="audio-snapshot"
+        )
+
         logger.info(
             "SessionManager started",
             worker_id=self._worker_id,
@@ -165,7 +180,7 @@ class SessionManager:
         self._running = False
 
         # Cancel background tasks
-        for task in (self._heartbeat_task, self._reaper_task):
+        for task in (self._heartbeat_task, self._reaper_task, self._snapshot_task):
             if task and not task.done():
                 task.cancel()
                 try:
@@ -363,6 +378,34 @@ class SessionManager:
         """Retrieve the result publisher for a session."""
         return self._publishers.get(session_id)
 
+    async def end_session(self, session_id: str) -> None:
+        """Gracefully end a session — finalize (upload artifacts) then remove.
+
+        This is the public entry-point for API routes (DELETE, POST end).
+        It flushes any pending utterance, drains the inference queue, and
+        calls ``_finalize_session`` which uploads remaining PCM chunks,
+        ``complete.wav``, ``transcript.json``, and ``metadata.json``
+        before cleaning up.
+        """
+        session = self._sessions.get(session_id)
+        if session is None:
+            return
+
+        try:
+            await self._flush_final_utterance(
+                session=session,
+                preprocessor=self._preprocessors.get(session_id),
+            )
+            await self._drain_inference_queue(session_id)
+            await self._finalize_session(session)
+        except Exception as exc:
+            logger.error(
+                "Failed to end session gracefully; forcing removal",
+                session_id=session_id,
+                error=str(exc),
+            )
+            await self.remove_session(session_id)
+
     async def remove_session(self, session_id: str) -> None:
         """Remove a session, stopping its consumers and releasing capacity."""
         # Stop consumer and listener
@@ -402,6 +445,9 @@ class SessionManager:
         self._inference_queues.pop(session_id, None)
         self._inference_tasks.pop(session_id, None)
         self._sessions.pop(session_id, None)
+        self._last_snapshot_at.pop(session_id, None)
+        self._chunk_indices.pop(session_id, None)
+        self._chunk_offsets.pop(session_id, None)
 
         # Release capacity (must happen even if other cleanup fails)
         try:
@@ -657,7 +703,7 @@ class SessionManager:
             return
         try:
             await asyncio.wait_for(queue.join(), timeout=self._inference_drain_timeout_s)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "Inference queue drain timed out",
                 session_id=session_id,
@@ -675,7 +721,7 @@ class SessionManager:
                 if not force_cancel:
                     try:
                         await asyncio.wait_for(queue.put(None), timeout=1.0)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning(
                             "Timed out enqueueing inference sentinel",
                             session_id=session_id,
@@ -692,7 +738,7 @@ class SessionManager:
         if task is not None and not task.done():
             try:
                 await asyncio.wait_for(task, timeout=self._inference_stop_timeout_s)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if force_cancel:
                     task.cancel()
                     try:
@@ -860,7 +906,7 @@ class SessionManager:
                     await asyncio.wait_for(
                         queue.put(final_utt), timeout=self._inference_stop_timeout_s
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning(
                         "Timed out enqueueing final utterance; falling back to inline",
                         session_id=session.session_id,
@@ -880,8 +926,14 @@ class SessionManager:
                 error=str(exc),
             )
 
+    def _get_blob_service(self) -> BlobService:
+        """Lazy-init BlobService singleton."""
+        if self._blob_service is None:
+            self._blob_service = BlobService()
+        return self._blob_service
+
     async def _finalize_session(self, session: StreamSession) -> None:
-        """Finalize a session — mark finalizing, close, and clean up.
+        """Finalize a session — mark finalizing, upload recordings, close, and clean up.
 
         Callers must drain the inference queue *before* calling this
         method so that all utterances have been transcribed.
@@ -890,6 +942,9 @@ class SessionManager:
             return
 
         publisher = self._publishers.get(session.session_id)
+        raw_audio_uri: str | None = None
+        transcript_uri: str | None = None
+
         try:
             if session.status == SessionStatus.ACTIVE:
                 await session.finalize()
@@ -898,19 +953,103 @@ class SessionManager:
                 if publisher:
                     await publisher.publish_status("finalizing")
 
-            # Close the session (no audio URIs yet — Phase 4 adds recording)
-            await session.close()
+            # Upload audio + transcript + metadata
+            if len(session.audio_buffer) > 0:
+                blob = self._get_blob_service()
 
-            if publisher:
-                await publisher.publish_status("closed")
+                # Upload any remaining PCM chunk
+                offset = self._chunk_offsets.get(session.session_id, 0)
+                if offset < len(session.audio_buffer):
+                    try:
+                        remaining = bytes(session.audio_buffer[offset:])
+                        chunk_idx = self._chunk_indices.get(session.session_id, 0)
+                        await blob.upload_streaming_raw_chunk(
+                            chunk_bytes=remaining,
+                            tenant_id=session.tenant_id,
+                            session_id=session.session_id,
+                            chunk_index=chunk_idx,
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "Failed to upload remaining PCM chunk (non-fatal)",
+                            session_id=session.session_id,
+                            error=str(exc),
+                        )
+
+                # Upload final combined WAV
+                try:
+                    wav_bytes = session.encode_wav()
+                    raw_audio_uri = await blob.upload_streaming_raw_complete(
+                        wav_bytes=wav_bytes,
+                        tenant_id=session.tenant_id,
+                        session_id=session.session_id,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Failed to upload complete WAV (non-fatal)",
+                        session_id=session.session_id,
+                        error=str(exc),
+                    )
+
+                # Upload transcript
+                try:
+                    transcript_bytes = session.build_transcript_json()
+                    transcript_uri = await blob.upload_streaming_transcript(
+                        transcript_bytes=transcript_bytes,
+                        tenant_id=session.tenant_id,
+                        session_id=session.session_id,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Failed to upload transcript (non-fatal)",
+                        session_id=session.session_id,
+                        error=str(exc),
+                    )
+
+                # Upload metadata
+                try:
+                    metadata_bytes = session.build_metadata_json()
+                    await blob.upload_streaming_metadata(
+                        metadata_bytes=metadata_bytes,
+                        tenant_id=session.tenant_id,
+                        session_id=session.session_id,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Failed to upload metadata (non-fatal)",
+                        session_id=session.session_id,
+                        error=str(exc),
+                    )
+
+                if raw_audio_uri or transcript_uri:
+                    logger.info(
+                        "Session recordings uploaded",
+                        session_id=session.session_id,
+                        raw_audio_uri=raw_audio_uri,
+                        transcript_uri=transcript_uri,
+                    )
         except Exception as exc:
             logger.error(
-                "Session finalization failed; forcing cleanup",
+                "Session finalization failed; will still attempt close",
                 session_id=session.session_id,
-                status=status,
+                status=session.status.value,
                 error=str(exc),
             )
         finally:
+            # session.close() must always execute, regardless of errors above.
+            try:
+                await session.close(
+                    raw_audio_uri=raw_audio_uri,
+                    transcript_uri=transcript_uri,
+                )
+                if publisher:
+                    await publisher.publish_status("closed")
+            except Exception as close_exc:
+                logger.error(
+                    "session.close() itself failed",
+                    session_id=session.session_id,
+                    error=str(close_exc),
+                )
             # Always clean up in-memory and capacity state, even if graceful close failed.
             await self.remove_session(session.session_id)
 
@@ -1165,6 +1304,61 @@ class SessionManager:
                     await self.remove_session(session_id)
 
         return len(to_reap)
+
+    # ------------------------------------------------------------------
+    # Audio snapshot loop
+    # ------------------------------------------------------------------
+
+    async def _snapshot_loop(self) -> None:
+        """Periodically upload raw PCM chunks for active sessions."""
+        try:
+            while self._running:
+                await asyncio.sleep(self._snapshot_interval_s)
+                for session_id, session in list(self._sessions.items()):
+                    if session.status != SessionStatus.ACTIVE:
+                        continue
+                    offset = self._chunk_offsets.get(session_id, 0)
+                    if offset >= len(session.audio_buffer):
+                        continue
+                    last = self._last_snapshot_at.get(session_id, 0.0)
+                    if (time.monotonic() - last) < self._snapshot_interval_s:
+                        continue
+                    await self._upload_snapshot(session)
+        except asyncio.CancelledError:
+            pass
+
+    async def _upload_snapshot(self, session: StreamSession) -> None:
+        """Upload the next raw PCM chunk of new audio since last snapshot."""
+        try:
+            offset = self._chunk_offsets.get(session.session_id, 0)
+            chunk_data = bytes(session.audio_buffer[offset:])
+            if not chunk_data:
+                return
+
+            chunk_idx = self._chunk_indices.get(session.session_id, 0)
+            blob = self._get_blob_service()
+            await blob.upload_streaming_raw_chunk(
+                chunk_bytes=chunk_data,
+                tenant_id=session.tenant_id,
+                session_id=session.session_id,
+                chunk_index=chunk_idx,
+            )
+
+            self._chunk_offsets[session.session_id] = len(session.audio_buffer)
+            self._chunk_indices[session.session_id] = chunk_idx + 1
+            self._last_snapshot_at[session.session_id] = time.monotonic()
+            logger.info(
+                "Audio chunk uploaded",
+                session_id=session.session_id,
+                chunk_index=chunk_idx,
+                chunk_bytes=len(chunk_data),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Audio chunk upload failed (non-fatal)",
+                session_id=session.session_id,
+                error=str(exc),
+            )
 
     # ------------------------------------------------------------------
     # Worker heartbeat

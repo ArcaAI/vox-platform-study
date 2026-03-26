@@ -9,11 +9,9 @@ Tests cover:
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from smr_v2.core.config import Settings
@@ -33,7 +31,6 @@ from smr_v2.core.exceptions import (
 )
 from smr_v2.models.task import TaskState, TaskStatus
 from smr_v2.providers.base import ProviderRegistry
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -308,8 +305,9 @@ class TestExceptionHandlerHeaders:
 class TestExceptionHandlerBody:
     @pytest.mark.asyncio
     async def test_handler_response_includes_error_code(self):
-        from smr_v2.core.exception_handlers import smr_exception_handler
         import json
+
+        from smr_v2.core.exception_handlers import smr_exception_handler
 
         exc = CircuitOpenError(provider="azure")
         resp = await smr_exception_handler(MagicMock(), exc)
@@ -319,8 +317,9 @@ class TestExceptionHandlerBody:
 
     @pytest.mark.asyncio
     async def test_handler_response_includes_detail_message(self):
-        from smr_v2.core.exception_handlers import smr_exception_handler
         import json
+
+        from smr_v2.core.exception_handlers import smr_exception_handler
 
         exc = ProviderError("GPU OOM", provider="ollama")
         resp = await smr_exception_handler(MagicMock(), exc)

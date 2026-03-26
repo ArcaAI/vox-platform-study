@@ -6,8 +6,6 @@ from fastapi import WebSocket, WebSocketDisconnect
 from datetime import datetime, timezone
 
 from nlp.schemas.common import WebSocketMessage, WebSocketMessageType
-from nlp.services.token_classifier import TokenClassifier
-from nlp.services.text_classifier import TextClassifier
 from nlp.utils import get_current_time
 
 logger = logging.getLogger(__name__)

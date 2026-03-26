@@ -70,10 +70,12 @@ class StreamSession:
             _default_persist = _settings.streaming_session_persist_interval_s
             _default_stream_ttl = _settings.streaming_result_stream_expire_s
             _default_meta_ttl = _settings.streaming_session_metadata_expire_s
+            _default_max_audio = _settings.streaming_max_audio_buffer_bytes
         except Exception:
             _default_persist = 5.0
             _default_stream_ttl = 3600
             _default_meta_ttl = 86400
+            _default_max_audio = 500_000_000
 
         self._persist_interval_s = (
             persist_interval_s if persist_interval_s is not None else _default_persist
@@ -84,6 +86,8 @@ class StreamSession:
         self._session_metadata_expire_s = (
             session_metadata_expire_s if session_metadata_expire_s is not None else _default_meta_ttl
         )
+        self._max_audio_buffer_bytes: int = _default_max_audio
+        self._audio_buffer_warned: bool = False
         self._last_persisted_at: float = 0.0
 
         # ---- Tier-2: in-memory ephemeral state ----
@@ -95,6 +99,9 @@ class StreamSession:
         self.silence_counter_ms: int = 0
         self.results: list[SegmentResult] = []
         self.pending_segments: asyncio.Queue[Any] = asyncio.Queue()
+
+        # Full-session audio accumulator (append-only, never trimmed)
+        self.audio_buffer: bytearray = bytearray()
 
         # Ring buffer overflow throttle state
         self._overflow_window_start: float = 0.0
@@ -184,6 +191,18 @@ class StreamSession:
         self._metadata.last_activity = datetime.utcnow().isoformat()
         self._metadata.sample_rate = sample_rate
 
+        # Append to full-session accumulator (cap enforced)
+        if len(self.audio_buffer) + len(data) <= self._max_audio_buffer_bytes:
+            self.audio_buffer.extend(data)
+        elif not self._audio_buffer_warned:
+            self._audio_buffer_warned = True
+            logger.warning(
+                "Audio buffer cap reached — new frames will be dropped",
+                session_id=self.session_id,
+                buffer_bytes=len(self.audio_buffer),
+                cap_bytes=self._max_audio_buffer_bytes,
+            )
+
         # Append to ring buffer (cap at ~30 s of 16 kHz mono 16-bit = ~960 KB)
         max_ring_bytes = sample_rate * 2 * 30  # 30 seconds per TASK-014 design
         self.ring_buffer.extend(data)
@@ -236,6 +255,86 @@ class StreamSession:
     def add_result(self, result: SegmentResult) -> None:
         """Append a completed transcription segment."""
         self.results.append(result)
+
+    # ------------------------------------------------------------------
+    # Audio encoding
+    # ------------------------------------------------------------------
+
+    def encode_wav(self) -> bytes:
+        """Encode the full ``audio_buffer`` as a WAV file.
+
+        The buffer contains raw PCM s16le samples, so no sample
+        conversion is needed — frames are written directly.
+
+        Returns:
+            WAV file bytes (empty WAV if buffer is empty).
+        """
+        import io
+        import wave
+
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)  # 16-bit
+            wf.setframerate(self.sample_rate)
+            wf.writeframes(bytes(self.audio_buffer))
+        return buf.getvalue()
+
+    def build_transcript_json(self) -> bytes:
+        """Build a JSON transcript from accumulated results.
+
+        Returns:
+            UTF-8 encoded JSON bytes with session metadata and segments.
+        """
+        import json
+
+        segments = []
+        for r in self.results:
+            seg: dict[str, Any] = {
+                "text": r.text,
+                "start_time": round(r.start_time, 4),
+                "end_time": round(r.end_time, 4),
+                "is_final": r.is_final,
+            }
+            if r.speaker_id:
+                seg["speaker_id"] = r.speaker_id
+                seg["speaker_confidence"] = round(r.speaker_confidence, 4)
+            if r.word_timestamps:
+                seg["word_timestamps"] = r.word_timestamps
+            segments.append(seg)
+
+        transcript = {
+            "session_id": self.session_id,
+            "tenant_id": self.tenant_id,
+            "consultation_id": self.consultation_id,
+            "total_duration_seconds": round(self.total_duration_seconds, 4),
+            "segment_count": len(segments),
+            "segments": segments,
+        }
+        return json.dumps(transcript, ensure_ascii=False).encode("utf-8")
+
+    def build_metadata_json(self) -> bytes:
+        """Build a JSON metadata document for the session.
+
+        Returns:
+            UTF-8 encoded JSON bytes with session metadata and pipeline config.
+        """
+        import json
+
+        metadata: dict[str, Any] = {
+            "session_id": self.session_id,
+            "tenant_id": self.tenant_id,
+            "pipeline_id": self.pipeline_id,
+            "consultation_id": self.consultation_id,
+            "sample_rate": self.sample_rate,
+            "total_duration_seconds": round(self.total_duration_seconds, 4),
+            "total_samples_received": self.total_samples_received,
+            "utterance_count": self.utterance_count,
+            "created_at": self.created_at,
+            "last_activity": self.last_activity,
+            "audio_buffer_bytes": len(self.audio_buffer),
+        }
+        return json.dumps(metadata, ensure_ascii=False).encode("utf-8")
 
     # ------------------------------------------------------------------
     # Tier-1 persistence
@@ -348,5 +447,6 @@ class StreamSession:
             "sample_rate": self.sample_rate,
             "results_count": len(self.results),
             "ring_buffer_bytes": len(self.ring_buffer),
+            "audio_buffer_bytes": len(self.audio_buffer),
             "pending_segments": self.pending_segments.qsize(),
         }

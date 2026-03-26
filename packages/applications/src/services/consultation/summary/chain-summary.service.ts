@@ -16,6 +16,7 @@ import {
     ContextItemEntity,
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
+import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-v2-generate';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
@@ -370,7 +371,21 @@ export class ChainSummaryService extends BaseService {
             sourceConsultationId: string;
         }>> | undefined,
         request: ComprehensiveSummaryRequest,
-    ): Promise<Record<string, unknown>> {
+    ): Promise<{
+        assembledPrompt: {
+            userPrompt: string;
+            systemPrompt: string;
+            hyperparameters: Record<string, number>;
+            responseFormat: {
+                type: string;
+                json_schema: Record<string, unknown>;
+                strict: boolean;
+            } | null;
+            resolvedFrom: string;
+        };
+        options?: Record<string, unknown>;
+        context: Record<string, unknown>;
+    }> {
         // Build a structured text from all sections
         const sectionTexts = sections.map((section, index) => {
             const header = [
@@ -407,12 +422,13 @@ export class ChainSummaryService extends BaseService {
         });
 
         return {
-            text: assembledPrompt.userPrompt,
-            dnaStyleId: request.dnaStyleId,
-            template: request.template ?? 'comprehensive',
-            includeNER: request.includeNER,
-            options: {
-                ...request.options,
+            assembledPrompt,
+            options: request.options,
+            context: {
+                dnaStyleId: request.dnaStyleId,
+                template: request.template ?? 'comprehensive',
+                includeNER: request.includeNER,
+                summaryType: 'summary',
                 promptResolvedFrom: assembledPrompt.resolvedFrom,
                 promptHyperparameters: assembledPrompt.hyperparameters,
                 isComprehensiveSummary: true,
@@ -426,7 +442,21 @@ export class ChainSummaryService extends BaseService {
      * Call the SMR service for comprehensive summary generation.
      */
     private async callSmrService(
-        payload: Record<string, unknown>,
+        payload: {
+            assembledPrompt: {
+                userPrompt: string;
+                systemPrompt: string;
+                hyperparameters: Record<string, number>;
+                responseFormat: {
+                    type: string;
+                    json_schema: Record<string, unknown>;
+                    strict: boolean;
+                } | null;
+                resolvedFrom: string;
+            };
+            options?: Record<string, unknown>;
+            context: Record<string, unknown>;
+        },
         request: ComprehensiveSummaryRequest,
     ): Promise<{
         summary: string;
@@ -437,9 +467,14 @@ export class ChainSummaryService extends BaseService {
         outputTokens?: number;
     }> {
         try {
+            const smrPayload = buildSmrGeneratePayload(
+                payload.assembledPrompt,
+                payload.options,
+                payload.context,
+            );
             const response = await this.httpService.axiosRef.post(
-                `${this.smrServiceUrl}/api/v1/summary/sync`,
-                payload,
+                `${this.smrServiceUrl}/api/v1/generate`,
+                smrPayload,
                 {
                     timeout: 180000,
                     headers: {
@@ -448,7 +483,7 @@ export class ChainSummaryService extends BaseService {
                     },
                 },
             );
-            return response.data;
+            return mapSmrGenerateResponse(response.data);
         } catch (error) {
             this.logger.error({
                 message: 'SMR service call failed for comprehensive summary',

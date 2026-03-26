@@ -4,8 +4,10 @@ Tests verify actual payload construction and HTTP request behavior for the
 new lifecycle methods added to match NestJS SttInternalController endpoints.
 """
 
-import pytest
+from datetime import UTC
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from stt_v2.core.api_client.gateway import APIGatewayClient
 from stt_v2.core.exceptions import APIGatewayError
@@ -334,7 +336,7 @@ class TestLegacyUpdateJobStatus:
     @pytest.mark.asyncio
     async def test_started_at_datetime_serialized_to_iso(self, client):
         """Verify started_at datetime is converted to ISO 8601 string."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         captured_json = None
 
@@ -343,7 +345,7 @@ class TestLegacyUpdateJobStatus:
             captured_json = json
             return {"id": "j-1"}
 
-        started = datetime(2026, 2, 10, 14, 30, 0, tzinfo=timezone.utc)
+        started = datetime(2026, 2, 10, 14, 30, 0, tzinfo=UTC)
 
         with patch.object(client, "_request", side_effect=capture_request):
             await client.update_job_status(
@@ -360,7 +362,7 @@ class TestLegacyUpdateJobStatus:
     @pytest.mark.asyncio
     async def test_completed_at_datetime_serialized_to_iso(self, client):
         """Verify completed_at datetime is converted to ISO 8601 string."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         captured_json = None
 
@@ -369,7 +371,7 @@ class TestLegacyUpdateJobStatus:
             captured_json = json
             return {"id": "j-1"}
 
-        completed = datetime(2026, 2, 10, 15, 0, 0, tzinfo=timezone.utc)
+        completed = datetime(2026, 2, 10, 15, 0, 0, tzinfo=UTC)
 
         with patch.object(client, "_request", side_effect=capture_request):
             await client.update_job_status(
@@ -385,7 +387,7 @@ class TestLegacyUpdateJobStatus:
     @pytest.mark.asyncio
     async def test_all_optional_fields_included(self, client):
         """Verify all optional fields are included when provided."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         captured_json = None
 
@@ -399,8 +401,8 @@ class TestLegacyUpdateJobStatus:
                 "j-1",
                 "FAILED",
                 progress=50,
-                started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-                completed_at=datetime(2026, 1, 1, 0, 5, 0, tzinfo=timezone.utc),
+                started_at=datetime(2026, 1, 1, tzinfo=UTC),
+                completed_at=datetime(2026, 1, 1, 0, 5, 0, tzinfo=UTC),
                 error_code="TIMEOUT",
                 error_message="Processing timed out after 10m",
                 worker_id="w-42",

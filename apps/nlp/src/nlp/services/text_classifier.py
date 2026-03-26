@@ -1,5 +1,4 @@
 import torch
-import re
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
@@ -52,7 +51,7 @@ class TransformerTextClassifier(TextClassifier):
     async def initialize(self) -> None:
         """Load transformer text classification model"""
         try:
-            logger.info(f"Initializing TextClassifier service.")
+            logger.info("Initializing TextClassifier service.")
 
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
@@ -90,7 +89,7 @@ class TransformerTextClassifier(TextClassifier):
                 model_version=self.version,
             )
 
-        except Exception as e:
+        except Exception:
             return TextClassificationResponse(
                 predicted_label="other",
                 confidence=0.0,

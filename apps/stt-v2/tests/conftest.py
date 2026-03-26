@@ -32,8 +32,9 @@ This conftest provides fixtures that work with both:
 
 import asyncio
 import os
+from collections.abc import Generator
+
 import pytest
-from typing import Generator, Optional
 
 # Test infrastructure ports (matching monorepo's tests/docker-compose.test.yml)
 TEST_DB_PORT = 5433
@@ -149,7 +150,7 @@ def _get_platform_type() -> str:
 
 def skip_if_not_cuda():
     """Return pytest skip marker if CUDA is not available."""
-    from stt_v2.core.platform import detect_platform, PlatformType
+    from stt_v2.core.platform import PlatformType, detect_platform
 
     platform_type = detect_platform()
     return pytest.mark.skipif(
@@ -160,7 +161,7 @@ def skip_if_not_cuda():
 
 def skip_if_not_mps():
     """Return pytest skip marker if MPS is not available."""
-    from stt_v2.core.platform import detect_platform, PlatformType
+    from stt_v2.core.platform import PlatformType, detect_platform
 
     platform_type = detect_platform()
     return pytest.mark.skipif(
@@ -171,7 +172,7 @@ def skip_if_not_mps():
 
 def skip_if_not_gpu():
     """Return pytest skip marker if no GPU is available."""
-    from stt_v2.core.platform import detect_platform, PlatformType
+    from stt_v2.core.platform import PlatformType, detect_platform
 
     platform_type = detect_platform()
     return pytest.mark.skipif(
@@ -332,8 +333,9 @@ def minio_config():
 @pytest.fixture
 def sample_audio_bytes():
     """Generate sample WAV audio bytes."""
-    import struct
     import io
+    import struct
+
     import numpy as np
 
     sample_rate = 16000
@@ -390,14 +392,15 @@ postprocessing:
 def sample_pipeline_config():
     """Sample parsed pipeline config."""
     from datetime import datetime
+
     from stt_v2.pipeline.dto import (
+        InferenceConfig,
+        ModelRef,
+        ModelRefs,
         PipelineConfig,
         PipelineSpec,
-        ModelRefs,
-        ModelRef,
-        PreprocessingConfig,
-        InferenceConfig,
         PostprocessingConfig,
+        PreprocessingConfig,
     )
 
     return PipelineConfig(

@@ -5,9 +5,9 @@ in the db_engine fixture) rather than manually creating tables. This ensures the
 schema matches the real model definitions including enum types and constraints.
 """
 
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,7 +40,7 @@ class TestAsrPipelineRead:
     @pytest.mark.asyncio
     async def test_insert_and_read_pipeline(self, db_session: AsyncSession):
         """Test inserting and reading pipeline."""
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(UTC).replace(tzinfo=None)
 
         await db_session.execute(text("""
             INSERT INTO core."AsrPipeline" (
@@ -76,7 +76,7 @@ class TestAiModelRead:
     @pytest.mark.asyncio
     async def test_insert_and_read_model(self, db_session: AsyncSession):
         """Test inserting and reading AI model."""
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(UTC).replace(tzinfo=None)
 
         await db_session.execute(text("""
             INSERT INTO core."AiModel" (

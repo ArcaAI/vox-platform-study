@@ -3,14 +3,12 @@
 Tests float16 auto-detection for MPS and the cleanup_accelerator_memory utility.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from stt_v2.models.base_loader import BaseModelLoader, LoadedModel, cleanup_accelerator_memory
+from stt_v2.models.base_loader import cleanup_accelerator_memory
 from stt_v2.models.huggingface_loader import HuggingFaceLoader
-from stt_v2.pipeline.dto import AiModelFormat
-
 
 # =============================================================================
 # Auto dtype on MPS
@@ -78,7 +76,6 @@ class TestCleanupAcceleratorMemory:
 
     def test_calls_cuda_empty_cache_when_cuda_available(self):
         """Should call torch.cuda.empty_cache() on NVIDIA GPU."""
-        import torch
         with patch("torch.cuda.is_available", return_value=True), \
              patch("torch.cuda.empty_cache") as mock_empty:
             cleanup_accelerator_memory()
@@ -94,7 +91,6 @@ class TestCleanupAcceleratorMemory:
 
     def test_noop_on_cpu_only(self):
         """Should be a no-op when only CPU is available."""
-        import torch
         with patch("torch.cuda.is_available", return_value=False), \
              patch("torch.mps.empty_cache", side_effect=AttributeError):
             # Should not raise — gracefully handles missing MPS

@@ -29,13 +29,14 @@ Anti-Pattern Compliance:
 from __future__ import annotations
 
 import io
-from datetime import datetime
-
-import pytest
 
 # Default tenant used across all tests (must match seeded data in test DB).
 # Override via TEST_TENANT_ID env var if the seed differs.
 import os as _os
+from datetime import datetime
+
+import pytest
+
 VALID_TENANT_ID = _os.environ.get(
     "TEST_TENANT_ID", "50000000-0000-0000-0000-000000000000"
 )
@@ -130,8 +131,8 @@ def _make_mock_pipeline_config():
         ModelRefs,
         PipelineConfig,
         PipelineSpec,
-        PreprocessingConfig,
         PostprocessingConfig,
+        PreprocessingConfig,
     )
 
     return PipelineConfig(

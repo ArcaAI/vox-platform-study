@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from unittest.mock import AsyncMock
 
 import pytest
-
 
 # ── estimate_tokens edge cases ──
 
@@ -68,7 +66,7 @@ class TestSlidingWindowEdgeCases:
     def test_multiple_records_accumulate(self):
         from smr_v2.services.rate_limiter import SlidingWindowCounter
         c = SlidingWindowCounter()
-        for i in range(10):
+        for _ in range(10):
             c.record(5)
         assert c.current_total() == 50
 
@@ -181,8 +179,8 @@ class TestTaskManagerEdgeCases:
 
     @pytest.mark.asyncio
     async def test_update_preserves_existing_fields(self):
-        from smr_v2.services.task_manager import TaskManager
         from smr_v2.models.task import TaskState, TaskStatus
+        from smr_v2.services.task_manager import TaskManager
         updated_state = TaskState(task_id="t", status=TaskStatus.RUNNING, provider="p", model="m", max_retries=5)
         mock_redis = AsyncMock()
         mock_redis.eval = AsyncMock(return_value=updated_state.model_dump_json().encode())
@@ -202,8 +200,8 @@ class TestTaskManagerEdgeCases:
 
     @pytest.mark.asyncio
     async def test_append_chunk_uses_stream_key(self):
-        from smr_v2.services.task_manager import TaskManager
         from smr_v2.models.stream import StreamChunk
+        from smr_v2.services.task_manager import TaskManager
         mock_redis = AsyncMock()
         mock_redis.xadd = AsyncMock(return_value=b"1-0")
         tm = TaskManager(redis=mock_redis)

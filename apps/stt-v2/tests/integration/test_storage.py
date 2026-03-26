@@ -1,6 +1,7 @@
 """Integration tests for MinIO storage operations."""
 
 import io
+
 import pytest
 from minio import Minio
 

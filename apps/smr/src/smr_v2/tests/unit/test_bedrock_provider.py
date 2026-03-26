@@ -6,7 +6,7 @@ RED: Written before implementation.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -92,7 +92,6 @@ class TestBedrockGenerateStream:
     @pytest.mark.asyncio
     async def test_stream_yields_chunks(self, bedrock_config):
         from smr_v2.providers.bedrock import BedrockProvider
-        from smr_v2.models.stream import StreamChunk
 
         mock_stream_events = [
             {"contentBlockDelta": {"delta": {"text": "Hello"}}},

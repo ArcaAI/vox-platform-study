@@ -7,7 +7,7 @@ from typing import Any
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
-from ..pipeline.dto import AiModelConfig, AiModelFormat, ModelTaskType
+from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, LoadedModel
 
 logger = logging.getLogger(__name__)
@@ -143,7 +143,7 @@ class ONNXLoader(BaseModelLoader):
 
         except ImportError as e:
             raise ModelLoadError(
-                f"onnxruntime not installed. Install with: pip install onnxruntime-gpu"
+                "onnxruntime not installed. Install with: pip install onnxruntime-gpu"
             ) from e
         except Exception as e:
             raise ModelLoadError(
@@ -324,7 +324,7 @@ class ONNXLoader(BaseModelLoader):
         except ImportError:
             raise ModelLoadError(
                 "huggingface_hub not installed. Install with: pip install huggingface_hub"
-            )
+            ) from None
         except Exception as e:
             raise ModelLoadError(f"Failed to download ONNX model: {e}") from e
 

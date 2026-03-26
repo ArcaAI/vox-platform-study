@@ -18,6 +18,7 @@ import { ChainSummaryService } from '../../summary/chain-summary.service';
 import { PromptResolutionService } from '../../prompt/prompt-resolution.service';
 import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
+import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
 
 /**
  * BullMQ processor for async comprehensive summary generation.
@@ -268,22 +269,24 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
 
         try {
             const smrStart = Date.now();
-            const response = await this.httpService.axiosRef.post(
-                `${this.smrServiceUrl}/api/v1/summary/sync`,
+            const smrPayload = buildSmrGeneratePayload(
+                assembledPrompt,
+                request.options,
                 {
-                    text: assembledPrompt.userPrompt,
                     dnaStyleId: request.dnaStyleId,
                     template: request.template ?? 'comprehensive',
                     includeNER: request.includeNER,
-                    options: {
-                        ...request.options,
-                        promptResolvedFrom: assembledPrompt.resolvedFrom,
-                        promptHyperparameters: assembledPrompt.hyperparameters,
-                        isComprehensiveSummary: true,
-                        sectionCount: sections.length,
-                        sourceConsultationCount: new Set(sections.map(s => s.consultationId)).size,
-                    },
+                    summaryType: 'summary',
+                    isComprehensiveSummary: true,
+                    sectionCount: sections.length,
+                    sourceConsultationCount: new Set(sections.map(s => s.consultationId)).size,
+                    promptResolvedFrom: assembledPrompt.resolvedFrom,
+                    promptHyperparameters: assembledPrompt.hyperparameters,
                 },
+            );
+            const response = await this.httpService.axiosRef.post(
+                `${this.smrServiceUrl}/api/v1/generate`,
+                smrPayload,
                 {
                     timeout: 180000,
                     headers: {
@@ -293,8 +296,8 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
                     },
                 },
             );
-            this.jobMetrics.recordSmrCallDuration(JobQueue.GenerateComprehensiveSummary, 'smr-v1', (Date.now() - smrStart) / 1000);
-            return response.data;
+            this.jobMetrics.recordSmrCallDuration(JobQueue.GenerateComprehensiveSummary, 'smr-v2', (Date.now() - smrStart) / 1000);
+            return mapSmrGenerateResponse(response.data);
         } catch (error) {
             this.logger.error({
                 message: 'SMR service call failed for comprehensive summary',

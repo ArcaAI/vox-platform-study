@@ -1,7 +1,7 @@
 import dotenv
 import os
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime
 
 dotenv.load_dotenv()
 
