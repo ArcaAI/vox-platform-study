@@ -19,6 +19,26 @@
 # The prepare-test-db job resets the schema + seeds before tests run.
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ── Skip rules ───────────────────────────────────────────────────────────────
+# Prepended to each test job's rules: block so a "when: never" fires first.
+# Usage: set SKIP_TESTS=true to skip all, or SKIP_TESTS_TS / SKIP_TESTS_PY
+# for granular control.
+
+.rules-skip-all-tests:
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+
+.rules-skip-ts-tests:
+  rules:
+    - if: $SKIP_TESTS == "true" || $SKIP_TESTS_TS == "true"
+      when: never
+
+.rules-skip-py-tests:
+  rules:
+    - if: $SKIP_TESTS == "true" || $SKIP_TESTS_PY == "true"
+      when: never
+
 # ── Shared test variables (anchored for reuse) ──────────────────────────────
 
 .test-env-vars: &test-env-vars
@@ -74,6 +94,7 @@ test-api:
       junit: junit-api.xml
     expire_in: 30 days
   rules:
+    - !reference [.rules-skip-ts-tests, rules]
     - !reference [.rules-api, rules]
 
 # ── Shared package tests (Vitest) ───────────────────────────────────────────
@@ -94,6 +115,7 @@ test-packages:
     - pnpm turbo build --filter=@arcaai/domains
     - pnpm turbo test --filter=@arcaai/logger --filter=@arcaai/utils --filter=@arcaai/pipeline
   rules:
+    - !reference [.rules-skip-ts-tests, rules]
     - !reference [.rules-always, rules]
     - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -120,6 +142,7 @@ test-sdk:
     - pnpm turbo build --filter=@arcaai/utils
     - pnpm turbo test --filter=@arcaai/vox --filter=@arcaai/room --filter=@arcaai/vad --filter=@arcaai/stt --filter=@arcaai/noise-filter --filter=@arcaai/med-ner --filter=@arcaai/ui
   rules:
+    - !reference [.rules-skip-ts-tests, rules]
     - !reference [.rules-always, rules]
     - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -178,6 +201,7 @@ test-stt-v2:
       junit: junit-stt-v2.xml
     expire_in: 30 days
   rules:
+    - !reference [.rules-skip-py-tests, rules]
     - !reference [.rules-stt-v2, rules]
 
 # ── SMR tests (pytest) ──────────────────────────────────────────────────────
@@ -209,11 +233,7 @@ test-smr:
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - cd apps/smr
-    - pip install --quiet -r requirements.txt 2>/dev/null || true
-    - |
-      if [ -f requirements-dev.txt ]; then
-        pip install --quiet -r requirements-dev.txt 2>/dev/null || true
-      fi
+    - pip install --quiet ".[test]"
     - python -m pytest src/smr_v2/tests/ -v --tb=short --junitxml=../../junit-smr.xml -x
   artifacts:
     when: always
@@ -221,6 +241,7 @@ test-smr:
       junit: junit-smr.xml
     expire_in: 30 days
   rules:
+    - !reference [.rules-skip-py-tests, rules]
     - !reference [.rules-smr, rules]
 
 # ── NLP tests (pytest) ──────────────────────────────────────────────────────
@@ -248,11 +269,7 @@ test-nlp:
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - cd apps/nlp
-    - pip install --quiet -r requirements.txt 2>/dev/null || true
-    - |
-      if [ -f requirements-dev.txt ]; then
-        pip install --quiet -r requirements-dev.txt 2>/dev/null || true
-      fi
+    - pip install --quiet ".[dev]"
     - python -m pytest tests/ -v --tb=short --junitxml=../../junit-nlp.xml -x
   artifacts:
     when: always
@@ -260,4 +277,5 @@ test-nlp:
       junit: junit-nlp.xml
     expire_in: 30 days
   rules:
+    - !reference [.rules-skip-py-tests, rules]
     - !reference [.rules-nlp, rules]
