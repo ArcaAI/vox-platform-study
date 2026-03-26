@@ -45,6 +45,12 @@ dependencies = [
 # to avoid native library symbol conflicts (libiconv) on macOS.
 # See scripts/setup-python-env.sh for the authoritative install sequence.
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.15.7",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",

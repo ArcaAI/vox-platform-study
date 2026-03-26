@@ -76,6 +76,20 @@ variables:
   GITHUB_REPO_URL: "https://github.com/4bits-vn/project-hope-v2.git"
   GITHUB_BACKUP_BRANCH: "back-up"
   #
+  # ── Manual skip controls ────────────────────────────────────────────────────
+  # Set any of these to "true" when running a pipeline to skip stages:
+  #   SKIP_TESTS       — skip ALL test jobs
+  #   SKIP_TESTS_TS    — skip TypeScript test jobs (test-api, test-packages, test-sdk)
+  #   SKIP_TESTS_PY    — skip Python test jobs (test-stt-v2, test-smr, test-nlp)
+  #
+  # Usage:
+  #   1. GitLab UI → CI/CD → Run pipeline → add variable SKIP_TESTS = true
+  #   2. API:  curl --form "variables[SKIP_TESTS]=true" ...trigger...
+  #   3. git push -o ci.variable="SKIP_TESTS=true"
+  SKIP_TESTS: ""
+  SKIP_TESTS_TS: ""
+  SKIP_TESTS_PY: ""
+  #
   # ── Test environment ───────────────────────────────────────────────────────
   # These provide defaults for test jobs. Secrets (DATABASE_URL, REDIS_PASS,
   # JWT_SECRET, etc.) MUST be set in GitLab CI/CD Variables (masked+protected):

@@ -5,8 +5,6 @@ import logging
 import os
 from typing import Any
 
-from transformers import GenerationConfig
-
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat, ModelTaskType
@@ -119,6 +117,7 @@ class HuggingFaceLoader(BaseModelLoader):
             AutoModelForSpeechSeq2Seq,
             AutoProcessor,
             AutoTokenizer,
+            GenerationConfig,
             WhisperForConditionalGeneration,
             WhisperProcessor,
         )
