@@ -8,7 +8,7 @@ Enables automatic detection of multiple languages within a single audio stream. 
 
 - When enabled, the language setting is overridden to `auto`
 - In Local AI mode, the `codeSwitching` flag is passed to the Whisper model
-- In Backend mode, the flag is sent as part of the WebSocket session parameters
+- In Backend mode, code-switching is configured in the pipeline
 - The model detects language boundaries and transcribes each segment in the appropriate language
 
 <!-- @example -->
@@ -22,8 +22,8 @@ const stt = useSTT({
   features: { provider: 'local', codeSwitching: true },
 });
 
-// Backend
-await realtime.start({ codeSwitching: true });
+// Backend — code-switching is configured in the pipeline
+await realtime.start({ pipelineId: 'multilingual-pipeline' });
 ```
 
 <!-- @/example -->
