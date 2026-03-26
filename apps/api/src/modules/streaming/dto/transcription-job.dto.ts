@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
-import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export const AUDIO_BUCKET = 'hope-audio';
 export const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
@@ -30,23 +29,6 @@ export class TranscribeFileRequest {
     @IsUUID()
     @IsOptional()
     consultationId?: string;
-
-    @ApiPropertyOptional({ description: 'Language code (e.g., en, th)' })
-    @IsString()
-    @IsOptional()
-    language?: string;
-
-    @ApiPropertyOptional({ description: 'Enable code switching', example: 'true' })
-    @Transform(({ value }) => value === 'true' || value === true)
-    @IsBoolean()
-    @IsOptional()
-    codeSwitching?: boolean;
-
-    @ApiPropertyOptional({ description: 'Enable speaker diarization', example: 'true' })
-    @Transform(({ value }) => value === 'true' || value === true)
-    @IsBoolean()
-    @IsOptional()
-    diarization?: boolean;
 }
 
 export class CreateStreamSessionRequest {
@@ -64,21 +46,6 @@ export class CreateStreamSessionRequest {
     @IsNumber()
     @IsOptional()
     sampleRate?: number;
-
-    @ApiPropertyOptional({ description: 'Language code' })
-    @IsString()
-    @IsOptional()
-    language?: string;
-
-    @ApiPropertyOptional({ description: 'Enable code switching' })
-    @IsBoolean()
-    @IsOptional()
-    codeSwitching?: boolean;
-
-    @ApiPropertyOptional({ description: 'Enable speaker diarization' })
-    @IsBoolean()
-    @IsOptional()
-    diarization?: boolean;
 }
 
 export class StreamSessionResponse {

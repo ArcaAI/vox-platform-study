@@ -1,6 +1,6 @@
 ## Language
 
-Sets the language hint used for batch (file upload) transcription. Providing a language improves accuracy for many Audio pipelines.
+The transcription language for batch (file upload) jobs is determined by the selected pipeline configuration. Each pipeline specifies its language settings, so the client does not need to provide a language override.
 
 <!-- @section -->
 
@@ -23,9 +23,8 @@ Sets the language hint used for batch (file upload) transcription. Providing a l
 
 ### Behavior
 
-- Defaults to English (`en`).
+- The language is determined by the pipeline configuration.
 - Disabled while upload/transcription is in progress.
-- Sent to the backend as part of the job request.
-- Works with code-switching when enabled.
+- The client sends only the `pipelineId` — the backend resolves language from the pipeline config.
 
 <!-- @/section -->

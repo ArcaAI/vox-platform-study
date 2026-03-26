@@ -4,7 +4,6 @@ Tests cover:
 - Request validation (empty file, file too large, missing pipeline)
 - Pipeline resolution (by UUID, by slug, not found)
 - Successful transcription round-trip (mocked batch_service)
-- Language override propagation
 - Error mapping (TranscriptionError → 500, ValidationError → 400)
 - Response schema construction (_build_response helper)
 """
@@ -323,8 +322,6 @@ class TestTranscribeAudioEndpoint:
                 file=upload,
                 pipeline_id="my-slug",
                 tenant_id="t-456",
-                language=None,
-                code_switching=None,
             )
 
             mock_reader.get_pipeline_by_slug.assert_called_once_with(
@@ -361,21 +358,18 @@ class TestTranscribeAudioEndpoint:
                 file=upload,
                 pipeline_id=pid,
                 tenant_id="t-456",
-                language=None,
-                code_switching=None,
             )
 
             mock_reader.get_pipeline.assert_called_once_with(pid)
             assert resp.text == "Hello world"
 
     @pytest.mark.asyncio
-    async def test_language_override_applied(self):
-        """When language is provided, it overrides the pipeline config."""
+    async def test_pipeline_config_used_directly(self):
+        """Pipeline inference config is used as-is without per-request overrides."""
         upload = _make_upload_file()
         result = _make_transcription_result()
 
         pipeline_mock = _make_pipeline_mock(language="en")
-        inference_config = pipeline_mock.spec.inference
 
         mock_reader = AsyncMock()
         mock_reader.get_pipeline_by_slug = AsyncMock(return_value=pipeline_mock)
@@ -397,11 +391,10 @@ class TestTranscribeAudioEndpoint:
                 file=upload,
                 pipeline_id="slug",
                 tenant_id="t-456",
-                language="ml",
-                code_switching=None,
             )
 
-            assert inference_config.language == "ml"
+            # Pipeline config language remains unchanged
+            assert pipeline_mock.spec.inference.language == "en"
 
     @pytest.mark.asyncio
     async def test_transcription_error_returns_500(self):
@@ -434,8 +427,6 @@ class TestTranscribeAudioEndpoint:
                     file=upload,
                     pipeline_id="slug",
                     tenant_id="t-456",
-                    language=None,
-                    code_switching=None,
                 )
 
             assert exc_info.value.status_code == 500
@@ -472,8 +463,6 @@ class TestTranscribeAudioEndpoint:
                     file=upload,
                     pipeline_id="slug",
                     tenant_id="t-456",
-                    language=None,
-                    code_switching=None,
                 )
 
             assert exc_info.value.status_code == 400
@@ -507,8 +496,6 @@ class TestTranscribeAudioEndpoint:
                 pipeline_id="test-pipeline",
                 tenant_id="t-456",
                 consultation_id="c-789",
-                language=None,
-                code_switching=None,
             )
 
             assert isinstance(resp, TranscriptionResponse)

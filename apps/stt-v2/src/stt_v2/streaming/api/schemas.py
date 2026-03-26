@@ -20,29 +20,6 @@ class CreateStreamingSessionRequest(BaseModel):
     microphone_id: str | None = Field(
         default=None, description="Identifier for the microphone device"
     )
-    language: str | None = Field(
-        default=None,
-        description=(
-            "Language hint (e.g. 'en', 'ml'). Overrides the pipeline "
-            "default when provided. Use null for auto-detection."
-        ),
-    )
-    code_switching: bool | None = Field(
-        default=None,
-        description=(
-            "Enable multilingual code-switching. When true, the model "
-            "will attempt to detect and transcribe multiple languages "
-            "within the same audio stream. Overrides the pipeline "
-            "default when provided."
-        ),
-    )
-    diarization: bool | None = Field(
-        default=None,
-        description=(
-            "Enable speaker diarization for streaming utterances. "
-            "Overrides the pipeline default when provided."
-        ),
-    )
 
 
 class StreamingSessionResponse(BaseModel):

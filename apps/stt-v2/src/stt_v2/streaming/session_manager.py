@@ -19,7 +19,6 @@ import os
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
 from datetime import datetime
 from typing import Any
 
@@ -234,9 +233,6 @@ class SessionManager:
         pipeline_id: str,
         consultation_id: str | None = None,
         sample_rate: int = 16000,
-        language: str | None = None,
-        code_switching: bool | None = None,
-        diarization: bool | None = None,
     ) -> StreamSession | None:
         """Create a new streaming session.
 
@@ -249,11 +245,6 @@ class SessionManager:
             pipeline_id: Pipeline UUID or slug.
             consultation_id: Optional consultation context.
             sample_rate: Audio sample rate in Hz.
-            language: Optional language hint — overrides pipeline default.
-            code_switching: Optional code-switching flag — overrides
-                pipeline default when provided.
-            diarization: Optional diarization flag — overrides
-                pipeline diarization enablement when provided.
         """
         # Check capacity
         if not await self._capacity_guard.try_acquire(session_id):
@@ -268,9 +259,6 @@ class SessionManager:
                 status=SessionStatus.ACTIVE,
                 sample_rate=sample_rate,
                 worker_id=self._worker_id,
-                language=language,
-                code_switching=code_switching if code_switching is not None else False,
-                diarization=None,
             )
 
             # Create session object
@@ -303,14 +291,11 @@ class SessionManager:
 
             # Load ASR pipeline from pipeline config (B2: Wire ASR)
             asr_pipeline = await self._load_asr_pipeline(
-                pipeline_config, language, code_switching, session_id,
+                pipeline_config, session_id,
             )
 
             diarization_config = pipeline_config.diarization if pipeline_config else None
             effective_diarization = bool(getattr(diarization_config, "enabled", False)) if diarization_config else False
-            if diarization_config is not None and diarization is not None:
-                diarization_config = replace(diarization_config, enabled=diarization)
-                effective_diarization = bool(diarization)
 
             metadata.diarization = effective_diarization
             await session.force_persist()
@@ -549,8 +534,6 @@ class SessionManager:
     async def _load_asr_pipeline(
         self,
         pipeline_config: Any,
-        language: str | None,
-        code_switching: bool | None,
         session_id: str,
     ) -> StreamingAsrCallable | None:
         """Load ASR model and create a callable pipeline for streaming inference.
@@ -577,14 +560,8 @@ class SessionManager:
                 task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
             )
 
-            # Build inference config with session-level overrides
+            # Use pipeline inference config directly
             inference_config = pipeline_config.inference
-            if language is not None:
-                inference_config = replace(inference_config, language=language)
-            if code_switching is not None:
-                inference_config = replace(
-                    inference_config, code_switching=code_switching
-                )
 
             # Create the callable ASR pipeline
             asr_pipeline = self._make_asr_callable(asr_model, inference_config)
@@ -1155,8 +1132,6 @@ class SessionManager:
                     # Load ASR pipeline
                     asr_pipeline = await self._load_asr_pipeline(
                         pipeline_config,
-                        meta.language,
-                        meta.code_switching if hasattr(meta, "code_switching") else None,
                         meta.session_id,
                     )
 
@@ -1170,11 +1145,7 @@ class SessionManager:
                         tenant_id=meta.tenant_id,
                         consultation_id=meta.consultation_id,
                         diarization_config=(
-                            replace(pipeline_config.diarization, enabled=meta.diarization)
-                            if pipeline_config
-                            and pipeline_config.diarization
-                            and meta.diarization is not None
-                            else (pipeline_config.diarization if pipeline_config else None)
+                            pipeline_config.diarization if pipeline_config else None
                         ),
                     )
 

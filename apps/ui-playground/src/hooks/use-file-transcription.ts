@@ -19,10 +19,6 @@ export type FileTranscriptionStatus =
 export interface FileUploadOptions {
     pipelineId: string;
     consultationId?: string;
-    language?: string;
-    sampleRate?: number;
-    codeSwitching?: boolean;
-    diarization?: boolean;
 }
 
 export interface UseFileTranscriptionReturn {
@@ -104,10 +100,6 @@ export function useFileTranscription(): UseFileTranscriptionReturn {
                 const job = await fileService.uploadAndTranscribe(file, {
                     pipelineId: options.pipelineId,
                     consultationId: options.consultationId,
-                    language: options.language,
-                    sampleRate: options.sampleRate,
-                    codeSwitching: options.codeSwitching,
-                    diarization: options.diarization,
                 });
 
                 setJobId(job.id);
