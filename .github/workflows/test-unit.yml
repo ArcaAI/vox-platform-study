@@ -2,7 +2,13 @@
 # Unit Tests Workflow
 # ============================================================================
 # Runs unit tests on every pull request and push to main branches.
-# Unit tests are fast and don't require external services.
+# Unit tests are mostly isolated, but TypeScript tests that transitively
+# import Prisma need a DATABASE_URL set (even if not connecting).
+#
+# Infrastructure modes:
+#   1. Default — test-only env vars (no real DB connection needed for unit tests)
+#   2. External infrastructure — when USE_EXTERNAL_TEST_DB=true, uses the
+#      shared HA-Postgres & Redis for any tests that need a live connection.
 #
 # Features:
 #   - Path filtering to skip when only docs change
@@ -121,7 +127,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup test environment
+      - name: Setup test environment (external)
+        if: vars.USE_EXTERNAL_TEST_DB == 'true'
+        uses: ./.github/actions/setup-test-env
+        with:
+          use-external-db: 'true'
+          external-pg-host: ${{ secrets.TEST_PG_HOST || '10.10.1.250' }}
+          external-pg-port: ${{ secrets.TEST_PG_PORT || '5000' }}
+          external-pg-user: ${{ secrets.TEST_PG_USER }}
+          external-pg-password: ${{ secrets.TEST_PG_PASSWORD }}
+          external-pg-database: ${{ secrets.TEST_PG_DB || 'vox_dev' }}
+          external-redis-host: ${{ secrets.TEST_REDIS_HOST || '10.10.1.120' }}
+          external-redis-port: ${{ secrets.TEST_REDIS_PORT || '6379' }}
+          external-redis-password: ${{ secrets.TEST_REDIS_PASSWORD }}
+          external-redis-db: ${{ secrets.TEST_REDIS_DB || '8' }}
+
+      - name: Setup test environment (default)
+        if: vars.USE_EXTERNAL_TEST_DB != 'true'
         uses: ./.github/actions/setup-test-env
 
       - name: Setup Node.js and pnpm

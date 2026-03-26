@@ -16,7 +16,7 @@
 
 prepare-test-db:
   stage: prepare
-  extends: .node-base
+  extends: .test-node-base
   needs:
     - job: install-node
       optional: true

@@ -1,7 +1,7 @@
 services:
   redis:
     image: redis:8-alpine
-    container_name: hope-redis
+    container_name: redis
     restart: unless-stopped
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     ports:
@@ -9,7 +9,6 @@ services:
     volumes:
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
       - ./data:/data
-      - ./logs:/var/log/redis
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASS}", "ping"]
       interval: 10s
