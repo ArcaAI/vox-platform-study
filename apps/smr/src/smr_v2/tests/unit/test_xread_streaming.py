@@ -9,17 +9,15 @@ RED: Written before implementation.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, PropertyMock
+from unittest.mock import AsyncMock
 
 import pytest
-import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from smr_v2.core.config import Settings
 from smr_v2.models.stream import StreamChunk
 from smr_v2.models.task import TaskState, TaskStatus
 from smr_v2.services.task_manager import TaskManager
-
 
 # ── Helpers ──
 
@@ -102,7 +100,7 @@ class TestReadChunksBlocking:
         assert chunk_1.data == {"finish_reason": "stop"}
 
         mock_redis.xread.assert_awaited_once_with(
-            {f"smr:stream:task-123": "0-0"},
+            {"smr:stream:task-123": "0-0"},
             block=5000,
             count=100,
         )
@@ -135,7 +133,7 @@ class TestReadChunksBlocking:
         assert result[0][1].content == "World"
 
         mock_redis.xread.assert_awaited_once_with(
-            {f"smr:stream:task-789": "4-0"},
+            {"smr:stream:task-789": "4-0"},
             block=5000,
             count=100,
         )

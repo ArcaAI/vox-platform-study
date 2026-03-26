@@ -12,7 +12,7 @@ import io
 import json
 import logging
 import wave
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
@@ -130,7 +130,7 @@ async def upsert_embedding(
         "speaker_id": speaker_id,
         "embedding_id": embedding_id,
         "dimensions": speaker_embedding.dimension,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -151,7 +151,7 @@ async def get_embedding_status(
     if match:
         created_at = match.get("created_at")
         if isinstance(created_at, (int, float)):
-            created_at = datetime.fromtimestamp(created_at, tz=timezone.utc).isoformat()
+            created_at = datetime.fromtimestamp(created_at, tz=UTC).isoformat()
 
         return {
             "speaker_id": speaker_id,

@@ -15,11 +15,10 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from smr_v2.core.config import Settings, QueueConfig
+from smr_v2.core.config import QueueConfig, Settings
 from smr_v2.models.task import TaskState, TaskStatus
-from smr_v2.services.provider_queue import ProviderQueue, QueueFullError
+from smr_v2.services.provider_queue import ProviderQueue
 from smr_v2.services.rate_limiter import RateLimitTracker
-
 
 GENERATE_URL = "/api/v1/generate"
 GENERATE_PAYLOAD = {

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,7 +10,6 @@ from pydantic import SecretStr
 from smr_v2.core.config import Settings
 from smr_v2.models.requests import GenerateRequest, ResponseFormat
 from smr_v2.models.stream import StreamChunk
-
 
 # ---------------------------------------------------------------------------
 # Helpers

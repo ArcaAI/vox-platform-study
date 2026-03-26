@@ -2,22 +2,21 @@
 
 import threading
 import warnings
+from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
+from stt_v2.core.exceptions import EmbeddingExtractionError, SpeakerIdentificationError
 from stt_v2.diarization.dto import (
-    DiarizedSegment,
     DiarizationResult,
+    DiarizedSegment,
     SpeakerEmbedding,
     SpeakerIdentification,
 )
 from stt_v2.diarization.embedding_service import EmbeddingService
 from stt_v2.diarization.speaker_identifier import SpeakerIdentifier
 from stt_v2.pipeline.dto import DiarizationConfig
-from stt_v2.core.exceptions import EmbeddingExtractionError, SpeakerIdentificationError
-
 
 # =============================================================================
 # DTO Tests

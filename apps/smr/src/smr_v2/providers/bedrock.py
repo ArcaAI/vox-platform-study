@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import json
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import boto3
 import structlog

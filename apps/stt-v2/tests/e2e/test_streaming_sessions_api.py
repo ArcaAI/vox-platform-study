@@ -42,7 +42,6 @@ from stt_v2.streaming.api.schemas import (
 from stt_v2.streaming.capacity_guard import CapacityGuard
 from stt_v2.streaming.schemas import SessionStatus
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

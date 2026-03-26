@@ -21,8 +21,7 @@ Event types (matching the SSE schema defined in TASK-015):
 from __future__ import annotations
 
 import json
-import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -39,7 +38,7 @@ def _channel_key(job_id: str) -> str:
 
 def _utc_iso() -> str:
     """Current UTC time in ISO 8601 format."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class TranscriptionEventPublisher:

@@ -5,12 +5,9 @@ RED: Written before implementation.
 
 from __future__ import annotations
 
-from typing import AsyncIterator
 from unittest.mock import AsyncMock
 
 import pytest
-import pytest_asyncio
-
 
 # ── LLMProvider protocol ──
 
@@ -52,7 +49,7 @@ class TestProviderRegistry:
         assert registry.get("ollama") is mock_provider
 
     def test_get_unknown_provider_raises(self):
-        from smr_v2.providers.base import ProviderRegistry, ProviderNotFoundError
+        from smr_v2.providers.base import ProviderNotFoundError, ProviderRegistry
         registry = ProviderRegistry()
         with pytest.raises(ProviderNotFoundError):
             registry.get("nonexistent")

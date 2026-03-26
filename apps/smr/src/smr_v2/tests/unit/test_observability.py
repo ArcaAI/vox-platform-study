@@ -5,13 +5,14 @@ RED: Written before implementation.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from unittest.mock import AsyncMock, MagicMock
 
 from smr_v2.core.config import Settings
-from smr_v2.models.provider import ModelInfo, ProviderInfo
+from smr_v2.models.provider import ProviderInfo
 
 
 @pytest.fixture
@@ -72,7 +73,7 @@ class TestPrometheusMetrics:
 
 class TestStructuredLogging:
     def test_logging_module_imports(self):
-        from smr_v2.core.logging import setup_logging, get_logger
+        from smr_v2.core.logging import get_logger, setup_logging
         assert callable(setup_logging)
         assert callable(get_logger)
 

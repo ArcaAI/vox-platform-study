@@ -16,7 +16,6 @@ Anti-pattern prevention:
 
 import asyncio
 import json
-from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -29,7 +28,6 @@ from stt_v2.transcription.workers.transcribe_file import (
     _fail_job,
     _transcribe_file_async,
 )
-
 
 # =============================================================================
 # Realistic fixtures — complete structures matching production data
@@ -190,7 +188,7 @@ def _patch_publisher(capture: PubSubCapture):
     """Patch the publisher to use the capture's mock Redis."""
     mock_redis = capture.mock_redis()
 
-    original_connect = None
+    _original_connect = None
 
     async def patched_connect(self_pub):
         """Replace real Redis with capture mock."""
@@ -302,7 +300,7 @@ class TestWorkerPubSubHappyPath:
     @pytest.mark.asyncio
     async def test_publisher_closed_in_finally_block(self, pubsub_capture):
         """Verify publisher.close() is called even on success."""
-        mock_redis = pubsub_capture.mock_redis()
+        _mock_redis = pubsub_capture.mock_redis()
         p1, p2, p3, p4, api, *_ = _patch_worker_deps()
 
         with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
@@ -556,7 +554,7 @@ class TestWorkerProgressCallback:
         api.complete_job = AsyncMock()
         api.create_transcript = AsyncMock(return_value={"contextItemId": "ctx-1"})
 
-        progress_values = []
+        _progress_values = []
 
         batch = AsyncMock()
         async def fake_transcribe(**kwargs):

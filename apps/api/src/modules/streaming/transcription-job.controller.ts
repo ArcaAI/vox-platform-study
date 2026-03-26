@@ -1,9 +1,19 @@
+import type { IActiveUserContext, IS3Service as IS3ServiceType } from '@arcaai/applications';
 import {
+    IS3Service,
+    StreamingSessionService,
+    TranscriptionJobService,
+    TranscriptionRealtimeService,
+} from '@arcaai/applications';
+import type { MessageEvent } from '@nestjs/common';
+import {
+    BadRequestException,
     Body,
     Controller,
     Delete,
     Get,
     HttpCode,
+    Inject,
     Logger,
     NotFoundException,
     Param,
@@ -16,17 +26,18 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Observable } from 'rxjs';
-import type { MessageEvent } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
+import { Observable } from 'rxjs';
 import { uuidv7 } from 'uuidv7';
 import {
-    TranscriptionJobService,
-    TranscriptionRealtimeService,
-    StreamingSessionService,
-} from '@arcaai/applications';
-import type { IActiveUserContext } from '@arcaai/applications';
-import { TranscribeFileRequest, CreateStreamSessionRequest, StreamSessionResponse } from './dto';
+    ALLOWED_AUDIO_MIMES,
+    AUDIO_BUCKET,
+    BatchTranscribeResponse,
+    CreateStreamSessionRequest,
+    MAX_FILE_SIZE,
+    StreamSessionResponse,
+    TranscribeFileRequest,
+} from './dto';
 
 @ApiBearerAuth()
 @ApiTags('transcription-jobs')
@@ -39,6 +50,7 @@ export class TranscriptionJobController {
         private readonly realtimeService: TranscriptionRealtimeService,
         private readonly sessionService: StreamingSessionService,
         private readonly cls: ClsService<IActiveUserContext>,
+        @Inject(IS3Service) private readonly s3Service: IS3ServiceType,
     ) {}
 
     private getTenantId(): string {
@@ -86,130 +98,111 @@ export class TranscriptionJobController {
 
     @Post('transcribe')
     @HttpCode(201)
-    @ApiOperation({ summary: 'Upload audio file for transcription' })
+    @ApiOperation({ summary: 'Upload audio file for batch transcription via worker' })
     @ApiConsumes('multipart/form-data')
-    @UseInterceptors(FileInterceptor('file'))
+    @ApiResponse({ status: 201, description: 'Batch job created and queued', type: BatchTranscribeResponse })
+    @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE } }))
     async transcribeFile(
         @UploadedFile() file: Express.Multer.File,
         @Body() body: TranscribeFileRequest,
-    ) {
-        const job = await this.jobService.createStreamingJob({
-            pipelineId: body.pipelineId,
-            consultationId: body.consultationId,
-            language: body.language,
-            codeSwitching: body.codeSwitching === 'true',
-        });
-
-        if (file?.buffer) {
-            const tenantId = this.getTenantId();
-            const diarization = body.diarization === 'true'
-                ? true
-                : body.diarization === 'false'
-                    ? false
-                    : undefined;
-            this.processFileAsync(
-                job.id,
-                file,
-                body.pipelineId,
-                tenantId,
-                body.language,
-                body.codeSwitching === 'true',
-                diarization,
+    ): Promise<BatchTranscribeResponse> {
+        // 1. Validate file
+        if (!file?.buffer) {
+            throw new BadRequestException('Audio file is required');
+        }
+        if (file.size > MAX_FILE_SIZE) {
+            throw new BadRequestException(
+                `File size ${(file.size / (1024 * 1024)).toFixed(1)}MB exceeds maximum of ${MAX_FILE_SIZE / (1024 * 1024)}MB`,
             );
         }
+        if (!ALLOWED_AUDIO_MIMES.has(file.mimetype)) {
+            throw new BadRequestException(`Unsupported audio type: ${file.mimetype}`);
+        }
 
-        return job;
+        const tenantId = this.getTenantId();
+        const mediaId = uuidv7();
+
+        // 2. Create batch job in DB (status: QUEUED)
+        const job = await this.jobService.createBatchJob({
+            pipelineId: body.pipelineId,
+            mediaId,
+            consultationId: body.consultationId,
+            language: body.language,
+            codeSwitching: body.codeSwitching,
+        });
+
+        // 3. Build MinIO path (must match STT-v2 StoragePathResolver.audio_path)
+        const now = new Date();
+        const year = now.getUTCFullYear().toString();
+        const month = (now.getUTCMonth() + 1).toString().padStart(2, '0');
+        const safeName = this.sanitizeFilename(file.originalname);
+
+        const pathSegment = body.consultationId
+            ? `${tenantId}/${year}/${month}/consultations/${body.consultationId}/${job.id}_${safeName}`
+            : `${tenantId}/${year}/${month}/jobs/${job.id}_${safeName}`;
+
+        const audioUri = `s3://${AUDIO_BUCKET}/${pathSegment}`;
+
+        try {
+            // 4. Upload audio to MinIO
+            await this.s3Service.putFile(
+                AUDIO_BUCKET,
+                pathSegment,
+                file.buffer,
+                file.mimetype,
+            );
+
+            this.logger.log(`Uploaded audio to ${audioUri} for job ${job.id}`);
+
+            // 5. Dispatch Dramatiq message to stt_batch queue
+            await this.realtimeService.dispatchDramatiqJob({
+                jobId: job.id,
+                tenantId,
+                pipelineId: body.pipelineId,
+                audioUri,
+                consultationId: body.consultationId,
+                mediaId,
+                language: body.language,
+                codeSwitching: body.codeSwitching,
+            });
+        } catch (error) {
+            // If upload or dispatch fails, mark the job as failed
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Batch transcription setup failed for job ${job.id}: ${errorMessage}`);
+            await this.jobService.failJob(job.id, errorMessage, 'SETUP_ERROR').catch(() => {});
+            throw error;
+        }
+
+        // 6. Return job details + SSE URL immediately
+        const sseUrl = `/api/v1/audio/transcription-jobs/${job.id}/stream`;
+
+        return {
+            id: job.id,
+            status: job.status,
+            sseUrl,
+            audioUri,
+        };
     }
 
-    private processFileAsync(
-        jobId: string,
-        file: Express.Multer.File,
-        pipelineId: string,
-        tenantId: string,
-        language?: string,
-        codeSwitching?: boolean,
-        diarization?: boolean,
-    ) {
-        const sttBaseUrl = process.env.STT_V2_URL || 'http://localhost:8861';
-        const url = `${sttBaseUrl}/api/v1/transcribe`;
-
-        const formData = new FormData();
-        formData.append('file', new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }), file.originalname);
-        formData.append('pipeline_id', pipelineId);
-        formData.append('tenant_id', tenantId);
-        if (language) {
-            const isoCode = language.split('-')[0].toLowerCase();
-            formData.append('language', isoCode);
+    /**
+     * Sanitize filename to match STT-v2's StoragePathResolver._sanitize_filename.
+     */
+    private sanitizeFilename(filename: string): string {
+        let name = filename.replace(/\\/g, '/').split('/').pop() ?? filename;
+        name = name
+            .replace(/\s/g, '_')
+            .replace(/[&]/g, '_')
+            .replace(/['"?#%*:|\u003c\u003e]/g, '');
+        if (name.length > 200) {
+            const dotIdx = name.lastIndexOf('.');
+            if (dotIdx > 0) {
+                const ext = name.slice(dotIdx);
+                name = name.slice(0, 190) + ext;
+            } else {
+                name = name.slice(0, 200);
+            }
         }
-        if (typeof codeSwitching === 'boolean') {
-            formData.append('code_switching', String(codeSwitching));
-        }
-        if (typeof diarization === 'boolean') {
-            formData.append('diarization', String(diarization));
-        }
-
-        this.logger.log(`Forwarding file to STT-v2 for job ${jobId}`);
-
-        this.jobService.startProcessing(jobId, 'api-gateway-file-proxy')
-            .then(() => fetch(url, { method: 'POST', body: formData }))
-            .then(async (res) => {
-                if (!res.ok) {
-                    const text = await res.text().catch(() => 'Unknown error');
-                    throw new Error(`STT-v2 returned ${res.status}: ${text}`);
-                }
-                const result = await res.json();
-                const transcriptionText = result.text || result.transcription || JSON.stringify(result);
-
-                const segments = result.metadata?.per_segment_results;
-                if (Array.isArray(segments)) {
-                    for (const seg of segments) {
-                        if (seg.text && !seg.text.match(/^[!?.\s]+$/)) {
-                            const speakerId = (
-                                seg.speaker
-                                ?? seg.speakerId
-                                ?? seg.speaker_id
-                            ) as string | undefined;
-                            const rawSpeakerConfidence = (
-                                seg.speakerConfidence
-                                ?? seg.speaker_confidence
-                            ) as number | string | undefined;
-                            const speakerConfidence = typeof rawSpeakerConfidence === 'number'
-                                ? rawSpeakerConfidence
-                                : typeof rawSpeakerConfidence === 'string'
-                                    ? Number.parseFloat(rawSpeakerConfidence)
-                                    : undefined;
-                            const speakerLabel = (
-                                seg.speakerLabel
-                                ?? seg.speaker_label
-                            ) as string | undefined;
-                            await this.realtimeService.emitTranscriptEvent(jobId, {
-                                type: 'transcript',
-                                text: seg.text.trim(),
-                                isFinal: true,
-                                ...(speakerId ? { speaker: speakerId, speakerId } : {}),
-                                ...(speakerLabel ? { speakerLabel } : {}),
-                                ...(typeof speakerConfidence === 'number' && Number.isFinite(speakerConfidence)
-                                    ? { speakerConfidence }
-                                    : {}),
-                            });
-                        }
-                    }
-                } else {
-                    await this.realtimeService.emitTranscriptEvent(jobId, {
-                        type: 'transcript',
-                        text: transcriptionText,
-                        isFinal: true,
-                    });
-                }
-
-                await this.realtimeService.emitCompleteEvent(jobId);
-                await this.jobService.completeJob(jobId, transcriptionText);
-            })
-            .catch(async (err) => {
-                this.logger.error(`File transcription failed for job ${jobId}: ${err.message}`);
-                await this.realtimeService.emitErrorEvent(jobId, err.message).catch(() => {});
-                await this.jobService.failJob(jobId, err.message, 'TRANSCRIPTION_ERROR').catch(() => {});
-            });
+        return name || 'audio';
     }
 
     @Get('consultation/:consultationId')
@@ -277,7 +270,10 @@ export class TranscriptionJobController {
     @ApiOperation({ summary: 'Stream transcription job events via SSE' })
     @ApiParam({ name: 'id', description: 'Transcription job ID' })
     streamJob(@Param('id') id: string): Observable<MessageEvent> {
-        return this.realtimeService.subscribeToJob(id);
+        if (!id?.trim()) {
+            throw new BadRequestException('A valid transcription job ID is required');
+        }
+        return this.realtimeService.subscribeToJob(id.trim());
     }
 
     @Post(':id/cancel')

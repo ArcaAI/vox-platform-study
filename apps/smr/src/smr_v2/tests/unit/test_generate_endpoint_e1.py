@@ -6,13 +6,11 @@ returns from providers and includes usage in the response.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-
-from smr_v2.models.requests import GenerateRequest, ResponseFormat
 
 
 @pytest.fixture

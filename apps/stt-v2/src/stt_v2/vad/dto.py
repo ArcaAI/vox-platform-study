@@ -1,7 +1,7 @@
 """VAD DTOs and data structures."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -58,8 +58,8 @@ class VADSessionState:
     # Tracking
     sample_rate: int = 16000
     samples_processed: int = 0
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    last_activity: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    last_activity: datetime = field(default_factory=lambda: datetime.now(UTC))
     # Speech detection state (for streaming segment assembly)
     is_speech_active: bool = False
     speech_start_sample: int = 0
@@ -74,4 +74,4 @@ class VADSessionState:
         self.is_speech_active = False
         self.speech_start_sample = 0
         self.pending_segments = []
-        self.last_activity = datetime.now(timezone.utc)
+        self.last_activity = datetime.now(UTC)
