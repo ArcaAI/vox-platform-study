@@ -67,9 +67,6 @@ async def create_streaming_session(
         tenant_id=request.tenant_id,
         pipeline_id=request.pipeline_id,
         sample_rate=request.sample_rate,
-        language=request.language,
-        code_switching=request.code_switching,
-        diarization=request.diarization,
     )
 
     session = await mgr.create_session(
@@ -78,9 +75,6 @@ async def create_streaming_session(
         pipeline_id=request.pipeline_id,
         consultation_id=request.consultation_id,
         sample_rate=request.sample_rate,
-        language=request.language,
-        code_switching=request.code_switching,
-        diarization=request.diarization,
     )
 
     guard = mgr.capacity_guard
