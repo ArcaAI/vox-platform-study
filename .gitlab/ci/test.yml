@@ -24,19 +24,18 @@
 # Usage: set SKIP_TESTS=true to skip all, or SKIP_TESTS_TS / SKIP_TESTS_PY
 # for granular control.
 
-.rules-skip-all-tests:
+.rules-skip-ts-tests:
   rules:
     - if: $SKIP_TESTS == "true"
       when: never
-
-.rules-skip-ts-tests:
-  rules:
-    - if: $SKIP_TESTS == "true" || $SKIP_TESTS_TS == "true"
+    - if: $SKIP_TESTS_TS == "true"
       when: never
 
 .rules-skip-py-tests:
   rules:
-    - if: $SKIP_TESTS == "true" || $SKIP_TESTS_PY == "true"
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_PY == "true"
       when: never
 
 # ── Shared test variables (anchored for reuse) ──────────────────────────────
