@@ -381,17 +381,16 @@ class TestTranscribeFileErrorHandling:
 
 
 # =============================================================================
-# Language / Code-Switching Override Tests (TASK-018)
+# Pipeline Config Tests — verify pipeline is the sole source of truth
 # =============================================================================
 
 
-class TestLanguageCodeSwitchingOverrides:
-    """Tests for per-job language and code_switching overrides in transcribe_file worker.
+class TestPipelineConfigUsedDirectly:
+    """Tests that transcribe_file worker uses pipeline config directly without overrides.
 
     Verifies that:
-    - language parameter overrides pipeline_config.spec.inference.language
-    - code_switching parameter overrides pipeline_config.spec.inference.code_switching
-    - None values do NOT override (preserve pipeline defaults)
+    - Pipeline inference config (language, code_switching) is used as-is
+    - No per-request overrides are applied
     """
 
     def _make_pipeline_config(
@@ -411,14 +410,8 @@ class TestLanguageCodeSwitchingOverrides:
     async def _run_worker(
         self,
         pipeline_config: MagicMock,
-        language: str | None = None,
-        code_switching: bool | None = None,
     ) -> None:
-        """Run _transcribe_file_async with all external deps mocked.
-
-        Only the pipeline_config is real-ish; everything else
-        (API client, blob, batch service, publisher) is a no-op mock.
-        """
+        """Run _transcribe_file_async with all external deps mocked."""
         with patch("stt_v2.transcription.workers.transcribe_file.get_settings") as mock_settings, \
              patch("stt_v2.transcription.workers.transcribe_file.TranscriptionEventPublisher") as mock_pub_cls, \
              patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api, \
@@ -464,58 +457,23 @@ class TestLanguageCodeSwitchingOverrides:
             )
             mock_batch.return_value = mock_batch_service
 
-            kwargs: dict = {
-                "job_id": "j-1",
-                "tenant_id": "t-1",
-                "pipeline_id": "p-789",
-                "audio_uri": "s3://audio.wav",
-            }
-            if language is not None:
-                kwargs["language"] = language
-            if code_switching is not None:
-                kwargs["code_switching"] = code_switching
-
-            await _transcribe_file_async(**kwargs)
+            await _transcribe_file_async(
+                job_id="j-1",
+                tenant_id="t-1",
+                pipeline_id="p-789",
+                audio_uri="s3://audio.wav",
+            )
 
     @pytest.mark.asyncio
-    async def test_language_override_applied(self):
-        """Verify language parameter overrides pipeline_config.spec.inference.language."""
-        cfg = self._make_pipeline_config(language="en")
-        await self._run_worker(cfg, language="ml")
+    async def test_pipeline_language_preserved(self):
+        """Verify pipeline language config is used as-is."""
+        cfg = self._make_pipeline_config(language="ml")
+        await self._run_worker(cfg)
         assert cfg.spec.inference.language == "ml"
 
     @pytest.mark.asyncio
-    async def test_code_switching_override_applied(self):
-        """Verify code_switching=True overrides pipeline default (False)."""
-        cfg = self._make_pipeline_config(code_switching=False)
-        await self._run_worker(cfg, code_switching=True)
+    async def test_pipeline_code_switching_preserved(self):
+        """Verify pipeline code_switching config is used as-is."""
+        cfg = self._make_pipeline_config(code_switching=True)
+        await self._run_worker(cfg)
         assert cfg.spec.inference.code_switching is True
-
-    @pytest.mark.asyncio
-    async def test_language_none_does_not_override(self):
-        """Verify language=None preserves the pipeline default."""
-        cfg = self._make_pipeline_config(language="en")
-        await self._run_worker(cfg)  # language not passed → defaults to None
-        assert cfg.spec.inference.language == "en"
-
-    @pytest.mark.asyncio
-    async def test_code_switching_none_does_not_override(self):
-        """Verify code_switching=None preserves the pipeline default."""
-        cfg = self._make_pipeline_config(code_switching=False)
-        await self._run_worker(cfg)  # code_switching not passed → defaults to None
-        assert cfg.spec.inference.code_switching is False
-
-    @pytest.mark.asyncio
-    async def test_both_overrides_applied(self):
-        """Verify both language and code_switching overrides are applied together."""
-        cfg = self._make_pipeline_config(language="en", code_switching=False)
-        await self._run_worker(cfg, language="fr", code_switching=True)
-        assert cfg.spec.inference.language == "fr"
-        assert cfg.spec.inference.code_switching is True
-
-    @pytest.mark.asyncio
-    async def test_language_empty_string_does_not_override(self):
-        """Verify language='' (falsy) does not override pipeline default."""
-        cfg = self._make_pipeline_config(language="en")
-        await self._run_worker(cfg, language="")
-        assert cfg.spec.inference.language == "en"

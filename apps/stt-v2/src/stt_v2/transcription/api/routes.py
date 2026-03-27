@@ -12,9 +12,6 @@ Endpoint
         pipeline_id     – pipeline UUID or slug (required)
         tenant_id       – tenant identifier (required)
         consultation_id – optional consultation context
-        language        – optional language hint (e.g. "en", "ml")
-        code_switching  – optional flag to enable multilingual code-switching
-        diarization     – optional flag to override pipeline diarization
 """
 
 from __future__ import annotations
@@ -31,7 +28,6 @@ from ...core.exceptions import (
     ValidationError,
 )
 from ...pipeline.config_reader import get_pipeline_reader
-from ...pipeline.dto import is_valid_language_code
 from ..batch_service import get_batch_service
 from ..dto import TimingMetrics
 from .schemas import (
@@ -71,22 +67,6 @@ async def transcribe_audio(
     pipeline_id: str = Form(..., description="Pipeline UUID or slug"),
     tenant_id: str = Form(..., description="Tenant identifier"),
     consultation_id: str | None = Form(None, description="Optional consultation ID"),
-    language: str | None = Form(None, description="Language hint (e.g. 'en', 'ml')"),
-    code_switching: bool | None = Form(
-        None,
-        description=(
-            "Enable multilingual code-switching. When true, the model will "
-            "attempt to detect and transcribe multiple languages within the "
-            "same audio. Overrides the pipeline default when provided."
-        ),
-    ),
-    diarization: bool | None = Form(
-        None,
-        description=(
-            "Enable speaker diarization. Overrides the pipeline default "
-            "when provided."
-        ),
-    ),
 ) -> TranscriptionResponse:
     """Transcribe an uploaded audio file through the batch pipeline."""
     job_id = str(uuid.uuid4())
@@ -140,30 +120,6 @@ async def transcribe_audio(
                 "message": f"Pipeline '{pipeline_id}' not found or not enabled",
             },
         ) from None
-
-    # Validate and apply per-request language override
-    if language:
-        if not is_valid_language_code(language):
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error_code": "INVALID_LANGUAGE",
-                    "message": (
-                        f"Unrecognised language code '{language}'. "
-                        "Use an ISO 639-1 code (e.g. 'en', 'ml') "
-                        "or BCP-47 tag (e.g. 'en-US')."
-                    ),
-                },
-            )
-        pipeline_config.spec.inference.language = language
-
-    # Apply per-request code-switching override
-    if code_switching is not None:
-        pipeline_config.spec.inference.code_switching = code_switching
-
-    # Apply per-request diarization override
-    if diarization is not None:
-        pipeline_config.spec.diarization.enabled = diarization
 
     # ------------------------------------------------------------------
     # 3. Run transcription via BatchTranscriptionService
