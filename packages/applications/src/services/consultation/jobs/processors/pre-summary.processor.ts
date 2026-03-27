@@ -12,7 +12,7 @@ import {
 } from '@arcaai/domains';
 import { IConsultationJobService } from '../consultation-job.service';
 import { GeneratePreSummaryJobPayload, PreSummaryJobResult } from '../dto';
-import { PromptResolutionService } from '../../prompt/prompt-resolution.service';
+import { PromptResolutionService, type PromptResolutionTier } from '../../prompt/prompt-resolution.service';
 import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
@@ -182,7 +182,7 @@ export class PreSummaryProcessor extends WorkerHost {
                 json_schema: Record<string, unknown>;
                 strict: boolean;
             } | null;
-            resolvedFrom: string;
+            resolvedFrom: PromptResolutionTier;
         },
         request: GeneratePreSummaryJobPayload['request'],
         jobId?: string,

@@ -4,15 +4,7 @@
  * React context provider for room-wide audio state management.
  */
 
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useCallback,
-  useMemo,
-  type ReactNode,
-} from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, type ReactNode } from 'react';
 import { Room, RoomEvent, RoomState } from '../core/Room.js';
 import { AudioTrack } from '../core/AudioTrack.js';
 import type { TrackProcessor } from '../processors/types.js';
@@ -98,14 +90,7 @@ export interface RoomProviderProps {
  * }
  * ```
  */
-export function RoomProvider({
-  children,
-  options,
-  autoConnect = false,
-  onConnect,
-  onDisconnect,
-  onError,
-}: RoomProviderProps) {
+export function RoomProvider({ children, options, autoConnect = false, onConnect, onDisconnect, onError }: RoomProviderProps) {
   // Create room instance (stable reference)
   const [room] = useState(() => new Room(options));
   const [state, setState] = useState<RoomState>(RoomState.Disconnected);
@@ -181,14 +166,14 @@ export function RoomProvider({
     async (trackOptions?: AudioCaptureOptions) => {
       return room.createLocalTrack(trackOptions);
     },
-    [room]
+    [room],
   );
 
   const removeLocalTrack = useCallback(
     async (track: AudioTrack) => {
       await room.removeLocalTrack(track);
     },
-    [room]
+    [room],
   );
 
   const resumeAudio = useCallback(async () => {
@@ -214,22 +199,10 @@ export function RoomProvider({
       resumeAudio,
       canPlayAudio,
     }),
-    [
-      room,
-      state,
-      localTracks,
-      connect,
-      disconnect,
-      createLocalTrack,
-      removeLocalTrack,
-      resumeAudio,
-      canPlayAudio,
-    ]
+    [room, state, localTracks, connect, disconnect, createLocalTrack, removeLocalTrack, resumeAudio, canPlayAudio],
   );
 
-  return (
-    <RoomContext.Provider value={contextValue}>{children}</RoomContext.Provider>
-  );
+  return <RoomContext.Provider value={contextValue}>{children}</RoomContext.Provider>;
 }
 
 // ============================================================================

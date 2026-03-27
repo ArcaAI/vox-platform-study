@@ -277,11 +277,7 @@ export class PipelineError extends Error {
   readonly stage?: string;
   readonly cause?: Error;
 
-  constructor(
-    code: PipelineErrorCode,
-    message: string,
-    options?: { stage?: string; cause?: Error }
-  ) {
+  constructor(code: PipelineErrorCode, message: string, options?: { stage?: string; cause?: Error }) {
     super(message);
     this.name = 'PipelineError';
     this.code = code;

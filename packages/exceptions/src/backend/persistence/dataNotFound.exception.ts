@@ -8,20 +8,10 @@ import { DATA_NOT_FOUND, BasePersistenceException } from '../../common';
  * @extends {BasePersistenceException}
  */
 export class DataNotFoundException extends BasePersistenceException {
-    static readonly message = 'Required data was not found in the database.';
-    static readonly code = DATA_NOT_FOUND;
+  static readonly message = 'Required data was not found in the database.';
+  static readonly code = DATA_NOT_FOUND;
 
-    constructor(
-        entity: string,
-        entityId: string,
-        cause?: Error,
-        metadata?: unknown,
-    ) {
-        super(
-            `[DB] ${entity} with ID ${entityId} could not be found.`,
-            DataNotFoundException.code,
-            cause,
-            metadata,
-        );
-    }
+  constructor(entity: string, entityId: string, cause?: Error, metadata?: unknown) {
+    super(`[DB] ${entity} with ID ${entityId} could not be found.`, DataNotFoundException.code, cause, metadata);
+  }
 }

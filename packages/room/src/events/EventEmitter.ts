@@ -57,10 +57,7 @@ export class TypedEventEmitter<TEvents extends EventMap> {
    * @param handler - The handler function to call when the event is emitted
    * @returns A function to unsubscribe
    */
-  on<K extends keyof TEvents & string>(
-    event: K,
-    handler: EventHandler<TEvents[K]>
-  ): () => void {
+  on<K extends keyof TEvents & string>(event: K, handler: EventHandler<TEvents[K]>): () => void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.emitter.on(event, handler as any);
     return () => this.off(event, handler);
@@ -72,10 +69,7 @@ export class TypedEventEmitter<TEvents extends EventMap> {
    * @param event - The event name to subscribe to
    * @param handler - The handler function to call when the event is emitted
    */
-  once<K extends keyof TEvents & string>(
-    event: K,
-    handler: EventHandler<TEvents[K]>
-  ): void {
+  once<K extends keyof TEvents & string>(event: K, handler: EventHandler<TEvents[K]>): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.emitter.once(event, handler as any);
   }
@@ -86,10 +80,7 @@ export class TypedEventEmitter<TEvents extends EventMap> {
    * @param event - The event name to unsubscribe from
    * @param handler - The handler function to remove
    */
-  off<K extends keyof TEvents & string>(
-    event: K,
-    handler: EventHandler<TEvents[K]>
-  ): void {
+  off<K extends keyof TEvents & string>(event: K, handler: EventHandler<TEvents[K]>): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.emitter.off(event, handler as any);
   }
@@ -100,10 +91,7 @@ export class TypedEventEmitter<TEvents extends EventMap> {
    * @param event - The event name to emit
    * @param payload - The payload to pass to handlers (if the event has a payload)
    */
-  protected emit<K extends keyof TEvents & string>(
-    event: K,
-    ...args: TEvents[K] extends void ? [] : [payload: TEvents[K]]
-  ): void {
+  protected emit<K extends keyof TEvents & string>(event: K, ...args: TEvents[K] extends void ? [] : [payload: TEvents[K]]): void {
     this.emitter.emit(event, ...args);
   }
 
