@@ -28,6 +28,7 @@ import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-v2-genera
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
+import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 
 @Injectable()
 export class SummaryService extends BaseService implements ISummaryService {
@@ -464,7 +465,7 @@ export class SummaryService extends BaseService implements ISummaryService {
                 json_schema: Record<string, unknown>;
                 strict: boolean;
             } | null;
-            resolvedFrom: string;
+            resolvedFrom: PromptResolutionTier;
         };
         options?: Record<string, unknown>;
         context?: Record<string, unknown>;

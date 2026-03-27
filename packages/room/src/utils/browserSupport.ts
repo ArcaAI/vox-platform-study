@@ -53,10 +53,7 @@ export function isSafariVersionSupported(): boolean {
 export function isGetUserMediaSupported(): boolean {
   if (!isBrowser()) return false;
 
-  return !!(
-    navigator.mediaDevices &&
-    typeof navigator.mediaDevices.getUserMedia === 'function'
-  );
+  return !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
 }
 
 /**
@@ -65,10 +62,7 @@ export function isGetUserMediaSupported(): boolean {
 export function isAudioContextSupported(): boolean {
   if (!isBrowser()) return false;
 
-  return !!(
-    window.AudioContext ||
-    (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-  );
+  return !!(window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext);
 }
 
 /**
@@ -77,10 +71,7 @@ export function isAudioContextSupported(): boolean {
 export function isAudioWorkletSupported(): boolean {
   if (!isBrowser()) return false;
 
-  return !!(
-    isAudioContextSupported() &&
-    window.AudioWorkletNode !== undefined
-  );
+  return !!(isAudioContextSupported() && window.AudioWorkletNode !== undefined);
 }
 
 /**
@@ -123,11 +114,7 @@ export function getBrowserSupport(): BrowserSupport {
   };
 
   // Check if all required features are supported
-  support.isFullySupported =
-    support.getUserMedia &&
-    support.audioContext &&
-    support.mediaStreamTrack &&
-    (!safari || isSafariVersionSupported());
+  support.isFullySupported = support.getUserMedia && support.audioContext && support.mediaStreamTrack && (!safari || isSafariVersionSupported());
 
   return support;
 }
@@ -159,8 +146,5 @@ export function isAdvancedAudioSupported(): boolean {
 export function getAudioContextConstructor(): typeof AudioContext | undefined {
   if (!isBrowser()) return undefined;
 
-  return (
-    window.AudioContext ||
-    (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-  );
+  return window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
 }

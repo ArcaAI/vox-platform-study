@@ -6,20 +6,8 @@
  */
 
 import { EventEmitter } from 'eventemitter3';
-import type {
-  IPipeline,
-  IPipelineStage,
-  PipelineContext,
-  PipelineState,
-  PipelineEventMap,
-  StageResult,
-} from '../types/index.js';
-import {
-  PipelineEvent,
-  PipelineError,
-  PipelineErrorCode,
-  DEFAULT_PIPELINE_STATE,
-} from '../types/index.js';
+import type { IPipeline, IPipelineStage, PipelineContext, PipelineState, PipelineEventMap, StageResult } from '../types/index.js';
+import { PipelineEvent, PipelineError, PipelineErrorCode, DEFAULT_PIPELINE_STATE } from '../types/index.js';
 
 /**
  * Configuration for a stage in the sequential pipeline.
@@ -46,9 +34,7 @@ interface StageEntry<TInput = unknown, TOutput = unknown> {
  * const transcript = await pipeline.execute(audioData);
  * ```
  */
-export class SequentialPipeline<TInput, TOutput>
-  implements IPipeline<TInput, TOutput>
-{
+export class SequentialPipeline<TInput, TOutput> implements IPipeline<TInput, TOutput> {
   readonly name: string;
 
   private stages: StageEntry[] = [];
@@ -72,10 +58,7 @@ export class SequentialPipeline<TInput, TOutput>
   /**
    * Add a stage to the pipeline.
    */
-  addStage<TSInput, TSOutput>(
-    stage: IPipelineStage<TSInput, TSOutput>,
-    options?: { priority?: number }
-  ): void {
+  addStage<TSInput, TSOutput>(stage: IPipelineStage<TSInput, TSOutput>, options?: { priority?: number }): void {
     const entry: StageEntry = {
       stage: stage as IPipelineStage<unknown, unknown>,
       priority: options?.priority ?? this.stages.length * 10,
@@ -129,15 +112,9 @@ export class SequentialPipeline<TInput, TOutput>
   /**
    * Execute the pipeline.
    */
-  async execute(
-    input: TInput,
-    contextOverrides?: Partial<PipelineContext>
-  ): Promise<TOutput> {
+  async execute(input: TInput, contextOverrides?: Partial<PipelineContext>): Promise<TOutput> {
     if (this.state.status === 'RUNNING') {
-      throw new PipelineError(
-        PipelineErrorCode.ALREADY_RUNNING,
-        `Pipeline '${this.name}' is already running`
-      );
+      throw new PipelineError(PipelineErrorCode.ALREADY_RUNNING, `Pipeline '${this.name}' is already running`);
     }
 
     // Create run context
@@ -226,11 +203,10 @@ export class SequentialPipeline<TInput, TOutput>
             error: error as Error,
           });
 
-          throw new PipelineError(
-            PipelineErrorCode.STAGE_FAILED,
-            `Stage '${stage.name}' failed: ${(error as Error).message}`,
-            { stage: stage.name, cause: error as Error }
-          );
+          throw new PipelineError(PipelineErrorCode.STAGE_FAILED, `Stage '${stage.name}' failed: ${(error as Error).message}`, {
+            stage: stage.name,
+            cause: error as Error,
+          });
         }
       }
 
@@ -364,20 +340,14 @@ export class SequentialPipeline<TInput, TOutput>
   /**
    * Subscribe to pipeline events.
    */
-  on<K extends PipelineEvent>(
-    event: K,
-    listener: (payload: PipelineEventMap[K]) => void
-  ): void {
+  on<K extends PipelineEvent>(event: K, listener: (payload: PipelineEventMap[K]) => void): void {
     this.emitter.on(event, listener);
   }
 
   /**
    * Unsubscribe from pipeline events.
    */
-  off<K extends PipelineEvent>(
-    event: K,
-    listener: (payload: PipelineEventMap[K]) => void
-  ): void {
+  off<K extends PipelineEvent>(event: K, listener: (payload: PipelineEventMap[K]) => void): void {
     this.emitter.off(event, listener);
   }
 

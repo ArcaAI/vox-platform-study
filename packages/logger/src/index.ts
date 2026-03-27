@@ -10,7 +10,7 @@ export enum LogLevel {
   HTTP = 'http',
   DEBUG = 'debug',
   VERBOSE = 'verbose',
-  SILLY = 'silly'
+  SILLY = 'silly',
 }
 
 export type S3Config = {
@@ -75,7 +75,7 @@ const defaultOptions: LoggerOptions = {
       enabled: false,
       filename: 'logs/application.log',
       maxSize: '10m',
-      maxFiles: '7d'
+      maxFiles: '7d',
     },
     rotate: {
       enabled: false,
@@ -83,17 +83,17 @@ const defaultOptions: LoggerOptions = {
       filename: 'application-%DATE%.log',
       datePattern: 'yyyy-MM-dd',
       maxSize: '20m',
-      maxFiles: '14d'
+      maxFiles: '14d',
     },
     s3: {
-      enabled: false
-    }
+      enabled: false,
+    },
   },
   format: {
     timestamp: true,
     colorize: true,
-    json: false
-  }
+    json: false,
+  },
 };
 
 export class Logger {
@@ -109,21 +109,21 @@ export class Logger {
         ...options.transports,
         file: {
           ...(defaultOptions.transports?.file || { enabled: false }),
-          ...(options.transports?.file || {})
+          ...(options.transports?.file || {}),
         },
         rotate: {
           ...(defaultOptions.transports?.rotate || { enabled: false }),
-          ...(options.transports?.rotate || {})
+          ...(options.transports?.rotate || {}),
         },
         s3: {
           ...(defaultOptions.transports?.s3 || { enabled: false }),
-          ...(options.transports?.s3 || {})
-        }
+          ...(options.transports?.s3 || {}),
+        },
       },
       format: {
         ...defaultOptions.format,
-        ...options.format
-      }
+        ...options.format,
+      },
     };
 
     this.logger = this.createLogger();
@@ -140,14 +140,16 @@ export class Logger {
       formatters.push(winston.format.colorize());
     }
 
-    formatters.push(winston.format.printf((info: winston.Logform.TransformableInfo) => {
-      const { timestamp, level, message, service, ...rest } = info;
-      const serviceStr = service ? `[${service}] ` : '';
-      const timestampStr = timestamp ? `${timestamp} ` : '';
-      const metaStr = Object.keys(rest).length ? JSON.stringify(rest) : '';
+    formatters.push(
+      winston.format.printf((info: winston.Logform.TransformableInfo) => {
+        const { timestamp, level, message, service, ...rest } = info;
+        const serviceStr = service ? `[${service}] ` : '';
+        const timestampStr = timestamp ? `${timestamp} ` : '';
+        const metaStr = Object.keys(rest).length ? JSON.stringify(rest) : '';
 
-      return `${timestampStr}${level}: ${serviceStr}${message} ${metaStr}`.trim();
-    }));
+        return `${timestampStr}${level}: ${serviceStr}${message} ${metaStr}`.trim();
+      }),
+    );
 
     const finalFormat = this.options.format?.json
       ? winston.format.combine(...formatters, winston.format.json())
@@ -160,26 +162,26 @@ export class Logger {
     }
 
     if (this.options.transports?.file?.enabled) {
-      transports.push(new winston.transports.File({
-        filename: this.options.transports.file.filename,
-        dirname: this.options.transports.file.dirname,
-        maxsize: this.options.transports.file.maxSize
-          ? parseInt(this.options.transports.file.maxSize)
-          : undefined,
-        maxFiles: this.options.transports.file.maxFiles
-          ? parseInt(this.options.transports.file.maxFiles)
-          : undefined
-      }));
+      transports.push(
+        new winston.transports.File({
+          filename: this.options.transports.file.filename,
+          dirname: this.options.transports.file.dirname,
+          maxsize: this.options.transports.file.maxSize ? parseInt(this.options.transports.file.maxSize) : undefined,
+          maxFiles: this.options.transports.file.maxFiles ? parseInt(this.options.transports.file.maxFiles) : undefined,
+        }),
+      );
     }
 
     if (this.options.transports?.rotate?.enabled) {
-      transports.push(new winston.transports.DailyRotateFile({
-        dirname: this.options.transports.rotate.dirname,
-        filename: this.options.transports.rotate.filename,
-        datePattern: this.options.transports.rotate.datePattern,
-        maxSize: this.options.transports.rotate.maxSize,
-        maxFiles: this.options.transports.rotate.maxFiles
-      }));
+      transports.push(
+        new winston.transports.DailyRotateFile({
+          dirname: this.options.transports.rotate.dirname,
+          filename: this.options.transports.rotate.filename,
+          datePattern: this.options.transports.rotate.datePattern,
+          maxSize: this.options.transports.rotate.maxSize,
+          maxFiles: this.options.transports.rotate.maxFiles,
+        }),
+      );
     }
 
     // S3 transport will be added by the consumer if needed
@@ -190,7 +192,7 @@ export class Logger {
       level: this.options.level,
       defaultMeta: { service: this.options.service },
       format: finalFormat,
-      transports
+      transports,
     });
   }
 

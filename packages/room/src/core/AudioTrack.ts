@@ -6,32 +6,11 @@
  */
 
 import { TypedEventEmitter } from '../events/EventEmitter.js';
-import {
-  TrackEvent,
-  type TrackEventMap,
-  type ProcessorUpdatePayload,
-  type FeatureUpdatePayload,
-} from '../events/TrackEvents.js';
+import { TrackEvent, type TrackEventMap, type ProcessorUpdatePayload, type FeatureUpdatePayload } from '../events/TrackEvents.js';
 import type { TrackProcessor, AudioProcessorOptions } from '../processors/types.js';
-import {
-  AudioFeature,
-  TrackState,
-  type AudioCaptureOptions,
-  type AudioLevelInfo,
-  RoomError,
-  RoomErrorCode,
-} from '../types/index.js';
-import {
-  buildAudioConstraints,
-  getTrackFeatures,
-  applyFeatureConstraint,
-} from '../utils/constraints.js';
-import {
-  calculateRMSLevel,
-  calculatePeakLevel,
-  createSmoothingCalculator,
-  detectVoiceActivity,
-} from '../utils/audioUtils.js';
+import { AudioFeature, TrackState, type AudioCaptureOptions, type AudioLevelInfo, RoomError, RoomErrorCode } from '../types/index.js';
+import { buildAudioConstraints, getTrackFeatures, applyFeatureConstraint } from '../utils/constraints.js';
+import { calculateRMSLevel, calculatePeakLevel, createSmoothingCalculator, detectVoiceActivity } from '../utils/audioUtils.js';
 
 /**
  * Mutex-like lock for serializing async operations.
@@ -145,10 +124,7 @@ export class AudioTrack extends TypedEventEmitter<TrackEventMap> {
    */
   async initialize(options?: AudioCaptureOptions): Promise<void> {
     if (this.state !== TrackState.IDLE && this.state !== TrackState.ENDED) {
-      throw new RoomError(
-        RoomErrorCode.UNKNOWN,
-        `Cannot initialize track in state: ${this.state}`
-      );
+      throw new RoomError(RoomErrorCode.UNKNOWN, `Cannot initialize track in state: ${this.state}`);
     }
 
     this.state = TrackState.INITIALIZING;
@@ -164,10 +140,7 @@ export class AudioTrack extends TypedEventEmitter<TrackEventMap> {
       this.sourceTrack = stream.getAudioTracks()[0] ?? null;
 
       if (!this.sourceTrack) {
-        throw new RoomError(
-          RoomErrorCode.DEVICE_NOT_FOUND,
-          'No audio track found in stream'
-        );
+        throw new RoomError(RoomErrorCode.DEVICE_NOT_FOUND, 'No audio track found in stream');
       }
 
       // Set up ended handler
@@ -199,10 +172,7 @@ export class AudioTrack extends TypedEventEmitter<TrackEventMap> {
    */
   async initializeFromTrack(track: MediaStreamTrack): Promise<void> {
     if (track.kind !== 'audio') {
-      throw new RoomError(
-        RoomErrorCode.UNKNOWN,
-        'Track must be an audio track'
-      );
+      throw new RoomError(RoomErrorCode.UNKNOWN, 'Track must be an audio track');
     }
 
     this.state = TrackState.INITIALIZING;
@@ -306,17 +276,11 @@ export class AudioTrack extends TypedEventEmitter<TrackEventMap> {
 
     try {
       if (!this.sourceTrack) {
-        throw new RoomError(
-          RoomErrorCode.TRACK_NOT_FOUND,
-          'Track not initialized'
-        );
+        throw new RoomError(RoomErrorCode.TRACK_NOT_FOUND, 'Track not initialized');
       }
 
       if (!this.audioContext) {
-        throw new RoomError(
-          RoomErrorCode.AUDIO_CONTEXT_SUSPENDED,
-          'AudioContext required for processor'
-        );
+        throw new RoomError(RoomErrorCode.AUDIO_CONTEXT_SUSPENDED, 'AudioContext required for processor');
       }
 
       const previousProcessor = this.currentProcessor;
@@ -422,10 +386,7 @@ export class AudioTrack extends TypedEventEmitter<TrackEventMap> {
    */
   async setFeature(feature: AudioFeature, enabled: boolean): Promise<void> {
     if (!this.sourceTrack) {
-      throw new RoomError(
-        RoomErrorCode.TRACK_NOT_FOUND,
-        'Track not initialized'
-      );
+      throw new RoomError(RoomErrorCode.TRACK_NOT_FOUND, 'Track not initialized');
     }
 
     await applyFeatureConstraint(this.sourceTrack, feature, enabled);
@@ -598,36 +559,16 @@ export class AudioTrack extends TypedEventEmitter<TrackEventMap> {
     if (error instanceof DOMException) {
       switch (error.name) {
         case 'NotAllowedError':
-          return new RoomError(
-            RoomErrorCode.PERMISSION_DENIED,
-            'Microphone permission denied',
-            error
-          );
+          return new RoomError(RoomErrorCode.PERMISSION_DENIED, 'Microphone permission denied', error);
         case 'NotFoundError':
-          return new RoomError(
-            RoomErrorCode.DEVICE_NOT_FOUND,
-            'No microphone found',
-            error
-          );
+          return new RoomError(RoomErrorCode.DEVICE_NOT_FOUND, 'No microphone found', error);
         case 'NotReadableError':
-          return new RoomError(
-            RoomErrorCode.DEVICE_IN_USE,
-            'Microphone is in use by another application',
-            error
-          );
+          return new RoomError(RoomErrorCode.DEVICE_IN_USE, 'Microphone is in use by another application', error);
         default:
-          return new RoomError(
-            RoomErrorCode.UNKNOWN,
-            error.message,
-            error
-          );
+          return new RoomError(RoomErrorCode.UNKNOWN, error.message, error);
       }
     }
 
-    return new RoomError(
-      RoomErrorCode.UNKNOWN,
-      error instanceof Error ? error.message : 'Unknown error',
-      error instanceof Error ? error : undefined
-    );
+    return new RoomError(RoomErrorCode.UNKNOWN, error instanceof Error ? error.message : 'Unknown error', error instanceof Error ? error : undefined);
   }
 }

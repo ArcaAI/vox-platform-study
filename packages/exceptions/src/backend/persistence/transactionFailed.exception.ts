@@ -8,13 +8,9 @@ import { TRANSACTION_FAILED, BasePersistenceException } from '../../common';
  * @extends {BasePersistenceException}
  */
 export class TransactionFailedException extends BasePersistenceException {
-    static readonly message = 'Database transaction failed.';
-    static readonly code = TRANSACTION_FAILED;
-    constructor(
-        message = TransactionFailedException.message,
-        cause?: Error,
-        metadata?: unknown,
-    ) {
-        super(message, TransactionFailedException.code, cause, metadata);
-    }
+  static readonly message = 'Database transaction failed.';
+  static readonly code = TRANSACTION_FAILED;
+  constructor(message = TransactionFailedException.message, cause?: Error, metadata?: unknown) {
+    super(message, TransactionFailedException.code, cause, metadata);
+  }
 }
