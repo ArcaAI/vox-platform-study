@@ -14,10 +14,7 @@ import { MedicalEntityType } from '../types/index.js';
  * @param threshold - Minimum confidence score (0-1)
  * @returns Filtered entities
  */
-export function filterEntitiesByThreshold(
-  entities: EntitySpan[],
-  threshold: number
-): EntitySpan[] {
+export function filterEntitiesByThreshold(entities: EntitySpan[], threshold: number): EntitySpan[] {
   return entities.filter((entity) => entity.score >= threshold);
 }
 
@@ -28,10 +25,7 @@ export function filterEntitiesByThreshold(
  * @param types - Array of allowed entity types
  * @returns Filtered entities
  */
-export function filterEntitiesByType(
-  entities: EntitySpan[],
-  types: MedicalEntityType[]
-): EntitySpan[] {
+export function filterEntitiesByType(entities: EntitySpan[], types: MedicalEntityType[]): EntitySpan[] {
   const typeSet = new Set(types);
   return entities.filter((entity) => typeSet.has(entity.type));
 }
@@ -44,11 +38,7 @@ export function filterEntitiesByType(
  * @param maxGap - Maximum character gap between entities (default: 2)
  * @returns Whether entities are adjacent
  */
-export function areEntitiesAdjacent(
-  prev: EntitySpan,
-  curr: EntitySpan,
-  maxGap = 2
-): boolean {
+export function areEntitiesAdjacent(prev: EntitySpan, curr: EntitySpan, maxGap = 2): boolean {
   // Must be the same type
   if (prev.type !== curr.type) return false;
 
@@ -65,10 +55,7 @@ export function areEntitiesAdjacent(
  * @param originalText - Original text for extracting merged text
  * @returns Merged entities
  */
-export function mergeAdjacentEntities(
-  entities: EntitySpan[],
-  originalText: string
-): EntitySpan[] {
+export function mergeAdjacentEntities(entities: EntitySpan[], originalText: string): EntitySpan[] {
   if (entities.length === 0) return [];
 
   // Sort by start position
@@ -128,7 +115,7 @@ export function mergeOverlappingEntities(entities: EntitySpan[]): EntitySpan[] {
   // Sort by start position, then by length (longer first)
   const sorted = [...entities].sort((a, b) => {
     if (a.start !== b.start) return a.start - b.start;
-    return (b.end - b.start) - (a.end - a.start);
+    return b.end - b.start - (a.end - a.start);
   });
 
   const result: EntitySpan[] = [];
@@ -162,9 +149,7 @@ export function mergeOverlappingEntities(entities: EntitySpan[]): EntitySpan[] {
  * @param entities - Array of entities
  * @returns Map of type to entities
  */
-export function groupEntitiesByType(
-  entities: EntitySpan[]
-): Map<MedicalEntityType, EntitySpan[]> {
+export function groupEntitiesByType(entities: EntitySpan[]): Map<MedicalEntityType, EntitySpan[]> {
   const groups = new Map<MedicalEntityType, EntitySpan[]>();
 
   for (const entity of entities) {
@@ -182,9 +167,7 @@ export function groupEntitiesByType(
  * @param entities - Array of entities
  * @returns Map of type to unique texts
  */
-export function getUniqueEntitiesByType(
-  entities: EntitySpan[]
-): Map<MedicalEntityType, string[]> {
+export function getUniqueEntitiesByType(entities: EntitySpan[]): Map<MedicalEntityType, string[]> {
   const grouped = groupEntitiesByType(entities);
   const unique = new Map<MedicalEntityType, string[]>();
 
@@ -235,11 +218,7 @@ export function getTopEntities(entities: EntitySpan[], n: number): EntitySpan[] 
  * @param classPrefix - CSS class prefix for highlighting
  * @returns HTML string with highlighted entities
  */
-export function highlightEntities(
-  text: string,
-  entities: EntitySpan[],
-  classPrefix = 'ner-entity'
-): string {
+export function highlightEntities(text: string, entities: EntitySpan[], classPrefix = 'ner-entity'): string {
   // Sort by position (descending) so we can insert from end
   const sorted = sortEntitiesByPosition(entities).reverse();
   let result = text;
@@ -278,9 +257,7 @@ export function entitiesToJSON(entities: EntitySpan[]): object[] {
  * @param entities - Array of entities
  * @returns Record of type to count
  */
-export function countEntitiesByType(
-  entities: EntitySpan[]
-): Record<MedicalEntityType, number> {
+export function countEntitiesByType(entities: EntitySpan[]): Record<MedicalEntityType, number> {
   const counts: Record<MedicalEntityType, number> = {} as Record<MedicalEntityType, number>;
 
   // Initialize all types with 0
@@ -316,10 +293,7 @@ export function getAverageConfidence(entities: EntitySpan[]): number {
  * @param substring - Substring to search for (case-insensitive)
  * @returns Matching entities
  */
-export function findEntitiesContaining(
-  entities: EntitySpan[],
-  substring: string
-): EntitySpan[] {
+export function findEntitiesContaining(entities: EntitySpan[], substring: string): EntitySpan[] {
   const lower = substring.toLowerCase();
   return entities.filter((entity) => entity.text.toLowerCase().includes(lower));
 }
