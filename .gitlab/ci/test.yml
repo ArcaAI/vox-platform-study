@@ -71,6 +71,7 @@ test-api:
     <<: *test-env-vars
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
+    - pnpm --filter @arcaai/database db:generate
     - pnpm turbo build --filter=@arcaai/database
     - pnpm turbo build --filter=@arcaai/exceptions
     - pnpm turbo build --filter=@arcaai/logger
@@ -101,6 +102,7 @@ test-packages:
     <<: *test-env-vars
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
+    - pnpm --filter @arcaai/database db:generate
     - pnpm turbo build --filter=@arcaai/database
     - pnpm turbo build --filter=@arcaai/exceptions
     - pnpm turbo build --filter=@arcaai/logger
