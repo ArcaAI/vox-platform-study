@@ -1,7 +1,6 @@
 import * as winston from 'winston';
 import 'winston-daily-rotate-file';
-// @ts-ignore - Adding type declaration for winston-s3-transport
-import { S3Transport } from 'winston-s3-transport';
+// S3Transport is provided by 'winston-s3-transport' — consumers add it via addTransport()
 
 export enum LogLevel {
   ERROR = 'error',
@@ -201,35 +200,35 @@ export class Logger {
     this.logger.add(transport);
   }
 
-  error(message: string, meta?: Record<string, any> | any): void {
+  error(message: string, meta?: Record<string, unknown>): void {
     this.logger.error(message, meta);
   }
 
-  warn(message: string, meta?: Record<string, any> | any): void {
+  warn(message: string, meta?: Record<string, unknown>): void {
     this.logger.warn(message, meta);
   }
 
-  info(message: string, meta?: Record<string, any> | any): void {
+  info(message: string, meta?: Record<string, unknown>): void {
     this.logger.info(message, meta);
   }
 
-  http(message: string, meta?: Record<string, any> | any): void {
+  http(message: string, meta?: Record<string, unknown>): void {
     this.logger.http(message, meta);
   }
 
-  debug(message: string, meta?: Record<string, any> | any): void {
+  debug(message: string, meta?: Record<string, unknown>): void {
     this.logger.debug(message, meta);
   }
 
-  verbose(message: string, meta?: Record<string, any> | any): void {
+  verbose(message: string, meta?: Record<string, unknown>): void {
     this.logger.verbose(message, meta);
   }
 
-  silly(message: string, meta?: Record<string, any> | any): void {
+  silly(message: string, meta?: Record<string, unknown>): void {
     this.logger.silly(message, meta);
   }
 
-  log(level: LogLevel, message: string, meta?: Record<string, any> | any): void {
+  log(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
     this.logger.log(level, message, meta);
   }
 }
@@ -238,7 +237,7 @@ export class Logger {
 const defaultLogger = new Logger();
 
 // For backward compatibility
-export const log = (msg: any, meta?: Record<string, any>): void => {
+export const log = (msg: unknown, meta?: Record<string, unknown>): void => {
   defaultLogger.info(String(msg), meta);
 };
 

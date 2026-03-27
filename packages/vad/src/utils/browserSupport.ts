@@ -43,9 +43,7 @@ export function isWebAssemblySupported(): boolean {
 
   try {
     if (typeof WebAssembly === 'object') {
-      const module = new WebAssembly.Module(
-        new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
-      );
+      const module = new WebAssembly.Module(new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
       return module instanceof WebAssembly.Module;
     }
   } catch {
@@ -63,9 +61,7 @@ export function isCrossOriginIsolated(): boolean {
   if (!isBrowser()) return false;
 
   try {
-    return (
-      typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated === true
-    );
+    return typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated === true;
   } catch {
     return false;
   }
@@ -79,10 +75,7 @@ export function isScriptProcessorSupported(): boolean {
   if (!isBrowser()) return false;
 
   try {
-    const AudioContextConstructor =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
+    const AudioContextConstructor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
 
     if (!AudioContextConstructor) return false;
 
@@ -106,10 +99,7 @@ export function isSafariAudioWorkletSupported(): boolean {
 export function isIOS(): boolean {
   if (!isBrowser()) return false;
 
-  return (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  );
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
 /**
@@ -126,8 +116,7 @@ export function isONNXRuntimeSupported(): boolean {
 export function isVADSupported(): boolean {
   const hasWasm = isWebAssemblySupported();
   const hasAudioContext = isAudioContextSupported();
-  const hasWorkletOrFallback =
-    isAudioWorkletSupported() || isScriptProcessorSupported();
+  const hasWorkletOrFallback = isAudioWorkletSupported() || isScriptProcessorSupported();
 
   return hasWasm && hasAudioContext && hasWorkletOrFallback;
 }
@@ -165,8 +154,7 @@ export function getVADBrowserSupport(): VADBrowserSupport {
   const audioContext = isAudioContextSupported();
   const scriptProcessor = isScriptProcessorSupported();
 
-  const vadSupported =
-    webAssembly && audioContext && (audioWorklet || scriptProcessor);
+  const vadSupported = webAssembly && audioContext && (audioWorklet || scriptProcessor);
 
   let unsupportedReason: string | undefined;
 
@@ -195,11 +183,7 @@ export function getVADBrowserSupport(): VADBrowserSupport {
  * Check if the browser supports multi-threaded ONNX Runtime.
  */
 export function isMultiThreadedONNXSupported(): boolean {
-  return (
-    isWebAssemblySupported() &&
-    isSharedArrayBufferSupported() &&
-    isCrossOriginIsolated()
-  );
+  return isWebAssemblySupported() && isSharedArrayBufferSupported() && isCrossOriginIsolated();
 }
 
 /**
@@ -229,9 +213,7 @@ export function logVADBrowserSupport(): void {
 
   if (isSafari()) {
     console.log(`  Safari Version: ${getSafariVersion()}`);
-    console.log(
-      `  Safari AudioWorklet: ${isSafariAudioWorkletSupported() ? 'Yes' : 'No'}`
-    );
+    console.log(`  Safari AudioWorklet: ${isSafariAudioWorkletSupported() ? 'Yes' : 'No'}`);
   }
 
   if (isIOS()) {

@@ -6,7 +6,7 @@
  */
 
 import { EventEmitter } from 'eventemitter3';
-import type { IPipeline, IPipelineStage, PipelineContext, PipelineState, PipelineEventMap, StageResult } from '../types/index.js';
+import type { IPipeline, IPipelineStage, PipelineContext, PipelineState, PipelineEventMap } from '../types/index.js';
 import { PipelineEvent, PipelineError, PipelineErrorCode, DEFAULT_PIPELINE_STATE } from '../types/index.js';
 
 /**
