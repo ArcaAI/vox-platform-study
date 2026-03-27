@@ -11,13 +11,22 @@
     - corepack enable
     - corepack prepare pnpm@latest --activate
     - pnpm config set store-dir .pnpm-store
-    - pnpm install --frozen-lockfile --prefer-offline
+    - |
+      if [ -d node_modules ]; then
+        echo "node_modules restored from cache — skipping install"
+      else
+        echo "Cache miss — running pnpm install"
+        pnpm install --frozen-lockfile --prefer-offline
+      fi
   cache:
     - key:
         files:
           - pnpm-lock.yaml
       paths:
         - .pnpm-store
+        - node_modules/
+        - apps/*/node_modules/
+        - packages/*/node_modules/
       policy: pull
       fallback_keys:
         - pnpm-$CI_DEFAULT_BRANCH
@@ -48,13 +57,22 @@
     - corepack enable
     - corepack prepare pnpm@latest --activate
     - pnpm config set store-dir .pnpm-store
-    - pnpm install --frozen-lockfile --prefer-offline
+    - |
+      if [ -d node_modules ]; then
+        echo "node_modules restored from cache — skipping install"
+      else
+        echo "Cache miss — running pnpm install"
+        pnpm install --frozen-lockfile --prefer-offline
+      fi
   cache:
     - key:
         files:
           - pnpm-lock.yaml
       paths:
         - .pnpm-store
+        - node_modules/
+        - apps/*/node_modules/
+        - packages/*/node_modules/
       policy: pull
       fallback_keys:
         - pnpm-$CI_DEFAULT_BRANCH
