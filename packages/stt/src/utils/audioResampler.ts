@@ -21,11 +21,7 @@ export const WHISPER_SAMPLE_RATE = 16000;
  * @param outputSampleRate - Desired output sample rate
  * @returns Resampled audio samples
  */
-export function resampleLinear(
-  inputSamples: Float32Array,
-  inputSampleRate: number,
-  outputSampleRate: number
-): Float32Array {
+export function resampleLinear(inputSamples: Float32Array, inputSampleRate: number, outputSampleRate: number): Float32Array {
   return resampleAudio(inputSamples, inputSampleRate, outputSampleRate);
 }
 
@@ -36,10 +32,7 @@ export function resampleLinear(
  * @param rightChannel - Right channel samples
  * @returns Mono audio samples
  */
-export function stereoToMono(
-  leftChannel: Float32Array,
-  rightChannel: Float32Array
-): Float32Array {
+export function stereoToMono(leftChannel: Float32Array, rightChannel: Float32Array): Float32Array {
   const length = Math.min(leftChannel.length, rightChannel.length);
   const mono = new Float32Array(length);
 
@@ -116,10 +109,7 @@ export function prepareAudioForWhisper(audioBuffer: AudioBuffer): Float32Array {
  * @param sampleRate - Sample rate of input audio
  * @returns Audio samples ready for Whisper (16kHz)
  */
-export function prepareFloat32ForWhisper(
-  samples: Float32Array,
-  sampleRate: number
-): Float32Array {
+export function prepareFloat32ForWhisper(samples: Float32Array, sampleRate: number): Float32Array {
   if (sampleRate === WHISPER_SAMPLE_RATE) {
     return samples;
   }
@@ -185,10 +175,7 @@ export function float32ToBytes(samples: Float32Array): Uint8Array {
  * @param sampleRate - Sample rate
  * @returns Duration in seconds
  */
-export function samplesToDuration(
-  sampleCount: number,
-  sampleRate: number
-): number {
+export function samplesToDuration(sampleCount: number, sampleRate: number): number {
   return sampleCount / sampleRate;
 }
 
@@ -199,10 +186,7 @@ export function samplesToDuration(
  * @param sampleRate - Sample rate
  * @returns Number of samples
  */
-export function durationToSamples(
-  durationS: number,
-  sampleRate: number
-): number {
+export function durationToSamples(durationS: number, sampleRate: number): number {
   return Math.floor(durationS * sampleRate);
 }
 
@@ -230,10 +214,7 @@ export interface NormalizeOptions {
  * @param options - Normalization options
  * @returns Normalized audio samples
  */
-export function normalizeAudio(
-  samples: Float32Array,
-  options: NormalizeOptions = {}
-): Float32Array {
+export function normalizeAudio(samples: Float32Array, options: NormalizeOptions = {}): Float32Array {
   const { targetPeak = 0.95, removeDCOffset = true } = options;
 
   const output = new Float32Array(samples.length);
@@ -269,9 +250,7 @@ export function normalizeAudio(
  * @param arrays - Arrays to concatenate
  * @returns Concatenated array
  */
-export function concatenateFloat32Arrays(
-  arrays: Float32Array[]
-): Float32Array {
+export function concatenateFloat32Arrays(arrays: Float32Array[]): Float32Array {
   if (arrays.length === 0) {
     return new Float32Array(0);
   }

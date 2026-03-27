@@ -545,23 +545,12 @@ export interface STTStatsPayload {
 /**
  * All possible STT data event types.
  */
-export type STTDataEventType =
-  | 'stt-transcription'
-  | 'stt-partial'
-  | 'stt-speech-start'
-  | 'stt-speech-end'
-  | 'stt-model-loaded'
-  | 'stt-stats';
+export type STTDataEventType = 'stt-transcription' | 'stt-partial' | 'stt-speech-start' | 'stt-speech-end' | 'stt-model-loaded' | 'stt-stats';
 
 /**
  * Union of all STT data payloads.
  */
-export type STTDataPayload =
-  | STTTranscriptionPayload
-  | STTSpeechStartPayload
-  | STTSpeechEndPayload
-  | STTModelLoadedPayload
-  | STTStatsPayload;
+export type STTDataPayload = STTTranscriptionPayload | STTSpeechStartPayload | STTSpeechEndPayload | STTModelLoadedPayload | STTStatsPayload;
 
 // ============================================================================
 // WebSocket Message Types
@@ -595,10 +584,7 @@ export interface AudioMetadata {
 /**
  * Messages sent to the backend WebSocket.
  */
-export type WSOutboundMessage =
-  | { type: 'audio'; data: number[]; metadata?: AudioMetadata }
-  | { type: 'stop' }
-  | { type: 'ping' };
+export type WSOutboundMessage = { type: 'audio'; data: number[]; metadata?: AudioMetadata } | { type: 'stop' } | { type: 'ping' };
 
 /**
  * Messages received from the backend WebSocket.
@@ -708,7 +694,7 @@ export class STTError extends Error {
   constructor(
     public readonly code: STTErrorCode,
     message: string,
-    public readonly cause?: Error
+    public readonly cause?: Error,
   ) {
     super(message);
     this.name = 'STTError';
@@ -875,9 +861,4 @@ export function getCountryCode(locale: LanguageLocale): string | undefined {
 // Re-exports for convenience
 // ============================================================================
 
-export type {
-  AudioProcessorOptions,
-  ProcessorOptions,
-  TrackProcessor,
-  EventEmittingProcessor,
-} from '@arcaai/room';
+export type { AudioProcessorOptions, ProcessorOptions, TrackProcessor, EventEmittingProcessor } from '@arcaai/room';

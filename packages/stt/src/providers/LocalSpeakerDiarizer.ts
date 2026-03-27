@@ -239,9 +239,7 @@ export class LocalSpeakerDiarizer {
     }
 
     const inv = 1 / nFrames;
-    const feature = new Float32Array(
-      NUM_MFCC + NUM_MFCC + NUM_MEL_BANDS + 9
-    );
+    const feature = new Float32Array(NUM_MFCC + NUM_MFCC + NUM_MEL_BANDS + 9);
     let idx = 0;
 
     for (let i = 0; i < NUM_MFCC; i += 1) feature[idx++] = avgMfcc[i]!;
@@ -486,14 +484,10 @@ export class LocalSpeakerDiarizer {
     }
 
     const pitchCorrelation = Math.max(0, Math.min(1, bestCorr));
-    const pitchPosition = lagMax > lagMin
-      ? (bestLag - lagMin) / (lagMax - lagMin)
-      : 0;
+    const pitchPosition = lagMax > lagMin ? (bestLag - lagMin) / (lagMax - lagMin) : 0;
 
     // Harmonics-to-Noise Ratio (HNR) approximation
-    const hnr = pitchCorrelation > 0.01
-      ? 10 * Math.log10(pitchCorrelation / (1 - pitchCorrelation + 1e-9))
-      : 0;
+    const hnr = pitchCorrelation > 0.01 ? 10 * Math.log10(pitchCorrelation / (1 - pitchCorrelation + 1e-9)) : 0;
     const normalizedHnr = Math.max(0, Math.min(1, (hnr + 10) / 40));
 
     return {
