@@ -48,17 +48,29 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.2",
+    "httpx>=0.28.1",
     "ruff>=0.15.7",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "httpx>=0.28.1",
     "ruff>=0.15.7",
 ]
 
 [project.scripts]
 nlp = "nlp.main:main"
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+addopts = [
+    "-ra",
+    "--strict-config",
+    "--strict-markers",
+]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
 
 [tool.uv]
 package = true
