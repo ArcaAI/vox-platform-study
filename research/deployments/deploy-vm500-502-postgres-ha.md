@@ -358,16 +358,9 @@ sudo apt-get update && sudo apt-get install -y ufw
 # Allow SSH first — prevents lockout when UFW is enabled
 sudo ufw allow OpenSSH
 
-# Allow cluster communication between nodes
-sudo ufw allow from 10.10.1.200 to any
-sudo ufw allow from 10.10.1.201 to any
-sudo ufw allow from 10.10.1.202 to any
-
-# Allow VIP
-sudo ufw allow from 10.10.1.250 to any
-
-# Allow CT 101 (Cloudflare Tunnel) — required for ha-db.taphuynh.dev, db.taphuynh.dev, etc.
-sudo ufw allow from 10.10.1.2 to any comment "CT 101 - Cloudflare Tunnel"
+# Allow all traffic from the private LAN (all VMs, VIP, runners, etc.)
+# This covers: cluster nodes, VIP, GitLab Runner (10.10.1.111), Redis, etc.
+sudo ufw allow from 10.10.1.0/24 to any comment "Private LAN - all infrastructure"
 
 # Allow VRRP (Keepalived)
 sudo ufw allow proto vrrp from 10.10.1.0/24

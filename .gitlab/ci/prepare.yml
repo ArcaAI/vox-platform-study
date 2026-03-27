@@ -11,7 +11,7 @@
 #
 # ── Required CI/CD Variables ────────────────────────────────────────────────
 #
-#   CI_DATABASE_URL        — postgresql://ci_user:<pass>@ha-postgres:5432/vox-staging
+#   CI_DATABASE_URL        — postgresql://ci_user:<pass>@10.10.1.250:5000/vox_staging
 #   CI_DATABASE_URL_DIRECT — same (for Prisma migrate)
 
 prepare-test-db:
@@ -39,16 +39,44 @@ prepare-test-db:
       DB_HOST_ONLY=$(echo "$DB_HOST" | cut -d: -f1)
       DB_PORT=$(echo "$DB_HOST" | cut -d: -f2)
       echo "  DATABASE_URL target = $DB_HOST"
-      echo "  Testing connectivity to $DB_HOST_ONLY:$DB_PORT ..."
-      if node -e "const s=require('net').createConnection({host:'$DB_HOST_ONLY',port:$DB_PORT,timeout:5000});s.on('connect',()=>{console.log('  ✓ Database reachable');s.destroy();process.exit(0)});s.on('error',e=>{console.error('  ✗ '+e.message);process.exit(1)});s.on('timeout',()=>{console.error('  ✗ Connection timed out');s.destroy();process.exit(1)})"; then
+      echo "  Container hostname: $(hostname)"
+      echo "  Container IP: $(hostname -i 2>/dev/null || echo 'unknown')"
+      echo ""
+
+      MAX_RETRIES=3
+      RETRY_DELAY=10
+      TIMEOUT_MS=10000
+      attempt=0
+      connected=false
+
+      while [ "$attempt" -lt "$MAX_RETRIES" ]; do
+        attempt=$((attempt + 1))
+        echo "  Attempt $attempt/$MAX_RETRIES — connecting to $DB_HOST_ONLY:$DB_PORT (timeout ${TIMEOUT_MS}ms)..."
+        if node -e "const s=require('net').createConnection({host:'$DB_HOST_ONLY',port:$DB_PORT,timeout:$TIMEOUT_MS});s.on('connect',()=>{console.log('  ✓ Database reachable');s.destroy();process.exit(0)});s.on('error',e=>{console.error('  ✗ '+e.message);process.exit(1)});s.on('timeout',()=>{console.error('  ✗ Connection timed out');s.destroy();process.exit(1)})"; then
+          connected=true
+          break
+        fi
+
+        if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+          echo "  Retrying in ${RETRY_DELAY}s..."
+          sleep "$RETRY_DELAY"
+        fi
+      done
+
+      if [ "$connected" != "true" ]; then
         echo ""
-      else
-        echo "ERROR: Cannot reach database at $DB_HOST_ONLY:$DB_PORT"
+        echo "ERROR: Cannot reach database at $DB_HOST_ONLY:$DB_PORT after $MAX_RETRIES attempts"
         echo "  Possible causes:"
         echo "    - Docker network isolation (fix: set network_mode=host in runner config)"
         echo "    - Firewall blocking port $DB_PORT from this host"
+        echo "    - HA cluster unhealthy (check HAProxy + Keepalived on VMs 500/501)"
+        echo "    - Keepalived VIP failover in progress"
         echo "    - Database server not running"
-        echo "  Container hostname: $(hostname)"
+        echo ""
+        echo "  Diagnostics:"
+        echo "    Container hostname: $(hostname)"
+        echo "    Container IP:       $(hostname -i 2>/dev/null || echo 'unknown')"
+        echo "    Network mode:       $(cat /proc/1/cgroup 2>/dev/null | head -1)"
         exit 1
       fi
 
