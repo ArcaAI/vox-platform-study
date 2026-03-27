@@ -125,6 +125,7 @@ export const RelativeTimeZoneDisplay = ({ className, ...props }: RelativeTimeZon
 
 export type RelativeTimeZoneDateProps = HTMLAttributes<HTMLDivElement>;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const RelativeTimeZoneDate = ({ className, ...props }: RelativeTimeZoneDateProps) => {
   const { time, dateFormatOptions } = useContext(RelativeTimeContext);
   const { zone } = useContext(RelativeTimeZoneContext);

@@ -5,7 +5,7 @@ import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@/components/editor/editor-ui/content-editable';
 
 export function Plugins() {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- state setter used via ref callback; value unused until toolbar plugins need anchor
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [floatingAnchorElem, setFloatingAnchorElem] = useState<HTMLDivElement | null>(null);
 
   const onRef = (_floatingAnchorElem: HTMLDivElement) => {

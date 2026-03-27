@@ -34,20 +34,23 @@ const GlassBreadcrumbLink = React.forwardRef<
   React.ComponentPropsWithoutRef<'a'> & {
     asChild?: boolean;
   }
->(({ asChild, className, ...props }, ref) => {
-  return (
-    <a
-      ref={ref}
-      className={cn(
-        'text-white/60 transition-colors duration-200',
-        'hover:text-white hover:underline underline-offset-4',
-        'focus:outline-none focus:text-white',
-        className,
-      )}
-      {...props}
-    />
-  );
-});
+>(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  ({ asChild, className, ...props }, ref) => {
+    return (
+      <a
+        ref={ref}
+        className={cn(
+          'text-white/60 transition-colors duration-200',
+          'hover:text-white hover:underline underline-offset-4',
+          'focus:outline-none focus:text-white',
+          className,
+        )}
+        {...props}
+      />
+    );
+  },
+);
 GlassBreadcrumbLink.displayName = 'GlassBreadcrumbLink';
 
 const GlassBreadcrumbPage = React.forwardRef<HTMLSpanElement, React.ComponentPropsWithoutRef<'span'>>(({ className, ...props }, ref) => (

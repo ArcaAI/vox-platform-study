@@ -332,6 +332,7 @@ export type CodeBlockFilenameProps = HTMLAttributes<HTMLDivElement> & {
   value?: string;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const CodeBlockFilename = ({ className, icon, value, children, ...props }: CodeBlockFilenameProps) => {
   const { value: activeValue } = useContext(CodeBlockContext);
   const defaultIcon = Object.entries(filenameIconMap).find(([pattern]) => {

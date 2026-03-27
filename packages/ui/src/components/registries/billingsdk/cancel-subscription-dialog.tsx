@@ -151,7 +151,7 @@ export function CancelSubscriptionDialog({
         </DialogClose>
         {leftPanelImageUrl && (
           <div className="relative hidden min-h-[500px] w-full overflow-hidden md:block md:w-1/2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {/* eslint-disable-next-line */}
             <img src={leftPanelImageUrl} alt="Cancel Subscription" className="absolute inset-0 h-full w-full object-cover" />
             <div className="via-background/30 to-background/90 absolute inset-0 hidden bg-gradient-to-r from-transparent dark:block"></div>
             <div className="from-background/80 to-background/20 absolute inset-0 hidden bg-gradient-to-t via-transparent dark:block"></div>

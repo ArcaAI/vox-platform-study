@@ -249,7 +249,7 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
       setIsStyleLoaded(false);
       setMapInstance(null);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
   // Sync controlled viewport to map
@@ -416,7 +416,7 @@ function MapMarker({
 
     return markerInstance;
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
   useEffect(() => {
@@ -428,7 +428,7 @@ function MapMarker({
       marker.remove();
     };
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, [map]);
 
   if (marker.getLngLat().lng !== longitude || marker.getLngLat().lat !== latitude) {
@@ -499,7 +499,7 @@ function MarkerPopup({ children, className, closeButton = false, ...popupOptions
       .setDOMContent(container);
 
     return popupInstance;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
   useEffect(() => {
@@ -511,7 +511,7 @@ function MarkerPopup({ children, className, closeButton = false, ...popupOptions
     return () => {
       marker.setPopup(null);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, [map]);
 
   if (popup.isOpen()) {
@@ -569,7 +569,7 @@ function MarkerTooltip({ children, className, ...popupOptions }: MarkerTooltipPr
     }).setMaxWidth('none');
 
     return tooltipInstance;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
   useEffect(() => {
@@ -590,7 +590,7 @@ function MarkerTooltip({ children, className, ...popupOptions }: MarkerTooltipPr
       marker.getElement()?.removeEventListener('mouseleave', handleMouseLeave);
       tooltip.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, [map]);
 
   if (tooltip.isOpen()) {
@@ -865,7 +865,7 @@ function MapPopup({ longitude, latitude, onClose, children, className, closeButt
       .setLngLat([longitude, latitude]);
 
     return popupInstance;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
   useEffect(() => {
@@ -884,7 +884,7 @@ function MapPopup({ longitude, latitude, onClose, children, className, closeButt
         popup.remove();
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, [map]);
 
   if (popup.isOpen()) {
@@ -1001,7 +1001,7 @@ function MapRoute({
         // ignore
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, [isLoaded, map]);
 
   // When coordinates change, update the source data
@@ -1177,7 +1177,7 @@ function MapClusterLayer<P extends GeoJSON.GeoJsonProperties = GeoJSON.GeoJsonPr
         // ignore
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, [isLoaded, map, sourceId]);
 
   // Update source data when data prop changes (only for non-URL data)

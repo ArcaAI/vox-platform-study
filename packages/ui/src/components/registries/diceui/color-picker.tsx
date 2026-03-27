@@ -571,6 +571,7 @@ function ColorPicker(props: ColorPickerProps) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface ColorPickerImplProps extends Omit<
   ColorPickerProps,
   'defaultValue' | 'onValueChange' | 'onOpenChange' | 'format' | 'defaultFormat' | 'onFormatChange'

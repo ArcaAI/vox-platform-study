@@ -275,6 +275,7 @@ function DetailSkeleton({ count = 4 }: { count?: number }) {
 // Type guard helpers
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function isListColumn(col: AnyColumnConfig): col is MultiColumnConfig {
   return 'keyExtractor' in col && 'renderItem' in col;
 }
@@ -305,19 +306,16 @@ function parsePixelWidth(width: string | undefined): number | null {
 
 function computeDefaultSizes(entries: ColumnEntry[]): number[] {
   const sizes: number[] = [];
-  let totalFixed = 0;
   let flexCount = 0;
 
   for (const entry of entries) {
     const explicit = entry.config.defaultSize;
     if (explicit != null) {
       sizes.push(explicit);
-      totalFixed += explicit;
     } else {
       const px = parsePixelWidth(entry.config.width);
       if (px) {
         sizes.push(-px);
-        totalFixed += 0;
       } else {
         sizes.push(0);
         flexCount++;
