@@ -9,18 +9,18 @@ import { convertEntityValue } from '../utils';
  * The returned object is immutable.
  */
 export function toRawObject(target: any): object {
-    // Create an empty object to store the properties
-    const obj: Record<string, any> = {};
+  // Create an empty object to store the properties
+  const obj: Record<string, any> = {};
 
-    // Iterate over each property key of the current instance
-    Object.keys(target).forEach((key) => {
-        // Get the value of the property using the key
-        const value = (target as any)[key];
+  // Iterate over each property key of the current instance
+  Object.keys(target).forEach((key) => {
+    // Get the value of the property using the key
+    const value = (target as any)[key];
 
-        // Assign the key-value pair to the new object
-        obj[key] = convertEntityValue(value);
-    });
+    // Assign the key-value pair to the new object
+    obj[key] = convertEntityValue(value);
+  });
 
-    // Freeze the object to make it immutable and return it
-    return Object.freeze(obj);
+  // Freeze the object to make it immutable and return it
+  return Object.freeze(obj);
 }

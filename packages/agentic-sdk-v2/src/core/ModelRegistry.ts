@@ -5,15 +5,7 @@
  * Supports public (HuggingFace) and custom organization models.
  */
 
-import type {
-  ModelDefinition,
-  ModelRegistryConfig,
-  ModelLoadProgress,
-  ModelLoadStatus,
-  ModelLoadOptions,
-  SelectedModels,
-  TenantAudioConfig,
-} from '../types';
+import type { ModelDefinition, ModelRegistryConfig, ModelLoadProgress, SelectedModels, TenantAudioConfig } from '../types';
 import { DEFAULT_MODELS, DEFAULT_TENANT_FEATURES, parseTenantConfig } from '../types';
 import { AgenticError } from '../types';
 import type { AgenticClient } from './AgenticClient';
@@ -169,10 +161,7 @@ export class ModelRegistry {
         error: { code: 'VALIDATION_ERROR', name: 'AgenticError' },
         attributes: { modelId, expectedType: type, actualType: model.type },
       });
-      throw new AgenticError(
-        'VALIDATION_ERROR',
-        `Model ${modelId} is not a ${type} model`
-      );
+      throw new AgenticError('VALIDATION_ERROR', `Model ${modelId} is not a ${type} model`);
     }
 
     const previousModel = this.selected[type];
@@ -218,7 +207,7 @@ export class ModelRegistry {
       operation: 'addCustomModels',
       component: 'ModelRegistry',
       attributes: {
-        addedModels: models.map(m => ({ id: m.id, type: m.type, source: m.source })),
+        addedModels: models.map((m) => ({ id: m.id, type: m.type, source: m.source })),
         totalModels: this.models.size,
       },
     });
@@ -239,10 +228,10 @@ export class ModelRegistry {
 
     try {
       const raw = await withRetry(
-        () => this.apiClient.get<
-          | { data: Array<{ key: string; value: unknown; namespace?: string }> }
-          | Array<{ key: string; value: unknown; namespace?: string }>
-        >(MY_TENANT_ENDPOINTS.CONFIG),
+        () =>
+          this.apiClient.get<
+            { data: Array<{ key: string; value: unknown; namespace?: string }> } | Array<{ key: string; value: unknown; namespace?: string }>
+          >(MY_TENANT_ENDPOINTS.CONFIG),
         {
           maxRetries: 2,
           delayMs: 1000,
@@ -488,10 +477,7 @@ export class ModelRegistry {
     if (typeof window === 'undefined') return;
 
     try {
-      localStorage.setItem(
-        STORAGE_KEYS.SELECTED_MODELS,
-        JSON.stringify(this.selected)
-      );
+      localStorage.setItem(STORAGE_KEYS.SELECTED_MODELS, JSON.stringify(this.selected));
       this.logger?.trace('Selected models saved to storage', {
         operation: 'saveSelectedToStorage',
         component: 'ModelRegistry',
@@ -539,9 +525,7 @@ export class ModelRegistry {
       selected: this.getSelected(),
       loading: this.getLoadingModels(),
       loaded: Array.from(this.loadedModels),
-      errors: Object.fromEntries(
-        Array.from(this.errors.entries()).map(([k, v]) => [k, v.message])
-      ),
+      errors: Object.fromEntries(Array.from(this.errors.entries()).map(([k, v]) => [k, v.message])),
     };
   }
 }

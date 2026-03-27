@@ -1,22 +1,17 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-} from '../../../registries/basecn/tooltip'
-import { Button } from '../../../registries/basecn/button'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../../../registries/basecn/tooltip';
+import { Button } from '../../../registries/basecn/button';
 
 const meta = {
   title: 'Registries/Basecn/Tooltip',
   component: Tooltip,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Tooltip>
+} satisfies Meta<typeof Tooltip>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -30,4 +25,4 @@ export const Default: Story = {
       </Tooltip>
     </TooltipProvider>
   ),
-}
+};

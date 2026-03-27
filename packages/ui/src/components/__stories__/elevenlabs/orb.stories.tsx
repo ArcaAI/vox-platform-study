@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Orb } from '../../elevenlabs/orb'
+import { Orb } from '../../elevenlabs/orb';
 
 const meta: Meta<typeof Orb> = {
   title: 'ElevenLabs/Orb',
@@ -29,10 +29,10 @@ const meta: Meta<typeof Orb> = {
       description: 'Manual output volume (0-1)',
     },
   },
-}
+};
 
-export default meta
-type Story = StoryObj<typeof Orb>
+export default meta;
+type Story = StoryObj<typeof Orb>;
 
 export const Default: Story = {
   render: () => (
@@ -40,7 +40,7 @@ export const Default: Story = {
       <Orb />
     </div>
   ),
-}
+};
 
 export const Thinking: Story = {
   render: () => (
@@ -48,7 +48,7 @@ export const Thinking: Story = {
       <Orb agentState="thinking" />
     </div>
   ),
-}
+};
 
 export const Listening: Story = {
   render: () => (
@@ -56,7 +56,7 @@ export const Listening: Story = {
       <Orb agentState="listening" />
     </div>
   ),
-}
+};
 
 export const Talking: Story = {
   render: () => (
@@ -64,31 +64,23 @@ export const Talking: Story = {
       <Orb agentState="talking" />
     </div>
   ),
-}
+};
 
 export const CustomColors: Story = {
   render: () => (
     <div className="h-[300px] w-[300px]">
-      <Orb
-        agentState="talking"
-        colors={['#FF6B6B', '#4ECDC4']}
-      />
+      <Orb agentState="talking" colors={['#FF6B6B', '#4ECDC4']} />
     </div>
   ),
-}
+};
 
 export const ManualVolume: Story = {
   render: () => (
     <div className="h-[300px] w-[300px]">
-      <Orb
-        agentState="talking"
-        volumeMode="manual"
-        manualInput={0.5}
-        manualOutput={0.8}
-      />
+      <Orb agentState="talking" volumeMode="manual" manualInput={0.5} manualOutput={0.8} />
     </div>
   ),
-}
+};
 
 export const SmallOrb: Story = {
   render: () => (
@@ -96,7 +88,7 @@ export const SmallOrb: Story = {
       <Orb agentState="thinking" />
     </div>
   ),
-}
+};
 
 export const AllStates: Story = {
   render: () => (
@@ -111,4 +103,4 @@ export const AllStates: Story = {
       ))}
     </div>
   ),
-}
+};

@@ -5,14 +5,14 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule],
-    providers: [
-        {
-            provide: IPromptManagementService,
-            useClass: PromptManagementService,
-        },
-        PromptManagementService,
-    ],
-    exports: [IPromptManagementService, PromptManagementService],
+  imports: [CommonServiceModule, CoreDatabaseModule],
+  providers: [
+    {
+      provide: IPromptManagementService,
+      useClass: PromptManagementService,
+    },
+    PromptManagementService,
+  ],
+  exports: [IPromptManagementService, PromptManagementService],
 })
 export class PromptManagementServiceModule {}

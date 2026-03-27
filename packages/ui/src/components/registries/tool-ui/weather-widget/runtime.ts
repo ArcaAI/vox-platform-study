@@ -1,4 +1,4 @@
-export { WeatherWidget } from "./weather-widget-container";
+export { WeatherWidget } from './weather-widget-container';
 export type {
   WeatherWidgetPayload,
   WeatherWidgetRuntimeProps as WeatherWidgetProps,
@@ -9,4 +9,4 @@ export type {
   ForecastDay,
   TemperatureUnit,
   PrecipitationLevel,
-} from "./schema-runtime";
+} from './schema-runtime';

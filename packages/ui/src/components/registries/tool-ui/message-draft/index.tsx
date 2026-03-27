@@ -1,4 +1,4 @@
-export { MessageDraft } from "./message-draft";
+export { MessageDraft } from './message-draft';
 export {
   type SerializableMessageDraft,
   type SerializableEmailDraft,
@@ -7,4 +7,4 @@ export {
   type MessageDraftOutcome,
   type SlackTarget,
   type MessageDraftProps,
-} from "./schema";
+} from './schema';

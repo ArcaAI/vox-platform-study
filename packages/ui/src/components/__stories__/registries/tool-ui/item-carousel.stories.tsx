@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { ItemCarousel } from '../../../registries/tool-ui/item-carousel'
+import { ItemCarousel } from '../../../registries/tool-ui/item-carousel';
 
 const meta = {
   title: 'Registries/ToolUI/ItemCarousel',
   component: ItemCarousel,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof ItemCarousel>
+} satisfies Meta<typeof ItemCarousel>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
@@ -20,4 +20,4 @@ export const Default: Story = {
       { id: '2', name: 'Item 2', subtitle: 'Second item' },
     ],
   },
-}
+};

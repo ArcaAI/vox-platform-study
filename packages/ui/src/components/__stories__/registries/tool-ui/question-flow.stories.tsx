@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { QuestionFlow } from '../../../registries/tool-ui/question-flow'
+import { QuestionFlow } from '../../../registries/tool-ui/question-flow';
 
 const meta = {
   title: 'Registries/ToolUI/QuestionFlow',
   component: QuestionFlow,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof QuestionFlow>
+} satisfies Meta<typeof QuestionFlow>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -26,4 +26,4 @@ export const Default: Story = {
       ]}
     />
   ),
-}
+};

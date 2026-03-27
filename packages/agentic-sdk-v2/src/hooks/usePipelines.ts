@@ -76,15 +76,10 @@ export function usePipelines(): UsePipelinesReturn {
     [execute],
   );
 
-  const get = useCallback(
-    (id: string) =>
-      execute<Pipeline>('get', (client) => client.get<Pipeline>(PIPELINE_ENDPOINTS.GET(id))),
-    [execute],
-  );
+  const get = useCallback((id: string) => execute<Pipeline>('get', (client) => client.get<Pipeline>(PIPELINE_ENDPOINTS.GET(id))), [execute]);
 
   const getBySlug = useCallback(
-    (slug: string) =>
-      execute<Pipeline>('getBySlug', (client) => client.get<Pipeline>(PIPELINE_ENDPOINTS.GET_BY_SLUG(slug))),
+    (slug: string) => execute<Pipeline>('getBySlug', (client) => client.get<Pipeline>(PIPELINE_ENDPOINTS.GET_BY_SLUG(slug))),
     [execute],
   );
 
@@ -142,8 +137,18 @@ export function usePipelines(): UsePipelinesReturn {
   );
 
   return {
-    pipelines, selectedPipeline, isLoading, error,
-    list, get, getBySlug, select,
-    createPipeline, updatePipeline, deletePipeline, validateConfig, assignToTenant,
+    pipelines,
+    selectedPipeline,
+    isLoading,
+    error,
+    list,
+    get,
+    getBySlug,
+    select,
+    createPipeline,
+    updatePipeline,
+    deletePipeline,
+    validateConfig,
+    assignToTenant,
   };
 }

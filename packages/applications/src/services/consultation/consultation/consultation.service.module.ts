@@ -5,14 +5,14 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../../baseServices';
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule],
-    providers: [
-        {
-            provide: IConsultationService,
-            useClass: ConsultationService,
-        },
-        ConsultationService,
-    ],
-    exports: [IConsultationService, ConsultationService],
+  imports: [CommonServiceModule, CoreDatabaseModule],
+  providers: [
+    {
+      provide: IConsultationService,
+      useClass: ConsultationService,
+    },
+    ConsultationService,
+  ],
+  exports: [IConsultationService, ConsultationService],
 })
 export class ConsultationServiceModule {}

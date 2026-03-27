@@ -1,14 +1,14 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
-import { useInterval } from '../../../../hooks/registries/use-interval'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useState } from 'react';
+import { useInterval } from '../../../../hooks/registries/use-interval';
 
 function UseIntervalDemo() {
-  const [count, setCount] = useState(0)
-  const [delay, setDelay] = useState<number | undefined>(1000)
+  const [count, setCount] = useState(0);
+  const [delay, setDelay] = useState<number | undefined>(1000);
 
   const clear = useInterval(() => {
-    setCount((c) => c + 1)
-  }, delay)
+    setCount((c) => c + 1);
+  }, delay);
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -25,7 +25,7 @@ function UseIntervalDemo() {
         </button>
       </div>
     </div>
-  )
+  );
 }
 
 const meta = {
@@ -33,8 +33,8 @@ const meta = {
   component: UseIntervalDemo,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof UseIntervalDemo>
+} satisfies Meta<typeof UseIntervalDemo>;
 
-export default meta
-type Story = StoryObj<typeof meta>
-export const Default: Story = {}
+export default meta;
+type Story = StoryObj<typeof meta>;
+export const Default: Story = {};

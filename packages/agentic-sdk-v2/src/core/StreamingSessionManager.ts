@@ -12,20 +12,12 @@
 import type { AgenticClient } from './AgenticClient';
 import { STT_V2_ENDPOINTS } from './constants';
 import type { ISDKLogger } from './logger';
-import type {
-  CreateStreamingSessionRequest,
-  StreamingSessionResponse,
-} from '../types/stt-v2';
+import type { CreateStreamingSessionRequest, StreamingSessionResponse } from '../types/stt-v2';
 
 /**
  * Session manager status values
  */
-export type SessionManagerStatus =
-  | 'idle'
-  | 'creating'
-  | 'session_created'
-  | 'closed'
-  | 'error';
+export type SessionManagerStatus = 'idle' | 'creating' | 'session_created' | 'closed' | 'error';
 
 /**
  * Session state snapshot
@@ -79,14 +71,10 @@ export class StreamingSessionManager {
    * Create a streaming session via the stt-v2 backend.
    * Stores the sessionId for subsequent WebSocket connection.
    */
-  async createSession(
-    request: CreateStreamingSessionRequest,
-  ): Promise<StreamingSessionResponse> {
+  async createSession(request: CreateStreamingSessionRequest): Promise<StreamingSessionResponse> {
     if (this.sessionId) {
-      const err = new Error(
-        `Streaming session already exists (id: ${this.sessionId}). Call closeSession() first.`,
-      );
-      this.errorListeners.forEach(cb => cb(err));
+      const err = new Error(`Streaming session already exists (id: ${this.sessionId}). Call closeSession() first.`);
+      this.errorListeners.forEach((cb) => cb(err));
       throw err;
     }
 
@@ -104,10 +92,7 @@ export class StreamingSessionManager {
     });
 
     try {
-      const response = await this.apiClient.post<StreamingSessionResponse>(
-        STT_V2_ENDPOINTS.CREATE_SESSION,
-        request,
-      );
+      const response = await this.apiClient.post<StreamingSessionResponse>(STT_V2_ENDPOINTS.CREATE_SESSION, request);
 
       this.sessionId = response.sessionId;
       this.sessionResponse = response;
@@ -125,7 +110,7 @@ export class StreamingSessionManager {
         },
       });
 
-      this.sessionCreatedListeners.forEach(cb => cb(response));
+      this.sessionCreatedListeners.forEach((cb) => cb(response));
 
       return response;
     } catch (error) {
@@ -137,7 +122,7 @@ export class StreamingSessionManager {
         error: error as Error,
       });
 
-      this.errorListeners.forEach(cb => cb(error as Error));
+      this.errorListeners.forEach((cb) => cb(error as Error));
       throw error;
     }
   }
@@ -152,6 +137,7 @@ export class StreamingSessionManager {
    * Callers should send the token as the first WebSocket message after connecting:
    *   ws.send(JSON.stringify({ type: 'auth', token }));
    */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Kept for API compatibility; token sent via first WS message.
   getWebSocketUrl(_token: string): string | null {
     if (!this.sessionId || !this.sessionResponse) {
       return null;
@@ -202,7 +188,7 @@ export class StreamingSessionManager {
     this.status = 'closed';
 
     if (closedId) {
-      this.sessionClosedListeners.forEach(cb => cb(closedId));
+      this.sessionClosedListeners.forEach((cb) => cb(closedId));
     }
   }
 
@@ -212,17 +198,23 @@ export class StreamingSessionManager {
 
   onSessionCreated(cb: (response: StreamingSessionResponse) => void): () => void {
     this.sessionCreatedListeners.add(cb);
-    return () => { this.sessionCreatedListeners.delete(cb); };
+    return () => {
+      this.sessionCreatedListeners.delete(cb);
+    };
   }
 
   onSessionClosed(cb: (sessionId: string) => void): () => void {
     this.sessionClosedListeners.add(cb);
-    return () => { this.sessionClosedListeners.delete(cb); };
+    return () => {
+      this.sessionClosedListeners.delete(cb);
+    };
   }
 
   onError(cb: (error: Error) => void): () => void {
     this.errorListeners.add(cb);
-    return () => { this.errorListeners.delete(cb); };
+    return () => {
+      this.errorListeners.delete(cb);
+    };
   }
 
   // ===========================================================================

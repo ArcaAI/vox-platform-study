@@ -1,13 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
-import { Button } from '@/components/shadcn/button'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger
-} from '@/components/shadcn/popover'
-import { ArrowLeft, ChevronLeft, ChevronRight, Globe, Search } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { demoDateTimePickerData } from './demo/form'
+import { useState, useEffect, useRef } from 'react';
+import { Button } from '@/components/shadcn/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/shadcn/popover';
+import { ArrowLeft, ChevronLeft, ChevronRight, Globe, Search } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { demoDateTimePickerData } from './demo/form';
 
 /** Timezone configuration using IANA timezone identifiers for correct DST handling */
 const timezones = [
@@ -30,8 +26,8 @@ const timezones = [
   { id: 'singapore', name: 'Singapore, Hong Kong, Perth', iana: 'Asia/Singapore' },
   { id: 'tokyo', name: 'Tokyo, Seoul, Osaka', iana: 'Asia/Tokyo' },
   { id: 'sydney', name: 'Sydney, Melbourne, Brisbane', iana: 'Australia/Sydney' },
-  { id: 'auckland', name: 'Auckland, Wellington', iana: 'Pacific/Auckland' }
-]
+  { id: 'auckland', name: 'Auckland, Wellington', iana: 'Pacific/Auckland' },
+];
 
 const getTimeForTimezone = (iana: string) => {
   try {
@@ -40,11 +36,13 @@ const getTimeForTimezone = (iana: string) => {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
-    }).format(new Date()).toLowerCase()
+    })
+      .format(new Date())
+      .toLowerCase();
   } catch {
-    return ''
+    return '';
   }
-}
+};
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -57,29 +55,29 @@ const getTimeForTimezone = (iana: string) => {
 export interface DateTimePickerProps {
   data?: {
     /** Title displayed at the top of the picker. */
-    title?: string
+    title?: string;
     /** Array of dates that can be selected. */
-    availableDates?: Date[]
+    availableDates?: Date[];
     /** Array of time slot strings (e.g., '11:30am'). */
-    availableTimeSlots?: string[]
+    availableTimeSlots?: string[];
     /** Default timezone name to display. */
-    timezone?: string
-  }
+    timezone?: string;
+  };
   actions?: {
     /** Called when the user clicks the Next button. */
-    onNext?: (date: Date, time: string) => void
-  }
+    onNext?: (date: Date, time: string) => void;
+  };
   appearance?: {
     /**
      * Whether to display the title.
      * @default true
      */
-    showTitle?: boolean
+    showTitle?: boolean;
     /**
      * Whether to show timezone selector.
      * @default true
      */
-    showTimezone?: boolean
+    showTimezone?: boolean;
     /**
      * First day of the week.
      * - `'sunday'` — US, Canada, Japan (default)
@@ -87,48 +85,39 @@ export interface DateTimePickerProps {
      * - `'saturday'` — Middle East
      * @default 'sunday'
      */
-    weekStartsOn?: 'sunday' | 'monday' | 'saturday'
-  }
+    weekStartsOn?: 'sunday' | 'monday' | 'saturday';
+  };
   control?: {
     /** Controlled selected date value. */
-    selectedDate?: Date | null
+    selectedDate?: Date | null;
     /** Controlled selected time value. */
-    selectedTime?: string | null
-  }
+    selectedTime?: string | null;
+  };
 }
 
-const ALL_DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+const ALL_DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
 const WEEK_START_OFFSETS: Record<'sunday' | 'monday' | 'saturday', number> = {
   sunday: 0,
   monday: 1,
   saturday: 6,
-}
+};
 
 const getOrderedDays = (weekStartsOn: 'sunday' | 'monday' | 'saturday') => {
-  const offset = WEEK_START_OFFSETS[weekStartsOn]
-  return [...ALL_DAYS.slice(offset), ...ALL_DAYS.slice(0, offset)]
-}
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-]
-
-
+  const offset = WEEK_START_OFFSETS[weekStartsOn];
+  return [...ALL_DAYS.slice(offset), ...ALL_DAYS.slice(0, offset)];
+};
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const formatDateHeader = (date: Date) => {
-  const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getDay()]
-  const monthName = MONTHS[date.getMonth()]
-  return `${dayName}, ${monthName} ${date.getDate()}`
-}
+  const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getDay()];
+  const monthName = MONTHS[date.getMonth()];
+  return `${dayName}, ${monthName} ${date.getDate()}`;
+};
 
 const isSameDay = (date1: Date, date2: Date) => {
-  return (
-    date1.getFullYear() === date2.getFullYear() &&
-    date1.getMonth() === date2.getMonth() &&
-    date1.getDate() === date2.getDate()
-  )
-}
+  return date1.getFullYear() === date2.getFullYear() && date1.getMonth() === date2.getMonth() && date1.getDate() === date2.getDate();
+};
 
 /**
  * A Calendly-style date and time picker with calendar view, available time slots,
@@ -161,68 +150,63 @@ const isSameDay = (date1: Date, date2: Date) => {
  * ```
  */
 export function DateTimePicker({ data, actions, appearance, control }: DateTimePickerProps) {
-  const resolved: NonNullable<DateTimePickerProps['data']> = data ?? demoDateTimePickerData
-  const title = resolved.title
-  const availableDates = resolved.availableDates ?? []
-  const availableTimeSlots = resolved.availableTimeSlots ?? []
-  const timezone = resolved.timezone
-  const { onNext } = actions ?? {}
-  const { showTitle = true, showTimezone = true, weekStartsOn = 'sunday' } = appearance ?? {}
-  const orderedDays = getOrderedDays(weekStartsOn)
-  const weekStartOffset = WEEK_START_OFFSETS[weekStartsOn]
-  const {
-    selectedDate: controlledDate,
-    selectedTime: controlledTime
-  } = control ?? {}
+  const resolved: NonNullable<DateTimePickerProps['data']> = data ?? demoDateTimePickerData;
+  const title = resolved.title;
+  const availableDates = resolved.availableDates ?? [];
+  const availableTimeSlots = resolved.availableTimeSlots ?? [];
+  const timezone = resolved.timezone;
+  const { onNext } = actions ?? {};
+  const { showTitle = true, showTimezone = true, weekStartsOn = 'sunday' } = appearance ?? {};
+  const orderedDays = getOrderedDays(weekStartsOn);
+  const weekStartOffset = WEEK_START_OFFSETS[weekStartsOn];
+  const { selectedDate: controlledDate, selectedTime: controlledTime } = control ?? {};
 
   const [currentMonth, setCurrentMonth] = useState(() => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), 1)
-  })
-  const [selectedDate, setSelectedDate] = useState<Date | null>(controlledDate ?? null)
-  const [selectedTime, setSelectedTime] = useState<string | null>(controlledTime ?? null)
-  const [selectedTimezone, setSelectedTimezone] = useState(timezones.find(tz => tz.name === timezone) || timezones[3])
-  const [timezoneSearch, setTimezoneSearch] = useState('')
-  const [timezoneDropdownOpen, setTimezoneDropdownOpen] = useState(false)
-  const timezoneSearchRef = useRef<HTMLInputElement>(null)
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [selectedDate, setSelectedDate] = useState<Date | null>(controlledDate ?? null);
+  const [selectedTime, setSelectedTime] = useState<string | null>(controlledTime ?? null);
+  const [selectedTimezone, setSelectedTimezone] = useState(timezones.find((tz) => tz.name === timezone) || timezones[3]);
+  const [timezoneSearch, setTimezoneSearch] = useState('');
+  const [timezoneDropdownOpen, setTimezoneDropdownOpen] = useState(false);
+  const timezoneSearchRef = useRef<HTMLInputElement>(null);
   // Mobile view mode: 'calendar' or 'time'
-  const [mobileView, setMobileView] = useState<'calendar' | 'time'>('calendar')
+  const [mobileView, setMobileView] = useState<'calendar' | 'time'>('calendar');
 
-  const filteredTimezones = timezones.filter(tz =>
-    tz.name.toLowerCase().includes(timezoneSearch.toLowerCase())
-  )
+  const filteredTimezones = timezones.filter((tz) => tz.name.toLowerCase().includes(timezoneSearch.toLowerCase()));
 
   useEffect(() => {
     if (timezoneDropdownOpen && timezoneSearchRef.current) {
-      timezoneSearchRef.current.focus()
+      timezoneSearchRef.current.focus();
     }
-  }, [timezoneDropdownOpen])
+  }, [timezoneDropdownOpen]);
 
-  const handleTimezoneSelect = (tz: typeof timezones[0]) => {
-    setSelectedTimezone(tz)
-    setTimezoneDropdownOpen(false)
-    setTimezoneSearch('')
-  }
+  const handleTimezoneSelect = (tz: (typeof timezones)[0]) => {
+    setSelectedTimezone(tz);
+    setTimezoneDropdownOpen(false);
+    setTimezoneSearch('');
+  };
 
-  const year = currentMonth.getFullYear()
-  const month = currentMonth.getMonth()
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
 
   // Calculate calendar grid
-  const firstDayOfMonth = new Date(year, month, 1).getDay()
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const daysInPrevMonth = new Date(year, month, 0).getDate()
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrevMonth = new Date(year, month, 0).getDate();
 
-  const calendarDays: { day: number; isCurrentMonth: boolean; date: Date }[] = []
+  const calendarDays: { day: number; isCurrentMonth: boolean; date: Date }[] = [];
 
   // Previous month days (adjusted for week start)
-  const leadingDays = (firstDayOfMonth - weekStartOffset + 7) % 7
+  const leadingDays = (firstDayOfMonth - weekStartOffset + 7) % 7;
   for (let i = leadingDays - 1; i >= 0; i--) {
-    const day = daysInPrevMonth - i
+    const day = daysInPrevMonth - i;
     calendarDays.push({
       day,
       isCurrentMonth: false,
-      date: new Date(year, month - 1, day)
-    })
+      date: new Date(year, month - 1, day),
+    });
   }
 
   // Current month days
@@ -230,97 +214,81 @@ export function DateTimePicker({ data, actions, appearance, control }: DateTimeP
     calendarDays.push({
       day,
       isCurrentMonth: true,
-      date: new Date(year, month, day)
-    })
+      date: new Date(year, month, day),
+    });
   }
 
   // Next month days to fill the grid (6 rows max)
-  const totalCells = Math.ceil(calendarDays.length / 7) * 7
-  const remainingDays = totalCells - calendarDays.length
+  const totalCells = Math.ceil(calendarDays.length / 7) * 7;
+  const remainingDays = totalCells - calendarDays.length;
   for (let day = 1; day <= remainingDays; day++) {
     calendarDays.push({
       day,
       isCurrentMonth: false,
-      date: new Date(year, month + 1, day)
-    })
+      date: new Date(year, month + 1, day),
+    });
   }
 
   const isDateAvailable = (date: Date) => {
-    return availableDates.some(d => isSameDay(d, date))
-  }
+    return availableDates.some((d) => isSameDay(d, date));
+  };
 
   const handlePrevMonth = () => {
-    setCurrentMonth(new Date(year, month - 1, 1))
-  }
+    setCurrentMonth(new Date(year, month - 1, 1));
+  };
 
   const handleNextMonth = () => {
-    setCurrentMonth(new Date(year, month + 1, 1))
-  }
+    setCurrentMonth(new Date(year, month + 1, 1));
+  };
 
   const handleDateSelect = (date: Date) => {
-    if (!isDateAvailable(date)) return
-    setSelectedDate(date)
-    setSelectedTime(null)
+    if (!isDateAvailable(date)) return;
+    setSelectedDate(date);
+    setSelectedTime(null);
     // On mobile, switch to time view when date is selected
-    setMobileView('time')
-  }
+    setMobileView('time');
+  };
 
   const handleBackToCalendar = () => {
-    setMobileView('calendar')
-  }
+    setMobileView('calendar');
+  };
 
   const handleTimeSelect = (time: string) => {
-    setSelectedTime(time)
-  }
+    setSelectedTime(time);
+  };
 
   const handleNext = () => {
     if (selectedDate && selectedTime) {
-      onNext?.(selectedDate, selectedTime)
+      onNext?.(selectedDate, selectedTime);
     }
-  }
+  };
 
-  const now = new Date()
+  const now = new Date();
 
   return (
     <div className="w-full bg-card rounded-xl p-6">
-      {showTitle && title && (
-        <h2 className="text-xl font-semibold text-foreground mb-6">{title}</h2>
-      )}
+      {showTitle && title && <h2 className="text-xl font-semibold text-foreground mb-6">{title}</h2>}
 
       <div className="flex justify-center">
         {/* Calendar Section - Hidden on mobile when viewing time slots */}
-        <div className={cn(
-          "w-[304px] flex-shrink-0",
-          mobileView === 'time' ? 'hidden md:block' : 'block'
-        )}>
+        <div className={cn('w-[304px] flex-shrink-0', mobileView === 'time' ? 'hidden md:block' : 'block')}>
           {/* Month Navigation */}
           <div className="flex items-center justify-center gap-4 mb-4">
-            <button
-              onClick={handlePrevMonth}
-              aria-label="Previous month"
-              className="p-1 hover:bg-muted rounded transition-colors"
-            >
+            <button onClick={handlePrevMonth} aria-label="Previous month" className="p-1 hover:bg-muted rounded transition-colors">
               <ChevronLeft className="h-5 w-5 text-muted-foreground" />
             </button>
             <span className="text-base font-medium text-foreground min-w-[140px] text-center">
               {MONTHS[month]} {year}
             </span>
-            <button
-              onClick={handleNextMonth}
-              aria-label="Next month"
-              className="p-1 hover:bg-muted rounded transition-colors"
-            >
+            <button onClick={handleNextMonth} aria-label="Next month" className="p-1 hover:bg-muted rounded transition-colors">
               <ChevronRight className="h-5 w-5 text-muted-foreground" />
             </button>
           </div>
 
           {/* Day Headers */}
           <div className="grid grid-cols-7 mb-2">
-            {orderedDays.map(day => (
-              <div
-                key={day}
-                className="text-center text-xs font-medium text-muted-foreground py-2"
-              >
+            {orderedDays.map((day) => (
+              <div key={day} className="text-center text-xs font-medium text-muted-foreground py-2">
                 {day}
               </div>
             ))}
@@ -329,9 +297,9 @@ export function DateTimePicker({ data, actions, appearance, control }: DateTimeP
           {/* Calendar Grid */}
           <div className="grid grid-cols-7 gap-y-1">
             {calendarDays.map((item, index) => {
-              const isAvailable = item.isCurrentMonth && isDateAvailable(item.date)
-              const isSelected = selectedDate && isSameDay(item.date, selectedDate)
-              const isToday = isSameDay(item.date, now)
+              const isAvailable = item.isCurrentMonth && isDateAvailable(item.date);
+              const isSelected = selectedDate && isSameDay(item.date, selectedDate);
+              const isToday = isSameDay(item.date, now);
 
               return (
                 <button
@@ -344,15 +312,13 @@ export function DateTimePicker({ data, actions, appearance, control }: DateTimeP
                     item.isCurrentMonth && !isAvailable && 'text-muted-foreground cursor-default',
                     item.isCurrentMonth && isAvailable && !isSelected && 'text-primary font-medium hover:bg-primary/10 cursor-pointer',
                     isSelected && 'bg-primary text-primary-foreground font-medium',
-                    isAvailable && !isSelected && 'bg-primary/10'
+                    isAvailable && !isSelected && 'bg-primary/10',
                   )}
                 >
                   {item.day}
-                  {isToday && !isSelected && (
-                    <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-foreground" />
-                  )}
+                  {isToday && !isSelected && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-foreground" />}
                 </button>
-              )
+              );
             })}
           </div>
 
@@ -367,8 +333,10 @@ export function DateTimePicker({ data, actions, appearance, control }: DateTimeP
                     className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <Globe className="h-4 w-4" />
-                    <span>{selectedTimezone.name} ({getTimeForTimezone(selectedTimezone.iana)})</span>
-                    <ChevronRight className={cn("h-3 w-3 transition-transform", timezoneDropdownOpen ? "rotate-90" : "rotate-0")} />
+                    <span>
+                      {selectedTimezone.name} ({getTimeForTimezone(selectedTimezone.iana)})
+                    </span>
+                    <ChevronRight className={cn('h-3 w-3 transition-transform', timezoneDropdownOpen ? 'rotate-90' : 'rotate-0')} />
                   </button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[320px] p-0" align="start">
@@ -391,19 +359,15 @@ export function DateTimePicker({ data, actions, appearance, control }: DateTimeP
                         key={tz.id}
                         onClick={() => handleTimezoneSelect(tz)}
                         className={cn(
-                          "w-full px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors flex items-center justify-between",
-                          selectedTimezone.id === tz.id && "bg-muted"
+                          'w-full px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors flex items-center justify-between',
+                          selectedTimezone.id === tz.id && 'bg-muted',
                         )}
                       >
                         <span className="text-foreground">{tz.name}</span>
                         <span className="text-muted-foreground text-xs">{getTimeForTimezone(tz.iana)}</span>
                       </button>
                     ))}
-                    {filteredTimezones.length === 0 && (
-                      <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                        No timezone found
-                      </div>
-                    )}
+                    {filteredTimezones.length === 0 && <div className="px-3 py-6 text-center text-sm text-muted-foreground">No timezone found</div>}
                   </div>
                 </PopoverContent>
               </Popover>
@@ -418,7 +382,7 @@ export function DateTimePicker({ data, actions, appearance, control }: DateTimeP
             // Mobile: show/hide based on mobileView, full width
             mobileView === 'time' ? 'block w-full md:w-[200px]' : 'hidden md:block',
             // Desktop: animate width based on selectedDate
-            selectedDate ? 'md:w-[200px] md:opacity-100 md:ml-8' : 'md:w-0 md:opacity-0 md:ml-0'
+            selectedDate ? 'md:w-[200px] md:opacity-100 md:ml-8' : 'md:w-0 md:opacity-0 md:ml-0',
           )}
         >
           <div className="w-full md:w-[200px]">
@@ -431,13 +395,11 @@ export function DateTimePicker({ data, actions, appearance, control }: DateTimeP
               <span>Back to calendar</span>
             </button>
 
-            <p className="text-base font-medium text-foreground mb-4 whitespace-nowrap">
-              {selectedDate ? formatDateHeader(selectedDate) : ''}
-            </p>
+            <p className="text-base font-medium text-foreground mb-4 whitespace-nowrap">{selectedDate ? formatDateHeader(selectedDate) : ''}</p>
 
             <div className="space-y-2 max-h-[320px] overflow-y-auto">
               {availableTimeSlots.map((time) => {
-                const isTimeSelected = selectedTime === time
+                const isTimeSelected = selectedTime === time;
 
                 return (
                   <div key={time} className="grid grid-cols-2 gap-2">
@@ -447,26 +409,23 @@ export function DateTimePicker({ data, actions, appearance, control }: DateTimeP
                         'h-[52px] rounded-lg border text-sm font-semibold transition-all duration-200',
                         isTimeSelected
                           ? 'bg-muted-foreground text-background border-muted-foreground'
-                          : 'col-span-2 border-primary text-primary hover:bg-primary/5'
+                          : 'col-span-2 border-primary text-primary hover:bg-primary/5',
                       )}
                     >
                       {time}
                     </button>
                     {isTimeSelected && (
-                      <Button
-                        onClick={handleNext}
-                        className="h-[52px] animate-in fade-in slide-in-from-left-2 duration-200"
-                      >
+                      <Button onClick={handleNext} className="h-[52px] animate-in fade-in slide-in-from-left-2 duration-200">
                         Next
                       </Button>
                     )}
                   </div>
-                )
+                );
               })}
             </div>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }

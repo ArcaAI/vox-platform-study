@@ -5,7 +5,7 @@ export {
   CheckboxGroupItem,
   CheckboxGroupDescription,
   CheckboxGroupMessage,
-} from './checkbox-group'
+} from './checkbox-group';
 export {
   ColorPicker,
   ColorPickerTrigger,
@@ -17,7 +17,7 @@ export {
   ColorPickerEyeDropper,
   ColorPickerFormatSelect,
   ColorPickerInput,
-} from './color-picker'
+} from './color-picker';
 export {
   Combobox,
   ComboboxAnchor,
@@ -34,7 +34,7 @@ export {
   ComboboxLabel,
   ComboboxLoading,
   ComboboxSeparator,
-} from './combobox'
+} from './combobox';
 export {
   Editable,
   EditableLabel,
@@ -45,24 +45,10 @@ export {
   EditableToolbar,
   EditableCancel,
   EditableSubmit,
-} from './editable'
-export {
-  Kanban,
-  KanbanBoard,
-  KanbanColumn,
-  KanbanColumnHandle,
-  KanbanItem,
-  KanbanItemHandle,
-  KanbanOverlay,
-} from './kanban'
-export {
-  Listbox,
-  ListboxGroup,
-  ListboxGroupLabel,
-  ListboxItem,
-  ListboxItemIndicator,
-} from './listbox'
-export { Marquee, MarqueeContent, MarqueeItem, MarqueeEdge } from './marquee'
+} from './editable';
+export { Kanban, KanbanBoard, KanbanColumn, KanbanColumnHandle, KanbanItem, KanbanItemHandle, KanbanOverlay } from './kanban';
+export { Listbox, ListboxGroup, ListboxGroupLabel, ListboxItem, ListboxItemIndicator } from './listbox';
+export { Marquee, MarqueeContent, MarqueeItem, MarqueeEdge } from './marquee';
 export {
   MediaPlayer,
   MediaPlayerVideo,
@@ -87,15 +73,11 @@ export {
   MediaPlayerSettings,
   MediaPlayerPortal,
   MediaPlayerTooltip,
-} from './media-player'
-export { Mention, MentionContent, MentionInput, MentionItem, MentionLabel } from './mention'
-export {
-  PhoneInput,
-  PhoneInputCountrySelect,
-  PhoneInputField,
-} from './phone-input'
-export { Rating, RatingItem } from './rating'
-export { RelativeTimeCard } from './relative-time-card'
+} from './media-player';
+export { Mention, MentionContent, MentionInput, MentionItem, MentionLabel } from './mention';
+export { PhoneInput, PhoneInputCountrySelect, PhoneInputField } from './phone-input';
+export { Rating, RatingItem } from './rating';
+export { RelativeTimeCard } from './relative-time-card';
 export {
   ResponsiveDialog,
   ResponsiveDialogClose,
@@ -107,14 +89,8 @@ export {
   ResponsiveDialogPortal,
   ResponsiveDialogTitle,
   ResponsiveDialogTrigger,
-} from './responsive-dialog'
-export {
-  Sortable,
-  SortableContent,
-  SortableItem,
-  SortableItemHandle,
-  SortableOverlay,
-} from './sortable'
+} from './responsive-dialog';
+export { Sortable, SortableContent, SortableItem, SortableItemHandle, SortableOverlay } from './sortable';
 export {
   Stepper,
   StepperList,
@@ -127,15 +103,8 @@ export {
   StepperContent,
   StepperPrev,
   StepperNext,
-} from './stepper'
-export {
-  TagsInput,
-  TagsInputLabel,
-  TagsInputList,
-  TagsInputInput,
-  TagsInputItem,
-  TagsInputClear,
-} from './tags-input'
+} from './stepper';
+export { TagsInput, TagsInputLabel, TagsInputList, TagsInputInput, TagsInputItem, TagsInputClear } from './tags-input';
 export {
   Timeline,
   TimelineItem,
@@ -146,4 +115,4 @@ export {
   TimelineTitle,
   TimelineDescription,
   TimelineTime,
-} from './timeline'
+} from './timeline';

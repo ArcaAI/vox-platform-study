@@ -2,9 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-
 export enum WebhookRunStatus {
-    SUCCESS = 'SUCCESS',
-    FAILED = 'FAILED',
+  SUCCESS = 'SUCCESS',
+  FAILED = 'FAILED',
 }
-

@@ -17,7 +17,7 @@ import type { MedicalEntity } from '../types/context';
 import { DEFAULT_KNOWLEDGE_PIPELINE_CONFIG } from '../types/pipeline';
 import type { ISDKLogger } from './logger';
 import type { AgenticClient } from './AgenticClient';
-import { NLP_ENDPOINTS, SUMMARY_ENDPOINTS } from './constants';
+import { SUMMARY_ENDPOINTS } from './constants';
 
 /**
  * Trigger mode for pipeline stages.
@@ -113,11 +113,7 @@ export class KnowledgePipeline {
   private lastInput: KnowledgePipelineInput | null = null;
   private results: Map<string, unknown> = new Map();
 
-  constructor(
-    config?: Partial<KnowledgePipelineConfig>,
-    apiClient?: AgenticClient,
-    logger?: ISDKLogger
-  ) {
+  constructor(config?: Partial<KnowledgePipelineConfig>, apiClient?: AgenticClient, logger?: ISDKLogger) {
     this.config = { ...DEFAULT_KNOWLEDGE_PIPELINE_CONFIG, ...config };
     this.apiClient = apiClient;
     this.logger = logger;
@@ -196,6 +192,7 @@ export class KnowledgePipeline {
       const processor = createMedNER({
         model: this.config.ner.model ?? 'biomedical',
         threshold: this.config.ner.threshold ?? 0.6,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Med-NER entity type list from config.
         entityTypes: this.config.ner.entityTypes as any,
       });
 
@@ -259,7 +256,7 @@ export class KnowledgePipeline {
               this.executeNER(input.text).then((entities) => {
                 output.entities = entities;
                 this.results.set('ner', entities);
-              })
+              }),
             );
             break;
           case 'spellCheck':
@@ -267,7 +264,7 @@ export class KnowledgePipeline {
               this.executeSpellCheck(input.text).then((corrected) => {
                 output.correctedText = corrected;
                 this.results.set('spellCheck', corrected);
-              })
+              }),
             );
             break;
           // Summarization is always manual
@@ -388,20 +385,14 @@ export class KnowledgePipeline {
   /**
    * Subscribe to pipeline events.
    */
-  on<K extends keyof KnowledgePipelineEvents>(
-    event: K,
-    listener: (payload: KnowledgePipelineEvents[K]) => void
-  ): void {
+  on<K extends keyof KnowledgePipelineEvents>(event: K, listener: (payload: KnowledgePipelineEvents[K]) => void): void {
     this.emitter.on(event, listener);
   }
 
   /**
    * Unsubscribe from pipeline events.
    */
-  off<K extends keyof KnowledgePipelineEvents>(
-    event: K,
-    listener: (payload: KnowledgePipelineEvents[K]) => void
-  ): void {
+  off<K extends keyof KnowledgePipelineEvents>(event: K, listener: (payload: KnowledgePipelineEvents[K]) => void): void {
     this.emitter.off(event, listener);
   }
 
@@ -557,13 +548,10 @@ export class KnowledgePipeline {
     stage.processing = true;
 
     try {
-      const response = await this.apiClient.post<{ content: string }>(
-        SUMMARY_ENDPOINTS.GENERATE(contextId),
-        {
-          type: 'summary',
-          dnaStyleId: this.config.summarization.dnaStyleId,
-        }
-      );
+      const response = await this.apiClient.post<{ content: string }>(SUMMARY_ENDPOINTS.GENERATE(contextId), {
+        type: 'summary',
+        dnaStyleId: this.config.summarization.dnaStyleId,
+      });
 
       this.emit('summaryComplete', { summary: response.content });
 
@@ -586,18 +574,13 @@ export class KnowledgePipeline {
    * Get stages that should auto-trigger.
    */
   private getAutoStages(): KnowledgeStage[] {
-    return Array.from(this.stages.values()).filter(
-      (stage) => stage.enabled && stage.triggerMode === 'auto' && stage.location !== 'disabled'
-    );
+    return Array.from(this.stages.values()).filter((stage) => stage.enabled && stage.triggerMode === 'auto' && stage.location !== 'disabled');
   }
 
   /**
    * Emit a pipeline event.
    */
-  private emit<K extends keyof KnowledgePipelineEvents>(
-    event: K,
-    payload: KnowledgePipelineEvents[K]
-  ): void {
+  private emit<K extends keyof KnowledgePipelineEvents>(event: K, payload: KnowledgePipelineEvents[K]): void {
     this.emitter.emit(event, payload);
   }
 
@@ -616,7 +599,7 @@ export class KnowledgePipeline {
 export function createKnowledgePipeline(
   config?: Partial<KnowledgePipelineConfig>,
   apiClient?: AgenticClient,
-  logger?: ISDKLogger
+  logger?: ISDKLogger,
 ): KnowledgePipeline {
   return new KnowledgePipeline(config, apiClient, logger);
 }

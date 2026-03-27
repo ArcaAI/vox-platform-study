@@ -1,8 +1,6 @@
-import { sanitizeHref } from "./sanitize-href";
+import { sanitizeHref } from './sanitize-href';
 
-export function resolveSafeNavigationHref(
-  ...candidates: Array<string | null | undefined>
-): string | undefined {
+export function resolveSafeNavigationHref(...candidates: Array<string | null | undefined>): string | undefined {
   for (const candidate of candidates) {
     const safeHref = sanitizeHref(candidate ?? undefined);
     if (safeHref) {
@@ -14,10 +12,10 @@ export function resolveSafeNavigationHref(
 }
 
 export function openSafeNavigationHref(href: string | undefined): boolean {
-  if (!href || typeof window === "undefined") {
+  if (!href || typeof window === 'undefined') {
     return false;
   }
 
-  window.open(href, "_blank", "noopener,noreferrer");
+  window.open(href, '_blank', 'noopener,noreferrer');
   return true;
 }

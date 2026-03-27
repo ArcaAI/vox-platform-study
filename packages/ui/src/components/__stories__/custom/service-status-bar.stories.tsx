@@ -1,27 +1,27 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { ServiceStatusBar, type ServiceHealth } from '../../custom/service-status-bar'
+import { ServiceStatusBar, type ServiceHealth } from '../../custom/service-status-bar';
 
 const allHealthy: ServiceHealth[] = [
   { name: 'API Gateway', status: 'healthy', latency: 42 },
   { name: 'STT Service', status: 'healthy', latency: 128 },
   { name: 'TTS Service', status: 'healthy', latency: 95 },
   { name: 'NLP Service', status: 'healthy', latency: 67 },
-]
+];
 
 const mixed: ServiceHealth[] = [
   { name: 'API Gateway', status: 'healthy', latency: 42 },
   { name: 'STT Service', status: 'degraded', latency: 850 },
   { name: 'TTS Service', status: 'healthy', latency: 95 },
   { name: 'NLP Service', status: 'down' },
-]
+];
 
 const allDown: ServiceHealth[] = [
   { name: 'API Gateway', status: 'down' },
   { name: 'STT Service', status: 'down' },
   { name: 'TTS Service', status: 'down' },
   { name: 'NLP Service', status: 'down' },
-]
+];
 
 const meta = {
   title: 'Custom/ServiceStatusBar',
@@ -49,10 +49,10 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof ServiceStatusBar>
+} satisfies Meta<typeof ServiceStatusBar>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const AllHealthy: Story = {
   args: {
@@ -61,7 +61,7 @@ export const AllHealthy: Story = {
     processingJobs: 3,
     onRefresh: () => console.log('Refresh'),
   },
-}
+};
 
 export const MixedStatus: Story = {
   args: {
@@ -70,7 +70,7 @@ export const MixedStatus: Story = {
     processingJobs: 1,
     onRefresh: () => console.log('Refresh'),
   },
-}
+};
 
 export const AllDown: Story = {
   args: {
@@ -79,19 +79,19 @@ export const AllDown: Story = {
     processingJobs: 0,
     onRefresh: () => console.log('Refresh'),
   },
-}
+};
 
 export const Loading: Story = {
   args: {
     isLoading: true,
   },
-}
+};
 
 export const NoServices: Story = {
   args: {
     services: [],
   },
-}
+};
 
 export const WithUnknown: Story = {
   args: {
@@ -102,7 +102,7 @@ export const WithUnknown: Story = {
     activeSessions: 1,
     processingJobs: 0,
   },
-}
+};
 
 export const WithoutRefresh: Story = {
   args: {
@@ -110,4 +110,4 @@ export const WithoutRefresh: Story = {
     activeSessions: 8,
     processingJobs: 2,
   },
-}
+};

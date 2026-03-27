@@ -1,12 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { IconBold, IconItalic, IconUnderline } from '@tabler/icons-react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { IconBold, IconItalic, IconUnderline } from '@tabler/icons-react';
 
-import { Button } from '../../shadcn/button'
-import {
-  ButtonGroup,
-  ButtonGroupSeparator,
-  ButtonGroupText,
-} from '../../shadcn/button-group'
+import { Button } from '../../shadcn/button';
+import { ButtonGroup, ButtonGroupSeparator, ButtonGroupText } from '../../shadcn/button-group';
 
 const meta = {
   title: 'Components/ButtonGroup',
@@ -22,10 +18,10 @@ const meta = {
       description: 'The orientation of the button group',
     },
   },
-} satisfies Meta<typeof ButtonGroup>
+} satisfies Meta<typeof ButtonGroup>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 // Default horizontal button group
 export const Default: Story = {
@@ -42,7 +38,7 @@ export const Default: Story = {
       </Button>
     </ButtonGroup>
   ),
-}
+};
 
 // Vertical orientation
 export const Vertical: Story = {
@@ -53,7 +49,7 @@ export const Vertical: Story = {
       <Button variant="outline">Bottom</Button>
     </ButtonGroup>
   ),
-}
+};
 
 // Group with separators between buttons
 export const WithSeparator: Story = {
@@ -66,7 +62,7 @@ export const WithSeparator: Story = {
       <Button variant="outline">Paste</Button>
     </ButtonGroup>
   ),
-}
+};
 
 // Group with text element
 export const WithText: Story = {
@@ -77,4 +73,4 @@ export const WithText: Story = {
       <Button variant="outline">Next</Button>
     </ButtonGroup>
   ),
-}
+};

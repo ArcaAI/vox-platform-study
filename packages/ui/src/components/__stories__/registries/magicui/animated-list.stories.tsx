@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { AnimatedList } from '../../../registries/magicui/animated-list'
+import { AnimatedList } from '../../../registries/magicui/animated-list';
 
 const meta: Meta = {
   title: 'Registries/MagicUI/AnimatedList',
   component: AnimatedList,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-}
+};
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -29,4 +29,4 @@ export const Default: Story = {
       </div>
     </AnimatedList>
   ),
-}
+};

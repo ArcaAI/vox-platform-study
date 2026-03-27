@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { LexicalComposer } from '@lexical/react/LexicalComposer'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { LexicalComposer } from '@lexical/react/LexicalComposer';
 
-import { Plugins } from '../../../registries/shadcn-editor/plugins'
-import { nodes } from '../../../registries/shadcn-editor/nodes'
-import { editorTheme } from '../../../registries/shadcn-editor/themes/editor-theme'
+import { Plugins } from '../../../registries/shadcn-editor/plugins';
+import { nodes } from '../../../registries/shadcn-editor/nodes';
+import { editorTheme } from '../../../registries/shadcn-editor/themes/editor-theme';
 
 const editorConfig = {
   namespace: 'PluginsStory',
   theme: editorTheme,
   nodes,
   onError: (error: Error) => console.error(error),
-}
+};
 
 const meta = {
   title: 'Registries/ShadcnEditor/Plugins',
@@ -26,11 +26,11 @@ const meta = {
       </LexicalComposer>
     ),
   ],
-} satisfies Meta<typeof Plugins>
+} satisfies Meta<typeof Plugins>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {},
-}
+};

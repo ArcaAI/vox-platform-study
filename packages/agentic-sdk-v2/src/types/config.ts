@@ -796,7 +796,7 @@ function settingJsonArray<T>(settings: TenantSettingRecord[], key: string): T[] 
   if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed as T[] : undefined;
+      return Array.isArray(parsed) ? (parsed as T[]) : undefined;
     } catch {
       return undefined;
     }

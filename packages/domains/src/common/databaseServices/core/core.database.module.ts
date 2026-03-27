@@ -41,59 +41,59 @@ import { TenantBucketRepository } from '../../../repositories/generated/core/Ten
 import { StorageAccessKeyRepository } from '../../../repositories/generated/core/StorageAccessKeyRepository';
 
 const databaseProvider = {
-    provide: 'CORE_DATABASE_SERVICE',
-    useClass: CoreDatabaseService
+  provide: 'CORE_DATABASE_SERVICE',
+  useClass: CoreDatabaseService,
 };
 
 const repositories = [
-    // Consultation domain
-    ConsultationRepository,
-    ContextItemRepository,
-    ContextItemVersionRepository,
-    AudioRecordingRepository,
-    SummaryMetaRepository,
-    NamedEntityRepository,
-    // Core domain
-    GlobalSettingRepository,
-    MediaRepository,
-    NotificationRepository,
-    PermissionRepository,
-    ResourceSubscriptionRepository,
-    RolePermissionRepository,
-    RoleRepository,
-    TagRepository,
-    TenantRepository,
-    UserMediaRepository,
-    UserProfileRepository,
-    UserRepository,
-    UserRoleAssignmentRepository,
-    UserSettingsRepository,
-    WebhookRepository,
-    WebhookRunHistoryRepository,
-    // STT domain
-    AsrPipelineRepository,
-    AiModelRepository,
-    TranscriptionJobRepository,
-    // Audit domain
-    AuditLogRepository,
-    // API & Organization domain
-    ApiKeyRepository,
-    DepartmentRepository,
-    // Prompt & DNA domain
-    PromptTemplateRepository,
-    PromptVersionRepository,
-    DnaWritingStyleReportRepository,
-    DnaWritingStyleVersionRepository,
-    DnaUsageRecordRepository,
-    PromptUsageRecordRepository,
-    // Storage domain
-    TenantBucketRepository,
-    StorageAccessKeyRepository,
+  // Consultation domain
+  ConsultationRepository,
+  ContextItemRepository,
+  ContextItemVersionRepository,
+  AudioRecordingRepository,
+  SummaryMetaRepository,
+  NamedEntityRepository,
+  // Core domain
+  GlobalSettingRepository,
+  MediaRepository,
+  NotificationRepository,
+  PermissionRepository,
+  ResourceSubscriptionRepository,
+  RolePermissionRepository,
+  RoleRepository,
+  TagRepository,
+  TenantRepository,
+  UserMediaRepository,
+  UserProfileRepository,
+  UserRepository,
+  UserRoleAssignmentRepository,
+  UserSettingsRepository,
+  WebhookRepository,
+  WebhookRunHistoryRepository,
+  // STT domain
+  AsrPipelineRepository,
+  AiModelRepository,
+  TranscriptionJobRepository,
+  // Audit domain
+  AuditLogRepository,
+  // API & Organization domain
+  ApiKeyRepository,
+  DepartmentRepository,
+  // Prompt & DNA domain
+  PromptTemplateRepository,
+  PromptVersionRepository,
+  DnaWritingStyleReportRepository,
+  DnaWritingStyleVersionRepository,
+  DnaUsageRecordRepository,
+  PromptUsageRecordRepository,
+  // Storage domain
+  TenantBucketRepository,
+  StorageAccessKeyRepository,
 ];
 
 @Module({
-    imports: [ClsModule],
-    providers: [databaseProvider, CoreUnitOfWorkService, ...repositories],
-    exports: [databaseProvider, CoreUnitOfWorkService, ...repositories]
+  imports: [ClsModule],
+  providers: [databaseProvider, CoreUnitOfWorkService, ...repositories],
+  exports: [databaseProvider, CoreUnitOfWorkService, ...repositories],
 })
 export class CoreDatabaseModule {}

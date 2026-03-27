@@ -1,20 +1,20 @@
 export enum EventTypes {
-    AppSettingsUpdated = 'appSettings.updated',
+  AppSettingsUpdated = 'appSettings.updated',
 
-    NotificationSend = 'notification.send',
+  NotificationSend = 'notification.send',
 
-    ResourceCreated = 'resource.created',
-    ResourceViewed = 'resource.viewed',
-    ResourceUpdated = 'resource.updated',
-    ResourceDeleted = 'resource.deleted',
+  ResourceCreated = 'resource.created',
+  ResourceViewed = 'resource.viewed',
+  ResourceUpdated = 'resource.updated',
+  ResourceDeleted = 'resource.deleted',
 
-    MediaCreated = 'media.created',
-    MediaUpdated = 'media.updated',
+  MediaCreated = 'media.created',
+  MediaUpdated = 'media.updated',
 
-    UserAuthenticated = 'user.authenticated',
-    UserCreated = 'user.created',
-    UserUpdated = 'user.updated',
+  UserAuthenticated = 'user.authenticated',
+  UserCreated = 'user.created',
+  UserUpdated = 'user.updated',
 
-    WebhookCreated = 'webhook.created',
-    WebhookUpdated = 'webhook.updated'
+  WebhookCreated = 'webhook.created',
+  WebhookUpdated = 'webhook.updated',
 }

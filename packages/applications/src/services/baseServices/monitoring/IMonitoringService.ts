@@ -16,6 +16,7 @@ export interface SystemMetrics {
 export interface KpiDataPoint {
   timestamp: Date;
   value: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>;
 }
 
@@ -28,6 +29,7 @@ export interface IntegrationStatus {
   lastChecked: Date;
   latency?: number;
   errorCount?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   details?: Record<string, any>;
 }
 
@@ -47,6 +49,7 @@ export interface IMonitoringService {
    * @param value Value to record
    * @param metadata Optional metadata about this data point
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   recordKpi(metricName: string, value: number, metadata?: Record<string, any>): Promise<void>;
 
   /**
@@ -57,12 +60,7 @@ export interface IMonitoringService {
    * @param aggregation Optional aggregation method (e.g., 'avg', 'sum', 'max')
    * @returns Array of KPI data points over the requested time period
    */
-  getKpiHistory(
-    metricName: string,
-    startTime: Date,
-    endTime: Date,
-    aggregation?: 'avg' | 'sum' | 'max' | 'min'
-  ): Promise<KpiDataPoint[]>;
+  getKpiHistory(metricName: string, startTime: Date, endTime: Date, aggregation?: 'avg' | 'sum' | 'max' | 'min'): Promise<KpiDataPoint[]>;
 
   /**
    * Check status of all integrated systems
@@ -76,10 +74,7 @@ export interface IMonitoringService {
    * @param callback Function to be called when new data is available
    * @returns Subscription ID that can be used to unsubscribe
    */
-  subscribeToMetric(
-    metricName: string,
-    callback: (data: KpiDataPoint) => void
-  ): string;
+  subscribeToMetric(metricName: string, callback: (data: KpiDataPoint) => void): string;
 
   /**
    * Unsubscribe from real-time monitoring updates

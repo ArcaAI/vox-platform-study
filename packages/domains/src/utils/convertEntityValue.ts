@@ -20,24 +20,24 @@ import { Decimal } from 'decimal.js';
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function convertEntityValue(value: any): any {
-    if (value instanceof Date) {
-        return value.toISOString();
-    }
-    if (value instanceof Decimal) {
-        return value.toString();
-    } else if (Array.isArray(value)) {
-        return value.map((item) => convertEntityValue(item));
-    } else if (value instanceof BaseValueObject) {
-        return value.toValue();
-    } else if (value instanceof BaseEntity) {
-        return value.toObject();
-    } else if (typeof value === 'object' && value !== null) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const newObj: Record<string, any> = {};
-        Object.keys(value).forEach((key) => {
-            newObj[key] = convertEntityValue(value[key]);
-        });
-        return newObj;
-    }
-    return value;
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (value instanceof Decimal) {
+    return value.toString();
+  } else if (Array.isArray(value)) {
+    return value.map((item) => convertEntityValue(item));
+  } else if (value instanceof BaseValueObject) {
+    return value.toValue();
+  } else if (value instanceof BaseEntity) {
+    return value.toObject();
+  } else if (typeof value === 'object' && value !== null) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const newObj: Record<string, any> = {};
+    Object.keys(value).forEach((key) => {
+      newObj[key] = convertEntityValue(value[key]);
+    });
+    return newObj;
+  }
+  return value;
 }

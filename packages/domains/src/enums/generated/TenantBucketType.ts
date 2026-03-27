@@ -1,4 +1,4 @@
 export enum TenantBucketType {
-    SYSTEM = 'SYSTEM',
-    CUSTOM = 'CUSTOM',
+  SYSTEM = 'SYSTEM',
+  CUSTOM = 'CUSTOM',
 }

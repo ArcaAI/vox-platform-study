@@ -12,29 +12,24 @@ import { PromptManagementServiceModule } from '../prompt-management/prompt-manag
 import { ConsultationJobServiceModule } from '../consultation/jobs/consultation-job.service.module';
 
 @Module({
-    imports: [
-        CommonServiceModule,
-        CoreDatabaseModule,
-        HttpModule,
-        ConfigModule,
-        PromptManagementServiceModule,
-        ConsultationJobServiceModule,
-        BullModule.registerQueue({ name: JobQueue.GenerateDnaReport }),
-    ],
-    providers: [
-        {
-            provide: IDnaWritingStyleService,
-            useClass: DnaWritingStyleService,
-        },
-        DnaWritingStyleService,
-        DnaWritingStyleProcessor,
-        DnaRegenerationScheduler,
-    ],
-    exports: [
-        IDnaWritingStyleService,
-        DnaWritingStyleService,
-        DnaRegenerationScheduler,
-        BullModule,
-    ],
+  imports: [
+    CommonServiceModule,
+    CoreDatabaseModule,
+    HttpModule,
+    ConfigModule,
+    PromptManagementServiceModule,
+    ConsultationJobServiceModule,
+    BullModule.registerQueue({ name: JobQueue.GenerateDnaReport }),
+  ],
+  providers: [
+    {
+      provide: IDnaWritingStyleService,
+      useClass: DnaWritingStyleService,
+    },
+    DnaWritingStyleService,
+    DnaWritingStyleProcessor,
+    DnaRegenerationScheduler,
+  ],
+  exports: [IDnaWritingStyleService, DnaWritingStyleService, DnaRegenerationScheduler, BullModule],
 })
 export class DnaWritingStyleServiceModule {}

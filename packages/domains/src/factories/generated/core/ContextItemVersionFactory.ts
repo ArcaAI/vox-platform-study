@@ -7,135 +7,116 @@ import { ContextItemVersionEntity, IContextItemVersionEntity, ContextItemEntity 
 import { JsonValue } from '../../../interfaces';
 
 export interface CreateContextItemVersionProps extends BaseEntityFactoryCreateProps {
-    contextItemId: IContextItemVersionEntity['contextItemId'];
-    versionNumber: IContextItemVersionEntity['versionNumber'];
-    content?: IContextItemVersionEntity['content'];
-    contentDiff?: IContextItemVersionEntity['contentDiff'];
-    changeReason?: IContextItemVersionEntity['changeReason'];
-    changeSummary?: IContextItemVersionEntity['changeSummary'];
-    changedBy?: IContextItemVersionEntity['changedBy'];
-    changeSource?: IContextItemVersionEntity['changeSource'];
-    fieldChanges?: IContextItemVersionEntity['fieldChanges'];
-    tenantId?: IContextItemVersionEntity['tenantId'];
+  contextItemId: IContextItemVersionEntity['contextItemId'];
+  versionNumber: IContextItemVersionEntity['versionNumber'];
+  content?: IContextItemVersionEntity['content'];
+  contentDiff?: IContextItemVersionEntity['contentDiff'];
+  changeReason?: IContextItemVersionEntity['changeReason'];
+  changeSummary?: IContextItemVersionEntity['changeSummary'];
+  changedBy?: IContextItemVersionEntity['changedBy'];
+  changeSource?: IContextItemVersionEntity['changeSource'];
+  fieldChanges?: IContextItemVersionEntity['fieldChanges'];
+  tenantId?: IContextItemVersionEntity['tenantId'];
 
-    createdAt?: IContextItemVersionEntity['createdAt'];
+  createdAt?: IContextItemVersionEntity['createdAt'];
 }
 
 export class ContextItemVersionFactory {
-    /**
-     * Create a version record
-     */
-    static CreateVersion(props: CreateContextItemVersionProps): ContextItemVersionEntity {
-        const id = generateId();
-        const now = new Date();
+  /**
+   * Create a version record
+   */
+  static CreateVersion(props: CreateContextItemVersionProps): ContextItemVersionEntity {
+    const id = generateId();
+    const now = new Date();
 
-        return new ContextItemVersionEntity({
-            id,
+    return new ContextItemVersionEntity({
+      id,
 
-            createdAt: props.createdAt || now,
-            updatedAt: now,
-            createdBy: props.changedBy ?? null,
-            updatedBy: null,
+      createdAt: props.createdAt || now,
+      updatedAt: now,
+      createdBy: props.changedBy ?? null,
+      updatedBy: null,
 
-            contextItemId: props.contextItemId,
-            versionNumber: props.versionNumber,
-            content: props.content ?? null,
-            contentDiff: props.contentDiff ?? null,
-            changeReason: props.changeReason ?? null,
-            changeSummary: props.changeSummary ?? null,
-            changedBy: props.changedBy ?? null,
-            changeSource: props.changeSource ?? 'manual',
-            fieldChanges: props.fieldChanges ?? null,
-            tenantId: props.tenantId ?? '',
-        });
-    }
+      contextItemId: props.contextItemId,
+      versionNumber: props.versionNumber,
+      content: props.content ?? null,
+      contentDiff: props.contentDiff ?? null,
+      changeReason: props.changeReason ?? null,
+      changeSummary: props.changeSummary ?? null,
+      changedBy: props.changedBy ?? null,
+      changeSource: props.changeSource ?? 'manual',
+      fieldChanges: props.fieldChanges ?? null,
+      tenantId: props.tenantId ?? '',
+    });
+  }
 
-    /**
-     * Create a version record from an existing ContextItem (content-at-version semantics).
-     * The version captures the item's content AS IT IS at the given version number.
-     */
-    static CreateFromContextItem(
-        contextItem: ContextItemEntity,
-        versionNumber: number,
-        changeReason: string,
-        changedBy: string,
-        changeSource: string = 'manual',
-        changeSummary?: string,
-        contentDiff?: string,
-        fieldChanges?: JsonValue
-    ): ContextItemVersionEntity {
-        return this.CreateVersion({
-            contextItemId: contextItem.id,
-            versionNumber,
-            content: contextItem.content,
-            contentDiff,
-            changeReason,
-            changeSummary,
-            changedBy,
-            changeSource,
-            fieldChanges,
-            tenantId: contextItem.tenantId,
-        });
-    }
+  /**
+   * Create a version record from an existing ContextItem (content-at-version semantics).
+   * The version captures the item's content AS IT IS at the given version number.
+   */
+  static CreateFromContextItem(
+    contextItem: ContextItemEntity,
+    versionNumber: number,
+    changeReason: string,
+    changedBy: string,
+    changeSource: string = 'manual',
+    changeSummary?: string,
+    contentDiff?: string,
+    fieldChanges?: JsonValue,
+  ): ContextItemVersionEntity {
+    return this.CreateVersion({
+      contextItemId: contextItem.id,
+      versionNumber,
+      content: contextItem.content,
+      contentDiff,
+      changeReason,
+      changeSummary,
+      changedBy,
+      changeSource,
+      fieldChanges,
+      tenantId: contextItem.tenantId,
+    });
+  }
 
-    /**
-     * Create initial version (version 1) from a newly created ContextItem
-     */
-    static CreateInitialVersion(
-        contextItem: ContextItemEntity,
-        createdBy: string
-    ): ContextItemVersionEntity {
-        return this.CreateFromContextItem(
-            contextItem,
-            1,
-            'initial_creation',
-            createdBy,
-            'system',
-            'Initial version'
-        );
-    }
+  /**
+   * Create initial version (version 1) from a newly created ContextItem
+   */
+  static CreateInitialVersion(contextItem: ContextItemEntity, createdBy: string): ContextItemVersionEntity {
+    return this.CreateFromContextItem(contextItem, 1, 'initial_creation', createdBy, 'system', 'Initial version');
+  }
 
-    /**
-     * Create a user edit version
-     */
-    static CreateUserEditVersion(
-        contextItem: ContextItemEntity,
-        versionNumber: number,
-        changedBy: string,
-        changeSummary: string,
-        contentDiff?: string,
-        fieldChanges?: JsonValue
-    ): ContextItemVersionEntity {
-        return this.CreateFromContextItem(
-            contextItem,
-            versionNumber,
-            'user_edit',
-            changedBy,
-            'manual',
-            changeSummary,
-            contentDiff,
-            fieldChanges
-        );
-    }
+  /**
+   * Create a user edit version
+   */
+  static CreateUserEditVersion(
+    contextItem: ContextItemEntity,
+    versionNumber: number,
+    changedBy: string,
+    changeSummary: string,
+    contentDiff?: string,
+    fieldChanges?: JsonValue,
+  ): ContextItemVersionEntity {
+    return this.CreateFromContextItem(contextItem, versionNumber, 'user_edit', changedBy, 'manual', changeSummary, contentDiff, fieldChanges);
+  }
 
-    /**
-     * Create an AI regeneration version
-     */
-    static CreateAiRegenerationVersion(
-        contextItem: ContextItemEntity,
-        versionNumber: number,
-        aiModelId: string,
-        changeSummary?: string,
-        contentDiff?: string
-    ): ContextItemVersionEntity {
-        return this.CreateFromContextItem(
-            contextItem,
-            versionNumber,
-            'ai_regeneration',
-            'system',
-            `ai_model_${aiModelId}`,
-            changeSummary ?? 'AI regenerated content',
-            contentDiff
-        );
-    }
+  /**
+   * Create an AI regeneration version
+   */
+  static CreateAiRegenerationVersion(
+    contextItem: ContextItemEntity,
+    versionNumber: number,
+    aiModelId: string,
+    changeSummary?: string,
+    contentDiff?: string,
+  ): ContextItemVersionEntity {
+    return this.CreateFromContextItem(
+      contextItem,
+      versionNumber,
+      'ai_regeneration',
+      'system',
+      `ai_model_${aiModelId}`,
+      changeSummary ?? 'AI regenerated content',
+      contentDiff,
+    );
+  }
 }

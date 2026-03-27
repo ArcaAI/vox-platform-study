@@ -1,12 +1,5 @@
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import {
-    SysEventType,
-    SysEvent,
-    SysEventProps,
-    SendContactMessageEvent,
-    EventTypes,
-    ResourceType,
-} from '@arcaai/domains';
+import { SysEventType, SysEventProps, SendContactMessageEvent, EventTypes } from '@arcaai/domains';
 
 /**
  * Typed Event Map
@@ -27,23 +20,24 @@ import {
  * Emitted directly for specific domain events (e.g., authentication, notifications)
  * Each has its own payload type
  */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface SysEventPayload extends Partial<SysEventProps> {
-    // All fields (resourceId, resourceIds, data, previousData, createdAt,
-    // disableAuditLog, forceAuditLog, etc.) are inherited from Partial<SysEventProps>.
-    // No overrides needed — the parent type already defines them correctly.
+  // All fields (resourceId, resourceIds, data, previousData, createdAt,
+  // disableAuditLog, forceAuditLog, etc.) are inherited from Partial<SysEventProps>.
+  // No overrides needed — the parent type already defines them correctly.
 }
 
 /**
  * Authentication event payload emitted by AuthService
  */
 export interface AuthenticationEventPayload {
-    userId?: string;
-    id?: string;
-    timestamp?: Date;
-    ip?: string;
-    userAgent?: string;
-    method?: string;
-    [key: string]: unknown;
+  userId?: string;
+  id?: string;
+  timestamp?: Date;
+  ip?: string;
+  userAgent?: string;
+  method?: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -62,19 +56,19 @@ export interface AuthenticationEventPayload {
  * ```
  */
 export interface HopeEventMap {
-    // System events (CRUD operations → SysEventService → Redis queue)
-    [SysEventType.ResourceCreated]: SysEventPayload;
-    [SysEventType.ResourceViewed]: SysEventPayload;
-    [SysEventType.ResourceUpdated]: SysEventPayload;
-    [SysEventType.ResourceDeleted]: SysEventPayload;
-    [SysEventType.ResourceArchived]: SysEventPayload;
-    [SysEventType.SendContactMessage]: Partial<SendContactMessageEvent>;
-    [SysEventType.WebHookRun]: SysEventPayload;
+  // System events (CRUD operations → SysEventService → Redis queue)
+  [SysEventType.ResourceCreated]: SysEventPayload;
+  [SysEventType.ResourceViewed]: SysEventPayload;
+  [SysEventType.ResourceUpdated]: SysEventPayload;
+  [SysEventType.ResourceDeleted]: SysEventPayload;
+  [SysEventType.ResourceArchived]: SysEventPayload;
+  [SysEventType.SendContactMessage]: Partial<SendContactMessageEvent>;
+  [SysEventType.WebHookRun]: SysEventPayload;
 
-    // Domain events (handled directly by specific services)
-    [EventTypes.UserAuthenticated]: AuthenticationEventPayload;
-    [EventTypes.AppSettingsUpdated]: Record<string, unknown>;
-    [EventTypes.NotificationSend]: Record<string, unknown>;
+  // Domain events (handled directly by specific services)
+  [EventTypes.UserAuthenticated]: AuthenticationEventPayload;
+  [EventTypes.AppSettingsUpdated]: Record<string, unknown>;
+  [EventTypes.NotificationSend]: Record<string, unknown>;
 }
 
 /**
@@ -102,41 +96,35 @@ export interface HopeEventMap {
  * ```
  */
 export class TypedEventEmitter {
-    constructor(private readonly emitter: EventEmitter2) {}
+  constructor(private readonly emitter: EventEmitter2) {}
 
-    /**
-     * Emit a typed event with compile-time payload validation.
-     *
-     * @param event - The event type (from SysEventType or EventTypes enum)
-     * @param payload - The event payload (type-checked against HopeEventMap)
-     */
-    emit<K extends keyof HopeEventMap>(
-        event: K,
-        payload: HopeEventMap[K],
-    ): void {
-        this.emitter.emit(event as string, payload);
-    }
+  /**
+   * Emit a typed event with compile-time payload validation.
+   *
+   * @param event - The event type (from SysEventType or EventTypes enum)
+   * @param payload - The event payload (type-checked against HopeEventMap)
+   */
+  emit<K extends keyof HopeEventMap>(event: K, payload: HopeEventMap[K]): void {
+    this.emitter.emit(event as string, payload);
+  }
 
-    /**
-     * Emit a typed event asynchronously and wait for all listeners.
-     *
-     * @param event - The event type
-     * @param payload - The event payload
-     * @returns Promise that resolves when all listeners have completed
-     */
-    async emitAsync<K extends keyof HopeEventMap>(
-        event: K,
-        payload: HopeEventMap[K],
-    ): Promise<unknown[]> {
-        return this.emitter.emitAsync(event as string, payload);
-    }
+  /**
+   * Emit a typed event asynchronously and wait for all listeners.
+   *
+   * @param event - The event type
+   * @param payload - The event payload
+   * @returns Promise that resolves when all listeners have completed
+   */
+  async emitAsync<K extends keyof HopeEventMap>(event: K, payload: HopeEventMap[K]): Promise<unknown[]> {
+    return this.emitter.emitAsync(event as string, payload);
+  }
 
-    /**
-     * Get the underlying EventEmitter2 instance.
-     * Use this when you need features not exposed by the typed wrapper
-     * (e.g., wildcard listeners, waitFor).
-     */
-    get raw(): EventEmitter2 {
-        return this.emitter;
-    }
+  /**
+   * Get the underlying EventEmitter2 instance.
+   * Use this when you need features not exposed by the typed wrapper
+   * (e.g., wildcard listeners, waitFor).
+   */
+  get raw(): EventEmitter2 {
+    return this.emitter;
+  }
 }

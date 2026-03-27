@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import * as React from "react";
+import * as React from 'react';
 
 export interface AudioPlaybackState {
   playing: boolean;
@@ -19,7 +19,7 @@ const AudioContext = React.createContext<AudioContextValue | null>(null);
 export function useAudio() {
   const ctx = React.use(AudioContext);
   if (!ctx) {
-    throw new Error("useAudio must be used within an <AudioProvider />");
+    throw new Error('useAudio must be used within an <AudioProvider />');
   }
   return ctx;
 }
@@ -35,19 +35,13 @@ export function AudioProvider({ children, defaultState }: AudioProviderProps) {
     muted: defaultState?.muted ?? false,
   });
 
-  const [audioElement, setAudioElement] =
-    React.useState<HTMLAudioElement | null>(null);
+  const [audioElement, setAudioElement] = React.useState<HTMLAudioElement | null>(null);
 
   const setState = React.useCallback((patch: Partial<AudioPlaybackState>) => {
     setStateInternal((prev) => ({ ...prev, ...patch }));
   }, []);
 
-  const value = React.useMemo(
-    () => ({ state, setState, audioElement, setAudioElement }),
-    [state, setState, audioElement],
-  );
+  const value = React.useMemo(() => ({ state, setState, audioElement, setAudioElement }), [state, setState, audioElement]);
 
-  return (
-    <AudioContext.Provider value={value}>{children}</AudioContext.Provider>
-  );
+  return <AudioContext.Provider value={value}>{children}</AudioContext.Provider>;
 }

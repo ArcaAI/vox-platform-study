@@ -2,95 +2,95 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ResourceStatusType, ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat, AiModelDownloadStatus } from '@arcaai/domains';
 
 export class ModelResponse {
-    @ApiProperty({ description: 'Model ID' })
-    id: string;
+  @ApiProperty({ description: 'Model ID' })
+  id: string;
 
-    @ApiProperty({ description: 'Model name' })
-    name: string;
+  @ApiProperty({ description: 'Model name' })
+  name: string;
 
-    @ApiProperty({ description: 'URL-friendly unique identifier' })
-    slug: string;
+  @ApiProperty({ description: 'URL-friendly unique identifier' })
+  slug: string;
 
-    @ApiPropertyOptional({ description: 'Model description' })
-    description?: string | null;
+  @ApiPropertyOptional({ description: 'Model description' })
+  description?: string | null;
 
-    @ApiProperty({ description: 'Model category', enum: ModelCategory })
-    category: ModelCategory;
+  @ApiProperty({ description: 'Model category', enum: ModelCategory })
+  category: ModelCategory;
 
-    @ApiProperty({ description: 'Model task type', enum: ModelTaskType })
-    taskType: ModelTaskType;
+  @ApiProperty({ description: 'Model task type', enum: ModelTaskType })
+  taskType: ModelTaskType;
 
-    @ApiProperty({ description: 'Model type', enum: ModelType })
-    modelType: ModelType;
+  @ApiProperty({ description: 'Model type', enum: ModelType })
+  modelType: ModelType;
 
-    @ApiProperty({ description: 'Model source', enum: AiModelSource })
-    source: AiModelSource;
+  @ApiProperty({ description: 'Model source', enum: AiModelSource })
+  source: AiModelSource;
 
-    @ApiProperty({ description: 'Source URI' })
-    sourceUri: string;
+  @ApiProperty({ description: 'Source URI' })
+  sourceUri: string;
 
-    @ApiPropertyOptional({ description: 'Source revision' })
-    sourceRevision?: string | null;
+  @ApiPropertyOptional({ description: 'Source revision' })
+  sourceRevision?: string | null;
 
-    @ApiProperty({ description: 'Model format', enum: AiModelFormat })
-    format: AiModelFormat;
+  @ApiProperty({ description: 'Model format', enum: AiModelFormat })
+  format: AiModelFormat;
 
-    @ApiPropertyOptional({ description: 'Estimated memory size in MB' })
-    memorySizeMb?: number | null;
+  @ApiPropertyOptional({ description: 'Estimated memory size in MB' })
+  memorySizeMb?: number | null;
 
-    @ApiPropertyOptional({ description: 'Compute type' })
-    computeType?: string | null;
+  @ApiPropertyOptional({ description: 'Compute type' })
+  computeType?: string | null;
 
-    @ApiProperty({ description: 'Download status', enum: AiModelDownloadStatus })
-    downloadStatus: AiModelDownloadStatus;
+  @ApiProperty({ description: 'Download status', enum: AiModelDownloadStatus })
+  downloadStatus: AiModelDownloadStatus;
 
-    @ApiPropertyOptional({ description: 'Local file path after download' })
-    localPath?: string | null;
+  @ApiPropertyOptional({ description: 'Local file path after download' })
+  localPath?: string | null;
 
-    @ApiPropertyOptional({ description: 'Download timestamp' })
-    downloadedAt?: Date | null;
+  @ApiPropertyOptional({ description: 'Download timestamp' })
+  downloadedAt?: Date | null;
 
-    @ApiPropertyOptional({ description: 'File size in MB' })
-    fileSizeMb?: number | null;
+  @ApiPropertyOptional({ description: 'File size in MB' })
+  fileSizeMb?: number | null;
 
-    @ApiPropertyOptional({ description: 'SHA256 checksum' })
-    checksum?: string | null;
+  @ApiPropertyOptional({ description: 'SHA256 checksum' })
+  checksum?: string | null;
 
-    @ApiProperty({ description: 'Resource status', enum: ResourceStatusType })
-    resourceStatus: ResourceStatusType;
+  @ApiProperty({ description: 'Resource status', enum: ResourceStatusType })
+  resourceStatus: ResourceStatusType;
 
-    @ApiProperty({ description: 'Tags', type: [String] })
-    tags: string[];
+  @ApiProperty({ description: 'Tags', type: [String] })
+  tags: string[];
 
-    @ApiProperty({ description: 'Tenant ID' })
-    tenantId: string;
+  @ApiProperty({ description: 'Tenant ID' })
+  tenantId: string;
 
-    @ApiProperty({ description: 'Created at timestamp' })
-    createdAt: Date;
+  @ApiProperty({ description: 'Created at timestamp' })
+  createdAt: Date;
 
-    @ApiProperty({ description: 'Updated at timestamp' })
-    updatedAt: Date;
+  @ApiProperty({ description: 'Updated at timestamp' })
+  updatedAt: Date;
 
-    @ApiPropertyOptional({ description: 'Created by user ID' })
-    createdBy?: string | null;
+  @ApiPropertyOptional({ description: 'Created by user ID' })
+  createdBy?: string | null;
 
-    @ApiPropertyOptional({ description: 'Updated by user ID' })
-    updatedBy?: string | null;
+  @ApiPropertyOptional({ description: 'Updated by user ID' })
+  updatedBy?: string | null;
 }
 
 export class PaginatedModelResponse {
-    @ApiProperty({ type: [ModelResponse] })
-    data: ModelResponse[];
+  @ApiProperty({ type: [ModelResponse] })
+  data: ModelResponse[];
 
-    @ApiProperty({ description: 'Total number of records' })
-    total: number;
+  @ApiProperty({ description: 'Total number of records' })
+  total: number;
 
-    @ApiProperty({ description: 'Current page number' })
-    page: number;
+  @ApiProperty({ description: 'Current page number' })
+  page: number;
 
-    @ApiProperty({ description: 'Number of records per page' })
-    limit: number;
+  @ApiProperty({ description: 'Number of records per page' })
+  limit: number;
 
-    @ApiProperty({ description: 'Total number of pages' })
-    totalPages: number;
+  @ApiProperty({ description: 'Total number of pages' })
+  totalPages: number;
 }

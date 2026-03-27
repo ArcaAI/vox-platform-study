@@ -6,26 +6,10 @@ import { Input } from '@arcaai/ui/input';
 import { ScrollArea } from '@arcaai/ui/scroll-area';
 import { Progress } from '@arcaai/ui/progress';
 import { Switch } from '@arcaai/ui/switch';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@arcaai/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
 import { toast } from 'sonner';
 import { useState, useRef, useCallback, useEffect } from 'react';
-import {
-  AlertCircle,
-  ArrowDown,
-  CheckCircle2,
-  Copy,
-  FileAudio,
-  Loader2,
-  Radio,
-  Sparkles,
-  Upload,
-} from 'lucide-react';
+import { AlertCircle, ArrowDown, CheckCircle2, Copy, FileAudio, Loader2, Radio, Sparkles, Upload } from 'lucide-react';
 import { usePlaygroundStore } from '@/store/playground-store';
 import { useAuthStore } from '@/store/auth-store';
 
@@ -69,6 +53,7 @@ Doctor: Please come back in four weeks for a follow-up. If the cough becomes bot
 export function SseTranscriptSummaryDemo() {
   const [phase, setPhase] = useState<SsePhase>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [jobId, setJobId] = useState('');
   const [transcriptText, setTranscriptText] = useState('');
   const [summaryText, setSummaryText] = useState('');
@@ -249,7 +234,8 @@ export function SseTranscriptSummaryDemo() {
   }, [selectedFile, apiBaseUrl, autoSummarize, addEvent, updatePhase]);
 
   const simulateSseTranscription = useCallback(() => {
-    const demoText = 'Patient presents with moderate ankle edema secondary to amlodipine therapy. Blood pressure improved to 132/82. Plan to switch to lisinopril 10mg daily with BMP monitoring. Follow-up in four weeks.';
+    const demoText =
+      'Patient presents with moderate ankle edema secondary to amlodipine therapy. Blood pressure improved to 132/82. Plan to switch to lisinopril 10mg daily with BMP monitoring. Follow-up in four weeks.';
     const words = demoText.split(' ');
     let idx = 0;
 
@@ -278,122 +264,127 @@ export function SseTranscriptSummaryDemo() {
     }, 200);
   }, [autoSummarize, addEvent, updatePhase]);
 
-  const startStreamingSummary = useCallback(async (transcript: string) => {
-    updatePhase('summarizing');
-    setSummaryText('');
-    setStreamChunks([]);
-    setProgress(0);
+  const startStreamingSummary = useCallback(
+    async (transcript: string) => {
+      updatePhase('summarizing');
+      setSummaryText('');
+      setStreamChunks([]);
+      setProgress(0);
 
-    const base = apiBaseUrl.replace(/\/$/, '');
-    const headers = { ...getHeaders(), 'Content-Type': 'application/json' };
+      const base = apiBaseUrl.replace(/\/$/, '');
+      const headers = { ...getHeaders(), 'Content-Type': 'application/json' };
 
-    const body = {
-      prompt: `Generate a clinical summary from the following transcript:\n\n${transcript}`,
-      system_prompt: 'You are a medical documentation assistant. Generate a concise clinical summary.',
-      provider,
-      stream: true,
-      temperature: 0.4,
-      max_tokens: 2048,
-    };
+      const body = {
+        prompt: `Generate a clinical summary from the following transcript:\n\n${transcript}`,
+        system_prompt: 'You are a medical documentation assistant. Generate a concise clinical summary.',
+        provider,
+        stream: true,
+        temperature: 0.4,
+        max_tokens: 2048,
+      };
 
-    try {
-      addEvent('smr-request', `POST ${base}/text/generate (stream=true) via API Gateway`);
+      try {
+        addEvent('smr-request', `POST ${base}/text/generate (stream=true) via API Gateway`);
 
-      abortRef.current = new AbortController();
-      const generateRes = await fetch(`${base}/text/generate`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: abortRef.current.signal,
-      });
+        abortRef.current = new AbortController();
+        const generateRes = await fetch(`${base}/text/generate`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+          signal: abortRef.current.signal,
+        });
 
-      if (!generateRes.ok) {
-        const errBody = await generateRes.text();
-        addEvent('smr-error', `HTTP ${generateRes.status}: ${errBody}`);
-        simulateStreamingSummary(transcript);
-        return;
-      }
+        if (!generateRes.ok) {
+          const errBody = await generateRes.text();
+          addEvent('smr-error', `HTTP ${generateRes.status}: ${errBody}`);
+          simulateStreamingSummary(transcript);
+          return;
+        }
 
-      const taskInfo = await generateRes.json();
-      addEvent('smr-task', `Task created: ${taskInfo.task_id}, stream_url: ${taskInfo.stream_url}`);
+        const taskInfo = await generateRes.json();
+        addEvent('smr-task', `Task created: ${taskInfo.task_id}, stream_url: ${taskInfo.stream_url}`);
 
-      if (!taskInfo.stream_url) {
-        addEvent('smr-sync', JSON.stringify(taskInfo));
-        setSummaryText(taskInfo.content || '');
-        if (taskInfo.usage) setTotalTokens(taskInfo.usage.total_tokens || 0);
-        updatePhase('done');
-        toast.success('Summary generated (sync response)');
-        return;
-      }
+        if (!taskInfo.stream_url) {
+          addEvent('smr-sync', JSON.stringify(taskInfo));
+          setSummaryText(taskInfo.content || '');
+          if (taskInfo.usage) setTotalTokens(taskInfo.usage.total_tokens || 0);
+          updatePhase('done');
+          toast.success('Summary generated (sync response)');
+          return;
+        }
 
-      const streamUrl = `${base}/text/tasks/${taskInfo.task_id}/stream`;
-      addEvent('sse-connect', `Connecting to SSE stream: ${streamUrl}`);
+        const streamUrl = `${base}/text/tasks/${taskInfo.task_id}/stream`;
+        addEvent('sse-connect', `Connecting to SSE stream: ${streamUrl}`);
 
-      const sseRes = await fetch(streamUrl, {
-        headers: { ...getHeaders(), Accept: 'text/event-stream' },
-        signal: abortRef.current.signal,
-      });
+        const sseRes = await fetch(streamUrl, {
+          headers: { ...getHeaders(), Accept: 'text/event-stream' },
+          signal: abortRef.current.signal,
+        });
 
-      if (!sseRes.ok || !sseRes.body) {
-        addEvent('smr-error', `SSE stream failed: ${sseRes.status}`);
-        simulateStreamingSummary(transcript);
-        return;
-      }
+        if (!sseRes.ok || !sseRes.body) {
+          addEvent('smr-error', `SSE stream failed: ${sseRes.status}`);
+          simulateStreamingSummary(transcript);
+          return;
+        }
 
-      addEvent('sse-stream', 'SMR SSE stream opened via API Gateway');
-      const reader = sseRes.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let chunkIdx = 0;
-      let accumulated = '';
+        addEvent('sse-stream', 'SMR SSE stream opened via API Gateway');
+        const reader = sseRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let chunkIdx = 0;
+        let accumulated = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') {
-              addEvent('sse-done', '[DONE]');
-              continue;
-            }
-            try {
-              const parsed = JSON.parse(data);
-              const text = parsed.content || parsed.text || parsed.delta?.content || '';
-              if (text) {
-                accumulated += text;
-                setSummaryText(accumulated);
-                setStreamChunks((prev) => [...prev, { text, index: chunkIdx++ }]);
-                addEvent('chunk', data);
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              if (data === '[DONE]') {
+                addEvent('sse-done', '[DONE]');
+                continue;
               }
-              if (parsed.usage) {
-                setTotalTokens(parsed.usage.total_tokens || 0);
+              try {
+                const parsed = JSON.parse(data);
+                const text = parsed.content || parsed.text || parsed.delta?.content || '';
+                if (text) {
+                  accumulated += text;
+                  setSummaryText(accumulated);
+                  setStreamChunks((prev) => [...prev, { text, index: chunkIdx++ }]);
+                  addEvent('chunk', data);
+                }
+                if (parsed.usage) {
+                  setTotalTokens(parsed.usage.total_tokens || 0);
+                }
+              } catch {
+                addEvent('chunk-raw', data);
               }
-            } catch {
-              addEvent('chunk-raw', data);
             }
           }
         }
+
+        reader.releaseLock();
+        updatePhase('done');
+        toast.success('Summary generated via SSE streaming (API Gateway)');
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        addEvent('smr-error', `${err instanceof Error ? err.message : 'Unknown error'}`);
+        simulateStreamingSummary(transcript);
       }
+    },
+    [apiBaseUrl, provider, addEvent, updatePhase],
+  );
 
-      reader.releaseLock();
-      updatePhase('done');
-      toast.success('Summary generated via SSE streaming (API Gateway)');
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      addEvent('smr-error', `${err instanceof Error ? err.message : 'Unknown error'}`);
-      simulateStreamingSummary(transcript);
-    }
-  }, [apiBaseUrl, provider, addEvent, updatePhase]);
-
-  const simulateStreamingSummary = useCallback((transcript: string) => {
-    addEvent('smr-demo', 'SMR unavailable — demonstrating SSE streaming with simulated data');
-    const demoSummary = `Clinical Summary
+  const simulateStreamingSummary = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    (transcript: string) => {
+      addEvent('smr-demo', 'SMR unavailable — demonstrating SSE streaming with simulated data');
+      const demoSummary = `Clinical Summary
 
 Patient: Mrs. Johnson
 Visit Type: Follow-up — Hypertension Management
@@ -413,29 +404,31 @@ Plan:
 4. Follow-up in 4 weeks for BP recheck and medication tolerance
 5. Patient counseled on potential ACE inhibitor side effects (dry cough); if intolerable, will switch to ARB`;
 
-    const words = demoSummary.split(' ');
-    let idx = 0;
-    let chunkIdx = 0;
-    let accumulated = '';
+      const words = demoSummary.split(' ');
+      let idx = 0;
+      let chunkIdx = 0;
+      let accumulated = '';
 
-    const interval = setInterval(() => {
-      if (idx >= words.length) {
-        clearInterval(interval);
-        updatePhase('done');
-        setTotalTokens(Math.round(words.length * 1.3));
-        toast.success('Demo summary streaming complete');
-        return;
-      }
+      const interval = setInterval(() => {
+        if (idx >= words.length) {
+          clearInterval(interval);
+          updatePhase('done');
+          setTotalTokens(Math.round(words.length * 1.3));
+          toast.success('Demo summary streaming complete');
+          return;
+        }
 
-      const chunk = words.slice(idx, idx + 2).join(' ') + ' ';
-      accumulated += chunk;
-      setSummaryText(accumulated);
-      setStreamChunks((prev) => [...prev, { text: chunk, index: chunkIdx++ }]);
-      setProgress(Math.round((idx / words.length) * 100));
-      addEvent('chunk', JSON.stringify({ content: chunk, index: chunkIdx }));
-      idx += 2;
-    }, 80);
-  }, [addEvent, updatePhase]);
+        const chunk = words.slice(idx, idx + 2).join(' ') + ' ';
+        accumulated += chunk;
+        setSummaryText(accumulated);
+        setStreamChunks((prev) => [...prev, { text: chunk, index: chunkIdx++ }]);
+        setProgress(Math.round((idx / words.length) * 100));
+        addEvent('chunk', JSON.stringify({ content: chunk, index: chunkIdx }));
+        idx += 2;
+      }, 80);
+    },
+    [addEvent, updatePhase],
+  );
 
   const handleManualSummarize = useCallback(() => {
     const text = transcriptText || SAMPLE_TRANSCRIPT_FOR_SUMMARY;
@@ -498,8 +491,9 @@ Plan:
           </Badge>
         </div>
         <CardDescription>
-          Unidirectional SSE: upload audio file → receive transcription progress via SSE → stream summary tokens via SSE.
-          Two SSE streams via API Gateway: <code className="text-[10px]">/transcription-jobs/:id/stream</code> and <code className="text-[10px]">/text/tasks/:id/stream</code>.
+          Unidirectional SSE: upload audio file → receive transcription progress via SSE → stream summary tokens via SSE. Two SSE streams via API
+          Gateway: <code className="text-[10px]">/transcription-jobs/:id/stream</code> and <code className="text-[10px]">/text/tasks/:id/stream</code>
+          .
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -575,7 +569,7 @@ Plan:
               )}
             </div>
 
-            {(phase !== 'idle') && (
+            {phase !== 'idle' && (
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">{phaseLabel}</span>
@@ -611,7 +605,10 @@ Plan:
                   variant="ghost"
                   size="sm"
                   className="h-5 gap-1 text-[10px]"
-                  onClick={() => { navigator.clipboard.writeText(transcriptText); toast.success('Copied'); }}
+                  onClick={() => {
+                    navigator.clipboard.writeText(transcriptText);
+                    toast.success('Copied');
+                  }}
                 >
                   <Copy className="size-2.5" /> Copy
                 </Button>
@@ -619,9 +616,7 @@ Plan:
             </div>
             <ScrollArea className="bg-muted/20 h-48 rounded-lg border p-3">
               {!transcriptText ? (
-                <p className="text-muted-foreground text-xs italic">
-                  Upload an audio file to see SSE-streamed transcription…
-                </p>
+                <p className="text-muted-foreground text-xs italic">Upload an audio file to see SSE-streamed transcription…</p>
               ) : (
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">
                   {transcriptText}
@@ -639,7 +634,10 @@ Plan:
                   variant="ghost"
                   size="sm"
                   className="h-5 gap-1 text-[10px]"
-                  onClick={() => { navigator.clipboard.writeText(summaryText); toast.success('Copied'); }}
+                  onClick={() => {
+                    navigator.clipboard.writeText(summaryText);
+                    toast.success('Copied');
+                  }}
                 >
                   <Copy className="size-2.5" /> Copy
                 </Button>
@@ -647,9 +645,7 @@ Plan:
             </div>
             <ScrollArea className="bg-muted/20 h-48 rounded-lg border p-3">
               {!summaryText ? (
-                <p className="text-muted-foreground text-xs italic">
-                  Summary will stream here after transcription completes…
-                </p>
+                <p className="text-muted-foreground text-xs italic">Summary will stream here after transcription completes…</p>
               ) : (
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">
                   {summaryText}
@@ -673,7 +669,9 @@ Plan:
                 <div className="space-y-0.5">
                   {sseEvents.map((ev, i) => (
                     <div key={i} className="flex items-start gap-1.5 rounded px-1.5 py-0.5 text-[10px] font-mono bg-blue-500/5">
-                      <Badge variant="outline" className="h-4 shrink-0 text-[8px] px-1">{ev.eventType}</Badge>
+                      <Badge variant="outline" className="h-4 shrink-0 text-[8px] px-1">
+                        {ev.eventType}
+                      </Badge>
                       {ev.id && <span className="text-muted-foreground shrink-0">id:{ev.id}</span>}
                       <span className="break-all">{ev.data}</span>
                     </div>
@@ -694,18 +692,30 @@ Plan:
           <div className="grid gap-2 sm:grid-cols-3 text-[10px] text-muted-foreground">
             <div>
               <p className="font-medium text-foreground">1. File Upload</p>
-              <p><code>POST /audio/transcription-jobs</code></p>
-              <p>Returns <code>jobId</code> for tracking</p>
+              <p>
+                <code>POST /audio/transcription-jobs</code>
+              </p>
+              <p>
+                Returns <code>jobId</code> for tracking
+              </p>
             </div>
             <div>
               <p className="font-medium text-foreground">2. Transcription SSE</p>
-              <p><code>GET /transcription-jobs/:id/stream</code></p>
-              <p>Events: <code>status</code>, <code>progress</code>, <code>result</code></p>
+              <p>
+                <code>GET /transcription-jobs/:id/stream</code>
+              </p>
+              <p>
+                Events: <code>status</code>, <code>progress</code>, <code>result</code>
+              </p>
             </div>
             <div>
               <p className="font-medium text-foreground">3. Summary SSE</p>
-              <p><code>POST /text/generate</code> → <code>GET /text/tasks/:id/stream</code></p>
-              <p>Events: <code>data: {'{content}'}</code>, <code>done</code></p>
+              <p>
+                <code>POST /text/generate</code> → <code>GET /text/tasks/:id/stream</code>
+              </p>
+              <p>
+                Events: <code>data: {'{content}'}</code>, <code>done</code>
+              </p>
             </div>
           </div>
         </div>

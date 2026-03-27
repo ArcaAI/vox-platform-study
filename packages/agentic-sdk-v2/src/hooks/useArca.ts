@@ -35,20 +35,11 @@ import type {
 } from '../types';
 import type { SummaryGenerationOptions } from '../types/summary';
 import type { TranscriptSegment, AudioStartOptions } from '../types/audio';
-import {
-  CONSULTATION_ENDPOINTS,
-  CONTEXT_ENDPOINTS,
-  SUMMARY_ENDPOINTS,
-  ENTITY_ENDPOINTS,
-} from '../core/constants';
+import { CONSULTATION_ENDPOINTS, CONTEXT_ENDPOINTS, SUMMARY_ENDPOINTS, ENTITY_ENDPOINTS } from '../core/constants';
 import { computeSummaryDiff } from '../utils/diffUtils';
 import { withRetry as withRetryUtil, type RetryOptions } from '../utils/errorUtils';
 import type { ISDKLogger } from '../core/logger';
-import {
-  openSessionOperation,
-  loadConsultationOperation,
-  getPatientHistoryOperation,
-} from '../core/sessionUtils';
+import { openSessionOperation, loadConsultationOperation, getPatientHistoryOperation } from '../core/sessionUtils';
 
 // =============================================================================
 // Return Type
@@ -336,11 +327,9 @@ export function useArca(): UseArcaReturn {
         attributes: { date },
       });
 
-      return apiClient.get<Consultation[]>(
-        CONSULTATION_ENDPOINTS.PATIENT_DATE(patientId, date)
-      );
+      return apiClient.get<Consultation[]>(CONSULTATION_ENDPOINTS.PATIENT_DATE(patientId, date));
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /**
@@ -394,7 +383,7 @@ export function useArca(): UseArcaReturn {
         throw error;
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const listConsultations = useCallback(
@@ -410,9 +399,7 @@ export function useArca(): UseArcaReturn {
           }
         }
         const qs = query.toString();
-        const url = qs
-          ? `${CONSULTATION_ENDPOINTS.LIST}?${qs}`
-          : CONSULTATION_ENDPOINTS.LIST;
+        const url = qs ? `${CONSULTATION_ENDPOINTS.LIST}?${qs}` : CONSULTATION_ENDPOINTS.LIST;
 
         return await apiClient.get<PaginatedConsultations>(url);
       } catch (error) {
@@ -427,137 +414,140 @@ export function useArca(): UseArcaReturn {
   // Audio Actions
   // ==========================================================================
 
-  const startAudio = useCallback(async (options?: AudioStartOptions): Promise<void> => {
-    const { pluginManager, consultation } = store;
-    const logger = getLogger();
-    if (!pluginManager) throw new Error('SDK not initialized');
+  const startAudio = useCallback(
+    async (options?: AudioStartOptions): Promise<void> => {
+      const { pluginManager, consultation } = store;
+      const logger = getLogger();
+      if (!pluginManager) throw new Error('SDK not initialized');
 
-    if (options?.language) {
-      store.setAudioLanguage(options.language);
-    }
+      if (options?.language) {
+        store.setAudioLanguage(options.language);
+      }
 
-    const timer = logger?.startOperation('startAudio', {
-      component: 'useArca',
-      sdk: { consultationId: consultation?.id },
-      attributes: { language: options?.language, pipelineId: options?.pipelineId },
-    });
-
-    try {
-      // Get user media
-      logger?.debug('Requesting microphone access', {
-        operation: 'startAudio',
+      const timer = logger?.startOperation('startAudio', {
         component: 'useArca',
+        sdk: { consultationId: consultation?.id },
+        attributes: { language: options?.language, pipelineId: options?.pipelineId },
       });
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const track = stream.getAudioTracks()[0];
 
-      // Create audio context
-      const audioContext = new AudioContext();
+      try {
+        // Get user media
+        logger?.debug('Requesting microphone access', {
+          operation: 'startAudio',
+          component: 'useArca',
+        });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const track = stream.getAudioTracks()[0];
 
-      // Set up plugin callbacks
-      pluginManager.setCallbacks({
-        onTranscription: (result: TranscriptionResult) => {
-          if (result.isFinal) {
-            store.setCurrentTranscript('');
-            // Auto-add transcription to context if consultation active
-            const { consultation, apiClient } = store;
-            if (consultation && apiClient) {
-              logger?.debug('Adding final transcription to context', {
-                operation: 'onTranscription',
-                component: 'useArca',
-                sdk: { consultationId: consultation.id },
-                attributes: { textLength: result.text.length },
-              });
-              apiClient
-                .post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), {
-                  type: 'TRANSCRIPT',
-                  content: result.text,
-                  source: 'TRANSCRIPTION',
-                  structuredData: { segments: result.segments },
-                })
-                .then((item) => store.addContextItem(item))
-                .catch((error) => {
-                  logger?.error('Failed to add transcription to context', {
-                    operation: 'onTranscription',
-                    component: 'useArca',
-                    error: error as Error,
-                    sdk: { consultationId: consultation.id },
-                  });
+        // Create audio context
+        const audioContext = new AudioContext();
+
+        // Set up plugin callbacks
+        pluginManager.setCallbacks({
+          onTranscription: (result: TranscriptionResult) => {
+            if (result.isFinal) {
+              store.setCurrentTranscript('');
+              // Auto-add transcription to context if consultation active
+              const { consultation, apiClient } = store;
+              if (consultation && apiClient) {
+                logger?.debug('Adding final transcription to context', {
+                  operation: 'onTranscription',
+                  component: 'useArca',
+                  sdk: { consultationId: consultation.id },
+                  attributes: { textLength: result.text.length },
                 });
-            }
-
-            // NER-L-02: Auto-trigger NER on final transcriptions via knowledge pipeline
-            const knowledgePipeline = pluginManager.getKnowledgePipeline();
-            if (knowledgePipeline && knowledgePipeline.state.isReady) {
-              logger?.debug('Auto-triggering NER on final transcription', {
-                operation: 'onTranscription',
-                component: 'useArca',
-                attributes: { textLength: result.text.length },
-              });
-              knowledgePipeline
-                .process({ text: result.text })
-                .then((output) => {
-                  if (output.entities?.length) {
-                    store.addEntities(output.entities);
-                    logger?.debug('Auto-NER entities extracted', {
+                apiClient
+                  .post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), {
+                    type: 'TRANSCRIPT',
+                    content: result.text,
+                    source: 'TRANSCRIPTION',
+                    structuredData: { segments: result.segments },
+                  })
+                  .then((item) => store.addContextItem(item))
+                  .catch((error) => {
+                    logger?.error('Failed to add transcription to context', {
                       operation: 'onTranscription',
                       component: 'useArca',
-                      attributes: { entityCount: output.entities.length },
+                      error: error as Error,
+                      sdk: { consultationId: consultation.id },
                     });
-                  }
-                })
-                .catch((error) => {
-                  logger?.error('Auto-NER failed on transcription', {
-                    operation: 'onTranscription',
-                    component: 'useArca',
-                    error: error as Error,
                   });
+              }
+
+              // NER-L-02: Auto-trigger NER on final transcriptions via knowledge pipeline
+              const knowledgePipeline = pluginManager.getKnowledgePipeline();
+              if (knowledgePipeline && knowledgePipeline.state.isReady) {
+                logger?.debug('Auto-triggering NER on final transcription', {
+                  operation: 'onTranscription',
+                  component: 'useArca',
+                  attributes: { textLength: result.text.length },
                 });
+                knowledgePipeline
+                  .process({ text: result.text })
+                  .then((output) => {
+                    if (output.entities?.length) {
+                      store.addEntities(output.entities);
+                      logger?.debug('Auto-NER entities extracted', {
+                        operation: 'onTranscription',
+                        component: 'useArca',
+                        attributes: { entityCount: output.entities.length },
+                      });
+                    }
+                  })
+                  .catch((error) => {
+                    logger?.error('Auto-NER failed on transcription', {
+                      operation: 'onTranscription',
+                      component: 'useArca',
+                      error: error as Error,
+                    });
+                  });
+              }
+            } else {
+              store.setCurrentTranscript(result.text);
             }
-          } else {
-            store.setCurrentTranscript(result.text);
-          }
-        },
-        onVADEvent: (event) => {
-          store.setIsSpeaking(event.type === 'speech-start');
-        },
-        onError: (error, plugin) => {
-          logger?.error(`Plugin error: ${plugin}`, {
-            operation: 'onPluginError',
-            component: 'useArca',
-            error: error,
-            attributes: { plugin },
-          });
-          store.setAudioError(error);
-        },
-      });
+          },
+          onVADEvent: (event) => {
+            store.setIsSpeaking(event.type === 'speech-start');
+          },
+          onError: (error, plugin) => {
+            logger?.error(`Plugin error: ${plugin}`, {
+              operation: 'onPluginError',
+              component: 'useArca',
+              error: error,
+              attributes: { plugin },
+            });
+            store.setAudioError(error);
+          },
+        });
 
-      // Initialize plugins
-      await pluginManager.initialize(track, audioContext);
+        // Initialize plugins
+        await pluginManager.initialize(track, audioContext);
 
-      store.setIsCapturing(true);
-      store.setAudioPlugins(pluginManager.getStates());
-      store.setAudioError(null);
+        store.setIsCapturing(true);
+        store.setAudioPlugins(pluginManager.getStates());
+        store.setAudioError(null);
 
-      timer?.end(true, {
-        attributes: {
-          sampleRate: audioContext.sampleRate,
-          trackLabel: track.label,
-        },
-      });
+        timer?.end(true, {
+          attributes: {
+            sampleRate: audioContext.sampleRate,
+            trackLabel: track.label,
+          },
+        });
 
-      logger?.info('Audio capture started', {
-        operation: 'startAudio',
-        component: 'useArca',
-        success: true,
-        sdk: { consultationId: consultation?.id },
-      });
-    } catch (error) {
-      timer?.error(error as Error);
-      store.setAudioError(error as Error);
-      throw error;
-    }
-  }, [store, getLogger]);
+        logger?.info('Audio capture started', {
+          operation: 'startAudio',
+          component: 'useArca',
+          success: true,
+          sdk: { consultationId: consultation?.id },
+        });
+      } catch (error) {
+        timer?.error(error as Error);
+        store.setAudioError(error as Error);
+        throw error;
+      }
+    },
+    [store, getLogger],
+  );
 
   const stopAudio = useCallback(async (): Promise<void> => {
     const { pluginManager, consultation } = store;
@@ -601,8 +591,7 @@ export function useArca(): UseArcaReturn {
       const logger = getLogger();
       if (!pluginManager) return;
 
-      const newState =
-        enabled ?? !(pluginManager.getStates().noiseFilter.isActive);
+      const newState = enabled ?? !pluginManager.getStates().noiseFilter.isActive;
 
       logger?.debug('Toggling noise filter', {
         operation: 'toggleNoiseFilter',
@@ -613,7 +602,7 @@ export function useArca(): UseArcaReturn {
       await pluginManager.setEnabled('noiseFilter', newState);
       store.setAudioPlugins(pluginManager.getStates());
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /**
@@ -638,7 +627,7 @@ export function useArca(): UseArcaReturn {
       await pluginManager.setEnabled('stt', newState);
       store.setAudioPlugins(pluginManager.getStates());
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /**
@@ -663,7 +652,7 @@ export function useArca(): UseArcaReturn {
       await pluginManager.setEnabled('vad', newState);
       store.setAudioPlugins(pluginManager.getStates());
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   // ==========================================================================
@@ -671,10 +660,7 @@ export function useArca(): UseArcaReturn {
   // ==========================================================================
 
   const addCaseNote = useCallback(
-    async (
-      content: string,
-      metadata?: Record<string, unknown>
-    ): Promise<ContextItem> => {
+    async (content: string, metadata?: Record<string, unknown>): Promise<ContextItem> => {
       const { apiClient, consultation } = store;
       const logger = getLogger();
       if (!apiClient) throw new Error('SDK not initialized');
@@ -689,15 +675,12 @@ export function useArca(): UseArcaReturn {
       store.setContextError(null);
 
       try {
-        const item = await apiClient.post<ContextItem>(
-          CONTEXT_ENDPOINTS.ADD(consultation.id),
-          {
-            type: 'CASE_NOTE',
-            content,
-            source: 'USER',
-            structuredData: metadata,
-          }
-        );
+        const item = await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), {
+          type: 'CASE_NOTE',
+          content,
+          source: 'USER',
+          structuredData: metadata,
+        });
         store.addContextItem(item);
 
         timer?.end(true, {
@@ -713,14 +696,11 @@ export function useArca(): UseArcaReturn {
         store.setContextLoading(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const addTranscription = useCallback(
-    async (
-      text: string,
-      metadata?: Record<string, unknown>
-    ): Promise<ContextItem> => {
+    async (text: string, metadata?: Record<string, unknown>): Promise<ContextItem> => {
       const { apiClient, consultation } = store;
       const logger = getLogger();
       if (!apiClient) throw new Error('SDK not initialized');
@@ -735,15 +715,12 @@ export function useArca(): UseArcaReturn {
       store.setContextError(null);
 
       try {
-        const item = await apiClient.post<ContextItem>(
-          CONTEXT_ENDPOINTS.ADD(consultation.id),
-          {
-            type: 'TRANSCRIPT',
-            content: text,
-            source: 'TRANSCRIPTION',
-            structuredData: metadata,
-          }
-        );
+        const item = await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), {
+          type: 'TRANSCRIPT',
+          content: text,
+          source: 'TRANSCRIPTION',
+          structuredData: metadata,
+        });
         store.addContextItem(item);
 
         timer?.end(true, {
@@ -759,7 +736,7 @@ export function useArca(): UseArcaReturn {
         store.setContextLoading(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const updateContextItem = useCallback(
@@ -792,7 +769,7 @@ export function useArca(): UseArcaReturn {
         store.setContextLoading(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const loadSharedContext = useCallback(async (): Promise<ContextItem[]> => {
@@ -810,9 +787,7 @@ export function useArca(): UseArcaReturn {
     store.setContextError(null);
 
     try {
-      const items = await apiClient.get<ContextItem[]>(
-        CONTEXT_ENDPOINTS.SHARED(consultation.id)
-      );
+      const items = await apiClient.get<ContextItem[]>(CONTEXT_ENDPOINTS.SHARED(consultation.id));
       store.setSharedContext(items);
 
       timer?.end(true, { attributes: { itemCount: items.length } });
@@ -850,9 +825,7 @@ export function useArca(): UseArcaReturn {
       store.setContextError(null);
 
       try {
-        const endpoint = contextItemId
-          ? ENTITY_ENDPOINTS.GET_FOR_ITEM(consultation.id, contextItemId)
-          : ENTITY_ENDPOINTS.GET_ALL(consultation.id);
+        const endpoint = contextItemId ? ENTITY_ENDPOINTS.GET_FOR_ITEM(consultation.id, contextItemId) : ENTITY_ENDPOINTS.GET_ALL(consultation.id);
 
         const data = await apiClient.get<{ entities: MedicalEntity[] }>(endpoint);
         store.setEntities(data.entities);
@@ -878,7 +851,7 @@ export function useArca(): UseArcaReturn {
         store.setContextLoading(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /**
@@ -898,9 +871,7 @@ export function useArca(): UseArcaReturn {
       });
 
       try {
-        const versions = await apiClient.get<ContextVersionEntry[]>(
-          CONTEXT_ENDPOINTS.VERSIONS(consultation.id, contextItemId)
-        );
+        const versions = await apiClient.get<ContextVersionEntry[]>(CONTEXT_ENDPOINTS.VERSIONS(consultation.id, contextItemId));
 
         timer?.end(true, { attributes: { versionCount: versions.length } });
         logger?.debug('Context versions loaded', {
@@ -916,7 +887,7 @@ export function useArca(): UseArcaReturn {
         throw error;
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /**
@@ -937,10 +908,7 @@ export function useArca(): UseArcaReturn {
       });
 
       try {
-        await apiClient.post(
-          SUMMARY_ENDPOINTS.EXTRACT_ENTITIES(consultation.id, contextItemId),
-          {}
-        );
+        await apiClient.post(SUMMARY_ENDPOINTS.EXTRACT_ENTITIES(consultation.id, contextItemId), {});
 
         timer?.end(true);
         logger?.info('Entity extraction triggered', {
@@ -955,7 +923,7 @@ export function useArca(): UseArcaReturn {
         throw error;
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /**
@@ -974,9 +942,7 @@ export function useArca(): UseArcaReturn {
       sdk: { consultationId: consultation.id },
     });
 
-    const items = await apiClient.get<ContextItem[]>(
-      CONTEXT_ENDPOINTS.TRANSCRIPTIONS(consultation.id)
-    );
+    const items = await apiClient.get<ContextItem[]>(CONTEXT_ENDPOINTS.TRANSCRIPTIONS(consultation.id));
 
     return items;
   }, [store, getLogger]);
@@ -997,9 +963,7 @@ export function useArca(): UseArcaReturn {
       sdk: { consultationId: consultation.id },
     });
 
-    const items = await apiClient.get<ContextItem[]>(
-      CONTEXT_ENDPOINTS.CASE_NOTES(consultation.id)
-    );
+    const items = await apiClient.get<ContextItem[]>(CONTEXT_ENDPOINTS.CASE_NOTES(consultation.id));
 
     return items;
   }, [store, getLogger]);
@@ -1024,10 +988,7 @@ export function useArca(): UseArcaReturn {
       store.setSummaryError(null);
 
       try {
-        const summary = await apiClient.post<SummaryResponse>(
-          SUMMARY_ENDPOINTS.PRE_SUMMARY(consultation.id),
-          options
-        );
+        const summary = await apiClient.post<SummaryResponse>(SUMMARY_ENDPOINTS.PRE_SUMMARY(consultation.id), options);
         store.addSummary(summary);
 
         timer?.end(true, {
@@ -1054,7 +1015,7 @@ export function useArca(): UseArcaReturn {
         store.setSummaryGenerating(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const generateSummary = useCallback(
@@ -1073,10 +1034,7 @@ export function useArca(): UseArcaReturn {
       store.setSummaryError(null);
 
       try {
-        const summary = await apiClient.post<SummaryResponse>(
-          SUMMARY_ENDPOINTS.GENERATE(consultation.id),
-          options
-        );
+        const summary = await apiClient.post<SummaryResponse>(SUMMARY_ENDPOINTS.GENERATE(consultation.id), options);
         store.addSummary(summary);
 
         timer?.end(true, {
@@ -1104,7 +1062,7 @@ export function useArca(): UseArcaReturn {
         store.setSummaryGenerating(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const updateSummary = useCallback(
@@ -1137,7 +1095,7 @@ export function useArca(): UseArcaReturn {
         store.setSummaryGenerating(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /**
@@ -1146,6 +1104,7 @@ export function useArca(): UseArcaReturn {
    * @deprecated No backend endpoint exists for DNA analysis.
    */
   const analyzeDNA = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Stub; no backend; param kept for interface compatibility.
     async (_texts: string[]): Promise<DNAStyle> => {
       const logger = getLogger();
 
@@ -1154,12 +1113,9 @@ export function useArca(): UseArcaReturn {
         component: 'useArca',
       });
 
-      throw new Error(
-        'DNA analysis is not supported: no backend endpoint exists. ' +
-        'This feature is planned for a future release.'
-      );
+      throw new Error('DNA analysis is not supported: no backend endpoint exists. ' + 'This feature is planned for a future release.');
     },
-    [getLogger]
+    [getLogger],
   );
 
   /**
@@ -1167,45 +1123,48 @@ export function useArca(): UseArcaReturn {
    * HOOK-06: Fetches existing summaries so state is not lost after page refresh.
    * SES-06: Accepts optional pagination params.
    */
-  const loadSummaries = useCallback(async (pagination?: PaginationParams): Promise<SummaryResponse[]> => {
-    const { apiClient, consultation } = store;
-    const logger = getLogger();
-    if (!apiClient) throw new Error('SDK not initialized');
-    if (!consultation) throw new Error('No active consultation');
+  const loadSummaries = useCallback(
+    async (pagination?: PaginationParams): Promise<SummaryResponse[]> => {
+      const { apiClient, consultation } = store;
+      const logger = getLogger();
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
 
-    const timer = logger?.startOperation('loadSummaries', {
-      component: 'useArca',
-      sdk: { consultationId: consultation.id },
-    });
-
-    try {
-      let url = SUMMARY_ENDPOINTS.LIST(consultation.id);
-      if (pagination) {
-        const params = new URLSearchParams();
-        if (pagination.page != null) params.set('page', String(pagination.page));
-        if (pagination.limit != null) params.set('limit', String(pagination.limit));
-        const qs = params.toString();
-        if (qs) url += `?${qs}`;
-      }
-
-      const summaries = await apiClient.get<SummaryResponse[]>(url);
-      store.setSummaries(summaries);
-
-      timer?.end(true, { attributes: { summaryCount: summaries.length } });
-      logger?.info('Summaries loaded from backend', {
-        operation: 'loadSummaries',
+      const timer = logger?.startOperation('loadSummaries', {
         component: 'useArca',
-        success: true,
         sdk: { consultationId: consultation.id },
-        attributes: { summaryCount: summaries.length },
       });
 
-      return summaries;
-    } catch (error) {
-      timer?.error(error as Error);
-      throw error;
-    }
-  }, [store, getLogger]);
+      try {
+        let url = SUMMARY_ENDPOINTS.LIST(consultation.id);
+        if (pagination) {
+          const params = new URLSearchParams();
+          if (pagination.page != null) params.set('page', String(pagination.page));
+          if (pagination.limit != null) params.set('limit', String(pagination.limit));
+          const qs = params.toString();
+          if (qs) url += `?${qs}`;
+        }
+
+        const summaries = await apiClient.get<SummaryResponse[]>(url);
+        store.setSummaries(summaries);
+
+        timer?.end(true, { attributes: { summaryCount: summaries.length } });
+        logger?.info('Summaries loaded from backend', {
+          operation: 'loadSummaries',
+          component: 'useArca',
+          success: true,
+          sdk: { consultationId: consultation.id },
+          attributes: { summaryCount: summaries.length },
+        });
+
+        return summaries;
+      } catch (error) {
+        timer?.error(error as Error);
+        throw error;
+      }
+    },
+    [store, getLogger],
+  );
 
   /**
    * Generate summary asynchronously (SUM-01).
@@ -1227,10 +1186,7 @@ export function useArca(): UseArcaReturn {
       store.setSummaryError(null);
 
       try {
-        const job = await apiClient.post<AsyncJobResponse>(
-          SUMMARY_ENDPOINTS.GENERATE_ASYNC(consultation.id),
-          options || {}
-        );
+        const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.GENERATE_ASYNC(consultation.id), options || {});
 
         timer?.end(true, { attributes: { jobId: job.jobId } });
         logger?.info('Async summary job created', {
@@ -1250,7 +1206,7 @@ export function useArca(): UseArcaReturn {
         store.setSummaryGenerating(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /**
@@ -1272,10 +1228,7 @@ export function useArca(): UseArcaReturn {
       store.setSummaryError(null);
 
       try {
-        const job = await apiClient.post<AsyncJobResponse>(
-          SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(consultation.id),
-          options || {}
-        );
+        const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(consultation.id), options || {});
 
         timer?.end(true, { attributes: { jobId: job.jobId } });
         return job;
@@ -1287,7 +1240,7 @@ export function useArca(): UseArcaReturn {
         store.setSummaryGenerating(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /**
@@ -1309,10 +1262,7 @@ export function useArca(): UseArcaReturn {
       store.setSummaryError(null);
 
       try {
-        const result = await apiClient.post<ComprehensiveSummaryResponse>(
-          SUMMARY_ENDPOINTS.COMPREHENSIVE(consultation.id),
-          options || {}
-        );
+        const result = await apiClient.post<ComprehensiveSummaryResponse>(SUMMARY_ENDPOINTS.COMPREHENSIVE(consultation.id), options || {});
 
         timer?.end(true, { attributes: { resultId: result.id } });
         logger?.info('Comprehensive summary generated', {
@@ -1331,7 +1281,7 @@ export function useArca(): UseArcaReturn {
         store.setSummaryGenerating(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /**
@@ -1349,9 +1299,7 @@ export function useArca(): UseArcaReturn {
     });
 
     try {
-      const preSummary = await apiClient.get<SummaryResponse>(
-        SUMMARY_ENDPOINTS.LATEST_PRE_SUMMARY(consultation.id)
-      );
+      const preSummary = await apiClient.get<SummaryResponse>(SUMMARY_ENDPOINTS.LATEST_PRE_SUMMARY(consultation.id));
 
       timer?.end(true, { attributes: { summaryId: preSummary.id } });
       return preSummary;
@@ -1364,60 +1312,58 @@ export function useArca(): UseArcaReturn {
   /**
    * Get version history for a summary context item (WS-5).
    */
-  const getSummaryHistory = useCallback(async (summaryId: string): Promise<SummaryVersionEntry[]> => {
-    const { apiClient, consultation } = store;
-    if (!apiClient) throw new Error('SDK not initialized');
-    if (!consultation) throw new Error('No active consultation');
+  const getSummaryHistory = useCallback(
+    async (summaryId: string): Promise<SummaryVersionEntry[]> => {
+      const { apiClient, consultation } = store;
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
 
-    const timer = getLogger()?.startOperation('getSummaryHistory', {
-      component: 'useArca',
-      sdk: { consultationId: consultation.id },
-    });
+      const timer = getLogger()?.startOperation('getSummaryHistory', {
+        component: 'useArca',
+        sdk: { consultationId: consultation.id },
+      });
 
-    try {
-      const versions = await apiClient.get<SummaryVersionEntry[]>(
-        SUMMARY_ENDPOINTS.VERSIONS(consultation.id, summaryId)
-      );
-      timer?.end(true, { attributes: { versionCount: versions.length } });
-      return versions;
-    } catch (error) {
-      timer?.error(error as Error);
-      throw error;
-    }
-  }, [store, getLogger]);
+      try {
+        const versions = await apiClient.get<SummaryVersionEntry[]>(SUMMARY_ENDPOINTS.VERSIONS(consultation.id, summaryId));
+        timer?.end(true, { attributes: { versionCount: versions.length } });
+        return versions;
+      } catch (error) {
+        timer?.error(error as Error);
+        throw error;
+      }
+    },
+    [store, getLogger],
+  );
 
   /**
    * Compare two summary versions using word-level diff (WS-5).
    */
-  const compareSummaryVersions = useCallback(async (
-    contextItemId: string, v1: number, v2: number
-  ): Promise<DiffResult> => {
-    const { apiClient, consultation } = store;
-    if (!apiClient) throw new Error('SDK not initialized');
-    if (!consultation) throw new Error('No active consultation');
+  const compareSummaryVersions = useCallback(
+    async (contextItemId: string, v1: number, v2: number): Promise<DiffResult> => {
+      const { apiClient, consultation } = store;
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
 
-    const timer = getLogger()?.startOperation('compareSummaryVersions', {
-      component: 'useArca',
-      sdk: { consultationId: consultation.id },
-    });
+      const timer = getLogger()?.startOperation('compareSummaryVersions', {
+        component: 'useArca',
+        sdk: { consultationId: consultation.id },
+      });
 
-    try {
-      const [version1, version2] = await Promise.all([
-        apiClient.get<{ content: string }>(
-          CONTEXT_ENDPOINTS.VERSION(consultation.id, contextItemId, v1)
-        ),
-        apiClient.get<{ content: string }>(
-          CONTEXT_ENDPOINTS.VERSION(consultation.id, contextItemId, v2)
-        ),
-      ]);
-      const result = computeSummaryDiff(version1.content, version2.content);
-      timer?.end(true);
-      return result;
-    } catch (error) {
-      timer?.error(error as Error);
-      throw error;
-    }
-  }, [store, getLogger]);
+      try {
+        const [version1, version2] = await Promise.all([
+          apiClient.get<{ content: string }>(CONTEXT_ENDPOINTS.VERSION(consultation.id, contextItemId, v1)),
+          apiClient.get<{ content: string }>(CONTEXT_ENDPOINTS.VERSION(consultation.id, contextItemId, v2)),
+        ]);
+        const result = computeSummaryDiff(version1.content, version2.content);
+        timer?.end(true);
+        return result;
+      } catch (error) {
+        timer?.error(error as Error);
+        throw error;
+      }
+    },
+    [store, getLogger],
+  );
 
   // ==========================================================================
   // Retry Wrapper (HOOK-07)
@@ -1449,7 +1395,7 @@ export function useArca(): UseArcaReturn {
         },
       });
     },
-    [getLogger]
+    [getLogger],
   );
 
   // ==========================================================================
@@ -1518,7 +1464,7 @@ export function useArca(): UseArcaReturn {
         throw error;
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const triggerSummarization = useCallback(async (): Promise<string> => {
@@ -1591,7 +1537,7 @@ export function useArca(): UseArcaReturn {
       getPatientHistory,
       getTimeline,
       listConsultations,
-    ]
+    ],
   );
 
   const audio = useMemo<UseArcaAudio>(
@@ -1630,7 +1576,7 @@ export function useArca(): UseArcaReturn {
       toggleNoiseFilter,
       toggleSTT,
       toggleVAD,
-    ]
+    ],
   );
 
   const context = useMemo<UseArcaContext>(
@@ -1669,12 +1615,11 @@ export function useArca(): UseArcaReturn {
       triggerEntityExtraction,
       fetchTranscriptions,
       fetchCaseNotes,
-    ]
+    ],
   );
 
   const latestSummary = store.summaries.find((s) => s.type === 'summary') ?? null;
-  const latestPreSummary =
-    store.summaries.find((s) => s.type === 'pre_summary') ?? null;
+  const latestPreSummary = store.summaries.find((s) => s.type === 'pre_summary') ?? null;
 
   const summaryInterface = useMemo<UseArcaSummary>(
     () => ({
@@ -1714,7 +1659,7 @@ export function useArca(): UseArcaReturn {
       getLatestPreSummary,
       getSummaryHistory,
       compareSummaryVersions,
-    ]
+    ],
   );
 
   const pipelines = useMemo<UseArcaPipelineControl>(
@@ -1726,14 +1671,7 @@ export function useArca(): UseArcaReturn {
       triggerNER,
       triggerSummarization,
     }),
-    [
-      transcriptionPipelineState,
-      knowledgePipelineState,
-      pauseTranscription,
-      resumeTranscription,
-      triggerNER,
-      triggerSummarization,
-    ]
+    [transcriptionPipelineState, knowledgePipelineState, pauseTranscription, resumeTranscription, triggerNER, triggerSummarization],
   );
 
   // ==========================================================================
@@ -1741,6 +1679,7 @@ export function useArca(): UseArcaReturn {
   // ==========================================================================
 
   const requestGracefulShutdown = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Reserved for future timeout behavior.
     async (_opts?: { timeoutMs?: number }): Promise<void> => {
       const { pluginManager } = store;
       const logger = getLogger();

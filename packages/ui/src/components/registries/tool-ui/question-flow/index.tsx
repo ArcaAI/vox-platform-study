@@ -1,4 +1,4 @@
-export { QuestionFlow } from "./question-flow";
+export { QuestionFlow } from './question-flow';
 export {
   type SerializableQuestionFlow,
   type SerializableProgressiveMode,
@@ -12,4 +12,4 @@ export {
   type QuestionFlowStepDefinition,
   type QuestionFlowChoice,
   type QuestionFlowSummaryItem,
-} from "./schema";
+} from './schema';

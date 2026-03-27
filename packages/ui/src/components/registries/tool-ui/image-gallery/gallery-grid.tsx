@@ -1,14 +1,11 @@
-"use client";
+'use client';
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { cn, ImageOff } from "./_adapter";
-import { useImageGallery } from "./context";
-import type { ImageGalleryItem } from "./schema";
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { cn, ImageOff } from './_adapter';
+import { useImageGallery } from './context';
+import type { ImageGalleryItem } from './schema';
 
-type GridImage = Pick<
-  ImageGalleryItem,
-  "id" | "src" | "alt" | "width" | "height"
->;
+type GridImage = Pick<ImageGalleryItem, 'id' | 'src' | 'alt' | 'width' | 'height'>;
 
 interface GalleryGridProps {
   onImageClick?: (imageId: string) => void;
@@ -29,17 +26,9 @@ export function GalleryGrid({ onImageClick }: GalleryGridProps) {
   );
 
   return (
-    <div
-      className="grid grid-cols-2 gap-2 @md:grid-cols-3 @lg:grid-cols-4"
-      role="list"
-    >
+    <div className="grid grid-cols-2 gap-2 @md:grid-cols-3 @lg:grid-cols-4" role="list">
       {images.map((image, index) => (
-        <GridImageCard
-          key={image.id}
-          image={image}
-          index={index}
-          onClick={handleOpen}
-        />
+        <GridImageCard key={image.id} image={image} index={index} onClick={handleOpen} />
       ))}
     </div>
   );
@@ -61,7 +50,7 @@ function GridImageCard({ image, index, onClick }: GridImageCardProps) {
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
-    const img = wrapper?.querySelector("img");
+    const img = wrapper?.querySelector('img');
     if (img) {
       registerImage(image.id, img);
     }
@@ -77,11 +66,8 @@ function GridImageCard({ image, index, onClick }: GridImageCardProps) {
   return (
     <div
       role="listitem"
-      className={cn(
-        "group relative cursor-pointer",
-        shouldSpanTwoRows && "row-span-2",
-      )}
-      style={{ aspectRatio: shouldSpanTwoRows ? undefined : "1 / 1" }}
+      className={cn('group relative cursor-pointer', shouldSpanTwoRows && 'row-span-2')}
+      style={{ aspectRatio: shouldSpanTwoRows ? undefined : '1 / 1' }}
     >
       <button
         type="button"
@@ -125,9 +111,7 @@ function ImageErrorState({ alt }: { alt: string }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4">
       <ImageOff className="text-muted-foreground h-8 w-8" />
-      <span className="text-muted-foreground line-clamp-2 text-center text-xs">
-        {alt}
-      </span>
+      <span className="text-muted-foreground line-clamp-2 text-center text-xs">{alt}</span>
     </div>
   );
 }

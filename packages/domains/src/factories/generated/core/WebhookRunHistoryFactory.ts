@@ -8,36 +8,36 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 export interface CreateWebhookRunHistoryProps extends BaseEntityFactoryCreateProps {
-    status: IWebhookRunHistoryEntity['status'];
-    response?: IWebhookRunHistoryEntity['response'];
-    responeStatusCode?: IWebhookRunHistoryEntity['responeStatusCode'];
-    webhookId: IWebhookRunHistoryEntity['webhookId'];
-    Webhook?: IWebhookRunHistoryEntity['Webhook'];
+  status: IWebhookRunHistoryEntity['status'];
+  response?: IWebhookRunHistoryEntity['response'];
+  responeStatusCode?: IWebhookRunHistoryEntity['responeStatusCode'];
+  webhookId: IWebhookRunHistoryEntity['webhookId'];
+  Webhook?: IWebhookRunHistoryEntity['Webhook'];
 
-    createdAt?: IWebhookRunHistoryEntity['createdAt'];
-    updatedAt?: IWebhookRunHistoryEntity['updatedAt'];
-    createdBy?: IWebhookRunHistoryEntity['createdBy'];
-    updatedBy?: IWebhookRunHistoryEntity['updatedBy'];
+  createdAt?: IWebhookRunHistoryEntity['createdAt'];
+  updatedAt?: IWebhookRunHistoryEntity['updatedAt'];
+  createdBy?: IWebhookRunHistoryEntity['createdBy'];
+  updatedBy?: IWebhookRunHistoryEntity['updatedBy'];
 }
 
 export class WebhookRunHistoryFactory {
-    static CreateWebhookRunHistory(props: CreateWebhookRunHistoryProps): WebhookRunHistoryEntity {
-        const id = generateId();
-        const now = new Date();
+  static CreateWebhookRunHistory(props: CreateWebhookRunHistoryProps): WebhookRunHistoryEntity {
+    const id = generateId();
+    const now = new Date();
 
-        return new WebhookRunHistoryEntity({
-            id,
+    return new WebhookRunHistoryEntity({
+      id,
 
-            createdAt: props.createdAt || now,
-            updatedAt: props.updatedAt || now,
-            createdBy: props.createdBy ?? null,
-            updatedBy: props.updatedBy || null,
+      createdAt: props.createdAt || now,
+      updatedAt: props.updatedAt || now,
+      createdBy: props.createdBy ?? null,
+      updatedBy: props.updatedBy || null,
 
-            status: props.status,
-            response: props.response ?? null,
-            responeStatusCode: props.responeStatusCode ?? 0,
-            webhookId: props.webhookId,
-            Webhook: props.Webhook ?? null,
-        });
-    }
+      status: props.status,
+      response: props.response ?? null,
+      responeStatusCode: props.responeStatusCode ?? 0,
+      webhookId: props.webhookId,
+      Webhook: props.Webhook ?? null,
+    });
+  }
 }

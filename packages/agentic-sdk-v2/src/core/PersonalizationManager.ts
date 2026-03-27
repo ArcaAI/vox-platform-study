@@ -7,11 +7,7 @@
 import type { PersonalizationConfig, UserPreferences, UserPreferencesUpdate } from '../types';
 import { AgenticError } from '../types';
 import type { AgenticClient } from './AgenticClient';
-import {
-  STORAGE_KEYS,
-  PERSONALIZATION_ENDPOINTS,
-  DEFAULT_SYNC_INTERVAL,
-} from './constants';
+import { STORAGE_KEYS, PERSONALIZATION_ENDPOINTS, DEFAULT_SYNC_INTERVAL } from './constants';
 import type { ISDKLogger } from './logger';
 
 /**
@@ -108,6 +104,7 @@ export class PersonalizationManager {
 
     // Deep merge localConfig instead of shallow replace
     if (updates.localConfig && this.preferences.localConfig) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Deep-merge arbitrary localConfig JSON.
       const mergedLocal: Record<string, any> = { ...this.preferences.localConfig };
       for (const [key, value] of Object.entries(updates.localConfig)) {
         if (
@@ -171,10 +168,7 @@ export class PersonalizationManager {
   /**
    * Set a specific preference value (only for doctor-writable fields)
    */
-  async set<K extends keyof UserPreferencesUpdate>(
-    key: K,
-    value: UserPreferencesUpdate[K]
-  ): Promise<void> {
+  async set<K extends keyof UserPreferencesUpdate>(key: K, value: UserPreferencesUpdate[K]): Promise<void> {
     await this.updatePreferences({ [key]: value } as UserPreferencesUpdate);
   }
 
@@ -232,10 +226,7 @@ export class PersonalizationManager {
     if (typeof window === 'undefined') return;
 
     try {
-      localStorage.setItem(
-        STORAGE_KEYS.PREFERENCES,
-        JSON.stringify(this.preferences)
-      );
+      localStorage.setItem(STORAGE_KEYS.PREFERENCES, JSON.stringify(this.preferences));
       this.logger?.trace('Saved preferences to local storage', {
         operation: 'saveLocal',
         component: 'PersonalizationManager',
@@ -275,10 +266,7 @@ export class PersonalizationManager {
         localConfig: this.preferences.localConfig,
         custom: this.preferences.custom,
       };
-      await this.apiClient.post(
-        PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES,
-        payload
-      );
+      await this.apiClient.post(PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES, payload);
       this.lastSyncAt = new Date();
       timer?.end(true);
     } catch (error) {
@@ -307,13 +295,12 @@ export class PersonalizationManager {
     });
 
     try {
-      const remote = await this.apiClient.get<UserPreferences>(
-        PERSONALIZATION_ENDPOINTS.GET_PREFERENCES
-      );
+      const remote = await this.apiClient.get<UserPreferences>(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES);
 
       if (remote) {
         // Deep merge localConfig from remote into existing
         if (remote.localConfig && this.preferences.localConfig) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Deep-merge arbitrary localConfig JSON.
           const mergedLocal: Record<string, any> = { ...this.preferences.localConfig };
           for (const [key, value] of Object.entries(remote.localConfig)) {
             if (

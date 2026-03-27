@@ -1,4 +1,4 @@
-import type { SliderConfig, SliderValue } from "./schema";
+import type { SliderConfig, SliderValue } from './schema';
 
 type SliderPercentInput = {
   value: number;
@@ -11,19 +11,13 @@ function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
 
-export function sliderRangeToPercent({
-  value,
-  min,
-  max,
-}: SliderPercentInput): number {
+export function sliderRangeToPercent({ value, min, max }: SliderPercentInput): number {
   const range = max - min;
   if (!Number.isFinite(range) || range <= 0) return 0;
   return clampPercent(((value - min) / range) * 100);
 }
 
-export function createSliderValueSnapshot(
-  sliders: SliderConfig[],
-): SliderValue[] {
+export function createSliderValueSnapshot(sliders: SliderConfig[]): SliderValue[] {
   return sliders.map((slider) => ({ id: slider.id, value: slider.value }));
 }
 
@@ -35,7 +29,7 @@ export function createSliderSignature(sliders: SliderConfig[]): string {
       max,
       step: step ?? 1,
       value,
-      unit: unit ?? "",
+      unit: unit ?? '',
       precision: precision ?? null,
     })),
   );

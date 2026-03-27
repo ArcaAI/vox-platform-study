@@ -11,22 +11,21 @@ import type { DiffChange, DiffResult, DiffStats, DiffMode } from '../types/diff'
 
 function runDiff(oldText: string, newText: string, mode: DiffMode): ChangeObject<string>[] {
   switch (mode) {
-    case 'words': return diffWords(oldText, newText);
-    case 'chars': return diffChars(oldText, newText);
-    default: return diffLines(oldText, newText);
+    case 'words':
+      return diffWords(oldText, newText);
+    case 'chars':
+      return diffChars(oldText, newText);
+    default:
+      return diffLines(oldText, newText);
   }
 }
 
 /**
  * Compute a diff between two strings.
  */
-export function computeDiff(
-  oldText: string,
-  newText: string,
-  mode: DiffMode = 'lines',
-): DiffResult {
+export function computeDiff(oldText: string, newText: string, mode: DiffMode = 'lines'): DiffResult {
   const rawChanges = runDiff(oldText, newText, mode);
-  const changes: DiffChange[] = rawChanges.map(c => ({
+  const changes: DiffChange[] = rawChanges.map((c) => ({
     value: c.value,
     added: c.added || undefined,
     removed: c.removed || undefined,
@@ -40,31 +39,21 @@ export function computeDiff(
 /**
  * Compute a line-level diff for prompt templates.
  */
-export function computePromptDiff(
-  oldContent: string,
-  newContent: string,
-): DiffResult {
+export function computePromptDiff(oldContent: string, newContent: string): DiffResult {
   return computeDiff(oldContent, newContent, 'lines');
 }
 
 /**
  * Compute a word-level diff for summaries (prose text).
  */
-export function computeSummaryDiff(
-  oldContent: string,
-  newContent: string,
-): DiffResult {
+export function computeSummaryDiff(oldContent: string, newContent: string): DiffResult {
   return computeDiff(oldContent, newContent, 'words');
 }
 
 /**
  * Create a unified patch string for display.
  */
-export function createUnifiedPatch(
-  filename: string,
-  oldStr: string,
-  newStr: string,
-): string {
+export function createUnifiedPatch(filename: string, oldStr: string, newStr: string): string {
   return createPatch(filename, oldStr, newStr, 'previous', 'current');
 }
 

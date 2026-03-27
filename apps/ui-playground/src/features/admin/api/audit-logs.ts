@@ -1,9 +1,4 @@
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-  type UseQueryOptions,
-} from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { adminClient } from './admin-client';
 
 // ---------------------------------------------------------------------------
@@ -55,11 +50,9 @@ const keys = {
   list: (params?: AuditLogParams) => [...keys.lists(), params] as const,
   details: () => [...keys.all, 'detail'] as const,
   detail: (id: string) => [...keys.details(), id] as const,
-  byResource: (resourceType: string, resourceId: string) =>
-    [...keys.all, 'resource', resourceType, resourceId] as const,
+  byResource: (resourceType: string, resourceId: string) => [...keys.all, 'resource', resourceType, resourceId] as const,
   byUser: (userId: string) => [...keys.all, 'user', userId] as const,
-  byTenant: (tenantId: string, params?: AuditLogParams) =>
-    [...keys.all, 'tenant', tenantId, params] as const,
+  byTenant: (tenantId: string, params?: AuditLogParams) => [...keys.all, 'tenant', tenantId, params] as const,
 };
 
 function qs(params?: AuditLogParams): string {
@@ -73,19 +66,10 @@ function qs(params?: AuditLogParams): string {
 // Query hooks
 // ---------------------------------------------------------------------------
 
-export function useAuditLogs(
-  params?: AuditLogParams,
-  options?: Omit<
-    UseQueryOptions<PaginatedResponse<AuditLog>>,
-    'queryKey' | 'queryFn'
-  >,
-) {
+export function useAuditLogs(params?: AuditLogParams, options?: Omit<UseQueryOptions<PaginatedResponse<AuditLog>>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.list(params),
-    queryFn: () =>
-      adminClient.get<PaginatedResponse<AuditLog>>(
-        `/admin/audit-logs${qs(params)}`,
-      ),
+    queryFn: () => adminClient.get<PaginatedResponse<AuditLog>>(`/admin/audit-logs${qs(params)}`),
     ...options,
   });
 }
@@ -93,10 +77,7 @@ export function useAuditLogs(
 export function useTenantAuditLogs(
   tenantId: string,
   params?: Omit<AuditLogParams, 'filters'>,
-  options?: Omit<
-    UseQueryOptions<PaginatedResponse<AuditLog>>,
-    'queryKey' | 'queryFn'
-  >,
+  options?: Omit<UseQueryOptions<PaginatedResponse<AuditLog>>, 'queryKey' | 'queryFn'>,
 ) {
   const fullParams: AuditLogParams = {
     ...params,
@@ -105,19 +86,13 @@ export function useTenantAuditLogs(
   };
   return useQuery({
     queryKey: keys.byTenant(tenantId, fullParams),
-    queryFn: () =>
-      adminClient.get<PaginatedResponse<AuditLog>>(
-        `/admin/audit-logs${qs(fullParams)}`,
-      ),
+    queryFn: () => adminClient.get<PaginatedResponse<AuditLog>>(`/admin/audit-logs${qs(fullParams)}`),
     enabled: !!tenantId,
     ...options,
   });
 }
 
-export function useAuditLog(
-  id: string,
-  options?: Omit<UseQueryOptions<AuditLog>, 'queryKey' | 'queryFn'>,
-) {
+export function useAuditLog(id: string, options?: Omit<UseQueryOptions<AuditLog>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.detail(id),
     queryFn: () => adminClient.get<AuditLog>(`/admin/audit-logs/${id}`),
@@ -130,17 +105,11 @@ export function useAuditLogsByResource(
   resourceType: string,
   resourceId: string,
   params?: AuditLogParams,
-  options?: Omit<
-    UseQueryOptions<PaginatedResponse<AuditLog>>,
-    'queryKey' | 'queryFn'
-  >,
+  options?: Omit<UseQueryOptions<PaginatedResponse<AuditLog>>, 'queryKey' | 'queryFn'>,
 ) {
   return useQuery({
     queryKey: keys.byResource(resourceType, resourceId),
-    queryFn: () =>
-      adminClient.get<PaginatedResponse<AuditLog>>(
-        `/admin/audit-logs/resource/${resourceType}/${resourceId}${qs(params)}`,
-      ),
+    queryFn: () => adminClient.get<PaginatedResponse<AuditLog>>(`/admin/audit-logs/resource/${resourceType}/${resourceId}${qs(params)}`),
     enabled: !!resourceType && !!resourceId,
     ...options,
   });
@@ -149,17 +118,11 @@ export function useAuditLogsByResource(
 export function useAuditLogsByUser(
   userId: string,
   params?: AuditLogParams,
-  options?: Omit<
-    UseQueryOptions<PaginatedResponse<AuditLog>>,
-    'queryKey' | 'queryFn'
-  >,
+  options?: Omit<UseQueryOptions<PaginatedResponse<AuditLog>>, 'queryKey' | 'queryFn'>,
 ) {
   return useQuery({
     queryKey: keys.byUser(userId),
-    queryFn: () =>
-      adminClient.get<PaginatedResponse<AuditLog>>(
-        `/admin/audit-logs/user/${userId}${qs(params)}`,
-      ),
+    queryFn: () => adminClient.get<PaginatedResponse<AuditLog>>(`/admin/audit-logs/user/${userId}${qs(params)}`),
     enabled: !!userId,
     ...options,
   });
@@ -172,8 +135,7 @@ export function useAuditLogsByUser(
 export function useDeleteAuditLog() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      adminClient.delete<void>(`/admin/audit-logs/${id}`),
+    mutationFn: (id: string) => adminClient.delete<void>(`/admin/audit-logs/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },

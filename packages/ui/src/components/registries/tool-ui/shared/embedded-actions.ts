@@ -1,14 +1,8 @@
-import type { ActionsProp } from "./actions-config";
+import type { ActionsProp } from './actions-config';
 
-export type EmbeddedActionHandler<TState> = (
-  actionId: string,
-  state: TState,
-) => void | Promise<void>;
+export type EmbeddedActionHandler<TState> = (actionId: string, state: TState) => void | Promise<void>;
 
-export type EmbeddedBeforeActionHandler<TState> = (
-  actionId: string,
-  state: TState,
-) => boolean | Promise<boolean>;
+export type EmbeddedBeforeActionHandler<TState> = (actionId: string, state: TState) => boolean | Promise<boolean>;
 
 export interface EmbeddedActionsProps<TState> {
   actions?: ActionsProp;

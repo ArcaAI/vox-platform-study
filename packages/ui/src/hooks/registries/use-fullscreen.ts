@@ -1,12 +1,12 @@
-import { useRef, useState } from 'react'
-import { useEffectWithTarget } from '@/hooks/registries/use-effect-with-target'
-import { useEventListener } from '@/hooks/registries/use-event-listener'
-import { useIsomorphicLayoutEffect } from '@/hooks/registries/use-isomorphic-layout-effect'
-import { useMemoizedFn } from '@/hooks/registries/use-memoized-fn'
-import { useUnmount } from '@/hooks/registries/use-unmount'
-import { getTargetElement as getTargetElementUtil } from '@/lib/create-effect-with-target'
-import { isBrowser } from '@/lib/is-browser'
-import type { BasicTarget } from '@/lib/create-effect-with-target'
+import { useRef, useState } from 'react';
+import { useEffectWithTarget } from '@/hooks/registries/use-effect-with-target';
+import { useEventListener } from '@/hooks/registries/use-event-listener';
+import { useIsomorphicLayoutEffect } from '@/hooks/registries/use-isomorphic-layout-effect';
+import { useMemoizedFn } from '@/hooks/registries/use-memoized-fn';
+import { useUnmount } from '@/hooks/registries/use-unmount';
+import { getTargetElement as getTargetElementUtil } from '@/lib/create-effect-with-target';
+import { isBrowser } from '@/lib/is-browser';
+import type { BasicTarget } from '@/lib/create-effect-with-target';
 
 export interface UseFullscreenOptions {
   /**
@@ -14,16 +14,10 @@ export interface UseFullscreenOptions {
    *
    * @default false
    */
-  autoExit?: boolean
+  autoExit?: boolean;
 }
 
-const eventHandlers = [
-  'fullscreenchange',
-  'webkitfullscreenchange',
-  'webkitendfullscreen',
-  'mozfullscreenchange',
-  'MSFullscreenChange',
-] as const
+const eventHandlers = ['fullscreenchange', 'webkitfullscreenchange', 'webkitendfullscreen', 'mozfullscreenchange', 'MSFullscreenChange'] as const;
 
 type RequestMethod =
   | 'requestFullscreen'
@@ -32,7 +26,7 @@ type RequestMethod =
   | 'webkitEnterFullScreen'
   | 'webkitRequestFullScreen'
   | 'mozRequestFullScreen'
-  | 'msRequestFullscreen'
+  | 'msRequestFullscreen';
 
 type ExitMethod =
   | 'exitFullscreen'
@@ -40,27 +34,18 @@ type ExitMethod =
   | 'webkitExitFullScreen'
   | 'webkitCancelFullScreen'
   | 'mozCancelFullScreen'
-  | 'msExitFullscreen'
+  | 'msExitFullscreen';
 
-type FullscreenEnabledProperty =
-  | 'fullScreen'
-  | 'webkitIsFullScreen'
-  | 'webkitDisplayingFullscreen'
-  | 'mozFullScreen'
-  | 'msFullscreenElement'
+type FullscreenEnabledProperty = 'fullScreen' | 'webkitIsFullScreen' | 'webkitDisplayingFullscreen' | 'mozFullScreen' | 'msFullscreenElement';
 
-type FullscreenElementProperty =
-  | 'fullscreenElement'
-  | 'webkitFullscreenElement'
-  | 'mozFullScreenElement'
-  | 'msFullscreenElement'
+type FullscreenElementProperty = 'fullscreenElement' | 'webkitFullscreenElement' | 'mozFullScreenElement' | 'msFullscreenElement';
 
 function getTargetElement(target: BasicTarget<any>) {
-  return getTargetElementUtil(target, document.documentElement)
+  return getTargetElementUtil(target, document.documentElement);
 }
 
 function getProperties(target: BasicTarget<any>) {
-  const targetElement = getTargetElement(target)
+  const targetElement = getTargetElement(target);
 
   const getRequestMethod = () => {
     const methods: RequestMethod[] = [
@@ -71,14 +56,10 @@ function getProperties(target: BasicTarget<any>) {
       'webkitRequestFullScreen',
       'mozRequestFullScreen',
       'msRequestFullscreen',
-    ]
+    ];
 
-    return methods.find(
-      (method) =>
-        (targetElement && method in targetElement) ||
-        (document && method in document),
-    )
-  }
+    return methods.find((method) => (targetElement && method in targetElement) || (document && method in document));
+  };
 
   const getExitMethod = () => {
     const methods: ExitMethod[] = [
@@ -88,14 +69,10 @@ function getProperties(target: BasicTarget<any>) {
       'webkitCancelFullScreen',
       'mozCancelFullScreen',
       'msExitFullscreen',
-    ]
+    ];
 
-    return methods.find(
-      (method) =>
-        (targetElement && method in targetElement) ||
-        (document && method in document),
-    )
-  }
+    return methods.find((method) => (targetElement && method in targetElement) || (document && method in document));
+  };
 
   const getFullscreenEnabledProperty = () => {
     const properties: FullscreenEnabledProperty[] = [
@@ -104,52 +81,30 @@ function getProperties(target: BasicTarget<any>) {
       'webkitDisplayingFullscreen',
       'mozFullScreen',
       'msFullscreenElement',
-    ]
+    ];
 
-    return properties.find(
-      (property) =>
-        (document && property in document) ||
-        (targetElement && property in targetElement),
-    )
-  }
+    return properties.find((property) => (document && property in document) || (targetElement && property in targetElement));
+  };
 
   const getFullscreenElementProperty = () => {
-    const properties: FullscreenElementProperty[] = [
-      'fullscreenElement',
-      'webkitFullscreenElement',
-      'mozFullScreenElement',
-      'msFullscreenElement',
-    ]
+    const properties: FullscreenElementProperty[] = ['fullscreenElement', 'webkitFullscreenElement', 'mozFullScreenElement', 'msFullscreenElement'];
 
-    return properties.find(
-      (property) =>
-        (document && property in document) ||
-        (targetElement && property in targetElement),
-    )
-  }
+    return properties.find((property) => (document && property in document) || (targetElement && property in targetElement));
+  };
 
   return {
     requestMethod: getRequestMethod(),
     exitMethod: getExitMethod(),
     fullscreenEnabledProperty: getFullscreenEnabledProperty(),
     fullscreenElementProperty: getFullscreenElementProperty(),
-  }
+  };
 }
 
-function getIsSupported(
-  target: BasicTarget<any>,
-  properties: ReturnType<typeof getProperties>,
-) {
-  const targetElement = getTargetElement(target)
+function getIsSupported(target: BasicTarget<any>, properties: ReturnType<typeof getProperties>) {
+  const targetElement = getTargetElement(target);
 
-  const { requestMethod, exitMethod, fullscreenEnabledProperty } = properties
-  return !!(
-    targetElement &&
-    document &&
-    requestMethod !== undefined &&
-    exitMethod !== undefined &&
-    fullscreenEnabledProperty !== undefined
-  )
+  const { requestMethod, exitMethod, fullscreenEnabledProperty } = properties;
+  return !!(targetElement && document && requestMethod !== undefined && exitMethod !== undefined && fullscreenEnabledProperty !== undefined);
 }
 
 /**
@@ -158,144 +113,138 @@ function getIsSupported(
  * @param target - The target element to make fullscreen. If not provided, uses document.documentElement
  * @param options - Configuration options
  */
-export function useFullscreen(
-  target?: BasicTarget<any>,
-  options: UseFullscreenOptions = {},
-) {
-  const { autoExit = false } = options
+export function useFullscreen(target?: BasicTarget<any>, options: UseFullscreenOptions = {}) {
+  const { autoExit = false } = options;
 
   const properties = useRef<{
-    requestMethod: RequestMethod | undefined
-    exitMethod: ExitMethod | undefined
-    fullscreenEnabledProperty: FullscreenEnabledProperty | undefined
-    fullscreenElementProperty: FullscreenElementProperty | undefined
+    requestMethod: RequestMethod | undefined;
+    exitMethod: ExitMethod | undefined;
+    fullscreenEnabledProperty: FullscreenEnabledProperty | undefined;
+    fullscreenElementProperty: FullscreenElementProperty | undefined;
   }>({
     requestMethod: undefined,
     exitMethod: undefined,
     fullscreenEnabledProperty: undefined,
     fullscreenElementProperty: undefined,
-  })
+  });
   const [isSupported, setIsSupported] = useState(() => {
-    if (!isBrowser) return false
+    if (!isBrowser) return false;
 
-    return getIsSupported(target, getProperties(target))
-  })
-  const [isFullscreen, setIsFullscreen] = useState(false)
+    return getIsSupported(target, getProperties(target));
+  });
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const exit = useMemoizedFn(async () => {
-    const { exitMethod } = properties.current
-    if (!isSupported || !isFullscreen) return
+    const { exitMethod } = properties.current;
+    if (!isSupported || !isFullscreen) return;
 
-    const element = getTargetElement(target)
-    const doc = document as any
+    const element = getTargetElement(target);
+    const doc = document as any;
 
     if (exitMethod) {
       if (doc[exitMethod] != null) {
-        await doc[exitMethod]()
+        await doc[exitMethod]();
       } else if (element && (element as any)[exitMethod] != null) {
         // Fallback for Safari iOS
-        await (element as any)[exitMethod]()
+        await (element as any)[exitMethod]();
       }
     }
 
-    setIsFullscreen(false)
-  })
+    setIsFullscreen(false);
+  });
 
   useEffectWithTarget(
     () => {
       if (!isBrowser) {
-        return
+        return;
       }
 
-      properties.current = getProperties(target)
+      properties.current = getProperties(target);
 
-      setIsSupported(getIsSupported(target, properties.current))
+      setIsSupported(getIsSupported(target, properties.current));
     },
     [],
     target,
-  )
+  );
 
   const isCurrentElementFullScreen = useMemoizedFn((): boolean => {
-    const { fullscreenElementProperty } = properties.current
-    if (!fullscreenElementProperty || !isBrowser) return false
+    const { fullscreenElementProperty } = properties.current;
+    if (!fullscreenElementProperty || !isBrowser) return false;
 
-    const element = getTargetElement(target)
+    const element = getTargetElement(target);
 
-    return document[fullscreenElementProperty as keyof Document] === element
-  })
+    return document[fullscreenElementProperty as keyof Document] === element;
+  });
 
   const isElementFullScreen = useMemoizedFn((): boolean => {
-    const { fullscreenEnabledProperty } = properties.current
-    if (!fullscreenEnabledProperty || !isBrowser) return false
+    const { fullscreenEnabledProperty } = properties.current;
+    if (!fullscreenEnabledProperty || !isBrowser) return false;
 
-    const element = getTargetElement(target)
-    const doc = document as any
+    const element = getTargetElement(target);
+    const doc = document as any;
 
     if (doc[fullscreenEnabledProperty] != null) {
-      return Boolean(doc[fullscreenEnabledProperty])
+      return Boolean(doc[fullscreenEnabledProperty]);
     }
 
     // Fallback for WebKit and iOS Safari browsers
     if (element && (element as any)[fullscreenEnabledProperty] != null) {
-      return Boolean((element as any)[fullscreenEnabledProperty])
+      return Boolean((element as any)[fullscreenEnabledProperty]);
     }
 
-    return false
-  })
+    return false;
+  });
 
   const enter = useMemoizedFn(async () => {
-    const { requestMethod } = properties.current
-    if (!isSupported || isFullscreen) return
+    const { requestMethod } = properties.current;
+    if (!isSupported || isFullscreen) return;
 
     if (isElementFullScreen()) {
-      await exit()
+      await exit();
     }
 
-    const element = getTargetElement(target)
+    const element = getTargetElement(target);
     if (requestMethod && element && (element as any)[requestMethod] != null) {
-      await (element as any)[requestMethod]()
-      setIsFullscreen(true)
+      await (element as any)[requestMethod]();
+      setIsFullscreen(true);
     }
-  })
+  });
 
   const toggle = useMemoizedFn(async () => {
-    await (isFullscreen ? exit() : enter())
-  })
+    await (isFullscreen ? exit() : enter());
+  });
 
   const handlerCallback = useMemoizedFn(() => {
-    const isElementFullScreenValue = isElementFullScreen()
+    const isElementFullScreenValue = isElementFullScreen();
 
-    if (
-      !isElementFullScreenValue ||
-      (isElementFullScreenValue && isCurrentElementFullScreen())
-    ) {
-      setIsFullscreen(isElementFullScreenValue)
+    if (!isElementFullScreenValue || (isElementFullScreenValue && isCurrentElementFullScreen())) {
+      setIsFullscreen(isElementFullScreenValue);
     }
-  })
+  });
 
-  const listenerOptions = { capture: false, passive: true }
+  const listenerOptions = { capture: false, passive: true };
   // Listen to fullscreen change events on document
   useEventListener(eventHandlers as any, handlerCallback, {
     target: () => document,
     ...listenerOptions,
-  })
+  });
 
   // Listen to fullscreen change events on target element
   useEventListener(eventHandlers as any, handlerCallback, {
     target: () => getTargetElement(target),
     ...listenerOptions,
-  })
+  });
 
   // Check initial state on mount
   useIsomorphicLayoutEffect(() => {
     if (isBrowser) {
-      handlerCallback()
+      handlerCallback();
     }
-  }, [])
+  }, []);
 
   useUnmount(() => {
-    if (autoExit) exit()
-  })
+    if (autoExit) exit();
+  });
 
   return {
     isSupported,
@@ -303,7 +252,7 @@ export function useFullscreen(
     enter,
     exit,
     toggle,
-  }
+  };
 }
 
-export type UseFullscreenReturn = ReturnType<typeof useFullscreen>
+export type UseFullscreenReturn = ReturnType<typeof useFullscreen>;

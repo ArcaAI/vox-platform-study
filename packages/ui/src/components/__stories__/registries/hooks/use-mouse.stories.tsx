@@ -1,8 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useMouse } from '../../../../hooks/registries/use-mouse'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useMouse } from '../../../../hooks/registries/use-mouse';
 
 function UseMouseDemo() {
-  const mouse = useMouse()
+  const mouse = useMouse();
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -16,7 +16,7 @@ function UseMouseDemo() {
       </div>
       <p className="text-muted-foreground text-sm">Move your mouse to see coordinates update.</p>
     </div>
-  )
+  );
 }
 
 const meta = {
@@ -24,8 +24,8 @@ const meta = {
   component: UseMouseDemo,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof UseMouseDemo>
+} satisfies Meta<typeof UseMouseDemo>;
 
-export default meta
-type Story = StoryObj<typeof meta>
-export const Default: Story = {}
+export default meta;
+type Story = StoryObj<typeof meta>;
+export const Default: Story = {};

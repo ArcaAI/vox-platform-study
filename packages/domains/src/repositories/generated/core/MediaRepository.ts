@@ -8,9 +8,7 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 @Injectable()
 export class MediaRepository extends Repository<MediaEntity, Media> {
-    constructor(
-        private readonly unitOfWorkService: CoreUnitOfWorkService
-    ) {
-        super(unitOfWorkService, 'media', MediaEntityMapper.getInstance(), undefined, ['name', 'mimeType', 'extension']);
-    }
+  constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
+    super(unitOfWorkService, 'media', MediaEntityMapper.getInstance(), undefined, ['name', 'mimeType', 'extension']);
+  }
 }

@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { OptionList } from '../../../registries/tool-ui/option-list'
+import { OptionList } from '../../../registries/tool-ui/option-list';
 
 const meta = {
   title: 'Registries/ToolUI/OptionList',
   component: OptionList,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof OptionList>
+} satisfies Meta<typeof OptionList>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
@@ -21,4 +21,4 @@ export const Default: Story = {
       { id: 'opt3', label: 'Option C' },
     ],
   },
-}
+};

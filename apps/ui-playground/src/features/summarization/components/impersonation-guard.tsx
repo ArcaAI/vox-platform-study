@@ -10,11 +10,7 @@ interface ImpersonationGuardProps {
   featureDescription?: string;
 }
 
-export function ImpersonationGuard({
-  roles,
-  featureName = 'summarization',
-  featureDescription,
-}: ImpersonationGuardProps) {
+export function ImpersonationGuard({ roles, featureName = 'summarization', featureDescription }: ImpersonationGuardProps) {
   const bodyText =
     featureDescription ??
     `Prompt templates and DNA writing styles are personalized per doctor and their department. As an admin (${roles.join(', ')}), you need to impersonate a doctor user to access their department-specific templates and writing style.`;
@@ -28,9 +24,7 @@ export function ImpersonationGuard({
           </div>
           <div>
             <CardTitle className="text-base">Impersonation Required</CardTitle>
-            <CardDescription>
-              Admin users must impersonate a doctor to use {featureName} features
-            </CardDescription>
+            <CardDescription>Admin users must impersonate a doctor to use {featureName} features</CardDescription>
           </div>
         </div>
       </CardHeader>

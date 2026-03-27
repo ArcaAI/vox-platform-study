@@ -1,21 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  CheckboxGroup,
-  CheckboxGroupLabel,
-  CheckboxGroupList,
-  CheckboxGroupItem,
-} from '../../../registries/diceui/checkbox-group'
+import { CheckboxGroup, CheckboxGroupLabel, CheckboxGroupList, CheckboxGroupItem } from '../../../registries/diceui/checkbox-group';
 
 const meta = {
   title: 'Registries/DiceUI/CheckboxGroup',
   component: CheckboxGroup,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof CheckboxGroup>
+} satisfies Meta<typeof CheckboxGroup>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -28,4 +23,4 @@ export const Default: Story = {
       </CheckboxGroupList>
     </CheckboxGroup>
   ),
-}
+};

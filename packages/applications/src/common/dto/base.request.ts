@@ -4,11 +4,11 @@ import { IsEnum, IsOptional } from 'class-validator';
 import { EntityIdPropertyOptional } from '../../decorators';
 
 export class BaseRequest {
-    @EntityIdPropertyOptional()
-    tenantId?: string;
+  @EntityIdPropertyOptional()
+  tenantId?: string;
 
-    @ApiProperty({ required: false })
-    @IsEnum(ResourceStatusType)
-    @IsOptional()
-    resourceStatus?: ResourceStatusType;
+  @ApiProperty({ required: false })
+  @IsEnum(ResourceStatusType)
+  @IsOptional()
+  resourceStatus?: ResourceStatusType;
 }

@@ -3,6 +3,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export enum TranscriptionJobType {
-    BATCH = 'BATCH',
-    STREAMING = 'STREAMING',
+  BATCH = 'BATCH',
+  STREAMING = 'STREAMING',
 }

@@ -37,11 +37,7 @@ export function getErrorMessage(error: unknown): string {
 /**
  * Wrap an error as AgenticError
  */
-export function wrapError(
-  error: unknown,
-  code: AgenticErrorCode = 'UNKNOWN_ERROR',
-  message?: string
-): AgenticError {
+export function wrapError(error: unknown, code: AgenticErrorCode = 'UNKNOWN_ERROR', message?: string): AgenticError {
   if (isAgenticError(error)) {
     return error;
   }
@@ -112,10 +108,7 @@ export interface RetryOptions {
  * const result = await withRetry(() => apiClient.get('/data'), { maxRetries: 3 });
  * ```
  */
-export async function withRetry<T>(
-  fn: () => Promise<T>,
-  options?: RetryOptions,
-): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>, options?: RetryOptions): Promise<T> {
   const maxRetries = options?.maxRetries ?? 3;
   const delayMs = options?.delayMs ?? 1000;
 

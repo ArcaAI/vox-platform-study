@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { RetroGrid } from '../../../registries/magicui/retro-grid'
+import { RetroGrid } from '../../../registries/magicui/retro-grid';
 
 const meta = {
   title: 'Registries/MagicUI/RetroGrid',
   component: RetroGrid,
   parameters: { layout: 'fullscreen' },
   tags: ['autodocs'],
-} satisfies Meta<typeof RetroGrid>
+} satisfies Meta<typeof RetroGrid>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -18,4 +18,4 @@ export const Default: Story = {
       <RetroGrid />
     </div>
   ),
-}
+};

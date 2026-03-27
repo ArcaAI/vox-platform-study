@@ -21,7 +21,7 @@ export {
   type AudioPlayerTimeDisplayProps,
   type AudioPlayerTimeRangeProps,
   type AudioPlayerVolumeRangeProps,
-} from './audio-player'
+} from './audio-player';
 
 export {
   CodeBlock,
@@ -44,7 +44,7 @@ export {
   type CodeBlockLanguageSelectorProps,
   type CodeBlockLanguageSelectorTriggerProps,
   type CodeBlockLanguageSelectorValueProps,
-} from './code-block'
+} from './code-block';
 
 export {
   Conversation,
@@ -59,7 +59,7 @@ export {
   type ConversationMessage,
   type ConversationProps,
   type ConversationScrollButtonProps,
-} from './conversation'
+} from './conversation';
 
 export {
   FileTree,
@@ -74,7 +74,7 @@ export {
   type FileTreeIconProps,
   type FileTreeNameProps,
   type FileTreeProps,
-} from './file-tree'
+} from './file-tree';
 
 export {
   Message,
@@ -101,7 +101,7 @@ export {
   type MessageProps,
   type MessageResponseProps,
   type MessageToolbarProps,
-} from './message'
+} from './message';
 
 export {
   LocalReferencedSourcesContext,
@@ -183,7 +183,7 @@ export {
   type PromptInputToolsProps,
   type ReferencedSourcesContext,
   type TextInputContext,
-} from './prompt-input'
+} from './prompt-input';
 
 export {
   Reasoning,
@@ -193,12 +193,9 @@ export {
   type ReasoningContentProps,
   type ReasoningProps,
   type ReasoningTriggerProps,
-} from './reasoning'
+} from './reasoning';
 
-export {
-  Shimmer,
-  type TextShimmerProps,
-} from './shimmer'
+export { Shimmer, type TextShimmerProps } from './shimmer';
 
 export {
   Snippet,
@@ -211,7 +208,7 @@ export {
   type SnippetInputProps,
   type SnippetProps,
   type SnippetTextProps,
-} from './snippet'
+} from './snippet';
 
 export {
   Source,
@@ -222,19 +219,11 @@ export {
   type SourcesContentProps,
   type SourcesProps,
   type SourcesTriggerProps,
-} from './sources'
+} from './sources';
 
-export {
-  SpeechInput,
-  type SpeechInputProps,
-} from './speech-input'
+export { SpeechInput, type SpeechInputProps } from './speech-input';
 
-export {
-  Suggestion,
-  Suggestions,
-  type SuggestionProps,
-  type SuggestionsProps,
-} from './suggestion'
+export { Suggestion, Suggestions, type SuggestionProps, type SuggestionsProps } from './suggestion';
 
 export {
   Terminal,
@@ -253,7 +242,7 @@ export {
   type TerminalProps,
   type TerminalStatusProps,
   type TerminalTitleProps,
-} from './terminal'
+} from './terminal';
 
 export {
   Tool,
@@ -268,4 +257,4 @@ export {
   type ToolOutputProps,
   type ToolPart,
   type ToolProps,
-} from './tool'
+} from './tool';

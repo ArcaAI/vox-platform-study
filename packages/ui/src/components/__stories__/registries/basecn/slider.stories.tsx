@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Slider } from '../../../registries/basecn/slider'
+import { Slider } from '../../../registries/basecn/slider';
 
 const meta = {
   title: 'Registries/Basecn/Slider',
   component: Slider,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Slider>
+} satisfies Meta<typeof Slider>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
@@ -18,7 +18,7 @@ export const Default: Story = {
     max: 100,
     className: 'w-[300px]',
   },
-}
+};
 
 export const Range: Story = {
   args: {
@@ -26,4 +26,4 @@ export const Range: Story = {
     max: 100,
     className: 'w-[300px]',
   },
-}
+};

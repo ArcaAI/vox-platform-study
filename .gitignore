@@ -115,6 +115,7 @@ logs/
 # Cache
 .cache
 .parcel-cache
+.ruff_cache
 
 # Misc
 *.pem

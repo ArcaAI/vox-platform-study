@@ -1,8 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Label } from '../../shadcn/label'
-import { Input } from '../../shadcn/input'
-import { Checkbox } from '../../shadcn/checkbox'
+import { Label } from '../../shadcn/label';
+import { Input } from '../../shadcn/input';
+import { Checkbox } from '../../shadcn/checkbox';
 
 const meta = {
   title: 'Components/Label',
@@ -11,17 +11,17 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Label>
+} satisfies Meta<typeof Label>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
     children: 'Email address',
     htmlFor: 'email',
   },
-}
+};
 
 export const WithInput: Story = {
   render: () => (
@@ -30,7 +30,7 @@ export const WithInput: Story = {
       <Input type="email" id="email" placeholder="Email" />
     </div>
   ),
-}
+};
 
 export const WithCheckbox: Story = {
   render: () => (
@@ -39,7 +39,7 @@ export const WithCheckbox: Story = {
       <Label htmlFor="terms">Accept terms and conditions</Label>
     </div>
   ),
-}
+};
 
 export const Required: Story = {
   render: () => (
@@ -50,4 +50,4 @@ export const Required: Story = {
       <Input id="name" placeholder="Enter your name" required />
     </div>
   ),
-}
+};

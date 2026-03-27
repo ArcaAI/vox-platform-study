@@ -1,6 +1,6 @@
-import { z } from "zod";
-import { ToolUIIdSchema, ToolUIRoleSchema } from "../shared/schema";
-import { defineToolUiContract } from "../shared/contract";
+import { z } from 'zod';
+import { ToolUIIdSchema, ToolUIRoleSchema } from '../shared/schema';
+import { defineToolUiContract } from '../shared/contract';
 
 export const MetadataItemSchema = z.object({
   key: z.string().min(1),
@@ -9,7 +9,7 @@ export const MetadataItemSchema = z.object({
 
 export type MetadataItem = z.infer<typeof MetadataItemSchema>;
 
-export const ApprovalDecisionSchema = z.enum(["approved", "denied"]);
+export const ApprovalDecisionSchema = z.enum(['approved', 'denied']);
 
 export type ApprovalDecision = z.infer<typeof ApprovalDecisionSchema>;
 
@@ -22,7 +22,7 @@ export const SerializableApprovalCardSchema = z.object({
   icon: z.string().optional(),
   metadata: z.array(MetadataItemSchema).optional(),
 
-  variant: z.enum(["default", "destructive"]).optional(),
+  variant: z.enum(['default', 'destructive']).optional(),
 
   confirmLabel: z.string().optional(),
   cancelLabel: z.string().optional(),
@@ -30,22 +30,13 @@ export const SerializableApprovalCardSchema = z.object({
   choice: ApprovalDecisionSchema.optional(),
 });
 
-export type SerializableApprovalCard = z.infer<
-  typeof SerializableApprovalCardSchema
->;
+export type SerializableApprovalCard = z.infer<typeof SerializableApprovalCardSchema>;
 
-const SerializableApprovalCardSchemaContract = defineToolUiContract(
-  "ApprovalCard",
-  SerializableApprovalCardSchema,
-);
+const SerializableApprovalCardSchemaContract = defineToolUiContract('ApprovalCard', SerializableApprovalCardSchema);
 
-export const parseSerializableApprovalCard: (
-  input: unknown,
-) => SerializableApprovalCard = SerializableApprovalCardSchemaContract.parse;
+export const parseSerializableApprovalCard: (input: unknown) => SerializableApprovalCard = SerializableApprovalCardSchemaContract.parse;
 
-export const safeParseSerializableApprovalCard: (
-  input: unknown,
-) => SerializableApprovalCard | null =
+export const safeParseSerializableApprovalCard: (input: unknown) => SerializableApprovalCard | null =
   SerializableApprovalCardSchemaContract.safeParse;
 export interface ApprovalCardProps extends SerializableApprovalCard {
   className?: string;

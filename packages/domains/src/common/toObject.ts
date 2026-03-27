@@ -10,26 +10,26 @@ import { convertEntityValue } from '../utils';
  * The returned object is immutable.
  */
 export function toObject(target: any): object {
-    // Create an empty object to store the properties
-    const obj: Record<string, any> = {};
+  // Create an empty object to store the properties
+  const obj: Record<string, any> = {};
 
-    // Iterate over each property key of the current instance
-    Object.keys(target).forEach((key) => {
-        let actualKey = key;
+  // Iterate over each property key of the current instance
+  Object.keys(target).forEach((key) => {
+    let actualKey = key;
 
-        // Check if the key starts with an underscore
-        if (key.startsWith('_')) {
-            // Remove the underscore prefix from the key
-            actualKey = key.substring(1);
-        }
+    // Check if the key starts with an underscore
+    if (key.startsWith('_')) {
+      // Remove the underscore prefix from the key
+      actualKey = key.substring(1);
+    }
 
-        // Get the value of the property using the (possibly modified) key
-        const value = (target as any)[key];
+    // Get the value of the property using the (possibly modified) key
+    const value = (target as any)[key];
 
-        // Assign the (possibly modified) key-value pair to the new object
-        obj[actualKey] = convertEntityValue(value);
-    });
+    // Assign the (possibly modified) key-value pair to the new object
+    obj[actualKey] = convertEntityValue(value);
+  });
 
-    // Freeze the object to make it immutable and return it
-    return Object.freeze(obj);
+  // Freeze the object to make it immutable and return it
+  return Object.freeze(obj);
 }

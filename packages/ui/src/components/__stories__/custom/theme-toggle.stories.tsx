@@ -1,24 +1,24 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { ThemeToggle } from '../../custom/theme-toggle'
+import { ThemeToggle } from '../../custom/theme-toggle';
 
 const meta = {
   title: 'Custom/ThemeToggle',
   component: ThemeToggle,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof ThemeToggle>
+} satisfies Meta<typeof ThemeToggle>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {}
+export const Default: Story = {};
 
 export const WithCustomClass: Story = {
   args: {
     className: 'border rounded-full',
   },
-}
+};
 
 export const InToolbar: Story = {
   render: () => (
@@ -28,4 +28,4 @@ export const InToolbar: Story = {
       <ThemeToggle />
     </div>
   ),
-}
+};

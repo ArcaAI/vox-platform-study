@@ -3,12 +3,12 @@ import { MqttService } from './mqtt.service';
 import { IMqttService } from './IMqttService';
 
 @Module({
-    providers: [
-        {
-            provide: IMqttService,
-            useClass: MqttService,
-        },
-    ],
-    exports: [MqttService],
+  providers: [
+    {
+      provide: IMqttService,
+      useClass: MqttService,
+    },
+  ],
+  exports: [MqttService],
 })
 export class MqttServiceModule {}

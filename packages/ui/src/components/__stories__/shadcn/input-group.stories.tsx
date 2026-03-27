@@ -1,13 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { IconSearch } from '@tabler/icons-react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { IconSearch } from '@tabler/icons-react';
 
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupText,
-  InputGroupInput,
-} from '../../shadcn/input-group'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupText, InputGroupInput } from '../../shadcn/input-group';
 
 const meta = {
   title: 'Components/InputGroup',
@@ -16,10 +10,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof InputGroup>
+} satisfies Meta<typeof InputGroup>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -33,7 +27,7 @@ export const Default: Story = {
       </InputGroupAddon>
     </InputGroup>
   ),
-}
+};
 
 export const WithPrefix: Story = {
   render: () => (
@@ -44,4 +38,4 @@ export const WithPrefix: Story = {
       <InputGroupInput placeholder="example.com" />
     </InputGroup>
   ),
-}
+};

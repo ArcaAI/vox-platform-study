@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   UserIcon,
@@ -11,19 +11,19 @@ import {
   YoutubeIcon,
   FigmaIcon,
   ChromeIcon,
-} from "@/components/registries/lucide-animated";
+} from '@/components/registries/lucide-animated';
 
 const icons = [
-  { name: "user", Icon: UserIcon },
-  { name: "users", Icon: UsersIcon },
-  { name: "user-check", Icon: UserCheckIcon },
-  { name: "github", Icon: GithubIcon },
-  { name: "twitter", Icon: TwitterIcon },
-  { name: "linkedin", Icon: LinkedinIcon },
-  { name: "instagram", Icon: InstagramIcon },
-  { name: "youtube", Icon: YoutubeIcon },
-  { name: "figma", Icon: FigmaIcon },
-  { name: "chrome", Icon: ChromeIcon },
+  { name: 'user', Icon: UserIcon },
+  { name: 'users', Icon: UsersIcon },
+  { name: 'user-check', Icon: UserCheckIcon },
+  { name: 'github', Icon: GithubIcon },
+  { name: 'twitter', Icon: TwitterIcon },
+  { name: 'linkedin', Icon: LinkedinIcon },
+  { name: 'instagram', Icon: InstagramIcon },
+  { name: 'youtube', Icon: YoutubeIcon },
+  { name: 'figma', Icon: FigmaIcon },
+  { name: 'chrome', Icon: ChromeIcon },
 ] as const;
 
 function SocialIcons() {
@@ -40,9 +40,9 @@ function SocialIcons() {
 }
 
 const meta = {
-  title: "Registries/LucideAnimated/Social",
+  title: 'Registries/LucideAnimated/Social',
   component: SocialIcons,
-  parameters: { layout: "padded" },
+  parameters: { layout: 'padded' },
 } satisfies Meta<typeof SocialIcons>;
 
 export default meta;

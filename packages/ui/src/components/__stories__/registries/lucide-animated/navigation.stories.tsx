@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   ArrowDownIcon,
@@ -13,21 +13,21 @@ import {
   HomeIcon,
   ExpandIcon,
   ShrinkIcon,
-} from "@/components/registries/lucide-animated";
+} from '@/components/registries/lucide-animated';
 
 const icons = [
-  { name: "arrow-down", Icon: ArrowDownIcon },
-  { name: "arrow-up", Icon: ArrowUpIcon },
-  { name: "arrow-left", Icon: ArrowLeftIcon },
-  { name: "arrow-right", Icon: ArrowRightIcon },
-  { name: "chevron-down", Icon: ChevronDownIcon },
-  { name: "chevron-up", Icon: ChevronUpIcon },
-  { name: "chevron-left", Icon: ChevronLeftIcon },
-  { name: "chevron-right", Icon: ChevronRightIcon },
-  { name: "menu", Icon: MenuIcon },
-  { name: "home", Icon: HomeIcon },
-  { name: "expand", Icon: ExpandIcon },
-  { name: "shrink", Icon: ShrinkIcon },
+  { name: 'arrow-down', Icon: ArrowDownIcon },
+  { name: 'arrow-up', Icon: ArrowUpIcon },
+  { name: 'arrow-left', Icon: ArrowLeftIcon },
+  { name: 'arrow-right', Icon: ArrowRightIcon },
+  { name: 'chevron-down', Icon: ChevronDownIcon },
+  { name: 'chevron-up', Icon: ChevronUpIcon },
+  { name: 'chevron-left', Icon: ChevronLeftIcon },
+  { name: 'chevron-right', Icon: ChevronRightIcon },
+  { name: 'menu', Icon: MenuIcon },
+  { name: 'home', Icon: HomeIcon },
+  { name: 'expand', Icon: ExpandIcon },
+  { name: 'shrink', Icon: ShrinkIcon },
 ] as const;
 
 function NavigationIcons() {
@@ -44,9 +44,9 @@ function NavigationIcons() {
 }
 
 const meta = {
-  title: "Registries/LucideAnimated/Navigation",
+  title: 'Registries/LucideAnimated/Navigation',
   component: NavigationIcons,
-  parameters: { layout: "padded" },
+  parameters: { layout: 'padded' },
 } satisfies Meta<typeof NavigationIcons>;
 
 export default meta;

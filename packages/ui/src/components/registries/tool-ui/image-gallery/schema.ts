@@ -1,10 +1,6 @@
-import { z } from "zod";
-import { defineToolUiContract } from "../shared/contract";
-import {
-  ToolUIIdSchema,
-  ToolUIReceiptSchema,
-  ToolUIRoleSchema,
-} from "../shared/schema";
+import { z } from 'zod';
+import { defineToolUiContract } from '../shared/contract';
+import { ToolUIIdSchema, ToolUIReceiptSchema, ToolUIRoleSchema } from '../shared/schema';
 
 export const ImageGallerySourceSchema = z.object({
   label: z.string(),
@@ -16,7 +12,7 @@ export type ImageGallerySource = z.infer<typeof ImageGallerySourceSchema>;
 export const ImageGalleryItemSchema = z.object({
   id: z.string().min(1),
   src: z.string().url(),
-  alt: z.string().min(1, "Images require alt text for accessibility"),
+  alt: z.string().min(1, 'Images require alt text for accessibility'),
   width: z.number().positive(),
   height: z.number().positive(),
   title: z.string().optional(),
@@ -35,25 +31,16 @@ export const SerializableImageGallerySchema = z.object({
   description: z.string().optional(),
 });
 
-export type SerializableImageGallery = z.infer<
-  typeof SerializableImageGallerySchema
->;
+export type SerializableImageGallery = z.infer<typeof SerializableImageGallerySchema>;
 
 export interface ImageGalleryProps extends SerializableImageGallery {
   className?: string;
   onImageClick?: (imageId: string, image: ImageGalleryItem) => void;
 }
 
-const SerializableImageGallerySchemaContract = defineToolUiContract(
-  "ImageGallery",
-  SerializableImageGallerySchema,
-);
+const SerializableImageGallerySchemaContract = defineToolUiContract('ImageGallery', SerializableImageGallerySchema);
 
-export const parseSerializableImageGallery: (
-  input: unknown,
-) => SerializableImageGallery = SerializableImageGallerySchemaContract.parse;
+export const parseSerializableImageGallery: (input: unknown) => SerializableImageGallery = SerializableImageGallerySchemaContract.parse;
 
-export const safeParseSerializableImageGallery: (
-  input: unknown,
-) => SerializableImageGallery | null =
+export const safeParseSerializableImageGallery: (input: unknown) => SerializableImageGallery | null =
   SerializableImageGallerySchemaContract.safeParse;

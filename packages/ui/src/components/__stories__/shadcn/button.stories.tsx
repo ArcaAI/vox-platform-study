@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { IconMail, IconLoader2, IconChevronRight } from '@tabler/icons-react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { IconMail, IconLoader2, IconChevronRight } from '@tabler/icons-react';
 
-import { Button } from '../../shadcn/button'
+import { Button } from '../../shadcn/button';
 
 const meta = {
   title: 'Components/Button',
@@ -30,17 +30,17 @@ const meta = {
       description: 'Render as child element (for composition)',
     },
   },
-} satisfies Meta<typeof Button>
+} satisfies Meta<typeof Button>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 // Default button
 export const Default: Story = {
   args: {
     children: 'Button',
   },
-}
+};
 
 // All variants
 export const Variants: Story = {
@@ -54,7 +54,7 @@ export const Variants: Story = {
       <Button variant="link">Link</Button>
     </div>
   ),
-}
+};
 
 // All sizes
 export const Sizes: Story = {
@@ -66,7 +66,7 @@ export const Sizes: Story = {
       <Button size="lg">Large</Button>
     </div>
   ),
-}
+};
 
 // With icons
 export const WithIcon: Story = {
@@ -86,7 +86,7 @@ export const WithIcon: Story = {
       </Button>
     </div>
   ),
-}
+};
 
 // Icon buttons
 export const IconButtons: Story = {
@@ -106,7 +106,7 @@ export const IconButtons: Story = {
       </Button>
     </div>
   ),
-}
+};
 
 // Loading state
 export const Loading: Story = {
@@ -122,7 +122,7 @@ export const Loading: Story = {
       </Button>
     </div>
   ),
-}
+};
 
 // Disabled state
 export const Disabled: Story = {
@@ -130,7 +130,7 @@ export const Disabled: Story = {
     children: 'Disabled',
     disabled: true,
   },
-}
+};
 
 // As child (link)
 export const AsChild: Story = {
@@ -139,4 +139,4 @@ export const AsChild: Story = {
       <a href="https://example.com">Link Button</a>
     </Button>
   ),
-}
+};

@@ -5,24 +5,11 @@ import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/dialog';
 import { Input } from '@arcaai/ui/input';
-import {
-  type MultiColumnConfig,
-  type MultiColumnContentConfig,
-  MultiColumnLayout,
-  type MultiColumnState,
-} from '@arcaai/ui/multi-column-layout';
+import { type MultiColumnConfig, type MultiColumnContentConfig, MultiColumnLayout, type MultiColumnState } from '@arcaai/ui/multi-column-layout';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
 import { Separator } from '@arcaai/ui/separator';
 import type { ColumnDef } from '@tanstack/react-table';
-import {
-  Building2,
-  FolderPlus,
-  Grid3X3,
-  List,
-  Loader2,
-  Plus,
-  Upload,
-} from 'lucide-react';
+import { Building2, FolderPlus, Grid3X3, List, Loader2, Plus, Upload } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -32,12 +19,9 @@ import {
   useTenantBucketObjects,
   useTenantBuckets,
   useTenantBucketTree,
-  useUploadTenantObject
+  useUploadTenantObject,
 } from '../api/tenant-storage';
-import {
-  type Tenant,
-  useTenantsInfinite,
-} from '../api/tenants';
+import { type Tenant, useTenantsInfinite } from '../api/tenants';
 import { AdminDataTable, StatusBadge } from '../components';
 import { FolderTreeView } from '../components/folder-tree-view';
 
@@ -97,64 +81,55 @@ export default function StorageManagementPage() {
   const tenantList = useMemo<Tenant[]>(() => {
     if (!isSuperOrGlobalAdmin) {
       if (!tenantId) return [];
-      return [{
-        id: tenantId,
-        name: tenantName || tenantId,
-        key: tenantId,
-        resourceStatus: 'ENABLED',
-        createdAt: '',
-        updatedAt: '',
-      } as Tenant];
+      return [
+        {
+          id: tenantId,
+          name: tenantName || tenantId,
+          key: tenantId,
+          resourceStatus: 'ENABLED',
+          createdAt: '',
+          updatedAt: '',
+        } as Tenant,
+      ];
     }
     return tenantsPages?.pages.flatMap((page) => page.data) ?? [];
   }, [isSuperOrGlobalAdmin, tenantId, tenantName, tenantsPages]);
 
   const filteredTenants = useMemo(
-    () =>
-      tenantList.filter((item) =>
-        `${item.name} ${item.key}`.toLowerCase().includes(tenantSearch.toLowerCase()),
-      ),
+    () => tenantList.filter((item) => `${item.name} ${item.key}`.toLowerCase().includes(tenantSearch.toLowerCase())),
     [tenantList, tenantSearch],
   );
 
   const effectiveTenantId = isSuperOrGlobalAdmin ? selectedTenantId : tenantId;
-  const { data: bucketsData = [], isLoading: bucketsLoading, refetch: refetchBuckets } = useTenantBuckets(
-    effectiveTenantId || '',
-    {
-      enabled: !!effectiveTenantId,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
-    },
-  );
+  const {
+    data: bucketsData = [],
+    isLoading: bucketsLoading,
+    refetch: refetchBuckets,
+  } = useTenantBuckets(effectiveTenantId || '', {
+    enabled: !!effectiveTenantId,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
   const createBucket = useCreateTenantBucket(effectiveTenantId || '');
   const createFolder = useCreateTenantFolder();
   const uploadObject = useUploadTenantObject();
 
-  const selectedBucket = useMemo(
-    () => bucketsData.find((bucket) => bucket.id === selectedBucketId),
-    [bucketsData, selectedBucketId],
-  );
+  const selectedBucket = useMemo(() => bucketsData.find((bucket) => bucket.id === selectedBucketId), [bucketsData, selectedBucketId]);
 
-  const { data: bucketTree, refetch: refetchBucketTree } = useTenantBucketTree(
-    effectiveTenantId || '',
-    selectedBucketId,
-    '',
-    {
-      enabled: !!effectiveTenantId && !!selectedBucketId,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
-    },
-  );
-  const { data: objects = [], isLoading: objectsLoading, refetch: refetchObjects } = useTenantBucketObjects(
-    effectiveTenantId || '',
-    selectedBucket?.name || '',
-    selectedFolderPath,
-    {
-      enabled: !!effectiveTenantId && !!selectedBucket?.name,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
-    },
-  );
+  const { data: bucketTree, refetch: refetchBucketTree } = useTenantBucketTree(effectiveTenantId || '', selectedBucketId, '', {
+    enabled: !!effectiveTenantId && !!selectedBucketId,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  const {
+    data: objects = [],
+    isLoading: objectsLoading,
+    refetch: refetchObjects,
+  } = useTenantBucketObjects(effectiveTenantId || '', selectedBucket?.name || '', selectedFolderPath, {
+    enabled: !!effectiveTenantId && !!selectedBucket?.name,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
 
   useEffect(() => {
     if (isSuperOrGlobalAdmin) return;
@@ -164,24 +139,17 @@ export default function StorageManagementPage() {
   }, [isSuperOrGlobalAdmin, selectedTenantId, tenantId]);
 
   const filteredBuckets = useMemo(() => {
-    const rows = bucketsData.filter((bucket) =>
-      `${bucket.slug} ${bucket.name}`.toLowerCase().includes(bucketSearch.toLowerCase()),
-    );
+    const rows = bucketsData.filter((bucket) => `${bucket.slug} ${bucket.name}`.toLowerCase().includes(bucketSearch.toLowerCase()));
     return rows.sort((a, b) => {
       if (bucketSort === 'created') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       if (bucketSort === 'updated') return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
       return a.slug.localeCompare(b.slug);
     });
   }, [bucketSearch, bucketSort, bucketsData]);
-  const visibleBuckets = useMemo(
-    () => filteredBuckets.slice(0, visibleBucketCount),
-    [filteredBuckets, visibleBucketCount],
-  );
+  const visibleBuckets = useMemo(() => filteredBuckets.slice(0, visibleBucketCount), [filteredBuckets, visibleBucketCount]);
 
   const filteredObjects = useMemo(() => {
-    const rows = objects.filter((item) =>
-      item.key.toLowerCase().includes(objectSearch.toLowerCase()),
-    );
+    const rows = objects.filter((item) => item.key.toLowerCase().includes(objectSearch.toLowerCase()));
     return rows.sort((a, b) => {
       if (objectSort === 'updated') {
         return new Date(b.lastModified ?? 0).getTime() - new Date(a.lastModified ?? 0).getTime();
@@ -189,10 +157,7 @@ export default function StorageManagementPage() {
       return a.key.localeCompare(b.key);
     });
   }, [objects, objectSearch, objectSort]);
-  const visibleObjects = useMemo(
-    () => filteredObjects.slice(0, visibleObjectCount),
-    [filteredObjects, visibleObjectCount],
-  );
+  const visibleObjects = useMemo(() => filteredObjects.slice(0, visibleObjectCount), [filteredObjects, visibleObjectCount]);
 
   useEffect(() => {
     setVisibleBucketCount(PAGE_SIZE);
@@ -223,13 +188,9 @@ export default function StorageManagementPage() {
     [],
   );
 
-  const loadMoreOnScroll = (
-    event: React.UIEvent<HTMLDivElement>,
-    setCount: React.Dispatch<React.SetStateAction<number>>,
-  ) => {
+  const loadMoreOnScroll = (event: React.UIEvent<HTMLDivElement>, setCount: React.Dispatch<React.SetStateAction<number>>) => {
     const element = event.currentTarget;
-    const nearBottom =
-      element.scrollTop + element.clientHeight >= element.scrollHeight - 48;
+    const nearBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 48;
     if (nearBottom) {
       setCount((prev) => prev + PAGE_SIZE);
     }
@@ -297,24 +258,33 @@ export default function StorageManagementPage() {
       .catch((error: Error) => toast.error(error.message));
   };
 
-  const handleTenantSelect = useCallback((id: string) => {
-    if (!isSuperOrGlobalAdmin) return;
-    if (id === selectedTenantId) return;
-    setSelectedTenantId(id);
-    setSelectedBucketId('');
-    setSelectedFolderPath('');
-  }, [isSuperOrGlobalAdmin, selectedTenantId]);
+  const handleTenantSelect = useCallback(
+    (id: string) => {
+      if (!isSuperOrGlobalAdmin) return;
+      if (id === selectedTenantId) return;
+      setSelectedTenantId(id);
+      setSelectedBucketId('');
+      setSelectedFolderPath('');
+    },
+    [isSuperOrGlobalAdmin, selectedTenantId],
+  );
 
-  const handleBucketSelect = useCallback((id: string) => {
-    if (id === selectedBucketId) return;
-    setSelectedBucketId(id);
-    setSelectedFolderPath('');
-  }, [selectedBucketId]);
+  const handleBucketSelect = useCallback(
+    (id: string) => {
+      if (id === selectedBucketId) return;
+      setSelectedBucketId(id);
+      setSelectedFolderPath('');
+    },
+    [selectedBucketId],
+  );
 
-  const handleFolderSelect = useCallback((path: string) => {
-    if (path === selectedFolderPath) return;
-    setSelectedFolderPath(path);
-  }, [selectedFolderPath]);
+  const handleFolderSelect = useCallback(
+    (path: string) => {
+      if (path === selectedFolderPath) return;
+      setSelectedFolderPath(path);
+    },
+    [selectedFolderPath],
+  );
 
   const tenantsColumn: MultiColumnConfig<Tenant> = {
     id: 'storage-tenants',
@@ -380,15 +350,10 @@ export default function StorageManagementPage() {
         <div className="flex items-center gap-2">
           <Input
             value={bucketSearch}
-            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-              setBucketSearch(event.target.value)
-            }
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) => setBucketSearch(event.target.value)}
             placeholder="Search bucket..."
           />
-          <Select
-            value={bucketSort}
-            onValueChange={(value: 'name' | 'created' | 'updated') => setBucketSort(value)}
-          >
+          <Select value={bucketSort} onValueChange={(value: 'name' | 'created' | 'updated') => setBucketSort(value)}>
             <SelectTrigger className="w-34">
               <SelectValue />
             </SelectTrigger>
@@ -404,21 +369,14 @@ export default function StorageManagementPage() {
             <Plus data-icon="inline-start" />
             Bucket
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setCreateFolderOpen(true)}
-            disabled={!selectedBucket}
-          >
+          <Button size="sm" variant="outline" onClick={() => setCreateFolderOpen(true)} disabled={!selectedBucket}>
             <FolderPlus data-icon="inline-start" />
             Subfolder
           </Button>
         </div>
         <div
           className="grid max-h-56 gap-2 overflow-auto"
-          onScroll={(event: React.UIEvent<HTMLDivElement>) =>
-            loadMoreOnScroll(event, setVisibleBucketCount)
-          }
+          onScroll={(event: React.UIEvent<HTMLDivElement>) => loadMoreOnScroll(event, setVisibleBucketCount)}
         >
           {bucketsLoading ? (
             <div className="text-muted-foreground text-sm">Loading buckets...</div>
@@ -445,21 +403,13 @@ export default function StorageManagementPage() {
           )}
         </div>
         {visibleBuckets.length < filteredBuckets.length && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setVisibleBucketCount((prev) => prev + PAGE_SIZE)}
-          >
+          <Button variant="outline" size="sm" onClick={() => setVisibleBucketCount((prev) => prev + PAGE_SIZE)}>
             Load More
           </Button>
         )}
         <Separator />
         <div className="min-h-0 flex-1 overflow-hidden">
-          <FolderTreeView
-            nodes={bucketTree?.nodes ?? []}
-            selectedPath={selectedFolderPath}
-            onSelect={(node) => handleFolderSelect(node.path)}
-          />
+          <FolderTreeView nodes={bucketTree?.nodes ?? []} selectedPath={selectedFolderPath} onSelect={(node) => handleFolderSelect(node.path)} />
         </div>
       </div>
     ),
@@ -488,15 +438,10 @@ export default function StorageManagementPage() {
         <div className="flex items-center gap-2">
           <Input
             value={objectSearch}
-            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-              setObjectSearch(event.target.value)
-            }
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) => setObjectSearch(event.target.value)}
             placeholder="Search object..."
           />
-          <Select
-            value={objectSort}
-            onValueChange={(value: 'name' | 'updated') => setObjectSort(value)}
-          >
+          <Select value={objectSort} onValueChange={(value: 'name' | 'updated') => setObjectSort(value)}>
             <SelectTrigger className="w-34">
               <SelectValue />
             </SelectTrigger>
@@ -505,18 +450,10 @@ export default function StorageManagementPage() {
               <SelectItem value="updated">Updated</SelectItem>
             </SelectContent>
           </Select>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setViewMode((prev) => (prev === 'list' ? 'grid' : 'list'))}
-          >
+          <Button variant="outline" size="icon" onClick={() => setViewMode((prev) => (prev === 'list' ? 'grid' : 'list'))}>
             {viewMode === 'list' ? <Grid3X3 /> : <List />}
           </Button>
-          <Button
-            size="sm"
-            onClick={() => uploadInputRef.current?.click()}
-            disabled={!selectedBucket || uploadObject.isPending}
-          >
+          <Button size="sm" onClick={() => uploadInputRef.current?.click()} disabled={!selectedBucket || uploadObject.isPending}>
             {uploadObject.isPending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Upload data-icon="inline-start" />}
             Upload Files
           </Button>
@@ -556,18 +493,9 @@ export default function StorageManagementPage() {
         </div>
         {viewMode === 'list' ? (
           <div className="flex flex-col gap-2">
-            <AdminDataTable
-              data={visibleObjects}
-              columns={objectColumns}
-              isLoading={objectsLoading}
-              emptyMessage="No blobs found."
-            />
+            <AdminDataTable data={visibleObjects} columns={objectColumns} isLoading={objectsLoading} emptyMessage="No blobs found." />
             {visibleObjects.length < filteredObjects.length && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setVisibleObjectCount((prev) => prev + PAGE_SIZE)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setVisibleObjectCount((prev) => prev + PAGE_SIZE)}>
                 Load More
               </Button>
             )}
@@ -575,9 +503,7 @@ export default function StorageManagementPage() {
         ) : (
           <div
             className="grid grid-cols-1 gap-2 overflow-auto sm:grid-cols-2 lg:grid-cols-3"
-            onScroll={(event: React.UIEvent<HTMLDivElement>) =>
-              loadMoreOnScroll(event, setVisibleObjectCount)
-            }
+            onScroll={(event: React.UIEvent<HTMLDivElement>) => loadMoreOnScroll(event, setVisibleObjectCount)}
           >
             {visibleObjects.map((item) => (
               <div key={item.key} className="rounded-md border p-3">
@@ -604,9 +530,7 @@ export default function StorageManagementPage() {
     <Main>
       <div className="mb-4">
         <h2 className="text-2xl font-bold tracking-tight">Storage Management</h2>
-        <p className="text-muted-foreground mt-1">
-          Manage tenant buckets, folder tree, and blob objects via admin APIs.
-        </p>
+        <p className="text-muted-foreground mt-1">Manage tenant buckets, folder tree, and blob objects via admin APIs.</p>
       </div>
       <MultiColumnLayout
         columns={[tenantsColumn, bucketsColumn, objectsColumn]}
@@ -624,16 +548,12 @@ export default function StorageManagementPage() {
             <Input
               placeholder="bucket slug"
               value={newBucketSlug}
-              onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                setNewBucketSlug(event.target.value)
-              }
+              onChange={(event: React.ChangeEvent<HTMLInputElement>) => setNewBucketSlug(event.target.value)}
             />
             <Input
               placeholder="description (optional)"
               value={newBucketDescription}
-              onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                setNewBucketDescription(event.target.value)
-              }
+              onChange={(event: React.ChangeEvent<HTMLInputElement>) => setNewBucketDescription(event.target.value)}
             />
           </div>
           <DialogFooter>
@@ -658,9 +578,7 @@ export default function StorageManagementPage() {
           <Input
             placeholder="folder-name"
             value={newFolderName}
-            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-              setNewFolderName(event.target.value)
-            }
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) => setNewFolderName(event.target.value)}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateFolderOpen(false)}>

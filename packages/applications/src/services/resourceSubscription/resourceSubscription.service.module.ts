@@ -8,13 +8,13 @@ import { UserServiceModule } from '../user/user/user.service.module';
 // TODO: Implement this
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule, UserServiceModule],
-    providers: [
-        {
-            provide: IResourceSubscriptionService,
-            useClass: ResourceSubscriptionService
-        }
-    ],
-    exports: [IResourceSubscriptionService]
+  imports: [CommonServiceModule, CoreDatabaseModule, UserServiceModule],
+  providers: [
+    {
+      provide: IResourceSubscriptionService,
+      useClass: ResourceSubscriptionService,
+    },
+  ],
+  exports: [IResourceSubscriptionService],
 })
 export class ResourceSubscriptionServiceModule {}

@@ -58,45 +58,34 @@ export const CONTEXT_ENDPOINTS = {
   VERSION: (consultationId: string, contextId: string, versionNumber: number) =>
     `/consultations/${encodeURIComponent(consultationId)}/context/${encodeURIComponent(contextId)}/versions/${versionNumber}`,
   /** Get transcription context items only (SES-07) */
-  TRANSCRIPTIONS: (consultationId: string) =>
-    `/consultations/${encodeURIComponent(consultationId)}/context/transcriptions`,
+  TRANSCRIPTIONS: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/context/transcriptions`,
   /** Get case note context items only (SES-07) */
-  CASE_NOTES: (consultationId: string) =>
-    `/consultations/${encodeURIComponent(consultationId)}/context/case-notes`,
+  CASE_NOTES: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/context/case-notes`,
 } as const;
 
 /**
  * Summary endpoints
  */
 export const SUMMARY_ENDPOINTS = {
-  GENERATE: (consultationId: string) =>
-    `/consultations/${encodeURIComponent(consultationId)}/summary`,
-  PRE_SUMMARY: (consultationId: string) =>
-    `/consultations/${encodeURIComponent(consultationId)}/summary/pre-summary`,
-  LATEST: (consultationId: string) =>
-    `/consultations/${encodeURIComponent(consultationId)}/summary/latest`,
+  GENERATE: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary`,
+  PRE_SUMMARY: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/pre-summary`,
+  LATEST: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/latest`,
   /** Get latest pre-summary (SUM-03) */
-  LATEST_PRE_SUMMARY: (consultationId: string) =>
-    `/consultations/${encodeURIComponent(consultationId)}/summary/pre-summary/latest`,
+  LATEST_PRE_SUMMARY: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/pre-summary/latest`,
   /** List all summaries for a consultation (SUM-04) */
-  LIST: (consultationId: string) =>
-    `/consultations/${encodeURIComponent(consultationId)}/summary`,
+  LIST: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary`,
   UPDATE: (consultationId: string, summaryId: string) =>
     `/consultations/${encodeURIComponent(consultationId)}/summary/${encodeURIComponent(summaryId)}`,
   EXTRACT_ENTITIES: (consultationId: string, contextItemId: string) =>
     `/consultations/${encodeURIComponent(consultationId)}/summary/${encodeURIComponent(contextItemId)}/extract-entities`,
   /** Generate comprehensive summary across linked consultations (SUM-02) */
-  COMPREHENSIVE: (consultationId: string) =>
-    `/consultations/${encodeURIComponent(consultationId)}/summary/comprehensive`,
+  COMPREHENSIVE: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/comprehensive`,
   /** Async summary generation — returns job ID, HTTP 202 (SUM-01) */
-  GENERATE_ASYNC: (consultationId: string) =>
-    `/consultations/${encodeURIComponent(consultationId)}/summary/async`,
+  GENERATE_ASYNC: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/async`,
   /** Async pre-summary generation (SUM-01) */
-  PRE_SUMMARY_ASYNC: (consultationId: string) =>
-    `/consultations/${encodeURIComponent(consultationId)}/summary/pre-summary/async`,
+  PRE_SUMMARY_ASYNC: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/pre-summary/async`,
   /** Async comprehensive summary generation (SUM-01) */
-  COMPREHENSIVE_ASYNC: (consultationId: string) =>
-    `/consultations/${encodeURIComponent(consultationId)}/summary/comprehensive/async`,
+  COMPREHENSIVE_ASYNC: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/summary/comprehensive/async`,
   /** Get version history for a summary context item (WS-3) */
   VERSIONS: (consultationId: string, contextItemId: string) =>
     `/consultations/${encodeURIComponent(consultationId)}/summary/${encodeURIComponent(contextItemId)}/versions`,
@@ -113,8 +102,7 @@ export const SUMMARY_ENDPOINTS = {
  */
 export const ENTITY_ENDPOINTS = {
   /** Get aggregate named entities for consultation */
-  GET_ALL: (consultationId: string) =>
-    `/consultations/${encodeURIComponent(consultationId)}/named-entities`,
+  GET_ALL: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/named-entities`,
   /** Get named entities for a specific context item */
   GET_FOR_ITEM: (consultationId: string, contextItemId: string) =>
     `/consultations/${encodeURIComponent(consultationId)}/context/${encodeURIComponent(contextItemId)}/named-entities`,
@@ -167,8 +155,7 @@ export const PROMPT_TEMPLATE_ENDPOINTS = {
   /** Get usage statistics for a prompt template (TASK-218) */
   USAGE: (id: string) => `/prompt-templates/${encodeURIComponent(id)}/usage`,
   /** Activate (rollback to) a specific version */
-  ACTIVATE_VERSION: (id: string, versionNumber: number) =>
-    `/prompt-templates/${encodeURIComponent(id)}/versions/${versionNumber}/activate`,
+  ACTIVATE_VERSION: (id: string, versionNumber: number) => `/prompt-templates/${encodeURIComponent(id)}/versions/${versionNumber}/activate`,
 } as const;
 
 /**
@@ -277,11 +264,9 @@ export const STT_V2_ENDPOINTS = {
   /** Get job status counts/stats */
   JOB_STATS: '/audio/transcription-jobs/stats',
   /** Get transcription jobs by consultation ID */
-  JOBS_BY_CONSULTATION: (consultationId: string) =>
-    `/audio/transcription-jobs/consultation/${encodeURIComponent(consultationId)}`,
+  JOBS_BY_CONSULTATION: (consultationId: string) => `/audio/transcription-jobs/consultation/${encodeURIComponent(consultationId)}`,
   /** Get transcription jobs by status */
-  JOBS_BY_STATUS: (status: string) =>
-    `/audio/transcription-jobs/status/${encodeURIComponent(status)}`,
+  JOBS_BY_STATUS: (status: string) => `/audio/transcription-jobs/status/${encodeURIComponent(status)}`,
   /** Cancel a transcription job */
   CANCEL_JOB: (jobId: string) => `/audio/transcription-jobs/${encodeURIComponent(jobId)}/cancel`,
   /** Retry a failed transcription job */
@@ -560,4 +545,3 @@ export const VOICE_EMBEDDING_ENDPOINTS = {
   STATUS: (userId: string) => `/users/${encodeURIComponent(userId)}/voice-embedding`,
   REMOVE: (userId: string) => `/users/${encodeURIComponent(userId)}/voice-embedding`,
 } as const;
-

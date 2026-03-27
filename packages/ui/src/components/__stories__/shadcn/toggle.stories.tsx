@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { IconBold, IconItalic, IconUnderline } from '@tabler/icons-react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { IconBold, IconItalic, IconUnderline } from '@tabler/icons-react';
 
-import { Toggle } from '../../shadcn/toggle'
+import { Toggle } from '../../shadcn/toggle';
 
 const meta = {
   title: 'Components/Toggle',
@@ -20,10 +20,10 @@ const meta = {
       options: ['default', 'sm', 'lg'],
     },
   },
-} satisfies Meta<typeof Toggle>
+} satisfies Meta<typeof Toggle>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -31,7 +31,7 @@ export const Default: Story = {
       <IconBold className="size-4" />
     </Toggle>
   ),
-}
+};
 
 export const Variants: Story = {
   render: () => (
@@ -44,7 +44,7 @@ export const Variants: Story = {
       </Toggle>
     </div>
   ),
-}
+};
 
 export const Sizes: Story = {
   render: () => (
@@ -60,7 +60,7 @@ export const Sizes: Story = {
       </Toggle>
     </div>
   ),
-}
+};
 
 export const WithText: Story = {
   render: () => (
@@ -69,7 +69,7 @@ export const WithText: Story = {
       Italic
     </Toggle>
   ),
-}
+};
 
 export const Disabled: Story = {
   render: () => (
@@ -77,4 +77,4 @@ export const Disabled: Story = {
       <IconUnderline className="size-4" />
     </Toggle>
   ),
-}
+};

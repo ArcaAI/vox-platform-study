@@ -6,21 +6,9 @@
  */
 
 import { useMemo, useCallback } from 'react';
-import {
-  useAgenticStore,
-  selectTranscriptions,
-  selectCaseNotes,
-} from '../store';
-import type {
-  ContextItem,
-  MedicalEntity,
-  ContextVersionEntry,
-} from '../types';
-import {
-  CONTEXT_ENDPOINTS,
-  SUMMARY_ENDPOINTS,
-  ENTITY_ENDPOINTS,
-} from '../core/constants';
+import { useAgenticStore, selectTranscriptions, selectCaseNotes } from '../store';
+import type { ContextItem, MedicalEntity, ContextVersionEntry } from '../types';
+import { CONTEXT_ENDPOINTS, SUMMARY_ENDPOINTS, ENTITY_ENDPOINTS } from '../core/constants';
 import type { ISDKLogger } from '../core/logger';
 
 export type { UseArcaContext } from './useArca';
@@ -48,10 +36,12 @@ export function useArcaContext() {
       store.setContextError(null);
 
       try {
-        const item = await apiClient.post<ContextItem>(
-          CONTEXT_ENDPOINTS.ADD(consultation.id),
-          { type: 'CASE_NOTE', content, source: 'USER', structuredData: metadata }
-        );
+        const item = await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), {
+          type: 'CASE_NOTE',
+          content,
+          source: 'USER',
+          structuredData: metadata,
+        });
         store.addContextItem(item);
         timer?.end(true, { attributes: { contextItemId: item.id, contentLength: content.length } });
         return item;
@@ -63,7 +53,7 @@ export function useArcaContext() {
         store.setContextLoading(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const addTranscription = useCallback(
@@ -82,10 +72,12 @@ export function useArcaContext() {
       store.setContextError(null);
 
       try {
-        const item = await apiClient.post<ContextItem>(
-          CONTEXT_ENDPOINTS.ADD(consultation.id),
-          { type: 'TRANSCRIPT', content: text, source: 'TRANSCRIPTION', structuredData: metadata }
-        );
+        const item = await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), {
+          type: 'TRANSCRIPT',
+          content: text,
+          source: 'TRANSCRIPTION',
+          structuredData: metadata,
+        });
         store.addContextItem(item);
         timer?.end(true, { attributes: { contextItemId: item.id, textLength: text.length } });
         return item;
@@ -97,7 +89,7 @@ export function useArcaContext() {
         store.setContextLoading(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const updateItem = useCallback(
@@ -128,7 +120,7 @@ export function useArcaContext() {
         store.setContextLoading(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const loadSharedContext = useCallback(async (): Promise<ContextItem[]> => {
@@ -176,9 +168,7 @@ export function useArcaContext() {
       store.setContextError(null);
 
       try {
-        const endpoint = contextItemId
-          ? ENTITY_ENDPOINTS.GET_FOR_ITEM(consultation.id, contextItemId)
-          : ENTITY_ENDPOINTS.GET_ALL(consultation.id);
+        const endpoint = contextItemId ? ENTITY_ENDPOINTS.GET_FOR_ITEM(consultation.id, contextItemId) : ENTITY_ENDPOINTS.GET_ALL(consultation.id);
 
         const data = await apiClient.get<{ entities: MedicalEntity[] }>(endpoint);
         store.setEntities(data.entities);
@@ -192,7 +182,7 @@ export function useArcaContext() {
         store.setContextLoading(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const getContextVersions = useCallback(
@@ -209,9 +199,7 @@ export function useArcaContext() {
       });
 
       try {
-        const versions = await apiClient.get<ContextVersionEntry[]>(
-          CONTEXT_ENDPOINTS.VERSIONS(consultation.id, contextItemId)
-        );
+        const versions = await apiClient.get<ContextVersionEntry[]>(CONTEXT_ENDPOINTS.VERSIONS(consultation.id, contextItemId));
         timer?.end(true, { attributes: { versionCount: versions.length } });
         return versions;
       } catch (error) {
@@ -219,7 +207,7 @@ export function useArcaContext() {
         throw error;
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const triggerEntityExtraction = useCallback(
@@ -243,7 +231,7 @@ export function useArcaContext() {
         throw error;
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const fetchTranscriptions = useCallback(async (): Promise<ContextItem[]> => {
@@ -285,11 +273,22 @@ export function useArcaContext() {
       fetchCaseNotes,
     }),
     [
-      store.contextItems, transcriptions, caseNotes, store.entities,
-      store.sharedContext, store.contextLoading, store.contextError,
-      addCaseNote, addTranscription, updateItem, loadSharedContext,
-      extractEntities, getContextVersions, triggerEntityExtraction,
-      fetchTranscriptions, fetchCaseNotes,
-    ]
+      store.contextItems,
+      transcriptions,
+      caseNotes,
+      store.entities,
+      store.sharedContext,
+      store.contextLoading,
+      store.contextError,
+      addCaseNote,
+      addTranscription,
+      updateItem,
+      loadSharedContext,
+      extractEntities,
+      getContextVersions,
+      triggerEntityExtraction,
+      fetchTranscriptions,
+      fetchCaseNotes,
+    ],
   );
 }

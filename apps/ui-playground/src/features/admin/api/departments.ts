@@ -1,9 +1,4 @@
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type UseQueryOptions,
-} from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { adminClient } from './admin-client';
 import { promptKeys } from './prompts';
 
@@ -72,9 +67,7 @@ const keys = {
 // Query hooks
 // ---------------------------------------------------------------------------
 
-export function useDepartments(
-  options?: Omit<UseQueryOptions<Department[]>, 'queryKey' | 'queryFn'>,
-) {
+export function useDepartments(options?: Omit<UseQueryOptions<Department[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.list(),
     queryFn: () => adminClient.get<Department[]>('/admin/departments'),
@@ -82,9 +75,7 @@ export function useDepartments(
   });
 }
 
-export function useRootDepartments(
-  options?: Omit<UseQueryOptions<Department[]>, 'queryKey' | 'queryFn'>,
-) {
+export function useRootDepartments(options?: Omit<UseQueryOptions<Department[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.roots(),
     queryFn: () => adminClient.get<Department[]>('/admin/departments/roots'),
@@ -92,10 +83,7 @@ export function useRootDepartments(
   });
 }
 
-export function useDepartment(
-  id: string,
-  options?: Omit<UseQueryOptions<Department>, 'queryKey' | 'queryFn'>,
-) {
+export function useDepartment(id: string, options?: Omit<UseQueryOptions<Department>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.detail(id),
     queryFn: () => adminClient.get<Department>(`/admin/departments/${id}`),
@@ -104,14 +92,10 @@ export function useDepartment(
   });
 }
 
-export function useDepartmentChildren(
-  parentId: string,
-  options?: Omit<UseQueryOptions<Department[]>, 'queryKey' | 'queryFn'>,
-) {
+export function useDepartmentChildren(parentId: string, options?: Omit<UseQueryOptions<Department[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.children(parentId),
-    queryFn: () =>
-      adminClient.get<Department[]>(`/admin/departments/${parentId}/children`),
+    queryFn: () => adminClient.get<Department[]>(`/admin/departments/${parentId}/children`),
     enabled: !!parentId,
     ...options,
   });
@@ -124,8 +108,7 @@ export function useDepartmentChildren(
 export function useCreateDepartment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateDepartmentInput) =>
-      adminClient.post<Department>('/admin/departments', input),
+    mutationFn: (input: CreateDepartmentInput) => adminClient.post<Department>('/admin/departments', input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },
@@ -135,8 +118,7 @@ export function useCreateDepartment() {
 export function useUpdateDepartment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: UpdateDepartmentInput & { id: string }) =>
-      adminClient.patch<Department>(`/admin/departments/${id}`, input),
+    mutationFn: ({ id, ...input }: UpdateDepartmentInput & { id: string }) => adminClient.patch<Department>(`/admin/departments/${id}`, input),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all });
       qc.invalidateQueries({ queryKey: keys.detail(variables.id) });
@@ -147,14 +129,8 @@ export function useUpdateDepartment() {
 export function useUpdateDepartmentPromptConfig() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      ...input
-    }: UpdatePromptConfigInput & { id: string }) =>
-      adminClient.patch<Department>(
-        `/admin/departments/${id}/prompt-config`,
-        input,
-      ),
+    mutationFn: ({ id, ...input }: UpdatePromptConfigInput & { id: string }) =>
+      adminClient.patch<Department>(`/admin/departments/${id}/prompt-config`, input),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all });
       qc.invalidateQueries({ queryKey: keys.detail(variables.id) });
@@ -165,8 +141,7 @@ export function useUpdateDepartmentPromptConfig() {
 export function useDeleteDepartment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      adminClient.delete<Department>(`/admin/departments/${id}`),
+    mutationFn: (id: string) => adminClient.delete<Department>(`/admin/departments/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },
@@ -180,34 +155,23 @@ export function useDeleteDepartment() {
 const tenantKeys = {
   all: (tenantId: string) => ['admin', 'departments', 'tenant', tenantId] as const,
   list: (tenantId: string) => [...tenantKeys.all(tenantId), 'list'] as const,
-  detail: (tenantId: string, id: string) =>
-    [...tenantKeys.all(tenantId), 'detail', id] as const,
-  children: (tenantId: string, parentId: string) =>
-    [...tenantKeys.all(tenantId), 'children', parentId] as const,
+  detail: (tenantId: string, id: string) => [...tenantKeys.all(tenantId), 'detail', id] as const,
+  children: (tenantId: string, parentId: string) => [...tenantKeys.all(tenantId), 'children', parentId] as const,
 };
 
-export function useTenantDepartments(
-  tenantId: string,
-  options?: Omit<UseQueryOptions<Department[]>, 'queryKey' | 'queryFn'>,
-) {
+export function useTenantDepartments(tenantId: string, options?: Omit<UseQueryOptions<Department[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: tenantKeys.list(tenantId),
-    queryFn: () =>
-      adminClient.get<Department[]>('/admin/departments?includeDisabled=true', { tenantId }),
+    queryFn: () => adminClient.get<Department[]>('/admin/departments?includeDisabled=true', { tenantId }),
     enabled: !!tenantId,
     ...options,
   });
 }
 
-export function useTenantDepartment(
-  tenantId: string,
-  id: string,
-  options?: Omit<UseQueryOptions<Department>, 'queryKey' | 'queryFn'>,
-) {
+export function useTenantDepartment(tenantId: string, id: string, options?: Omit<UseQueryOptions<Department>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: tenantKeys.detail(tenantId, id),
-    queryFn: () =>
-      adminClient.get<Department>(`/admin/departments/${id}`, { tenantId }),
+    queryFn: () => adminClient.get<Department>(`/admin/departments/${id}`, { tenantId }),
     enabled: !!tenantId && !!id,
     ...options,
   });
@@ -220,11 +184,7 @@ export function useTenantDepartmentChildren(
 ) {
   return useQuery({
     queryKey: tenantKeys.children(tenantId, parentId),
-    queryFn: () =>
-      adminClient.get<Department[]>(
-        `/admin/departments/${parentId}/children`,
-        { tenantId },
-      ),
+    queryFn: () => adminClient.get<Department[]>(`/admin/departments/${parentId}/children`, { tenantId }),
     enabled: !!tenantId && !!parentId,
     ...options,
   });
@@ -233,8 +193,7 @@ export function useTenantDepartmentChildren(
 export function useCreateTenantDepartment(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateDepartmentInput) =>
-      adminClient.post<Department>('/admin/departments', input, { tenantId }),
+    mutationFn: (input: CreateDepartmentInput) => adminClient.post<Department>('/admin/departments', input, { tenantId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: tenantKeys.all(tenantId) });
       qc.invalidateQueries({ queryKey: keys.all });
@@ -262,15 +221,8 @@ export function useUpdateTenantDepartment(tenantId: string) {
 export function useUpdateTenantDepartmentPromptConfig(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      ...input
-    }: UpdatePromptConfigInput & { id: string }) =>
-      adminClient.patch<Department>(
-        `/admin/departments/${id}/prompt-config`,
-        input,
-        { tenantId },
-      ),
+    mutationFn: ({ id, ...input }: UpdatePromptConfigInput & { id: string }) =>
+      adminClient.patch<Department>(`/admin/departments/${id}/prompt-config`, input, { tenantId }),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: tenantKeys.all(tenantId) });
       qc.invalidateQueries({ queryKey: keys.all });
@@ -284,8 +236,7 @@ export function useUpdateTenantDepartmentPromptConfig(tenantId: string) {
 export function useDeleteTenantDepartment(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      adminClient.delete<Department>(`/admin/departments/${id}`, { tenantId }),
+    mutationFn: (id: string) => adminClient.delete<Department>(`/admin/departments/${id}`, { tenantId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: tenantKeys.all(tenantId) });
       qc.invalidateQueries({ queryKey: keys.all });

@@ -8,20 +8,12 @@ type UploadButtonProps = {
   id?: string;
   accept?: string;
   metadata?: Record<string, unknown>;
-  uploadOverride?: (
-    ...args: Parameters<UploadHookControl<false>['upload']>
-  ) => void;
+  uploadOverride?: (...args: Parameters<UploadHookControl<false>['upload']>) => void;
 
   // Add any additional props you need.
 };
 
-export function UploadButton({
-  control: { upload, isPending },
-  id: _id,
-  accept,
-  metadata,
-  uploadOverride,
-}: UploadButtonProps) {
+export function UploadButton({ control: { upload, isPending }, id: _id, accept, metadata, uploadOverride }: UploadButtonProps) {
   const id = useId();
 
   return (

@@ -1,26 +1,21 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Kanban,
-  KanbanBoard,
-  KanbanColumn,
-  KanbanItem,
-} from '../../../registries/diceui/kanban'
+import { Kanban, KanbanBoard, KanbanColumn, KanbanItem } from '../../../registries/diceui/kanban';
 
 const meta = {
   title: 'Registries/DiceUI/Kanban',
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta
+} satisfies Meta;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 const initialValue = {
   todo: ['task-1', 'task-2'],
   'in-progress': ['task-3'],
   done: ['task-4'],
-}
+};
 
 export const Default: Story = {
   render: () => (
@@ -50,4 +45,4 @@ export const Default: Story = {
       </KanbanBoard>
     </Kanban>
   ),
-}
+};

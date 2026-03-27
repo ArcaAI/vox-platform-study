@@ -8,9 +8,7 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 @Injectable()
 export class TenantRepository extends Repository<TenantEntity, Tenant> {
-    constructor(
-        private readonly unitOfWorkService: CoreUnitOfWorkService
-    ) {
-        super(unitOfWorkService, 'tenant', TenantEntityMapper.getInstance(), undefined, ['name', 'key', 'description']);
-    }
+  constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
+    super(unitOfWorkService, 'tenant', TenantEntityMapper.getInstance(), undefined, ['name', 'key', 'description']);
+  }
 }
