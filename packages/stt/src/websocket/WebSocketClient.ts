@@ -4,21 +4,13 @@
  * WebSocket client for connecting to the backend STT service.
  */
 
-import type {
-  WSOutboundMessage,
-  WSInboundMessage,
-  AudioMetadata,
-} from '../types/index.js';
+import type { WSOutboundMessage, WSInboundMessage, AudioMetadata } from '../types/index.js';
 import { isWebSocketSupported } from '../utils/browserSupport.js';
 
 /**
  * WebSocket connection state.
  */
-export type ConnectionState =
-  | 'disconnected'
-  | 'connecting'
-  | 'connected'
-  | 'error';
+export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 /**
  * Callbacks for WebSocket events.
@@ -87,9 +79,7 @@ export interface WebSocketClientOptions {
 /**
  * Default options for WebSocket client.
  */
-export const DEFAULT_WS_OPTIONS: Required<
-  Omit<WebSocketClientOptions, 'sttSocket' | 'sessionId'>
-> = {
+export const DEFAULT_WS_OPTIONS: Required<Omit<WebSocketClientOptions, 'sttSocket' | 'sessionId'>> = {
   maxReconnectAttempts: 3,
   reconnectDelay: 1000,
   keepAliveInterval: 25000,
@@ -224,6 +214,7 @@ export class WebSocketClient {
           }
         };
 
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         this.socket.onerror = (_event) => {
           this.clearConnectionTimeout();
           const error = new Error('WebSocket error');
@@ -271,10 +262,7 @@ export class WebSocketClient {
    * @param audio - Audio data as Float32Array or ArrayBuffer
    * @param metadata - Optional audio metadata
    */
-  sendAudio(
-    audio: Float32Array | ArrayBuffer | Uint8Array,
-    metadata?: AudioMetadata
-  ): void {
+  sendAudio(audio: Float32Array | ArrayBuffer | Uint8Array, metadata?: AudioMetadata): void {
     if (!this.isConnected()) {
       return;
     }
@@ -321,9 +309,7 @@ export class WebSocketClient {
     try {
       this.socket.send(JSON.stringify(message));
     } catch (error) {
-      this.handleError(
-        error instanceof Error ? error : new Error(String(error))
-      );
+      this.handleError(error instanceof Error ? error : new Error(String(error)));
     }
   }
 
@@ -350,7 +336,7 @@ export class WebSocketClient {
         const message = JSON.parse(event.data) as WSInboundMessage;
         this.callbacks.onMessage?.(message);
       }
-    } catch (error) {
+    } catch {
       // Ignore parse errors for binary data
     }
   }

@@ -40,11 +40,7 @@ export {
 export function isWebAssemblySupported(): boolean {
   if (!isBrowser()) return false;
   try {
-    return (
-      typeof WebAssembly === 'object' &&
-      typeof WebAssembly.instantiate === 'function' &&
-      typeof WebAssembly.compile === 'function'
-    );
+    return typeof WebAssembly === 'object' && typeof WebAssembly.instantiate === 'function' && typeof WebAssembly.compile === 'function';
   } catch {
     return false;
   }
