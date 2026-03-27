@@ -19,24 +19,14 @@
 # The prepare-test-db job resets the schema + seeds before tests run.
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ── Skip rules ───────────────────────────────────────────────────────────────
-# Prepended to each test job's rules: block so a "when: never" fires first.
-# Usage: set SKIP_TESTS=true to skip all, or SKIP_TESTS_TS / SKIP_TESTS_PY
-# for granular control.
-
-.rules-skip-ts-tests:
-  rules:
-    - if: $SKIP_TESTS == "true"
-      when: never
-    - if: $SKIP_TESTS_TS == "true"
-      when: never
-
-.rules-skip-py-tests:
-  rules:
-    - if: $SKIP_TESTS == "true"
-      when: never
-    - if: $SKIP_TESTS_PY == "true"
-      when: never
+# ── Skip controls ────────────────────────────────────────────────────────────
+# Set SKIP_TESTS=true to skip ALL test jobs, or use the granular variants:
+#   SKIP_TESTS_TS — skip TypeScript tests (test-api, test-packages, test-sdk)
+#   SKIP_TESTS_PY — skip Python tests (test-stt-v2, test-smr, test-nlp)
+#
+# Usage:
+#   GitLab UI → Run pipeline → add variable SKIP_TESTS = true
+#   git push -o ci.variable="SKIP_TESTS=true"
 
 # ── Shared test variables (anchored for reuse) ──────────────────────────────
 
@@ -93,7 +83,10 @@ test-api:
       junit: junit-api.xml
     expire_in: 30 days
   rules:
-    - !reference [.rules-skip-ts-tests, rules]
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_TS == "true"
+      when: never
     - !reference [.rules-api, rules]
 
 # ── Shared package tests (Vitest) ───────────────────────────────────────────
@@ -114,7 +107,10 @@ test-packages:
     - pnpm turbo build --filter=@arcaai/domains
     - pnpm turbo test --filter=@arcaai/logger --filter=@arcaai/utils --filter=@arcaai/pipeline
   rules:
-    - !reference [.rules-skip-ts-tests, rules]
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_TS == "true"
+      when: never
     - !reference [.rules-always, rules]
     - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -141,7 +137,10 @@ test-sdk:
     - pnpm turbo build --filter=@arcaai/utils
     - pnpm turbo test --filter=@arcaai/vox --filter=@arcaai/room --filter=@arcaai/vad --filter=@arcaai/stt --filter=@arcaai/noise-filter --filter=@arcaai/med-ner --filter=@arcaai/ui
   rules:
-    - !reference [.rules-skip-ts-tests, rules]
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_TS == "true"
+      when: never
     - !reference [.rules-always, rules]
     - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -200,7 +199,10 @@ test-stt-v2:
       junit: junit-stt-v2.xml
     expire_in: 30 days
   rules:
-    - !reference [.rules-skip-py-tests, rules]
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_PY == "true"
+      when: never
     - !reference [.rules-stt-v2, rules]
 
 # ── SMR tests (pytest) ──────────────────────────────────────────────────────
@@ -240,7 +242,10 @@ test-smr:
       junit: junit-smr.xml
     expire_in: 30 days
   rules:
-    - !reference [.rules-skip-py-tests, rules]
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_PY == "true"
+      when: never
     - !reference [.rules-smr, rules]
 
 # ── NLP tests (pytest) ──────────────────────────────────────────────────────
@@ -276,5 +281,8 @@ test-nlp:
       junit: junit-nlp.xml
     expire_in: 30 days
   rules:
-    - !reference [.rules-skip-py-tests, rules]
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_PY == "true"
+      when: never
     - !reference [.rules-nlp, rules]
