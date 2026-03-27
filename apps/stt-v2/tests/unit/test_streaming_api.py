@@ -281,21 +281,22 @@ class TestDeleteSession:
 
     def test_delete_session_success(self, client, mock_session_manager, mock_session):
         mock_session_manager.get_session = MagicMock(return_value=mock_session)
-        mock_session_manager.remove_session = AsyncMock()
+        mock_session_manager.end_session = AsyncMock()
 
         resp = client.delete("/internal/streaming/sessions/sess-001")
 
         assert resp.status_code == 204
-        mock_session_manager.remove_session.assert_awaited_once_with("sess-001")
+        mock_session_manager.end_session.assert_awaited_once_with("sess-001")
 
     def test_delete_session_idempotent_when_not_found(self, client, mock_session_manager):
         """DELETE should return 204 even when session doesn't exist (idempotent)."""
         mock_session_manager.get_session = MagicMock(return_value=None)
+        mock_session_manager.end_session = AsyncMock()
 
         resp = client.delete("/internal/streaming/sessions/sess-999")
 
         assert resp.status_code == 204
-        mock_session_manager.remove_session.assert_not_awaited()
+        mock_session_manager.end_session.assert_not_awaited()
 
     def test_delete_session_not_initialized(self, client_no_streaming):
         resp = client_no_streaming.delete("/internal/streaming/sessions/sess-001")
@@ -352,7 +353,7 @@ class TestEndActiveSession:
 
     def test_end_active_session_success(self, client, mock_session_manager, mock_session):
         mock_session_manager.get_session = MagicMock(return_value=mock_session)
-        mock_session_manager.remove_session = AsyncMock()
+        mock_session_manager.end_session = AsyncMock()
 
         resp = client.post("/internal/streaming/sessions/sess-001/end")
 
@@ -360,7 +361,7 @@ class TestEndActiveSession:
         data = resp.json()
         assert data["status"] == "ok"
         assert data["session_id"] == "sess-001"
-        mock_session_manager.remove_session.assert_awaited_once_with("sess-001")
+        mock_session_manager.end_session.assert_awaited_once_with("sess-001")
 
     def test_end_active_session_not_found(self, client, mock_session_manager):
         mock_session_manager.get_session = MagicMock(return_value=None)
