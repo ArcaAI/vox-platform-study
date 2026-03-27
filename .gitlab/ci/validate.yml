@@ -15,6 +15,8 @@ lint-ts:
   needs:
     - job: install-node
       optional: true
+  variables:
+    DATABASE_URL: $CI_DATABASE_URL
   script:
     - pnpm --filter @arcaai/database db:generate
     - pnpm turbo lint
@@ -29,6 +31,8 @@ typecheck:
   needs:
     - job: install-node
       optional: true
+  variables:
+    DATABASE_URL: $CI_DATABASE_URL
   script:
     - pnpm --filter @arcaai/database db:generate
     - pnpm turbo build --filter=@arcaai/database
