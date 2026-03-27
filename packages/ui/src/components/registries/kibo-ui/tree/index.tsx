@@ -163,6 +163,7 @@ export const TreeNode = ({
   parentPath = [],
   children,
   className,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onClick,
   ...props
 }: TreeNodeProps) => {

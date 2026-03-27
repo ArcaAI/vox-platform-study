@@ -1,17 +1,6 @@
 'use client';
 
-import {
-  Children,
-  createContext,
-  forwardRef,
-  isValidElement,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  type ComponentPropsWithoutRef,
-  type ReactNode,
-} from 'react';
+import { createContext, forwardRef, useCallback, useContext, useEffect, useRef, type ComponentPropsWithoutRef, type ReactNode } from 'react';
 import { cva, VariantProps } from 'class-variance-authority';
 import { motion } from 'framer-motion';
 import { MicIcon, SquareIcon, XIcon } from 'lucide-react';
@@ -214,7 +203,7 @@ const SpeechInput = forwardRef<HTMLDivElement, SpeechInputProps>(function Speech
     } catch {
       // Error is handled by onError callback
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, [getToken, scribe, onStart, microphone]);
 
   const stop = () => {

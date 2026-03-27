@@ -144,6 +144,7 @@ export const TagsList = ({ className, ...props }: TagsListProps) => <CommandList
 
 export type TagsEmptyProps = ComponentProps<typeof CommandEmpty>;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const TagsEmpty = ({ children, className, ...props }: TagsEmptyProps) => (
   <CommandEmpty {...props}>{children ?? 'No tags found.'}</CommandEmpty>
 );

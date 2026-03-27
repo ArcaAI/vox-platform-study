@@ -12,6 +12,7 @@ export const Status = ({ className, status, ...props }: StatusProps) => (
 
 export type StatusIndicatorProps = HTMLAttributes<HTMLSpanElement>;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const StatusIndicator = ({ className, ...props }: StatusIndicatorProps) => (
   <span className="relative flex h-2 w-2" {...props}>
     <span

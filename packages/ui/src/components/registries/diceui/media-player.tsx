@@ -2128,6 +2128,7 @@ function MediaPlayerPlaybackSpeed(props: MediaPlayerPlaybackSpeedProps) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface MediaPlayerLoopProps extends React.ComponentProps<typeof Button> {}
 
 function MediaPlayerLoop(props: MediaPlayerLoopProps) {
@@ -2195,6 +2196,7 @@ function MediaPlayerLoop(props: MediaPlayerLoopProps) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface MediaPlayerFullscreenProps extends React.ComponentProps<typeof Button> {}
 
 function MediaPlayerFullscreen(props: MediaPlayerFullscreenProps) {
@@ -2397,6 +2399,7 @@ function MediaPlayerDownload(props: React.ComponentProps<typeof Button>) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface MediaPlayerSettingsProps extends MediaPlayerPlaybackSpeedProps {}
 
 function MediaPlayerSettings(props: MediaPlayerSettingsProps) {

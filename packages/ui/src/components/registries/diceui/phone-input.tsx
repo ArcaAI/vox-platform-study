@@ -599,6 +599,7 @@ interface PhoneInputCountrySelectProps
   extends React.ComponentProps<typeof Popover>, Pick<React.ComponentProps<typeof PopoverTrigger>, 'disabled' | 'className'> {}
 
 function PhoneInputCountrySelect(props: PhoneInputCountrySelectProps) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { disabled: disabledProp, className, children, onOpenChange: onOpenChangeProp, ...popoverProps } = props;
 
   const { countries, inputRef, disabled, showFlag } = usePhoneInputContext(COUNTRY_SELECT_NAME);

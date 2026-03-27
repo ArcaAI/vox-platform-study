@@ -158,6 +158,7 @@ type FolderProps = {
 } & React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item>;
 
 const Folder = forwardRef<HTMLDivElement, FolderProps & React.HTMLAttributes<HTMLDivElement>>(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   ({ className, element, value, isSelectable = true, isSelect, children, ...props }, ref) => {
     const { direction, handleExpand, expandedItems, indicator, setExpandedItems, openIcon, closeIcon } = useTree();
 
@@ -206,31 +207,34 @@ const File = forwardRef<
     isSelect?: boolean;
     fileIcon?: React.ReactNode;
   } & React.ButtonHTMLAttributes<HTMLButtonElement>
->(({ value, className, handleSelect, isSelectable = true, isSelect, fileIcon, children, ...props }, ref) => {
-  const { direction, selectedId, selectItem } = useTree();
-  const isSelected = isSelect ?? selectedId === value;
-  return (
-    <button
-      ref={ref}
-      type="button"
-      disabled={!isSelectable}
-      className={cn(
-        'flex w-fit items-center gap-1 rounded-md pr-1 text-sm duration-200 ease-in-out rtl:pr-0 rtl:pl-1',
-        {
-          'bg-muted': isSelected && isSelectable,
-        },
-        isSelectable ? 'cursor-pointer' : 'cursor-not-allowed opacity-50',
-        direction === 'rtl' ? 'rtl' : 'ltr',
-        className,
-      )}
-      onClick={() => selectItem(value)}
-      {...props}
-    >
-      {fileIcon ?? <FileIcon className="size-4" />}
-      {children}
-    </button>
-  );
-});
+>(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  ({ value, className, handleSelect, isSelectable = true, isSelect, fileIcon, children, ...props }, ref) => {
+    const { direction, selectedId, selectItem } = useTree();
+    const isSelected = isSelect ?? selectedId === value;
+    return (
+      <button
+        ref={ref}
+        type="button"
+        disabled={!isSelectable}
+        className={cn(
+          'flex w-fit items-center gap-1 rounded-md pr-1 text-sm duration-200 ease-in-out rtl:pr-0 rtl:pl-1',
+          {
+            'bg-muted': isSelected && isSelectable,
+          },
+          isSelectable ? 'cursor-pointer' : 'cursor-not-allowed opacity-50',
+          direction === 'rtl' ? 'rtl' : 'ltr',
+          className,
+        )}
+        onClick={() => selectItem(value)}
+        {...props}
+      >
+        {fileIcon ?? <FileIcon className="size-4" />}
+        {children}
+      </button>
+    );
+  },
+);
 
 File.displayName = 'File';
 
@@ -240,45 +244,48 @@ const CollapseButton = forwardRef<
     elements: TreeViewElement[];
     expandAll?: boolean;
   } & React.HTMLAttributes<HTMLButtonElement>
->(({ className, elements, expandAll = false, children, ...props }, ref) => {
-  const { expandedItems, setExpandedItems } = useTree();
+>(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  ({ className, elements, expandAll = false, children, ...props }, ref) => {
+    const { expandedItems, setExpandedItems } = useTree();
 
-  const expendAllTree = useCallback((elements: TreeViewElement[]) => {
-    const expandTree = (element: TreeViewElement) => {
-      const isSelectable = element.isSelectable ?? true;
-      if (isSelectable && element.children && element.children.length > 0) {
-        setExpandedItems?.((prev) => [...(prev ?? []), element.id]);
-        element.children.forEach(expandTree);
+    const expendAllTree = useCallback((elements: TreeViewElement[]) => {
+      const expandTree = (element: TreeViewElement) => {
+        const isSelectable = element.isSelectable ?? true;
+        if (isSelectable && element.children && element.children.length > 0) {
+          setExpandedItems?.((prev) => [...(prev ?? []), element.id]);
+          element.children.forEach(expandTree);
+        }
+      };
+
+      elements.forEach(expandTree);
+    }, []);
+
+    const closeAll = useCallback(() => {
+      setExpandedItems?.([]);
+    }, []);
+
+    useEffect(() => {
+      console.log(expandAll);
+      if (expandAll) {
+        expendAllTree(elements);
       }
-    };
+    }, [expandAll]);
 
-    elements.forEach(expandTree);
-  }, []);
-
-  const closeAll = useCallback(() => {
-    setExpandedItems?.([]);
-  }, []);
-
-  useEffect(() => {
-    console.log(expandAll);
-    if (expandAll) {
-      expendAllTree(elements);
-    }
-  }, [expandAll]);
-
-  return (
-    <Button
-      variant={'ghost'}
-      className="absolute right-2 bottom-1 h-8 w-fit p-1"
-      onClick={expandedItems && expandedItems.length > 0 ? closeAll : () => expendAllTree(elements)}
-      ref={ref}
-      {...props}
-    >
-      {children}
-      <span className="sr-only">Toggle</span>
-    </Button>
-  );
-});
+    return (
+      <Button
+        variant={'ghost'}
+        className="absolute right-2 bottom-1 h-8 w-fit p-1"
+        onClick={expandedItems && expandedItems.length > 0 ? closeAll : () => expendAllTree(elements)}
+        ref={ref}
+        {...props}
+      >
+        {children}
+        <span className="sr-only">Toggle</span>
+      </Button>
+    );
+  },
+);
 
 CollapseButton.displayName = 'CollapseButton';
 
