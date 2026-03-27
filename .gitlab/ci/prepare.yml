@@ -34,7 +34,23 @@ prepare-test-db:
         echo "  Expected format: postgresql://user:pass@host:port/dbname"
         exit 1
       fi
-    - echo "  DATABASE_URL host = $(echo $DATABASE_URL | sed 's|.*@\(.*\)/.*|\1|')"
+    - |
+      DB_HOST=$(echo "$DATABASE_URL" | sed 's|.*@\([^/]*\)/.*|\1|')
+      DB_HOST_ONLY=$(echo "$DB_HOST" | cut -d: -f1)
+      DB_PORT=$(echo "$DB_HOST" | cut -d: -f2)
+      echo "  DATABASE_URL target = $DB_HOST"
+      echo "  Testing connectivity to $DB_HOST_ONLY:$DB_PORT ..."
+      if node -e "const s=require('net').createConnection({host:'$DB_HOST_ONLY',port:$DB_PORT,timeout:5000});s.on('connect',()=>{console.log('  ✓ Database reachable');s.destroy();process.exit(0)});s.on('error',e=>{console.error('  ✗ '+e.message);process.exit(1)});s.on('timeout',()=>{console.error('  ✗ Connection timed out');s.destroy();process.exit(1)})"; then
+        echo ""
+      else
+        echo "ERROR: Cannot reach database at $DB_HOST_ONLY:$DB_PORT"
+        echo "  Possible causes:"
+        echo "    - Docker network isolation (fix: set network_mode=host in runner config)"
+        echo "    - Firewall blocking port $DB_PORT from this host"
+        echo "    - Database server not running"
+        echo "  Container hostname: $(hostname)"
+        exit 1
+      fi
 
     - echo "── Generating Prisma client..."
     - pnpm --filter @arcaai/database db:generate

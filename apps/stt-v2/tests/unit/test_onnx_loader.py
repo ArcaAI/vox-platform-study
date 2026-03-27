@@ -2,20 +2,37 @@
 and MPS memory cleanup on unload.
 """
 
+import sys
+import types
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-try:
-    import onnxruntime  # noqa: F401
-    HAS_ONNXRUNTIME = True
-except ImportError:
-    HAS_ONNXRUNTIME = False
-
-requires_onnxruntime = pytest.mark.skipif(not HAS_ONNXRUNTIME, reason="onnxruntime not installed")
-
 from stt_v2.models.base_loader import LoadedModel
 from stt_v2.models.onnx_loader import ONNXLoader
+
+
+@pytest.fixture(autouse=True)
+def _stub_onnxruntime():
+    """Ensure an ``onnxruntime`` module is importable for every test.
+
+    If the real package is installed it is used as-is.  Otherwise a
+    lightweight stub is injected into ``sys.modules`` so that
+    ``patch("onnxruntime.get_available_providers", ...)`` can resolve
+    the attribute without raising ``ModuleNotFoundError``.
+    """
+    if "onnxruntime" in sys.modules:
+        yield
+        return
+
+    stub = types.ModuleType("onnxruntime")
+    stub.get_available_providers = lambda: ["CPUExecutionProvider"]
+    sys.modules["onnxruntime"] = stub
+    try:
+        yield
+    finally:
+        sys.modules.pop("onnxruntime", None)
+
 
 # =============================================================================
 # Standard ONNX Loader — _get_providers()
@@ -25,7 +42,6 @@ from stt_v2.models.onnx_loader import ONNXLoader
 class TestGetProviders:
     """Tests for _get_providers() execution provider selection."""
 
-    @requires_onnxruntime
     def test_cuda_returns_string_format(self):
         """CUDA provider should be returned as a plain string."""
         loader = ONNXLoader()
@@ -38,7 +54,6 @@ class TestGetProviders:
         assert providers[0] == "CUDAExecutionProvider"
         assert providers[1] == "CPUExecutionProvider"
 
-    @requires_onnxruntime
     def test_cpu_only_fallback(self):
         """When only CPU is available, return simple string list."""
         loader = ONNXLoader()
