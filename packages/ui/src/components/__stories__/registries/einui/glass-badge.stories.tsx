@@ -1,21 +1,21 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { GlassBadge } from '@/components/registries/einui/glass-badge'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { GlassBadge } from '@/components/registries/einui/glass-badge';
 
 const meta = {
   title: 'Registries/EinUI/GlassBadge',
   component: GlassBadge,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof GlassBadge>
+} satisfies Meta<typeof GlassBadge>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
     children: 'Badge',
   },
-}
+};
 
 export const Variants: Story = {
   render: () => (
@@ -27,4 +27,4 @@ export const Variants: Story = {
       <GlassBadge variant="outline">Outline</GlassBadge>
     </div>
   ),
-}
+};

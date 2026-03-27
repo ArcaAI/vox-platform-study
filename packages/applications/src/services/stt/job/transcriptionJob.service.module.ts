@@ -5,12 +5,8 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { TranscriptionJobService } from './transcriptionJob.service';
 
 @Module({
-    imports: [
-        CoreDatabaseModule,
-        EventEmitterModule,
-        ClsModule,
-    ],
-    providers: [TranscriptionJobService],
-    exports: [TranscriptionJobService],
+  imports: [CoreDatabaseModule, EventEmitterModule, ClsModule],
+  providers: [TranscriptionJobService],
+  exports: [TranscriptionJobService],
 })
 export class TranscriptionJobServiceModule {}

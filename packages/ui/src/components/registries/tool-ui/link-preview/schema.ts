@@ -1,12 +1,8 @@
-import { z } from "zod";
-import { defineToolUiContract } from "../shared/contract";
-import {
-  ToolUIIdSchema,
-  ToolUIReceiptSchema,
-  ToolUIRoleSchema,
-} from "../shared/schema";
+import { z } from 'zod';
+import { defineToolUiContract } from '../shared/contract';
+import { ToolUIIdSchema, ToolUIReceiptSchema, ToolUIRoleSchema } from '../shared/schema';
 
-import { AspectRatioSchema, MediaFitSchema } from "../shared/media";
+import { AspectRatioSchema, MediaFitSchema } from '../shared/media';
 
 export const SerializableLinkPreviewSchema = z.object({
   id: ToolUIIdSchema,
@@ -24,20 +20,10 @@ export const SerializableLinkPreviewSchema = z.object({
   locale: z.string().optional(),
 });
 
-export type SerializableLinkPreview = z.infer<
-  typeof SerializableLinkPreviewSchema
->;
+export type SerializableLinkPreview = z.infer<typeof SerializableLinkPreviewSchema>;
 
-const SerializableLinkPreviewSchemaContract = defineToolUiContract(
-  "LinkPreview",
-  SerializableLinkPreviewSchema,
-);
+const SerializableLinkPreviewSchemaContract = defineToolUiContract('LinkPreview', SerializableLinkPreviewSchema);
 
-export const parseSerializableLinkPreview: (
-  input: unknown,
-) => SerializableLinkPreview = SerializableLinkPreviewSchemaContract.parse;
+export const parseSerializableLinkPreview: (input: unknown) => SerializableLinkPreview = SerializableLinkPreviewSchemaContract.parse;
 
-export const safeParseSerializableLinkPreview: (
-  input: unknown,
-) => SerializableLinkPreview | null =
-  SerializableLinkPreviewSchemaContract.safeParse;
+export const safeParseSerializableLinkPreview: (input: unknown) => SerializableLinkPreview | null = SerializableLinkPreviewSchemaContract.safeParse;

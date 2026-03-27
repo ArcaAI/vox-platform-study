@@ -5,6 +5,6 @@ import { NotificationResponse } from '.';
 // TODO: Implement this
 
 export class PaginatedNotificationResponse extends PaginatedResponse<NotificationResponse> {
-    @ApiProperty({ type: [NotificationResponse] })
-    override readonly data!: readonly NotificationResponse[];
+  @ApiProperty({ type: [NotificationResponse] })
+  override readonly data!: readonly NotificationResponse[];
 }

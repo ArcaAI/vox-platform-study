@@ -13,63 +13,60 @@ import { routeTree } from './routeTree.gen';
 import './index.css';
 
 const router = createRouter({
-    routeTree,
-    defaultPreload: 'intent',
-    defaultPreloadStaleTime: 0,
-    defaultPendingMinMs: 0,
-    context: {
-        queryClient: undefined!,
-        isAuthenticated: false,
-    },
+  routeTree,
+  defaultPreload: 'intent',
+  defaultPreloadStaleTime: 0,
+  defaultPendingMinMs: 0,
+  context: {
+    queryClient: undefined!,
+    isAuthenticated: false,
+  },
 });
 
 declare module '@tanstack/react-router' {
-    interface Register {
-        router: typeof router;
-    }
+  interface Register {
+    router: typeof router;
+  }
 }
 
 const queryClient = createAppQueryClient((opts) => router.navigate(opts));
 
 function InnerApp() {
-    const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
-    return (
-        <RouterProvider
-            router={router}
-            context={{ queryClient, isAuthenticated }}
-        />
-    );
+  return <RouterProvider router={router} context={{ queryClient, isAuthenticated }} />;
 }
 
 function App() {
-    return (
-        <StrictMode>
-            <ErrorBoundary>
-                <ThemeProvider>
-                    <QueryClientProvider client={queryClient}>
-                        <SDKProvider>
-                            <Suspense fallback={<AppSkeleton />}>
-                                <InnerApp />
-                            </Suspense>
-                        </SDKProvider>
-                        {import.meta.env.DEV && <ReactQueryDevtools buttonPosition="bottom-left" />}
-                    </QueryClientProvider>
-                </ThemeProvider>
-            </ErrorBoundary>
-        </StrictMode>
-    );
+  // eslint-disable-next-line turbo/no-undeclared-env-vars
+  const showReactQueryDevtools = import.meta.env.DEV;
+  return (
+    <StrictMode>
+      <ErrorBoundary>
+        <ThemeProvider>
+          <QueryClientProvider client={queryClient}>
+            <SDKProvider>
+              <Suspense fallback={<AppSkeleton />}>
+                <InnerApp />
+              </Suspense>
+            </SDKProvider>
+            {showReactQueryDevtools && <ReactQueryDevtools buttonPosition="bottom-left" />}
+          </QueryClientProvider>
+        </ThemeProvider>
+      </ErrorBoundary>
+    </StrictMode>
+  );
 }
 
 function AppSkeleton() {
-    return (
-        <div className="flex h-svh w-full items-center justify-center">
-            <div className="flex flex-col items-center gap-3">
-                <Skeleton className="size-12 rounded-xl" />
-                <Skeleton className="h-4 w-48" />
-            </div>
-        </div>
-    );
+  return (
+    <div className="flex h-svh w-full items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <Skeleton className="size-12 rounded-xl" />
+        <Skeleton className="h-4 w-48" />
+      </div>
+    </div>
+  );
 }
 
 createRoot(document.getElementById('root')!).render(<App />);

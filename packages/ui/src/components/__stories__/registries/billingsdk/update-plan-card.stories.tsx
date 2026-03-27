@@ -1,12 +1,12 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
-import { UpdatePlanCard } from "@/components/registries/billingsdk";
-import { plans } from "@/lib/billingsdk-config";
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { UpdatePlanCard } from '@/components/registries/billingsdk';
+import { plans } from '@/lib/billingsdk-config';
 
 const meta = {
-  title: "Registries/BillingSDK/UpdatePlanCard",
+  title: 'Registries/BillingSDK/UpdatePlanCard',
   component: UpdatePlanCard,
-  parameters: { layout: "centered" },
-  tags: ["autodocs"],
+  parameters: { layout: 'centered' },
+  tags: ['autodocs'],
 } satisfies Meta<typeof UpdatePlanCard>;
 
 export default meta;

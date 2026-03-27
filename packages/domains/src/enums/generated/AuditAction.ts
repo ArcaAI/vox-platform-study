@@ -2,14 +2,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-
 export enum AuditAction {
-    CREATE = 'CREATE',
-    READ = 'READ',
-    UPDATE = 'UPDATE',
-    DELETE = 'DELETE',
-    ARCHIVE = 'ARCHIVE',
-    LOGIN = 'LOGIN',
-    LOGOUT = 'LOGOUT',
+  CREATE = 'CREATE',
+  READ = 'READ',
+  UPDATE = 'UPDATE',
+  DELETE = 'DELETE',
+  ARCHIVE = 'ARCHIVE',
+  LOGIN = 'LOGIN',
+  LOGOUT = 'LOGOUT',
 }
-

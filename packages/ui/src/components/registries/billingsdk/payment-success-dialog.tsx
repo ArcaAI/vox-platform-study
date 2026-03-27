@@ -1,19 +1,13 @@
 'use client';
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { CheckCircle2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useTheme } from "@/contexts/theme-context";
-import { getThemeStyles } from "@/lib/themes";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/shadcn/dialog";
-import { Button } from "@/components/shadcn/button";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { CheckCircle2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useTheme } from '@/contexts/theme-context';
+import { getThemeStyles } from '@/lib/themes';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/shadcn/dialog';
+import { Button } from '@/components/shadcn/button';
 
 export interface PaymentSuccessDialogProps {
   title?: string;
@@ -45,20 +39,23 @@ type ConfettiPiece = {
   colorVar: string; // CSS var name like --primary, --accent
 };
 
-export const PaymentSuccessDialog = forwardRef<PaymentSuccessDialogRef, PaymentSuccessDialogProps>(function PaymentSuccessDialog({
-  title = "Congratulations!",
-  subtitle = "Your payment was successful.",
-  currencySymbol = "$",
-  price,
-  productName,
-  proceedButtonText = "Proceed",
-  backButtonText = "Back",
-  onProceed,
-  onBack,
-  className,
-  open,
-  onOpenChange,
-}, ref) {
+export const PaymentSuccessDialog = forwardRef<PaymentSuccessDialogRef, PaymentSuccessDialogProps>(function PaymentSuccessDialog(
+  {
+    title = 'Congratulations!',
+    subtitle = 'Your payment was successful.',
+    currencySymbol = '$',
+    price,
+    productName,
+    proceedButtonText = 'Proceed',
+    backButtonText = 'Back',
+    onProceed,
+    onBack,
+    className,
+    open,
+    onOpenChange,
+  },
+  ref,
+) {
   const isControlled = open !== undefined;
   const [internalOpen, setInternalOpen] = useState(false);
   const openState = isControlled ? (open as boolean) : internalOpen;
@@ -69,10 +66,14 @@ export const PaymentSuccessDialog = forwardRef<PaymentSuccessDialogRef, PaymentS
       setInternalOpen(value);
     }
   };
-  useImperativeHandle(ref, () => ({
-    open: () => setOpenState(true),
-    close: () => setOpenState(false),
-  }), [isControlled, onOpenChange]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      open: () => setOpenState(true),
+      close: () => setOpenState(false),
+    }),
+    [isControlled, onOpenChange],
+  );
   const [confettiActive, setConfettiActive] = useState(false);
   const { currentTheme, previewDarkMode } = useTheme();
   const themeStyles = getThemeStyles(currentTheme, previewDarkMode);
@@ -88,7 +89,7 @@ export const PaymentSuccessDialog = forwardRef<PaymentSuccessDialogRef, PaymentS
 
   const confetti: ConfettiPiece[] = useMemo(() => {
     const pieces: ConfettiPiece[] = [];
-    const colors = ["--primary", "--accent", "--secondary"];
+    const colors = ['--primary', '--accent', '--secondary'];
     for (let i = 0; i < 42; i++) {
       const startX = Math.random() * 100;
       const drift = (Math.random() - 0.5) * 24; // -12% to +12%
@@ -107,22 +108,16 @@ export const PaymentSuccessDialog = forwardRef<PaymentSuccessDialogRef, PaymentS
 
   return (
     <Dialog open={openState} onOpenChange={setOpenState}>
-      <DialogContent
-        className={cn(
-          "w-[95%] sm:max-w-[560px] p-0 overflow-hidden text-foreground",
-          className
-        )}
-        style={themeStyles}
-      >
+      <DialogContent className={cn('w-[95%] sm:max-w-[560px] p-0 overflow-hidden text-foreground', className)} style={themeStyles}>
         <div className="relative">
           <div className="p-7 flex flex-col items-center text-center gap-5">
             <div className="relative">
               <motion.div
                 className="absolute inset-0 -z-10 mx-auto size-20 rounded-full blur-xl"
-                style={{ background: "var(--primary)", opacity: 0.12 }}
+                style={{ background: 'var(--primary)', opacity: 0.12 }}
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 0.12 }}
-                transition={{ duration: 0.5, ease: "easeOut" }}
+                transition={{ duration: 0.5, ease: 'easeOut' }}
               />
               <div className="relative">
                 <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center border border-primary/30 shadow-sm">
@@ -132,21 +127,19 @@ export const PaymentSuccessDialog = forwardRef<PaymentSuccessDialogRef, PaymentS
                   className="absolute inset-0 rounded-full border-2 border-primary/30"
                   initial={{ scale: 0.9, opacity: 0.5 }}
                   animate={{ scale: 1.25, opacity: 0 }}
-                  transition={{ duration: 1.2, repeat: Infinity, ease: "easeOut" }}
+                  transition={{ duration: 1.2, repeat: Infinity, ease: 'easeOut' }}
                 />
                 <motion.span
                   className="absolute inset-0 rounded-full border-2 border-accent/30"
                   initial={{ scale: 0.9, opacity: 0.5 }}
                   animate={{ scale: 1.6, opacity: 0 }}
-                  transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut", delay: 0.2 }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: 'easeOut', delay: 0.2 }}
                 />
               </div>
             </div>
 
             <DialogHeader className="text-center">
-              <DialogTitle className="text-2xl font-semibold">
-                {title}
-              </DialogTitle>
+              <DialogTitle className="text-2xl font-semibold">{title}</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground max-w-[38ch]">{subtitle}</p>
 
@@ -155,7 +148,7 @@ export const PaymentSuccessDialog = forwardRef<PaymentSuccessDialogRef, PaymentS
                 className="text-4xl font-semibold tracking-tight"
                 initial={{ y: 6, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 280, damping: 22 }}
+                transition={{ type: 'spring', stiffness: 280, damping: 22 }}
               >
                 {currencySymbol}
                 {price}
@@ -188,26 +181,21 @@ export const PaymentSuccessDialog = forwardRef<PaymentSuccessDialogRef, PaymentS
 
           <AnimatePresence>
             {confettiActive && (
-              <motion.div
-                className="pointer-events-none absolute inset-0"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-              >
+              <motion.div className="pointer-events-none absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 {confetti.map((c) => (
                   <motion.span
                     key={c.id}
                     className="absolute block rounded-[2px]"
                     style={{
                       left: `${c.x}%`,
-                      top: "-16px",
+                      top: '-16px',
                       width: c.size,
                       height: c.size * 0.6,
                       backgroundColor: `var(${c.colorVar})`,
                     }}
                     initial={{ y: -20, rotate: c.rotation }}
                     animate={{ y: 360 + Math.random() * 80, x: `${c.xEnd}%`, rotate: c.rotation + 720 }}
-                    transition={{ duration: 1.8 + Math.random() * 0.8, delay: c.delay, ease: "easeOut" }}
+                    transition={{ duration: 1.8 + Math.random() * 0.8, delay: c.delay, ease: 'easeOut' }}
                   />
                 ))}
               </motion.div>
@@ -218,5 +206,3 @@ export const PaymentSuccessDialog = forwardRef<PaymentSuccessDialogRef, PaymentS
     </Dialog>
   );
 });
-
-

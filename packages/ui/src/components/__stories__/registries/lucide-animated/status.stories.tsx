@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   BellIcon,
@@ -11,19 +11,19 @@ import {
   ZapIcon,
   HeartIcon,
   SparklesIcon,
-} from "@/components/registries/lucide-animated";
+} from '@/components/registries/lucide-animated';
 
 const icons = [
-  { name: "bell", Icon: BellIcon },
-  { name: "circle-check", Icon: CircleCheckIcon },
-  { name: "shield-check", Icon: ShieldCheckIcon },
-  { name: "eye", Icon: EyeIcon },
-  { name: "eye-off", Icon: EyeOffIcon },
-  { name: "lock", Icon: LockIcon },
-  { name: "lock-open", Icon: LockOpenIcon },
-  { name: "zap", Icon: ZapIcon },
-  { name: "heart", Icon: HeartIcon },
-  { name: "sparkles", Icon: SparklesIcon },
+  { name: 'bell', Icon: BellIcon },
+  { name: 'circle-check', Icon: CircleCheckIcon },
+  { name: 'shield-check', Icon: ShieldCheckIcon },
+  { name: 'eye', Icon: EyeIcon },
+  { name: 'eye-off', Icon: EyeOffIcon },
+  { name: 'lock', Icon: LockIcon },
+  { name: 'lock-open', Icon: LockOpenIcon },
+  { name: 'zap', Icon: ZapIcon },
+  { name: 'heart', Icon: HeartIcon },
+  { name: 'sparkles', Icon: SparklesIcon },
 ] as const;
 
 function StatusIcons() {
@@ -40,9 +40,9 @@ function StatusIcons() {
 }
 
 const meta = {
-  title: "Registries/LucideAnimated/Status",
+  title: 'Registries/LucideAnimated/Status',
   component: StatusIcons,
-  parameters: { layout: "padded" },
+  parameters: { layout: 'padded' },
 } satisfies Meta<typeof StatusIcons>;
 
 export default meta;

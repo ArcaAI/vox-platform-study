@@ -3,12 +3,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Input } from '@arcaai/ui/input';
-import {
-  MultiColumnLayout,
-  type MultiColumnConfig,
-  type MultiColumnContentConfig,
-  type MultiColumnState,
-} from '@arcaai/ui/multi-column-layout';
+import { MultiColumnLayout, type MultiColumnConfig, type MultiColumnContentConfig, type MultiColumnState } from '@arcaai/ui/multi-column-layout';
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -63,15 +58,7 @@ function normalizeConfigValue(value: string, dataType?: string | null): string {
   return isJsonDataType(dataType) ? normalizeJsonString(value) : value;
 }
 
-function ConfigValueEditor({
-  config,
-  value,
-  onChange,
-}: {
-  config: TenantConfig;
-  value: string;
-  onChange: (next: string) => void;
-}) {
+function ConfigValueEditor({ config, value, onChange }: { config: TenantConfig; value: string; onChange: (next: string) => void }) {
   const type = String(config.dataType ?? 'STRING').toUpperCase();
   const jsonInvalid = isJsonDataType(config.dataType) && value.trim().length > 0 && !isValidJsonString(value);
   if (type === 'BOOLEAN') {
@@ -81,9 +68,7 @@ function ConfigValueEditor({
         aria-label="Boolean configuration value"
         title="Boolean configuration value"
         value={value}
-        onChange={(event: React.ChangeEvent<HTMLSelectElement>) =>
-          onChange(event.target.value)
-        }
+        onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange(event.target.value)}
       >
         <option value="true">true</option>
         <option value="false">false</option>
@@ -98,21 +83,12 @@ function ConfigValueEditor({
         title="Configuration value editor"
         aria-invalid={jsonInvalid}
         value={value}
-        onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) =>
-          onChange(event.target.value)
-        }
+        onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value)}
         spellCheck={false}
       />
     );
   }
-  return (
-    <Input
-      value={value}
-      onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-        onChange(event.target.value)
-      }
-    />
-  );
+  return <Input value={value} onChange={(event: React.ChangeEvent<HTMLInputElement>) => onChange(event.target.value)} />;
 }
 
 export default function ConfigurationManagementPage() {
@@ -141,23 +117,22 @@ export default function ConfigurationManagementPage() {
   const allTenants = useMemo<Tenant[]>(() => {
     if (!isSuperOrGlobalAdmin) {
       if (!tenantId) return [];
-      return [{
-        id: tenantId,
-        name: tenantName || tenantId,
-        key: tenantId,
-        resourceStatus: 'ENABLED',
-        createdAt: '',
-        updatedAt: '',
-      } as Tenant];
+      return [
+        {
+          id: tenantId,
+          name: tenantName || tenantId,
+          key: tenantId,
+          resourceStatus: 'ENABLED',
+          createdAt: '',
+          updatedAt: '',
+        } as Tenant,
+      ];
     }
     return tenantsPages?.pages.flatMap((page) => page.data) ?? [];
   }, [isSuperOrGlobalAdmin, tenantId, tenantName, tenantsPages]);
 
   const filteredTenants = useMemo(
-    () =>
-      allTenants.filter((item) =>
-        `${item.name} ${item.key}`.toLowerCase().includes(tenantSearch.toLowerCase()),
-      ),
+    () => allTenants.filter((item) => `${item.name} ${item.key}`.toLowerCase().includes(tenantSearch.toLowerCase())),
     [allTenants, tenantSearch],
   );
 
@@ -199,12 +174,7 @@ export default function ConfigurationManagementPage() {
   }, [configScopeKey]);
 
   const filteredConfigs = useMemo(
-    () =>
-      configs.filter((config) =>
-        `${config.name} ${config.key} ${config.namespace ?? ''}`
-          .toLowerCase()
-          .includes(configSearch.toLowerCase()),
-      ),
+    () => configs.filter((config) => `${config.name} ${config.key} ${config.namespace ?? ''}`.toLowerCase().includes(configSearch.toLowerCase())),
     [configs, configSearch],
   );
 
@@ -215,10 +185,7 @@ export default function ConfigurationManagementPage() {
     }
   }, [filteredConfigs, selectedConfigId]);
 
-  const selectedConfig = useMemo(
-    () => filteredConfigs.find((config) => config.id === selectedConfigId),
-    [filteredConfigs, selectedConfigId],
-  );
+  const selectedConfig = useMemo(() => filteredConfigs.find((config) => config.id === selectedConfigId), [filteredConfigs, selectedConfigId]);
 
   const currentValue = selectedConfig ? draftValue : '';
   const originalValue = selectedConfig ? String(selectedConfig.value ?? '') : '';
@@ -282,8 +249,8 @@ export default function ConfigurationManagementPage() {
     ),
     onRefresh: isSuperOrGlobalAdmin
       ? () => {
-        void refetchTenants();
-      }
+          void refetchTenants();
+        }
       : undefined,
     isRefreshing: tenantsRefreshing,
     emptyTitle: 'No tenants',
@@ -331,8 +298,8 @@ export default function ConfigurationManagementPage() {
     emptyDescription: 'No settings matched your filters.',
     onRefresh: configScopeKey
       ? () => {
-        void activeConfigsQuery.refetch();
-      }
+          void activeConfigsQuery.refetch();
+        }
       : undefined,
     isRefreshing: configsRefreshing,
   };
@@ -358,8 +325,8 @@ export default function ConfigurationManagementPage() {
     width: '1fr',
     onRefresh: selectedConfig
       ? () => {
-        void activeConfigsQuery.refetch();
-      }
+          void activeConfigsQuery.refetch();
+        }
       : undefined,
     isRefreshing: configsRefreshing,
     renderContent: () => {
@@ -380,11 +347,7 @@ export default function ConfigurationManagementPage() {
             <Badge variant="secondary">{selectedConfig.namespace || 'general'}</Badge>
             <Badge variant="outline">{String(selectedConfig.dataType ?? 'STRING')}</Badge>
           </div>
-          <ConfigValueEditor
-            config={selectedConfig}
-            value={currentValue}
-            onChange={setDraftValue}
-          />
+          <ConfigValueEditor config={selectedConfig} value={currentValue} onChange={setDraftValue} />
           {draftError && (
             <p className="text-destructive text-xs" aria-live="polite" role="status">
               {draftError}
@@ -398,10 +361,7 @@ export default function ConfigurationManagementPage() {
             >
               Reset
             </Button>
-            <Button
-              disabled={!isDirty || !!draftError || updateTenantConfigs.isPending || updateMyTenantConfigs.isPending}
-              onClick={handleSave}
-            >
+            <Button disabled={!isDirty || !!draftError || updateTenantConfigs.isPending || updateMyTenantConfigs.isPending} onClick={handleSave}>
               Save
             </Button>
           </div>
@@ -422,9 +382,7 @@ export default function ConfigurationManagementPage() {
     <Main>
       <div className="mb-4">
         <h2 className="text-2xl font-bold tracking-tight">Configuration Management</h2>
-        <p className="text-muted-foreground mt-1">
-          Manage tenant settings with type-aware editing and API-backed persistence.
-        </p>
+        <p className="text-muted-foreground mt-1">Manage tenant settings with type-aware editing and API-backed persistence.</p>
       </div>
       <MultiColumnLayout
         columns={[tenantColumn, configColumn, detailColumn]}

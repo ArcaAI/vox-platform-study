@@ -1,9 +1,4 @@
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-  type UseQueryOptions,
-} from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { adminClient } from './admin-client';
 
 // ---------------------------------------------------------------------------
@@ -42,17 +37,14 @@ export interface UploadFileInput {
 const keys = {
   all: ['storage'] as const,
   buckets: () => [...keys.all, 'buckets'] as const,
-  files: (bucketName: string, path?: string) =>
-    [...keys.all, 'files', bucketName, path] as const,
+  files: (bucketName: string, path?: string) => [...keys.all, 'files', bucketName, path] as const,
 };
 
 // ---------------------------------------------------------------------------
 // Query hooks
 // ---------------------------------------------------------------------------
 
-export function useBuckets(
-  options?: Omit<UseQueryOptions<Bucket[]>, 'queryKey' | 'queryFn'>,
-) {
+export function useBuckets(options?: Omit<UseQueryOptions<Bucket[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.buckets(),
     queryFn: () => adminClient.get<Bucket[]>('/storage/buckets'),
@@ -60,18 +52,11 @@ export function useBuckets(
   });
 }
 
-export function useBucketFiles(
-  bucketName: string,
-  path?: string,
-  options?: Omit<UseQueryOptions<BucketFile[]>, 'queryKey' | 'queryFn'>,
-) {
+export function useBucketFiles(bucketName: string, path?: string, options?: Omit<UseQueryOptions<BucketFile[]>, 'queryKey' | 'queryFn'>) {
   const query = path ? `?prefix=${encodeURIComponent(path)}` : '';
   return useQuery({
     queryKey: keys.files(bucketName, path),
-    queryFn: () =>
-      adminClient.get<BucketFile[]>(
-        `/storage/buckets/${bucketName}/files${query}`,
-      ),
+    queryFn: () => adminClient.get<BucketFile[]>(`/storage/buckets/${bucketName}/files${query}`),
     enabled: !!bucketName,
     ...options,
   });
@@ -84,8 +69,7 @@ export function useBucketFiles(
 export function useCreateBucket() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateBucketInput) =>
-      adminClient.post<Bucket>('/storage/buckets', input),
+    mutationFn: (input: CreateBucketInput) => adminClient.post<Bucket>('/storage/buckets', input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.buckets() });
     },
@@ -95,8 +79,7 @@ export function useCreateBucket() {
 export function useDeleteBucket() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (name: string) =>
-      adminClient.delete<void>(`/storage/buckets/${name}`),
+    mutationFn: (name: string) => adminClient.delete<void>(`/storage/buckets/${name}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.buckets() });
     },
@@ -110,10 +93,7 @@ export function useUploadFile() {
       const formData = new FormData();
       formData.append('file', file);
       if (path) formData.append('path', path);
-      return adminClient.upload<BucketFile>(
-        `/storage/buckets/${bucketName}/files`,
-        formData,
-      );
+      return adminClient.upload<BucketFile>(`/storage/buckets/${bucketName}/files`, formData);
     },
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({
@@ -126,16 +106,8 @@ export function useUploadFile() {
 export function useDeleteFile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      bucketName,
-      fileKey,
-    }: {
-      bucketName: string;
-      fileKey: string;
-    }) =>
-      adminClient.delete<void>(
-        `/storage/buckets/${bucketName}/files/${fileKey}`,
-      ),
+    mutationFn: ({ bucketName, fileKey }: { bucketName: string; fileKey: string }) =>
+      adminClient.delete<void>(`/storage/buckets/${bucketName}/files/${fileKey}`),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({
         queryKey: keys.files(variables.bucketName),

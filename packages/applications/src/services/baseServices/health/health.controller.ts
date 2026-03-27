@@ -6,9 +6,7 @@ import { IHealthCheckService } from './';
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
-  constructor(
-    @Inject(IHealthCheckService) private readonly healthCheckService: IHealthCheckService
-  ) {}
+  constructor(@Inject(IHealthCheckService) private readonly healthCheckService: IHealthCheckService) {}
 
   @Get()
   @ApiOperation({ summary: 'Get overall system health' })

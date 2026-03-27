@@ -1,18 +1,9 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Button } from '../../shadcn/button'
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from '../../shadcn/drawer'
-import { Input } from '../../shadcn/input'
-import { Label } from '../../shadcn/label'
+import { Button } from '../../shadcn/button';
+import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from '../../shadcn/drawer';
+import { Input } from '../../shadcn/input';
+import { Label } from '../../shadcn/label';
 
 const meta = {
   title: 'Components/Drawer',
@@ -21,10 +12,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Drawer>
+} satisfies Meta<typeof Drawer>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -35,14 +26,10 @@ export const Default: Story = {
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>Drawer Title</DrawerTitle>
-          <DrawerDescription>
-            This is a description of the drawer content providing context for the user.
-          </DrawerDescription>
+          <DrawerDescription>This is a description of the drawer content providing context for the user.</DrawerDescription>
         </DrawerHeader>
         <div className="p-4">
-          <p className="text-sm text-muted-foreground">
-            Drawer body content goes here. You can place any content inside the drawer.
-          </p>
+          <p className="text-sm text-muted-foreground">Drawer body content goes here. You can place any content inside the drawer.</p>
         </div>
         <DrawerFooter>
           <Button>Submit</Button>
@@ -53,7 +40,7 @@ export const Default: Story = {
       </DrawerContent>
     </Drawer>
   ),
-}
+};
 
 export const WithForm: Story = {
   render: () => (
@@ -64,9 +51,7 @@ export const WithForm: Story = {
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>Edit Profile</DrawerTitle>
-          <DrawerDescription>
-            Update your profile information below.
-          </DrawerDescription>
+          <DrawerDescription>Update your profile information below.</DrawerDescription>
         </DrawerHeader>
         <div className="grid gap-4 p-4">
           <div className="grid gap-2">
@@ -87,4 +72,4 @@ export const WithForm: Story = {
       </DrawerContent>
     </Drawer>
   ),
-}
+};

@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   AudioPlayer,
@@ -12,17 +12,17 @@ import {
   AudioPlayerTimeDisplay,
   AudioPlayerTimeRange,
   AudioPlayerVolumeRange,
-} from '../../../registries/ai-elements/audio-player'
+} from '../../../registries/ai-elements/audio-player';
 
 const meta = {
   title: 'Registries/AiElements/AudioPlayer',
   component: AudioPlayer,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof AudioPlayer>
+} satisfies Meta<typeof AudioPlayer>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -41,4 +41,4 @@ export const Default: Story = {
       </AudioPlayerControlBar>
     </AudioPlayer>
   ),
-}
+};

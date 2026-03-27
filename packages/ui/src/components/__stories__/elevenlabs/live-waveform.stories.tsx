@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { LiveWaveform } from '../../elevenlabs/live-waveform'
+import { LiveWaveform } from '../../elevenlabs/live-waveform';
 
 const meta: Meta<typeof LiveWaveform> = {
   title: 'ElevenLabs/LiveWaveform',
@@ -48,10 +48,10 @@ const meta: Meta<typeof LiveWaveform> = {
       description: 'Microphone sensitivity',
     },
   },
-}
+};
 
-export default meta
-type Story = StoryObj<typeof LiveWaveform>
+export default meta;
+type Story = StoryObj<typeof LiveWaveform>;
 
 export const Idle: Story = {
   render: () => (
@@ -59,7 +59,7 @@ export const Idle: Story = {
       <LiveWaveform height={64} />
     </div>
   ),
-}
+};
 
 export const Processing: Story = {
   render: () => (
@@ -67,7 +67,7 @@ export const Processing: Story = {
       <LiveWaveform processing height={64} />
     </div>
   ),
-}
+};
 
 export const StaticMode: Story = {
   render: () => (
@@ -75,7 +75,7 @@ export const StaticMode: Story = {
       <LiveWaveform processing height={64} mode="static" />
     </div>
   ),
-}
+};
 
 export const ScrollingMode: Story = {
   render: () => (
@@ -83,7 +83,7 @@ export const ScrollingMode: Story = {
       <LiveWaveform processing height={64} mode="scrolling" />
     </div>
   ),
-}
+};
 
 export const ThinBars: Story = {
   render: () => (
@@ -91,7 +91,7 @@ export const ThinBars: Story = {
       <LiveWaveform processing height={64} barWidth={2} barGap={1} />
     </div>
   ),
-}
+};
 
 export const ThickBars: Story = {
   render: () => (
@@ -99,7 +99,7 @@ export const ThickBars: Story = {
       <LiveWaveform processing height={64} barWidth={6} barGap={2} />
     </div>
   ),
-}
+};
 
 export const NoFadeEdges: Story = {
   render: () => (
@@ -107,7 +107,7 @@ export const NoFadeEdges: Story = {
       <LiveWaveform processing height={64} fadeEdges={false} />
     </div>
   ),
-}
+};
 
 export const SmallHeight: Story = {
   render: () => (
@@ -115,7 +115,7 @@ export const SmallHeight: Story = {
       <LiveWaveform processing height={24} barWidth={2} barGap={1} />
     </div>
   ),
-}
+};
 
 export const LargeHeight: Story = {
   render: () => (
@@ -123,7 +123,7 @@ export const LargeHeight: Story = {
       <LiveWaveform processing height={128} />
     </div>
   ),
-}
+};
 
 export const AllStates: Story = {
   render: () => (
@@ -138,4 +138,4 @@ export const AllStates: Story = {
       </div>
     </div>
   ),
-}
+};

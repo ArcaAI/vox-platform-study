@@ -1,18 +1,9 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Button } from '../../shadcn/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from '../../shadcn/dialog'
-import { Input } from '../../shadcn/input'
-import { Label } from '../../shadcn/label'
+import { Button } from '../../shadcn/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from '../../shadcn/dialog';
+import { Input } from '../../shadcn/input';
+import { Label } from '../../shadcn/label';
 
 const meta = {
   title: 'Components/Dialog',
@@ -21,10 +12,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Dialog>
+} satisfies Meta<typeof Dialog>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 // Default dialog
 export const Default: Story = {
@@ -36,9 +27,7 @@ export const Default: Story = {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Dialog Title</DialogTitle>
-          <DialogDescription>
-            This is a description of the dialog content. It provides context for the user.
-          </DialogDescription>
+          <DialogDescription>This is a description of the dialog content. It provides context for the user.</DialogDescription>
         </DialogHeader>
         <div className="py-4">
           <p>Dialog content goes here.</p>
@@ -52,7 +41,7 @@ export const Default: Story = {
       </DialogContent>
     </Dialog>
   ),
-}
+};
 
 // Dialog with form
 export const WithForm: Story = {
@@ -64,9 +53,7 @@ export const WithForm: Story = {
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Edit profile</DialogTitle>
-          <DialogDescription>
-            Make changes to your profile here. Click save when you're done.
-          </DialogDescription>
+          <DialogDescription>Make changes to your profile here. Click save when you're done.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
@@ -88,7 +75,7 @@ export const WithForm: Story = {
       </DialogContent>
     </Dialog>
   ),
-}
+};
 
 // Dialog without close button
 export const NoCloseButton: Story = {
@@ -100,9 +87,7 @@ export const NoCloseButton: Story = {
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>Confirm Action</DialogTitle>
-          <DialogDescription>
-            Are you sure you want to proceed? This action cannot be undone.
-          </DialogDescription>
+          <DialogDescription>Are you sure you want to proceed? This action cannot be undone.</DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <DialogClose asChild>
@@ -113,7 +98,7 @@ export const NoCloseButton: Story = {
       </DialogContent>
     </Dialog>
   ),
-}
+};
 
 // Dialog with footer close button
 export const FooterCloseButton: Story = {
@@ -125,9 +110,7 @@ export const FooterCloseButton: Story = {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Item Details</DialogTitle>
-          <DialogDescription>
-            View the complete details of this item.
-          </DialogDescription>
+          <DialogDescription>View the complete details of this item.</DialogDescription>
         </DialogHeader>
         <div className="py-4">
           <dl className="grid grid-cols-2 gap-2 text-sm">
@@ -143,4 +126,4 @@ export const FooterCloseButton: Story = {
       </DialogContent>
     </Dialog>
   ),
-}
+};

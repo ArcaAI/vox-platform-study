@@ -5,6 +5,6 @@ import { WebhookResponse } from '.';
 // TODO: Implement this
 
 export class PaginatedWebhookResponse extends PaginatedResponse<WebhookResponse> {
-    @ApiProperty({ type: [WebhookResponse] })
-    override readonly data!: readonly WebhookResponse[];
+  @ApiProperty({ type: [WebhookResponse] })
+  override readonly data!: readonly WebhookResponse[];
 }

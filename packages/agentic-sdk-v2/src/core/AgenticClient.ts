@@ -53,9 +53,7 @@ export class AgenticClient {
     const now = Date.now();
     const { maxRequests, windowMs } = this.rateLimitConfig;
 
-    this.requestTimestamps = this.requestTimestamps.filter(
-      (ts) => now - ts < windowMs,
-    );
+    this.requestTimestamps = this.requestTimestamps.filter((ts) => now - ts < windowMs);
 
     if (this.requestTimestamps.length >= maxRequests) {
       throw new AgenticError('RATE_LIMITED', 'Client-side rate limit exceeded', {
@@ -162,6 +160,7 @@ export class AgenticClient {
     });
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Strip fetch overrides; method/headers/body/signal come from outer scope.
       const { signal: _s, headers: _h, body: _b, method: _m, ...safeOptions } = options ?? {};
       const response = await fetch(url, {
         method,
@@ -195,10 +194,14 @@ export class AgenticClient {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const errorCode = response.status === 401 ? 'AUTHENTICATION_ERROR' :
-          response.status === 404 ? 'NOT_FOUND' :
-          response.status >= 400 && response.status < 500 ? 'VALIDATION_ERROR' :
-          'API_ERROR';
+        const errorCode =
+          response.status === 401
+            ? 'AUTHENTICATION_ERROR'
+            : response.status === 404
+              ? 'NOT_FOUND'
+              : response.status >= 400 && response.status < 500
+                ? 'VALIDATION_ERROR'
+                : 'API_ERROR';
         const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
 
         this.logger?.error(`API request failed: ${errorMessage}`, {
@@ -225,12 +228,7 @@ export class AgenticClient {
           },
         });
 
-        if (
-          response.status === 401 &&
-          !isRetry &&
-          this.onUnauthorizedHandler &&
-          !endpoint.includes(AgenticClient.AUTH_REFRESH_ENDPOINT)
-        ) {
+        if (response.status === 401 && !isRetry && this.onUnauthorizedHandler && !endpoint.includes(AgenticClient.AUTH_REFRESH_ENDPOINT)) {
           try {
             const refreshed = await this.deduplicatedRefresh();
             if (refreshed) {
@@ -241,11 +239,7 @@ export class AgenticClient {
           }
         }
 
-        throw new AgenticError(
-          errorCode,
-          errorMessage,
-          { context: { status: response.status, endpoint, requestId } }
-        );
+        throw new AgenticError(errorCode, errorMessage, { context: { status: response.status, endpoint, requestId } });
       }
 
       // Handle 204 No Content
@@ -445,10 +439,14 @@ export class AgenticClient {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const errorCode = response.status === 401 ? 'AUTHENTICATION_ERROR' :
-          response.status === 404 ? 'NOT_FOUND' :
-          response.status >= 400 && response.status < 500 ? 'VALIDATION_ERROR' :
-          'API_ERROR';
+        const errorCode =
+          response.status === 401
+            ? 'AUTHENTICATION_ERROR'
+            : response.status === 404
+              ? 'NOT_FOUND'
+              : response.status >= 400 && response.status < 500
+                ? 'VALIDATION_ERROR'
+                : 'API_ERROR';
         const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
 
         throw new AgenticError(errorCode, errorMessage, {

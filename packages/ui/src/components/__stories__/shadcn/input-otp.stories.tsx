@@ -1,12 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { REGEXP_ONLY_DIGITS } from 'input-otp'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { REGEXP_ONLY_DIGITS } from 'input-otp';
 
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-  InputOTPSeparator,
-} from '../../shadcn/input-otp'
+import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from '../../shadcn/input-otp';
 
 const meta = {
   title: 'Components/InputOTP',
@@ -14,10 +9,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof InputOTP>
+} satisfies Meta<typeof InputOTP>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -35,7 +30,7 @@ export const Default: Story = {
       </InputOTPGroup>
     </InputOTP>
   ),
-}
+};
 
 export const FourDigit: Story = {
   render: () => (
@@ -48,7 +43,7 @@ export const FourDigit: Story = {
       </InputOTPGroup>
     </InputOTP>
   ),
-}
+};
 
 export const WithPattern: Story = {
   render: () => (
@@ -66,4 +61,4 @@ export const WithPattern: Story = {
       </InputOTPGroup>
     </InputOTP>
   ),
-}
+};

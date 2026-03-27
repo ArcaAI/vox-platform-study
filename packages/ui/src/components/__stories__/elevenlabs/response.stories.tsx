@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Response } from '../../elevenlabs/response'
+import { Response } from '../../elevenlabs/response';
 
 const meta: Meta<typeof Response> = {
   title: 'ElevenLabs/Response',
@@ -9,16 +9,16 @@ const meta: Meta<typeof Response> = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-}
+};
 
-export default meta
-type Story = StoryObj<typeof Response>
+export default meta;
+type Story = StoryObj<typeof Response>;
 
 export const Default: Story = {
   args: {
     children: 'This is a simple response from the assistant.',
   },
-}
+};
 
 export const WithMarkdown: Story = {
   args: {
@@ -30,13 +30,13 @@ This is a **bold** statement with some *italic* text.
 - Item two
 - Item three`,
   },
-}
+};
 
 export const ShortResponse: Story = {
   args: {
     children: 'OK',
   },
-}
+};
 
 export const LongResponse: Story = {
   render: () => (
@@ -52,14 +52,12 @@ Finally, the third paragraph summarizes the key points and suggests next steps.`
       </Response>
     </div>
   ),
-}
+};
 
 export const CustomClassName: Story = {
   render: () => (
     <div className="max-w-md">
-      <Response className="text-sm text-muted-foreground">
-        A response with custom styling applied via className.
-      </Response>
+      <Response className="text-sm text-muted-foreground">A response with custom styling applied via className.</Response>
     </div>
   ),
-}
+};

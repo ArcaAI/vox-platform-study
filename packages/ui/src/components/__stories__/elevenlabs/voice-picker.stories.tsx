@@ -1,8 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
-import type { ElevenLabs } from '@elevenlabs/elevenlabs-js'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useState } from 'react';
+import type { ElevenLabs } from '@elevenlabs/elevenlabs-js';
 
-import { VoicePicker } from '../../elevenlabs/voice-picker'
+import { VoicePicker } from '../../elevenlabs/voice-picker';
 
 const mockVoices: ElevenLabs.Voice[] = [
   {
@@ -33,32 +33,24 @@ const mockVoices: ElevenLabs.Voice[] = [
     name: 'Antoni',
     labels: { accent: 'American', gender: 'male', age: 'young' },
   } as ElevenLabs.Voice,
-]
+];
 
 function VoicePickerDemo() {
-  const [value, setValue] = useState<string>('')
+  const [value, setValue] = useState<string>('');
   return (
     <div className="w-[300px]">
-      <VoicePicker
-        voices={mockVoices}
-        value={value}
-        onValueChange={setValue}
-      />
+      <VoicePicker voices={mockVoices} value={value} onValueChange={setValue} />
     </div>
-  )
+  );
 }
 
 function VoicePickerPreselected() {
-  const [value, setValue] = useState<string>('voice-1')
+  const [value, setValue] = useState<string>('voice-1');
   return (
     <div className="w-[300px]">
-      <VoicePicker
-        voices={mockVoices}
-        value={value}
-        onValueChange={setValue}
-      />
+      <VoicePicker voices={mockVoices} value={value} onValueChange={setValue} />
     </div>
-  )
+  );
 }
 
 const meta: Meta<typeof VoicePicker> = {
@@ -68,42 +60,37 @@ const meta: Meta<typeof VoicePicker> = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-}
+};
 
-export default meta
-type Story = StoryObj<typeof VoicePicker>
+export default meta;
+type Story = StoryObj<typeof VoicePicker>;
 
 export const Default: Story = {
   render: () => <VoicePickerDemo />,
-}
+};
 
 export const WithPreselectedVoice: Story = {
   render: () => <VoicePickerPreselected />,
-}
+};
 
 export const CustomPlaceholder: Story = {
   render: () => {
-    const [value, setValue] = useState<string>('')
+    const [value, setValue] = useState<string>('');
     return (
       <div className="w-[300px]">
-        <VoicePicker
-          voices={mockVoices}
-          value={value}
-          onValueChange={setValue}
-          placeholder="Choose your AI voice..."
-        />
+        <VoicePicker voices={mockVoices} value={value} onValueChange={setValue} placeholder="Choose your AI voice..." />
       </div>
-    )
+    );
   },
-}
+};
 
 export const EmptyVoiceList: Story = {
   render: () => {
-    const [value, setValue] = useState<string>('')
+    const [value, setValue] = useState<string>('');
     return (
       <div className="w-[300px]">
         <VoicePicker voices={[]} value={value} onValueChange={setValue} />
       </div>
-    )
+    );
   },
-}
+};

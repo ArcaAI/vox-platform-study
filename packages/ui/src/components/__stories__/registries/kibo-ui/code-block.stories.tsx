@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   CodeBlock,
@@ -7,7 +7,7 @@ import {
   CodeBlockItem,
   CodeBlockContent,
   CodeBlockCopyButton,
-} from '../../../registries/kibo-ui/code-block'
+} from '../../../registries/kibo-ui/code-block';
 
 const sampleData = [
   {
@@ -15,17 +15,17 @@ const sampleData = [
     filename: 'example.ts',
     code: 'const greeting: string = "Hello, World!";\nconsole.log(greeting);',
   },
-]
+];
 
 const meta = {
   title: 'Registries/KiboUI/CodeBlock',
   component: CodeBlock,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof CodeBlock>
+} satisfies Meta<typeof CodeBlock>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -36,12 +36,10 @@ export const Default: Story = {
       <CodeBlockBody>
         {(item) => (
           <CodeBlockItem key={item.language} value={item.language}>
-            <CodeBlockContent language="typescript">
-              {item.code}
-            </CodeBlockContent>
+            <CodeBlockContent language="typescript">{item.code}</CodeBlockContent>
           </CodeBlockItem>
         )}
       </CodeBlockBody>
     </CodeBlock>
   ),
-}
+};

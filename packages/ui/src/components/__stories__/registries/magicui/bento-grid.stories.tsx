@@ -1,25 +1,20 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils';
 
-import {
-  BentoCard,
-  BentoGrid,
-} from '../../../registries/magicui/bento-grid'
+import { BentoCard, BentoGrid } from '../../../registries/magicui/bento-grid';
 
 const meta: Meta = {
   title: 'Registries/MagicUI/BentoGrid',
   component: BentoGrid,
   parameters: { layout: 'fullscreen' },
   tags: ['autodocs'],
-}
+};
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
-const IconPlaceholder = ({ className }: { className?: string }) => (
-  <div className={cn('h-12 w-12 rounded bg-muted', className)} />
-)
+const IconPlaceholder = ({ className }: { className?: string }) => <div className={cn('h-12 w-12 rounded bg-muted', className)} />;
 
 export const Default: Story = {
   render: () => (
@@ -31,9 +26,7 @@ export const Default: Story = {
         Icon={IconPlaceholder}
         href="#"
         cta="Learn more"
-        background={
-          <div className="absolute inset-0 bg-muted/50" />
-        }
+        background={<div className="absolute inset-0 bg-muted/50" />}
       />
       <BentoCard
         name="Card Two"
@@ -42,9 +35,7 @@ export const Default: Story = {
         Icon={IconPlaceholder}
         href="#"
         cta="Explore"
-        background={
-          <div className="absolute inset-0 bg-muted/30" />
-        }
+        background={<div className="absolute inset-0 bg-muted/30" />}
       />
       <BentoCard
         name="Card Three"
@@ -53,10 +44,8 @@ export const Default: Story = {
         Icon={IconPlaceholder}
         href="#"
         cta="View"
-        background={
-          <div className="absolute inset-0 bg-muted/40" />
-        }
+        background={<div className="absolute inset-0 bg-muted/40" />}
       />
     </BentoGrid>
   ),
-}
+};

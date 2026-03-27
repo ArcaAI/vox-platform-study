@@ -1,15 +1,15 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { Rating, RatingItem } from '@/components/registries/diceui/rating'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { Rating, RatingItem } from '@/components/registries/diceui/rating';
 
 const meta = {
   title: 'Registries/DiceUI/Rating',
   component: Rating,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Rating>
+} satisfies Meta<typeof Rating>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -19,4 +19,4 @@ export const Default: Story = {
       ))}
     </Rating>
   ),
-}
+};

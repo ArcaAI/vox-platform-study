@@ -5,163 +5,154 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { uuidv7 } from 'uuidv7';
 import {
-    DnaWritingStyleReportRepository,
-    DnaWritingStyleVersionRepository,
-    DnaWritingStyleReportEntityMapper,
-    DnaWritingStyleVersionFactory,
-    JobQueue,
-    ResourceType,
-    ResourceStatusType,
-    SysEventType,
+  DnaWritingStyleReportRepository,
+  DnaWritingStyleVersionRepository,
+  DnaWritingStyleReportEntityMapper,
+  DnaWritingStyleVersionFactory,
+  JobQueue,
+  ResourceType,
+  ResourceStatusType,
+  SysEventType,
 } from '@arcaai/domains';
 import { IDnaWritingStyleService, DnaJobResponse } from './IDnaWritingStyleService';
-import {
-    DnaReportResponse,
-    DnaVersionResponse,
-    GenerateDnaReportRequest,
-    UpdateDnaReportRequest,
-} from './dto';
+import { DnaReportResponse, DnaVersionResponse, GenerateDnaReportRequest, UpdateDnaReportRequest } from './dto';
 import { DnaWritingStyleDtoMapper } from './dna-writing-style.dto.mapper';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 
 export interface GenerateDnaReportJobPayload {
-    jobId: string;
-    doctorId: string;
-    tenantId: string;
-    userId: string;
-    textSamples?: string[];
+  jobId: string;
+  doctorId: string;
+  tenantId: string;
+  userId: string;
+  textSamples?: string[];
 }
 
 export interface DnaReportJobResult {
-    reportId: string;
-    reportData: Record<string, unknown>;
-    styleText: string;
+  reportId: string;
+  reportData: Record<string, unknown>;
+  styleText: string;
 }
 
 @Injectable()
 export class DnaWritingStyleService extends BaseService implements IDnaWritingStyleService {
-    constructor(
-        private readonly dnaReportRepository: DnaWritingStyleReportRepository,
-        private readonly dnaVersionRepository: DnaWritingStyleVersionRepository,
-        @InjectQueue(JobQueue.GenerateDnaReport) private readonly dnaQueue: Queue,
-        protected override readonly eventEmitter: EventEmitter2,
-        protected override readonly clsService: ClsService<IActiveUserContext>,
-    ) {
-        super(eventEmitter, clsService, ResourceType.DnaWritingStyleReport);
+  constructor(
+    private readonly dnaReportRepository: DnaWritingStyleReportRepository,
+    private readonly dnaVersionRepository: DnaWritingStyleVersionRepository,
+    @InjectQueue(JobQueue.GenerateDnaReport) private readonly dnaQueue: Queue,
+    protected override readonly eventEmitter: EventEmitter2,
+    protected override readonly clsService: ClsService<IActiveUserContext>,
+  ) {
+    super(eventEmitter, clsService, ResourceType.DnaWritingStyleReport);
+  }
+
+  async generateDnaReport(doctorId: string, dto: GenerateDnaReportRequest): Promise<DnaJobResponse> {
+    const tenantId = this.tenantId ?? '';
+    const userId = this.requestUserId ?? '';
+    const jobId = uuidv7();
+
+    const payload: GenerateDnaReportJobPayload = {
+      jobId,
+      doctorId,
+      tenantId,
+      userId,
+      textSamples: dto.textSamples,
+    };
+
+    await this.dnaQueue.add(JobQueue.GenerateDnaReport, payload, {
+      jobId,
+    });
+
+    return { jobId, status: 'PENDING' };
+  }
+
+  async getDnaReport(doctorId: string): Promise<DnaReportResponse | null> {
+    const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
+    if (!report) return null;
+    return DnaWritingStyleDtoMapper.toReportResponse(report);
+  }
+
+  async updateDnaReport(reportId: string, dto: UpdateDnaReportRequest, options?: { bypassOwnershipCheck?: boolean }): Promise<DnaReportResponse> {
+    const userId = this.requestUserId;
+
+    const report = await this.dnaReportRepository.findById(reportId);
+    if (!report) throw new NotFoundException(`DNA report ${reportId} not found`);
+    if (!options?.bypassOwnershipCheck && report.doctorId !== userId) {
+      throw new ForbiddenException("Cannot update another doctor's DNA report");
     }
 
-    async generateDnaReport(doctorId: string, dto: GenerateDnaReportRequest): Promise<DnaJobResponse> {
-        const tenantId = this.tenantId ?? '';
-        const userId = this.requestUserId ?? '';
-        const jobId = uuidv7();
+    const hasContentChanges = dto.reportData !== undefined || dto.styleText !== undefined;
 
-        const payload: GenerateDnaReportJobPayload = {
-            jobId,
-            doctorId,
-            tenantId,
-            userId,
-            textSamples: dto.textSamples,
-        };
+    if (hasContentChanges) {
+      const version = DnaWritingStyleVersionFactory.CreateDnaWritingStyleVersion({
+        tenantId: report.tenantId,
+        dnaReportId: reportId,
+        versionNumber: (report.currentVersionNumber ?? 0) + 1,
+        reportData: dto.reportData ?? report.reportData,
+        styleText: dto.styleText ?? report.styleText,
+        changeReason: dto.changeReason ?? null,
+        changedBy: userId ?? null,
+      });
 
-        await this.dnaQueue.add(JobQueue.GenerateDnaReport, payload, {
-            jobId,
-        });
+      await this.dnaVersionRepository.create(version);
 
-        return { jobId, status: 'PENDING' };
+      if (dto.reportData !== undefined) report.reportData = dto.reportData;
+      if (dto.styleText !== undefined) report.styleText = dto.styleText;
+      report.incrementVersion();
     }
 
-    async getDnaReport(doctorId: string): Promise<DnaReportResponse | null> {
-        const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
-        if (!report) return null;
-        return DnaWritingStyleDtoMapper.toReportResponse(report);
+    if (dto.resourceStatus !== undefined) {
+      await this.updateEntity(report, { resourceStatus: dto.resourceStatus });
     }
 
-    async updateDnaReport(
-        reportId: string,
-        dto: UpdateDnaReportRequest,
-        options?: { bypassOwnershipCheck?: boolean },
-    ): Promise<DnaReportResponse> {
-        const userId = this.requestUserId;
+    const updated = await this.dnaReportRepository.update(reportId, report);
 
-        const report = await this.dnaReportRepository.findById(reportId);
-        if (!report) throw new NotFoundException(`DNA report ${reportId} not found`);
-        if (!options?.bypassOwnershipCheck && report.doctorId !== userId) {
-            throw new ForbiddenException("Cannot update another doctor's DNA report");
-        }
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: reportId,
+      data: { changeReason: dto.changeReason },
+    });
 
-        const hasContentChanges = dto.reportData !== undefined || dto.styleText !== undefined;
+    return DnaWritingStyleDtoMapper.toReportResponse(updated);
+  }
 
-        if (hasContentChanges) {
-            const version = DnaWritingStyleVersionFactory.CreateDnaWritingStyleVersion({
-                tenantId: report.tenantId,
-                dnaReportId: reportId,
-                versionNumber: (report.currentVersionNumber ?? 0) + 1,
-                reportData: dto.reportData ?? report.reportData,
-                styleText: dto.styleText ?? report.styleText,
-                changeReason: dto.changeReason ?? null,
-                changedBy: userId ?? null,
-            });
+  async getVersions(reportId: string): Promise<DnaVersionResponse[]> {
+    const versions = await this.dnaVersionRepository.findAll({
+      filters: { dnaReportId: reportId },
+      sort: [{ versionNumber: 'desc' }],
+    });
+    return versions.map(DnaWritingStyleDtoMapper.toVersionResponse);
+  }
 
-            await this.dnaVersionRepository.create(version);
+  async getVersionsForDoctor(reportId: string, doctorId: string): Promise<DnaVersionResponse[]> {
+    const report = await this.dnaReportRepository.findById(reportId);
+    if (!report) throw new NotFoundException(`DNA report ${reportId} not found`);
+    if (report.doctorId !== doctorId) {
+      throw new ForbiddenException("Cannot access another doctor's DNA report versions");
+    }
+    return this.getVersions(reportId);
+  }
 
-            if (dto.reportData !== undefined) report.reportData = dto.reportData;
-            if (dto.styleText !== undefined) report.styleText = dto.styleText;
-            report.incrementVersion();
-        }
+  private isGlobalRole(): boolean {
+    const roles = this.requestUser?.roles ?? [];
+    return roles.some((r) => r === 'SUPER_ADMIN' || r === 'GLOBAL_ADMIN');
+  }
 
-        if (dto.resourceStatus !== undefined) {
-            await this.updateEntity(report, { resourceStatus: dto.resourceStatus });
-        }
+  async listReports(filters?: { doctorId?: string; includeDisabled?: boolean }): Promise<DnaReportResponse[]> {
+    const tenantId = this.tenantId;
 
-        const updated = await this.dnaReportRepository.update(reportId, report);
-
-        this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-            resourceId: reportId,
-            data: { changeReason: dto.changeReason },
-        });
-
-        return DnaWritingStyleDtoMapper.toReportResponse(updated);
+    if (!tenantId && !this.isGlobalRole()) {
+      throw new BadRequestException('Tenant ID is required');
     }
 
-    async getVersions(reportId: string): Promise<DnaVersionResponse[]> {
-        const versions = await this.dnaVersionRepository.findAll({
-            filters: { dnaReportId: reportId },
-            sort: [{ versionNumber: 'desc' }],
-        });
-        return versions.map(DnaWritingStyleDtoMapper.toVersionResponse);
+    const qb = this.dnaReportRepository.$();
+    if (tenantId) qb.Where({ tenantId });
+    if (!filters?.includeDisabled) {
+      qb.Where({ resourceStatus: ResourceStatusType.ENABLED });
     }
-
-    async getVersionsForDoctor(reportId: string, doctorId: string): Promise<DnaVersionResponse[]> {
-        const report = await this.dnaReportRepository.findById(reportId);
-        if (!report) throw new NotFoundException(`DNA report ${reportId} not found`);
-        if (report.doctorId !== doctorId) {
-            throw new ForbiddenException("Cannot access another doctor's DNA report versions");
-        }
-        return this.getVersions(reportId);
-    }
-
-    private isGlobalRole(): boolean {
-        const roles = this.requestUser?.roles ?? [];
-        return roles.some((r) => r === 'SUPER_ADMIN' || r === 'GLOBAL_ADMIN');
-    }
-
-    async listReports(filters?: { doctorId?: string; includeDisabled?: boolean }): Promise<DnaReportResponse[]> {
-        const tenantId = this.tenantId;
-
-        if (!tenantId && !this.isGlobalRole()) {
-            throw new BadRequestException('Tenant ID is required');
-        }
-
-        const qb = this.dnaReportRepository.$();
-        if (tenantId) qb.Where({ tenantId });
-        if (!filters?.includeDisabled) {
-            qb.Where({ resourceStatus: ResourceStatusType.ENABLED });
-        }
-        if (filters?.doctorId) qb.Where({ doctorId: filters.doctorId });
-        const models = await qb.ToList();
-        const mapper = DnaWritingStyleReportEntityMapper.getInstance();
-        const reports = models.map((m) => mapper.toDomainEntity(m));
-        return reports.map(DnaWritingStyleDtoMapper.toReportResponse);
-    }
+    if (filters?.doctorId) qb.Where({ doctorId: filters.doctorId });
+    const models = await qb.ToList();
+    const mapper = DnaWritingStyleReportEntityMapper.getInstance();
+    const reports = models.map((m) => mapper.toDomainEntity(m));
+    return reports.map(DnaWritingStyleDtoMapper.toReportResponse);
+  }
 }

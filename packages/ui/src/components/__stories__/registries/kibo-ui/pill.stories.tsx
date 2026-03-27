@@ -1,20 +1,20 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Pill, PillStatus, PillIndicator, PillDelta } from '../../../registries/kibo-ui/pill'
+import { Pill, PillStatus, PillIndicator, PillDelta } from '../../../registries/kibo-ui/pill';
 
 const meta = {
   title: 'Registries/KiboUI/Pill',
   component: Pill,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Pill>
+} satisfies Meta<typeof Pill>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => <Pill>Default Pill</Pill>,
-}
+};
 
 export const WithStatus: Story = {
   render: () => (
@@ -26,7 +26,7 @@ export const WithStatus: Story = {
       Running
     </Pill>
   ),
-}
+};
 
 export const WithDelta: Story = {
   render: () => (
@@ -35,4 +35,4 @@ export const WithDelta: Story = {
       12.5%
     </Pill>
   ),
-}
+};

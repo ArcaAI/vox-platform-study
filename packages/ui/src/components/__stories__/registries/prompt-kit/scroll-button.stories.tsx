@@ -1,21 +1,17 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  ChatContainerContent,
-  ChatContainerRoot,
-  ChatContainerScrollAnchor,
-} from '../../../registries/prompt-kit/chat-container'
-import { ScrollButton } from '../../../registries/prompt-kit/scroll-button'
+import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from '../../../registries/prompt-kit/chat-container';
+import { ScrollButton } from '../../../registries/prompt-kit/scroll-button';
 
 const meta = {
   title: 'Registries/PromptKit/ScrollButton',
   component: ScrollButton,
   parameters: { layout: 'padded' },
   tags: ['autodocs'],
-} satisfies Meta<typeof ScrollButton>
+} satisfies Meta<typeof ScrollButton>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -35,4 +31,4 @@ export const Default: Story = {
       </div>
     </div>
   ),
-}
+};

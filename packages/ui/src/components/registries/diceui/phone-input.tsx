@@ -1,277 +1,266 @@
-"use client";
+'use client';
 
-import { Check, ChevronDown } from "lucide-react";
-import { Slot as SlotPrimitive } from "radix-ui";
-import * as React from "react";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/shadcn/command";
-import { Input } from "@/components/shadcn/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/shadcn/popover";
-import { useComposedRefs } from "@/lib/compose-refs";
-import { cn } from "@/lib/utils";
-import { VisuallyHiddenInput } from "@/components/visually-hidden-input";
-import { useAsRef } from "@/hooks/use-as-ref";
-import { useIsomorphicLayoutEffect } from "@/hooks/use-isomorphic-layout-effect";
-import { useLazyRef } from "@/hooks/use-lazy-ref";
+import { Check, ChevronDown } from 'lucide-react';
+import { Slot as SlotPrimitive } from 'radix-ui';
+import * as React from 'react';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/shadcn/command';
+import { Input } from '@/components/shadcn/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/shadcn/popover';
+import { useComposedRefs } from '@/lib/compose-refs';
+import { cn } from '@/lib/utils';
+import { VisuallyHiddenInput } from '@/components/visually-hidden-input';
+import { useAsRef } from '@/hooks/use-as-ref';
+import { useIsomorphicLayoutEffect } from '@/hooks/use-isomorphic-layout-effect';
+import { useLazyRef } from '@/hooks/use-lazy-ref';
 
-const ROOT_NAME = "PhoneInput";
-const COUNTRY_SELECT_NAME = "PhoneInputCountrySelect";
-const FIELD_NAME = "PhoneInputField";
+const ROOT_NAME = 'PhoneInput';
+const COUNTRY_SELECT_NAME = 'PhoneInputCountrySelect';
+const FIELD_NAME = 'PhoneInputField';
 
 /**
  * @see https://github.com/mukeshsoni/country-telephone-data/blob/master/country_telephone_data.js
  * @format [iso2, dialCode]
  */
 const COUNTRY_DATA: [string, string][] = [
-  ["af", "93"],
-  ["ax", "358"],
-  ["al", "355"],
-  ["dz", "213"],
-  ["as", "1684"],
-  ["ad", "376"],
-  ["ao", "244"],
-  ["ai", "1264"],
-  ["ag", "1268"],
-  ["ar", "54"],
-  ["am", "374"],
-  ["aw", "297"],
-  ["au", "61"],
-  ["at", "43"],
-  ["az", "994"],
-  ["bs", "1242"],
-  ["bh", "973"],
-  ["bd", "880"],
-  ["bb", "1246"],
-  ["by", "375"],
-  ["be", "32"],
-  ["bz", "501"],
-  ["bj", "229"],
-  ["bm", "1441"],
-  ["bt", "975"],
-  ["bo", "591"],
-  ["ba", "387"],
-  ["bw", "267"],
-  ["br", "55"],
-  ["io", "246"],
-  ["vg", "1284"],
-  ["bn", "673"],
-  ["bg", "359"],
-  ["bf", "226"],
-  ["bi", "257"],
-  ["kh", "855"],
-  ["cm", "237"],
-  ["ca", "1"],
-  ["cv", "238"],
-  ["bq", "599"],
-  ["ky", "1345"],
-  ["cf", "236"],
-  ["td", "235"],
-  ["cl", "56"],
-  ["cn", "86"],
-  ["co", "57"],
-  ["km", "269"],
-  ["cd", "243"],
-  ["cg", "242"],
-  ["ck", "682"],
-  ["cr", "506"],
-  ["ci", "225"],
-  ["hr", "385"],
-  ["cu", "53"],
-  ["cw", "599"],
-  ["cy", "357"],
-  ["cz", "420"],
-  ["dk", "45"],
-  ["dj", "253"],
-  ["dm", "1767"],
-  ["do", "1"],
-  ["ec", "593"],
-  ["eg", "20"],
-  ["sv", "503"],
-  ["gq", "240"],
-  ["er", "291"],
-  ["ee", "372"],
-  ["et", "251"],
-  ["fk", "500"],
-  ["fo", "298"],
-  ["fj", "679"],
-  ["fi", "358"],
-  ["fr", "33"],
-  ["gf", "594"],
-  ["pf", "689"],
-  ["ga", "241"],
-  ["gm", "220"],
-  ["ge", "995"],
-  ["de", "49"],
-  ["gh", "233"],
-  ["gi", "350"],
-  ["gr", "30"],
-  ["gl", "299"],
-  ["gd", "1473"],
-  ["gp", "590"],
-  ["gu", "1671"],
-  ["gt", "502"],
-  ["gg", "44"],
-  ["gn", "224"],
-  ["gw", "245"],
-  ["gy", "592"],
-  ["ht", "509"],
-  ["hn", "504"],
-  ["hk", "852"],
-  ["hu", "36"],
-  ["is", "354"],
-  ["in", "91"],
-  ["id", "62"],
-  ["ir", "98"],
-  ["iq", "964"],
-  ["ie", "353"],
-  ["im", "44"],
-  ["il", "972"],
-  ["it", "39"],
-  ["jm", "1876"],
-  ["jp", "81"],
-  ["je", "44"],
-  ["jo", "962"],
-  ["kz", "7"],
-  ["ke", "254"],
-  ["ki", "686"],
-  ["xk", "383"],
-  ["kw", "965"],
-  ["kg", "996"],
-  ["la", "856"],
-  ["lv", "371"],
-  ["lb", "961"],
-  ["ls", "266"],
-  ["lr", "231"],
-  ["ly", "218"],
-  ["li", "423"],
-  ["lt", "370"],
-  ["lu", "352"],
-  ["mo", "853"],
-  ["mk", "389"],
-  ["mg", "261"],
-  ["mw", "265"],
-  ["my", "60"],
-  ["mv", "960"],
-  ["ml", "223"],
-  ["mt", "356"],
-  ["mh", "692"],
-  ["mq", "596"],
-  ["mr", "222"],
-  ["mu", "230"],
-  ["mx", "52"],
-  ["fm", "691"],
-  ["md", "373"],
-  ["mc", "377"],
-  ["mn", "976"],
-  ["me", "382"],
-  ["ms", "1664"],
-  ["ma", "212"],
-  ["mz", "258"],
-  ["mm", "95"],
-  ["na", "264"],
-  ["nr", "674"],
-  ["np", "977"],
-  ["nl", "31"],
-  ["nc", "687"],
-  ["nz", "64"],
-  ["ni", "505"],
-  ["ne", "227"],
-  ["ng", "234"],
-  ["nu", "683"],
-  ["nf", "672"],
-  ["kp", "850"],
-  ["mp", "1670"],
-  ["no", "47"],
-  ["om", "968"],
-  ["pk", "92"],
-  ["pw", "680"],
-  ["ps", "970"],
-  ["pa", "507"],
-  ["pg", "675"],
-  ["py", "595"],
-  ["pe", "51"],
-  ["ph", "63"],
-  ["pl", "48"],
-  ["pt", "351"],
-  ["pr", "1"],
-  ["qa", "974"],
-  ["re", "262"],
-  ["ro", "40"],
-  ["ru", "7"],
-  ["rw", "250"],
-  ["bl", "590"],
-  ["sh", "290"],
-  ["kn", "1869"],
-  ["lc", "1758"],
-  ["mf", "590"],
-  ["pm", "508"],
-  ["vc", "1784"],
-  ["ws", "685"],
-  ["sm", "378"],
-  ["st", "239"],
-  ["sa", "966"],
-  ["sn", "221"],
-  ["rs", "381"],
-  ["sc", "248"],
-  ["sl", "232"],
-  ["sg", "65"],
-  ["sx", "1721"],
-  ["sk", "421"],
-  ["si", "386"],
-  ["sb", "677"],
-  ["so", "252"],
-  ["za", "27"],
-  ["kr", "82"],
-  ["ss", "211"],
-  ["es", "34"],
-  ["lk", "94"],
-  ["sd", "249"],
-  ["sr", "597"],
-  ["sz", "268"],
-  ["se", "46"],
-  ["ch", "41"],
-  ["sy", "963"],
-  ["tw", "886"],
-  ["tj", "992"],
-  ["tz", "255"],
-  ["th", "66"],
-  ["tl", "670"],
-  ["tg", "228"],
-  ["tk", "690"],
-  ["to", "676"],
-  ["tt", "1868"],
-  ["tn", "216"],
-  ["tr", "90"],
-  ["tm", "993"],
-  ["tc", "1649"],
-  ["tv", "688"],
-  ["vi", "1340"],
-  ["ug", "256"],
-  ["ua", "380"],
-  ["ae", "971"],
-  ["gb", "44"],
-  ["us", "1"],
-  ["uy", "598"],
-  ["uz", "998"],
-  ["vu", "678"],
-  ["va", "39"],
-  ["ve", "58"],
-  ["vn", "84"],
-  ["wf", "681"],
-  ["eh", "212"],
-  ["ye", "967"],
-  ["zm", "260"],
-  ["zw", "263"],
+  ['af', '93'],
+  ['ax', '358'],
+  ['al', '355'],
+  ['dz', '213'],
+  ['as', '1684'],
+  ['ad', '376'],
+  ['ao', '244'],
+  ['ai', '1264'],
+  ['ag', '1268'],
+  ['ar', '54'],
+  ['am', '374'],
+  ['aw', '297'],
+  ['au', '61'],
+  ['at', '43'],
+  ['az', '994'],
+  ['bs', '1242'],
+  ['bh', '973'],
+  ['bd', '880'],
+  ['bb', '1246'],
+  ['by', '375'],
+  ['be', '32'],
+  ['bz', '501'],
+  ['bj', '229'],
+  ['bm', '1441'],
+  ['bt', '975'],
+  ['bo', '591'],
+  ['ba', '387'],
+  ['bw', '267'],
+  ['br', '55'],
+  ['io', '246'],
+  ['vg', '1284'],
+  ['bn', '673'],
+  ['bg', '359'],
+  ['bf', '226'],
+  ['bi', '257'],
+  ['kh', '855'],
+  ['cm', '237'],
+  ['ca', '1'],
+  ['cv', '238'],
+  ['bq', '599'],
+  ['ky', '1345'],
+  ['cf', '236'],
+  ['td', '235'],
+  ['cl', '56'],
+  ['cn', '86'],
+  ['co', '57'],
+  ['km', '269'],
+  ['cd', '243'],
+  ['cg', '242'],
+  ['ck', '682'],
+  ['cr', '506'],
+  ['ci', '225'],
+  ['hr', '385'],
+  ['cu', '53'],
+  ['cw', '599'],
+  ['cy', '357'],
+  ['cz', '420'],
+  ['dk', '45'],
+  ['dj', '253'],
+  ['dm', '1767'],
+  ['do', '1'],
+  ['ec', '593'],
+  ['eg', '20'],
+  ['sv', '503'],
+  ['gq', '240'],
+  ['er', '291'],
+  ['ee', '372'],
+  ['et', '251'],
+  ['fk', '500'],
+  ['fo', '298'],
+  ['fj', '679'],
+  ['fi', '358'],
+  ['fr', '33'],
+  ['gf', '594'],
+  ['pf', '689'],
+  ['ga', '241'],
+  ['gm', '220'],
+  ['ge', '995'],
+  ['de', '49'],
+  ['gh', '233'],
+  ['gi', '350'],
+  ['gr', '30'],
+  ['gl', '299'],
+  ['gd', '1473'],
+  ['gp', '590'],
+  ['gu', '1671'],
+  ['gt', '502'],
+  ['gg', '44'],
+  ['gn', '224'],
+  ['gw', '245'],
+  ['gy', '592'],
+  ['ht', '509'],
+  ['hn', '504'],
+  ['hk', '852'],
+  ['hu', '36'],
+  ['is', '354'],
+  ['in', '91'],
+  ['id', '62'],
+  ['ir', '98'],
+  ['iq', '964'],
+  ['ie', '353'],
+  ['im', '44'],
+  ['il', '972'],
+  ['it', '39'],
+  ['jm', '1876'],
+  ['jp', '81'],
+  ['je', '44'],
+  ['jo', '962'],
+  ['kz', '7'],
+  ['ke', '254'],
+  ['ki', '686'],
+  ['xk', '383'],
+  ['kw', '965'],
+  ['kg', '996'],
+  ['la', '856'],
+  ['lv', '371'],
+  ['lb', '961'],
+  ['ls', '266'],
+  ['lr', '231'],
+  ['ly', '218'],
+  ['li', '423'],
+  ['lt', '370'],
+  ['lu', '352'],
+  ['mo', '853'],
+  ['mk', '389'],
+  ['mg', '261'],
+  ['mw', '265'],
+  ['my', '60'],
+  ['mv', '960'],
+  ['ml', '223'],
+  ['mt', '356'],
+  ['mh', '692'],
+  ['mq', '596'],
+  ['mr', '222'],
+  ['mu', '230'],
+  ['mx', '52'],
+  ['fm', '691'],
+  ['md', '373'],
+  ['mc', '377'],
+  ['mn', '976'],
+  ['me', '382'],
+  ['ms', '1664'],
+  ['ma', '212'],
+  ['mz', '258'],
+  ['mm', '95'],
+  ['na', '264'],
+  ['nr', '674'],
+  ['np', '977'],
+  ['nl', '31'],
+  ['nc', '687'],
+  ['nz', '64'],
+  ['ni', '505'],
+  ['ne', '227'],
+  ['ng', '234'],
+  ['nu', '683'],
+  ['nf', '672'],
+  ['kp', '850'],
+  ['mp', '1670'],
+  ['no', '47'],
+  ['om', '968'],
+  ['pk', '92'],
+  ['pw', '680'],
+  ['ps', '970'],
+  ['pa', '507'],
+  ['pg', '675'],
+  ['py', '595'],
+  ['pe', '51'],
+  ['ph', '63'],
+  ['pl', '48'],
+  ['pt', '351'],
+  ['pr', '1'],
+  ['qa', '974'],
+  ['re', '262'],
+  ['ro', '40'],
+  ['ru', '7'],
+  ['rw', '250'],
+  ['bl', '590'],
+  ['sh', '290'],
+  ['kn', '1869'],
+  ['lc', '1758'],
+  ['mf', '590'],
+  ['pm', '508'],
+  ['vc', '1784'],
+  ['ws', '685'],
+  ['sm', '378'],
+  ['st', '239'],
+  ['sa', '966'],
+  ['sn', '221'],
+  ['rs', '381'],
+  ['sc', '248'],
+  ['sl', '232'],
+  ['sg', '65'],
+  ['sx', '1721'],
+  ['sk', '421'],
+  ['si', '386'],
+  ['sb', '677'],
+  ['so', '252'],
+  ['za', '27'],
+  ['kr', '82'],
+  ['ss', '211'],
+  ['es', '34'],
+  ['lk', '94'],
+  ['sd', '249'],
+  ['sr', '597'],
+  ['sz', '268'],
+  ['se', '46'],
+  ['ch', '41'],
+  ['sy', '963'],
+  ['tw', '886'],
+  ['tj', '992'],
+  ['tz', '255'],
+  ['th', '66'],
+  ['tl', '670'],
+  ['tg', '228'],
+  ['tk', '690'],
+  ['to', '676'],
+  ['tt', '1868'],
+  ['tn', '216'],
+  ['tr', '90'],
+  ['tm', '993'],
+  ['tc', '1649'],
+  ['tv', '688'],
+  ['vi', '1340'],
+  ['ug', '256'],
+  ['ua', '380'],
+  ['ae', '971'],
+  ['gb', '44'],
+  ['us', '1'],
+  ['uy', '598'],
+  ['uz', '998'],
+  ['vu', '678'],
+  ['va', '39'],
+  ['ve', '58'],
+  ['vn', '84'],
+  ['wf', '681'],
+  ['eh', '212'],
+  ['ye', '967'],
+  ['zm', '260'],
+  ['zw', '263'],
 ];
 
 interface Country {
@@ -281,9 +270,9 @@ interface Country {
   flag?: string;
 }
 
-function getCountryName(countryCode: string, locale = "en"): string {
+function getCountryName(countryCode: string, locale = 'en'): string {
   try {
-    const regionNames = new Intl.DisplayNames([locale], { type: "region" });
+    const regionNames = new Intl.DisplayNames([locale], { type: 'region' });
     return regionNames.of(countryCode) ?? countryCode;
   } catch {
     return countryCode;
@@ -293,7 +282,7 @@ function getCountryName(countryCode: string, locale = "en"): string {
 function getFlagEmoji(countryCode: string): string {
   const codePoints = countryCode
     .toUpperCase()
-    .split("")
+    .split('')
     .map((char) => 127397 + char.charCodeAt(0));
   return String.fromCodePoint(...codePoints);
 }
@@ -310,18 +299,13 @@ function getCountries(): Country[] {
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function detectCountryFromNumber(
-  value: string,
-  countries: Country[],
-): Country | undefined {
-  if (!value || !value.startsWith("+")) return undefined;
+function detectCountryFromNumber(value: string, countries: Country[]): Country | undefined {
+  if (!value || !value.startsWith('+')) return undefined;
 
-  const digits = value.slice(1).replace(/\D/g, "");
+  const digits = value.slice(1).replace(/\D/g, '');
   if (!digits) return undefined;
 
-  const sorted = [...countries].sort(
-    (a, b) => b.dialCode.length - a.dialCode.length,
-  );
+  const sorted = [...countries].sort((a, b) => b.dialCode.length - a.dialCode.length);
 
   const matches: Country[] = [];
   for (const country of sorted) {
@@ -333,8 +317,8 @@ function detectCountryFromNumber(
 
   if (matches.length === 0) return undefined;
 
-  if (matches.length > 1 && matches[0]?.dialCode === "+1") {
-    const usCountry = matches.find((c) => c.code === "US");
+  if (matches.length > 1 && matches[0]?.dialCode === '+1') {
+    const usCountry = matches.find((c) => c.code === 'US');
     if (usCountry) return usCountry;
   }
 
@@ -342,17 +326,15 @@ function detectCountryFromNumber(
 }
 
 function formatPhoneNumber(value: string, countries: Country[]): string {
-  if (!value) return "";
+  if (!value) return '';
 
-  const normalized = value.startsWith("+") ? value : `+${value}`;
+  const normalized = value.startsWith('+') ? value : `+${value}`;
 
-  const digits = normalized.slice(1).replace(/\D/g, "");
-  if (!digits) return "+";
+  const digits = normalized.slice(1).replace(/\D/g, '');
+  if (!digits) return '+';
 
   const detected = detectCountryFromNumber(`+${digits}`, countries);
-  const dialCodeLength = detected
-    ? detected.dialCode.slice(1).length
-    : Math.min(digits.length, 3);
+  const dialCodeLength = detected ? detected.dialCode.slice(1).length : Math.min(digits.length, 3);
 
   const countryCode = digits.slice(0, dialCodeLength);
   const rest = digits.slice(dialCodeLength);
@@ -360,10 +342,10 @@ function formatPhoneNumber(value: string, countries: Country[]): string {
   let formatted = `+${countryCode}`;
 
   if (rest) {
-    formatted += " ";
+    formatted += ' ';
     for (let i = 0; i < rest.length; i++) {
       if (i > 0 && i % 3 === 0) {
-        formatted += " ";
+        formatted += ' ';
       }
       formatted += rest[i];
     }
@@ -398,10 +380,7 @@ function useStoreContext(consumerName: string) {
   return context;
 }
 
-function useStore<T>(
-  selector: (state: StoreState) => T,
-  ogStore?: Store | null,
-): T {
+function useStore<T>(selector: (state: StoreState) => T, ogStore?: Store | null): T {
   const contextStore = React.useContext(StoreContext);
 
   const store = ogStore ?? contextStore;
@@ -410,10 +389,7 @@ function useStore<T>(
     throw new Error(`\`useStore\` must be used within \`${ROOT_NAME}\``);
   }
 
-  const getSnapshot = React.useCallback(
-    () => selector(store.getState()),
-    [store, selector],
-  );
+  const getSnapshot = React.useCallback(() => selector(store.getState()), [store, selector]);
 
   return React.useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot);
 }
@@ -430,9 +406,7 @@ interface PhoneInputContextValue {
   inputRef: React.RefObject<HTMLInputElement | null>;
 }
 
-const PhoneInputContext = React.createContext<PhoneInputContextValue | null>(
-  null,
-);
+const PhoneInputContext = React.createContext<PhoneInputContextValue | null>(null);
 
 function usePhoneInputContext(consumerName: string) {
   const context = React.useContext(PhoneInputContext);
@@ -442,7 +416,7 @@ function usePhoneInputContext(consumerName: string) {
   return context;
 }
 
-interface PhoneInputProps extends React.ComponentProps<"div"> {
+interface PhoneInputProps extends React.ComponentProps<'div'> {
   defaultValue?: string;
   value?: string;
   onValueChange?: (value: string) => void;
@@ -470,7 +444,7 @@ function PhoneInput(props: PhoneInputProps) {
     onCountryChange,
     countries = getCountries(),
     name,
-    placeholder = "Enter phone number",
+    placeholder = 'Enter phone number',
     asChild,
     disabled,
     required,
@@ -488,22 +462,20 @@ function PhoneInput(props: PhoneInputProps) {
 
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  const [formTrigger, setFormTrigger] = React.useState<RootElement | null>(
-    null,
-  );
+  const [formTrigger, setFormTrigger] = React.useState<RootElement | null>(null);
   const composedRef = useComposedRefs(ref, (node) => setFormTrigger(node));
-  const isFormControl = formTrigger ? !!formTrigger.closest("form") : true;
+  const isFormControl = formTrigger ? !!formTrigger.closest('form') : true;
 
   const listenersRef = useLazyRef(() => new Set<() => void>());
   const stateRef = useLazyRef<StoreState>(() => {
-    const initialValue = valueProp ?? defaultValue ?? "";
-    const initialCountry = countryProp ?? defaultCountry ?? "";
+    const initialValue = valueProp ?? defaultValue ?? '';
+    const initialCountry = countryProp ?? defaultCountry ?? '';
 
     return {
       value: initialValue,
       country: initialCountry,
       open: false,
-      startsWithPlus: initialValue.startsWith("+"),
+      startsWithPlus: initialValue.startsWith('+'),
     };
   });
 
@@ -522,10 +494,10 @@ function PhoneInput(props: PhoneInputProps) {
       setState: (key, value) => {
         if (Object.is(stateRef.current[key], value)) return;
 
-        if (key === "value" && typeof value === "string") {
+        if (key === 'value' && typeof value === 'string') {
           stateRef.current.value = value;
           propsRef.current.onValueChange?.(value);
-        } else if (key === "country" && typeof value === "string") {
+        } else if (key === 'country' && typeof value === 'string') {
           stateRef.current.country = value;
           propsRef.current.onCountryChange?.(value);
         } else {
@@ -547,13 +519,13 @@ function PhoneInput(props: PhoneInputProps) {
 
   useIsomorphicLayoutEffect(() => {
     if (valueProp !== undefined) {
-      store.setState("value", valueProp);
+      store.setState('value', valueProp);
     }
   }, [valueProp]);
 
   useIsomorphicLayoutEffect(() => {
     if (countryProp !== undefined) {
-      store.setState("country", countryProp);
+      store.setState('country', countryProp);
     }
   }, [countryProp]);
 
@@ -562,14 +534,14 @@ function PhoneInput(props: PhoneInputProps) {
   React.useEffect(() => {
     if (!value) return;
 
-    const digits = value.slice(1).replace(/\D/g, "");
+    const digits = value.slice(1).replace(/\D/g, '');
     const shouldDetect = startsWithPlus || digits.length >= 10;
 
     if (!shouldDetect) return;
 
     const detected = detectCountryFromNumber(value, countries);
     if (detected && detected.code !== country) {
-      store.setState("country", detected.code);
+      store.setState('country', detected.code);
     }
   }, [value, countries, country, store, startsWithPlus]);
 
@@ -585,19 +557,10 @@ function PhoneInput(props: PhoneInputProps) {
       showFlag,
       inputRef,
     }),
-    [
-      rootId,
-      countries,
-      placeholder,
-      disabled,
-      required,
-      readOnly,
-      invalid,
-      showFlag,
-    ],
+    [rootId, countries, placeholder, disabled, required, readOnly, invalid, showFlag],
   );
 
-  const RootPrimitive = asChild ? SlotPrimitive.Slot : "div";
+  const RootPrimitive = asChild ? SlotPrimitive.Slot : 'div';
 
   return (
     <StoreContext.Provider value={store}>
@@ -605,14 +568,14 @@ function PhoneInput(props: PhoneInputProps) {
         <RootPrimitive
           role="group"
           data-slot="phone-input"
-          data-disabled={disabled ? "" : undefined}
-          data-invalid={invalid ? "" : undefined}
-          data-readonly={readOnly ? "" : undefined}
+          data-disabled={disabled ? '' : undefined}
+          data-invalid={invalid ? '' : undefined}
+          data-readonly={readOnly ? '' : undefined}
           id={rootId}
           {...rootProps}
           ref={composedRef}
           className={cn(
-            "relative flex h-10 w-full items-center rounded-md border border-input bg-background transition-colors has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot][aria-invalid=true]]:border-destructive has-[[data-slot=input-group-control]:focus-visible]:ring-[3px] has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50 has-[[data-slot][aria-invalid=true]]:ring-[3px] has-[[data-slot][aria-invalid=true]]:ring-destructive/20 data-disabled:cursor-not-allowed data-disabled:opacity-50 dark:bg-input/30 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40",
+            'relative flex h-10 w-full items-center rounded-md border border-input bg-background transition-colors has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot][aria-invalid=true]]:border-destructive has-[[data-slot=input-group-control]:focus-visible]:ring-[3px] has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50 has-[[data-slot][aria-invalid=true]]:ring-[3px] has-[[data-slot][aria-invalid=true]]:ring-destructive/20 data-disabled:cursor-not-allowed data-disabled:opacity-50 dark:bg-input/30 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40',
             className,
           )}
         />
@@ -633,23 +596,12 @@ function PhoneInput(props: PhoneInputProps) {
 }
 
 interface PhoneInputCountrySelectProps
-  extends React.ComponentProps<typeof Popover>,
-    Pick<
-      React.ComponentProps<typeof PopoverTrigger>,
-      "disabled" | "className"
-    > {}
+  extends React.ComponentProps<typeof Popover>, Pick<React.ComponentProps<typeof PopoverTrigger>, 'disabled' | 'className'> {}
 
 function PhoneInputCountrySelect(props: PhoneInputCountrySelectProps) {
-  const {
-    disabled: disabledProp,
-    className,
-    children,
-    onOpenChange: onOpenChangeProp,
-    ...popoverProps
-  } = props;
+  const { disabled: disabledProp, className, children, onOpenChange: onOpenChangeProp, ...popoverProps } = props;
 
-  const { countries, inputRef, disabled, showFlag } =
-    usePhoneInputContext(COUNTRY_SELECT_NAME);
+  const { countries, inputRef, disabled, showFlag } = usePhoneInputContext(COUNTRY_SELECT_NAME);
   const store = useStoreContext(COUNTRY_SELECT_NAME);
   const country = useStore((state) => state.country);
   const open = useStore((state) => state.open);
@@ -660,7 +612,7 @@ function PhoneInputCountrySelect(props: PhoneInputCountrySelectProps) {
 
   const onOpenChange = React.useCallback(
     (open: boolean) => {
-      store.setState("open", open);
+      store.setState('open', open);
       onOpenChangeProp?.(open);
     },
     [store, onOpenChangeProp],
@@ -672,19 +624,14 @@ function PhoneInputCountrySelect(props: PhoneInputCountrySelectProps) {
         data-slot="phone-input-country-select"
         disabled={isDisabled}
         className={cn(
-          "flex h-full shrink-0 items-center gap-2 rounded-l-md border-input border-r bg-transparent px-3 text-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:z-10 focus-visible:border-ring focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40",
+          'flex h-full shrink-0 items-center gap-2 rounded-l-md border-input border-r bg-transparent px-3 text-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:z-10 focus-visible:border-ring focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40',
           className,
         )}
       >
         {!countryContext ? (
           <div className="h-4 w-6 rounded bg-muted/50" />
         ) : (
-          showFlag &&
-          countryContext.flag && (
-            <div className="w-6 text-lg leading-none">
-              {countryContext.flag}
-            </div>
-          )
+          showFlag && countryContext.flag && <div className="w-6 text-lg leading-none">{countryContext.flag}</div>
         )}
         <ChevronDown className="size-4 opacity-50" />
       </PopoverTrigger>
@@ -699,24 +646,17 @@ function PhoneInputCountrySelect(props: PhoneInputCountrySelectProps) {
                   key={c.code}
                   value={`${c.name} ${c.dialCode} ${c.code}`}
                   onSelect={() => {
-                    store.setState("country", c.code);
-                    store.setState("open", false);
+                    store.setState('country', c.code);
+                    store.setState('open', false);
                     requestAnimationFrame(() => {
                       inputRef.current?.focus();
                     });
                   }}
                 >
-                  {showFlag && c.flag && (
-                    <span className="text-lg">{c.flag}</span>
-                  )}
+                  {showFlag && c.flag && <span className="text-lg">{c.flag}</span>}
                   <span className="flex-1">{c.name}</span>
                   <span className="text-muted-foreground">{c.dialCode}</span>
-                  <Check
-                    className={cn(
-                      "size-4",
-                      country === c.code ? "opacity-100" : "opacity-0",
-                    )}
-                  />
+                  <Check className={cn('size-4', country === c.code ? 'opacity-100' : 'opacity-0')} />
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -727,26 +667,10 @@ function PhoneInputCountrySelect(props: PhoneInputCountrySelectProps) {
   );
 }
 
-function PhoneInputField(props: React.ComponentProps<"input">) {
-  const {
-    onChange: onChangeProp,
-    className,
-    disabled: disabledProp,
-    readOnly: readOnlyProp,
-    required: requiredProp,
-    ref,
-    ...inputProps
-  } = props;
+function PhoneInputField(props: React.ComponentProps<'input'>) {
+  const { onChange: onChangeProp, className, disabled: disabledProp, readOnly: readOnlyProp, required: requiredProp, ref, ...inputProps } = props;
 
-  const {
-    inputRef,
-    disabled,
-    invalid,
-    readOnly,
-    required,
-    placeholder,
-    countries,
-  } = usePhoneInputContext(FIELD_NAME);
+  const { inputRef, disabled, invalid, readOnly, required, placeholder, countries } = usePhoneInputContext(FIELD_NAME);
   const store = useStoreContext(FIELD_NAME);
   const value = useStore((state) => state.value);
 
@@ -767,11 +691,11 @@ function PhoneInputField(props: React.ComponentProps<"input">) {
 
       const inputValue = event.target.value;
 
-      const startsWithPlus = inputValue.startsWith("+");
-      const digits = inputValue.replace(/\D/g, "");
-      const newValue = digits ? `+${digits}` : startsWithPlus ? "+" : "";
-      store.setState("startsWithPlus", startsWithPlus);
-      store.setState("value", newValue);
+      const startsWithPlus = inputValue.startsWith('+');
+      const digits = inputValue.replace(/\D/g, '');
+      const newValue = digits ? `+${digits}` : startsWithPlus ? '+' : '';
+      store.setState('startsWithPlus', startsWithPlus);
+      store.setState('value', newValue);
     },
     [store, onChangeRef, isDisabled, isReadOnly],
   );
@@ -793,7 +717,7 @@ function PhoneInputField(props: React.ComponentProps<"input">) {
       {...inputProps}
       ref={composedRef}
       className={cn(
-        "h-full flex-1 rounded-r-md rounded-l-none border-0 bg-transparent shadow-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:bg-transparent aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive/20 dark:bg-transparent dark:aria-invalid:ring-destructive/40 dark:disabled:bg-transparent",
+        'h-full flex-1 rounded-r-md rounded-l-none border-0 bg-transparent shadow-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:bg-transparent aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive/20 dark:bg-transparent dark:aria-invalid:ring-destructive/40 dark:disabled:bg-transparent',
         className,
       )}
       placeholder={placeholder}

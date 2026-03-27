@@ -56,10 +56,7 @@ export function useAuditLog(): UseAuditLogReturn {
   );
 
   const get = useCallback(
-    (id: string) =>
-      execute<AuditLogEntry>('get', (client) =>
-        client.get<AuditLogEntry>(AUDIT_LOG_ENDPOINTS.GET(id)),
-      ),
+    (id: string) => execute<AuditLogEntry>('get', (client) => client.get<AuditLogEntry>(AUDIT_LOG_ENDPOINTS.GET(id))),
     [execute],
   );
 

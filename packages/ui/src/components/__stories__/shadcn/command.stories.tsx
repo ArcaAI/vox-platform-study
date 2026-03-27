@@ -1,12 +1,6 @@
-import * as React from 'react'
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import {
-  IconSettings,
-  IconUser,
-  IconCalendar,
-  IconMoon,
-  IconCalculator,
-} from '@tabler/icons-react'
+import * as React from 'react';
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { IconSettings, IconUser, IconCalendar, IconMoon, IconCalculator } from '@tabler/icons-react';
 
 import {
   Command,
@@ -18,8 +12,8 @@ import {
   CommandSeparator,
   CommandShortcut,
   CommandDialog,
-} from '../../shadcn/command'
-import { Button } from '../../shadcn/button'
+} from '../../shadcn/command';
+import { Button } from '../../shadcn/button';
 
 const meta = {
   title: 'Components/Command',
@@ -28,10 +22,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Command>
+} satisfies Meta<typeof Command>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -67,7 +61,7 @@ export const Default: Story = {
       </CommandList>
     </Command>
   ),
-}
+};
 
 export const WithShortcuts: Story = {
   render: () => (
@@ -103,11 +97,11 @@ export const WithShortcuts: Story = {
       </CommandList>
     </Command>
   ),
-}
+};
 
 export const Dialog: Story = {
   render: () => {
-    const [open, setOpen] = React.useState(false)
+    const [open, setOpen] = React.useState(false);
 
     return (
       <>
@@ -144,6 +138,6 @@ export const Dialog: Story = {
           </CommandList>
         </CommandDialog>
       </>
-    )
+    );
   },
-}
+};

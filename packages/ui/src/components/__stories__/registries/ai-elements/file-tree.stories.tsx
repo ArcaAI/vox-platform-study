@@ -1,20 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  FileTree,
-  FileTreeFolder,
-  FileTreeFile,
-} from '../../../registries/ai-elements/file-tree'
+import { FileTree, FileTreeFolder, FileTreeFile } from '../../../registries/ai-elements/file-tree';
 
 const meta = {
   title: 'Registries/AiElements/FileTree',
   component: FileTree,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof FileTree>
+} satisfies Meta<typeof FileTree>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -32,4 +28,4 @@ export const Default: Story = {
       <FileTreeFile path="tsconfig.json" name="tsconfig.json" />
     </FileTree>
   ),
-}
+};

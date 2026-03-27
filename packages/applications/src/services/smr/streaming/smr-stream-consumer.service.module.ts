@@ -15,8 +15,8 @@ import { SmrStreamConsumerService } from './smr-stream-consumer.service';
  * - SmrStreamConsumerService: XREAD-based chunk subscription
  */
 @Module({
-    imports: [ConfigModule],
-    providers: [SmrStreamConsumerService],
-    exports: [SmrStreamConsumerService],
+  imports: [ConfigModule],
+  providers: [SmrStreamConsumerService],
+  exports: [SmrStreamConsumerService],
 })
 export class SmrStreamConsumerModule {}

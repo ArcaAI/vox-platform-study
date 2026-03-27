@@ -1,8 +1,8 @@
-import { Button } from '@/components/shadcn/button'
-import { cn } from '@/lib/utils'
-import { Check, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { demoTags } from './demo/selection'
+import { Button } from '@/components/shadcn/button';
+import { cn } from '@/lib/utils';
+import { Check, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { demoTags } from './demo/selection';
 
 /**
  * Represents an individual tag option.
@@ -12,9 +12,9 @@ import { demoTags } from './demo/selection'
  * @property {"default" | "blue" | "green" | "red" | "yellow" | "purple"} [color] - Optional color theme
  */
 export interface Tag {
-  id?: string
-  label?: string
-  color?: 'default' | 'blue' | 'green' | 'red' | 'yellow' | 'purple'
+  id?: string;
+  label?: string;
+  color?: 'default' | 'blue' | 'green' | 'red' | 'yellow' | 'purple';
 }
 
 /**
@@ -28,46 +28,45 @@ export interface Tag {
 export interface TagSelectProps {
   data?: {
     /** Array of tags to display for selection. */
-    tags?: Tag[]
-  }
+    tags?: Tag[];
+  };
   actions?: {
     /** Called when the user clicks the validate button with the selected tag IDs. */
-    onValidate?: (tagIds: string[]) => void
-  }
+    onValidate?: (tagIds: string[]) => void;
+  };
   appearance?: {
     /**
      * Selection mode: single allows one tag, multiple allows many.
      * @default "multiple"
      */
-    mode?: 'single' | 'multiple'
+    mode?: 'single' | 'multiple';
     /**
      * Whether to show the clear selection button.
      * @default true
      */
-    showClear?: boolean
+    showClear?: boolean;
     /**
      * Whether to show the validate button.
      * @default true
      */
-    showValidate?: boolean
+    showValidate?: boolean;
     /**
      * Custom label for the validate button.
      * @default "Validate selection"
      */
-    validateLabel?: string
-  }
+    validateLabel?: string;
+  };
   control?: {
     /** Array of pre-selected tag IDs for controlled mode. */
-    selectedTagIds?: string[]
-  }
+    selectedTagIds?: string[];
+  };
 }
-
 
 // ChatGPT-compliant: all tags use neutral system colors
 const tagClasses = {
   selected: 'bg-foreground text-background border-foreground',
-  unselected: 'bg-background text-foreground border-border hover:bg-muted'
-}
+  unselected: 'bg-background text-foreground border-border hover:bg-muted',
+};
 
 /**
  * A tag selection component with single or multiple selection modes.
@@ -105,65 +104,61 @@ const tagClasses = {
  * ```
  */
 export function TagSelect({ data, actions, appearance, control }: TagSelectProps) {
-  const resolved: NonNullable<TagSelectProps['data']> = data ?? { tags: demoTags }
-  const tags = resolved.tags ?? []
-  const onValidate = actions?.onValidate
-  const mode = appearance?.mode ?? 'multiple'
-  const showClear = appearance?.showClear ?? true
-  const showValidate = appearance?.showValidate ?? true
-  const validateLabel = appearance?.validateLabel ?? 'Validate selection'
-  const selectedTagIds = control?.selectedTagIds
-  const [selected, setSelected] = useState<string[]>(selectedTagIds ?? [])
+  const resolved: NonNullable<TagSelectProps['data']> = data ?? { tags: demoTags };
+  const tags = resolved.tags ?? [];
+  const onValidate = actions?.onValidate;
+  const mode = appearance?.mode ?? 'multiple';
+  const showClear = appearance?.showClear ?? true;
+  const showValidate = appearance?.showValidate ?? true;
+  const validateLabel = appearance?.validateLabel ?? 'Validate selection';
+  const selectedTagIds = control?.selectedTagIds;
+  const [selected, setSelected] = useState<string[]>(selectedTagIds ?? []);
 
   // Sync internal state when controlled prop changes
   useEffect(() => {
-    setSelected(selectedTagIds ?? [])
-  }, [selectedTagIds])
+    setSelected(selectedTagIds ?? []);
+  }, [selectedTagIds]);
 
   const handleToggle = (tagId: string) => {
-    let newSelected: string[]
+    let newSelected: string[];
 
     if (mode === 'single') {
-      newSelected = selected.includes(tagId) ? [] : [tagId]
+      newSelected = selected.includes(tagId) ? [] : [tagId];
     } else {
-      newSelected = selected.includes(tagId)
-        ? selected.filter((id) => id !== tagId)
-        : [...selected, tagId]
+      newSelected = selected.includes(tagId) ? selected.filter((id) => id !== tagId) : [...selected, tagId];
     }
 
-    setSelected(newSelected)
-  }
+    setSelected(newSelected);
+  };
 
   const handleClear = () => {
-    setSelected([])
-  }
+    setSelected([]);
+  };
 
   const handleValidate = () => {
-    onValidate?.(selected)
-  }
+    onValidate?.(selected);
+  };
 
-  const isSelected = (tagId: string) => selected.includes(tagId)
+  const isSelected = (tagId: string) => selected.includes(tagId);
 
   return (
     <div className="w-full space-y-2 bg-card rounded-lg p-4">
       <div className="flex flex-wrap gap-2">
         {tags.map((tag, index) => {
-          const tagId = tag.id ?? `tag-${index}`
+          const tagId = tag.id ?? `tag-${index}`;
           return (
             <button
               key={tagId}
               onClick={() => handleToggle(tagId)}
               className={cn(
                 'inline-flex items-center gap-1 sm:gap-1.5 rounded-full border px-2.5 sm:px-3 py-0.5 sm:py-1 text-xs sm:text-sm transition-colors cursor-pointer',
-                isSelected(tagId) ? tagClasses.selected : tagClasses.unselected
+                isSelected(tagId) ? tagClasses.selected : tagClasses.unselected,
               )}
             >
-              {isSelected(tagId) && (
-                <Check className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-              )}
+              {isSelected(tagId) && <Check className="h-3 w-3 sm:h-3.5 sm:w-3.5" />}
               {tag.label && <span>{tag.label}</span>}
             </button>
-          )
+          );
         })}
       </div>
 
@@ -181,16 +176,12 @@ export function TagSelect({ data, actions, appearance, control }: TagSelectProps
         )}
 
         {showValidate && (
-          <Button
-            onClick={handleValidate}
-            disabled={selected.length === 0}
-            size="sm"
-          >
+          <Button onClick={handleValidate} disabled={selected.length === 0} size="sm">
             {validateLabel}
             {selected.length > 0 && ` (${selected.length})`}
           </Button>
         )}
       </div>
     </div>
-  )
+  );
 }

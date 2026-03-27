@@ -72,7 +72,6 @@ export interface ContactFormProps {
   };
 }
 
-
 /**
  * A complete contact form component with name fields, phone number with country selector,
  * email input, message textarea, and file attachment support.
@@ -104,11 +103,11 @@ export interface ContactFormProps {
  * ```
  */
 export function ContactForm({ data, actions, appearance, control }: ContactFormProps) {
-  const resolved: NonNullable<ContactFormProps['data']> = data ?? demoContactFormData
-  const title = resolved.title
-  const subtitle = resolved.subtitle
-  const submitLabel = resolved.submitLabel ?? 'Submit'
-  const initialValues = resolved.initialValues
+  const resolved: NonNullable<ContactFormProps['data']> = data ?? demoContactFormData;
+  const title = resolved.title;
+  const subtitle = resolved.subtitle;
+  const submitLabel = resolved.submitLabel ?? 'Submit';
+  const initialValues = resolved.initialValues;
   const { onSubmit } = actions ?? {};
   const { showTitle = true } = appearance ?? {};
   const { isLoading = false } = control ?? {};
@@ -131,9 +130,7 @@ export function ContactForm({ data, actions, appearance, control }: ContactFormP
   const selectedCountry = countries.find((c) => c.id === formData.countryId);
 
   const filteredCountries = countries.filter(
-    (country) =>
-      country.name.toLowerCase().includes(countrySearch.toLowerCase()) ||
-      country.code.includes(countrySearch)
+    (country) => country.name.toLowerCase().includes(countrySearch.toLowerCase()) || country.code.includes(countrySearch),
   );
 
   useEffect(() => {
@@ -197,13 +194,7 @@ export function ContactForm({ data, actions, appearance, control }: ContactFormP
           </div>
           <div className="space-y-2">
             <Label htmlFor="lastName">Last Name</Label>
-            <Input
-              id="lastName"
-              placeholder="Doe"
-              value={formData.lastName}
-              onChange={(e) => handleChange('lastName', e.target.value)}
-              required
-            />
+            <Input id="lastName" placeholder="Doe" value={formData.lastName} onChange={(e) => handleChange('lastName', e.target.value)} required />
           </div>
         </div>
 
@@ -218,7 +209,7 @@ export function ContactForm({ data, actions, appearance, control }: ContactFormP
                     type="button"
                     className={cn(
                       'flex items-center gap-1.5 h-9 px-3 rounded-lg border border-input bg-transparent text-sm transition-colors',
-                      'hover:bg-muted focus-visible:border-foreground focus-visible:outline-none'
+                      'hover:bg-muted focus-visible:border-foreground focus-visible:outline-none',
                     )}
                   >
                     {selectedCountry && (
@@ -246,9 +237,7 @@ export function ContactForm({ data, actions, appearance, control }: ContactFormP
                   </div>
                   <div className="max-h-[240px] overflow-y-auto p-1">
                     {filteredCountries.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        No country found
-                      </p>
+                      <p className="text-sm text-muted-foreground text-center py-4">No country found</p>
                     ) : (
                       filteredCountries.map((country) => (
                         <button
@@ -258,7 +247,7 @@ export function ContactForm({ data, actions, appearance, control }: ContactFormP
                           className={cn(
                             'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors text-left',
                             'hover:bg-muted',
-                            formData.countryId === country.id && 'bg-muted'
+                            formData.countryId === country.id && 'bg-muted',
                           )}
                         >
                           <span>{country.flag}</span>
@@ -306,27 +295,19 @@ export function ContactForm({ data, actions, appearance, control }: ContactFormP
             required
             className={cn(
               'border-input placeholder:text-muted-foreground flex w-full rounded-lg border bg-transparent px-3 py-2 text-base transition-colors outline-none md:text-sm resize-none',
-              'focus-visible:border-foreground'
+              'focus-visible:border-foreground',
             )}
           />
         </div>
 
         {/* Actions */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            onChange={handleFileChange}
-            className="hidden"
-            accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg"
-          />
+          <input ref={fileInputRef} type="file" onChange={handleFileChange} className="hidden" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" />
 
           {formData.attachment ? (
             <div className="flex items-center justify-center gap-2 px-3 py-2 bg-muted rounded-lg w-full sm:w-auto">
               <Paperclip className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <span className="text-sm text-foreground truncate max-w-[150px]">
-                {formData.attachment.name}
-              </span>
+              <span className="text-sm text-foreground truncate max-w-[150px]">{formData.attachment.name}</span>
               <button
                 type="button"
                 onClick={handleRemoveFile}
@@ -337,13 +318,7 @@ export function ContactForm({ data, actions, appearance, control }: ContactFormP
               </button>
             </div>
           ) : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full sm:w-auto"
-            >
+            <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="w-full sm:w-auto">
               <Paperclip className="h-4 w-4 mr-2" />
               Attach a file
             </Button>

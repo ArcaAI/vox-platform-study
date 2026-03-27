@@ -18,8 +18,7 @@ export interface RequestOptions {
 }
 
 function getEffectiveToken(): string {
-  const { accessToken, isImpersonating, impersonationToken } =
-    useAuthStore.getState();
+  const { accessToken, isImpersonating, impersonationToken } = useAuthStore.getState();
   return isImpersonating && impersonationToken ? impersonationToken : accessToken;
 }
 
@@ -50,13 +49,7 @@ function getBaseUrl(): string {
   return usePlaygroundStore.getState().apiBaseUrl;
 }
 
-async function request<T>(
-  method: string,
-  path: string,
-  body?: unknown,
-  options?: RequestOptions,
-  isRetry = false,
-): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, options?: RequestOptions, isRetry = false): Promise<T> {
   const url = `${getBaseUrl()}${path}`;
   const init: RequestInit = {
     method,
@@ -83,9 +76,7 @@ async function request<T>(
     } catch {
       /* empty */
     }
-    const message =
-      (errorBody as { message?: string })?.message ??
-      `Request failed: ${method} ${path} (${res.status})`;
+    const message = (errorBody as { message?: string })?.message ?? `Request failed: ${method} ${path} (${res.status})`;
     throw new AdminApiError(message, res.status, errorBody);
   }
 
@@ -98,13 +89,7 @@ async function request<T>(
  * Callers pass a pre-built FormData — no Content-Type header is set
  * so the browser can generate the correct multipart boundary.
  */
-async function requestMultipart<T>(
-  method: string,
-  path: string,
-  formData: FormData,
-  options?: RequestOptions,
-  isRetry = false,
-): Promise<T> {
+async function requestMultipart<T>(method: string, path: string, formData: FormData, options?: RequestOptions, isRetry = false): Promise<T> {
   const { apiKey, authMethod, tenantId } = useAuthStore.getState();
   const headers: Record<string, string> = {};
 
@@ -138,9 +123,7 @@ async function requestMultipart<T>(
     } catch {
       /* empty */
     }
-    const message =
-      (errorBody as { message?: string })?.message ??
-      `Request failed: ${method} ${path} (${res.status})`;
+    const message = (errorBody as { message?: string })?.message ?? `Request failed: ${method} ${path} (${res.status})`;
     throw new AdminApiError(message, res.status, errorBody);
   }
 
@@ -149,16 +132,10 @@ async function requestMultipart<T>(
 }
 
 export const adminClient = {
-  get: <T>(path: string, options?: RequestOptions) =>
-    request<T>('GET', path, undefined, options),
-  post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
-    request<T>('POST', path, body, options),
-  patch: <T>(path: string, body?: unknown, options?: RequestOptions) =>
-    request<T>('PATCH', path, body, options),
-  delete: <T>(path: string, options?: RequestOptions) =>
-    request<T>('DELETE', path, undefined, options),
-  deleteWithBody: <T>(path: string, body: unknown, options?: RequestOptions) =>
-    request<T>('DELETE', path, body, options),
-  upload: <T>(path: string, formData: FormData, options?: RequestOptions) =>
-    requestMultipart<T>('POST', path, formData, options),
+  get: <T>(path: string, options?: RequestOptions) => request<T>('GET', path, undefined, options),
+  post: <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>('POST', path, body, options),
+  patch: <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>('PATCH', path, body, options),
+  delete: <T>(path: string, options?: RequestOptions) => request<T>('DELETE', path, undefined, options),
+  deleteWithBody: <T>(path: string, body: unknown, options?: RequestOptions) => request<T>('DELETE', path, body, options),
+  upload: <T>(path: string, formData: FormData, options?: RequestOptions) => requestMultipart<T>('POST', path, formData, options),
 };

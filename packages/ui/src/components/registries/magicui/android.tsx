@@ -1,28 +1,15 @@
-import { SVGProps } from "react"
+import { SVGProps } from 'react';
 
 export interface AndroidProps extends SVGProps<SVGSVGElement> {
-  width?: number
-  height?: number
-  src?: string
-  videoSrc?: string
+  width?: number;
+  height?: number;
+  src?: string;
+  videoSrc?: string;
 }
 
-export function Android({
-  width = 433,
-  height = 882,
-  src,
-  videoSrc,
-  ...props
-}: AndroidProps) {
+export function Android({ width = 433, height = 882, src, videoSrc, ...props }: AndroidProps) {
   return (
-    <svg
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      {...props}
-    >
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
       <path
         d="M376 153H378C379.105 153 380 153.895 380 155V249C380 250.105 379.105 251 378 251H376V153Z"
         className="fill-[#E5E5E5] dark:fill-[#404040]"
@@ -46,18 +33,8 @@ export function Android({
           className="fill-[#E5E5E5] stroke-[#E5E5E5] stroke-[0.5] dark:fill-[#404040] dark:stroke-[#404040]"
         />
       </g>
-      <circle
-        cx="189"
-        cy="28"
-        r="9"
-        className="fill-white dark:fill-[#262626]"
-      />
-      <circle
-        cx="189"
-        cy="28"
-        r="4"
-        className="fill-[#E5E5E5] dark:fill-[#404040]"
-      />
+      <circle cx="189" cy="28" r="9" className="fill-white dark:fill-[#262626]" />
+      <circle cx="189" cy="28" r="4" className="fill-[#E5E5E5] dark:fill-[#404040]" />
       {src && (
         <image
           href={src}
@@ -69,34 +46,15 @@ export function Android({
         />
       )}
       {videoSrc && (
-        <foreignObject
-          width="380"
-          height="820"
-          clipPath="url(#clip0_514_20855)"
-          preserveAspectRatio="xMidYMid slice"
-        >
-          <video
-            className="size-full object-cover"
-            src={videoSrc}
-            autoPlay
-            loop
-            muted
-            playsInline
-          />
+        <foreignObject width="380" height="820" clipPath="url(#clip0_514_20855)" preserveAspectRatio="xMidYMid slice">
+          <video className="size-full object-cover" src={videoSrc} autoPlay loop muted playsInline />
         </foreignObject>
       )}
       <defs>
         <clipPath id="clip0_514_20855">
-          <rect
-            width="360"
-            height="800"
-            rx="33"
-            ry="25"
-            className="fill-white dark:fill-[#262626]"
-            transform="translate(9 14)"
-          />
+          <rect width="360" height="800" rx="33" ry="25" className="fill-white dark:fill-[#262626]" transform="translate(9 14)" />
         </clipPath>
       </defs>
     </svg>
-  )
+  );
 }

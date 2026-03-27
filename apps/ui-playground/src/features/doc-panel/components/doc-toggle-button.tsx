@@ -26,11 +26,7 @@ export function DocToggleButton({ className }: DocToggleButtonProps) {
             aria-label={isOpen ? 'Close documentation' : 'Open documentation'}
             title={isOpen ? 'Close documentation' : 'Open documentation'}
           >
-            {isOpen ? (
-              <BookOpenCheck data-icon="inline-start" className="size-4" />
-            ) : (
-              <BookOpen data-icon="inline-start" className="size-4" />
-            )}
+            {isOpen ? <BookOpenCheck data-icon="inline-start" className="size-4" /> : <BookOpen data-icon="inline-start" className="size-4" />}
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">{isOpen ? 'Close documentation' : 'Open documentation'}</TooltipContent>

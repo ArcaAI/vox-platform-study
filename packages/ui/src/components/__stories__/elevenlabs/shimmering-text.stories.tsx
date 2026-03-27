@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { ShimmeringText } from '../../elevenlabs/shimmering-text'
+import { ShimmeringText } from '../../elevenlabs/shimmering-text';
 
 const meta: Meta<typeof ShimmeringText> = {
   title: 'ElevenLabs/ShimmeringText',
@@ -31,37 +31,37 @@ const meta: Meta<typeof ShimmeringText> = {
       description: 'Shimmer spread multiplier',
     },
   },
-}
+};
 
-export default meta
-type Story = StoryObj<typeof ShimmeringText>
+export default meta;
+type Story = StoryObj<typeof ShimmeringText>;
 
 export const Default: Story = {
   args: {
     text: 'Shimmering Text Effect',
   },
-}
+};
 
 export const SlowAnimation: Story = {
   args: {
     text: 'Slow shimmer animation',
     duration: 5,
   },
-}
+};
 
 export const FastAnimation: Story = {
   args: {
     text: 'Fast shimmer',
     duration: 0.8,
   },
-}
+};
 
 export const NoRepeat: Story = {
   args: {
     text: 'This only shimmers once',
     repeat: false,
   },
-}
+};
 
 export const CustomColors: Story = {
   args: {
@@ -69,7 +69,7 @@ export const CustomColors: Story = {
     color: '#6366f1',
     shimmerColor: '#f59e0b',
   },
-}
+};
 
 export const LargeText: Story = {
   render: () => (
@@ -77,18 +77,18 @@ export const LargeText: Story = {
       <ShimmeringText text="Large Heading" duration={3} />
     </div>
   ),
-}
+};
 
 export const WideSpread: Story = {
   args: {
     text: 'Wide shimmer spread',
     spread: 4,
   },
-}
+};
 
 export const WithDelay: Story = {
   args: {
     text: 'Delayed shimmer start',
     delay: 2,
   },
-}
+};

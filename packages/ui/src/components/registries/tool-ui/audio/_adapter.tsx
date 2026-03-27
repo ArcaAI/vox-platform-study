@@ -1,5 +1,5 @@
-"use client";
+'use client';
 
-export { cn } from "@/lib/utils";
-export { Button } from "@/components/ui/button";
-export { Slider } from "@/components/ui/slider";
+export { cn } from '@/lib/utils';
+export { Button } from '@/components/ui/button';
+export { Slider } from '@/components/ui/slider';

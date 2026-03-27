@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   SunIcon,
@@ -11,19 +11,19 @@ import {
   MapPinIcon,
   KeyIcon,
   FingerprintIcon,
-} from "@/components/registries/lucide-animated";
+} from '@/components/registries/lucide-animated';
 
 const icons = [
-  { name: "sun", Icon: SunIcon },
-  { name: "moon", Icon: MoonIcon },
-  { name: "cloud-rain", Icon: CloudRainIcon },
-  { name: "cloud-sun", Icon: CloudSunIcon },
-  { name: "snowflake", Icon: SnowflakeIcon },
-  { name: "wind", Icon: WindIcon },
-  { name: "compass", Icon: CompassIcon },
-  { name: "map-pin", Icon: MapPinIcon },
-  { name: "key", Icon: KeyIcon },
-  { name: "fingerprint", Icon: FingerprintIcon },
+  { name: 'sun', Icon: SunIcon },
+  { name: 'moon', Icon: MoonIcon },
+  { name: 'cloud-rain', Icon: CloudRainIcon },
+  { name: 'cloud-sun', Icon: CloudSunIcon },
+  { name: 'snowflake', Icon: SnowflakeIcon },
+  { name: 'wind', Icon: WindIcon },
+  { name: 'compass', Icon: CompassIcon },
+  { name: 'map-pin', Icon: MapPinIcon },
+  { name: 'key', Icon: KeyIcon },
+  { name: 'fingerprint', Icon: FingerprintIcon },
 ] as const;
 
 function WeatherIcons() {
@@ -40,9 +40,9 @@ function WeatherIcons() {
 }
 
 const meta = {
-  title: "Registries/LucideAnimated/Weather",
+  title: 'Registries/LucideAnimated/Weather',
   component: WeatherIcons,
-  parameters: { layout: "padded" },
+  parameters: { layout: 'padded' },
 } satisfies Meta<typeof WeatherIcons>;
 
 export default meta;

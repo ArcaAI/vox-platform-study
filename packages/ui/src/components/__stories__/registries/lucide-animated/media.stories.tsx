@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   PlayIcon,
@@ -9,17 +9,17 @@ import {
   MailCheckIcon,
   MessageCircleIcon,
   MessageSquareIcon,
-} from "@/components/registries/lucide-animated";
+} from '@/components/registries/lucide-animated';
 
 const icons = [
-  { name: "play", Icon: PlayIcon },
-  { name: "pause", Icon: PauseIcon },
-  { name: "volume", Icon: VolumeIcon },
-  { name: "mic", Icon: MicIcon },
-  { name: "mic-off", Icon: MicOffIcon },
-  { name: "mail-check", Icon: MailCheckIcon },
-  { name: "message-circle", Icon: MessageCircleIcon },
-  { name: "message-square", Icon: MessageSquareIcon },
+  { name: 'play', Icon: PlayIcon },
+  { name: 'pause', Icon: PauseIcon },
+  { name: 'volume', Icon: VolumeIcon },
+  { name: 'mic', Icon: MicIcon },
+  { name: 'mic-off', Icon: MicOffIcon },
+  { name: 'mail-check', Icon: MailCheckIcon },
+  { name: 'message-circle', Icon: MessageCircleIcon },
+  { name: 'message-square', Icon: MessageSquareIcon },
 ] as const;
 
 function MediaIcons() {
@@ -36,9 +36,9 @@ function MediaIcons() {
 }
 
 const meta = {
-  title: "Registries/LucideAnimated/Media",
+  title: 'Registries/LucideAnimated/Media',
   component: MediaIcons,
-  parameters: { layout: "padded" },
+  parameters: { layout: 'padded' },
 } satisfies Meta<typeof MediaIcons>;
 
 export default meta;

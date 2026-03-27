@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import {
   Stepper,
   StepperList,
@@ -7,17 +7,17 @@ import {
   StepperIndicator,
   StepperSeparator,
   StepperTitle,
-} from '@/components/registries/diceui/stepper'
+} from '@/components/registries/diceui/stepper';
 
 const meta = {
   title: 'Registries/DiceUI/Stepper',
   component: Stepper,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Stepper>
+} satisfies Meta<typeof Stepper>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -46,4 +46,4 @@ export const Default: Story = {
       </StepperList>
     </Stepper>
   ),
-}
+};

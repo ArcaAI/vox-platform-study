@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { ProgressTracker } from '../../../registries/tool-ui/progress-tracker'
+import { ProgressTracker } from '../../../registries/tool-ui/progress-tracker';
 
 const meta = {
   title: 'Registries/ToolUI/ProgressTracker',
   component: ProgressTracker,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof ProgressTracker>
+} satisfies Meta<typeof ProgressTracker>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
@@ -21,4 +21,4 @@ export const Default: Story = {
       { id: '3', label: 'Configure', status: 'pending' },
     ],
   },
-}
+};

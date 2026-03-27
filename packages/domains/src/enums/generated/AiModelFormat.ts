@@ -3,8 +3,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export enum AiModelFormat {
-    SAFETENSOR = 'SAFETENSOR',
-    ONNX = 'ONNX',
-    NEMO = 'NEMO',
-    PYTORCH = 'PYTORCH',
+  SAFETENSOR = 'SAFETENSOR',
+  ONNX = 'ONNX',
+  NEMO = 'NEMO',
+  PYTORCH = 'PYTORCH',
 }

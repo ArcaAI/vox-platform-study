@@ -103,7 +103,7 @@ export function useArcaConfig(): UseArcaConfigReturn {
     <K extends keyof UserPreferences>(key: K): UserPreferences[K] => {
       return store.preferences[key];
     },
-    [store.preferences]
+    [store.preferences],
   );
 
   // Update preferences
@@ -137,7 +137,7 @@ export function useArcaConfig(): UseArcaConfigReturn {
         throw error;
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   // Reset preferences
@@ -181,7 +181,7 @@ export function useArcaConfig(): UseArcaConfigReturn {
       modelRegistry.selectModel(type, modelId);
       store.incrementModelRegistryVersion();
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   // Three-tier config helpers (TASK-244)
@@ -277,6 +277,6 @@ export function useArcaConfig(): UseArcaConfigReturn {
       isLocked,
       setUserPreference,
       resetUserPreferences,
-    ]
+    ],
   );
 }

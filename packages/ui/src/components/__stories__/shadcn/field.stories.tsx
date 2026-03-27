@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Input } from '../../shadcn/input'
+import { Input } from '../../shadcn/input';
 import {
   Field,
   FieldContent,
@@ -12,7 +12,7 @@ import {
   FieldSeparator,
   FieldSet,
   FieldTitle,
-} from '../../shadcn/field'
+} from '../../shadcn/field';
 
 const meta = {
   title: 'Components/Field',
@@ -21,10 +21,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Field>
+} satisfies Meta<typeof Field>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -38,7 +38,7 @@ export const Default: Story = {
       </Field>
     </div>
   ),
-}
+};
 
 export const Horizontal: Story = {
   render: () => (
@@ -63,7 +63,7 @@ export const Horizontal: Story = {
       </FieldGroup>
     </div>
   ),
-}
+};
 
 export const WithError: Story = {
   render: () => (
@@ -78,7 +78,7 @@ export const WithError: Story = {
       </Field>
     </div>
   ),
-}
+};
 
 export const FieldSetExample: Story = {
   render: () => (
@@ -111,4 +111,4 @@ export const FieldSetExample: Story = {
       </FieldSet>
     </div>
   ),
-}
+};

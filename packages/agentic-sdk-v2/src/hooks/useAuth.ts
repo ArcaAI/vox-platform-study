@@ -37,37 +37,38 @@ export function useAuth(): UseAuthReturn {
   const isAuthenticated = store.authIsAuthenticated;
   const impersonatedUser = (store.authImpersonatedUser as AuthUser | null) ?? null;
   const isImpersonating = impersonatedUser !== null;
-  const canImpersonate = user?.roles?.some(
-    (r) => (IMPERSONATION_ROLES as readonly string[]).includes(r),
-  ) ?? false;
+  const canImpersonate = user?.roles?.some((r) => (IMPERSONATION_ROLES as readonly string[]).includes(r)) ?? false;
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const login = useCallback(async (username: string, password: string, tenantKey?: string): Promise<LoginResponse> => {
-    if (!apiClient) throw new Error('SDK not initialized');
-    setIsLoading(true);
-    setError(null);
-    const timer = logger?.startOperation('login');
-    try {
-      const body: Record<string, string> = { username, password };
-      if (tenantKey) body.tenantKey = tenantKey;
-      const data = await apiClient.post<LoginResponse>(AUTH_ENDPOINTS.LOGIN, body);
-      if (data.token) {
-        apiClient.updateAccessToken(data.token);
+  const login = useCallback(
+    async (username: string, password: string, tenantKey?: string): Promise<LoginResponse> => {
+      if (!apiClient) throw new Error('SDK not initialized');
+      setIsLoading(true);
+      setError(null);
+      const timer = logger?.startOperation('login');
+      try {
+        const body: Record<string, string> = { username, password };
+        if (tenantKey) body.tenantKey = tenantKey;
+        const data = await apiClient.post<LoginResponse>(AUTH_ENDPOINTS.LOGIN, body);
+        if (data.token) {
+          apiClient.updateAccessToken(data.token);
+        }
+        store.setAuthUser(data.user);
+        store.setIsAuthenticated(true);
+        timer?.end(true);
+        return data;
+      } catch (err) {
+        setError(err as Error);
+        store.setIsAuthenticated(false);
+        timer?.error(err as Error);
+        throw err;
+      } finally {
+        setIsLoading(false);
       }
-      store.setAuthUser(data.user);
-      store.setIsAuthenticated(true);
-      timer?.end(true);
-      return data;
-    } catch (err) {
-      setError(err as Error);
-      store.setIsAuthenticated(false);
-      timer?.error(err as Error);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [apiClient, logger, store]);
+    },
+    [apiClient, logger, store],
+  );
 
   const logout = useCallback(async (): Promise<void> => {
     if (!apiClient) throw new Error('SDK not initialized');
@@ -112,54 +113,60 @@ export function useAuth(): UseAuthReturn {
     }
   }, [apiClient, logger, store]);
 
-  const refreshTokenFn = useCallback(async (currentRefreshToken: string): Promise<RefreshTokenResponse> => {
-    if (!apiClient) throw new Error('SDK not initialized');
-    setIsLoading(true);
-    setError(null);
-    const timer = logger?.startOperation('refreshToken');
-    try {
-      const data = await apiClient.post<RefreshTokenResponse>(AUTH_ENDPOINTS.REFRESH, { refreshToken: currentRefreshToken });
-      if (data.token) {
-        apiClient.updateAccessToken(data.token);
+  const refreshTokenFn = useCallback(
+    async (currentRefreshToken: string): Promise<RefreshTokenResponse> => {
+      if (!apiClient) throw new Error('SDK not initialized');
+      setIsLoading(true);
+      setError(null);
+      const timer = logger?.startOperation('refreshToken');
+      try {
+        const data = await apiClient.post<RefreshTokenResponse>(AUTH_ENDPOINTS.REFRESH, { refreshToken: currentRefreshToken });
+        if (data.token) {
+          apiClient.updateAccessToken(data.token);
+        }
+        timer?.end(true);
+        return data;
+      } catch (err) {
+        setError(err as Error);
+        timer?.error(err as Error);
+        throw err;
+      } finally {
+        setIsLoading(false);
       }
-      timer?.end(true);
-      return data;
-    } catch (err) {
-      setError(err as Error);
-      timer?.error(err as Error);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [apiClient, logger]);
+    },
+    [apiClient, logger],
+  );
 
-  const impersonate = useCallback(async (targetUserId: string): Promise<ImpersonateResponse> => {
-    if (!apiClient) throw new Error('SDK not initialized');
-    setIsLoading(true);
-    setError(null);
-    const timer = logger?.startOperation('impersonate');
-    try {
-      const currentToken = apiClient.getAccessToken();
-      const data = await apiClient.post<ImpersonateResponse>(AUTH_ENDPOINTS.IMPERSONATE, { targetUserId });
+  const impersonate = useCallback(
+    async (targetUserId: string): Promise<ImpersonateResponse> => {
+      if (!apiClient) throw new Error('SDK not initialized');
+      setIsLoading(true);
+      setError(null);
+      const timer = logger?.startOperation('impersonate');
+      try {
+        const currentToken = apiClient.getAccessToken();
+        const data = await apiClient.post<ImpersonateResponse>(AUTH_ENDPOINTS.IMPERSONATE, { targetUserId });
 
-      store.setOriginalToken(currentToken ?? null);
-      store.setOriginalUser(store.authUser);
-      store.setImpersonatedUser(data.user);
+        store.setOriginalToken(currentToken ?? null);
+        store.setOriginalUser(store.authUser);
+        store.setImpersonatedUser(data.user);
 
-      if (data.token) {
-        apiClient.updateAccessToken(data.token);
+        if (data.token) {
+          apiClient.updateAccessToken(data.token);
+        }
+
+        timer?.end(true);
+        return data;
+      } catch (err) {
+        setError(err as Error);
+        timer?.error(err as Error);
+        throw err;
+      } finally {
+        setIsLoading(false);
       }
-
-      timer?.end(true);
-      return data;
-    } catch (err) {
-      setError(err as Error);
-      timer?.error(err as Error);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [apiClient, logger, store]);
+    },
+    [apiClient, logger, store],
+  );
 
   const endImpersonation = useCallback(async (): Promise<void> => {
     if (!apiClient) return;
@@ -187,19 +194,36 @@ export function useAuth(): UseAuthReturn {
     logger?.info('Impersonation session ended, admin identity restored');
   }, [apiClient, store, logger]);
 
-  return useMemo(() => ({
-    user,
-    isAuthenticated,
-    isLoading,
-    error,
-    impersonatedUser,
-    isImpersonating,
-    canImpersonate,
-    login,
-    logout,
-    getMe,
-    refreshToken: refreshTokenFn,
-    impersonate,
-    endImpersonation,
-  }), [user, isAuthenticated, isLoading, error, impersonatedUser, isImpersonating, canImpersonate, login, logout, getMe, refreshTokenFn, impersonate, endImpersonation]);
+  return useMemo(
+    () => ({
+      user,
+      isAuthenticated,
+      isLoading,
+      error,
+      impersonatedUser,
+      isImpersonating,
+      canImpersonate,
+      login,
+      logout,
+      getMe,
+      refreshToken: refreshTokenFn,
+      impersonate,
+      endImpersonation,
+    }),
+    [
+      user,
+      isAuthenticated,
+      isLoading,
+      error,
+      impersonatedUser,
+      isImpersonating,
+      canImpersonate,
+      login,
+      logout,
+      getMe,
+      refreshTokenFn,
+      impersonate,
+      endImpersonation,
+    ],
+  );
 }

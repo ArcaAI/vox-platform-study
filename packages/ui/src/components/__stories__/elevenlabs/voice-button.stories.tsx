@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { MicIcon } from 'lucide-react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { MicIcon } from 'lucide-react';
 
-import { VoiceButton } from '../../elevenlabs/voice-button'
+import { VoiceButton } from '../../elevenlabs/voice-button';
 
 const meta: Meta<typeof VoiceButton> = {
   title: 'ElevenLabs/VoiceButton',
@@ -31,10 +31,10 @@ const meta: Meta<typeof VoiceButton> = {
       description: 'Whether the button is disabled',
     },
   },
-}
+};
 
-export default meta
-type Story = StoryObj<typeof VoiceButton>
+export default meta;
+type Story = StoryObj<typeof VoiceButton>;
 
 export const Idle: Story = {
   args: {
@@ -42,35 +42,35 @@ export const Idle: Story = {
     label: 'Voice Input',
     trailing: '⌥Space',
   },
-}
+};
 
 export const Recording: Story = {
   args: {
     state: 'recording',
     label: 'Recording',
   },
-}
+};
 
 export const Processing: Story = {
   args: {
     state: 'processing',
     label: 'Processing',
   },
-}
+};
 
 export const Success: Story = {
   args: {
     state: 'success',
     label: 'Done',
   },
-}
+};
 
 export const Error: Story = {
   args: {
     state: 'error',
     label: 'Error',
   },
-}
+};
 
 export const IconSize: Story = {
   args: {
@@ -78,7 +78,7 @@ export const IconSize: Story = {
     size: 'icon',
     icon: <MicIcon className="h-4 w-4" />,
   },
-}
+};
 
 export const IconRecording: Story = {
   args: {
@@ -86,7 +86,7 @@ export const IconRecording: Story = {
     size: 'icon',
     icon: <MicIcon className="h-4 w-4" />,
   },
-}
+};
 
 export const Disabled: Story = {
   args: {
@@ -94,34 +94,27 @@ export const Disabled: Story = {
     label: 'Voice Input',
     disabled: true,
   },
-}
+};
 
 export const AllVariants: Story = {
   render: () => (
     <div className="flex flex-col gap-4">
       {(['default', 'outline', 'secondary', 'ghost'] as const).map((variant) => (
-        <VoiceButton
-          key={variant}
-          variant={variant}
-          label={`${variant} variant`}
-          trailing="⌥Space"
-        />
+        <VoiceButton key={variant} variant={variant} label={`${variant} variant`} trailing="⌥Space" />
       ))}
     </div>
   ),
-}
+};
 
 export const AllStates: Story = {
   render: () => (
     <div className="flex flex-col gap-4">
-      {(['idle', 'recording', 'processing', 'success', 'error'] as const).map(
-        (state) => (
-          <VoiceButton key={state} state={state} label={state} />
-        )
-      )}
+      {(['idle', 'recording', 'processing', 'success', 'error'] as const).map((state) => (
+        <VoiceButton key={state} state={state} label={state} />
+      ))}
     </div>
   ),
-}
+};
 
 export const AllSizes: Story = {
   render: () => (
@@ -132,4 +125,4 @@ export const AllSizes: Story = {
       <VoiceButton size="icon" icon={<MicIcon className="h-4 w-4" />} />
     </div>
   ),
-}
+};

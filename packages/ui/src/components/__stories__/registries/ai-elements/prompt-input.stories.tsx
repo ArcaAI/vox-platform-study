@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   PromptInput,
@@ -7,17 +7,17 @@ import {
   PromptInputSubmit,
   PromptInputTools,
   PromptInputButton,
-} from '../../../registries/ai-elements/prompt-input'
+} from '../../../registries/ai-elements/prompt-input';
 
 const meta = {
   title: 'Registries/AiElements/PromptInput',
   component: PromptInput,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof PromptInput>
+} satisfies Meta<typeof PromptInput>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -32,4 +32,4 @@ export const Default: Story = {
       </PromptInput>
     </div>
   ),
-}
+};

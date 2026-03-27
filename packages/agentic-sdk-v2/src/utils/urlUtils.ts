@@ -29,10 +29,7 @@ export function appendPagination(url: string, pagination?: PaginationParams): st
  * Appends arbitrary filter parameters to a URL.
  * Skips undefined values and joins arrays with commas.
  */
-export function appendFilters(
-  url: string,
-  filters: Record<string, string | string[] | undefined>,
-): string {
+export function appendFilters(url: string, filters: Record<string, string | string[] | undefined>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     if (value === undefined) continue;

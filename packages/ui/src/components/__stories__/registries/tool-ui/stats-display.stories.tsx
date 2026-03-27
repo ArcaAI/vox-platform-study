@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { StatsDisplay } from '../../../registries/tool-ui/stats-display'
+import { StatsDisplay } from '../../../registries/tool-ui/stats-display';
 
 const meta = {
   title: 'Registries/ToolUI/StatsDisplay',
   component: StatsDisplay,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof StatsDisplay>
+} satisfies Meta<typeof StatsDisplay>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
@@ -25,4 +25,4 @@ export const Default: Story = {
       },
     ],
   },
-}
+};

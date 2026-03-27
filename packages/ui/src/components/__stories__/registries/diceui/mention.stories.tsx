@@ -1,23 +1,18 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Mention,
-  MentionContent,
-  MentionInput,
-  MentionItem,
-} from '../../../registries/diceui/mention'
+import { Mention, MentionContent, MentionInput, MentionItem } from '../../../registries/diceui/mention';
 
 const meta = {
   title: 'Registries/DiceUI/Mention',
   component: Mention,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Mention>
+} satisfies Meta<typeof Mention>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
-const users = ['Alice', 'Bob', 'Charlie']
+const users = ['Alice', 'Bob', 'Charlie'];
 
 export const Default: Story = {
   render: () => (
@@ -32,4 +27,4 @@ export const Default: Story = {
       </MentionContent>
     </Mention>
   ),
-}
+};

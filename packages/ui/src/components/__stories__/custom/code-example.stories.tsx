@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { CodeExample } from '../../custom/code-example'
+import { CodeExample } from '../../custom/code-example';
 
 const meta = {
   title: 'Custom/CodeExample',
@@ -25,10 +25,10 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof CodeExample>
+} satisfies Meta<typeof CodeExample>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 const tsCode = `import { useConversation } from '@arcaai/hooks'
 
@@ -37,7 +37,7 @@ const { start, stop, status } = useConversation({
   onMessage: (msg) => console.log(msg),
 })
 
-await start()`
+await start()`;
 
 const pythonCode = `from arcaai import HopeClient
 
@@ -46,7 +46,7 @@ result = client.analyze(
     text="Patient presents with...",
     model="gpt-4o",
 )
-print(result.summary)`
+print(result.summary)`;
 
 const jsonCode = `{
   "model": "gpt-4o",
@@ -56,7 +56,7 @@ const jsonCode = `{
     { "role": "system", "content": "You are a medical assistant." },
     { "role": "user", "content": "Summarize the consultation." }
   ]
-}`
+}`;
 
 export const Default: Story = {
   args: {
@@ -64,7 +64,7 @@ export const Default: Story = {
     code: tsCode,
     language: 'typescript',
   },
-}
+};
 
 export const DefaultOpen: Story = {
   args: {
@@ -73,7 +73,7 @@ export const DefaultOpen: Story = {
     language: 'typescript',
     defaultOpen: true,
   },
-}
+};
 
 export const Python: Story = {
   args: {
@@ -82,7 +82,7 @@ export const Python: Story = {
     language: 'python',
     defaultOpen: true,
   },
-}
+};
 
 export const Json: Story = {
   args: {
@@ -91,7 +91,7 @@ export const Json: Story = {
     language: 'json',
     defaultOpen: true,
   },
-}
+};
 
 export const LongCode: Story = {
   args: {
@@ -100,4 +100,4 @@ export const LongCode: Story = {
     language: 'typescript',
     defaultOpen: true,
   },
-}
+};

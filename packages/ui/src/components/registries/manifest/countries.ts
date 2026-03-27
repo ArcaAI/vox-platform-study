@@ -1,8 +1,8 @@
 export interface Country {
-  id: string
-  code: string
-  name: string
-  flag: string
+  id: string;
+  code: string;
+  name: string;
+  flag: string;
 }
 
 export const countries: Country[] = [
@@ -116,4 +116,4 @@ export const countries: Country[] = [
   { id: 'ye', code: '+967', name: 'Yemen', flag: '\u{1F1FE}\u{1F1EA}' },
   { id: 'zm', code: '+260', name: 'Zambia', flag: '\u{1F1FF}\u{1F1F2}' },
   { id: 'zw', code: '+263', name: 'Zimbabwe', flag: '\u{1F1FF}\u{1F1FC}' },
-]
+];
