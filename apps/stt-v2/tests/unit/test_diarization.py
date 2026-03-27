@@ -18,6 +18,21 @@ from stt_v2.diarization.embedding_service import EmbeddingService
 from stt_v2.diarization.speaker_identifier import SpeakerIdentifier
 from stt_v2.pipeline.dto import DiarizationConfig
 
+try:
+    import torch  # noqa: F401
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
+
+try:
+    import pyannote.audio  # noqa: F401
+    HAS_PYANNOTE = True
+except ImportError:
+    HAS_PYANNOTE = False
+
+requires_torch = pytest.mark.skipif(not HAS_TORCH, reason="torch not installed")
+requires_pyannote = pytest.mark.skipif(not HAS_PYANNOTE, reason="pyannote not installed")
+
 # =============================================================================
 # DTO Tests
 # =============================================================================
@@ -158,6 +173,7 @@ class TestEmbeddingServicePipelineOverride:
         assert svc._hf_model_id == "custom/embedding-v2"
 
 
+@requires_pyannote
 class TestEmbeddingServicePyannoteWarnings:
     """Tests for pyannote import warning handling."""
 

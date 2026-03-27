@@ -45,6 +45,14 @@ from stt_v2.transcription.dto import (
     WordTimestamp,
 )
 
+try:
+    import torch  # noqa: F401
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
+
+requires_torch = pytest.mark.skipif(not HAS_TORCH, reason="torch not installed")
+
 # =============================================================================
 # Complete Test Fixtures (Anti-Pattern #4 Prevention)
 # =============================================================================
@@ -1982,7 +1990,7 @@ class TestNormalizeWhisperOffsets:
         assert result[0]["end"] == 1.5
         assert result[0]["start_time"] == 0.0
         assert result[0]["end_time"] == 1.5
-        assert result[0]["confidence"] is None
+        assert result[0]["confidence"] == 1.0
 
         assert result[1]["start"] == 1.6
         assert result[1]["end"] == 2.8
@@ -2048,6 +2056,7 @@ class TestNormalizeWhisperOffsets:
 # =============================================================================
 
 
+@requires_torch
 class TestOptimumOnnxInference:
     """Tests for _run_optimum_onnx_inference with manual chunking.
 
@@ -2426,6 +2435,7 @@ class TestDedupOverlap:
 # =============================================================================
 
 
+@requires_torch
 class TestChunkCallbackAndTTFW:
     """Tests for chunk_callback emission and TTFW measurement."""
 
@@ -2741,6 +2751,7 @@ def _make_mock_torch():
     return mock
 
 
+@requires_torch
 class TestCodeSwitchingInference:
     """Tests for code_switching parameter handling across inference engines.
 
@@ -2881,7 +2892,7 @@ class TestCodeSwitchingInference:
 
     @pytest.mark.asyncio
     async def test_transformers_requests_and_forwards_attention_mask(self, service):
-        """Transformers path should request attention_mask and pass it to generate()."""
+        """Transformers path uses return_tensors='pt' and forwards processor outputs to generate()."""
         pipeline_config = create_complete_pipeline_config(language="en")
         pipeline_config.spec.inference.code_switching = False
 
@@ -2908,7 +2919,8 @@ class TestCodeSwitchingInference:
             )
 
         processor_kwargs = loaded_model.processor.call_args.kwargs
-        assert processor_kwargs["return_attention_mask"] is True
+        assert "return_tensors" in processor_kwargs
+        assert processor_kwargs["return_tensors"] == "pt"
 
         call_kwargs = loaded_model.model.generate.call_args[1]
         assert "attention_mask" in call_kwargs

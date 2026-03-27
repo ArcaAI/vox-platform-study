@@ -241,7 +241,7 @@ class TestLoadAsrPipeline:
     @pytest.mark.asyncio
     async def test_returns_none_when_config_is_none(self):
         mgr = _make_manager()
-        result = await mgr._load_asr_pipeline(None, None, None, "s-1")
+        result = await mgr._load_asr_pipeline(None, "s-1")
         assert result is None
 
     @pytest.mark.asyncio
@@ -342,7 +342,7 @@ class TestMakeAsrCallable:
         mock_inference_config = MagicMock()
         mock_batch_svc = MagicMock()
         mock_batch_svc._run_inference = AsyncMock(
-            return_value=MagicMock(text="transcribed text")
+            return_value=MagicMock(text="transcribed text", word_timestamps=[])
         )
 
         with patch.dict("sys.modules", {
@@ -355,7 +355,7 @@ class TestMakeAsrCallable:
         assert callable(fn)
         samples = np.zeros(16000, dtype=np.float32)
         result = await fn(samples, 16000)
-        assert result == "transcribed text"
+        assert result == {"text": "transcribed text", "word_timestamps": []}
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_inference_returns_none(self):
@@ -372,7 +372,7 @@ class TestMakeAsrCallable:
             fn = mgr._make_asr_callable(MagicMock(), MagicMock())
 
         result = await fn(np.zeros(100), 16000)
-        assert result == ""
+        assert result == {"text": "", "word_timestamps": []}
 
     @pytest.mark.asyncio
     async def test_passes_correct_args_to_run_inference(self):
@@ -704,10 +704,12 @@ class TestFrameHandlerWithModels:
     @pytest.mark.asyncio
     async def test_frame_handler_feeds_preprocessor_and_runs_inference(self):
         from stt_v2.streaming.preprocessor import AudioUtterance
+        from stt_v2.streaming.schemas import SessionStatus
 
         mgr = _make_manager()
         session = MagicMock()
         session.session_id = "s-1"
+        session.status = SessionStatus.ACTIVE
         session.pending_segments = asyncio.Queue()
         session.persist_if_needed = AsyncMock(return_value=False)
         session.record_frame = MagicMock()
@@ -744,9 +746,12 @@ class TestFrameHandlerWithModels:
 
     @pytest.mark.asyncio
     async def test_frame_handler_works_without_preprocessor(self):
+        from stt_v2.streaming.schemas import SessionStatus
+
         mgr = _make_manager()
         session = MagicMock()
         session.session_id = "s-1"
+        session.status = SessionStatus.ACTIVE
         session.pending_segments = asyncio.Queue()
         session.persist_if_needed = AsyncMock()
         session.record_frame = MagicMock()
@@ -1203,11 +1208,12 @@ class TestFrameHandlerFinalFrame:
 
     @pytest.mark.asyncio
     async def test_final_frame_triggers_finalize(self):
-        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame
+        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame, SessionStatus
 
         mgr = _make_manager()
         session = MagicMock()
         session.session_id = "s-1"
+        session.status = SessionStatus.ACTIVE
         session.pending_segments = asyncio.Queue()
         session.persist_if_needed = AsyncMock(return_value=False)
         session.record_frame = MagicMock()
@@ -1233,11 +1239,12 @@ class TestFrameHandlerFinalFrame:
     @pytest.mark.asyncio
     async def test_final_frame_flushes_before_finalize(self):
         from stt_v2.streaming.preprocessor import AudioUtterance
-        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame
+        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame, SessionStatus
 
         mgr = _make_manager()
         session = MagicMock()
         session.session_id = "s-1"
+        session.status = SessionStatus.ACTIVE
         session.pending_segments = asyncio.Queue()
         session.persist_if_needed = AsyncMock(return_value=False)
         session.record_frame = MagicMock()

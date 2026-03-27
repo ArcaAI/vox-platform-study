@@ -6,6 +6,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+try:
+    import onnxruntime  # noqa: F401
+    HAS_ONNXRUNTIME = True
+except ImportError:
+    HAS_ONNXRUNTIME = False
+
+requires_onnxruntime = pytest.mark.skipif(not HAS_ONNXRUNTIME, reason="onnxruntime not installed")
+
 from stt_v2.models.base_loader import LoadedModel
 from stt_v2.models.onnx_loader import ONNXLoader
 
@@ -17,6 +25,7 @@ from stt_v2.models.onnx_loader import ONNXLoader
 class TestGetProviders:
     """Tests for _get_providers() execution provider selection."""
 
+    @requires_onnxruntime
     def test_cuda_returns_string_format(self):
         """CUDA provider should be returned as a plain string."""
         loader = ONNXLoader()
@@ -29,6 +38,7 @@ class TestGetProviders:
         assert providers[0] == "CUDAExecutionProvider"
         assert providers[1] == "CPUExecutionProvider"
 
+    @requires_onnxruntime
     def test_cpu_only_fallback(self):
         """When only CPU is available, return simple string list."""
         loader = ONNXLoader()

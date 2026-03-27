@@ -10,6 +10,14 @@ import pytest
 from stt_v2.models.base_loader import cleanup_accelerator_memory
 from stt_v2.models.huggingface_loader import HuggingFaceLoader
 
+try:
+    import torch  # noqa: F401
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
+
+requires_torch = pytest.mark.skipif(not HAS_TORCH, reason="torch not installed")
+
 # =============================================================================
 # Auto dtype on MPS
 # =============================================================================
@@ -23,6 +31,7 @@ class TestGetTorchDtype:
         """Use HuggingFaceLoader as concrete implementation of BaseModelLoader."""
         return HuggingFaceLoader()
 
+    @requires_torch
     def test_auto_returns_float16_on_mps(self, loader):
         """Auto dtype should return float16 when MPS is available."""
         import torch
@@ -31,6 +40,7 @@ class TestGetTorchDtype:
             dtype = loader._get_torch_dtype("auto")
             assert dtype == torch.float16
 
+    @requires_torch
     def test_auto_returns_float32_on_cpu(self, loader):
         """Auto dtype should return float32 when only CPU is available."""
         import torch
@@ -39,6 +49,7 @@ class TestGetTorchDtype:
             dtype = loader._get_torch_dtype("auto")
             assert dtype == torch.float32
 
+    @requires_torch
     def test_auto_returns_float16_on_cuda(self, loader):
         """Auto dtype should still return float16 for CUDA (no regression)."""
         import torch
@@ -46,6 +57,7 @@ class TestGetTorchDtype:
             dtype = loader._get_torch_dtype("auto")
             assert dtype == torch.float16
 
+    @requires_torch
     def test_explicit_float32_overrides_auto(self, loader):
         """Explicit float32 request should override auto-detection."""
         import torch
@@ -53,12 +65,14 @@ class TestGetTorchDtype:
             dtype = loader._get_torch_dtype("float32")
             assert dtype == torch.float32
 
+    @requires_torch
     def test_explicit_float16(self, loader):
         """Explicit float16 should always return float16."""
         import torch
         dtype = loader._get_torch_dtype("float16")
         assert dtype == torch.float16
 
+    @requires_torch
     def test_unknown_type_defaults_to_float32(self, loader):
         """Unknown compute type should fall back to float32."""
         import torch
@@ -74,6 +88,7 @@ class TestGetTorchDtype:
 class TestCleanupAcceleratorMemory:
     """Tests for cleanup_accelerator_memory() utility."""
 
+    @requires_torch
     def test_calls_cuda_empty_cache_when_cuda_available(self):
         """Should call torch.cuda.empty_cache() on NVIDIA GPU."""
         with patch("torch.cuda.is_available", return_value=True), \
@@ -81,6 +96,7 @@ class TestCleanupAcceleratorMemory:
             cleanup_accelerator_memory()
             mock_empty.assert_called_once()
 
+    @requires_torch
     def test_calls_mps_empty_cache_when_mps_available(self):
         """Should call torch.mps.empty_cache() on Apple Silicon."""
         import torch
@@ -89,6 +105,7 @@ class TestCleanupAcceleratorMemory:
             cleanup_accelerator_memory()
             mock_empty.assert_called_once()
 
+    @requires_torch
     def test_noop_on_cpu_only(self):
         """Should be a no-op when only CPU is available."""
         with patch("torch.cuda.is_available", return_value=False), \

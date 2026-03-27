@@ -24,22 +24,31 @@ prepare-test-db:
     DATABASE_URL: $CI_DATABASE_URL
     DATABASE_URL_DIRECT: $CI_DATABASE_URL_DIRECT
   script:
-    - echo "Resetting test database (vox-staging)..."
+    - echo "══ prepare-test-db ══"
+    - |
+      if [ -z "$DATABASE_URL" ]; then
+        echo "ERROR: DATABASE_URL is empty."
+        echo "  CI_DATABASE_URL must be set in GitLab CI/CD Variables"
+        echo "  (Settings → CI/CD → Variables → CI_DATABASE_URL)"
+        echo ""
+        echo "  Expected format: postgresql://user:pass@host:port/dbname"
+        exit 1
+      fi
     - echo "  DATABASE_URL host = $(echo $DATABASE_URL | sed 's|.*@\(.*\)/.*|\1|')"
 
-    - echo "Generating Prisma client..."
+    - echo "── Generating Prisma client..."
     - pnpm --filter @arcaai/database db:generate
 
-    - echo "Building @arcaai/database..."
+    - echo "── Building @arcaai/database..."
     - pnpm turbo build --filter=@arcaai/database
 
-    - echo "Pushing schema (force reset — drops all tables)..."
+    - echo "── Pushing schema (force reset)..."
     - pnpm --filter @arcaai/database db:push:force
 
-    - echo "Seeding test data..."
+    - echo "── Seeding test data..."
     - pnpm --filter @arcaai/database seed
 
-    - echo "Test database ready."
+    - echo "══ Test database ready ══"
   rules:
     - if: $SKIP_TESTS == "true"
       when: never
