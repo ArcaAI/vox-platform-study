@@ -81,7 +81,9 @@
       printf '[registry."%s"]\nhttp = true\ninsecure = true\n' "$REGISTRY" > /tmp/buildkitd.toml
       if ! docker buildx inspect cibuilder >/dev/null 2>&1; then
         docker buildx create --name cibuilder --driver docker-container \
-          --config /tmp/buildkitd.toml
+          --config /tmp/buildkitd.toml \
+          --driver-opt network=host \
+          --driver-opt "env.BUILDKIT_STEP_LOG_MAX_SIZE=52428800"
       fi
       docker buildx use cibuilder
       docker buildx inspect --bootstrap
