@@ -41,6 +41,8 @@ prepare-test-db:
 
     - echo "Test database ready."
   rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
     - !reference [.rules-always, rules]
     - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
