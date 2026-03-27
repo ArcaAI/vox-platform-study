@@ -63,10 +63,14 @@ test-api:
   stage: test
   extends: .test-node-base
   needs:
+    - job: install-node
+      optional: true
     - job: lint-ts
       optional: true
+      artifacts: false
     - job: prepare-test-db
       optional: true
+      artifacts: false
   variables:
     <<: *test-env-vars
   script:
@@ -96,8 +100,11 @@ test-packages:
   stage: test
   extends: .test-node-base
   needs:
+    - job: install-node
+      optional: true
     - job: lint-ts
       optional: true
+      artifacts: false
   variables:
     <<: *test-env-vars
   script:
@@ -130,8 +137,11 @@ test-sdk:
   stage: test
   extends: .test-node-base
   needs:
+    - job: install-node
+      optional: true
     - job: lint-ts
       optional: true
+      artifacts: false
   variables:
     <<: *test-env-vars
   script:

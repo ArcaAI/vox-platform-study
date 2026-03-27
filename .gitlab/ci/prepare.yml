@@ -27,7 +27,10 @@ prepare-test-db:
     - echo "Resetting test database (vox-staging)..."
     - echo "  DATABASE_URL host = $(echo $DATABASE_URL | sed 's|.*@\(.*\)/.*|\1|')"
 
-    - echo "Building Prisma client..."
+    - echo "Generating Prisma client..."
+    - pnpm --filter @arcaai/database db:generate
+
+    - echo "Building @arcaai/database..."
     - pnpm turbo build --filter=@arcaai/database
 
     - echo "Pushing schema (force reset — drops all tables)..."

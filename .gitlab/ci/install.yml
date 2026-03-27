@@ -1,30 +1,39 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# Install stage — dependency cache warming
+# Install stage — install deps + pass node_modules as artifact
 # ══════════════════════════════════════════════════════════════════════════════
+#
+# Strategy:
+#   1. Pull pnpm content-addressable store from cache (cross-pipeline)
+#   2. Run pnpm install (resolves from store, links into node_modules)
+#   3. Push updated store back to cache
+#   4. Pass node_modules as artifact → downstream jobs skip pnpm install
 
 install-node:
   stage: install
-  extends: .node-base
+  image: node:22-alpine
+  tags: [fast]
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@latest --activate
+    - pnpm config set store-dir .pnpm-store
   cache:
     - key:
         files:
           - pnpm-lock.yaml
       paths:
         - .pnpm-store
-        - node_modules/
-        - apps/*/node_modules/
-        - packages/*/node_modules/
       policy: pull-push
       fallback_keys:
         - pnpm-$CI_DEFAULT_BRANCH
-  before_script:
-    - corepack enable
-    - corepack prepare pnpm@latest --activate
-    - pnpm config set store-dir .pnpm-store
-    - pnpm install --frozen-lockfile --prefer-offline
   script:
-    - echo "Node dependencies installed and cache warmed"
-    - pnpm --version
-    - node --version
+    - pnpm install --frozen-lockfile --prefer-offline
+    - echo "Node $(node --version), pnpm $(pnpm --version)"
+    - echo "Packages installed — $(ls node_modules | wc -l) top-level deps"
+  artifacts:
+    paths:
+      - node_modules/
+      - apps/*/node_modules/
+      - packages/*/node_modules/
+    expire_in: 1 hour
   rules:
     - !reference [.rules-any-ts, rules]
