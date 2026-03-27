@@ -7,7 +7,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, type ReactNode } from 'react';
 import { Room, RoomEvent, RoomState } from '../core/Room.js';
 import { AudioTrack } from '../core/AudioTrack.js';
-import type { TrackProcessor } from '../processors/types.js';
 import type { RoomOptions, AudioCaptureOptions } from '../types/index.js';
 
 // ============================================================================

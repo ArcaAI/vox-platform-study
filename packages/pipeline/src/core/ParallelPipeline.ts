@@ -270,7 +270,7 @@ export class ParallelPipeline<TInput, TOutput> implements IPipeline<TInput, Para
     try {
       await this.executeStage(entry, this.currentInput, this.currentContext);
       return this.results.get(stageName) ?? null;
-    } catch (error) {
+    } catch {
       return null;
     }
   }

@@ -4,8 +4,4 @@
  * React hooks for noise filter integration.
  */
 
-export {
-  useNoiseFilter,
-  type UseNoiseFilterOptions,
-  type UseNoiseFilterReturn,
-} from './useNoiseFilter.js';
+export { useNoiseFilter, type UseNoiseFilterOptions, type UseNoiseFilterReturn } from './useNoiseFilter.js';

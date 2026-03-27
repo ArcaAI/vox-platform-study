@@ -414,7 +414,8 @@ export class PipelineOrchestrator {
   /**
    * Handle pipeline completion for data flow.
    */
-  private handlePipelineCompleted(pipelineName: string, payload: PipelineEventMap[PipelineEvent.Completed]): void {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private handlePipelineCompleted(pipelineName: string, _payload: PipelineEventMap[PipelineEvent.Completed]): void {
     // Find data flows from this pipeline
     const flows = this.dataFlows.filter((flow) => flow.source === pipelineName);
 

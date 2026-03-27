@@ -184,7 +184,7 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
     };
 
     init();
-  }, [autoRequestPermissions]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoRequestPermissions]); // eslint-disable-line
 
   // Listen for device changes
   useEffect(() => {

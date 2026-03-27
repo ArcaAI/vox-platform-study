@@ -234,7 +234,8 @@ export abstract class PipelineStage<TInput, TOutput> implements IPipelineStage<T
    * Check if the stage can execute with the given input.
    * Override to implement validation logic.
    */
-  canExecute?(input: TInput, context: PipelineContext): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  canExecute?(_input: TInput, _context: PipelineContext): boolean {
     return true;
   }
 }
