@@ -21,9 +21,7 @@ export function isWebAssemblySupported(): boolean {
 
   try {
     if (typeof WebAssembly === 'object' && typeof WebAssembly.instantiate === 'function') {
-      const module = new WebAssembly.Module(
-        Uint8Array.of(0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00)
-      );
+      const module = new WebAssembly.Module(Uint8Array.of(0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00));
       return module instanceof WebAssembly.Module;
     }
     return false;
@@ -80,10 +78,7 @@ export function getSafariVersion(): string | undefined {
 export function isIOS(): boolean {
   if (!isBrowser()) return false;
 
-  return (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  );
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
 /**
