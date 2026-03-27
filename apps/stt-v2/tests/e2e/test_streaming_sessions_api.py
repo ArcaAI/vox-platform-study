@@ -57,8 +57,6 @@ def _build_create_payload(
     tenant_id: str = "t-test",
     pipeline_id: str | None = None,
     sample_rate: int = 16000,
-    language: str | None = None,
-    code_switching: bool | None = None,
     consultation_id: str | None = None,
     microphone_id: str | None = None,
 ) -> dict:
@@ -73,10 +71,6 @@ def _build_create_payload(
         "pipeline_id": pipeline_id or str(uuid.uuid4()),
         "sample_rate": sample_rate,
     }
-    if language is not None:
-        payload["language"] = language
-    if code_switching is not None:
-        payload["code_switching"] = code_switching
     if consultation_id is not None:
         payload["consultation_id"] = consultation_id
     if microphone_id is not None:
@@ -134,8 +128,6 @@ def _make_mock_session_manager(
         pipeline_id: str,
         consultation_id: str | None = None,
         sample_rate: int = 16000,
-        language: str | None = None,
-        code_switching: bool | None = None,
     ) -> _FakeStreamSession | None:
         acquired = await guard.try_acquire(session_id)
         if not acquired:
@@ -564,8 +556,6 @@ class TestCreateStreamingSessionInitializedE2E:
     async def test_create_session_with_all_optional_fields(self, streaming_initialized_app):
         """Session creation with every optional field populated."""
         payload = _build_create_payload(
-            language="en",
-            code_switching=True,
             consultation_id="c-test-123",
             microphone_id="mic-usb-01",
         )

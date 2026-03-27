@@ -270,9 +270,7 @@ class SessionMetadata:
     processed_audio_uri: str | None = None
     transcript_uri: str | None = None
     worker_id: str | None = None
-    language: str | None = None  # Language hint override (None = use pipeline default)
-    code_switching: bool = False  # Enable multilingual code-switching
-    diarization: bool | None = None  # Optional diarization override for streaming session
+    diarization: bool = False  # Resolved from pipeline config at session creation
 
     def __post_init__(self) -> None:
         if not self.created_at:
@@ -297,9 +295,7 @@ class SessionMetadata:
             "last_seq": str(self.last_seq),
             "sample_rate": str(self.sample_rate),
             "pipeline_config_json": self.pipeline_config_json,
-            "language": self.language or "",
-            "code_switching": "1" if self.code_switching else "0",
-            "diarization": "" if self.diarization is None else ("1" if self.diarization else "0"),
+            "diarization": "1" if self.diarization else "0",
         }
         if self.closed_at:
             d["closed_at"] = self.closed_at
@@ -335,10 +331,7 @@ class SessionMetadata:
         processed_audio_uri = _get("processed_audio_uri") or None
         transcript_uri = _get("transcript_uri") or None
         worker_id = _get("worker_id") or None
-        language = _get("language") or None
-        code_switching = _get("code_switching") == "1"
-        raw_diarization = _get("diarization")
-        diarization: bool | None = None if raw_diarization == "" else raw_diarization == "1"
+        diarization = _get("diarization") == "1"
 
         return cls(
             session_id=_get("session_id"),
@@ -360,7 +353,5 @@ class SessionMetadata:
             processed_audio_uri=processed_audio_uri,
             transcript_uri=transcript_uri,
             worker_id=worker_id,
-            language=language,
-            code_switching=code_switching,
             diarization=diarization,
         )

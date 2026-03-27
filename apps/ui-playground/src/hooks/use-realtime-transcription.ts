@@ -45,9 +45,6 @@ function normalizeSpeakerFeatures(result: WsTranscriptResult): TranscriptEntry['
 export interface RealtimeStartOptions {
   pipelineId: string;
   consultationId?: string;
-  language?: string;
-  codeSwitching?: boolean;
-  diarization?: boolean;
   microphoneId?: string;
   sampleRate?: number;
   deviceId?: string;
@@ -152,10 +149,6 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
         const sessionResponse = await sessionManager.createSession({
           pipelineId: options.pipelineId,
           consultationId: options.consultationId,
-          sampleRate: options.sampleRate ?? 16000,
-          language: options.language,
-          codeSwitching: options.codeSwitching,
-          diarization: options.diarization,
           microphoneId: options.microphoneId,
         });
 
