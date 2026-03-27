@@ -3,6 +3,8 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+import nlp.lifespan  # noqa: F401 — ensure module is importable before patching
+
 
 class FakeService:
     """Lightweight stand-in for ML services that avoids model downloads."""

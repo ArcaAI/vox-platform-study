@@ -29,11 +29,21 @@ requires_pyannote = pytest.mark.skipif(not HAS_PYANNOTE, reason="pyannote not in
 
 
 def _make_mock_torch():
-    """Create a mock torch module for tests that don't need real torch."""
+    """Create a mock torch module for tests that don't need real torch.
+
+    ``from_numpy(arr).float().unsqueeze(0)`` returns a MagicMock whose
+    ``.shape`` equals ``(1, len(arr))`` so that tensor-shape assertions work.
+    """
     mock = MagicMock()
-    mock.from_numpy.return_value.float.return_value.unsqueeze.return_value = (
-        MagicMock(name="waveform_tensor")
-    )
+
+    def _from_numpy(arr):
+        tensor = MagicMock(name="waveform_tensor")
+        tensor.shape = (1, len(arr))
+        tensor.float.return_value = tensor
+        tensor.unsqueeze.return_value = tensor
+        return tensor
+
+    mock.from_numpy = MagicMock(side_effect=_from_numpy)
     return mock
 
 # =============================================================================
@@ -190,6 +200,7 @@ class TestEmbeddingServicePyannoteWarnings:
         assert torchcodec_warnings == []
 
 
+@patch.dict(sys.modules, {"torch": _make_mock_torch()})
 class TestEmbeddingServiceBatch:
     """Tests for extract_batch method (TASK-008 3.2)."""
 
