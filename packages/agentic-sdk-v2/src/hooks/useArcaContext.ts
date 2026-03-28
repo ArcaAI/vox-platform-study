@@ -6,7 +6,7 @@
  */
 
 import { useMemo, useCallback } from 'react';
-import { useAgenticStore, selectTranscriptions, selectCaseNotes } from '../store';
+import { useAgenticStore, selectTranscriptions, selectCaseNotes, selectWorknotes, selectAttachments } from '../store';
 import type { ContextItem, MedicalEntity, ContextVersionEntry } from '../types';
 import { CONTEXT_ENDPOINTS, SUMMARY_ENDPOINTS, ENTITY_ENDPOINTS } from '../core/constants';
 import type { ISDKLogger } from '../core/logger';
@@ -80,6 +80,78 @@ export function useArcaContext() {
         });
         store.addContextItem(item);
         timer?.end(true, { attributes: { contextItemId: item.id, textLength: text.length } });
+        return item;
+      } catch (error) {
+        timer?.error(error as Error);
+        store.setContextError(error as Error);
+        throw error;
+      } finally {
+        store.setContextLoading(false);
+      }
+    },
+    [store, getLogger],
+  );
+
+  const addWorknote = useCallback(
+    async (content: string, metadata?: Record<string, unknown>): Promise<ContextItem> => {
+      const { apiClient, consultation } = store;
+      const logger = getLogger();
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
+
+      const timer = logger?.startOperation('addWorknote', {
+        component: 'useArcaContext',
+        sdk: { consultationId: consultation.id },
+      });
+
+      store.setContextLoading(true);
+      store.setContextError(null);
+
+      try {
+        const item = await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), {
+          type: 'WORKNOTE',
+          content,
+          source: 'USER',
+          structuredData: metadata,
+        });
+        store.addContextItem(item);
+        timer?.end(true, { attributes: { contextItemId: item.id, contentLength: content.length } });
+        return item;
+      } catch (error) {
+        timer?.error(error as Error);
+        store.setContextError(error as Error);
+        throw error;
+      } finally {
+        store.setContextLoading(false);
+      }
+    },
+    [store, getLogger],
+  );
+
+  const addAttachment = useCallback(
+    async (content?: string, metadata?: Record<string, unknown>): Promise<ContextItem> => {
+      const { apiClient, consultation } = store;
+      const logger = getLogger();
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
+
+      const timer = logger?.startOperation('addAttachment', {
+        component: 'useArcaContext',
+        sdk: { consultationId: consultation.id },
+      });
+
+      store.setContextLoading(true);
+      store.setContextError(null);
+
+      try {
+        const item = await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), {
+          type: 'ATTACHMENT',
+          content: content ?? '',
+          source: 'USER',
+          structuredData: metadata,
+        });
+        store.addContextItem(item);
+        timer?.end(true, { attributes: { contextItemId: item.id, contentLength: (content ?? '').length } });
         return item;
       } catch (error) {
         timer?.error(error as Error);
@@ -250,20 +322,42 @@ export function useArcaContext() {
     return apiClient.get<ContextItem[]>(CONTEXT_ENDPOINTS.CASE_NOTES(consultation.id));
   }, [store]);
 
+  const fetchWorknotes = useCallback(async (): Promise<ContextItem[]> => {
+    const { apiClient, consultation } = store;
+    if (!apiClient) throw new Error('SDK not initialized');
+    if (!consultation) throw new Error('No active consultation');
+
+    return apiClient.get<ContextItem[]>(CONTEXT_ENDPOINTS.WORKNOTES(consultation.id));
+  }, [store]);
+
+  const fetchAttachments = useCallback(async (): Promise<ContextItem[]> => {
+    const { apiClient, consultation } = store;
+    if (!apiClient) throw new Error('SDK not initialized');
+    if (!consultation) throw new Error('No active consultation');
+
+    return apiClient.get<ContextItem[]>(CONTEXT_ENDPOINTS.ATTACHMENTS(consultation.id));
+  }, [store]);
+
   const transcriptions = useMemo(() => selectTranscriptions(store), [store.contextItems]);
   const caseNotes = useMemo(() => selectCaseNotes(store), [store.contextItems]);
+  const worknotes = useMemo(() => selectWorknotes(store), [store.contextItems]);
+  const attachments = useMemo(() => selectAttachments(store), [store.contextItems]);
 
   return useMemo(
     () => ({
       items: store.contextItems,
       transcriptions,
       caseNotes,
+      worknotes,
+      attachments,
       entities: store.entities,
       sharedContext: store.sharedContext,
       isLoading: store.contextLoading,
       error: store.contextError,
       addCaseNote,
       addTranscription,
+      addWorknote,
+      addAttachment,
       updateItem,
       loadSharedContext,
       extractEntities,
@@ -271,17 +365,23 @@ export function useArcaContext() {
       triggerEntityExtraction,
       fetchTranscriptions,
       fetchCaseNotes,
+      fetchWorknotes,
+      fetchAttachments,
     }),
     [
       store.contextItems,
       transcriptions,
       caseNotes,
+      worknotes,
+      attachments,
       store.entities,
       store.sharedContext,
       store.contextLoading,
       store.contextError,
       addCaseNote,
       addTranscription,
+      addWorknote,
+      addAttachment,
       updateItem,
       loadSharedContext,
       extractEntities,
@@ -289,6 +389,8 @@ export function useArcaContext() {
       triggerEntityExtraction,
       fetchTranscriptions,
       fetchCaseNotes,
+      fetchWorknotes,
+      fetchAttachments,
     ],
   );
 }
