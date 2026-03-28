@@ -182,7 +182,6 @@ export {
   type WebSocketCallbacks,
   type ConnectionState,
   DEFAULT_WS_OPTIONS,
-
   MessageHandler,
   type MessageHandlerCallbacks,
 } from './websocket/index.js';

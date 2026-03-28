@@ -1,17 +1,8 @@
-import { z } from "zod";
-import {
-  ToolUIIdSchema,
-  ToolUIReceiptSchema,
-  ToolUIRoleSchema,
-} from "../shared/schema";
-import { defineToolUiContract } from "../shared/contract";
+import { z } from 'zod';
+import { ToolUIIdSchema, ToolUIReceiptSchema, ToolUIRoleSchema } from '../shared/schema';
+import { defineToolUiContract } from '../shared/contract';
 
-export const PlanTodoStatusSchema = z.enum([
-  "pending",
-  "in_progress",
-  "completed",
-  "cancelled",
-]);
+export const PlanTodoStatusSchema = z.enum(['pending', 'in_progress', 'completed', 'cancelled']);
 
 export const PlanTodoSchema = z.object({
   id: z.string().min(1),
@@ -38,8 +29,8 @@ export const PlanPropsSchema = z
     value.todos.forEach((todo, index) => {
       if (seenTodoIds.has(todo.id)) {
         ctx.addIssue({
-          code: "custom",
-          path: ["todos", index, "id"],
+          code: 'custom',
+          path: ['todos', index, 'id'],
           message: `Duplicate todo id "${todo.id}".`,
         });
         return;
@@ -56,14 +47,8 @@ export const SerializablePlanSchema = PlanPropsSchema;
 
 export type SerializablePlan = z.infer<typeof SerializablePlanSchema>;
 
-const SerializablePlanSchemaContract = defineToolUiContract(
-  "Plan",
-  SerializablePlanSchema,
-);
+const SerializablePlanSchemaContract = defineToolUiContract('Plan', SerializablePlanSchema);
 
-export const parseSerializablePlan: (input: unknown) => SerializablePlan =
-  SerializablePlanSchemaContract.parse;
+export const parseSerializablePlan: (input: unknown) => SerializablePlan = SerializablePlanSchemaContract.parse;
 
-export const safeParseSerializablePlan: (
-  input: unknown,
-) => SerializablePlan | null = SerializablePlanSchemaContract.safeParse;
+export const safeParseSerializablePlan: (input: unknown) => SerializablePlan | null = SerializablePlanSchemaContract.safeParse;

@@ -25,9 +25,9 @@ Requires:
   - NO ML deps required (CPU-only)
 """
 
-import pytest
 from datetime import datetime
 
+import pytest
 
 # ============================================================================
 # Helpers

@@ -4,12 +4,12 @@ Tests cover all blob storage operations including upload, download,
 delete, and presigned URL generation.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-import io
 
-from stt_v2.storage.blob_service import BlobService, get_blob_service
+import pytest
+
 from stt_v2.core.exceptions import StorageError
+from stt_v2.storage.blob_service import BlobService, get_blob_service
 
 
 class TestBlobServiceInit:
@@ -91,7 +91,7 @@ class TestBlobServiceUpload:
         transcript = '{"text": "Hello world"}'
 
         with patch.object(service, "_upload_bytes", new_callable=AsyncMock) as mock_upload:
-            result = await service.upload_transcript(
+            _result = await service.upload_transcript(
                 transcript_data=transcript,
                 tenant_id="t-123",
                 job_id="j-456",
@@ -108,7 +108,7 @@ class TestBlobServiceUpload:
         transcript = b'{"text": "Hello world"}'
 
         with patch.object(service, "_upload_bytes", new_callable=AsyncMock) as mock_upload:
-            result = await service.upload_transcript(
+            _result = await service.upload_transcript(
                 transcript_data=transcript,
                 tenant_id="t-123",
                 job_id="j-456",

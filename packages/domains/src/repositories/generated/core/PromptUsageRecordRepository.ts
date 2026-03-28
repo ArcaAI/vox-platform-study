@@ -8,37 +8,35 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 @Injectable()
 export class PromptUsageRecordRepository extends Repository<PromptUsageRecordEntity, PromptUsageRecord> {
-    constructor(
-        private readonly unitOfWorkService: CoreUnitOfWorkService
-    ) {
-        super(unitOfWorkService, 'promptUsageRecord', PromptUsageRecordEntityMapper.getInstance());
-    }
+  constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
+    super(unitOfWorkService, 'promptUsageRecord', PromptUsageRecordEntityMapper.getInstance());
+  }
 
-    // ============================================
-    // Custom Query Methods
-    // ============================================
+  // ============================================
+  // Custom Query Methods
+  // ============================================
 
-    /**
-     * Find all usage records for a prompt template
-     */
-    async findByTemplate(templateId: string): Promise<PromptUsageRecordEntity[]> {
-        return this.findAll({
-            filters: {
-                promptTemplateId: templateId
-            },
-            sort: [{ createdAt: 'desc' }]
-        });
-    }
+  /**
+   * Find all usage records for a prompt template
+   */
+  async findByTemplate(templateId: string): Promise<PromptUsageRecordEntity[]> {
+    return this.findAll({
+      filters: {
+        promptTemplateId: templateId,
+      },
+      sort: [{ createdAt: 'desc' }],
+    });
+  }
 
-    /**
-     * Find all usage records for a department
-     */
-    async findByDepartment(departmentId: string): Promise<PromptUsageRecordEntity[]> {
-        return this.findAll({
-            filters: {
-                departmentId
-            },
-            sort: [{ createdAt: 'desc' }]
-        });
-    }
+  /**
+   * Find all usage records for a department
+   */
+  async findByDepartment(departmentId: string): Promise<PromptUsageRecordEntity[]> {
+    return this.findAll({
+      filters: {
+        departmentId,
+      },
+      sort: [{ createdAt: 'desc' }],
+    });
+  }
 }

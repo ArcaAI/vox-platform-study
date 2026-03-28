@@ -3,284 +3,199 @@ import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { IResourceSubscriptionService } from './IResourceSubscriptionService';
+import { CreateResourceSubscriptionRequest, UpdateResourceSubscriptionRequest } from './dto';
 import {
-    CreateResourceSubscriptionRequest,
-    UpdateResourceSubscriptionRequest
-} from './dto';
-import {
-    EntityId,
-    ResourceSubscriptionEntity,
-    ResourceType,
-    ResourceSubscriptionFactory,
-    ResourceSubscriptionType,
-    SysEventType,
-    ResourceStatusType,
-    ResourceSubscriptionRepository
+  EntityId,
+  ResourceSubscriptionEntity,
+  ResourceType,
+  ResourceSubscriptionFactory,
+  ResourceSubscriptionType,
+  SysEventType,
+  ResourceStatusType,
+  ResourceSubscriptionRepository,
 } from '@arcaai/domains';
-import {
-    BaseService,
-    FetchResponse,
-    PaginatedQuery,
-    withFormattedCountProps,
-    withFormattedPaginatedProps
-} from '../../common';
+import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
-import {
-    InternalServerErrorException,
-    ArgumentInvalidException,
-    ArgumentNotProvidedException,
-    UnauthorizedException
-} from '@arcaai/exceptions';
+import { InternalServerErrorException, ArgumentInvalidException, ArgumentNotProvidedException, UnauthorizedException } from '@arcaai/exceptions';
 
 @Injectable()
-export class ResourceSubscriptionService
-    extends BaseService
-    implements IResourceSubscriptionService
-{
-    constructor(
-        private readonly resourceSubscriptionRepository: ResourceSubscriptionRepository,
-        protected override readonly eventEmitter: EventEmitter2,
-        protected override readonly clsService: ClsService<IActiveUserContext>
-    ) {
-        super(eventEmitter, clsService, ResourceType.ResourceSubscription);
+export class ResourceSubscriptionService extends BaseService implements IResourceSubscriptionService {
+  constructor(
+    private readonly resourceSubscriptionRepository: ResourceSubscriptionRepository,
+    protected override readonly eventEmitter: EventEmitter2,
+    protected override readonly clsService: ClsService<IActiveUserContext>,
+  ) {
+    super(eventEmitter, clsService, ResourceType.ResourceSubscription);
+  }
+
+  async create(request: CreateResourceSubscriptionRequest): Promise<ResourceSubscriptionEntity> {
+    const newResourceSubscription = ResourceSubscriptionFactory.CreateResourceSubscription({
+      resourceId: request.resourceId,
+      resourceTypeName: request.resourceTypeName as ResourceType,
+      subscriptionType: request.subscriptionType as ResourceSubscriptionType,
+      resourceStatus: request.resourceStatus,
+      targetUserId: request.targetUserId,
+      createdBy: this.requestUser?.id,
+    });
+
+    const resourceSubscription = await this.resourceSubscriptionRepository.create(newResourceSubscription);
+
+    if (!resourceSubscription) {
+      throw new InternalServerErrorException(`Failed to create resource subscription: ${request}`);
     }
 
-    async create(
-        request: CreateResourceSubscriptionRequest
-    ): Promise<ResourceSubscriptionEntity> {
-        const newResourceSubscription =
-            ResourceSubscriptionFactory.CreateResourceSubscription({
-                resourceId: request.resourceId,
-                resourceTypeName: request.resourceTypeName as ResourceType,
-                subscriptionType:
-                    request.subscriptionType as ResourceSubscriptionType,
-                resourceStatus: request.resourceStatus,
-                targetUserId: request.targetUserId,
-                createdBy: this.requestUser?.id
-            });
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: resourceSubscription.id,
+      createdAt: resourceSubscription.createdAt,
+      data: resourceSubscription.toObject() as object,
+    });
+    return resourceSubscription;
+  }
 
-        const resourceSubscription =
-            await this.resourceSubscriptionRepository.create(
-                newResourceSubscription
-            );
+  async fetchAll(props: PaginatedQuery): Promise<FetchResponse<ResourceSubscriptionEntity>> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { limit, page, search } = props;
+    const resourceSubscriptions = await this.resourceSubscriptionRepository.findAll(withFormattedPaginatedProps(props));
+    const count = await this.resourceSubscriptionRepository.count(withFormattedCountProps(props));
 
-        if (!resourceSubscription) {
-            throw new InternalServerErrorException(
-                `Failed to create resource subscription: ${request}`
-            );
-        }
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: {
+        items: resourceSubscriptions.map((resourceSubscription: ResourceSubscriptionEntity) => resourceSubscription.id),
+      },
+    });
+    return new FetchResponse<ResourceSubscriptionEntity>({
+      data: resourceSubscriptions,
+      count,
+      limit,
+      page,
+    });
+  }
 
-        this.broadcastSysEvent(SysEventType.ResourceCreated, {
-            resourceId: resourceSubscription.id,
-            createdAt: resourceSubscription.createdAt,
-            data: resourceSubscription.toObject() as object
-        });
-        return resourceSubscription;
+  async fetchAllByResource(
+    props: PaginatedQuery & { resourceTypeName: string; resourceId: string },
+  ): Promise<FetchResponse<ResourceSubscriptionEntity>> {
+    const { resourceTypeName, resourceId, limit, page, search } = props;
+
+    if (!resourceId || !resourceTypeName) {
+      throw new ArgumentNotProvidedException(`Invalid arguments: resourceId: ${resourceId}, resourceTypeName: ${resourceTypeName}`);
     }
 
-    async fetchAll(
-        props: PaginatedQuery
-    ): Promise<FetchResponse<ResourceSubscriptionEntity>> {
-        const { limit, page, search } = props;
-        const resourceSubscriptions =
-            await this.resourceSubscriptionRepository.findAll(
-                withFormattedPaginatedProps(props)
-            );
-        const count = await this.resourceSubscriptionRepository.count(
-            withFormattedCountProps(props)
-        );
+    const resourceSubscriptions = await this.resourceSubscriptionRepository.findAll({
+      page,
+      limit,
+      search,
+      where: {
+        resourceId,
+        resourceTypeName: resourceTypeName as ResourceType,
+      },
+    });
 
-        this.broadcastSysEvent(SysEventType.ResourceViewed, {
-            data: {
-                items: resourceSubscriptions.map(
-                    (resourceSubscription: ResourceSubscriptionEntity) =>
-                        resourceSubscription.id
-                )
-            }
-        });
-        return new FetchResponse<ResourceSubscriptionEntity>({
-            data: resourceSubscriptions,
-            count,
-            limit,
-            page
-        });
+    const count = await this.resourceSubscriptionRepository.count({
+      ...withFormattedCountProps(props),
+      where: {
+        resourceId,
+        resourceTypeName: resourceTypeName as ResourceType,
+      },
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: {
+        resourceId,
+        resourceTypeName,
+        items: resourceSubscriptions.map((resourceSubscription: ResourceSubscriptionEntity) => resourceSubscription.id),
+      },
+    });
+
+    return new FetchResponse<ResourceSubscriptionEntity>({
+      data: resourceSubscriptions,
+      count,
+      limit,
+      page,
+    });
+  }
+
+  async fetchByResource(resourceTypeName: ResourceType, resourceId: EntityId): Promise<ResourceSubscriptionEntity | null> {
+    const resourceSubscription = await this.resourceSubscriptionRepository.findByResource(resourceTypeName, resourceId).catch(() => null);
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      resourceId: resourceSubscription ? resourceSubscription.id : resourceId,
+      data: resourceSubscription ? resourceSubscription.toObject() : { message: 'Resource not found' },
+    });
+    return resourceSubscription;
+  }
+
+  async fetchById(id: EntityId): Promise<ResourceSubscriptionEntity> {
+    const resourceSubscription = await this.resourceSubscriptionRepository.findById(id);
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      resourceId: resourceSubscription.id,
+      data: resourceSubscription.toObject() as object,
+    });
+    return resourceSubscription;
+  }
+
+  async update(id: EntityId, request: UpdateResourceSubscriptionRequest): Promise<ResourceSubscriptionEntity> {
+    const resourceSubscription = await this.resourceSubscriptionRepository.findById(id);
+
+    const previousData = resourceSubscription.toObject();
+    await this.updateEntity(resourceSubscription, request, {
+      $apply: ({ entity, changes }) =>
+        changes.resourceStatus && changes.resourceStatus === ResourceStatusType.ENABLED ? entity.disable() : entity.enable(),
+    });
+
+    if (!resourceSubscription.hasChanges) {
+      throw new ArgumentInvalidException(`No changes to write to.`);
+    }
+    const updatedResourceSubscription = await this.resourceSubscriptionRepository.update(id, resourceSubscription);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: updatedResourceSubscription.id,
+      data: resourceSubscription.changes,
+      previousData,
+    });
+    return updatedResourceSubscription;
+  }
+
+  async toggleSubscriptionByResource(resourceTypeName: ResourceType, resourceId: EntityId): Promise<ResourceSubscriptionEntity> {
+    const resourceSubscription = await this.resourceSubscriptionRepository.findByResource(resourceTypeName, resourceId).catch(() => null);
+
+    if (!resourceSubscription) {
+      if (!this.requestUserId) {
+        throw new UnauthorizedException('Unauthorized');
+      }
+      return await this.create({
+        resourceTypeName,
+        resourceId,
+        subscriptionType: ResourceSubscriptionType.SUBSCRIBER,
+        resourceStatus: ResourceStatusType.ENABLED,
+        targetUserId: this.requestUserId,
+      });
     }
 
-    async fetchAllByResource(
-        props: PaginatedQuery & { resourceTypeName: string; resourceId: string }
-    ): Promise<FetchResponse<ResourceSubscriptionEntity>> {
-        const { resourceTypeName, resourceId, limit, page, search } = props;
+    const updatedResourceSubscription = await this.update(resourceSubscription.id, {
+      resourceStatus: resourceSubscription.resourceStatus === ResourceStatusType.ENABLED ? ResourceStatusType.DISABLED : ResourceStatusType.ENABLED,
+    });
 
-        if (!resourceId || !resourceTypeName) {
-            throw new ArgumentNotProvidedException(
-                `Invalid arguments: resourceId: ${resourceId}, resourceTypeName: ${resourceTypeName}`
-            );
-        }
+    return updatedResourceSubscription;
+  }
 
-        const resourceSubscriptions =
-            await this.resourceSubscriptionRepository.findAll({
-                page,
-                limit,
-                search,
-                where: {
-                    resourceId,
-                    resourceTypeName: resourceTypeName as ResourceType
-                }
-            });
+  async toggleSubscriptionById(id: EntityId): Promise<ResourceSubscriptionEntity> {
+    const resourceSubscription = await this.resourceSubscriptionRepository.findById(id);
 
-        const count = await this.resourceSubscriptionRepository.count({
-            ...withFormattedCountProps(props),
-            where: {
-                resourceId,
-                resourceTypeName: resourceTypeName as ResourceType
-            }
-        });
+    const updatedResourceSubscription = await this.update(resourceSubscription.id, {
+      resourceStatus: resourceSubscription.resourceStatus === ResourceStatusType.ENABLED ? ResourceStatusType.DISABLED : ResourceStatusType.ENABLED,
+    });
 
-        this.broadcastSysEvent(SysEventType.ResourceViewed, {
-            data: {
-                resourceId,
-                resourceTypeName,
-                items: resourceSubscriptions.map(
-                    (resourceSubscription: ResourceSubscriptionEntity) =>
-                        resourceSubscription.id
-                )
-            }
-        });
+    return updatedResourceSubscription;
+  }
 
-        return new FetchResponse<ResourceSubscriptionEntity>({
-            data: resourceSubscriptions,
-            count,
-            limit,
-            page
-        });
-    }
+  async deleteById(id: EntityId): Promise<ResourceSubscriptionEntity> {
+    const resourceSubscription = await this.resourceSubscriptionRepository.softDelete(id);
 
-    async fetchByResource(
-        resourceTypeName: ResourceType,
-        resourceId: EntityId
-    ): Promise<ResourceSubscriptionEntity | null> {
-        const resourceSubscription = await this.resourceSubscriptionRepository
-            .findByResource(resourceTypeName, resourceId)
-            .catch(() => null);
-
-        this.broadcastSysEvent(SysEventType.ResourceViewed, {
-            resourceId: resourceSubscription
-                ? resourceSubscription.id
-                : resourceId,
-            data: resourceSubscription
-                ? resourceSubscription.toObject()
-                : { message: 'Resource not found' }
-        });
-        return resourceSubscription;
-    }
-
-    async fetchById(id: EntityId): Promise<ResourceSubscriptionEntity> {
-        const resourceSubscription =
-            await this.resourceSubscriptionRepository.findById(id);
-
-        this.broadcastSysEvent(SysEventType.ResourceViewed, {
-            resourceId: resourceSubscription.id,
-            data: resourceSubscription.toObject() as object
-        });
-        return resourceSubscription;
-    }
-
-    async update(
-        id: EntityId,
-        request: UpdateResourceSubscriptionRequest
-    ): Promise<ResourceSubscriptionEntity> {
-        const resourceSubscription =
-            await this.resourceSubscriptionRepository.findById(id);
-
-        const previousData = resourceSubscription.toObject();
-        await this.updateEntity(resourceSubscription, request, {
-            $apply: ({ entity, changes }) =>
-                changes.resourceStatus &&
-                changes.resourceStatus === ResourceStatusType.ENABLED
-                    ? entity.disable()
-                    : entity.enable()
-        });
-
-        if (!resourceSubscription.hasChanges) {
-            throw new ArgumentInvalidException(`No changes to write to.`);
-        }
-        const updatedResourceSubscription =
-            await this.resourceSubscriptionRepository.update(
-                id,
-                resourceSubscription
-            );
-
-        this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-            resourceId: updatedResourceSubscription.id,
-            data: resourceSubscription.changes,
-            previousData
-        });
-        return updatedResourceSubscription;
-    }
-
-    async toggleSubscriptionByResource(
-        resourceTypeName: ResourceType,
-        resourceId: EntityId
-    ): Promise<ResourceSubscriptionEntity> {
-        const resourceSubscription = await this.resourceSubscriptionRepository
-            .findByResource(resourceTypeName, resourceId)
-            .catch(() => null);
-
-        if (!resourceSubscription) {
-            if (!this.requestUserId) {
-                throw new UnauthorizedException('Unauthorized');
-            }
-            return await this.create({
-                resourceTypeName,
-                resourceId,
-                subscriptionType: ResourceSubscriptionType.SUBSCRIBER,
-                resourceStatus: ResourceStatusType.ENABLED,
-                targetUserId: this.requestUserId
-            });
-        }
-
-        const updatedResourceSubscription = await this.update(
-            resourceSubscription.id,
-            {
-                resourceStatus:
-                    resourceSubscription.resourceStatus ===
-                    ResourceStatusType.ENABLED
-                        ? ResourceStatusType.DISABLED
-                        : ResourceStatusType.ENABLED
-            }
-        );
-
-        return updatedResourceSubscription;
-    }
-
-    async toggleSubscriptionById(
-        id: EntityId
-    ): Promise<ResourceSubscriptionEntity> {
-        const resourceSubscription =
-            await this.resourceSubscriptionRepository.findById(id);
-
-        const updatedResourceSubscription = await this.update(
-            resourceSubscription.id,
-            {
-                resourceStatus:
-                    resourceSubscription.resourceStatus ===
-                    ResourceStatusType.ENABLED
-                        ? ResourceStatusType.DISABLED
-                        : ResourceStatusType.ENABLED
-            }
-        );
-
-        return updatedResourceSubscription;
-    }
-
-    async deleteById(id: EntityId): Promise<ResourceSubscriptionEntity> {
-        const resourceSubscription =
-            await this.resourceSubscriptionRepository.softDelete(id);
-
-        this.broadcastSysEvent(SysEventType.ResourceDeleted, {
-            resourceId: resourceSubscription.id,
-            data: resourceSubscription.toObject() as object
-        });
-        return resourceSubscription;
-    }
+    this.broadcastSysEvent(SysEventType.ResourceDeleted, {
+      resourceId: resourceSubscription.id,
+      data: resourceSubscription.toObject() as object,
+    });
+    return resourceSubscription;
+  }
 }

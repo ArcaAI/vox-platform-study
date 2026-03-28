@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   FileTextIcon,
@@ -12,20 +12,20 @@ import {
   WifiIcon,
   BluetoothIcon,
   ActivityIcon,
-} from "@/components/registries/lucide-animated";
+} from '@/components/registries/lucide-animated';
 
 const icons = [
-  { name: "file-text", Icon: FileTextIcon },
-  { name: "folder-open", Icon: FolderOpenIcon },
-  { name: "git-branch", Icon: GitBranchIcon },
-  { name: "git-commit-horizontal", Icon: GitCommitHorizontalIcon },
-  { name: "terminal", Icon: TerminalIcon },
-  { name: "cpu", Icon: CpuIcon },
-  { name: "rocket", Icon: RocketIcon },
-  { name: "earth", Icon: EarthIcon },
-  { name: "wifi", Icon: WifiIcon },
-  { name: "bluetooth", Icon: BluetoothIcon },
-  { name: "activity", Icon: ActivityIcon },
+  { name: 'file-text', Icon: FileTextIcon },
+  { name: 'folder-open', Icon: FolderOpenIcon },
+  { name: 'git-branch', Icon: GitBranchIcon },
+  { name: 'git-commit-horizontal', Icon: GitCommitHorizontalIcon },
+  { name: 'terminal', Icon: TerminalIcon },
+  { name: 'cpu', Icon: CpuIcon },
+  { name: 'rocket', Icon: RocketIcon },
+  { name: 'earth', Icon: EarthIcon },
+  { name: 'wifi', Icon: WifiIcon },
+  { name: 'bluetooth', Icon: BluetoothIcon },
+  { name: 'activity', Icon: ActivityIcon },
 ] as const;
 
 function DevelopmentIcons() {
@@ -42,9 +42,9 @@ function DevelopmentIcons() {
 }
 
 const meta = {
-  title: "Registries/LucideAnimated/Development",
+  title: 'Registries/LucideAnimated/Development',
   component: DevelopmentIcons,
-  parameters: { layout: "padded" },
+  parameters: { layout: 'padded' },
 } satisfies Meta<typeof DevelopmentIcons>;
 
 export default meta;

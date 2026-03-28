@@ -2,12 +2,36 @@
 and MPS memory cleanup on unload.
 """
 
+import sys
+import types
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from stt_v2.models.base_loader import LoadedModel
 from stt_v2.models.onnx_loader import ONNXLoader
+
+
+@pytest.fixture(autouse=True)
+def _stub_onnxruntime():
+    """Ensure an ``onnxruntime`` module is importable for every test.
+
+    If the real package is installed it is used as-is.  Otherwise a
+    lightweight stub is injected into ``sys.modules`` so that
+    ``patch("onnxruntime.get_available_providers", ...)`` can resolve
+    the attribute without raising ``ModuleNotFoundError``.
+    """
+    if "onnxruntime" in sys.modules:
+        yield
+        return
+
+    stub = types.ModuleType("onnxruntime")
+    stub.get_available_providers = lambda: ["CPUExecutionProvider"]
+    sys.modules["onnxruntime"] = stub
+    try:
+        yield
+    finally:
+        sys.modules.pop("onnxruntime", None)
 
 
 # =============================================================================

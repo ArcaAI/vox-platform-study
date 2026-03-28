@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Badge } from '../../shadcn/badge'
+import { Badge } from '../../shadcn/badge';
 
 const meta = {
   title: 'Components/Badge',
@@ -16,17 +16,17 @@ const meta = {
       description: 'The visual style of the badge',
     },
   },
-} satisfies Meta<typeof Badge>
+} satisfies Meta<typeof Badge>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 // Default badge
 export const Default: Story = {
   args: {
     children: 'Badge',
   },
-}
+};
 
 // All variants
 export const Variants: Story = {
@@ -38,7 +38,7 @@ export const Variants: Story = {
       <Badge variant="outline">Outline</Badge>
     </div>
   ),
-}
+};
 
 // Usage examples
 export const Examples: Story = {
@@ -62,4 +62,4 @@ export const Examples: Story = {
       </div>
     </div>
   ),
-}
+};

@@ -25,10 +25,7 @@ export abstract class BaseEngine implements STTEngine {
 
   abstract init(config: EngineConfig): Promise<void>;
 
-  abstract transcribe(
-    audio: Float32Array,
-    options?: TranscribeOptions
-  ): Promise<TranscriptionResult>;
+  abstract transcribe(audio: Float32Array, options?: TranscribeOptions): Promise<TranscriptionResult>;
 
   abstract destroy(): Promise<void>;
 
@@ -43,10 +40,7 @@ export abstract class BaseEngine implements STTEngine {
       model: this.config?.model ?? 'unknown',
       device: (this.config?.device ?? 'wasm') as ComputeDevice,
       transcriptionCount: this.transcriptionCount,
-      averageLatencyMs:
-        this.transcriptionCount > 0
-          ? this.totalLatencyMs / this.transcriptionCount
-          : 0,
+      averageLatencyMs: this.transcriptionCount > 0 ? this.totalLatencyMs / this.transcriptionCount : 0,
       modelLoadTimeMs: this.modelLoadTimeMs,
     };
   }
@@ -70,12 +64,7 @@ export abstract class BaseEngine implements STTEngine {
    * (e.g. `whisper-tiny_timestamped`), so the `.en` suffix is omitted when
    * word-level timestamps are requested.
    */
-  protected getModelId(
-    model: string,
-    language: string,
-    quantized: boolean,
-    returnTimestamps?: boolean | 'word',
-  ): string {
+  protected getModelId(model: string, language: string, quantized: boolean, returnTimestamps?: boolean | 'word'): string {
     const needsTimestampedModel = returnTimestamps === 'word';
     const isEnglish = language === 'en' || language.startsWith('en-');
     const modelSuffix = isEnglish && !needsTimestampedModel ? '.en' : '';

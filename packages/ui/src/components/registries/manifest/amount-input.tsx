@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect, useMemo } from "react"
-import { Button } from "@/components/shadcn/button"
-import { Minus, Plus } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { demoAmountPresets } from "./demo/payment"
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { Button } from '@/components/shadcn/button';
+import { Minus, Plus } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { demoAmountPresets } from './demo/payment';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -15,46 +15,46 @@ import { demoAmountPresets } from "./demo/payment"
 export interface AmountInputProps {
   data?: {
     /** Quick-select preset amounts displayed as buttons. */
-    presets?: number[]
-  }
+    presets?: number[];
+  };
   actions?: {
     /** Called when user confirms the selected amount. */
-    onConfirm?: (value: number) => void
-  }
+    onConfirm?: (value: number) => void;
+  };
   appearance?: {
     /**
      * Minimum allowed value.
      * @default 0
      */
-    min?: number
+    min?: number;
     /**
      * Maximum allowed value.
      * @default 10000
      */
-    max?: number
+    max?: number;
     /**
      * Increment/decrement step size for the +/- buttons.
      * @default 10
      */
-    step?: number
+    step?: number;
     /**
      * Currency code for formatting the amount display.
      * @default "EUR"
      */
-    currency?: string
+    currency?: string;
     /**
      * Label text displayed above the input.
      * @default "Amount"
      */
-    label?: string
-  }
+    label?: string;
+  };
   control?: {
     /**
      * Controlled value for the amount input.
      * @default 50
      */
-    value?: number
-  }
+    value?: number;
+  };
 }
 
 /**
@@ -91,66 +91,68 @@ export interface AmountInputProps {
  * ```
  */
 export function AmountInput({ data, actions, appearance, control }: AmountInputProps) {
-  const resolved: NonNullable<AmountInputProps['data']> = data ?? { presets: demoAmountPresets }
-  const presets = resolved.presets ?? []
-  const onConfirm = actions?.onConfirm
-  const min = appearance?.min ?? 0
-  const max = appearance?.max ?? 10000
-  const step = appearance?.step ?? 10
-  const currency = appearance?.currency ?? "EUR"
-  const label = appearance?.label ?? "Amount"
-  const value = control?.value ?? 0
-  const [amount, setAmount] = useState(value)
-  const [isEditing, setIsEditing] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const resolved: NonNullable<AmountInputProps['data']> = data ?? { presets: demoAmountPresets };
+  const presets = resolved.presets ?? [];
+  const onConfirm = actions?.onConfirm;
+  const min = appearance?.min ?? 0;
+  const max = appearance?.max ?? 10000;
+  const step = appearance?.step ?? 10;
+  const currency = appearance?.currency ?? 'EUR';
+  const label = appearance?.label ?? 'Amount';
+  const value = control?.value ?? 0;
+  const [amount, setAmount] = useState(value);
+  const [isEditing, setIsEditing] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Sync internal state when controlled value changes
   useEffect(() => {
-    setAmount(value)
-  }, [value])
+    setAmount(value);
+  }, [value]);
 
   const currencySymbol = useMemo(() => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 0,
-    })
-      .formatToParts(0)
-      .find((part) => part.type === "currency")?.value || currency
-  }, [currency])
+    return (
+      new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency,
+        minimumFractionDigits: 0,
+      })
+        .formatToParts(0)
+        .find((part) => part.type === 'currency')?.value || currency
+    );
+  }, [currency]);
 
   const handleChange = (newValue: number) => {
-    const clamped = Math.max(min, Math.min(max, newValue))
-    setAmount(clamped)
-  }
+    const clamped = Math.max(min, Math.min(max, newValue));
+    setAmount(clamped);
+  };
 
   const handlePreset = (preset: number) => {
-    setAmount(preset)
-  }
+    setAmount(preset);
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseInt(e.target.value.replace(/[^0-9]/g, ""), 10)
+    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10);
     if (!isNaN(val)) {
-      handleChange(val)
+      handleChange(val);
     }
-  }
+  };
 
   const handleInputBlur = () => {
-    setIsEditing(false)
-  }
+    setIsEditing(false);
+  };
 
   const handleInputKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      setIsEditing(false)
+    if (e.key === 'Enter') {
+      setIsEditing(false);
     }
-  }
+  };
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.select()
+      inputRef.current.focus();
+      inputRef.current.select();
     }
-  }, [isEditing])
+  }, [isEditing]);
 
   return (
     <div className="w-full rounded-md sm:rounded-lg bg-card p-3 sm:p-2 space-y-3">
@@ -168,9 +170,7 @@ export function AmountInput({ data, actions, appearance, control }: AmountInputP
           <div className="min-w-24 sm:min-w-28 text-center">
             {isEditing ? (
               <div className="flex items-center justify-center gap-1">
-                <span className="text-xl sm:text-2xl font-bold text-muted-foreground">
-                  {currencySymbol}
-                </span>
+                <span className="text-xl sm:text-2xl font-bold text-muted-foreground">{currencySymbol}</span>
                 <input
                   ref={inputRef}
                   type="text"
@@ -186,7 +186,8 @@ export function AmountInput({ data, actions, appearance, control }: AmountInputP
                 onClick={() => setIsEditing(true)}
                 className="text-xl sm:text-2xl font-bold hover:text-primary transition-colors cursor-pointer"
               >
-                {currencySymbol}{amount}
+                {currencySymbol}
+                {amount}
               </button>
             )}
           </div>
@@ -208,13 +209,12 @@ export function AmountInput({ data, actions, appearance, control }: AmountInputP
               key={preset}
               onClick={() => handlePreset(preset)}
               className={cn(
-                "rounded-full border px-3 py-1 text-xs sm:text-sm transition-colors cursor-pointer",
-                amount === preset
-                  ? "border-foreground ring-1 ring-foreground"
-                  : "border-border hover:bg-muted"
+                'rounded-full border px-3 py-1 text-xs sm:text-sm transition-colors cursor-pointer',
+                amount === preset ? 'border-foreground ring-1 ring-foreground' : 'border-border hover:bg-muted',
               )}
             >
-              {currencySymbol}{preset}
+              {currencySymbol}
+              {preset}
             </button>
           ))}
         </div>
@@ -225,5 +225,5 @@ export function AmountInput({ data, actions, appearance, control }: AmountInputP
         )}
       </div>
     </div>
-  )
+  );
 }

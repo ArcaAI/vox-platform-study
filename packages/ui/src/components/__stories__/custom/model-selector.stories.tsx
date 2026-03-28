@@ -1,14 +1,14 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useState } from 'react';
 
-import { ModelSelector, type ModelOption } from '../../custom/model-selector'
+import { ModelSelector, type ModelOption } from '../../custom/model-selector';
 
 const models: ModelOption[] = [
   { id: 'gpt-4o', name: 'GPT-4o', source: 'backend', description: 'Latest multimodal model' },
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', source: 'backend', description: 'Fast and affordable' },
   { id: 'whisper-large', name: 'Whisper Large v3', source: 'huggingface', description: 'Speech recognition' },
   { id: 'whisper-local', name: 'Whisper Local', source: 'local', description: 'On-device transcription' },
-]
+];
 
 const meta = {
   title: 'Custom/ModelSelector',
@@ -32,10 +32,10 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof ModelSelector>
+} satisfies Meta<typeof ModelSelector>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
@@ -43,7 +43,7 @@ export const Default: Story = {
     models,
     onChange: (id) => console.log('Selected:', id),
   },
-}
+};
 
 export const WithSelection: Story = {
   args: {
@@ -52,7 +52,7 @@ export const WithSelection: Story = {
     selectedModelId: 'gpt-4o',
     onChange: (id) => console.log('Selected:', id),
   },
-}
+};
 
 export const Loading: Story = {
   args: {
@@ -61,7 +61,7 @@ export const Loading: Story = {
     isLoading: true,
     onChange: () => {},
   },
-}
+};
 
 export const WithNoneOption: Story = {
   args: {
@@ -70,7 +70,7 @@ export const WithNoneOption: Story = {
     noneOption: true,
     onChange: (id) => console.log('Selected:', id),
   },
-}
+};
 
 export const NoneSelected: Story = {
   args: {
@@ -80,7 +80,7 @@ export const NoneSelected: Story = {
     selectedModelId: '',
     onChange: (id) => console.log('Selected:', id),
   },
-}
+};
 
 export const SingleModel: Story = {
   args: {
@@ -89,28 +89,20 @@ export const SingleModel: Story = {
     selectedModelId: 'whisper-large',
     onChange: (id) => console.log('Selected:', id),
   },
-}
+};
 
 function InteractiveDemo() {
-  const [selected, setSelected] = useState<string | undefined>()
+  const [selected, setSelected] = useState<string | undefined>();
 
   return (
     <div className="space-y-4">
-      <ModelSelector
-        label="AI Model"
-        models={models}
-        selectedModelId={selected}
-        onChange={setSelected}
-        noneOption
-      />
-      <p className="text-xs text-muted-foreground">
-        Selected: {selected || '(none)'}
-      </p>
+      <ModelSelector label="AI Model" models={models} selectedModelId={selected} onChange={setSelected} noneOption />
+      <p className="text-xs text-muted-foreground">Selected: {selected || '(none)'}</p>
     </div>
-  )
+  );
 }
 
 export const Interactive: Story = {
   args: {} as any,
   render: () => <InteractiveDemo />,
-}
+};

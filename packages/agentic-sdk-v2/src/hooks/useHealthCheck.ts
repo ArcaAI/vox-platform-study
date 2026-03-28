@@ -41,12 +41,9 @@ const GATEWAY_CHECKS = [
   { key: 'apiLive', endpoint: HEALTH_ENDPOINTS.LIVE },
 ] as const;
 
-function deriveStatus(
-  gatewayResults: Record<string, ServiceHealthStatus | null>,
-  servicesResult: ConsolidatedServicesResponse | null,
-): HealthStatus {
+function deriveStatus(gatewayResults: Record<string, ServiceHealthStatus | null>, servicesResult: ConsolidatedServicesResponse | null): HealthStatus {
   const gatewayEntries = Object.values(gatewayResults);
-  const gatewayOk = gatewayEntries.filter(r => r !== null).length;
+  const gatewayOk = gatewayEntries.filter((r) => r !== null).length;
 
   if (!servicesResult) {
     if (gatewayOk === gatewayEntries.length) return 'degraded';
@@ -55,7 +52,7 @@ function deriveStatus(
   }
 
   const serviceStatuses = Object.values(servicesResult.services);
-  const servicesDown = serviceStatuses.filter(s => s.status === 'down').length;
+  const servicesDown = serviceStatuses.filter((s) => s.status === 'down').length;
 
   if (gatewayOk === gatewayEntries.length && servicesDown === 0) return 'healthy';
   if (gatewayOk === 0 && servicesDown === serviceStatuses.length) return 'unhealthy';
@@ -83,14 +80,11 @@ export function useHealthCheck(): UseHealthCheckReturn {
     try {
       const [gatewayResults, servicesResult] = await Promise.all([
         Promise.allSettled(
-          GATEWAY_CHECKS.map(({ endpoint }) =>
-            withRetry(() => apiClient.get<ServiceHealthStatus>(endpoint), { maxRetries: 1, delayMs: 500 }),
-          )
+          GATEWAY_CHECKS.map(({ endpoint }) => withRetry(() => apiClient.get<ServiceHealthStatus>(endpoint), { maxRetries: 1, delayMs: 500 })),
         ),
-        withRetry(
-          () => apiClient.get<ConsolidatedServicesResponse>(SERVICE_HEALTH_ENDPOINTS.SERVICES),
-          { maxRetries: 1, delayMs: 500 },
-        ).catch(() => null),
+        withRetry(() => apiClient.get<ConsolidatedServicesResponse>(SERVICE_HEALTH_ENDPOINTS.SERVICES), { maxRetries: 1, delayMs: 500 }).catch(
+          () => null,
+        ),
       ]);
 
       const serviceMap: Record<string, ServiceHealthStatus> = {};
@@ -134,25 +128,33 @@ export function useHealthCheck(): UseHealthCheckReturn {
     }
   }, []);
 
-  const startPolling = useCallback((intervalMs = 30000) => {
-    stopPolling();
-    intervalRef.current = setInterval(() => {
-      check().catch(() => {});
-    }, intervalMs);
-  }, [check, stopPolling]);
+  const startPolling = useCallback(
+    (intervalMs = 30000) => {
+      stopPolling();
+      intervalRef.current = setInterval(() => {
+        check().catch(() => {});
+      }, intervalMs);
+    },
+    [check, stopPolling],
+  );
 
   useEffect(() => {
-    return () => { stopPolling(); };
+    return () => {
+      stopPolling();
+    };
   }, [stopPolling]);
 
-  return useMemo(() => ({
-    status,
-    services,
-    lastChecked,
-    isLoading,
-    error,
-    check,
-    startPolling,
-    stopPolling,
-  }), [status, services, lastChecked, isLoading, error, check, startPolling, stopPolling]);
+  return useMemo(
+    () => ({
+      status,
+      services,
+      lastChecked,
+      isLoading,
+      error,
+      check,
+      startPolling,
+      stopPolling,
+    }),
+    [status, services, lastChecked, isLoading, error, check, startPolling, stopPolling],
+  );
 }

@@ -15,8 +15,8 @@ Design decisions:
 import asyncio
 import logging
 import threading
-from typing import Any
 import warnings
+from typing import Any
 
 import numpy as np
 
@@ -246,7 +246,7 @@ class EmbeddingService:
         )
 
         results: list[SpeakerEmbedding | None] = []
-        for emb, (start, end) in zip(raw, segment_times):
+        for emb, (start, end) in zip(raw, segment_times, strict=False):
             if emb is not None:
                 results.append(
                     SpeakerEmbedding(embedding=emb, segment_start=start, segment_end=end)

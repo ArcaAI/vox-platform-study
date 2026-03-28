@@ -8,40 +8,40 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 export interface CreateUserMediaProps extends BaseEntityFactoryCreateProps {
-    sharedAt?: IUserMediaEntity['sharedAt'];
-    userId: IUserMediaEntity['userId'];
-    User?: IUserMediaEntity['User'];
-    mediaId: IUserMediaEntity['mediaId'];
-    Media?: IUserMediaEntity['Media'];
-    tags?: IUserMediaEntity['tags'];
-    Tags?: IUserMediaEntity['Tags'];
+  sharedAt?: IUserMediaEntity['sharedAt'];
+  userId: IUserMediaEntity['userId'];
+  User?: IUserMediaEntity['User'];
+  mediaId: IUserMediaEntity['mediaId'];
+  Media?: IUserMediaEntity['Media'];
+  tags?: IUserMediaEntity['tags'];
+  Tags?: IUserMediaEntity['Tags'];
 
-    createdAt?: IUserMediaEntity['createdAt'];
-    updatedAt?: IUserMediaEntity['updatedAt'];
-    createdBy?: IUserMediaEntity['createdBy'];
-    updatedBy?: IUserMediaEntity['updatedBy'];
+  createdAt?: IUserMediaEntity['createdAt'];
+  updatedAt?: IUserMediaEntity['updatedAt'];
+  createdBy?: IUserMediaEntity['createdBy'];
+  updatedBy?: IUserMediaEntity['updatedBy'];
 }
 
 export class UserMediaFactory {
-    static CreateUserMedia(props: CreateUserMediaProps): UserMediaEntity {
-        const id = generateId();
-        const now = new Date();
+  static CreateUserMedia(props: CreateUserMediaProps): UserMediaEntity {
+    const id = generateId();
+    const now = new Date();
 
-        return new UserMediaEntity({
-            id,
+    return new UserMediaEntity({
+      id,
 
-            createdAt: props.createdAt || now,
-            updatedAt: props.updatedAt || now,
-            createdBy: props.createdBy ?? null,
-            updatedBy: props.updatedBy || null,
+      createdAt: props.createdAt || now,
+      updatedAt: props.updatedAt || now,
+      createdBy: props.createdBy ?? null,
+      updatedBy: props.updatedBy || null,
 
-            sharedAt: props.sharedAt ?? new Date(),
-            userId: props.userId,
-            User: props.User ?? null,
-            mediaId: props.mediaId,
-            Media: props.Media ?? null,
-            tags: props.tags ?? [],
-            Tags: props.Tags ?? [],
-        });
-    }
+      sharedAt: props.sharedAt ?? new Date(),
+      userId: props.userId,
+      User: props.User ?? null,
+      mediaId: props.mediaId,
+      Media: props.Media ?? null,
+      tags: props.tags ?? [],
+      Tags: props.Tags ?? [],
+    });
+  }
 }

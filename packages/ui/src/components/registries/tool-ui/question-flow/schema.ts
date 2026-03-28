@@ -1,7 +1,7 @@
-import { z } from "zod";
-import type { ReactNode } from "react";
-import { defineToolUiContract } from "../shared/contract";
-import { ToolUIIdSchema, ToolUIRoleSchema } from "../shared/schema";
+import { z } from 'zod';
+import type { ReactNode } from 'react';
+import { defineToolUiContract } from '../shared/contract';
+import { ToolUIIdSchema, ToolUIRoleSchema } from '../shared/schema';
 
 export const QuestionFlowOptionSchema = z.object({
   id: z.string().min(1),
@@ -18,21 +18,17 @@ export const QuestionFlowStepDefinitionSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   options: z.array(QuestionFlowOptionSchema.omit({ icon: true })).min(1),
-  selectionMode: z.enum(["single", "multi"]).optional(),
+  selectionMode: z.enum(['single', 'multi']).optional(),
 });
 
-export type QuestionFlowStepDefinition = z.infer<
-  typeof QuestionFlowStepDefinitionSchema
->;
+export type QuestionFlowStepDefinition = z.infer<typeof QuestionFlowStepDefinitionSchema>;
 
 export const QuestionFlowSummaryItemSchema = z.object({
   label: z.string().min(1),
   value: z.string().min(1),
 });
 
-export type QuestionFlowSummaryItem = z.infer<
-  typeof QuestionFlowSummaryItemSchema
->;
+export type QuestionFlowSummaryItem = z.infer<typeof QuestionFlowSummaryItemSchema>;
 
 export const QuestionFlowChoiceSchema = z.object({
   title: z.string().min(1),
@@ -51,28 +47,22 @@ export const SerializableProgressiveModeSchema = BaseSchema.extend({
   title: z.string().min(1),
   description: z.string().optional(),
   options: z.array(QuestionFlowOptionSchema.omit({ icon: true })).min(1),
-  selectionMode: z.enum(["single", "multi"]).optional(),
+  selectionMode: z.enum(['single', 'multi']).optional(),
 });
 
-export type SerializableProgressiveMode = z.infer<
-  typeof SerializableProgressiveModeSchema
->;
+export type SerializableProgressiveMode = z.infer<typeof SerializableProgressiveModeSchema>;
 
 export const SerializableUpfrontModeSchema = BaseSchema.extend({
   steps: z.array(QuestionFlowStepDefinitionSchema).min(1),
 });
 
-export type SerializableUpfrontMode = z.infer<
-  typeof SerializableUpfrontModeSchema
->;
+export type SerializableUpfrontMode = z.infer<typeof SerializableUpfrontModeSchema>;
 
 export const SerializableReceiptModeSchema = BaseSchema.extend({
   choice: QuestionFlowChoiceSchema,
 });
 
-export type SerializableReceiptMode = z.infer<
-  typeof SerializableReceiptModeSchema
->;
+export type SerializableReceiptMode = z.infer<typeof SerializableReceiptModeSchema>;
 
 export const SerializableQuestionFlowSchema = z.union([
   SerializableProgressiveModeSchema,
@@ -80,29 +70,19 @@ export const SerializableQuestionFlowSchema = z.union([
   SerializableReceiptModeSchema,
 ]);
 
-export type SerializableQuestionFlow = z.infer<
-  typeof SerializableQuestionFlowSchema
->;
+export type SerializableQuestionFlow = z.infer<typeof SerializableQuestionFlowSchema>;
 
-const SerializableQuestionFlowSchemaContract = defineToolUiContract(
-  "QuestionFlow",
-  SerializableQuestionFlowSchema,
-);
+const SerializableQuestionFlowSchemaContract = defineToolUiContract('QuestionFlow', SerializableQuestionFlowSchema);
 
-export const parseSerializableQuestionFlow: (
-  input: unknown,
-) => SerializableQuestionFlow = SerializableQuestionFlowSchemaContract.parse;
+export const parseSerializableQuestionFlow: (input: unknown) => SerializableQuestionFlow = SerializableQuestionFlowSchemaContract.parse;
 
-export const safeParseSerializableQuestionFlow: (
-  input: unknown,
-) => SerializableQuestionFlow | null =
+export const safeParseSerializableQuestionFlow: (input: unknown) => SerializableQuestionFlow | null =
   SerializableQuestionFlowSchemaContract.safeParse;
 interface BaseRuntimeProps {
   className?: string;
 }
 
-export interface QuestionFlowProgressiveProps
-  extends BaseRuntimeProps, Omit<SerializableProgressiveMode, "options"> {
+export interface QuestionFlowProgressiveProps extends BaseRuntimeProps, Omit<SerializableProgressiveMode, 'options'> {
   options: QuestionFlowOption[];
   defaultValue?: string[];
   onSelect?: (optionIds: string[]) => void | Promise<void>;
@@ -111,21 +91,16 @@ export interface QuestionFlowProgressiveProps
   choice?: never;
 }
 
-export interface QuestionFlowUpfrontProps
-  extends BaseRuntimeProps, SerializableUpfrontMode {
+export interface QuestionFlowUpfrontProps extends BaseRuntimeProps, SerializableUpfrontMode {
   onStepChange?: (stepId: string) => void;
   onComplete?: (answers: Record<string, string[]>) => void | Promise<void>;
   step?: never;
   choice?: never;
 }
 
-export interface QuestionFlowReceiptProps
-  extends BaseRuntimeProps, SerializableReceiptMode {
+export interface QuestionFlowReceiptProps extends BaseRuntimeProps, SerializableReceiptMode {
   step?: never;
   steps?: never;
 }
 
-export type QuestionFlowProps =
-  | QuestionFlowProgressiveProps
-  | QuestionFlowUpfrontProps
-  | QuestionFlowReceiptProps;
+export type QuestionFlowProps = QuestionFlowProgressiveProps | QuestionFlowUpfrontProps | QuestionFlowReceiptProps;

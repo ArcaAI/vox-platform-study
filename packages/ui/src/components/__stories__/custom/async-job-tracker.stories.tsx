@@ -1,26 +1,26 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState, useCallback } from 'react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useState, useCallback } from 'react';
 
-import { AsyncJobTracker, type AsyncJob } from '../../custom/async-job-tracker'
+import { AsyncJobTracker, type AsyncJob } from '../../custom/async-job-tracker';
 
 function createMockPollFn(scenario: 'success' | 'fail' | 'slow') {
-  let callCount = 0
+  let callCount = 0;
   return async (_jobId: string): Promise<AsyncJob> => {
-    callCount++
+    callCount++;
     if (scenario === 'fail' && callCount >= 3) {
-      return { jobId: _jobId, status: 'failed', error: 'Model inference timeout after 30s' }
+      return { jobId: _jobId, status: 'failed', error: 'Model inference timeout after 30s' };
     }
     if (scenario === 'success' && callCount >= 5) {
-      return { jobId: _jobId, status: 'completed', progress: 100, result: { output: 'done' } }
+      return { jobId: _jobId, status: 'completed', progress: 100, result: { output: 'done' } };
     }
-    const progress = Math.min(95, callCount * 20)
+    const progress = Math.min(95, callCount * 20);
     return {
       jobId: _jobId,
       status: callCount === 1 ? 'pending' : 'processing',
       progress: callCount === 1 ? undefined : progress,
       estimatedMs: 10000,
-    }
-  }
+    };
+  };
 }
 
 const meta = {
@@ -41,10 +41,10 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof AsyncJobTracker>
+} satisfies Meta<typeof AsyncJobTracker>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Pending: Story = {
   args: {
@@ -52,7 +52,7 @@ export const Pending: Story = {
     pollFn: async (id) => ({ jobId: id, status: 'pending' }),
     pollIntervalMs: 60000,
   },
-}
+};
 
 export const Processing: Story = {
   args: {
@@ -65,7 +65,7 @@ export const Processing: Story = {
     }),
     pollIntervalMs: 60000,
   },
-}
+};
 
 export const Completed: Story = {
   args: {
@@ -78,7 +78,7 @@ export const Completed: Story = {
     }),
     pollIntervalMs: 60000,
   },
-}
+};
 
 export const Failed: Story = {
   args: {
@@ -90,32 +90,26 @@ export const Failed: Story = {
     }),
     pollIntervalMs: 60000,
   },
-}
+};
 
 export const NoJob: Story = {
   args: {
     jobId: null,
     pollFn: async (id) => ({ jobId: id, status: 'pending' }),
   },
-}
+};
 
 function LiveDemo({ scenario }: { scenario: 'success' | 'fail' | 'slow' }) {
-  const [jobId, setJobId] = useState<string | null>(null)
-  const pollFn = useCallback(createMockPollFn(scenario), [scenario, jobId])
+  const [jobId, setJobId] = useState<string | null>(null);
+  const pollFn = useCallback(createMockPollFn(scenario), [scenario, jobId]);
 
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
-        <button
-          className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground"
-          onClick={() => setJobId(`job-${Date.now()}`)}
-        >
+        <button className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground" onClick={() => setJobId(`job-${Date.now()}`)}>
           Start Job
         </button>
-        <button
-          className="rounded border px-3 py-1.5 text-sm"
-          onClick={() => setJobId(null)}
-        >
+        <button className="rounded border px-3 py-1.5 text-sm" onClick={() => setJobId(null)}>
           Reset
         </button>
       </div>
@@ -127,15 +121,15 @@ function LiveDemo({ scenario }: { scenario: 'success' | 'fail' | 'slow' }) {
         onError={(e) => console.log('Error:', e)}
       />
     </div>
-  )
+  );
 }
 
 export const LiveSuccess: Story = {
   args: {} as any,
   render: () => <LiveDemo scenario="success" />,
-}
+};
 
 export const LiveFailure: Story = {
   args: {} as any,
   render: () => <LiveDemo scenario="fail" />,
-}
+};

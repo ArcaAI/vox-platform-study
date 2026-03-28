@@ -7,31 +7,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arca
 import { Input } from '@arcaai/ui/input';
 import { Label } from '@arcaai/ui/label';
 import { ScrollArea } from '@arcaai/ui/scroll-area';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@arcaai/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
 import { Separator } from '@arcaai/ui/separator';
 import { Skeleton } from '@arcaai/ui/skeleton';
 import { Slider } from '@arcaai/ui/slider';
 import { Switch } from '@arcaai/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/tabs';
 import { Textarea } from '@arcaai/ui/textarea';
-import {
-  AlertCircle,
-  ChevronDown,
-  Dna,
-  FileText,
-  Loader2,
-  Radio,
-  Search,
-  Settings2,
-  Sparkles,
-  X,
-} from 'lucide-react';
+import { AlertCircle, ChevronDown, Dna, FileText, Loader2, Radio, Search, Settings2, Sparkles, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { toast } from 'sonner';
 import type { AssembledGenerateRequest, SmrGenerateRequest, SmrGenerateResponse } from '../api';
@@ -43,14 +26,9 @@ import { useDoctorContext } from '../hooks/use-doctor-context';
 
 import { useDepartment } from '@/features/admin/api/departments';
 import type { PromptTemplate } from '@/features/admin/api/prompts';
-import {
-  usePromptTemplates,
-} from '@/features/admin/api/prompts';
+import { usePromptTemplates } from '@/features/admin/api/prompts';
 import type { DnaReport } from '@/features/dna-writing-style/api/dna-writing-styles';
-import {
-  useMyDnaStyle,
-  useDnaStyleByDoctor,
-} from '@/features/dna-writing-style/api/dna-writing-styles';
+import { useMyDnaStyle, useDnaStyleByDoctor } from '@/features/dna-writing-style/api/dna-writing-styles';
 import { CONTEXT_ENDPOINTS, useAgenticStore, useArca, type ContextItem } from '@arcaai/vox';
 import { buildAssembledPayload } from '../utils/build-assembled-payload';
 import { filterContextItems, type ContextRecency } from '../utils/filter-context-items';
@@ -132,13 +110,10 @@ export default function SummaryPage() {
     { category: 'SUMMARY' },
     { enabled: !!tenantId && !ctx.requiresImpersonation },
   );
-  const { data: doctorDnaStyle, isLoading: dnaLoading } = useDnaStyleByDoctor(
-    ctx.effectiveUserId,
-    { enabled: !!ctx.effectiveUserId && !ctx.requiresImpersonation },
-  );
-  const { data: myDnaStyle } = useMyDnaStyle(
-    { enabled: debugMode && !ctx.requiresImpersonation },
-  );
+  const { data: doctorDnaStyle, isLoading: dnaLoading } = useDnaStyleByDoctor(ctx.effectiveUserId, {
+    enabled: !!ctx.effectiveUserId && !ctx.requiresImpersonation,
+  });
+  const { data: myDnaStyle } = useMyDnaStyle({ enabled: debugMode && !ctx.requiresImpersonation });
 
   const generateMutation = useGenerateSummary();
 
@@ -156,9 +131,7 @@ export default function SummaryPage() {
     if (!userDeptId) return promptTemplates;
     const deptTemplates = promptTemplates.filter((t) => t.departmentId === userDeptId);
     const globalTemplates = promptTemplates.filter((t) => !t.departmentId);
-    return deptTemplates.length > 0
-      ? [...deptTemplates, ...globalTemplates]
-      : promptTemplates;
+    return deptTemplates.length > 0 ? [...deptTemplates, ...globalTemplates] : promptTemplates;
   }, [promptTemplates, userDeptId]);
 
   const selectedTemplate = useMemo(
@@ -200,20 +173,17 @@ export default function SummaryPage() {
   }, [doctorDnaStyle?.id, selectedDnaStyleId]);
 
   const availableContextTypes = useMemo(() => {
-    const typeSet = new Set(
-      contextSuggestions
-        .map((item) => item.type)
-        .filter((itemType): itemType is string => Boolean(itemType)),
-    );
+    const typeSet = new Set(contextSuggestions.map((item) => item.type).filter((itemType): itemType is string => Boolean(itemType)));
     return ['ALL', ...Array.from(typeSet).sort()];
   }, [contextSuggestions]);
 
   const filteredContextSuggestions = useMemo(
-    () => filterContextItems(contextSuggestions, {
-      query: contextSearchQuery,
-      type: contextTypeFilter,
-      recency: contextRecencyFilter,
-    }) as ContextItem[],
+    () =>
+      filterContextItems(contextSuggestions, {
+        query: contextSearchQuery,
+        type: contextTypeFilter,
+        recency: contextRecencyFilter,
+      }) as ContextItem[],
     [contextSuggestions, contextSearchQuery, contextTypeFilter, contextRecencyFilter],
   );
 
@@ -229,9 +199,7 @@ export default function SummaryPage() {
     setContextLoadingIds((prev) => (prev.includes(item.id) ? prev : [...prev, item.id]));
 
     try {
-      const loaded = await smrClient.get<{ id: string; content: string; type?: string }>(
-        `/consultations/_/context/${item.id}`,
-      );
+      const loaded = await smrClient.get<{ id: string; content: string; type?: string }>(`/consultations/_/context/${item.id}`);
 
       if (!loaded?.content) {
         toast.error(`Context item ${item.id} has no content`);
@@ -244,9 +212,7 @@ export default function SummaryPage() {
         type: loaded.type ?? item.type,
       } as ContextItem;
 
-      setContextSuggestions((prev) => prev.map((candidate) => (
-        candidate.id === enrichedItem.id ? enrichedItem : candidate
-      )));
+      setContextSuggestions((prev) => prev.map((candidate) => (candidate.id === enrichedItem.id ? enrichedItem : candidate)));
 
       return enrichedItem;
     } catch (err) {
@@ -303,23 +269,26 @@ export default function SummaryPage() {
     }
   }, [contextSuggestionsLoading, ctx.effectiveUserId, ctx.requiresImpersonation, session]);
 
-  const toggleContextSelection = useCallback(async (item: ContextItem) => {
-    const currentlySelected = selectedContextItems.some((selected) => selected.id === item.id);
-    if (currentlySelected) {
-      setSelectedContextItems((prev) => prev.filter((selected) => selected.id !== item.id));
-      return;
-    }
-
-    const resolved = await loadContextItemContent(item);
-    if (!resolved) return;
-
-    setSelectedContextItems((prev) => {
-      if (prev.some((selected) => selected.id === resolved.id)) {
-        return prev;
+  const toggleContextSelection = useCallback(
+    async (item: ContextItem) => {
+      const currentlySelected = selectedContextItems.some((selected) => selected.id === item.id);
+      if (currentlySelected) {
+        setSelectedContextItems((prev) => prev.filter((selected) => selected.id !== item.id));
+        return;
       }
-      return [...prev, resolved];
-    });
-  }, [loadContextItemContent, selectedContextItems]);
+
+      const resolved = await loadContextItemContent(item);
+      if (!resolved) return;
+
+      setSelectedContextItems((prev) => {
+        if (prev.some((selected) => selected.id === resolved.id)) {
+          return prev;
+        }
+        return [...prev, resolved];
+      });
+    },
+    [loadContextItemContent, selectedContextItems],
+  );
 
   const removeSelectedContextItem = useCallback((itemId: string) => {
     setSelectedContextItems((prev) => prev.filter((item) => item.id !== itemId));
@@ -336,20 +305,25 @@ export default function SummaryPage() {
     setContextRecencyFilter('ALL');
   }, [ctx.effectiveUserId]);
 
-  const buildPromptAndSystem = useCallback((contextMessage: string) => {
-    const templateContent = currentPromptText;
-    const dnaStyleText = currentDnaText;
+  const buildPromptAndSystem = useCallback(
+    (contextMessage: string) => {
+      const templateContent = currentPromptText;
+      const dnaStyleText = currentDnaText;
 
-    let systemPrompt = templateContent || 'You are a medical documentation assistant. Generate a comprehensive clinical summary from the provided transcript and context.';
-    if (dnaStyleText) systemPrompt += `\n\nApply the following writing style:\n${dnaStyleText}`;
-    if (includeNER) systemPrompt += `\n\nAlso extract named medical entities (medications, conditions, procedures) and list them at the end.`;
+      let systemPrompt =
+        templateContent ||
+        'You are a medical documentation assistant. Generate a comprehensive clinical summary from the provided transcript and context.';
+      if (dnaStyleText) systemPrompt += `\n\nApply the following writing style:\n${dnaStyleText}`;
+      if (includeNER) systemPrompt += `\n\nAlso extract named medical entities (medications, conditions, procedures) and list them at the end.`;
 
-    let prompt = `Generate a clinical summary from the following transcript:\n\n${contextMessage}`;
-    if (preSummaryText) prompt += `\n\n--- Pre-Summary Context ---\n${preSummaryText}`;
-    if (additionalContext) prompt += `\n\n--- Additional Context ---\n${additionalContext}`;
+      let prompt = `Generate a clinical summary from the following transcript:\n\n${contextMessage}`;
+      if (preSummaryText) prompt += `\n\n--- Pre-Summary Context ---\n${preSummaryText}`;
+      if (additionalContext) prompt += `\n\n--- Additional Context ---\n${additionalContext}`;
 
-    return { prompt, systemPrompt };
-  }, [preSummaryText, additionalContext, currentPromptText, currentDnaText, includeNER]);
+      return { prompt, systemPrompt };
+    },
+    [preSummaryText, additionalContext, currentPromptText, currentDnaText, includeNER],
+  );
 
   const handleStreamingGenerate = useCallback(async () => {
     if (!debugMode && !hasSelectedContextItems) {
@@ -437,7 +411,9 @@ export default function SummaryPage() {
                 setStreamingText(accumulated);
                 setStreamChunkCount((c) => c + 1);
               }
-            } catch { /* non-JSON chunk */ }
+            } catch {
+              /* non-JSON chunk */
+            }
           },
           () => {
             if (accumulated) {
@@ -498,10 +474,13 @@ export default function SummaryPage() {
           stream: true,
         };
 
-        const taskRes = await smrClient.post<{ task_id: string; status: string; stream_url?: string; content?: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }>(
-          '/text/generate',
-          body,
-        );
+        const taskRes = await smrClient.post<{
+          task_id: string;
+          status: string;
+          stream_url?: string;
+          content?: string;
+          usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+        }>('/text/generate', body);
 
         if (!taskRes.stream_url) {
           if (taskRes.content) {
@@ -537,7 +516,9 @@ export default function SummaryPage() {
                 setStreamingText(accumulated);
                 setStreamChunkCount((c) => c + 1);
               }
-            } catch { /* non-JSON chunk */ }
+            } catch {
+              /* non-JSON chunk */
+            }
           },
           () => {
             if (accumulated) {
@@ -579,7 +560,26 @@ export default function SummaryPage() {
       }
       setIsStreaming(false);
     }
-  }, [inputMode, hasSelectedContextItems, hasManualText, selectedContextItemIds, selectedContextItems, transcript, debugMode, buildPromptAndSystem, provider, model, temperature, maxTokens, selectedTemplateId, selectedDnaStyleId, doctorDnaStyle?.id, visitType, preSummaryText, additionalContext]);
+  }, [
+    inputMode,
+    hasSelectedContextItems,
+    hasManualText,
+    selectedContextItemIds,
+    selectedContextItems,
+    transcript,
+    debugMode,
+    buildPromptAndSystem,
+    provider,
+    model,
+    temperature,
+    maxTokens,
+    selectedTemplateId,
+    selectedDnaStyleId,
+    doctorDnaStyle?.id,
+    visitType,
+    preSummaryText,
+    additionalContext,
+  ]);
 
   const handleGenerate = useCallback(async () => {
     if (!debugMode && !hasSelectedContextItems) {
@@ -620,11 +620,7 @@ export default function SummaryPage() {
         if (selectedDnaStyleId) body.dna_writing_style_id = selectedDnaStyleId;
         if (visitType) body.visit_type = visitType;
 
-        const result = await smrClient.post<SmrGenerateResponse>(
-          '/text/generate/assembled',
-          body,
-          { timeout: 120_000 },
-        );
+        const result = await smrClient.post<SmrGenerateResponse>('/text/generate/assembled', body, { timeout: 120_000 });
 
         setResults((prev) => [result, ...prev]);
         addToHistory({
@@ -695,854 +691,915 @@ export default function SummaryPage() {
         toast.error(`Generation failed: ${message}`);
       }
     }
-  }, [inputMode, hasSelectedContextItems, hasManualText, selectedContextItemIds, selectedContextItems, transcript, debugMode, provider, model, temperature, maxTokens, selectedTemplateId, selectedDnaStyleId, doctorDnaStyle?.id, visitType, preSummaryText, additionalContext, currentPromptText, currentDnaText, includeNER, generateMutation]);
+  }, [
+    inputMode,
+    hasSelectedContextItems,
+    hasManualText,
+    selectedContextItemIds,
+    selectedContextItems,
+    transcript,
+    debugMode,
+    provider,
+    model,
+    temperature,
+    maxTokens,
+    selectedTemplateId,
+    selectedDnaStyleId,
+    doctorDnaStyle?.id,
+    visitType,
+    preSummaryText,
+    additionalContext,
+    currentPromptText,
+    currentDnaText,
+    includeNER,
+    generateMutation,
+  ]);
 
   const isGenerating = generateMutation.isPending || isStreaming;
 
   return (
     <Main>
       <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-auto">
-      <div className="mb-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Summary Generation</h1>
-            <p className="text-muted-foreground mt-1">
-              Generate full clinical summaries using transcripts, pre-summaries, templates, and DNA writing styles.
-            </p>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              {debugMode && (
-                <Badge variant="default" className="text-xs">Debug Mode</Badge>
-              )}
-              {ctx.isImpersonated && (
-                <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 dark:text-amber-400">
-                  Acting as impersonated user
-                </Badge>
-              )}
-              {userDepartment && (
-                <Badge variant="secondary" className="text-xs">
-                  {userDepartment.name || userDepartment.code}
-                </Badge>
-              )}
+        <div className="min-h-0 flex-1 overflow-auto">
+          <div className="mb-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">Summary Generation</h1>
+                <p className="text-muted-foreground mt-1">
+                  Generate full clinical summaries using transcripts, pre-summaries, templates, and DNA writing styles.
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  {debugMode && (
+                    <Badge variant="default" className="text-xs">
+                      Debug Mode
+                    </Badge>
+                  )}
+                  {ctx.isImpersonated && (
+                    <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 dark:text-amber-400">
+                      Acting as impersonated user
+                    </Badge>
+                  )}
+                  {userDepartment && (
+                    <Badge variant="secondary" className="text-xs">
+                      {userDepartment.name || userDepartment.code}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              <SmrStatusBadge />
             </div>
           </div>
-          <SmrStatusBadge />
-        </div>
-      </div>
 
-      {ctx.requiresImpersonation ? (
-        <ImpersonationGuard roles={ctx.roles} />
-      ) : (
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="flex flex-col gap-4 lg:col-span-3">
-          {/* Visit Type (debug mode only) */}
-          {debugMode && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Visit Type</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Select value={visitType} onValueChange={(v: string) => setVisitType(v as typeof visitType)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select visit type (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="new_visit">New Visit</SelectItem>
-                    <SelectItem value="referral">Referral</SelectItem>
-                  </SelectContent>
-                </Select>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Input: Context Item ID or Transcript */}
-          <Card data-doc="smr-transcript-input">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileText className="size-4 text-blue-500" />
-                  <CardTitle className="text-sm">Consultation Transcript</CardTitle>
-                </div>
-                {!debugMode && selectedContextItems.length > 0 && (
-                  <Badge variant="secondary" className="text-[10px]">
-                    {selectedContextItems.length} selected
-                  </Badge>
-                )}
-              </div>
-              {debugMode && (
-                <CardDescription className="text-xs">
-                  Load a transcript from context item IDs, or enter text manually.
-                </CardDescription>
-              )}
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {debugMode ? (
-                <Tabs value={inputMode} onValueChange={(v: string) => setInputMode(v as InputMode)}>
-                  <TabsList className="w-full">
-                    <TabsTrigger value="context_item" className="flex-1">Context Item ID</TabsTrigger>
-                    <TabsTrigger value="message" className="flex-1">Manual Message</TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="context_item" className="flex flex-col gap-3 mt-3">
-                    {/* Search & filter controls */}
-                    <div className="grid gap-2 sm:grid-cols-5">
-                      <div className="sm:col-span-3">
-                        <Label htmlFor="smr-context-item-search" className="text-xs">Search Context Items</Label>
-                        <div className="relative mt-1">
-                          <Search className="text-muted-foreground absolute left-2 top-2.5 size-4" />
-                          <Input
-                            id="smr-context-item-search"
-                            placeholder="Search by context item ID (fuzzy match)..."
-                            value={contextSearchQuery}
-                            onChange={(e: ChangeEvent<HTMLInputElement>) => setContextSearchQuery(e.target.value)}
-                            className="pl-8 font-mono text-sm"
-                            onFocus={() => {
-                              setContextSuggestionsOpen(true);
-                              if (!contextSuggestionsLoaded) {
-                                void loadContextSuggestions();
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-                      <div className="sm:col-span-1">
-                        <Label className="text-xs">Item Type</Label>
-                        <Select value={contextTypeFilter} onValueChange={setContextTypeFilter}>
-                          <SelectTrigger className="mt-1 w-full">
-                            <SelectValue placeholder="All types" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableContextTypes.map((itemType) => (
-                              <SelectItem key={itemType} value={itemType}>{itemType}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="sm:col-span-1">
-                        <Label className="text-xs">Recency</Label>
-                        <Select
-                          value={contextRecencyFilter}
-                          onValueChange={(value: string) => setContextRecencyFilter(value as ContextRecency)}
-                        >
-                          <SelectTrigger className="mt-1 w-full">
-                            <SelectValue placeholder="All dates" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ALL">All dates</SelectItem>
-                            <SelectItem value="24H">Last 24 hours</SelectItem>
-                            <SelectItem value="7D">Last 7 days</SelectItem>
-                            <SelectItem value="30D">Last 30 days</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between mt-2">
-                      <Badge variant="secondary" className="text-xs">{selectedContextItems.length} selected</Badge>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => setContextSuggestionsOpen((prev) => !prev)}
-                      >
-                        {contextSuggestionsOpen ? 'Hide list' : 'Show list'}
-                      </Button>
-                    </div>
-
-                    {/* Context item suggestions list */}
-                    {contextSuggestionsOpen && (
-                      <div className="rounded-lg border border-dashed bg-muted/20 p-2">
-                        <Label className="mb-2 block text-xs font-medium">Context Item Results</Label>
-
-                        {contextSuggestionsLoading && (
-                          <p className="text-muted-foreground text-xs">Loading context items...</p>
-                        )}
-                        {!contextSuggestionsLoading && contextSuggestionsError && (
-                          <p className="text-destructive text-xs">{contextSuggestionsError}</p>
-                        )}
-                        {!contextSuggestionsLoading && !contextSuggestionsError && filteredContextSuggestions.length === 0 && (
-                          <p className="text-muted-foreground text-xs">No context items match the current filters.</p>
-                        )}
-
-                        {!contextSuggestionsLoading && !contextSuggestionsError && filteredContextSuggestions.length > 0 && (
-                          <ScrollArea className="h-44">
-                            <div className="flex flex-col gap-1.5 pr-2">
-                              {filteredContextSuggestions.map((item) => {
-                                const selected = selectedContextItems.some((si) => si.id === item.id);
-                                const isLoadingItem = contextLoadingIds.includes(item.id);
-                                const preview = item.content?.trim() ?? '';
-
-                                return (
-                                  <button
-                                    key={item.id}
-                                    type="button"
-                                    className={`rounded border px-2 py-1.5 text-left transition-colors ${selected ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}
-                                    onClick={() => { void toggleContextSelection(item); }}
-                                  >
-                                    <div className="mb-1 flex items-center justify-between gap-2">
-                                      <span className="font-mono text-[11px]">{item.id}</span>
-                                      <div className="flex items-center gap-1.5">
-                                        <Badge variant="outline" className="text-[10px]">{item.type ?? 'UNKNOWN'}</Badge>
-                                        {selected && <Badge variant="secondary" className="text-[10px]">Selected</Badge>}
-                                      </div>
-                                    </div>
-                                    <p className="text-muted-foreground text-xs">
-                                      {isLoadingItem
-                                        ? 'Loading content...'
-                                        : preview.length > 120
-                                          ? `${preview.slice(0, 120)}...`
-                                          : preview || 'No preview available'}
-                                    </p>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </ScrollArea>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Selected items preview */}
-                    {selectedContextItems.length > 0 && (
-                      <div className="flex flex-col gap-2">
-                        <Label className="text-xs font-medium">Selected Context Items</Label>
-                        {selectedContextItems.map((item) => (
-                          <div key={item.id} className="rounded-lg border bg-muted/30 p-3">
-                            <div className="mb-2 flex items-center justify-between gap-2">
-                              <div className="flex min-w-0 items-center gap-2">
-                                <span className="truncate font-mono text-[11px]">{item.id}</span>
-                                <Badge variant="outline" className="text-[10px]">{item.type ?? 'UNKNOWN'}</Badge>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <Badge variant="secondary" className="text-[10px] tabular-nums">
-                                  {(item.content?.length ?? 0).toLocaleString()} chars
-                                </Badge>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="size-6"
-                                  onClick={() => removeSelectedContextItem(item.id)}
-                                  aria-label={`Remove ${item.id}`}
-                                >
-                                  <X className="size-3.5" />
-                                </Button>
-                              </div>
-                            </div>
-                            <ScrollArea className="h-40 rounded border bg-background p-2">
-                              <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
-                                {item.content?.trim() || 'No content available'}
-                              </p>
-                            </ScrollArea>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="message" className="flex flex-col gap-3 mt-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-6 text-xs"
-                        onClick={() => { setTranscript(SAMPLE_TRANSCRIPT); toast.success('Sample transcript loaded'); }}
-                      >
-                        Load Sample
-                      </Button>
-                    </div>
-                    <Textarea
-                      rows={12}
-                      placeholder="Paste the consultation transcript here..."
-                      value={transcript}
-                      onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setTranscript(e.target.value)}
-                      className="font-mono text-sm resize-y"
-                    />
-                  </TabsContent>
-                </Tabs>
-              ) : (
-                /* Production mode: context item selection only (no tabs) */
-                <div className="flex flex-col gap-3">
-                  <div className="grid gap-2 sm:grid-cols-5">
-                    <div className="sm:col-span-3">
-                      <Label htmlFor="smr-context-item-search-prod" className="text-xs">Search Context Items</Label>
-                      <div className="relative mt-1">
-                        <Search className="text-muted-foreground absolute left-2 top-2.5 size-4" />
-                        <Input
-                          id="smr-context-item-search-prod"
-                          placeholder="Search by context item ID (fuzzy match)..."
-                          value={contextSearchQuery}
-                          onChange={(e: ChangeEvent<HTMLInputElement>) => setContextSearchQuery(e.target.value)}
-                          className="pl-8 font-mono text-sm"
-                          onFocus={() => {
-                            setContextSuggestionsOpen(true);
-                            if (!contextSuggestionsLoaded) {
-                              void loadContextSuggestions();
-                            }
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div className='sm:col-span-1'>
-                      <Label className="text-xs">Item Type</Label>
-                      <Select value={contextTypeFilter} onValueChange={setContextTypeFilter}>
-                        <SelectTrigger className="mt-1 w-full">
-                          <SelectValue placeholder="All types" />
+          {ctx.requiresImpersonation ? (
+            <ImpersonationGuard roles={ctx.roles} />
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-5">
+              <div className="flex flex-col gap-4 lg:col-span-3">
+                {/* Visit Type (debug mode only) */}
+                {debugMode && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm">Visit Type</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Select value={visitType} onValueChange={(v: string) => setVisitType(v as typeof visitType)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select visit type (optional)" />
                         </SelectTrigger>
                         <SelectContent>
-                          {availableContextTypes.map((itemType) => (
-                            <SelectItem key={itemType} value={itemType}>{itemType}</SelectItem>
+                          <SelectItem value="new_visit">New Visit</SelectItem>
+                          <SelectItem value="referral">Referral</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Input: Context Item ID or Transcript */}
+                <Card data-doc="smr-transcript-input">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="size-4 text-blue-500" />
+                        <CardTitle className="text-sm">Consultation Transcript</CardTitle>
+                      </div>
+                      {!debugMode && selectedContextItems.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          {selectedContextItems.length} selected
+                        </Badge>
+                      )}
+                    </div>
+                    {debugMode && (
+                      <CardDescription className="text-xs">Load a transcript from context item IDs, or enter text manually.</CardDescription>
+                    )}
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-3">
+                    {debugMode ? (
+                      <Tabs value={inputMode} onValueChange={(v: string) => setInputMode(v as InputMode)}>
+                        <TabsList className="w-full">
+                          <TabsTrigger value="context_item" className="flex-1">
+                            Context Item ID
+                          </TabsTrigger>
+                          <TabsTrigger value="message" className="flex-1">
+                            Manual Message
+                          </TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="context_item" className="flex flex-col gap-3 mt-3">
+                          {/* Search & filter controls */}
+                          <div className="grid gap-2 sm:grid-cols-5">
+                            <div className="sm:col-span-3">
+                              <Label htmlFor="smr-context-item-search" className="text-xs">
+                                Search Context Items
+                              </Label>
+                              <div className="relative mt-1">
+                                <Search className="text-muted-foreground absolute left-2 top-2.5 size-4" />
+                                <Input
+                                  id="smr-context-item-search"
+                                  placeholder="Search by context item ID (fuzzy match)..."
+                                  value={contextSearchQuery}
+                                  onChange={(e: ChangeEvent<HTMLInputElement>) => setContextSearchQuery(e.target.value)}
+                                  className="pl-8 font-mono text-sm"
+                                  onFocus={() => {
+                                    setContextSuggestionsOpen(true);
+                                    if (!contextSuggestionsLoaded) {
+                                      void loadContextSuggestions();
+                                    }
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            <div className="sm:col-span-1">
+                              <Label className="text-xs">Item Type</Label>
+                              <Select value={contextTypeFilter} onValueChange={setContextTypeFilter}>
+                                <SelectTrigger className="mt-1 w-full">
+                                  <SelectValue placeholder="All types" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {availableContextTypes.map((itemType) => (
+                                    <SelectItem key={itemType} value={itemType}>
+                                      {itemType}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="sm:col-span-1">
+                              <Label className="text-xs">Recency</Label>
+                              <Select
+                                value={contextRecencyFilter}
+                                onValueChange={(value: string) => setContextRecencyFilter(value as ContextRecency)}
+                              >
+                                <SelectTrigger className="mt-1 w-full">
+                                  <SelectValue placeholder="All dates" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="ALL">All dates</SelectItem>
+                                  <SelectItem value="24H">Last 24 hours</SelectItem>
+                                  <SelectItem value="7D">Last 7 days</SelectItem>
+                                  <SelectItem value="30D">Last 30 days</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          <div className="flex justify-between mt-2">
+                            <Badge variant="secondary" className="text-xs">
+                              {selectedContextItems.length} selected
+                            </Badge>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => setContextSuggestionsOpen((prev) => !prev)}
+                            >
+                              {contextSuggestionsOpen ? 'Hide list' : 'Show list'}
+                            </Button>
+                          </div>
+
+                          {/* Context item suggestions list */}
+                          {contextSuggestionsOpen && (
+                            <div className="rounded-lg border border-dashed bg-muted/20 p-2">
+                              <Label className="mb-2 block text-xs font-medium">Context Item Results</Label>
+
+                              {contextSuggestionsLoading && <p className="text-muted-foreground text-xs">Loading context items...</p>}
+                              {!contextSuggestionsLoading && contextSuggestionsError && (
+                                <p className="text-destructive text-xs">{contextSuggestionsError}</p>
+                              )}
+                              {!contextSuggestionsLoading && !contextSuggestionsError && filteredContextSuggestions.length === 0 && (
+                                <p className="text-muted-foreground text-xs">No context items match the current filters.</p>
+                              )}
+
+                              {!contextSuggestionsLoading && !contextSuggestionsError && filteredContextSuggestions.length > 0 && (
+                                <ScrollArea className="h-44">
+                                  <div className="flex flex-col gap-1.5 pr-2">
+                                    {filteredContextSuggestions.map((item) => {
+                                      const selected = selectedContextItems.some((si) => si.id === item.id);
+                                      const isLoadingItem = contextLoadingIds.includes(item.id);
+                                      const preview = item.content?.trim() ?? '';
+
+                                      return (
+                                        <button
+                                          key={item.id}
+                                          type="button"
+                                          className={`rounded border px-2 py-1.5 text-left transition-colors ${selected ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}
+                                          onClick={() => {
+                                            void toggleContextSelection(item);
+                                          }}
+                                        >
+                                          <div className="mb-1 flex items-center justify-between gap-2">
+                                            <span className="font-mono text-[11px]">{item.id}</span>
+                                            <div className="flex items-center gap-1.5">
+                                              <Badge variant="outline" className="text-[10px]">
+                                                {item.type ?? 'UNKNOWN'}
+                                              </Badge>
+                                              {selected && (
+                                                <Badge variant="secondary" className="text-[10px]">
+                                                  Selected
+                                                </Badge>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <p className="text-muted-foreground text-xs">
+                                            {isLoadingItem
+                                              ? 'Loading content...'
+                                              : preview.length > 120
+                                                ? `${preview.slice(0, 120)}...`
+                                                : preview || 'No preview available'}
+                                          </p>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </ScrollArea>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Selected items preview */}
+                          {selectedContextItems.length > 0 && (
+                            <div className="flex flex-col gap-2">
+                              <Label className="text-xs font-medium">Selected Context Items</Label>
+                              {selectedContextItems.map((item) => (
+                                <div key={item.id} className="rounded-lg border bg-muted/30 p-3">
+                                  <div className="mb-2 flex items-center justify-between gap-2">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <span className="truncate font-mono text-[11px]">{item.id}</span>
+                                      <Badge variant="outline" className="text-[10px]">
+                                        {item.type ?? 'UNKNOWN'}
+                                      </Badge>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <Badge variant="secondary" className="text-[10px] tabular-nums">
+                                        {(item.content?.length ?? 0).toLocaleString()} chars
+                                      </Badge>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="size-6"
+                                        onClick={() => removeSelectedContextItem(item.id)}
+                                        aria-label={`Remove ${item.id}`}
+                                      >
+                                        <X className="size-3.5" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  <ScrollArea className="h-40 rounded border bg-background p-2">
+                                    <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
+                                      {item.content?.trim() || 'No content available'}
+                                    </p>
+                                  </ScrollArea>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </TabsContent>
+
+                        <TabsContent value="message" className="flex flex-col gap-3 mt-3">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 text-xs"
+                              onClick={() => {
+                                setTranscript(SAMPLE_TRANSCRIPT);
+                                toast.success('Sample transcript loaded');
+                              }}
+                            >
+                              Load Sample
+                            </Button>
+                          </div>
+                          <Textarea
+                            rows={12}
+                            placeholder="Paste the consultation transcript here..."
+                            value={transcript}
+                            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setTranscript(e.target.value)}
+                            className="font-mono text-sm resize-y"
+                          />
+                        </TabsContent>
+                      </Tabs>
+                    ) : (
+                      /* Production mode: context item selection only (no tabs) */
+                      <div className="flex flex-col gap-3">
+                        <div className="grid gap-2 sm:grid-cols-5">
+                          <div className="sm:col-span-3">
+                            <Label htmlFor="smr-context-item-search-prod" className="text-xs">
+                              Search Context Items
+                            </Label>
+                            <div className="relative mt-1">
+                              <Search className="text-muted-foreground absolute left-2 top-2.5 size-4" />
+                              <Input
+                                id="smr-context-item-search-prod"
+                                placeholder="Search by context item ID (fuzzy match)..."
+                                value={contextSearchQuery}
+                                onChange={(e: ChangeEvent<HTMLInputElement>) => setContextSearchQuery(e.target.value)}
+                                className="pl-8 font-mono text-sm"
+                                onFocus={() => {
+                                  setContextSuggestionsOpen(true);
+                                  if (!contextSuggestionsLoaded) {
+                                    void loadContextSuggestions();
+                                  }
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <div className="sm:col-span-1">
+                            <Label className="text-xs">Item Type</Label>
+                            <Select value={contextTypeFilter} onValueChange={setContextTypeFilter}>
+                              <SelectTrigger className="mt-1 w-full">
+                                <SelectValue placeholder="All types" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableContextTypes.map((itemType) => (
+                                  <SelectItem key={itemType} value={itemType}>
+                                    {itemType}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="sm:col-span-1">
+                            <Label className="text-xs">Recency</Label>
+                            <Select value={contextRecencyFilter} onValueChange={(value: ContextRecency) => setContextRecencyFilter(value)}>
+                              <SelectTrigger className="mt-1 w-full">
+                                <SelectValue placeholder="All dates" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ALL">All dates</SelectItem>
+                                <SelectItem value="24H">Last 24 hours</SelectItem>
+                                <SelectItem value="7D">Last 7 days</SelectItem>
+                                <SelectItem value="30D">Last 30 days</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between mt-2">
+                            <Badge variant="secondary" className="text-xs">
+                              {selectedContextItems.length} selected
+                            </Badge>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => setContextSuggestionsOpen((prev) => !prev)}
+                            >
+                              {contextSuggestionsOpen ? 'Hide list' : 'Show list'}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {contextSuggestionsOpen && (
+                          <div className="rounded-lg border border-dashed bg-muted/20 p-2">
+                            <Label className="mb-2 block text-xs font-medium">Context Item Results</Label>
+
+                            {contextSuggestionsLoading && <p className="text-muted-foreground text-xs">Loading context items...</p>}
+                            {!contextSuggestionsLoading && contextSuggestionsError && (
+                              <p className="text-destructive text-xs">{contextSuggestionsError}</p>
+                            )}
+                            {!contextSuggestionsLoading && !contextSuggestionsError && filteredContextSuggestions.length === 0 && (
+                              <p className="text-muted-foreground text-xs">No context items match the current filters.</p>
+                            )}
+
+                            {!contextSuggestionsLoading && !contextSuggestionsError && filteredContextSuggestions.length > 0 && (
+                              <ScrollArea className="h-44">
+                                <div className="flex flex-col gap-1.5 pr-2">
+                                  {filteredContextSuggestions.map((item) => {
+                                    const selected = selectedContextItems.some((si) => si.id === item.id);
+                                    const isLoadingItem = contextLoadingIds.includes(item.id);
+                                    const preview = item.content?.trim() ?? '';
+
+                                    return (
+                                      <button
+                                        key={item.id}
+                                        type="button"
+                                        className={`rounded border px-2 py-1.5 text-left transition-colors ${selected ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}
+                                        onClick={() => {
+                                          void toggleContextSelection(item);
+                                        }}
+                                      >
+                                        <div className="mb-1 flex items-center justify-between gap-2">
+                                          <span className="font-mono text-[11px]">{item.id}</span>
+                                          <div className="flex items-center gap-1.5">
+                                            <Badge variant="outline" className="text-[10px]">
+                                              {item.type ?? 'UNKNOWN'}
+                                            </Badge>
+                                            {selected && (
+                                              <Badge variant="secondary" className="text-[10px]">
+                                                Selected
+                                              </Badge>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <p className="text-muted-foreground text-xs">
+                                          {isLoadingItem
+                                            ? 'Loading content...'
+                                            : preview.length > 120
+                                              ? `${preview.slice(0, 120)}...`
+                                              : preview || 'No preview available'}
+                                        </p>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </ScrollArea>
+                            )}
+                          </div>
+                        )}
+
+                        {selectedContextItems.length > 0 && (
+                          <div className="flex flex-col gap-2">
+                            <Label className="text-xs font-medium">Selected Context Items</Label>
+                            {selectedContextItems.map((item) => (
+                              <div key={item.id} className="rounded-lg border bg-muted/30 p-3">
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span className="truncate font-mono text-[11px]">{item.id}</span>
+                                    <Badge variant="outline" className="text-[10px]">
+                                      {item.type ?? 'UNKNOWN'}
+                                    </Badge>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <Badge variant="secondary" className="text-[10px] tabular-nums">
+                                      {(item.content?.length ?? 0).toLocaleString()} chars
+                                    </Badge>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="size-6"
+                                      onClick={() => removeSelectedContextItem(item.id)}
+                                      aria-label={`Remove ${item.id}`}
+                                    >
+                                      <X className="size-3.5" />
+                                    </Button>
+                                  </div>
+                                </div>
+                                <ScrollArea className="h-40 rounded border bg-background p-2">
+                                  <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
+                                    {item.content?.trim() || 'No content available'}
+                                  </p>
+                                </ScrollArea>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Pre-Summary Context + Additional Context (non-debug or always) */}
+                {!debugMode && (
+                  <>
+                    <Card data-doc="smr-pre-summary-input">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <FileText className="size-4 text-indigo-500" />
+                            <CardTitle className="text-sm">Pre-Summary Context</CardTitle>
+                            <Badge variant="outline" className="text-[10px]">
+                              Optional
+                            </Badge>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-xs"
+                            onClick={() => {
+                              setPreSummaryText(SAMPLE_PRE_SUMMARY);
+                              toast.success('Sample pre-summary loaded');
+                            }}
+                          >
+                            Load Sample
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <Textarea
+                          rows={6}
+                          placeholder="Paste a pre-summary here..."
+                          value={preSummaryText}
+                          onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setPreSummaryText(e.target.value)}
+                          className="text-sm resize-y"
+                        />
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="size-4 text-amber-500" />
+                            <CardTitle className="text-sm">Additional Context</CardTitle>
+                            <Badge variant="outline" className="text-[10px]">
+                              Optional
+                            </Badge>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-xs"
+                            onClick={() => {
+                              setAdditionalContext(SAMPLE_ADDITIONAL);
+                              toast.success('Sample additional context loaded');
+                            }}
+                          >
+                            Load Sample
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <Textarea
+                          rows={6}
+                          placeholder="Paste additional clinical context here..."
+                          value={additionalContext}
+                          onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setAdditionalContext(e.target.value)}
+                          className="text-sm resize-y"
+                        />
+                      </CardContent>
+                    </Card>
+                  </>
+                )}
+
+                {/* Streaming output */}
+                {isStreaming && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Radio className="size-4 text-green-500 animate-pulse" />
+                          <CardTitle className="text-sm">SSE Streaming Output</CardTitle>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-[10px] tabular-nums">
+                            {streamChunkCount} chunks
+                          </Badge>
+                          <Button variant="destructive" size="sm" className="h-6 text-xs" onClick={() => abortRef.current?.abort()}>
+                            Stop
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <ScrollArea className="h-64 rounded-lg border bg-muted/30 p-3">
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {streamingText}
+                          <span className="animate-pulse">▊</span>
+                        </p>
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {results.length > 0 && (
+                  <div className="flex flex-col gap-4">
+                    <h2 className="text-lg font-semibold">Results ({results.length})</h2>
+                    {results.map((r, i) => (
+                      <ResultCard
+                        key={`${r.task_id}-${i}`}
+                        title={`Summary #${results.length - i}`}
+                        content={r.content}
+                        provider={r.provider}
+                        model={r.model}
+                        processingTimeMs={r.latency_ms}
+                        tokenUsage={r.usage}
+                        createdAt={r.created_at}
+                        variant="summary"
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Right column — configuration */}
+              <div className="flex flex-col gap-4 lg:col-span-2">
+                {/* Prompt Template (read-only) */}
+                <Card data-doc="smr-template-selector">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm">Summary Template / Prompt</CardTitle>
+                      {availableTemplates.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          {availableTemplates.length} template{availableTemplates.length !== 1 ? 's' : ''}
+                        </Badge>
+                      )}
+                    </div>
+                    <CardDescription className="text-xs">
+                      {debugMode
+                        ? 'Select a prompt template — content is read-only in debug mode'
+                        : userDepartment
+                          ? `Templates for ${userDepartment.name || userDepartment.code} + global (scoped to active user)`
+                          : 'Showing global templates scoped to active user (no department assigned)'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-3">
+                    {promptsLoading ? (
+                      <Skeleton className="h-9 w-full" />
+                    ) : availableTemplates.length === 0 ? (
+                      <div className="flex items-center gap-2 rounded-lg border border-dashed p-3">
+                        <AlertCircle className="size-4 text-amber-500" />
+                        <p className="text-muted-foreground text-xs">
+                          No prompt templates found{userDeptId ? ' for your department' : ''}. Create templates in the Admin section.
+                        </p>
+                      </div>
+                    ) : (
+                      <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a template" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableTemplates.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>
+                              <div className="flex items-center gap-2">
+                                <span>{t.name}</span>
+                                {t.departmentId && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    dept
+                                  </Badge>
+                                )}
+                                <Badge variant="secondary" className="text-[10px]">
+                                  v{t.currentVersionNumber}
+                                </Badge>
+                              </div>
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
-                    <div className='sm:col-span-1'>
-                      <Label className="text-xs">Recency</Label>
-                      <Select
-                        value={contextRecencyFilter}
-                        onValueChange={(value: ContextRecency) => setContextRecencyFilter(value)}
-                      >
-                        <SelectTrigger className="mt-1 w-full">
-                          <SelectValue placeholder="All dates" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ALL">All dates</SelectItem>
-                          <SelectItem value="24H">Last 24 hours</SelectItem>
-                          <SelectItem value="7D">Last 7 days</SelectItem>
-                          <SelectItem value="30D">Last 30 days</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                    )}
 
-                  <div>
-                    <div className="flex justify-between mt-2">
-                      <Badge variant="secondary" className="text-xs">{selectedContextItems.length} selected</Badge>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => setContextSuggestionsOpen((prev) => !prev)}
-                      >
-                        {contextSuggestionsOpen ? 'Hide list' : 'Show list'}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {contextSuggestionsOpen && (
-                    <div className="rounded-lg border border-dashed bg-muted/20 p-2">
-                      <Label className="mb-2 block text-xs font-medium">Context Item Results</Label>
-
-                      {contextSuggestionsLoading && (
-                        <p className="text-muted-foreground text-xs">Loading context items...</p>
-                      )}
-                      {!contextSuggestionsLoading && contextSuggestionsError && (
-                        <p className="text-destructive text-xs">{contextSuggestionsError}</p>
-                      )}
-                      {!contextSuggestionsLoading && !contextSuggestionsError && filteredContextSuggestions.length === 0 && (
-                        <p className="text-muted-foreground text-xs">No context items match the current filters.</p>
-                      )}
-
-                      {!contextSuggestionsLoading && !contextSuggestionsError && filteredContextSuggestions.length > 0 && (
-                        <ScrollArea className="h-44">
-                          <div className="flex flex-col gap-1.5 pr-2">
-                            {filteredContextSuggestions.map((item) => {
-                              const selected = selectedContextItems.some((si) => si.id === item.id);
-                              const isLoadingItem = contextLoadingIds.includes(item.id);
-                              const preview = item.content?.trim() ?? '';
-
-                              return (
-                                <button
-                                  key={item.id}
-                                  type="button"
-                                  className={`rounded border px-2 py-1.5 text-left transition-colors ${selected ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}
-                                  onClick={() => { void toggleContextSelection(item); }}
-                                >
-                                  <div className="mb-1 flex items-center justify-between gap-2">
-                                    <span className="font-mono text-[11px]">{item.id}</span>
-                                    <div className="flex items-center gap-1.5">
-                                      <Badge variant="outline" className="text-[10px]">{item.type ?? 'UNKNOWN'}</Badge>
-                                      {selected && <Badge variant="secondary" className="text-[10px]">Selected</Badge>}
-                                    </div>
-                                  </div>
-                                  <p className="text-muted-foreground text-xs">
-                                    {isLoadingItem
-                                      ? 'Loading content...'
-                                      : preview.length > 120
-                                        ? `${preview.slice(0, 120)}...`
-                                        : preview || 'No preview available'}
-                                  </p>
-                                </button>
-                              );
-                            })}
+                    {selectedTemplate && (
+                      <div>
+                        <ScrollArea className="h-48 rounded-lg border">
+                          <div className="p-3">
+                            <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
+                              {currentPromptText || 'No content in this template.'}
+                            </p>
                           </div>
                         </ScrollArea>
+                        {debugMode && selectedTemplate.id && (
+                          <p className="text-muted-foreground mt-1 font-mono text-[10px]">ID: {selectedTemplate.id}</p>
+                        )}
+                        {selectedTemplate.description && <p className="text-muted-foreground mt-1 text-[10px]">{selectedTemplate.description}</p>}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* DNA Writing Style */}
+                <Card data-doc="smr-dna-style-panel">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Dna className="size-4 text-green-500" />
+                        <CardTitle className="text-sm">DNA Writing Style</CardTitle>
+                      </div>
+                      {activeDnaStyle && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          v{activeDnaStyle.currentVersionNumber}
+                        </Badge>
                       )}
                     </div>
-                  )}
-
-                  {selectedContextItems.length > 0 && (
-                    <div className="flex flex-col gap-2">
-                      <Label className="text-xs font-medium">Selected Context Items</Label>
-                      {selectedContextItems.map((item) => (
-                        <div key={item.id} className="rounded-lg border bg-muted/30 p-3">
-                          <div className="mb-2 flex items-center justify-between gap-2">
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span className="truncate font-mono text-[11px]">{item.id}</span>
-                              <Badge variant="outline" className="text-[10px]">{item.type ?? 'UNKNOWN'}</Badge>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <Badge variant="secondary" className="text-[10px] tabular-nums">
-                                {(item.content?.length ?? 0).toLocaleString()} chars
-                              </Badge>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="size-6"
-                                onClick={() => removeSelectedContextItem(item.id)}
-                                aria-label={`Remove ${item.id}`}
-                              >
-                                <X className="size-3.5" />
-                              </Button>
-                            </div>
+                    <CardDescription className="text-xs">
+                      {debugMode
+                        ? 'Select a DNA writing style from the list — read-only in debug mode'
+                        : 'Your personalized writing style — applied automatically to generated summaries'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-3">
+                    {dnaLoading ? (
+                      <Skeleton className="h-40 w-full rounded-lg" />
+                    ) : debugMode ? (
+                      <>
+                        {dnaReportsList.length > 0 ? (
+                          <Select value={selectedDnaStyleId} onValueChange={setSelectedDnaStyleId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a DNA writing style" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {dnaReportsList.map((d) => (
+                                <SelectItem key={d.id} value={d.id}>
+                                  <div className="flex items-center gap-2">
+                                    <span>v{d.currentVersionNumber}</span>
+                                    {d.id === doctorDnaStyle?.id && (
+                                      <Badge variant="outline" className="text-[10px]">
+                                        yours
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : !doctorDnaStyle ? (
+                          <div className="flex items-center gap-2 rounded-lg border border-dashed p-3">
+                            <AlertCircle className="size-4 text-amber-500" />
+                            <p className="text-muted-foreground text-xs">No DNA writing styles available.</p>
                           </div>
-                          <ScrollArea className="h-40 rounded border bg-background p-2">
-                            <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
-                              {item.content?.trim() || 'No content available'}
-                            </p>
-                          </ScrollArea>
+                        ) : null}
+                        {activeDnaStyle && (
+                          <>
+                            {activeDnaStyle.reportData && (
+                              <div className="flex flex-wrap gap-1.5">
+                                {activeDnaStyle.reportData.tone && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    Tone: {activeDnaStyle.reportData.tone}
+                                  </Badge>
+                                )}
+                                {activeDnaStyle.reportData.formality && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    Formality: {activeDnaStyle.reportData.formality}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                            <ScrollArea className="h-40 rounded-lg border">
+                              <div className="p-3">
+                                <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
+                                  {currentDnaText || 'No style text defined.'}
+                                </p>
+                              </div>
+                            </ScrollArea>
+                            <p className="text-muted-foreground font-mono text-[10px]">ID: {activeDnaStyle.id}</p>
+                          </>
+                        )}
+                      </>
+                    ) : !doctorDnaStyle ? (
+                      <div className="flex items-center gap-2 rounded-lg border border-dashed p-3">
+                        <AlertCircle className="size-4 text-amber-500" />
+                        <div>
+                          <p className="text-muted-foreground text-xs">No DNA writing style found for your profile.</p>
+                          <p className="text-muted-foreground text-[10px]">Generate one from the DNA Writing Style page.</p>
                         </div>
-                      ))}
+                      </div>
+                    ) : (
+                      <>
+                        {doctorDnaStyle.reportData && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {doctorDnaStyle.reportData.tone && (
+                              <Badge variant="outline" className="text-[10px]">
+                                Tone: {doctorDnaStyle.reportData.tone}
+                              </Badge>
+                            )}
+                            {doctorDnaStyle.reportData.formality && (
+                              <Badge variant="outline" className="text-[10px]">
+                                Formality: {doctorDnaStyle.reportData.formality}
+                              </Badge>
+                            )}
+                            {doctorDnaStyle.reportData.sentenceLength && (
+                              <Badge variant="outline" className="text-[10px]">
+                                Sentences: {doctorDnaStyle.reportData.sentenceLength}
+                              </Badge>
+                            )}
+                            {doctorDnaStyle.reportData.abbreviationStyle && (
+                              <Badge variant="outline" className="text-[10px]">
+                                Abbrev: {doctorDnaStyle.reportData.abbreviationStyle}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        <ScrollArea className="h-40 rounded-lg border">
+                          <div className="p-3">
+                            <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
+                              {currentDnaText || 'No style text defined.'}
+                            </p>
+                          </div>
+                        </ScrollArea>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Provider & Model + Settings */}
+                <Card data-doc="smr-provider-model">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Provider & Model</CardTitle>
+                    {debugMode && <CardDescription className="text-xs">Debug mode — select any available provider and model</CardDescription>}
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-4">
+                    <ProviderModelSelect provider={provider} model={model} onProviderChange={setProvider} onModelChange={setModel} />
+
+                    <Separator />
+
+                    {!debugMode && (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-xs">Include NER Extraction</Label>
+                          <p className="text-muted-foreground text-[11px]">Extract medications, conditions, procedures</p>
+                        </div>
+                        <Switch checked={includeNER} onCheckedChange={setIncludeNER} />
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="flex items-center gap-1.5 text-xs">
+                          <Radio className="size-3 text-green-500" />
+                          SSE Streaming Mode
+                        </Label>
+                        <p className="text-muted-foreground text-[11px]">Stream tokens via Server-Sent Events</p>
+                      </div>
+                      <Switch checked={useStreaming} onCheckedChange={setUseStreaming} />
                     </div>
-                  )}
+
+                    <Separator />
+
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={() => setAdvancedOpen(!advancedOpen)}
+                    >
+                      <Settings2 className="size-3.5" />
+                      Advanced Settings
+                      <ChevronDown className={`ml-auto size-3.5 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {advancedOpen && (
+                      <div className="flex flex-col gap-4 rounded-lg border p-3">
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Temperature</Label>
+                            <span className="text-muted-foreground font-mono text-xs">{temperature.toFixed(2)}</span>
+                          </div>
+                          <Slider
+                            value={[temperature]}
+                            onValueChange={(values: number[]) => setTemperature(values[0] ?? temperature)}
+                            min={0}
+                            max={2}
+                            step={0.05}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="max-tokens" className="text-xs">
+                            Max Tokens
+                          </Label>
+                          <Input
+                            id="max-tokens"
+                            type="number"
+                            min={256}
+                            max={16384}
+                            value={maxTokens}
+                            onChange={(e: ChangeEvent<HTMLInputElement>) => setMaxTokens(Number(e.target.value) || 2048)}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <div data-doc="smr-generate-button">
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    onClick={useStreaming ? handleStreamingGenerate : handleGenerate}
+                    disabled={
+                      isGenerating ||
+                      (debugMode ? (inputMode === 'context_item' ? !hasSelectedContextItems : !hasManualText) : !hasSelectedContextItems)
+                    }
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="mr-2 size-4 animate-spin" />
+                        {isStreaming ? 'Streaming Summary…' : 'Generating Summary…'}
+                      </>
+                    ) : (
+                      <>
+                        {useStreaming ? <Radio className="mr-2 size-4" /> : <Sparkles className="mr-2 size-4" />}
+                        {useStreaming ? 'Stream Summary (SSE)' : 'Generate Summary'}
+                      </>
+                    )}
+                  </Button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Pre-Summary Context + Additional Context (non-debug or always) */}
-          {!debugMode && (
-            <>
-              <Card data-doc="smr-pre-summary-input">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FileText className="size-4 text-indigo-500" />
-                      <CardTitle className="text-sm">Pre-Summary Context</CardTitle>
-                      <Badge variant="outline" className="text-[10px]">Optional</Badge>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-xs"
-                      onClick={() => { setPreSummaryText(SAMPLE_PRE_SUMMARY); toast.success('Sample pre-summary loaded'); }}
-                    >
-                      Load Sample
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <Textarea
-                    rows={6}
-                    placeholder="Paste a pre-summary here..."
-                    value={preSummaryText}
-                    onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setPreSummaryText(e.target.value)}
-                    className="text-sm resize-y"
-                  />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="size-4 text-amber-500" />
-                      <CardTitle className="text-sm">Additional Context</CardTitle>
-                      <Badge variant="outline" className="text-[10px]">Optional</Badge>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-xs"
-                      onClick={() => { setAdditionalContext(SAMPLE_ADDITIONAL); toast.success('Sample additional context loaded'); }}
-                    >
-                      Load Sample
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <Textarea
-                    rows={6}
-                    placeholder="Paste additional clinical context here..."
-                    value={additionalContext}
-                    onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setAdditionalContext(e.target.value)}
-                    className="text-sm resize-y"
-                  />
-                </CardContent>
-              </Card>
-            </>
-          )}
-
-          {/* Streaming output */}
-          {isStreaming && (
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Radio className="size-4 text-green-500 animate-pulse" />
-                    <CardTitle className="text-sm">SSE Streaming Output</CardTitle>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-[10px] tabular-nums">
-                      {streamChunkCount} chunks
-                    </Badge>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="h-6 text-xs"
-                      onClick={() => abortRef.current?.abort()}
-                    >
-                      Stop
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-64 rounded-lg border bg-muted/30 p-3">
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                    {streamingText}
-                    <span className="animate-pulse">▊</span>
-                  </p>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          )}
-
-          {results.length > 0 && (
-            <div className="flex flex-col gap-4">
-              <h2 className="text-lg font-semibold">Results ({results.length})</h2>
-              {results.map((r, i) => (
-                <ResultCard
-                  key={`${r.task_id}-${i}`}
-                  title={`Summary #${results.length - i}`}
-                  content={r.content}
-                  provider={r.provider}
-                  model={r.model}
-                  processingTimeMs={r.latency_ms}
-                  tokenUsage={r.usage}
-                  createdAt={r.created_at}
-                  variant="summary"
-                />
-              ))}
+              </div>
             </div>
           )}
         </div>
-
-        {/* Right column — configuration */}
-        <div className="flex flex-col gap-4 lg:col-span-2">
-          {/* Prompt Template (read-only) */}
-          <Card data-doc="smr-template-selector">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">Summary Template / Prompt</CardTitle>
-                {availableTemplates.length > 0 && (
-                  <Badge variant="secondary" className="text-[10px]">
-                    {availableTemplates.length} template{availableTemplates.length !== 1 ? 's' : ''}
-                  </Badge>
-                )}
-              </div>
-              <CardDescription className="text-xs">
-                {debugMode
-                  ? 'Select a prompt template — content is read-only in debug mode'
-                  : userDepartment
-                    ? `Templates for ${userDepartment.name || userDepartment.code} + global (scoped to active user)`
-                    : 'Showing global templates scoped to active user (no department assigned)'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {promptsLoading ? (
-                <Skeleton className="h-9 w-full" />
-              ) : availableTemplates.length === 0 ? (
-                <div className="flex items-center gap-2 rounded-lg border border-dashed p-3">
-                  <AlertCircle className="size-4 text-amber-500" />
-                  <p className="text-muted-foreground text-xs">
-                    No prompt templates found{userDeptId ? ' for your department' : ''}. Create templates in the Admin section.
-                  </p>
-                </div>
-              ) : (
-                <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a template" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableTemplates.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        <div className="flex items-center gap-2">
-                          <span>{t.name}</span>
-                          {t.departmentId && (
-                            <Badge variant="outline" className="text-[10px]">dept</Badge>
-                          )}
-                          <Badge variant="secondary" className="text-[10px]">v{t.currentVersionNumber}</Badge>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-
-              {selectedTemplate && (
-                <div>
-                  <ScrollArea className="h-48 rounded-lg border">
-                    <div className="p-3">
-                      <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
-                        {currentPromptText || 'No content in this template.'}
-                      </p>
-                    </div>
-                  </ScrollArea>
-                  {debugMode && selectedTemplate.id && (
-                    <p className="text-muted-foreground mt-1 font-mono text-[10px]">
-                      ID: {selectedTemplate.id}
-                    </p>
-                  )}
-                  {selectedTemplate.description && (
-                    <p className="text-muted-foreground mt-1 text-[10px]">{selectedTemplate.description}</p>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* DNA Writing Style */}
-          <Card data-doc="smr-dna-style-panel">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Dna className="size-4 text-green-500" />
-                  <CardTitle className="text-sm">DNA Writing Style</CardTitle>
-                </div>
-                {activeDnaStyle && (
-                  <Badge variant="secondary" className="text-[10px]">
-                    v{activeDnaStyle.currentVersionNumber}
-                  </Badge>
-                )}
-              </div>
-              <CardDescription className="text-xs">
-                {debugMode
-                  ? 'Select a DNA writing style from the list — read-only in debug mode'
-                  : 'Your personalized writing style — applied automatically to generated summaries'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {dnaLoading ? (
-                <Skeleton className="h-40 w-full rounded-lg" />
-              ) : debugMode ? (
-                <>
-                  {dnaReportsList.length > 0 ? (
-                    <Select value={selectedDnaStyleId} onValueChange={setSelectedDnaStyleId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a DNA writing style" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {dnaReportsList.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
-                            <div className="flex items-center gap-2">
-                              <span>v{d.currentVersionNumber}</span>
-                              {d.id === doctorDnaStyle?.id && (
-                                <Badge variant="outline" className="text-[10px]">yours</Badge>
-                              )}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : !doctorDnaStyle ? (
-                    <div className="flex items-center gap-2 rounded-lg border border-dashed p-3">
-                      <AlertCircle className="size-4 text-amber-500" />
-                      <p className="text-muted-foreground text-xs">No DNA writing styles available.</p>
-                    </div>
-                  ) : null}
-                  {activeDnaStyle && (
-                    <>
-                      {activeDnaStyle.reportData && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {activeDnaStyle.reportData.tone && (
-                            <Badge variant="outline" className="text-[10px]">Tone: {activeDnaStyle.reportData.tone}</Badge>
-                          )}
-                          {activeDnaStyle.reportData.formality && (
-                            <Badge variant="outline" className="text-[10px]">Formality: {activeDnaStyle.reportData.formality}</Badge>
-                          )}
-                        </div>
-                      )}
-                      <ScrollArea className="h-40 rounded-lg border">
-                        <div className="p-3">
-                          <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
-                            {currentDnaText || 'No style text defined.'}
-                          </p>
-                        </div>
-                      </ScrollArea>
-                      <p className="text-muted-foreground font-mono text-[10px]">
-                        ID: {activeDnaStyle.id}
-                      </p>
-                    </>
-                  )}
-                </>
-              ) : !doctorDnaStyle ? (
-                <div className="flex items-center gap-2 rounded-lg border border-dashed p-3">
-                  <AlertCircle className="size-4 text-amber-500" />
-                  <div>
-                    <p className="text-muted-foreground text-xs">No DNA writing style found for your profile.</p>
-                    <p className="text-muted-foreground text-[10px]">Generate one from the DNA Writing Style page.</p>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {doctorDnaStyle.reportData && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {doctorDnaStyle.reportData.tone && (
-                        <Badge variant="outline" className="text-[10px]">Tone: {doctorDnaStyle.reportData.tone}</Badge>
-                      )}
-                      {doctorDnaStyle.reportData.formality && (
-                        <Badge variant="outline" className="text-[10px]">Formality: {doctorDnaStyle.reportData.formality}</Badge>
-                      )}
-                      {doctorDnaStyle.reportData.sentenceLength && (
-                        <Badge variant="outline" className="text-[10px]">Sentences: {doctorDnaStyle.reportData.sentenceLength}</Badge>
-                      )}
-                      {doctorDnaStyle.reportData.abbreviationStyle && (
-                        <Badge variant="outline" className="text-[10px]">Abbrev: {doctorDnaStyle.reportData.abbreviationStyle}</Badge>
-                      )}
-                    </div>
-                  )}
-                  <ScrollArea className="h-40 rounded-lg border">
-                    <div className="p-3">
-                      <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
-                        {currentDnaText || 'No style text defined.'}
-                      </p>
-                    </div>
-                  </ScrollArea>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Provider & Model + Settings */}
-          <Card data-doc="smr-provider-model">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Provider & Model</CardTitle>
-              {debugMode && (
-                <CardDescription className="text-xs">
-                  Debug mode — select any available provider and model
-                </CardDescription>
-              )}
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <ProviderModelSelect
-                provider={provider}
-                model={model}
-                onProviderChange={setProvider}
-                onModelChange={setModel}
-              />
-
-              <Separator />
-
-              {!debugMode && (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label className="text-xs">Include NER Extraction</Label>
-                    <p className="text-muted-foreground text-[11px]">
-                      Extract medications, conditions, procedures
-                    </p>
-                  </div>
-                  <Switch checked={includeNER} onCheckedChange={setIncludeNER} />
-                </div>
-              )}
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="flex items-center gap-1.5 text-xs">
-                    <Radio className="size-3 text-green-500" />
-                    SSE Streaming Mode
-                  </Label>
-                  <p className="text-muted-foreground text-[11px]">
-                    Stream tokens via Server-Sent Events
-                  </p>
-                </div>
-                <Switch checked={useStreaming} onCheckedChange={setUseStreaming} />
-              </div>
-
-              <Separator />
-
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => setAdvancedOpen(!advancedOpen)}
-              >
-                <Settings2 className="size-3.5" />
-                Advanced Settings
-                <ChevronDown className={`ml-auto size-3.5 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {advancedOpen && (
-                <div className="flex flex-col gap-4 rounded-lg border p-3">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs">Temperature</Label>
-                      <span className="text-muted-foreground font-mono text-xs">{temperature.toFixed(2)}</span>
-                    </div>
-                    <Slider
-                      value={[temperature]}
-                      onValueChange={(values: number[]) => setTemperature(values[0] ?? temperature)}
-                      min={0}
-                      max={2}
-                      step={0.05}
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="max-tokens" className="text-xs">Max Tokens</Label>
-                    <Input
-                      id="max-tokens"
-                      type="number"
-                      min={256}
-                      max={16384}
-                      value={maxTokens}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) => setMaxTokens(Number(e.target.value) || 2048)}
-                      className="h-8 text-xs"
-                    />
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <div data-doc="smr-generate-button">
-          <Button
-            className="w-full"
-            size="lg"
-            onClick={useStreaming ? handleStreamingGenerate : handleGenerate}
-            disabled={isGenerating || (debugMode
-              ? (inputMode === 'context_item' ? !hasSelectedContextItems : !hasManualText)
-              : !hasSelectedContextItems)}
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="mr-2 size-4 animate-spin" />
-                {isStreaming ? 'Streaming Summary…' : 'Generating Summary…'}
-              </>
-            ) : (
-              <>
-                {useStreaming ? <Radio className="mr-2 size-4" /> : <Sparkles className="mr-2 size-4" />}
-                {useStreaming ? 'Stream Summary (SSE)' : 'Generate Summary'}
-              </>
-            )}
-          </Button>
-          </div>
-        </div>
-      </div>
-      )}
-      </div>
       </div>
     </Main>
   );

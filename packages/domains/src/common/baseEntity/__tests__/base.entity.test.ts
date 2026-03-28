@@ -438,11 +438,7 @@ describe('BaseEntity', () => {
 
   describe('Status Transition Edge Cases', () => {
     it('should allow delete from any status', () => {
-      const statuses = [
-        ResourceStatusType.ENABLED,
-        ResourceStatusType.DISABLED,
-        ResourceStatusType.ARCHIVED,
-      ];
+      const statuses = [ResourceStatusType.ENABLED, ResourceStatusType.DISABLED, ResourceStatusType.ARCHIVED];
 
       statuses.forEach((status) => {
         const entity = createTestEntity({ resourceStatus: status });

@@ -8,12 +8,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useApiOperation } from './useApiOperation';
 import { extractArray } from '../utils/responseUtils';
 import { DNA_STYLE_ENDPOINTS } from '../core/constants';
-import type {
-  DnaReport,
-  DnaStyleVersion,
-  DnaGenerateInput,
-  DnaUpdateInput,
-} from '../types';
+import type { DnaReport, DnaStyleVersion, DnaGenerateInput, DnaUpdateInput } from '../types';
 
 export interface UseDnaStyleReturn {
   style: DnaReport | null;
@@ -48,9 +43,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
 
   const generate = useCallback(
     (input?: DnaGenerateInput): Promise<{ jobId: string }> =>
-      execute<{ jobId: string }>('generate', (client) =>
-        client.post<{ jobId: string }>(DNA_STYLE_ENDPOINTS.GENERATE, input ?? {}),
-      ),
+      execute<{ jobId: string }>('generate', (client) => client.post<{ jobId: string }>(DNA_STYLE_ENDPOINTS.GENERATE, input ?? {})),
     [execute],
   );
 
@@ -78,9 +71,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
   const getJobStatus = useCallback(
     (jobId: string): Promise<{ status: string; result?: DnaReport }> =>
       execute<{ status: string; result?: DnaReport }>('getJobStatus', async (client) => {
-        const data = await client.get<{ status: string; result?: DnaReport }>(
-          DNA_STYLE_ENDPOINTS.JOB_STATUS(jobId),
-        );
+        const data = await client.get<{ status: string; result?: DnaReport }>(DNA_STYLE_ENDPOINTS.JOB_STATUS(jobId));
         if (data.result) setStyle(data.result);
         return data;
       }),
@@ -88,10 +79,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
   );
 
   const pollJobStatus = useCallback(
-    async (
-      jobId: string,
-      options?: { intervalMs?: number; maxAttempts?: number },
-    ): Promise<DnaReport> => {
+    async (jobId: string, options?: { intervalMs?: number; maxAttempts?: number }): Promise<DnaReport> => {
       if (!apiClient) throw new Error('SDK not initialized');
       const intervalMs = options?.intervalMs ?? 2000;
       const maxAttempts = options?.maxAttempts ?? 60;
@@ -102,9 +90,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
         const poll = async () => {
           attempts++;
           try {
-            const data = await apiClient.get<{ status: string; result?: DnaReport }>(
-              DNA_STYLE_ENDPOINTS.JOB_STATUS(jobId),
-            );
+            const data = await apiClient.get<{ status: string; result?: DnaReport }>(DNA_STYLE_ENDPOINTS.JOB_STATUS(jobId));
 
             if (data.status === 'completed' && data.result) {
               setStyle(data.result);

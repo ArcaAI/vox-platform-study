@@ -83,20 +83,20 @@ class TestPreSummarySseE2E:
             timeout=30.0,
         )
         assert task_resp.status_code == 202
-        task_id = task_resp.json()["task_id"]
+        _task_id = task_resp.json()["task_id"]
         stream_url = task_resp.json()["stream_url"]
 
         sse_resp = await e2e_client.get(stream_url, timeout=120.0)
         assert sse_resp.status_code == 200
 
         body = sse_resp.text
-        lines = [l for l in body.splitlines() if l.startswith("data: ")]
+        lines = [line for line in body.splitlines() if line.startswith("data: ")]
         assert len(lines) > 0, "SSE stream should produce at least one data line"
 
-        has_content = any('"content"' in l or '"text"' in l for l in lines)
+        has_content = any('"content"' in line or '"text"' in line for line in lines)
         assert has_content, "SSE stream should contain content chunks"
 
-        has_done = any("[DONE]" in l or '"done"' in l for l in lines)
+        has_done = any("[DONE]" in line or '"done"' in line for line in lines)
         assert has_done, "SSE stream should end with a done signal"
 
     async def test_presummary_sync_returns_content(
@@ -171,13 +171,13 @@ class TestSummarySseE2E:
         assert sse_resp.status_code == 200
 
         body = sse_resp.text
-        lines = [l for l in body.splitlines() if l.startswith("data: ")]
+        lines = [line for line in body.splitlines() if line.startswith("data: ")]
         assert len(lines) > 0, "SSE stream should produce at least one data line"
 
-        has_content = any('"content"' in l or '"text"' in l for l in lines)
+        has_content = any('"content"' in line or '"text"' in line for line in lines)
         assert has_content, "SSE stream should contain content chunks"
 
-        has_done = any("[DONE]" in l or '"done"' in l for l in lines)
+        has_done = any("[DONE]" in line or '"done"' in line for line in lines)
         assert has_done, "SSE stream should end with a done signal"
 
     async def test_summary_with_presummary_context_stream(
@@ -209,7 +209,7 @@ class TestSummarySseE2E:
         sse_resp = await e2e_client.get(stream_url, timeout=120.0)
         assert sse_resp.status_code == 200
 
-        lines = [l for l in sse_resp.text.splitlines() if l.startswith("data: ")]
+        lines = [line for line in sse_resp.text.splitlines() if line.startswith("data: ")]
         assert len(lines) > 0
 
     async def test_summary_sync_returns_content(

@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { OrbitingCircles } from '../../../registries/magicui/orbiting-circles'
+import { OrbitingCircles } from '../../../registries/magicui/orbiting-circles';
 
 const meta = {
   title: 'Registries/MagicUI/OrbitingCircles',
   component: OrbitingCircles,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof OrbitingCircles>
+} satisfies Meta<typeof OrbitingCircles>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -22,4 +22,4 @@ export const Default: Story = {
       </OrbitingCircles>
     </div>
   ),
-}
+};

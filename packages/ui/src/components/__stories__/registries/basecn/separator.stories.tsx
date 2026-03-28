@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Separator } from '../../../registries/basecn/separator'
+import { Separator } from '../../../registries/basecn/separator';
 
 const meta = {
   title: 'Registries/Basecn/Separator',
   component: Separator,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Separator>
+} satisfies Meta<typeof Separator>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Horizontal: Story = {
   args: {} as any,
@@ -21,4 +21,4 @@ export const Horizontal: Story = {
       <p className="text-sm">Below</p>
     </div>
   ),
-}
+};

@@ -1,33 +1,17 @@
-"use client";
+'use client';
 
-import { useControllableState } from "@radix-ui/react-use-controllable-state";
-import {
-  motion,
-  type PanInfo,
-  useMotionValue,
-  useTransform,
-} from "motion/react";
-import {
-  Children,
-  cloneElement,
-  type HTMLAttributes,
-  type ReactElement,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { cn } from "@/lib/utils";
+import { useControllableState } from '@radix-ui/react-use-controllable-state';
+import { motion, type PanInfo, useMotionValue, useTransform } from 'motion/react';
+import { Children, cloneElement, type HTMLAttributes, type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
 
 export type DeckProps = HTMLAttributes<HTMLDivElement>;
 
-export const Deck = ({ className, ...props }: DeckProps) => (
-  <div className={cn("relative isolate", className)} {...props} />
-);
+export const Deck = ({ className, ...props }: DeckProps) => <div className={cn('relative isolate', className)} {...props} />;
 
 export type DeckCardsProps = HTMLAttributes<HTMLDivElement> & {
-  onSwipe?: (index: number, direction: "left" | "right") => void;
-  onSwipeEnd?: (index: number, direction: "left" | "right") => void;
+  onSwipe?: (index: number, direction: 'left' | 'right') => void;
+  onSwipeEnd?: (index: number, direction: 'left' | 'right') => void;
   threshold?: number;
   stackSize?: number;
   perspective?: number;
@@ -36,7 +20,7 @@ export type DeckCardsProps = HTMLAttributes<HTMLDivElement> & {
   defaultCurrentIndex?: number;
   onCurrentIndexChange?: (index: number) => void;
   animateOnIndexChange?: boolean;
-  indexChangeDirection?: "left" | "right";
+  indexChangeDirection?: 'left' | 'right';
 };
 
 export const DeckCards = ({
@@ -52,7 +36,7 @@ export const DeckCards = ({
   defaultCurrentIndex = 0,
   onCurrentIndexChange,
   animateOnIndexChange = true,
-  indexChangeDirection = "left",
+  indexChangeDirection = 'left',
   ...props
 }: DeckCardsProps) => {
   const childrenArray = Children.toArray(children) as ReactElement[];
@@ -61,9 +45,7 @@ export const DeckCards = ({
     defaultProp: defaultCurrentIndex,
     onChange: onCurrentIndexChange,
   });
-  const [exitDirection, setExitDirection] = useState<"left" | "right" | null>(
-    null
-  );
+  const [exitDirection, setExitDirection] = useState<'left' | 'right' | null>(null);
   const [displayIndex, setDisplayIndex] = useState(currentIndex);
   const isInternalChangeRef = useRef(false);
   const prevIndexRef = useRef(currentIndex);
@@ -95,25 +77,20 @@ export const DeckCards = ({
     }
 
     prevIndexRef.current = currentIndex;
-  }, [
-    currentIndex,
-    animateOnIndexChange,
-    indexChangeDirection,
-    childrenArray.length,
-  ]);
+  }, [currentIndex, animateOnIndexChange, indexChangeDirection, childrenArray.length]);
 
   const handleSwipe = useCallback(
-    (direction: "left" | "right") => {
+    (direction: 'left' | 'right') => {
       if (displayIndex >= childrenArray.length) {
         return;
       }
 
       setExitDirection(direction);
 
-      if (direction === "left") {
-        onSwipe?.(displayIndex, "left");
+      if (direction === 'left') {
+        onSwipe?.(displayIndex, 'left');
       } else {
-        onSwipe?.(displayIndex, "right");
+        onSwipe?.(displayIndex, 'right');
       }
 
       onSwipeEnd?.(displayIndex, direction);
@@ -127,24 +104,17 @@ export const DeckCards = ({
         setExitDirection(null);
       }, 300);
     },
-    [displayIndex, childrenArray.length, onSwipe, onSwipeEnd, setCurrentIndex]
+    [displayIndex, childrenArray.length, onSwipe, onSwipeEnd, setCurrentIndex],
   );
 
-  const visibleCards = childrenArray.slice(
-    displayIndex,
-    displayIndex + stackSize
-  );
+  const visibleCards = childrenArray.slice(displayIndex, displayIndex + stackSize);
 
   if (displayIndex >= childrenArray.length) {
     return null;
   }
 
   return (
-    <div
-      className={cn("relative z-10 size-full", className)}
-      style={{ perspective }}
-      {...props}
-    >
+    <div className={cn('relative z-10 size-full', className)} style={{ perspective }} {...props}>
       {visibleCards.map((child, index) => {
         const isTopCard = !index;
         const zIndex = stackSize - index;
@@ -186,7 +156,7 @@ export const DeckCards = ({
               scale: scaleValue,
               y: yOffset,
             }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
           >
             {child}
           </motion.div>
@@ -198,47 +168,35 @@ export const DeckCards = ({
 
 type DeckCardProps = {
   children: ReactElement;
-  onSwipe: (direction: "left" | "right") => void;
+  onSwipe: (direction: 'left' | 'right') => void;
   threshold: number;
   style?: object;
-  exitDirection: "left" | "right" | null;
+  exitDirection: 'left' | 'right' | null;
 };
 
-const DeckCard = ({
-  children,
-  onSwipe,
-  threshold,
-  style,
-  exitDirection,
-}: DeckCardProps) => {
+const DeckCard = ({ children, onSwipe, threshold, style, exitDirection }: DeckCardProps) => {
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-25, 25]);
-  const opacity = useTransform(
-    x,
-    [-200, -threshold, 0, threshold, 200],
-    [0, 1, 1, 1, 0]
-  );
+  const opacity = useTransform(x, [-200, -threshold, 0, threshold, 200], [0, 1, 1, 1, 0]);
 
   const handleDragEnd = (_: unknown, info: PanInfo) => {
     const swipeThreshold = threshold;
 
     if (Math.abs(info.offset.x) > swipeThreshold) {
-      const direction = info.offset.x > 0 ? "right" : "left";
+      const direction = info.offset.x > 0 ? 'right' : 'left';
       onSwipe(direction);
     }
   };
 
   let exitX = 0;
 
-  if (exitDirection === "left") {
+  if (exitDirection === 'left') {
     exitX = -500;
-  } else if (exitDirection === "right") {
+  } else if (exitDirection === 'right') {
     exitX = 500;
   }
 
-  const castedChildren = children as ReactElement<
-    HTMLAttributes<HTMLDivElement>
-  >;
+  const castedChildren = children as ReactElement<HTMLAttributes<HTMLDivElement>>;
 
   return (
     <motion.div
@@ -253,14 +211,11 @@ const DeckCard = ({
         opacity,
         ...style,
       }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
       whileDrag={{ scale: 1.05 }}
     >
       {cloneElement(castedChildren, {
-        className: cn(
-          "h-full w-full select-none rounded-lg shadow-lg",
-          castedChildren.props.className
-        ),
+        className: cn('h-full w-full select-none rounded-lg shadow-lg', castedChildren.props.className),
       })}
     </motion.div>
   );
@@ -270,26 +225,16 @@ export type DeckItemProps = HTMLAttributes<HTMLDivElement>;
 
 export const DeckItem = ({ className, ...props }: DeckItemProps) => (
   <div
-    className={cn(
-      "flex h-full w-full items-center justify-center rounded-lg border bg-card text-card-foreground shadow-lg",
-      className
-    )}
+    className={cn('flex h-full w-full items-center justify-center rounded-lg border bg-card text-card-foreground shadow-lg', className)}
     {...props}
   />
 );
 
 export type DeckEmptyProps = HTMLAttributes<HTMLDivElement>;
 
-export const DeckEmpty = ({
-  children,
-  className,
-  ...props
-}: HTMLAttributes<HTMLDivElement>) => (
+export const DeckEmpty = ({ children, className, ...props }: HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn(
-      "absolute inset-0 flex items-center justify-center rounded-lg border border-dashed text-muted-foreground",
-      className
-    )}
+    className={cn('absolute inset-0 flex items-center justify-center rounded-lg border border-dashed text-muted-foreground', className)}
     {...props}
   >
     {children ?? <p className="text-sm">No more cards</p>}

@@ -12,14 +12,12 @@ Verifies:
 from __future__ import annotations
 
 import ast
-import inspect
 from pathlib import Path
-from typing import Any, get_type_hints
+from typing import get_type_hints
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-
 
 SRC_ROOT = Path(__file__).resolve().parents[3]
 
@@ -195,8 +193,9 @@ class TestHealthCheckLogsOnFailure:
 
     @pytest.mark.asyncio
     async def test_azure_health_check_logs_warning(self):
-        from smr_v2.providers.azure_openai import AzureOpenAIProvider
         from openai import APIConnectionError
+
+        from smr_v2.providers.azure_openai import AzureOpenAIProvider
 
         config = MagicMock()
         config.api_key.get_secret_value.return_value = "fake-key"
@@ -219,8 +218,9 @@ class TestHealthCheckLogsOnFailure:
 
     @pytest.mark.asyncio
     async def test_bedrock_health_check_logs_warning(self):
-        from smr_v2.providers.bedrock import BedrockProvider
         from botocore.exceptions import ClientError
+
+        from smr_v2.providers.bedrock import BedrockProvider
 
         config = MagicMock()
         config.region = "us-east-1"
@@ -299,8 +299,9 @@ class TestOllamaSpecificExceptions:
 class TestAzureSpecificExceptions:
     @pytest.mark.asyncio
     async def test_catches_api_connection_error(self):
-        from smr_v2.providers.azure_openai import AzureOpenAIProvider
         from openai import APIConnectionError
+
+        from smr_v2.providers.azure_openai import AzureOpenAIProvider
 
         config = MagicMock()
         config.api_key.get_secret_value.return_value = "fake"
@@ -318,8 +319,9 @@ class TestAzureSpecificExceptions:
 
     @pytest.mark.asyncio
     async def test_catches_api_timeout_error(self):
-        from smr_v2.providers.azure_openai import AzureOpenAIProvider
         from openai import APITimeoutError
+
+        from smr_v2.providers.azure_openai import AzureOpenAIProvider
 
         config = MagicMock()
         config.api_key.get_secret_value.return_value = "fake"
@@ -337,8 +339,9 @@ class TestAzureSpecificExceptions:
 
     @pytest.mark.asyncio
     async def test_catches_api_error(self):
-        from smr_v2.providers.azure_openai import AzureOpenAIProvider
         from openai import APIError
+
+        from smr_v2.providers.azure_openai import AzureOpenAIProvider
 
         config = MagicMock()
         config.api_key.get_secret_value.return_value = "fake"
@@ -363,8 +366,9 @@ class TestBedrockSpecificExceptions:
 
     @pytest.mark.asyncio
     async def test_catches_client_error(self):
-        from smr_v2.providers.bedrock import BedrockProvider
         from botocore.exceptions import ClientError
+
+        from smr_v2.providers.bedrock import BedrockProvider
 
         config = MagicMock()
         config.region = "us-east-1"
@@ -385,8 +389,9 @@ class TestBedrockSpecificExceptions:
 
     @pytest.mark.asyncio
     async def test_catches_endpoint_connection_error(self):
-        from smr_v2.providers.bedrock import BedrockProvider
         from botocore.exceptions import EndpointConnectionError
+
+        from smr_v2.providers.bedrock import BedrockProvider
 
         config = MagicMock()
         config.region = "us-east-1"
@@ -406,8 +411,9 @@ class TestBedrockSpecificExceptions:
 
     @pytest.mark.asyncio
     async def test_catches_botocore_error(self):
-        from smr_v2.providers.bedrock import BedrockProvider
         from botocore.exceptions import BotoCoreError
+
+        from smr_v2.providers.bedrock import BedrockProvider
 
         config = MagicMock()
         config.region = "us-east-1"

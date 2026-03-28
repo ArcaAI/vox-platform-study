@@ -38,8 +38,8 @@ const vietnamesePhonePattern = /^(\+84|0)(2[0-9]{8,9}|[35789][0-9]{8})$/;
  * console.log("Is '123 456' a valid Vietnamese phone number?", invalidNumber); // Output: false
  */
 export function validateVietnamesePhoneNumber(phoneNumber: string): boolean {
-    // Remove any spaces to ensure a consistent validation pattern
-    const normalizedPhoneNumber = phoneNumber.replace(/\s+/g, '');
+  // Remove any spaces to ensure a consistent validation pattern
+  const normalizedPhoneNumber = phoneNumber.replace(/\s+/g, '');
 
-    return vietnamesePhonePattern.test(normalizedPhoneNumber);
+  return vietnamesePhonePattern.test(normalizedPhoneNumber);
 }

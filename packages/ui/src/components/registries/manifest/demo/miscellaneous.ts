@@ -2,16 +2,15 @@ export const demoStats = [
   { label: 'Revenue', value: '$12,345', change: 12.5 },
   { label: 'Orders', value: '1,234', change: -3.2 },
   { label: 'Customers', value: '567', change: 8.1 },
-]
+];
 
 export const demoHeroDefault = {
   logo1: { text: 'Acme', alt: 'Acme' },
   title: 'Build beautiful chat experiences with Manifest UI',
-  subtitle:
-    'Create beautiful chat experiences with our comprehensive component library designed for agentic applications.',
+  subtitle: 'Create beautiful chat experiences with our comprehensive component library designed for agentic applications.',
   primaryButton: { label: 'Get Started' },
   secondaryButton: { label: 'GitHub' },
-}
+};
 
 export const demoHeroTwoLogos = {
   logo1: { text: 'Acme' },
@@ -22,17 +21,15 @@ export const demoHeroTwoLogos = {
   },
   logoSeparator: 'x',
   title: 'Acme x Manifest UI',
-  subtitle:
-    'Combining the best of both worlds to deliver exceptional user experiences.',
+  subtitle: 'Combining the best of both worlds to deliver exceptional user experiences.',
   primaryButton: { label: 'Get Started' },
   secondaryButton: { label: 'GitHub' },
-}
+};
 
 export const demoHeroWithTechLogos = {
   logo1: { text: 'Acme' },
   title: 'Build your next project with Acme',
-  subtitle:
-    'Create beautiful experiences with our comprehensive platform designed for modern applications.',
+  subtitle: 'Create beautiful experiences with our comprehensive platform designed for modern applications.',
   primaryButton: { label: 'Get Started' },
   secondaryButton: { label: 'GitHub' },
   techLogosLabel: 'Built with open-source technologies',
@@ -63,7 +60,7 @@ export const demoHeroWithTechLogos = {
       name: 'Manifest',
     },
   ],
-}
+};
 
 export const demoHeroMinimal = {
   logo1: undefined,
@@ -71,4 +68,4 @@ export const demoHeroMinimal = {
   subtitle: 'A simple, clean hero without logos or extra elements.',
   primaryButton: { label: 'Get Started' },
   secondaryButton: undefined,
-}
+};

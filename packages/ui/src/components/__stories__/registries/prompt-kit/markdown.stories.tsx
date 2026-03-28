@@ -1,22 +1,22 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Markdown } from '../../../registries/prompt-kit/markdown'
+import { Markdown } from '../../../registries/prompt-kit/markdown';
 
 const meta = {
   title: 'Registries/PromptKit/Markdown',
   component: Markdown,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Markdown>
+} satisfies Meta<typeof Markdown>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
     children: 'This is **bold** and *italic* text with `inline code`.',
   },
-}
+};
 
 export const RichContent: Story = {
   args: {
@@ -37,4 +37,4 @@ console.log(example);
 | Cell 1   | Cell 2   |
 | Cell 3   | Cell 4   |`,
   },
-}
+};

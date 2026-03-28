@@ -12,17 +12,17 @@
 
 import type { ILogTransport, LogEntry, OTelTransportConfig, LogLevel } from '../types';
 import { LOG_LEVEL_VALUES } from '../types';
-import { safeStringify, generateTraceId, generateSpanId } from '../utils';
+import { safeStringify } from '../utils';
 
 /**
  * OpenTelemetry severity numbers
  * @see https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber
  */
 const OTEL_SEVERITY: Record<LogLevel, number> = {
-  trace: 1,  // TRACE
-  debug: 5,  // DEBUG
-  info: 9,   // INFO
-  warn: 13,  // WARN
+  trace: 1, // TRACE
+  debug: 5, // DEBUG
+  info: 9, // INFO
+  warn: 13, // WARN
   error: 17, // ERROR
   fatal: 21, // FATAL
 };

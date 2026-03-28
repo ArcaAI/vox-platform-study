@@ -7,10 +7,10 @@ import { ARGUMENT_INVALID, BaseException } from '../../common';
  * @extends {BaseException}
  */
 export class ArgumentInvalidException extends BaseException {
-    static readonly message = 'The provided argument(s) are invalid.';
-    readonly code = ARGUMENT_INVALID;
+  static readonly message = 'The provided argument(s) are invalid.';
+  readonly code = ARGUMENT_INVALID;
 
-    constructor(message = ArgumentInvalidException.message) {
-        super(message);
-    }
+  constructor(message = ArgumentInvalidException.message) {
+    super(message);
+  }
 }

@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   CheckIcon,
@@ -15,23 +15,23 @@ import {
   RefreshCWIcon,
   UndoIcon,
   RedoIcon,
-} from "@/components/registries/lucide-animated";
+} from '@/components/registries/lucide-animated';
 
 const icons = [
-  { name: "check", Icon: CheckIcon },
-  { name: "check-check", Icon: CheckCheckIcon },
-  { name: "copy", Icon: CopyIcon },
-  { name: "download", Icon: DownloadIcon },
-  { name: "upload", Icon: UploadIcon },
-  { name: "search", Icon: SearchIcon },
-  { name: "settings", Icon: SettingsIcon },
-  { name: "delete", Icon: DeleteIcon },
-  { name: "square-pen", Icon: SquarePenIcon },
-  { name: "plus", Icon: PlusIcon },
-  { name: "x", Icon: XIcon },
-  { name: "refresh-cw", Icon: RefreshCWIcon },
-  { name: "undo", Icon: UndoIcon },
-  { name: "redo", Icon: RedoIcon },
+  { name: 'check', Icon: CheckIcon },
+  { name: 'check-check', Icon: CheckCheckIcon },
+  { name: 'copy', Icon: CopyIcon },
+  { name: 'download', Icon: DownloadIcon },
+  { name: 'upload', Icon: UploadIcon },
+  { name: 'search', Icon: SearchIcon },
+  { name: 'settings', Icon: SettingsIcon },
+  { name: 'delete', Icon: DeleteIcon },
+  { name: 'square-pen', Icon: SquarePenIcon },
+  { name: 'plus', Icon: PlusIcon },
+  { name: 'x', Icon: XIcon },
+  { name: 'refresh-cw', Icon: RefreshCWIcon },
+  { name: 'undo', Icon: UndoIcon },
+  { name: 'redo', Icon: RedoIcon },
 ] as const;
 
 function ActionIcons() {
@@ -48,9 +48,9 @@ function ActionIcons() {
 }
 
 const meta = {
-  title: "Registries/LucideAnimated/Actions",
+  title: 'Registries/LucideAnimated/Actions',
   component: ActionIcons,
-  parameters: { layout: "padded" },
+  parameters: { layout: 'padded' },
 } satisfies Meta<typeof ActionIcons>;
 
 export default meta;

@@ -1,15 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Matrix,
-  digits,
-  loader,
-  pulse,
-  wave,
-  snake,
-  chevronLeft,
-  chevronRight,
-} from '../../elevenlabs/matrix'
+import { Matrix, digits, loader, pulse, wave, snake, chevronLeft, chevronRight } from '../../elevenlabs/matrix';
 
 const meta: Meta<typeof Matrix> = {
   title: 'ElevenLabs/Matrix',
@@ -44,10 +35,10 @@ const meta: Meta<typeof Matrix> = {
       description: 'Brightness multiplier',
     },
   },
-}
+};
 
-export default meta
-type Story = StoryObj<typeof Matrix>
+export default meta;
+type Story = StoryObj<typeof Matrix>;
 
 export const StaticDigit: Story = {
   args: {
@@ -56,23 +47,17 @@ export const StaticDigit: Story = {
     pattern: digits[0],
     ariaLabel: 'Digit zero',
   },
-}
+};
 
 export const AllDigits: Story = {
   render: () => (
     <div className="flex gap-4">
       {digits.map((digit, i) => (
-        <Matrix
-          key={i}
-          rows={7}
-          cols={5}
-          pattern={digit}
-          ariaLabel={`Digit ${i}`}
-        />
+        <Matrix key={i} rows={7} cols={5} pattern={digit} ariaLabel={`Digit ${i}`} />
       ))}
     </div>
   ),
-}
+};
 
 export const LoaderAnimation: Story = {
   args: {
@@ -82,7 +67,7 @@ export const LoaderAnimation: Story = {
     fps: 12,
     ariaLabel: 'Loading animation',
   },
-}
+};
 
 export const PulseAnimation: Story = {
   args: {
@@ -92,7 +77,7 @@ export const PulseAnimation: Story = {
     fps: 12,
     ariaLabel: 'Pulse animation',
   },
-}
+};
 
 export const WaveAnimation: Story = {
   args: {
@@ -102,7 +87,7 @@ export const WaveAnimation: Story = {
     fps: 16,
     ariaLabel: 'Wave animation',
   },
-}
+};
 
 export const SnakeAnimation: Story = {
   args: {
@@ -112,7 +97,7 @@ export const SnakeAnimation: Story = {
     fps: 8,
     ariaLabel: 'Snake animation',
   },
-}
+};
 
 export const Chevrons: Story = {
   render: () => (
@@ -121,7 +106,7 @@ export const Chevrons: Story = {
       <Matrix rows={5} cols={5} pattern={chevronRight} ariaLabel="Right" />
     </div>
   ),
-}
+};
 
 export const VUMeter: Story = {
   args: {
@@ -131,7 +116,7 @@ export const VUMeter: Story = {
     levels: [0.2, 0.5, 0.8, 1.0, 0.9, 0.7, 0.4, 0.3, 0.6, 0.5],
     ariaLabel: 'VU meter',
   },
-}
+};
 
 export const LargePixels: Story = {
   args: {
@@ -142,7 +127,7 @@ export const LargePixels: Story = {
     gap: 4,
     ariaLabel: 'Large pixel display',
   },
-}
+};
 
 export const SmallPixels: Story = {
   args: {
@@ -153,4 +138,4 @@ export const SmallPixels: Story = {
     gap: 1,
     ariaLabel: 'Small pixel display',
   },
-}
+};

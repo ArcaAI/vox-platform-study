@@ -1,11 +1,11 @@
-import { useState } from 'react'
-import { useEffectWithTarget } from '@/hooks/registries/use-effect-with-target'
-import { getTargetElement } from '@/lib/create-effect-with-target'
-import type { BasicTarget } from '@/lib/create-effect-with-target'
+import { useState } from 'react';
+import { useEffectWithTarget } from '@/hooks/registries/use-effect-with-target';
+import { getTargetElement } from '@/lib/create-effect-with-target';
+import type { BasicTarget } from '@/lib/create-effect-with-target';
 
 export interface ElementSize {
-  width: number
-  height: number
+  width: number;
+  height: number;
 }
 
 export interface UseElementSizeOptions {
@@ -14,58 +14,45 @@ export interface UseElementSizeOptions {
    *
    * @default 'content-box'
    */
-  box?: ResizeObserverBoxOptions
+  box?: ResizeObserverBoxOptions;
 }
 
 const defaultInitialSize: ElementSize = {
   width: 0,
   height: 0,
-}
+};
 
-type ResizeObserverBoxSize =
-  | ResizeObserverSize
-  | ReadonlyArray<ResizeObserverSize>
+type ResizeObserverBoxSize = ResizeObserverSize | ReadonlyArray<ResizeObserverSize>;
 
-function toBoxSizeArray(
-  boxSize: ResizeObserverBoxSize | undefined,
-): readonly ResizeObserverSize[] {
+function toBoxSizeArray(boxSize: ResizeObserverBoxSize | undefined): readonly ResizeObserverSize[] {
   if (!boxSize) {
-    return []
+    return [];
   }
 
-  return Array.isArray(boxSize)
-    ? boxSize
-    : ([boxSize] as readonly ResizeObserverSize[])
+  return Array.isArray(boxSize) ? boxSize : ([boxSize] as readonly ResizeObserverSize[]);
 }
 
-function getSizeFromEntry(
-  entry: ResizeObserverEntry,
-  box: ResizeObserverBoxOptions,
-): ElementSize {
+function getSizeFromEntry(entry: ResizeObserverEntry, box: ResizeObserverBoxOptions): ElementSize {
   const boxSize =
-    box === 'border-box'
-      ? entry.borderBoxSize
-      : box === 'device-pixel-content-box'
-        ? entry.devicePixelContentBoxSize
-        : entry.contentBoxSize
+    box === 'border-box' ? entry.borderBoxSize : box === 'device-pixel-content-box' ? entry.devicePixelContentBoxSize : entry.contentBoxSize;
 
-  const sizes = toBoxSizeArray(boxSize)
+  const sizes = toBoxSizeArray(boxSize);
 
   if (sizes.length > 0) {
     return {
       width: sizes.reduce((sum, size) => sum + size.inlineSize, 0),
       height: sizes.reduce((sum, size) => sum + size.blockSize, 0),
-    }
+    };
   }
 
   return {
     width: entry.contentRect.width,
     height: entry.contentRect.height,
-  }
+  };
 }
 
 function isSvgElement(element: Element): element is SVGElement {
-  return typeof SVGElement !== 'undefined' && element instanceof SVGElement
+  return typeof SVGElement !== 'undefined' && element instanceof SVGElement;
 }
 
 export function useElementSize(
@@ -73,74 +60,71 @@ export function useElementSize(
   initialSize: ElementSize = defaultInitialSize,
   options: UseElementSizeOptions = {},
 ): ElementSize {
-  const { box = 'content-box' } = options
-  const [size, setSize] = useState<ElementSize>(initialSize)
+  const { box = 'content-box' } = options;
+  const [size, setSize] = useState<ElementSize>(initialSize);
 
   const updateSize = (nextSize: ElementSize) => {
     setSize((currentSize) => {
-      if (
-        currentSize.width === nextSize.width &&
-        currentSize.height === nextSize.height
-      ) {
-        return currentSize
+      if (currentSize.width === nextSize.width && currentSize.height === nextSize.height) {
+        return currentSize;
       }
 
-      return nextSize
-    })
-  }
+      return nextSize;
+    });
+  };
 
   useEffectWithTarget(
     () => {
-      const element = getTargetElement(target)
+      const element = getTargetElement(target);
 
       if (!element) {
-        updateSize({ width: 0, height: 0 })
-        return
+        updateSize({ width: 0, height: 0 });
+        return;
       }
 
-      updateSize(initialSize)
+      updateSize(initialSize);
 
       if (typeof ResizeObserver === 'undefined') {
-        const rect = element.getBoundingClientRect()
+        const rect = element.getBoundingClientRect();
         updateSize({
           width: rect.width,
           height: rect.height,
-        })
+        });
 
-        return
+        return;
       }
 
       const observer = new ResizeObserver((entries) => {
-        const entry = entries[0]
+        const entry = entries[0];
         if (!entry) {
-          return
+          return;
         }
 
         if (isSvgElement(element)) {
-          const rect = element.getBoundingClientRect()
+          const rect = element.getBoundingClientRect();
           updateSize({
             width: rect.width,
             height: rect.height,
-          })
-          return
+          });
+          return;
         }
 
-        updateSize(getSizeFromEntry(entry, box))
-      })
+        updateSize(getSizeFromEntry(entry, box));
+      });
 
       try {
-        observer.observe(element, { box })
+        observer.observe(element, { box });
       } catch {
-        observer.observe(element)
+        observer.observe(element);
       }
 
       return () => {
-        observer.disconnect()
-      }
+        observer.disconnect();
+      };
     },
     [box, initialSize.width, initialSize.height],
     target,
-  )
+  );
 
-  return size
+  return size;
 }

@@ -15,10 +15,7 @@
 import type { AgenticClient } from './AgenticClient';
 import { STT_V2_ENDPOINTS } from './constants';
 import type { ISDKLogger } from './logger';
-import type {
-  TranscriptionJobResponse,
-  TranscriptionJobStatusCounts,
-} from '../types/stt-v2';
+import type { TranscriptionJobResponse, TranscriptionJobStatusCounts } from '../types/stt-v2';
 
 /**
  * Options for status polling
@@ -67,17 +64,13 @@ export class TranscriptionJobService {
       attributes: { jobId },
     });
 
-    return this.apiClient.get<TranscriptionJobResponse>(
-      STT_V2_ENDPOINTS.GET_JOB(jobId),
-    );
+    return this.apiClient.get<TranscriptionJobResponse>(STT_V2_ENDPOINTS.GET_JOB(jobId));
   }
 
   /**
    * List transcription jobs with optional pagination.
    */
-  async listJobs(
-    params?: JobListParams,
-  ): Promise<TranscriptionJobResponse[]> {
+  async listJobs(params?: JobListParams): Promise<TranscriptionJobResponse[]> {
     this.logger?.debug('Listing transcription jobs', {
       operation: 'listJobs',
       component: 'TranscriptionJobService',
@@ -99,35 +92,27 @@ export class TranscriptionJobService {
   /**
    * Get transcription jobs linked to a specific consultation.
    */
-  async getJobsByConsultation(
-    consultationId: string,
-  ): Promise<TranscriptionJobResponse[]> {
+  async getJobsByConsultation(consultationId: string): Promise<TranscriptionJobResponse[]> {
     this.logger?.debug('Fetching jobs by consultation', {
       operation: 'getJobsByConsultation',
       component: 'TranscriptionJobService',
       attributes: { consultationId },
     });
 
-    return this.apiClient.get<TranscriptionJobResponse[]>(
-      STT_V2_ENDPOINTS.JOBS_BY_CONSULTATION(consultationId),
-    );
+    return this.apiClient.get<TranscriptionJobResponse[]>(STT_V2_ENDPOINTS.JOBS_BY_CONSULTATION(consultationId));
   }
 
   /**
    * Get transcription jobs filtered by status.
    */
-  async getJobsByStatus(
-    status: string,
-  ): Promise<TranscriptionJobResponse[]> {
+  async getJobsByStatus(status: string): Promise<TranscriptionJobResponse[]> {
     this.logger?.debug('Fetching jobs by status', {
       operation: 'getJobsByStatus',
       component: 'TranscriptionJobService',
       attributes: { status },
     });
 
-    return this.apiClient.get<TranscriptionJobResponse[]>(
-      STT_V2_ENDPOINTS.JOBS_BY_STATUS(status),
-    );
+    return this.apiClient.get<TranscriptionJobResponse[]>(STT_V2_ENDPOINTS.JOBS_BY_STATUS(status));
   }
 
   /**
@@ -139,9 +124,7 @@ export class TranscriptionJobService {
       component: 'TranscriptionJobService',
     });
 
-    return this.apiClient.get<TranscriptionJobStatusCounts>(
-      STT_V2_ENDPOINTS.JOB_STATS,
-    );
+    return this.apiClient.get<TranscriptionJobStatusCounts>(STT_V2_ENDPOINTS.JOB_STATS);
   }
 
   /**
@@ -154,10 +137,7 @@ export class TranscriptionJobService {
       attributes: { jobId },
     });
 
-    return this.apiClient.post<TranscriptionJobResponse>(
-      STT_V2_ENDPOINTS.CANCEL_JOB(jobId),
-      {},
-    );
+    return this.apiClient.post<TranscriptionJobResponse>(STT_V2_ENDPOINTS.CANCEL_JOB(jobId), {});
   }
 
   /**
@@ -170,27 +150,15 @@ export class TranscriptionJobService {
       attributes: { jobId },
     });
 
-    return this.apiClient.post<TranscriptionJobResponse>(
-      STT_V2_ENDPOINTS.RETRY_JOB(jobId),
-      {},
-    );
+    return this.apiClient.post<TranscriptionJobResponse>(STT_V2_ENDPOINTS.RETRY_JOB(jobId), {});
   }
 
   /**
    * Poll job status at a configurable interval.
    * Resolves when a terminal status is reached or maxAttempts is exhausted.
    */
-  async pollJobStatus(
-    jobId: string,
-    options: PollJobStatusOptions,
-  ): Promise<void> {
-    const {
-      onUpdate,
-      onError,
-      intervalMs = 2000,
-      maxAttempts,
-      terminalStatuses,
-    } = options;
+  async pollJobStatus(jobId: string, options: PollJobStatusOptions): Promise<void> {
+    const { onUpdate, onError, intervalMs = 2000, maxAttempts, terminalStatuses } = options;
 
     let attempts = 0;
 

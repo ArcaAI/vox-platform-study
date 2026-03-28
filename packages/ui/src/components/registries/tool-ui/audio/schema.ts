@@ -1,10 +1,6 @@
-import { z } from "zod";
-import { defineToolUiContract } from "../shared/contract";
-import {
-  ToolUIIdSchema,
-  ToolUIReceiptSchema,
-  ToolUIRoleSchema,
-} from "../shared/schema";
+import { z } from 'zod';
+import { defineToolUiContract } from '../shared/contract';
+import { ToolUIIdSchema, ToolUIReceiptSchema, ToolUIRoleSchema } from '../shared/schema';
 
 export const SourceSchema = z.object({
   label: z.string(),
@@ -32,15 +28,9 @@ export const SerializableAudioSchema = z.object({
 
 export type SerializableAudio = z.infer<typeof SerializableAudioSchema>;
 
-const SerializableAudioSchemaContract = defineToolUiContract(
-  "Audio",
-  SerializableAudioSchema,
-);
+const SerializableAudioSchemaContract = defineToolUiContract('Audio', SerializableAudioSchema);
 
-export const parseSerializableAudio: (input: unknown) => SerializableAudio =
-  SerializableAudioSchemaContract.parse;
+export const parseSerializableAudio: (input: unknown) => SerializableAudio = SerializableAudioSchemaContract.parse;
 
-export const safeParseSerializableAudio: (
-  input: unknown,
-) => SerializableAudio | null = SerializableAudioSchemaContract.safeParse;
-export type AudioVariant = "full" | "compact";
+export const safeParseSerializableAudio: (input: unknown) => SerializableAudio | null = SerializableAudioSchemaContract.safeParse;
+export type AudioVariant = 'full' | 'compact';

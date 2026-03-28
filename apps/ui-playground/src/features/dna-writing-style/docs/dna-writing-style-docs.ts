@@ -1,4 +1,4 @@
-import type { DocRegistry } from '@/features/doc-panel/types'
+import type { DocRegistry } from '@/features/doc-panel/types';
 
 const dnaWritingStyleDocs: DocRegistry = {
   _default: {
@@ -53,16 +53,16 @@ const dnaWritingStyleDocs: DocRegistry = {
     content:
       'Refine individual attributes such as tone, formality, sentence length, medical term usage, ' +
       'abbreviation style, vocabulary, and structural preferences. ' +
-      "A change reason is required for audit traceability. Saving creates a new version of the report.",
+      'A change reason is required for audit traceability. Saving creates a new version of the report.',
   },
   'dna-impersonation': {
     title: 'Impersonation Mode',
     description: 'Manage writing styles on behalf of a doctor.',
     content:
       'Admin users can impersonate a doctor to view or generate writing style profiles on their behalf. ' +
-      "When impersonation is active a banner indicates whose profile you are managing. " +
+      'When impersonation is active a banner indicates whose profile you are managing. ' +
       "Changes are attributed to the impersonated doctor's account.",
   },
-}
+};
 
-export default dnaWritingStyleDocs
+export default dnaWritingStyleDocs;

@@ -3,15 +3,15 @@
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 import structlog
 from fastapi import APIRouter, HTTPException
+from sqlalchemy import text
 
 from stt_v2.core.config.settings import get_settings
 from stt_v2.core.database.connection import get_db_session
 from stt_v2.core.storage.minio_client import get_minio_client
-from sqlalchemy import text
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -22,7 +22,7 @@ internal_router = APIRouter(prefix="/internal", tags=["internal"])
 _startup_time = datetime.utcnow()
 
 
-class HealthStatus(str, Enum):
+class HealthStatus(StrEnum):
     """Health status values."""
 
     HEALTHY = "healthy"
@@ -279,7 +279,7 @@ async def get_cache_stats() -> dict:
         }
     except Exception as e:
         logger.error("Failed to get cache stats", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @internal_router.post("/cache/clear")
@@ -304,7 +304,7 @@ async def clear_cache() -> dict:
         }
     except Exception as e:
         logger.error("Failed to clear cache", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @internal_router.get("/cache/model/{slug}")
@@ -342,7 +342,7 @@ async def get_cached_model_info(slug: str) -> dict:
         raise
     except Exception as e:
         logger.error("Failed to get model info", slug=slug, error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @internal_router.get("/pipelines/loaded")
@@ -388,7 +388,7 @@ async def get_loaded_pipelines() -> dict:
         }
     except Exception as e:
         logger.error("Failed to get loaded pipelines", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @internal_router.get("/sessions")
@@ -420,7 +420,7 @@ async def get_streaming_sessions() -> dict:
         }
     except Exception as e:
         logger.error("Failed to get streaming sessions", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @internal_router.get("/streaming/status")
@@ -447,7 +447,7 @@ async def get_streaming_status() -> dict:
         }
     except Exception as e:
         logger.error("Failed to get streaming status", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @internal_router.post("/sessions/cleanup")
@@ -480,4 +480,4 @@ async def cleanup_sessions(max_age_seconds: int = 3600) -> dict:
         }
     except Exception as e:
         logger.error("Failed to cleanup sessions", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

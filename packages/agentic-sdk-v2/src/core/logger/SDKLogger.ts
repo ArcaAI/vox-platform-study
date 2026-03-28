@@ -159,7 +159,7 @@ export class SDKLogger implements ISDKLogger {
           colorize: this.config.console?.colorize ?? this.config.debug,
           prettyPrint: this.config.console?.prettyPrint ?? this.config.debug,
           includeTimestamp: this.config.console?.includeTimestamp ?? true,
-        })
+        }),
       );
     }
 
@@ -170,7 +170,7 @@ export class SDKLogger implements ISDKLogger {
           ...this.config.highlight,
           serviceName: this.config.highlight.serviceName || this.config.serviceName,
           environment: this.config.highlight.environment || this.config.environment,
-        })
+        }),
       );
     }
 
@@ -184,7 +184,7 @@ export class SDKLogger implements ISDKLogger {
             env: this.config.environment || 'development',
             ...this.config.loki.labels,
           },
-        })
+        }),
       );
     }
 
@@ -199,7 +199,7 @@ export class SDKLogger implements ISDKLogger {
             'deployment.environment': this.config.environment || 'development',
             ...this.config.otel.resourceAttributes,
           },
-        })
+        }),
       );
     }
 
@@ -239,18 +239,12 @@ export class SDKLogger implements ISDKLogger {
   /**
    * Create a log entry
    */
-  private createLogEntry(
-    level: LogLevel,
-    message: string,
-    meta?: LogMeta | Error
-  ): LogEntry {
+  private createLogEntry(level: LogLevel, message: string, meta?: LogMeta | Error): LogEntry {
     const now = Date.now();
     const resolvedMeta = this.resolveMeta(meta);
 
     // Truncate message if needed
-    const truncatedMessage = this.config.maxMessageLength
-      ? message.slice(0, this.config.maxMessageLength)
-      : message;
+    const truncatedMessage = this.config.maxMessageLength ? message.slice(0, this.config.maxMessageLength) : message;
 
     // Build trace context
     const trace: TraceContext | undefined = resolvedMeta.traceId
@@ -335,8 +329,10 @@ export class SDKLogger implements ISDKLogger {
     if (error instanceof Error) {
       return {
         name: error.name,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Node/system errors may carry code.
         code: (error as any).code,
         stack: error.stack,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Error.cause typing varies by runtime.
         cause: (error as any).cause,
       };
     }
@@ -347,17 +343,12 @@ export class SDKLogger implements ISDKLogger {
   /**
    * Redact sensitive fields from attributes
    */
-  private redactSensitiveFields(
-    attributes?: Record<string, unknown>
-  ): Record<string, unknown> | undefined {
+  private redactSensitiveFields(attributes?: Record<string, unknown>): Record<string, unknown> | undefined {
     if (!attributes) {
       return attributes;
     }
 
-    const fieldsToRedact = new Set([
-      ...DEFAULT_PHI_REDACT_FIELDS,
-      ...(this.config.redactFields ?? []),
-    ]);
+    const fieldsToRedact = new Set([...DEFAULT_PHI_REDACT_FIELDS, ...(this.config.redactFields ?? [])]);
 
     const redacted = { ...attributes };
     for (const field of fieldsToRedact) {
@@ -499,6 +490,7 @@ export class SDKLogger implements ISDKLogger {
    */
   startOperation(name: string, meta?: LogMeta): OperationTimer {
     const startTime = performance.now();
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- Captured for timer end() closure.
     const logger = this;
 
     this.debug(`Operation started: ${name}`, {

@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { VersionSwitcher } from '../../../registries/blocks/version-switcher'
-import { SidebarProvider, Sidebar } from '../../../shadcn/sidebar'
+import { VersionSwitcher } from '../../../registries/blocks/version-switcher';
+import { SidebarProvider, Sidebar } from '../../../shadcn/sidebar';
 
 const meta = {
   title: 'Registries/Blocks/VersionSwitcher',
@@ -17,21 +17,21 @@ const meta = {
       </SidebarProvider>
     ),
   ],
-} satisfies Meta<typeof VersionSwitcher>
+} satisfies Meta<typeof VersionSwitcher>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
     versions: ['1.0.0', '1.1.0', '2.0.0-beta'],
     defaultVersion: '1.0.0',
   },
-}
+};
 
 export const SingleVersion: Story = {
   args: {
     versions: ['1.0.0'],
     defaultVersion: '1.0.0',
   },
-}
+};

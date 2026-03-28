@@ -1,21 +1,15 @@
-"use client";
+'use client';
 
-import { useState, useCallback } from "react";
-import Ansi from "ansi-to-react";
-import {
-  Copy,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Terminal as TerminalIcon,
-} from "lucide-react";
-import type { TerminalProps } from "./schema";
-import { useCopyToClipboard } from "../shared/use-copy-to-clipboard";
+import { useState, useCallback } from 'react';
+import Ansi from 'ansi-to-react';
+import { Copy, Check, ChevronDown, ChevronUp, Terminal as TerminalIcon } from 'lucide-react';
+import type { TerminalProps } from './schema';
+import { useCopyToClipboard } from '../shared/use-copy-to-clipboard';
 
-import { Button, Collapsible, CollapsibleTrigger } from "./_adapter";
-import { cn } from "./_adapter";
+import { Button, Collapsible, CollapsibleTrigger } from './_adapter';
+import { cn } from './_adapter';
 
-const COPY_ID = "terminal-output";
+const COPY_ID = 'terminal-output';
 
 type TerminalControlledProps = {
   expanded?: boolean;
@@ -25,20 +19,14 @@ type TerminalControlledProps = {
 
 type TerminalRootProps = TerminalProps & TerminalControlledProps;
 
-type TerminalHeaderProps = Pick<
-  TerminalProps,
-  "command" | "cwd" | "exitCode"
-> & {
+type TerminalHeaderProps = Pick<TerminalProps, 'command' | 'cwd' | 'exitCode'> & {
   formattedDuration: string | null;
   hasOutput: boolean;
   copiedId: string | null;
   onCopy: () => void;
 };
 
-type TerminalOutputProps = Pick<
-  TerminalProps,
-  "stdout" | "stderr" | "truncated"
-> & {
+type TerminalOutputProps = Pick<TerminalProps, 'stdout' | 'stderr' | 'truncated'> & {
   isCollapsed: boolean;
   shouldCollapse: boolean;
   lineCount: number;
@@ -52,20 +40,12 @@ function formatDuration(durationMs?: number): string | null {
 }
 
 function countOutputLines(output: string): number {
-  const trimmedTrailingNewlines = output.replace(/\n+$/, "");
+  const trimmedTrailingNewlines = output.replace(/\n+$/, '');
   if (!trimmedTrailingNewlines) return 0;
-  return trimmedTrailingNewlines.split("\n").length;
+  return trimmedTrailingNewlines.split('\n').length;
 }
 
-function TerminalHeader({
-  command,
-  cwd,
-  exitCode,
-  formattedDuration,
-  hasOutput,
-  copiedId,
-  onCopy,
-}: TerminalHeaderProps) {
+function TerminalHeader({ command, cwd, exitCode, formattedDuration, hasOutput, copiedId, onCopy }: TerminalHeaderProps) {
   return (
     <div className="bg-card flex items-center justify-between border-b px-4 py-2">
       <div className="flex items-center gap-2 overflow-hidden">
@@ -76,19 +56,8 @@ function TerminalHeader({
         </code>
       </div>
       <div className="flex items-center gap-3">
-        {formattedDuration && (
-          <span className="text-muted-foreground font-mono text-sm tabular-nums">
-            {formattedDuration}
-          </span>
-        )}
-        <span
-          className={cn(
-            "font-mono text-sm tabular-nums",
-            exitCode === 0
-              ? "text-muted-foreground"
-              : "text-red-600 dark:text-red-400",
-          )}
-        >
+        {formattedDuration && <span className="text-muted-foreground font-mono text-sm tabular-nums">{formattedDuration}</span>}
+        <span className={cn('font-mono text-sm tabular-nums', exitCode === 0 ? 'text-muted-foreground' : 'text-red-600 dark:text-red-400')}>
           {exitCode}
         </span>
         <Button
@@ -97,13 +66,7 @@ function TerminalHeader({
           onClick={onCopy}
           disabled={!hasOutput}
           className="h-7 w-7 p-0"
-          aria-label={
-            !hasOutput
-              ? "No output to copy"
-              : copiedId === COPY_ID
-                ? "Copied"
-                : "Copy output"
-          }
+          aria-label={!hasOutput ? 'No output to copy' : copiedId === COPY_ID ? 'Copied' : 'Copy output'}
         >
           {hasOutput && copiedId === COPY_ID ? (
             <Check className="h-4 w-4 text-green-700 dark:text-green-400" />
@@ -116,23 +79,10 @@ function TerminalHeader({
   );
 }
 
-function TerminalOutput({
-  stdout,
-  stderr,
-  truncated,
-  isCollapsed,
-  shouldCollapse,
-  lineCount,
-  onToggleCollapse,
-}: TerminalOutputProps) {
+function TerminalOutput({ stdout, stderr, truncated, isCollapsed, shouldCollapse, lineCount, onToggleCollapse }: TerminalOutputProps) {
   return (
     <Collapsible open={!isCollapsed}>
-      <div
-        className={cn(
-          "relative font-mono text-sm",
-          isCollapsed && "max-h-[200px] overflow-hidden",
-        )}
-      >
+      <div className={cn('relative font-mono text-sm', isCollapsed && 'max-h-[200px] overflow-hidden')}>
         <div className="overflow-x-auto p-4">
           {stdout && (
             <div className="text-foreground whitespace-pre">
@@ -144,25 +94,15 @@ function TerminalOutput({
               <Ansi>{stderr}</Ansi>
             </div>
           )}
-          {truncated && (
-            <div className="text-muted-foreground mt-2 text-xs italic">
-              Output truncated...
-            </div>
-          )}
+          {truncated && <div className="text-muted-foreground mt-2 text-xs italic">Output truncated...</div>}
         </div>
 
-        {isCollapsed && (
-          <div className="from-card absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t to-transparent" />
-        )}
+        {isCollapsed && <div className="from-card absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t to-transparent" />}
       </div>
 
       {shouldCollapse && (
         <CollapsibleTrigger asChild>
-          <Button
-            variant="ghost"
-            onClick={onToggleCollapse}
-            className="text-muted-foreground w-full rounded-none border-t font-normal"
-          >
+          <Button variant="ghost" onClick={onToggleCollapse} className="text-muted-foreground w-full rounded-none border-t font-normal">
             {isCollapsed ? (
               <>
                 <ChevronDown className="mr-1 size-4" />
@@ -182,11 +122,7 @@ function TerminalOutput({
 }
 
 function TerminalEmpty() {
-  return (
-    <div className="text-muted-foreground px-4 py-3 font-mono text-sm italic">
-      No output
-    </div>
-  );
+  return <div className="text-muted-foreground px-4 py-3 font-mono text-sm italic">No output</div>;
 }
 
 function TerminalRoot({
@@ -204,17 +140,15 @@ function TerminalRoot({
   defaultExpanded = false,
   onExpandedChange,
 }: TerminalRootProps) {
-  const [uncontrolledExpanded, setUncontrolledExpanded] =
-    useState(defaultExpanded);
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(defaultExpanded);
   const { copiedId, copy } = useCopyToClipboard();
 
   const isExpanded = expanded ?? uncontrolledExpanded;
   const hasOutput = Boolean(stdout || stderr);
-  const fullOutput = [stdout, stderr].filter(Boolean).join("\n");
+  const fullOutput = [stdout, stderr].filter(Boolean).join('\n');
   const formattedDuration = formatDuration(durationMs);
   const lineCount = countOutputLines(fullOutput);
-  const shouldCollapse =
-    maxCollapsedLines !== undefined && lineCount > maxCollapsedLines;
+  const shouldCollapse = maxCollapsedLines !== undefined && lineCount > maxCollapsedLines;
   const isCollapsed = shouldCollapse && !isExpanded;
 
   const setExpanded = useCallback(
@@ -233,14 +167,7 @@ function TerminalRoot({
   }, [hasOutput, fullOutput, copy]);
 
   return (
-    <div
-      className={cn(
-        "@container flex w-full min-w-80 flex-col gap-3",
-        className,
-      )}
-      data-tool-ui-id={id}
-      data-slot="terminal"
-    >
+    <div className={cn('@container flex w-full min-w-80 flex-col gap-3', className)} data-tool-ui-id={id} data-slot="terminal">
       <div className="border-border bg-card overflow-hidden rounded-lg border shadow-xs">
         <TerminalHeader
           command={command}

@@ -8,9 +8,7 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 @Injectable()
 export class AuditLogRepository extends Repository<AuditLogEntity, AuditLog> {
-    constructor(
-        private readonly unitOfWorkService: CoreUnitOfWorkService
-    ) {
-        super(unitOfWorkService, 'auditLog', AuditLogEntityMapper.getInstance(), undefined, ['eventType', 'resourceId', 'correlationId']);
-    }
+  constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
+    super(unitOfWorkService, 'auditLog', AuditLogEntityMapper.getInstance(), undefined, ['eventType', 'resourceId', 'correlationId']);
+  }
 }

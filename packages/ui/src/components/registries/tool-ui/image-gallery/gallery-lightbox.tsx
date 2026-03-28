@@ -1,23 +1,17 @@
-"use client";
+'use client';
 
-import { useRef, useCallback } from "react";
-import { cn, Button, X } from "./_adapter";
-import { useImageGallery } from "./context";
-import type { ImageGalleryItem } from "./schema";
-import { resolveSafeNavigationHref } from "../shared/media";
+import { useRef, useCallback } from 'react';
+import { cn, Button, X } from './_adapter';
+import { useImageGallery } from './context';
+import type { ImageGalleryItem } from './schema';
+import { resolveSafeNavigationHref } from '../shared/media';
 
-type LightboxImage = Pick<ImageGalleryItem, "title" | "caption" | "source">;
+type LightboxImage = Pick<ImageGalleryItem, 'title' | 'caption' | 'source'>;
 
 export function GalleryLightbox() {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  const {
-    images,
-    activeIndex,
-    closeLightbox,
-    lightboxContentRef,
-    setDialogRef,
-  } = useImageGallery();
+  const { images, activeIndex, closeLightbox, lightboxContentRef, setDialogRef } = useImageGallery();
 
   const isOpen = activeIndex !== null;
   const currentImage = isOpen ? images[activeIndex] : null;
@@ -53,10 +47,10 @@ export function GalleryLightbox() {
       onClick={handleBackdropClick}
       onCancel={handleCancel}
       className={cn(
-        "m-0 h-full max-h-full w-full max-w-full",
-        "overflow-hidden p-0",
-        "bg-transparent backdrop:bg-black/95 dark:backdrop:bg-black/90",
-        "focus-visible:outline-none",
+        'm-0 h-full max-h-full w-full max-w-full',
+        'overflow-hidden p-0',
+        'bg-transparent backdrop:bg-black/95 dark:backdrop:bg-black/90',
+        'focus-visible:outline-none',
       )}
       aria-label="Image lightbox"
     >
@@ -66,9 +60,9 @@ export function GalleryLightbox() {
           <div
             ref={lightboxContentRef}
             className={cn(
-              "pointer-events-auto relative w-fit max-w-full overflow-hidden rounded-lg shadow-2xl",
-              "[&>img]:block [&>img]:max-h-[80vh] [&>img]:max-w-full",
-              "[&>img]:h-auto [&>img]:w-auto [&>img]:object-contain [&>img]:select-none",
+              'pointer-events-auto relative w-fit max-w-full overflow-hidden rounded-lg shadow-2xl',
+              '[&>img]:block [&>img]:max-h-[80vh] [&>img]:max-w-full',
+              '[&>img]:h-auto [&>img]:w-auto [&>img]:object-contain [&>img]:select-none',
             )}
           />
           {currentImage && <Metadata image={currentImage} />}
@@ -107,15 +101,11 @@ function Metadata({ image }: { image: LightboxImage }) {
 
   return (
     <div className="text-center">
-      {hasTitle && (
-        <h3 className="text-base font-medium tracking-tight text-white">
-          {title}
-        </h3>
-      )}
+      {hasTitle && <h3 className="text-base font-medium tracking-tight text-white">{title}</h3>}
       {(hasCaption || hasSource) && (
         <p className="mt-1 text-sm text-white/60">
           {caption}
-          {hasCaption && hasSource && " · "}
+          {hasCaption && hasSource && ' · '}
           {hasSource && <SourceLink source={source!} />}
         </p>
       )}
@@ -123,23 +113,14 @@ function Metadata({ image }: { image: LightboxImage }) {
   );
 }
 
-function SourceLink({
-  source,
-}: {
-  source: NonNullable<LightboxImage["source"]>;
-}) {
+function SourceLink({ source }: { source: NonNullable<LightboxImage['source']> }) {
   const href = resolveSafeNavigationHref(source.url);
   if (!href) {
     return <>{source.label}</>;
   }
 
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="hover:text-white/80 hover:underline"
-    >
+    <a href={href} target="_blank" rel="noopener noreferrer" className="hover:text-white/80 hover:underline">
       {source.label}
     </a>
   );

@@ -4,15 +4,12 @@ Tests cover:
 - Request validation (empty file, file too large, missing pipeline)
 - Pipeline resolution (by UUID, by slug, not found)
 - Successful transcription round-trip (mocked batch_service)
-- Language override propagation
 - Error mapping (TranscriptionError → 500, ValidationError → 400)
 - Response schema construction (_build_response helper)
 """
 
 import io
 import uuid
-from dataclasses import field
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,17 +17,17 @@ from fastapi import UploadFile
 from fastapi.exceptions import HTTPException
 
 from stt_v2.transcription.api.routes import (
-    _build_response,
     _MAX_UPLOAD_BYTES,
+    _build_response,
     transcribe_audio,
 )
 from stt_v2.transcription.api.schemas import (
     ErrorResponse,
+    SegmentResponse,
+    SentenceTimestampResponse,
     TimingMetricsResponse,
     TranscriptionResponse,
     WordTimestampResponse,
-    SentenceTimestampResponse,
-    SegmentResponse,
 )
 from stt_v2.transcription.dto import (
     AudioSegment,
@@ -39,7 +36,6 @@ from stt_v2.transcription.dto import (
     TranscriptionResult,
     WordTimestamp,
 )
-
 
 # =============================================================================
 # Helpers
@@ -78,21 +74,21 @@ def _make_pipeline_mock(language: str | None = "en", slug: str = "test-pipeline"
 
 def _make_transcription_result(**overrides) -> TranscriptionResult:
     """Build a TranscriptionResult with sensible defaults."""
-    defaults = dict(
-        text="Hello world",
-        language="en",
-        language_probability=0.95,
-        duration_seconds=3.5,
-        processing_time_seconds=1.2,
-        word_timestamps=[
+    defaults = {
+        "text": "Hello world",
+        "language": "en",
+        "language_probability": 0.95,
+        "duration_seconds": 3.5,
+        "processing_time_seconds": 1.2,
+        "word_timestamps": [
             WordTimestamp(word="Hello", start_time=0.0, end_time=0.5, confidence=0.99),
             WordTimestamp(word="world", start_time=0.6, end_time=1.0, confidence=0.97),
         ],
-        sentence_timestamps=[
+        "sentence_timestamps": [
             SentenceTimestamp(text="Hello world", start_time=0.0, end_time=1.0),
         ],
-        segments=[],
-        metadata={
+        "segments": [],
+        "metadata": {
             "job_id": "test-job-1",
             "pipeline": "test-pipeline",
             "timing": TimingMetrics(
@@ -103,7 +99,7 @@ def _make_transcription_result(**overrides) -> TranscriptionResult:
                 total_seconds=1.2,
             ),
         },
-    )
+    }
     defaults.update(overrides)
     return TranscriptionResult(**defaults)
 
@@ -326,8 +322,6 @@ class TestTranscribeAudioEndpoint:
                 file=upload,
                 pipeline_id="my-slug",
                 tenant_id="t-456",
-                language=None,
-                code_switching=None,
             )
 
             mock_reader.get_pipeline_by_slug.assert_called_once_with(
@@ -364,21 +358,18 @@ class TestTranscribeAudioEndpoint:
                 file=upload,
                 pipeline_id=pid,
                 tenant_id="t-456",
-                language=None,
-                code_switching=None,
             )
 
             mock_reader.get_pipeline.assert_called_once_with(pid)
             assert resp.text == "Hello world"
 
     @pytest.mark.asyncio
-    async def test_language_override_applied(self):
-        """When language is provided, it overrides the pipeline config."""
+    async def test_pipeline_config_used_directly(self):
+        """Pipeline inference config is used as-is without per-request overrides."""
         upload = _make_upload_file()
         result = _make_transcription_result()
 
         pipeline_mock = _make_pipeline_mock(language="en")
-        inference_config = pipeline_mock.spec.inference
 
         mock_reader = AsyncMock()
         mock_reader.get_pipeline_by_slug = AsyncMock(return_value=pipeline_mock)
@@ -400,11 +391,10 @@ class TestTranscribeAudioEndpoint:
                 file=upload,
                 pipeline_id="slug",
                 tenant_id="t-456",
-                language="ml",
-                code_switching=None,
             )
 
-            assert inference_config.language == "ml"
+            # Pipeline config language remains unchanged
+            assert pipeline_mock.spec.inference.language == "en"
 
     @pytest.mark.asyncio
     async def test_transcription_error_returns_500(self):
@@ -437,8 +427,6 @@ class TestTranscribeAudioEndpoint:
                     file=upload,
                     pipeline_id="slug",
                     tenant_id="t-456",
-                    language=None,
-                    code_switching=None,
                 )
 
             assert exc_info.value.status_code == 500
@@ -475,8 +463,6 @@ class TestTranscribeAudioEndpoint:
                     file=upload,
                     pipeline_id="slug",
                     tenant_id="t-456",
-                    language=None,
-                    code_switching=None,
                 )
 
             assert exc_info.value.status_code == 400
@@ -510,8 +496,6 @@ class TestTranscribeAudioEndpoint:
                 pipeline_id="test-pipeline",
                 tenant_id="t-456",
                 consultation_id="c-789",
-                language=None,
-                code_switching=None,
             )
 
             assert isinstance(resp, TranscriptionResponse)

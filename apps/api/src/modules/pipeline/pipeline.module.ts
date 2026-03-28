@@ -3,7 +3,7 @@ import { Module } from '@nestjs/common';
 import { AudioPipelineController } from './audio-pipeline.controller';
 
 @Module({
-    imports: [PipelineServiceModule],
-    controllers: [AudioPipelineController],
+  imports: [PipelineServiceModule],
+  controllers: [AudioPipelineController],
 })
 export class PipelineModule {}

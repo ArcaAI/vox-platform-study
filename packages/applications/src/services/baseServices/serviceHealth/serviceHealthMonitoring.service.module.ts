@@ -4,13 +4,13 @@ import { IServiceHealthMonitoringService } from './IServiceHealthMonitoringServi
 import { ServiceHealthMonitoringService } from './serviceHealthMonitoring.service';
 
 @Module({
-    imports: [ConfigModule],
-    providers: [
-        {
-            provide: IServiceHealthMonitoringService,
-            useClass: ServiceHealthMonitoringService,
-        },
-    ],
-    exports: [IServiceHealthMonitoringService],
+  imports: [ConfigModule],
+  providers: [
+    {
+      provide: IServiceHealthMonitoringService,
+      useClass: ServiceHealthMonitoringService,
+    },
+  ],
+  exports: [IServiceHealthMonitoringService],
 })
 export class ServiceHealthMonitoringServiceModule {}

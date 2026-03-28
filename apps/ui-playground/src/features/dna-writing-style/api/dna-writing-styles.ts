@@ -1,9 +1,4 @@
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-  type UseQueryOptions,
-} from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { AdminApiError, adminClient } from '../../admin/api/admin-client';
 import { useAuthStore } from '@/store/auth-store';
 import { usePlaygroundStore } from '@/store/playground-store';
@@ -85,9 +80,7 @@ const keys = {
 // Query Hooks (user-scoped only)
 // ---------------------------------------------------------------------------
 
-export function useMyDnaStyle(
-  options?: Omit<UseQueryOptions<DnaReport | null>, 'queryKey' | 'queryFn'>,
-) {
+export function useMyDnaStyle(options?: Omit<UseQueryOptions<DnaReport | null>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.myStyle(),
     queryFn: async () => {
@@ -108,44 +101,28 @@ export function useMyDnaStyle(
   });
 }
 
-export function useDnaStyleByDoctor(
-  doctorId: string,
-  options?: Omit<UseQueryOptions<DnaReport>, 'queryKey' | 'queryFn'>,
-) {
+export function useDnaStyleByDoctor(doctorId: string, options?: Omit<UseQueryOptions<DnaReport>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: [...keys.all, 'by-doctor', doctorId] as const,
-    queryFn: () =>
-      adminClient.get<DnaReport>(`/dna-writing-styles/doctor/${doctorId}`),
+    queryFn: () => adminClient.get<DnaReport>(`/dna-writing-styles/doctor/${doctorId}`),
     enabled: !!doctorId,
     ...options,
   });
 }
 
-export function useDnaVersions(
-  reportId: string,
-  options?: Omit<UseQueryOptions<DnaStyleVersion[]>, 'queryKey' | 'queryFn'>,
-) {
+export function useDnaVersions(reportId: string, options?: Omit<UseQueryOptions<DnaStyleVersion[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.versions(reportId),
-    queryFn: () =>
-      adminClient.get<DnaStyleVersion[]>(
-        `/dna-writing-styles/${reportId}/versions`,
-      ),
+    queryFn: () => adminClient.get<DnaStyleVersion[]>(`/dna-writing-styles/${reportId}/versions`),
     enabled: !!reportId,
     ...options,
   });
 }
 
-export function useDnaJobStatus(
-  jobId: string,
-  options?: Omit<UseQueryOptions<DnaJobStatus>, 'queryKey' | 'queryFn'>,
-) {
+export function useDnaJobStatus(jobId: string, options?: Omit<UseQueryOptions<DnaJobStatus>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.jobStatus(jobId),
-    queryFn: () =>
-      adminClient.get<DnaJobStatus>(
-        `/dna-writing-styles/jobs/${jobId}`,
-      ),
+    queryFn: () => adminClient.get<DnaJobStatus>(`/dna-writing-styles/jobs/${jobId}`),
     enabled: !!jobId,
     refetchInterval: (query) => {
       const data = query.state.data;
@@ -163,8 +140,7 @@ export function useDnaJobStatus(
 export function useGenerateDnaReport() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: DnaGenerateInput) =>
-      adminClient.post<{ jobId: string }>('/dna-writing-styles/generate', input),
+    mutationFn: (input: DnaGenerateInput) => adminClient.post<{ jobId: string }>('/dna-writing-styles/generate', input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },
@@ -200,8 +176,7 @@ export interface DnaStreamCallbacks {
 }
 
 function getStreamHeaders(): Record<string, string> {
-  const { accessToken, apiKey, authMethod, tenantId, isImpersonating, impersonationToken } =
-    useAuthStore.getState();
+  const { accessToken, apiKey, authMethod, tenantId, isImpersonating, impersonationToken } = useAuthStore.getState();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'text/event-stream',
@@ -230,10 +205,7 @@ function getStreamHeaders(): Record<string, string> {
  *
  * Returns an AbortController so the caller can cancel the stream.
  */
-export function streamDnaGenerate(
-  input: DnaGenerateInput,
-  callbacks: DnaStreamCallbacks,
-): AbortController {
+export function streamDnaGenerate(input: DnaGenerateInput, callbacks: DnaStreamCallbacks): AbortController {
   const abort = new AbortController();
   const baseUrl = usePlaygroundStore.getState().apiBaseUrl;
   const url = `${baseUrl}/dna-writing-styles/generate`;
@@ -249,10 +221,12 @@ export function streamDnaGenerate(
 
       if (!res.ok) {
         let errorBody: unknown;
-        try { errorBody = await res.json(); } catch { /* empty */ }
-        const msg =
-          (errorBody as { message?: string })?.message ??
-          `Stream request failed (${res.status})`;
+        try {
+          errorBody = await res.json();
+        } catch {
+          /* empty */
+        }
+        const msg = (errorBody as { message?: string })?.message ?? `Stream request failed (${res.status})`;
         callbacks.onError?.(new Error(msg));
         return;
       }

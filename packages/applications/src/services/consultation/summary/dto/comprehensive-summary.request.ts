@@ -12,42 +12,42 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
  * requests a final comprehensive summary across all consultations.
  */
 export class ComprehensiveSummaryRequest {
-    @ApiPropertyOptional({
-        description: 'DNA Style ID override (if not provided, auto-resolves from department)',
-        example: 'style_DNA_doctor_department_hematology_cp',
-    })
-    @IsOptional()
-    @IsString()
-    dnaStyleId?: string;
+  @ApiPropertyOptional({
+    description: 'DNA Style ID override (if not provided, auto-resolves from department)',
+    example: 'style_DNA_doctor_department_hematology_cp',
+  })
+  @IsOptional()
+  @IsString()
+  dnaStyleId?: string;
 
-    @ApiPropertyOptional({
-        description: 'Summary template override (e.g., "SOAP", "comprehensive")',
-        example: 'comprehensive',
-    })
-    @IsOptional()
-    @IsString()
-    template?: string;
+  @ApiPropertyOptional({
+    description: 'Summary template override (e.g., "SOAP", "comprehensive")',
+    example: 'comprehensive',
+  })
+  @IsOptional()
+  @IsString()
+  template?: string;
 
-    @ApiPropertyOptional({
-        description: 'Include NER-extracted named entities in the summary input',
-        default: true,
-    })
-    @IsOptional()
-    @IsBoolean()
-    includeNER?: boolean;
+  @ApiPropertyOptional({
+    description: 'Include NER-extracted named entities in the summary input',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  includeNER?: boolean;
 
-    @ApiPropertyOptional({
-        description: 'Include lab/test results from linked consultations',
-        default: true,
-    })
-    @IsOptional()
-    @IsBoolean()
-    includeLabResults?: boolean;
+  @ApiPropertyOptional({
+    description: 'Include lab/test results from linked consultations',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  includeLabResults?: boolean;
 
-    @ApiPropertyOptional({
-        description: 'Additional options for the SMR service',
-    })
-    @IsOptional()
-    @IsObject()
-    options?: Record<string, unknown>;
+  @ApiPropertyOptional({
+    description: 'Additional options for the SMR service',
+  })
+  @IsOptional()
+  @IsObject()
+  options?: Record<string, unknown>;
 }

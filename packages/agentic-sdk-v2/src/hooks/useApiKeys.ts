@@ -88,11 +88,7 @@ export function useApiKeys(): UseApiKeysReturn {
     [execute],
   );
 
-  const get = useCallback(
-    (id: string) =>
-      execute<ApiKey>('get', (client) => client.get<ApiKey>(API_KEY_ENDPOINTS.GET(id))),
-    [execute],
-  );
+  const get = useCallback((id: string) => execute<ApiKey>('get', (client) => client.get<ApiKey>(API_KEY_ENDPOINTS.GET(id))), [execute]);
 
   const create = useCallback(
     (input: CreateApiKeyInput) =>
@@ -135,14 +131,12 @@ export function useApiKeys(): UseApiKeysReturn {
   );
 
   const revoke = useCallback(
-    (id: string) =>
-      execute<void>('revoke', (client) => client.post(API_KEY_ENDPOINTS.REVOKE(id), undefined) as Promise<void>),
+    (id: string) => execute<void>('revoke', (client) => client.post(API_KEY_ENDPOINTS.REVOKE(id), undefined) as Promise<void>),
     [execute],
   );
 
   const getUsage = useCallback(
-    (id: string) =>
-      execute<ApiKeyUsage>('getUsage', (client) => client.get<ApiKeyUsage>(API_KEY_ENDPOINTS.USAGE(id))),
+    (id: string) => execute<ApiKeyUsage>('getUsage', (client) => client.get<ApiKeyUsage>(API_KEY_ENDPOINTS.USAGE(id))),
     [execute],
   );
 

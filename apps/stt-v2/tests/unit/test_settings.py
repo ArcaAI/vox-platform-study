@@ -1,7 +1,6 @@
 """Unit tests for application settings."""
 
 import os
-import pytest
 from unittest.mock import patch
 
 from stt_v2.core.config.settings import Settings, get_settings
@@ -19,7 +18,7 @@ class TestSettings:
             assert settings.app_version == "2.0.0"
             assert settings.debug is False
             assert settings.host == "0.0.0.0"
-            assert settings.port == 8001
+            assert settings.port == 8861
             assert settings.log_level == "INFO"
 
     def test_database_defaults(self):
@@ -88,8 +87,8 @@ class TestSettings:
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings()
 
-            assert settings.transcription_timeout_seconds == 300
-            assert settings.transcription_chunk_length_s == 30  # From .env file
+            assert settings.transcription_timeout_seconds == 600
+            assert settings.transcription_chunk_length_s == 15
             assert settings.transcription_stride_length_s == "4,2"
 
     def test_env_override(self):

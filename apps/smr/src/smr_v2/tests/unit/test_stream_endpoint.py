@@ -12,7 +12,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
-import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from smr_v2.core.config import Settings

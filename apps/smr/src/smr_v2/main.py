@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-from typing import Any
 
 import httpx
 import redis.asyncio as aioredis
@@ -210,11 +209,11 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     from smr_v2.api.middleware.request_id import RequestIDMiddleware
     app.add_middleware(RequestIDMiddleware)
 
-    from smr_v2.api.endpoints.health import router as health_router
     from smr_v2.api.endpoints.generate import router as generate_router
-    from smr_v2.api.endpoints.tasks import router as tasks_router
+    from smr_v2.api.endpoints.health import router as health_router
     from smr_v2.api.endpoints.providers import router as providers_router
     from smr_v2.api.endpoints.stream import router as stream_router
+    from smr_v2.api.endpoints.tasks import router as tasks_router
 
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(generate_router, prefix="/api/v1")

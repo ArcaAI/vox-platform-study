@@ -17,12 +17,7 @@
  * @see SDK-206 Gap Analysis — ASR-R-03
  */
 
-import type {
-  WsAudioFrame,
-  WsErrorMessage,
-  WsStatusMessage,
-  WsTranscriptResult
-} from '../types/stt-v2';
+import type { WsAudioFrame, WsErrorMessage, WsStatusMessage, WsTranscriptResult } from '../types/stt-v2';
 import type { ISDKLogger } from './logger';
 
 interface DebugTranscriptEntry {
@@ -128,9 +123,7 @@ export class SttV2WebSocketClient {
    */
   connect(url: string, options?: WsConnectOptions): Promise<void> {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      return Promise.reject(
-        new Error('WebSocket already connected. Call disconnect() first.'),
-      );
+      return Promise.reject(new Error('WebSocket already connected. Call disconnect() first.'));
     }
 
     const timeoutMs = options?.timeoutMs ?? 10_000;
@@ -382,10 +375,7 @@ export class SttV2WebSocketClient {
 
     this.isReconnecting = true;
     this.reconnectAttempts++;
-    const exponentialDelay = Math.min(
-      this.reconnectOptions.baseDelayMs * Math.pow(2, this.reconnectAttempts - 1),
-      this.reconnectOptions.maxDelayMs,
-    );
+    const exponentialDelay = Math.min(this.reconnectOptions.baseDelayMs * Math.pow(2, this.reconnectAttempts - 1), this.reconnectOptions.maxDelayMs);
     const jitter = Math.random() * exponentialDelay * 0.5;
     const delay = Math.round(exponentialDelay + jitter);
 
@@ -438,16 +428,8 @@ export class SttV2WebSocketClient {
   }
 
   private static normalizeTranscript(msg: Record<string, unknown>): WsTranscriptResult | null {
-    const startTime = typeof msg.startTime === 'number'
-      ? msg.startTime
-      : typeof msg.start_time === 'number'
-        ? msg.start_time
-        : null;
-    const endTime = typeof msg.endTime === 'number'
-      ? msg.endTime
-      : typeof msg.end_time === 'number'
-        ? msg.end_time
-        : null;
+    const startTime = typeof msg.startTime === 'number' ? msg.startTime : typeof msg.start_time === 'number' ? msg.start_time : null;
+    const endTime = typeof msg.endTime === 'number' ? msg.endTime : typeof msg.end_time === 'number' ? msg.end_time : null;
 
     let isFinal: boolean | null = null;
     if (typeof msg.isFinal === 'boolean') {
@@ -472,31 +454,25 @@ export class SttV2WebSocketClient {
       isFinal,
     };
 
-    const speakerId = typeof msg.speakerId === 'string'
-      ? msg.speakerId
-      : typeof msg.speaker_id === 'string'
-        ? msg.speaker_id
-        : undefined;
+    const speakerId = typeof msg.speakerId === 'string' ? msg.speakerId : typeof msg.speaker_id === 'string' ? msg.speaker_id : undefined;
     if (speakerId && speakerId.trim().length > 0) {
       normalized.speakerId = speakerId;
     }
 
-    const speakerLabel = typeof msg.speakerLabel === 'string'
-      ? msg.speakerLabel
-      : typeof msg.speaker_label === 'string'
-        ? msg.speaker_label
-        : undefined;
+    const speakerLabel =
+      typeof msg.speakerLabel === 'string' ? msg.speakerLabel : typeof msg.speaker_label === 'string' ? msg.speaker_label : undefined;
     if (speakerLabel && speakerLabel.trim().length > 0) {
       normalized.speakerLabel = speakerLabel;
     }
 
-    const rawSpeakerConfidence = typeof msg.speakerConfidence === 'number'
-      ? msg.speakerConfidence
-      : typeof msg.speaker_confidence === 'number'
-        ? msg.speaker_confidence
-        : typeof msg.speaker_confidence === 'string'
-          ? Number.parseFloat(msg.speaker_confidence)
-          : undefined;
+    const rawSpeakerConfidence =
+      typeof msg.speakerConfidence === 'number'
+        ? msg.speakerConfidence
+        : typeof msg.speaker_confidence === 'number'
+          ? msg.speaker_confidence
+          : typeof msg.speaker_confidence === 'string'
+            ? Number.parseFloat(msg.speaker_confidence)
+            : undefined;
     if (typeof rawSpeakerConfidence === 'number' && Number.isFinite(rawSpeakerConfidence)) {
       normalized.speakerConfidence = rawSpeakerConfidence;
     }
@@ -507,18 +483,18 @@ export class SttV2WebSocketClient {
         ? msg.speaker_embedding
         : undefined;
     if (rawSpeakerEmbedding) {
-      const speakerEmbedding = rawSpeakerEmbedding
-        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+      const speakerEmbedding = rawSpeakerEmbedding.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
       if (speakerEmbedding.length > 0) {
         normalized.speakerEmbedding = speakerEmbedding;
       }
     }
 
-    const speakerFeatures = typeof msg.speakerFeatures === 'object' && msg.speakerFeatures
-      ? msg.speakerFeatures as Record<string, unknown>
-      : typeof msg.speaker_features === 'object' && msg.speaker_features
-        ? msg.speaker_features as Record<string, unknown>
-        : undefined;
+    const speakerFeatures =
+      typeof msg.speakerFeatures === 'object' && msg.speakerFeatures
+        ? (msg.speakerFeatures as Record<string, unknown>)
+        : typeof msg.speaker_features === 'object' && msg.speaker_features
+          ? (msg.speaker_features as Record<string, unknown>)
+          : undefined;
     if (speakerFeatures) {
       normalized.speakerFeatures = speakerFeatures;
     }
@@ -530,30 +506,26 @@ export class SttV2WebSocketClient {
         : undefined;
     if (rawWordTimestamps && rawWordTimestamps.length > 0) {
       const wordTimestamps = rawWordTimestamps
-        .filter((wt): wt is Record<string, unknown> =>
-          typeof wt === 'object' && wt !== null
-          && typeof (wt as Record<string, unknown>).word === 'string'
-          && typeof (wt as Record<string, unknown>).start === 'number'
-          && typeof (wt as Record<string, unknown>).end === 'number',
+        .filter(
+          (wt): wt is Record<string, unknown> =>
+            typeof wt === 'object' &&
+            wt !== null &&
+            typeof (wt as Record<string, unknown>).word === 'string' &&
+            typeof (wt as Record<string, unknown>).start === 'number' &&
+            typeof (wt as Record<string, unknown>).end === 'number',
         )
         .map((wt) => ({
           word: wt.word as string,
           start: wt.start as number,
           end: wt.end as number,
-          confidence: typeof wt.confidence === 'number' && Number.isFinite(wt.confidence)
-            ? wt.confidence
-            : 1.0,
+          confidence: typeof wt.confidence === 'number' && Number.isFinite(wt.confidence) ? wt.confidence : 1.0,
         }));
       if (wordTimestamps.length > 0) {
         normalized.wordTimestamps = wordTimestamps;
       }
     }
 
-    const rawInference = typeof msg.inference === 'number'
-      ? msg.inference
-      : typeof msg.inference_time === 'number'
-        ? msg.inference_time
-        : undefined;
+    const rawInference = typeof msg.inference === 'number' ? msg.inference : typeof msg.inference_time === 'number' ? msg.inference_time : undefined;
     if (typeof rawInference === 'number' && Number.isFinite(rawInference)) {
       normalized.inference = rawInference;
     }

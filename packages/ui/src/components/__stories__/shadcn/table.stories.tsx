@@ -1,15 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '../../shadcn/table'
+import { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '../../shadcn/table';
 
 const meta = {
   title: 'Components/Table',
@@ -18,10 +9,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Table>
+} satisfies Meta<typeof Table>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 const invoices = [
   { invoice: 'INV001', status: 'Paid', method: 'Credit Card', amount: '$250.00' },
@@ -29,7 +20,7 @@ const invoices = [
   { invoice: 'INV003', status: 'Unpaid', method: 'Bank Transfer', amount: '$350.00' },
   { invoice: 'INV004', status: 'Paid', method: 'Credit Card', amount: '$450.00' },
   { invoice: 'INV005', status: 'Paid', method: 'PayPal', amount: '$550.00' },
-]
+];
 
 export const Default: Story = {
   render: () => (
@@ -61,7 +52,7 @@ export const Default: Story = {
       </TableFooter>
     </Table>
   ),
-}
+};
 
 export const Simple: Story = {
   render: () => (
@@ -92,4 +83,4 @@ export const Simple: Story = {
       </TableBody>
     </Table>
   ),
-}
+};

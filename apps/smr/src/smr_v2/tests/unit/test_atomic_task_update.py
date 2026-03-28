@@ -12,13 +12,12 @@ RED: Written before the Lua implementation.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis as fakeasync
 import pytest
 import pytest_asyncio
 
-from smr_v2.models.task import TaskState, TaskStatus
+from smr_v2.models.task import TaskStatus
 from smr_v2.services.task_manager import TaskManager
 
 
@@ -137,7 +136,7 @@ class TestAtomicUpdateConcurrency:
 
         redis_client.get = interleaving_get
 
-        results = await asyncio.gather(
+        _results = await asyncio.gather(
             tm.update_task(task.task_id, status=TaskStatus.RUNNING),
             tm.update_task(task.task_id, total_tokens=100),
         )

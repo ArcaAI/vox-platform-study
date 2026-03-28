@@ -11,10 +11,8 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import pytest_asyncio
 
 from smr_v2.models.requests import GenerateRequest, ResponseFormat
-
 
 # ── Ollama Provider ──
 

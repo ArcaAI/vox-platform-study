@@ -5,12 +5,7 @@
  */
 
 // Types
-export type {
-  EngineConfig,
-  TranscribeOptions,
-  EngineStats,
-  STTEngine,
-} from './types.js';
+export type { EngineConfig, TranscribeOptions, EngineStats, STTEngine } from './types.js';
 
 // Base
 export { BaseEngine } from './BaseEngine.js';

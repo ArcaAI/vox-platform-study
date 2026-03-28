@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { FileTranscriptionService, SSEClient } from '@arcaai/vox';
+import { act, renderHook } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useFileTranscription } from '../use-file-transcription';
 
 vi.mock('@arcaai/vox', async (importOriginal) => {
@@ -96,6 +97,61 @@ describe('useFileTranscription', () => {
                 expect((e as Error).message).toMatch(/SDK not initialized/);
             }
         });
+    });
+
+    it('should use id from upload response', async () => {
+        const buildJobStreamUrl = vi.fn().mockReturnValue('http://localhost:8868/api/v1/audio/transcription-jobs/job-fallback-1/stream');
+        const connect = vi.fn();
+
+        (FileTranscriptionService as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function () {
+            return {
+            uploadAndTranscribe: vi.fn().mockResolvedValue({ id: 'job-fallback-1', status: 'QUEUED' }),
+            buildJobStreamUrl,
+            dispose: vi.fn(),
+            };
+        });
+
+        (SSEClient as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function () {
+            return {
+            connect,
+            disconnect: vi.fn(),
+            onOpen: vi.fn(),
+            onEvent: vi.fn(),
+            onMessage: vi.fn(),
+            onError: vi.fn(),
+            };
+        });
+
+        const { result } = renderHook(() => useFileTranscription());
+        const file = new File(['audio'], 'test.wav', { type: 'audio/wav' });
+
+        await act(async () => {
+            await result.current.upload(file, { pipelineId: 'test-pipeline' });
+        });
+
+        expect(buildJobStreamUrl).toHaveBeenCalledWith('job-fallback-1');
+        expect(connect).toHaveBeenCalled();
+        expect(result.current.jobId).toBe('job-fallback-1');
+    });
+
+    it('should error when upload response is missing job id', async () => {
+        (FileTranscriptionService as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function () {
+            return {
+            uploadAndTranscribe: vi.fn().mockRejectedValue(new Error('Invalid transcription response: missing job id')),
+            buildJobStreamUrl: vi.fn(),
+            dispose: vi.fn(),
+            };
+        });
+
+        const { result } = renderHook(() => useFileTranscription());
+        const file = new File(['audio'], 'test.wav', { type: 'audio/wav' });
+
+        await act(async () => {
+            await expect(result.current.upload(file, { pipelineId: 'test-pipeline' }))
+                .rejects.toThrow('missing job id');
+        });
+
+        expect(result.current.status).toBe('error');
     });
 
     it('should clear transcripts', () => {

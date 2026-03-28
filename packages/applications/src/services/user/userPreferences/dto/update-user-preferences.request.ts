@@ -1,108 +1,98 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import {
-    IsString,
-    IsOptional,
-    IsEnum,
-    IsNumber,
-    IsBoolean,
-    Min,
-    Max,
-    IsObject,
-    ValidateNested,
-} from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsNumber, IsBoolean, Min, Max, IsObject, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { BaseRequest } from '../../../../common';
 
 export class NoiseCancellationConfigDto {
-    @ApiPropertyOptional({ description: 'Noise cancellation model ID from the model registry' })
-    @IsOptional()
-    @IsString()
-    modelId?: string;
+  @ApiPropertyOptional({ description: 'Noise cancellation model ID from the model registry' })
+  @IsOptional()
+  @IsString()
+  modelId?: string;
 
-    @ApiPropertyOptional({
-        description: 'Noise cancellation intensity level',
-        enum: ['low', 'medium', 'high'],
-    })
-    @IsOptional()
-    @IsEnum(['low', 'medium', 'high'])
-    level?: 'low' | 'medium' | 'high';
+  @ApiPropertyOptional({
+    description: 'Noise cancellation intensity level',
+    enum: ['low', 'medium', 'high'],
+  })
+  @IsOptional()
+  @IsEnum(['low', 'medium', 'high'])
+  level?: 'low' | 'medium' | 'high';
 }
 
 export class STTConfigDto {
-    @ApiPropertyOptional({ description: 'STT model ID (e.g. whisper-large-v3)' })
-    @IsOptional()
-    @IsString()
-    modelId?: string;
+  @ApiPropertyOptional({ description: 'STT model ID (e.g. whisper-large-v3)' })
+  @IsOptional()
+  @IsString()
+  modelId?: string;
 }
 
 export class VADConfigDto {
-    @ApiPropertyOptional({ description: 'VAD model ID (e.g. silero-vad-v5)' })
-    @IsOptional()
-    @IsString()
-    modelId?: string;
+  @ApiPropertyOptional({ description: 'VAD model ID (e.g. silero-vad-v5)' })
+  @IsOptional()
+  @IsString()
+  modelId?: string;
 
-    @ApiPropertyOptional({ description: 'Speech detection sensitivity (0-1)', minimum: 0, maximum: 1 })
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    @Max(1)
-    sensitivity?: number;
+  @ApiPropertyOptional({ description: 'Speech detection sensitivity (0-1)', minimum: 0, maximum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  sensitivity?: number;
 }
 
 export class NERConfigDto {
-    @ApiPropertyOptional({ description: 'NER model ID' })
-    @IsOptional()
-    @IsString()
-    modelId?: string;
+  @ApiPropertyOptional({ description: 'NER model ID' })
+  @IsOptional()
+  @IsString()
+  modelId?: string;
 
-    @ApiPropertyOptional({ description: 'Automatically extract entities from transcriptions' })
-    @IsOptional()
-    @IsBoolean()
-    autoExtract?: boolean;
+  @ApiPropertyOptional({ description: 'Automatically extract entities from transcriptions' })
+  @IsOptional()
+  @IsBoolean()
+  autoExtract?: boolean;
 }
 
 export class DiarizationConfigDto {
-    @ApiPropertyOptional({ description: 'Enable speaker diarization via voice embedding' })
-    @IsOptional()
-    @IsBoolean()
-    enabled?: boolean;
+  @ApiPropertyOptional({ description: 'Enable speaker diarization via voice embedding' })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
 
-    @ApiPropertyOptional({ description: 'Automatically register new speakers' })
-    @IsOptional()
-    @IsBoolean()
-    autoEnroll?: boolean;
+  @ApiPropertyOptional({ description: 'Automatically register new speakers' })
+  @IsOptional()
+  @IsBoolean()
+  autoEnroll?: boolean;
 }
 
 export class LocalWorkflowConfigDto {
-    @ApiPropertyOptional({ description: 'Noise cancellation configuration', type: NoiseCancellationConfigDto })
-    @IsOptional()
-    @ValidateNested()
-    @Type(() => NoiseCancellationConfigDto)
-    noiseCancellation?: NoiseCancellationConfigDto;
+  @ApiPropertyOptional({ description: 'Noise cancellation configuration', type: NoiseCancellationConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NoiseCancellationConfigDto)
+  noiseCancellation?: NoiseCancellationConfigDto;
 
-    @ApiPropertyOptional({ description: 'Speech-to-text configuration', type: STTConfigDto })
-    @IsOptional()
-    @ValidateNested()
-    @Type(() => STTConfigDto)
-    stt?: STTConfigDto;
+  @ApiPropertyOptional({ description: 'Speech-to-text configuration', type: STTConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => STTConfigDto)
+  stt?: STTConfigDto;
 
-    @ApiPropertyOptional({ description: 'Voice Activity Detection configuration', type: VADConfigDto })
-    @IsOptional()
-    @ValidateNested()
-    @Type(() => VADConfigDto)
-    vad?: VADConfigDto;
+  @ApiPropertyOptional({ description: 'Voice Activity Detection configuration', type: VADConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => VADConfigDto)
+  vad?: VADConfigDto;
 
-    @ApiPropertyOptional({ description: 'Named Entity Recognition configuration', type: NERConfigDto })
-    @IsOptional()
-    @ValidateNested()
-    @Type(() => NERConfigDto)
-    ner?: NERConfigDto;
+  @ApiPropertyOptional({ description: 'Named Entity Recognition configuration', type: NERConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NERConfigDto)
+  ner?: NERConfigDto;
 
-    @ApiPropertyOptional({ description: 'Speaker diarization configuration', type: DiarizationConfigDto })
-    @IsOptional()
-    @ValidateNested()
-    @Type(() => DiarizationConfigDto)
-    diarization?: DiarizationConfigDto;
+  @ApiPropertyOptional({ description: 'Speaker diarization configuration', type: DiarizationConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DiarizationConfigDto)
+  diarization?: DiarizationConfigDto;
 }
 
 /**
@@ -113,39 +103,39 @@ export class LocalWorkflowConfigDto {
  * NOTE: codeSwitching is NOT included -- it's a pipeline-level config in YAML.
  */
 export class UpdateUserPreferencesRequest extends BaseRequest {
-    @ApiPropertyOptional({
-        description: 'Workflow mode: local (doctor selects models) or remote (admin-configured pipeline)',
-        enum: ['local', 'remote'],
-    })
-    @IsOptional()
-    @IsEnum(['local', 'remote'])
-    workflowMode?: 'local' | 'remote';
+  @ApiPropertyOptional({
+    description: 'Workflow mode: local (doctor selects models) or remote (admin-configured pipeline)',
+    enum: ['local', 'remote'],
+  })
+  @IsOptional()
+  @IsEnum(['local', 'remote'])
+  workflowMode?: 'local' | 'remote';
 
-    @ApiPropertyOptional({ description: 'Preferred language code (e.g. "en", "th")' })
-    @IsOptional()
-    @IsString()
-    language?: string;
+  @ApiPropertyOptional({ description: 'Preferred language code (e.g. "en", "th")' })
+  @IsOptional()
+  @IsString()
+  language?: string;
 
-    @ApiPropertyOptional({ description: 'DNA writing style ID for summarization' })
-    @IsOptional()
-    @IsString()
-    dnaStyleId?: string;
+  @ApiPropertyOptional({ description: 'DNA writing style ID for summarization' })
+  @IsOptional()
+  @IsString()
+  dnaStyleId?: string;
 
-    @ApiPropertyOptional({
-        description: 'Local workflow model configuration (used when workflowMode is "local")',
-        type: LocalWorkflowConfigDto,
-    })
-    @IsOptional()
-    @ValidateNested()
-    @Type(() => LocalWorkflowConfigDto)
-    localConfig?: LocalWorkflowConfigDto;
+  @ApiPropertyOptional({
+    description: 'Local workflow model configuration (used when workflowMode is "local")',
+    type: LocalWorkflowConfigDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LocalWorkflowConfigDto)
+  localConfig?: LocalWorkflowConfigDto;
 
-    @ApiPropertyOptional({
-        description: 'Custom preferences (extensible)',
-        type: 'object',
-        additionalProperties: true,
-    })
-    @IsOptional()
-    @IsObject()
-    custom?: Record<string, unknown>;
+  @ApiPropertyOptional({
+    description: 'Custom preferences (extensible)',
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsOptional()
+  @IsObject()
+  custom?: Record<string, unknown>;
 }

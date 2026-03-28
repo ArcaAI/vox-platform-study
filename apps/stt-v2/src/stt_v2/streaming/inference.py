@@ -18,7 +18,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-import numpy as np
 import structlog
 
 from stt_v2.streaming.preprocessor import AudioUtterance

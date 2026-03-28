@@ -6,7 +6,10 @@ FROM node:${NODE_VERSION}-slim AS dependencies
 
 WORKDIR /app
 
-RUN npm install -g pnpm@${PNPM_VERSION}
+ENV PNPM_HOME="/pnpm" \
+    PATH="/pnpm:$PATH"
+
+RUN npm install -g pnpm@${PNPM_VERSION} turbo@2
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.json ./
 COPY apps/ui-playground/package.json ./apps/ui-playground/
@@ -23,7 +26,9 @@ COPY packages/config-ts/package.json ./packages/config-ts/
 COPY packages/config-tailwind/package.json ./packages/config-tailwind/
 COPY packages/types/package.json ./packages/types/
 
-RUN pnpm install --no-frozen-lockfile
+RUN --mount=type=cache,id=pnpm-store-ui-playground,target=/pnpm/store \
+    pnpm config set store-dir /pnpm/store && \
+    pnpm install --frozen-lockfile
 
 # -- BUILD STAGE --
 FROM dependencies AS builder
@@ -34,17 +39,10 @@ COPY apps/ui-playground/ ./apps/ui-playground/
 ARG VITE_API_URL
 ENV VITE_API_URL=${VITE_API_URL}
 
-# [TODO] The below is a temporary workaround for the "JavaScript heap out of memory", need to check @arcaai/vox pakgage.
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-RUN pnpm --filter @arcaai/ui build && \
-    pnpm --filter @arcaai/room build && \
-    pnpm --filter @arcaai/vad build && \
-    pnpm --filter @arcaai/stt build && \
-    pnpm --filter @arcaai/noise-filter build && \
-    pnpm --filter @arcaai/med-ner build && \
-    pnpm --filter @arcaai/vox build && \
-    pnpm --filter @arcaai/ui-playground build
+RUN --mount=type=cache,id=pnpm-store-ui-playground,target=/pnpm/store \
+    turbo run build --filter=@arcaai/ui-playground...
 
 # -- PRODUCTION STAGE --
 FROM node:${NODE_VERSION}-alpine AS production

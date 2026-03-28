@@ -8,9 +8,7 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 @Injectable()
 export class GlobalSettingRepository extends Repository<GlobalSettingEntity, GlobalSetting> {
-    constructor(
-        private readonly unitOfWorkService: CoreUnitOfWorkService
-    ) {
-        super(unitOfWorkService, 'globalSetting', GlobalSettingEntityMapper.getInstance(), undefined, ['name', 'key', 'description', 'namespace']);
-    }
+  constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
+    super(unitOfWorkService, 'globalSetting', GlobalSettingEntityMapper.getInstance(), undefined, ['name', 'key', 'description', 'namespace']);
+  }
 }

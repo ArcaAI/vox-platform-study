@@ -64,8 +64,7 @@ export function useGlobalSettings(): UseGlobalSettingsReturn {
   );
 
   const get = useCallback(
-    (id: string) =>
-      execute<GlobalSetting>('get', (client) => client.get<GlobalSetting>(GLOBAL_SETTINGS_ENDPOINTS.GET(id))),
+    (id: string) => execute<GlobalSetting>('get', (client) => client.get<GlobalSetting>(GLOBAL_SETTINGS_ENDPOINTS.GET(id))),
     [execute],
   );
 

@@ -1,14 +1,7 @@
 import * as v from 'valibot';
 import { deepmerge } from 'deepmerge-ts';
 
-import {
-  AppConfigSchema,
-  SYSTEM_DEFAULTS,
-  canUserEditField,
-  getFieldPermission,
-  type AppConfig,
-  type DeepPartial,
-} from './ConfigSchema.js';
+import { AppConfigSchema, SYSTEM_DEFAULTS, canUserEditField, getFieldPermission, type AppConfig, type DeepPartial } from './ConfigSchema.js';
 
 type ConfigEventType = 'configChanged' | 'userPreferencesChanged' | 'tenantConfigChanged';
 type ConfigEventHandler = (config: AppConfig) => void;
@@ -109,10 +102,7 @@ export class ConfigManager {
     return this.resolved[section];
   }
 
-  getValue<K extends keyof AppConfig, F extends keyof AppConfig[K]>(
-    section: K,
-    field: F,
-  ): AppConfig[K][F] {
+  getValue<K extends keyof AppConfig, F extends keyof AppConfig[K]>(section: K, field: F): AppConfig[K][F] {
     return this.resolved[section][field];
   }
 
@@ -216,20 +206,14 @@ export class ConfigManager {
     this.resolved = v.parse(AppConfigSchema, merged);
   }
 
-  private stripLockedAndAdminPaths(
-    preferences: DeepPartial<AppConfig>,
-    prefix = '',
-  ): DeepPartial<AppConfig> {
+  private stripLockedAndAdminPaths(preferences: DeepPartial<AppConfig>, prefix = ''): DeepPartial<AppConfig> {
     const result: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(preferences)) {
       const path = prefix ? `${prefix}.${key}` : key;
       if (this.tenantLockedPaths.has(path)) continue;
       if (getFieldPermission(path) !== 'user' && prefix !== '') continue;
       if (value && typeof value === 'object' && !Array.isArray(value)) {
-        const nested = this.stripLockedAndAdminPaths(
-          value as Record<string, unknown>,
-          path,
-        );
+        const nested = this.stripLockedAndAdminPaths(value as Record<string, unknown>, path);
         if (Object.keys(nested).length > 0) {
           result[key] = nested;
         }

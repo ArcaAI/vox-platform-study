@@ -3,12 +3,8 @@ import { useAuthStore } from '@/store/auth-store';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Input } from '@arcaai/ui/input';
-import {
-  MultiColumnLayout,
-  type MultiColumnConfig,
-  type MultiColumnContentConfig,
-  type MultiColumnState,
-} from '@arcaai/ui/multi-column-layout';
+import { MultiColumnLayout, type MultiColumnConfig, type MultiColumnContentConfig, type MultiColumnState } from '@arcaai/ui/multi-column-layout';
+import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   useMyTenantConfigs,
@@ -20,16 +16,51 @@ import {
   type TenantConfig,
 } from '../api/tenants';
 
-function ConfigValueEditor({
-  config,
-  value,
-  onChange,
-}: {
-  config: TenantConfig;
-  value: string;
-  onChange: (next: string) => void;
-}) {
+function tryFormatJsonString(input: string): string {
+  try {
+    const parsed = JSON.parse(input);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return input;
+  }
+}
+
+function isValidJsonString(input: string): boolean {
+  try {
+    JSON.parse(input);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeJsonString(input: string): string {
+  if (input.trim().length === 0) {
+    return input;
+  }
+  try {
+    const parsed = JSON.parse(input);
+    return JSON.stringify(parsed);
+  } catch {
+    return input;
+  }
+}
+
+function isJsonDataType(dataType?: string | null): boolean {
+  return String(dataType ?? 'STRING').toUpperCase() === 'JSON';
+}
+
+function formatConfigValue(value: string, dataType?: string | null): string {
+  return isJsonDataType(dataType) ? tryFormatJsonString(value) : value;
+}
+
+function normalizeConfigValue(value: string, dataType?: string | null): string {
+  return isJsonDataType(dataType) ? normalizeJsonString(value) : value;
+}
+
+function ConfigValueEditor({ config, value, onChange }: { config: TenantConfig; value: string; onChange: (next: string) => void }) {
   const type = String(config.dataType ?? 'STRING').toUpperCase();
+  const jsonInvalid = isJsonDataType(config.dataType) && value.trim().length > 0 && !isValidJsonString(value);
   if (type === 'BOOLEAN') {
     return (
       <select
@@ -37,9 +68,7 @@ function ConfigValueEditor({
         aria-label="Boolean configuration value"
         title="Boolean configuration value"
         value={value}
-        onChange={(event: React.ChangeEvent<HTMLSelectElement>) =>
-          onChange(event.target.value)
-        }
+        onChange={(event: React.ChangeEvent<HTMLSelectElement>) => onChange(event.target.value)}
       >
         <option value="true">true</option>
         <option value="false">false</option>
@@ -52,21 +81,14 @@ function ConfigValueEditor({
         className="bg-background min-h-52 w-full rounded-md border p-2 font-mono text-sm"
         aria-label="Configuration value editor"
         title="Configuration value editor"
+        aria-invalid={jsonInvalid}
         value={value}
-        onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) =>
-          onChange(event.target.value)
-        }
+        onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value)}
+        spellCheck={false}
       />
     );
   }
-  return (
-    <Input
-      value={value}
-      onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-        onChange(event.target.value)
-      }
-    />
-  );
+  return <Input value={value} onChange={(event: React.ChangeEvent<HTMLInputElement>) => onChange(event.target.value)} />;
 }
 
 export default function ConfigurationManagementPage() {
@@ -80,6 +102,7 @@ export default function ConfigurationManagementPage() {
   const [selectedTenantId, setSelectedTenantId] = useState(tenantId || '');
   const [selectedConfigId, setSelectedConfigId] = useState('');
   const [draftValue, setDraftValue] = useState('');
+  const [draftError, setDraftError] = useState<string | null>(null);
 
   const {
     data: tenantsPages,
@@ -94,23 +117,22 @@ export default function ConfigurationManagementPage() {
   const allTenants = useMemo<Tenant[]>(() => {
     if (!isSuperOrGlobalAdmin) {
       if (!tenantId) return [];
-      return [{
-        id: tenantId,
-        name: tenantName || tenantId,
-        key: tenantId,
-        resourceStatus: 'ENABLED',
-        createdAt: '',
-        updatedAt: '',
-      } as Tenant];
+      return [
+        {
+          id: tenantId,
+          name: tenantName || tenantId,
+          key: tenantId,
+          resourceStatus: 'ENABLED',
+          createdAt: '',
+          updatedAt: '',
+        } as Tenant,
+      ];
     }
     return tenantsPages?.pages.flatMap((page) => page.data) ?? [];
   }, [isSuperOrGlobalAdmin, tenantId, tenantName, tenantsPages]);
 
   const filteredTenants = useMemo(
-    () =>
-      allTenants.filter((item) =>
-        `${item.name} ${item.key}`.toLowerCase().includes(tenantSearch.toLowerCase()),
-      ),
+    () => allTenants.filter((item) => `${item.name} ${item.key}`.toLowerCase().includes(tenantSearch.toLowerCase())),
     [allTenants, tenantSearch],
   );
 
@@ -148,15 +170,11 @@ export default function ConfigurationManagementPage() {
   useEffect(() => {
     setSelectedConfigId('');
     setDraftValue('');
+    setDraftError(null);
   }, [configScopeKey]);
 
   const filteredConfigs = useMemo(
-    () =>
-      configs.filter((config) =>
-        `${config.name} ${config.key} ${config.namespace ?? ''}`
-          .toLowerCase()
-          .includes(configSearch.toLowerCase()),
-      ),
+    () => configs.filter((config) => `${config.name} ${config.key} ${config.namespace ?? ''}`.toLowerCase().includes(configSearch.toLowerCase())),
     [configs, configSearch],
   );
 
@@ -167,24 +185,43 @@ export default function ConfigurationManagementPage() {
     }
   }, [filteredConfigs, selectedConfigId]);
 
-  const selectedConfig = useMemo(
-    () => filteredConfigs.find((config) => config.id === selectedConfigId),
-    [filteredConfigs, selectedConfigId],
-  );
+  const selectedConfig = useMemo(() => filteredConfigs.find((config) => config.id === selectedConfigId), [filteredConfigs, selectedConfigId]);
 
   const currentValue = selectedConfig ? draftValue : '';
-  const isDirty = !!selectedConfig && currentValue !== String(selectedConfig.value ?? '');
+  const originalValue = selectedConfig ? String(selectedConfig.value ?? '') : '';
+  const isJsonType = isJsonDataType(selectedConfig?.dataType);
+  const normalizedCurrentValue = normalizeConfigValue(currentValue, selectedConfig?.dataType);
+  const normalizedOriginalValue = normalizeConfigValue(originalValue, selectedConfig?.dataType);
+  const isDirty = !!selectedConfig && normalizedCurrentValue !== normalizedOriginalValue;
+
+  useEffect(() => {
+    if (!selectedConfig) {
+      setDraftError(null);
+      return;
+    }
+    if (isJsonType && currentValue.trim().length > 0 && !isValidJsonString(currentValue)) {
+      setDraftError('Invalid JSON: please fix syntax before saving.');
+      return;
+    }
+    setDraftError(null);
+  }, [currentValue, isJsonType, selectedConfig]);
 
   const handleSave = () => {
     if (!selectedConfig) return;
+    if (isJsonDataType(selectedConfig.dataType)) {
+      if (currentValue.trim().length > 0 && !isValidJsonString(currentValue)) {
+        setDraftError('Invalid JSON: please fix syntax before saving.');
+        return;
+      }
+    }
     if (isSuperOrGlobalAdmin) {
       updateTenantConfigs.mutate({
         identifier: effectiveTenantIdentifier,
-        configs: [{ id: selectedConfig.id, value: currentValue }],
+        configs: [{ id: selectedConfig.id, value: normalizedCurrentValue }],
       });
       return;
     }
-    updateMyTenantConfigs.mutate([{ id: selectedConfig.id, value: currentValue }]);
+    updateMyTenantConfigs.mutate([{ id: selectedConfig.id, value: normalizedCurrentValue }]);
   };
 
   const tenantColumn: MultiColumnConfig<Tenant> = {
@@ -212,8 +249,8 @@ export default function ConfigurationManagementPage() {
     ),
     onRefresh: isSuperOrGlobalAdmin
       ? () => {
-        void refetchTenants();
-      }
+          void refetchTenants();
+        }
       : undefined,
     isRefreshing: tenantsRefreshing,
     emptyTitle: 'No tenants',
@@ -261,8 +298,8 @@ export default function ConfigurationManagementPage() {
     emptyDescription: 'No settings matched your filters.',
     onRefresh: configScopeKey
       ? () => {
-        void activeConfigsQuery.refetch();
-      }
+          void activeConfigsQuery.refetch();
+        }
       : undefined,
     isRefreshing: configsRefreshing,
   };
@@ -274,7 +311,9 @@ export default function ConfigurationManagementPage() {
     onSelect: (id: string) => {
       setSelectedConfigId(id);
       const config = filteredConfigs.find((row) => row.id === id);
-      setDraftValue(String(config?.value ?? ''));
+      const raw = String(config?.value ?? '');
+      setDraftValue(formatConfigValue(raw, config?.dataType));
+      setDraftError(null);
     },
   };
 
@@ -286,8 +325,8 @@ export default function ConfigurationManagementPage() {
     width: '1fr',
     onRefresh: selectedConfig
       ? () => {
-        void activeConfigsQuery.refetch();
-      }
+          void activeConfigsQuery.refetch();
+        }
       : undefined,
     isRefreshing: configsRefreshing,
     renderContent: () => {
@@ -308,23 +347,21 @@ export default function ConfigurationManagementPage() {
             <Badge variant="secondary">{selectedConfig.namespace || 'general'}</Badge>
             <Badge variant="outline">{String(selectedConfig.dataType ?? 'STRING')}</Badge>
           </div>
-          <ConfigValueEditor
-            config={selectedConfig}
-            value={currentValue}
-            onChange={setDraftValue}
-          />
+          <ConfigValueEditor config={selectedConfig} value={currentValue} onChange={setDraftValue} />
+          {draftError && (
+            <p className="text-destructive text-xs" aria-live="polite" role="status">
+              {draftError}
+            </p>
+          )}
           <div className="mt-auto flex items-center justify-end gap-2">
             <Button
               variant="outline"
               disabled={!selectedConfig}
-              onClick={() => setDraftValue(String(selectedConfig.value ?? ''))}
+              onClick={() => setDraftValue(formatConfigValue(originalValue, selectedConfig.dataType))}
             >
               Reset
             </Button>
-            <Button
-              disabled={!isDirty || updateTenantConfigs.isPending || updateMyTenantConfigs.isPending}
-              onClick={handleSave}
-            >
+            <Button disabled={!isDirty || !!draftError || updateTenantConfigs.isPending || updateMyTenantConfigs.isPending} onClick={handleSave}>
               Save
             </Button>
           </div>
@@ -345,9 +382,7 @@ export default function ConfigurationManagementPage() {
     <Main>
       <div className="mb-4">
         <h2 className="text-2xl font-bold tracking-tight">Configuration Management</h2>
-        <p className="text-muted-foreground mt-1">
-          Manage tenant settings with type-aware editing and API-backed persistence.
-        </p>
+        <p className="text-muted-foreground mt-1">Manage tenant settings with type-aware editing and API-backed persistence.</p>
       </div>
       <MultiColumnLayout
         columns={[tenantColumn, configColumn, detailColumn]}

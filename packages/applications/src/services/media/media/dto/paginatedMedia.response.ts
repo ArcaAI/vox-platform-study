@@ -5,6 +5,6 @@ import { MediaResponse } from '.';
 // TODO: Implement this
 
 export class PaginatedMediaResponse extends PaginatedResponse<MediaResponse> {
-    @ApiProperty({ type: [MediaResponse] })
-    override readonly data!: readonly MediaResponse[];
+  @ApiProperty({ type: [MediaResponse] })
+  override readonly data!: readonly MediaResponse[];
 }

@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   TreeProvider,
@@ -9,17 +9,17 @@ import {
   TreeExpander,
   TreeIcon,
   TreeLabel,
-} from '../../../registries/kibo-ui/tree'
+} from '../../../registries/kibo-ui/tree';
 
 const meta = {
   title: 'Registries/KiboUI/Tree',
   component: TreeProvider,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof TreeProvider>
+} satisfies Meta<typeof TreeProvider>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -51,4 +51,4 @@ export const Default: Story = {
       </TreeView>
     </TreeProvider>
   ),
-}
+};

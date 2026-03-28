@@ -7,13 +7,13 @@ import { CommonServiceModule } from '../../baseServices';
 // TODO: Implement this
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule],
-    providers: [
-        {
-            provide: IRolePermissionService,
-            useClass: RolePermissionService
-        }
-    ],
-    exports: [IRolePermissionService]
+  imports: [CommonServiceModule, CoreDatabaseModule],
+  providers: [
+    {
+      provide: IRolePermissionService,
+      useClass: RolePermissionService,
+    },
+  ],
+  exports: [IRolePermissionService],
 })
 export class RolePermissionServiceModule {}

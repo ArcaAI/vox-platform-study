@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Announcement, AnnouncementTag, AnnouncementTitle } from '../../../registries/kibo-ui/announcement'
+import { Announcement, AnnouncementTag, AnnouncementTitle } from '../../../registries/kibo-ui/announcement';
 
 const meta = {
   title: 'Registries/KiboUI/Announcement',
   component: Announcement,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Announcement>
+} satisfies Meta<typeof Announcement>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -19,7 +19,7 @@ export const Default: Story = {
       <AnnouncementTitle>Introducing our latest feature</AnnouncementTitle>
     </Announcement>
   ),
-}
+};
 
 export const Themed: Story = {
   render: () => (
@@ -28,4 +28,4 @@ export const Themed: Story = {
       <AnnouncementTitle>Version 2.0 is here</AnnouncementTitle>
     </Announcement>
   ),
-}
+};

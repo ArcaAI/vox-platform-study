@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
 
@@ -220,7 +220,7 @@ class TestReadinessEndpointE2E:
             cname = component.get("name", "<unknown>")
 
             # name
-            assert "name" in component, f"Component missing 'name'"
+            assert "name" in component, "Component missing 'name'"
             assert isinstance(component["name"], str)
 
             # status — must be a valid HealthStatus enum value

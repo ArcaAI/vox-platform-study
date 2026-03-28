@@ -1,6 +1,6 @@
-export { DataTable, useDataTable } from "./data-table";
+export { DataTable, useDataTable } from './data-table';
 
-export { renderFormattedValue } from "./formatters";
+export { renderFormattedValue } from './formatters';
 export {
   NumberValue,
   CurrencyValue,
@@ -12,7 +12,7 @@ export {
   BadgeValue,
   StatusBadge,
   ArrayValue,
-} from "./formatters";
+} from './formatters';
 
 export type {
   Column,
@@ -23,7 +23,7 @@ export type {
   RowPrimitive,
   RowData,
   ColumnKey,
-} from "./types";
-export type { FormatConfig } from "./formatters";
+} from './types';
+export type { FormatConfig } from './formatters';
 
-export { sortData, parseNumericLike } from "./utilities";
+export { sortData, parseNumericLike } from './utilities';

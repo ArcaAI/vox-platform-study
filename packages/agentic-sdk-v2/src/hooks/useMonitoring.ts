@@ -14,11 +14,8 @@ function normalizeSessionCounts(raw: Record<string, unknown> | null | undefined)
   if (!raw || typeof raw !== 'object') {
     return { active: 0, total: 0, activeSessions: 0, processingJobs: 0 };
   }
-  const activeSessions =
-    typeof raw.activeSessions === 'number' ? raw.activeSessions :
-    typeof raw.active === 'number' ? raw.active : 0;
-  const processingJobs =
-    typeof raw.processingJobs === 'number' ? raw.processingJobs : 0;
+  const activeSessions = typeof raw.activeSessions === 'number' ? raw.activeSessions : typeof raw.active === 'number' ? raw.active : 0;
+  const processingJobs = typeof raw.processingJobs === 'number' ? raw.processingJobs : 0;
   return { ...raw, active: activeSessions, total: typeof raw.total === 'number' ? raw.total : 0, activeSessions, processingJobs };
 }
 
@@ -51,9 +48,7 @@ export function useMonitoring(): UseMonitoringReturn {
 
   const getServiceUptime = useCallback(
     (service: string): Promise<ServiceUptime> =>
-      execute<ServiceUptime>('getServiceUptime', (client) =>
-        client.get<ServiceUptime>(MONITORING_ENDPOINTS.SERVICE_UPTIME(service)),
-      ),
+      execute<ServiceUptime>('getServiceUptime', (client) => client.get<ServiceUptime>(MONITORING_ENDPOINTS.SERVICE_UPTIME(service))),
     [execute],
   );
 

@@ -7,13 +7,13 @@ import { CommonServiceModule } from '../baseServices';
 // TODO: Implement this
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule],
-    providers: [
-        {
-            provide: ITagService,
-            useClass: TagService
-        }
-    ],
-    exports: [ITagService]
+  imports: [CommonServiceModule, CoreDatabaseModule],
+  providers: [
+    {
+      provide: ITagService,
+      useClass: TagService,
+    },
+  ],
+  exports: [ITagService],
 })
 export class TagServiceModule {}

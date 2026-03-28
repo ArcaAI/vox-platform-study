@@ -1,0 +1,146 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Publish stage — SDK package release to GitLab Package Registry
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Triggered on the `release` branch only.
+# Uses Changesets to version and publish @arcaai/* packages.
+#
+# ── Setup ────────────────────────────────────────────────────────────────────
+#
+# Prerequisites (one-time setup in GitLab):
+#
+# 1. Enable Package Registry:
+#    Settings → General → Visibility → Package registry → Everyone with access
+#
+# 2. Create a Project Access Token (or use CI_JOB_TOKEN):
+#    Settings → Access Tokens → Add new token
+#      Name:   "npm-publish"
+#      Role:   Developer
+#      Scopes: api, read_package_registry, write_package_registry
+#    Save the token as CI variable: NPM_PUBLISH_TOKEN
+#
+# 3. Install Changesets (in the repo):
+#    pnpm add -Dw @changesets/cli @changesets/changelog-github
+#    pnpm changeset init
+#
+# 4. Configure .changeset/config.json:
+#    {
+#      "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+#      "changelog": "@changesets/cli/changelog",
+#      "commit": false,
+#      "fixed": [],
+#      "linked": [
+#        ["@arcaai/vox", "@arcaai/room", "@arcaai/stt",
+#         "@arcaai/vad", "@arcaai/noise-filter"]
+#      ],
+#      "access": "restricted",
+#      "baseBranch": "main",
+#      "updateInternalDependencies": "patch",
+#      "ignore": [
+#        "@arcaai/api", "@arcaai/ui-playground", "@arcaai/database",
+#        "@arcaai/domains", "@arcaai/applications", "@arcaai/exceptions",
+#        "@arcaai/logger", "@arcaai/tools", "@arcaai/config-eslint",
+#        "@arcaai/config-rollup", "@arcaai/config-tailwind", "@arcaai/config-ts",
+#        "@arcaai/ui"
+#      ]
+#    }
+#
+# 5. Add publishConfig to each publishable package.json:
+#    {
+#      "publishConfig": {
+#        "@arcaai:registry": "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/"
+#      }
+#    }
+#
+# 6. Add root package.json scripts:
+#    {
+#      "scripts": {
+#        "changeset": "changeset",
+#        "changeset:version": "changeset version",
+#        "changeset:publish": "changeset publish"
+#      }
+#    }
+#
+# ── Developer workflow ───────────────────────────────────────────────────────
+#
+# 1. Make changes to SDK packages
+# 2. Run:  pnpm changeset
+#    → Select affected packages, bump type (patch/minor/major)
+#    → Creates .changeset/<random-name>.md
+# 3. Commit the changeset file with your code changes
+# 4. Merge to release branch
+# 5. Pipeline runs:
+#    → changeset version (bumps versions + generates CHANGELOGs)
+#    → build packages
+#    → changeset publish (pushes to GitLab Package Registry)
+#
+# ── Installing published packages ────────────────────────────────────────────
+#
+# Consumers add to their .npmrc:
+#
+#   @arcaai:registry=https://<gitlab-host>/api/v4/projects/<PROJECT_ID>/packages/npm/
+#   //<gitlab-host>/api/v4/projects/<PROJECT_ID>/packages/npm/:_authToken=<TOKEN>
+#
+# Then:  pnpm add @arcaai/vox@1.2.3
+#
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Version + publish packages ───────────────────────────────────────────────
+
+publish-sdk:
+  stage: publish
+  extends: .node-base
+  tags: [fast]
+  interruptible: false
+  variables:
+    GIT_STRATEGY: clone
+    GIT_DEPTH: 0
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@latest --activate
+    - pnpm config set store-dir .pnpm-store
+    - |
+      echo "@arcaai:registry=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/"
+      echo "${CI_API_V4_URL#http*:}/projects/${CI_PROJECT_ID}/packages/npm/:_authToken=${NPM_PUBLISH_TOKEN}"
+    - |
+      {
+        echo "@arcaai:registry=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/"
+        echo "${CI_API_V4_URL#http*:}/projects/${CI_PROJECT_ID}/packages/npm/:_authToken=${NPM_PUBLISH_TOKEN}"
+      } > .npmrc
+    - pnpm install --frozen-lockfile --prefer-offline
+  script:
+    - echo "Versioning packages from changesets..."
+    - pnpm changeset version
+
+    - echo "Building publishable packages..."
+    - pnpm turbo build --filter=@arcaai/utils
+    - pnpm turbo build --filter=@arcaai/types
+    - pnpm turbo build --filter=@arcaai/pipeline
+    - pnpm turbo build --filter=@arcaai/room
+    - pnpm turbo build --filter=@arcaai/vad
+    - pnpm turbo build --filter=@arcaai/stt
+    - pnpm turbo build --filter=@arcaai/noise-filter
+    - pnpm turbo build --filter=@arcaai/med-ner
+    - pnpm turbo build --filter=@arcaai/vox
+
+    - echo "Publishing to GitLab Package Registry..."
+    - pnpm changeset publish
+
+    - echo "Committing version bumps..."
+    - git config user.email "ci@arcaai.com"
+    - git config user.name "GitLab CI"
+    - git add -A
+    - |
+      if ! git diff --cached --quiet; then
+        git commit -m "chore(release): version packages [skip ci]"
+        git push "http://gitlab-ci-token:${NPM_PUBLISH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:release
+      fi
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - .pnpm-store
+      policy: pull
+  rules:
+    - if: $PIPELINE_TYPE == "release"

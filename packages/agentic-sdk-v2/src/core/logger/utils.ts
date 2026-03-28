@@ -35,9 +35,7 @@ export function generateTraceId(): string {
       .join('');
   }
   // Fallback
-  return Array.from({ length: 32 }, () =>
-    Math.floor(Math.random() * 16).toString(16)
-  ).join('');
+  return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 }
 
 /**
@@ -52,9 +50,7 @@ export function generateSpanId(): string {
       .join('');
   }
   // Fallback
-  return Array.from({ length: 16 }, () =>
-    Math.floor(Math.random() * 16).toString(16)
-  ).join('');
+  return Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 }
 
 /**
@@ -76,7 +72,9 @@ export function serializeError(error: unknown): Record<string, unknown> {
     }
 
     // Handle cause chain
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Error-like objects may have cause.
     if ((error as any).cause) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       serialized.cause = serializeError((error as any).cause);
     }
 
@@ -141,7 +139,7 @@ export function safeStringify(obj: unknown, space?: number): string {
 
       return value;
     },
-    space
+    space,
   );
 }
 
@@ -191,18 +189,11 @@ export function getTimestampMs(): number {
 /**
  * Mask sensitive data in a string
  */
-export function maskSensitiveData(
-  value: string,
-  visibleChars = 4
-): string {
+export function maskSensitiveData(value: string, visibleChars = 4): string {
   if (value.length <= visibleChars * 2) {
     return '*'.repeat(value.length);
   }
-  return (
-    value.slice(0, visibleChars) +
-    '*'.repeat(value.length - visibleChars * 2) +
-    value.slice(-visibleChars)
-  );
+  return value.slice(0, visibleChars) + '*'.repeat(value.length - visibleChars * 2) + value.slice(-visibleChars);
 }
 
 /**
@@ -222,9 +213,7 @@ export function deepClone<T>(obj: T): T {
   }
 
   if (obj instanceof Map) {
-    return new Map(
-      Array.from(obj.entries()).map(([k, v]) => [deepClone(k), deepClone(v)])
-    ) as T;
+    return new Map(Array.from(obj.entries()).map(([k, v]) => [deepClone(k), deepClone(v)])) as T;
   }
 
   if (obj instanceof Set) {
@@ -241,10 +230,7 @@ export function deepClone<T>(obj: T): T {
 /**
  * Merge objects deeply
  */
-export function deepMerge<T extends Record<string, unknown>>(
-  target: T,
-  ...sources: Partial<T>[]
-): T {
+export function deepMerge<T extends Record<string, unknown>>(target: T, ...sources: Partial<T>[]): T {
   const result = { ...target };
 
   for (const source of sources) {
@@ -262,10 +248,7 @@ export function deepMerge<T extends Record<string, unknown>>(
         !Array.isArray(sourceValue) &&
         !Array.isArray(targetValue)
       ) {
-        result[key] = deepMerge(
-          targetValue as Record<string, unknown>,
-          sourceValue as Record<string, unknown>
-        ) as T[keyof T];
+        result[key] = deepMerge(targetValue as Record<string, unknown>, sourceValue as Record<string, unknown>) as T[keyof T];
       } else if (sourceValue !== undefined) {
         result[key] = sourceValue as T[keyof T];
       }
@@ -286,11 +269,7 @@ export function isBrowser(): boolean {
  * Check if running in Node.js environment
  */
 export function isNode(): boolean {
-  return (
-    typeof process !== 'undefined' &&
-    process.versions != null &&
-    process.versions.node != null
-  );
+  return typeof process !== 'undefined' && process.versions != null && process.versions.node != null;
 }
 
 /**
@@ -321,7 +300,7 @@ export function getEnvironmentInfo(): Record<string, string> {
  * @see https://www.w3.org/TR/trace-context/
  */
 export function extractTraceContext(
-  headers: Record<string, string | undefined>
+  headers: Record<string, string | undefined>,
 ): { traceId?: string; spanId?: string; traceFlags?: number } | undefined {
   const traceparent = headers['traceparent'] || headers['Traceparent'];
   if (!traceparent) return undefined;
@@ -331,6 +310,7 @@ export function extractTraceContext(
   const parts = traceparent.split('-');
   if (parts.length !== 4) return undefined;
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- W3C traceparent version segment ignored.
   const [_version, traceId, spanId, flagsHex] = parts;
 
   return {
@@ -343,10 +323,6 @@ export function extractTraceContext(
 /**
  * Create W3C traceparent header value
  */
-export function createTraceparent(
-  traceId: string,
-  spanId: string,
-  traceFlags = 1
-): string {
+export function createTraceparent(traceId: string, spanId: string, traceFlags = 1): string {
   return `00-${traceId}-${spanId}-${traceFlags.toString(16).padStart(2, '0')}`;
 }

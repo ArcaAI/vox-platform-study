@@ -125,9 +125,7 @@ export interface VADOptions {
 /**
  * Default options for VADProcessor.
  */
-export const DEFAULT_VAD_OPTIONS: Required<
-  Omit<VADOptions, 'baseAssetPath' | 'onnxWASMBasePath' | 'additionalAudioConstraints' | 'debugMode'>
-> = {
+export const DEFAULT_VAD_OPTIONS: Required<Omit<VADOptions, 'baseAssetPath' | 'onnxWASMBasePath' | 'additionalAudioConstraints' | 'debugMode'>> = {
   model: 'v5',
   positiveSpeechThreshold: 0.5,
   negativeSpeechThreshold: 0.35,
@@ -316,13 +314,7 @@ export interface VADStatsPayload {
 /**
  * All possible VAD data event types.
  */
-export type VADDataEventType =
-  | 'vad-frame'
-  | 'vad-speech-start'
-  | 'vad-speech-real-start'
-  | 'vad-speech-end'
-  | 'vad-misfire'
-  | 'vad-stats';
+export type VADDataEventType = 'vad-frame' | 'vad-speech-start' | 'vad-speech-real-start' | 'vad-speech-end' | 'vad-misfire' | 'vad-stats';
 
 // ============================================================================
 // Worklet Message Types
@@ -437,7 +429,7 @@ export class VADError extends Error {
   constructor(
     public readonly code: VADErrorCode,
     message: string,
-    public readonly cause?: Error
+    public readonly cause?: Error,
   ) {
     super(message);
     this.name = 'VADError';
@@ -474,10 +466,7 @@ export type OnVADMisfireCallback = () => void;
  * @param probabilities - Speech and non-speech probabilities
  * @param frame - Raw audio frame data
  */
-export type OnFrameProcessedCallback = (
-  probabilities: { isSpeech: number; notSpeech: number },
-  frame: Float32Array
-) => void;
+export type OnFrameProcessedCallback = (probabilities: { isSpeech: number; notSpeech: number }, frame: Float32Array) => void;
 
 /**
  * Extended VAD options with callback functions.
@@ -513,9 +502,4 @@ export interface VADOptionsWithCallbacks extends VADOptions {
 // Re-exports for convenience
 // ============================================================================
 
-export type {
-  AudioProcessorOptions,
-  ProcessorOptions,
-  TrackProcessor,
-  EventEmittingProcessor,
-} from '@arcaai/room';
+export type { AudioProcessorOptions, ProcessorOptions, TrackProcessor, EventEmittingProcessor } from '@arcaai/room';

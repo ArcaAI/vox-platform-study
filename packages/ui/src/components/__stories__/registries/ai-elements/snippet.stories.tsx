@@ -1,22 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Snippet,
-  SnippetInput,
-  SnippetCopyButton,
-  SnippetText,
-  SnippetAddon,
-} from '../../../registries/ai-elements/snippet'
+import { Snippet, SnippetInput, SnippetCopyButton, SnippetText, SnippetAddon } from '../../../registries/ai-elements/snippet';
 
 const meta = {
   title: 'Registries/AiElements/Snippet',
   component: Snippet,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Snippet>
+} satisfies Meta<typeof Snippet>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -26,7 +20,7 @@ export const Default: Story = {
       <SnippetCopyButton />
     </Snippet>
   ),
-}
+};
 
 export const WithPrefix: Story = {
   args: {} as any,
@@ -39,4 +33,4 @@ export const WithPrefix: Story = {
       <SnippetCopyButton />
     </Snippet>
   ),
-}
+};

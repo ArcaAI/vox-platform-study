@@ -1,95 +1,47 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { toast } from 'sonner'
-import { z } from 'zod'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+import { z } from 'zod';
 
-import { Badge } from '@arcaai/ui/badge'
-import { Button } from '@arcaai/ui/button'
-import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@arcaai/ui/dialog'
-import {
-    Form,
-    FormControl,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from '@arcaai/ui/form'
-import { Input } from '@arcaai/ui/input'
-import { ScrollArea } from '@arcaai/ui/scroll-area'
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@arcaai/ui/select'
-import { Separator } from '@arcaai/ui/separator'
-import { Skeleton } from '@arcaai/ui/skeleton'
-import { Switch } from '@arcaai/ui/switch'
-import { Textarea } from '@arcaai/ui/textarea'
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from '@arcaai/ui/tooltip'
-import {
-    BarChart3,
-    Building2,
-    Calendar,
-    Clock,
-    Eye,
-    FileText,
-    GitBranch,
-    History,
-    Loader2,
-    Plus,
-    Tag,
-    Trash2,
-    Variable,
-} from 'lucide-react'
+import { Badge } from '@arcaai/ui/badge';
+import { Button } from '@arcaai/ui/button';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@arcaai/ui/form';
+import { Input } from '@arcaai/ui/input';
+import { ScrollArea } from '@arcaai/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
+import { Separator } from '@arcaai/ui/separator';
+import { Skeleton } from '@arcaai/ui/skeleton';
+import { Switch } from '@arcaai/ui/switch';
+import { Textarea } from '@arcaai/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@arcaai/ui/tooltip';
+import { BarChart3, Building2, Calendar, Clock, Eye, FileText, GitBranch, History, Loader2, Plus, Tag, Trash2, Variable } from 'lucide-react';
 
-import { Main } from '@/components/layout/main'
-import { VersionDiffPanel } from '@/components/version-diff-panel'
-import { cn } from '@/lib/utils'
-import { zodResolver } from '@/lib/zod-resolver'
-import { useAuthStore } from '@/store/auth-store'
+import { Main } from '@/components/layout/main';
+import { VersionDiffPanel } from '@/components/version-diff-panel';
+import { cn } from '@/lib/utils';
+import { zodResolver } from '@/lib/zod-resolver';
+import { useAuthStore } from '@/store/auth-store';
 
+import { MultiColumnLayout, type MultiColumnConfig, type MultiColumnContentConfig, type MultiColumnState } from '@arcaai/ui/multi-column-layout';
 import {
-    MultiColumnLayout,
-    type MultiColumnConfig,
-    type MultiColumnContentConfig,
-    type MultiColumnState,
-} from '@arcaai/ui/multi-column-layout'
-import {
-    useCreatePrompt,
-    useDeletePrompt,
-    usePromptTemplate,
-    usePromptTemplatesInfinite,
-    usePromptUsageStats,
-    usePromptVersions,
-    useRefreshPromptDetails,
-    useTogglePromptStatus,
-    useUpdatePrompt,
-    type PromptTemplate,
-    type PromptTemplateCategory,
-    type PromptTemplateStatus,
-    type PromptVariable,
-    type PromptVersion,
-} from '../api/prompts'
-import { useTenantsInfinite, type Tenant } from '../api/tenants'
-import {
-    ConfirmDialog,
-    StatusBadge,
-} from '../components'
+  useCreatePrompt,
+  useDeletePrompt,
+  usePromptTemplate,
+  usePromptTemplatesInfinite,
+  usePromptUsageStats,
+  usePromptVersions,
+  useRefreshPromptDetails,
+  useTogglePromptStatus,
+  useUpdatePrompt,
+  type PromptTemplate,
+  type PromptTemplateCategory,
+  type PromptTemplateStatus,
+  type PromptVariable,
+  type PromptVersion,
+} from '../api/prompts';
+import { useTenantsInfinite, type Tenant } from '../api/tenants';
+import { ConfirmDialog, StatusBadge } from '../components';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -101,7 +53,7 @@ const promptVariableSchema = z.object({
   required: z.boolean(),
   default: z.string().optional(),
   description: z.string().optional(),
-})
+});
 
 const createSchema = z.object({
   name: z.string().min(1, 'Name is required').max(128).default(''),
@@ -111,7 +63,7 @@ const createSchema = z.object({
   content: z.string().min(1, 'Prompt content is required').default(''),
   tags: z.string().default(''),
   variables: z.array(promptVariableSchema).default([]),
-})
+});
 
 const editSchema = z.object({
   description: z.string().max(512).default(''),
@@ -120,11 +72,12 @@ const editSchema = z.object({
   tags: z.string().default(''),
   changeReason: z.string().min(1, 'Change reason is required'),
   variables: z.array(promptVariableSchema).default([]),
-})
+});
 
-type CreateFormValues = z.infer<typeof createSchema>
-type EditFormValues = z.infer<typeof editSchema>
+type CreateFormValues = z.infer<typeof createSchema>;
+type EditFormValues = z.infer<typeof editSchema>;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function safeFieldProps(field: any) {
   return {
     ref: field.ref,
@@ -133,7 +86,7 @@ function safeFieldProps(field: any) {
     onChange: field.onChange,
     disabled: field.disabled,
     value: typeof field.value === 'string' ? field.value : '',
-  }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -146,54 +99,54 @@ const CATEGORY_COLORS: Record<PromptTemplateCategory, string> = {
   PRE_SUMMARY: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400',
   DNA_ANALYSIS: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
   CUSTOM: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
-}
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function relativeTime(dateStr?: string | null): string {
-  if (!dateStr) return '—'
-  const ms = Date.now() - new Date(dateStr).getTime()
-  const sec = Math.floor(ms / 1000)
-  const min = Math.floor(sec / 60)
-  const hr = Math.floor(min / 60)
-  const day = Math.floor(hr / 24)
-  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+  if (!dateStr) return '—';
+  const ms = Date.now() - new Date(dateStr).getTime();
+  const sec = Math.floor(ms / 1000);
+  const min = Math.floor(sec / 60);
+  const hr = Math.floor(min / 60);
+  const day = Math.floor(hr / 24);
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
   if (day > 30) {
     return new Date(dateStr).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
-    })
+    });
   }
-  if (day >= 1) return rtf.format(-day, 'day')
-  if (hr >= 1) return rtf.format(-hr, 'hour')
-  if (min >= 1) return rtf.format(-min, 'minute')
-  return rtf.format(-sec, 'second')
+  if (day >= 1) return rtf.format(-day, 'day');
+  if (hr >= 1) return rtf.format(-hr, 'hour');
+  if (min >= 1) return rtf.format(-min, 'minute');
+  return rtf.format(-sec, 'second');
 }
 
 function fmtDate(dateStr?: string | null): string {
-  if (!dateStr) return '—'
+  if (!dateStr) return '—';
   return new Date(dateStr).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  })
+  });
 }
 
 function parseTags(raw?: string): string[] {
-  if (!raw) return []
+  if (!raw) return [];
   return raw
     .split(',')
     .map((t) => t.trim())
-    .filter(Boolean)
+    .filter(Boolean);
 }
 
 function tagsToString(tags?: string[]): string {
-  return tags?.join(', ') ?? ''
+  return tags?.join(', ') ?? '';
 }
 
 // ---------------------------------------------------------------------------
@@ -202,77 +155,47 @@ function tagsToString(tags?: string[]): string {
 
 function CategoryBadge({ category }: { category: PromptTemplateCategory }) {
   return (
-    <Badge
-      variant="outline"
-      className={`text-xs ${CATEGORY_COLORS[category] ?? ''}`}
-    >
+    <Badge variant="outline" className={`text-xs ${CATEGORY_COLORS[category] ?? ''}`}>
       {category.replace('_', ' ')}
     </Badge>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
 // InfoRow
 // ---------------------------------------------------------------------------
 
-function InfoRow({
-  label,
-  value,
-  icon,
-  children,
-}: {
-  label: string
-  value?: string
-  icon?: React.ReactNode
-  children?: React.ReactNode
-}) {
+function InfoRow({ label, value, icon, children }: { label: string; value?: string; icon?: React.ReactNode; children?: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2.5">
-      {icon && (
-        <span className="text-muted-foreground mt-0.5 shrink-0">{icon}</span>
-      )}
+      {icon && <span className="text-muted-foreground mt-0.5 shrink-0">{icon}</span>}
       <div className="min-w-0">
         <p className="text-muted-foreground text-xs leading-none">{label}</p>
-        <div className="mt-1">
-          {children ?? (
-            <p className="text-sm font-medium leading-none">{value ?? '—'}</p>
-          )}
-        </div>
+        <div className="mt-1">{children ?? <p className="text-sm font-medium leading-none">{value ?? '—'}</p>}</div>
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
 // VariableEditor — inline variable list editor
 // ---------------------------------------------------------------------------
 
-function VariableEditor({
-  variables: rawVariables,
-  onChange,
-}: {
-  variables: PromptVariable[]
-  onChange: (vars: PromptVariable[]) => void
-}) {
-  const variables = Array.isArray(rawVariables) ? rawVariables : []
+function VariableEditor({ variables: rawVariables, onChange }: { variables: PromptVariable[]; onChange: (vars: PromptVariable[]) => void }) {
+  const variables = Array.isArray(rawVariables) ? rawVariables : [];
 
   const addVariable = () => {
-    onChange([
-      ...variables,
-      { name: '', type: 'string', required: false, description: '' },
-    ])
-  }
+    onChange([...variables, { name: '', type: 'string', required: false, description: '' }]);
+  };
 
   const removeVariable = (index: number) => {
-    onChange(variables.filter((_, i) => i !== index))
-  }
+    onChange(variables.filter((_, i) => i !== index));
+  };
 
   const updateVariable = (index: number, field: string, value: unknown) => {
-    const updated = variables.map((v, i) =>
-      i === index ? { ...v, [field]: value } : v,
-    )
-    onChange(updated)
-  }
+    const updated = variables.map((v, i) => (i === index ? { ...v, [field]: value } : v));
+    onChange(updated);
+  };
 
   return (
     <div className="space-y-3">
@@ -284,32 +207,19 @@ function VariableEditor({
         </Button>
       </div>
       {variables.length === 0 ? (
-        <p className="text-muted-foreground text-xs">
-          No variables defined. Variables use {'{{variable_name}}'} syntax in
-          prompt content.
-        </p>
+        <p className="text-muted-foreground text-xs">No variables defined. Variables use {'{{variable_name}}'} syntax in prompt content.</p>
       ) : (
         <div className="space-y-2">
           {variables.map((v, i) => (
-            <div
-              key={i}
-              className="bg-muted/30 flex items-start gap-2 rounded-lg border p-3"
-            >
+            <div key={i} className="bg-muted/30 flex items-start gap-2 rounded-lg border p-3">
               <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-4">
                 <Input
                   placeholder="Name"
                   value={v.name}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    updateVariable(i, 'name', e.target.value)
-                  }
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateVariable(i, 'name', e.target.value)}
                   className="h-8 text-xs"
                 />
-                <Select
-                  value={v.type}
-                  onValueChange={(val: string) =>
-                    updateVariable(i, 'type', val)
-                  }
-                >
+                <Select value={v.type} onValueChange={(val: string) => updateVariable(i, 'type', val)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -323,9 +233,7 @@ function VariableEditor({
                 <Input
                   placeholder="Description"
                   value={v.description ?? ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    updateVariable(i, 'description', e.target.value)
-                  }
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateVariable(i, 'description', e.target.value)}
                   className="h-8 text-xs"
                 />
                 <div className="flex items-center gap-2">
@@ -333,20 +241,12 @@ function VariableEditor({
                     <input
                       type="checkbox"
                       checked={v.required}
-                      onChange={(e) =>
-                        updateVariable(i, 'required', e.target.checked)
-                      }
+                      onChange={(e) => updateVariable(i, 'required', e.target.checked)}
                       className="size-3.5 rounded"
                     />
                     Required
                   </label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="ml-auto size-6"
-                    onClick={() => removeVariable(i)}
-                  >
+                  <Button type="button" variant="ghost" size="icon" className="ml-auto size-6" onClick={() => removeVariable(i)}>
                     <Trash2 className="size-3" />
                   </Button>
                 </div>
@@ -356,7 +256,7 @@ function VariableEditor({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -371,7 +271,7 @@ const EMPTY_CREATE_VALUES: CreateFormValues = {
   content: '',
   tags: '',
   variables: [],
-}
+};
 
 function CreatePromptDialog({
   open,
@@ -379,50 +279,43 @@ function CreatePromptDialog({
   isPending,
   onSubmit,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  isPending: boolean
-  onSubmit: (values: CreateFormValues) => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  isPending: boolean;
+  onSubmit: (values: CreateFormValues) => void;
 }) {
   const form = useForm<CreateFormValues>({
     resolver: zodResolver(createSchema),
     defaultValues: EMPTY_CREATE_VALUES,
-  })
+  });
 
   useEffect(() => {
     if (open) {
-      form.reset(EMPTY_CREATE_VALUES)
+      form.reset(EMPTY_CREATE_VALUES);
     }
-  }, [open, form])
+  }, [open, form]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Create Prompt Template</DialogTitle>
-          <DialogDescription>
-            Define a new prompt template for AI generation workflows.
-          </DialogDescription>
+          <DialogDescription>Define a new prompt template for AI generation workflows.</DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="max-h-[65vh]">
           <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit(onSubmit)}
-              className="space-y-4 pr-4"
-            >
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pr-4">
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
                   name="name"
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   render={({ field }: { field: any }) => (
                     <FormItem>
                       <FormLabel>Name</FormLabel>
                       <FormControl>
-                        <Input
-                          placeholder="e.g. Cardiology Summary v2"
-                          {...safeFieldProps(field)}
-                        />
+                        <Input placeholder="e.g. Cardiology Summary v2" {...safeFieldProps(field)} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -432,13 +325,11 @@ function CreatePromptDialog({
                 <FormField
                   control={form.control}
                   name="category"
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   render={({ field }: { field: any }) => (
                     <FormItem>
                       <FormLabel>Category</FormLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                      >
+                      <Select value={field.value} onValueChange={field.onChange}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue />
@@ -447,9 +338,7 @@ function CreatePromptDialog({
                         <SelectContent>
                           <SelectItem value="SYSTEM">System</SelectItem>
                           <SelectItem value="SUMMARY">Summary</SelectItem>
-                          <SelectItem value="DNA_ANALYSIS">
-                            DNA Analysis
-                          </SelectItem>
+                          <SelectItem value="DNA_ANALYSIS">DNA Analysis</SelectItem>
                           <SelectItem value="CUSTOM">Custom</SelectItem>
                         </SelectContent>
                       </Select>
@@ -463,13 +352,11 @@ function CreatePromptDialog({
                 <FormField
                   control={form.control}
                   name="status"
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   render={({ field }: { field: any }) => (
                     <FormItem>
                       <FormLabel>Status</FormLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                      >
+                      <Select value={field.value} onValueChange={field.onChange}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue />
@@ -488,19 +375,15 @@ function CreatePromptDialog({
                 <FormField
                   control={form.control}
                   name="tags"
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   render={({ field }: { field: any }) => (
                     <FormItem>
                       <FormLabel>
                         Tags
-                        <span className="text-muted-foreground ml-1 text-xs font-normal">
-                          (comma-separated)
-                        </span>
+                        <span className="text-muted-foreground ml-1 text-xs font-normal">(comma-separated)</span>
                       </FormLabel>
                       <FormControl>
-                        <Input
-                          placeholder="cardiology, soap, v2"
-                          {...safeFieldProps(field)}
-                        />
+                        <Input placeholder="cardiology, soap, v2" {...safeFieldProps(field)} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -511,20 +394,15 @@ function CreatePromptDialog({
               <FormField
                 control={form.control}
                 name="description"
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 render={({ field }: { field: any }) => (
                   <FormItem>
                     <FormLabel>
                       Description
-                      <span className="text-muted-foreground ml-1 text-xs font-normal">
-                        (optional)
-                      </span>
+                      <span className="text-muted-foreground ml-1 text-xs font-normal">(optional)</span>
                     </FormLabel>
                     <FormControl>
-                      <Textarea
-                        placeholder="Brief description of what this prompt does…"
-                        rows={2}
-                        {...safeFieldProps(field)}
-                      />
+                      <Textarea placeholder="Brief description of what this prompt does…" rows={2} {...safeFieldProps(field)} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -534,6 +412,7 @@ function CreatePromptDialog({
               <FormField
                 control={form.control}
                 name="content"
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 render={({ field }: { field: any }) => (
                   <FormItem>
                     <FormLabel>Prompt Content</FormLabel>
@@ -553,13 +432,11 @@ function CreatePromptDialog({
               <FormField
                 control={form.control}
                 name="variables"
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 render={({ field }: { field: any }) => (
                   <FormItem>
                     <FormControl>
-                      <VariableEditor
-                        variables={field.value ?? []}
-                        onChange={field.onChange}
-                      />
+                      <VariableEditor variables={field.value ?? []} onChange={field.onChange} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -573,9 +450,7 @@ function CreatePromptDialog({
                   </Button>
                 </DialogClose>
                 <Button type="submit" disabled={isPending}>
-                  {isPending && (
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                  )}
+                  {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
                   Create Template
                 </Button>
               </DialogFooter>
@@ -584,7 +459,7 @@ function CreatePromptDialog({
         </ScrollArea>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -597,10 +472,10 @@ function InlinePromptVersionDetail({
   isPending,
   onSubmit,
 }: {
-  prompt: PromptTemplate
-  version: PromptVersion
-  isPending: boolean
-  onSubmit: (values: EditFormValues) => void
+  prompt: PromptTemplate;
+  version: PromptVersion;
+  isPending: boolean;
+  onSubmit: (values: EditFormValues) => void;
 }) {
   const form = useForm<EditFormValues>({
     resolver: zodResolver(editSchema),
@@ -612,7 +487,7 @@ function InlinePromptVersionDetail({
       changeReason: '',
       variables: [],
     },
-  })
+  });
 
   useEffect(() => {
     form.reset({
@@ -621,9 +496,9 @@ function InlinePromptVersionDetail({
       status: (prompt.status ?? 'DRAFT') as PromptTemplateStatus,
       tags: tagsToString(prompt.tags),
       changeReason: '',
-      variables: Array.isArray(version.variables) ? version.variables as EditFormValues['variables'] : [],
-    })
-  }, [version.id, prompt.id, form])
+      variables: Array.isArray(version.variables) ? (version.variables as EditFormValues['variables']) : [],
+    });
+  }, [version.id, prompt.id, form]);
 
   return (
     <div className="flex flex-col gap-5 p-4">
@@ -633,12 +508,8 @@ function InlinePromptVersionDetail({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold">
-              Version {version.versionNumber}
-            </h3>
-            {version.versionNumber === prompt.currentVersionNumber && (
-              <Badge variant="secondary">Active</Badge>
-            )}
+            <h3 className="text-lg font-semibold">Version {version.versionNumber}</h3>
+            {version.versionNumber === prompt.currentVersionNumber && <Badge variant="secondary">Active</Badge>}
             {prompt.resourceStatus && prompt.resourceStatus.toUpperCase() === 'DISABLED' && (
               <Badge variant="outline" className="bg-red-500/15 text-red-700 dark:text-red-400 text-xs">
                 DISABLED
@@ -655,22 +526,16 @@ function InlinePromptVersionDetail({
       <Separator />
 
       <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit(onSubmit)}
-          className="flex flex-col gap-4"
-        >
+        <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <FormField
             control={form.control}
             name="description"
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             render={({ field }: { field: any }) => (
               <FormItem>
                 <FormLabel>Description</FormLabel>
                 <FormControl>
-                  <Textarea
-                    placeholder="Brief description of what this prompt does…"
-                    rows={2}
-                    {...safeFieldProps(field)}
-                  />
+                  <Textarea placeholder="Brief description of what this prompt does…" rows={2} {...safeFieldProps(field)} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -681,13 +546,11 @@ function InlinePromptVersionDetail({
             <FormField
               control={form.control}
               name="status"
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               render={({ field }: { field: any }) => (
                 <FormItem>
                   <FormLabel>Status</FormLabel>
-                  <Select
-                    value={field.value}
-                    onValueChange={field.onChange}
-                  >
+                  <Select value={field.value} onValueChange={field.onChange}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue />
@@ -706,19 +569,15 @@ function InlinePromptVersionDetail({
             <FormField
               control={form.control}
               name="tags"
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               render={({ field }: { field: any }) => (
                 <FormItem>
                   <FormLabel>
                     Tags
-                    <span className="text-muted-foreground ml-1 text-xs font-normal">
-                      (comma-separated)
-                    </span>
+                    <span className="text-muted-foreground ml-1 text-xs font-normal">(comma-separated)</span>
                   </FormLabel>
                   <FormControl>
-                    <Input
-                      placeholder="cardiology, soap, v2"
-                      {...safeFieldProps(field)}
-                    />
+                    <Input placeholder="cardiology, soap, v2" {...safeFieldProps(field)} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -729,15 +588,12 @@ function InlinePromptVersionDetail({
           <FormField
             control={form.control}
             name="content"
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             render={({ field }: { field: any }) => (
               <FormItem>
                 <FormLabel>Prompt Content</FormLabel>
                 <FormControl>
-                  <Textarea
-                    rows={12}
-                    className="font-mono text-sm"
-                    {...safeFieldProps(field)}
-                  />
+                  <Textarea rows={12} className="font-mono text-sm" {...safeFieldProps(field)} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -747,13 +603,11 @@ function InlinePromptVersionDetail({
           <FormField
             control={form.control}
             name="variables"
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             render={({ field }: { field: any }) => (
               <FormItem>
                 <FormControl>
-                  <VariableEditor
-                    variables={field.value ?? []}
-                    onChange={field.onChange}
-                  />
+                  <VariableEditor variables={field.value ?? []} onChange={field.onChange} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -765,6 +619,7 @@ function InlinePromptVersionDetail({
           <FormField
             control={form.control}
             name="changeReason"
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             render={({ field }: { field: any }) => (
               <FormItem>
                 <FormLabel>
@@ -772,10 +627,7 @@ function InlinePromptVersionDetail({
                   <span className="text-destructive ml-0.5">*</span>
                 </FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="Describe what changed and why…"
-                    {...safeFieldProps(field)}
-                  />
+                  <Input placeholder="Describe what changed and why…" {...safeFieldProps(field)} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -784,16 +636,14 @@ function InlinePromptVersionDetail({
 
           <div className="flex justify-end">
             <Button type="submit" disabled={isPending}>
-              {isPending && (
-                <Loader2 className="mr-2 size-4 animate-spin" />
-              )}
+              {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
               Save as New Version
             </Button>
           </div>
         </form>
       </Form>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -807,22 +657,14 @@ function PromptDetailDialog({
   promptId,
   inline,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  tenantId: string
-  promptId: string | null
-  inline?: boolean
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  tenantId: string;
+  promptId: string | null;
+  inline?: boolean;
 }) {
-  const { data: prompt, isLoading: promptLoading } = usePromptTemplate(
-    tenantId,
-    promptId ?? '',
-    { enabled: !!promptId && open },
-  )
-  const { data: usage, isLoading: usageLoading } = usePromptUsageStats(
-    tenantId,
-    promptId ?? '',
-    { enabled: !!promptId && open },
-  )
+  const { data: prompt, isLoading: promptLoading } = usePromptTemplate(tenantId, promptId ?? '', { enabled: !!promptId && open });
+  const { data: usage, isLoading: usageLoading } = usePromptUsageStats(tenantId, promptId ?? '', { enabled: !!promptId && open });
 
   const content = promptLoading ? (
     <div className="flex flex-col gap-4 p-4">
@@ -844,49 +686,20 @@ function PromptDetailDialog({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-lg font-semibold">
-              {prompt.name}
-            </h3>
+            <h3 className="truncate text-lg font-semibold">{prompt.name}</h3>
             <CategoryBadge category={prompt.category} />
-            <StatusBadge
-              status={prompt.status ?? prompt.resourceStatus ?? 'DRAFT'}
-            />
+            <StatusBadge status={prompt.status ?? prompt.resourceStatus ?? 'DRAFT'} />
           </div>
-          {prompt.description && (
-            <p className="text-muted-foreground mt-0.5 text-sm">
-              {prompt.description}
-            </p>
-          )}
+          {prompt.description && <p className="text-muted-foreground mt-0.5 text-sm">{prompt.description}</p>}
         </div>
       </div>
 
       <div className="bg-muted/30 grid grid-cols-2 gap-4 rounded-lg border p-4">
-        <InfoRow
-          label="Version"
-          icon={<GitBranch className="size-3.5" />}
-          value={`v${prompt.currentVersionNumber}`}
-        />
-        <InfoRow
-          label="Created"
-          icon={<Calendar className="size-3.5" />}
-          value={fmtDate(prompt.createdAt)}
-        />
-        <InfoRow
-          label="Updated"
-          icon={<Clock className="size-3.5" />}
-          value={relativeTime(prompt.updatedAt)}
-        />
-        <InfoRow
-          label="Usage"
-          icon={<BarChart3 className="size-3.5" />}
-        >
-          {usageLoading ? (
-            <Skeleton className="h-4 w-16" />
-          ) : (
-            <p className="text-sm font-medium leading-none">
-              {usage?.totalUsages ?? 0} uses
-            </p>
-          )}
+        <InfoRow label="Version" icon={<GitBranch className="size-3.5" />} value={`v${prompt.currentVersionNumber}`} />
+        <InfoRow label="Created" icon={<Calendar className="size-3.5" />} value={fmtDate(prompt.createdAt)} />
+        <InfoRow label="Updated" icon={<Clock className="size-3.5" />} value={relativeTime(prompt.updatedAt)} />
+        <InfoRow label="Usage" icon={<BarChart3 className="size-3.5" />}>
+          {usageLoading ? <Skeleton className="h-4 w-16" /> : <p className="text-sm font-medium leading-none">{usage?.totalUsages ?? 0} uses</p>}
         </InfoRow>
       </div>
 
@@ -898,11 +711,7 @@ function PromptDetailDialog({
           </p>
           <div className="flex flex-wrap gap-1">
             {prompt.tags.map((tag) => (
-              <Badge
-                key={tag}
-                variant="secondary"
-                className="px-1.5 py-0 text-[10px] leading-5"
-              >
+              <Badge key={tag} variant="secondary" className="px-1.5 py-0 text-[10px] leading-5">
                 {tag}
               </Badge>
             ))}
@@ -918,27 +727,17 @@ function PromptDetailDialog({
           </p>
           <div className="flex flex-col gap-1.5">
             {prompt.variables.map((v) => (
-              <div
-                key={v.name}
-                className="bg-muted/30 flex items-center gap-3 rounded border px-3 py-2"
-              >
+              <div key={v.name} className="bg-muted/30 flex items-center gap-3 rounded border px-3 py-2">
                 <code className="text-xs font-medium">{`{{${v.name}}}`}</code>
                 <Badge variant="outline" className="text-[10px]">
                   {v.type}
                 </Badge>
                 {v.required && (
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] text-red-600"
-                  >
+                  <Badge variant="outline" className="text-[10px] text-red-600">
                     required
                   </Badge>
                 )}
-                {v.description && (
-                  <span className="text-muted-foreground text-xs">
-                    {v.description}
-                  </span>
-                )}
+                {v.description && <span className="text-muted-foreground text-xs">{v.description}</span>}
               </div>
             ))}
           </div>
@@ -946,9 +745,7 @@ function PromptDetailDialog({
       )}
 
       <div>
-        <p className="text-muted-foreground mb-2 text-xs font-medium">
-          Prompt Content
-        </p>
+        <p className="text-muted-foreground mb-2 text-xs font-medium">Prompt Content</p>
         <pre className="bg-muted/30 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border p-4 font-mono text-xs leading-relaxed">
           {prompt.content}
         </pre>
@@ -957,29 +754,23 @@ function PromptDetailDialog({
   ) : (
     <div className="flex flex-col items-center justify-center py-8">
       <FileText className="text-muted-foreground/50 mb-2 size-8" />
-      <p className="text-muted-foreground text-sm">
-        Prompt template not found.
-      </p>
+      <p className="text-muted-foreground text-sm">Prompt template not found.</p>
     </div>
-  )
+  );
 
-  if (inline) return content
+  if (inline) return content;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader className="sr-only">
           <DialogTitle>Prompt Template Details</DialogTitle>
-          <DialogDescription>
-            Full details and usage statistics.
-          </DialogDescription>
+          <DialogDescription>Full details and usage statistics.</DialogDescription>
         </DialogHeader>
-        <ScrollArea className="max-h-[70vh]">
-          {content}
-        </ScrollArea>
+        <ScrollArea className="max-h-[70vh]">{content}</ScrollArea>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -989,11 +780,11 @@ function PromptDetailDialog({
 export default function PromptManagementPage() {
   // ---- Tenant context for super admins ------------------------------------
 
-  const tenantKey = useAuthStore((s) => s.tenantKey)
-  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin)
-  const setTenantKey = useAuthStore((s) => s.setTenantKey)
+  const tenantKey = useAuthStore((s) => s.tenantKey);
+  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
+  const setTenantKey = useAuthStore((s) => s.setTenantKey);
 
-  const [selectedTenantId, setSelectedTenantId] = useState(tenantKey || '')
+  const [selectedTenantId, setSelectedTenantId] = useState(tenantKey || '');
 
   const {
     data: tenantsPages,
@@ -1002,68 +793,63 @@ export default function PromptManagementPage() {
     isFetchingNextPage: tenantsLoadingMore,
     isRefetching: tenantsRefreshing,
     refetch: refetchTenants,
-  } = useTenantsInfinite(25, { enabled: isSuperAdmin() })
-  const tenants = useMemo(
-    () => tenantsPages?.pages.flatMap((p) => p.data) ?? [],
-    [tenantsPages],
-  )
+  } = useTenantsInfinite(25, { enabled: isSuperAdmin() });
+  const tenants = useMemo(() => tenantsPages?.pages.flatMap((p) => p.data) ?? [], [tenantsPages]);
 
-  const effectiveTenantId = tenantKey || selectedTenantId
-  const hasTenantContext = !!effectiveTenantId
+  const effectiveTenantId = tenantKey || selectedTenantId;
+  const hasTenantContext = !!effectiveTenantId;
 
   useEffect(() => {
     if (tenantKey && tenantKey !== selectedTenantId) {
-      setSelectedTenantId(tenantKey)
+      setSelectedTenantId(tenantKey);
     }
-  }, [tenantKey, selectedTenantId])
+  }, [tenantKey, selectedTenantId]);
 
   const handleTenantSelect = useCallback(
     (tenantId: string) => {
-      if (tenantId === effectiveTenantId) return
-      setSelectedTenantId(tenantId)
-      setTenantKey(tenantId, tenants.find((t) => t.id === tenantId)?.name)
+      if (tenantId === effectiveTenantId) return;
+      setSelectedTenantId(tenantId);
+      setTenantKey(tenantId, tenants.find((t) => t.id === tenantId)?.name);
     },
     [effectiveTenantId, tenants, setTenantKey],
-  )
+  );
 
   // ---- UI state -----------------------------------------------------------
 
-  const [searchInput, setSearchInput] = useState('')
-  const [search, setSearchRaw] = useState('')
-  const [categoryFilter, setCategoryFilterRaw] = useState('_all')
-  const [statusFilter, setStatusFilterRaw] = useState('_all')
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearchRaw] = useState('');
+  const [categoryFilter, setCategoryFilterRaw] = useState('_all');
+  const [statusFilter, setStatusFilterRaw] = useState('_all');
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [createOpen, setCreateOpen] = useState(false)
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [selectedPrompt, setSelectedPrompt] = useState<PromptTemplate | null>(
-    null,
-  )
+  const [createOpen, setCreateOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [selectedPrompt, setSelectedPrompt] = useState<PromptTemplate | null>(null);
 
   useEffect(() => {
     if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current)
+      clearTimeout(searchTimeoutRef.current);
     }
 
     searchTimeoutRef.current = setTimeout(() => {
-      setSearchRaw(searchInput.trim())
-    }, 400)
+      setSearchRaw(searchInput.trim());
+    }, 400);
 
     return () => {
       if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current)
+        clearTimeout(searchTimeoutRef.current);
       }
-    }
-  }, [searchInput])
+    };
+  }, [searchInput]);
 
   // ---- Data ---------------------------------------------------------------
 
   const infiniteParams = useMemo(() => {
-    const p: Record<string, unknown> = { includeDisabled: true }
-    if (categoryFilter !== '_all') p.category = categoryFilter
-    if (search) p.search = search
-    return p
-  }, [categoryFilter, search])
+    const p: Record<string, unknown> = { includeDisabled: true };
+    if (categoryFilter !== '_all') p.category = categoryFilter;
+    if (search) p.search = search;
+    return p;
+  }, [categoryFilter, search]);
 
   const {
     data: promptsPages,
@@ -1073,30 +859,29 @@ export default function PromptManagementPage() {
     isFetchingNextPage: promptsLoadingMore,
     isRefetching: promptsRefreshing,
     refetch: refetchPrompts,
-  } = usePromptTemplatesInfinite(effectiveTenantId, infiniteParams as any)
+  } = usePromptTemplatesInfinite(
+    effectiveTenantId,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    infiniteParams as any,
+  );
 
-  const prompts = useMemo(
-    () => promptsPages?.pages.flatMap((p) => p.data) ?? [],
-    [promptsPages],
-  )
+  const prompts = useMemo(() => promptsPages?.pages.flatMap((p) => p.data) ?? [], [promptsPages]);
 
   const filteredPrompts = useMemo(() => {
-    let result = prompts
+    let result = prompts;
     if (statusFilter !== '_all') {
-      result = result.filter(
-        (p) => (p.status ?? 'DRAFT').toUpperCase() === statusFilter,
-      )
+      result = result.filter((p) => (p.status ?? 'DRAFT').toUpperCase() === statusFilter);
     }
-    return result
-  }, [prompts, statusFilter])
+    return result;
+  }, [prompts, statusFilter]);
 
   // ---- Mutations ----------------------------------------------------------
 
-  const createMutation = useCreatePrompt(effectiveTenantId)
-  const updateMutation = useUpdatePrompt(effectiveTenantId)
-  const deleteMutation = useDeletePrompt(effectiveTenantId)
-  const toggleMutation = useTogglePromptStatus(effectiveTenantId)
-  const refreshPromptDetails = useRefreshPromptDetails(effectiveTenantId)
+  const createMutation = useCreatePrompt(effectiveTenantId);
+  const updateMutation = useUpdatePrompt(effectiveTenantId);
+  const deleteMutation = useDeletePrompt(effectiveTenantId);
+  const toggleMutation = useTogglePromptStatus(effectiveTenantId);
+  const refreshPromptDetails = useRefreshPromptDetails(effectiveTenantId);
 
   // ---- Handlers -----------------------------------------------------------
 
@@ -1114,20 +899,19 @@ export default function PromptManagementPage() {
         },
         {
           onSuccess: () => {
-            toast.success('Prompt template created')
-            setCreateOpen(false)
+            toast.success('Prompt template created');
+            setCreateOpen(false);
           },
-          onError: (err) =>
-            toast.error(`Failed to create prompt: ${err.message}`),
+          onError: (err) => toast.error(`Failed to create prompt: ${err.message}`),
         },
-      )
+      );
     },
     [createMutation],
-  )
+  );
 
   const handleEdit = useCallback(
     (values: EditFormValues) => {
-      if (!selectedPrompt) return
+      if (!selectedPrompt) return;
       updateMutation.mutate(
         {
           id: selectedPrompt.id,
@@ -1140,101 +924,86 @@ export default function PromptManagementPage() {
         },
         {
           onSuccess: () => {
-            toast.success('New version created')
-            setSelectedVersionIds([])
+            toast.success('New version created');
+            setSelectedVersionIds([]);
           },
-          onError: (err) =>
-            toast.error(`Failed to create version: ${err.message}`),
+          onError: (err) => toast.error(`Failed to create version: ${err.message}`),
         },
-      )
+      );
     },
     [selectedPrompt, updateMutation],
-  )
+  );
 
   const handleDelete = useCallback(() => {
-    if (!selectedPrompt) return
+    if (!selectedPrompt) return;
     deleteMutation.mutate(selectedPrompt.id, {
       onSuccess: () => {
-        toast.success(`Prompt "${selectedPrompt.name}" deleted`)
-        setDeleteOpen(false)
-        setSelectedPrompt(null)
+        toast.success(`Prompt "${selectedPrompt.name}" deleted`);
+        setDeleteOpen(false);
+        setSelectedPrompt(null);
       },
-      onError: (err) =>
-        toast.error(`Failed to delete prompt: ${err.message}`),
-    })
-  }, [selectedPrompt, deleteMutation])
+      onError: (err) => toast.error(`Failed to delete prompt: ${err.message}`),
+    });
+  }, [selectedPrompt, deleteMutation]);
 
   const handleToggleStatus = useCallback(
     (prompt: PromptTemplate) => {
-      const current = (prompt.resourceStatus ?? 'ENABLED').toUpperCase()
-      const next = current === 'ENABLED' ? 'DISABLED' : 'ENABLED'
+      const current = (prompt.resourceStatus ?? 'ENABLED').toUpperCase();
+      const next = current === 'ENABLED' ? 'DISABLED' : 'ENABLED';
       toggleMutation.mutate(
         { id: prompt.id, resourceStatus: next },
         {
-          onSuccess: () =>
-            toast.success(
-              `Prompt ${next === 'ENABLED' ? 'enabled' : 'disabled'}`,
-            ),
-          onError: (err) =>
-            toast.error(`Status update failed: ${err.message}`),
+          onSuccess: () => toast.success(`Prompt ${next === 'ENABLED' ? 'enabled' : 'disabled'}`),
+          onError: (err) => toast.error(`Status update failed: ${err.message}`),
         },
-      )
+      );
     },
     [toggleMutation],
-  )
+  );
 
   // ---- Version state for 4th column ----------------------------------------
 
-  const [selectedVersionIds, setSelectedVersionIds] = useState<string[]>([])
+  const [selectedVersionIds, setSelectedVersionIds] = useState<string[]>([]);
 
   const {
     data: versions = [],
     isLoading: versionsLoading,
     isRefetching: versionsRefreshing,
     refetch: refetchVersions,
-  } = usePromptVersions(
-    effectiveTenantId,
-    selectedPrompt?.id ?? '',
-    { enabled: !!selectedPrompt },
-  )
+  } = usePromptVersions(effectiveTenantId, selectedPrompt?.id ?? '', { enabled: !!selectedPrompt });
 
-  const sortedVersions = useMemo(
-    () => [...versions].sort((a, b) => b.versionNumber - a.versionNumber),
-    [versions],
-  )
+  const sortedVersions = useMemo(() => [...versions].sort((a, b) => b.versionNumber - a.versionNumber), [versions]);
 
   const selectedVersions = useMemo(
-    () => selectedVersionIds
-      .map((id) => sortedVersions.find((v) => v.id === id))
-      .filter((v): v is PromptVersion => Boolean(v)),
+    () => selectedVersionIds.map((id) => sortedVersions.find((v) => v.id === id)).filter((v): v is PromptVersion => Boolean(v)),
     [sortedVersions, selectedVersionIds],
-  )
+  );
 
-  const selectedVersion = selectedVersions.length === 1 ? selectedVersions[0]! : null
-  const selectedVersionId = selectedVersionIds[0] ?? null
+  const selectedVersion = selectedVersions.length === 1 ? selectedVersions[0]! : null;
+  const selectedVersionId = selectedVersionIds[0] ?? null;
 
   const handleVersionSelect = useCallback((versionId: string) => {
     setSelectedVersionIds((prev) => {
-      if (prev.includes(versionId)) return prev.filter((id) => id !== versionId)
-      if (prev.length >= 2) return [prev[1]!, versionId]
-      return [...prev, versionId]
-    })
-  }, [])
+      if (prev.includes(versionId)) return prev.filter((id) => id !== versionId);
+      if (prev.length >= 2) return [prev[1]!, versionId];
+      return [...prev, versionId];
+    });
+  }, []);
 
   useEffect(() => {
     // Tenant scope changed: reset dependent selection state.
-    setSelectedPrompt(null)
-    setSelectedVersionIds([])
-  }, [effectiveTenantId])
+    setSelectedPrompt(null);
+    setSelectedVersionIds([]);
+  }, [effectiveTenantId]);
 
   useEffect(() => {
-    if (!selectedPrompt) return
+    if (!selectedPrompt) return;
 
-    const latestSelectedPrompt = filteredPrompts.find((p) => p.id === selectedPrompt.id)
+    const latestSelectedPrompt = filteredPrompts.find((p) => p.id === selectedPrompt.id);
     if (!latestSelectedPrompt) {
-      setSelectedPrompt(null)
-      setSelectedVersionIds([])
-      return
+      setSelectedPrompt(null);
+      setSelectedVersionIds([]);
+      return;
     }
 
     if (
@@ -1243,34 +1012,32 @@ export default function PromptManagementPage() {
       latestSelectedPrompt.currentVersionNumber !== selectedPrompt.currentVersionNumber ||
       latestSelectedPrompt.resourceStatus !== selectedPrompt.resourceStatus
     ) {
-      setSelectedPrompt(latestSelectedPrompt)
+      setSelectedPrompt(latestSelectedPrompt);
     }
-  }, [filteredPrompts, selectedPrompt])
+  }, [filteredPrompts, selectedPrompt]);
 
   useEffect(() => {
     if (sortedVersions.length > 0 && selectedVersionIds.length === 0) {
-      setSelectedVersionIds([sortedVersions[0]!.id])
+      setSelectedVersionIds([sortedVersions[0]!.id]);
     }
-  }, [sortedVersions, selectedVersionIds.length])
+  }, [sortedVersions, selectedVersionIds.length]);
 
   useEffect(() => {
-    setSelectedVersionIds((prev) =>
-      {
-        const next = prev.filter((id) => sortedVersions.some((v) => v.id === id))
-        if (next.length === prev.length && next.every((id, index) => id === prev[index])) {
-          return prev
-        }
-        return next
-      },
-    )
-  }, [sortedVersions])
+    setSelectedVersionIds((prev) => {
+      const next = prev.filter((id) => sortedVersions.some((v) => v.id === id));
+      if (next.length === prev.length && next.every((id, index) => id === prev[index])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [sortedVersions]);
 
   const refreshVersions = useCallback(() => {
-    if (!selectedPrompt) return
+    if (!selectedPrompt) return;
 
-    void refreshPromptDetails(selectedPrompt.id)
-    void refetchVersions()
-  }, [refetchVersions, refreshPromptDetails, selectedPrompt])
+    void refreshPromptDetails(selectedPrompt.id);
+    void refetchVersions();
+  }, [refetchVersions, refreshPromptDetails, selectedPrompt]);
 
   // ---- Multi-column layout ------------------------------------------------
 
@@ -1285,7 +1052,7 @@ export default function PromptManagementPage() {
     emptyIcon: <Building2 className="size-5" />,
     emptyTitle: 'No tenants available',
     onRefresh: () => {
-      void refetchTenants()
+      void refetchTenants();
     },
     isRefreshing: tenantsRefreshing,
     keyExtractor: (t) => t.id,
@@ -1297,7 +1064,7 @@ export default function PromptManagementPage() {
         </div>
       </div>
     ),
-  }
+  };
 
   const tenantsState: MultiColumnState<Tenant> = {
     data: tenants,
@@ -1307,7 +1074,7 @@ export default function PromptManagementPage() {
     hasMore: !!tenantsHasMore,
     onLoadMore: () => fetchNextTenants(),
     isLoadingMore: tenantsLoadingMore,
-  }
+  };
 
   const promptsColumn: MultiColumnConfig<PromptTemplate> = {
     id: 'prompts',
@@ -1326,12 +1093,7 @@ export default function PromptManagementPage() {
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchInput(e.target.value)}
             className="h-7 flex-1 text-xs"
           />
-          <Button
-            size="sm"
-            className="h-7 gap-1 text-xs"
-            onClick={() => setCreateOpen(true)}
-            disabled={!hasTenantContext}
-          >
+          <Button size="sm" className="h-7 gap-1 text-xs" onClick={() => setCreateOpen(true)} disabled={!hasTenantContext}>
             <Plus className="size-3.5" />
             New
           </Button>
@@ -1364,32 +1126,27 @@ export default function PromptManagementPage() {
     ),
     emptyIcon: <FileText className="size-5" />,
     emptyTitle: !hasTenantContext ? 'No tenant selected' : 'No prompt templates',
-    emptyDescription: !hasTenantContext
-      ? 'Select a tenant to view prompts.'
-      : 'Create a prompt template to get started.',
+    emptyDescription: !hasTenantContext ? 'Select a tenant to view prompts.' : 'Create a prompt template to get started.',
     onRefresh: hasTenantContext
       ? () => {
-        void refetchPrompts()
-      }
+          void refetchPrompts();
+        }
       : undefined,
     isRefreshing: promptsRefreshing,
     keyExtractor: (p) => p.id,
     renderItem: (p) => {
-      const isEnabled = (p.resourceStatus ?? 'ENABLED').toUpperCase() === 'ENABLED'
+      const isEnabled = (p.resourceStatus ?? 'ENABLED').toUpperCase() === 'ENABLED';
       return (
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <p className={cn('truncate text-sm font-medium', !isEnabled && 'text-muted-foreground line-through')}>
-                {p.name}
-              </p>
+              <p className={cn('truncate text-sm font-medium', !isEnabled && 'text-muted-foreground line-through')}>{p.name}</p>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               <CategoryBadge category={p.category} />
               <StatusBadge status={p.status ?? 'DRAFT'} />
               <span className="text-muted-foreground flex items-center gap-1 text-xs">
-                <GitBranch className="size-3" />
-                v{p.currentVersionNumber}
+                <GitBranch className="size-3" />v{p.currentVersionNumber}
               </span>
             </div>
           </div>
@@ -1401,9 +1158,9 @@ export default function PromptManagementPage() {
             size="sm"
           />
         </div>
-      )
+      );
     },
-  }
+  };
 
   const promptsState: MultiColumnState<PromptTemplate> = {
     data: filteredPrompts,
@@ -1411,15 +1168,15 @@ export default function PromptManagementPage() {
     enabled: hasTenantContext,
     selectedId: selectedPrompt?.id ?? null,
     onSelect: (id) => {
-      if (id === selectedPrompt?.id) return
-      const p = filteredPrompts.find((x) => x.id === id) ?? null
-      setSelectedPrompt(p)
-      setSelectedVersionIds([])
+      if (id === selectedPrompt?.id) return;
+      const p = filteredPrompts.find((x) => x.id === id) ?? null;
+      setSelectedPrompt(p);
+      setSelectedVersionIds([]);
     },
     hasMore: !!promptsHasMore,
     onLoadMore: () => fetchNextPrompts(),
     isLoadingMore: promptsLoadingMore,
-  }
+  };
 
   const versionsColumn: MultiColumnConfig<PromptVersion> = {
     id: 'versions',
@@ -1441,12 +1198,7 @@ export default function PromptManagementPage() {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-destructive size-7"
-                onClick={() => setDeleteOpen(true)}
-              >
+              <Button variant="ghost" size="icon" className="text-destructive size-7" onClick={() => setDeleteOpen(true)}>
                 <Trash2 className="size-3.5" />
               </Button>
             </TooltipTrigger>
@@ -1457,13 +1209,11 @@ export default function PromptManagementPage() {
     ) : undefined,
     emptyIcon: <History className="size-5" />,
     emptyTitle: !selectedPrompt ? 'No prompt selected' : 'No versions',
-    emptyDescription: !selectedPrompt
-      ? 'Select a prompt to view versions.'
-      : undefined,
+    emptyDescription: !selectedPrompt ? 'Select a prompt to view versions.' : undefined,
     onRefresh: selectedPrompt
       ? () => {
-        refreshVersions()
-      }
+          refreshVersions();
+        }
       : undefined,
     isRefreshing: versionsRefreshing,
     keyExtractor: (v) => v.id,
@@ -1473,16 +1223,16 @@ export default function PromptManagementPage() {
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium">v{v.versionNumber}</span>
             {v.versionNumber === selectedPrompt?.currentVersionNumber && (
-              <Badge variant="secondary" className="text-[10px]">active</Badge>
+              <Badge variant="secondary" className="text-[10px]">
+                active
+              </Badge>
             )}
           </div>
-          <p className="text-muted-foreground truncate text-xs">
-            {v.changeReason || relativeTime(v.createdAt)}
-          </p>
+          <p className="text-muted-foreground truncate text-xs">{v.changeReason || relativeTime(v.createdAt)}</p>
         </div>
       </div>
     ),
-  }
+  };
 
   const versionsState: MultiColumnState<PromptVersion> = {
     data: sortedVersions,
@@ -1491,80 +1241,62 @@ export default function PromptManagementPage() {
     selectedId: selectedVersionIds[0] ?? null,
     selectedIds: selectedVersionIds,
     onSelect: handleVersionSelect,
-  }
+  };
 
   const detailColumn: MultiColumnContentConfig = {
     type: 'content',
     id: 'detail',
     title: selectedVersions.length === 2 ? 'Version Diff' : 'Version Detail',
-    subtitle: selectedVersions.length === 2
-      ? `v${selectedVersions[0]!.versionNumber} vs v${selectedVersions[1]!.versionNumber}`
-      : selectedVersion
-        ? `v${selectedVersion.versionNumber}`
-        : selectedPrompt
-          ? selectedPrompt.name
-          : 'Select a version',
+    subtitle:
+      selectedVersions.length === 2
+        ? `v${selectedVersions[0]!.versionNumber} vs v${selectedVersions[1]!.versionNumber}`
+        : selectedVersion
+          ? `v${selectedVersion.versionNumber}`
+          : selectedPrompt
+            ? selectedPrompt.name
+            : 'Select a version',
     width: '1fr',
     emptyIcon: <Eye className="size-5" />,
-    emptyTitle: !selectedPrompt
-      ? 'No prompt selected'
-      : selectedVersionIds.length === 0
-        ? 'No version selected'
-        : 'Version not found',
-    emptyDescription: !selectedPrompt
-      ? 'Select a prompt template from the list.'
-      : 'Select one version for detail or two for diff.',
+    emptyTitle: !selectedPrompt ? 'No prompt selected' : selectedVersionIds.length === 0 ? 'No version selected' : 'Version not found',
+    emptyDescription: !selectedPrompt ? 'Select a prompt template from the list.' : 'Select one version for detail or two for diff.',
     onRefresh: selectedPrompt
       ? () => {
-        refreshVersions()
-      }
+          refreshVersions();
+        }
       : undefined,
     isRefreshing: promptsRefreshing || versionsRefreshing,
     renderContent: () => {
       if (selectedVersions.length === 2 && selectedPrompt) {
-        const [left, right] = [...selectedVersions].sort(
-          (a, b) => a.versionNumber - b.versionNumber,
-        )
+        const [left, right] = [...selectedVersions].sort((a, b) => a.versionNumber - b.versionNumber);
         return (
           <VersionDiffPanel
             left={{ versionNumber: left.versionNumber, date: left.createdAt, changeReason: left.changeReason }}
             right={{ versionNumber: right.versionNumber, date: right.createdAt, changeReason: right.changeReason }}
-            sections={[{
-              label: 'Prompt Content',
-              oldText: left.content || '',
-              newText: right.content || '',
-            }]}
+            sections={[
+              {
+                label: 'Prompt Content',
+                oldText: left.content || '',
+                newText: right.content || '',
+              },
+            ]}
             contentClassName="font-mono text-sm"
           />
-        )
+        );
       }
 
       if (selectedVersionId && selectedVersion && selectedPrompt) {
         return (
-          <InlinePromptVersionDetail
-            prompt={selectedPrompt}
-            version={selectedVersion}
-            isPending={updateMutation.isPending}
-            onSubmit={handleEdit}
-          />
-        )
+          <InlinePromptVersionDetail prompt={selectedPrompt} version={selectedVersion} isPending={updateMutation.isPending} onSubmit={handleEdit} />
+        );
       }
 
       if (selectedPrompt && !selectedVersionId) {
-        return (
-          <PromptDetailDialog
-            open
-            onOpenChange={() => {}}
-            tenantId={effectiveTenantId}
-            promptId={selectedPrompt.id}
-            inline
-          />
-        )
+        return <PromptDetailDialog open onOpenChange={() => {}} tenantId={effectiveTenantId} promptId={selectedPrompt.id} inline />;
       }
 
-      return null
+      return null;
     },
-  }
+  };
 
   const detailState: MultiColumnState<never> = {
     data: [],
@@ -1572,50 +1304,30 @@ export default function PromptManagementPage() {
     enabled: !!selectedPrompt,
     selectedId: null,
     onSelect: () => {},
-  }
+  };
 
   // ---- Render -------------------------------------------------------------
 
   return (
     <Main>
       <div className="mb-4">
-        <h2 className="text-2xl font-bold tracking-tight">
-          Prompt Templates
-        </h2>
-        <p className="text-muted-foreground mt-1">
-          Create, edit, and manage prompt templates used for AI generation
-          across departments.
-        </p>
+        <h2 className="text-2xl font-bold tracking-tight">Prompt Templates</h2>
+        <p className="text-muted-foreground mt-1">Create, edit, and manage prompt templates used for AI generation across departments.</p>
       </div>
 
       <MultiColumnLayout
-        columns={[
-          ...(isSuperAdmin() ? [tenantsColumn] : []),
-          promptsColumn,
-          versionsColumn,
-          detailColumn,
-        ]}
-        columnStates={[
-          ...(isSuperAdmin() ? [tenantsState] : []),
-          promptsState,
-          versionsState,
-          detailState,
-        ]}
+        columns={[...(isSuperAdmin() ? [tenantsColumn] : []), promptsColumn, versionsColumn, detailColumn]}
+        columnStates={[...(isSuperAdmin() ? [tenantsState] : []), promptsState, versionsState, detailState]}
         height="calc(100vh - 12rem)"
       />
 
-      <CreatePromptDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        isPending={createMutation.isPending}
-        onSubmit={handleCreate}
-      />
+      <CreatePromptDialog open={createOpen} onOpenChange={setCreateOpen} isPending={createMutation.isPending} onSubmit={handleCreate} />
 
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={(v) => {
-          setDeleteOpen(v)
-          if (!v) setSelectedPrompt(null)
+          setDeleteOpen(v);
+          if (!v) setSelectedPrompt(null);
         }}
         title="Delete Prompt Template"
         description={`Are you sure you want to delete "${selectedPrompt?.name}"? This action cannot be undone.`}
@@ -1625,5 +1337,5 @@ export default function PromptManagementPage() {
         isLoading={deleteMutation.isPending}
       />
     </Main>
-  )
+  );
 }

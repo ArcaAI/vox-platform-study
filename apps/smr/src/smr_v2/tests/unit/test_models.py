@@ -7,8 +7,7 @@ then we write minimal code to make them pass (GREEN).
 from __future__ import annotations
 
 import pytest
-from datetime import datetime, timezone
-
+from pydantic import ValidationError
 
 # ── TaskStatus enum ──
 
@@ -138,17 +137,17 @@ class TestGenerateRequest:
 
     def test_empty_prompt_rejected(self):
         from smr_v2.models.requests import GenerateRequest
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="")
 
     def test_negative_max_tokens_rejected(self):
         from smr_v2.models.requests import GenerateRequest
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="hi", max_tokens=-1)
 
     def test_temperature_out_of_range_rejected(self):
         from smr_v2.models.requests import GenerateRequest
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="hi", temperature=3.0)
 
 
@@ -236,8 +235,7 @@ class TestProviderModels:
         assert m.name == "llama3.2:latest"
 
     def test_provider_info(self):
-        from smr_v2.models.provider import ProviderInfo
-        from smr_v2.models.provider import ModelInfo
+        from smr_v2.models.provider import ModelInfo, ProviderInfo
         p = ProviderInfo(
             name="ollama",
             display_name="Ollama (Self-Hosted)",

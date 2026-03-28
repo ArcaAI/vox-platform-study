@@ -66,9 +66,9 @@ export class AudioContextManager {
       ) {
         console.warn(
           `[AudioContextManager] getInstance called with different options. ` +
-          `Existing: sampleRate=${existing.sampleRate}, latencyHint=${existing.latencyHint}. ` +
-          `Requested: sampleRate=${options.sampleRate}, latencyHint=${options.latencyHint}. ` +
-          `Using existing instance.`
+            `Existing: sampleRate=${existing.sampleRate}, latencyHint=${existing.latencyHint}. ` +
+            `Requested: sampleRate=${options.sampleRate}, latencyHint=${options.latencyHint}. ` +
+            `Using existing instance.`,
         );
       }
     }
@@ -192,10 +192,7 @@ export class AudioContextManager {
     const AudioContextCtor = getAudioContextConstructor();
 
     if (!AudioContextCtor) {
-      throw new RoomError(
-        RoomErrorCode.NOT_SUPPORTED,
-        'AudioContext is not supported in this browser'
-      );
+      throw new RoomError(RoomErrorCode.NOT_SUPPORTED, 'AudioContext is not supported in this browser');
     }
 
     const options: AudioContextOptions = {
@@ -253,10 +250,7 @@ export class AudioContextManager {
     if (!this.audioContext) return;
 
     try {
-      await Promise.race([
-        this.audioContext.resume(),
-        this.sleep(timeoutMs),
-      ]);
+      await Promise.race([this.audioContext.resume(), this.sleep(timeoutMs)]);
     } catch (error) {
       console.warn('Could not resume AudioContext:', error);
       // Set up click handler as fallback
@@ -330,9 +324,7 @@ export class AudioContextManager {
  * @param options - Optional configuration
  * @returns A new AudioContext or undefined if not supported
  */
-export function getNewAudioContext(
-  options?: Pick<RoomOptions, 'latencyHint' | 'sampleRate'>
-): AudioContext | undefined {
+export function getNewAudioContext(options?: Pick<RoomOptions, 'latencyHint' | 'sampleRate'>): AudioContext | undefined {
   const AudioContextCtor = getAudioContextConstructor();
 
   if (!AudioContextCtor) {
