@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { parseWithSchema, safeParseWithSchema } from "./parse";
+import { z } from 'zod';
+import { parseWithSchema, safeParseWithSchema } from './parse';
 
 export interface ToolUiContract<T> {
   schema: z.ZodType<T>;
@@ -7,10 +7,7 @@ export interface ToolUiContract<T> {
   safeParse: (input: unknown) => T | null;
 }
 
-export function defineToolUiContract<T>(
-  componentName: string,
-  schema: z.ZodType<T>,
-): ToolUiContract<T> {
+export function defineToolUiContract<T>(componentName: string, schema: z.ZodType<T>): ToolUiContract<T> {
   return {
     schema,
     parse: (input: unknown) => parseWithSchema(schema, input, componentName),

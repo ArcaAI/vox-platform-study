@@ -27,8 +27,4 @@ export { BaseProcessor } from './BaseProcessor.js';
 export { BaseTextProcessor, type TextProcessorOptions } from './BaseTextProcessor.js';
 
 // Native Processor
-export {
-  NativeProcessor,
-  createNativeProcessor,
-  type NativeProcessorOptions,
-} from './NativeProcessor.js';
+export { NativeProcessor, createNativeProcessor, type NativeProcessorOptions } from './NativeProcessor.js';

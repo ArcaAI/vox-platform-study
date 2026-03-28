@@ -1,24 +1,17 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from '../../../registries/basecn/card'
-import { Button } from '../../../registries/basecn/button'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../../registries/basecn/card';
+import { Button } from '../../../registries/basecn/button';
 
 const meta = {
   title: 'Registries/Basecn/Card',
   component: Card,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Card>
+} satisfies Meta<typeof Card>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -36,4 +29,4 @@ export const Default: Story = {
       </CardFooter>
     </Card>
   ),
-}
+};

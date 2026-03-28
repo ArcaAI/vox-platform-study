@@ -1,17 +1,16 @@
-'use client'
+'use client';
 
-import { Button } from '@/components/shadcn/button'
-import { cn } from '@/lib/utils'
-import { Check, ChevronLeft, ChevronRight, ShoppingCart, Star } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { Button } from '@/components/shadcn/button';
+import { cn } from '@/lib/utils';
+import { Check, ChevronLeft, ChevronRight, ShoppingCart, Star } from 'lucide-react';
+import { useCallback, useState } from 'react';
 
 // Import types from shared types file to avoid circular dependencies
-import type { Product } from './types'
+import type { Product } from './types';
 // Re-export for backward compatibility
-export type { Product } from './types'
+export type { Product } from './types';
 
-import { demoProducts } from './demo/list'
-
+import { demoProducts } from './demo/list';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -24,40 +23,40 @@ import { demoProducts } from './demo/list'
 export interface ProductListProps {
   data?: {
     /** Array of products to display in the list. */
-    products?: Product[]
-  }
+    products?: Product[];
+  };
   actions?: {
     /** Called when a user selects a product from the list. */
-    onSelectProduct?: (product: Product) => void
+    onSelectProduct?: (product: Product) => void;
     /** Called when products are added to cart (picker variant only). */
-    onAddToCart?: (products: Product[]) => void
-  }
+    onAddToCart?: (products: Product[]) => void;
+  };
   appearance?: {
     /**
      * Layout variant for displaying products.
      * @default "list"
      */
-    variant?: 'list' | 'grid' | 'carousel' | 'picker'
+    variant?: 'list' | 'grid' | 'carousel' | 'picker';
     /**
      * Currency code for price formatting (e.g., "USD", "EUR").
      * @default "EUR"
      */
-    currency?: string
+    currency?: string;
     /**
      * Number of columns for grid variant.
      * @default 4
      */
-    columns?: 3 | 4
+    columns?: 3 | 4;
     /**
      * Custom label for the add to cart button (picker variant).
      * @default "Add to cart"
      */
-    buttonLabel?: string
-  }
+    buttonLabel?: string;
+  };
   control?: {
     /** Index of the currently selected product. */
-    selectedProductIndex?: number
-  }
+    selectedProductIndex?: number;
+  };
 }
 
 // Horizontal card for list variant
@@ -65,12 +64,12 @@ function ProductHorizontalCard({
   product,
   selected,
   onSelect,
-  formatCurrency
+  formatCurrency,
 }: {
-  product: Product
-  selected: boolean
-  onSelect: () => void
-  formatCurrency: (value: number) => string
+  product: Product;
+  selected: boolean;
+  onSelect: () => void;
+  formatCurrency: (value: number) => string;
 }) {
   return (
     <button
@@ -78,19 +77,13 @@ function ProductHorizontalCard({
       disabled={!product.inStock}
       className={cn(
         'w-full flex items-center gap-3 rounded-[12px] border p-2 text-left transition-all cursor-pointer',
-        selected
-          ? 'bg-card border-foreground ring-1 ring-foreground'
-          : 'bg-card border-border hover:border-foreground/50',
-        !product.inStock && 'opacity-50 !cursor-not-allowed'
+        selected ? 'bg-card border-foreground ring-1 ring-foreground' : 'bg-card border-border hover:border-foreground/50',
+        !product.inStock && 'opacity-50 !cursor-not-allowed',
       )}
     >
       <div className="relative h-16 w-16 flex-shrink-0 rounded-md overflow-hidden">
         {product.image ? (
-          <img
-            src={product.image}
-            alt={product.name}
-            className="h-full w-full object-contain bg-muted/30"
-          />
+          <img src={product.image} alt={product.name} className="h-full w-full object-contain bg-muted/30" />
         ) : (
           <div className="h-full w-full bg-muted" />
         )}
@@ -98,9 +91,7 @@ function ProductHorizontalCard({
           <span
             className={cn(
               'absolute top-1 left-1 px-1 py-0.5 text-[8px] font-medium rounded',
-              product.badge.startsWith('-')
-                ? 'bg-foreground text-background'
-                : 'bg-background text-foreground border border-border'
+              product.badge.startsWith('-') ? 'bg-foreground text-background' : 'bg-background text-foreground border border-border',
             )}
           >
             {product.badge}
@@ -109,27 +100,15 @@ function ProductHorizontalCard({
       </div>
       <div className="flex-1 min-w-0 space-y-0.5">
         {product.name && <p className="text-sm font-medium truncate">{product.name}</p>}
-        {product.description && (
-          <p className="text-xs truncate text-muted-foreground">
-            {product.description}
-          </p>
-        )}
+        {product.description && <p className="text-xs truncate text-muted-foreground">{product.description}</p>}
         <div className="flex items-center gap-2">
-          {product.price !== undefined && (
-            <span className="text-sm font-semibold">
-              {formatCurrency(product.price)}
-            </span>
-          )}
-          {product.originalPrice && (
-            <span className="text-xs line-through text-muted-foreground">
-              {formatCurrency(product.originalPrice)}
-            </span>
-          )}
+          {product.price !== undefined && <span className="text-sm font-semibold">{formatCurrency(product.price)}</span>}
+          {product.originalPrice && <span className="text-xs line-through text-muted-foreground">{formatCurrency(product.originalPrice)}</span>}
         </div>
       </div>
       <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
     </button>
-  )
+  );
 }
 
 // List variant
@@ -137,12 +116,12 @@ function ListVariant({
   products,
   selected,
   onSelect,
-  formatCurrency
+  formatCurrency,
 }: {
-  products: Product[]
-  selected: number | undefined
-  onSelect: (product: Product, index: number) => void
-  formatCurrency: (value: number) => string
+  products: Product[];
+  selected: number | undefined;
+  onSelect: (product: Product, index: number) => void;
+  formatCurrency: (value: number) => string;
 }) {
   return (
     <div className="w-full space-y-2 p-1 sm:p-0">
@@ -156,7 +135,7 @@ function ListVariant({
         />
       ))}
     </div>
-  )
+  );
 }
 
 // Grid variant
@@ -165,24 +144,19 @@ function GridVariant({
   selected,
   onSelect,
   formatCurrency,
-  columns
+  columns,
 }: {
-  products: Product[]
-  selected: number | undefined
-  onSelect: (product: Product, index: number) => void
-  formatCurrency: (value: number) => string
-  columns: 3 | 4
+  products: Product[];
+  selected: number | undefined;
+  onSelect: (product: Product, index: number) => void;
+  formatCurrency: (value: number) => string;
+  columns: 3 | 4;
 }) {
-  const displayProducts = products.slice(0, columns)
+  const displayProducts = products.slice(0, columns);
 
   return (
     <div className="w-full p-1 sm:p-0">
-      <div
-        className={cn(
-          'grid gap-2 sm:gap-3 grid-cols-2',
-          columns === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'
-        )}
-      >
+      <div className={cn('grid gap-2 sm:gap-3 grid-cols-2', columns === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
         {displayProducts.map((product, index) => (
           <button
             key={index}
@@ -190,19 +164,13 @@ function GridVariant({
             disabled={!product.inStock}
             className={cn(
               'rounded-[12px] border text-left transition-all overflow-hidden cursor-pointer',
-              selected === index
-                ? 'bg-card border-foreground ring-1 ring-foreground'
-                : 'bg-card border-border hover:border-foreground/50',
-              !product.inStock && 'opacity-50 !cursor-not-allowed'
+              selected === index ? 'bg-card border-foreground ring-1 ring-foreground' : 'bg-card border-border hover:border-foreground/50',
+              !product.inStock && 'opacity-50 !cursor-not-allowed',
             )}
           >
             <div className="relative">
               {product.image ? (
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="aspect-square lg:h-28 lg:aspect-auto w-full object-contain bg-muted/30"
-                />
+                <img src={product.image} alt={product.name} className="aspect-square lg:h-28 lg:aspect-auto w-full object-contain bg-muted/30" />
               ) : (
                 <div className="aspect-square lg:h-28 lg:aspect-auto w-full bg-muted" />
               )}
@@ -210,9 +178,7 @@ function GridVariant({
                 <span
                   className={cn(
                     'absolute top-2 left-2 px-1.5 py-0.5 text-[10px] font-medium rounded',
-                    product.badge.startsWith('-')
-                      ? 'bg-foreground text-background'
-                      : 'bg-background text-foreground border border-border'
+                    product.badge.startsWith('-') ? 'bg-foreground text-background' : 'bg-background text-foreground border border-border',
                   )}
                 >
                   {product.badge}
@@ -220,27 +186,13 @@ function GridVariant({
               )}
             </div>
             <div className="p-2 sm:p-3 space-y-0.5 sm:space-y-1">
-              {product.name && (
-                <p className="text-xs sm:text-sm font-medium line-clamp-1">
-                  {product.name}
-                </p>
-              )}
-              {product.description && (
-                <p className="text-[10px] sm:text-xs line-clamp-1 text-muted-foreground">
-                  {product.description}
-                </p>
-              )}
+              {product.name && <p className="text-xs sm:text-sm font-medium line-clamp-1">{product.name}</p>}
+              {product.description && <p className="text-[10px] sm:text-xs line-clamp-1 text-muted-foreground">{product.description}</p>}
               <div className="flex items-center justify-between">
                 <div className="flex items-baseline gap-1">
-                  {product.price !== undefined && (
-                    <span className="text-xs sm:text-sm font-semibold">
-                      {formatCurrency(product.price)}
-                    </span>
-                  )}
+                  {product.price !== undefined && <span className="text-xs sm:text-sm font-semibold">{formatCurrency(product.price)}</span>}
                   {product.originalPrice && (
-                    <span className="text-[10px] sm:text-xs line-through text-muted-foreground">
-                      {formatCurrency(product.originalPrice)}
-                    </span>
+                    <span className="text-[10px] sm:text-xs line-through text-muted-foreground">{formatCurrency(product.originalPrice)}</span>
                   )}
                 </div>
                 {product.rating && (
@@ -250,17 +202,13 @@ function GridVariant({
                   </div>
                 )}
               </div>
-              {!product.inStock && (
-                <p className="text-[10px] sm:text-xs text-destructive">
-                  Out of stock
-                </p>
-              )}
+              {!product.inStock && <p className="text-[10px] sm:text-xs text-destructive">Out of stock</p>}
             </div>
           </button>
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 // Carousel variant
@@ -268,25 +216,25 @@ function CarouselVariant({
   products,
   selected,
   onSelect,
-  formatCurrency
+  formatCurrency,
 }: {
-  products: Product[]
-  selected: number | undefined
-  onSelect: (product: Product, index: number) => void
-  formatCurrency: (value: number) => string
+  products: Product[];
+  selected: number | undefined;
+  onSelect: (product: Product, index: number) => void;
+  formatCurrency: (value: number) => string;
 }) {
-  const [currentIndex, setCurrentIndex] = useState(0)
+  const [currentIndex, setCurrentIndex] = useState(0);
 
-  const CARD_WIDTH = 160
-  const GAP = 12
-  const desktopTransform = currentIndex * (CARD_WIDTH + GAP)
-  const tabletMaxIndex = Math.max(0, products.length - 2)
+  const CARD_WIDTH = 160;
+  const GAP = 12;
+  const desktopTransform = currentIndex * (CARD_WIDTH + GAP);
+  const tabletMaxIndex = Math.max(0, products.length - 2);
 
   const goLeft = () => {
     if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1)
+      setCurrentIndex(currentIndex - 1);
     }
-  }
+  };
 
   // Horizontal card for mobile/tablet
   const HorizontalCard = ({ product, index }: { product: Product; index: number }) => (
@@ -297,27 +245,17 @@ function CarouselVariant({
       className={cn(
         'w-full rounded-[12px] border text-left cursor-pointer',
         'flex items-center gap-3 p-2',
-        selected === index
-          ? 'bg-card border-foreground shadow-[0_0_0_1px] shadow-foreground'
-          : 'bg-card border-border hover:border-foreground/50',
-        !product.inStock && 'opacity-50 !cursor-not-allowed'
+        selected === index ? 'bg-card border-foreground shadow-[0_0_0_1px] shadow-foreground' : 'bg-card border-border hover:border-foreground/50',
+        !product.inStock && 'opacity-50 !cursor-not-allowed',
       )}
     >
       <div className="relative h-16 w-16 flex-shrink-0 rounded overflow-hidden bg-muted/30">
-        {product.image && (
-          <img
-            src={product.image}
-            alt={product.name}
-            className="h-full w-full object-contain"
-          />
-        )}
+        {product.image && <img src={product.image} alt={product.name} className="h-full w-full object-contain" />}
         {product.badge && (
           <span
             className={cn(
               'absolute top-1 left-1 px-1 py-0.5 text-[8px] font-medium rounded',
-              product.badge.startsWith('-')
-                ? 'bg-foreground text-background'
-                : 'bg-background text-foreground border'
+              product.badge.startsWith('-') ? 'bg-foreground text-background' : 'bg-background text-foreground border',
             )}
           >
             {product.badge}
@@ -326,26 +264,14 @@ function CarouselVariant({
       </div>
       <div className="flex-1 min-w-0">
         {product.name && <p className="text-sm font-medium truncate">{product.name}</p>}
-        {product.description && (
-          <p className="text-xs text-muted-foreground truncate">
-            {product.description}
-          </p>
-        )}
+        {product.description && <p className="text-xs text-muted-foreground truncate">{product.description}</p>}
         {product.price !== undefined && <p className="text-sm font-semibold">{formatCurrency(product.price)}</p>}
       </div>
     </button>
-  )
+  );
 
   // Dots component
-  const Dots = ({
-    count,
-    active,
-    onDotClick
-  }: {
-    count: number
-    active: number
-    onDotClick: (i: number) => void
-  }) => (
+  const Dots = ({ count, active, onDotClick }: { count: number; active: number; onDotClick: (i: number) => void }) => (
     <div className="flex justify-center gap-1.5 mt-3">
       {Array.from({ length: count }).map((_, i) => (
         <button
@@ -355,60 +281,41 @@ function CarouselVariant({
           aria-label={`Go to slide ${i + 1}`}
           className={cn(
             'h-1.5 rounded-full transition-all duration-300 cursor-pointer',
-            i === active
-              ? 'w-4 bg-foreground'
-              : 'w-1.5 bg-foreground/30 hover:bg-foreground/50'
+            i === active ? 'w-4 bg-foreground' : 'w-1.5 bg-foreground/30 hover:bg-foreground/50',
           )}
         />
       ))}
     </div>
-  )
+  );
 
-  const mobileProduct = products[currentIndex]
-  const tabletProducts = [
-    products[Math.min(currentIndex, tabletMaxIndex)],
-    products[Math.min(currentIndex, tabletMaxIndex) + 1]
-  ].filter(Boolean)
+  const mobileProduct = products[currentIndex];
+  const tabletProducts = [products[Math.min(currentIndex, tabletMaxIndex)], products[Math.min(currentIndex, tabletMaxIndex) + 1]].filter(Boolean);
 
   return (
     <div className="w-full">
       {/* Mobile: 1 card + dots */}
       <div className="sm:hidden px-0.5">
-        <div
-          key={currentIndex}
-          className="w-full animate-in fade-in slide-in-from-right-4 duration-300"
-        >
+        <div key={currentIndex} className="w-full animate-in fade-in slide-in-from-right-4 duration-300">
           {mobileProduct && <HorizontalCard product={mobileProduct} index={currentIndex} />}
         </div>
-        <Dots
-          count={products.length}
-          active={currentIndex}
-          onDotClick={(i) => setCurrentIndex(i)}
-        />
+        <Dots count={products.length} active={currentIndex} onDotClick={(i) => setCurrentIndex(i)} />
       </div>
 
       {/* Tablet: 2 cards + dots */}
       <div className="hidden sm:block lg:hidden px-0.5">
-        <div
-          key={Math.min(currentIndex, tabletMaxIndex)}
-          className="grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-right-4 duration-300"
-        >
+        <div key={Math.min(currentIndex, tabletMaxIndex)} className="grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
           {tabletProducts.map((product, i) => {
-            const productIndex = Math.min(currentIndex, tabletMaxIndex) + i
-            return <HorizontalCard key={productIndex} product={product} index={productIndex} />
+            const productIndex = Math.min(currentIndex, tabletMaxIndex) + i;
+            return <HorizontalCard key={productIndex} product={product} index={productIndex} />;
           })}
         </div>
-        <Dots
-          count={tabletMaxIndex + 1}
-          active={Math.min(currentIndex, tabletMaxIndex)}
-          onDotClick={(i) => setCurrentIndex(i)}
-        />
+        <Dots count={tabletMaxIndex + 1} active={Math.min(currentIndex, tabletMaxIndex)} onDotClick={(i) => setCurrentIndex(i)} />
       </div>
 
       {/* Desktop: multi-card carousel */}
       {(() => {
-        const desktopMaxIndex = Math.max(0, products.length - 4)
-        const isAtEnd = currentIndex >= desktopMaxIndex
+        const desktopMaxIndex = Math.max(0, products.length - 4);
+        const isAtEnd = currentIndex >= desktopMaxIndex;
         return (
           <div className="hidden lg:block relative">
             <button
@@ -418,7 +325,7 @@ function CarouselVariant({
               aria-label="Previous product"
               className={cn(
                 'absolute left-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm border shadow-sm flex items-center justify-center cursor-pointer',
-                currentIndex === 0 ? 'opacity-0' : 'hover:bg-background'
+                currentIndex === 0 ? 'opacity-0' : 'hover:bg-background',
               )}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -428,24 +335,21 @@ function CarouselVariant({
               type="button"
               onClick={() => {
                 if (currentIndex < desktopMaxIndex) {
-                  setCurrentIndex(currentIndex + 1)
+                  setCurrentIndex(currentIndex + 1);
                 }
               }}
               disabled={isAtEnd}
               aria-label="Next product"
               className={cn(
                 'absolute right-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm border shadow-sm flex items-center justify-center cursor-pointer',
-                isAtEnd ? 'opacity-0' : 'hover:bg-background'
+                isAtEnd ? 'opacity-0' : 'hover:bg-background',
               )}
             >
               <ChevronRight className="h-4 w-4" />
             </button>
 
             <div className="overflow-hidden py-1 -mx-1">
-              <div
-                className="flex gap-3 transition-transform duration-300 ease-out px-1"
-                style={{ transform: `translateX(-${desktopTransform}px)` }}
-              >
+              <div className="flex gap-3 transition-transform duration-300 ease-out px-1" style={{ transform: `translateX(-${desktopTransform}px)` }}>
                 {products.map((product, index) => (
                   <button
                     type="button"
@@ -454,27 +358,17 @@ function CarouselVariant({
                     disabled={!product.inStock}
                     className={cn(
                       'flex-shrink-0 w-40 rounded-[12px] border text-left cursor-pointer',
-                      selected === index
-                        ? 'bg-card border-foreground ring-1 ring-foreground'
-                        : 'bg-card border-border hover:border-foreground/50',
-                      !product.inStock && 'opacity-50 !cursor-not-allowed'
+                      selected === index ? 'bg-card border-foreground ring-1 ring-foreground' : 'bg-card border-border hover:border-foreground/50',
+                      !product.inStock && 'opacity-50 !cursor-not-allowed',
                     )}
                   >
                     <div className="relative h-28 w-full bg-muted/30 rounded-t-[11px] overflow-hidden">
-                      {product.image && (
-                        <img
-                          src={product.image}
-                          alt={product.name}
-                          className="h-full w-full object-contain"
-                        />
-                      )}
+                      {product.image && <img src={product.image} alt={product.name} className="h-full w-full object-contain" />}
                       {product.badge && (
                         <span
                           className={cn(
                             'absolute top-2 left-2 px-1.5 py-0.5 text-[10px] font-medium rounded',
-                            product.badge.startsWith('-')
-                              ? 'bg-foreground text-background'
-                              : 'bg-background text-foreground border'
+                            product.badge.startsWith('-') ? 'bg-foreground text-background' : 'bg-background text-foreground border',
                           )}
                         >
                           {product.badge}
@@ -482,31 +376,19 @@ function CarouselVariant({
                       )}
                     </div>
                     <div className="p-3 space-y-1">
-                      {product.name && (
-                        <p className="text-sm font-medium truncate">
-                          {product.name}
-                        </p>
-                      )}
-                      {product.description && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          {product.description}
-                        </p>
-                      )}
-                      {product.price !== undefined && (
-                        <p className="text-sm font-semibold">
-                          {formatCurrency(product.price)}
-                        </p>
-                      )}
+                      {product.name && <p className="text-sm font-medium truncate">{product.name}</p>}
+                      {product.description && <p className="text-xs text-muted-foreground truncate">{product.description}</p>}
+                      {product.price !== undefined && <p className="text-sm font-semibold">{formatCurrency(product.price)}</p>}
                     </div>
                   </button>
                 ))}
               </div>
             </div>
           </div>
-        )
+        );
       })()}
     </div>
-  )
+  );
 }
 
 // Picker variant (multi-select with add to cart)
@@ -514,57 +396,49 @@ function PickerVariant({
   products,
   formatCurrency,
   onAddToCart,
-  buttonLabel = 'Add to cart'
+  buttonLabel = 'Add to cart',
 }: {
-  products: Product[]
-  formatCurrency: (value: number) => string
-  onAddToCart?: (products: Product[]) => void
-  buttonLabel?: string
+  products: Product[];
+  formatCurrency: (value: number) => string;
+  onAddToCart?: (products: Product[]) => void;
+  buttonLabel?: string;
 }) {
-  const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(new Set())
+  const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(new Set());
 
   const handleSelect = useCallback((index: number, product: Product) => {
-    if (!product.inStock) return
+    if (!product.inStock) return;
 
     setSelectedIndexes((prev) => {
-      const newSet = new Set(prev)
+      const newSet = new Set(prev);
       if (newSet.has(index)) {
-        newSet.delete(index)
+        newSet.delete(index);
       } else {
-        newSet.add(index)
+        newSet.add(index);
       }
-      return newSet
-    })
-  }, [])
+      return newSet;
+    });
+  }, []);
 
   const handleSelectAll = useCallback(() => {
-    const availableIndexes = products
-      .map((p, i) => (p.inStock ? i : -1))
-      .filter((i) => i !== -1)
-    const allSelected = availableIndexes.every((i) => selectedIndexes.has(i))
+    const availableIndexes = products.map((p, i) => (p.inStock ? i : -1)).filter((i) => i !== -1);
+    const allSelected = availableIndexes.every((i) => selectedIndexes.has(i));
 
     if (allSelected) {
-      setSelectedIndexes(new Set())
+      setSelectedIndexes(new Set());
     } else {
-      setSelectedIndexes(new Set(availableIndexes))
+      setSelectedIndexes(new Set(availableIndexes));
     }
-  }, [products, selectedIndexes])
+  }, [products, selectedIndexes]);
 
   const handleAddToCart = useCallback(() => {
-    const selectedProducts = products.filter((_, i) => selectedIndexes.has(i))
-    onAddToCart?.(selectedProducts)
-  }, [products, selectedIndexes, onAddToCart])
+    const selectedProducts = products.filter((_, i) => selectedIndexes.has(i));
+    onAddToCart?.(selectedProducts);
+  }, [products, selectedIndexes, onAddToCart]);
 
-  const availableIndexes = products
-    .map((p, i) => (p.inStock ? i : -1))
-    .filter((i) => i !== -1)
-  const allSelected =
-    availableIndexes.length > 0 &&
-    availableIndexes.every((i) => selectedIndexes.has(i))
+  const availableIndexes = products.map((p, i) => (p.inStock ? i : -1)).filter((i) => i !== -1);
+  const allSelected = availableIndexes.length > 0 && availableIndexes.every((i) => selectedIndexes.has(i));
 
-  const totalPrice = products
-    .filter((_, i) => selectedIndexes.has(i))
-    .reduce((sum, p) => sum + (p.price ?? 0), 0)
+  const totalPrice = products.filter((_, i) => selectedIndexes.has(i)).reduce((sum, p) => sum + (p.price ?? 0), 0);
 
   return (
     <div className="w-full space-y-3 rounded-md sm:rounded-lg p-4 sm:p-0">
@@ -578,19 +452,15 @@ function PickerVariant({
             disabled={!product.inStock}
             className={cn(
               'w-full flex items-center gap-3 rounded-md sm:rounded-lg border bg-card p-2 text-left transition-all cursor-pointer',
-              selectedIndexes.has(index)
-                ? 'border-foreground ring-1 ring-foreground'
-                : 'border-border hover:border-foreground/30',
-              !product.inStock && 'opacity-50 !cursor-not-allowed'
+              selectedIndexes.has(index) ? 'border-foreground ring-1 ring-foreground' : 'border-border hover:border-foreground/30',
+              !product.inStock && 'opacity-50 !cursor-not-allowed',
             )}
           >
             {/* Checkbox */}
             <div
               className={cn(
                 'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors',
-                selectedIndexes.has(index)
-                  ? 'bg-foreground border-foreground text-background'
-                  : 'border-border'
+                selectedIndexes.has(index) ? 'bg-foreground border-foreground text-background' : 'border-border',
               )}
             >
               {selectedIndexes.has(index) && <Check className="h-3 w-3" />}
@@ -598,37 +468,19 @@ function PickerVariant({
 
             {/* Image */}
             <div className="h-12 w-12 flex-shrink-0 rounded overflow-hidden bg-muted/30">
-              {product.image && (
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="h-full w-full object-contain"
-                />
-              )}
+              {product.image && <img src={product.image} alt={product.name} className="h-full w-full object-contain" />}
             </div>
 
             {/* Content */}
             <div className="flex-1 min-w-0">
               {product.name && <p className="text-sm font-medium truncate">{product.name}</p>}
-              {product.description && (
-                <p className="text-xs text-muted-foreground truncate">
-                  {product.description}
-                </p>
-              )}
+              {product.description && <p className="text-xs text-muted-foreground truncate">{product.description}</p>}
             </div>
 
             {/* Price */}
             <div className="text-right flex-shrink-0">
-              {product.price !== undefined && (
-                <p className="text-sm font-semibold">
-                  {formatCurrency(product.price)}
-                </p>
-              )}
-              {product.originalPrice && (
-                <p className="text-xs text-muted-foreground line-through">
-                  {formatCurrency(product.originalPrice)}
-                </p>
-              )}
+              {product.price !== undefined && <p className="text-sm font-semibold">{formatCurrency(product.price)}</p>}
+              {product.originalPrice && <p className="text-xs text-muted-foreground line-through">{formatCurrency(product.originalPrice)}</p>}
             </div>
           </button>
         ))}
@@ -645,21 +497,15 @@ function PickerVariant({
                   onClick={handleSelectAll}
                   className={cn(
                     'flex h-4 w-4 items-center justify-center rounded border transition-colors',
-                    allSelected
-                      ? 'bg-foreground border-foreground text-background'
-                      : 'border-border hover:border-foreground/50'
+                    allSelected ? 'bg-foreground border-foreground text-background' : 'border-border hover:border-foreground/50',
                   )}
                   aria-label="Select all products"
                 >
                   {allSelected && <Check className="h-3 w-3" />}
                 </button>
               </th>
-              <th className="px-3 py-3 text-left font-medium text-muted-foreground">
-                Product
-              </th>
-              <th className="px-3 py-3 text-right font-medium text-muted-foreground">
-                Price
-              </th>
+              <th className="px-3 py-3 text-left font-medium text-muted-foreground">Product</th>
+              <th className="px-3 py-3 text-right font-medium text-muted-foreground">Price</th>
             </tr>
           </thead>
           <tbody>
@@ -669,60 +515,34 @@ function PickerVariant({
                 onClick={() => handleSelect(index, product)}
                 className={cn(
                   'border-b border-border last:border-0 transition-colors',
-                  product.inStock
-                    ? 'cursor-pointer hover:bg-muted/30'
-                    : 'opacity-50 cursor-not-allowed'
+                  product.inStock ? 'cursor-pointer hover:bg-muted/30' : 'opacity-50 cursor-not-allowed',
                 )}
               >
                 <td className="px-3 py-3">
                   <div
                     className={cn(
                       'flex h-4 w-4 items-center justify-center rounded border transition-colors',
-                      selectedIndexes.has(index)
-                        ? 'bg-foreground border-foreground text-background'
-                        : 'border-border'
+                      selectedIndexes.has(index) ? 'bg-foreground border-foreground text-background' : 'border-border',
                     )}
                   >
-                    {selectedIndexes.has(index) && (
-                      <Check className="h-3 w-3" />
-                    )}
+                    {selectedIndexes.has(index) && <Check className="h-3 w-3" />}
                   </div>
                 </td>
                 <td className="px-3 py-3">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 flex-shrink-0 rounded overflow-hidden bg-muted/30">
-                      {product.image && (
-                        <img
-                          src={product.image}
-                          alt={product.name}
-                          className="h-full w-full object-contain"
-                        />
-                      )}
+                      {product.image && <img src={product.image} alt={product.name} className="h-full w-full object-contain" />}
                     </div>
                     <div className="min-w-0">
                       {product.name && <p className="font-medium truncate">{product.name}</p>}
-                      {product.description && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          {product.description}
-                        </p>
-                      )}
-                      {!product.inStock && (
-                        <p className="text-xs text-destructive">Out of stock</p>
-                      )}
+                      {product.description && <p className="text-xs text-muted-foreground truncate">{product.description}</p>}
+                      {!product.inStock && <p className="text-xs text-destructive">Out of stock</p>}
                     </div>
                   </div>
                 </td>
                 <td className="px-3 py-3 text-right">
-                  {product.price !== undefined && (
-                    <p className="font-semibold">
-                      {formatCurrency(product.price)}
-                    </p>
-                  )}
-                  {product.originalPrice && (
-                    <p className="text-xs text-muted-foreground line-through">
-                      {formatCurrency(product.originalPrice)}
-                    </p>
-                  )}
+                  {product.price !== undefined && <p className="font-semibold">{formatCurrency(product.price)}</p>}
+                  {product.originalPrice && <p className="text-xs text-muted-foreground line-through">{formatCurrency(product.originalPrice)}</p>}
                 </td>
               </tr>
             ))}
@@ -735,28 +555,21 @@ function PickerVariant({
         <div className="text-xs sm:text-sm text-muted-foreground">
           {selectedIndexes.size > 0 ? (
             <span>
-              {selectedIndexes.size} item{selectedIndexes.size !== 1 ? 's' : ''}{' '}
-              selected
+              {selectedIndexes.size} item{selectedIndexes.size !== 1 ? 's' : ''} selected
               {' · '}
-              <span className="font-medium text-foreground">
-                {formatCurrency(totalPrice)}
-              </span>
+              <span className="font-medium text-foreground">{formatCurrency(totalPrice)}</span>
             </span>
           ) : (
             <span>Select products to add to cart</span>
           )}
         </div>
-        <Button
-          onClick={handleAddToCart}
-          disabled={selectedIndexes.size === 0}
-          size="sm"
-        >
+        <Button onClick={handleAddToCart} disabled={selectedIndexes.size === 0} size="sm">
           <ShoppingCart className="h-4 w-4 mr-1.5" />
           {buttonLabel}
         </Button>
       </div>
     </div>
-  )
+  );
 }
 
 /**
@@ -797,70 +610,41 @@ function PickerVariant({
  * ```
  */
 export function ProductList({ data, actions, appearance, control }: ProductListProps) {
-  const resolved: NonNullable<ProductListProps['data']> = data ?? { products: demoProducts }
-  const products = resolved.products ?? []
-  const onSelectProduct = actions?.onSelectProduct
-  const onAddToCart = actions?.onAddToCart
-  const variant = appearance?.variant ?? 'list'
-  const currency = appearance?.currency ?? 'EUR'
-  const columns = appearance?.columns ?? 4
-  const buttonLabel = appearance?.buttonLabel
-  const selectedProductIndex = control?.selectedProductIndex
-  const [selected, setSelected] = useState<number | undefined>(selectedProductIndex)
+  const resolved: NonNullable<ProductListProps['data']> = data ?? { products: demoProducts };
+  const products = resolved.products ?? [];
+  const onSelectProduct = actions?.onSelectProduct;
+  const onAddToCart = actions?.onAddToCart;
+  const variant = appearance?.variant ?? 'list';
+  const currency = appearance?.currency ?? 'EUR';
+  const columns = appearance?.columns ?? 4;
+  const buttonLabel = appearance?.buttonLabel;
+  const selectedProductIndex = control?.selectedProductIndex;
+  const [selected, setSelected] = useState<number | undefined>(selectedProductIndex);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency,
-      minimumFractionDigits: 0
-    }).format(value)
-  }
+      minimumFractionDigits: 0,
+    }).format(value);
+  };
 
   const handleSelect = (product: Product, index: number) => {
-    setSelected(index)
-    onSelectProduct?.(product)
-  }
+    setSelected(index);
+    onSelectProduct?.(product);
+  };
 
   if (variant === 'grid') {
-    return (
-      <GridVariant
-        products={products}
-        selected={selected}
-        onSelect={handleSelect}
-        formatCurrency={formatCurrency}
-        columns={columns}
-      />
-    )
+    return <GridVariant products={products} selected={selected} onSelect={handleSelect} formatCurrency={formatCurrency} columns={columns} />;
   }
 
   if (variant === 'carousel') {
-    return (
-      <CarouselVariant
-        products={products}
-        selected={selected}
-        onSelect={handleSelect}
-        formatCurrency={formatCurrency}
-      />
-    )
+    return <CarouselVariant products={products} selected={selected} onSelect={handleSelect} formatCurrency={formatCurrency} />;
   }
 
   if (variant === 'picker') {
-    return (
-      <PickerVariant
-        products={products}
-        formatCurrency={formatCurrency}
-        onAddToCart={onAddToCart}
-        buttonLabel={buttonLabel}
-      />
-    )
+    return <PickerVariant products={products} formatCurrency={formatCurrency} onAddToCart={onAddToCart} buttonLabel={buttonLabel} />;
   }
 
-  return (
-    <ListVariant
-      products={products}
-      selected={selected}
-      onSelect={handleSelect}
-      formatCurrency={formatCurrency}
-    />
-  )
+  return <ListVariant products={products} selected={selected} onSelect={handleSelect} formatCurrency={formatCurrency} />;
 }

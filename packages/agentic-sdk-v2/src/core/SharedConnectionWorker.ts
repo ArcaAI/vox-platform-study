@@ -282,6 +282,7 @@ interface SharedWorkerGlobalScopeCompat {
 declare const self: SharedWorkerGlobalScopeCompat;
 
 self.onconnect = (event: MessageEvent) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ConnectEvent.ports not in lib.dom MessageEvent typing.
   const port = (event as any).ports[0] as MessagePort;
   allPorts.add(port);
 

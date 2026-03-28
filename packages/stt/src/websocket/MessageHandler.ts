@@ -4,10 +4,7 @@
  * Handles parsing and routing of WebSocket messages from the STT service.
  */
 
-import type {
-  WSInboundMessage,
-  TranscriptionResult,
-} from '../types/index.js';
+import type { WSInboundMessage, TranscriptionResult } from '../types/index.js';
 
 /**
  * Message handler callbacks.
@@ -126,18 +123,11 @@ export class MessageHandler {
   // Private Handlers
   // =========================================================================
 
-  private handleConnected(
-    message: Extract<WSInboundMessage, { type: 'connected' }>
-  ): void {
-    this.callbacks.onConnected?.(
-      message.session_id,
-      message.audio_config
-    );
+  private handleConnected(message: Extract<WSInboundMessage, { type: 'connected' }>): void {
+    this.callbacks.onConnected?.(message.session_id, message.audio_config);
   }
 
-  private handleTranscription(
-    message: Extract<WSInboundMessage, { type: 'transcription' }>
-  ): void {
+  private handleTranscription(message: Extract<WSInboundMessage, { type: 'transcription' }>): void {
     const result: TranscriptionResult = {
       text: message.text,
       isFinal: message.is_final,
@@ -156,9 +146,7 @@ export class MessageHandler {
     this.callbacks.onStopped?.();
   }
 
-  private handleError(
-    message: Extract<WSInboundMessage, { type: 'error' }>
-  ): void {
+  private handleError(message: Extract<WSInboundMessage, { type: 'error' }>): void {
     this.callbacks.onError?.(message.message);
   }
 }

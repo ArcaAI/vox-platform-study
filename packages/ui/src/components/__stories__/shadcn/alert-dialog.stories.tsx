@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Button } from '../../shadcn/button'
+import { Button } from '../../shadcn/button';
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -11,7 +11,7 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
-} from '../../shadcn/alert-dialog'
+} from '../../shadcn/alert-dialog';
 
 const meta = {
   title: 'Components/AlertDialog',
@@ -20,10 +20,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof AlertDialog>
+} satisfies Meta<typeof AlertDialog>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 // Default confirmation dialog
 export const Default: Story = {
@@ -35,10 +35,7 @@ export const Default: Story = {
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This action cannot be undone. This will permanently apply the changes
-            to your account.
-          </AlertDialogDescription>
+          <AlertDialogDescription>This action cannot be undone. This will permanently apply the changes to your account.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -47,7 +44,7 @@ export const Default: Story = {
       </AlertDialogContent>
     </AlertDialog>
   ),
-}
+};
 
 // Destructive delete confirmation
 export const Destructive: Story = {
@@ -60,20 +57,17 @@ export const Destructive: Story = {
         <AlertDialogHeader>
           <AlertDialogTitle>Delete account?</AlertDialogTitle>
           <AlertDialogDescription>
-            This will permanently delete your account and all associated data.
-            This action cannot be reversed.
+            This will permanently delete your account and all associated data. This action cannot be reversed.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction variant="destructive">
-            Yes, delete account
-          </AlertDialogAction>
+          <AlertDialogAction variant="destructive">Yes, delete account</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
   ),
-}
+};
 
 // Small size dialog
 export const SmallSize: Story = {
@@ -85,9 +79,7 @@ export const SmallSize: Story = {
       <AlertDialogContent size="sm">
         <AlertDialogHeader>
           <AlertDialogTitle>Discard changes?</AlertDialogTitle>
-          <AlertDialogDescription>
-            You have unsaved changes that will be lost.
-          </AlertDialogDescription>
+          <AlertDialogDescription>You have unsaved changes that will be lost.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep editing</AlertDialogCancel>
@@ -96,4 +88,4 @@ export const SmallSize: Story = {
       </AlertDialogContent>
     </AlertDialog>
   ),
-}
+};

@@ -9,15 +9,15 @@ import { PromptResolutionServiceModule } from '../prompt/prompt-resolution.servi
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule, ConfigModule, HttpModule, PromptResolutionServiceModule],
-    providers: [
-        {
-            provide: ISummaryService,
-            useClass: SummaryService,
-        },
-        PromptAssemblyService,
-        SummaryService,
-    ],
-    exports: [ISummaryService, SummaryService],
+  imports: [CommonServiceModule, CoreDatabaseModule, ConfigModule, HttpModule, PromptResolutionServiceModule],
+  providers: [
+    {
+      provide: ISummaryService,
+      useClass: SummaryService,
+    },
+    PromptAssemblyService,
+    SummaryService,
+  ],
+  exports: [ISummaryService, SummaryService],
 })
 export class SummaryServiceModule {}

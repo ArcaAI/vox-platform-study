@@ -1,8 +1,6 @@
-import type { Theme } from "@/contexts/theme-context";
+import type { Theme } from '@/contexts/theme-context';
 
-export function getThemeStyles(
-  _currentTheme: Theme,
-  _previewDarkMode: boolean
-): Record<string, string | number> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function getThemeStyles(_currentTheme: Theme, _previewDarkMode: boolean): Record<string, string | number> {
   return {};
 }

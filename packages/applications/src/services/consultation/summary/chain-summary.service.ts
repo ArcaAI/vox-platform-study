@@ -4,22 +4,22 @@ import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
-    ContextItemRepository,
-    ConsultationRepository,
-    SummaryMetaRepository,
-    NamedEntityRepository,
-    ContextItemFactory,
-    SummaryMetaFactory,
-    ResourceType,
-    SysEventType,
-    ConsultationEntity,
-    ContextItemEntity,
+  ContextItemRepository,
+  ConsultationRepository,
+  SummaryMetaRepository,
+  NamedEntityRepository,
+  ContextItemFactory,
+  SummaryMetaFactory,
+  ResourceType,
+  SysEventType,
+  ConsultationEntity,
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-v2-generate';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
+import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 
 /**
  * ChainSummaryService — generates comprehensive cross-chain summaries.
@@ -38,468 +38,462 @@ import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
  */
 @Injectable()
 export class ChainSummaryService extends BaseService {
-    private readonly logger = new Logger(ChainSummaryService.name);
-    private readonly smrServiceUrl: string;
+  private readonly logger = new Logger(ChainSummaryService.name);
+  private readonly smrServiceUrl: string;
 
-    constructor(
-        private readonly contextItemRepository: ContextItemRepository,
-        private readonly consultationRepository: ConsultationRepository,
-        private readonly summaryMetaRepository: SummaryMetaRepository,
-        private readonly namedEntityRepository: NamedEntityRepository,
-        private readonly httpService: HttpService,
-        private readonly configService: ConfigService,
-        protected override readonly eventEmitter: EventEmitter2,
-        protected override readonly clsService: ClsService<IActiveUserContext>,
-        private readonly promptAssemblyService: PromptAssemblyService,
-    ) {
-        super(eventEmitter, clsService, ResourceType.ContextItem);
-        this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
+  constructor(
+    private readonly contextItemRepository: ContextItemRepository,
+    private readonly consultationRepository: ConsultationRepository,
+    private readonly summaryMetaRepository: SummaryMetaRepository,
+    private readonly namedEntityRepository: NamedEntityRepository,
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+    protected override readonly eventEmitter: EventEmitter2,
+    protected override readonly clsService: ClsService<IActiveUserContext>,
+    private readonly promptAssemblyService: PromptAssemblyService,
+  ) {
+    super(eventEmitter, clsService, ResourceType.ContextItem);
+    this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
+  }
+
+  /**
+   * Generate a comprehensive summary spanning all linked consultations.
+   *
+   * This is the synchronous endpoint — blocks until SMR returns.
+   * For long consultation chains, prefer the async job endpoint.
+   */
+  async generateComprehensiveSummary(consultationId: string, request: ComprehensiveSummaryRequest): Promise<ComprehensiveSummaryResponse> {
+    const tenantId = this.tenantId;
+    const userId = this.requestUserId;
+
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
     }
 
-    /**
-     * Generate a comprehensive summary spanning all linked consultations.
-     *
-     * This is the synchronous endpoint — blocks until SMR returns.
-     * For long consultation chains, prefer the async job endpoint.
-     */
-    async generateComprehensiveSummary(
-        consultationId: string,
-        request: ComprehensiveSummaryRequest,
-    ): Promise<ComprehensiveSummaryResponse> {
-        const tenantId = this.tenantId;
-        const userId = this.requestUserId;
+    const consultation = await this.consultationRepository.findById(consultationId);
+    if (!consultation) {
+      throw new NotFoundException(`Consultation ${consultationId} not found`);
+    }
 
-        if (!tenantId) {
-            throw new BadRequestException('Tenant ID is required');
-        }
+    // Step 1: Resolve all linked consultations (chain + same-day)
+    const linkedConsultations = await this.resolveLinkedConsultations(consultation);
+    if (linkedConsultations.length === 0) {
+      throw new BadRequestException('No linked consultations found for comprehensive summary');
+    }
 
-        const consultation = await this.consultationRepository.findById(consultationId);
-        if (!consultation) {
-            throw new NotFoundException(`Consultation ${consultationId} not found`);
-        }
+    const allConsultationIds = linkedConsultations.map((c) => c.id);
 
-        // Step 1: Resolve all linked consultations (chain + same-day)
-        const linkedConsultations = await this.resolveLinkedConsultations(consultation);
-        if (linkedConsultations.length === 0) {
-            throw new BadRequestException('No linked consultations found for comprehensive summary');
-        }
+    this.logger.log({
+      message: 'Generating comprehensive summary',
+      consultationId,
+      linkedConsultationCount: linkedConsultations.length,
+      linkedIds: allConsultationIds,
+    });
 
-        const allConsultationIds = linkedConsultations.map(c => c.id);
+    // Step 2: Gather all content sections
+    const sections = await this.gatherSections(linkedConsultations);
 
-        this.logger.log({
-            message: 'Generating comprehensive summary',
-            consultationId,
-            linkedConsultationCount: linkedConsultations.length,
-            linkedIds: allConsultationIds,
-        });
+    if (sections.length === 0) {
+      throw new BadRequestException('No content available across linked consultations for comprehensive summary');
+    }
 
-        // Step 2: Gather all content sections
-        const sections = await this.gatherSections(linkedConsultations);
-
-        if (sections.length === 0) {
-            throw new BadRequestException('No content available across linked consultations for comprehensive summary');
-        }
-
-        // Step 3: Optionally gather NER entities
-        let aggregatedEntities: Record<string, Array<{
+    // Step 3: Optionally gather NER entities
+    let aggregatedEntities:
+      | Record<
+          string,
+          Array<{
             text: string;
             confidence?: number;
             sourceConsultationId: string;
-        }>> | undefined;
+          }>
+        >
+      | undefined;
 
-        if (request.includeNER !== false) {
-            aggregatedEntities = await this.gatherNamedEntities(allConsultationIds);
-        }
-
-        // Step 4: Compose structured input and assemble final prompt for SMR
-        const smrInput = await this.composeSmrInput(
-            consultation,
-            sections,
-            aggregatedEntities,
-            request,
-        );
-
-        // Step 5: Call SMR service
-        const smrResponse = await this.callSmrService(smrInput, request);
-
-        // Step 6: Store as ContextItem(RAW_SUMMARY) on the requesting consultation
-        const contextItem = ContextItemFactory.CreateRawSummary(
-            tenantId,
-            consultationId,
-            smrResponse.summary,
-            request.dnaStyleId,
-            userId ?? 'system',
-        );
-
-        const savedContext = await this.contextItemRepository.create(contextItem);
-
-        // Create summary metadata with source context tracking
-        const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
-            tenantId,
-            contextItemId: savedContext.id,
-            aiModelId: smrResponse.modelName ?? smrResponse.llmProvider,
-            processingTimeMs: smrResponse.processingTimeMs,
-            inputTokens: smrResponse.inputTokens,
-            outputTokens: smrResponse.outputTokens,
-        });
-        await this.summaryMetaRepository.create(summaryMeta);
-
-        this.broadcastSysEvent(SysEventType.ResourceCreated, {
-            resourceId: savedContext.id,
-            responsibleEntityId: userId ?? undefined,
-            createdAt: savedContext.createdAt,
-            data: {
-                consultationId,
-                type: 'comprehensive_summary',
-                sourceConsultationIds: allConsultationIds,
-                sectionCount: sections.length,
-            },
-        });
-
-        this.logger.log({
-            message: 'Comprehensive summary generated',
-            consultationId,
-            contextItemId: savedContext.id,
-            sectionCount: sections.length,
-            sourceConsultationCount: allConsultationIds.length,
-            processingTimeMs: smrResponse.processingTimeMs,
-        });
-
-        return {
-            id: savedContext.id,
-            consultationId: savedContext.consultationId,
-            type: savedContext.type,
-            content: savedContext.content ?? '',
-            structuredData: {
-                modelName: smrResponse.modelName ?? smrResponse.llmProvider,
-                processingTimeMs: smrResponse.processingTimeMs,
-                inputTokens: smrResponse.inputTokens,
-                outputTokens: smrResponse.outputTokens,
-            },
-            sourceConsultationIds: allConsultationIds,
-            sectionCount: sections.length,
-            namedEntities: aggregatedEntities,
-            createdAt: savedContext.createdAt.toISOString(),
-            updatedAt: savedContext.updatedAt.toISOString(),
-        };
+    if (request.includeNER !== false) {
+      aggregatedEntities = await this.gatherNamedEntities(allConsultationIds);
     }
 
-    // =========================================================================
-    // Internal methods — exposed for ComprehensiveSummaryProcessor (async path)
-    // =========================================================================
+    // Step 4: Compose structured input and assemble final prompt for SMR
+    const smrInput = await this.composeSmrInput(consultation, sections, aggregatedEntities, request);
 
-    /**
-     * Resolve all consultations linked to the given consultation.
-     *
-     * Combines chain-based (parentConsultationId) and date-based
-     * (same tenantId, patientId, appointmentDate) strategies, matching
-     * the GAP-2 fix in ContextService.resolveLinkedConsultationIds().
-     */
-    async resolveLinkedConsultations(consultation: ConsultationEntity): Promise<ConsultationEntity[]> {
-        // Strategy 1: Chain-based
-        const chain = await this.consultationRepository.findConsultationChain(consultation.id);
-        const chainMap = new Map(chain.map(c => [c.id, c]));
+    // Step 5: Call SMR service
+    const smrResponse = await this.callSmrService(smrInput, request);
 
-        // Strategy 2: Date-based
-        const sameDayConsultations = await this.consultationRepository.findByPatientAndDate(
-            consultation.tenantId,
-            consultation.patientId,
-            consultation.appointmentDate,
-        );
+    // Step 6: Store as ContextItem(RAW_SUMMARY) on the requesting consultation
+    const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId ?? 'system');
 
-        // Merge and deduplicate (chain entities take priority to preserve includes)
-        for (const c of sameDayConsultations) {
-            if (!chainMap.has(c.id)) {
-                chainMap.set(c.id, c);
-            }
-        }
+    const savedContext = await this.contextItemRepository.create(contextItem);
 
-        return Array.from(chainMap.values());
+    // Create summary metadata with source context tracking
+    const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
+      tenantId,
+      contextItemId: savedContext.id,
+      aiModelId: smrResponse.modelName ?? smrResponse.llmProvider,
+      processingTimeMs: smrResponse.processingTimeMs,
+      inputTokens: smrResponse.inputTokens,
+      outputTokens: smrResponse.outputTokens,
+    });
+    await this.summaryMetaRepository.create(summaryMeta);
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: savedContext.id,
+      responsibleEntityId: userId ?? undefined,
+      createdAt: savedContext.createdAt,
+      data: {
+        consultationId,
+        type: 'comprehensive_summary',
+        sourceConsultationIds: allConsultationIds,
+        sectionCount: sections.length,
+      },
+    });
+
+    this.logger.log({
+      message: 'Comprehensive summary generated',
+      consultationId,
+      contextItemId: savedContext.id,
+      sectionCount: sections.length,
+      sourceConsultationCount: allConsultationIds.length,
+      processingTimeMs: smrResponse.processingTimeMs,
+    });
+
+    return {
+      id: savedContext.id,
+      consultationId: savedContext.consultationId,
+      type: savedContext.type,
+      content: savedContext.content ?? '',
+      structuredData: {
+        modelName: smrResponse.modelName ?? smrResponse.llmProvider,
+        processingTimeMs: smrResponse.processingTimeMs,
+        inputTokens: smrResponse.inputTokens,
+        outputTokens: smrResponse.outputTokens,
+      },
+      sourceConsultationIds: allConsultationIds,
+      sectionCount: sections.length,
+      namedEntities: aggregatedEntities,
+      createdAt: savedContext.createdAt.toISOString(),
+      updatedAt: savedContext.updatedAt.toISOString(),
+    };
+  }
+
+  // =========================================================================
+  // Internal methods — exposed for ComprehensiveSummaryProcessor (async path)
+  // =========================================================================
+
+  /**
+   * Resolve all consultations linked to the given consultation.
+   *
+   * Combines chain-based (parentConsultationId) and date-based
+   * (same tenantId, patientId, appointmentDate) strategies, matching
+   * the GAP-2 fix in ContextService.resolveLinkedConsultationIds().
+   */
+  async resolveLinkedConsultations(consultation: ConsultationEntity): Promise<ConsultationEntity[]> {
+    // Strategy 1: Chain-based
+    const chain = await this.consultationRepository.findConsultationChain(consultation.id);
+    const chainMap = new Map(chain.map((c) => [c.id, c]));
+
+    // Strategy 2: Date-based
+    const sameDayConsultations = await this.consultationRepository.findByPatientAndDate(
+      consultation.tenantId,
+      consultation.patientId,
+      consultation.appointmentDate,
+    );
+
+    // Merge and deduplicate (chain entities take priority to preserve includes)
+    for (const c of sameDayConsultations) {
+      if (!chainMap.has(c.id)) {
+        chainMap.set(c.id, c);
+      }
     }
 
-    /**
-     * Gather content sections from all linked consultations.
-     *
-     * For each consultation, collects:
-     * - Latest summary (RAW_SUMMARY or MODIFIED_SUMMARY) — if available
-     * - Transcripts — if no summary exists
-     * - Case notes
-     * - Pre-summaries
-     *
-     * Summaries are preferred over raw transcripts because they're
-     * more concise and fit better in the comprehensive summary input.
-     */
-    async gatherSections(consultations: ConsultationEntity[]): Promise<ChainSectionDto[]> {
-        const sections: ChainSectionDto[] = [];
+    return Array.from(chainMap.values());
+  }
 
-        for (const consultation of consultations) {
-            const departmentName = consultation.Department?.name ?? consultation.departmentId ?? undefined;
-            const doctorName = consultation.Doctor?.username ?? consultation.doctorId ?? undefined;
+  /**
+   * Gather content sections from all linked consultations.
+   *
+   * For each consultation, collects:
+   * - Latest summary (RAW_SUMMARY or MODIFIED_SUMMARY) — if available
+   * - Transcripts — if no summary exists
+   * - Case notes
+   * - Pre-summaries
+   *
+   * Summaries are preferred over raw transcripts because they're
+   * more concise and fit better in the comprehensive summary input.
+   */
+  async gatherSections(consultations: ConsultationEntity[]): Promise<ChainSectionDto[]> {
+    const sections: ChainSectionDto[] = [];
 
-            // Get latest summary (preferred over raw transcripts)
-            const summaries = await this.contextItemRepository.findSummaries(consultation.id);
-            if (summaries.length > 0) {
-                const latestSummary = summaries[summaries.length - 1];
-                if (latestSummary.content?.trim()) {
-                    sections.push({
-                        consultationId: consultation.id,
-                        department: departmentName,
-                        doctor: doctorName,
-                        type: 'summary',
-                        content: latestSummary.content,
-                        createdAt: latestSummary.createdAt?.toISOString(),
-                    });
-                }
-            } else {
-                // Fall back to transcripts if no summary exists
-                const transcripts = await this.contextItemRepository.findTranscripts(consultation.id);
-                for (const transcript of transcripts) {
-                    if (transcript.content?.trim()) {
-                        sections.push({
-                            consultationId: consultation.id,
-                            department: departmentName,
-                            doctor: doctorName,
-                            type: 'transcript',
-                            content: transcript.content,
-                            createdAt: transcript.createdAt?.toISOString(),
-                        });
-                    }
-                }
-            }
+    for (const consultation of consultations) {
+      const departmentName = consultation.Department?.name ?? consultation.departmentId ?? undefined;
+      const doctorName = consultation.Doctor?.username ?? consultation.doctorId ?? undefined;
 
-            // Case notes (always include — they provide historical context)
-            const caseNotes = await this.contextItemRepository.findCaseNotes(consultation.id);
-            for (const note of caseNotes) {
-                if (note.content?.trim()) {
-                    sections.push({
-                        consultationId: consultation.id,
-                        department: departmentName,
-                        doctor: doctorName,
-                        type: 'case_note',
-                        content: note.content,
-                        createdAt: note.createdAt?.toISOString(),
-                    });
-                }
-            }
-
-            // Pre-summaries (AI-generated case note summaries — provide condensed history)
-            const preSummaries = await this.contextItemRepository.findPreSummaries(consultation.id);
-            for (const preSummary of preSummaries) {
-                if (preSummary.content?.trim()) {
-                    sections.push({
-                        consultationId: consultation.id,
-                        department: departmentName,
-                        doctor: doctorName,
-                        type: 'pre_summary',
-                        content: preSummary.content,
-                        createdAt: preSummary.createdAt?.toISOString(),
-                    });
-                }
-            }
+      // Get latest summary (preferred over raw transcripts)
+      const summaries = await this.contextItemRepository.findSummaries(consultation.id);
+      if (summaries.length > 0) {
+        const latestSummary = summaries[summaries.length - 1];
+        if (latestSummary.content?.trim()) {
+          sections.push({
+            consultationId: consultation.id,
+            department: departmentName,
+            doctor: doctorName,
+            type: 'summary',
+            content: latestSummary.content,
+            createdAt: latestSummary.createdAt?.toISOString(),
+          });
         }
+      } else {
+        // Fall back to transcripts if no summary exists
+        const transcripts = await this.contextItemRepository.findTranscripts(consultation.id);
+        for (const transcript of transcripts) {
+          if (transcript.content?.trim()) {
+            sections.push({
+              consultationId: consultation.id,
+              department: departmentName,
+              doctor: doctorName,
+              type: 'transcript',
+              content: transcript.content,
+              createdAt: transcript.createdAt?.toISOString(),
+            });
+          }
+        }
+      }
 
-        return sections;
+      // Case notes (always include — they provide historical context)
+      const caseNotes = await this.contextItemRepository.findCaseNotes(consultation.id);
+      for (const note of caseNotes) {
+        if (note.content?.trim()) {
+          sections.push({
+            consultationId: consultation.id,
+            department: departmentName,
+            doctor: doctorName,
+            type: 'case_note',
+            content: note.content,
+            createdAt: note.createdAt?.toISOString(),
+          });
+        }
+      }
+
+      // Pre-summaries (AI-generated case note summaries — provide condensed history)
+      const preSummaries = await this.contextItemRepository.findPreSummaries(consultation.id);
+      for (const preSummary of preSummaries) {
+        if (preSummary.content?.trim()) {
+          sections.push({
+            consultationId: consultation.id,
+            department: departmentName,
+            doctor: doctorName,
+            type: 'pre_summary',
+            content: preSummary.content,
+            createdAt: preSummary.createdAt?.toISOString(),
+          });
+        }
+      }
     }
 
-    /**
-     * Gather NER entities from all linked consultations, grouped by class.
-     *
-     * Iterates over all context items (summaries + transcripts) in each
-     * consultation and aggregates their named entities.
-     */
-    async gatherNamedEntities(consultationIds: string[]): Promise<Record<string, Array<{
+    return sections;
+  }
+
+  /**
+   * Gather NER entities from all linked consultations, grouped by class.
+   *
+   * Iterates over all context items (summaries + transcripts) in each
+   * consultation and aggregates their named entities.
+   */
+  async gatherNamedEntities(consultationIds: string[]): Promise<
+    Record<
+      string,
+      Array<{
         text: string;
         confidence?: number;
         sourceConsultationId: string;
-    }>>> {
-        const entityMap: Record<string, Array<{
-            text: string;
-            confidence?: number;
-            sourceConsultationId: string;
-        }>> = {};
+      }>
+    >
+  > {
+    const entityMap: Record<
+      string,
+      Array<{
+        text: string;
+        confidence?: number;
+        sourceConsultationId: string;
+      }>
+    > = {};
 
-        for (const consultationId of consultationIds) {
-            // Get all summaries and transcripts from this consultation
-            const summaries = await this.contextItemRepository.findSummaries(consultationId);
-            const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
-            const contextItems = [...summaries, ...transcripts];
+    for (const consultationId of consultationIds) {
+      // Get all summaries and transcripts from this consultation
+      const summaries = await this.contextItemRepository.findSummaries(consultationId);
+      const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
+      const contextItems = [...summaries, ...transcripts];
 
-            for (const item of contextItems) {
-                const entities = await this.namedEntityRepository.findByContextItem(item.id);
-                for (const entity of entities) {
-                    const className = entity.className ?? 'UNKNOWN';
-                    if (!entityMap[className]) {
-                        entityMap[className] = [];
-                    }
+      for (const item of contextItems) {
+        const entities = await this.namedEntityRepository.findByContextItem(item.id);
+        for (const entity of entities) {
+          const className = entity.className ?? 'UNKNOWN';
+          if (!entityMap[className]) {
+            entityMap[className] = [];
+          }
 
-                    // Deduplicate by text within the same class
-                    const alreadyExists = entityMap[className].some(
-                        e => e.text === entity.text && e.sourceConsultationId === consultationId,
-                    );
-                    if (!alreadyExists) {
-                        entityMap[className].push({
-                            text: entity.text ?? '',
-                            confidence: entity.confidence ?? undefined,
-                            sourceConsultationId: consultationId,
-                        });
-                    }
-                }
-            }
-        }
-
-        return entityMap;
-    }
-
-    // =========================================================================
-    // Private Methods
-    // =========================================================================
-
-    /**
-     * Compose structured input for the SMR service.
-     *
-     * The SMR service receives:
-     * - sections: array of content blocks with metadata
-     * - namedEntities: aggregated NER entities (optional)
-     * - dnaStyleId/template: prompt configuration
-     */
-    private async composeSmrInput(
-        consultation: ConsultationEntity,
-        sections: ChainSectionDto[],
-        namedEntities: Record<string, Array<{
-            text: string;
-            confidence?: number;
-            sourceConsultationId: string;
-        }>> | undefined,
-        request: ComprehensiveSummaryRequest,
-    ): Promise<{
-        assembledPrompt: {
-            userPrompt: string;
-            systemPrompt: string;
-            hyperparameters: Record<string, number>;
-            responseFormat: {
-                type: string;
-                json_schema: Record<string, unknown>;
-                strict: boolean;
-            } | null;
-            resolvedFrom: string;
-        };
-        options?: Record<string, unknown>;
-        context: Record<string, unknown>;
-    }> {
-        // Build a structured text from all sections
-        const sectionTexts = sections.map((section, index) => {
-            const header = [
-                `--- Section ${index + 1} ---`,
-                section.department ? `Department: ${section.department}` : null,
-                section.doctor ? `Doctor: ${section.doctor}` : null,
-                `Type: ${section.type}`,
-                section.createdAt ? `Date: ${section.createdAt}` : null,
-            ].filter(Boolean).join('\n');
-
-            return `${header}\n\n${section.content}`;
-        });
-
-        const fullText = sectionTexts.join('\n\n');
-
-        // Build NER context if available
-        let nerContext = '';
-        if (namedEntities && Object.keys(namedEntities).length > 0) {
-            const nerLines = Object.entries(namedEntities).map(([className, entities]) => {
-                const uniqueTexts = [...new Set(entities.map(e => e.text))];
-                return `${className}: ${uniqueTexts.join(', ')}`;
+          // Deduplicate by text within the same class
+          const alreadyExists = entityMap[className].some((e) => e.text === entity.text && e.sourceConsultationId === consultationId);
+          if (!alreadyExists) {
+            entityMap[className].push({
+              text: entity.text ?? '',
+              confidence: entity.confidence ?? undefined,
+              sourceConsultationId: consultationId,
             });
-            nerContext = `\n\n--- Named Entities (auto-extracted) ---\n${nerLines.join('\n')}`;
+          }
         }
-
-        const transcript = fullText + nerContext;
-        const assembledPrompt = await this.promptAssemblyService.assemble({
-            departmentId: consultation.departmentId ?? undefined,
-            promptType: consultation.parentConsultationId ? 'revisit' : 'new-patient',
-            transcript,
-            conversationLanguage: this.resolveConversationLanguage(request.options),
-            dnaStyleId: request.dnaStyleId,
-            explicitTemplate: request.template ?? 'comprehensive',
-        });
-
-        return {
-            assembledPrompt,
-            options: request.options,
-            context: {
-                dnaStyleId: request.dnaStyleId,
-                template: request.template ?? 'comprehensive',
-                includeNER: request.includeNER,
-                summaryType: 'summary',
-                promptResolvedFrom: assembledPrompt.resolvedFrom,
-                promptHyperparameters: assembledPrompt.hyperparameters,
-                isComprehensiveSummary: true,
-                sectionCount: sections.length,
-                sourceConsultationCount: new Set(sections.map(s => s.consultationId)).size,
-            },
-        };
+      }
     }
 
-    /**
-     * Call the SMR service for comprehensive summary generation.
-     */
-    private async callSmrService(
-        payload: {
-            assembledPrompt: {
-                userPrompt: string;
-                systemPrompt: string;
-                hyperparameters: Record<string, number>;
-                responseFormat: {
-                    type: string;
-                    json_schema: Record<string, unknown>;
-                    strict: boolean;
-                } | null;
-                resolvedFrom: string;
-            };
-            options?: Record<string, unknown>;
-            context: Record<string, unknown>;
+    return entityMap;
+  }
+
+  // =========================================================================
+  // Private Methods
+  // =========================================================================
+
+  /**
+   * Compose structured input for the SMR service.
+   *
+   * The SMR service receives:
+   * - sections: array of content blocks with metadata
+   * - namedEntities: aggregated NER entities (optional)
+   * - dnaStyleId/template: prompt configuration
+   */
+  private async composeSmrInput(
+    consultation: ConsultationEntity,
+    sections: ChainSectionDto[],
+    namedEntities:
+      | Record<
+          string,
+          Array<{
+            text: string;
+            confidence?: number;
+            sourceConsultationId: string;
+          }>
+        >
+      | undefined,
+    request: ComprehensiveSummaryRequest,
+  ): Promise<{
+    assembledPrompt: {
+      userPrompt: string;
+      systemPrompt: string;
+      hyperparameters: Record<string, number>;
+      responseFormat: {
+        type: string;
+        json_schema: Record<string, unknown>;
+        strict: boolean;
+      } | null;
+      resolvedFrom: PromptResolutionTier;
+    };
+    options?: Record<string, unknown>;
+    context: Record<string, unknown>;
+  }> {
+    // Build a structured text from all sections
+    const sectionTexts = sections.map((section, index) => {
+      const header = [
+        `--- Section ${index + 1} ---`,
+        section.department ? `Department: ${section.department}` : null,
+        section.doctor ? `Doctor: ${section.doctor}` : null,
+        `Type: ${section.type}`,
+        section.createdAt ? `Date: ${section.createdAt}` : null,
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      return `${header}\n\n${section.content}`;
+    });
+
+    const fullText = sectionTexts.join('\n\n');
+
+    // Build NER context if available
+    let nerContext = '';
+    if (namedEntities && Object.keys(namedEntities).length > 0) {
+      const nerLines = Object.entries(namedEntities).map(([className, entities]) => {
+        const uniqueTexts = [...new Set(entities.map((e) => e.text))];
+        return `${className}: ${uniqueTexts.join(', ')}`;
+      });
+      nerContext = `\n\n--- Named Entities (auto-extracted) ---\n${nerLines.join('\n')}`;
+    }
+
+    const transcript = fullText + nerContext;
+    const assembledPrompt = await this.promptAssemblyService.assemble({
+      departmentId: consultation.departmentId ?? undefined,
+      promptType: consultation.parentConsultationId ? 'revisit' : 'new-patient',
+      transcript,
+      conversationLanguage: this.resolveConversationLanguage(request.options),
+      dnaStyleId: request.dnaStyleId,
+      explicitTemplate: request.template ?? 'comprehensive',
+    });
+
+    return {
+      assembledPrompt,
+      options: request.options,
+      context: {
+        dnaStyleId: request.dnaStyleId,
+        template: request.template ?? 'comprehensive',
+        includeNER: request.includeNER,
+        summaryType: 'summary',
+        promptResolvedFrom: assembledPrompt.resolvedFrom,
+        promptHyperparameters: assembledPrompt.hyperparameters,
+        isComprehensiveSummary: true,
+        sectionCount: sections.length,
+        sourceConsultationCount: new Set(sections.map((s) => s.consultationId)).size,
+      },
+    };
+  }
+
+  /**
+   * Call the SMR service for comprehensive summary generation.
+   */
+  private async callSmrService(
+    payload: {
+      assembledPrompt: {
+        userPrompt: string;
+        systemPrompt: string;
+        hyperparameters: Record<string, number>;
+        responseFormat: {
+          type: string;
+          json_schema: Record<string, unknown>;
+          strict: boolean;
+        } | null;
+        resolvedFrom: PromptResolutionTier;
+      };
+      options?: Record<string, unknown>;
+      context: Record<string, unknown>;
+    },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    request: ComprehensiveSummaryRequest,
+  ): Promise<{
+    summary: string;
+    llmProvider?: string;
+    modelName?: string;
+    processingTimeMs?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+  }> {
+    try {
+      const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, payload.options, payload.context);
+      const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, smrPayload, {
+        timeout: 180000,
+        headers: {
+          'Content-Type': 'application/json',
+          // eslint-disable-next-line turbo/no-undeclared-env-vars
+          'X-Service-Token': process.env.SMR_SERVICE_TOKEN || '',
         },
-        request: ComprehensiveSummaryRequest,
-    ): Promise<{
-        summary: string;
-        llmProvider?: string;
-        modelName?: string;
-        processingTimeMs?: number;
-        inputTokens?: number;
-        outputTokens?: number;
-    }> {
-        try {
-            const smrPayload = buildSmrGeneratePayload(
-                payload.assembledPrompt,
-                payload.options,
-                payload.context,
-            );
-            const response = await this.httpService.axiosRef.post(
-                `${this.smrServiceUrl}/api/v1/generate`,
-                smrPayload,
-                {
-                    timeout: 180000,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Service-Token': process.env.SMR_SERVICE_TOKEN || '',
-                    },
-                },
-            );
-            return mapSmrGenerateResponse(response.data);
-        } catch (error) {
-            this.logger.error({
-                message: 'SMR service call failed for comprehensive summary',
-                error: error instanceof Error ? error.message : String(error),
-            });
-            throw new BadRequestException('Failed to generate comprehensive summary from AI service');
-        }
+      });
+      return mapSmrGenerateResponse(response.data);
+    } catch (error) {
+      this.logger.error({
+        message: 'SMR service call failed for comprehensive summary',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new BadRequestException('Failed to generate comprehensive summary from AI service');
     }
+  }
 
-    private resolveConversationLanguage(options?: Record<string, unknown>): string {
-        const candidate = options?.conversationLanguage
-            ?? options?.language
-            ?? options?.locale;
+  private resolveConversationLanguage(options?: Record<string, unknown>): string {
+    const candidate = options?.conversationLanguage ?? options?.language ?? options?.locale;
 
-        return typeof candidate === 'string' && candidate.trim().length > 0
-            ? candidate
-            : 'en';
-    }
+    return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : 'en';
+  }
 }

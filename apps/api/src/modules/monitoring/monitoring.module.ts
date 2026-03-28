@@ -3,7 +3,7 @@ import { Module } from '@nestjs/common';
 import { MonitoringController } from './monitoring.controller';
 
 @Module({
-    imports: [ApiKeyServiceModule, ServiceHealthMonitoringServiceModule],
-    controllers: [MonitoringController],
+  imports: [ApiKeyServiceModule, ServiceHealthMonitoringServiceModule],
+  controllers: [MonitoringController],
 })
 export class MonitoringModule {}

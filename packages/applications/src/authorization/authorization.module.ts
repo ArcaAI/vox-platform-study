@@ -19,21 +19,8 @@ import { ApiKeyServiceModule } from '../services/apiKey/apikey.service.module';
  */
 @Global()
 @Module({
-    imports: [
-        CoreDatabaseModule,
-        RedisCacheModule.register(),
-        ApiKeyServiceModule,
-    ],
-    providers: [
-        PolicyEngine,
-        AuthorizationGuard,
-        UnifiedAuthGuard,
-    ],
-    exports: [
-        PolicyEngine,
-        AuthorizationGuard,
-        UnifiedAuthGuard,
-        ApiKeyServiceModule,
-    ],
+  imports: [CoreDatabaseModule, RedisCacheModule.register(), ApiKeyServiceModule],
+  providers: [PolicyEngine, AuthorizationGuard, UnifiedAuthGuard],
+  exports: [PolicyEngine, AuthorizationGuard, UnifiedAuthGuard, ApiKeyServiceModule],
 })
 export class AuthorizationModule {}

@@ -44,7 +44,24 @@ export interface CreateUserSettingInput {
   key: string;
   name?: string;
   value: unknown;
-  dataType?: 'String' | 'Integer' | 'Float' | 'Double' | 'Decimal' | 'Boolean' | 'Json' | 'Date' | 'DateTime' | 'Array' | 'Uuid' | 'Binary' | 'Enum' | 'Hstore' | 'Inet' | 'Citext' | 'Interval';
+  dataType?:
+    | 'String'
+    | 'Integer'
+    | 'Float'
+    | 'Double'
+    | 'Decimal'
+    | 'Boolean'
+    | 'Json'
+    | 'Date'
+    | 'DateTime'
+    | 'Array'
+    | 'Uuid'
+    | 'Binary'
+    | 'Enum'
+    | 'Hstore'
+    | 'Inet'
+    | 'Citext'
+    | 'Interval';
   namespace?: string;
   userId?: string;
   tenantId?: string;

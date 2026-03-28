@@ -19,20 +19,14 @@ import { StreamingAudioBridgeService } from './streamingAudioBridge.service';
  * - StreamingAudioBridgeService: Audio forwarding via Redis Streams
  */
 @Module({
-    imports: [
-        HttpModule.register({
-            timeout: 10000,
-            maxRedirects: 0,
-        }),
-        ConfigModule,
-    ],
-    providers: [
-        StreamingSessionService,
-        StreamingAudioBridgeService,
-    ],
-    exports: [
-        StreamingSessionService,
-        StreamingAudioBridgeService,
-    ],
+  imports: [
+    HttpModule.register({
+      timeout: 10000,
+      maxRedirects: 0,
+    }),
+    ConfigModule,
+  ],
+  providers: [StreamingSessionService, StreamingAudioBridgeService],
+  exports: [StreamingSessionService, StreamingAudioBridgeService],
 })
 export class StreamingSessionServiceModule {}

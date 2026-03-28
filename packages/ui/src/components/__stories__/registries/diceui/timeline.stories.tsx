@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   Timeline,
@@ -8,23 +8,23 @@ import {
   TimelineContent,
   TimelineHeader,
   TimelineTitle,
-} from '../../../registries/diceui/timeline'
+} from '../../../registries/diceui/timeline';
 
 const meta = {
   title: 'Registries/DiceUI/Timeline',
   component: Timeline,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Timeline>
+} satisfies Meta<typeof Timeline>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 const events = [
   { id: '1', title: 'First event' },
   { id: '2', title: 'Second event' },
   { id: '3', title: 'Third event' },
-]
+];
 
 export const Default: Story = {
   render: () => (
@@ -42,4 +42,4 @@ export const Default: Story = {
       ))}
     </Timeline>
   ),
-}
+};

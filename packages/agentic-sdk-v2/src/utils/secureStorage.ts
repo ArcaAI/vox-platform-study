@@ -37,13 +37,7 @@ function fromBase64(base64: string): Uint8Array {
 
 async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
   const encoder = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(passphrase),
-    'PBKDF2',
-    false,
-    ['deriveKey'],
-  );
+  const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
 
   return crypto.subtle.deriveKey(
     { name: 'PBKDF2', salt, iterations: KEY_ITERATIONS, hash: 'SHA-256' },
@@ -73,11 +67,7 @@ export class SecureStorage {
     const encoder = new TextEncoder();
     const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 
-    const encrypted = await crypto.subtle.encrypt(
-      { name: ALGORITHM, iv },
-      this.key,
-      encoder.encode(value),
-    );
+    const encrypted = await crypto.subtle.encrypt({ name: ALGORITHM, iv }, this.key, encoder.encode(value));
 
     const payload = JSON.stringify({
       s: toBase64(this.salt),
@@ -95,11 +85,7 @@ export class SecureStorage {
     try {
       const { iv, d } = JSON.parse(raw);
 
-      const decrypted = await crypto.subtle.decrypt(
-        { name: ALGORITHM, iv: fromBase64(iv) },
-        this.key,
-        fromBase64(d),
-      );
+      const decrypted = await crypto.subtle.decrypt({ name: ALGORITHM, iv: fromBase64(iv) }, this.key, fromBase64(d));
 
       return new TextDecoder().decode(decrypted);
     } catch {

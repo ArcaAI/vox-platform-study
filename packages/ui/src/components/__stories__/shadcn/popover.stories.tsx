@@ -1,16 +1,9 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverDescription,
-} from '../../shadcn/popover'
-import { Button } from '../../shadcn/button'
-import { Input } from '../../shadcn/input'
-import { Label } from '../../shadcn/label'
+import { Popover, PopoverTrigger, PopoverContent, PopoverHeader, PopoverTitle, PopoverDescription } from '../../shadcn/popover';
+import { Button } from '../../shadcn/button';
+import { Input } from '../../shadcn/input';
+import { Label } from '../../shadcn/label';
 
 const meta = {
   title: 'Components/Popover',
@@ -19,10 +12,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Popover>
+} satisfies Meta<typeof Popover>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -48,7 +41,7 @@ export const Default: Story = {
       </PopoverContent>
     </Popover>
   ),
-}
+};
 
 export const Simple: Story = {
   render: () => (
@@ -61,4 +54,4 @@ export const Simple: Story = {
       </PopoverContent>
     </Popover>
   ),
-}
+};

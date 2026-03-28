@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { RadioGroup, RadioGroupItem } from '../../shadcn/radio-group'
-import { Label } from '../../shadcn/label'
+import { RadioGroup, RadioGroupItem } from '../../shadcn/radio-group';
+import { Label } from '../../shadcn/label';
 
 const meta = {
   title: 'Components/RadioGroup',
@@ -10,10 +10,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof RadioGroup>
+} satisfies Meta<typeof RadioGroup>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -32,7 +32,7 @@ export const Default: Story = {
       </div>
     </RadioGroup>
   ),
-}
+};
 
 export const Horizontal: Story = {
   render: () => (
@@ -51,7 +51,7 @@ export const Horizontal: Story = {
       </div>
     </RadioGroup>
   ),
-}
+};
 
 export const Disabled: Story = {
   render: () => (
@@ -66,4 +66,4 @@ export const Disabled: Story = {
       </div>
     </RadioGroup>
   ),
-}
+};

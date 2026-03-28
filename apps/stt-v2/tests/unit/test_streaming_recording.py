@@ -23,7 +23,6 @@ import pytest
 
 from stt_v2.storage.blob_service import BlobService
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -488,8 +487,6 @@ class TestFinalizeSessionRecording:
 
     @pytest.mark.asyncio
     async def test_finalize_skips_remaining_chunk_when_fully_flushed(self):
-        from stt_v2.streaming.schemas import SessionStatus
-
         mgr = _make_manager()
         session = _make_session()
         session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
@@ -791,8 +788,6 @@ class TestFinalizeCloseGuarantee:
 
     @pytest.mark.asyncio
     async def test_close_called_when_finalize_raises(self):
-        from stt_v2.streaming.schemas import SessionStatus
-
         mgr = _make_manager()
         session = _make_session(consultation_id="c1")
         mgr._sessions[session.session_id] = session

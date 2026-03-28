@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { DataTable } from '../../../registries/tool-ui/data-table'
+import { DataTable } from '../../../registries/tool-ui/data-table';
 
 const meta = {
   title: 'Registries/ToolUI/DataTable',
   component: DataTable,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<any>
+} satisfies Meta<any>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -27,4 +27,4 @@ export const Default: Story = {
       ]}
     />
   ),
-}
+};

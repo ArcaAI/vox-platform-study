@@ -5,12 +5,7 @@
  * Provides AI-powered noise cancellation using RNNoise WASM.
  */
 
-import {
-  BaseProcessor,
-  type AudioProcessorOptions,
-  ProcessorEvent,
-  debugLogConfig,
-} from '@arcaai/room';
+import { BaseProcessor, type AudioProcessorOptions, ProcessorEvent, debugLogConfig } from '@arcaai/room';
 
 import {
   type NoiseFilterOptions,
@@ -22,18 +17,11 @@ import {
   NoiseFilterErrorCode,
 } from '../types/index.js';
 
-import { RNNoiseProcessor, RNNOISE_SAMPLE_RATE } from './RNNoiseProcessor.js';
+import { RNNoiseProcessor } from './RNNoiseProcessor.js';
 
-import {
-  registerRNNoiseWorklet,
-  createRNNoiseWorkletNode,
-  isWorkletRegistered,
-} from '../worklets/worklet-loader.js';
+import { registerRNNoiseWorklet, createRNNoiseWorkletNode, isWorkletRegistered } from '../worklets/worklet-loader.js';
 
-import {
-  getNoiseFilterBrowserSupport,
-  isRNNoiseSupported,
-} from '../utils/browserSupport.js';
+import { getNoiseFilterBrowserSupport, isRNNoiseSupported } from '../utils/browserSupport.js';
 
 /**
  * NoiseFilterProcessor provides AI-powered noise cancellation for audio tracks.
@@ -128,10 +116,7 @@ export class NoiseFilterProcessor extends BaseProcessor {
     const support = getNoiseFilterBrowserSupport();
 
     if (!support.rnnoiseSupported && !support.nativeFallbackAvailable) {
-      throw new NoiseFilterError(
-        NoiseFilterErrorCode.NOT_SUPPORTED,
-        support.unsupportedReason ?? 'Noise filter not supported'
-      );
+      throw new NoiseFilterError(NoiseFilterErrorCode.NOT_SUPPORTED, support.unsupportedReason ?? 'Noise filter not supported');
     }
 
     // Create source node from input track
@@ -172,9 +157,7 @@ export class NoiseFilterProcessor extends BaseProcessor {
       this.workletNode = createRNNoiseWorkletNode(audioContext);
 
       // Handle messages from worklet
-      this.workletNode.port.onmessage = (
-        event: MessageEvent<WorkletOutboundMessage>
-      ) => {
+      this.workletNode.port.onmessage = (event: MessageEvent<WorkletOutboundMessage>) => {
         this.handleWorkletMessage(event.data);
       };
 
@@ -187,10 +170,7 @@ export class NoiseFilterProcessor extends BaseProcessor {
 
       this.usingFallback = false;
     } catch (error) {
-      console.warn(
-        'Failed to initialize AudioWorklet, falling back to ScriptProcessor:',
-        error
-      );
+      console.warn('Failed to initialize AudioWorklet, falling back to ScriptProcessor:', error);
       this.initScriptProcessorFallback();
     }
   }
@@ -226,10 +206,7 @@ export class NoiseFilterProcessor extends BaseProcessor {
       // Load and send WASM binary
       this.loadWasmBinary()
         .then((wasmBinary) => {
-          this.workletNode!.port.postMessage(
-            { type: 'init', wasmBinary },
-            [wasmBinary]
-          );
+          this.workletNode!.port.postMessage({ type: 'init', wasmBinary }, [wasmBinary]);
         })
         .catch(reject);
     });
@@ -240,9 +217,7 @@ export class NoiseFilterProcessor extends BaseProcessor {
    */
   private async loadWasmBinary(): Promise<ArrayBuffer> {
     // Try to load from custom path or use bundled
-    const wasmPath =
-      this.options.wasmPath ??
-      'https://cdn.jsdelivr.net/npm/@jitsi/rnnoise-wasm/dist/rnnoise.wasm';
+    const wasmPath = this.options.wasmPath ?? 'https://cdn.jsdelivr.net/npm/@jitsi/rnnoise-wasm/dist/rnnoise.wasm';
 
     const response = await fetch(wasmPath);
     if (!response.ok) {
@@ -277,11 +252,7 @@ export class NoiseFilterProcessor extends BaseProcessor {
 
     // Create ScriptProcessorNode (deprecated but works everywhere)
     // Buffer size of 4096 for reasonable latency
-    this.fallbackScriptNode = this.audioContext.createScriptProcessor(
-      4096,
-      1,
-      1
-    );
+    this.fallbackScriptNode = this.audioContext.createScriptProcessor(4096, 1, 1);
 
     this.fallbackScriptNode.onaudioprocess = (event) => {
       const input = event.inputBuffer.getChannelData(0);
@@ -500,8 +471,6 @@ export class NoiseFilterProcessor extends BaseProcessor {
  * @param options - Processor options
  * @returns NoiseFilterProcessor instance
  */
-export function createNoiseFilter(
-  options?: NoiseFilterOptions
-): NoiseFilterProcessor {
+export function createNoiseFilter(options?: NoiseFilterOptions): NoiseFilterProcessor {
   return new NoiseFilterProcessor(options);
 }

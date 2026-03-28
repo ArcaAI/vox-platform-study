@@ -5,22 +5,12 @@
  * This runs in a separate thread for low-latency audio processing.
  */
 
-import type {
-  NoiseCancellationLevel,
-  NoiseFilterStats,
-  WorkletInboundMessage,
-  WorkletOutboundMessage,
-} from '../types/index.js';
+import type { NoiseCancellationLevel, NoiseFilterStats, WorkletInboundMessage, WorkletOutboundMessage } from '../types/index.js';
 
 /**
  * Frame size expected by RNNoise (480 samples = 10ms at 48kHz).
  */
 const RNNOISE_FRAME_SIZE = 480;
-
-/**
- * AudioWorklet render quantum size (128 samples per process call).
- */
-const RENDER_QUANTUM = 128;
 
 /**
  * Noise attenuation multipliers for different levels.
@@ -145,7 +135,7 @@ class RNNoiseWorkletProcessor extends AudioWorkletProcessor {
     inputs: Float32Array[][],
     outputs: Float32Array[][],
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _parameters: Record<string, Float32Array>
+    _parameters: Record<string, Float32Array>,
   ): boolean {
     const input = inputs[0]?.[0];
     const output = outputs[0]?.[0];
@@ -209,32 +199,19 @@ class RNNoiseWorkletProcessor extends AudioWorkletProcessor {
 
     try {
       // Copy input to WASM memory
-      const inputView = new Float32Array(
-        this.memory.buffer,
-        inputPtr,
-        RNNOISE_FRAME_SIZE
-      );
+      const inputView = new Float32Array(this.memory.buffer, inputPtr, RNNOISE_FRAME_SIZE);
       inputView.set(this.inputBuffer);
 
       // Process frame
-      this.lastVadProbability = exports.rnnoise_process_frame(
-        this.denoiseState,
-        outputPtr,
-        inputPtr
-      );
+      this.lastVadProbability = exports.rnnoise_process_frame(this.denoiseState, outputPtr, inputPtr);
 
       // Copy output from WASM memory
-      const outputView = new Float32Array(
-        this.memory.buffer,
-        outputPtr,
-        RNNOISE_FRAME_SIZE
-      );
+      const outputView = new Float32Array(this.memory.buffer, outputPtr, RNNOISE_FRAME_SIZE);
 
       // Apply level multiplier and mix
       const multiplier = LEVEL_MULTIPLIERS[this.level];
       for (let i = 0; i < RNNOISE_FRAME_SIZE; i++) {
-        this.outputBuffer[i] =
-          this.inputBuffer[i]! * (1 - multiplier) + outputView[i]! * multiplier;
+        this.outputBuffer[i] = this.inputBuffer[i]! * (1 - multiplier) + outputView[i]! * multiplier;
       }
 
       this.outputBufferIndex = 0;
@@ -251,10 +228,7 @@ class RNNoiseWorkletProcessor extends AudioWorkletProcessor {
    * Send processing statistics to main thread.
    */
   private sendStats(): void {
-    const avgProcessingTime =
-      this.framesProcessed > 0
-        ? this.processingTimeSum / this.framesProcessed
-        : 0;
+    const avgProcessingTime = this.framesProcessed > 0 ? this.processingTimeSum / this.framesProcessed : 0;
 
     const frameDurationMs = (RNNOISE_FRAME_SIZE / sampleRate) * 1000;
     const cpuLoad = Math.min(1, avgProcessingTime / frameDurationMs);

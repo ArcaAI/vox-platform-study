@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   MediaPlayer,
@@ -8,17 +8,17 @@ import {
   MediaPlayerSeek,
   MediaPlayerVolume,
   MediaPlayerTime,
-} from '../../../registries/diceui/media-player'
+} from '../../../registries/diceui/media-player';
 
 const meta = {
   title: 'Registries/DiceUI/MediaPlayer',
   component: MediaPlayer,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof MediaPlayer>
+} satisfies Meta<typeof MediaPlayer>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -32,4 +32,4 @@ export const Default: Story = {
       </MediaPlayerControls>
     </MediaPlayer>
   ),
-}
+};

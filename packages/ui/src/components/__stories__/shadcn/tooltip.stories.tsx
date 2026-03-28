@@ -1,13 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { IconPlus } from '@tabler/icons-react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { IconPlus } from '@tabler/icons-react';
 
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '../../shadcn/tooltip'
-import { Button } from '../../shadcn/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../shadcn/tooltip';
+import { Button } from '../../shadcn/button';
 
 const meta = {
   title: 'Components/Tooltip',
@@ -23,10 +18,10 @@ const meta = {
       </TooltipProvider>
     ),
   ],
-} satisfies Meta<typeof Tooltip>
+} satisfies Meta<typeof Tooltip>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -39,7 +34,7 @@ export const Default: Story = {
       </TooltipContent>
     </Tooltip>
   ),
-}
+};
 
 export const Sides: Story = {
   render: () => (
@@ -58,7 +53,7 @@ export const Sides: Story = {
       ))}
     </div>
   ),
-}
+};
 
 export const IconButton: Story = {
   render: () => (
@@ -73,4 +68,4 @@ export const IconButton: Story = {
       </TooltipContent>
     </Tooltip>
   ),
-}
+};

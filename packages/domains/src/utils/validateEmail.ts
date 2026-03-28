@@ -1,6 +1,6 @@
 // Regular expression pattern to validate an email address
 const emailPattern =
-    /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z0-9](?!.*--)[a-zA-Z0-9-]*[a-zA-Z0-9])+\.)+[a-zA-Z]{2,63})$/;
+  /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z0-9](?!.*--)[a-zA-Z0-9-]*[a-zA-Z0-9])+\.)+[a-zA-Z]{2,63})$/;
 
 /**
  * Validates whether the provided string is a properly formatted email address.
@@ -21,5 +21,5 @@ const emailPattern =
  * console.log("Is 'invalid-email' a valid email?", invalidEmail); // Output: false
  */
 export function validateEmail(email: string): boolean {
-    return emailPattern.test(email);
+  return emailPattern.test(email);
 }

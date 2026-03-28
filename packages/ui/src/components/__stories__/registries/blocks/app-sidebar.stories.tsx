@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { AppSidebar } from '../../../registries/blocks/app-sidebar'
-import { SidebarProvider } from '../../../shadcn/sidebar'
+import { AppSidebar } from '../../../registries/blocks/app-sidebar';
+import { SidebarProvider } from '../../../shadcn/sidebar';
 
 const meta = {
   title: 'Registries/Blocks/AppSidebar',
@@ -15,11 +15,11 @@ const meta = {
       </SidebarProvider>
     ),
   ],
-} satisfies Meta<typeof AppSidebar>
+} satisfies Meta<typeof AppSidebar>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {},
-}
+};

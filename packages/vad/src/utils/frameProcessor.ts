@@ -290,11 +290,7 @@ export function samplesToDuration(samples: number, sampleRate: number): number {
  * @param sampleRate - Sample rate in Hz
  * @returns Number of frames
  */
-export function durationToFrames(
-  durationMs: number,
-  model: VADModel,
-  sampleRate: number
-): number {
+export function durationToFrames(durationMs: number, model: VADModel, sampleRate: number): number {
   const frameSize = getFrameSamplesForModel(model);
   const frameDurationMs = (frameSize / sampleRate) * 1000;
   return Math.ceil(durationMs / frameDurationMs);
@@ -308,11 +304,7 @@ export function durationToFrames(
  * @param sampleRate - Sample rate in Hz
  * @returns Duration in milliseconds
  */
-export function framesToDuration(
-  frames: number,
-  model: VADModel,
-  sampleRate: number
-): number {
+export function framesToDuration(frames: number, model: VADModel, sampleRate: number): number {
   const frameSize = getFrameSamplesForModel(model);
   const frameDurationMs = (frameSize / sampleRate) * 1000;
   return frames * frameDurationMs;

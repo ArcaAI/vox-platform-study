@@ -130,21 +130,25 @@ const mockRevokeObjectURL = vi.fn();
 // Setup global mocks
 Object.defineProperty(globalThis, 'AudioContext', {
   writable: true,
+  configurable: true,
   value: MockAudioContext,
 });
 
 Object.defineProperty(globalThis, 'AudioWorkletNode', {
   writable: true,
+  configurable: true,
   value: MockAudioWorkletNode,
 });
 
 Object.defineProperty(globalThis, 'MediaStreamTrack', {
   writable: true,
+  configurable: true,
   value: MockMediaStreamTrack,
 });
 
 Object.defineProperty(globalThis, 'MediaStream', {
   writable: true,
+  configurable: true,
   value: MockMediaStream,
 });
 
@@ -173,6 +177,7 @@ if (typeof Blob === 'undefined') {
 // Mock navigator.mediaDevices
 Object.defineProperty(globalThis.navigator, 'mediaDevices', {
   writable: true,
+  configurable: true,
   value: {
     getUserMedia: vi.fn().mockResolvedValue(new MockMediaStream()),
     enumerateDevices: vi.fn().mockResolvedValue([]),

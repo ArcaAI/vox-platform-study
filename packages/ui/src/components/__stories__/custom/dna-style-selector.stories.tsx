@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useState } from 'react';
 
-import { DnaStyleSelector, type DnaStyleOption } from '../../custom/dna-style-selector'
+import { DnaStyleSelector, type DnaStyleOption } from '../../custom/dna-style-selector';
 
 const styles: DnaStyleOption[] = [
   {
@@ -19,7 +19,7 @@ const styles: DnaStyleOption[] = [
     name: 'Structured Report',
     preview: 'Section-based format with headers. Standardized terminology. Quantitative emphasis.',
   },
-]
+];
 
 const meta = {
   title: 'Custom/DnaStyleSelector',
@@ -39,17 +39,17 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof DnaStyleSelector>
+} satisfies Meta<typeof DnaStyleSelector>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
     styles,
     onChange: (id) => console.log('Selected:', id),
   },
-}
+};
 
 export const WithSelection: Story = {
   args: {
@@ -57,7 +57,7 @@ export const WithSelection: Story = {
     selectedStyleId: 'narrative',
     onChange: (id) => console.log('Selected:', id),
   },
-}
+};
 
 export const Loading: Story = {
   args: {
@@ -65,7 +65,7 @@ export const Loading: Story = {
     isLoading: true,
     onChange: () => {},
   },
-}
+};
 
 export const Empty: Story = {
   args: {
@@ -73,14 +73,14 @@ export const Empty: Story = {
     onChange: () => {},
     onGenerate: () => console.log('Generate clicked'),
   },
-}
+};
 
 export const EmptyWithoutGenerate: Story = {
   args: {
     styles: [],
     onChange: () => {},
   },
-}
+};
 
 export const SingleStyle: Story = {
   args: {
@@ -88,22 +88,15 @@ export const SingleStyle: Story = {
     selectedStyleId: 'concise',
     onChange: (id) => console.log('Selected:', id),
   },
-}
+};
 
 function InteractiveDemo() {
-  const [selected, setSelected] = useState<string | undefined>()
+  const [selected, setSelected] = useState<string | undefined>();
 
-  return (
-    <DnaStyleSelector
-      styles={styles}
-      selectedStyleId={selected}
-      onChange={setSelected}
-      onGenerate={() => console.log('Generate DNA style')}
-    />
-  )
+  return <DnaStyleSelector styles={styles} selectedStyleId={selected} onChange={setSelected} onGenerate={() => console.log('Generate DNA style')} />;
 }
 
 export const Interactive: Story = {
   args: {} as any,
   render: () => <InteractiveDemo />,
-}
+};

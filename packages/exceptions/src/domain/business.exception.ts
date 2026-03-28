@@ -7,8 +7,8 @@ import { BUSINESS, BaseDomainException } from '../common';
  * @extends {BaseDomainException}
  */
 export class BusinessException extends BaseDomainException {
-    static readonly code = BUSINESS;
-    constructor(message: string, cause?: Error, metadata?: unknown) {
-        super(message, BusinessException.code, cause, metadata);
-    }
+  static readonly code = BUSINESS;
+  constructor(message: string, cause?: Error, metadata?: unknown) {
+    super(message, BusinessException.code, cause, metadata);
+  }
 }

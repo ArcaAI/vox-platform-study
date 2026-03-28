@@ -39,31 +39,21 @@ describe('convertDateToUnixTimestamp', () => {
   it('should throw error for invalid Date object', () => {
     const invalidDate = new Date('invalid');
 
-    expect(() => convertDateToUnixTimestamp(invalidDate)).toThrow(
-      'Invalid Date object provided.'
-    );
+    expect(() => convertDateToUnixTimestamp(invalidDate)).toThrow('Invalid Date object provided.');
   });
 
   it('should throw error for non-Date input', () => {
     // @ts-expect-error Testing invalid input
-    expect(() => convertDateToUnixTimestamp('2024-01-01')).toThrow(
-      'Invalid Date object provided.'
-    );
+    expect(() => convertDateToUnixTimestamp('2024-01-01')).toThrow('Invalid Date object provided.');
 
     // @ts-expect-error Testing invalid input
-    expect(() => convertDateToUnixTimestamp(1704067200)).toThrow(
-      'Invalid Date object provided.'
-    );
+    expect(() => convertDateToUnixTimestamp(1704067200)).toThrow('Invalid Date object provided.');
 
     // Test with null (cast to bypass TypeScript for runtime test)
-    expect(() => convertDateToUnixTimestamp(null as unknown as Date)).toThrow(
-      'Invalid Date object provided.'
-    );
+    expect(() => convertDateToUnixTimestamp(null as unknown as Date)).toThrow('Invalid Date object provided.');
 
     // Test with undefined (cast to bypass TypeScript for runtime test)
-    expect(() => convertDateToUnixTimestamp(undefined as unknown as Date)).toThrow(
-      'Invalid Date object provided.'
-    );
+    expect(() => convertDateToUnixTimestamp(undefined as unknown as Date)).toThrow('Invalid Date object provided.');
   });
 
   it('should handle current date', () => {

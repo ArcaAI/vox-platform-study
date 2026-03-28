@@ -18,35 +18,35 @@ import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { ObservabilityModule } from '../../baseServices/observability/observability.module';
 
 @Module({
-    imports: [
-        ConfigModule,
-        HttpModule,
-        CoreDatabaseModule,
-        ObservabilityModule,
-        ChainSummaryServiceModule, // Required for ComprehensiveSummaryProcessor
-        PromptResolutionServiceModule, // Required for prompt fallback chain (GAP-3)
-        EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
-        RedisCacheModule.register(), // For job status storage and pub/sub
-        BullModule.registerQueue(
-            { name: JobQueue.GeneratePreSummary },
-            { name: JobQueue.GenerateSummary },
-            { name: JobQueue.GenerateComprehensiveSummary },
-            { name: JobQueue.ExtractNamedEntities },
-        ),
-    ],
-    providers: [
-        RedisSubscriberService, // Dedicated Redis subscriber for SSE pub/sub
-        {
-            provide: IConsultationJobService,
-            useClass: ConsultationJobService,
-        },
-        PromptAssemblyService,
-        SummaryProcessor,
-        PreSummaryProcessor,
-        NerProcessor,
-        ComprehensiveSummaryProcessor,
-        ConsultationEventHandler, // Auto-pipeline event handler (GAP-1)
-    ],
-    exports: [IConsultationJobService, ConsultationEventHandler],
+  imports: [
+    ConfigModule,
+    HttpModule,
+    CoreDatabaseModule,
+    ObservabilityModule,
+    ChainSummaryServiceModule, // Required for ComprehensiveSummaryProcessor
+    PromptResolutionServiceModule, // Required for prompt fallback chain (GAP-3)
+    EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
+    RedisCacheModule.register(), // For job status storage and pub/sub
+    BullModule.registerQueue(
+      { name: JobQueue.GeneratePreSummary },
+      { name: JobQueue.GenerateSummary },
+      { name: JobQueue.GenerateComprehensiveSummary },
+      { name: JobQueue.ExtractNamedEntities },
+    ),
+  ],
+  providers: [
+    RedisSubscriberService, // Dedicated Redis subscriber for SSE pub/sub
+    {
+      provide: IConsultationJobService,
+      useClass: ConsultationJobService,
+    },
+    PromptAssemblyService,
+    SummaryProcessor,
+    PreSummaryProcessor,
+    NerProcessor,
+    ComprehensiveSummaryProcessor,
+    ConsultationEventHandler, // Auto-pipeline event handler (GAP-1)
+  ],
+  exports: [IConsultationJobService, ConsultationEventHandler],
 })
 export class ConsultationJobServiceModule {}

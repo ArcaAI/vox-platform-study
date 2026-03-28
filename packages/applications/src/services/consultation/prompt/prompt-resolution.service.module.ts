@@ -3,8 +3,8 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { PromptResolutionService } from './prompt-resolution.service';
 
 @Module({
-    imports: [CoreDatabaseModule],
-    providers: [PromptResolutionService],
-    exports: [PromptResolutionService],
+  imports: [CoreDatabaseModule],
+  providers: [PromptResolutionService],
+  exports: [PromptResolutionService],
 })
 export class PromptResolutionServiceModule {}

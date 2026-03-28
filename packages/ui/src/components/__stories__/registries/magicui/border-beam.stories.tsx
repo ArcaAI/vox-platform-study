@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { BorderBeam } from '../../../registries/magicui/border-beam'
+import { BorderBeam } from '../../../registries/magicui/border-beam';
 
 const meta = {
   title: 'Registries/MagicUI/BorderBeam',
   component: BorderBeam,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof BorderBeam>
+} satisfies Meta<typeof BorderBeam>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -18,4 +18,4 @@ export const Default: Story = {
       <BorderBeam />
     </div>
   ),
-}
+};

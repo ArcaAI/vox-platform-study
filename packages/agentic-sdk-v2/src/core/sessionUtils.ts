@@ -33,10 +33,7 @@ export async function openSessionOperation(
   store.setSessionError(null);
 
   try {
-    const consultation = await apiClient.post<Consultation>(
-      CONSULTATION_ENDPOINTS.OPEN,
-      input,
-    );
+    const consultation = await apiClient.post<Consultation>(CONSULTATION_ENDPOINTS.OPEN, input);
 
     store.setConsultation(consultation);
     store.clearContext();
@@ -77,9 +74,7 @@ export async function loadConsultationOperation(
   store.setSessionError(null);
 
   try {
-    const consultation = await apiClient.get<Consultation>(
-      CONSULTATION_ENDPOINTS.GET(consultationId),
-    );
+    const consultation = await apiClient.get<Consultation>(CONSULTATION_ENDPOINTS.GET(consultationId));
 
     store.setConsultation(consultation);
     store.clearContext();

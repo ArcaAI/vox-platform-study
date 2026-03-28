@@ -7,11 +7,10 @@ import { CONFLICT, BaseException } from '../../common';
  * @extends {BaseException}
  */
 export class ConflictException extends BaseException {
-    static readonly message =
-        'Conflict detected, operation cannot be completed.';
-    readonly code = CONFLICT;
+  static readonly message = 'Conflict detected, operation cannot be completed.';
+  readonly code = CONFLICT;
 
-    constructor(message = ConflictException.message) {
-        super(message);
-    }
+  constructor(message = ConflictException.message) {
+    super(message);
+  }
 }

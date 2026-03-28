@@ -6,7 +6,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { AudioTrack, type AudioTrackOptions } from '../core/AudioTrack.js';
-import { TrackEvent, type FeatureUpdatePayload } from '../events/TrackEvents.js';
+import { TrackEvent } from '../events/TrackEvents.js';
 import type { AudioCaptureOptions, AudioFeature, TrackState, RoomError } from '../types/index.js';
 import { useRoomSafe } from '../components/RoomProvider.js';
 
@@ -88,9 +88,7 @@ export interface UseAudioTrackReturn {
  * }
  * ```
  */
-export function useAudioTrack(
-  options: UseAudioTrackOptions = {}
-): UseAudioTrackReturn {
+export function useAudioTrack(options: UseAudioTrackOptions = {}): UseAudioTrackReturn {
   const roomContext = useRoomSafe();
 
   const [track, setTrack] = useState<AudioTrack | null>(null);
@@ -164,7 +162,7 @@ export function useAudioTrack(
         throw err;
       }
     },
-    [getAudioContext]
+    [getAudioContext],
   );
 
   // Stop capturing
@@ -199,25 +197,19 @@ export function useAudioTrack(
   }, []);
 
   // Set feature
-  const setFeature = useCallback(
-    async (feature: AudioFeature, enabled: boolean) => {
-      if (trackRef.current) {
-        await trackRef.current.setFeature(feature, enabled);
-      }
-    },
-    []
-  );
+  const setFeature = useCallback(async (feature: AudioFeature, enabled: boolean) => {
+    if (trackRef.current) {
+      await trackRef.current.setFeature(feature, enabled);
+    }
+  }, []);
 
   // Restart
-  const restart = useCallback(
-    async (restartOptions?: AudioCaptureOptions) => {
-      if (trackRef.current) {
-        await trackRef.current.restart(restartOptions);
-        setState(trackRef.current.getState());
-      }
-    },
-    []
-  );
+  const restart = useCallback(async (restartOptions?: AudioCaptureOptions) => {
+    if (trackRef.current) {
+      await trackRef.current.restart(restartOptions);
+      setState(trackRef.current.getState());
+    }
+  }, []);
 
   // Auto-start if enabled
   useEffect(() => {

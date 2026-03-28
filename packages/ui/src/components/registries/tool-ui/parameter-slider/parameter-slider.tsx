@@ -1,55 +1,30 @@
-"use client";
+'use client';
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import * as SliderPrimitive from "@radix-ui/react-slider";
-import type { ParameterSliderProps, SliderConfig, SliderValue } from "./schema";
-import { ActionButtons } from "../shared/action-buttons";
-import { normalizeActionsConfig } from "../shared/actions-config";
-import { useControllableState } from "../shared/use-controllable-state";
-import { useSignatureReset } from "../shared/use-signature-reset";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import * as SliderPrimitive from '@radix-ui/react-slider';
+import type { ParameterSliderProps, SliderConfig, SliderValue } from './schema';
+import { ActionButtons } from '../shared/action-buttons';
+import { normalizeActionsConfig } from '../shared/actions-config';
+import { useControllableState } from '../shared/use-controllable-state';
+import { useSignatureReset } from '../shared/use-signature-reset';
 
-import { cn } from "./_adapter";
-import {
-  createSliderSignature,
-  createSliderValueSnapshot,
-  sliderRangeToPercent,
-} from "./math";
+import { cn } from './_adapter';
+import { createSliderSignature, createSliderValueSnapshot, sliderRangeToPercent } from './math';
 
-function formatSignedValue(
-  value: number,
-  min: number,
-  max: number,
-  precision?: number,
-  unit?: string,
-): string {
+function formatSignedValue(value: number, min: number, max: number, precision?: number, unit?: string): string {
   const crossesZero = min < 0 && max > 0;
-  const fixed =
-    precision !== undefined ? value.toFixed(precision) : String(value);
+  const fixed = precision !== undefined ? value.toFixed(precision) : String(value);
   const numericPart = crossesZero && value >= 0 ? `+${fixed}` : fixed;
   return unit ? `${numericPart} ${unit}` : numericPart;
 }
 
-function getAriaValueText(
-  value: number,
-  min: number,
-  max: number,
-  unit?: string,
-): string {
+function getAriaValueText(value: number, min: number, max: number, unit?: string): string {
   const crossesZero = min < 0 && max > 0;
   if (crossesZero) {
     if (value > 0) {
       return unit ? `plus ${value} ${unit}` : `plus ${value}`;
     } else if (value < 0) {
-      return unit
-        ? `minus ${Math.abs(value)} ${unit}`
-        : `minus ${Math.abs(value)}`;
+      return unit ? `minus ${Math.abs(value)} ${unit}` : `minus ${Math.abs(value)}`;
     }
   }
   return unit ? `${value} ${unit}` : String(value);
@@ -144,12 +119,8 @@ function calculateGap(
   // Asymmetric padding/margin: outer-facing side has less padding, more margin
   const paddingLeft = isLeftAligned ? TEXT_PADDING_X_OUTER : TEXT_PADDING_X;
   const paddingRight = isLeftAligned ? TEXT_PADDING_X : TEXT_PADDING_X_OUTER;
-  const marginLeft = isLeftAligned
-    ? DETECTION_MARGIN_X_OUTER
-    : DETECTION_MARGIN_X;
-  const marginRight = isLeftAligned
-    ? DETECTION_MARGIN_X
-    : DETECTION_MARGIN_X_OUTER;
+  const marginLeft = isLeftAligned ? DETECTION_MARGIN_X_OUTER : DETECTION_MARGIN_X;
+  const marginRight = isLeftAligned ? DETECTION_MARGIN_X : DETECTION_MARGIN_X_OUTER;
   const paddingY = TEXT_PADDING_Y;
   const marginY = DETECTION_MARGIN_Y;
   const thumbCenterY = centerY;
@@ -162,12 +133,8 @@ function calculateGap(
   const innerHeight = height + paddingY * 2;
   const innerRadius = innerHeight / 2;
   // Smaller radius on outer-facing side (left for label, right for value)
-  const innerRadiusLeft = isLeftAligned
-    ? innerRadius * OUTER_EDGE_RADIUS_FACTOR
-    : innerRadius;
-  const innerRadiusRight = isLeftAligned
-    ? innerRadius
-    : innerRadius * OUTER_EDGE_RADIUS_FACTOR;
+  const innerRadiusLeft = isLeftAligned ? innerRadius * OUTER_EDGE_RADIUS_FACTOR : innerRadius;
+  const innerRadiusRight = isLeftAligned ? innerRadius : innerRadius * OUTER_EDGE_RADIUS_FACTOR;
 
   // Outer boundary (where effect starts) - proportionally larger
   const outerLeft = left - paddingLeft - marginLeft;
@@ -176,12 +143,8 @@ function calculateGap(
   const outerBottom = centerY + height / 2 + paddingY + marginY;
   const outerHeight = height + paddingY * 2 + marginY * 2;
   const outerRadius = outerHeight / 2;
-  const outerRadiusLeft = isLeftAligned
-    ? outerRadius * OUTER_EDGE_RADIUS_FACTOR
-    : outerRadius;
-  const outerRadiusRight = isLeftAligned
-    ? outerRadius
-    : outerRadius * OUTER_EDGE_RADIUS_FACTOR;
+  const outerRadiusLeft = isLeftAligned ? outerRadius * OUTER_EDGE_RADIUS_FACTOR : outerRadius;
+  const outerRadiusRight = isLeftAligned ? outerRadius : outerRadius * OUTER_EDGE_RADIUS_FACTOR;
 
   const outerDist = signedDistanceToRoundedRect(
     thumbCenterX,
@@ -229,14 +192,7 @@ interface SliderRowProps {
   handleClassName?: string;
 }
 
-function SliderRow({
-  config,
-  value,
-  onChange,
-  trackClassName,
-  fillClassName,
-  handleClassName,
-}: SliderRowProps) {
+function SliderRow({ config, value, onChange, trackClassName, fillClassName, handleClassName }: SliderRowProps) {
   const { id, label, min, max, step = 1, unit, precision, disabled } = config;
   // Per-slider theming overrides component-level theming
   const resolvedTrackClassName = config.trackClassName ?? trackClassName;
@@ -258,8 +214,8 @@ function SliderRow({
   useEffect(() => {
     if (!isDragging) return;
     const handlePointerUp = () => setIsDragging(false);
-    document.addEventListener("pointerup", handlePointerUp);
-    return () => document.removeEventListener("pointerup", handlePointerUp);
+    document.addEventListener('pointerup', handlePointerUp);
+    return () => document.removeEventListener('pointerup', handlePointerUp);
   }, [isDragging]);
 
   useEffect(() => {
@@ -270,7 +226,7 @@ function SliderRow({
 
     const bumpLayoutVersion = () => setLayoutVersion((v) => v + 1);
 
-    if (typeof ResizeObserver !== "undefined") {
+    if (typeof ResizeObserver !== 'undefined') {
       const observer = new ResizeObserver(() => {
         bumpLayoutVersion();
       });
@@ -280,8 +236,8 @@ function SliderRow({
       return () => observer.disconnect();
     }
 
-    window.addEventListener("resize", bumpLayoutVersion);
-    return () => window.removeEventListener("resize", bumpLayoutVersion);
+    window.addEventListener('resize', bumpLayoutVersion);
+    return () => window.removeEventListener('resize', bumpLayoutVersion);
   }, []);
 
   useLayoutEffect(() => {
@@ -298,9 +254,7 @@ function SliderRow({
     const trackWidth = trackRect.width;
     const valuePercent = sliderRangeToPercent({ value, min, max });
     // Use same inset coordinate system as visual elements
-    const thumbCenterPx =
-      (trackWidth * clampPercent(valuePercent)) / 100 +
-      getRadixThumbInBoundsOffsetPx(valuePercent);
+    const thumbCenterPx = (trackWidth * clampPercent(valuePercent)) / 100 + getRadixThumbInBoundsOffsetPx(valuePercent);
     const thumbHalfWidth = THUMB_WIDTH / 2;
 
     // Text is raised by TEXT_VERTICAL_OFFSET from center
@@ -349,30 +303,18 @@ function SliderRow({
     // Use the max gap of whichever text element(s) the handle intersects
     const labelFullGap = labelRect.height + TEXT_PADDING_Y * 2;
     const valueFullGap = valueRect.height + TEXT_PADDING_Y * 2;
-    const releaseGap =
-      hitsLabel && hitsValue
-        ? Math.max(labelFullGap, valueFullGap)
-        : hitsLabel
-          ? labelFullGap
-          : hitsValue
-            ? valueFullGap
-            : 0;
+    const releaseGap = hitsLabel && hitsValue ? Math.max(labelFullGap, valueFullGap) : hitsLabel ? labelFullGap : hitsValue ? valueFullGap : 0;
     setFullGap(releaseGap);
   }, [value, min, max, layoutVersion]);
 
   // While dragging: use distance-based separation, but never collapse below
   // the release split when the thumb still intersects text.
-  const gap = isDragging
-    ? Math.max(dragGap, intersectsText ? fullGap : 0)
-    : intersectsText
-      ? fullGap
-      : 0;
+  const gap = isDragging ? Math.max(dragGap, intersectsText ? fullGap : 0) : intersectsText ? fullGap : 0;
 
   const ticks = useMemo(() => {
     // Generate equidistant ticks regardless of step value
     const majorTickCount = TICK_COUNT;
-    const result: { percent: number; isCenter: boolean; isSubtick: boolean }[] =
-      [];
+    const result: { percent: number; isCenter: boolean; isSubtick: boolean }[] = [];
 
     for (let i = 0; i <= majorTickCount; i++) {
       const percent = (i / majorTickCount) * 100;
@@ -401,27 +343,23 @@ function SliderRow({
     return result;
   }, [crossesZero]);
 
-  const zeroPercent = crossesZero
-    ? sliderRangeToPercent({ value: 0, min, max })
-    : 0;
+  const zeroPercent = crossesZero ? sliderRangeToPercent({ value: 0, min, max }) : 0;
   const valuePercent = sliderRangeToPercent({ value, min, max });
 
   // Fill clip-path uses the same inset coordinate system as the handle.
   // This keeps the collapsed stroke aligned with the fill edge near extremes.
   const fillClipPath = useMemo(() => {
-    const toClipFromRightInset = (percent: number) =>
-      `calc(100% - ${toRadixThumbPosition(percent)})`;
-    const toClipFromLeftInset = (percent: number) =>
-      toRadixThumbPosition(percent);
+    const toClipFromRightInset = (percent: number) => `calc(100% - ${toRadixThumbPosition(percent)})`;
+    const toClipFromLeftInset = (percent: number) => toRadixThumbPosition(percent);
     const TERMINAL_EPSILON = 1e-6;
     const snapLeftInset = (percent: number) => {
-      if (percent <= TERMINAL_EPSILON) return "0";
-      if (percent >= 100 - TERMINAL_EPSILON) return "100%";
+      if (percent <= TERMINAL_EPSILON) return '0';
+      if (percent >= 100 - TERMINAL_EPSILON) return '100%';
       return toClipFromLeftInset(percent);
     };
     const snapRightInset = (percent: number) => {
-      if (percent <= TERMINAL_EPSILON) return "100%";
-      if (percent >= 100 - TERMINAL_EPSILON) return "0";
+      if (percent <= TERMINAL_EPSILON) return '100%';
+      if (percent >= 100 - TERMINAL_EPSILON) return '0';
       return toClipFromRightInset(percent);
     };
 
@@ -437,15 +375,14 @@ function SliderRow({
   }, [crossesZero, zeroPercent, valuePercent]);
 
   const fillMaskImage = crossesZero
-    ? "linear-gradient(to right, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0.7) 100%)"
-    : "linear-gradient(to right, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.7) 100%)";
+    ? 'linear-gradient(to right, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0.7) 100%)'
+    : 'linear-gradient(to right, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.7) 100%)';
 
   // Metallic reflection gradient that follows the handle position
   // Visible while dragging OR when resting at edges (0%/100%)
   const reflectionStyle = useMemo(() => {
     const edgeThreshold = 3;
-    const nearEdge =
-      valuePercent <= edgeThreshold || valuePercent >= 100 - edgeThreshold;
+    const nearEdge = valuePercent <= edgeThreshold || valuePercent >= 100 - edgeThreshold;
 
     // Narrower spread when stationary at edges (~35% narrower)
     const spreadPercent = nearEdge && !isDragging ? 6.5 : 10;
@@ -460,19 +397,17 @@ function SliderRow({
 
     return {
       background: gradient,
-      WebkitMask:
-        "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
-      WebkitMaskComposite: "xor",
-      maskComposite: "exclude",
-      padding: "1px",
+      WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+      WebkitMaskComposite: 'xor',
+      maskComposite: 'exclude',
+      padding: '1px',
     };
   }, [valuePercent, isDragging]);
 
   // Opacity scales with handle size: rest → hover → drag
   const reflectionOpacity = useMemo(() => {
     const edgeThreshold = 3;
-    const atEdge =
-      valuePercent <= edgeThreshold || valuePercent >= 100 - edgeThreshold;
+    const atEdge = valuePercent <= edgeThreshold || valuePercent >= 100 - edgeThreshold;
 
     if (isDragging || atEdge) {
       return 1;
@@ -497,14 +432,14 @@ function SliderRow({
       <SliderPrimitive.Root
         id={id}
         className={cn(
-          "group/slider relative flex w-full touch-none items-center select-none",
-          "isolate h-12",
+          'group/slider relative flex w-full touch-none items-center select-none',
+          'isolate h-12',
           isDragging
-            ? "[&>span]:transition-[left,transform] [&>span]:duration-45 [&>span]:ease-linear"
-            : "[&>span]:transition-[left,transform] [&>span]:duration-90 [&>span]:ease-[cubic-bezier(0.22,1,0.36,1)]",
-          "[&>span]:will-change-[left,transform]",
-          "motion-reduce:[&>span]:transition-none",
-          disabled && "pointer-events-none opacity-50",
+            ? '[&>span]:transition-[left,transform] [&>span]:duration-45 [&>span]:ease-linear'
+            : '[&>span]:transition-[left,transform] [&>span]:duration-90 [&>span]:ease-[cubic-bezier(0.22,1,0.36,1)]',
+          '[&>span]:will-change-[left,transform]',
+          'motion-reduce:[&>span]:transition-none',
+          disabled && 'pointer-events-none opacity-50',
         )}
         value={[value]}
         onValueChange={handleValueChange}
@@ -521,20 +456,18 @@ function SliderRow({
         <SliderPrimitive.Track
           ref={trackRef}
           className={cn(
-            "squircle relative h-12 w-full grow overflow-hidden rounded-sm",
-            "ring-border ring-1 ring-inset",
-            "dark:ring-white/10",
-            resolvedTrackClassName ?? "bg-muted",
+            'squircle relative h-12 w-full grow overflow-hidden rounded-sm',
+            'ring-border ring-1 ring-inset',
+            'dark:ring-white/10',
+            resolvedTrackClassName ?? 'bg-muted',
           )}
         >
           <div
             className={cn(
-              "absolute inset-0 will-change-[clip-path]",
-              isDragging
-                ? "transition-[clip-path] duration-45 ease-linear"
-                : "transition-[clip-path] duration-90 ease-[cubic-bezier(0.22,1,0.36,1)]",
-              "motion-reduce:transition-none",
-              resolvedFillClassName ?? "bg-primary/30 dark:bg-primary/40",
+              'absolute inset-0 will-change-[clip-path]',
+              isDragging ? 'transition-[clip-path] duration-45 ease-linear' : 'transition-[clip-path] duration-90 ease-[cubic-bezier(0.22,1,0.36,1)]',
+              'motion-reduce:transition-none',
+              resolvedFillClassName ?? 'bg-primary/30 dark:bg-primary/40',
             )}
             style={{
               maskImage: fillMaskImage,
@@ -544,25 +477,24 @@ function SliderRow({
           />
 
           {ticks.map((tick, i) => {
-            const isEdge =
-              !tick.isSubtick && (tick.percent === 0 || tick.percent === 100);
+            const isEdge = !tick.isSubtick && (tick.percent === 0 || tick.percent === 100);
             return (
               <span
                 key={i}
                 className={cn(
-                  "pointer-events-none absolute bottom-px w-px",
-                  tick.isSubtick ? "h-1.5" : "h-2",
+                  'pointer-events-none absolute bottom-px w-px',
+                  tick.isSubtick ? 'h-1.5' : 'h-2',
                   isEdge
-                    ? "bg-transparent"
+                    ? 'bg-transparent'
                     : tick.isSubtick
-                      ? "bg-foreground/8 dark:bg-white/5"
+                      ? 'bg-foreground/8 dark:bg-white/5'
                       : tick.isCenter
-                        ? "bg-foreground/30 dark:bg-white/25"
-                        : "bg-foreground/15 dark:bg-white/8",
+                        ? 'bg-foreground/30 dark:bg-white/25'
+                        : 'bg-foreground/15 dark:bg-white/8',
                 )}
                 style={{
                   left: toInsetPosition(tick.percent),
-                  transform: "translateX(-50%)",
+                  transform: 'translateX(-50%)',
                 }}
               />
             );
@@ -572,30 +504,30 @@ function SliderRow({
         {/* Metallic reflection overlay - follows handle, brightness scales with interaction */}
         <div
           className={cn(
-            "squircle pointer-events-none absolute inset-0 rounded-sm",
+            'squircle pointer-events-none absolute inset-0 rounded-sm',
             isDragging
-              ? "transition-[opacity,background] duration-45 ease-linear"
-              : "transition-[opacity,background] duration-90 ease-[cubic-bezier(0.22,1,0.36,1)]",
-            "motion-reduce:transition-none",
+              ? 'transition-[opacity,background] duration-45 ease-linear'
+              : 'transition-[opacity,background] duration-90 ease-[cubic-bezier(0.22,1,0.36,1)]',
+            'motion-reduce:transition-none',
           )}
           style={{
             ...reflectionStyle,
             opacity: reflectionOpacity,
-            filter: "blur(1px)",
-            mixBlendMode: "overlay",
+            filter: 'blur(1px)',
+            mixBlendMode: 'overlay',
           }}
         />
 
         <SliderPrimitive.Thumb
           className={cn(
-            "group/thumb z-0 block w-3 shrink-0 cursor-grab rounded-sm",
-            "relative bg-transparent outline-none",
-            "transition-[height,opacity] duration-150 ease-[var(--cubic-ease-in-out)]",
-            "focus-visible:outline-ring focus-visible:outline-2 focus-visible:outline-offset-1",
-            "active:cursor-grabbing",
-            "disabled:pointer-events-none disabled:opacity-50",
+            'group/thumb z-0 block w-3 shrink-0 cursor-grab rounded-sm',
+            'relative bg-transparent outline-none',
+            'transition-[height,opacity] duration-150 ease-[var(--cubic-ease-in-out)]',
+            'focus-visible:outline-ring focus-visible:outline-2 focus-visible:outline-offset-1',
+            'active:cursor-grabbing',
+            'disabled:pointer-events-none disabled:opacity-50',
             // Height morphs: rest (track height) → hover → active
-            isDragging ? "h-[56px]" : isHovered ? "h-[54px]" : "h-12",
+            isDragging ? 'h-[56px]' : isHovered ? 'h-[54px]' : 'h-12',
           )}
         >
           {(() => {
@@ -608,35 +540,23 @@ function SliderRow({
 
             // Hide rest-state indicator at edges (0% or 100%) - the reflection gradient handles this
             const edgeThreshold = 3;
-            const atEdge =
-              valuePercent <= edgeThreshold ||
-              valuePercent >= 100 - edgeThreshold;
+            const atEdge = valuePercent <= edgeThreshold || valuePercent >= 100 - edgeThreshold;
             const restOpacity = atEdge ? 0 : 0.25;
 
             // Asymmetric segment heights: gap is shifted up to match raised text position
             // Top segment is shorter, bottom segment is taller
-            const topHeight =
-              isActive && gap > 0
-                ? `calc(50% - ${gap / 2 + TEXT_VERTICAL_OFFSET}px)`
-                : "50%";
-            const bottomHeight =
-              isActive && gap > 0
-                ? `calc(50% - ${gap / 2 - TEXT_VERTICAL_OFFSET}px)`
-                : "50%";
+            const topHeight = isActive && gap > 0 ? `calc(50% - ${gap / 2 + TEXT_VERTICAL_OFFSET}px)` : '50%';
+            const bottomHeight = isActive && gap > 0 ? `calc(50% - ${gap / 2 - TEXT_VERTICAL_OFFSET}px)` : '50%';
 
             return (
               <>
                 <span
                   className={cn(
-                    "absolute top-0 left-1/2",
-                    "transition-all duration-100 ease-[var(--cubic-ease-in-out)]",
-                    isActive
-                      ? gap > 0
-                        ? "rounded-full"
-                        : "rounded-t-full"
-                      : "rounded-t-sm",
-                    isDragging ? "w-2" : isActive ? "w-1.5" : "w-px",
-                    resolvedHandleClassName ?? "bg-primary",
+                    'absolute top-0 left-1/2',
+                    'transition-all duration-100 ease-[var(--cubic-ease-in-out)]',
+                    isActive ? (gap > 0 ? 'rounded-full' : 'rounded-t-full') : 'rounded-t-sm',
+                    isDragging ? 'w-2' : isActive ? 'w-1.5' : 'w-px',
+                    resolvedHandleClassName ?? 'bg-primary',
                   )}
                   style={{
                     transform: `translateX(calc(-50% + ${fillEdgeOffset}px))`,
@@ -646,15 +566,11 @@ function SliderRow({
                 />
                 <span
                   className={cn(
-                    "absolute bottom-0 left-1/2",
-                    "transition-all duration-100 ease-[var(--cubic-ease-in-out)]",
-                    isActive
-                      ? gap > 0
-                        ? "rounded-full"
-                        : "rounded-b-full"
-                      : "rounded-b-sm",
-                    isDragging ? "w-2" : isActive ? "w-1.5" : "w-px",
-                    resolvedHandleClassName ?? "bg-primary",
+                    'absolute bottom-0 left-1/2',
+                    'transition-all duration-100 ease-[var(--cubic-ease-in-out)]',
+                    isActive ? (gap > 0 ? 'rounded-full' : 'rounded-b-full') : 'rounded-b-sm',
+                    isDragging ? 'w-2' : isActive ? 'w-1.5' : 'w-px',
+                    resolvedHandleClassName ?? 'bg-primary',
                   )}
                   style={{
                     transform: `translateX(calc(-50% + ${fillEdgeOffset}px))`,
@@ -673,16 +589,10 @@ function SliderRow({
             transform: `translateY(calc(-50% - ${TEXT_VERTICAL_OFFSET}px))`,
           }}
         >
-          <span
-            ref={labelRef}
-            className="text-primary -mt-px rounded-full px-2 py-px text-sm font-normal tracking-wide"
-          >
+          <span ref={labelRef} className="text-primary -mt-px rounded-full px-2 py-px text-sm font-normal tracking-wide">
             {label}
           </span>
-          <span
-            ref={valueRef}
-            className="text-foreground -mt-px -mb-0.5 flex h-6 items-center rounded-full px-2 font-mono text-xs tabular-nums"
-          >
+          <span ref={valueRef} className="text-foreground -mt-px -mb-0.5 flex h-6 items-center rounded-full px-2 font-mono text-xs tabular-nums">
             {formatSignedValue(value, min, max, precision, unit)}
           </span>
         </div>
@@ -704,14 +614,8 @@ export function ParameterSlider({
   fillClassName,
   handleClassName,
 }: ParameterSliderProps) {
-  const slidersSignature = useMemo(
-    () => createSliderSignature(sliders),
-    [sliders],
-  );
-  const sliderSnapshot = useMemo(
-    () => createSliderValueSnapshot(sliders),
-    [sliders],
-  );
+  const slidersSignature = useMemo(() => createSliderSignature(sliders), [sliders]);
+  const sliderSnapshot = useMemo(() => createSliderValueSnapshot(sliders), [sliders]);
   const {
     value: currentValues,
     isControlled,
@@ -739,9 +643,7 @@ export function ParameterSlider({
 
   const updateValue = useCallback(
     (sliderId: string, newValue: number) => {
-      setValue((prev) =>
-        prev.map((v) => (v.id === sliderId ? { ...v, value: newValue } : v)),
-      );
+      setValue((prev) => prev.map((v) => (v.id === sliderId ? { ...v, value: newValue } : v)));
     },
     [setValue],
   );
@@ -753,7 +655,7 @@ export function ParameterSlider({
   const handleAction = useCallback(
     async (actionId: string) => {
       let nextValues = currentValues;
-      if (actionId === "reset") {
+      if (actionId === 'reset') {
         handleReset();
         nextValues = sliderSnapshot;
       }
@@ -768,28 +670,20 @@ export function ParameterSlider({
     if (normalized) return normalized;
     return {
       items: [
-        { id: "reset", label: "Reset", variant: "ghost" as const },
-        { id: "apply", label: "Apply", variant: "default" as const },
+        { id: 'reset', label: 'Reset', variant: 'ghost' as const },
+        { id: 'apply', label: 'Apply', variant: 'default' as const },
       ],
-      align: "right" as const,
+      align: 'right' as const,
     };
   }, [actions]);
 
   return (
     <article
-      className={cn(
-        "@container/parameter-slider isolate flex w-full max-w-md min-w-80 flex-col gap-3",
-        "text-foreground",
-        className,
-      )}
+      className={cn('@container/parameter-slider isolate flex w-full max-w-md min-w-80 flex-col gap-3', 'text-foreground', className)}
       data-slot="parameter-slider"
       data-tool-ui-id={id}
     >
-      <div
-        className={cn(
-          "bg-card flex w-full flex-col overflow-hidden rounded-2xl border px-5 py-3 shadow-xs",
-        )}
-      >
+      <div className={cn('bg-card flex w-full flex-col overflow-hidden rounded-2xl border px-5 py-3 shadow-xs')}>
         {sliders.map((slider) => (
           <SliderRow
             key={slider.id}
@@ -809,11 +703,7 @@ export function ParameterSlider({
           align={normalizedActions.align}
           confirmTimeout={normalizedActions.confirmTimeout}
           onAction={handleAction}
-          onBeforeAction={
-            onBeforeAction
-              ? (actionId) => onBeforeAction(actionId, currentValues)
-              : undefined
-          }
+          onBeforeAction={onBeforeAction ? (actionId) => onBeforeAction(actionId, currentValues) : undefined}
         />
       </div>
     </article>

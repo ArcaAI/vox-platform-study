@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   CodeBlock,
@@ -7,30 +7,30 @@ import {
   CodeBlockFilename,
   CodeBlockHeader,
   CodeBlockTitle,
-} from '../../../registries/ai-elements/code-block'
+} from '../../../registries/ai-elements/code-block';
 
 const meta = {
   title: 'Registries/AiElements/CodeBlock',
   component: CodeBlock,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof CodeBlock>
+} satisfies Meta<typeof CodeBlock>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 const sampleCode = `function greet(name: string) {
   console.log(\`Hello, \${name}!\`);
 }
 
-greet("World");`
+greet("World");`;
 
 export const Default: Story = {
   args: {
     code: sampleCode,
     language: 'typescript',
   },
-}
+};
 
 export const WithHeader: Story = {
   args: {} as any,
@@ -46,7 +46,7 @@ export const WithHeader: Story = {
       </CodeBlockHeader>
     </CodeBlock>
   ),
-}
+};
 
 export const WithLineNumbers: Story = {
   args: {
@@ -54,4 +54,4 @@ export const WithLineNumbers: Story = {
     language: 'typescript',
     showLineNumbers: true,
   },
-}
+};

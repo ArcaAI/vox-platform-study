@@ -1,10 +1,4 @@
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type UseQueryOptions,
-} from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { adminClient } from './admin-client';
 
 // ---------------------------------------------------------------------------
@@ -91,8 +85,7 @@ const keys = {
   details: () => [...keys.all, 'detail'] as const,
   detail: (id: string) => [...keys.details(), id] as const,
   usage: (id: string) => [...keys.all, 'usage', id] as const,
-  configs: (identifier: string, params?: PaginationParams) =>
-    [...keys.all, 'configs', identifier, params] as const,
+  configs: (identifier: string, params?: PaginationParams) => [...keys.all, 'configs', identifier, params] as const,
 };
 
 function qs(params?: PaginationParams): string {
@@ -106,19 +99,10 @@ function qs(params?: PaginationParams): string {
 // Query hooks
 // ---------------------------------------------------------------------------
 
-export function useTenants(
-  params?: PaginationParams,
-  options?: Omit<
-    UseQueryOptions<PaginatedResponse<Tenant>>,
-    'queryKey' | 'queryFn'
-  >,
-) {
+export function useTenants(params?: PaginationParams, options?: Omit<UseQueryOptions<PaginatedResponse<Tenant>>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.list(params),
-    queryFn: () =>
-      adminClient.get<PaginatedResponse<Tenant>>(
-        `/admin/tenants${qs(params)}`,
-      ),
+    queryFn: () => adminClient.get<PaginatedResponse<Tenant>>(`/admin/tenants${qs(params)}`),
     ...options,
   });
 }
@@ -135,10 +119,7 @@ export function useTenantsInfinite(
 ) {
   return useInfiniteQuery({
     queryKey: [...keys.lists(), 'infinite', pageSize] as const,
-    queryFn: ({ pageParam }) =>
-      adminClient.get<PaginatedResponse<Tenant>>(
-        `/admin/tenants${qs({ page: pageParam, limit: pageSize })}`,
-      ),
+    queryFn: ({ pageParam }) => adminClient.get<PaginatedResponse<Tenant>>(`/admin/tenants${qs({ page: pageParam, limit: pageSize })}`),
     initialPageParam: 1,
     getNextPageParam: (lastPage, _allPages, lastPageParam) => {
       const fetched = lastPageParam * pageSize;
@@ -148,10 +129,7 @@ export function useTenantsInfinite(
   });
 }
 
-export function useTenant(
-  id: string,
-  options?: Omit<UseQueryOptions<Tenant>, 'queryKey' | 'queryFn'>,
-) {
+export function useTenant(id: string, options?: Omit<UseQueryOptions<Tenant>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.detail(id),
     queryFn: () => adminClient.get<Tenant>(`/admin/tenants/${id}`),
@@ -160,14 +138,10 @@ export function useTenant(
   });
 }
 
-export function useTenantUsage(
-  id: string,
-  options?: Omit<UseQueryOptions<TenantUsage>, 'queryKey' | 'queryFn'>,
-) {
+export function useTenantUsage(id: string, options?: Omit<UseQueryOptions<TenantUsage>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.usage(id),
-    queryFn: () =>
-      adminClient.get<TenantUsage>(`/admin/tenants/${id}/usage`),
+    queryFn: () => adminClient.get<TenantUsage>(`/admin/tenants/${id}/usage`),
     enabled: !!id,
     ...options,
   });
@@ -176,17 +150,11 @@ export function useTenantUsage(
 export function useTenantConfigs(
   identifier: string,
   params?: PaginationParams,
-  options?: Omit<
-    UseQueryOptions<PaginatedResponse<TenantConfig>>,
-    'queryKey' | 'queryFn'
-  >,
+  options?: Omit<UseQueryOptions<PaginatedResponse<TenantConfig>>, 'queryKey' | 'queryFn'>,
 ) {
   return useQuery({
     queryKey: keys.configs(identifier, params),
-    queryFn: () =>
-      adminClient.get<PaginatedResponse<TenantConfig>>(
-        `/admin/tenants/configs/${identifier}${qs(params)}`,
-      ),
+    queryFn: () => adminClient.get<PaginatedResponse<TenantConfig>>(`/admin/tenants/configs/${identifier}${qs(params)}`),
     enabled: !!identifier,
     ...options,
   });
@@ -199,8 +167,7 @@ export function useTenantConfigs(
 export function useCreateTenant() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateTenantInput) =>
-      adminClient.post<Tenant>('/admin/tenants', input),
+    mutationFn: (input: CreateTenantInput) => adminClient.post<Tenant>('/admin/tenants', input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.lists() });
     },
@@ -210,8 +177,7 @@ export function useCreateTenant() {
 export function useUpdateTenant() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: UpdateTenantInput & { id: string }) =>
-      adminClient.patch<Tenant>(`/admin/tenants/${id}`, input),
+    mutationFn: ({ id, ...input }: UpdateTenantInput & { id: string }) => adminClient.patch<Tenant>(`/admin/tenants/${id}`, input),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all });
       qc.invalidateQueries({ queryKey: keys.detail(variables.id) });
@@ -234,8 +200,7 @@ export function useToggleTenantStatus() {
 export function useDeleteTenant() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      adminClient.delete<void>(`/admin/tenants/${id}`),
+    mutationFn: (id: string) => adminClient.delete<void>(`/admin/tenants/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.lists() });
     },
@@ -245,14 +210,8 @@ export function useDeleteTenant() {
 export function useUpdateTenantConfigs() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      identifier,
-      configs,
-    }: { identifier: string; configs: UpdateTenantConfigItem[] }) =>
-      adminClient.patch<PaginatedResponse<TenantConfig>>(
-        `/admin/tenants/configs/${identifier}`,
-        configs,
-      ),
+    mutationFn: ({ identifier, configs }: { identifier: string; configs: UpdateTenantConfigItem[] }) =>
+      adminClient.patch<PaginatedResponse<TenantConfig>>(`/admin/tenants/configs/${identifier}`, configs),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({
         queryKey: keys.configs(variables.identifier),
@@ -269,16 +228,10 @@ const myTenantKeys = {
   config: ['my-tenant', 'config'] as const,
 };
 
-export function useMyTenantConfigs(
-  options?: Omit<
-    UseQueryOptions<PaginatedResponse<TenantConfig>>,
-    'queryKey' | 'queryFn'
-  >,
-) {
+export function useMyTenantConfigs(options?: Omit<UseQueryOptions<PaginatedResponse<TenantConfig>>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: myTenantKeys.config,
-    queryFn: () =>
-      adminClient.get<PaginatedResponse<TenantConfig>>('/tenant/me/config'),
+    queryFn: () => adminClient.get<PaginatedResponse<TenantConfig>>('/tenant/me/config'),
     ...options,
   });
 }
@@ -286,11 +239,7 @@ export function useMyTenantConfigs(
 export function useUpdateMyTenantConfigs() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (configs: UpdateTenantConfigItem[]) =>
-      adminClient.patch<PaginatedResponse<TenantConfig>>(
-        '/tenant/me/config',
-        configs,
-      ),
+    mutationFn: (configs: UpdateTenantConfigItem[]) => adminClient.patch<PaginatedResponse<TenantConfig>>('/tenant/me/config', configs),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: myTenantKeys.config });
     },

@@ -163,23 +163,14 @@ export function useUsers(): UseUsersReturn {
     [execute],
   );
 
-  const enable = useCallback(
-    (id: string) => update(id, { resourceStatus: 'ENABLED' }),
-    [update],
-  );
+  const enable = useCallback((id: string) => update(id, { resourceStatus: 'ENABLED' }), [update]);
 
-  const disable = useCallback(
-    (id: string) => update(id, { resourceStatus: 'DISABLED' }),
-    [update],
-  );
+  const disable = useCallback((id: string) => update(id, { resourceStatus: 'DISABLED' }), [update]);
 
   const assignDepartments = useCallback(
     (userId: string, input: AssignDepartmentsInput) =>
       execute<User>('assignDepartments', async (client) => {
-        const updated = await client.patch<User>(
-          `${USER_ENDPOINTS.UPDATE(userId)}/departments`,
-          input
-        );
+        const updated = await client.patch<User>(`${USER_ENDPOINTS.UPDATE(userId)}/departments`, input);
         setCurrentUser(updated);
         setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
         return updated;
@@ -188,8 +179,20 @@ export function useUsers(): UseUsersReturn {
   );
 
   return {
-    users, currentUser, isLoading, error,
-    list, listPaginated, search, get, getByExternalId, create, update, remove, enable, disable,
+    users,
+    currentUser,
+    isLoading,
+    error,
+    list,
+    listPaginated,
+    search,
+    get,
+    getByExternalId,
+    create,
+    update,
+    remove,
+    enable,
+    disable,
     assignDepartments,
   };
 }

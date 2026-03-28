@@ -4,11 +4,7 @@
  * Utilities for building and managing MediaTrackConstraints.
  */
 
-import {
-  AudioFeature,
-  DEFAULT_AUDIO_OPTIONS,
-  type AudioCaptureOptions,
-} from '../types/index.js';
+import { AudioFeature, DEFAULT_AUDIO_OPTIONS, type AudioCaptureOptions } from '../types/index.js';
 
 /**
  * Build MediaTrackConstraints from AudioCaptureOptions.
@@ -16,9 +12,7 @@ import {
  * @param options - The audio capture options
  * @returns MediaTrackConstraints for getUserMedia
  */
-export function buildAudioConstraints(
-  options: AudioCaptureOptions = {}
-): MediaTrackConstraints {
+export function buildAudioConstraints(options: AudioCaptureOptions = {}): MediaTrackConstraints {
   const merged = { ...DEFAULT_AUDIO_OPTIONS, ...options };
 
   const constraints: MediaTrackConstraints = {
@@ -45,8 +39,7 @@ export function buildAudioConstraints(
 
   // Add voice isolation if specified (experimental feature)
   if (merged.voiceIsolation !== undefined) {
-    (constraints as MediaTrackConstraints & { voiceIsolation?: boolean }).voiceIsolation =
-      merged.voiceIsolation;
+    (constraints as MediaTrackConstraints & { voiceIsolation?: boolean }).voiceIsolation = merged.voiceIsolation;
   }
 
   return constraints;
@@ -58,34 +51,20 @@ export function buildAudioConstraints(
  * @param track - The MediaStreamTrack to inspect
  * @returns Map of audio features and their enabled state
  */
-export function getTrackFeatures(
-  track: MediaStreamTrack
-): Map<AudioFeature, boolean> {
+export function getTrackFeatures(track: MediaStreamTrack): Map<AudioFeature, boolean> {
   const settings = track.getSettings();
   const features = new Map<AudioFeature, boolean>();
 
   // Check each feature from track settings
-  features.set(
-    AudioFeature.AUTO_GAIN_CONTROL,
-    settings.autoGainControl ?? false
-  );
-  features.set(
-    AudioFeature.ECHO_CANCELLATION,
-    settings.echoCancellation ?? false
-  );
-  features.set(
-    AudioFeature.NOISE_SUPPRESSION,
-    settings.noiseSuppression ?? false
-  );
+  features.set(AudioFeature.AUTO_GAIN_CONTROL, settings.autoGainControl ?? false);
+  features.set(AudioFeature.ECHO_CANCELLATION, settings.echoCancellation ?? false);
+  features.set(AudioFeature.NOISE_SUPPRESSION, settings.noiseSuppression ?? false);
 
   // Voice isolation is experimental
   const extendedSettings = settings as MediaTrackSettings & {
     voiceIsolation?: boolean;
   };
-  features.set(
-    AudioFeature.VOICE_ISOLATION,
-    extendedSettings.voiceIsolation ?? false
-  );
+  features.set(AudioFeature.VOICE_ISOLATION, extendedSettings.voiceIsolation ?? false);
 
   return features;
 }
@@ -97,11 +76,7 @@ export function getTrackFeatures(
  * @param feature - The feature to enable/disable
  * @param enabled - Whether to enable or disable the feature
  */
-export async function applyFeatureConstraint(
-  track: MediaStreamTrack,
-  feature: AudioFeature,
-  enabled: boolean
-): Promise<void> {
+export async function applyFeatureConstraint(track: MediaStreamTrack, feature: AudioFeature, enabled: boolean): Promise<void> {
   const currentSettings = track.getSettings();
 
   const constraints: MediaTrackConstraints = {

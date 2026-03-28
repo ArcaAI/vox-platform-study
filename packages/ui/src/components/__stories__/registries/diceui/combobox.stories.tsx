@@ -1,25 +1,18 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Combobox,
-  ComboboxAnchor,
-  ComboboxInput,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxItem,
-} from '../../../registries/diceui/combobox'
+import { Combobox, ComboboxAnchor, ComboboxInput, ComboboxContent, ComboboxEmpty, ComboboxItem } from '../../../registries/diceui/combobox';
 
 const meta = {
   title: 'Registries/DiceUI/Combobox',
   component: Combobox,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Combobox>
+} satisfies Meta<typeof Combobox>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
-const items = ['Apple', 'Banana', 'Cherry', 'Date', 'Elderberry']
+const items = ['Apple', 'Banana', 'Cherry', 'Date', 'Elderberry'];
 
 export const Default: Story = {
   render: () => (
@@ -37,4 +30,4 @@ export const Default: Story = {
       </ComboboxContent>
     </Combobox>
   ),
-}
+};

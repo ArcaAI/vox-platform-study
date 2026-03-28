@@ -1,22 +1,11 @@
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type UseQueryOptions,
-} from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { adminClient } from './admin-client';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type PromptTemplateCategory =
-  | 'SYSTEM'
-  | 'SUMMARY'
-  | 'PRE_SUMMARY'
-  | 'DNA_ANALYSIS'
-  | 'CUSTOM';
+export type PromptTemplateCategory = 'SYSTEM' | 'SUMMARY' | 'PRE_SUMMARY' | 'DNA_ANALYSIS' | 'CUSTOM';
 
 export type PromptTemplateStatus = 'DRAFT' | 'PUBLISHED';
 
@@ -82,11 +71,7 @@ export interface UpdatePromptInput {
   resourceStatus?: string;
 }
 
-export type DepartmentPromptField =
-  | 'newPatientPromptId'
-  | 'revisitPromptId'
-  | 'summaryPromptId'
-  | 'preSummaryPromptId';
+export type DepartmentPromptField = 'newPatientPromptId' | 'revisitPromptId' | 'summaryPromptId' | 'preSummaryPromptId';
 
 export interface AssignDepartmentPromptInput {
   departmentId: string;
@@ -121,27 +106,19 @@ const PROMPT_USAGE_STALE_TIME_MS = 15_000;
 const keys = {
   all: (tenantId?: string) => ['admin', 'prompts', tenantId ?? ''] as const,
   lists: (tenantId?: string) => [...keys.all(tenantId), 'list'] as const,
-  list: (tenantId?: string, params?: PromptListParams) =>
-    [...keys.lists(tenantId), params] as const,
+  list: (tenantId?: string, params?: PromptListParams) => [...keys.lists(tenantId), params] as const,
   details: (tenantId?: string) => [...keys.all(tenantId), 'detail'] as const,
-  detail: (tenantId: string | undefined, id: string) =>
-    [...keys.details(tenantId), id] as const,
-  versions: (tenantId: string | undefined, id: string) =>
-    [...keys.all(tenantId), 'versions', id] as const,
-  version: (tenantId: string | undefined, id: string, v: number) =>
-    [...keys.all(tenantId), 'version', id, v] as const,
-  usage: (tenantId: string | undefined, id: string) =>
-    [...keys.all(tenantId), 'usage', id] as const,
+  detail: (tenantId: string | undefined, id: string) => [...keys.details(tenantId), id] as const,
+  versions: (tenantId: string | undefined, id: string) => [...keys.all(tenantId), 'versions', id] as const,
+  version: (tenantId: string | undefined, id: string, v: number) => [...keys.all(tenantId), 'version', id, v] as const,
+  usage: (tenantId: string | undefined, id: string) => [...keys.all(tenantId), 'usage', id] as const,
 };
 
 function qs(params?: PromptListParams): string {
   if (!params) return '';
   const entries = Object.entries(params).filter(([, v]) => v != null);
   if (entries.length === 0) return '';
-  return (
-    '?' +
-    new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString()
-  );
+  return '?' + new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString();
 }
 
 // ---------------------------------------------------------------------------
@@ -151,18 +128,11 @@ function qs(params?: PromptListParams): string {
 export function usePromptTemplates(
   tenantId: string,
   params?: PromptListParams,
-  options?: Omit<
-    UseQueryOptions<PaginatedResponse<PromptTemplate>>,
-    'queryKey' | 'queryFn'
-  >,
+  options?: Omit<UseQueryOptions<PaginatedResponse<PromptTemplate>>, 'queryKey' | 'queryFn'>,
 ) {
   return useQuery({
     queryKey: keys.list(tenantId, params),
-    queryFn: () =>
-      adminClient.get<PaginatedResponse<PromptTemplate>>(
-        `/prompt-templates${qs(params)}`,
-        { tenantId },
-      ),
+    queryFn: () => adminClient.get<PaginatedResponse<PromptTemplate>>(`/prompt-templates${qs(params)}`, { tenantId }),
     enabled: !!tenantId,
     staleTime: PROMPT_TEMPLATES_STALE_TIME_MS,
     gcTime: PROMPT_TEMPLATES_GC_TIME_MS,
@@ -180,10 +150,7 @@ export function usePromptTemplatesInfinite(
   return useInfiniteQuery({
     queryKey: [...keys.lists(tenantId), 'infinite', params, pageSize] as const,
     queryFn: ({ pageParam }) =>
-      adminClient.get<PaginatedResponse<PromptTemplate>>(
-        `/prompt-templates${qs({ ...params, page: pageParam, limit: pageSize })}`,
-        { tenantId },
-      ),
+      adminClient.get<PaginatedResponse<PromptTemplate>>(`/prompt-templates${qs({ ...params, page: pageParam, limit: pageSize })}`, { tenantId }),
     initialPageParam: 1,
     getNextPageParam: (lastPage, _allPages, lastPageParam) => {
       const fetched = lastPageParam * pageSize;
@@ -195,18 +162,10 @@ export function usePromptTemplatesInfinite(
   });
 }
 
-export function usePromptTemplate(
-  tenantId: string,
-  id: string,
-  options?: Omit<
-    UseQueryOptions<PromptTemplate>,
-    'queryKey' | 'queryFn'
-  >,
-) {
+export function usePromptTemplate(tenantId: string, id: string, options?: Omit<UseQueryOptions<PromptTemplate>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.detail(tenantId, id),
-    queryFn: () =>
-      adminClient.get<PromptTemplate>(`/prompt-templates/${id}`, { tenantId }),
+    queryFn: () => adminClient.get<PromptTemplate>(`/prompt-templates/${id}`, { tenantId }),
     enabled: !!id && !!tenantId,
     staleTime: PROMPT_TEMPLATES_STALE_TIME_MS,
     gcTime: PROMPT_TEMPLATES_GC_TIME_MS,
@@ -214,21 +173,10 @@ export function usePromptTemplate(
   });
 }
 
-export function usePromptVersions(
-  tenantId: string,
-  templateId: string,
-  options?: Omit<
-    UseQueryOptions<PromptVersion[]>,
-    'queryKey' | 'queryFn'
-  >,
-) {
+export function usePromptVersions(tenantId: string, templateId: string, options?: Omit<UseQueryOptions<PromptVersion[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.versions(tenantId, templateId),
-    queryFn: () =>
-      adminClient.get<PromptVersion[]>(
-        `/prompt-templates/${templateId}/versions`,
-        { tenantId },
-      ),
+    queryFn: () => adminClient.get<PromptVersion[]>(`/prompt-templates/${templateId}/versions`, { tenantId }),
     enabled: !!templateId && !!tenantId,
     staleTime: PROMPT_TEMPLATES_STALE_TIME_MS,
     gcTime: PROMPT_TEMPLATES_GC_TIME_MS,
@@ -236,21 +184,10 @@ export function usePromptVersions(
   });
 }
 
-export function usePromptUsageStats(
-  tenantId: string,
-  templateId: string,
-  options?: Omit<
-    UseQueryOptions<PromptUsageStats>,
-    'queryKey' | 'queryFn'
-  >,
-) {
+export function usePromptUsageStats(tenantId: string, templateId: string, options?: Omit<UseQueryOptions<PromptUsageStats>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.usage(tenantId, templateId),
-    queryFn: () =>
-      adminClient.get<PromptUsageStats>(
-        `/prompt-templates/${templateId}/usage`,
-        { tenantId },
-      ),
+    queryFn: () => adminClient.get<PromptUsageStats>(`/prompt-templates/${templateId}/usage`, { tenantId }),
     enabled: !!templateId && !!tenantId,
     staleTime: PROMPT_USAGE_STALE_TIME_MS,
     gcTime: PROMPT_TEMPLATES_GC_TIME_MS,
@@ -265,8 +202,7 @@ export function usePromptUsageStats(
 export function useCreatePrompt(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreatePromptInput) =>
-      adminClient.post<PromptTemplate>('/prompt-templates', input, { tenantId }),
+    mutationFn: (input: CreatePromptInput) => adminClient.post<PromptTemplate>('/prompt-templates', input, { tenantId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all(tenantId) });
     },
@@ -289,8 +225,7 @@ export function useUpdatePrompt(tenantId: string) {
 export function useDeletePrompt(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      adminClient.delete<void>(`/prompt-templates/${id}`, { tenantId }),
+    mutationFn: (id: string) => adminClient.delete<void>(`/prompt-templates/${id}`, { tenantId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all(tenantId) });
     },
@@ -312,8 +247,7 @@ export function useTogglePromptStatus(tenantId: string) {
 export function useAssignDepartmentPrompt(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: AssignDepartmentPromptInput) =>
-      adminClient.post<void>('/prompt-templates/assign-department', input, { tenantId }),
+    mutationFn: (input: AssignDepartmentPromptInput) => adminClient.post<void>('/prompt-templates/assign-department', input, { tenantId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all(tenantId) });
     },
@@ -323,18 +257,8 @@ export function useAssignDepartmentPrompt(tenantId: string) {
 export function useActivatePromptVersion(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      templateId,
-      versionNumber,
-    }: {
-      templateId: string;
-      versionNumber: number;
-    }) =>
-      adminClient.post<PromptTemplate>(
-        `/prompt-templates/${templateId}/versions/${versionNumber}/activate`,
-        undefined,
-        { tenantId },
-      ),
+    mutationFn: ({ templateId, versionNumber }: { templateId: string; versionNumber: number }) =>
+      adminClient.post<PromptTemplate>(`/prompt-templates/${templateId}/versions/${versionNumber}/activate`, undefined, { tenantId }),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all(tenantId) });
       qc.invalidateQueries({

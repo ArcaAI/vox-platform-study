@@ -1,10 +1,10 @@
-import type { OrderItem } from '../types'
+import type { OrderItem } from '../types';
 
 // Default order items for OrderSummary
 export const demoOrderItems: OrderItem[] = [
   { id: '1', name: 'Premium Headphones', quantity: 1, price: 199.99 },
-  { id: '2', name: 'Wireless Charger', quantity: 2, price: 29.99 }
-]
+  { id: '2', name: 'Wireless Charger', quantity: 2, price: 29.99 },
+];
 
 // Default order data for OrderSummary
 export const demoOrderData = {
@@ -15,7 +15,7 @@ export const demoOrderData = {
   discount: 25.0,
   discountCode: 'SAVE10',
   total: 266.54,
-}
+};
 
 // OrderConfirm component data
 export const demoOrderConfirm = {
@@ -23,10 +23,10 @@ export const demoOrderConfirm = {
   productImage: 'https://ui.manifest.build/demo/shoe-1.png',
   price: 299,
   deliveryDate: 'Jan 20, 2024',
-}
+};
 
 // AmountInput presets
-export const demoAmountPresets = [10, 25, 50, 100]
+export const demoAmountPresets = [10, 25, 50, 100];
 
 // PaymentConfirmed component data
 export const demoPaymentConfirmed = {
@@ -34,4 +34,4 @@ export const demoPaymentConfirmed = {
   productImage: 'https://ui.manifest.build/demo/shoe-1.png',
   price: 299,
   deliveryDate: 'Jan 20, 2024',
-}
+};

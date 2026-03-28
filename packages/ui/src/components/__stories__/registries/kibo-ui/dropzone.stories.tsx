@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Dropzone, DropzoneContent, DropzoneEmptyState } from '../../../registries/kibo-ui/dropzone'
+import { Dropzone, DropzoneContent, DropzoneEmptyState } from '../../../registries/kibo-ui/dropzone';
 
 const meta = {
   title: 'Registries/KiboUI/Dropzone',
   component: Dropzone,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Dropzone>
+} satisfies Meta<typeof Dropzone>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -19,4 +19,4 @@ export const Default: Story = {
       <DropzoneEmptyState />
     </Dropzone>
   ),
-}
+};

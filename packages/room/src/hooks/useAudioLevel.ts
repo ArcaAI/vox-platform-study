@@ -76,15 +76,10 @@ const DEFAULT_AUDIO_LEVEL_INFO: AudioLevelInfo = {
  * }
  * ```
  */
-export function useAudioLevel(
-  track: AudioTrack | null,
-  options: UseAudioLevelOptions = {}
-): UseAudioLevelReturn {
+export function useAudioLevel(track: AudioTrack | null, options: UseAudioLevelOptions = {}): UseAudioLevelReturn {
   const { enabled = true } = options;
 
-  const [audioLevelInfo, setAudioLevelInfo] = useState<AudioLevelInfo>(
-    DEFAULT_AUDIO_LEVEL_INFO
-  );
+  const [audioLevelInfo, setAudioLevelInfo] = useState<AudioLevelInfo>(DEFAULT_AUDIO_LEVEL_INFO);
 
   // Subscribe to audio level updates from track
   useEffect(() => {
@@ -135,20 +130,10 @@ export function useAudioLevel(
  * }
  * ```
  */
-export function useMediaStreamAudioLevel(
-  mediaStreamTrack: MediaStreamTrack | null,
-  options: UseAudioLevelOptions = {}
-): UseAudioLevelReturn {
-  const {
-    speakingThreshold = 0.01,
-    updateInterval = 50,
-    smoothingFactor = 0.8,
-    enabled = true,
-  } = options;
+export function useMediaStreamAudioLevel(mediaStreamTrack: MediaStreamTrack | null, options: UseAudioLevelOptions = {}): UseAudioLevelReturn {
+  const { speakingThreshold = 0.01, updateInterval = 50, smoothingFactor = 0.8, enabled = true } = options;
 
-  const [audioLevelInfo, setAudioLevelInfo] = useState<AudioLevelInfo>(
-    DEFAULT_AUDIO_LEVEL_INFO
-  );
+  const [audioLevelInfo, setAudioLevelInfo] = useState<AudioLevelInfo>(DEFAULT_AUDIO_LEVEL_INFO);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -194,9 +179,7 @@ export function useMediaStreamAudioLevel(
         const rms = Math.sqrt(sum / dataArray.length);
 
         // Smooth the level
-        smoothedLevelRef.current =
-          smoothingFactor * smoothedLevelRef.current +
-          (1 - smoothingFactor) * rms;
+        smoothedLevelRef.current = smoothingFactor * smoothedLevelRef.current + (1 - smoothingFactor) * rms;
 
         // Update peak
         if (peak > peakRef.current) {
@@ -232,13 +215,7 @@ export function useMediaStreamAudioLevel(
       }
       analyserRef.current = null;
     };
-  }, [
-    mediaStreamTrack,
-    enabled,
-    speakingThreshold,
-    updateInterval,
-    smoothingFactor,
-  ]);
+  }, [mediaStreamTrack, enabled, speakingThreshold, updateInterval, smoothingFactor]);
 
   // Reset peak
   const resetPeak = useCallback(() => {

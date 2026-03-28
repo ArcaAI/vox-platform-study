@@ -1,14 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { Bar, BarChart, XAxis, YAxis } from 'recharts'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { Bar, BarChart, XAxis, YAxis } from 'recharts';
 
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
-  type ChartConfig,
-} from '../../shadcn/chart'
+import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent, type ChartConfig } from '../../shadcn/chart';
 
 const chartData = [
   { month: 'Jan', desktop: 186, mobile: 80 },
@@ -17,7 +10,7 @@ const chartData = [
   { month: 'Apr', desktop: 73, mobile: 190 },
   { month: 'May', desktop: 209, mobile: 130 },
   { month: 'Jun', desktop: 214, mobile: 140 },
-]
+];
 
 const chartConfig = {
   desktop: {
@@ -28,7 +21,7 @@ const chartConfig = {
     label: 'Mobile',
     color: 'hsl(262.1 83.3% 57.8%)',
   },
-} satisfies ChartConfig
+} satisfies ChartConfig;
 
 const meta = {
   title: 'Components/Chart',
@@ -36,10 +29,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof ChartContainer>
+} satisfies Meta<typeof ChartContainer>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -56,4 +49,4 @@ export const Default: Story = {
       </ChartContainer>
     </div>
   ),
-}
+};

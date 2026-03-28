@@ -15,10 +15,7 @@ export interface IHealthCheckService {
    * @param name Unique name for the health indicator
    * @param check Function that returns health indicator result
    */
-  registerHealthIndicator(
-    name: string,
-    check: () => Promise<HealthIndicatorResult>
-  ): void;
+  registerHealthIndicator(name: string, check: () => Promise<HealthIndicatorResult>): void;
 
   /**
    * Check health of a specific subsystem

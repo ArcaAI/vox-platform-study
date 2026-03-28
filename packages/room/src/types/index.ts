@@ -48,9 +48,7 @@ export interface AudioCaptureOptions {
 /**
  * Default audio capture options following best practices.
  */
-export const DEFAULT_AUDIO_OPTIONS: Required<
-  Omit<AudioCaptureOptions, 'deviceId' | 'sampleRate' | 'latency'>
-> = {
+export const DEFAULT_AUDIO_OPTIONS: Required<Omit<AudioCaptureOptions, 'deviceId' | 'sampleRate' | 'latency'>> = {
   echoCancellation: true,
   noiseSuppression: true,
   autoGainControl: true,
@@ -257,7 +255,7 @@ export class RoomError extends Error {
   constructor(
     public readonly code: RoomErrorCode,
     message: string,
-    public override readonly cause?: Error
+    public override readonly cause?: Error,
   ) {
     super(message, { cause });
     this.name = 'RoomError';

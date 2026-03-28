@@ -1,8 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { toast } from 'sonner'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { toast } from 'sonner';
 
-import { Toaster } from '../../shadcn/sonner'
-import { Button } from '../../shadcn/button'
+import { Toaster } from '../../shadcn/sonner';
+import { Button } from '../../shadcn/button';
 
 const meta = {
   title: 'Components/Toast',
@@ -18,10 +18,10 @@ const meta = {
       </>
     ),
   ],
-} satisfies Meta
+} satisfies Meta;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -36,7 +36,7 @@ export const Default: Story = {
       Add to calendar
     </Button>
   ),
-}
+};
 
 export const Destructive: Story = {
   render: () => (
@@ -51,7 +51,7 @@ export const Destructive: Story = {
       Show Error
     </Button>
   ),
-}
+};
 
 export const WithAction: Story = {
   render: () => (
@@ -69,24 +69,21 @@ export const WithAction: Story = {
       Delete File
     </Button>
   ),
-}
+};
 
 export const Promise: Story = {
   render: () => (
     <Button
       variant="outline"
       onClick={() => {
-        toast.promise(
-          new window.Promise((resolve) => setTimeout(resolve, 2000)),
-          {
-            loading: 'Loading...',
-            success: 'Data loaded successfully!',
-            error: 'Failed to load data.',
-          }
-        )
+        toast.promise(new window.Promise((resolve) => setTimeout(resolve, 2000)), {
+          loading: 'Loading...',
+          success: 'Data loaded successfully!',
+          error: 'Failed to load data.',
+        });
       }}
     >
       Load Data
     </Button>
   ),
-}
+};

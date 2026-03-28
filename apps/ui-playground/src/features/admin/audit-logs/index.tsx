@@ -33,31 +33,27 @@ export default function AuditLogManagementPage() {
     pageSize: 25,
   });
 
-  const {
-    data: tenantsPages,
-    isLoading: tenantsLoading,
-  } = useTenantsInfinite(25, { enabled: isSuperOrGlobalAdmin });
+  const { data: tenantsPages, isLoading: tenantsLoading } = useTenantsInfinite(25, { enabled: isSuperOrGlobalAdmin });
 
   const tenantRows = useMemo<Tenant[]>(() => {
     if (!isSuperOrGlobalAdmin) {
       if (!tenantId) return [];
-      return [{
-        id: tenantId,
-        name: tenantName || tenantId,
-        key: tenantId,
-        resourceStatus: 'ENABLED',
-        createdAt: '',
-        updatedAt: '',
-      } as Tenant];
+      return [
+        {
+          id: tenantId,
+          name: tenantName || tenantId,
+          key: tenantId,
+          resourceStatus: 'ENABLED',
+          createdAt: '',
+          updatedAt: '',
+        } as Tenant,
+      ];
     }
     return tenantsPages?.pages.flatMap((page) => page.data) ?? [];
   }, [isSuperOrGlobalAdmin, tenantId, tenantName, tenantsPages]);
 
   const filteredTenants = useMemo(
-    () =>
-      tenantRows.filter((tenant) =>
-        `${tenant.name} ${tenant.key}`.toLowerCase().includes(searchTenant.toLowerCase()),
-      ),
+    () => tenantRows.filter((tenant) => `${tenant.name} ${tenant.key}`.toLowerCase().includes(searchTenant.toLowerCase())),
     [tenantRows, searchTenant],
   );
 
@@ -83,10 +79,7 @@ export default function AuditLogManagementPage() {
         accessorKey: 'action',
         header: 'Action',
         cell: ({ row }) => (
-          <Badge
-            variant="outline"
-            className={ACTION_COLOR[row.original.action] ?? 'bg-muted'}
-          >
+          <Badge variant="outline" className={ACTION_COLOR[row.original.action] ?? 'bg-muted'}>
             {row.original.action}
           </Badge>
         ),
@@ -98,11 +91,7 @@ export default function AuditLogManagementPage() {
       {
         accessorKey: 'resourceId',
         header: 'Resource ID',
-        cell: ({ row }) => (
-          <span className="block max-w-64 truncate font-mono text-xs">
-            {String(row.original.resourceId ?? '—')}
-          </span>
-        ),
+        cell: ({ row }) => <span className="block max-w-64 truncate font-mono text-xs">{String(row.original.resourceId ?? '—')}</span>,
       },
       {
         accessorKey: 'responsibleIp',
@@ -117,18 +106,14 @@ export default function AuditLogManagementPage() {
     <Main>
       <div className="mb-4">
         <h2 className="text-2xl font-bold tracking-tight">Audit Log</h2>
-        <p className="text-muted-foreground mt-1">
-          Tenant activities with TanStack-powered table, search, and pagination.
-        </p>
+        <p className="text-muted-foreground mt-1">Tenant activities with TanStack-powered table, search, and pagination.</p>
       </div>
 
       <div className="mb-4 grid gap-3 md:grid-cols-[320px_1fr]">
         <div className="rounded-md border p-3">
           <Input
             value={searchTenant}
-            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-              setSearchTenant(event.target.value)
-            }
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) => setSearchTenant(event.target.value)}
             placeholder="Search tenant..."
             className="mb-3"
           />

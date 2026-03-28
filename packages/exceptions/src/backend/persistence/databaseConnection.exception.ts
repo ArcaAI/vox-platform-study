@@ -1,7 +1,4 @@
-import {
-    DATABASE_CONNECTION_FAILED,
-    BasePersistenceException,
-} from '../../common';
+import { DATABASE_CONNECTION_FAILED, BasePersistenceException } from '../../common';
 
 /**
  * Exception for handling database connection failures.
@@ -11,13 +8,9 @@ import {
  * @extends {BasePersistenceException}
  */
 export class DatabaseConnectionException extends BasePersistenceException {
-    static readonly message = 'Failed to connect to the database.';
-    static readonly code = DATABASE_CONNECTION_FAILED;
-    constructor(
-        message = DatabaseConnectionException.message,
-        cause?: Error,
-        metadata?: unknown,
-    ) {
-        super(message, DatabaseConnectionException.code, cause, metadata);
-    }
+  static readonly message = 'Failed to connect to the database.';
+  static readonly code = DATABASE_CONNECTION_FAILED;
+  constructor(message = DatabaseConnectionException.message, cause?: Error, metadata?: unknown) {
+    super(message, DatabaseConnectionException.code, cause, metadata);
+  }
 }

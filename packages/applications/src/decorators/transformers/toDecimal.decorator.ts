@@ -6,10 +6,10 @@ import { Decimal } from 'decimal.js';
  * It uses the class-transformer's Transform decorator.
  */
 export function ToDecimal() {
-    return Transform(({ value }) => {
-        if (value instanceof Decimal) {
-            return value.toNumber();
-        }
-        return value;
-    });
+  return Transform(({ value }) => {
+    if (value instanceof Decimal) {
+      return value.toNumber();
+    }
+    return value;
+  });
 }

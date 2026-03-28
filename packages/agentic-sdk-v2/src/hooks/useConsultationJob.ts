@@ -35,194 +35,209 @@ export function useConsultationJob(): UseConsultationJobReturn {
   const sseClientRef = useRef<SSEClient | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const refreshContextItems = useCallback(async (consultationId: string): Promise<void> => {
-    if (!apiClient) return;
-    try {
-      await apiClient.get(CONTEXT_ENDPOINTS.GET(consultationId));
-      logger?.debug('Context items refreshed after job completion', {
-        operation: 'refreshContextItems',
-        component: 'useConsultationJob',
-        sdk: { consultationId },
-      });
-    } catch (err) {
-      logger?.warn('Failed to refresh context items after job completion', {
-        operation: 'refreshContextItems',
-        component: 'useConsultationJob',
-        error: err as Error,
-      });
-    }
-  }, [apiClient, logger]);
-
-  const getJob = useCallback(async (jobId: string): Promise<ConsultationJob> => {
-    if (!apiClient) throw new Error('SDK not initialized');
-    setError(null);
-    const timer = logger?.startOperation('getJob');
-    try {
-      const data = await apiClient.get<ConsultationJob>(CONSULTATION_JOB_ENDPOINTS.GET(jobId));
-      setJob(data);
-      setStatus(data.status as JobStatus);
-      timer?.end(true);
-      return data;
-    } catch (err) {
-      setError(err as Error);
-      timer?.error(err as Error);
-      throw err;
-    }
-  }, [apiClient, logger]);
-
-  const cancelJob = useCallback(async (jobId: string): Promise<void> => {
-    if (!apiClient) throw new Error('SDK not initialized');
-    setError(null);
-    const timer = logger?.startOperation('cancelJob');
-    try {
-      await apiClient.patch(CONSULTATION_JOB_ENDPOINTS.CANCEL(jobId), {});
-      setStatus('cancelled');
-      timer?.end(true);
-    } catch (err) {
-      setError(err as Error);
-      timer?.error(err as Error);
-      throw err;
-    }
-  }, [apiClient, logger]);
-
-  const streamJob = useCallback((jobId: string, callbacks: JobStreamCallbacks): () => void => {
-    if (!apiClient) throw new Error('SDK not initialized');
-    setIsStreaming(true);
-    setError(null);
-
-    const sseClient = new SSEClient(logger);
-    sseClientRef.current = sseClient;
-
-    const cleanup = () => {
-      sseClient.disconnect();
-      sseClientRef.current = null;
-      setIsStreaming(false);
-    };
-
-    const baseUrl = apiClient.getBaseUrl();
-    const sseUrl = `${baseUrl}${CONSULTATION_JOB_ENDPOINTS.SSE(jobId)}`;
-    const authToken = apiClient.getAccessToken();
-
-    logger?.info('Connecting to consultation job SSE stream', {
-      operation: 'streamJob',
-      component: 'useConsultationJob',
-      attributes: { jobId, url: sseUrl },
-    });
-
-    sseClient.onEvent('status', (data: string) => {
+  const refreshContextItems = useCallback(
+    async (consultationId: string): Promise<void> => {
+      if (!apiClient) return;
       try {
-        const parsed = JSON.parse(data);
-        setStatus(parsed.status as JobStatus);
-        callbacks.onStatus?.(parsed.status);
-        if (isTerminalStatus(parsed.status)) {
-          cleanup();
-          const cId = parsed.consultationId || store.consultation?.id;
-          if (cId) refreshContextItems(cId);
-        }
+        await apiClient.get(CONTEXT_ENDPOINTS.GET(consultationId));
+        logger?.debug('Context items refreshed after job completion', {
+          operation: 'refreshContextItems',
+          component: 'useConsultationJob',
+          sdk: { consultationId },
+        });
       } catch (err) {
-        logger?.warn('Failed to parse SSE status event', {
-          operation: 'streamJob',
+        logger?.warn('Failed to refresh context items after job completion', {
+          operation: 'refreshContextItems',
           component: 'useConsultationJob',
           error: err as Error,
         });
       }
-    });
+    },
+    [apiClient, logger],
+  );
 
-    sseClient.onEvent('progress', (data: string) => {
+  const getJob = useCallback(
+    async (jobId: string): Promise<ConsultationJob> => {
+      if (!apiClient) throw new Error('SDK not initialized');
+      setError(null);
+      const timer = logger?.startOperation('getJob');
       try {
-        const parsed = JSON.parse(data);
-        callbacks.onProgress?.(parsed.progress);
+        const data = await apiClient.get<ConsultationJob>(CONSULTATION_JOB_ENDPOINTS.GET(jobId));
+        setJob(data);
+        setStatus(data.status as JobStatus);
+        timer?.end(true);
+        return data;
       } catch (err) {
-        logger?.warn('Failed to parse SSE progress event', {
-          operation: 'streamJob',
-          component: 'useConsultationJob',
-          error: err as Error,
-        });
+        setError(err as Error);
+        timer?.error(err as Error);
+        throw err;
       }
-    });
+    },
+    [apiClient, logger],
+  );
 
-    sseClient.onEvent('result', (data: string) => {
+  const cancelJob = useCallback(
+    async (jobId: string): Promise<void> => {
+      if (!apiClient) throw new Error('SDK not initialized');
+      setError(null);
+      const timer = logger?.startOperation('cancelJob');
       try {
-        const parsed = JSON.parse(data);
-        callbacks.onResult?.(parsed);
+        await apiClient.patch(CONSULTATION_JOB_ENDPOINTS.CANCEL(jobId), {});
+        setStatus('cancelled');
+        timer?.end(true);
       } catch (err) {
-        logger?.warn('Failed to parse SSE result event', {
-          operation: 'streamJob',
-          component: 'useConsultationJob',
-          error: err as Error,
-        });
+        setError(err as Error);
+        timer?.error(err as Error);
+        throw err;
       }
-    });
+    },
+    [apiClient, logger],
+  );
 
-    sseClient.onError(() => {
-      const err = new Error('SSE connection error');
-      setError(err);
-      callbacks.onError?.(err);
-    });
+  const streamJob = useCallback(
+    (jobId: string, callbacks: JobStreamCallbacks): (() => void) => {
+      if (!apiClient) throw new Error('SDK not initialized');
+      setIsStreaming(true);
+      setError(null);
 
-    try {
-      sseClient.connect(sseUrl, {
-        autoReconnect: true,
-        reconnectIntervalMs: 2000,
-        maxReconnectAttempts: 15,
-        maxDelayMs: 30000,
-        authToken: authToken ?? undefined,
-      });
-    } catch (err) {
-      setError(err as Error);
-      setIsStreaming(false);
-      callbacks.onError?.(err as Error);
-    }
+      const sseClient = new SSEClient(logger);
+      sseClientRef.current = sseClient;
 
-    return cleanup;
-  }, [apiClient, logger, store.consultation, refreshContextItems]);
-
-  const pollJob = useCallback(async (jobId: string, options?: PollOptions): Promise<ConsultationJob> => {
-    if (!apiClient) throw new Error('SDK not initialized');
-    const intervalMs = options?.intervalMs ?? 2000;
-    const maxAttempts = options?.maxAttempts ?? 60;
-    const timer = logger?.startOperation('pollJob');
-
-    let attempts = 0;
-
-    return new Promise<ConsultationJob>((resolve, reject) => {
-      const poll = async () => {
-        attempts++;
-        try {
-          const data = await apiClient.get<ConsultationJob>(CONSULTATION_JOB_ENDPOINTS.GET(jobId));
-          setJob(data);
-          setStatus(data.status as JobStatus);
-
-          if (isTerminalStatus(data.status)) {
-            timer?.end(true);
-            const cId = data.consultationId || store.consultation?.id;
-            if (cId) {
-              refreshContextItems(cId).finally(() => resolve(data));
-            } else {
-              resolve(data);
-            }
-            return;
-          }
-
-          if (attempts >= maxAttempts) {
-            const err = new Error('Polling exceeded max attempts');
-            setError(err);
-            timer?.error(err);
-            reject(err);
-            return;
-          }
-
-          pollTimerRef.current = setTimeout(poll, intervalMs);
-        } catch (err) {
-          setError(err as Error);
-          timer?.error(err as Error);
-          reject(err);
-        }
+      const cleanup = () => {
+        sseClient.disconnect();
+        sseClientRef.current = null;
+        setIsStreaming(false);
       };
 
-      poll();
-    });
-  }, [apiClient, logger, store.consultation, refreshContextItems]);
+      const baseUrl = apiClient.getBaseUrl();
+      const sseUrl = `${baseUrl}${CONSULTATION_JOB_ENDPOINTS.SSE(jobId)}`;
+      const authToken = apiClient.getAccessToken();
+
+      logger?.info('Connecting to consultation job SSE stream', {
+        operation: 'streamJob',
+        component: 'useConsultationJob',
+        attributes: { jobId, url: sseUrl },
+      });
+
+      sseClient.onEvent('status', (data: string) => {
+        try {
+          const parsed = JSON.parse(data);
+          setStatus(parsed.status as JobStatus);
+          callbacks.onStatus?.(parsed.status);
+          if (isTerminalStatus(parsed.status)) {
+            cleanup();
+            const cId = parsed.consultationId || store.consultation?.id;
+            if (cId) refreshContextItems(cId);
+          }
+        } catch (err) {
+          logger?.warn('Failed to parse SSE status event', {
+            operation: 'streamJob',
+            component: 'useConsultationJob',
+            error: err as Error,
+          });
+        }
+      });
+
+      sseClient.onEvent('progress', (data: string) => {
+        try {
+          const parsed = JSON.parse(data);
+          callbacks.onProgress?.(parsed.progress);
+        } catch (err) {
+          logger?.warn('Failed to parse SSE progress event', {
+            operation: 'streamJob',
+            component: 'useConsultationJob',
+            error: err as Error,
+          });
+        }
+      });
+
+      sseClient.onEvent('result', (data: string) => {
+        try {
+          const parsed = JSON.parse(data);
+          callbacks.onResult?.(parsed);
+        } catch (err) {
+          logger?.warn('Failed to parse SSE result event', {
+            operation: 'streamJob',
+            component: 'useConsultationJob',
+            error: err as Error,
+          });
+        }
+      });
+
+      sseClient.onError(() => {
+        const err = new Error('SSE connection error');
+        setError(err);
+        callbacks.onError?.(err);
+      });
+
+      try {
+        sseClient.connect(sseUrl, {
+          autoReconnect: true,
+          reconnectIntervalMs: 2000,
+          maxReconnectAttempts: 15,
+          maxDelayMs: 30000,
+          authToken: authToken ?? undefined,
+        });
+      } catch (err) {
+        setError(err as Error);
+        setIsStreaming(false);
+        callbacks.onError?.(err as Error);
+      }
+
+      return cleanup;
+    },
+    [apiClient, logger, store.consultation, refreshContextItems],
+  );
+
+  const pollJob = useCallback(
+    async (jobId: string, options?: PollOptions): Promise<ConsultationJob> => {
+      if (!apiClient) throw new Error('SDK not initialized');
+      const intervalMs = options?.intervalMs ?? 2000;
+      const maxAttempts = options?.maxAttempts ?? 60;
+      const timer = logger?.startOperation('pollJob');
+
+      let attempts = 0;
+
+      return new Promise<ConsultationJob>((resolve, reject) => {
+        const poll = async () => {
+          attempts++;
+          try {
+            const data = await apiClient.get<ConsultationJob>(CONSULTATION_JOB_ENDPOINTS.GET(jobId));
+            setJob(data);
+            setStatus(data.status as JobStatus);
+
+            if (isTerminalStatus(data.status)) {
+              timer?.end(true);
+              const cId = data.consultationId || store.consultation?.id;
+              if (cId) {
+                refreshContextItems(cId).finally(() => resolve(data));
+              } else {
+                resolve(data);
+              }
+              return;
+            }
+
+            if (attempts >= maxAttempts) {
+              const err = new Error('Polling exceeded max attempts');
+              setError(err);
+              timer?.error(err);
+              reject(err);
+              return;
+            }
+
+            pollTimerRef.current = setTimeout(poll, intervalMs);
+          } catch (err) {
+            setError(err as Error);
+            timer?.error(err as Error);
+            reject(err);
+          }
+        };
+
+        poll();
+      });
+    },
+    [apiClient, logger, store.consultation, refreshContextItems],
+  );
 
   useEffect(() => {
     return () => {
@@ -234,14 +249,17 @@ export function useConsultationJob(): UseConsultationJobReturn {
     };
   }, []);
 
-  return useMemo(() => ({
-    job,
-    status,
-    isStreaming,
-    error,
-    getJob,
-    cancelJob,
-    streamJob,
-    pollJob,
-  }), [job, status, isStreaming, error, getJob, cancelJob, streamJob, pollJob]);
+  return useMemo(
+    () => ({
+      job,
+      status,
+      isStreaming,
+      error,
+      getJob,
+      cancelJob,
+      streamJob,
+      pollJob,
+    }),
+    [job, status, isStreaming, error, getJob, cancelJob, streamJob, pollJob],
+  );
 }

@@ -1,5 +1,5 @@
-import type { ToolUIId, ToolUIReceipt, ToolUIRole } from "../shared/schema";
-import type { FormatConfig } from "./formatters";
+import type { ToolUIId, ToolUIReceipt, ToolUIRole } from '../shared/schema';
+import type { FormatConfig } from './formatters';
 
 /**
  * JSON primitive type that can be serialized.
@@ -38,17 +38,14 @@ export type RowData = Record<string, unknown>;
 export type ColumnKey<T extends object> = Extract<keyof T, string>;
 
 export type FormatFor<V> = V extends number
-  ? Extract<FormatConfig, { kind: "number" | "currency" | "percent" | "delta" }>
+  ? Extract<FormatConfig, { kind: 'number' | 'currency' | 'percent' | 'delta' }>
   : V extends boolean
-    ? Extract<FormatConfig, { kind: "boolean" | "status" | "badge" }>
+    ? Extract<FormatConfig, { kind: 'boolean' | 'status' | 'badge' }>
     : V extends (string | number | boolean | null)[]
-      ? Extract<FormatConfig, { kind: "array" }>
+      ? Extract<FormatConfig, { kind: 'array' }>
       : V extends string
-        ? Extract<
-            FormatConfig,
-            { kind: "text" | "link" | "date" | "badge" | "status" }
-          >
-        : Extract<FormatConfig, { kind: "text" }>;
+        ? Extract<FormatConfig, { kind: 'text' | 'link' | 'date' | 'badge' | 'status' }>
+        : Extract<FormatConfig, { kind: 'text' }>;
 
 /**
  * Column definition for DataTable
@@ -57,10 +54,7 @@ export type FormatFor<V> = V extends number
  * **Important:** Columns are sortable by default (opt-out pattern).
  * Set `sortable: false` explicitly to disable sorting for specific columns.
  */
-export interface Column<
-  T extends object = DataTableRowData,
-  K extends ColumnKey<T> = ColumnKey<T>,
-> {
+export interface Column<T extends object = DataTableRowData, K extends ColumnKey<T> = ColumnKey<T>> {
   /** Unique identifier that maps to a key in the row data */
   key: K;
   /** Display text for the column header */
@@ -70,13 +64,13 @@ export interface Column<
   /** Whether column is sortable. Default: true (opt-out pattern) */
   sortable?: boolean;
   /** Text alignment for column cells */
-  align?: "left" | "right" | "center";
+  align?: 'left' | 'right' | 'center';
   /** Optional fixed width (CSS value) */
   width?: string;
   /** Enable text truncation with ellipsis */
   truncate?: boolean;
   /** Mobile display priority (primary = always visible, secondary = expandable, tertiary = hidden) */
-  priority?: "primary" | "secondary" | "tertiary";
+  priority?: 'primary' | 'secondary' | 'tertiary';
   /** Completely hide column on mobile viewports */
   hideOnMobile?: boolean;
   /** Formatting configuration for cell values */
@@ -143,7 +137,7 @@ export interface DataTableSerializableProps<T extends object = RowData> {
    * <DataTable defaultSort={{ by: "price", direction: "desc" }} />
    * ```
    */
-  defaultSort?: { by?: ColumnKey<T>; direction?: "asc" | "desc" };
+  defaultSort?: { by?: ColumnKey<T>; direction?: 'asc' | 'desc' };
   /**
    * Controlled sort state (use with onSortChange from client props)
    *
@@ -156,7 +150,7 @@ export interface DataTableSerializableProps<T extends object = RowData> {
    * <DataTable sort={sort} onSortChange={setSort} />
    * ```
    */
-  sort?: { by?: ColumnKey<T>; direction?: "asc" | "desc" };
+  sort?: { by?: ColumnKey<T>; direction?: 'asc' | 'desc' };
   /** Empty state message */
   emptyMessage?: string;
   /** Max table height with vertical scroll (CSS value) */
@@ -217,10 +211,7 @@ export interface DataTableClientProps<T extends object = RowData> {
    * />
    * ```
    */
-  onSortChange?: (next: {
-    by?: ColumnKey<T>;
-    direction?: "asc" | "desc";
-  }) => void;
+  onSortChange?: (next: { by?: ColumnKey<T>; direction?: 'asc' | 'desc' }) => void;
 }
 
 /**
@@ -247,15 +238,14 @@ export interface DataTableClientProps<T extends object = RowData> {
  * />
  * ```
  */
-export interface DataTableProps<T extends object = RowData>
-  extends DataTableSerializableProps<T>, DataTableClientProps<T> {}
+export interface DataTableProps<T extends object = RowData> extends DataTableSerializableProps<T>, DataTableClientProps<T> {}
 
 export interface DataTableContextValue<T extends object = RowData> {
   columns: Column<T>[];
   data: T[];
   rowIdKey?: ColumnKey<T>;
   sortBy?: ColumnKey<T>;
-  sortDirection?: "asc" | "desc";
+  sortDirection?: 'asc' | 'desc';
   toggleSort?: (key: ColumnKey<T>) => void;
   id?: string;
   locale?: string;

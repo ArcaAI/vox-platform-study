@@ -7,13 +7,13 @@ import { CommonServiceModule } from '../baseServices';
 // TODO: Implement this
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule],
-    providers: [
-        {
-            provide: IWebhookService,
-            useClass: WebhookService
-        }
-    ],
-    exports: [IWebhookService]
+  imports: [CommonServiceModule, CoreDatabaseModule],
+  providers: [
+    {
+      provide: IWebhookService,
+      useClass: WebhookService,
+    },
+  ],
+  exports: [IWebhookService],
 })
 export class WebhookServiceModule {}

@@ -7,14 +7,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
 import { MedNERProcessor } from '../processors/MedNERProcessor.js';
-import type {
-  MedNEROptions,
-  MedNERResult,
-  MedNERStats,
-  EntitySpan,
-  ModelLoadProgress,
-  MedNERError,
-} from '../types/index.js';
+import type { MedNEROptions, MedNERResult, MedNERStats, EntitySpan, ModelLoadProgress, MedNERError } from '../types/index.js';
 
 /**
  * Options for useMedNER hook.
@@ -147,13 +140,7 @@ export interface UseMedNERReturn {
  * ```
  */
 export function useMedNER(options: UseMedNEROptions = {}): UseMedNERReturn {
-  const {
-    autoInit = true,
-    onEntitiesExtracted,
-    onError,
-    onProgress,
-    ...nerOptions
-  } = options;
+  const { autoInit = true, onEntitiesExtracted, onError, onProgress, ...nerOptions } = options;
 
   // State
   const [isReady, setIsReady] = useState(false);
@@ -220,7 +207,7 @@ export function useMedNER(options: UseMedNEROptions = {}): UseMedNERReturn {
       }
     };
     // Only create processor once with initial options
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
   // Handle data events from processor
@@ -282,44 +269,50 @@ export function useMedNER(options: UseMedNEROptions = {}): UseMedNERReturn {
   }, [autoInit, isReady, isLoading, init]);
 
   // Extract entities from text
-  const extract = useCallback(async (text: string): Promise<MedNERResult> => {
-    const processor = processorRef.current;
-    if (!processor) {
-      throw new Error('Processor not available');
-    }
-
-    if (!processor.isInitialized()) {
-      await init();
-    }
-
-    setIsProcessing(true);
-    setError(null);
-
-    try {
-      const extractResult = await processor.extract(text);
-      if (mountedRef.current) {
-        setEntities(extractResult.entities);
-        setResult(extractResult);
-        setIsProcessing(false);
+  const extract = useCallback(
+    async (text: string): Promise<MedNERResult> => {
+      const processor = processorRef.current;
+      if (!processor) {
+        throw new Error('Processor not available');
       }
-      return extractResult;
-    } catch (err) {
-      if (mountedRef.current) {
-        setError(err as Error);
-        setIsProcessing(false);
+
+      if (!processor.isInitialized()) {
+        await init();
       }
-      throw err;
-    }
-  }, [init]);
+
+      setIsProcessing(true);
+      setError(null);
+
+      try {
+        const extractResult = await processor.extract(text);
+        if (mountedRef.current) {
+          setEntities(extractResult.entities);
+          setResult(extractResult);
+          setIsProcessing(false);
+        }
+        return extractResult;
+      } catch (err) {
+        if (mountedRef.current) {
+          setError(err as Error);
+          setIsProcessing(false);
+        }
+        throw err;
+      }
+    },
+    [init],
+  );
 
   // Extract entities from multiple texts
-  const extractBatch = useCallback(async (texts: string[]): Promise<MedNERResult[]> => {
-    const results: MedNERResult[] = [];
-    for (const text of texts) {
-      results.push(await extract(text));
-    }
-    return results;
-  }, [extract]);
+  const extractBatch = useCallback(
+    async (texts: string[]): Promise<MedNERResult[]> => {
+      const results: MedNERResult[] = [];
+      for (const text of texts) {
+        results.push(await extract(text));
+      }
+      return results;
+    },
+    [extract],
+  );
 
   // Clear results
   const clear = useCallback(() => {

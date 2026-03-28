@@ -1,11 +1,11 @@
-import type { Event, EventDetails } from '../types'
+import type { Event, EventDetails } from '../types';
 
 // Helper to generate dates relative to today
 function getDateAt(daysFromNow: number, hour: number): string {
-  const date = new Date()
-  date.setDate(date.getDate() + daysFromNow)
-  date.setHours(hour, 0, 0, 0)
-  return date.toISOString()
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+  date.setHours(hour, 0, 0, 0);
+  return date.toISOString();
 }
 
 // Single event for EventCard default
@@ -19,23 +19,17 @@ export const demoEvent: Event = {
   priceRange: '$45 - $150',
   image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800',
   vibeTags: ['High energy', 'Late night', 'Dressy'],
-  vibeDescription:
-    'Immersive electronic experience with world-class DJs and stunning visuals.',
-  aiSummary:
-    "Immersive electronic night with world-class DJs and stunning visuals at LA's top-rated venue.",
+  vibeDescription: 'Immersive electronic experience with world-class DJs and stunning visuals.',
+  aiSummary: "Immersive electronic night with world-class DJs and stunning visuals at LA's top-rated venue.",
   lineup: ['DJ Shadow', 'Bonobo', 'Four Tet', 'Caribou'],
-  ticketTiers: [
-    'General Admission $45',
-    'VIP Access $120',
-    'Backstage Pass $150'
-  ],
+  ticketTiers: ['General Admission $45', 'VIP Access $120', 'Backstage Pass $150'],
   eventSignal: 'going-fast',
   organizerRating: 4.8,
   reviewCount: 12453,
   venueRating: 4.8,
   ageRestriction: '21+',
-  hasMultipleDates: true
-}
+  hasMultipleDates: true,
+};
 
 // 15 events for EventList default
 export const demoEvents: Event[] = [
@@ -53,7 +47,7 @@ export const demoEvents: Event[] = [
     eventSignal: 'going-fast',
     organizerRating: 4.8,
     reviewCount: 12453,
-    ageRestriction: '21+'
+    ageRestriction: '21+',
   },
   {
     title: 'The Midnight Show',
@@ -69,7 +63,7 @@ export const demoEvents: Event[] = [
     eventSignal: 'popular',
     organizerRating: 4.7,
     reviewCount: 3241,
-    discount: 'TONIGHT ONLY - 40% OFF'
+    discount: 'TONIGHT ONLY - 40% OFF',
   },
   {
     title: 'Salsa Sundays @ Echo Park',
@@ -84,7 +78,7 @@ export const demoEvents: Event[] = [
     vibeTags: ['High energy', 'Social'],
     eventSignal: 'just-added',
     organizerRating: 4.9,
-    reviewCount: 8764
+    reviewCount: 8764,
   },
   {
     title: 'Dawn Flow: Griffith Park',
@@ -99,7 +93,7 @@ export const demoEvents: Event[] = [
     vibeTags: ['Chill', 'Wellness', 'Outdoor'],
     organizerRating: 4.9,
     reviewCount: 8764,
-    discount: 'FREE - First 50 Only'
+    discount: 'FREE - First 50 Only',
   },
   {
     title: 'Lakers vs Celtics',
@@ -110,11 +104,11 @@ export const demoEvents: Event[] = [
     dateTime: 'Friday 7:30 PM - 10:30 PM',
     priceRange: '$125 - $850',
     image: 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=800',
-    coordinates: { lat: 34.0430, lng: -118.2673 },
+    coordinates: { lat: 34.043, lng: -118.2673 },
     vibeTags: ['High energy', 'Social', 'Premium'],
     eventSignal: 'sales-end-soon',
     organizerRating: 4.5,
-    reviewCount: 2341
+    reviewCount: 2341,
   },
   {
     title: 'Smorgasburg LA: Sunday Market',
@@ -128,7 +122,7 @@ export const demoEvents: Event[] = [
     coordinates: { lat: 34.0341, lng: -118.2324 },
     vibeTags: ['Family-friendly', 'Outdoor', 'Social'],
     organizerRating: 4.8,
-    reviewCount: 5632
+    reviewCount: 5632,
   },
   {
     title: 'LACMA After Hours',
@@ -144,7 +138,7 @@ export const demoEvents: Event[] = [
     organizerRating: 4.7,
     reviewCount: 1234,
     ageRestriction: '21+',
-    discount: 'MEMBER PRICE'
+    discount: 'MEMBER PRICE',
   },
   {
     title: 'Blue Note Under Stars',
@@ -159,7 +153,7 @@ export const demoEvents: Event[] = [
     vibeTags: ['Chill', 'Date night', 'Outdoor'],
     lineup: ['Kamasi Washington', 'Thundercat', 'Terrace Martin'],
     organizerRating: 4.8,
-    reviewCount: 12453
+    reviewCount: 12453,
   },
   {
     title: 'Meraki: Seth Troxler',
@@ -175,7 +169,7 @@ export const demoEvents: Event[] = [
     lineup: ['Amelie Lens', 'I Hate Models', 'FJAAK'],
     organizerRating: 4.6,
     reviewCount: 1876,
-    ageRestriction: '21+'
+    ageRestriction: '21+',
   },
   {
     title: 'Whitney Cummings + Friends',
@@ -190,7 +184,7 @@ export const demoEvents: Event[] = [
     vibeTags: ['Chill', 'Social', 'Date night'],
     organizerRating: 4.7,
     reviewCount: 3241,
-    ageRestriction: '18+'
+    ageRestriction: '18+',
   },
   {
     title: 'Venice Beach Drum Circle',
@@ -201,11 +195,11 @@ export const demoEvents: Event[] = [
     dateTime: 'Sunday 4:00 PM - 8:00 PM',
     priceRange: 'Free',
     image: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?w=800',
-    coordinates: { lat: 33.9850, lng: -118.4695 },
+    coordinates: { lat: 33.985, lng: -118.4695 },
     vibeTags: ['Outdoor', 'Social', 'Chill'],
     eventSignal: 'popular',
     organizerRating: 4.6,
-    reviewCount: 2145
+    reviewCount: 2145,
   },
   {
     title: 'Rooftop Cinema: Blade Runner',
@@ -219,7 +213,7 @@ export const demoEvents: Event[] = [
     coordinates: { lat: 34.0407, lng: -118.2468 },
     vibeTags: ['Date night', 'Views', 'Chill'],
     organizerRating: 4.8,
-    reviewCount: 892
+    reviewCount: 892,
   },
   {
     title: 'Dodgers vs Giants',
@@ -230,11 +224,11 @@ export const demoEvents: Event[] = [
     dateTime: 'Saturday 1:10 PM - 4:30 PM',
     priceRange: '$35 - $350',
     image: 'https://images.unsplash.com/photo-1566577739112-5180d4bf9390?w=800',
-    coordinates: { lat: 34.0739, lng: -118.2400 },
+    coordinates: { lat: 34.0739, lng: -118.24 },
     vibeTags: ['Family-friendly', 'Social', 'High energy'],
     eventSignal: 'few-tickets-left',
     organizerRating: 4.7,
-    reviewCount: 15678
+    reviewCount: 15678,
   },
   {
     title: 'Natural Wine Fair',
@@ -245,12 +239,12 @@ export const demoEvents: Event[] = [
     dateTime: 'Sunday 12:00 PM - 6:00 PM',
     priceRange: '$45 - $85',
     image: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=800',
-    coordinates: { lat: 34.0508, lng: -118.2490 },
+    coordinates: { lat: 34.0508, lng: -118.249 },
     vibeTags: ['Tasting', 'Social', 'Sophisticated'],
     eventSignal: 'just-added',
     organizerRating: 4.5,
     reviewCount: 567,
-    ageRestriction: '21+'
+    ageRestriction: '21+',
   },
   {
     title: 'Meditation in the Gardens',
@@ -261,12 +255,12 @@ export const demoEvents: Event[] = [
     dateTime: 'Sunday 7:00 AM - 9:00 AM',
     priceRange: 'Free',
     image: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800',
-    coordinates: { lat: 34.0780, lng: -118.4741 },
+    coordinates: { lat: 34.078, lng: -118.4741 },
     vibeTags: ['Wellness', 'Outdoor', 'Chill'],
     organizerRating: 4.9,
-    reviewCount: 1234
-  }
-]
+    reviewCount: 1234,
+  },
+];
 
 // Detailed event for EventDetail default
 export const demoEventDetails: EventDetails = {
@@ -281,18 +275,17 @@ export const demoEventDetails: EventDetails = {
   images: [
     'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800',
     'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
-    'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=800'
+    'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=800',
   ],
   vibeTags: ['High energy', 'Late night', 'Underground'],
   eventSignal: 'going-fast',
   aiSummary: 'Raw, unfiltered techno in an authentic warehouse setting.',
-  description:
-    'Experience the raw energy of underground techno. Industrial beats, immersive visuals, and a crowd that lives for the music.',
+  description: 'Experience the raw energy of underground techno. Industrial beats, immersive visuals, and a crowd that lives for the music.',
   lineup: ['Amelie Lens', 'I Hate Models', 'FJAAK'],
   attendeesCount: 537,
   friendsGoing: [
     { name: 'Alex', avatar: 'https://i.pravatar.cc/40?u=alex' },
-    { name: 'Sam', avatar: 'https://i.pravatar.cc/40?u=sam' }
+    { name: 'Sam', avatar: 'https://i.pravatar.cc/40?u=sam' },
   ],
   organizer: {
     name: 'Midnight Lovers',
@@ -304,13 +297,13 @@ export const demoEventDetails: EventDetails = {
     eventsCount: 154,
     hostingYears: 8,
     trackRecord: 'great',
-    responseRate: 'very responsive'
+    responseRate: 'very responsive',
   },
   venue_details: {
     name: 'The White Rabbit',
     address: '8827 Nasher Ave',
     city: 'Houston TX',
-    coordinates: { lat: 29.7604, lng: -95.3698 }
+    coordinates: { lat: 29.7604, lng: -95.3698 },
   },
   tiers: [
     { name: 'General Admission', price: 15, available: 50 },
@@ -318,8 +311,8 @@ export const demoEventDetails: EventDetails = {
       name: 'VIP Access',
       price: 30,
       available: 20,
-      benefits: ['Skip the line', 'Exclusive lounge']
-    }
+      benefits: ['Skip the line', 'Exclusive lounge'],
+    },
   ],
   goodToKnow: {
     duration: '2 hours',
@@ -327,30 +320,30 @@ export const demoEventDetails: EventDetails = {
     showtime: '7:30 PM',
     ageRestriction: '21+',
     dressCode: 'Casual',
-    parking: 'Limited, leave early to avoid long queues'
+    parking: 'Limited, leave early to avoid long queues',
   },
   policies: {
     refund: 'No refunds. Tickets are transferable.',
     entry: 'Open 2 hours before event',
     idRequired: true,
-    securityOnSite: true
+    securityOnSite: true,
   },
   faq: [
     {
       question: 'What is the refund policy?',
-      answer: 'No refunds. Tickets are transferable.'
+      answer: 'No refunds. Tickets are transferable.',
     },
     {
       question: 'When do doors open?',
-      answer: 'Open 2 hours before event.'
+      answer: 'Open 2 hours before event.',
     },
     {
       question: 'Is there parking?',
-      answer: 'Limited, leave early to avoid long queues.'
-    }
+      answer: 'Limited, leave early to avoid long queues.',
+    },
   ],
-  relatedTags: ['Houston Events', 'Texas Nightlife', 'Techno Parties']
-}
+  relatedTags: ['Houston Events', 'Texas Nightlife', 'Techno Parties'],
+};
 
 // Ticket tiers for TicketTierSelect
 export const demoTicketTiers = [
@@ -371,7 +364,7 @@ export const demoTicketTiers = [
     maxPerOrder: 4,
     description: 'Includes backstage access',
   },
-]
+];
 
 // Event confirmation data
 export const demoEventConfirmation = {
@@ -384,4 +377,4 @@ export const demoEventConfirmation = {
   organizer: {
     name: 'Live Nation',
   },
-}
+};

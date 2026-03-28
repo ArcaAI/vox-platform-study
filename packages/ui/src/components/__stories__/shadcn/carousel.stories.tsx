@@ -1,13 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselPrevious,
-  CarouselNext,
-} from '../../shadcn/carousel'
-import { Card, CardContent } from '../../shadcn/card'
+import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext } from '../../shadcn/carousel';
+import { Card, CardContent } from '../../shadcn/card';
 
 const meta = {
   title: 'Components/Carousel',
@@ -23,10 +17,10 @@ const meta = {
       description: 'The orientation of the carousel',
     },
   },
-} satisfies Meta<typeof Carousel>
+} satisfies Meta<typeof Carousel>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -48,7 +42,7 @@ export const Default: Story = {
       </Carousel>
     </div>
   ),
-}
+};
 
 export const Vertical: Story = {
   render: () => (
@@ -70,4 +64,4 @@ export const Vertical: Story = {
       </Carousel>
     </div>
   ),
-}
+};

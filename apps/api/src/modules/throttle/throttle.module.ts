@@ -16,28 +16,28 @@ import { RateLimitConfigService } from './rate-limit-config.service';
  * Env overrides: RATE_LIMIT_ENABLED, RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS
  */
 @Module({
-    imports: [
-        ThrottlerModule.forRootAsync({
-            useFactory: () => {
-                const configService = new RateLimitConfigService();
+  imports: [
+    ThrottlerModule.forRootAsync({
+      useFactory: () => {
+        const configService = new RateLimitConfigService();
 
-                if (!configService.isEnabled()) {
-                    return { throttlers: [] };
-                }
+        if (!configService.isEnabled()) {
+          return { throttlers: [] };
+        }
 
-                return {
-                    throttlers: configService.getThrottlerModuleConfig(),
-                };
-            },
-        }),
-    ],
-    providers: [
-        RateLimitConfigService,
-        {
-            provide: APP_GUARD,
-            useClass: ThrottlerGuard,
-        },
-    ],
-    exports: [RateLimitConfigService],
+        return {
+          throttlers: configService.getThrottlerModuleConfig(),
+        };
+      },
+    }),
+  ],
+  providers: [
+    RateLimitConfigService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
+  exports: [RateLimitConfigService],
 })
 export class ThrottleConfigModule {}

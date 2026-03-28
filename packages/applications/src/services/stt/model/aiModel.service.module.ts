@@ -5,12 +5,8 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { AiModelService } from './aiModel.service';
 
 @Module({
-    imports: [
-        CoreDatabaseModule,
-        EventEmitterModule,
-        ClsModule,
-    ],
-    providers: [AiModelService],
-    exports: [AiModelService],
+  imports: [CoreDatabaseModule, EventEmitterModule, ClsModule],
+  providers: [AiModelService],
+  exports: [AiModelService],
 })
 export class AiModelServiceModule {}

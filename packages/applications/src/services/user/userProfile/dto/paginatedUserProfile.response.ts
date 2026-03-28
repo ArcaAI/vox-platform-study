@@ -5,6 +5,6 @@ import { UserProfileResponse } from '.';
 // TODO: Implement this
 
 export class PaginatedUserProfileResponse extends PaginatedResponse<UserProfileResponse> {
-    @ApiProperty({ type: [UserProfileResponse] })
-    override readonly data!: readonly UserProfileResponse[];
+  @ApiProperty({ type: [UserProfileResponse] })
+  override readonly data!: readonly UserProfileResponse[];
 }

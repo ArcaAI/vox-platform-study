@@ -33,10 +33,7 @@ export interface UseProcessorsReturn {
   /** Whether any processor is attached */
   hasProcessor: boolean;
   /** Add a processor */
-  addProcessor: (
-    processor: TrackProcessor,
-    options?: { priority?: number; enabled?: boolean }
-  ) => Promise<void>;
+  addProcessor: (processor: TrackProcessor, options?: { priority?: number; enabled?: boolean }) => Promise<void>;
   /** Remove a processor */
   removeProcessor: (processorOrName: TrackProcessor | string) => Promise<void>;
   /** Set processor enabled state */
@@ -81,17 +78,11 @@ export interface UseProcessorsReturn {
  * }
  * ```
  */
-export function useProcessors(
-  options: UseProcessorsOptions
-): UseProcessorsReturn {
+export function useProcessors(options: UseProcessorsOptions): UseProcessorsReturn {
   const { track, initialProcessors, usePipeline = false } = options;
 
-  const [processor, setProcessor] = useState<
-    TrackProcessor | ProcessorPipeline | null
-  >(null);
-  const [processors, setProcessors] = useState<ReadonlyArray<ProcessorConfig>>(
-    []
-  );
+  const [processor, setProcessor] = useState<TrackProcessor | ProcessorPipeline | null>(null);
+  const [processors, setProcessors] = useState<ReadonlyArray<ProcessorConfig>>([]);
 
   // Initialize pipeline if needed
   useEffect(() => {
@@ -114,9 +105,7 @@ export function useProcessors(
       if (currentProcessor instanceof ProcessorPipeline) {
         setProcessors(currentProcessor.getProcessors());
       } else if (currentProcessor) {
-        setProcessors([
-          { processor: currentProcessor, enabled: true, priority: 0 },
-        ]);
+        setProcessors([{ processor: currentProcessor, enabled: true, priority: 0 }]);
       } else {
         setProcessors([]);
       }
@@ -132,10 +121,7 @@ export function useProcessors(
 
   // Add processor
   const addProcessor = useCallback(
-    async (
-      newProcessor: TrackProcessor,
-      processorOptions?: { priority?: number; enabled?: boolean }
-    ) => {
+    async (newProcessor: TrackProcessor, processorOptions?: { priority?: number; enabled?: boolean }) => {
       if (!track) return;
 
       if (usePipeline) {
@@ -161,7 +147,7 @@ export function useProcessors(
         setProcessors([{ processor: newProcessor, enabled: true, priority: 0 }]);
       }
     },
-    [track, processor, usePipeline]
+    [track, processor, usePipeline],
   );
 
   // Remove processor
@@ -178,7 +164,7 @@ export function useProcessors(
         setProcessors([]);
       }
     },
-    [track, processor, usePipeline]
+    [track, processor, usePipeline],
   );
 
   // Set processor enabled
@@ -189,7 +175,7 @@ export function useProcessors(
         setProcessors(processor.getProcessors());
       }
     },
-    [processor]
+    [processor],
   );
 
   // Clear all processors

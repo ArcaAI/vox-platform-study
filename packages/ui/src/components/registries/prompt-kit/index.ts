@@ -9,7 +9,7 @@ export {
   type ChainOfThoughtProps,
   type ChainOfThoughtStepProps,
   type ChainOfThoughtTriggerProps,
-} from './chain-of-thought'
+} from './chain-of-thought';
 
 export {
   ChatContainerContent,
@@ -18,18 +18,11 @@ export {
   type ChatContainerContentProps,
   type ChatContainerRootProps,
   type ChatContainerScrollAnchorProps,
-} from './chat-container'
+} from './chat-container';
 
-export {
-  CodeBlock,
-  CodeBlockCode,
-  CodeBlockGroup,
-  type CodeBlockCodeProps,
-  type CodeBlockGroupProps,
-  type CodeBlockProps,
-} from './code-block'
+export { CodeBlock, CodeBlockCode, CodeBlockGroup, type CodeBlockCodeProps, type CodeBlockGroupProps, type CodeBlockProps } from './code-block';
 
-export { FeedbackBar } from './feedback-bar'
+export { FeedbackBar } from './feedback-bar';
 
 export {
   FileUpload,
@@ -44,7 +37,7 @@ export {
   FileUploadTrigger,
   useFileUpload,
   type FileUploadProps,
-} from './file-upload'
+} from './file-upload';
 
 export {
   BarsLoader,
@@ -61,9 +54,9 @@ export {
   TypingLoader,
   WaveLoader,
   type LoaderProps,
-} from './loader'
+} from './loader';
 
-export { Markdown, type MarkdownProps } from './markdown'
+export { Markdown, type MarkdownProps } from './markdown';
 
 export {
   Message,
@@ -76,7 +69,7 @@ export {
   type MessageAvatarProps,
   type MessageContentProps,
   type MessageProps,
-} from './message'
+} from './message';
 
 export {
   PromptInput,
@@ -87,12 +80,9 @@ export {
   type PromptInputActionsProps,
   type PromptInputProps,
   type PromptInputTextareaProps,
-} from './prompt-input'
+} from './prompt-input';
 
-export {
-  PromptSuggestion,
-  type PromptSuggestionProps,
-} from './prompt-suggestion'
+export { PromptSuggestion, type PromptSuggestionProps } from './prompt-suggestion';
 
 export {
   Reasoning,
@@ -101,7 +91,7 @@ export {
   type ReasoningContentProps,
   type ReasoningProps,
   type ReasoningTriggerProps,
-} from './reasoning'
+} from './reasoning';
 
 export {
   ResponseStream,
@@ -110,18 +100,11 @@ export {
   type ResponseStreamProps,
   type UseTextStreamOptions,
   type UseTextStreamResult,
-} from './response-stream'
+} from './response-stream';
 
-export { ScrollButton, type ScrollButtonProps } from './scroll-button'
+export { ScrollButton, type ScrollButtonProps } from './scroll-button';
 
-export {
-  Source,
-  SourceContent,
-  SourceTrigger,
-  type SourceContentProps,
-  type SourceProps,
-  type SourceTriggerProps,
-} from './source'
+export { Source, SourceContent, SourceTrigger, type SourceContentProps, type SourceProps, type SourceTriggerProps } from './source';
 
 export {
   Steps,
@@ -134,6 +117,6 @@ export {
   type StepsItemProps,
   type StepsProps,
   type StepsTriggerProps,
-} from './steps'
+} from './steps';
 
-export { Tool, type ToolPart, type ToolProps } from './tool'
+export { Tool, type ToolPart, type ToolProps } from './tool';

@@ -4,12 +4,7 @@
  * Abstract base class for STT provider implementations.
  */
 
-import type {
-  TranscriptionResult,
-  STTStats,
-  STTProviderType,
-  ProviderConfig,
-} from '../types/index.js';
+import type { TranscriptionResult, STTStats, STTProviderType, ProviderConfig } from '../types/index.js';
 import type { STTProvider, TranscriptionCallback, ErrorCallback } from './types.js';
 
 /**
@@ -61,10 +56,7 @@ export abstract class BaseSTTProvider implements STTProvider {
       isProcessing: this.processing,
       totalAudioProcessed: this.totalAudioProcessed,
       transcriptionCount: this.transcriptionCount,
-      averageLatencyMs:
-        this.transcriptionCount > 0
-          ? this.totalLatencyMs / this.transcriptionCount
-          : 0,
+      averageLatencyMs: this.transcriptionCount > 0 ? this.totalLatencyMs / this.transcriptionCount : 0,
       bufferSizeS: 0, // Override in subclass
       providerType: this.type as STTProviderType,
       sessionId: this.config?.sessionId,

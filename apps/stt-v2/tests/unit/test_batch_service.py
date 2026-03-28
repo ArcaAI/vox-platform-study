@@ -1982,7 +1982,7 @@ class TestNormalizeWhisperOffsets:
         assert result[0]["end"] == 1.5
         assert result[0]["start_time"] == 0.0
         assert result[0]["end_time"] == 1.5
-        assert result[0]["confidence"] is None
+        assert result[0]["confidence"] == 1.0
 
         assert result[1]["start"] == 1.6
         assert result[1]["end"] == 2.8
@@ -2071,15 +2071,13 @@ class TestOptimumOnnxInference:
         fmt=AiModelFormat.ONNX_OPTIMUM,
     ) -> LoadedModel:
         """Create a mock loaded model with Optimum markers."""
-        import torch
-
         mock_model = MagicMock()
         mock_processor = MagicMock()
 
-        mock_generated = torch.tensor([[1, 2, 3]])
+        mock_generated = MagicMock(name="generated_ids")
         mock_model.generate = MagicMock(return_value=mock_generated)
 
-        mock_processor.return_value = {"input_features": torch.zeros(1, 80, 3000)}
+        mock_processor.return_value = {"input_features": MagicMock(name="input_features")}
         mock_processor.batch_decode = MagicMock(return_value=[decoded_text])
         mock_processor.decode = MagicMock(return_value={
             "offsets": decode_offsets or [],
@@ -2102,12 +2100,12 @@ class TestOptimumOnnxInference:
     async def test_short_audio_single_pass(self, service):
         """Audio shorter than chunk_length_s should use single-pass path."""
         model = self._create_optimum_model(decoded_text="This is a test.")
-        # 10 seconds of audio at 16kHz — shorter than 30s default
         samples = np.zeros(160000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
 
-        with patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
+             patch("stt_v2.transcription.batch_service.get_settings") as ms:
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
@@ -2117,19 +2115,18 @@ class TestOptimumOnnxInference:
             )
 
         assert result.text == "This is a test."
-        # generate() called exactly once (single pass)
         model.model.generate.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_long_audio_uses_chunked_path(self, service):
         """Audio longer than chunk_length_s should use chunked path."""
         model = self._create_optimum_model(decoded_text="chunk text")
-        # 60 seconds at 16kHz — longer than 30s default
         samples = np.zeros(960000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
 
-        with patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
+             patch("stt_v2.transcription.batch_service.get_settings") as ms:
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
@@ -2138,21 +2135,19 @@ class TestOptimumOnnxInference:
                 samples, 16000, model, config,
             )
 
-        # generate() called multiple times (chunked)
         assert model.model.generate.call_count >= 2
-        # Text from chunks should be merged
         assert "chunk text" in result.text
 
     @pytest.mark.asyncio
     async def test_extracts_word_timestamps(self, service):
         """Word timestamps should be proportionally distributed over audio."""
         model = self._create_optimum_model(decoded_text="Hello world")
-        # 3 seconds of audio at 16kHz
         samples = np.zeros(48000, dtype=np.float32)
         config = MagicMock()
         config.language = None
 
-        with patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
+             patch("stt_v2.transcription.batch_service.get_settings") as ms:
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
@@ -2172,9 +2167,6 @@ class TestOptimumOnnxInference:
     @pytest.mark.asyncio
     async def test_chunked_timestamps_are_global(self, service):
         """Chunked timestamps should reflect global audio position."""
-        import torch
-
-        # Create model that returns different text per chunk to avoid dedup
         model = MagicMock(spec=LoadedModel)
         model.format = AiModelFormat.ONNX_OPTIMUM
         model.device = "cpu"
@@ -2187,19 +2179,19 @@ class TestOptimumOnnxInference:
             return [f"chunk number {chunk_counter[0]} text"]
 
         processor = MagicMock()
-        processor.return_value = {"input_features": torch.zeros(1, 80, 3000)}
+        processor.return_value = {"input_features": MagicMock(name="input_features")}
         processor.batch_decode.side_effect = mock_batch_decode
         processor.decode.return_value = {"offsets": []}
         model.processor = processor
         model.model = MagicMock()
-        model.model.generate.return_value = torch.tensor([[1, 2, 3]])
+        model.model.generate.return_value = MagicMock(name="generated_ids")
 
-        # 65 seconds at 16kHz — multiple chunks with 15s chunk, step=9s
         samples = np.zeros(1040000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
 
-        with patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
+             patch("stt_v2.transcription.batch_service.get_settings") as ms:
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
@@ -2208,9 +2200,7 @@ class TestOptimumOnnxInference:
                 samples, 16000, model, config,
             )
 
-        # First chunk starts at 0.0s
         assert result.word_timestamps[0]["start"] == 0.0
-        # Segments should have increasing start times
         assert len(result.segments) >= 2
         for i in range(1, len(result.segments)):
             assert result.segments[i]["start"] > result.segments[i - 1]["start"]
@@ -2225,7 +2215,8 @@ class TestOptimumOnnxInference:
 
         progress_values = []
 
-        with patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
+             patch("stt_v2.transcription.batch_service.get_settings") as ms:
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
@@ -2256,7 +2247,8 @@ class TestOptimumOnnxInference:
         samples = np.zeros(16000, dtype=np.float32)
         config = MagicMock()
 
-        with pytest.raises(TE, match="requires a processor"):
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
+             pytest.raises(TE, match="requires a processor"):
             await service._run_optimum_onnx_inference(
                 samples, 16000, model, config,
             )
@@ -2270,7 +2262,8 @@ class TestOptimumOnnxInference:
         config.language = "fr"
         config.code_switching = False
 
-        with patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
+             patch("stt_v2.transcription.batch_service.get_settings") as ms:
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
@@ -2287,9 +2280,6 @@ class TestOptimumOnnxInference:
     @pytest.mark.asyncio
     async def test_chunked_produces_segments(self, service):
         """Each chunk should produce a segment with text, start, end."""
-        import torch
-
-        # Create model that returns different text per chunk to avoid dedup
         model = MagicMock(spec=LoadedModel)
         model.format = AiModelFormat.ONNX_OPTIMUM
         model.device = "cpu"
@@ -2302,19 +2292,19 @@ class TestOptimumOnnxInference:
             return [f"Some unique text chunk {chunk_counter[0]}"]
 
         processor = MagicMock()
-        processor.return_value = {"input_features": torch.zeros(1, 80, 3000)}
+        processor.return_value = {"input_features": MagicMock(name="input_features")}
         processor.batch_decode.side_effect = mock_batch_decode
         processor.decode.return_value = {"offsets": []}
         model.processor = processor
         model.model = MagicMock()
-        model.model.generate.return_value = torch.tensor([[1, 2, 3]])
+        model.model.generate.return_value = MagicMock(name="generated_ids")
 
-        # 65 seconds — multiple chunks
         samples = np.zeros(1040000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
 
-        with patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
+             patch("stt_v2.transcription.batch_service.get_settings") as ms:
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
@@ -2435,24 +2425,19 @@ class TestChunkCallbackAndTTFW:
 
     def _create_optimum_model(self, decoded_text: str = "hello world"):
         """Create a mock Optimum ONNX model."""
-        import torch
-
         model = MagicMock(spec=LoadedModel)
         model.format = AiModelFormat.ONNX_OPTIMUM
         model.device = "cpu"
         model.extra = {"optimum": True}
 
-        # Mock processor
         processor = MagicMock()
-        processor.return_value = {"input_features": torch.zeros(1, 80, 3000)}
+        processor.return_value = {"input_features": MagicMock(name="input_features")}
         processor.batch_decode.return_value = [decoded_text]
         processor.decode.return_value = {"offsets": []}
         model.processor = processor
 
-        # Mock model.generate
-        gen_ids = torch.tensor([[1, 2, 3]])
         model.model = MagicMock()
-        model.model.generate.return_value = gen_ids
+        model.model.generate.return_value = MagicMock(name="generated_ids")
 
         return model
 
@@ -2462,13 +2447,13 @@ class TestChunkCallbackAndTTFW:
         from stt_v2.transcription.dto import ChunkTranscriptionResult
 
         model = self._create_optimum_model(decoded_text="hello world")
-        # 45 seconds — will produce multiple chunks with chunk_length_s=15
         samples = np.zeros(720000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
         chunks_received: list[ChunkTranscriptionResult] = []
 
-        with patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
+             patch("stt_v2.transcription.batch_service.get_settings") as ms:
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
@@ -2479,9 +2464,7 @@ class TestChunkCallbackAndTTFW:
             )
 
         assert len(chunks_received) >= 2
-        # Last chunk should have is_final=True
         assert chunks_received[-1].is_final is True
-        # All chunks should have chunk_index
         for i, c in enumerate(chunks_received):
             assert c.chunk_index == i
 
@@ -2495,7 +2478,8 @@ class TestChunkCallbackAndTTFW:
 
         hook_calls: list[bool] = []
 
-        with patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
+             patch("stt_v2.transcription.batch_service.get_settings") as ms:
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
@@ -2505,7 +2489,6 @@ class TestChunkCallbackAndTTFW:
                 first_word_hook=lambda: hook_calls.append(True),
             )
 
-        # Should fire exactly once
         assert len(hook_calls) == 1
 
     @pytest.mark.asyncio
@@ -2514,14 +2497,14 @@ class TestChunkCallbackAndTTFW:
         from stt_v2.transcription.dto import ChunkTranscriptionResult
 
         model = self._create_optimum_model(decoded_text="short audio")
-        # 10 seconds — single pass with chunk_length_s=15
         samples = np.zeros(160000, dtype=np.float32)
         config = MagicMock()
         config.language = None
 
         chunks_received: list[ChunkTranscriptionResult] = []
 
-        with patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
+             patch("stt_v2.transcription.batch_service.get_settings") as ms:
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
@@ -2881,7 +2864,7 @@ class TestCodeSwitchingInference:
 
     @pytest.mark.asyncio
     async def test_transformers_requests_and_forwards_attention_mask(self, service):
-        """Transformers path should request attention_mask and pass it to generate()."""
+        """Transformers path uses return_tensors='pt' and forwards processor outputs to generate()."""
         pipeline_config = create_complete_pipeline_config(language="en")
         pipeline_config.spec.inference.code_switching = False
 
@@ -2908,7 +2891,8 @@ class TestCodeSwitchingInference:
             )
 
         processor_kwargs = loaded_model.processor.call_args.kwargs
-        assert processor_kwargs["return_attention_mask"] is True
+        assert "return_tensors" in processor_kwargs
+        assert processor_kwargs["return_tensors"] == "pt"
 
         call_kwargs = loaded_model.model.generate.call_args[1]
         assert "attention_mask" in call_kwargs

@@ -21,57 +21,30 @@ function toTreeElements(nodes: TenantBucketTreeNode[]): TreeViewElement[] {
     }));
 }
 
-function renderTreeNode(
-  node: TreeViewElement,
-  selectedPath: string | undefined,
-  onSelect: (path: string) => void,
-) {
+function renderTreeNode(node: TreeViewElement, selectedPath: string | undefined, onSelect: (path: string) => void) {
   const isSelected = selectedPath === node.id;
   const hasChildren = (node.children?.length ?? 0) > 0;
   if (!hasChildren) {
     return (
-      <File
-        key={node.id}
-        value={node.id}
-        className={cn('px-2 py-1', isSelected && 'bg-muted')}
-        onClick={() => onSelect(node.id)}
-      >
+      <File key={node.id} value={node.id} className={cn('px-2 py-1', isSelected && 'bg-muted')} onClick={() => onSelect(node.id)}>
         {node.name}
       </File>
     );
   }
 
   return (
-    <Folder
-      key={node.id}
-      value={node.id}
-      element={node.name}
-      isSelect={isSelected}
-      className="px-2 py-1"
-    >
+    <Folder key={node.id} value={node.id} element={node.name} isSelect={isSelected} className="px-2 py-1">
       {node.children?.map((child) => renderTreeNode(child, selectedPath, onSelect))}
     </Folder>
   );
 }
 
-export function FolderTreeView({
-  nodes,
-  selectedPath,
-  onSelect,
-  className,
-}: FolderTreeViewProps) {
+export function FolderTreeView({ nodes, selectedPath, onSelect, className }: FolderTreeViewProps) {
   const elements = useMemo(() => toTreeElements(nodes), [nodes]);
 
   if (elements.length === 0) {
     return (
-      <div
-        className={cn(
-          'text-muted-foreground flex h-full items-center justify-center text-sm',
-          className,
-        )}
-      >
-        No folders found in this bucket.
-      </div>
+      <div className={cn('text-muted-foreground flex h-full items-center justify-center text-sm', className)}>No folders found in this bucket.</div>
     );
   }
 

@@ -8,16 +8,9 @@
 import { EventEmitter } from 'eventemitter3';
 import type { BaseProcessor } from '@arcaai/room';
 import { debugLogConfig, debugLogTranscript, type DebugTranscriptEntry } from '@arcaai/room';
-import type {
-  TranscriptionPipelineConfig,
-  TranscriptionPipelineInput,
-  PipelineStateInfo,
-  TranscriptionPipelineEvents,
-} from '../types/pipeline';
+import type { TranscriptionPipelineConfig, TranscriptionPipelineInput, PipelineStateInfo, TranscriptionPipelineEvents } from '../types/pipeline';
 import type { TranscriptionResult, VADEvent } from '../types/audio';
-import {
-  DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG,
-} from '../types/pipeline';
+import { DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG } from '../types/pipeline';
 import type { ISDKLogger } from './logger';
 
 /**
@@ -172,9 +165,7 @@ export class TranscriptionPipeline {
         const useVadGate = runtimeProvider === 'local' && this.config.vad.enabled;
 
         if (runtimeProvider === 'remote' && !sttSocket) {
-          throw new Error(
-            'stt.sttSocket is required when STT provider resolves to backend/remote'
-          );
+          throw new Error('stt.sttSocket is required when STT provider resolves to backend/remote');
         }
 
         return createSTT({
@@ -344,14 +335,18 @@ export class TranscriptionPipeline {
       if (this.currentInput) {
         try {
           this.currentInput.track?.stop?.();
-        } catch { /* best-effort */ }
+        } catch {
+          /* best-effort */
+        }
         const ownership = this.config.contextOwnership ?? 'borrowed';
         if (ownership === 'owned') {
           try {
             if (this.currentInput.audioContext?.state !== 'closed') {
               await this.currentInput.audioContext?.close?.();
             }
-          } catch { /* best-effort */ }
+          } catch {
+            /* best-effort */
+          }
         }
       }
 
@@ -459,10 +454,7 @@ export class TranscriptionPipeline {
   /**
    * Toggle a specific stage.
    */
-  async toggleStage(
-    stageName: 'noiseFilter' | 'vad' | 'stt',
-    enabled: boolean
-  ): Promise<void> {
+  async toggleStage(stageName: 'noiseFilter' | 'vad' | 'stt', enabled: boolean): Promise<void> {
     const stage = this.stages.get(stageName);
     if (!stage) return;
 
@@ -528,20 +520,14 @@ export class TranscriptionPipeline {
   /**
    * Subscribe to pipeline events.
    */
-  on<K extends keyof TranscriptionPipelineEvents>(
-    event: K,
-    listener: (payload: TranscriptionPipelineEvents[K]) => void
-  ): void {
+  on<K extends keyof TranscriptionPipelineEvents>(event: K, listener: (payload: TranscriptionPipelineEvents[K]) => void): void {
     this.emitter.on(event, listener);
   }
 
   /**
    * Unsubscribe from pipeline events.
    */
-  off<K extends keyof TranscriptionPipelineEvents>(
-    event: K,
-    listener: (payload: TranscriptionPipelineEvents[K]) => void
-  ): void {
+  off<K extends keyof TranscriptionPipelineEvents>(event: K, listener: (payload: TranscriptionPipelineEvents[K]) => void): void {
     this.emitter.off(event, listener);
   }
 
@@ -659,12 +645,11 @@ export class TranscriptionPipeline {
         getProviderType?: () => 'local' | 'remote';
         transcribeSegment?: (audio: Float32Array) => Promise<TranscriptionResult>;
       } | null;
-      const supportsSegmentTranscription =
-        sttProcessor?.getProviderType?.() === 'local'
-        && typeof sttProcessor?.transcribeSegment === 'function';
+      const supportsSegmentTranscription = sttProcessor?.getProviderType?.() === 'local' && typeof sttProcessor?.transcribeSegment === 'function';
 
       if (supportsSegmentTranscription && data.audio && data.audio.length > 0) {
-        sttProcessor.transcribeSegment(data.audio)
+        sttProcessor
+          .transcribeSegment(data.audio)
           .then((result) => {
             const enriched: TranscriptionResult = {
               ...result,
@@ -720,7 +705,7 @@ export class TranscriptionPipeline {
       speaker: result.speakerId ?? 'speaker-1',
       start,
       end,
-      duration: result.vadDurationSec ?? (end - start),
+      duration: result.vadDurationSec ?? end - start,
       inference: (result.latencyMs ?? 0) / 1000,
     };
 
@@ -740,10 +725,7 @@ export class TranscriptionPipeline {
   /**
    * Emit a pipeline event.
    */
-  private emit<K extends keyof TranscriptionPipelineEvents>(
-    event: K,
-    payload: TranscriptionPipelineEvents[K]
-  ): void {
+  private emit<K extends keyof TranscriptionPipelineEvents>(event: K, payload: TranscriptionPipelineEvents[K]): void {
     this.emitter.emit(event, payload);
   }
 
@@ -759,9 +741,6 @@ export class TranscriptionPipeline {
 /**
  * Factory function to create a TranscriptionPipeline.
  */
-export function createTranscriptionPipeline(
-  config?: Partial<TranscriptionPipelineConfig>,
-  logger?: ISDKLogger
-): TranscriptionPipeline {
+export function createTranscriptionPipeline(config?: Partial<TranscriptionPipelineConfig>, logger?: ISDKLogger): TranscriptionPipeline {
   return new TranscriptionPipeline(config, logger);
 }

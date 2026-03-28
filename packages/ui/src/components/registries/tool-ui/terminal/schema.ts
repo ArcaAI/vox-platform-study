@@ -1,10 +1,6 @@
-import { z } from "zod";
-import { defineToolUiContract } from "../shared/contract";
-import {
-  ToolUIIdSchema,
-  ToolUIReceiptSchema,
-  ToolUIRoleSchema,
-} from "../shared/schema";
+import { z } from 'zod';
+import { defineToolUiContract } from '../shared/contract';
+import { ToolUIIdSchema, ToolUIReceiptSchema, ToolUIRoleSchema } from '../shared/schema';
 
 export const TerminalPropsSchema = z.object({
   id: ToolUIIdSchema,
@@ -29,15 +25,8 @@ export const SerializableTerminalSchema = TerminalPropsSchema.omit({
 
 export type SerializableTerminal = z.infer<typeof SerializableTerminalSchema>;
 
-const SerializableTerminalSchemaContract = defineToolUiContract(
-  "Terminal",
-  SerializableTerminalSchema,
-);
+const SerializableTerminalSchemaContract = defineToolUiContract('Terminal', SerializableTerminalSchema);
 
-export const parseSerializableTerminal: (
-  input: unknown,
-) => SerializableTerminal = SerializableTerminalSchemaContract.parse;
+export const parseSerializableTerminal: (input: unknown) => SerializableTerminal = SerializableTerminalSchemaContract.parse;
 
-export const safeParseSerializableTerminal: (
-  input: unknown,
-) => SerializableTerminal | null = SerializableTerminalSchemaContract.safeParse;
+export const safeParseSerializableTerminal: (input: unknown) => SerializableTerminal | null = SerializableTerminalSchemaContract.safeParse;

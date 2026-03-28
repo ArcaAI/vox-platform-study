@@ -5,21 +5,16 @@ import { FetchResponse } from '../../common';
 // TODO: Implement this
 
 export class TenantDtoMapper {
-    static ToResponse(entity: TenantEntity): TenantResponse {
-        return AutoClassMapper(entity, TenantResponse);
-    }
+  static ToResponse(entity: TenantEntity): TenantResponse {
+    return AutoClassMapper(entity, TenantResponse);
+  }
 
-    static ToPaginatedResponse({
-        page,
-        limit,
-        count,
-        data
-    }: FetchResponse<TenantEntity>): PaginatedTenantResponse {
-        return new PaginatedTenantResponse({
-            page,
-            limit,
-            count,
-            data: data.map((tenant) => this.ToResponse(tenant))
-        });
-    }
+  static ToPaginatedResponse({ page, limit, count, data }: FetchResponse<TenantEntity>): PaginatedTenantResponse {
+    return new PaginatedTenantResponse({
+      page,
+      limit,
+      count,
+      data: data.map((tenant) => this.ToResponse(tenant)),
+    });
+  }
 }

@@ -1,14 +1,10 @@
-'use client'
+'use client';
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger
-} from '@/components/shadcn/dropdown-menu'
-import { cn } from '@/lib/utils'
-import { demoTextMessages, demoImageMessages, demoReactionMessage, demoVoiceMessage } from './demo/messaging'
-import { Check, CheckCheck, Smile } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/shadcn/dropdown-menu';
+import { cn } from '@/lib/utils';
+import { demoTextMessages, demoImageMessages, demoReactionMessage, demoVoiceMessage } from './demo/messaging';
+import { Check, CheckCheck, Smile } from 'lucide-react';
+import { useRef, useState } from 'react';
 
 /**
  * Internal avatar component options.
@@ -18,35 +14,28 @@ import { useRef, useState } from 'react'
  * @property {string} [className] - Additional CSS classes
  */
 interface InternalAvatarOptions {
-  src?: string
-  fallback: string
-  className?: string
+  src?: string;
+  fallback: string;
+  className?: string;
 }
 
 function Avatar({ src, fallback, className }: InternalAvatarOptions) {
-  const [imgError, setImgError] = useState(false)
+  const [imgError, setImgError] = useState(false);
 
   if (src && !imgError) {
-    return (
-      <img
-        src={src}
-        alt={fallback}
-        onError={() => setImgError(true)}
-        className={cn('h-8 w-8 rounded-full object-cover shrink-0', className)}
-      />
-    )
+    return <img src={src} alt={fallback} onError={() => setImgError(true)} className={cn('h-8 w-8 rounded-full object-cover shrink-0', className)} />;
   }
 
   return (
     <div
       className={cn(
         'h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold shrink-0',
-        className
+        className,
       )}
     >
       {fallback}
     </div>
-  )
+  );
 }
 
 /**
@@ -60,27 +49,27 @@ function Avatar({ src, fallback, className }: InternalAvatarOptions) {
 export interface MessageBubbleProps {
   data?: {
     /** Message text content to display. */
-    content?: string
+    content?: string;
     /** URL for the sender's avatar image. */
-    avatarUrl?: string
+    avatarUrl?: string;
     /** Fallback letter to display when avatar image is unavailable. */
-    avatarFallback?: string
+    avatarFallback?: string;
     /** Display name of the message author. */
-    author?: string
+    author?: string;
     /** Time display string (e.g., "10:30 AM"). */
-    time?: string
-  }
+    time?: string;
+  };
   appearance?: {
     /**
      * Whether this message is from the current user.
      * @default false
      */
-    isOwn?: boolean
-  }
+    isOwn?: boolean;
+  };
   control?: {
     /** Message delivery status indicator. */
-    status?: 'sent' | 'delivered' | 'read'
-  }
+    status?: 'sent' | 'delivered' | 'read';
+  };
 }
 
 /**
@@ -108,51 +97,36 @@ export interface MessageBubbleProps {
  * />
  * ```
  */
-export function MessageBubble({
-  data,
-  appearance,
-  control
-}: MessageBubbleProps) {
-  const resolved: NonNullable<MessageBubbleProps['data']> = data ?? demoTextMessages[0]
-  const content = resolved.content
-  const avatarFallback = resolved.avatarFallback
-  const avatarUrl = resolved.avatarUrl
-  const time = resolved.time
-  const { isOwn = false } = appearance ?? {}
-  const { status } = control ?? {}
+export function MessageBubble({ data, appearance, control }: MessageBubbleProps) {
+  const resolved: NonNullable<MessageBubbleProps['data']> = data ?? demoTextMessages[0];
+  const content = resolved.content;
+  const avatarFallback = resolved.avatarFallback;
+  const avatarUrl = resolved.avatarUrl;
+  const time = resolved.time;
+  const { isOwn = false } = appearance ?? {};
+  const { status } = control ?? {};
   return (
     <div className={cn('flex gap-2', isOwn && 'flex-row-reverse')}>
       {!isOwn && avatarFallback && <Avatar src={avatarUrl} fallback={avatarFallback} />}
       <div className={cn('max-w-[75%]', isOwn && 'items-end')}>
         {content && (
-          <div
-            className={cn(
-              'rounded-2xl px-4 py-2',
-              isOwn
-                ? 'bg-primary text-primary-foreground rounded-br-md'
-                : 'bg-muted rounded-bl-md'
-            )}
-          >
+          <div className={cn('rounded-2xl px-4 py-2', isOwn ? 'bg-primary text-primary-foreground rounded-br-md' : 'bg-muted rounded-bl-md')}>
             <p className="text-sm">{content}</p>
           </div>
         )}
-        <div
-          className={cn('flex items-center gap-1 mt-1', isOwn && 'justify-end')}
-        >
+        <div className={cn('flex items-center gap-1 mt-1', isOwn && 'justify-end')}>
           {time && <span className="text-[10px] text-muted-foreground">{time}</span>}
           {isOwn && status && (
             <span className="text-muted-foreground">
               {status === 'sent' && <Check className="h-3 w-3" />}
               {status === 'delivered' && <CheckCheck className="h-3 w-3" />}
-              {status === 'read' && (
-                <CheckCheck className="h-3 w-3 text-foreground" />
-              )}
+              {status === 'read' && <CheckCheck className="h-3 w-3 text-foreground" />}
             </span>
           )}
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 /**
@@ -166,29 +140,29 @@ export function MessageBubble({
 export interface ImageMessageBubbleProps {
   data?: {
     /** URL of the image to display. */
-    image?: string
+    image?: string;
     /** Optional caption text below the image. */
-    content?: string
+    content?: string;
     /** URL for the sender's avatar image. */
-    avatarUrl?: string
+    avatarUrl?: string;
     /** Fallback letter to display when avatar image is unavailable. */
-    avatarFallback?: string
+    avatarFallback?: string;
     /** Display name of the message author. */
-    author?: string
+    author?: string;
     /** Time display string (e.g., "10:32 AM"). */
-    time?: string
-  }
+    time?: string;
+  };
   appearance?: {
     /**
      * Whether this message is from the current user.
      * @default false
      */
-    isOwn?: boolean
-  }
+    isOwn?: boolean;
+  };
   control?: {
     /** Message delivery status indicator. */
-    status?: 'sent' | 'delivered' | 'read'
-  }
+    status?: 'sent' | 'delivered' | 'read';
+  };
 }
 
 /**
@@ -215,64 +189,42 @@ export interface ImageMessageBubbleProps {
  * />
  * ```
  */
-export function ImageMessageBubble({
-  data,
-  appearance,
-  control
-}: ImageMessageBubbleProps) {
-  const resolved: NonNullable<ImageMessageBubbleProps['data']> = data ?? demoImageMessages[0]
-  const image = resolved.image
-  const content = resolved.content
-  const avatarFallback = resolved.avatarFallback
-  const avatarUrl = resolved.avatarUrl
-  const time = resolved.time
-  const { isOwn = false } = appearance ?? {}
-  const { status } = control ?? {}
+export function ImageMessageBubble({ data, appearance, control }: ImageMessageBubbleProps) {
+  const resolved: NonNullable<ImageMessageBubbleProps['data']> = data ?? demoImageMessages[0];
+  const image = resolved.image;
+  const content = resolved.content;
+  const avatarFallback = resolved.avatarFallback;
+  const avatarUrl = resolved.avatarUrl;
+  const time = resolved.time;
+  const { isOwn = false } = appearance ?? {};
+  const { status } = control ?? {};
   return (
     <div className={cn('flex gap-2', isOwn && 'flex-row-reverse')}>
       {!isOwn && avatarFallback && <Avatar src={avatarUrl} fallback={avatarFallback} />}
       <div className={cn('max-w-[75%]', isOwn && 'items-end')}>
         {image && (
-          <div
-            className={cn(
-              'rounded-2xl overflow-hidden',
-              isOwn ? 'rounded-br-md' : 'rounded-bl-md'
-            )}
-          >
-            <img
-              src={image}
-              alt={content || 'Shared image in chat'}
-              className="w-full max-w-[280px] h-auto object-cover"
-            />
+          <div className={cn('rounded-2xl overflow-hidden', isOwn ? 'rounded-br-md' : 'rounded-bl-md')}>
+            <img src={image} alt={content || 'Shared image in chat'} className="w-full max-w-[280px] h-auto object-cover" />
             {content && (
-              <div
-                className={cn(
-                  'px-3 py-2',
-                  isOwn ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                )}
-              >
+              <div className={cn('px-3 py-2', isOwn ? 'bg-primary text-primary-foreground' : 'bg-muted')}>
                 <p className="text-sm">{content}</p>
               </div>
             )}
           </div>
         )}
-        <div
-          className={cn('flex items-center gap-1 mt-1', isOwn && 'justify-end')}
-        >
+        <div className={cn('flex items-center gap-1 mt-1', isOwn && 'justify-end')}>
           {time && <span className="text-[10px] text-muted-foreground">{time}</span>}
           {isOwn && status && (
             <span className="text-muted-foreground">
               {status === 'sent' && <Check className="h-3 w-3" />}
               {status === 'delivered' && <CheckCheck className="h-3 w-3" />}
-              {status === 'read' && (
-                <CheckCheck className="h-3 w-3 text-foreground" />
-              )}
+              {status === 'read' && <CheckCheck className="h-3 w-3 text-foreground" />}
             </span>
           )}
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 /**
@@ -286,47 +238,36 @@ export function ImageMessageBubble({
 export interface MessageWithReactionsProps {
   data?: {
     /** Message text content to display. */
-    content?: string
+    content?: string;
     /** URL for the sender's avatar image. */
-    avatarUrl?: string
+    avatarUrl?: string;
     /** Fallback letter to display when avatar image is unavailable. */
-    avatarFallback?: string
+    avatarFallback?: string;
     /** Display name of the message author. */
-    author?: string
+    author?: string;
     /** Time display string (e.g., "2:45 PM"). */
-    time?: string
+    time?: string;
     /** Array of reactions with emoji and count. */
-    reactions?: { emoji: string; count: number }[]
-  }
+    reactions?: { emoji: string; count: number }[];
+  };
   actions?: {
     /** Called when the user adds or toggles a reaction emoji. */
-    onReact?: (emoji: string) => void
-  }
+    onReact?: (emoji: string) => void;
+  };
   appearance?: {
     /**
      * Whether this message is from the current user.
      * @default false
      */
-    isOwn?: boolean
-  }
+    isOwn?: boolean;
+  };
 }
 
 /**
  * Available emoji options for reactions.
  * @constant
  */
-const availableEmojis = [
-  '❤️',
-  '👍',
-  '👎',
-  '😂',
-  '😮',
-  '😢',
-  '🎉',
-  '🔥',
-  '👏',
-  '💯'
-]
+const availableEmojis = ['❤️', '👍', '👎', '😂', '😮', '😢', '🎉', '🔥', '👏', '💯'];
 
 /**
  * A message bubble with emoji reaction support.
@@ -356,88 +297,72 @@ const availableEmojis = [
  * />
  * ```
  */
-export function MessageWithReactions({
-  data,
-  actions,
-  appearance
-}: MessageWithReactionsProps) {
-  const resolved: NonNullable<MessageWithReactionsProps['data']> = data ?? demoReactionMessage
-  const content = resolved.content
-  const avatarFallback = resolved.avatarFallback
-  const avatarUrl = resolved.avatarUrl
-  const time = resolved.time
-  const initialReactions = resolved.reactions ?? []
-  const { onReact } = actions ?? {}
-  const { isOwn = false } = appearance ?? {}
-  const [reactions, setReactions] = useState(initialReactions)
+export function MessageWithReactions({ data, actions, appearance }: MessageWithReactionsProps) {
+  const resolved: NonNullable<MessageWithReactionsProps['data']> = data ?? demoReactionMessage;
+  const content = resolved.content;
+  const avatarFallback = resolved.avatarFallback;
+  const avatarUrl = resolved.avatarUrl;
+  const time = resolved.time;
+  const initialReactions = resolved.reactions ?? [];
+  const { onReact } = actions ?? {};
+  const { isOwn = false } = appearance ?? {};
+  const [reactions, setReactions] = useState(initialReactions);
   // Track which emojis the current user has reacted with
-  const [userReactions, setUserReactions] = useState<Set<string>>(new Set())
+  const [userReactions, setUserReactions] = useState<Set<string>>(new Set());
 
   const handleReact = (emoji: string) => {
-    const hasUserReacted = userReactions.has(emoji)
-    const existingIndex = reactions.findIndex((r) => r.emoji === emoji)
+    const hasUserReacted = userReactions.has(emoji);
+    const existingIndex = reactions.findIndex((r) => r.emoji === emoji);
 
     if (hasUserReacted) {
       // User already reacted - toggle off (decrement)
       if (existingIndex >= 0) {
-        const updated = [...reactions]
+        const updated = [...reactions];
         if (updated[existingIndex].count <= 1) {
           // Remove reaction entirely if count would become 0
-          updated.splice(existingIndex, 1)
+          updated.splice(existingIndex, 1);
         } else {
           updated[existingIndex] = {
             ...updated[existingIndex],
-            count: updated[existingIndex].count - 1
-          }
+            count: updated[existingIndex].count - 1,
+          };
         }
-        setReactions(updated)
+        setReactions(updated);
       }
       // Remove from user's reactions
       setUserReactions((prev) => {
-        const next = new Set(prev)
-        next.delete(emoji)
-        return next
-      })
+        const next = new Set(prev);
+        next.delete(emoji);
+        return next;
+      });
     } else {
       // User hasn't reacted - add reaction
       if (existingIndex >= 0) {
-        const updated = [...reactions]
+        const updated = [...reactions];
         updated[existingIndex] = {
           ...updated[existingIndex],
-          count: updated[existingIndex].count + 1
-        }
-        setReactions(updated)
+          count: updated[existingIndex].count + 1,
+        };
+        setReactions(updated);
       } else {
-        setReactions([...reactions, { emoji, count: 1 }])
+        setReactions([...reactions, { emoji, count: 1 }]);
       }
       // Add to user's reactions
-      setUserReactions((prev) => new Set(prev).add(emoji))
+      setUserReactions((prev) => new Set(prev).add(emoji));
     }
-    onReact?.(emoji)
-  }
+    onReact?.(emoji);
+  };
 
   return (
     <div className={cn('flex gap-2', isOwn && 'flex-row-reverse')}>
       {!isOwn && avatarFallback && <Avatar src={avatarUrl} fallback={avatarFallback} />}
       <div className={cn('max-w-[75%]', isOwn && 'items-end')}>
         {content && (
-          <div
-            className={cn(
-              'rounded-2xl px-4 py-2',
-              isOwn
-                ? 'bg-primary text-primary-foreground rounded-br-md'
-                : 'bg-muted rounded-bl-md'
-            )}
-          >
+          <div className={cn('rounded-2xl px-4 py-2', isOwn ? 'bg-primary text-primary-foreground rounded-br-md' : 'bg-muted rounded-bl-md')}>
             <p className="text-sm">{content}</p>
           </div>
         )}
-        <div
-          className={cn(
-            'flex items-center gap-1 mt-1.5',
-            isOwn ? 'justify-end' : 'justify-start'
-          )}
-        >
+        <div className={cn('flex items-center gap-1 mt-1.5', isOwn ? 'justify-end' : 'justify-start')}>
           {reactions && reactions.length > 0 && (
             <>
               {reactions.map((reaction, index) => (
@@ -447,21 +372,11 @@ export function MessageWithReactions({
                   aria-label={`${userReactions.has(reaction.emoji) ? 'Remove' : 'Add'} ${reaction.emoji} reaction, ${reaction.count} ${reaction.count === 1 ? 'reaction' : 'reactions'}`}
                   className={cn(
                     'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs transition-colors cursor-pointer',
-                    userReactions.has(reaction.emoji)
-                      ? 'bg-primary/15 border border-primary/50'
-                      : 'bg-card border hover:bg-muted'
+                    userReactions.has(reaction.emoji) ? 'bg-primary/15 border border-primary/50' : 'bg-card border hover:bg-muted',
                   )}
                 >
                   {reaction.emoji}
-                  <span
-                    className={cn(
-                      userReactions.has(reaction.emoji)
-                        ? 'text-primary'
-                        : 'text-muted-foreground'
-                    )}
-                  >
-                    {reaction.count}
-                  </span>
+                  <span className={cn(userReactions.has(reaction.emoji) ? 'text-primary' : 'text-muted-foreground')}>{reaction.count}</span>
                 </button>
               ))}
             </>
@@ -491,14 +406,12 @@ export function MessageWithReactions({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <div
-          className={cn('flex items-center gap-1 mt-1', isOwn && 'justify-end')}
-        >
+        <div className={cn('flex items-center gap-1 mt-1', isOwn && 'justify-end')}>
           {time && <span className="text-[10px] text-muted-foreground">{time}</span>}
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 /**
@@ -512,29 +425,29 @@ export function MessageWithReactions({
 export interface VoiceMessageBubbleProps {
   data?: {
     /** Total duration display string (e.g., "0:42"). */
-    duration?: string
+    duration?: string;
     /** URL for the sender's avatar image. */
-    avatarUrl?: string
+    avatarUrl?: string;
     /** Fallback letter to display when avatar image is unavailable. */
-    avatarFallback?: string
+    avatarFallback?: string;
     /** Display name of the message author. */
-    author?: string
+    author?: string;
     /** Time display string (e.g., "3:15 PM"). */
-    time?: string
+    time?: string;
     /** URL of the audio file to play. */
-    audioSrc?: string
-  }
+    audioSrc?: string;
+  };
   appearance?: {
     /**
      * Whether this message is from the current user.
      * @default false
      */
-    isOwn?: boolean
-  }
+    isOwn?: boolean;
+  };
   control?: {
     /** Message delivery status indicator. */
-    status?: 'sent' | 'delivered' | 'read'
-  }
+    status?: 'sent' | 'delivered' | 'read';
+  };
 }
 
 /**
@@ -563,69 +476,57 @@ export interface VoiceMessageBubbleProps {
  * />
  * ```
  */
-export function VoiceMessageBubble({
-  data,
-  appearance,
-  control
-}: VoiceMessageBubbleProps) {
-  const resolved: NonNullable<VoiceMessageBubbleProps['data']> = data ?? demoVoiceMessage
-  const duration = resolved.duration
-  const avatarFallback = resolved.avatarFallback
-  const avatarUrl = resolved.avatarUrl
-  const time = resolved.time
-  const audioSrc = resolved.audioSrc
-  const { isOwn = false } = appearance ?? {}
-  const { status } = control ?? {}
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [currentTime, setCurrentTime] = useState('0:00')
-  const audioRef = useRef<HTMLAudioElement>(null)
+export function VoiceMessageBubble({ data, appearance, control }: VoiceMessageBubbleProps) {
+  const resolved: NonNullable<VoiceMessageBubbleProps['data']> = data ?? demoVoiceMessage;
+  const duration = resolved.duration;
+  const avatarFallback = resolved.avatarFallback;
+  const avatarUrl = resolved.avatarUrl;
+  const time = resolved.time;
+  const audioSrc = resolved.audioSrc;
+  const { isOwn = false } = appearance ?? {};
+  const { status } = control ?? {};
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState('0:00');
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   const togglePlay = () => {
     if (audioRef.current) {
       if (isPlaying) {
-        audioRef.current.pause()
+        audioRef.current.pause();
       } else {
-        audioRef.current.play()
+        audioRef.current.play();
       }
-      setIsPlaying(!isPlaying)
+      setIsPlaying(!isPlaying);
     }
-  }
+  };
 
   const handleTimeUpdate = () => {
     if (audioRef.current) {
-      const current = audioRef.current.currentTime
-      const total = audioRef.current.duration || 1
-      setProgress((current / total) * 100)
-      const mins = Math.floor(current / 60)
-      const secs = Math.floor(current % 60)
-      setCurrentTime(`${mins}:${secs.toString().padStart(2, '0')}`)
+      const current = audioRef.current.currentTime;
+      const total = audioRef.current.duration || 1;
+      setProgress((current / total) * 100);
+      const mins = Math.floor(current / 60);
+      const secs = Math.floor(current % 60);
+      setCurrentTime(`${mins}:${secs.toString().padStart(2, '0')}`);
     }
-  }
+  };
 
   const handleEnded = () => {
-    setIsPlaying(false)
-    setProgress(0)
-    setCurrentTime('0:00')
-  }
+    setIsPlaying(false);
+    setProgress(0);
+    setCurrentTime('0:00');
+  };
 
   return (
     <div className={cn('flex gap-2', isOwn && 'flex-row-reverse')}>
-      <audio
-        ref={audioRef}
-        src={audioSrc}
-        onTimeUpdate={handleTimeUpdate}
-        onEnded={handleEnded}
-        preload="metadata"
-      />
+      <audio ref={audioRef} src={audioSrc} onTimeUpdate={handleTimeUpdate} onEnded={handleEnded} preload="metadata" />
       {!isOwn && avatarFallback && <Avatar src={avatarUrl} fallback={avatarFallback} />}
       <div className={cn('max-w-[75%]', isOwn && 'items-end')}>
         <div
           className={cn(
             'rounded-2xl px-4 py-3 flex items-center gap-3',
-            isOwn
-              ? 'bg-primary text-primary-foreground rounded-br-md'
-              : 'bg-muted rounded-bl-md'
+            isOwn ? 'bg-primary text-primary-foreground rounded-br-md' : 'bg-muted rounded-bl-md',
           )}
         >
           <button
@@ -633,9 +534,7 @@ export function VoiceMessageBubble({
             aria-label={isPlaying ? 'Pause voice message' : 'Play voice message'}
             className={cn(
               'h-8 w-8 rounded-full flex items-center justify-center shrink-0 transition-colors cursor-pointer',
-              isOwn
-                ? 'bg-primary-foreground/20 hover:bg-primary-foreground/30'
-                : 'bg-foreground/10 hover:bg-foreground/20'
+              isOwn ? 'bg-primary-foreground/20 hover:bg-primary-foreground/30' : 'bg-foreground/10 hover:bg-foreground/20',
             )}
           >
             {isPlaying ? (
@@ -643,42 +542,29 @@ export function VoiceMessageBubble({
                 <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
               </svg>
             ) : (
-              <svg
-                className="h-4 w-4 ml-0.5"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
+              <svg className="h-4 w-4 ml-0.5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M8 5v14l11-7z" />
               </svg>
             )}
           </button>
           <div className="flex-1 flex items-center gap-2">
             <div className="flex-1 h-1 bg-current/20 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-current rounded-full transition-all duration-100"
-                style={{ width: `${progress || 33}%` }}
-              />
+              <div className="h-full bg-current rounded-full transition-all duration-100" style={{ width: `${progress || 33}%` }} />
             </div>
-            <span className="text-xs font-medium">
-              {isPlaying ? currentTime : (duration ?? '0:00')}
-            </span>
+            <span className="text-xs font-medium">{isPlaying ? currentTime : (duration ?? '0:00')}</span>
           </div>
         </div>
-        <div
-          className={cn('flex items-center gap-1 mt-1', isOwn && 'justify-end')}
-        >
+        <div className={cn('flex items-center gap-1 mt-1', isOwn && 'justify-end')}>
           {time && <span className="text-[10px] text-muted-foreground">{time}</span>}
           {isOwn && status && (
             <span className="text-muted-foreground">
               {status === 'sent' && <Check className="h-3 w-3" />}
               {status === 'delivered' && <CheckCheck className="h-3 w-3" />}
-              {status === 'read' && (
-                <CheckCheck className="h-3 w-3 text-foreground" />
-              )}
+              {status === 'read' && <CheckCheck className="h-3 w-3 text-foreground" />}
             </span>
           )}
         </div>
       </div>
     </div>
-  )
+  );
 }

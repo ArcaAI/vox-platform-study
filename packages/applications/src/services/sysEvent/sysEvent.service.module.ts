@@ -6,13 +6,13 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { ResourceSubscriptionServiceModule } from '../resourceSubscription/resourceSubscription.service.module';
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule, ResourceSubscriptionServiceModule],
-    providers: [
-        {
-            provide: ISysEventService,
-            useClass: SysEventService,
-        },
-    ],
-    exports: [ISysEventService],
+  imports: [CommonServiceModule, CoreDatabaseModule, ResourceSubscriptionServiceModule],
+  providers: [
+    {
+      provide: ISysEventService,
+      useClass: SysEventService,
+    },
+  ],
+  exports: [ISysEventService],
 })
 export class SysEventServiceModule {}

@@ -1,22 +1,17 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  PromptInput,
-  PromptInputAction,
-  PromptInputActions,
-  PromptInputTextarea,
-} from '../../../registries/prompt-kit/prompt-input'
-import { Send } from 'lucide-react'
+import { PromptInput, PromptInputAction, PromptInputActions, PromptInputTextarea } from '../../../registries/prompt-kit/prompt-input';
+import { Send } from 'lucide-react';
 
 const meta = {
   title: 'Registries/PromptKit/PromptInput',
   component: PromptInput,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof PromptInput>
+} satisfies Meta<typeof PromptInput>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -32,4 +27,4 @@ export const Default: Story = {
       </PromptInputActions>
     </PromptInput>
   ),
-}
+};

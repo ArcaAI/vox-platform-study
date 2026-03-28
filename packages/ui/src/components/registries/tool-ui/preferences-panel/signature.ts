@@ -1,13 +1,11 @@
-import type { PreferenceSection } from "./schema";
+import type { PreferenceSection } from './schema';
 
-export function createPreferencesSectionSignature(
-  sections: PreferenceSection[],
-): string {
+export function createPreferencesSectionSignature(sections: PreferenceSection[]): string {
   return JSON.stringify(
     sections.map((section) => ({
-      heading: section.heading ?? "",
+      heading: section.heading ?? '',
       items: section.items.map((item) => {
-        if (item.type === "switch") {
+        if (item.type === 'switch') {
           return {
             id: item.id,
             type: item.type,
@@ -15,11 +13,11 @@ export function createPreferencesSectionSignature(
           };
         }
 
-        if (item.type === "toggle") {
+        if (item.type === 'toggle') {
           return {
             id: item.id,
             type: item.type,
-            defaultValue: item.defaultValue ?? item.options[0]?.value ?? "",
+            defaultValue: item.defaultValue ?? item.options[0]?.value ?? '',
             options: item.options.map((option) => option.value),
           };
         }
@@ -27,8 +25,7 @@ export function createPreferencesSectionSignature(
         return {
           id: item.id,
           type: item.type,
-          defaultSelected:
-            item.defaultSelected ?? item.selectOptions[0]?.value ?? "",
+          defaultSelected: item.defaultSelected ?? item.selectOptions[0]?.value ?? '',
           options: item.selectOptions.map((option) => option.value),
         };
       }),

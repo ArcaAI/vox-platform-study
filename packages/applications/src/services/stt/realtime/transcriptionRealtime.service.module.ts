@@ -24,20 +24,8 @@ import { TranscriptionRealtimeService } from './transcriptionRealtime.service';
  * - TranscriptionRealtimeService: Orchestrates job creation, dispatch, SSE
  */
 @Module({
-    imports: [
-        CoreDatabaseModule,
-        EventEmitterModule,
-        ClsModule,
-        RedisCacheModule.register(),
-        TranscriptionJobServiceModule,
-    ],
-    providers: [
-        RedisSubscriberService,
-        TranscriptionRealtimeService,
-    ],
-    exports: [
-        TranscriptionRealtimeService,
-        RedisSubscriberService,
-    ],
+  imports: [CoreDatabaseModule, EventEmitterModule, ClsModule, RedisCacheModule.register(), TranscriptionJobServiceModule],
+  providers: [RedisSubscriberService, TranscriptionRealtimeService],
+  exports: [TranscriptionRealtimeService, RedisSubscriberService],
 })
 export class TranscriptionRealtimeServiceModule {}

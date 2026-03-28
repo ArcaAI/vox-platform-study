@@ -1,26 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Tags,
-  TagsTrigger,
-  TagsValue,
-  TagsContent,
-  TagsInput,
-  TagsList,
-  TagsEmpty,
-  TagsGroup,
-  TagsItem,
-} from '../../../registries/kibo-ui/tags'
+import { Tags, TagsTrigger, TagsValue, TagsContent, TagsInput, TagsList, TagsEmpty, TagsGroup, TagsItem } from '../../../registries/kibo-ui/tags';
 
 const meta = {
   title: 'Registries/KiboUI/Tags',
   component: Tags,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Tags>
+} satisfies Meta<typeof Tags>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -42,4 +32,4 @@ export const Default: Story = {
       </TagsContent>
     </Tags>
   ),
-}
+};

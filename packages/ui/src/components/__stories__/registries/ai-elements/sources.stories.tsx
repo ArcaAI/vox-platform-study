@@ -1,21 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Sources,
-  SourcesTrigger,
-  SourcesContent,
-  Source,
-} from '../../../registries/ai-elements/sources'
+import { Sources, SourcesTrigger, SourcesContent, Source } from '../../../registries/ai-elements/sources';
 
 const meta = {
   title: 'Registries/AiElements/Sources',
   component: Sources,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Sources>
+} satisfies Meta<typeof Sources>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -31,7 +26,7 @@ export const Default: Story = {
       </Sources>
     </div>
   ),
-}
+};
 
 export const Collapsed: Story = {
   args: {} as any,
@@ -46,4 +41,4 @@ export const Collapsed: Story = {
       </Sources>
     </div>
   ),
-}
+};
