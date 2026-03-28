@@ -6,17 +6,17 @@ import { Outlet } from '@tanstack/react-router';
 import { Header } from './header';
 
 export function AuthLayout({ children }: { children?: React.ReactNode }) {
-    const sidebarOpen = usePlaygroundStore((s) => s.sidebarOpen);
-    const setSidebarOpen = usePlaygroundStore((s) => s.setSidebarOpen);
+  const sidebarOpen = usePlaygroundStore((s) => s.sidebarOpen);
+  const setSidebarOpen = usePlaygroundStore((s) => s.setSidebarOpen);
 
-    return (
-        <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
-            <AppSidebar />
-            <SidebarInset>
-                <Header fixed />
-                {children ?? <Outlet />}
-            </SidebarInset>
-            <DocPanelRoot />
-        </SidebarProvider>
-    );
+  return (
+    <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
+      <AppSidebar />
+      <SidebarInset>
+        <Header fixed />
+        {children ?? <Outlet />}
+      </SidebarInset>
+      <DocPanelRoot />
+    </SidebarProvider>
+  );
 }

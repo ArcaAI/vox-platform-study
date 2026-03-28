@@ -1,8 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { toast } from 'sonner'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { toast } from 'sonner';
 
-import { Toaster } from '../../shadcn/sonner'
-import { Button } from '../../shadcn/button'
+import { Toaster } from '../../shadcn/sonner';
+import { Button } from '../../shadcn/button';
 
 const meta: Meta<typeof Toaster> = {
   title: 'Components/Sonner',
@@ -19,21 +19,18 @@ const meta: Meta<typeof Toaster> = {
       </>
     ),
   ],
-} satisfies Meta<typeof Toaster>
+} satisfies Meta<typeof Toaster>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
-    <Button
-      variant="outline"
-      onClick={() => toast('Event has been created.')}
-    >
+    <Button variant="outline" onClick={() => toast('Event has been created.')}>
       Show Toast
     </Button>
   ),
-}
+};
 
 export const Types: Story = {
   render: () => (
@@ -55,7 +52,7 @@ export const Types: Story = {
       </Button>
     </div>
   ),
-}
+};
 
 export const WithDescription: Story = {
   render: () => (
@@ -70,7 +67,7 @@ export const WithDescription: Story = {
       With Description
     </Button>
   ),
-}
+};
 
 export const WithAction: Story = {
   render: () => (
@@ -88,4 +85,4 @@ export const WithAction: Story = {
       With Action
     </Button>
   ),
-}
+};

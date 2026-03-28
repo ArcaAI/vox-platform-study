@@ -8,13 +8,9 @@ import { DATA_CONFLICT, BasePersistenceException } from '../../common';
  * @extends {BasePersistenceException}
  */
 export class DataConflictException extends BasePersistenceException {
-    static readonly message = 'Data conflict occurred in the database.';
-    static readonly code = DATA_CONFLICT;
-    constructor(
-        message = DataConflictException.message,
-        cause?: Error,
-        metadata?: unknown,
-    ) {
-        super(message, DataConflictException.code, cause, metadata);
-    }
+  static readonly message = 'Data conflict occurred in the database.';
+  static readonly code = DATA_CONFLICT;
+  constructor(message = DataConflictException.message, cause?: Error, metadata?: unknown) {
+    super(message, DataConflictException.code, cause, metadata);
+  }
 }

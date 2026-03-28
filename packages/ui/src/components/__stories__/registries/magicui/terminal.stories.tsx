@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { AnimatedSpan, Terminal } from '../../../registries/magicui/terminal'
+import { AnimatedSpan, Terminal } from '../../../registries/magicui/terminal';
 
 const meta: Meta = {
   title: 'Registries/MagicUI/Terminal',
   component: Terminal,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-}
+};
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -20,4 +20,4 @@ export const Default: Story = {
       <AnimatedSpan>Welcome to MagicUI</AnimatedSpan>
     </Terminal>
   ),
-}
+};

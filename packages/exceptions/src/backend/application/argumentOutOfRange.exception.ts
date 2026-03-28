@@ -8,10 +8,10 @@ import { ARGUMENT_OUT_OF_RANGE, BaseException } from '../../common';
  * @extends {BaseException}
  */
 export class ArgumentOutOfRangeException extends BaseException {
-    static readonly message = 'Argument is out of the expected range.';
-    readonly code = ARGUMENT_OUT_OF_RANGE;
+  static readonly message = 'Argument is out of the expected range.';
+  readonly code = ARGUMENT_OUT_OF_RANGE;
 
-    constructor(message = ArgumentOutOfRangeException.message) {
-        super(message);
-    }
+  constructor(message = ArgumentOutOfRangeException.message) {
+    super(message);
+  }
 }

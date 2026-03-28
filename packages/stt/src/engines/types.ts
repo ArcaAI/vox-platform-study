@@ -4,13 +4,7 @@
  * Type definitions for STT engine implementations.
  */
 
-import type {
-  ComputeDevice,
-  WhisperModelSize,
-  TranscriptionResult,
-  ModelLoadProgress,
-  LanguageLocale,
-} from '../types/index.js';
+import type { ComputeDevice, WhisperModelSize, TranscriptionResult, ModelLoadProgress, LanguageLocale } from '../types/index.js';
 
 /**
  * Configuration for STT engines.
@@ -153,10 +147,7 @@ export interface STTEngine {
    * @param options - Transcription options
    * @returns Transcription result
    */
-  transcribe(
-    audio: Float32Array,
-    options?: TranscribeOptions
-  ): Promise<TranscriptionResult>;
+  transcribe(audio: Float32Array, options?: TranscribeOptions): Promise<TranscriptionResult>;
 
   /**
    * Destroy the engine and release resources.

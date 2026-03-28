@@ -7,10 +7,10 @@ import { NOT_FOUND, BaseException } from '../../common';
  * @extends {BaseException}
  */
 export class NotFoundException extends BaseException {
-    static readonly message = 'The requested resource was not found.';
-    readonly code = NOT_FOUND;
+  static readonly message = 'The requested resource was not found.';
+  readonly code = NOT_FOUND;
 
-    constructor(message = NotFoundException.message) {
-        super(message);
-    }
+  constructor(message = NotFoundException.message) {
+    super(message);
+  }
 }

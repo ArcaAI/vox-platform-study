@@ -44,13 +44,7 @@ export interface AudioTrackRendererProps {
  * }
  * ```
  */
-export function AudioTrackRenderer({
-  track,
-  autoPlay = true,
-  muted = true,
-  volume = 0,
-  audioProps,
-}: AudioTrackRendererProps) {
+export function AudioTrackRenderer({ track, autoPlay = true, muted = true, volume = 0, audioProps }: AudioTrackRendererProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
@@ -84,14 +78,5 @@ export function AudioTrackRenderer({
     }
   }, [volume]);
 
-  return (
-    <audio
-      ref={audioRef}
-      autoPlay={autoPlay}
-      muted={muted}
-      playsInline
-      {...audioProps}
-      style={{ display: 'none', ...audioProps?.style }}
-    />
-  );
+  return <audio ref={audioRef} autoPlay={autoPlay} muted={muted} playsInline {...audioProps} style={{ display: 'none', ...audioProps?.style }} />;
 }

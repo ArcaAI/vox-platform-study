@@ -10,17 +10,7 @@
  * for audio level monitoring and passthrough when used as a processor.
  */
 
-import type {
-  VADWorkletInboundMessage,
-  VADWorkletOutboundMessage,
-  VADWorkletConfig,
-  VADStats,
-} from '../types/index.js';
-
-/**
- * AudioWorklet render quantum size (128 samples per process call).
- */
-const RENDER_QUANTUM = 128;
+import type { VADWorkletInboundMessage, VADWorkletOutboundMessage, VADWorkletConfig, VADStats } from '../types/index.js';
 
 /**
  * VAD AudioWorklet Processor
@@ -113,7 +103,7 @@ class VADWorkletProcessor extends AudioWorkletProcessor {
     inputs: Float32Array[][],
     outputs: Float32Array[][],
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _parameters: Record<string, Float32Array>
+    _parameters: Record<string, Float32Array>,
   ): boolean {
     const input = inputs[0]?.[0];
     const output = outputs[0]?.[0];
@@ -149,7 +139,7 @@ class VADWorkletProcessor extends AudioWorkletProcessor {
             timestamp: currentTime * 1000,
             frameData,
           },
-          [frameData.buffer]
+          [frameData.buffer],
         );
 
         this.frameBufferIndex = 0;
@@ -189,14 +179,9 @@ class VADWorkletProcessor extends AudioWorkletProcessor {
    * Send processing statistics to main thread.
    */
   private sendStats(): void {
-    const currentSpeechDuration = this.isSpeaking
-      ? currentTime * 1000 - this.speechStartTime
-      : 0;
+    const currentSpeechDuration = this.isSpeaking ? currentTime * 1000 - this.speechStartTime : 0;
 
-    const averageProbability =
-      this.averageProbabilityCount > 0
-        ? this.averageProbabilitySum / this.averageProbabilityCount
-        : 0;
+    const averageProbability = this.averageProbabilityCount > 0 ? this.averageProbabilitySum / this.averageProbabilityCount : 0;
 
     const stats: VADStats = {
       isActive: this.enabled && this.initialized,

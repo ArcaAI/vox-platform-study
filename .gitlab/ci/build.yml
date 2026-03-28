@@ -10,11 +10,50 @@
 #   feature — no builds
 #   release — no builds (SDK publish only)
 
+# ── Pre-pull base images ─────────────────────────────────────────────────────
+# Warm up the host Docker daemon's image cache so that BuildKit (docker-container
+# driver) can resolve FROM images locally instead of pulling ~3 GB from upstream
+# registries on every build.  Runs once per pipeline before any build job.
+
+warm-up-base-images:
+  stage: build
+  tags: [build]
+  image: docker:27
+  timeout: 15m
+  interruptible: true
+  script:
+    - |
+      set -eu
+      images="
+        nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
+        ghcr.io/astral-sh/uv:python3.11-bookworm-slim
+        ghcr.io/astral-sh/uv:0.8.13
+        python:3.11-slim-bookworm
+        python:3.11-slim-trixie
+        node:22-alpine
+      "
+      for img in $images; do
+        if docker image inspect "$img" >/dev/null 2>&1; then
+          echo "CACHED  $img"
+        else
+          echo "PULLING $img ..."
+          docker pull "$img"
+        fi
+      done
+      echo "All base images warm"
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
+      when: never
+    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+
 # ── API Gateway ──────────────────────────────────────────────────────────────
 
 build-api:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-api
       optional: true
     - job: typecheck
@@ -45,6 +84,8 @@ build-api:
 build-ui-playground:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-sdk
       optional: true
     - job: typecheck
@@ -77,6 +118,8 @@ build-ui-playground:
 build-example-ui:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-sdk
       optional: true
     - job: typecheck
@@ -101,6 +144,8 @@ build-example-ui:
 build-nlp:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-nlp
       optional: true
   variables:
@@ -123,6 +168,8 @@ build-nlp:
 build-smr:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-smr
       optional: true
   variables:
@@ -145,6 +192,8 @@ build-smr:
 build-stt-v2:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-stt-v2
       optional: true
   variables:
@@ -168,6 +217,8 @@ build-stt-v2:
 build-stt-v2-worker:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-stt-v2
       optional: true
   variables:
@@ -191,6 +242,8 @@ build-stt-v2-worker:
 build-database:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-packages
       optional: true
   variables:

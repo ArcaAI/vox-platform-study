@@ -1,17 +1,17 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { AvatarStack } from '../../../registries/kibo-ui/avatar-stack'
-import { Avatar, AvatarFallback, AvatarImage } from '../../../shadcn/avatar'
+import { AvatarStack } from '../../../registries/kibo-ui/avatar-stack';
+import { Avatar, AvatarFallback, AvatarImage } from '../../../shadcn/avatar';
 
 const meta = {
   title: 'Registries/KiboUI/AvatarStack',
   component: AvatarStack,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof AvatarStack>
+} satisfies Meta<typeof AvatarStack>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -27,4 +27,4 @@ export const Default: Story = {
       </Avatar>
     </AvatarStack>
   ),
-}
+};

@@ -10,24 +10,24 @@
 // ---------------------------------------------------------------------------
 
 export interface CreateStreamingSessionRequest {
-    /** Unique session identifier (UUID) */
-    sessionId: string;
-    /** Tenant identifier */
-    tenantId: string;
-    /** ASR pipeline identifier (UUID or slug) */
-    pipelineId: string;
-    /** Optional consultation context */
-    consultationId?: string;
-    /** Audio sample rate in Hz (default 16000) */
-    sampleRate?: number;
-    /** Identifier for the microphone device */
-    microphoneId?: string;
-    /** Language hint (ISO 639-1 code, e.g. "en", "ml"). Overrides the pipeline default. */
-    language?: string;
-    /** Enable multilingual code-switching. Overrides the pipeline default. */
-    codeSwitching?: boolean;
-    /** Enable speaker diarization. Overrides the pipeline default. */
-    diarization?: boolean;
+  /** Unique session identifier (UUID) */
+  sessionId: string;
+  /** Tenant identifier */
+  tenantId: string;
+  /** ASR pipeline identifier (UUID or slug) */
+  pipelineId: string;
+  /** Optional consultation context */
+  consultationId?: string;
+  /** Audio sample rate in Hz (default 16000) */
+  sampleRate?: number;
+  /** Identifier for the microphone device */
+  microphoneId?: string;
+  /** Language hint (ISO 639-1 code, e.g. "en", "ml"). Overrides the pipeline default. */
+  language?: string;
+  /** Enable multilingual code-switching. Overrides the pipeline default. */
+  codeSwitching?: boolean;
+  /** Enable speaker diarization. Overrides the pipeline default. */
+  diarization?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -35,29 +35,29 @@ export interface CreateStreamingSessionRequest {
 // ---------------------------------------------------------------------------
 
 export interface StreamingSessionStatus {
-    /** Session identifier */
-    sessionId: string;
-    /** Session status */
-    status: 'active' | 'finalizing' | 'closed' | 'rejected';
-    /** Rejection reason (e.g. 'at_capacity') */
-    reason?: string;
-    /** Maximum concurrent sessions for the worker */
-    maxConcurrent: number;
-    /** Number of currently active sessions */
-    currentActive: number;
+  /** Session identifier */
+  sessionId: string;
+  /** Session status */
+  status: 'active' | 'finalizing' | 'closed' | 'rejected';
+  /** Rejection reason (e.g. 'at_capacity') */
+  reason?: string;
+  /** Maximum concurrent sessions for the worker */
+  maxConcurrent: number;
+  /** Number of currently active sessions */
+  currentActive: number;
 }
 
 export interface StreamingAvailability {
-    /** Whether the streaming module is initialized and has capacity */
-    available: boolean;
-    /** Module status: ready, not_initialized, at_capacity */
-    status: string;
-    /** Maximum concurrent sessions */
-    maxConcurrent: number;
-    /** Currently active sessions */
-    currentActive: number;
-    /** Remaining available slots */
-    availableSlots: number;
+  /** Whether the streaming module is initialized and has capacity */
+  available: boolean;
+  /** Module status: ready, not_initialized, at_capacity */
+  status: string;
+  /** Maximum concurrent sessions */
+  maxConcurrent: number;
+  /** Currently active sessions */
+  currentActive: number;
+  /** Remaining available slots */
+  availableSlots: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,27 +67,24 @@ export interface StreamingAvailability {
 export type StreamingClientMessageType = 'audio' | 'stop' | 'close';
 
 export interface StreamingAudioMessage {
-    type: 'audio';
-    /** Sequence number (monotonic) */
-    seq: number;
-    /** Microphone identifier */
-    microphoneId?: string;
-    /** Base64-encoded PCM audio data */
-    data: string;
+  type: 'audio';
+  /** Sequence number (monotonic) */
+  seq: number;
+  /** Microphone identifier */
+  microphoneId?: string;
+  /** Base64-encoded PCM audio data */
+  data: string;
 }
 
 export interface StreamingStopMessage {
-    type: 'stop';
+  type: 'stop';
 }
 
 export interface StreamingCloseMessage {
-    type: 'close';
+  type: 'close';
 }
 
-export type StreamingClientMessage =
-    | StreamingAudioMessage
-    | StreamingStopMessage
-    | StreamingCloseMessage;
+export type StreamingClientMessage = StreamingAudioMessage | StreamingStopMessage | StreamingCloseMessage;
 
 // ---------------------------------------------------------------------------
 // Server → Client messages
@@ -96,38 +93,35 @@ export type StreamingClientMessage =
 export type StreamingServerMessageType = 'transcript' | 'status' | 'error';
 
 export interface StreamingTranscriptMessage {
-    type: 'transcript';
-    /** Transcribed text */
-    text: string;
-    /** Start time in seconds */
-    startTime: number;
-    /** End time in seconds */
-    endTime: number;
-    /** Whether this is a finalized segment */
-    isFinal: boolean;
-    /** Speaker identifier from diarization, if available */
-    speakerId?: string;
-    /** Speaker identification confidence (0-1) */
-    speakerConfidence?: number;
+  type: 'transcript';
+  /** Transcribed text */
+  text: string;
+  /** Start time in seconds */
+  startTime: number;
+  /** End time in seconds */
+  endTime: number;
+  /** Whether this is a finalized segment */
+  isFinal: boolean;
+  /** Speaker identifier from diarization, if available */
+  speakerId?: string;
+  /** Speaker identification confidence (0-1) */
+  speakerConfidence?: number;
 }
 
 export interface StreamingStatusMessage {
-    type: 'status';
-    /** Session status */
-    status: string;
-    /** Human-readable message */
-    message: string;
+  type: 'status';
+  /** Session status */
+  status: string;
+  /** Human-readable message */
+  message: string;
 }
 
 export interface StreamingErrorMessage {
-    type: 'error';
-    /** Error code */
-    code: string;
-    /** Human-readable error message */
-    message: string;
+  type: 'error';
+  /** Error code */
+  code: string;
+  /** Human-readable error message */
+  message: string;
 }
 
-export type StreamingServerMessage =
-    | StreamingTranscriptMessage
-    | StreamingStatusMessage
-    | StreamingErrorMessage;
+export type StreamingServerMessage = StreamingTranscriptMessage | StreamingStatusMessage | StreamingErrorMessage;

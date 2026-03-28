@@ -59,14 +59,10 @@ export class SSEClient {
    */
   connect(url: string, options: SSEConnectOptions = {}): void {
     if (this.connected && this.eventSource) {
-      throw new Error(
-        'SSEClient already connected. Call disconnect() first.',
-      );
+      throw new Error('SSEClient already connected. Call disconnect() first.');
     }
 
-    const effectiveUrl = options.authToken
-      ? SSEClient.appendAuthToken(url, options.authToken)
-      : url;
+    const effectiveUrl = options.authToken ? SSEClient.appendAuthToken(url, options.authToken) : url;
 
     this.url = effectiveUrl;
     this.options = options;

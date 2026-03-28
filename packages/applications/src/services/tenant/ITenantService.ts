@@ -5,30 +5,30 @@ import { CreateTenantRequest, UpdateTenantRequest } from './dto';
 import { UpdateTenantConfigRequest } from './dto/updateTenantConfigRequest';
 
 export interface ITenantService extends IBaseService {
-    // Tenant basics
+  // Tenant basics
 
-    // Create
-    create(request: CreateTenantRequest): Promise<TenantEntity>;
-    // queries
-    fetchAll(props: PaginatedQuery): Promise<FetchResponse<TenantEntity>>;
-    fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<TenantEntity>>;
-    fetchById(id: EntityId): Promise<TenantEntity>;
-    fetchByCodeName(codeName: string): Promise<TenantEntity>;
-    // updates
-    update(id: EntityId, request: UpdateTenantRequest): Promise<TenantEntity>;
-    // deletes
-    deleteById(id: EntityId): Promise<TenantEntity>;
+  // Create
+  create(request: CreateTenantRequest): Promise<TenantEntity>;
+  // queries
+  fetchAll(props: PaginatedQuery): Promise<FetchResponse<TenantEntity>>;
+  fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<TenantEntity>>;
+  fetchById(id: EntityId): Promise<TenantEntity>;
+  fetchByCodeName(codeName: string): Promise<TenantEntity>;
+  // updates
+  update(id: EntityId, request: UpdateTenantRequest): Promise<TenantEntity>;
+  // deletes
+  deleteById(id: EntityId): Promise<TenantEntity>;
 
-    // Tenant configurations
-    fetchTenantConfigs(props: PaginatedQuery & { tenantId?: string, codeName?: string }): Promise<FetchResponse<GlobalSettingEntity>>;
-    updateTenantConfigs(identifier: EntityId | string, configs: UpdateTenantConfigRequest[]): Promise<FetchResponse<GlobalSettingEntity>>;
+  // Tenant configurations
+  fetchTenantConfigs(props: PaginatedQuery & { tenantId?: string; codeName?: string }): Promise<FetchResponse<GlobalSettingEntity>>;
+  updateTenantConfigs(identifier: EntityId | string, configs: UpdateTenantConfigRequest[]): Promise<FetchResponse<GlobalSettingEntity>>;
 
-    // Tenant usage statistics
-    getUsageStats(tenantId: EntityId): Promise<{
-        totalUsers: number;
-        totalDepartments: number;
-        totalPromptTemplates: number;
-        totalPipelines: number;
-    }>;
+  // Tenant usage statistics
+  getUsageStats(tenantId: EntityId): Promise<{
+    totalUsers: number;
+    totalDepartments: number;
+    totalPromptTemplates: number;
+    totalPipelines: number;
+  }>;
 }
 export const ITenantService = Symbol('ITenantService');

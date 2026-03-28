@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Status, StatusIndicator, StatusLabel } from '../../../registries/kibo-ui/status'
+import { Status, StatusIndicator, StatusLabel } from '../../../registries/kibo-ui/status';
 
 const meta = {
   title: 'Registries/KiboUI/Status',
   component: Status,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Status>
+} satisfies Meta<typeof Status>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Online: Story = {
   args: {
@@ -22,7 +22,7 @@ export const Online: Story = {
       </>
     ),
   },
-}
+};
 
 export const Offline: Story = {
   args: {
@@ -34,7 +34,7 @@ export const Offline: Story = {
       </>
     ),
   },
-}
+};
 
 export const Maintenance: Story = {
   args: {
@@ -46,7 +46,7 @@ export const Maintenance: Story = {
       </>
     ),
   },
-}
+};
 
 export const Degraded: Story = {
   args: {
@@ -58,4 +58,4 @@ export const Degraded: Story = {
       </>
     ),
   },
-}
+};

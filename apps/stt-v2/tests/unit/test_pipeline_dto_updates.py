@@ -349,12 +349,12 @@ class TestAiModelSource:
     def test_kserve_is_string_enum(self):
         """Test that KSERVE can be compared as string."""
         assert AiModelSource.KSERVE == "KSERVE"
-        assert str(AiModelSource.KSERVE) == "AiModelSource.KSERVE"
+        assert str(AiModelSource.KSERVE) == "KSERVE"
 
     def test_mlflow_is_string_enum(self):
         """Test that MLFLOW can be compared as string."""
         assert AiModelSource.MLFLOW == "MLFLOW"
-        assert str(AiModelSource.MLFLOW) == "AiModelSource.MLFLOW"
+        assert str(AiModelSource.MLFLOW) == "MLFLOW"
 
 
 # =============================================================================

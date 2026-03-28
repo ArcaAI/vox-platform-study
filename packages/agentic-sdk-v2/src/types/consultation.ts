@@ -34,21 +34,19 @@ export type ConsultationStatus =
  * Ordered lifecycle phases for progress display.
  * Does not include terminal states (CLOSED, CANCELLED) or legacy values.
  */
-export const CONSULTATION_STATUS_ORDER: readonly ConsultationStatus[] = [
-  'OPEN',
-  'RECORDING',
-  'TRANSCRIBING',
-  'SUMMARIZING',
-  'REVIEW',
-] as const;
+export const CONSULTATION_STATUS_ORDER: readonly ConsultationStatus[] = ['OPEN', 'RECORDING', 'TRANSCRIBING', 'SUMMARIZING', 'REVIEW'] as const;
 
 /** Map legacy backend values to canonical status. */
 export function normalizeConsultationStatus(status: ConsultationStatus): ConsultationStatus {
   switch (status) {
-    case 'active': return 'OPEN';
-    case 'completed': return 'CLOSED';
-    case 'cancelled': return 'CANCELLED';
-    default: return status;
+    case 'active':
+      return 'OPEN';
+    case 'completed':
+      return 'CLOSED';
+    case 'cancelled':
+      return 'CANCELLED';
+    default:
+      return status;
   }
 }
 

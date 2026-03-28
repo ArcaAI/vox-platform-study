@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Meteors } from '../../../registries/magicui/meteors'
+import { Meteors } from '../../../registries/magicui/meteors';
 
 const meta = {
   title: 'Registries/MagicUI/Meteors',
   component: Meteors,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Meteors>
+} satisfies Meta<typeof Meteors>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -18,4 +18,4 @@ export const Default: Story = {
       <Meteors />
     </div>
   ),
-}
+};

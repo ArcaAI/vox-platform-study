@@ -1,14 +1,14 @@
 import {
-    AuditLogServiceModule,
-    AuthServiceModule,
-    AuthorizationModule,
-    CommonServiceModule,
-    ConfigModule,
-    JWT_AUTH_GUARD,
-    LoggingServiceModule,
-    ObservabilityModule,
-    RedisServiceModule,
-    SysEventServiceModule,
+  AuditLogServiceModule,
+  AuthServiceModule,
+  AuthorizationModule,
+  CommonServiceModule,
+  ConfigModule,
+  JWT_AUTH_GUARD,
+  LoggingServiceModule,
+  ObservabilityModule,
+  RedisServiceModule,
+  SysEventServiceModule,
 } from '@arcaai/applications';
 import { JobQueue } from '@arcaai/domains';
 import { Global, Module } from '@nestjs/common';
@@ -43,22 +43,22 @@ import { TenantModule } from './modules/tenant/tenant.module';
 import { UserModule } from './modules/user/user.module';
 
 const interceptors = [
-    {
-        provide: APP_INTERCEPTOR,
-        useClass: ContextInterceptor,
-    },
-    {
-        provide: APP_INTERCEPTOR,
-        useClass: ExceptionInterceptor,
-    },
-    {
-        provide: APP_INTERCEPTOR,
-        useClass: MaintenanceInterceptor,
-    },
-    {
-        provide: APP_INTERCEPTOR,
-        useClass: ImpersonationAuditInterceptor,
-    },
+  {
+    provide: APP_INTERCEPTOR,
+    useClass: ContextInterceptor,
+  },
+  {
+    provide: APP_INTERCEPTOR,
+    useClass: ExceptionInterceptor,
+  },
+  {
+    provide: APP_INTERCEPTOR,
+    useClass: MaintenanceInterceptor,
+  },
+  {
+    provide: APP_INTERCEPTOR,
+    useClass: ImpersonationAuditInterceptor,
+  },
 ];
 
 // Define all queue names to be used in the application
@@ -74,66 +74,68 @@ const queueNames = Object.values(JobQueue);
  */
 @Global()
 @Module({
-    imports: [AuthServiceModule],
-    providers: [{ provide: JWT_AUTH_GUARD, useClass: JwtAuthGuard }],
-    exports: [JWT_AUTH_GUARD, AuthServiceModule],
+  imports: [AuthServiceModule],
+  providers: [{ provide: JWT_AUTH_GUARD, useClass: JwtAuthGuard }],
+  exports: [JWT_AUTH_GUARD, AuthServiceModule],
 })
 class JwtAuthGuardModule {}
 
 const common = [
-    LoggingServiceModule, // Add the logger service
-    GracefulShutdownModule, // Graceful shutdown coordination
-    ConfigModule.forRoot(),
-    ClsModule.forRoot({
-        global: true,
-        middleware: {
-            mount: true,
-            generateId: true,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            idGenerator: (req: any) => req.headers['X-Request-Id'] ?? uuidv7(),
-        },
-    }),
-    ScheduleModule.forRoot(),
-    EventEmitterModule.forRoot(),
-    SysEventServiceModule,
-    CommonServiceModule,
-    RedisServiceModule.register(queueNames),
-    ObservabilityModule,
-    AuditLogServiceModule, // Event-driven audit logging (replaces Kafka audit topics)
-    JwtAuthGuardModule, // JWT guard — before AuthorizationModule
-    AuthorizationModule, // Policy-based authorization (RBAC)
+  LoggingServiceModule, // Add the logger service
+  GracefulShutdownModule, // Graceful shutdown coordination
+  ConfigModule.forRoot(),
+  ClsModule.forRoot({
+    global: true,
+    middleware: {
+      mount: true,
+      generateId: true,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      idGenerator: (req: any) => req.headers['X-Request-Id'] ?? uuidv7(),
+    },
+  }),
+  ScheduleModule.forRoot(),
+  EventEmitterModule.forRoot(),
+  SysEventServiceModule,
+  CommonServiceModule,
+  RedisServiceModule.register(queueNames),
+  ObservabilityModule,
+  AuditLogServiceModule, // Event-driven audit logging (replaces Kafka audit topics)
+  JwtAuthGuardModule, // JWT guard — before AuthorizationModule
+  AuthorizationModule, // Policy-based authorization (RBAC)
 ];
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const featureModules: any[] = [
-    ApiKeyModule,
-    AuthModule,
-    AuditLogModule,
-    ConsultationModule,
-    DepartmentModule,
-    DnaWritingStyleModule,
-    HealthModule,
-    InternalModule,
-    MonitoringModule,
-    PromptManagementModule,
-    RbacModule,
-    StorageModule,
-    StorageAccessKeyModule,
-    StreamingModule,
-    PipelineModule,
-    TenantModule,
-    TenantBucketModule,
-    UserModule,
+  ApiKeyModule,
+  AuthModule,
+  AuditLogModule,
+  ConsultationModule,
+  DepartmentModule,
+  DnaWritingStyleModule,
+  HealthModule,
+  InternalModule,
+  MonitoringModule,
+  PromptManagementModule,
+  RbacModule,
+  StorageModule,
+  StorageAccessKeyModule,
+  StreamingModule,
+  PipelineModule,
+  TenantModule,
+  TenantBucketModule,
+  UserModule,
 ];
 
 // Dev-only: Embedded Prisma Studio database browser at /api/pstudio
-const enableStudio = process.env.ENABLE_PRISMA_STUDIO === 'true'
-    || (process.env.NODE_ENV !== 'production' && process.env.ENABLE_PRISMA_STUDIO !== 'false');
+const enableStudio =
+  // eslint-disable-next-line turbo/no-undeclared-env-vars
+  process.env.ENABLE_PRISMA_STUDIO === 'true' || (process.env.NODE_ENV !== 'production' && process.env.ENABLE_PRISMA_STUDIO !== 'false');
 if (enableStudio) {
-    featureModules.push(PrismaStudioModule);
+  featureModules.push(PrismaStudioModule);
 }
 
 @Module({
-    imports: [...common, ...featureModules],
-    providers: [...interceptors],
+  imports: [...common, ...featureModules],
+  providers: [...interceptors],
 })
 export class AppModule {}

@@ -7,13 +7,13 @@ import { CommonServiceModule } from '../../baseServices';
 // TODO: Implement this
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule],
-    providers: [
-        {
-            provide: IUserMediaService,
-            useClass: UserMediaService
-        }
-    ],
-    exports: [IUserMediaService]
+  imports: [CommonServiceModule, CoreDatabaseModule],
+  providers: [
+    {
+      provide: IUserMediaService,
+      useClass: UserMediaService,
+    },
+  ],
+  exports: [IUserMediaService],
 })
 export class UserMediaServiceModule {}

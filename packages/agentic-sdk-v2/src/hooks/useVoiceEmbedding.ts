@@ -45,82 +45,89 @@ export function useVoiceEmbedding(): UseVoiceEmbeddingReturn {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const upload = useCallback(async (userId: string, audioFile: File | Blob): Promise<VoiceEmbeddingResponse> => {
-    if (!apiClient) throw new Error('SDK not initialized');
-    setIsUploading(true);
-    setError(null);
-    const timer = logger?.startOperation('uploadVoiceEmbedding');
-    try {
-      const formData = new FormData();
-      formData.append('file', audioFile);
-      const data = await apiClient.post<VoiceEmbeddingResponse>(
-        VOICE_EMBEDDING_ENDPOINTS.UPLOAD(userId),
-        formData,
-      );
-      setStatus({
-        userId: data.userId,
-        exists: true,
-        dimensions: data.dimensions,
-        createdAt: data.createdAt,
-        audioFileKey: data.audioFileKey,
-      });
-      timer?.end(true);
-      return data;
-    } catch (err) {
-      setError(err as Error);
-      timer?.error(err as Error);
-      throw err;
-    } finally {
-      setIsUploading(false);
-    }
-  }, [apiClient, logger]);
+  const upload = useCallback(
+    async (userId: string, audioFile: File | Blob): Promise<VoiceEmbeddingResponse> => {
+      if (!apiClient) throw new Error('SDK not initialized');
+      setIsUploading(true);
+      setError(null);
+      const timer = logger?.startOperation('uploadVoiceEmbedding');
+      try {
+        const formData = new FormData();
+        formData.append('file', audioFile);
+        const data = await apiClient.post<VoiceEmbeddingResponse>(VOICE_EMBEDDING_ENDPOINTS.UPLOAD(userId), formData);
+        setStatus({
+          userId: data.userId,
+          exists: true,
+          dimensions: data.dimensions,
+          createdAt: data.createdAt,
+          audioFileKey: data.audioFileKey,
+        });
+        timer?.end(true);
+        return data;
+      } catch (err) {
+        setError(err as Error);
+        timer?.error(err as Error);
+        throw err;
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [apiClient, logger],
+  );
 
-  const getStatus = useCallback(async (userId: string): Promise<VoiceEmbeddingStatus> => {
-    if (!apiClient) throw new Error('SDK not initialized');
-    setIsLoading(true);
-    setError(null);
-    const timer = logger?.startOperation('getVoiceEmbeddingStatus');
-    try {
-      const data = await apiClient.get<VoiceEmbeddingStatus>(
-        VOICE_EMBEDDING_ENDPOINTS.STATUS(userId),
-      );
-      setStatus(data);
-      timer?.end(true);
-      return data;
-    } catch (err) {
-      setError(err as Error);
-      timer?.error(err as Error);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [apiClient, logger]);
+  const getStatus = useCallback(
+    async (userId: string): Promise<VoiceEmbeddingStatus> => {
+      if (!apiClient) throw new Error('SDK not initialized');
+      setIsLoading(true);
+      setError(null);
+      const timer = logger?.startOperation('getVoiceEmbeddingStatus');
+      try {
+        const data = await apiClient.get<VoiceEmbeddingStatus>(VOICE_EMBEDDING_ENDPOINTS.STATUS(userId));
+        setStatus(data);
+        timer?.end(true);
+        return data;
+      } catch (err) {
+        setError(err as Error);
+        timer?.error(err as Error);
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [apiClient, logger],
+  );
 
-  const remove = useCallback(async (userId: string): Promise<void> => {
-    if (!apiClient) throw new Error('SDK not initialized');
-    setIsLoading(true);
-    setError(null);
-    const timer = logger?.startOperation('removeVoiceEmbedding');
-    try {
-      await apiClient.delete(VOICE_EMBEDDING_ENDPOINTS.REMOVE(userId));
-      setStatus(null);
-      timer?.end(true);
-    } catch (err) {
-      setError(err as Error);
-      timer?.error(err as Error);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [apiClient, logger]);
+  const remove = useCallback(
+    async (userId: string): Promise<void> => {
+      if (!apiClient) throw new Error('SDK not initialized');
+      setIsLoading(true);
+      setError(null);
+      const timer = logger?.startOperation('removeVoiceEmbedding');
+      try {
+        await apiClient.delete(VOICE_EMBEDDING_ENDPOINTS.REMOVE(userId));
+        setStatus(null);
+        timer?.end(true);
+      } catch (err) {
+        setError(err as Error);
+        timer?.error(err as Error);
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [apiClient, logger],
+  );
 
-  return useMemo(() => ({
-    status,
-    isLoading,
-    isUploading,
-    error,
-    upload,
-    getStatus,
-    remove,
-  }), [status, isLoading, isUploading, error, upload, getStatus, remove]);
+  return useMemo(
+    () => ({
+      status,
+      isLoading,
+      isUploading,
+      error,
+      upload,
+      getStatus,
+      remove,
+    }),
+    [status, isLoading, isUploading, error, upload, getStatus, remove],
+  );
 }

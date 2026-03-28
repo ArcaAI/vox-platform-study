@@ -5,6 +5,6 @@ import { TagResponse } from '.';
 // TODO: Implement this
 
 export class PaginatedTagResponse extends PaginatedResponse<TagResponse> {
-    @ApiProperty({ type: [TagResponse] })
-    override readonly data!: readonly TagResponse[];
+  @ApiProperty({ type: [TagResponse] })
+  override readonly data!: readonly TagResponse[];
 }

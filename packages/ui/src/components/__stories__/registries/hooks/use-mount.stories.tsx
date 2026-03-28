@@ -1,22 +1,20 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
-import { useMount } from '../../../../hooks/registries/use-mount'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useState } from 'react';
+import { useMount } from '../../../../hooks/registries/use-mount';
 
 function UseMountDemo() {
-  const [message, setMessage] = useState('Waiting...')
+  const [message, setMessage] = useState('Waiting...');
 
   useMount(() => {
-    setMessage('Component mounted!')
-  })
+    setMessage('Component mounted!');
+  });
 
   return (
     <div className="flex flex-col items-center gap-4">
       <p className="text-lg font-semibold">{message}</p>
-      <p className="text-muted-foreground text-sm">
-        The message above was set during the mount callback.
-      </p>
+      <p className="text-muted-foreground text-sm">The message above was set during the mount callback.</p>
     </div>
-  )
+  );
 }
 
 const meta = {
@@ -24,8 +22,8 @@ const meta = {
   component: UseMountDemo,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof UseMountDemo>
+} satisfies Meta<typeof UseMountDemo>;
 
-export default meta
-type Story = StoryObj<typeof meta>
-export const Default: Story = {}
+export default meta;
+type Story = StoryObj<typeof meta>;
+export const Default: Story = {};

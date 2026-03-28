@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   Editable,
@@ -8,17 +8,17 @@ import {
   EditableToolbar,
   EditableCancel,
   EditableSubmit,
-} from '../../../registries/diceui/editable'
+} from '../../../registries/diceui/editable';
 
 const meta = {
   title: 'Registries/DiceUI/Editable',
   component: Editable,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Editable>
+} satisfies Meta<typeof Editable>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -33,4 +33,4 @@ export const Default: Story = {
       </EditableToolbar>
     </Editable>
   ),
-}
+};

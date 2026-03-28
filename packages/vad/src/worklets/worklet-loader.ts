@@ -161,10 +161,7 @@ const loader = createWorkletLoader({
  * @param audioContext - The AudioContext to register with
  * @param workletUrl - Optional URL to the worklet file (uses blob URL if not provided)
  */
-export async function registerVADWorklet(
-  audioContext: AudioContext,
-  workletUrl?: string
-): Promise<void> {
+export async function registerVADWorklet(audioContext: AudioContext, workletUrl?: string): Promise<void> {
   try {
     await loader.register(audioContext, workletUrl);
   } catch (error) {
@@ -177,7 +174,7 @@ export async function registerVADWorklet(
     throw new VADError(
       VADErrorCode.WORKLET_REGISTRATION_FAILED,
       `Failed to register AudioWorklet: ${message}`,
-      error instanceof Error ? error : undefined
+      error instanceof Error ? error : undefined,
     );
   }
 }
@@ -197,14 +194,9 @@ export function isVADWorkletRegistered(audioContext: AudioContext): boolean {
  * @param audioContext - The AudioContext
  * @returns AudioWorkletNode for VAD processing
  */
-export function createVADWorkletNode(
-  audioContext: AudioContext
-): AudioWorkletNode {
+export function createVADWorkletNode(audioContext: AudioContext): AudioWorkletNode {
   if (!loader.isRegistered(audioContext)) {
-    throw new VADError(
-      VADErrorCode.WORKLET_REGISTRATION_FAILED,
-      'Worklet not registered. Call registerVADWorklet first.'
-    );
+    throw new VADError(VADErrorCode.WORKLET_REGISTRATION_FAILED, 'Worklet not registered. Call registerVADWorklet first.');
   }
 
   return new AudioWorkletNode(audioContext, WORKLET_PROCESSOR_NAME, {

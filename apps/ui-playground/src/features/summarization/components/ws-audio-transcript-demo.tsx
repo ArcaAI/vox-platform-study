@@ -7,18 +7,7 @@ import { ScrollArea } from '@arcaai/ui/scroll-area';
 import { Switch } from '@arcaai/ui/switch';
 import { toast } from 'sonner';
 import { useState, useRef, useCallback, useEffect } from 'react';
-import {
-  Activity,
-  ArrowDownUp,
-  CheckCircle2,
-  Mic,
-  MicOff,
-  Radio,
-  Send,
-  Wifi,
-  WifiOff,
-  XCircle,
-} from 'lucide-react';
+import { Activity, ArrowDownUp, CheckCircle2, Mic, MicOff, Radio, Send, Wifi, WifiOff, XCircle } from 'lucide-react';
 import { usePlaygroundStore } from '@/store/playground-store';
 import { useAuthStore } from '@/store/auth-store';
 
@@ -72,12 +61,15 @@ export function WsAudioTranscriptDemo() {
 
   const addMessage = useCallback((direction: 'sent' | 'received', type: string, data: string) => {
     setMessages((prev) => {
-      const next = [...prev, {
-        direction,
-        type,
-        data: data.length > 200 ? data.slice(0, 200) + '…' : data,
-        timestamp: new Date().toISOString(),
-      }];
+      const next = [
+        ...prev,
+        {
+          direction,
+          type,
+          data: data.length > 200 ? data.slice(0, 200) + '…' : data,
+          timestamp: new Date().toISOString(),
+        },
+      ];
       return next.slice(-50);
     });
   }, []);
@@ -349,8 +341,8 @@ export function WsAudioTranscriptDemo() {
           </Badge>
         </div>
         <CardDescription>
-          Bidirectional WebSocket: streams binary PCM audio frames to STT service, receives real-time transcript segments.
-          Protocol: <code className="text-[10px]">SttV2WebSocketClient</code> — binary Int16 LE mono (AudioWorklet).
+          Bidirectional WebSocket: streams binary PCM audio frames to STT service, receives real-time transcript segments. Protocol:{' '}
+          <code className="text-[10px]">SttV2WebSocketClient</code> — binary Int16 LE mono (AudioWorklet).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -383,8 +375,8 @@ export function WsAudioTranscriptDemo() {
                   Disconnect
                 </Button>
               )}
-              {wsState === 'connected' && (
-                isRecording ? (
+              {wsState === 'connected' &&
+                (isRecording ? (
                   <Button onClick={stopRecording} variant="secondary" size="sm" className="gap-1.5">
                     <MicOff className="size-3.5" />
                     Stop Recording
@@ -394,8 +386,7 @@ export function WsAudioTranscriptDemo() {
                     <Mic className="size-3.5" />
                     Start Recording
                   </Button>
-                )
-              )}
+                ))}
             </div>
           </div>
 
@@ -471,7 +462,10 @@ export function WsAudioTranscriptDemo() {
                 ) : (
                   <div className="space-y-0.5">
                     {messages.map((m, i) => (
-                      <div key={i} className={`flex items-start gap-1.5 rounded px-1.5 py-0.5 text-[10px] font-mono ${m.direction === 'sent' ? 'bg-blue-500/10' : 'bg-green-500/10'}`}>
+                      <div
+                        key={i}
+                        className={`flex items-start gap-1.5 rounded px-1.5 py-0.5 text-[10px] font-mono ${m.direction === 'sent' ? 'bg-blue-500/10' : 'bg-green-500/10'}`}
+                      >
                         <Send className={`mt-0.5 size-2.5 shrink-0 ${m.direction === 'sent' ? 'text-blue-500' : 'text-green-500 rotate-180'}`} />
                         <span className="text-muted-foreground">[{m.type}]</span>
                         <span className="break-all">{m.data}</span>
@@ -495,17 +489,29 @@ export function WsAudioTranscriptDemo() {
             <div>
               <p className="font-medium text-foreground">Client → Server:</p>
               <ul className="mt-0.5 space-y-0.5">
-                <li><code>Binary ArrayBuffer</code> — PCM Int16 LE mono frames</li>
-                <li><code>{'{ type: "stop" }'}</code> — finalize transcription</li>
-                <li><code>{'{ type: "close" }'}</code> — close session</li>
+                <li>
+                  <code>Binary ArrayBuffer</code> — PCM Int16 LE mono frames
+                </li>
+                <li>
+                  <code>{'{ type: "stop" }'}</code> — finalize transcription
+                </li>
+                <li>
+                  <code>{'{ type: "close" }'}</code> — close session
+                </li>
               </ul>
             </div>
             <div>
               <p className="font-medium text-foreground">Server → Client:</p>
               <ul className="mt-0.5 space-y-0.5">
-                <li><code>{'{ type: "transcript", text, isFinal }'}</code> — transcript segment</li>
-                <li><code>{'{ type: "status", status, message }'}</code> — status update</li>
-                <li><code>{'{ type: "error", code, message }'}</code> — error</li>
+                <li>
+                  <code>{'{ type: "transcript", text, isFinal }'}</code> — transcript segment
+                </li>
+                <li>
+                  <code>{'{ type: "status", status, message }'}</code> — status update
+                </li>
+                <li>
+                  <code>{'{ type: "error", code, message }'}</code> — error
+                </li>
               </ul>
             </div>
           </div>

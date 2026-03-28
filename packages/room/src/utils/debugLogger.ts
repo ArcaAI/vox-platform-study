@@ -82,9 +82,7 @@ export function debugLog(component: string, message: string, data?: unknown): vo
  * Log a component's configuration as formatted JSON.
  */
 export function debugLogConfig(component: string, config: Record<string, unknown>): void {
-  console.log(
-    `${PREFIX} [${component}] Configuration:\n${JSON.stringify(config, null, 2)}`
-  );
+  console.log(`${PREFIX} [${component}] Configuration:\n${JSON.stringify(config, null, 2)}`);
 }
 
 /**
@@ -92,7 +90,5 @@ export function debugLogConfig(component: string, config: Record<string, unknown
  */
 export function debugLogTranscript(component: string, transcript: DebugTranscriptEntry): void {
   const formatted = formatTranscriptEntry(transcript);
-  console.log(
-    `${PREFIX} [${component}] Transcript:\n${JSON.stringify(formatted, null, 2)}`
-  );
+  console.log(`${PREFIX} [${component}] Transcript:\n${JSON.stringify(formatted, null, 2)}`);
 }

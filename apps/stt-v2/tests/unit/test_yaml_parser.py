@@ -214,7 +214,7 @@ models:
 
         assert spec.models.vad.is_inline is True
         assert spec.models.vad.inline.hf_model_id == "snakers4/silero-vad"
-        assert spec.models.vad.inline.version == "v6.0"
+        assert spec.models.vad.inline.version == "main"
 
     def test_parse_inline_denoise_model(self, parser, inline_yaml):
         """Test parsing inline denoise model definition."""
@@ -645,7 +645,7 @@ postprocessing:
 
         # Verify VAD model
         assert spec.models.vad.inline.hf_model_id == "snakers4/silero-vad"
-        assert spec.models.vad.inline.version == "v6.0"
+        assert spec.models.vad.inline.version == "main"
 
         # Verify denoise model
         assert spec.models.denoise.inline.hf_model_id == "nickolay/rnnoise"

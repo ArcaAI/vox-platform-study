@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { ParameterSlider } from '../../../registries/tool-ui/parameter-slider'
+import { ParameterSlider } from '../../../registries/tool-ui/parameter-slider';
 
 const meta = {
   title: 'Registries/ToolUI/ParameterSlider',
   component: ParameterSlider,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof ParameterSlider>
+} satisfies Meta<typeof ParameterSlider>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
@@ -26,4 +26,4 @@ export const Default: Story = {
       },
     ],
   },
-}
+};

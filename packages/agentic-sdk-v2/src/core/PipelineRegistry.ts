@@ -13,9 +13,7 @@ import type { AgenticClient } from './AgenticClient';
 import { PIPELINE_ENDPOINTS } from './constants';
 import { withRetry } from '../utils/errorUtils';
 import type { ISDKLogger } from './logger';
-import type {
-  AsrPipelineResponse,
-} from '../types/stt-v2';
+import type { AsrPipelineResponse } from '../types/stt-v2';
 
 /**
  * Configuration options for PipelineRegistry.
@@ -85,20 +83,17 @@ export class PipelineRegistry {
     });
 
     try {
-      const result = await withRetry(
-        () => this.apiClient.get<AsrPipelineResponse[]>(PIPELINE_ENDPOINTS.LIST),
-        {
-          maxRetries: 2,
-          delayMs: 1000,
-          onRetry: (attempt, error) => {
-            this.logger?.warn(`Retrying loadPipelines (attempt ${attempt})`, {
-              operation: 'loadPipelines',
-              component: 'PipelineRegistry',
-              attributes: { attempt, error: String(error) },
-            });
-          },
+      const result = await withRetry(() => this.apiClient.get<AsrPipelineResponse[]>(PIPELINE_ENDPOINTS.LIST), {
+        maxRetries: 2,
+        delayMs: 1000,
+        onRetry: (attempt, error) => {
+          this.logger?.warn(`Retrying loadPipelines (attempt ${attempt})`, {
+            operation: 'loadPipelines',
+            component: 'PipelineRegistry',
+            attributes: { attempt, error: String(error) },
+          });
         },
-      );
+      });
 
       if (Array.isArray(result)) {
         this.pipelines = result;

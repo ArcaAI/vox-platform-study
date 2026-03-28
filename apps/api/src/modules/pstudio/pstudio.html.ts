@@ -1,7 +1,7 @@
 const STUDIO_VERSION = '0.14.0';
 
 export function getStudioHtml(studioEndpointUrl: string, token: string): string {
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">

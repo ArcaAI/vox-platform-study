@@ -1,21 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Tree,
-  Folder,
-  File,
-  type TreeViewElement,
-} from '../../../registries/magicui/file-tree'
+import { Tree, Folder, File, type TreeViewElement } from '../../../registries/magicui/file-tree';
 
 const meta = {
   title: 'Registries/MagicUI/FileTree',
   component: Tree,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Tree>
+} satisfies Meta<typeof Tree>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 const sampleElements: TreeViewElement[] = [
   {
@@ -37,7 +32,7 @@ const sampleElements: TreeViewElement[] = [
     id: '2',
     name: 'package.json',
   },
-]
+];
 
 export const Default: Story = {
   render: () => (
@@ -54,4 +49,4 @@ export const Default: Story = {
       </Tree>
     </div>
   ),
-}
+};

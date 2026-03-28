@@ -1,11 +1,5 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import {
-  IconHome,
-  IconInbox,
-  IconCalendar,
-  IconSearch,
-  IconSettings,
-} from '@tabler/icons-react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { IconHome, IconInbox, IconCalendar, IconSearch, IconSettings } from '@tabler/icons-react';
 
 import {
   Sidebar,
@@ -22,7 +16,7 @@ import {
   SidebarSeparator,
   SidebarTrigger,
   SidebarInset,
-} from '../../shadcn/sidebar'
+} from '../../shadcn/sidebar';
 
 const menuItems = [
   { title: 'Home', icon: IconHome },
@@ -30,7 +24,7 @@ const menuItems = [
   { title: 'Calendar', icon: IconCalendar },
   { title: 'Search', icon: IconSearch },
   { title: 'Settings', icon: IconSettings },
-]
+];
 
 const meta = {
   title: 'Components/Sidebar',
@@ -39,10 +33,10 @@ const meta = {
     layout: 'fullscreen',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Sidebar>
+} satisfies Meta<typeof Sidebar>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -87,7 +81,7 @@ export const Default: Story = {
       </SidebarInset>
     </SidebarProvider>
   ),
-}
+};
 
 export const WithActiveItem: Story = {
   render: () => (
@@ -118,7 +112,7 @@ export const WithActiveItem: Story = {
       </SidebarInset>
     </SidebarProvider>
   ),
-}
+};
 
 export const RightSide: Story = {
   render: () => (
@@ -149,4 +143,4 @@ export const RightSide: Story = {
       </Sidebar>
     </SidebarProvider>
   ),
-}
+};

@@ -170,11 +170,7 @@ export interface RawTokenResult {
 /**
  * Available pre-configured medical NER models.
  */
-export type MedNERModel =
-  | 'default'
-  | 'biomedical'
-  | 'clinical'
-  | string; // Custom model ID from HuggingFace
+export type MedNERModel = 'default' | 'biomedical' | 'clinical' | string; // Custom model ID from HuggingFace
 
 /**
  * Default model mappings to HuggingFace model IDs.
@@ -261,9 +257,7 @@ export interface MedNEROptions {
 /**
  * Default options for MedNERProcessor.
  */
-export const DEFAULT_MED_NER_OPTIONS: Required<
-  Omit<MedNEROptions, 'entityTypes' | 'onProgress' | 'dtype'>
-> = {
+export const DEFAULT_MED_NER_OPTIONS: Required<Omit<MedNEROptions, 'entityTypes' | 'onProgress' | 'dtype'>> = {
   model: 'default',
   threshold: 0.5,
   mergeAdjacent: true,
@@ -369,10 +363,7 @@ export interface NERProgressPayload {
 /**
  * All possible NER data event types.
  */
-export type NERDataEventType =
-  | 'ner-extraction'
-  | 'ner-stats'
-  | 'ner-progress';
+export type NERDataEventType = 'ner-extraction' | 'ner-stats' | 'ner-progress';
 
 // ============================================================================
 // Browser Support Types
@@ -429,7 +420,7 @@ export class MedNERError extends Error {
   constructor(
     public readonly code: MedNERErrorCode,
     message: string,
-    public readonly cause?: Error
+    public readonly cause?: Error,
   ) {
     super(message);
     this.name = 'MedNERError';
@@ -469,8 +460,4 @@ export interface MedNEROptionsWithCallbacks extends MedNEROptions {
 // Re-exports for convenience
 // ============================================================================
 
-export type {
-  ProcessorOptions,
-  TrackProcessor,
-  EventEmittingProcessor,
-} from '@arcaai/room';
+export type { ProcessorOptions, TrackProcessor, EventEmittingProcessor } from '@arcaai/room';

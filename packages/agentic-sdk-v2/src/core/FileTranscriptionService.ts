@@ -12,11 +12,7 @@
  * @see SDK-206 Gap Analysis — ASR-R-10
  */
 
-import {
-  TranscriptionJobStatus,
-  TranscriptionJobType,
-  type TranscriptionJobResponse,
-} from '../types/stt-v2';
+import { TranscriptionJobStatus, TranscriptionJobType, type TranscriptionJobResponse } from '../types/stt-v2';
 import type { AgenticClient } from './AgenticClient';
 import { STT_V2_ENDPOINTS } from './constants';
 import type { ISDKLogger } from './logger';
@@ -65,10 +61,7 @@ export class FileTranscriptionService {
    * Sends a multipart/form-data POST to the transcribe endpoint.
    * Returns the job response with the job ID for SSE subscription.
    */
-  async uploadAndTranscribe(
-    file: File,
-    options: FileTranscribeOptions,
-  ): Promise<TranscriptionJobResponse> {
+  async uploadAndTranscribe(file: File, options: FileTranscribeOptions): Promise<TranscriptionJobResponse> {
     this.logger?.debug('Uploading file for transcription', {
       operation: 'uploadAndTranscribe',
       component: 'FileTranscriptionService',
@@ -101,10 +94,7 @@ export class FileTranscriptionService {
       formData.append('diarization', String(options.diarization));
     }
 
-    const response = await this.apiClient.postFormData<TranscriptionJobResponse | BatchTranscribeResponse>(
-      STT_V2_ENDPOINTS.TRANSCRIBE,
-      formData,
-    );
+    const response = await this.apiClient.postFormData<TranscriptionJobResponse | BatchTranscribeResponse>(STT_V2_ENDPOINTS.TRANSCRIBE, formData);
 
     const job = this.normalizeJobResponse(response, options.pipelineId);
     this.activeJobId = job.id;
@@ -123,10 +113,7 @@ export class FileTranscriptionService {
     return job;
   }
 
-  private normalizeJobResponse(
-    response: TranscriptionJobResponse | BatchTranscribeResponse,
-    pipelineId: string,
-  ): TranscriptionJobResponse {
+  private normalizeJobResponse(response: TranscriptionJobResponse | BatchTranscribeResponse, pipelineId: string): TranscriptionJobResponse {
     // If the response already has the full TranscriptionJobResponse shape, return it directly
     const asFull = response as Partial<TranscriptionJobResponse>;
     if (asFull.jobType !== undefined && typeof asFull.id === 'string' && asFull.id.length > 0) {

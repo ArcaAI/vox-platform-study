@@ -12,10 +12,7 @@ export function createTestQueryClient() {
   });
 }
 
-export function renderWithQueryClient(
-  ui: ReactElement,
-  queryClient = createTestQueryClient(),
-): { queryClient: QueryClient } {
+export function renderWithQueryClient(ui: ReactElement, queryClient = createTestQueryClient()): { queryClient: QueryClient } {
   render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
 
   return { queryClient };

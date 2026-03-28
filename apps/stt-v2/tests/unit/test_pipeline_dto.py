@@ -55,7 +55,7 @@ class TestInlineModelDef:
         assert inline.hf_model_id == "snakers4/silero-vad"
         assert inline.engine == AiModelFormat.ONNX
         assert inline.revision == "main"
-        assert inline.version == "v6.0"
+        assert inline.version == "main"
         assert inline.compute_type == "float32"
         assert inline.device == "cuda"
 
@@ -82,8 +82,8 @@ class TestInlineModelDef:
         )
         config = inline.to_ai_model_config(ModelTaskType.VOICE_ACTIVITY_DETECTION)
 
-        assert "v6-0" in config.slug  # Version included in slug
-        assert config.source_revision == "v6.0"
+        assert "main" in config.slug  # Version included in slug
+        assert config.source_revision == "main"
 
     def test_to_ai_model_config_uses_revision_over_version(self):
         """Test that revision is preferred over version."""
@@ -612,7 +612,7 @@ class TestAiModelFormat:
 
     def test_format_is_string_enum(self):
         """Test that format values can be used as strings."""
-        assert str(AiModelFormat.ONNX) == "AiModelFormat.ONNX"
+        assert str(AiModelFormat.ONNX) == "ONNX"
         assert AiModelFormat.ONNX == "ONNX"
 
     def test_azure_speech_format_is_string_enum(self):

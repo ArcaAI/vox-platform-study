@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import * as React from "react";
-import { useMemo, useState, useEffect, useRef, memo } from "react";
-import { Loader2, Check, X, MoreHorizontal, ChevronRight } from "lucide-react";
-import type { PlanProps, PlanTodo, PlanTodoStatus } from "./schema";
+import * as React from 'react';
+import { useMemo, useState, useEffect, useRef, memo } from 'react';
+import { Loader2, Check, X, MoreHorizontal, ChevronRight } from 'lucide-react';
+import type { PlanProps, PlanTodo, PlanTodoStatus } from './schema';
 import {
   cn,
   Card,
@@ -18,17 +18,13 @@ import {
   Collapsible,
   CollapsibleTrigger,
   CollapsibleContent,
-} from "./_adapter";
-import { calculatePlanProgress, shouldCelebrateProgress } from "./progress";
+} from './_adapter';
+import { calculatePlanProgress, shouldCelebrateProgress } from './progress';
 
 const INITIAL_VISIBLE_TODO_COUNT = 4;
 
-const TodoIcon = memo(function TodoIcon({
-  status,
-}: {
-  status: PlanTodoStatus;
-}) {
-  if (status === "pending") {
+const TodoIcon = memo(function TodoIcon({ status }: { status: PlanTodoStatus }) {
+  if (status === 'pending') {
     return (
       <span
         className="border-border bg-card flex size-6 shrink-0 items-center justify-center rounded-full border motion-safe:transition-all motion-safe:duration-200"
@@ -37,7 +33,7 @@ const TodoIcon = memo(function TodoIcon({
     );
   }
 
-  if (status === "in_progress") {
+  if (status === 'in_progress') {
     return (
       <span
         className="border-border bg-card flex size-6 shrink-0 items-center justify-center rounded-full border shadow-[0_0_0_4px_hsl(var(--primary)/0.1)] motion-safe:transition-all motion-safe:duration-300"
@@ -48,7 +44,7 @@ const TodoIcon = memo(function TodoIcon({
     );
   }
 
-  if (status === "completed") {
+  if (status === 'completed') {
     return (
       <span
         className="border-primary bg-primary flex size-6 shrink-0 items-center justify-center rounded-full border shadow-sm motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-300 motion-safe:ease-out"
@@ -62,7 +58,7 @@ const TodoIcon = memo(function TodoIcon({
     );
   }
 
-  if (status === "cancelled") {
+  if (status === 'cancelled') {
     return (
       <span
         className="border-destructive bg-destructive flex size-6 shrink-0 items-center justify-center rounded-full border shadow-sm motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-300 motion-safe:ease-out dark:border-red-600 dark:bg-red-600"
@@ -86,10 +82,7 @@ interface PlanTodoItemProps {
   showConnector?: boolean;
 }
 
-function areTodoPropsEqual(
-  prev: PlanTodoItemProps,
-  next: PlanTodoItemProps,
-): boolean {
+function areTodoPropsEqual(prev: PlanTodoItemProps, next: PlanTodoItemProps): boolean {
   if (prev.todo.id !== next.todo.id) return false;
   if (prev.todo.label !== next.todo.label) return false;
   if (prev.todo.status !== next.todo.status) return false;
@@ -100,29 +93,19 @@ function areTodoPropsEqual(
   const nextStyle = next.style;
   if (prevStyle === nextStyle) return true;
   if (!prevStyle || !nextStyle) return false;
-  return (
-    prevStyle.animationDelay === nextStyle.animationDelay &&
-    prevStyle.animationFillMode === nextStyle.animationFillMode
-  );
+  return prevStyle.animationDelay === nextStyle.animationDelay && prevStyle.animationFillMode === nextStyle.animationFillMode;
 }
 
-const PlanTodoItem = memo(function PlanTodoItem({
-  todo,
-  className,
-  style,
-  showConnector,
-}: PlanTodoItemProps) {
+const PlanTodoItem = memo(function PlanTodoItem({ todo, className, style, showConnector }: PlanTodoItemProps) {
   const [isOpen, setIsOpen] = React.useState(false);
 
   const labelElement = (
     <span
       className={cn(
-        "text-sm leading-6 font-medium break-words",
-        todo.status === "pending" && "text-muted-foreground",
-        todo.status === "in_progress" &&
-          "motion-safe:shimmer shimmer-invert text-foreground",
-        (todo.status === "completed" || todo.status === "cancelled") &&
-          "text-muted-foreground",
+        'text-sm leading-6 font-medium break-words',
+        todo.status === 'pending' && 'text-muted-foreground',
+        todo.status === 'in_progress' && 'motion-safe:shimmer shimmer-invert text-foreground',
+        (todo.status === 'completed' || todo.status === 'cancelled') && 'text-muted-foreground',
       )}
     >
       {todo.label}
@@ -131,18 +114,12 @@ const PlanTodoItem = memo(function PlanTodoItem({
 
   if (!todo.description) {
     return (
-      <li
-        className={cn(
-          "relative -mx-2 flex cursor-default items-start gap-3 rounded-md px-2 py-1.5",
-          className,
-        )}
-        style={style}
-      >
+      <li className={cn('relative -mx-2 flex cursor-default items-start gap-3 rounded-md px-2 py-1.5', className)} style={style}>
         {showConnector && (
           <div
             className="bg-border absolute top-6 left-5 w-px"
             style={{
-              height: "calc(100% + 0.25rem)",
+              height: 'calc(100% + 0.25rem)',
             }}
             aria-hidden="true"
           />
@@ -156,18 +133,12 @@ const PlanTodoItem = memo(function PlanTodoItem({
   }
 
   return (
-    <li
-      className={cn(
-        "relative -mx-2 min-w-0 cursor-default rounded-md",
-        className,
-      )}
-      style={style}
-    >
+    <li className={cn('relative -mx-2 min-w-0 cursor-default rounded-md', className)} style={style}>
       {showConnector && (
         <div
           className="bg-border absolute top-6 left-5 w-px"
           style={{
-            height: "calc(100% + 0.25rem)",
+            height: 'calc(100% + 0.25rem)',
           }}
           aria-hidden="true"
         />
@@ -176,7 +147,7 @@ const PlanTodoItem = memo(function PlanTodoItem({
         <div
           className="data-[state=open]:bg-primary/5 min-w-0 rounded-md motion-safe:transition-all motion-safe:duration-200"
           style={{
-            backdropFilter: isOpen ? "blur(2px)" : undefined,
+            backdropFilter: isOpen ? 'blur(2px)' : undefined,
           }}
         >
           <CollapsibleTrigger className="group/todo flex w-full cursor-default items-start gap-3 px-2 py-1.5 text-left">
@@ -186,14 +157,9 @@ const PlanTodoItem = memo(function PlanTodoItem({
             <span className="min-w-0 flex-1">{labelElement}</span>
             <ChevronRight className="text-muted-foreground/50 group-hover/todo:text-muted-foreground mt-0.5 size-4 shrink-0 rotate-90 group-data-[state=open]/todo:[transform:rotateY(180deg)] motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.34,1.56,0.64,1)]" />
           </CollapsibleTrigger>
-          <CollapsibleContent
-            className="group/content"
-            data-slot="collapsible-content"
-          >
+          <CollapsibleContent className="group/content" data-slot="collapsible-content">
             <div className="min-w-0 motion-safe:group-data-[state=closed]/content:animate-out motion-safe:group-data-[state=closed]/content:fade-out motion-safe:group-data-[state=closed]/content:slide-out-to-top-1 motion-safe:group-data-[state=closed]/content:duration-150 motion-safe:group-data-[state=open]/content:animate-in motion-safe:group-data-[state=open]/content:fade-in motion-safe:group-data-[state=open]/content:slide-in-from-top-1 motion-safe:group-data-[state=open]/content:delay-75 motion-safe:group-data-[state=open]/content:duration-150 motion-safe:group-data-[state=open]/content:fill-mode-both">
-              <p className="text-muted-foreground min-w-0 pr-2 pb-1.5 pl-11 text-sm text-pretty break-words">
-                {todo.description}
-              </p>
+              <p className="text-muted-foreground min-w-0 pr-2 pb-1.5 pl-11 text-sm text-pretty break-words">{todo.description}</p>
             </div>
           </CollapsibleContent>
         </div>
@@ -220,14 +186,13 @@ function TodoList({ todos, newTodoIds }: TodoListProps) {
             todo={todo}
             showConnector={index < todos.length - 1}
             className={cn(
-              isNew &&
-                "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-300 motion-safe:ease-out",
+              isNew && 'motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-300 motion-safe:ease-out',
             )}
             style={
               isNew
                 ? {
                     animationDelay: `${staggerDelay}ms`,
-                    animationFillMode: "backwards",
+                    animationFillMode: 'backwards',
                   }
                 : undefined
             }
@@ -243,10 +208,7 @@ interface ProgressBarProps {
   isCelebrating: boolean;
 }
 
-const ProgressBar = memo(function ProgressBar({
-  progress,
-  isCelebrating,
-}: ProgressBarProps) {
+const ProgressBar = memo(function ProgressBar({ progress, isCelebrating }: ProgressBarProps) {
   return (
     <div
       className="bg-muted relative mb-3 h-1.5 overflow-hidden rounded-full"
@@ -257,22 +219,21 @@ const ProgressBar = memo(function ProgressBar({
     >
       <div
         className={cn(
-          "h-full rounded-full transition-all duration-500",
+          'h-full rounded-full transition-all duration-500',
           progress === 100
-            ? "bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-400 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 motion-safe:ease-out"
-            : "bg-primary",
+            ? 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-400 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 motion-safe:ease-out'
+            : 'bg-primary',
         )}
         style={{
           width: `${progress}%`,
-          boxShadow:
-            "inset 0 1px 0 rgba(255,255,255,0.3), 0 1px 2px rgba(0,0,0,0.2)",
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3), 0 1px 2px rgba(0,0,0,0.2)',
         }}
       />
       {isCelebrating && (
         <div
           className="pointer-events-none absolute inset-0 rounded-full motion-safe:animate-pulse"
           style={{
-            boxShadow: "0 0 20px rgba(16, 185, 129, 0.6)",
+            boxShadow: '0 0 20px rgba(16, 185, 129, 0.6)',
           }}
         />
       )}
@@ -294,20 +255,19 @@ function PlanRoot({
   const [isCelebrating, setIsCelebrating] = useState(false);
   const prevProgressRef = useRef(0);
 
-  const { visibleTodos, hiddenTodos, completedCount, allComplete, progress } =
-    useMemo(() => {
-      const completed = todos.filter((t) => t.status === "completed").length;
-      return {
-        visibleTodos: todos.slice(0, maxVisibleTodos),
-        hiddenTodos: todos.slice(maxVisibleTodos),
+  const { visibleTodos, hiddenTodos, completedCount, allComplete, progress } = useMemo(() => {
+    const completed = todos.filter((t) => t.status === 'completed').length;
+    return {
+      visibleTodos: todos.slice(0, maxVisibleTodos),
+      hiddenTodos: todos.slice(maxVisibleTodos),
+      completedCount: completed,
+      allComplete: completed === todos.length,
+      progress: calculatePlanProgress({
         completedCount: completed,
-        allComplete: completed === todos.length,
-        progress: calculatePlanProgress({
-          completedCount: completed,
-          totalCount: todos.length,
-        }),
-      };
-    }, [todos, maxVisibleTodos]);
+        totalCount: todos.length,
+      }),
+    };
+  }, [todos, maxVisibleTodos]);
 
   useEffect(() => {
     const newIds = new Set<string>();
@@ -346,7 +306,7 @@ function PlanRoot({
   }, [progress]);
 
   const todoList = (
-    <ul className={cn("min-w-0 space-y-1", compact ? "mt-0" : "mt-4")}>
+    <ul className={cn('min-w-0 space-y-1', compact ? 'mt-0' : 'mt-4')}>
       <TodoList todos={visibleTodos} newTodoIds={newTodoIds} />
 
       {hiddenTodos.length > 0 && (
@@ -370,32 +330,19 @@ function PlanRoot({
   );
 
   return (
-    <Card
-      className={cn("isolate w-full max-w-xl min-w-80 gap-4 py-4", className)}
-      data-tool-ui-id={id}
-      data-slot="plan"
-    >
+    <Card className={cn('isolate w-full max-w-xl min-w-80 gap-4 py-4', className)} data-tool-ui-id={id} data-slot="plan">
       {!compact && (
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div className="space-y-1.5">
-            <CardTitle className="leading-5 font-medium text-pretty">
-              {title}
-            </CardTitle>
+            <CardTitle className="leading-5 font-medium text-pretty">{title}</CardTitle>
             {description && <CardDescription>{description}</CardDescription>}
           </div>
-          {allComplete && (
-            <Check className="mt-0.5 size-5 shrink-0 text-emerald-500" />
-          )}
+          {allComplete && <Check className="mt-0.5 size-5 shrink-0 text-emerald-500" />}
         </CardHeader>
       )}
 
       <CardContent className="min-w-0 px-4">
-        <div
-          className={cn(
-            "min-w-0",
-            !compact && "bg-muted/70 rounded-lg px-6 py-4",
-          )}
-        >
+        <div className={cn('min-w-0', !compact && 'bg-muted/70 rounded-lg px-6 py-4')}>
           {!compact && (
             <>
               <div className="text-muted-foreground mb-2 text-sm">

@@ -1,9 +1,4 @@
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-  type UseQueryOptions,
-} from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { adminClient } from './admin-client';
 
 // ---------------------------------------------------------------------------
@@ -98,27 +93,15 @@ function qs(params?: PaginationParams): string {
 // Role query hooks
 // ---------------------------------------------------------------------------
 
-export function useRoles(
-  params?: PaginationParams,
-  options?: Omit<
-    UseQueryOptions<PaginatedResponse<Role>>,
-    'queryKey' | 'queryFn'
-  >,
-) {
+export function useRoles(params?: PaginationParams, options?: Omit<UseQueryOptions<PaginatedResponse<Role>>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.list(params),
-    queryFn: () =>
-      adminClient.get<PaginatedResponse<Role>>(
-        `/admin/rbac/roles${qs(params)}`,
-      ),
+    queryFn: () => adminClient.get<PaginatedResponse<Role>>(`/admin/rbac/roles${qs(params)}`),
     ...options,
   });
 }
 
-export function useRole(
-  id: string,
-  options?: Omit<UseQueryOptions<Role>, 'queryKey' | 'queryFn'>,
-) {
+export function useRole(id: string, options?: Omit<UseQueryOptions<Role>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.detail(id),
     queryFn: () => adminClient.get<Role>(`/admin/rbac/roles/${id}`),
@@ -134,8 +117,7 @@ export function useRole(
 export function useCreateRole() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateRoleInput) =>
-      adminClient.post<Role>('/admin/rbac/roles', input),
+    mutationFn: (input: CreateRoleInput) => adminClient.post<Role>('/admin/rbac/roles', input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },
@@ -145,8 +127,7 @@ export function useCreateRole() {
 export function useUpdateRole() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: UpdateRoleInput & { id: string }) =>
-      adminClient.patch<Role>(`/admin/rbac/roles/${id}`, input),
+    mutationFn: ({ id, ...input }: UpdateRoleInput & { id: string }) => adminClient.patch<Role>(`/admin/rbac/roles/${id}`, input),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all });
       qc.invalidateQueries({ queryKey: keys.detail(variables.id) });
@@ -157,8 +138,7 @@ export function useUpdateRole() {
 export function useDeleteRole() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      adminClient.delete<void>(`/admin/rbac/roles/${id}`),
+    mutationFn: (id: string) => adminClient.delete<void>(`/admin/rbac/roles/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },

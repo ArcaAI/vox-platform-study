@@ -1,8 +1,9 @@
 """Unit tests for speaker diarization module."""
 
+import sys
 import threading
 import warnings
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
@@ -17,6 +18,33 @@ from stt_v2.diarization.dto import (
 from stt_v2.diarization.embedding_service import EmbeddingService
 from stt_v2.diarization.speaker_identifier import SpeakerIdentifier
 from stt_v2.pipeline.dto import DiarizationConfig
+
+try:
+    import pyannote.audio  # noqa: F401
+    HAS_PYANNOTE = True
+except ImportError:
+    HAS_PYANNOTE = False
+
+requires_pyannote = pytest.mark.skipif(not HAS_PYANNOTE, reason="pyannote not installed")
+
+
+def _make_mock_torch():
+    """Create a mock torch module for tests that don't need real torch.
+
+    ``from_numpy(arr).float().unsqueeze(0)`` returns a MagicMock whose
+    ``.shape`` equals ``(1, len(arr))`` so that tensor-shape assertions work.
+    """
+    mock = MagicMock()
+
+    def _from_numpy(arr):
+        tensor = MagicMock(name="waveform_tensor")
+        tensor.shape = (1, len(arr))
+        tensor.float.return_value = tensor
+        tensor.unsqueeze.return_value = tensor
+        return tensor
+
+    mock.from_numpy = MagicMock(side_effect=_from_numpy)
+    return mock
 
 # =============================================================================
 # DTO Tests
@@ -82,18 +110,16 @@ class TestEmbeddingService:
     async def test_extract_from_samples(self):
         """Verify extraction returns a 512-dim embedding."""
         service = EmbeddingService()
-        # Inject mock inference
         mock_inference = MagicMock()
         mock_inference.return_value = np.array([[0.1] * 512], dtype=np.float32)
-
-        import threading
 
         service._inference = mock_inference
         service._loaded = True
         service._lock = threading.Lock()
 
         samples = np.random.randn(16000).astype(np.float32)
-        embedding = await service.extract_from_samples(samples, sample_rate=16000)
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}):
+            embedding = await service.extract_from_samples(samples, sample_rate=16000)
 
         assert embedding.dimension == 512
         assert embedding.segment_start == 0.0
@@ -108,22 +134,19 @@ class TestEmbeddingService:
         """Segments shorter than 1 second should be skipped."""
         service = EmbeddingService()
         mock_inference = MagicMock()
-        # Match production dtype: pyannote always returns float32
         mock_inference.return_value = np.array([[0.1] * 512], dtype=np.float32)
-
-        import threading
 
         service._inference = mock_inference
         service._loaded = True
         service._lock = threading.Lock()
 
-        # 5 seconds of audio at 16 kHz
         samples = np.random.randn(80000).astype(np.float32)
         segments = [
             (0.0, 0.5),  # 0.5s — should be skipped
             (1.0, 3.0),  # 2s — should be processed
         ]
-        embeddings = await service.extract_from_segments(samples, 16000, segments)
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}):
+            embeddings = await service.extract_from_segments(samples, 16000, segments)
         assert len(embeddings) == 1
 
     async def test_shutdown(self):
@@ -158,6 +181,7 @@ class TestEmbeddingServicePipelineOverride:
         assert svc._hf_model_id == "custom/embedding-v2"
 
 
+@requires_pyannote
 class TestEmbeddingServicePyannoteWarnings:
     """Tests for pyannote import warning handling."""
 
@@ -176,6 +200,7 @@ class TestEmbeddingServicePyannoteWarnings:
         assert torchcodec_warnings == []
 
 
+@patch.dict(sys.modules, {"torch": _make_mock_torch()})
 class TestEmbeddingServiceBatch:
     """Tests for extract_batch method (TASK-008 3.2)."""
 

@@ -1,1 +1,1 @@
-export { TourProvider, useTour, type Step, type Tour } from './tour'
+export { TourProvider, useTour, type Step, type Tour } from './tour';

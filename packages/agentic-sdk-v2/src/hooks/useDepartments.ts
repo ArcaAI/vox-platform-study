@@ -125,8 +125,18 @@ export function useDepartments(): UseDepartmentsReturn {
   );
 
   return {
-    departments, currentDepartment, isLoading, error,
-    list, get, create, update, remove,
-    getRoots, getChildren, getByCode, updatePromptConfig,
+    departments,
+    currentDepartment,
+    isLoading,
+    error,
+    list,
+    get,
+    create,
+    update,
+    remove,
+    getRoots,
+    getChildren,
+    getByCode,
+    updatePromptConfig,
   };
 }

@@ -359,9 +359,7 @@ describe('QueryBuilder', () => {
     });
 
     it('should add multiple relation counts', () => {
-      queryBuilder
-        .CountRelation('Posts' as keyof TestModel)
-        .CountRelation('User' as keyof TestModel, 'userCount');
+      queryBuilder.CountRelation('Posts' as keyof TestModel).CountRelation('User' as keyof TestModel, 'userCount');
 
       const query = queryBuilder.Build();
 
@@ -435,7 +433,7 @@ describe('QueryBuilder', () => {
         expect.objectContaining({
           where: expect.any(Object),
           take: 10,
-        })
+        }),
       );
       expect(results).toEqual(mockResults);
     });
@@ -443,12 +441,7 @@ describe('QueryBuilder', () => {
     it('should pass all query options to findMany', async () => {
       mockDbContext.findMany.mockResolvedValue([]);
 
-      queryBuilder
-        .Where({ status: 'ENABLED' })
-        .Include({ User: true })
-        .OrderBy(['createdAt'], 'desc')
-        .Skip(5)
-        .Take(10);
+      queryBuilder.Where({ status: 'ENABLED' }).Include({ User: true }).OrderBy(['createdAt'], 'desc').Skip(5).Take(10);
 
       await queryBuilder.ToList();
 
@@ -483,9 +476,9 @@ describe('QueryBuilder', () => {
     it('should throw error when no results match', async () => {
       mockDbContext.findMany.mockResolvedValue([]);
 
-      await expect(
-        queryBuilder.Single(((item: TestModel) => item.id === '1') as any)
-      ).rejects.toThrow('Single query returned more than one result or no result');
+      await expect(queryBuilder.Single(((item: TestModel) => item.id === '1') as any)).rejects.toThrow(
+        'Single query returned more than one result or no result',
+      );
     });
 
     it('should throw error when multiple results match', async () => {
@@ -496,9 +489,7 @@ describe('QueryBuilder', () => {
       mockDbContext.findMany.mockResolvedValue(mockResults);
 
       // Both items would pass this predicate
-      await expect(queryBuilder.Single((() => true) as any)).rejects.toThrow(
-        'Single query returned more than one result or no result'
-      );
+      await expect(queryBuilder.Single((() => true) as any)).rejects.toThrow('Single query returned more than one result or no result');
     });
   });
 

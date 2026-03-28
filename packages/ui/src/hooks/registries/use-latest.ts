@@ -1,12 +1,12 @@
-import { useRef } from 'react'
-import { useIsomorphicLayoutEffect } from '@/hooks/registries/use-isomorphic-layout-effect'
+import { useRef } from 'react';
+import { useIsomorphicLayoutEffect } from '@/hooks/registries/use-isomorphic-layout-effect';
 
 export function useLatest<T>(value: T) {
-  const ref = useRef(value)
+  const ref = useRef(value);
 
   useIsomorphicLayoutEffect(() => {
-    ref.current = value
-  })
+    ref.current = value;
+  });
 
-  return ref
+  return ref;
 }

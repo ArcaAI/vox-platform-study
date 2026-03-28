@@ -2,15 +2,15 @@ import { BaseEntity } from '../../common';
 import { generateId } from '../../utils';
 
 interface MapperNestedModels<U> {
-    create?: U[];
-    update?: { data: U; where: { id: string } }[] | U;
-    connect?: { id: string };
+  create?: U[];
+  update?: { data: U; where: { id: string } }[] | U;
+  connect?: { id: string };
 }
 
 interface AutoNestedEntityChangeOptions<T extends BaseEntity> {
-    mapper: (obj: T) => any;
-    shouldConnect?: boolean;
-    deletedKeys?: (keyof T)[];
+  mapper: (obj: T) => any;
+  shouldConnect?: boolean;
+  deletedKeys?: (keyof T)[];
 }
 
 /**
@@ -62,42 +62,42 @@ interface AutoNestedEntityChangeOptions<T extends BaseEntity> {
  */
 
 export function AutoNestedEntityChange<T extends BaseEntity, U extends object>(
-    obj: T | T[],
-    options: AutoNestedEntityChangeOptions<T>
+  obj: T | T[],
+  options: AutoNestedEntityChangeOptions<T>,
 ): MapperNestedModels<U> {
-    const { mapper, shouldConnect = false, deletedKeys = [] } = options;
-    const model: MapperNestedModels<U> = {};
+  const { mapper, shouldConnect = false, deletedKeys = [] } = options;
+  const model: MapperNestedModels<U> = {};
 
-    if (Array.isArray(obj)) {
-        for (const item of obj) {
-            const mappedItem = mapper({ changes: item } as any) as U;
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const mappedItem = mapper({ changes: item } as any) as U;
 
-            // Remove specified keys from the mapped item
-            if (deletedKeys) {
-                deletedKeys.forEach((key) => delete (mappedItem as any)[key]);
-            }
+      // Remove specified keys from the mapped item
+      if (deletedKeys) {
+        deletedKeys.forEach((key) => delete (mappedItem as any)[key]);
+      }
 
-            if (!item.id) {
-                model.create = model.create || [];
-                model.create.push({
-                    ...mappedItem,
-                    id: generateId()
-                });
-            } else {
-                model.update = model.update || [];
-                (model.update as { data: U; where: { id: string } }[]).push({
-                    data: mappedItem,
-                    where: { id: item.id }
-                });
-            }
-        }
-    } else {
-        if (shouldConnect) {
-            return { connect: { id: obj.id } };
-        } else {
-            model.update = mapper(obj) as U;
-        }
+      if (!item.id) {
+        model.create = model.create || [];
+        model.create.push({
+          ...mappedItem,
+          id: generateId(),
+        });
+      } else {
+        model.update = model.update || [];
+        (model.update as { data: U; where: { id: string } }[]).push({
+          data: mappedItem,
+          where: { id: item.id },
+        });
+      }
     }
+  } else {
+    if (shouldConnect) {
+      return { connect: { id: obj.id } };
+    } else {
+      model.update = mapper(obj) as U;
+    }
+  }
 
-    return model;
+  return model;
 }

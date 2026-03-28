@@ -16,21 +16,12 @@ type UploadDropzoneProps = {
         maxFiles?: number;
       }
     | string;
-  uploadOverride?: (
-    ...args: Parameters<UploadHookControl<true>['upload']>
-  ) => void;
+  uploadOverride?: (...args: Parameters<UploadHookControl<true>['upload']>) => void;
 
   // Add any additional props you need.
 };
 
-export function UploadDropzone({
-  control: { upload, isPending },
-  id: _id,
-  accept,
-  metadata,
-  description,
-  uploadOverride,
-}: UploadDropzoneProps) {
+export function UploadDropzone({ control: { upload, isPending }, id: _id, accept, metadata, description, uploadOverride }: UploadDropzoneProps) {
   const id = useId();
 
   const { getRootProps, getInputProps, isDragActive, inputRef } = useDropzone({
@@ -49,12 +40,9 @@ export function UploadDropzone({
 
   return (
     <div
-      className={cn(
-        'border-input text-foreground relative rounded-lg border border-dashed transition-colors',
-        {
-          'border-primary/80': isDragActive,
-        }
-      )}
+      className={cn('border-input text-foreground relative rounded-lg border border-dashed transition-colors', {
+        'border-primary/80': isDragActive,
+      })}
     >
       <label
         {...getRootProps()}
@@ -64,17 +52,11 @@ export function UploadDropzone({
             'text-muted-foreground cursor-not-allowed': isPending,
             'hover:bg-accent dark:hover:bg-accent/40': !isPending,
             'opacity-0': isDragActive,
-          }
+          },
         )}
         htmlFor={_id || id}
       >
-        <div className="my-2">
-          {isPending ? (
-            <IconLoader2 className="size-6 animate-spin" />
-          ) : (
-            <IconUpload className="size-6" />
-          )}
-        </div>
+        <div className="my-2">{isPending ? <IconLoader2 className="size-6 animate-spin" /> : <IconUpload className="size-6" />}</div>
 
         <div className="mt-3 space-y-1 text-center">
           <p className="text-sm font-semibold">Drag and drop files here</p>
@@ -84,24 +66,15 @@ export function UploadDropzone({
               description
             ) : (
               <>
-                {description?.maxFiles &&
-                  `You can upload ${description.maxFiles} file${description.maxFiles !== 1 ? 's' : ''}.`}{' '}
-                {description?.maxFileSize &&
-                  `${description.maxFiles !== 1 ? 'Each u' : 'U'}p to ${description.maxFileSize}.`}{' '}
+                {description?.maxFiles && `You can upload ${description.maxFiles} file${description.maxFiles !== 1 ? 's' : ''}.`}{' '}
+                {description?.maxFileSize && `${description.maxFiles !== 1 ? 'Each u' : 'U'}p to ${description.maxFileSize}.`}{' '}
                 {description?.fileTypes && `Accepted ${description.fileTypes}.`}
               </>
             )}
           </p>
         </div>
 
-        <input
-          {...getInputProps()}
-          type="file"
-          multiple
-          id={_id || id}
-          accept={accept}
-          disabled={isPending}
-        />
+        <input {...getInputProps()} type="file" multiple id={_id || id} accept={accept} disabled={isPending} />
       </label>
 
       {isDragActive && (

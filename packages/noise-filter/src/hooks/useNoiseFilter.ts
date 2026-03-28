@@ -9,11 +9,7 @@ import { ProcessorEvent } from '@arcaai/room';
 import type { AudioTrack, ProcessorDataPayload } from '@arcaai/room';
 
 import { NoiseFilterProcessor } from '../processors/NoiseFilterProcessor.js';
-import type {
-  NoiseFilterOptions,
-  NoiseFilterStats,
-  NoiseCancellationLevel,
-} from '../types/index.js';
+import type { NoiseFilterOptions, NoiseFilterStats, NoiseCancellationLevel } from '../types/index.js';
 
 /**
  * Options for useNoiseFilter hook.
@@ -144,21 +140,13 @@ export interface UseNoiseFilterReturn {
  * ```
  */
 export function useNoiseFilter(options: UseNoiseFilterOptions): UseNoiseFilterReturn {
-  const {
-    track,
-    autoAttach = true,
-    onStatsUpdate,
-    onError,
-    ...noiseFilterOptions
-  } = options;
+  const { track, autoAttach = true, onStatsUpdate, onError, ...noiseFilterOptions } = options;
 
   // State
   const [isActive, setIsActive] = useState(false);
   const [isAttached, setIsAttached] = useState(false);
   const [isEnabled, setIsEnabled] = useState(noiseFilterOptions.noiseCancellation ?? true);
-  const [noiseLevel, setNoiseLevelState] = useState<NoiseCancellationLevel>(
-    noiseFilterOptions.noiseCancellationLevel ?? 'medium'
-  );
+  const [noiseLevel, setNoiseLevelState] = useState<NoiseCancellationLevel>(noiseFilterOptions.noiseCancellationLevel ?? 'medium');
   const [isUsingFallback, setIsUsingFallback] = useState(false);
   const [stats, setStats] = useState<NoiseFilterStats | null>(null);
   const [noiseReductionDb, setNoiseReductionDb] = useState(0);
@@ -201,7 +189,7 @@ export function useNoiseFilter(options: UseNoiseFilterOptions): UseNoiseFilterRe
       }
     };
     // Only create processor once with initial options
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
   // Handle processor events
@@ -316,14 +304,17 @@ export function useNoiseFilter(options: UseNoiseFilterOptions): UseNoiseFilterRe
   }, []);
 
   // Toggle noise cancellation
-  const toggle = useCallback(async (enabled?: boolean) => {
-    const newState = enabled ?? !isEnabled;
-    if (newState) {
-      await enable();
-    } else {
-      await disable();
-    }
-  }, [isEnabled, enable, disable]);
+  const toggle = useCallback(
+    async (enabled?: boolean) => {
+      const newState = enabled ?? !isEnabled;
+      if (newState) {
+        await enable();
+      } else {
+        await disable();
+      }
+    },
+    [isEnabled, enable, disable],
+  );
 
   // Set noise level
   const setLevel = useCallback(async (level: NoiseCancellationLevel) => {

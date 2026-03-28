@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Skeleton } from '../../shadcn/skeleton'
+import { Skeleton } from '../../shadcn/skeleton';
 
 const meta = {
   title: 'Components/Skeleton',
@@ -9,14 +9,14 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Skeleton>
+} satisfies Meta<typeof Skeleton>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => <Skeleton className="h-4 w-[250px]" />,
-}
+};
 
 export const Card: Story = {
   render: () => (
@@ -28,7 +28,7 @@ export const Card: Story = {
       </div>
     </div>
   ),
-}
+};
 
 export const ContentBlock: Story = {
   render: () => (
@@ -45,7 +45,7 @@ export const ContentBlock: Story = {
       </div>
     </div>
   ),
-}
+};
 
 export const Table: Story = {
   render: () => (
@@ -59,4 +59,4 @@ export const Table: Story = {
       ))}
     </div>
   ),
-}
+};

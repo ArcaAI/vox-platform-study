@@ -1,36 +1,32 @@
-import { useCallback, useEffect, useRef } from 'react'
-import { useMemoizedFn } from '@/hooks/registries/use-memoized-fn'
+import { useCallback, useEffect, useRef } from 'react';
+import { useMemoizedFn } from '@/hooks/registries/use-memoized-fn';
 
-export function useInterval(
-  fn: () => void,
-  delay?: number,
-  options?: { immediate?: boolean },
-) {
-  const fnRef = useMemoizedFn(fn)
-  const timerRef = useRef<number | null>(null)
+export function useInterval(fn: () => void, delay?: number, options?: { immediate?: boolean }) {
+  const fnRef = useMemoizedFn(fn);
+  const timerRef = useRef<number | null>(null);
 
   const clear = useCallback(() => {
     if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
     if (!(typeof delay === 'number') || delay < 0) {
-      return
+      return;
     }
 
     if (options?.immediate) {
-      fnRef()
+      fnRef();
     }
 
-    timerRef.current = window.setInterval(fnRef, delay)
+    timerRef.current = window.setInterval(fnRef, delay);
 
     return () => {
-      clear()
-    }
-  }, [delay, options?.immediate, fnRef, clear])
+      clear();
+    };
+  }, [delay, options?.immediate, fnRef, clear]);
 
-  return clear
+  return clear;
 }

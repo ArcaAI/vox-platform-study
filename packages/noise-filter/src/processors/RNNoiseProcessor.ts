@@ -5,11 +5,7 @@
  * Handles frame buffering and processing.
  */
 
-import type {
-  NoiseCancellationLevel,
-  RNNoiseResult,
-  NoiseFilterStats,
-} from '../types/index.js';
+import type { NoiseCancellationLevel, RNNoiseResult, NoiseFilterStats } from '../types/index.js';
 
 /**
  * Frame size expected by RNNoise (480 samples = 10ms at 48kHz).
@@ -134,10 +130,7 @@ export class RNNoiseProcessor {
         },
       };
 
-      this.wasmInstance = await WebAssembly.instantiate(
-        this.wasmModule,
-        importObject
-      );
+      this.wasmInstance = await WebAssembly.instantiate(this.wasmModule, importObject);
 
       // Get exported functions
       const exports = this.wasmInstance.exports as {
@@ -153,9 +146,7 @@ export class RNNoiseProcessor {
 
       this._isInitialized = true;
     } catch (error) {
-      throw new Error(
-        `Failed to initialize RNNoise: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
+      throw new Error(`Failed to initialize RNNoise: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -194,10 +185,7 @@ export class RNNoiseProcessor {
         vadProbability = this.processFrame(this.inputBuffer, this.outputBuffer);
 
         // Copy processed samples to output
-        const copyLength = Math.min(
-          RNNOISE_FRAME_SIZE,
-          output.length - outputIndex
-        );
+        const copyLength = Math.min(RNNOISE_FRAME_SIZE, output.length - outputIndex);
         for (let j = 0; j < copyLength; j++) {
           output[outputIndex + j] = this.outputBuffer[j]!;
         }
@@ -263,26 +251,14 @@ export class RNNoiseProcessor {
     const outputPtr = exports.malloc(RNNOISE_FRAME_SIZE * 4);
 
     // Copy input to WASM memory
-    const inputView = new Float32Array(
-      this.memory.buffer,
-      inputPtr,
-      RNNOISE_FRAME_SIZE
-    );
+    const inputView = new Float32Array(this.memory.buffer, inputPtr, RNNOISE_FRAME_SIZE);
     inputView.set(input);
 
     // Process frame
-    const vadProb = exports.rnnoise_process_frame(
-      this.denoiseState,
-      outputPtr,
-      inputPtr
-    );
+    const vadProb = exports.rnnoise_process_frame(this.denoiseState, outputPtr, inputPtr);
 
     // Copy output from WASM memory
-    const outputView = new Float32Array(
-      this.memory.buffer,
-      outputPtr,
-      RNNOISE_FRAME_SIZE
-    );
+    const outputView = new Float32Array(this.memory.buffer, outputPtr, RNNOISE_FRAME_SIZE);
 
     // Apply level multiplier
     const multiplier = LEVEL_MULTIPLIERS[this._level];
@@ -315,10 +291,7 @@ export class RNNoiseProcessor {
    * Get current processing statistics.
    */
   getStats(): NoiseFilterStats {
-    const avgProcessingTime =
-      this.framesProcessed > 0
-        ? this.totalProcessingTime / this.framesProcessed
-        : 0;
+    const avgProcessingTime = this.framesProcessed > 0 ? this.totalProcessingTime / this.framesProcessed : 0;
 
     // Estimate CPU load based on processing time vs frame duration
     const frameDurationMs = (RNNOISE_FRAME_SIZE / RNNOISE_SAMPLE_RATE) * 1000;

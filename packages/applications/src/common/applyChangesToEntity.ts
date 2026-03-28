@@ -1,17 +1,15 @@
 import { BaseEntity, ResourceStatusType } from '@arcaai/domains';
 
 export type CustomChangeFieldHandlerProps<T, K> = {
-    entity: T;
-    changes: K;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    value: any;
+  entity: T;
+  changes: K;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  value: any;
 };
-export type CustomChangeFieldHandler<T, K> = (
-    props: CustomChangeFieldHandlerProps<T, K>,
-) => void;
+export type CustomChangeFieldHandler<T, K> = (props: CustomChangeFieldHandlerProps<T, K>) => void;
 
 export type ChangeFieldHandlers<T, K> = {
-    [P in keyof T | '$apply']?: CustomChangeFieldHandler<T, K>;
+  [P in keyof T | '$apply']?: CustomChangeFieldHandler<T, K>;
 };
 
 /**
@@ -58,51 +56,48 @@ export type ChangeFieldHandlers<T, K> = {
  * // entity is now { name: 'new name', age: 31 }
  * // The $apply handler ran, but didn't modify the entity.
  */
-export async function applyChangesToEntity<
-    T extends BaseEntity,
-    K extends object,
->(
-    entity: T,
-    changes: K,
-    customHandlers?: ChangeFieldHandlers<T, K>,
+export async function applyChangesToEntity<T extends BaseEntity, K extends object>(
+  entity: T,
+  changes: K,
+  customHandlers?: ChangeFieldHandlers<T, K>,
 ): Promise<void> {
-    for (const key of Object.keys(changes) as Array<keyof K>) {
-        const value = changes[key];
+  for (const key of Object.keys(changes) as Array<keyof K>) {
+    const value = changes[key];
 
-        if (customHandlers && key in customHandlers) {
-            const handler = customHandlers[key as keyof T | '$apply'];
-            if (handler) {
-                const result = await handler({
-                    entity,
-                    changes,
-                    value,
-                });
+    if (customHandlers && key in customHandlers) {
+      const handler = customHandlers[key as keyof T | '$apply'];
+      if (handler) {
+        const result = await handler({
+          entity,
+          changes,
+          value,
+        });
 
-                if (key !== '$apply' && result !== undefined) {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    (entity as any)[key] = result;
-                }
-            }
-        } else if (value !== undefined) {
-            if (key === 'resourceStatus') {
-                switch (value) {
-                    case ResourceStatusType.ENABLED:
-                        entity.enable();
-                        break;
-                    case ResourceStatusType.DISABLED:
-                        entity.disable();
-                        break;
-                    case ResourceStatusType.ARCHIVED:
-                        entity.archive();
-                        break;
-                    case ResourceStatusType.DELETED:
-                        entity.delete();
-                        break;
-                }
-            } else {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (entity as any)[key] = value;
-            }
+        if (key !== '$apply' && result !== undefined) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (entity as any)[key] = result;
         }
+      }
+    } else if (value !== undefined) {
+      if (key === 'resourceStatus') {
+        switch (value) {
+          case ResourceStatusType.ENABLED:
+            entity.enable();
+            break;
+          case ResourceStatusType.DISABLED:
+            entity.disable();
+            break;
+          case ResourceStatusType.ARCHIVED:
+            entity.archive();
+            break;
+          case ResourceStatusType.DELETED:
+            entity.delete();
+            break;
+        }
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (entity as any)[key] = value;
+      }
     }
+  }
 }

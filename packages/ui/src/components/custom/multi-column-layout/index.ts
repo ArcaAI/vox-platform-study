@@ -1,9 +1,4 @@
-export {
-  MultiColumnLayout,
-  VirtualizedList,
-  DetailSkeleton,
-  ColumnHeader,
-} from "./multi-column-layout"
+export { MultiColumnLayout, VirtualizedList, DetailSkeleton, ColumnHeader } from './multi-column-layout';
 
 export type {
   MultiColumnConfig,
@@ -15,4 +10,4 @@ export type {
   MultiColumnDetailState,
   MultiColumnLayoutProps,
   AnyColumnConfig,
-} from "./types"
+} from './types';

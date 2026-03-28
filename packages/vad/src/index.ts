@@ -145,7 +145,4 @@ export {
 // Worklets (public subset — registration/cleanup are internal)
 // ============================================================================
 
-export {
-  WORKLET_PROCESSOR_NAME,
-  isVADWorkletRegistered,
-} from './worklets/index.js';
+export { WORKLET_PROCESSOR_NAME, isVADWorkletRegistered } from './worklets/index.js';

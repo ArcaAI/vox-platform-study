@@ -1,11 +1,11 @@
-import { ImageMessageBubble, MessageBubble } from './message-bubble'
+import { ImageMessageBubble, MessageBubble } from './message-bubble';
 
 // Import types from shared types file to avoid circular dependencies
-import type { ChatMessage } from './types'
+import type { ChatMessage } from './types';
 // Re-export for backward compatibility
-export type { ChatMessage } from './types'
+export type { ChatMessage } from './types';
 
-import { demoMessages } from './demo/messaging'
+import { demoMessages } from './demo/messaging';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -18,8 +18,8 @@ import { demoMessages } from './demo/messaging'
 export interface ChatConversationProps {
   data?: {
     /** Array of chat messages to display in the conversation. */
-    messages?: ChatMessage[]
-  }
+    messages?: ChatMessage[];
+  };
 }
 
 /**
@@ -47,19 +47,19 @@ export interface ChatConversationProps {
  * ```
  */
 export function ChatConversation({ data }: ChatConversationProps) {
-  const resolved: NonNullable<ChatConversationProps['data']> = data ?? { messages: demoMessages }
-  const messages = resolved.messages
+  const resolved: NonNullable<ChatConversationProps['data']> = data ?? { messages: demoMessages };
+  const messages = resolved.messages;
 
   if (!messages || messages.length === 0) {
-    return <div className="rounded-xl bg-card p-4" />
+    return <div className="rounded-xl bg-card p-4" />;
   }
 
   return (
     <div className="rounded-xl bg-card p-4 space-y-4">
       {messages.map((message, index) => {
-        const messageType = message.type ?? 'text'
-        const isOwn = message.isOwn ?? false
-        const messageKey = message.content ? `${message.author || ''}-${message.content.slice(0, 40)}` : `msg-${index}`
+        const messageType = message.type ?? 'text';
+        const isOwn = message.isOwn ?? false;
+        const messageKey = message.content ? `${message.author || ''}-${message.content.slice(0, 40)}` : `msg-${index}`;
         return messageType === 'image' ? (
           <ImageMessageBubble
             key={messageKey}
@@ -69,7 +69,7 @@ export function ChatConversation({ data }: ChatConversationProps) {
               avatarFallback: message.avatarFallback,
               avatarUrl: message.avatarUrl,
               author: message.author,
-              time: message.time
+              time: message.time,
             }}
             appearance={{ isOwn }}
             control={{ status: message.status }}
@@ -82,13 +82,13 @@ export function ChatConversation({ data }: ChatConversationProps) {
               avatarFallback: message.avatarFallback,
               avatarUrl: message.avatarUrl,
               author: message.author,
-              time: message.time
+              time: message.time,
             }}
             appearance={{ isOwn }}
             control={{ status: message.status }}
           />
-        )
+        );
       })}
     </div>
-  )
+  );
 }

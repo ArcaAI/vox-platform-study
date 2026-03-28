@@ -1,35 +1,30 @@
-import { z } from "zod";
-import { defineToolUiContract } from "../shared/contract";
-import { ToolUIIdSchema, ToolUIRoleSchema } from "../shared/schema";
+import { z } from 'zod';
+import { defineToolUiContract } from '../shared/contract';
+import { ToolUIIdSchema, ToolUIRoleSchema } from '../shared/schema';
 
 const TextFormatSchema = z.object({
-  kind: z.literal("text"),
+  kind: z.literal('text'),
 });
 
 const NumberFormatSchema = z.object({
-  kind: z.literal("number"),
+  kind: z.literal('number'),
   decimals: z.number().int().min(0).optional(),
   compact: z.boolean().optional(),
 });
 
 const CurrencyFormatSchema = z.object({
-  kind: z.literal("currency"),
+  kind: z.literal('currency'),
   currency: z.string().min(1),
   decimals: z.number().int().min(0).optional(),
 });
 
 const PercentFormatSchema = z.object({
-  kind: z.literal("percent"),
+  kind: z.literal('percent'),
   decimals: z.number().int().min(0).optional(),
-  basis: z.enum(["fraction", "unit"]).optional(),
+  basis: z.enum(['fraction', 'unit']).optional(),
 });
 
-export const StatFormatSchema = z.discriminatedUnion("kind", [
-  TextFormatSchema,
-  NumberFormatSchema,
-  CurrencyFormatSchema,
-  PercentFormatSchema,
-]);
+export const StatFormatSchema = z.discriminatedUnion('kind', [TextFormatSchema, NumberFormatSchema, CurrencyFormatSchema, PercentFormatSchema]);
 
 export type StatFormat = z.infer<typeof StatFormatSchema>;
 
@@ -68,22 +63,13 @@ export const SerializableStatsDisplaySchema = z.object({
   stats: z.array(StatItemSchema).min(1),
 });
 
-export type SerializableStatsDisplay = z.infer<
-  typeof SerializableStatsDisplaySchema
->;
+export type SerializableStatsDisplay = z.infer<typeof SerializableStatsDisplaySchema>;
 
-const SerializableStatsDisplaySchemaContract = defineToolUiContract(
-  "StatsDisplay",
-  SerializableStatsDisplaySchema,
-);
+const SerializableStatsDisplaySchemaContract = defineToolUiContract('StatsDisplay', SerializableStatsDisplaySchema);
 
-export const parseSerializableStatsDisplay: (
-  input: unknown,
-) => SerializableStatsDisplay = SerializableStatsDisplaySchemaContract.parse;
+export const parseSerializableStatsDisplay: (input: unknown) => SerializableStatsDisplay = SerializableStatsDisplaySchemaContract.parse;
 
-export const safeParseSerializableStatsDisplay: (
-  input: unknown,
-) => SerializableStatsDisplay | null =
+export const safeParseSerializableStatsDisplay: (input: unknown) => SerializableStatsDisplay | null =
   SerializableStatsDisplaySchemaContract.safeParse;
 export interface StatsDisplayProps extends SerializableStatsDisplay {
   className?: string;

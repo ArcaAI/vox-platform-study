@@ -5,11 +5,7 @@
  */
 
 // Types
-export type {
-  STTProvider,
-  TranscriptionCallback,
-  ErrorCallback,
-} from './types.js';
+export type { STTProvider, TranscriptionCallback, ErrorCallback } from './types.js';
 
 // Base
 export { BaseSTTProvider } from './BaseSTTProvider.js';

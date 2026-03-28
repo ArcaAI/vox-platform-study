@@ -34,23 +34,11 @@ export { TranscriptionPipeline, createTranscriptionPipeline } from './Transcript
 export { KnowledgePipeline, createKnowledgePipeline, type TriggerMode } from './KnowledgePipeline';
 
 // Cross-tab sync
-export {
-  SimpleCrossTabSync,
-  createCrossTabSync,
-  type CrossTabEvent,
-  type CrossTabEventType,
-} from './SimpleCrossTabSync';
+export { SimpleCrossTabSync, createCrossTabSync, type CrossTabEvent, type CrossTabEventType } from './SimpleCrossTabSync';
 
 // Shared connection management (multi-tab)
-export {
-  SharedConnectionManager,
-} from './SharedConnectionManager';
-export type {
-  WorkerMessage,
-  WorkerMessageType,
-  SSESubscription,
-  WSSubscription,
-} from './SharedConnectionWorker';
+export { SharedConnectionManager } from './SharedConnectionManager';
+export type { WorkerMessage, WorkerMessageType, SSESubscription, WSSubscription } from './SharedConnectionWorker';
 
 export {
   // API Endpoints
@@ -83,10 +71,7 @@ export type {
   TranscriptionJobResponse,
   TranscriptionJobStatusCounts,
 } from '../types/stt-v2';
-export {
-  TranscriptionJobStatus,
-  TranscriptionJobType,
-} from '../types/stt-v2';
+export { TranscriptionJobStatus, TranscriptionJobType } from '../types/stt-v2';
 
 // STT-V2 streaming clients
 export { SttV2WebSocketClient, type WsConnectOptions, type WsReconnectOptions } from './SttV2WebSocketClient';

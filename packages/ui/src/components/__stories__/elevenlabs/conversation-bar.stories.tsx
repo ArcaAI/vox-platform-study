@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { ConversationBar } from '../../elevenlabs/conversation-bar'
+import { ConversationBar } from '../../elevenlabs/conversation-bar';
 
 const meta: Meta<typeof ConversationBar> = {
   title: 'ElevenLabs/ConversationBar',
@@ -15,10 +15,10 @@ const meta: Meta<typeof ConversationBar> = {
       description: 'ElevenLabs Agent ID',
     },
   },
-}
+};
 
-export default meta
-type Story = StoryObj<typeof ConversationBar>
+export default meta;
+type Story = StoryObj<typeof ConversationBar>;
 
 export const Default: Story = {
   args: {
@@ -29,7 +29,7 @@ export const Default: Story = {
       <ConversationBar {...args} />
     </div>
   ),
-}
+};
 
 export const WithCallbacks: Story = {
   args: {
@@ -44,7 +44,7 @@ export const WithCallbacks: Story = {
       <ConversationBar {...args} />
     </div>
   ),
-}
+};
 
 export const FullWidth: Story = {
   args: {
@@ -55,4 +55,4 @@ export const FullWidth: Story = {
       <ConversationBar {...args} />
     </div>
   ),
-}
+};

@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Kbd, KbdGroup } from '../../shadcn/kbd'
+import { Kbd, KbdGroup } from '../../shadcn/kbd';
 
 const meta = {
   title: 'Components/Kbd',
@@ -9,16 +9,16 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Kbd>
+} satisfies Meta<typeof Kbd>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
     children: 'K',
   },
-}
+};
 
 export const Modifiers: Story = {
   render: () => (
@@ -31,7 +31,7 @@ export const Modifiers: Story = {
       <Kbd>Esc</Kbd>
     </div>
   ),
-}
+};
 
 export const KeyCombination: Story = {
   render: () => (
@@ -60,4 +60,4 @@ export const KeyCombination: Story = {
       </div>
     </div>
   ),
-}
+};

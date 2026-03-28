@@ -8,97 +8,95 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 @Injectable()
 export class AudioRecordingRepository extends Repository<AudioRecordingEntity, AudioRecording> {
-    constructor(
-        private readonly unitOfWorkService: CoreUnitOfWorkService
-    ) {
-        super(unitOfWorkService, 'audioRecording', AudioRecordingEntityMapper.getInstance());
+  constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
+    super(unitOfWorkService, 'audioRecording', AudioRecordingEntityMapper.getInstance());
+  }
+
+  // ============================================
+  // Custom Query Methods
+  // ============================================
+
+  /**
+   * Find all audio recordings for a context item
+   */
+  async findByContextItem(contextItemId: string): Promise<AudioRecordingEntity[]> {
+    const models = await (this as any).db.findMany({
+      where: { contextItemId },
+      orderBy: { sequenceNumber: 'asc' },
+    });
+
+    return models.map((model: AudioRecording) => (this as any)._mapper.toDomainEntity(model));
+  }
+
+  /**
+   * Find audio recording by media ID
+   */
+  async findByMediaId(mediaId: string): Promise<AudioRecordingEntity | null> {
+    try {
+      const model = await (this as any).db.findFirst({
+        where: { mediaId },
+      });
+      if (!model) return null;
+      return (this as any)._mapper.toDomainEntity(model);
+    } catch {
+      return null;
     }
+  }
 
-    // ============================================
-    // Custom Query Methods
-    // ============================================
+  /**
+   * Get the next sequence number for a context item
+   */
+  async getNextSequenceNumber(contextItemId: string): Promise<number> {
+    const result = await (this as any).db.aggregate({
+      where: { contextItemId },
+      _max: { sequenceNumber: true },
+    });
+    return (result._max.sequenceNumber ?? 0) + 1;
+  }
 
-    /**
-     * Find all audio recordings for a context item
-     */
-    async findByContextItem(contextItemId: string): Promise<AudioRecordingEntity[]> {
-        const models = await (this as any).db.findMany({
-            where: { contextItemId },
-            orderBy: { sequenceNumber: 'asc' }
-        });
+  /**
+   * Find audio recordings by tenant
+   */
+  async findByTenant(tenantId: string, limit: number = 100): Promise<AudioRecordingEntity[]> {
+    const models = await (this as any).db.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
 
-        return models.map((model: AudioRecording) => (this as any)._mapper.toDomainEntity(model));
-    }
+    return models.map((model: AudioRecording) => (this as any)._mapper.toDomainEntity(model));
+  }
 
-    /**
-     * Find audio recording by media ID
-     */
-    async findByMediaId(mediaId: string): Promise<AudioRecordingEntity | null> {
-        try {
-            const model = await (this as any).db.findFirst({
-                where: { mediaId }
-            });
-            if (!model) return null;
-            return (this as any)._mapper.toDomainEntity(model);
-        } catch {
-            return null;
-        }
-    }
+  /**
+   * Count audio recordings for a context item
+   */
+  async countByContextItem(contextItemId: string): Promise<number> {
+    return (this as any).db.count({
+      where: { contextItemId },
+    });
+  }
 
-    /**
-     * Get the next sequence number for a context item
-     */
-    async getNextSequenceNumber(contextItemId: string): Promise<number> {
-        const result = await (this as any).db.aggregate({
-            where: { contextItemId },
-            _max: { sequenceNumber: true }
-        });
-        return (result._max.sequenceNumber ?? 0) + 1;
-    }
+  /**
+   * Find audio recordings by format
+   */
+  async findByFormat(format: string, limit: number = 100): Promise<AudioRecordingEntity[]> {
+    const models = await (this as any).db.findMany({
+      where: { format },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
 
-    /**
-     * Find audio recordings by tenant
-     */
-    async findByTenant(tenantId: string, limit: number = 100): Promise<AudioRecordingEntity[]> {
-        const models = await (this as any).db.findMany({
-            where: { tenantId },
-            orderBy: { createdAt: 'desc' },
-            take: limit
-        });
+    return models.map((model: AudioRecording) => (this as any)._mapper.toDomainEntity(model));
+  }
 
-        return models.map((model: AudioRecording) => (this as any)._mapper.toDomainEntity(model));
-    }
-
-    /**
-     * Count audio recordings for a context item
-     */
-    async countByContextItem(contextItemId: string): Promise<number> {
-        return (this as any).db.count({
-            where: { contextItemId }
-        });
-    }
-
-    /**
-     * Find audio recordings by format
-     */
-    async findByFormat(format: string, limit: number = 100): Promise<AudioRecordingEntity[]> {
-        const models = await (this as any).db.findMany({
-            where: { format },
-            orderBy: { createdAt: 'desc' },
-            take: limit
-        });
-
-        return models.map((model: AudioRecording) => (this as any)._mapper.toDomainEntity(model));
-    }
-
-    /**
-     * Get total duration for a context item (in milliseconds)
-     */
-    async getTotalDuration(contextItemId: string): Promise<number> {
-        const result = await (this as any).db.aggregate({
-            where: { contextItemId },
-            _sum: { duration: true }
-        });
-        return result._sum.duration ?? 0;
-    }
+  /**
+   * Get total duration for a context item (in milliseconds)
+   */
+  async getTotalDuration(contextItemId: string): Promise<number> {
+    const result = await (this as any).db.aggregate({
+      where: { contextItemId },
+      _sum: { duration: true },
+    });
+    return result._sum.duration ?? 0;
+  }
 }

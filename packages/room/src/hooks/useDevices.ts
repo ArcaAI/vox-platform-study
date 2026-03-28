@@ -56,8 +56,7 @@ export interface UseDevicesReturn {
  * Convert MediaDeviceInfo to AudioDevice.
  */
 function toAudioDevice(device: MediaDeviceInfo): AudioDevice {
-  const isDefault =
-    device.deviceId === 'default' || device.label.toLowerCase().includes('default');
+  const isDefault = device.deviceId === 'default' || device.label.toLowerCase().includes('default');
 
   return {
     deviceId: device.deviceId,
@@ -106,16 +105,11 @@ function toAudioDevice(device: MediaDeviceInfo): AudioDevice {
  * ```
  */
 export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
-  const { requestPermissions: autoRequestPermissions = false, autoRefresh = true } =
-    options;
+  const { requestPermissions: autoRequestPermissions = false, autoRefresh = true } = options;
 
   const [devices, setDevices] = useState<AudioDevice[]>([]);
-  const [selectedInputDeviceId, setSelectedInputDeviceId] = useState<string | null>(
-    null
-  );
-  const [selectedOutputDeviceId, setSelectedOutputDeviceId] = useState<string | null>(
-    null
-  );
+  const [selectedInputDeviceId, setSelectedInputDeviceId] = useState<string | null>(null);
+  const [selectedOutputDeviceId, setSelectedOutputDeviceId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [hasPermissions, setHasPermissions] = useState(false);
@@ -134,35 +128,24 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
 
       const mediaDevices = await navigator.mediaDevices.enumerateDevices();
 
-      const audioDevices = mediaDevices
-        .filter(
-          (device) =>
-            device.kind === 'audioinput' || device.kind === 'audiooutput'
-        )
-        .map(toAudioDevice);
+      const audioDevices = mediaDevices.filter((device) => device.kind === 'audioinput' || device.kind === 'audiooutput').map(toAudioDevice);
 
       setDevices(audioDevices);
 
       // Check if we have permissions (labels are available)
-      const hasLabels = audioDevices.some(
-        (d) => d.label && !d.label.includes(d.deviceId.slice(0, 8))
-      );
+      const hasLabels = audioDevices.some((d) => d.label && !d.label.includes(d.deviceId.slice(0, 8)));
       setHasPermissions(hasLabels);
 
       // Auto-select default devices if none selected
       if (!selectedInputDeviceId) {
-        const defaultInput = audioDevices.find(
-          (d) => d.kind === 'audioinput' && d.isDefault
-        );
+        const defaultInput = audioDevices.find((d) => d.kind === 'audioinput' && d.isDefault);
         if (defaultInput) {
           setSelectedInputDeviceId(defaultInput.deviceId);
         }
       }
 
       if (!selectedOutputDeviceId) {
-        const defaultOutput = audioDevices.find(
-          (d) => d.kind === 'audiooutput' && d.isDefault
-        );
+        const defaultOutput = audioDevices.find((d) => d.kind === 'audiooutput' && d.isDefault);
         if (defaultOutput) {
           setSelectedOutputDeviceId(defaultOutput.deviceId);
         }
@@ -201,7 +184,7 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
     };
 
     init();
-  }, [autoRequestPermissions]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoRequestPermissions]); // eslint-disable-line
 
   // Listen for device changes
   useEffect(() => {
@@ -216,10 +199,7 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
     navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
 
     return () => {
-      navigator.mediaDevices.removeEventListener(
-        'devicechange',
-        handleDeviceChange
-      );
+      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
     };
   }, [autoRefresh, enumerateDevices]);
 
@@ -227,10 +207,8 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
   const audioInputDevices = useMemo(() => devices.filter((d) => d.kind === 'audioinput'), [devices]);
   const audioOutputDevices = useMemo(() => devices.filter((d) => d.kind === 'audiooutput'), [devices]);
 
-  const selectedInputDevice =
-    audioInputDevices.find((d) => d.deviceId === selectedInputDeviceId) ?? null;
-  const selectedOutputDevice =
-    audioOutputDevices.find((d) => d.deviceId === selectedOutputDeviceId) ?? null;
+  const selectedInputDevice = audioInputDevices.find((d) => d.deviceId === selectedInputDeviceId) ?? null;
+  const selectedOutputDevice = audioOutputDevices.find((d) => d.deviceId === selectedOutputDeviceId) ?? null;
 
   // Select handlers
   const selectInputDevice = useCallback((deviceId: string) => {

@@ -5,4 +5,13 @@ module.exports = {
     project: './tsconfig.json',
     tsconfigRootDir: __dirname,
   },
+  ignorePatterns: ['**/__tests__/'],
+  overrides: [
+    {
+      files: ['src/types/index.ts'],
+      rules: {
+        '@typescript-eslint/no-duplicate-enum-values': 'off',
+      },
+    },
+  ],
 };

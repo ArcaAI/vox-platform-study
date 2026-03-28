@@ -9,14 +9,7 @@ import { ProcessorEvent } from '@arcaai/room';
 import type { AudioTrack, ProcessorDataPayload } from '@arcaai/room';
 
 import { VADProcessor } from '../processors/VADProcessor.js';
-import type {
-  VADOptions,
-  VADStats,
-  VADFramePayload,
-  VADSpeechStartPayload,
-  VADSpeechEndPayload,
-  VADMisfirePayload,
-} from '../types/index.js';
+import type { VADOptions, VADStats, VADFramePayload } from '../types/index.js';
 
 /**
  * Options for useVAD hook.
@@ -38,10 +31,7 @@ export interface UseVADOptions extends VADOptions {
   onVADMisfire?: () => void;
 
   /** Callback for each processed frame */
-  onFrameProcessed?: (
-    probabilities: { isSpeech: number; notSpeech: number },
-    frame: Float32Array
-  ) => void;
+  onFrameProcessed?: (probabilities: { isSpeech: number; notSpeech: number }, frame: Float32Array) => void;
 }
 
 /**
@@ -135,15 +125,7 @@ export interface UseVADReturn {
  * ```
  */
 export function useVAD(options: UseVADOptions): UseVADReturn {
-  const {
-    track,
-    autoAttach = true,
-    onSpeechStart,
-    onSpeechEnd,
-    onVADMisfire,
-    onFrameProcessed,
-    ...vadOptions
-  } = options;
+  const { track, autoAttach = true, onSpeechStart, onSpeechEnd, onVADMisfire, onFrameProcessed, ...vadOptions } = options;
 
   // State
   const [isActive, setIsActive] = useState(false);
@@ -210,7 +192,7 @@ export function useVAD(options: UseVADOptions): UseVADReturn {
       }
     };
     // Only create processor once with initial options
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
   // Handle processor events
@@ -240,10 +222,8 @@ export function useVAD(options: UseVADOptions): UseVADReturn {
         }
 
         case 'vad-speech-end': {
-          const endPayload = payload.data as VADSpeechEndPayload;
           setIsSpeaking(false);
           setCurrentSpeechDuration(0);
-          // Note: callback is handled by processor's internal callback
           break;
         }
 

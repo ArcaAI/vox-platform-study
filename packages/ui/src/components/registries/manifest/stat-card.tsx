@@ -1,8 +1,8 @@
-"use client"
+'use client';
 
-import { TrendingUp, TrendingDown, Minus } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { demoStats } from './demo/miscellaneous'
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { demoStats } from './demo/miscellaneous';
 
 /**
  * Represents a single statistic card with trend data.
@@ -15,12 +15,12 @@ import { demoStats } from './demo/miscellaneous'
  * @property {"up" | "down" | "neutral"} [trend] - Trend direction
  */
 export interface StatCard {
-  label?: string
-  value?: string | number
-  change?: number
-  changeLabel?: string
-  icon?: React.ReactNode
-  trend?: "up" | "down" | "neutral"
+  label?: string;
+  value?: string | number;
+  change?: number;
+  changeLabel?: string;
+  icon?: React.ReactNode;
+  trend?: 'up' | 'down' | 'neutral';
 }
 
 /**
@@ -34,10 +34,9 @@ export interface StatCard {
 export interface StatCardProps {
   data?: {
     /** Array of stat cards to display in the grid. */
-    stats?: StatCard[]
-  }
+    stats?: StatCard[];
+  };
 }
-
 
 /**
  * A statistics card grid displaying key metrics with trend indicators.
@@ -65,74 +64,58 @@ export interface StatCardProps {
  * ```
  */
 export function StatCard({ data }: StatCardProps) {
-  const resolved: NonNullable<StatCardProps['data']> = data ?? { stats: demoStats }
-  const stats = resolved.stats ?? []
-  const getTrendIcon = (trend?: "up" | "down" | "neutral") => {
+  const resolved: NonNullable<StatCardProps['data']> = data ?? { stats: demoStats };
+  const stats = resolved.stats ?? [];
+  const getTrendIcon = (trend?: 'up' | 'down' | 'neutral') => {
     switch (trend) {
-      case "up":
-        return <TrendingUp className="h-3.5 w-3.5" />
-      case "down":
-        return <TrendingDown className="h-3.5 w-3.5" />
+      case 'up':
+        return <TrendingUp className="h-3.5 w-3.5" />;
+      case 'down':
+        return <TrendingDown className="h-3.5 w-3.5" />;
       default:
-        return <Minus className="h-3.5 w-3.5" />
+        return <Minus className="h-3.5 w-3.5" />;
     }
-  }
+  };
 
-  const getTrendColor = (trend?: "up" | "down" | "neutral") => {
+  const getTrendColor = (trend?: 'up' | 'down' | 'neutral') => {
     switch (trend) {
-      case "up":
-        return "text-green-600"
-      case "down":
-        return "text-red-600"
+      case 'up':
+        return 'text-green-600';
+      case 'down':
+        return 'text-red-600';
       default:
-        return "text-muted-foreground"
+        return 'text-muted-foreground';
     }
-  }
+  };
 
   return (
     <div className="w-full">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
         {stats.map((stat, index) => {
           return (
-            <div
-              key={index}
-              className="rounded-md sm:rounded-lg border bg-card p-2 sm:p-3 space-y-0.5 sm:space-y-1"
-            >
+            <div key={index} className="rounded-md sm:rounded-lg border bg-card p-2 sm:p-3 space-y-0.5 sm:space-y-1">
               {(stat.label || stat.icon) && (
                 <div className="flex items-center justify-between">
-                  {stat.label && (
-                    <span className="text-[10px] sm:text-xs text-muted-foreground">{stat.label}</span>
-                  )}
+                  {stat.label && <span className="text-[10px] sm:text-xs text-muted-foreground">{stat.label}</span>}
                   {stat.icon}
                 </div>
               )}
               {(stat.value !== undefined || stat.change !== undefined) && (
                 <div className="flex flex-wrap items-baseline gap-1 sm:gap-2">
-                  {stat.value !== undefined && (
-                    <span className="text-base sm:text-xl font-bold">{stat.value}</span>
-                  )}
+                  {stat.value !== undefined && <span className="text-base sm:text-xl font-bold">{stat.value}</span>}
                   {stat.change !== undefined && (
-                    <span
-                      className={cn(
-                        "flex items-center gap-0.5 text-[10px] sm:text-xs font-medium shrink-0",
-                        getTrendColor(stat.trend)
-                      )}
-                    >
+                    <span className={cn('flex items-center gap-0.5 text-[10px] sm:text-xs font-medium shrink-0', getTrendColor(stat.trend))}>
                       {getTrendIcon(stat.trend)}
                       {Math.abs(stat.change)}%
                     </span>
                   )}
                 </div>
               )}
-              {stat.changeLabel && (
-                <span className="text-[10px] sm:text-xs text-muted-foreground">
-                  {stat.changeLabel}
-                </span>
-              )}
+              {stat.changeLabel && <span className="text-[10px] sm:text-xs text-muted-foreground">{stat.changeLabel}</span>}
             </div>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }

@@ -12,7 +12,4 @@ export {
   DEFAULT_WS_OPTIONS,
 } from './WebSocketClient.js';
 
-export {
-  MessageHandler,
-  type MessageHandlerCallbacks,
-} from './MessageHandler.js';
+export { MessageHandler, type MessageHandlerCallbacks } from './MessageHandler.js';

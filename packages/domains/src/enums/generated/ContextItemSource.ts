@@ -3,8 +3,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export enum ContextItemSource {
-    USER = 'USER',
-    AI = 'AI',
-    SYSTEM = 'SYSTEM',
-    TRANSCRIPTION = 'TRANSCRIPTION',
+  USER = 'USER',
+  AI = 'AI',
+  SYSTEM = 'SYSTEM',
+  TRANSCRIPTION = 'TRANSCRIPTION',
 }

@@ -7,7 +7,7 @@
 
 import { useMemo, useCallback } from 'react';
 import { useAgenticStore } from '../store';
-import type { ContextItem, AudioPluginStates, TranscriptionResult } from '../types';
+import type { ContextItem, TranscriptionResult } from '../types';
 import type { TranscriptSegment, AudioStartOptions } from '../types/audio';
 import { CONTEXT_ENDPOINTS } from '../core/constants';
 import type { ISDKLogger } from '../core/logger';
@@ -50,156 +50,159 @@ export function useArcaAudio() {
   // Audio Actions
   // ==========================================================================
 
-  const startAudio = useCallback(async (options?: AudioStartOptions): Promise<void> => {
-    const { pluginManager, consultation } = store;
-    const logger = getLogger();
-    if (!pluginManager) throw new Error('SDK not initialized');
+  const startAudio = useCallback(
+    async (options?: AudioStartOptions): Promise<void> => {
+      const { pluginManager, consultation } = store;
+      const logger = getLogger();
+      if (!pluginManager) throw new Error('SDK not initialized');
 
-    if (options?.language) {
-      store.setAudioLanguage(options.language);
-    }
+      if (options?.language) {
+        store.setAudioLanguage(options.language);
+      }
 
-    const timer = logger?.startOperation('startAudio', {
-      component: 'useArcaAudio',
-      sdk: { consultationId: consultation?.id },
-      attributes: { language: options?.language, pipelineId: options?.pipelineId },
-    });
-
-    try {
-      // Get user media
-      logger?.debug('Requesting microphone access', {
-        operation: 'startAudio',
+      const timer = logger?.startOperation('startAudio', {
         component: 'useArcaAudio',
+        sdk: { consultationId: consultation?.id },
+        attributes: { language: options?.language, pipelineId: options?.pipelineId },
       });
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const track = stream.getAudioTracks()[0];
 
-      const ctxManager = AudioContextManager.getInstance({ sampleRate: 48000 });
-      const audioContext = await ctxManager.acquire();
+      try {
+        // Get user media
+        logger?.debug('Requesting microphone access', {
+          operation: 'startAudio',
+          component: 'useArcaAudio',
+        });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const track = stream.getAudioTracks()[0];
 
-      store.setActiveStream(stream);
-      store.setActiveAudioContext(audioContext);
+        const ctxManager = AudioContextManager.getInstance({ sampleRate: 48000 });
+        const audioContext = await ctxManager.acquire();
 
-      // Set up plugin callbacks
-      pluginManager.setCallbacks({
-        onTranscription: (result: TranscriptionResult) => {
-          if (result.isFinal) {
-            store.setCurrentTranscript('');
+        store.setActiveStream(stream);
+        store.setActiveAudioContext(audioContext);
 
-            const fallbackTime = Date.now();
-            const segment: TranscriptSegment = {
-              text: result.text,
-              startTime: result.vadStreamStartSec ?? fallbackTime,
-              endTime: result.vadStreamEndSec ?? fallbackTime,
-              isFinal: true,
-              speakerLabel: result.speakerId,
-              confidence: result.confidence,
-              language: result.language,
-            };
-            store.addTranscriptSegment(segment);
+        // Set up plugin callbacks
+        pluginManager.setCallbacks({
+          onTranscription: (result: TranscriptionResult) => {
+            if (result.isFinal) {
+              store.setCurrentTranscript('');
 
-            // Auto-add transcription to context if consultation active
-            const { consultation, apiClient } = store;
-            if (consultation && apiClient) {
-              logger?.debug('Adding final transcription to context', {
-                operation: 'onTranscription',
-                component: 'useArcaAudio',
-                sdk: { consultationId: consultation.id },
-                attributes: { textLength: result.text.length, speakerId: result.speakerId },
-              });
-              apiClient
-                .post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), {
-                  type: 'TRANSCRIPT',
-                  content: result.text,
-                  source: 'TRANSCRIPTION',
-                  structuredData: {
-                    segments: result.segments ?? result.timestamps,
-                    speakerId: result.speakerId,
-                  },
-                })
-                .then((item) => store.addContextItem(item))
-                .catch((error) => {
-                  logger?.error('Failed to add transcription to context', {
-                    operation: 'onTranscription',
-                    component: 'useArcaAudio',
-                    error: error as Error,
-                    sdk: { consultationId: consultation.id },
-                  });
+              const fallbackTime = Date.now();
+              const segment: TranscriptSegment = {
+                text: result.text,
+                startTime: result.vadStreamStartSec ?? fallbackTime,
+                endTime: result.vadStreamEndSec ?? fallbackTime,
+                isFinal: true,
+                speakerLabel: result.speakerId,
+                confidence: result.confidence,
+                language: result.language,
+              };
+              store.addTranscriptSegment(segment);
+
+              // Auto-add transcription to context if consultation active
+              const { consultation, apiClient } = store;
+              if (consultation && apiClient) {
+                logger?.debug('Adding final transcription to context', {
+                  operation: 'onTranscription',
+                  component: 'useArcaAudio',
+                  sdk: { consultationId: consultation.id },
+                  attributes: { textLength: result.text.length, speakerId: result.speakerId },
                 });
-            }
-
-            // NER-L-02: Auto-trigger NER on final transcriptions via knowledge pipeline
-            const knowledgePipeline = pluginManager.getKnowledgePipeline();
-            if (knowledgePipeline && knowledgePipeline.state.isReady) {
-              logger?.debug('Auto-triggering NER on final transcription', {
-                operation: 'onTranscription',
-                component: 'useArcaAudio',
-                attributes: { textLength: result.text.length },
-              });
-              knowledgePipeline
-                .process({ text: result.text })
-                .then((output) => {
-                  if (output.entities?.length) {
-                    store.addEntities(output.entities);
-                    logger?.debug('Auto-NER entities extracted', {
+                apiClient
+                  .post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), {
+                    type: 'TRANSCRIPT',
+                    content: result.text,
+                    source: 'TRANSCRIPTION',
+                    structuredData: {
+                      segments: result.segments ?? result.timestamps,
+                      speakerId: result.speakerId,
+                    },
+                  })
+                  .then((item) => store.addContextItem(item))
+                  .catch((error) => {
+                    logger?.error('Failed to add transcription to context', {
                       operation: 'onTranscription',
                       component: 'useArcaAudio',
-                      attributes: { entityCount: output.entities.length },
+                      error: error as Error,
+                      sdk: { consultationId: consultation.id },
                     });
-                  }
-                })
-                .catch((error) => {
-                  logger?.error('Auto-NER failed on transcription', {
-                    operation: 'onTranscription',
-                    component: 'useArcaAudio',
-                    error: error as Error,
                   });
+              }
+
+              // NER-L-02: Auto-trigger NER on final transcriptions via knowledge pipeline
+              const knowledgePipeline = pluginManager.getKnowledgePipeline();
+              if (knowledgePipeline && knowledgePipeline.state.isReady) {
+                logger?.debug('Auto-triggering NER on final transcription', {
+                  operation: 'onTranscription',
+                  component: 'useArcaAudio',
+                  attributes: { textLength: result.text.length },
                 });
+                knowledgePipeline
+                  .process({ text: result.text })
+                  .then((output) => {
+                    if (output.entities?.length) {
+                      store.addEntities(output.entities);
+                      logger?.debug('Auto-NER entities extracted', {
+                        operation: 'onTranscription',
+                        component: 'useArcaAudio',
+                        attributes: { entityCount: output.entities.length },
+                      });
+                    }
+                  })
+                  .catch((error) => {
+                    logger?.error('Auto-NER failed on transcription', {
+                      operation: 'onTranscription',
+                      component: 'useArcaAudio',
+                      error: error as Error,
+                    });
+                  });
+              }
+            } else {
+              store.setCurrentTranscript(result.text);
             }
-          } else {
-            store.setCurrentTranscript(result.text);
-          }
-        },
-        onVADEvent: (event) => {
-          store.setIsSpeaking(event.type === 'speech-start');
-        },
-        onError: (error, plugin) => {
-          logger?.error(`Plugin error: ${plugin}`, {
-            operation: 'onPluginError',
-            component: 'useArcaAudio',
-            error: error,
-            attributes: { plugin },
-          });
-          store.setAudioError(error);
-        },
-      });
+          },
+          onVADEvent: (event) => {
+            store.setIsSpeaking(event.type === 'speech-start');
+          },
+          onError: (error, plugin) => {
+            logger?.error(`Plugin error: ${plugin}`, {
+              operation: 'onPluginError',
+              component: 'useArcaAudio',
+              error: error,
+              attributes: { plugin },
+            });
+            store.setAudioError(error);
+          },
+        });
 
-      // Initialize plugins
-      await pluginManager.initialize(track, audioContext);
+        // Initialize plugins
+        await pluginManager.initialize(track, audioContext);
 
-      store.setIsCapturing(true);
-      store.setAudioPlugins(pluginManager.getStates());
-      store.setAudioError(null);
+        store.setIsCapturing(true);
+        store.setAudioPlugins(pluginManager.getStates());
+        store.setAudioError(null);
 
-      timer?.end(true, {
-        attributes: {
-          sampleRate: audioContext.sampleRate,
-          trackLabel: track.label,
-        },
-      });
+        timer?.end(true, {
+          attributes: {
+            sampleRate: audioContext.sampleRate,
+            trackLabel: track.label,
+          },
+        });
 
-      logger?.info('Audio capture started', {
-        operation: 'startAudio',
-        component: 'useArcaAudio',
-        success: true,
-        sdk: { consultationId: consultation?.id },
-      });
-    } catch (error) {
-      timer?.error(error as Error);
-      store.setAudioError(error as Error);
-      throw error;
-    }
-  }, [store, getLogger]);
+        logger?.info('Audio capture started', {
+          operation: 'startAudio',
+          component: 'useArcaAudio',
+          success: true,
+          sdk: { consultationId: consultation?.id },
+        });
+      } catch (error) {
+        timer?.error(error as Error);
+        store.setAudioError(error as Error);
+        throw error;
+      }
+    },
+    [store, getLogger],
+  );
 
   const stopAudio = useCallback(async (): Promise<void> => {
     const { pluginManager, consultation } = store;
@@ -239,7 +242,9 @@ export function useArcaAudio() {
     store.setIsMuted(true);
     const { activeStream } = store;
     if (activeStream) {
-      activeStream.getAudioTracks().forEach((t) => { t.enabled = false; });
+      activeStream.getAudioTracks().forEach((t) => {
+        t.enabled = false;
+      });
     }
   }, [store, getLogger]);
 
@@ -249,7 +254,9 @@ export function useArcaAudio() {
     store.setIsMuted(false);
     const { activeStream } = store;
     if (activeStream) {
-      activeStream.getAudioTracks().forEach((t) => { t.enabled = true; });
+      activeStream.getAudioTracks().forEach((t) => {
+        t.enabled = true;
+      });
     }
   }, [store, getLogger]);
 
@@ -259,8 +266,7 @@ export function useArcaAudio() {
       const logger = getLogger();
       if (!pluginManager) return;
 
-      const newState =
-        enabled ?? !(pluginManager.getStates().noiseFilter.isActive);
+      const newState = enabled ?? !pluginManager.getStates().noiseFilter.isActive;
 
       logger?.debug('Toggling noise filter', {
         operation: 'toggleNoiseFilter',
@@ -271,7 +277,7 @@ export function useArcaAudio() {
       await pluginManager.setEnabled('noiseFilter', newState);
       store.setAudioPlugins(pluginManager.getStates());
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /**
@@ -296,7 +302,7 @@ export function useArcaAudio() {
       await pluginManager.setEnabled('stt', newState);
       store.setAudioPlugins(pluginManager.getStates());
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /**
@@ -321,7 +327,7 @@ export function useArcaAudio() {
       await pluginManager.setEnabled('vad', newState);
       store.setAudioPlugins(pluginManager.getStates());
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   // ==========================================================================
@@ -364,6 +370,6 @@ export function useArcaAudio() {
       toggleNoiseFilter,
       toggleSTT,
       toggleVAD,
-    ]
+    ],
   );
 }

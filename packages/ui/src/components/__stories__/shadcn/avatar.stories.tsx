@@ -1,13 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Avatar,
-  AvatarImage,
-  AvatarFallback,
-  AvatarBadge,
-  AvatarGroup,
-  AvatarGroupCount,
-} from '../../shadcn/avatar'
+import { Avatar, AvatarImage, AvatarFallback, AvatarBadge, AvatarGroup, AvatarGroupCount } from '../../shadcn/avatar';
 
 const meta = {
   title: 'Components/Avatar',
@@ -23,10 +16,10 @@ const meta = {
       description: 'The size of the avatar',
     },
   },
-} satisfies Meta<typeof Avatar>
+} satisfies Meta<typeof Avatar>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 // Default avatar with image and fallback
 export const Default: Story = {
@@ -36,7 +29,7 @@ export const Default: Story = {
       <AvatarFallback>CN</AvatarFallback>
     </Avatar>
   ),
-}
+};
 
 // All three sizes
 export const Sizes: Story = {
@@ -56,7 +49,7 @@ export const Sizes: Story = {
       </Avatar>
     </div>
   ),
-}
+};
 
 // Fallback initials without image
 export const Fallback: Story = {
@@ -73,7 +66,7 @@ export const Fallback: Story = {
       </Avatar>
     </div>
   ),
-}
+};
 
 // Avatar with badge indicator
 export const WithBadge: Story = {
@@ -96,7 +89,7 @@ export const WithBadge: Story = {
       </Avatar>
     </div>
   ),
-}
+};
 
 // Avatar group with count
 export const Group: Story = {
@@ -118,4 +111,4 @@ export const Group: Story = {
       <AvatarGroupCount>+3</AvatarGroupCount>
     </AvatarGroup>
   ),
-}
+};

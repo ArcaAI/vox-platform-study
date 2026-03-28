@@ -6,19 +6,8 @@
  */
 
 import { EventEmitter } from 'eventemitter3';
-import type {
-  IPipeline,
-  IPipelineStage,
-  PipelineContext,
-  PipelineState,
-  PipelineEventMap,
-} from '../types/index.js';
-import {
-  PipelineEvent,
-  PipelineError,
-  PipelineErrorCode,
-  DEFAULT_PIPELINE_STATE,
-} from '../types/index.js';
+import type { IPipeline, IPipelineStage, PipelineContext, PipelineState, PipelineEventMap } from '../types/index.js';
+import { PipelineEvent, PipelineError, PipelineErrorCode, DEFAULT_PIPELINE_STATE } from '../types/index.js';
 
 /**
  * Configuration for a stage in the parallel pipeline.
@@ -70,9 +59,7 @@ export type ParallelTriggerMode = 'auto' | 'manual';
  * await pipeline.triggerStage('spell-check');
  * ```
  */
-export class ParallelPipeline<TInput, TOutput>
-  implements IPipeline<TInput, ParallelPipelineResult<TOutput>>
-{
+export class ParallelPipeline<TInput, TOutput> implements IPipeline<TInput, ParallelPipelineResult<TOutput>> {
   readonly name: string;
 
   private stages: Map<string, StageEntry & { triggerMode: ParallelTriggerMode }> = new Map();
@@ -107,7 +94,7 @@ export class ParallelPipeline<TInput, TOutput>
       priority?: number;
       required?: boolean;
       triggerMode?: ParallelTriggerMode;
-    }
+    },
   ): void {
     const entry = {
       stage: stage as IPipelineStage<unknown, unknown>,
@@ -170,15 +157,9 @@ export class ParallelPipeline<TInput, TOutput>
   /**
    * Execute the pipeline (auto-triggered stages only).
    */
-  async execute(
-    input: TInput,
-    contextOverrides?: Partial<PipelineContext>
-  ): Promise<ParallelPipelineResult<TOutput>> {
+  async execute(input: TInput, contextOverrides?: Partial<PipelineContext>): Promise<ParallelPipelineResult<TOutput>> {
     if (this.state.status === 'RUNNING') {
-      throw new PipelineError(
-        PipelineErrorCode.ALREADY_RUNNING,
-        `Pipeline '${this.name}' is already running`
-      );
+      throw new PipelineError(PipelineErrorCode.ALREADY_RUNNING, `Pipeline '${this.name}' is already running`);
     }
 
     // Create run context
@@ -215,21 +196,15 @@ export class ParallelPipeline<TInput, TOutput>
     const startTime = performance.now();
 
     // Get auto-triggered enabled stages
-    const autoStages = Array.from(this.stages.values()).filter(
-      (e) => e.stage.config.enabled && e.triggerMode === 'auto'
-    );
+    const autoStages = Array.from(this.stages.values()).filter((e) => e.stage.config.enabled && e.triggerMode === 'auto');
 
     try {
       // Execute all auto stages in parallel
-      await Promise.all(
-        autoStages.map((entry) => this.executeStage(entry, input, context))
-      );
+      await Promise.all(autoStages.map((entry) => this.executeStage(entry, input, context)));
 
       // Check if all required stages succeeded
       const requiredStages = autoStages.filter((e) => e.required);
-      const allRequiredSucceeded = requiredStages.every(
-        (e) => this.results.has(e.stage.name)
-      );
+      const allRequiredSucceeded = requiredStages.every((e) => this.results.has(e.stage.name));
 
       const durationMs = performance.now() - startTime;
 
@@ -281,30 +256,21 @@ export class ParallelPipeline<TInput, TOutput>
   async triggerStage(stageName: string): Promise<TOutput | null> {
     const entry = this.stages.get(stageName);
     if (!entry) {
-      throw new PipelineError(
-        PipelineErrorCode.CONFIGURATION_ERROR,
-        `Stage '${stageName}' not found`
-      );
+      throw new PipelineError(PipelineErrorCode.CONFIGURATION_ERROR, `Stage '${stageName}' not found`);
     }
 
     if (!this.currentInput || !this.currentContext) {
-      throw new PipelineError(
-        PipelineErrorCode.NOT_INITIALIZED,
-        'Pipeline must be executed first to set input context'
-      );
+      throw new PipelineError(PipelineErrorCode.NOT_INITIALIZED, 'Pipeline must be executed first to set input context');
     }
 
     if (!entry.stage.config.enabled) {
-      throw new PipelineError(
-        PipelineErrorCode.CONFIGURATION_ERROR,
-        `Stage '${stageName}' is disabled`
-      );
+      throw new PipelineError(PipelineErrorCode.CONFIGURATION_ERROR, `Stage '${stageName}' is disabled`);
     }
 
     try {
       await this.executeStage(entry, this.currentInput, this.currentContext);
       return this.results.get(stageName) ?? null;
-    } catch (error) {
+    } catch {
       return null;
     }
   }
@@ -392,20 +358,14 @@ export class ParallelPipeline<TInput, TOutput>
   /**
    * Subscribe to pipeline events.
    */
-  on<K extends PipelineEvent>(
-    event: K,
-    listener: (payload: PipelineEventMap[K]) => void
-  ): void {
+  on<K extends PipelineEvent>(event: K, listener: (payload: PipelineEventMap[K]) => void): void {
     this.emitter.on(event, listener);
   }
 
   /**
    * Unsubscribe from pipeline events.
    */
-  off<K extends PipelineEvent>(
-    event: K,
-    listener: (payload: PipelineEventMap[K]) => void
-  ): void {
+  off<K extends PipelineEvent>(event: K, listener: (payload: PipelineEventMap[K]) => void): void {
     this.emitter.off(event, listener);
   }
 
@@ -416,11 +376,7 @@ export class ParallelPipeline<TInput, TOutput>
   /**
    * Execute a single stage.
    */
-  private async executeStage(
-    entry: StageEntry & { triggerMode: ParallelTriggerMode },
-    input: TInput,
-    context: PipelineContext
-  ): Promise<void> {
+  private async executeStage(entry: StageEntry & { triggerMode: ParallelTriggerMode }, input: TInput, context: PipelineContext): Promise<void> {
     const stage = entry.stage;
 
     // Check if stage can execute
@@ -447,9 +403,7 @@ export class ParallelPipeline<TInput, TOutput>
 
       this.updateState({
         completedStages: this.results.size + this.errors.size,
-        progress: Math.round(
-          ((this.results.size + this.errors.size) / this.stages.size) * 100
-        ),
+        progress: Math.round(((this.results.size + this.errors.size) / this.stages.size) * 100),
       });
     } catch (error) {
       const durationMs = performance.now() - stageStartTime;
@@ -464,9 +418,7 @@ export class ParallelPipeline<TInput, TOutput>
 
       this.updateState({
         completedStages: this.results.size + this.errors.size,
-        progress: Math.round(
-          ((this.results.size + this.errors.size) / this.stages.size) * 100
-        ),
+        progress: Math.round(((this.results.size + this.errors.size) / this.stages.size) * 100),
       });
 
       // Only throw if this is a required stage

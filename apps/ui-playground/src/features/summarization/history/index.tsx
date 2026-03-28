@@ -3,51 +3,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arca
 import { Button } from '@arcaai/ui/button';
 import { Badge } from '@arcaai/ui/badge';
 import { Input } from '@arcaai/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@arcaai/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@arcaai/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@arcaai/ui/dialog';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@arcaai/ui/tooltip';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@arcaai/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@arcaai/ui/dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@arcaai/ui/tooltip';
 import { ScrollArea } from '@arcaai/ui/scroll-area';
 import { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
-import {
-  Clock,
-  Copy,
-  Download,
-  Eye,
-  Filter,
-  History,
-  Search,
-  Sparkles,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { Clock, Copy, Download, Eye, Filter, History, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { SmrStatusBadge } from '../components/smr-status-badge';
-import type { SummaryHistoryEntry, TokenUsage } from '../api';
+import type { TokenUsage } from '../api';
 
 interface StoredResult {
   id: string;
@@ -96,12 +61,7 @@ export default function HistoryPage() {
     let result = history;
     if (search) {
       const q = search.toLowerCase();
-      result = result.filter(
-        (h) =>
-          h.content.toLowerCase().includes(q) ||
-          h.provider.toLowerCase().includes(q) ||
-          h.model.toLowerCase().includes(q),
-      );
+      result = result.filter((h) => h.content.toLowerCase().includes(q) || h.provider.toLowerCase().includes(q) || h.model.toLowerCase().includes(q));
     }
     if (typeFilter !== '_all') {
       result = result.filter((h) => h.type === typeFilter);
@@ -109,12 +69,15 @@ export default function HistoryPage() {
     return result;
   }, [history, search, typeFilter]);
 
-  const handleDelete = useCallback((id: string) => {
-    const updated = history.filter((h) => h.id !== id);
-    setHistory(updated);
-    saveHistory(updated);
-    toast.success('Entry removed');
-  }, [history]);
+  const handleDelete = useCallback(
+    (id: string) => {
+      const updated = history.filter((h) => h.id !== id);
+      setHistory(updated);
+      saveHistory(updated);
+      toast.success('Entry removed');
+    },
+    [history],
+  );
 
   const handleClearAll = useCallback(() => {
     setHistory([]);
@@ -142,9 +105,7 @@ export default function HistoryPage() {
     const preSummaries = history.filter((h) => h.type === 'pre_summary').length;
     const summaries = history.filter((h) => h.type === 'summary').length;
     const totalTokens = history.reduce((sum, h) => sum + (h.tokenUsage?.total_tokens ?? 0), 0);
-    const avgLatency = history.length > 0
-      ? history.reduce((sum, h) => sum + (h.processingTimeMs ?? 0), 0) / history.length
-      : 0;
+    const avgLatency = history.length > 0 ? history.reduce((sum, h) => sum + (h.processingTimeMs ?? 0), 0) / history.length : 0;
     return { preSummaries, summaries, totalTokens, avgLatency };
   }, [history]);
 
@@ -154,9 +115,7 @@ export default function HistoryPage() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Generation History</h1>
-            <p className="text-muted-foreground mt-1">
-              View and manage all generated pre-summaries and summaries with full metadata.
-            </p>
+            <p className="text-muted-foreground mt-1">View and manage all generated pre-summaries and summaries with full metadata.</p>
           </div>
           <SmrStatusBadge />
         </div>
@@ -195,7 +154,9 @@ export default function HistoryPage() {
             <div className="flex items-center gap-2">
               <History className="size-5" />
               <CardTitle>History</CardTitle>
-              <Badge variant="secondary" className="text-xs">{filteredHistory.length}</Badge>
+              <Badge variant="secondary" className="text-xs">
+                {filteredHistory.length}
+              </Badge>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={handleExportAll} disabled={filteredHistory.length === 0}>
@@ -222,12 +183,7 @@ export default function HistoryPage() {
                 className="pl-9 pr-8"
               />
               {search && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 size-6 -translate-y-1/2"
-                  onClick={() => setSearch('')}
-                >
+                <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 size-6 -translate-y-1/2" onClick={() => setSearch('')}>
                   <X className="size-3.5" />
                 </Button>
               )}
@@ -273,7 +229,10 @@ export default function HistoryPage() {
                     <TableRow
                       key={entry.id}
                       className="cursor-pointer"
-                      onClick={() => { setSelectedEntry(entry); setDetailOpen(true); }}
+                      onClick={() => {
+                        setSelectedEntry(entry);
+                        setDetailOpen(true);
+                      }}
                     >
                       <TableCell>
                         <Badge variant={entry.type === 'pre_summary' ? 'secondary' : 'default'} className="text-[10px]">
@@ -284,17 +243,15 @@ export default function HistoryPage() {
                         <p className="max-w-xs truncate text-sm">{entry.content}</p>
                       </TableCell>
                       <TableCell>
-                        <span className="font-mono text-xs">{entry.provider}/{entry.model}</span>
+                        <span className="font-mono text-xs">
+                          {entry.provider}/{entry.model}
+                        </span>
                       </TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">
-                        {entry.tokenUsage?.total_tokens?.toLocaleString() ?? '—'}
-                      </TableCell>
+                      <TableCell className="text-right text-xs tabular-nums">{entry.tokenUsage?.total_tokens?.toLocaleString() ?? '—'}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">
                         {entry.processingTimeMs ? `${(entry.processingTimeMs / 1000).toFixed(1)}s` : '—'}
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-xs">
-                        {new Date(entry.createdAt).toLocaleString()}
-                      </TableCell>
+                      <TableCell className="text-muted-foreground text-xs">{new Date(entry.createdAt).toLocaleString()}</TableCell>
                       <TableCell>
                         <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                           <TooltipProvider delayDuration={0}>
@@ -335,9 +292,7 @@ export default function HistoryPage() {
               <Eye className="size-4" />
               {selectedEntry?.type === 'pre_summary' ? 'Pre-Summary' : 'Summary'} Detail
             </DialogTitle>
-            <DialogDescription>
-              Generated on {selectedEntry?.createdAt ? new Date(selectedEntry.createdAt).toLocaleString() : '—'}
-            </DialogDescription>
+            <DialogDescription>Generated on {selectedEntry?.createdAt ? new Date(selectedEntry.createdAt).toLocaleString() : '—'}</DialogDescription>
           </DialogHeader>
           {selectedEntry && (
             <ScrollArea className="max-h-[60vh]">
@@ -350,10 +305,14 @@ export default function HistoryPage() {
                     {selectedEntry.provider}/{selectedEntry.model}
                   </Badge>
                   {selectedEntry.format && (
-                    <Badge variant="outline" className="text-[10px]">{selectedEntry.format}</Badge>
+                    <Badge variant="outline" className="text-[10px]">
+                      {selectedEntry.format}
+                    </Badge>
                   )}
                   {selectedEntry.dnaStyle && (
-                    <Badge variant="outline" className="text-[10px]">DNA: {selectedEntry.dnaStyle}</Badge>
+                    <Badge variant="outline" className="text-[10px]">
+                      DNA: {selectedEntry.dnaStyle}
+                    </Badge>
                   )}
                 </div>
 
@@ -372,7 +331,8 @@ export default function HistoryPage() {
                   <div>
                     <p className="text-muted-foreground text-xs">Prompt / Completion</p>
                     <p className="text-sm font-medium">
-                      {selectedEntry.tokenUsage?.prompt_tokens?.toLocaleString() ?? '—'} / {selectedEntry.tokenUsage?.completion_tokens?.toLocaleString() ?? '—'}
+                      {selectedEntry.tokenUsage?.prompt_tokens?.toLocaleString() ?? '—'} /{' '}
+                      {selectedEntry.tokenUsage?.completion_tokens?.toLocaleString() ?? '—'}
                     </p>
                   </div>
                 </div>
@@ -386,15 +346,19 @@ export default function HistoryPage() {
                     <Copy className="mr-1.5 size-3.5" />
                     Copy
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => {
-                    const blob = new Blob([selectedEntry.content], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${selectedEntry.type}-${selectedEntry.id.slice(0, 8)}.txt`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const blob = new Blob([selectedEntry.content], { type: 'text/plain' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `${selectedEntry.type}-${selectedEntry.id.slice(0, 8)}.txt`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                  >
                     <Download className="mr-1.5 size-3.5" />
                     Download
                   </Button>

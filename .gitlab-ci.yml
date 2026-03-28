@@ -76,6 +76,20 @@ variables:
   GITHUB_REPO_URL: "https://github.com/4bits-vn/project-hope-v2.git"
   GITHUB_BACKUP_BRANCH: "back-up"
   #
+  # ── Manual skip controls ────────────────────────────────────────────────────
+  # Set any of these to "true" when running a pipeline to skip stages:
+  #   SKIP_TESTS       — skip ALL test jobs
+  #   SKIP_TESTS_TS    — skip TypeScript test jobs (test-api, test-packages, test-sdk)
+  #   SKIP_TESTS_PY    — skip Python test jobs (test-stt-v2, test-smr, test-nlp)
+  #
+  # Usage:
+  #   1. GitLab UI → CI/CD → Run pipeline → add variable SKIP_TESTS = true
+  #   2. API:  curl --form "variables[SKIP_TESTS]=true" ...trigger...
+  #   3. git push -o ci.variable="SKIP_TESTS=true"
+  SKIP_TESTS: ""
+  SKIP_TESTS_TS: ""
+  SKIP_TESTS_PY: ""
+  #
   # ── Test environment ───────────────────────────────────────────────────────
   # These provide defaults for test jobs. Secrets (DATABASE_URL, REDIS_PASS,
   # JWT_SECRET, etc.) MUST be set in GitLab CI/CD Variables (masked+protected):
@@ -84,9 +98,9 @@ variables:
   #
   #   Variable                 | Value                                                      | Flags
   #   ─────────────────────────┼────────────────────────────────────────────────────────────┼──────────────────
-  #   CI_DATABASE_URL          | postgresql://ci_user:****@ha-postgres:5432/vox-staging     | masked, protected
-  #   CI_DATABASE_URL_DIRECT   | postgresql://ci_user:****@ha-postgres:5432/vox-staging     | masked, protected
-  #   CI_REDIS_URL             | redis://:****@ha-redis:6379                                | masked, protected
+  #   CI_DATABASE_URL          | postgresql://ci_user:****@10.10.1.250:5000/vox_staging     | masked, protected
+  #   CI_DATABASE_URL_DIRECT   | postgresql://ci_user:****@10.10.1.250:5000/vox_staging     | masked, protected
+  #   CI_REDIS_URL             | redis://:****@10.10.1.120:6379/8                           | masked, protected
   #   CI_REDIS_PASS            | ****                                                      | masked, protected
   #   CI_JWT_SECRET            | <random 64-char string>                                   | masked, protected
   #   CI_JWT_REFRESH_SECRET    | <random 64-char string>                                   | masked, protected

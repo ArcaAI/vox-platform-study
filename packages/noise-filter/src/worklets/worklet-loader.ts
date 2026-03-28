@@ -202,10 +202,7 @@ const loader = createWorkletLoader({
  * @param audioContext - The AudioContext to register with
  * @param workletUrl - Optional URL to the worklet file (uses blob URL if not provided)
  */
-export async function registerRNNoiseWorklet(
-  audioContext: AudioContext,
-  workletUrl?: string
-): Promise<void> {
+export async function registerRNNoiseWorklet(audioContext: AudioContext, workletUrl?: string): Promise<void> {
   try {
     await loader.register(audioContext, workletUrl);
   } catch (error) {
@@ -218,7 +215,7 @@ export async function registerRNNoiseWorklet(
     throw new NoiseFilterError(
       NoiseFilterErrorCode.WORKLET_REGISTRATION_FAILED,
       `Failed to register AudioWorklet: ${message}`,
-      error instanceof Error ? error : undefined
+      error instanceof Error ? error : undefined,
     );
   }
 }
@@ -238,14 +235,9 @@ export function isWorkletRegistered(audioContext: AudioContext): boolean {
  * @param audioContext - The AudioContext
  * @returns AudioWorkletNode for RNNoise processing
  */
-export function createRNNoiseWorkletNode(
-  audioContext: AudioContext
-): AudioWorkletNode {
+export function createRNNoiseWorkletNode(audioContext: AudioContext): AudioWorkletNode {
   if (!loader.isRegistered(audioContext)) {
-    throw new NoiseFilterError(
-      NoiseFilterErrorCode.WORKLET_REGISTRATION_FAILED,
-      'Worklet not registered. Call registerRNNoiseWorklet first.'
-    );
+    throw new NoiseFilterError(NoiseFilterErrorCode.WORKLET_REGISTRATION_FAILED, 'Worklet not registered. Call registerRNNoiseWorklet first.');
   }
 
   return new AudioWorkletNode(audioContext, WORKLET_PROCESSOR_NAME, {
