@@ -695,6 +695,25 @@ export class ContextService extends BaseService implements IContextService {
   }
 
   /**
+   * Add attachment to consultation
+   */
+  async addAttachment(consultationId: string, content?: string): Promise<ContextItemResponse> {
+    return this.addContext(consultationId, {
+      type: ContextItemType.ATTACHMENT,
+      source: ContextItemSource.USER,
+      content,
+    });
+  }
+
+  /**
+   * Get attachments for consultation
+   */
+  async getAttachments(consultationId: string): Promise<ContextItemResponse[]> {
+    const items = await this.contextItemRepository.findAttachments(consultationId);
+    return items.map(ContextDtoMapper.toResponse);
+  }
+
+  /**
    * Get pre-summaries for consultation
    */
   async getPreSummaries(consultationId: string): Promise<ContextItemResponse[]> {

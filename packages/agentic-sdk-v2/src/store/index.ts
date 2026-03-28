@@ -8,6 +8,8 @@ export {
   useAgenticStore,
   selectTranscriptions,
   selectCaseNotes,
+  selectWorknotes,
+  selectAttachments,
   selectSummaryItems,
   selectLatestSummary,
   selectLatestPreSummary,

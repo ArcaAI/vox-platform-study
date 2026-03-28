@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { useState, useRef } from 'react';
-import { FileText, Upload, Mic, ClipboardList, Loader2, X, FileAudio, Paperclip } from 'lucide-react';
+import { FileText, Upload, Mic, ClipboardList, Loader2, X, FileAudio, Paperclip, StickyNote } from 'lucide-react';
 
 const caseNoteSchema = z.object({
   content: z.string().min(1, 'Content is required'),
@@ -20,8 +20,11 @@ const summarySchema = z.object({
   content: z.string().min(1, 'Summary content is required'),
 });
 
+const worknoteSchema = z.object({ content: z.string().min(1, 'Content is required') });
+
 type CaseNoteValues = z.infer<typeof caseNoteSchema>;
 type SummaryValues = z.infer<typeof summarySchema>;
+type WorknoteValues = z.infer<typeof worknoteSchema>;
 
 interface CaseNoteFormProps {
   consultationId: string;
@@ -38,6 +41,8 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
   const audioInputRef = useRef<HTMLInputElement>(null);
   const caseNoteFileRef = useRef<HTMLInputElement>(null);
   const summaryFileRef = useRef<HTMLInputElement>(null);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const attachmentFileRef = useRef<HTMLInputElement>(null);
 
   const caseNoteForm = useForm<CaseNoteValues>({
     resolver: zodResolver(caseNoteSchema),
@@ -46,6 +51,11 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
 
   const summaryForm = useForm<SummaryValues>({
     resolver: zodResolver(summarySchema),
+    defaultValues: { content: '' },
+  });
+
+  const worknoteForm = useForm<WorknoteValues>({
+    resolver: zodResolver(worknoteSchema),
     defaultValues: { content: '' },
   });
 
@@ -136,6 +146,49 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
     }
   };
 
+  const handleWorknote = async (data: WorknoteValues) => {
+    setIsLoading(true);
+    try {
+      await context.addContext({ type: 'WORKNOTE', content: data.content, source: 'USER' });
+      toast.success('Work note added successfully');
+      worknoteForm.reset();
+      onSuccess?.();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to add work note';
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAttachmentUpload = async () => {
+    if (!attachmentFile) {
+      toast.error('Please select a file first');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const key = await uploadAttachment(attachmentFile);
+      if (key) {
+        await context.addContext({
+          type: 'ATTACHMENT',
+          content: `Attachment: ${attachmentFile.name}`,
+          source: 'USER',
+          metadata: { attachmentKey: key },
+        });
+        toast.success('Attachment uploaded successfully');
+        setAttachmentFile(null);
+        if (attachmentFileRef.current) attachmentFileRef.current.value = '';
+        onSuccess?.();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to upload attachment';
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -147,7 +200,7 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="case-note">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="case-note" className="gap-1.5">
               <FileText className="size-3.5" />
               Case Note
@@ -156,9 +209,17 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
               <ClipboardList className="size-3.5" />
               Summary
             </TabsTrigger>
+            <TabsTrigger value="worknote" className="gap-1.5">
+              <StickyNote className="size-3.5" />
+              Work Note
+            </TabsTrigger>
             <TabsTrigger value="audio" className="gap-1.5">
               <Mic className="size-3.5" />
               Audio File
+            </TabsTrigger>
+            <TabsTrigger value="attachment" className="gap-1.5">
+              <Paperclip className="size-3.5" />
+              Attachment
             </TabsTrigger>
           </TabsList>
 
@@ -266,6 +327,32 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
             </form>
           </TabsContent>
 
+          <TabsContent value="worknote" className="mt-4">
+            <form onSubmit={worknoteForm.handleSubmit(handleWorknote)} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="wn-content">
+                  Content <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="wn-content"
+                  rows={8}
+                  placeholder="Enter work notes, internal observations, or task-related details..."
+                  aria-invalid={!!worknoteForm.formState.errors.content}
+                  {...worknoteForm.register('content')}
+                />
+                {worknoteForm.formState.errors.content && (
+                  <p className="text-destructive text-sm" role="alert">
+                    {worknoteForm.formState.errors.content.message}
+                  </p>
+                )}
+              </div>
+              <Button type="submit" disabled={isLoading}>
+                {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
+                {isLoading ? 'Adding...' : 'Add Work Note'}
+              </Button>
+            </form>
+          </TabsContent>
+
           <TabsContent value="audio" className="mt-4">
             <div className="space-y-4">
               <div className="space-y-2">
@@ -296,6 +383,39 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
               <Button onClick={handleAudioUpload} disabled={isLoading || !audioFile}>
                 {isLoading ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Upload className="mr-1.5 size-4" />}
                 {isLoading ? 'Uploading...' : 'Upload Audio'}
+              </Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="attachment" className="mt-4">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="attachment-file">File</Label>
+                <Input ref={attachmentFileRef} id="attachment-file" type="file" onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)} />
+              </div>
+              {attachmentFile && (
+                <div className="flex items-center gap-3 rounded-lg border p-3">
+                  <Paperclip className="text-muted-foreground size-5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{attachmentFile.name}</p>
+                    <p className="text-muted-foreground text-xs">{(attachmentFile.size / 1024 / 1024).toFixed(1)} MB</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setAttachmentFile(null);
+                      if (attachmentFileRef.current) attachmentFileRef.current.value = '';
+                    }}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
+              )}
+              <Button onClick={handleAttachmentUpload} disabled={isLoading || !attachmentFile}>
+                {isLoading ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Upload className="mr-1.5 size-4" />}
+                {isLoading ? 'Uploading...' : 'Upload Attachment'}
               </Button>
             </div>
           </TabsContent>

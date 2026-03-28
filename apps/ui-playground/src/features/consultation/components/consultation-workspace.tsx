@@ -10,7 +10,7 @@ import type { Consultation, ContextItem, ContextVersionEntry, SummaryVersionEntr
 import { DEFAULT_PAGE_SIZE, useArca } from '@arcaai/vox';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
-import { Bot, ClipboardList, FileText, History, Mic, Plus, Search } from 'lucide-react';
+import { Bot, ClipboardList, FileText, History, Mic, Paperclip, Plus, Search, StickyNote, Tags } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ElementType } from 'react';
 import { toast } from 'sonner';
 import { CaseNoteForm } from './case-note-form';
@@ -41,6 +41,9 @@ const typeIcon: Record<string, ElementType> = {
   RAW_SUMMARY: Bot,
   MODIFIED_SUMMARY: Bot,
   PRE_SUMMARY: Bot,
+  WORKNOTE: StickyNote,
+  NAMED_ENTITY: Tags,
+  ATTACHMENT: Paperclip,
 };
 
 const typeLabel: Record<string, string> = {
@@ -52,6 +55,7 @@ const typeLabel: Record<string, string> = {
   PRE_SUMMARY: 'Pre-Summary',
   WORKNOTE: 'Work Note',
   ATTACHMENT: 'Attachment',
+  NAMED_ENTITY: 'Named Entity',
 };
 
 const contextTypeOptions: Array<{ value: string; label: string }> = [
@@ -62,6 +66,9 @@ const contextTypeOptions: Array<{ value: string; label: string }> = [
   { value: 'RAW_SUMMARY', label: typeLabel.RAW_SUMMARY },
   { value: 'MODIFIED_SUMMARY', label: typeLabel.MODIFIED_SUMMARY },
   { value: 'PRE_SUMMARY', label: typeLabel.PRE_SUMMARY },
+  { value: 'WORKNOTE', label: typeLabel.WORKNOTE },
+  { value: 'NAMED_ENTITY', label: typeLabel.NAMED_ENTITY },
+  { value: 'ATTACHMENT', label: typeLabel.ATTACHMENT },
 ];
 
 interface DoctorInfo {
@@ -188,8 +195,8 @@ export function ConsultationWorkspace() {
       const consultationId = selectedConsultationId;
       if (!consultationId) return [];
       await sessionRef.current.load(consultationId);
-      const [caseNotes, transcriptions] = await Promise.all([contextRef.current.fetchCaseNotes(), contextRef.current.fetchTranscriptions()]);
-      const all = [...(caseNotes ?? []), ...(transcriptions ?? [])];
+      const items = await contextRef.current.getItems();
+      const all = items ?? [];
       all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       return all;
     },
