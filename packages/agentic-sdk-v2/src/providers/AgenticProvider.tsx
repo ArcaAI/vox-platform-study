@@ -200,28 +200,13 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
 
     // Create personalization manager
     const personalizationConfig = cfg.personalization ?? DEFAULT_PERSONALIZATION_CONFIG;
-    const personalizationManager = new PersonalizationManager(
-      personalizationConfig,
-      apiClient,
-      logger.child('PersonalizationManager')
-    );
+    const personalizationManager = new PersonalizationManager(personalizationConfig, apiClient, logger.child('PersonalizationManager'));
 
     // Create model registry
-    const modelRegistry = new ModelRegistry(
-      cfg.models ?? {},
-      apiClient,
-      logger.child('ModelRegistry')
-    );
+    const modelRegistry = new ModelRegistry(cfg.models ?? {}, apiClient, logger.child('ModelRegistry'));
 
     // Initialize store
-    store.initialize(
-      cfg,
-      apiClient,
-      pluginManager,
-      personalizationManager,
-      modelRegistry,
-      logger
-    );
+    store.initialize(cfg, apiClient, pluginManager, personalizationManager, modelRegistry, logger);
 
     // Initialize knowledge pipeline if NER is configured (NER-L-03 fix)
     // NER config lives under `plugins.ner` (PluginConfig), not `audio` (AudioPluginConfig).
@@ -229,21 +214,24 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     if (nerConfig && nerConfig.enabled) {
       pluginManager.setNERConfig(nerConfig);
       const nerOp = providerLogger.startOperation('initKnowledgePipeline');
-      pluginManager.initializeKnowledgePipeline().then(() => {
-        nerOp.end(true);
-        providerLogger.info('Knowledge pipeline initialized', {
-          operation: 'initKnowledgePipeline',
-          component: 'AgenticProvider',
-          success: true,
+      pluginManager
+        .initializeKnowledgePipeline()
+        .then(() => {
+          nerOp.end(true);
+          providerLogger.info('Knowledge pipeline initialized', {
+            operation: 'initKnowledgePipeline',
+            component: 'AgenticProvider',
+            success: true,
+          });
+        })
+        .catch((error) => {
+          nerOp.error(error as Error);
+          providerLogger.error('Failed to initialize knowledge pipeline', {
+            operation: 'initKnowledgePipeline',
+            component: 'AgenticProvider',
+            error: error as Error,
+          });
         });
-      }).catch((error) => {
-        nerOp.error(error as Error);
-        providerLogger.error('Failed to initialize knowledge pipeline', {
-          operation: 'initKnowledgePipeline',
-          component: 'AgenticProvider',
-          error: error as Error,
-        });
-      });
     }
 
     // Start personalization sync if hybrid mode
@@ -258,29 +246,35 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     // Load preferences from backend if not local-only
     if (personalizationConfig.storage !== 'local') {
       const loadOp = providerLogger.startOperation('loadPreferences');
-      personalizationManager.loadFromBackend().then(() => {
-        store.setPreferences(personalizationManager.getPreferences());
-        loadOp.end(true);
-      }).catch((error) => {
-        loadOp.error(error as Error, {
-          attributes: { storage: personalizationConfig.storage },
+      personalizationManager
+        .loadFromBackend()
+        .then(() => {
+          store.setPreferences(personalizationManager.getPreferences());
+          loadOp.end(true);
+        })
+        .catch((error) => {
+          loadOp.error(error as Error, {
+            attributes: { storage: personalizationConfig.storage },
+          });
         });
-      });
     }
 
     // Load tenant configuration (server resolves tenant from JWT)
     const tenantOp = providerLogger.startOperation('loadTenantConfig');
-    modelRegistry.loadTenantConfig().then((tenantConfig) => {
-      store.setTenantConfig(tenantConfig);
-      tenantOp.end(true, {
-        attributes: {
-          defaultSttModel: tenantConfig.defaultSttModel,
-          features: tenantConfig.features,
-        },
+    modelRegistry
+      .loadTenantConfig()
+      .then((tenantConfig) => {
+        store.setTenantConfig(tenantConfig);
+        tenantOp.end(true, {
+          attributes: {
+            defaultSttModel: tenantConfig.defaultSttModel,
+            features: tenantConfig.features,
+          },
+        });
+      })
+      .catch((error) => {
+        tenantOp.error(error as Error);
       });
-    }).catch((error) => {
-      tenantOp.error(error as Error);
-    });
 
     // -----------------------------------------------------------------------
     // Three-tier ConfigManager (TASK-244)
@@ -316,7 +310,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
 
         // If tenant config contains explicit locked paths, use them
         if ('lockedPaths' in tenantCfg && Array.isArray((tenantCfg as Record<string, unknown>).lockedPaths)) {
-          lockedPaths.push(...(tenantCfg as Record<string, unknown>).lockedPaths as string[]);
+          lockedPaths.push(...((tenantCfg as Record<string, unknown>).lockedPaths as string[]));
         }
 
         configManager.setTenantConfig(tenantOverrides, lockedPaths);
@@ -377,8 +371,8 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         logger.shutdown();
       });
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Run once on mount.
-  // Cleanup properly destroys managers; React Strict Mode re-mount recreates them.
+    // eslint-disable-next-line -- Run once on mount; exhaustive-deps rule not in this ESLint config.
+    // Cleanup properly destroys managers; React Strict Mode re-mount recreates them.
   }, []);
 
   // Synchronously sync auth/tenant config to the existing AgenticClient on every
@@ -427,14 +421,10 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
       config,
       logger: loggerRef.current || createSDKLogger({ level: 'info' }),
     }),
-    [store.initialized, config]
+    [store.initialized, config],
   );
 
-  return (
-    <AgenticContext.Provider value={contextValue}>
-      {children}
-    </AgenticContext.Provider>
-  );
+  return <AgenticContext.Provider value={contextValue}>{children}</AgenticContext.Provider>;
 }
 
 // =============================================================================
@@ -449,9 +439,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
 export function useAgenticContext(): AgenticContextValue {
   const context = useContext(AgenticContext);
   if (!context) {
-    throw new Error(
-      'useAgenticContext must be used within an <AgenticProvider>'
-    );
+    throw new Error('useAgenticContext must be used within an <AgenticProvider>');
   }
   return context;
 }

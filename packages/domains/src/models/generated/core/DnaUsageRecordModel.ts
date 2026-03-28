@@ -6,18 +6,18 @@ import { BaseTenantDataModel } from '../../../common';
 import * as Models from './';
 
 export class DnaUsageRecord extends BaseTenantDataModel {
-    public doctorId: string | null;
-    public dnaReportId: string | null;
-    public dnaVersionNumber: number | null;
-    public consultationId: string | null;
-    public departmentId: string | null;
+  public doctorId: string | null;
+  public dnaReportId: string | null;
+  public dnaVersionNumber: number | null;
+  public consultationId: string | null;
+  public departmentId: string | null;
 
-    constructor(data: DnaUsageRecord & BaseTenantDataModel) {
-        super(data);
-        this.doctorId = data.doctorId;
-        this.dnaReportId = data.dnaReportId;
-        this.dnaVersionNumber = data.dnaVersionNumber;
-        this.consultationId = data.consultationId;
-        this.departmentId = data.departmentId;
-    }
+  constructor(data: DnaUsageRecord & BaseTenantDataModel) {
+    super(data);
+    this.doctorId = data.doctorId;
+    this.dnaReportId = data.dnaReportId;
+    this.dnaVersionNumber = data.dnaVersionNumber;
+    this.consultationId = data.consultationId;
+    this.departmentId = data.departmentId;
+  }
 }

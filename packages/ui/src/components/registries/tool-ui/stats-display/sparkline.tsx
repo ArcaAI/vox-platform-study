@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import type { CSSProperties } from "react";
-import { useId } from "react";
-import { cn } from "./_adapter";
+import type { CSSProperties } from 'react';
+import { useId } from 'react';
+import { cn } from './_adapter';
 
 export interface SparklineProps {
   data: number[];
@@ -17,7 +17,7 @@ export interface SparklineProps {
 
 export function Sparkline({
   data,
-  color = "currentColor",
+  color = 'currentColor',
   width = 64,
   height = 24,
   className,
@@ -41,29 +41,23 @@ export function Sparkline({
 
   const linePoints = data.map((value, index) => {
     const x = padding + (index / (data.length - 1)) * usableWidth;
-    const y =
-      padding + usableHeight - ((value - minVal) / range) * usableHeight;
+    const y = padding + usableHeight - ((value - minVal) / range) * usableHeight;
     return { x, y };
   });
 
-  const linePointsString = linePoints.map((p) => `${p.x},${p.y}`).join(" ");
+  const linePointsString = linePoints.map((p) => `${p.x},${p.y}`).join(' ');
 
-  const areaPointsString = [
-    `${padding},${height}`,
-    ...linePoints.map((p) => `${p.x},${p.y}`),
-    `${width - padding},${height}`,
-  ].join(" ");
+  const areaPointsString = [`${padding},${height}`, ...linePoints.map((p) => `${p.x},${p.y}`), `${width - padding},${height}`].join(' ');
 
-  const animationDelay = style?.animationDelay ?? "0ms";
-  const baseAnimationDelay =
-    typeof animationDelay === "number" ? `${animationDelay}ms` : animationDelay;
+  const animationDelay = style?.animationDelay ?? '0ms';
+  const baseAnimationDelay = typeof animationDelay === 'number' ? `${animationDelay}ms` : animationDelay;
   const secondaryAnimationDelay = `calc(${baseAnimationDelay} + 100ms)`;
 
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
       aria-hidden="true"
-      className={cn("h-full w-full shrink-0", className)}
+      className={cn('h-full w-full shrink-0', className)}
       style={style}
       preserveAspectRatio="none"
     >

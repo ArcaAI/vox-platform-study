@@ -1,6 +1,7 @@
 """Storage path resolver for MinIO."""
 
 import logging
+import re
 from datetime import datetime
 from typing import Literal
 
@@ -157,6 +158,132 @@ class StoragePathResolver:
         else:
             return f"{tenant_id}/{year}/{month}/jobs/transcripts/{filename}"
 
+    def _streaming_base(
+        self,
+        tenant_id: str,
+        session_id: str,
+        timestamp: datetime | None = None,
+    ) -> str:
+        """Return the common prefix for all streaming paths.
+
+        Format: ``{tenant_id}/{year}/{month}/streaming/{session_id}``
+        """
+        safe_tenant = self._sanitize_path_segment(tenant_id)
+        safe_session = self._sanitize_path_segment(session_id)
+        ts = timestamp or datetime.utcnow()
+        year = ts.strftime("%Y")
+        month = ts.strftime("%m")
+        return f"{safe_tenant}/{year}/{month}/streaming/{safe_session}"
+
+    def streaming_raw_chunk_path(
+        self,
+        tenant_id: str,
+        session_id: str,
+        chunk_index: int,
+        timestamp: datetime | None = None,
+    ) -> str:
+        """Generate path for a periodic raw PCM chunk.
+
+        Format: ``{tenant_id}/{year}/{month}/streaming/{session_id}/raw/chunk_{NNNN}.pcm``
+
+        Args:
+            tenant_id: Tenant ID.
+            session_id: Streaming session ID.
+            chunk_index: Zero-based chunk sequence number.
+            timestamp: Optional timestamp for year/month partitioning.
+
+        Returns:
+            Storage path (without bucket prefix).
+        """
+        base = self._streaming_base(tenant_id, session_id, timestamp)
+        return f"{base}/raw/chunk_{chunk_index:04d}.pcm"
+
+    def streaming_processed_chunk_path(
+        self,
+        tenant_id: str,
+        session_id: str,
+        chunk_index: int,
+        timestamp: datetime | None = None,
+    ) -> str:
+        """Generate path for a processed audio chunk.
+
+        Format: ``{tenant_id}/{year}/{month}/streaming/{session_id}/processed/chunk_{NNNN}.pcm``
+
+        Args:
+            tenant_id: Tenant ID.
+            session_id: Streaming session ID.
+            chunk_index: Zero-based chunk sequence number.
+            timestamp: Optional timestamp for year/month partitioning.
+
+        Returns:
+            Storage path (without bucket prefix).
+        """
+        base = self._streaming_base(tenant_id, session_id, timestamp)
+        return f"{base}/processed/chunk_{chunk_index:04d}.pcm"
+
+    def streaming_raw_complete_path(
+        self,
+        tenant_id: str,
+        session_id: str,
+        timestamp: datetime | None = None,
+    ) -> str:
+        """Generate path for the final combined WAV.
+
+        Format: ``{tenant_id}/{year}/{month}/streaming/{session_id}/raw/complete.wav``
+
+        Args:
+            tenant_id: Tenant ID.
+            session_id: Streaming session ID.
+            timestamp: Optional timestamp for year/month partitioning.
+
+        Returns:
+            Storage path (without bucket prefix).
+        """
+        base = self._streaming_base(tenant_id, session_id, timestamp)
+        return f"{base}/raw/complete.wav"
+
+    def streaming_transcript_path(
+        self,
+        tenant_id: str,
+        session_id: str,
+        timestamp: datetime | None = None,
+    ) -> str:
+        """Generate path for the session transcript.
+
+        Format: ``{tenant_id}/{year}/{month}/streaming/{session_id}/transcript.json``
+
+        Args:
+            tenant_id: Tenant ID.
+            session_id: Streaming session ID.
+            timestamp: Optional timestamp for year/month partitioning.
+
+        Returns:
+            Storage path (without bucket prefix).
+        """
+        base = self._streaming_base(tenant_id, session_id, timestamp)
+        return f"{base}/transcript.json"
+
+    def streaming_metadata_path(
+        self,
+        tenant_id: str,
+        session_id: str,
+        timestamp: datetime | None = None,
+    ) -> str:
+        """Generate path for the session metadata.
+
+        Format: ``{tenant_id}/{year}/{month}/streaming/{session_id}/metadata.json``
+
+        Args:
+            tenant_id: Tenant ID.
+            session_id: Streaming session ID.
+            timestamp: Optional timestamp for year/month partitioning.
+
+        Returns:
+            Storage path (without bucket prefix).
+        """
+        base = self._streaming_base(tenant_id, session_id, timestamp)
+        return f"{base}/metadata.json"
+
     def model_cache_path(
         self,
         model_slug: str,
@@ -244,6 +371,17 @@ class StoragePathResolver:
         path = parts[1] if len(parts) > 1 else ""
 
         return bucket, path
+
+    _SAFE_SEGMENT_RE = re.compile(r"[^A-Za-z0-9_\-.]")
+
+    def _sanitize_path_segment(self, segment: str) -> str:
+        """Strip characters unsafe for S3 object-key segments.
+
+        Only ``[A-Za-z0-9_-.]`` are kept; everything else is replaced
+        with ``_``.  Empty or whitespace-only inputs become ``_unknown``.
+        """
+        cleaned = self._SAFE_SEGMENT_RE.sub("_", segment.strip())
+        return cleaned or "_unknown"
 
     def _sanitize_filename(self, filename: str) -> str:
         """

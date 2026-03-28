@@ -8,9 +8,7 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 @Injectable()
 export class UserRepository extends Repository<UserEntity, User> {
-    constructor(
-        private readonly unitOfWorkService: CoreUnitOfWorkService
-    ) {
-        super(unitOfWorkService, 'user', UserEntityMapper.getInstance(), undefined, ['username', 'externalId']);
-    }
+  constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
+    super(unitOfWorkService, 'user', UserEntityMapper.getInstance(), undefined, ['username', 'externalId']);
+  }
 }

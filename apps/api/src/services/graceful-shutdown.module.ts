@@ -9,13 +9,13 @@ import { GracefulShutdownService, IGracefulShutdownService } from './graceful-sh
  */
 @Global()
 @Module({
-    providers: [
-        {
-            provide: IGracefulShutdownService,
-            useClass: GracefulShutdownService,
-        },
-        GracefulShutdownService,
-    ],
-    exports: [IGracefulShutdownService, GracefulShutdownService],
+  providers: [
+    {
+      provide: IGracefulShutdownService,
+      useClass: GracefulShutdownService,
+    },
+    GracefulShutdownService,
+  ],
+  exports: [IGracefulShutdownService, GracefulShutdownService],
 })
 export class GracefulShutdownModule {}

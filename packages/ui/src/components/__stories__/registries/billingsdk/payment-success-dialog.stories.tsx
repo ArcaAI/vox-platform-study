@@ -1,13 +1,13 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
-import { useRef } from "react";
-import { Button } from "@/components/shadcn/button";
-import { PaymentSuccessDialog } from "@/components/registries/billingsdk";
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useRef } from 'react';
+import { Button } from '@/components/shadcn/button';
+import { PaymentSuccessDialog } from '@/components/registries/billingsdk';
 
 const meta = {
-  title: "Registries/BillingSDK/PaymentSuccessDialog",
+  title: 'Registries/BillingSDK/PaymentSuccessDialog',
   component: PaymentSuccessDialog,
-  parameters: { layout: "centered" },
-  tags: ["autodocs"],
+  parameters: { layout: 'centered' },
+  tags: ['autodocs'],
 } satisfies Meta<typeof PaymentSuccessDialog>;
 
 export default meta;
@@ -15,8 +15,8 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
-    price: "19.99",
-    productName: "Pro Plan",
+    price: '19.99',
+    productName: 'Pro Plan',
   },
   render: (args) => {
     const ref = useRef<{ open: () => void; close: () => void }>(null);

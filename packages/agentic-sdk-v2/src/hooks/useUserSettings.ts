@@ -54,10 +54,7 @@ export function useUserSettings(): UseUserSettingsReturn {
   );
 
   const get = useCallback(
-    (id: string) =>
-      execute<UserSetting>('get', (client) =>
-        client.get<UserSetting>(USER_SETTINGS_ENDPOINTS.GET(id)),
-      ),
+    (id: string) => execute<UserSetting>('get', (client) => client.get<UserSetting>(USER_SETTINGS_ENDPOINTS.GET(id))),
     [execute],
   );
 

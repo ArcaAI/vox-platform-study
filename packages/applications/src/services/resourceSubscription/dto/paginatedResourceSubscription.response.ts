@@ -5,6 +5,6 @@ import { ResourceSubscriptionResponse } from '.';
 // TODO: Implement this
 
 export class PaginatedResourceSubscriptionResponse extends PaginatedResponse<ResourceSubscriptionResponse> {
-    @ApiProperty({ type: [ResourceSubscriptionResponse] })
-    override readonly data!: readonly ResourceSubscriptionResponse[];
+  @ApiProperty({ type: [ResourceSubscriptionResponse] })
+  override readonly data!: readonly ResourceSubscriptionResponse[];
 }

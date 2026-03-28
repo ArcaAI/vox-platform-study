@@ -69,12 +69,7 @@ export interface ModelLoadProgress {
 /**
  * Model load status
  */
-export type ModelLoadStatus =
-  | 'pending'
-  | 'downloading'
-  | 'loading'
-  | 'ready'
-  | 'error';
+export type ModelLoadStatus = 'pending' | 'downloading' | 'loading' | 'ready' | 'error';
 
 /**
  * Model load options
@@ -151,10 +146,7 @@ export const DEFAULT_VAD_MODELS: ModelDefinition[] = [
 /**
  * All default models
  */
-export const DEFAULT_MODELS: ModelDefinition[] = [
-  ...DEFAULT_STT_MODELS,
-  ...DEFAULT_VAD_MODELS,
-];
+export const DEFAULT_MODELS: ModelDefinition[] = [...DEFAULT_STT_MODELS, ...DEFAULT_VAD_MODELS];
 
 // =============================================================================
 // Model Registry Actions

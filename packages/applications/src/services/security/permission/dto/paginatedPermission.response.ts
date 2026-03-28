@@ -5,6 +5,6 @@ import { PermissionResponse } from '.';
 // TODO: Implement this
 
 export class PaginatedPermissionResponse extends PaginatedResponse<PermissionResponse> {
-    @ApiProperty({ type: [PermissionResponse] })
-    override readonly data!: readonly PermissionResponse[];
+  @ApiProperty({ type: [PermissionResponse] })
+  override readonly data!: readonly PermissionResponse[];
 }

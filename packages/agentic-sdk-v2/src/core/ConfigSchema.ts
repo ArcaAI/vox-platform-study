@@ -28,14 +28,11 @@ export const AudioConfigSchema = v.object({
 export const SttConfigSchema = v.object({
   provider: v.optional(v.picklist(['local', 'backend', 'auto']), 'local'),
   defaultModel: v.optional(v.string(), 'whisper-tiny'),
-  availableModels: v.optional(
-    v.array(v.object({ id: v.string(), name: v.string(), size: v.optional(v.string()) })),
-    [
-      { id: 'whisper-tiny', name: 'Whisper Tiny', size: '~75 MB' },
-      { id: 'whisper-base', name: 'Whisper Base', size: '~150 MB' },
-      { id: 'whisper-small', name: 'Whisper Small', size: '~500 MB' },
-    ],
-  ),
+  availableModels: v.optional(v.array(v.object({ id: v.string(), name: v.string(), size: v.optional(v.string()) })), [
+    { id: 'whisper-tiny', name: 'Whisper Tiny', size: '~75 MB' },
+    { id: 'whisper-base', name: 'Whisper Base', size: '~150 MB' },
+    { id: 'whisper-small', name: 'Whisper Small', size: '~500 MB' },
+  ]),
   language: v.optional(v.string(), 'en'),
 });
 
@@ -82,33 +79,33 @@ export type DeepPartial<T> = {
 // ---------------------------------------------------------------------------
 
 export const CONFIG_PERMISSIONS: Record<string, ConfigFieldMeta> = {
-  'audio.sampleRate':        { permission: 'admin',  section: 'audio',    key: 'sampleRate',        label: 'Sample Rate' },
-  'audio.noiseSuppression':  { permission: 'user',   section: 'audio',    key: 'noiseSuppression',  label: 'Noise Suppression' },
-  'audio.noiseFilterLevel':  { permission: 'user',   section: 'audio',    key: 'noiseFilterLevel',  label: 'Noise Filter Level' },
-  'audio.echoCancellation':  { permission: 'user',   section: 'audio',    key: 'echoCancellation',  label: 'Echo Cancellation' },
-  'audio.autoGainControl':   { permission: 'user',   section: 'audio',    key: 'autoGainControl',   label: 'Auto Gain Control' },
-  'audio.vadEnabled':        { permission: 'user',   section: 'audio',    key: 'vadEnabled',        label: 'Voice Activity Detection' },
-  'audio.vadThreshold':      { permission: 'admin',  section: 'audio',    key: 'vadThreshold',      label: 'VAD Sensitivity' },
-  'audio.diarization':       { permission: 'user',   section: 'audio',    key: 'diarization',       label: 'Speaker Diarization' },
-  'audio.codeSwitching':     { permission: 'admin',  section: 'audio',    key: 'codeSwitching',     label: 'Code-Switching' },
+  'audio.sampleRate': { permission: 'admin', section: 'audio', key: 'sampleRate', label: 'Sample Rate' },
+  'audio.noiseSuppression': { permission: 'user', section: 'audio', key: 'noiseSuppression', label: 'Noise Suppression' },
+  'audio.noiseFilterLevel': { permission: 'user', section: 'audio', key: 'noiseFilterLevel', label: 'Noise Filter Level' },
+  'audio.echoCancellation': { permission: 'user', section: 'audio', key: 'echoCancellation', label: 'Echo Cancellation' },
+  'audio.autoGainControl': { permission: 'user', section: 'audio', key: 'autoGainControl', label: 'Auto Gain Control' },
+  'audio.vadEnabled': { permission: 'user', section: 'audio', key: 'vadEnabled', label: 'Voice Activity Detection' },
+  'audio.vadThreshold': { permission: 'admin', section: 'audio', key: 'vadThreshold', label: 'VAD Sensitivity' },
+  'audio.diarization': { permission: 'user', section: 'audio', key: 'diarization', label: 'Speaker Diarization' },
+  'audio.codeSwitching': { permission: 'admin', section: 'audio', key: 'codeSwitching', label: 'Code-Switching' },
 
-  'stt.provider':            { permission: 'admin',  section: 'stt',      key: 'provider',          label: 'STT Provider' },
-  'stt.defaultModel':        { permission: 'admin',  section: 'stt',      key: 'defaultModel',      label: 'Default STT Model' },
-  'stt.availableModels':     { permission: 'admin',  section: 'stt',      key: 'availableModels',   label: 'Available Models' },
-  'stt.language':            { permission: 'user',   section: 'stt',      key: 'language',          label: 'Transcription Language' },
+  'stt.provider': { permission: 'admin', section: 'stt', key: 'provider', label: 'STT Provider' },
+  'stt.defaultModel': { permission: 'admin', section: 'stt', key: 'defaultModel', label: 'Default STT Model' },
+  'stt.availableModels': { permission: 'admin', section: 'stt', key: 'availableModels', label: 'Available Models' },
+  'stt.language': { permission: 'user', section: 'stt', key: 'language', label: 'Transcription Language' },
 
-  'ui.theme':                { permission: 'user',   section: 'ui',       key: 'theme',             label: 'Theme' },
-  'ui.density':              { permission: 'user',   section: 'ui',       key: 'density',           label: 'UI Density' },
-  'ui.language':             { permission: 'user',   section: 'ui',       key: 'language',          label: 'UI Language' },
+  'ui.theme': { permission: 'user', section: 'ui', key: 'theme', label: 'Theme' },
+  'ui.density': { permission: 'user', section: 'ui', key: 'density', label: 'UI Density' },
+  'ui.language': { permission: 'user', section: 'ui', key: 'language', label: 'UI Language' },
 
-  'smr.provider':            { permission: 'admin',  section: 'smr',      key: 'provider',          label: 'Summary Provider' },
-  'smr.model':               { permission: 'admin',  section: 'smr',      key: 'model',             label: 'Summary Model' },
+  'smr.provider': { permission: 'admin', section: 'smr', key: 'provider', label: 'Summary Provider' },
+  'smr.model': { permission: 'admin', section: 'smr', key: 'model', label: 'Summary Model' },
 
   'features.realTimeTranscription': { permission: 'admin', section: 'features', key: 'realTimeTranscription', label: 'Real-Time Transcription' },
-  'features.nerExtraction':  { permission: 'admin',  section: 'features', key: 'nerExtraction',     label: 'NER Extraction' },
-  'features.dnaStyle':       { permission: 'admin',  section: 'features', key: 'dnaStyle',          label: 'DNA-Style Notes' },
+  'features.nerExtraction': { permission: 'admin', section: 'features', key: 'nerExtraction', label: 'NER Extraction' },
+  'features.dnaStyle': { permission: 'admin', section: 'features', key: 'dnaStyle', label: 'DNA-Style Notes' },
   'features.crossChainSummary': { permission: 'admin', section: 'features', key: 'crossChainSummary', label: 'Cross-Chain Summary' },
-  'features.tts':            { permission: 'admin',  section: 'features', key: 'tts',               label: 'Text-to-Speech' },
+  'features.tts': { permission: 'admin', section: 'features', key: 'tts', label: 'Text-to-Speech' },
 };
 
 export const SYSTEM_DEFAULTS: AppConfig = v.parse(AppConfigSchema, {});

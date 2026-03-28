@@ -8,9 +8,7 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 @Injectable()
 export class TagRepository extends Repository<TagEntity, Tag> {
-    constructor(
-        private readonly unitOfWorkService: CoreUnitOfWorkService
-    ) {
-        super(unitOfWorkService, 'tag', TagEntityMapper.getInstance(), undefined, ['tagKey', 'tagValue', 'description']);
-    }
+  constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
+    super(unitOfWorkService, 'tag', TagEntityMapper.getInstance(), undefined, ['tagKey', 'tagValue', 'description']);
+  }
 }

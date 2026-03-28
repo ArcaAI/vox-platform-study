@@ -5,11 +5,7 @@
  * Streams audio to the backend for processing with Whisper or Azure.
  */
 
-import type {
-  TranscriptionResult,
-  STTStats,
-  RemoteProviderConfig,
-} from '../types/index.js';
+import type { TranscriptionResult, STTStats, RemoteProviderConfig } from '../types/index.js';
 import { BaseSTTProvider } from './BaseSTTProvider.js';
 import { WebSocketClient, type ConnectionState } from '../websocket/WebSocketClient.js';
 import { MessageHandler } from '../websocket/MessageHandler.js';
@@ -174,12 +170,13 @@ export class RemoteSTTProvider extends BaseSTTProvider {
     this.totalAudioProcessed += resampled.length / WHISPER_SAMPLE_RATE;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async transcribeSegment(_audio: Float32Array): Promise<TranscriptionResult> {
     // Remote doesn't support direct segment transcription via WebSocket
     // For file transcription, use the REST API instead
     throw new Error(
       'RemoteSTTProvider does not support direct segment transcription. ' +
-      'Use processAudio() for streaming or the REST API for file transcription.'
+        'Use processAudio() for streaming or the REST API for file transcription.',
     );
   }
 
@@ -243,10 +240,7 @@ export class RemoteSTTProvider extends BaseSTTProvider {
     }
 
     // Calculate total samples
-    const totalSamples = this.audioQueue.reduce(
-      (sum, chunk) => sum + chunk.length,
-      0
-    );
+    const totalSamples = this.audioQueue.reduce((sum, chunk) => sum + chunk.length, 0);
 
     // Don't send if too few samples
     if (totalSamples < this.MIN_SAMPLES_TO_SEND) {
@@ -272,10 +266,7 @@ export class RemoteSTTProvider extends BaseSTTProvider {
    * Get duration of audio currently queued.
    */
   private getQueuedAudioDuration(): number {
-    const totalSamples = this.audioQueue.reduce(
-      (sum, chunk) => sum + chunk.length,
-      0
-    );
+    const totalSamples = this.audioQueue.reduce((sum, chunk) => sum + chunk.length, 0);
     return totalSamples / WHISPER_SAMPLE_RATE;
   }
 }

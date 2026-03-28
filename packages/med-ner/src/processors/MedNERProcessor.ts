@@ -24,17 +24,9 @@ import {
   MedNERErrorCode,
 } from '../types/index.js';
 
-import {
-  getMedNERBrowserSupport,
-  isMedNERSupported,
-} from '../utils/browserSupport.js';
+import { getMedNERBrowserSupport, isMedNERSupported } from '../utils/browserSupport.js';
 
-import {
-  mergeAdjacentEntities,
-  mergeOverlappingEntities,
-  filterEntitiesByType,
-  filterEntitiesByThreshold,
-} from '../utils/entityUtils.js';
+import { mergeAdjacentEntities, mergeOverlappingEntities, filterEntitiesByType, filterEntitiesByThreshold } from '../utils/entityUtils.js';
 
 // Configure Transformers.js for browser usage
 if (typeof window !== 'undefined') {
@@ -85,9 +77,7 @@ if (typeof window !== 'undefined') {
 export class MedNERProcessor {
   readonly name = 'med-ner-processor';
 
-  private options: Required<
-    Omit<MedNEROptions, 'entityTypes' | 'onProgress' | 'dtype'>
-  > & {
+  private options: Required<Omit<MedNEROptions, 'entityTypes' | 'onProgress' | 'dtype'>> & {
     entityTypes?: MedicalEntityType[];
     onProgress?: (progress: ModelLoadProgress) => void;
     dtype?: 'fp32' | 'fp16' | 'q8' | 'q4';
@@ -199,10 +189,7 @@ export class MedNERProcessor {
     // Check browser support
     const support = getMedNERBrowserSupport();
     if (!support.nerSupported) {
-      throw new MedNERError(
-        MedNERErrorCode.NOT_SUPPORTED,
-        support.unsupportedReason ?? 'Medical NER not supported in this browser'
-      );
+      throw new MedNERError(MedNERErrorCode.NOT_SUPPORTED, support.unsupportedReason ?? 'Medical NER not supported in this browser');
     }
 
     const modelId = this.resolveModelId(this.options.model);
@@ -213,7 +200,7 @@ export class MedNERProcessor {
 
       // Load the NER pipeline
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.pipeline = await (pipeline as any)('token-classification', modelId, {
+      this.pipeline = (await (pipeline as any)('token-classification', modelId, {
         dtype: this.options.dtype ?? support.recommendedDtype,
         progress_callback: (progressData: unknown) => {
           const data = progressData as {
@@ -238,7 +225,7 @@ export class MedNERProcessor {
             total: data.total,
           });
         },
-      }) as TokenClassificationPipeline;
+      })) as TokenClassificationPipeline;
 
       // Update state
       this._initialized = true;
@@ -256,7 +243,7 @@ export class MedNERProcessor {
       const nerError = new MedNERError(
         MedNERErrorCode.MODEL_LOAD_FAILED,
         `Failed to load NER model '${modelId}': ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error : undefined,
       );
 
       this.emitProgress({ status: 'error' });
@@ -273,17 +260,11 @@ export class MedNERProcessor {
    */
   async extract(text: string): Promise<MedNERResult> {
     if (!this._initialized || !this.pipeline) {
-      throw new MedNERError(
-        MedNERErrorCode.NOT_INITIALIZED,
-        'MedNERProcessor is not initialized. Call init() first.'
-      );
+      throw new MedNERError(MedNERErrorCode.NOT_INITIALIZED, 'MedNERProcessor is not initialized. Call init() first.');
     }
 
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
-      throw new MedNERError(
-        MedNERErrorCode.INVALID_INPUT,
-        'Input text is empty or invalid.'
-      );
+      throw new MedNERError(MedNERErrorCode.INVALID_INPUT, 'Input text is empty or invalid.');
     }
 
     this._isProcessing = true;
@@ -325,7 +306,7 @@ export class MedNERProcessor {
       const nerError = new MedNERError(
         MedNERErrorCode.PROCESSING_ERROR,
         `Failed to process text: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error : undefined,
       );
 
       this.callbacks.onError?.(nerError);

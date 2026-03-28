@@ -1,13 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  SpeechInput,
-  SpeechInputRecordButton,
-  SpeechInputPreview,
-  SpeechInputCancelButton,
-} from '../../elevenlabs/speech-input'
+import { SpeechInput, SpeechInputRecordButton, SpeechInputPreview, SpeechInputCancelButton } from '../../elevenlabs/speech-input';
 
-const mockGetToken = async () => 'mock-token'
+const mockGetToken = async () => 'mock-token';
 
 const meta: Meta<typeof SpeechInput> = {
   title: 'ElevenLabs/SpeechInput',
@@ -16,10 +11,10 @@ const meta: Meta<typeof SpeechInput> = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-}
+};
 
-export default meta
-type Story = StoryObj<typeof SpeechInput>
+export default meta;
+type Story = StoryObj<typeof SpeechInput>;
 
 export const Default: Story = {
   render: () => (
@@ -29,7 +24,7 @@ export const Default: Story = {
       <SpeechInputCancelButton />
     </SpeechInput>
   ),
-}
+};
 
 export const SmallSize: Story = {
   render: () => (
@@ -39,7 +34,7 @@ export const SmallSize: Story = {
       <SpeechInputCancelButton />
     </SpeechInput>
   ),
-}
+};
 
 export const LargeSize: Story = {
   render: () => (
@@ -49,7 +44,7 @@ export const LargeSize: Story = {
       <SpeechInputCancelButton />
     </SpeechInput>
   ),
-}
+};
 
 export const RecordOnly: Story = {
   render: () => (
@@ -57,7 +52,7 @@ export const RecordOnly: Story = {
       <SpeechInputRecordButton />
     </SpeechInput>
   ),
-}
+};
 
 export const WithCustomPlaceholder: Story = {
   render: () => (
@@ -67,7 +62,7 @@ export const WithCustomPlaceholder: Story = {
       <SpeechInputCancelButton />
     </SpeechInput>
   ),
-}
+};
 
 export const WithCallbacks: Story = {
   render: () => (
@@ -83,4 +78,4 @@ export const WithCallbacks: Story = {
       <SpeechInputCancelButton />
     </SpeechInput>
   ),
-}
+};

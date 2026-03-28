@@ -88,16 +88,7 @@ export interface MedicalEntity {
 /**
  * Standard medical entity types
  */
-export type MedicalEntityType =
-  | 'DISEASE'
-  | 'SYMPTOM'
-  | 'MEDICATION'
-  | 'PROCEDURE'
-  | 'ANATOMY'
-  | 'TEST'
-  | 'DOSAGE'
-  | 'DURATION'
-  | 'FREQUENCY';
+export type MedicalEntityType = 'DISEASE' | 'SYMPTOM' | 'MEDICATION' | 'PROCEDURE' | 'ANATOMY' | 'TEST' | 'DOSAGE' | 'DURATION' | 'FREQUENCY';
 
 /**
  * Medical codes for entities

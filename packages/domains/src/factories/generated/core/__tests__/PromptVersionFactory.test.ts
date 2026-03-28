@@ -8,80 +8,80 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PromptVersionFactory } from '../PromptVersionFactory';
 
 vi.mock('../../../../utils', () => ({
-    generateId: vi.fn(() => 'generated-uuid-7'),
+  generateId: vi.fn(() => 'generated-uuid-7'),
 }));
 
 describe('PromptVersionFactory', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-    });
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-    it('should create entity with generated UUID7 id', () => {
-        const entity = PromptVersionFactory.CreatePromptVersion({});
-        expect(entity.id).toBe('generated-uuid-7');
-    });
+  it('should create entity with generated UUID7 id', () => {
+    const entity = PromptVersionFactory.CreatePromptVersion({});
+    expect(entity.id).toBe('generated-uuid-7');
+  });
 
-    it('should set default values for optional fields', () => {
-        const entity = PromptVersionFactory.CreatePromptVersion({});
-        expect(entity.promptTemplateId).toBeNull();
-        expect(entity.versionNumber).toBeNull();
-        expect(entity.content).toBeNull();
-        expect(entity.variables).toBeNull();
-        expect(entity.changeReason).toBeNull();
-        expect(entity.changedBy).toBeNull();
-    });
+  it('should set default values for optional fields', () => {
+    const entity = PromptVersionFactory.CreatePromptVersion({});
+    expect(entity.promptTemplateId).toBeNull();
+    expect(entity.versionNumber).toBeNull();
+    expect(entity.content).toBeNull();
+    expect(entity.variables).toBeNull();
+    expect(entity.changeReason).toBeNull();
+    expect(entity.changedBy).toBeNull();
+  });
 
-    it('should not overwrite provided values', () => {
-        const entity = PromptVersionFactory.CreatePromptVersion({
-            promptTemplateId: 'template-123',
-            versionNumber: 2,
-            content: 'version content',
-            variables: { key: 'value' },
-            changeReason: 'Updated',
-            changedBy: 'user-123',
-        });
-        expect(entity.promptTemplateId).toBe('template-123');
-        expect(entity.versionNumber).toBe(2);
-        expect(entity.content).toBe('version content');
-        expect(entity.variables).toEqual({ key: 'value' });
-        expect(entity.changeReason).toBe('Updated');
-        expect(entity.changedBy).toBe('user-123');
+  it('should not overwrite provided values', () => {
+    const entity = PromptVersionFactory.CreatePromptVersion({
+      promptTemplateId: 'template-123',
+      versionNumber: 2,
+      content: 'version content',
+      variables: { key: 'value' },
+      changeReason: 'Updated',
+      changedBy: 'user-123',
     });
+    expect(entity.promptTemplateId).toBe('template-123');
+    expect(entity.versionNumber).toBe(2);
+    expect(entity.content).toBe('version content');
+    expect(entity.variables).toEqual({ key: 'value' });
+    expect(entity.changeReason).toBe('Updated');
+    expect(entity.changedBy).toBe('user-123');
+  });
 
-    it('should set timestamps', () => {
-        const entity = PromptVersionFactory.CreatePromptVersion({});
-        expect(entity.createdAt).toBeInstanceOf(Date);
-        expect(entity.updatedAt).toBeInstanceOf(Date);
-    });
+  it('should set timestamps', () => {
+    const entity = PromptVersionFactory.CreatePromptVersion({});
+    expect(entity.createdAt).toBeInstanceOf(Date);
+    expect(entity.updatedAt).toBeInstanceOf(Date);
+  });
 
-    it('should default tenantId to standard UUID', () => {
-        const entity = PromptVersionFactory.CreatePromptVersion({});
-        expect(entity.tenantId).toBe('50000000-0000-0000-0000-000000000000');
-    });
+  it('should default tenantId to standard UUID', () => {
+    const entity = PromptVersionFactory.CreatePromptVersion({});
+    expect(entity.tenantId).toBe('50000000-0000-0000-0000-000000000000');
+  });
 
-    it('should set tenantId when provided', () => {
-        const entity = PromptVersionFactory.CreatePromptVersion({ tenantId: 'tenant-123' });
-        expect(entity.tenantId).toBe('tenant-123');
-    });
+  it('should set tenantId when provided', () => {
+    const entity = PromptVersionFactory.CreatePromptVersion({ tenantId: 'tenant-123' });
+    expect(entity.tenantId).toBe('tenant-123');
+  });
 
-    it('should default createdBy and updatedBy to null', () => {
-        const entity = PromptVersionFactory.CreatePromptVersion({});
-        expect(entity.createdBy).toBeNull();
-        expect(entity.updatedBy).toBeNull();
-    });
+  it('should default createdBy and updatedBy to null', () => {
+    const entity = PromptVersionFactory.CreatePromptVersion({});
+    expect(entity.createdBy).toBeNull();
+    expect(entity.updatedBy).toBeNull();
+  });
 
-    it('should create entity that passes validation', () => {
-        const entity = PromptVersionFactory.CreatePromptVersion({});
-        expect(() => entity.validate()).not.toThrow();
-    });
+  it('should create entity that passes validation', () => {
+    const entity = PromptVersionFactory.CreatePromptVersion({});
+    expect(() => entity.validate()).not.toThrow();
+  });
 
-    it('should use provided createdAt and updatedAt when supplied', () => {
-        const customDate = new Date('2025-01-15T00:00:00.000Z');
-        const entity = PromptVersionFactory.CreatePromptVersion({
-            createdAt: customDate,
-            updatedAt: customDate,
-        });
-        expect(entity.createdAt).toBe(customDate);
-        expect(entity.updatedAt).toBe(customDate);
+  it('should use provided createdAt and updatedAt when supplied', () => {
+    const customDate = new Date('2025-01-15T00:00:00.000Z');
+    const entity = PromptVersionFactory.CreatePromptVersion({
+      createdAt: customDate,
+      updatedAt: customDate,
     });
+    expect(entity.createdAt).toBe(customDate);
+    expect(entity.updatedAt).toBe(customDate);
+  });
 });

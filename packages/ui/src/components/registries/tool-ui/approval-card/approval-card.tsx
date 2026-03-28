@@ -1,20 +1,20 @@
-"use client";
+'use client';
 
-import * as React from "react";
-import { cn, Separator } from "./_adapter";
-import type { ApprovalCardProps, ApprovalDecision } from "./schema";
-import { ActionButtons } from "../shared/action-buttons";
-import { type Action } from "../shared/schema";
+import * as React from 'react';
+import { cn, Separator } from './_adapter';
+import type { ApprovalCardProps, ApprovalDecision } from './schema';
+import { ActionButtons } from '../shared/action-buttons';
+import { type Action } from '../shared/schema';
 
-import { icons, Check, X } from "lucide-react";
+import { icons, Check, X } from 'lucide-react';
 
 type LucideIcon = React.ComponentType<{ className?: string }>;
 
 function getLucideIcon(name: string): LucideIcon | null {
   const pascalName = name
-    .split("-")
+    .split('-')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join("");
+    .join('');
 
   const Icon = icons[pascalName as keyof typeof icons];
   return Icon ?? null;
@@ -28,22 +28,16 @@ interface ApprovalCardReceiptProps {
   className?: string;
 }
 
-function ApprovalCardReceipt({
-  id,
-  title,
-  choice,
-  actionLabel,
-  className,
-}: ApprovalCardReceiptProps) {
-  const isApproved = choice === "approved";
-  const displayLabel = actionLabel ?? (isApproved ? "Approved" : "Denied");
+function ApprovalCardReceipt({ id, title, choice, actionLabel, className }: ApprovalCardReceiptProps) {
+  const isApproved = choice === 'approved';
+  const displayLabel = actionLabel ?? (isApproved ? 'Approved' : 'Denied');
 
   return (
     <div
       className={cn(
-        "flex w-full min-w-64 max-w-md flex-col",
-        "text-foreground",
-        "motion-safe:animate-in motion-safe:fade-in motion-safe:blur-in-sm motion-safe:zoom-in-95 motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:fill-mode-both",
+        'flex w-full min-w-64 max-w-md flex-col',
+        'text-foreground',
+        'motion-safe:animate-in motion-safe:fade-in motion-safe:blur-in-sm motion-safe:zoom-in-95 motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:fill-mode-both',
         className,
       )}
       data-slot="approval-card"
@@ -52,15 +46,11 @@ function ApprovalCardReceipt({
       role="status"
       aria-label={displayLabel}
     >
-      <div
-        className={cn(
-          "bg-card/60 flex w-full items-center gap-3 rounded-2xl border px-4 py-3 shadow-xs",
-        )}
-      >
+      <div className={cn('bg-card/60 flex w-full items-center gap-3 rounded-2xl border px-4 py-3 shadow-xs')}>
         <span
           className={cn(
-            "flex size-8 shrink-0 items-center justify-center rounded-full bg-muted",
-            isApproved ? "text-primary" : "text-muted-foreground",
+            'flex size-8 shrink-0 items-center justify-center rounded-full bg-muted',
+            isApproved ? 'text-primary' : 'text-muted-foreground',
           )}
         >
           {isApproved ? <Check className="size-4" /> : <X className="size-4" />}
@@ -88,16 +78,16 @@ export function ApprovalCard({
   onConfirm,
   onCancel,
 }: ApprovalCardProps) {
-  const resolvedVariant = variant ?? "default";
-  const resolvedConfirmLabel = confirmLabel ?? "Approve";
-  const resolvedCancelLabel = cancelLabel ?? "Deny";
+  const resolvedVariant = variant ?? 'default';
+  const resolvedConfirmLabel = confirmLabel ?? 'Approve';
+  const resolvedCancelLabel = cancelLabel ?? 'Deny';
   const Icon = icon ? getLucideIcon(icon) : null;
 
   const handleAction = React.useCallback(
     async (actionId: string) => {
-      if (actionId === "confirm") {
+      if (actionId === 'confirm') {
         await onConfirm?.();
-      } else if (actionId === "cancel") {
+      } else if (actionId === 'cancel') {
         await onCancel?.();
       }
     },
@@ -106,7 +96,7 @@ export function ApprovalCard({
 
   const handleKeyDown = React.useCallback(
     (event: React.KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === 'Escape') {
         event.preventDefault();
         onCancel?.();
       }
@@ -114,39 +104,30 @@ export function ApprovalCard({
     [onCancel],
   );
 
-  const isDestructive = resolvedVariant === "destructive";
+  const isDestructive = resolvedVariant === 'destructive';
 
   const actions: Action[] = [
     {
-      id: "cancel",
+      id: 'cancel',
       label: resolvedCancelLabel,
-      variant: "ghost",
+      variant: 'ghost',
     },
     {
-      id: "confirm",
+      id: 'confirm',
       label: resolvedConfirmLabel,
-      variant: isDestructive ? "destructive" : "default",
+      variant: isDestructive ? 'destructive' : 'default',
     },
   ];
 
-  const viewKey = choice ? `receipt-${choice}` : "interactive";
+  const viewKey = choice ? `receipt-${choice}` : 'interactive';
 
   return (
     <div key={viewKey} className="contents">
       {choice ? (
-        <ApprovalCardReceipt
-          id={id}
-          title={title}
-          choice={choice}
-          className={className}
-        />
+        <ApprovalCardReceipt id={id} title={title} choice={choice} className={className} />
       ) : (
         <article
-          className={cn(
-            "flex w-full min-w-64 max-w-md flex-col gap-3",
-            "text-foreground",
-            className,
-          )}
+          className={cn('flex w-full min-w-64 max-w-md flex-col gap-3', 'text-foreground', className)}
           data-slot="approval-card"
           data-tool-ui-id={id}
           role="dialog"
@@ -159,27 +140,19 @@ export function ApprovalCard({
               {Icon && (
                 <span
                   className={cn(
-                    "flex size-10 shrink-0 items-center justify-center rounded-xl",
-                    isDestructive
-                      ? "bg-destructive/10 text-destructive"
-                      : "bg-primary/10 text-primary",
+                    'flex size-10 shrink-0 items-center justify-center rounded-xl',
+                    isDestructive ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary',
                   )}
                 >
                   <Icon className="size-5" />
                 </span>
               )}
               <div className="flex flex-1 flex-col gap-1">
-                <h2
-                  id={`${id}-title`}
-                  className="text-base font-semibold leading-tight"
-                >
+                <h2 id={`${id}-title`} className="text-base font-semibold leading-tight">
                   {title}
                 </h2>
                 {description && (
-                  <p
-                    id={`${id}-description`}
-                    className="text-muted-foreground text-sm"
-                  >
+                  <p id={`${id}-description`} className="text-muted-foreground text-sm">
                     {description}
                   </p>
                 )}
@@ -192,9 +165,7 @@ export function ApprovalCard({
                 <dl className="flex flex-col gap-2 text-sm">
                   {metadata.map((item, index) => (
                     <div key={index} className="flex justify-between gap-4">
-                      <dt className="text-muted-foreground shrink-0">
-                        {item.key}
-                      </dt>
+                      <dt className="text-muted-foreground shrink-0">{item.key}</dt>
                       <dd className="min-w-0 truncate">{item.value}</dd>
                     </div>
                   ))}

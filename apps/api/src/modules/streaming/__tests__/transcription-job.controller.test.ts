@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { TranscriptionJobController } from '../transcription-job.controller';
 import { Observable, of } from 'rxjs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TranscriptionJobController } from '../transcription-job.controller';
 
 const createMockJobService = () => ({
     create: vi.fn(),
@@ -30,12 +30,17 @@ const createMockCls = () => ({
     get: vi.fn().mockReturnValue({ id: 'user-1', tenantId: 'tenant-1' }),
 });
 
+const createMockS3Service = () => ({
+    putFile: vi.fn(),
+});
+
 describe('TranscriptionJobController', () => {
     let controller: TranscriptionJobController;
     let mockJobService: ReturnType<typeof createMockJobService>;
     let mockRealtimeService: ReturnType<typeof createMockRealtimeService>;
     let mockSessionService: ReturnType<typeof createMockSessionService>;
     let mockCls: ReturnType<typeof createMockCls>;
+    let mockS3Service: ReturnType<typeof createMockS3Service>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -43,11 +48,13 @@ describe('TranscriptionJobController', () => {
         mockRealtimeService = createMockRealtimeService();
         mockSessionService = createMockSessionService();
         mockCls = createMockCls();
+        mockS3Service = createMockS3Service();
         controller = new TranscriptionJobController(
             mockJobService as any,
             mockRealtimeService as any,
             mockSessionService as any,
             mockCls as any,
+            mockS3Service as any,
         );
     });
 
@@ -151,6 +158,11 @@ describe('TranscriptionJobController', () => {
             expect(mockRealtimeService.subscribeToJob).toHaveBeenCalledWith('job-1');
             expect(result).toBeInstanceOf(Observable);
         });
+
+        it('should throw for empty job ID', () => {
+            expect(() => controller.streamJob('   ')).toThrow('valid transcription job ID is required');
+            expect(mockRealtimeService.subscribeToJob).not.toHaveBeenCalled();
+        });
     });
 
     describe('POST /stream/session', () => {
@@ -165,16 +177,12 @@ describe('TranscriptionJobController', () => {
 
             const result = await controller.createStreamSession({
                 pipelineId: 'pipe-1',
-                language: 'en-US',
-                diarization: true,
             });
 
             expect(mockSessionService.createSession).toHaveBeenCalledWith(
                 expect.objectContaining({
                     pipelineId: 'pipe-1',
                     tenantId: 'tenant-1',
-                    language: 'en-US',
-                    diarization: true,
                 }),
             );
             expect(result).toMatchObject({

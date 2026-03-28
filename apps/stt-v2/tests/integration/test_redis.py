@@ -1,7 +1,8 @@
 """Integration tests for Redis operations."""
 
-import pytest
 import json
+
+import pytest
 
 
 @pytest.mark.integration

@@ -8,14 +8,10 @@ import { QUERY_FAILED, BasePersistenceException } from '../../common';
  * @extends {BasePersistenceException}
  */
 export class QueryFailedException extends BasePersistenceException {
-    static readonly message = 'Database query failed to execute.';
-    static readonly code = QUERY_FAILED;
+  static readonly message = 'Database query failed to execute.';
+  static readonly code = QUERY_FAILED;
 
-    constructor(
-        message = QueryFailedException.message,
-        cause?: Error,
-        metadata?: unknown,
-    ) {
-        super(message, QueryFailedException.code, cause, metadata);
-    }
+  constructor(message = QueryFailedException.message, cause?: Error, metadata?: unknown) {
+    super(message, QueryFailedException.code, cause, metadata);
+  }
 }

@@ -3,8 +3,7 @@ import type { Post } from '../types';
 // Single post for PostCard default
 export const demoPost: Post = {
   title: 'Getting Started with Agentic UI Components',
-  excerpt:
-    'Learn how to build conversational interfaces with our comprehensive component library designed for AI-powered applications.',
+  excerpt: 'Learn how to build conversational interfaces with our comprehensive component library designed for AI-powered applications.',
   coverImage: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=800',
   author: {
     name: 'Sarah Chen',
@@ -32,8 +31,7 @@ export const demoPostContent = `
 export const demoRelatedPosts: Post[] = [
   {
     title: 'Designing for Conversational Interfaces',
-    excerpt:
-      'Best practices for creating intuitive UI components that work within chat environments.',
+    excerpt: 'Best practices for creating intuitive UI components that work within chat environments.',
     coverImage: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800',
     author: { name: 'Alex Rivera', avatar: 'https://i.pravatar.cc/150?u=alex' },
     publishedAt: '2024-01-12',
@@ -69,8 +67,7 @@ export const demoPostDetailData = {
 export const demoPosts: Post[] = [
   {
     title: 'Getting Started with Agentic UI Components',
-    excerpt:
-      'Learn how to build conversational interfaces with our comprehensive component library designed for AI-powered applications.',
+    excerpt: 'Learn how to build conversational interfaces with our comprehensive component library designed for AI-powered applications.',
     coverImage: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=800',
     author: {
       name: 'Sarah Chen',
@@ -83,8 +80,7 @@ export const demoPosts: Post[] = [
   },
   {
     title: 'Designing for Conversational Interfaces with Manifest UI',
-    excerpt:
-      'Best practices for creating intuitive UI components that work within chat environments.',
+    excerpt: 'Best practices for creating intuitive UI components that work within chat environments.',
     coverImage: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800',
     author: {
       name: 'Alex Rivera',
@@ -97,8 +93,7 @@ export const demoPosts: Post[] = [
   },
   {
     title: 'MCP Integration Patterns',
-    excerpt:
-      'How to leverage Model Context Protocol for seamless backend communication in your agentic applications.',
+    excerpt: 'How to leverage Model Context Protocol for seamless backend communication in your agentic applications.',
     coverImage: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=800',
     author: {
       name: 'Jordan Kim',
@@ -111,8 +106,7 @@ export const demoPosts: Post[] = [
   },
   {
     title: 'Building Payment Flows in Chat',
-    excerpt:
-      'A complete guide to implementing secure, user-friendly payment experiences within conversational interfaces.',
+    excerpt: 'A complete guide to implementing secure, user-friendly payment experiences within conversational interfaces.',
     coverImage: 'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=800',
     author: {
       name: 'Morgan Lee',
@@ -125,8 +119,7 @@ export const demoPosts: Post[] = [
   },
   {
     title: 'Real-time Collaboration in AI Apps',
-    excerpt:
-      'Implementing WebSocket connections and real-time updates for collaborative agentic experiences.',
+    excerpt: 'Implementing WebSocket connections and real-time updates for collaborative agentic experiences.',
     coverImage: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800',
     author: {
       name: 'Casey Taylor',
@@ -139,8 +132,7 @@ export const demoPosts: Post[] = [
   },
   {
     title: 'Accessibility in Chat Interfaces',
-    excerpt:
-      'Making your conversational UI accessible to all users with screen readers and keyboard navigation.',
+    excerpt: 'Making your conversational UI accessible to all users with screen readers and keyboard navigation.',
     coverImage: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800',
     author: {
       name: 'Jamie Park',
@@ -153,8 +145,7 @@ export const demoPosts: Post[] = [
   },
   {
     title: 'State Management for Complex Workflows',
-    excerpt:
-      'Managing complex multi-step workflows in agentic applications using modern state patterns.',
+    excerpt: 'Managing complex multi-step workflows in agentic applications using modern state patterns.',
     coverImage: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=800',
     author: {
       name: 'Drew Martinez',
@@ -206,8 +197,7 @@ export const demoPosts: Post[] = [
   },
   {
     title: 'Error Handling and Recovery',
-    excerpt:
-      'Graceful error handling patterns and user-friendly recovery flows in conversational UIs.',
+    excerpt: 'Graceful error handling patterns and user-friendly recovery flows in conversational UIs.',
     coverImage: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?w=800',
     author: {
       name: 'Sage Thompson',

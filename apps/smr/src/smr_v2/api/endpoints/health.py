@@ -9,7 +9,7 @@ Follows the HOPE standardized health contract:
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
@@ -59,7 +59,7 @@ async def health_check(
         "service": _SERVICE_NAME,
         "version": _SERVICE_VERSION,
         "uptime_seconds": round(time.monotonic() - _startup_time, 1),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "checks": checks,
     }
 

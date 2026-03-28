@@ -5,12 +5,7 @@
  * Uses Silero VAD v5 via @ricky0123/vad-web for accurate speech detection.
  */
 
-import {
-  BaseProcessor,
-  type AudioProcessorOptions,
-  ProcessorEvent,
-  debugLogConfig,
-} from '@arcaai/room';
+import { BaseProcessor, type AudioProcessorOptions, debugLogConfig } from '@arcaai/room';
 
 import { MicVAD, type RealTimeVADOptions } from '@ricky0123/vad-web';
 
@@ -29,18 +24,13 @@ import {
   VADErrorCode,
 } from '../types/index.js';
 
-import {
-  getVADBrowserSupport,
-  isVADSupported,
-} from '../utils/browserSupport.js';
+import { getVADBrowserSupport, isVADSupported } from '../utils/browserSupport.js';
 
 /**
  * Default CDN paths for VAD assets.
  */
-const DEFAULT_BASE_ASSET_PATH =
-  'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.29/dist/';
-const DEFAULT_ONNX_WASM_BASE_PATH =
-  'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+const DEFAULT_BASE_ASSET_PATH = 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.29/dist/';
+const DEFAULT_ONNX_WASM_BASE_PATH = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 
 /**
  * VADProcessor provides Voice Activity Detection for audio tracks.
@@ -78,9 +68,7 @@ const DEFAULT_ONNX_WASM_BASE_PATH =
  * ```
  */
 export class VADProcessor extends BaseProcessor {
-  private options: Required<
-    Omit<VADOptions, 'baseAssetPath' | 'onnxWASMBasePath' | 'additionalAudioConstraints' | 'debugMode'>
-  > & {
+  private options: Required<Omit<VADOptions, 'baseAssetPath' | 'onnxWASMBasePath' | 'additionalAudioConstraints' | 'debugMode'>> & {
     baseAssetPath?: string;
     onnxWASMBasePath?: string;
     additionalAudioConstraints?: Partial<MediaTrackConstraints>;
@@ -99,10 +87,7 @@ export class VADProcessor extends BaseProcessor {
     onSpeechRealStart?: () => void;
     onSpeechEnd?: (audio: Float32Array) => void;
     onVADMisfire?: () => void;
-    onFrameProcessed?: (
-      probabilities: { isSpeech: number; notSpeech: number },
-      frame: Float32Array
-    ) => void;
+    onFrameProcessed?: (probabilities: { isSpeech: number; notSpeech: number }, frame: Float32Array) => void;
   } = {};
 
   // Statistics
@@ -145,10 +130,8 @@ export class VADProcessor extends BaseProcessor {
     this.options = {
       ...DEFAULT_VAD_OPTIONS,
       model: options.model ?? DEFAULT_VAD_OPTIONS.model,
-      positiveSpeechThreshold:
-        options.positiveSpeechThreshold ?? DEFAULT_VAD_OPTIONS.positiveSpeechThreshold,
-      negativeSpeechThreshold:
-        options.negativeSpeechThreshold ?? DEFAULT_VAD_OPTIONS.negativeSpeechThreshold,
+      positiveSpeechThreshold: options.positiveSpeechThreshold ?? DEFAULT_VAD_OPTIONS.positiveSpeechThreshold,
+      negativeSpeechThreshold: options.negativeSpeechThreshold ?? DEFAULT_VAD_OPTIONS.negativeSpeechThreshold,
       preSpeechPadMs: options.preSpeechPadMs ?? DEFAULT_VAD_OPTIONS.preSpeechPadMs,
       postSpeechPadMs: options.postSpeechPadMs ?? DEFAULT_VAD_OPTIONS.postSpeechPadMs,
       minSpeechMs: options.minSpeechMs ?? DEFAULT_VAD_OPTIONS.minSpeechMs,
@@ -156,8 +139,7 @@ export class VADProcessor extends BaseProcessor {
       sampleRate: options.sampleRate ?? DEFAULT_VAD_OPTIONS.sampleRate,
       enableStats: options.enableStats ?? DEFAULT_VAD_OPTIONS.enableStats,
       statsInterval: options.statsInterval ?? DEFAULT_VAD_OPTIONS.statsInterval,
-      submitUserSpeechOnPause:
-        options.submitUserSpeechOnPause ?? DEFAULT_VAD_OPTIONS.submitUserSpeechOnPause,
+      submitUserSpeechOnPause: options.submitUserSpeechOnPause ?? DEFAULT_VAD_OPTIONS.submitUserSpeechOnPause,
       baseAssetPath: options.baseAssetPath,
       onnxWASMBasePath: options.onnxWASMBasePath,
       additionalAudioConstraints: options.additionalAudioConstraints,
@@ -196,10 +178,7 @@ export class VADProcessor extends BaseProcessor {
     const support = getVADBrowserSupport();
 
     if (!support.vadSupported) {
-      throw new VADError(
-        VADErrorCode.NOT_SUPPORTED,
-        support.unsupportedReason ?? 'VAD not supported in this browser'
-      );
+      throw new VADError(VADErrorCode.NOT_SUPPORTED, support.unsupportedReason ?? 'VAD not supported in this browser');
     }
 
     // Create source node from input track
@@ -270,10 +249,7 @@ export class VADProcessor extends BaseProcessor {
           this.handleVADMisfire();
         },
 
-        onFrameProcessed: (
-          probabilities: { isSpeech: number; notSpeech: number },
-          frame: Float32Array
-        ) => {
+        onFrameProcessed: (probabilities: { isSpeech: number; notSpeech: number }, frame: Float32Array) => {
           this.handleFrameProcessed(probabilities, frame);
         },
 
@@ -290,7 +266,7 @@ export class VADProcessor extends BaseProcessor {
       throw new VADError(
         VADErrorCode.MODEL_LOAD_FAILED,
         `Failed to initialize MicVAD: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error : undefined,
       );
     }
   }
@@ -383,10 +359,7 @@ export class VADProcessor extends BaseProcessor {
   /**
    * Handle frame processed event.
    */
-  private handleFrameProcessed(
-    probabilities: { isSpeech: number; notSpeech: number },
-    frame: Float32Array
-  ): void {
+  private handleFrameProcessed(probabilities: { isSpeech: number; notSpeech: number }, frame: Float32Array): void {
     // Update statistics
     this.stats.framesProcessed++;
     this.stats.speechProbability = probabilities.isSpeech;
@@ -524,10 +497,7 @@ export class VADProcessor extends BaseProcessor {
    * @param positiveSpeechThreshold - New positive threshold
    * @param negativeSpeechThreshold - New negative threshold
    */
-  async updateThresholds(
-    positiveSpeechThreshold: number,
-    negativeSpeechThreshold: number
-  ): Promise<void> {
+  async updateThresholds(positiveSpeechThreshold: number, negativeSpeechThreshold: number): Promise<void> {
     this.options.positiveSpeechThreshold = positiveSpeechThreshold;
     this.options.negativeSpeechThreshold = negativeSpeechThreshold;
 
@@ -560,13 +530,10 @@ export class VADProcessor extends BaseProcessor {
     }
 
     // Update thresholds if provided
-    if (
-      options.positiveSpeechThreshold !== undefined ||
-      options.negativeSpeechThreshold !== undefined
-    ) {
+    if (options.positiveSpeechThreshold !== undefined || options.negativeSpeechThreshold !== undefined) {
       await this.updateThresholds(
         options.positiveSpeechThreshold ?? this.options.positiveSpeechThreshold,
-        options.negativeSpeechThreshold ?? this.options.negativeSpeechThreshold
+        options.negativeSpeechThreshold ?? this.options.negativeSpeechThreshold,
       );
     }
   }

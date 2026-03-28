@@ -1,26 +1,14 @@
-"use client";
+'use client';
 
-import * as React from "react";
-import type { LucideIcon } from "lucide-react";
-import {
-  FileText,
-  Globe,
-  Code2,
-  Newspaper,
-  Database,
-  File,
-  ExternalLink,
-} from "lucide-react";
-import { cn, Popover, PopoverContent, PopoverTrigger } from "./_adapter";
+import * as React from 'react';
+import type { LucideIcon } from 'lucide-react';
+import { FileText, Globe, Code2, Newspaper, Database, File, ExternalLink } from 'lucide-react';
+import { cn, Popover, PopoverContent, PopoverTrigger } from './_adapter';
 
-import { openSafeNavigationHref, sanitizeHref } from "../shared/media";
-import type {
-  SerializableCitation,
-  CitationType,
-  CitationVariant,
-} from "./schema";
+import { openSafeNavigationHref, sanitizeHref } from '../shared/media';
+import type { SerializableCitation, CitationType, CitationVariant } from './schema';
 
-const FALLBACK_LOCALE = "en-US";
+const FALLBACK_LOCALE = 'en-US';
 
 const TYPE_ICONS: Record<CitationType, LucideIcon> = {
   webpage: Globe,
@@ -34,7 +22,7 @@ const TYPE_ICONS: Record<CitationType, LucideIcon> = {
 function extractDomain(url: string): string | undefined {
   try {
     const urlObj = new URL(url);
-    return urlObj.hostname.replace(/^www\./, "");
+    return urlObj.hostname.replace(/^www\./, '');
   } catch {
     return undefined;
   }
@@ -44,8 +32,8 @@ function formatDate(isoString: string, locale: string): string {
   try {
     const date = new Date(isoString);
     return date.toLocaleDateString(locale, {
-      year: "numeric",
-      month: "short",
+      year: 'numeric',
+      month: 'short',
     });
   } catch {
     return isoString;
@@ -82,7 +70,7 @@ export interface CitationProps extends SerializableCitation {
 }
 
 export function Citation(props: CitationProps) {
-  const { variant = "default", className, onNavigate, ...serializable } = props;
+  const { variant = 'default', className, onNavigate, ...serializable } = props;
 
   const {
     id,
@@ -93,7 +81,7 @@ export function Citation(props: CitationProps) {
     favicon,
     author,
     publishedAt,
-    type = "webpage",
+    type = 'webpage',
     locale: providedLocale,
   } = serializable;
 
@@ -120,21 +108,14 @@ export function Citation(props: CitationProps) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (sanitizedHref && (e.key === "Enter" || e.key === " ")) {
+    if (sanitizedHref && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
       handleClick();
     }
   };
 
   const iconElement = favicon ? (
-    <img
-      src={favicon}
-      alt=""
-      aria-hidden="true"
-      width={14}
-      height={14}
-      className="bg-muted size-3.5 shrink-0 rounded object-cover"
-    />
+    <img src={favicon} alt="" aria-hidden="true" width={14} height={14} className="bg-muted size-3.5 shrink-0 rounded object-cover" />
   ) : (
     <TypeIcon className="size-3.5 shrink-0 opacity-60" aria-hidden="true" />
   );
@@ -142,7 +123,7 @@ export function Citation(props: CitationProps) {
   const { open, handleMouseEnter, handleMouseLeave } = useHoverPopover();
 
   // Inline variant: compact chip with hover popover
-  if (variant === "inline") {
+  if (variant === 'inline') {
     return (
       <Popover open={open}>
         <PopoverTrigger asChild>
@@ -155,11 +136,11 @@ export function Citation(props: CitationProps) {
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
             className={cn(
-              "inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1",
-              "bg-muted/60 text-sm outline-none",
-              "transition-colors duration-150",
-              "hover:bg-muted",
-              "focus-visible:ring-ring focus-visible:ring-2",
+              'inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1',
+              'bg-muted/60 text-sm outline-none',
+              'transition-colors duration-150',
+              'hover:bg-muted',
+              'focus-visible:ring-ring focus-visible:ring-2',
               className,
             )}
           >
@@ -183,11 +164,7 @@ export function Citation(props: CitationProps) {
               <span className="text-muted-foreground text-xs">{domain}</span>
             </div>
             <p className="text-sm leading-snug font-medium">{title}</p>
-            {snippet && (
-              <p className="text-muted-foreground line-clamp-2 text-xs leading-relaxed">
-                {snippet}
-              </p>
-            )}
+            {snippet && <p className="text-muted-foreground line-clamp-2 text-xs leading-relaxed">{snippet}</p>}
           </div>
         </PopoverContent>
       </Popover>
@@ -196,25 +173,20 @@ export function Citation(props: CitationProps) {
 
   // Default variant: full card
   return (
-    <article
-      className={cn("relative w-full max-w-md min-w-72", className)}
-      lang={locale}
-      data-tool-ui-id={id}
-      data-slot="citation"
-    >
+    <article className={cn('relative w-full max-w-md min-w-72', className)} lang={locale} data-tool-ui-id={id} data-slot="citation">
       <div
         className={cn(
-          "group @container relative isolate flex w-full min-w-0 flex-col overflow-hidden rounded-xl",
-          "border-border bg-card border text-sm shadow-xs",
-          "transition-colors duration-150",
+          'group @container relative isolate flex w-full min-w-0 flex-col overflow-hidden rounded-xl',
+          'border-border bg-card border text-sm shadow-xs',
+          'transition-colors duration-150',
           sanitizedHref && [
-            "cursor-pointer",
-            "hover:border-foreground/25",
-            "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
+            'cursor-pointer',
+            'hover:border-foreground/25',
+            'focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
           ],
         )}
         onClick={sanitizedHref ? handleClick : undefined}
-        role={sanitizedHref ? "link" : undefined}
+        role={sanitizedHref ? 'link' : undefined}
         tabIndex={sanitizedHref ? 0 : undefined}
         onKeyDown={handleKeyDown}
       >
@@ -227,7 +199,7 @@ export function Citation(props: CitationProps) {
                 <span className="opacity-70">
                   <span className="opacity-60"> — </span>
                   {author}
-                  {author && publishedAt && ", "}
+                  {author && publishedAt && ', '}
                   {publishedAt && (
                     <time dateTime={publishedAt} className="tabular-nums">
                       {formatDate(publishedAt, locale)}
@@ -236,15 +208,11 @@ export function Citation(props: CitationProps) {
                 </span>
               )}
             </div>
-            {sanitizedHref && (
-              <ExternalLink className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
-            )}
+            {sanitizedHref && <ExternalLink className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />}
           </div>
 
           <h3 className="text-foreground text-[15px] leading-snug font-medium text-pretty">
-            <span className="group-hover:decoration-foreground/30 line-clamp-2 group-hover:underline group-hover:underline-offset-2">
-              {title}
-            </span>
+            <span className="group-hover:decoration-foreground/30 line-clamp-2 group-hover:underline group-hover:underline-offset-2">{title}</span>
           </h3>
 
           {snippet && (

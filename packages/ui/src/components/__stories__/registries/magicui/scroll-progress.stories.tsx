@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { ScrollProgress } from '../../../registries/magicui/scroll-progress'
+import { ScrollProgress } from '../../../registries/magicui/scroll-progress';
 
 const meta = {
   title: 'Registries/MagicUI/ScrollProgress',
   component: ScrollProgress,
   parameters: { layout: 'fullscreen' },
   tags: ['autodocs'],
-} satisfies Meta<typeof ScrollProgress>
+} satisfies Meta<typeof ScrollProgress>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -21,4 +21,4 @@ export const Default: Story = {
       </div>
     </div>
   ),
-}
+};

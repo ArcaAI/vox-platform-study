@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Slider } from '../../shadcn/slider'
+import { Slider } from '../../shadcn/slider';
 
 const meta = {
   title: 'Components/Slider',
@@ -14,10 +14,10 @@ const meta = {
       control: false,
     },
   },
-} satisfies Meta<typeof Slider>
+} satisfies Meta<typeof Slider>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
@@ -26,7 +26,7 @@ export const Default: Story = {
     step: 1,
     className: 'w-60',
   },
-}
+};
 
 export const Range: Story = {
   render: () => (
@@ -34,7 +34,7 @@ export const Range: Story = {
       <Slider defaultValue={[25, 75]} max={100} step={1} />
     </div>
   ),
-}
+};
 
 export const Steps: Story = {
   render: () => (
@@ -49,7 +49,7 @@ export const Steps: Story = {
       </div>
     </div>
   ),
-}
+};
 
 export const Disabled: Story = {
   args: {
@@ -59,4 +59,4 @@ export const Disabled: Story = {
     disabled: true,
     className: 'w-60',
   },
-}
+};

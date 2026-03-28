@@ -1,8 +1,8 @@
-'use client'
+'use client';
 
-import { cn } from '@/lib/utils'
-import { Check } from 'lucide-react'
-import { demoProgressSteps } from './demo/status'
+import { cn } from '@/lib/utils';
+import { Check } from 'lucide-react';
+import { demoProgressSteps } from './demo/status';
 
 /**
  * Represents an individual step in the progress tracker.
@@ -11,8 +11,8 @@ import { demoProgressSteps } from './demo/status'
  * @property {"completed" | "current" | "pending"} [status] - Current status of the step
  */
 export interface Step {
-  label?: string
-  status?: 'completed' | 'current' | 'pending'
+  label?: string;
+  status?: 'completed' | 'current' | 'pending';
 }
 
 /**
@@ -26,10 +26,9 @@ export interface Step {
 export interface ProgressStepsProps {
   data?: {
     /** Array of steps to display with their labels and status. */
-    steps?: Step[]
-  }
+    steps?: Step[];
+  };
 }
-
 
 /**
  * A progress stepper component showing sequential step status.
@@ -57,12 +56,12 @@ export interface ProgressStepsProps {
  * ```
  */
 export function ProgressSteps({ data }: ProgressStepsProps) {
-  const resolved: NonNullable<ProgressStepsProps['data']> = data ?? { steps: demoProgressSteps }
-  const steps = resolved.steps ?? []
+  const resolved: NonNullable<ProgressStepsProps['data']> = data ?? { steps: demoProgressSteps };
+  const steps = resolved.steps ?? [];
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2 bg-card rounded-lg p-4">
       {steps.map((step, index) => {
-        const stepStatus = step.status ?? 'pending'
+        const stepStatus = step.status ?? 'pending';
         return (
           <div key={index} className="flex items-center gap-2">
             <div className="flex items-center gap-2">
@@ -71,29 +70,23 @@ export function ProgressSteps({ data }: ProgressStepsProps) {
                   'flex h-5 w-5 items-center justify-center rounded-full text-xs flex-shrink-0',
                   stepStatus === 'completed' && 'bg-foreground text-background',
                   stepStatus === 'current' && 'border-2 border-foreground',
-                  stepStatus === 'pending' && 'border border-muted-foreground/40'
+                  stepStatus === 'pending' && 'border border-muted-foreground/40',
                 )}
               >
                 {stepStatus === 'completed' && <Check className="h-3 w-3" />}
               </div>
               {step.label && (
                 <span
-                  className={cn(
-                    'text-xs sm:text-sm',
-                    stepStatus === 'current' && 'font-medium',
-                    stepStatus === 'pending' && 'text-muted-foreground'
-                  )}
+                  className={cn('text-xs sm:text-sm', stepStatus === 'current' && 'font-medium', stepStatus === 'pending' && 'text-muted-foreground')}
                 >
                   {step.label}
                 </span>
               )}
             </div>
-            {index < steps.length - 1 && (
-              <div className="hidden sm:block w-4 h-px bg-border" />
-            )}
+            {index < steps.length - 1 && <div className="hidden sm:block w-4 h-px bg-border" />}
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }

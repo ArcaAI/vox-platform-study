@@ -9,70 +9,70 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 export interface IWebhookRunHistoryEntity extends Omit<IBaseEntity, 'tenantId'> {
-    status: Enums.WebhookRunStatus;
-    response?: JsonValue | null;
-    responeStatusCode?: number | null;
-    webhookId: string;
-    Webhook: Entities.WebhookEntity | null;
+  status: Enums.WebhookRunStatus;
+  response?: JsonValue | null;
+  responeStatusCode?: number | null;
+  webhookId: string;
+  Webhook: Entities.WebhookEntity | null;
 }
 
 export class WebhookRunHistoryEntity extends BaseEntity {
-    private _status: IWebhookRunHistoryEntity['status'];
-    private _response?: IWebhookRunHistoryEntity['response'];
-    private _responeStatusCode?: IWebhookRunHistoryEntity['responeStatusCode'];
-    private _webhookId: IWebhookRunHistoryEntity['webhookId'];
-    private _Webhook: IWebhookRunHistoryEntity['Webhook'];
+  private _status: IWebhookRunHistoryEntity['status'];
+  private _response?: IWebhookRunHistoryEntity['response'];
+  private _responeStatusCode?: IWebhookRunHistoryEntity['responeStatusCode'];
+  private _webhookId: IWebhookRunHistoryEntity['webhookId'];
+  private _Webhook: IWebhookRunHistoryEntity['Webhook'];
 
-    constructor(init: IWebhookRunHistoryEntity) {
-        super(init);
-        this._status = init.status;
-        this._response = init.response;
-        this._responeStatusCode = init.responeStatusCode;
-        this._webhookId = init.webhookId;
-        this._Webhook = init.Webhook;
-    }
+  constructor(init: IWebhookRunHistoryEntity) {
+    super(init);
+    this._status = init.status;
+    this._response = init.response;
+    this._responeStatusCode = init.responeStatusCode;
+    this._webhookId = init.webhookId;
+    this._Webhook = init.Webhook;
+  }
 
-    get status(): IWebhookRunHistoryEntity['status'] {
-        return this._status;
-    }
+  get status(): IWebhookRunHistoryEntity['status'] {
+    return this._status;
+  }
 
-    set status(value: IWebhookRunHistoryEntity['status']) {
-        this.setProperty('status', value);
-    }
+  set status(value: IWebhookRunHistoryEntity['status']) {
+    this.setProperty('status', value);
+  }
 
-    get response(): IWebhookRunHistoryEntity['response'] {
-        return this._response;
-    }
+  get response(): IWebhookRunHistoryEntity['response'] {
+    return this._response;
+  }
 
-    set response(value: IWebhookRunHistoryEntity['response']) {
-        this.setProperty('response', value);
-    }
+  set response(value: IWebhookRunHistoryEntity['response']) {
+    this.setProperty('response', value);
+  }
 
-    get responeStatusCode(): IWebhookRunHistoryEntity['responeStatusCode'] {
-        return this._responeStatusCode;
-    }
+  get responeStatusCode(): IWebhookRunHistoryEntity['responeStatusCode'] {
+    return this._responeStatusCode;
+  }
 
-    set responeStatusCode(value: IWebhookRunHistoryEntity['responeStatusCode']) {
-        this.setProperty('responeStatusCode', value);
-    }
+  set responeStatusCode(value: IWebhookRunHistoryEntity['responeStatusCode']) {
+    this.setProperty('responeStatusCode', value);
+  }
 
-    get webhookId(): IWebhookRunHistoryEntity['webhookId'] {
-        return this._webhookId;
-    }
+  get webhookId(): IWebhookRunHistoryEntity['webhookId'] {
+    return this._webhookId;
+  }
 
-    set webhookId(value: IWebhookRunHistoryEntity['webhookId']) {
-        this.setProperty('webhookId', value);
-    }
+  set webhookId(value: IWebhookRunHistoryEntity['webhookId']) {
+    this.setProperty('webhookId', value);
+  }
 
-    get Webhook(): IWebhookRunHistoryEntity['Webhook'] {
-        return this._Webhook;
-    }
+  get Webhook(): IWebhookRunHistoryEntity['Webhook'] {
+    return this._Webhook;
+  }
 
-    set Webhook(value: IWebhookRunHistoryEntity['Webhook']) {
-        this.setProperty('Webhook', value);
-    }
+  set Webhook(value: IWebhookRunHistoryEntity['Webhook']) {
+    this.setProperty('Webhook', value);
+  }
 
-    public override validate(): void {
-        throw new BusinessException('Method not implemented.');
-    }
+  public override validate(): void {
+    throw new BusinessException('Method not implemented.');
+  }
 }

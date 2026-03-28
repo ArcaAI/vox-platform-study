@@ -97,14 +97,16 @@ export function createSmoothingCalculator(smoothingFactor = 0.8) {
  * @param options - Silence detection options
  * @returns Silence detector function
  */
-export function createSilenceDetector(options: {
-  /** Threshold below which audio is considered silent */
-  threshold?: number;
-  /** Duration in ms before silence is confirmed */
-  duration?: number;
-  /** Sample rate for timing calculations */
-  sampleRate?: number;
-} = {}) {
+export function createSilenceDetector(
+  options: {
+    /** Threshold below which audio is considered silent */
+    threshold?: number;
+    /** Duration in ms before silence is confirmed */
+    duration?: number;
+    /** Sample rate for timing calculations */
+    sampleRate?: number;
+  } = {},
+) {
   const { threshold = 0.001, duration = 1000, sampleRate = 48000 } = options;
 
   let silentSamples = 0;
@@ -132,11 +134,7 @@ export function createSilenceDetector(options: {
  * @param toSampleRate - Target sample rate
  * @returns Resampled audio
  */
-export function resampleAudio(
-  samples: Float32Array,
-  fromSampleRate: number,
-  toSampleRate: number
-): Float32Array {
+export function resampleAudio(samples: Float32Array, fromSampleRate: number, toSampleRate: number): Float32Array {
   if (fromSampleRate === toSampleRate) {
     return samples;
   }
@@ -151,8 +149,7 @@ export function resampleAudio(
     const srcIndexCeil = Math.min(srcIndexFloor + 1, samples.length - 1);
     const fraction = srcIndex - srcIndexFloor;
 
-    result[i] =
-      samples[srcIndexFloor]! * (1 - fraction) + samples[srcIndexCeil]! * fraction;
+    result[i] = samples[srcIndexFloor]! * (1 - fraction) + samples[srcIndexCeil]! * fraction;
   }
 
   return result;
@@ -175,10 +172,7 @@ export function audioBufferToFloat32(buffer: AudioBuffer): Float32Array {
  * @param audioContext - AudioContext to use
  * @returns MediaStreamTrack
  */
-export function audioBufferToTrack(
-  buffer: AudioBuffer,
-  audioContext: AudioContext
-): MediaStreamTrack {
+export function audioBufferToTrack(buffer: AudioBuffer, audioContext: AudioContext): MediaStreamTrack {
   const source = audioContext.createBufferSource();
   source.buffer = buffer;
 

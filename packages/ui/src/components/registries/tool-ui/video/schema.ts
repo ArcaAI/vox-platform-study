@@ -1,12 +1,8 @@
-import { z } from "zod";
-import { defineToolUiContract } from "../shared/contract";
-import {
-  ToolUIIdSchema,
-  ToolUIReceiptSchema,
-  ToolUIRoleSchema,
-} from "../shared/schema";
+import { z } from 'zod';
+import { defineToolUiContract } from '../shared/contract';
+import { ToolUIIdSchema, ToolUIReceiptSchema, ToolUIRoleSchema } from '../shared/schema';
 
-import { AspectRatioSchema, MediaFitSchema } from "../shared/media";
+import { AspectRatioSchema, MediaFitSchema } from '../shared/media';
 
 export const SourceSchema = z.object({
   label: z.string(),
@@ -37,14 +33,8 @@ export const SerializableVideoSchema = z.object({
 
 export type SerializableVideo = z.infer<typeof SerializableVideoSchema>;
 
-const SerializableVideoSchemaContract = defineToolUiContract(
-  "Video",
-  SerializableVideoSchema,
-);
+const SerializableVideoSchemaContract = defineToolUiContract('Video', SerializableVideoSchema);
 
-export const parseSerializableVideo: (input: unknown) => SerializableVideo =
-  SerializableVideoSchemaContract.parse;
+export const parseSerializableVideo: (input: unknown) => SerializableVideo = SerializableVideoSchemaContract.parse;
 
-export const safeParseSerializableVideo: (
-  input: unknown,
-) => SerializableVideo | null = SerializableVideoSchemaContract.safeParse;
+export const safeParseSerializableVideo: (input: unknown) => SerializableVideo | null = SerializableVideoSchemaContract.safeParse;

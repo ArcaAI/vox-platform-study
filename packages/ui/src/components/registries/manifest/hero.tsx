@@ -80,7 +80,6 @@ export interface HeroProps {
   };
 }
 
-
 /**
  * Renders a logo - image logos display directly, text logos get a bordered container
  * Supports light/dark mode variants for image logos
@@ -92,31 +91,19 @@ function LogoDisplay({ logo }: { logo: HeroLogo }) {
     if (logo.urlLight) {
       return (
         <>
-          <img
-            src={logo.url}
-            alt={logo.alt || 'Logo'}
-            className="h-8 sm:h-10 w-auto object-contain dark:hidden"
-          />
-          <img
-            src={logo.urlLight}
-            alt={logo.alt || 'Logo'}
-            className="h-8 sm:h-10 w-auto object-contain hidden dark:block"
-          />
+          <img src={logo.url} alt={logo.alt || 'Logo'} className="h-8 sm:h-10 w-auto object-contain dark:hidden" />
+          <img src={logo.urlLight} alt={logo.alt || 'Logo'} className="h-8 sm:h-10 w-auto object-contain hidden dark:block" />
         </>
       );
     }
     // Single logo for both modes
-    return (
-      <img src={logo.url} alt={logo.alt || 'Logo'} className="h-16 sm:h-20 w-auto object-contain" />
-    );
+    return <img src={logo.url} alt={logo.alt || 'Logo'} className="h-16 sm:h-20 w-auto object-contain" />;
   }
   // Text logos get a bordered square container
   if (logo.text) {
     return (
       <div className="flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-xl border bg-background p-3">
-        <span className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">
-          {logo.text}
-        </span>
+        <span className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">{logo.text}</span>
       </div>
     );
   }
@@ -183,39 +170,22 @@ export function Hero({ data, actions }: HeroProps) {
         {hasLogos && (
           <div className="flex items-center justify-center gap-3 sm:gap-4 mb-8 sm:mb-10">
             {hasLogo1 && <LogoDisplay logo={logo1} />}
-            {hasBothLogos && (
-              <span className="text-lg sm:text-xl font-medium text-muted-foreground">
-                {logoSeparator}
-              </span>
-            )}
+            {hasBothLogos && <span className="text-lg sm:text-xl font-medium text-muted-foreground">{logoSeparator}</span>}
             {hasLogo2 && logo2 && <LogoDisplay logo={logo2} />}
           </div>
         )}
 
         {/* Title */}
-        {title && (
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground text-center max-w-4xl mb-4 sm:mb-6">
-            {title}
-          </h1>
-        )}
+        {title && <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground text-center max-w-4xl mb-4 sm:mb-6">{title}</h1>}
 
         {/* Subtitle */}
-        {subtitle && (
-          <p className="text-base sm:text-lg text-muted-foreground text-center max-w-2xl mb-8 sm:mb-10">
-            {subtitle}
-          </p>
-        )}
+        {subtitle && <p className="text-base sm:text-lg text-muted-foreground text-center max-w-2xl mb-8 sm:mb-10">{subtitle}</p>}
 
         {/* Buttons */}
         {hasButtons && (
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             {hasPrimaryButton && (
-              <Button
-                variant="outline"
-                size="lg"
-                className="min-w-[140px]"
-                onClick={actions?.onPrimaryClick}
-              >
+              <Button variant="outline" size="lg" className="min-w-[140px]" onClick={actions?.onPrimaryClick}>
                 {primaryButton.icon && <span className="mr-2">{primaryButton.icon}</span>}
                 {primaryButton.label}
               </Button>
@@ -232,9 +202,7 @@ export function Hero({ data, actions }: HeroProps) {
         {/* Tech Logos Footer */}
         {hasTechLogos && (
           <div className="flex flex-col items-center mt-12 sm:mt-16 pt-8 sm:pt-10 border-t w-full max-w-2xl">
-            {techLogosLabel && (
-              <p className="text-sm text-muted-foreground mb-4">{techLogosLabel}</p>
-            )}
+            {techLogosLabel && <p className="text-sm text-muted-foreground mb-4">{techLogosLabel}</p>}
             <div className="flex items-center justify-center gap-4 flex-wrap">
               {techLogos.map((logo) => (
                 <div

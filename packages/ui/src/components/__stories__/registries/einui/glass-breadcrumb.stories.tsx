@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import {
   GlassBreadcrumb,
   GlassBreadcrumbList,
@@ -6,7 +6,7 @@ import {
   GlassBreadcrumbLink,
   GlassBreadcrumbPage,
   GlassBreadcrumbSeparator,
-} from '@/components/registries/einui/glass-breadcrumb'
+} from '@/components/registries/einui/glass-breadcrumb';
 
 function GlassBreadcrumbDemo() {
   return (
@@ -25,7 +25,7 @@ function GlassBreadcrumbDemo() {
         </GlassBreadcrumbItem>
       </GlassBreadcrumbList>
     </GlassBreadcrumb>
-  )
+  );
 }
 
 const meta = {
@@ -33,11 +33,11 @@ const meta = {
   component: GlassBreadcrumbDemo,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof GlassBreadcrumbDemo>
+} satisfies Meta<typeof GlassBreadcrumbDemo>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => <GlassBreadcrumbDemo />,
-}
+};

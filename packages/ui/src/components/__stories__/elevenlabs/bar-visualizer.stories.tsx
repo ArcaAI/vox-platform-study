@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { BarVisualizer } from '../../elevenlabs/bar-visualizer'
+import { BarVisualizer } from '../../elevenlabs/bar-visualizer';
 
 const meta: Meta<typeof BarVisualizer> = {
   title: 'ElevenLabs/BarVisualizer',
@@ -36,10 +36,10 @@ const meta: Meta<typeof BarVisualizer> = {
       description: 'Align bars from center instead of bottom',
     },
   },
-}
+};
 
-export default meta
-type Story = StoryObj<typeof BarVisualizer>
+export default meta;
+type Story = StoryObj<typeof BarVisualizer>;
 
 export const Connecting: Story = {
   render: () => (
@@ -47,7 +47,7 @@ export const Connecting: Story = {
       <BarVisualizer state="connecting" demo />
     </div>
   ),
-}
+};
 
 export const Listening: Story = {
   render: () => (
@@ -55,7 +55,7 @@ export const Listening: Story = {
       <BarVisualizer state="listening" demo />
     </div>
   ),
-}
+};
 
 export const Speaking: Story = {
   render: () => (
@@ -63,7 +63,7 @@ export const Speaking: Story = {
       <BarVisualizer state="speaking" demo />
     </div>
   ),
-}
+};
 
 export const Thinking: Story = {
   render: () => (
@@ -71,7 +71,7 @@ export const Thinking: Story = {
       <BarVisualizer state="thinking" demo />
     </div>
   ),
-}
+};
 
 export const Initializing: Story = {
   render: () => (
@@ -79,7 +79,7 @@ export const Initializing: Story = {
       <BarVisualizer state="initializing" demo />
     </div>
   ),
-}
+};
 
 export const CenterAligned: Story = {
   render: () => (
@@ -87,7 +87,7 @@ export const CenterAligned: Story = {
       <BarVisualizer state="speaking" demo centerAlign />
     </div>
   ),
-}
+};
 
 export const FewBars: Story = {
   render: () => (
@@ -95,7 +95,7 @@ export const FewBars: Story = {
       <BarVisualizer state="speaking" demo barCount={5} />
     </div>
   ),
-}
+};
 
 export const ManyBars: Story = {
   render: () => (
@@ -103,19 +103,17 @@ export const ManyBars: Story = {
       <BarVisualizer state="speaking" demo barCount={25} />
     </div>
   ),
-}
+};
 
 export const AllStates: Story = {
   render: () => (
     <div className="flex flex-col gap-4">
-      {(['connecting', 'initializing', 'listening', 'speaking', 'thinking'] as const).map(
-        (state) => (
-          <div key={state} className="w-[400px]">
-            <p className="mb-1 text-sm font-medium capitalize">{state}</p>
-            <BarVisualizer state={state} demo className="h-24" />
-          </div>
-        )
-      )}
+      {(['connecting', 'initializing', 'listening', 'speaking', 'thinking'] as const).map((state) => (
+        <div key={state} className="w-[400px]">
+          <p className="mb-1 text-sm font-medium capitalize">{state}</p>
+          <BarVisualizer state={state} demo className="h-24" />
+        </div>
+      ))}
     </div>
   ),
-}
+};

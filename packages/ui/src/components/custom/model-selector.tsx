@@ -1,61 +1,44 @@
-import { cn } from "../../lib/utils"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../shadcn/select"
-import { Label } from "../shadcn/label"
-import { Badge } from "../shadcn/badge"
-import { IconCpu } from "@tabler/icons-react"
+import { cn } from '../../lib/utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../shadcn/select';
+import { Label } from '../shadcn/label';
+import { Badge } from '../shadcn/badge';
+import { IconCpu } from '@tabler/icons-react';
 
 export interface ModelOption {
-  id: string
-  name: string
-  source?: "local" | "huggingface" | "backend"
-  description?: string
+  id: string;
+  name: string;
+  source?: 'local' | 'huggingface' | 'backend';
+  description?: string;
 }
 
 interface ModelSelectorProps {
-  label: string
-  models: ModelOption[]
-  selectedModelId?: string
-  onChange: (modelId: string) => void
-  isLoading?: boolean
-  className?: string
+  label: string;
+  models: ModelOption[];
+  selectedModelId?: string;
+  onChange: (modelId: string) => void;
+  isLoading?: boolean;
+  className?: string;
   /** When true, prepends a "None" option that passes empty string to onChange */
-  noneOption?: boolean
+  noneOption?: boolean;
 }
 
-
-export function ModelSelector({
-  label,
-  models,
-  selectedModelId,
-  onChange,
-  isLoading,
-  className,
-  noneOption,
-}: ModelSelectorProps) {
-  const selectedModel = models.find((m) => m.id === selectedModelId)
+export function ModelSelector({ label, models, selectedModelId, onChange, isLoading, className, noneOption }: ModelSelectorProps) {
+  const selectedModel = models.find((m) => m.id === selectedModelId);
 
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn('space-y-2', className)}>
       <Label>
         <IconCpu className="size-4 text-muted-foreground" />
         {label}
       </Label>
 
       <Select
-        value={selectedModelId || (noneOption ? "__none__" : undefined)}
-        onValueChange={(v) => onChange(v === "__none__" ? "" : v)}
+        value={selectedModelId || (noneOption ? '__none__' : undefined)}
+        onValueChange={(v) => onChange(v === '__none__' ? '' : v)}
         disabled={isLoading}
       >
         <SelectTrigger className="w-full">
-          <SelectValue
-            placeholder={isLoading ? "Loading..." : "Select a model"}
-          >
+          <SelectValue placeholder={isLoading ? 'Loading...' : 'Select a model'}>
             {selectedModelId && selectedModel ? (
               <span className="flex items-center gap-2">
                 {selectedModel.name}
@@ -88,16 +71,12 @@ export function ModelSelector({
                     </Badge>
                   )}
                 </span>
-                {model.description && (
-                  <span className="text-xs text-muted-foreground">
-                    {model.description}
-                  </span>
-                )}
+                {model.description && <span className="text-xs text-muted-foreground">{model.description}</span>}
               </div>
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
     </div>
-  )
+  );
 }

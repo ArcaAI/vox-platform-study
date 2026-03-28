@@ -3,8 +3,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export enum AiModelSource {
-    HUGGINGFACE = 'HUGGINGFACE',
-    GITHUB = 'GITHUB',
-    MLFLOW = 'MLFLOW',
-    LOCAL = 'LOCAL',
+  HUGGINGFACE = 'HUGGINGFACE',
+  GITHUB = 'GITHUB',
+  MLFLOW = 'MLFLOW',
+  LOCAL = 'LOCAL',
 }

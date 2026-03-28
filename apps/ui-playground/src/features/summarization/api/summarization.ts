@@ -1,13 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { smrClient } from './smr-client';
-import type {
-  SmrGenerateRequest,
-  SmrGenerateResponse,
-  SmrStreamingResponse,
-  SmrTaskResponse,
-  SmrProvider,
-  SmrHealthResponse,
-} from './types';
+import type { SmrGenerateRequest, SmrGenerateResponse, SmrStreamingResponse, SmrTaskResponse, SmrProvider, SmrHealthResponse } from './types';
 
 const keys = {
   all: ['summarization'] as const,
@@ -51,24 +44,26 @@ export function useSmrTaskStatus(taskId: string | null) {
 export function useGenerateSync() {
   return useMutation({
     mutationFn: (req: SmrGenerateRequest) =>
-      smrClient.post<SmrGenerateResponse>('/text/generate', { ...req, stream: false }, {
-        timeout: 120_000,
-      }),
+      smrClient.post<SmrGenerateResponse>(
+        '/text/generate',
+        { ...req, stream: false },
+        {
+          timeout: 120_000,
+        },
+      ),
   });
 }
 
 export function useGenerateAsync() {
   return useMutation({
-    mutationFn: (req: SmrGenerateRequest) =>
-      smrClient.post<SmrStreamingResponse>('/text/generate', { ...req, stream: true }),
+    mutationFn: (req: SmrGenerateRequest) => smrClient.post<SmrStreamingResponse>('/text/generate', { ...req, stream: true }),
   });
 }
 
 export function useCancelTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (taskId: string) =>
-      smrClient.post<void>(`/text/tasks/${taskId}/cancel`),
+    mutationFn: (taskId: string) => smrClient.post<void>(`/text/tasks/${taskId}/cancel`),
     onSuccess: (_, taskId) => {
       queryClient.invalidateQueries({ queryKey: keys.task(taskId) });
     },
@@ -92,7 +87,8 @@ export function useGeneratePreSummary() {
       temperature?: number;
       maxTokens?: number;
     }) => {
-      const systemPrompt = templateContent ??
+      const systemPrompt =
+        templateContent ??
         `You are a medical documentation assistant. Generate a concise pre-summary from the provided clinical context. Focus on key findings, diagnoses, medications, and treatment plans. Output should be structured and easy to review.`;
 
       const prompt = `Generate a pre-summary from the following clinical context:\n\n${contextText}`;
@@ -141,7 +137,8 @@ export function useGenerateSummary() {
       temperature?: number;
       maxTokens?: number;
     }) => {
-      let systemPrompt = templateContent ??
+      let systemPrompt =
+        templateContent ??
         `You are a medical documentation assistant. Generate a comprehensive clinical summary from the provided transcript and context.`;
 
       if (dnaStyleText) {
@@ -194,6 +191,7 @@ export function useStreamPreSummary() {
       maxTokens,
       onChunk,
       onDone,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       signal,
     }: {
       contextText: string;
@@ -206,23 +204,21 @@ export function useStreamPreSummary() {
       onDone?: (taskId: string) => void;
       signal?: AbortSignal;
     }) => {
-      const systemPrompt = templateContent ??
+      const systemPrompt =
+        templateContent ??
         `You are a medical documentation assistant. Generate a concise pre-summary from the provided clinical context. Focus on key findings, diagnoses, medications, and treatment plans. Output should be structured and easy to review.`;
 
       const prompt = `Generate a pre-summary from the following clinical context:\n\n${contextText}`;
 
-      const taskRes = await smrClient.post<SmrStreamingResponse>(
-        '/text/generate',
-        {
-          prompt,
-          system_prompt: systemPrompt,
-          provider: provider || 'ollama',
-          model: model || undefined,
-          temperature: temperature ?? 0.3,
-          max_tokens: maxTokens ?? 2048,
-          stream: true,
-        } satisfies SmrGenerateRequest,
-      );
+      const taskRes = await smrClient.post<SmrStreamingResponse>('/text/generate', {
+        prompt,
+        system_prompt: systemPrompt,
+        provider: provider || 'ollama',
+        model: model || undefined,
+        temperature: temperature ?? 0.3,
+        max_tokens: maxTokens ?? 2048,
+        stream: true,
+      } satisfies SmrGenerateRequest);
 
       await smrClient.sse(
         `/text/tasks/${taskRes.task_id}/stream`,
@@ -231,7 +227,9 @@ export function useStreamPreSummary() {
             const parsed = JSON.parse(data);
             const text = parsed.content || parsed.text || parsed.delta?.content || '';
             if (text) onChunk(text);
-          } catch { /* skip non-JSON */ }
+          } catch {
+            /* skip non-JSON */
+          }
         },
         () => onDone?.(taskRes.task_id),
       );
@@ -257,6 +255,7 @@ export function useStreamSummary() {
       maxTokens,
       onChunk,
       onDone,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       signal,
     }: {
       transcript: string;
@@ -274,7 +273,8 @@ export function useStreamSummary() {
       onDone?: (taskId: string) => void;
       signal?: AbortSignal;
     }) => {
-      let systemPrompt = templateContent ??
+      let systemPrompt =
+        templateContent ??
         `You are a medical documentation assistant. Generate a comprehensive clinical summary from the provided transcript and context.`;
 
       if (dnaStyleText) {
@@ -299,18 +299,15 @@ export function useStreamSummary() {
         prompt += `\n\n--- Additional Context ---\n${additionalContext}`;
       }
 
-      const taskRes = await smrClient.post<SmrStreamingResponse>(
-        '/text/generate',
-        {
-          prompt,
-          system_prompt: systemPrompt,
-          provider: provider || 'ollama',
-          model: model || undefined,
-          temperature: temperature ?? 0.4,
-          max_tokens: maxTokens ?? 4096,
-          stream: true,
-        } satisfies SmrGenerateRequest,
-      );
+      const taskRes = await smrClient.post<SmrStreamingResponse>('/text/generate', {
+        prompt,
+        system_prompt: systemPrompt,
+        provider: provider || 'ollama',
+        model: model || undefined,
+        temperature: temperature ?? 0.4,
+        max_tokens: maxTokens ?? 4096,
+        stream: true,
+      } satisfies SmrGenerateRequest);
 
       await smrClient.sse(
         `/text/tasks/${taskRes.task_id}/stream`,
@@ -319,7 +316,9 @@ export function useStreamSummary() {
             const parsed = JSON.parse(data);
             const text = parsed.content || parsed.text || parsed.delta?.content || '';
             if (text) onChunk(text);
-          } catch { /* skip non-JSON */ }
+          } catch {
+            /* skip non-JSON */
+          }
         },
         () => onDone?.(taskRes.task_id),
       );

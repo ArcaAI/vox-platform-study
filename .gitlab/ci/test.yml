@@ -1,16 +1,81 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# Test stage — unit tests for all services
+# Test stage — unit + integration tests for all services
 # ══════════════════════════════════════════════════════════════════════════════
+#
+# External Test Infrastructure (on 10.10.1.0/24 — reachable from GitLab Runner):
+#   PostgreSQL HA:  10.10.1.250:5000  (HAProxy R/W VIP)
+#   Redis Dev:      10.10.1.120:6379  (DB 8 reserved for CI tests)
+#
+# Connection details are set via CI/CD variables (Settings → CI/CD → Variables):
+#   CI_DATABASE_URL       — postgresql://user:pass@10.10.1.250:5000/vox_dev?schema=public
+#   CI_DATABASE_URL_DIRECT — same (direct, bypasses PgBouncer if used)
+#   CI_REDIS_URL          — redis://:pass@10.10.1.120:6379/8
+#   CI_REDIS_PASS         — Redis password (masked)
+#   CI_JWT_SECRET         — test JWT secret (masked)
+#   CI_JWT_REFRESH_SECRET — test JWT refresh secret (masked)
+#   CI_API_KEY_PEPPER     — test API key pepper (masked)
+#
+# Database-dependent tests (test-api) use CI_DATABASE_URL from GitLab Variables.
+# The prepare-test-db job resets the schema + seeds before tests run.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Skip controls ────────────────────────────────────────────────────────────
+# Set SKIP_TESTS=true to skip ALL test jobs, or use the granular variants:
+#   SKIP_TESTS_TS — skip TypeScript tests (test-api, test-packages, test-sdk)
+#   SKIP_TESTS_PY — skip Python tests (test-stt-v2, test-smr, test-nlp)
+#
+# Usage:
+#   GitLab UI → Run pipeline → add variable SKIP_TESTS = true
+#   git push -o ci.variable="SKIP_TESTS=true"
+
+# ── Shared test variables (anchored for reuse) ──────────────────────────────
+
+.test-env-vars: &test-env-vars
+  NODE_ENV: "test"
+  CI: "true"
+  DATABASE_URL: $CI_DATABASE_URL
+  DATABASE_URL_DIRECT: $CI_DATABASE_URL_DIRECT
+  REDIS_URL: $CI_REDIS_URL
+  REDIS_PASS: $CI_REDIS_PASS
+  JWT_SECRET: $CI_JWT_SECRET
+  JWT_REFRESH_SECRET: $CI_JWT_REFRESH_SECRET
+  API_KEY_PEPPER: $CI_API_KEY_PEPPER
+  SESSION_SECRET_KEY: $CI_JWT_SECRET
+  LOG_LEVEL: "error"
+  LOG_FILE_ENABLED: "false"
+  OTEL_TRACES_ENABLED: "false"
+  OTEL_METRICS_ENABLED: "false"
+  PORT: "8868"
+  API_PORT: "8868"
+  API_URL: "http://localhost:8868"
+  STT_V2_PORT: "8861"
+  STT_V2_URL: "http://localhost:8861"
+  TTS_PORT: "8863"
+  TTS_URL: "http://localhost:8863"
+  SMR_PORT: "8862"
+  SMR_URL: "http://localhost:8862"
+  NLP_PORT: "8864"
+  NLP_URL: "http://localhost:8864"
 
 # ── API unit tests (NestJS / Vitest) ─────────────────────────────────────────
 
 test-api:
   stage: test
-  extends: .node-base
+  extends: .test-node-base
   needs:
+    - job: install-node
+      optional: true
     - job: lint-ts
       optional: true
+      artifacts: false
+    - job: prepare-test-db
+      optional: true
+      artifacts: false
+  variables:
+    <<: *test-env-vars
   script:
+    - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
+    - pnpm --filter @arcaai/database db:generate
     - pnpm turbo build --filter=@arcaai/database
     - pnpm turbo build --filter=@arcaai/exceptions
     - pnpm turbo build --filter=@arcaai/logger
@@ -23,30 +88,46 @@ test-api:
       junit: junit-api.xml
     expire_in: 30 days
   rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_TS == "true"
+      when: never
     - !reference [.rules-api, rules]
 
 # ── Shared package tests (Vitest) ───────────────────────────────────────────
 
 test-packages:
   stage: test
-  extends: .node-base
+  extends: .test-node-base
   needs:
+    - job: install-node
+      optional: true
     - job: lint-ts
       optional: true
+      artifacts: false
+  variables:
+    <<: *test-env-vars
   script:
+    - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
+    - pnpm --filter @arcaai/database db:generate
     - pnpm turbo build --filter=@arcaai/database
     - pnpm turbo build --filter=@arcaai/exceptions
     - pnpm turbo build --filter=@arcaai/logger
     - pnpm turbo build --filter=@arcaai/domains
     - pnpm turbo test --filter=@arcaai/logger --filter=@arcaai/utils --filter=@arcaai/pipeline
   rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_TS == "true"
+      when: never
     - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
           - packages/**/*
         compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - packages/**/*
 
@@ -54,15 +135,26 @@ test-packages:
 
 test-sdk:
   stage: test
-  extends: .node-base
+  extends: .test-node-base
   needs:
+    - job: install-node
+      optional: true
     - job: lint-ts
       optional: true
+      artifacts: false
+  variables:
+    <<: *test-env-vars
   script:
+    - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - pnpm turbo build --filter=@arcaai/utils
     - pnpm turbo test --filter=@arcaai/vox --filter=@arcaai/room --filter=@arcaai/vad --filter=@arcaai/stt --filter=@arcaai/noise-filter --filter=@arcaai/med-ner --filter=@arcaai/ui
   rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_TS == "true"
+      when: never
     - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
@@ -75,7 +167,7 @@ test-sdk:
           - packages/med-ner/**/*
           - packages/utils/**/*
         compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - packages/ui/**/*
         - packages/room/**/*
@@ -90,11 +182,16 @@ test-sdk:
 test-stt-v2:
   stage: test
   image: python:3.11-slim
+  tags: [test]
   needs:
     - job: lint-python
       optional: true
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+    DATABASE_URL: $CI_DATABASE_URL
+    TEST_DATABASE_URL: $CI_DATABASE_URL
+    REDIS_URL: $CI_REDIS_URL
+    TEST_REDIS_URL: $CI_REDIS_URL
   cache:
     - key: pip-stt-v2
       paths:
@@ -103,8 +200,9 @@ test-stt-v2:
       fallback_keys:
         - pip-$CI_DEFAULT_BRANCH
   script:
+    - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - cd apps/stt-v2
-    - pip install --quiet -r requirements.txt -r requirements-dev.txt 2>/dev/null || pip install --quiet -r requirements.txt
+    - pip install --quiet ".[test]"
     - python -m pytest tests/unit/ -v --tb=short --junitxml=../../junit-stt-v2.xml || true
     - python -m pytest tests/ -v --tb=short --junitxml=../../junit-stt-v2.xml --ignore=tests/e2e/ --ignore=tests/integration/ -x
   artifacts:
@@ -113,6 +211,10 @@ test-stt-v2:
       junit: junit-stt-v2.xml
     expire_in: 30 days
   rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_PY == "true"
+      when: never
     - !reference [.rules-stt-v2, rules]
 
 # ── SMR tests (pytest) ──────────────────────────────────────────────────────
@@ -120,11 +222,20 @@ test-stt-v2:
 test-smr:
   stage: test
   image: python:3.11-slim
+  tags: [test]
   needs:
     - job: lint-python
       optional: true
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+    DATABASE_URL: $CI_DATABASE_URL
+    TEST_DATABASE_URL: $CI_DATABASE_URL
+    REDIS_URL: $CI_REDIS_URL
+    TEST_REDIS_URL: $CI_REDIS_URL
+    SUMMARY_AGENT_DATABASE_URL: $CI_DATABASE_URL
+    SUMMARY_AGENT_REDIS_URL: $CI_REDIS_URL
+    CELERY_BROKER_URL: $CI_REDIS_URL
+    CELERY_RESULT_BACKEND: $CI_REDIS_URL
   cache:
     - key: pip-smr
       paths:
@@ -133,12 +244,9 @@ test-smr:
       fallback_keys:
         - pip-$CI_DEFAULT_BRANCH
   script:
+    - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - cd apps/smr
-    - pip install --quiet -r requirements.txt 2>/dev/null || true
-    - |
-      if [ -f requirements-dev.txt ]; then
-        pip install --quiet -r requirements-dev.txt 2>/dev/null || true
-      fi
+    - pip install --quiet ".[test]"
     - python -m pytest src/smr_v2/tests/ -v --tb=short --junitxml=../../junit-smr.xml -x
   artifacts:
     when: always
@@ -146,6 +254,10 @@ test-smr:
       junit: junit-smr.xml
     expire_in: 30 days
   rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_PY == "true"
+      when: never
     - !reference [.rules-smr, rules]
 
 # ── NLP tests (pytest) ──────────────────────────────────────────────────────
@@ -153,11 +265,16 @@ test-smr:
 test-nlp:
   stage: test
   image: python:3.11-slim
+  tags: [test]
   needs:
     - job: lint-python
       optional: true
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+    DATABASE_URL: $CI_DATABASE_URL
+    TEST_DATABASE_URL: $CI_DATABASE_URL
+    REDIS_URL: $CI_REDIS_URL
+    TEST_REDIS_URL: $CI_REDIS_URL
   cache:
     - key: pip-nlp
       paths:
@@ -166,12 +283,9 @@ test-nlp:
       fallback_keys:
         - pip-$CI_DEFAULT_BRANCH
   script:
+    - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - cd apps/nlp
-    - pip install --quiet -r requirements.txt 2>/dev/null || true
-    - |
-      if [ -f requirements-dev.txt ]; then
-        pip install --quiet -r requirements-dev.txt 2>/dev/null || true
-      fi
+    - pip install --quiet ".[dev]"
     - python -m pytest tests/ -v --tb=short --junitxml=../../junit-nlp.xml -x
   artifacts:
     when: always
@@ -179,4 +293,8 @@ test-nlp:
       junit: junit-nlp.xml
     expire_in: 30 days
   rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_PY == "true"
+      when: never
     - !reference [.rules-nlp, rules]

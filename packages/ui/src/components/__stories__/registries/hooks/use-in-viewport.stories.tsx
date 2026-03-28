@@ -1,10 +1,10 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useRef } from 'react'
-import { useInViewport } from '../../../../hooks/registries/use-in-viewport'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useRef } from 'react';
+import { useInViewport } from '../../../../hooks/registries/use-in-viewport';
 
 function UseInViewportDemo() {
-  const ref = useRef<HTMLDivElement>(null)
-  const [inViewport] = useInViewport(ref)
+  const ref = useRef<HTMLDivElement>(null);
+  const [inViewport] = useInViewport(ref);
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -18,7 +18,7 @@ function UseInViewportDemo() {
       </div>
       <p className="text-sm">In viewport: {String(inViewport)}</p>
     </div>
-  )
+  );
 }
 
 const meta = {
@@ -26,8 +26,8 @@ const meta = {
   component: UseInViewportDemo,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof UseInViewportDemo>
+} satisfies Meta<typeof UseInViewportDemo>;
 
-export default meta
-type Story = StoryObj<typeof meta>
-export const Default: Story = {}
+export default meta;
+type Story = StoryObj<typeof meta>;
+export const Default: Story = {};

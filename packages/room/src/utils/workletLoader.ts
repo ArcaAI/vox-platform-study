@@ -61,9 +61,7 @@ export function createWorkletLoader(options: WorkletLoaderOptions): WorkletLoade
       }
 
       if (!audioContext.audioWorklet) {
-        throw new Error(
-          `[${label}] AudioWorklet is not supported in this browser`
-        );
+        throw new Error(`[${label}] AudioWorklet is not supported in this browser`);
       }
 
       const url = workletUrl ?? getBlobUrl();

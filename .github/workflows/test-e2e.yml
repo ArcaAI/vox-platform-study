@@ -4,7 +4,13 @@
 # Runs end-to-end API tests using Playwright.
 # Tests the full application stack with real services.
 #
-# Service Ports (same as local test infrastructure):
+# Infrastructure modes:
+#   1. Service containers (default) — ephemeral PostgreSQL/Redis per job
+#   2. External infrastructure — connect to shared HA-Postgres & Redis
+#      Set USE_EXTERNAL_TEST_DB=true as a repository variable, and provide
+#      TEST_PG_* and TEST_REDIS_* as repository secrets.
+#
+# Service Ports — service container mode (same as local test infra):
 #   - PostgreSQL: 5433
 #   - Redis: 6380
 #
@@ -38,6 +44,11 @@ on:
         type: string
       skip-seed:
         description: 'Skip database seeding'
+        required: false
+        default: false
+        type: boolean
+      use-external-db:
+        description: 'Use external HA-Postgres & Redis instead of service containers'
         required: false
         default: false
         type: boolean
@@ -97,6 +108,11 @@ on:
         required: false
         default: false
         type: boolean
+      use-external-db:
+        description: 'Use external HA-Postgres & Redis instead of service containers'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -104,16 +120,32 @@ concurrency:
 
 jobs:
   # ==========================================================================
+  # Resolve infrastructure mode
+  # ==========================================================================
+  resolve-infra:
+    name: Resolve Infrastructure Mode
+    runs-on: ubuntu-latest
+    outputs:
+      use-external: ${{ steps.resolve.outputs.use-external }}
+    steps:
+      - id: resolve
+        run: |
+          USE_EXT="${{ inputs.use-external-db || vars.USE_EXTERNAL_TEST_DB || 'false' }}"
+          echo "use-external=${USE_EXT}" >> $GITHUB_OUTPUT
+          echo "Infrastructure mode: $([ "$USE_EXT" = "true" ] && echo "EXTERNAL (HA-Postgres + Redis)" || echo "SERVICE CONTAINERS")"
+
+  # ==========================================================================
   # E2E API Tests
   # ==========================================================================
   e2e-tests:
     name: E2E API Tests
     runs-on: ubuntu-latest
+    needs: [resolve-infra]
     timeout-minutes: 30
 
     services:
       postgres:
-        image: postgres:18-alpine
+        image: ${{ needs.resolve-infra.outputs.use-external != 'true' && 'postgres:18-alpine' || '' }}
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -130,7 +162,7 @@ jobs:
           --shm-size 128mb
 
       redis:
-        image: redis:8-alpine
+        image: ${{ needs.resolve-infra.outputs.use-external != 'true' && 'redis:8-alpine' || '' }}
         ports:
           - 6380:6379
         options: >-
@@ -143,7 +175,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup test environment
+      - name: Setup test environment (external)
+        if: needs.resolve-infra.outputs.use-external == 'true'
+        uses: ./.github/actions/setup-test-env
+        with:
+          use-external-db: 'true'
+          external-pg-host: ${{ secrets.TEST_PG_HOST || '10.10.1.250' }}
+          external-pg-port: ${{ secrets.TEST_PG_PORT || '5000' }}
+          external-pg-user: ${{ secrets.TEST_PG_USER }}
+          external-pg-password: ${{ secrets.TEST_PG_PASSWORD }}
+          external-pg-database: ${{ secrets.TEST_PG_DB || 'vox_dev' }}
+          external-redis-host: ${{ secrets.TEST_REDIS_HOST || '10.10.1.120' }}
+          external-redis-port: ${{ secrets.TEST_REDIS_PORT || '6379' }}
+          external-redis-password: ${{ secrets.TEST_REDIS_PASSWORD }}
+          external-redis-db: ${{ secrets.TEST_REDIS_DB || '8' }}
+          log-level: 'error'
+
+      - name: Setup test environment (service containers)
+        if: needs.resolve-infra.outputs.use-external != 'true'
         uses: ./.github/actions/setup-test-env
         with:
           database-port: '5433'
@@ -271,19 +320,29 @@ jobs:
   e2e-summary:
     name: E2E Tests Summary
     runs-on: ubuntu-latest
-    needs: [e2e-tests]
+    needs: [resolve-infra, e2e-tests]
     if: always()
 
     steps:
       - name: Check test results
         run: |
+          USE_EXT="${{ needs.resolve-infra.outputs.use-external }}"
           E2E_RESULT="${{ needs.e2e-tests.result }}"
 
-          if [ "$E2E_RESULT" == "success" ]; then
-            echo "✅ E2E tests passed"
-          elif [ "$E2E_RESULT" == "skipped" ]; then
-            echo "⏭️ E2E tests skipped"
+          echo "## E2E Tests Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$USE_EXT" == "true" ]; then
+            echo "**Infrastructure:** External HA-Postgres + Redis" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ E2E tests failed"
+            echo "**Infrastructure:** Service containers (ephemeral)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$E2E_RESULT" == "success" ]; then
+            echo "✅ E2E tests passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "$E2E_RESULT" == "skipped" ]; then
+            echo "⏭️ E2E tests skipped" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ E2E tests failed" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi

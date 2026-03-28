@@ -121,7 +121,7 @@ interface AgenticActions {
     pluginManager: PluginManager,
     personalizationManager: PersonalizationManager,
     modelRegistry: ModelRegistry,
-    logger: SDKLogger
+    logger: SDKLogger,
   ) => void;
   reset: () => void;
 
@@ -332,16 +332,12 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
     set((state) => {
       const exists = state.contextItems.some((i) => i.id === item.id);
       return {
-        contextItems: exists
-          ? state.contextItems.map((i) => (i.id === item.id ? item : i))
-          : [...state.contextItems, item],
+        contextItems: exists ? state.contextItems.map((i) => (i.id === item.id ? item : i)) : [...state.contextItems, item],
       };
     }),
   updateContextItem: (id, updates) =>
     set((state) => ({
-      contextItems: state.contextItems.map((item) =>
-        item.id === id ? { ...item, ...updates } : item
-      ),
+      contextItems: state.contextItems.map((item) => (item.id === id ? { ...item, ...updates } : item)),
     })),
   removeContextItem: (id) =>
     set((state) => ({
@@ -355,9 +351,7 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
       const toUpdate = newEntities.filter((e) => existingIds.has(e.id));
       const toAdd = newEntities.filter((e) => !existingIds.has(e.id));
       const updateIds = new Set(toUpdate.map((e) => e.id));
-      const merged = state.entities.map((e) =>
-        updateIds.has(e.id) ? toUpdate.find((u) => u.id === e.id)! : e
-      );
+      const merged = state.entities.map((e) => (updateIds.has(e.id) ? toUpdate.find((u) => u.id === e.id)! : e));
       return { entities: [...merged, ...toAdd] };
     }),
   setContextLoading: (loading) => set({ contextLoading: loading }),
@@ -377,8 +371,7 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
   setIsSpeaking: (speaking) => set({ isSpeaking: speaking }),
   setCurrentTranscript: (transcript) => set({ currentTranscript: transcript }),
   setTranscriptSegments: (segments) => set({ transcriptSegments: segments }),
-  addTranscriptSegment: (segment) =>
-    set((state) => ({ transcriptSegments: [...state.transcriptSegments, segment] })),
+  addTranscriptSegment: (segment) => set((state) => ({ transcriptSegments: [...state.transcriptSegments, segment] })),
   setAudioLanguage: (language) => set({ audioLanguage: language }),
   setAudioPlugins: (plugins) => set({ audioPlugins: plugins }),
   setAudioError: (error) => set({ audioError: error }),
@@ -391,9 +384,7 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
     set((state) => {
       const exists = state.summaries.some((s) => s.id === summary.id);
       return {
-        summaries: exists
-          ? state.summaries.map((s) => (s.id === summary.id ? summary : s))
-          : [...state.summaries, summary],
+        summaries: exists ? state.summaries.map((s) => (s.id === summary.id ? summary : s)) : [...state.summaries, summary],
       };
     }),
   setDNAStyle: (style) => set({ dnaStyle: style }),
@@ -402,14 +393,11 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
 
   // Preferences actions
   setPreferences: (preferences) => set({ preferences }),
-  updatePreferences: (updates) =>
-    set((state) => ({ preferences: { ...state.preferences, ...updates } })),
+  updatePreferences: (updates) => set((state) => ({ preferences: { ...state.preferences, ...updates } })),
 
   // Pipeline state actions
-  setTranscriptionPipelineState: (pipelineState) =>
-    set({ transcriptionPipelineState: pipelineState }),
-  setKnowledgePipelineState: (pipelineState) =>
-    set({ knowledgePipelineState: pipelineState }),
+  setTranscriptionPipelineState: (pipelineState) => set({ transcriptionPipelineState: pipelineState }),
+  setKnowledgePipelineState: (pipelineState) => set({ knowledgePipelineState: pipelineState }),
 
   // Cross-tab actions
   setIsAudioSource: (isSource) => set({ isAudioSource: isSource }),
@@ -449,8 +437,7 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
       activeAudioContext: null,
     }),
 
-  incrementModelRegistryVersion: () =>
-    set((state) => ({ modelRegistryVersion: state.modelRegistryVersion + 1 })),
+  incrementModelRegistryVersion: () => set((state) => ({ modelRegistryVersion: state.modelRegistryVersion + 1 })),
 
   setTenantConfig: (config) => set({ tenantConfig: config }),
 
@@ -472,7 +459,9 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
         localStorage.removeItem('arcaai-preferences');
         localStorage.removeItem('arcaai-selected-models');
         localStorage.removeItem('arcaai-session-state');
-      } catch { /* SSR or restricted storage */ }
+      } catch {
+        /* SSR or restricted storage */
+      }
     }
     set({
       consultation: null,
@@ -507,22 +496,18 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
 /**
  * Get transcription items only
  */
-export const selectTranscriptions = (state: AgenticState): ContextItem[] =>
-  state.contextItems.filter((item) => item.type === 'transcription');
+export const selectTranscriptions = (state: AgenticState): ContextItem[] => state.contextItems.filter((item) => item.type === 'transcription');
 
 /**
  * Get case note items only
  */
-export const selectCaseNotes = (state: AgenticState): ContextItem[] =>
-  state.contextItems.filter((item) => item.type === 'case_note');
+export const selectCaseNotes = (state: AgenticState): ContextItem[] => state.contextItems.filter((item) => item.type === 'case_note');
 
 /**
  * Get summary items only
  */
 export const selectSummaryItems = (state: AgenticState): ContextItem[] =>
-  state.contextItems.filter(
-    (item) => item.type === 'summary' || item.type === 'pre_summary'
-  );
+  state.contextItems.filter((item) => item.type === 'summary' || item.type === 'pre_summary');
 
 /**
  * Get latest summary
@@ -543,20 +528,17 @@ export const selectLatestPreSummary = (state: AgenticState): SummaryResponse | n
 /**
  * Check if this tab is the audio source
  */
-export const selectIsAudioSource = (state: AgenticState): boolean =>
-  state.isAudioSource;
+export const selectIsAudioSource = (state: AgenticState): boolean => state.isAudioSource;
 
 /**
  * Get transcription pipeline state
  */
-export const selectTranscriptionPipelineState = (state: AgenticState) =>
-  state.transcriptionPipelineState;
+export const selectTranscriptionPipelineState = (state: AgenticState) => state.transcriptionPipelineState;
 
 /**
  * Get knowledge pipeline state
  */
-export const selectKnowledgePipelineState = (state: AgenticState) =>
-  state.knowledgePipelineState;
+export const selectKnowledgePipelineState = (state: AgenticState) => state.knowledgePipelineState;
 
 // =============================================================================
 // Granular Selectors (BUG-01)

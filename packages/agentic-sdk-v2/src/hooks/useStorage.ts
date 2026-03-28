@@ -81,20 +81,14 @@ export function useStorage(): UseStorageReturn {
   );
 
   const getBucket = useCallback(
-    (name: string) =>
-      execute<Bucket>('getBucket', (client) =>
-        client.get<Bucket>(STORAGE_ENDPOINTS.GET_BUCKET(name)),
-      ),
+    (name: string) => execute<Bucket>('getBucket', (client) => client.get<Bucket>(STORAGE_ENDPOINTS.GET_BUCKET(name))),
     [execute],
   );
 
   const createBucket = useCallback(
     (name: string, type?: string) =>
       execute<CreateBucketResult>('createBucket', async (client) => {
-        const data = await client.post<CreateBucketResult>(
-          STORAGE_ENDPOINTS.CREATE_BUCKET,
-          { name, type: type ?? 'private' },
-        );
+        const data = await client.post<CreateBucketResult>(STORAGE_ENDPOINTS.CREATE_BUCKET, { name, type: type ?? 'private' });
         setBuckets((prev) => [...prev, { name, ...data }]);
         return data;
       }),
@@ -135,10 +129,7 @@ export function useStorage(): UseStorageReturn {
         const formData = new FormData();
         formData.append('file', file);
         if (key) formData.append('key', key);
-        const data = await client.post<StorageFile>(
-          STORAGE_ENDPOINTS.UPLOAD_FILE(bucket),
-          formData,
-        );
+        const data = await client.post<StorageFile>(STORAGE_ENDPOINTS.UPLOAD_FILE(bucket), formData);
         setFiles((prev) => [...prev, data]);
         return data;
       }),
@@ -147,9 +138,7 @@ export function useStorage(): UseStorageReturn {
 
   const getFileInfo = useCallback(
     (bucket: string, key: string) =>
-      execute<StorageFileWithUrl>('getFileInfo', (client) =>
-        client.get<StorageFileWithUrl>(STORAGE_ENDPOINTS.GET_FILE(bucket, key)),
-      ),
+      execute<StorageFileWithUrl>('getFileInfo', (client) => client.get<StorageFileWithUrl>(STORAGE_ENDPOINTS.GET_FILE(bucket, key))),
     [execute],
   );
 
@@ -163,10 +152,7 @@ export function useStorage(): UseStorageReturn {
   );
 
   const checkHealth = useCallback(
-    () =>
-      execute<StorageHealth>('checkHealth', (client) =>
-        client.get<StorageHealth>(STORAGE_ENDPOINTS.HEALTH),
-      ),
+    () => execute<StorageHealth>('checkHealth', (client) => client.get<StorageHealth>(STORAGE_ENDPOINTS.HEALTH)),
     [execute],
   );
 

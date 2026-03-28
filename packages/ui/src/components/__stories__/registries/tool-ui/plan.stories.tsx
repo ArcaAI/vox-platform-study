@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Plan } from '../../../registries/tool-ui/plan'
+import { Plan } from '../../../registries/tool-ui/plan';
 
 const meta = {
   title: 'Registries/ToolUI/Plan',
   component: Plan,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Plan>
+} satisfies Meta<typeof Plan>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
@@ -22,4 +22,4 @@ export const Default: Story = {
       { id: '3', label: 'Testing', status: 'pending' },
     ],
   },
-}
+};

@@ -9,70 +9,70 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 export interface IUserMediaEntity extends Omit<IBaseTaggedEntity, 'tenantId'> {
-    sharedAt?: Date | null;
-    userId: string;
-    User: Entities.UserEntity | null;
-    mediaId: string;
-    Media: Entities.MediaEntity | null;
+  sharedAt?: Date | null;
+  userId: string;
+  User: Entities.UserEntity | null;
+  mediaId: string;
+  Media: Entities.MediaEntity | null;
 }
 
 export class UserMediaEntity extends BaseTaggedEntity {
-    private _sharedAt?: IUserMediaEntity['sharedAt'];
-    private _userId: IUserMediaEntity['userId'];
-    private _User: IUserMediaEntity['User'];
-    private _mediaId: IUserMediaEntity['mediaId'];
-    private _Media: IUserMediaEntity['Media'];
+  private _sharedAt?: IUserMediaEntity['sharedAt'];
+  private _userId: IUserMediaEntity['userId'];
+  private _User: IUserMediaEntity['User'];
+  private _mediaId: IUserMediaEntity['mediaId'];
+  private _Media: IUserMediaEntity['Media'];
 
-    constructor(init: IUserMediaEntity) {
-        super(init);
-        this._sharedAt = init.sharedAt;
-        this._userId = init.userId;
-        this._User = init.User;
-        this._mediaId = init.mediaId;
-        this._Media = init.Media;
-    }
+  constructor(init: IUserMediaEntity) {
+    super(init);
+    this._sharedAt = init.sharedAt;
+    this._userId = init.userId;
+    this._User = init.User;
+    this._mediaId = init.mediaId;
+    this._Media = init.Media;
+  }
 
-    get sharedAt(): IUserMediaEntity['sharedAt'] {
-        return this._sharedAt;
-    }
+  get sharedAt(): IUserMediaEntity['sharedAt'] {
+    return this._sharedAt;
+  }
 
-    set sharedAt(value: IUserMediaEntity['sharedAt']) {
-        this.setProperty('sharedAt', value);
-    }
+  set sharedAt(value: IUserMediaEntity['sharedAt']) {
+    this.setProperty('sharedAt', value);
+  }
 
-    get userId(): IUserMediaEntity['userId'] {
-        return this._userId;
-    }
+  get userId(): IUserMediaEntity['userId'] {
+    return this._userId;
+  }
 
-    set userId(value: IUserMediaEntity['userId']) {
-        this.setProperty('userId', value);
-    }
+  set userId(value: IUserMediaEntity['userId']) {
+    this.setProperty('userId', value);
+  }
 
-    get User(): IUserMediaEntity['User'] {
-        return this._User;
-    }
+  get User(): IUserMediaEntity['User'] {
+    return this._User;
+  }
 
-    set User(value: IUserMediaEntity['User']) {
-        this.setProperty('User', value);
-    }
+  set User(value: IUserMediaEntity['User']) {
+    this.setProperty('User', value);
+  }
 
-    get mediaId(): IUserMediaEntity['mediaId'] {
-        return this._mediaId;
-    }
+  get mediaId(): IUserMediaEntity['mediaId'] {
+    return this._mediaId;
+  }
 
-    set mediaId(value: IUserMediaEntity['mediaId']) {
-        this.setProperty('mediaId', value);
-    }
+  set mediaId(value: IUserMediaEntity['mediaId']) {
+    this.setProperty('mediaId', value);
+  }
 
-    get Media(): IUserMediaEntity['Media'] {
-        return this._Media;
-    }
+  get Media(): IUserMediaEntity['Media'] {
+    return this._Media;
+  }
 
-    set Media(value: IUserMediaEntity['Media']) {
-        this.setProperty('Media', value);
-    }
+  set Media(value: IUserMediaEntity['Media']) {
+    this.setProperty('Media', value);
+  }
 
-    public override validate(): void {
-        throw new BusinessException('Method not implemented.');
-    }
+  public override validate(): void {
+    throw new BusinessException('Method not implemented.');
+  }
 }

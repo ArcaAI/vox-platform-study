@@ -8,8 +8,8 @@ import { PromptResolutionServiceModule } from '../prompt/prompt-resolution.servi
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule, ConfigModule, HttpModule, PromptResolutionServiceModule],
-    providers: [PromptAssemblyService, ChainSummaryService],
-    exports: [ChainSummaryService],
+  imports: [CommonServiceModule, CoreDatabaseModule, ConfigModule, HttpModule, PromptResolutionServiceModule],
+  providers: [PromptAssemblyService, ChainSummaryService],
+  exports: [ChainSummaryService],
 })
 export class ChainSummaryServiceModule {}

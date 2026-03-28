@@ -2,9 +2,20 @@
 # Integration Tests Workflow
 # ============================================================================
 # Runs integration tests that require database and other services.
-# Uses GitHub Actions service containers for PostgreSQL, Redis, and MinIO.
 #
-# Service Ports (same as local test infrastructure):
+# Infrastructure modes:
+#   1. Service containers (default) — ephemeral PostgreSQL/Redis per job
+#   2. External infrastructure — connect to shared HA-Postgres & Redis
+#      Set USE_EXTERNAL_TEST_DB=true as a repository variable, and provide:
+#        TEST_PG_HOST, TEST_PG_PORT, TEST_PG_USER, TEST_PG_PASSWORD, TEST_PG_DB
+#        TEST_REDIS_HOST, TEST_REDIS_PORT, TEST_REDIS_PASSWORD, TEST_REDIS_DB
+#      as repository secrets.
+#
+# External Test Infrastructure (when enabled):
+#   PostgreSQL HA:  10.10.1.250:5000  (HAProxy R/W VIP → vox_dev)
+#   Redis Dev:      10.10.1.120:6379  (DB 8 reserved for CI tests)
+#
+# Service Ports — service container mode (same as local test infra):
 #   - PostgreSQL: 5433
 #   - Redis: 6380
 #   - MinIO: 9002
@@ -45,6 +56,11 @@ on:
         type: string
       reset-database:
         description: 'Force reset database before tests'
+        required: false
+        default: false
+        type: boolean
+      use-external-db:
+        description: 'Use external HA-Postgres & Redis instead of service containers'
         required: false
         default: false
         type: boolean
@@ -115,6 +131,11 @@ on:
         required: false
         default: false
         type: boolean
+      use-external-db:
+        description: 'Use external HA-Postgres & Redis instead of service containers'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -125,17 +146,32 @@ env:
 
 jobs:
   # ==========================================================================
+  # Resolve infrastructure mode
+  # ==========================================================================
+  resolve-infra:
+    name: Resolve Infrastructure Mode
+    runs-on: ubuntu-latest
+    outputs:
+      use-external: ${{ steps.resolve.outputs.use-external }}
+    steps:
+      - id: resolve
+        run: |
+          USE_EXT="${{ inputs.use-external-db || vars.USE_EXTERNAL_TEST_DB || 'false' }}"
+          echo "use-external=${USE_EXT}" >> $GITHUB_OUTPUT
+          echo "Infrastructure mode: $([ "$USE_EXT" = "true" ] && echo "EXTERNAL (HA-Postgres + Redis)" || echo "SERVICE CONTAINERS")"
+
+  # ==========================================================================
   # TypeScript Integration Tests
   # ==========================================================================
   integration-tests-typescript:
     name: TypeScript Integration Tests
     runs-on: ubuntu-latest
+    needs: [resolve-infra]
     if: ${{ !inputs.skip-typescript }}
 
     services:
       postgres:
-        # PostgreSQL 18 Alpine - matches local dev/test infrastructure
-        image: postgres:18-alpine
+        image: ${{ needs.resolve-infra.outputs.use-external != 'true' && 'postgres:18-alpine' || '' }}
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -152,7 +188,7 @@ jobs:
           --shm-size 128mb
 
       redis:
-        image: redis:8-alpine
+        image: ${{ needs.resolve-infra.outputs.use-external != 'true' && 'redis:8-alpine' || '' }}
         ports:
           - 6380:6379
         options: >-
@@ -165,7 +201,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup test environment
+      - name: Setup test environment (external)
+        if: needs.resolve-infra.outputs.use-external == 'true'
+        uses: ./.github/actions/setup-test-env
+        with:
+          use-external-db: 'true'
+          external-pg-host: ${{ secrets.TEST_PG_HOST || '10.10.1.250' }}
+          external-pg-port: ${{ secrets.TEST_PG_PORT || '5000' }}
+          external-pg-user: ${{ secrets.TEST_PG_USER }}
+          external-pg-password: ${{ secrets.TEST_PG_PASSWORD }}
+          external-pg-database: ${{ secrets.TEST_PG_DB || 'vox_dev' }}
+          external-redis-host: ${{ secrets.TEST_REDIS_HOST || '10.10.1.120' }}
+          external-redis-port: ${{ secrets.TEST_REDIS_PORT || '6379' }}
+          external-redis-password: ${{ secrets.TEST_REDIS_PASSWORD }}
+          external-redis-db: ${{ secrets.TEST_REDIS_DB || '8' }}
+
+      - name: Setup test environment (service containers)
+        if: needs.resolve-infra.outputs.use-external != 'true'
         uses: ./.github/actions/setup-test-env
         with:
           database-port: '5433'
@@ -224,12 +276,12 @@ jobs:
   integration-tests-python:
     name: Python Integration Tests (${{ matrix.service }})
     runs-on: ubuntu-latest
+    needs: [resolve-infra]
     if: ${{ !inputs.skip-python }}
 
     services:
       postgres:
-        # PostgreSQL 18 Alpine - matches local dev/test infrastructure
-        image: postgres:18-alpine
+        image: ${{ needs.resolve-infra.outputs.use-external != 'true' && 'postgres:18-alpine' || '' }}
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -246,7 +298,7 @@ jobs:
           --shm-size 128mb
 
       redis:
-        image: redis:8-alpine
+        image: ${{ needs.resolve-infra.outputs.use-external != 'true' && 'redis:8-alpine' || '' }}
         ports:
           - 6380:6379
         options: >-
@@ -255,8 +307,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-      # MinIO for object storage (required by stt-v2)
-      # Credentials match tests/docker-compose.test.yml and .github/actions/setup-test-env
       minio:
         image: minio/minio:RELEASE.2025-04-22T22-12-26Z
         ports:
@@ -265,8 +315,6 @@ jobs:
         env:
           MINIO_ROOT_USER: test
           MINIO_ROOT_PASSWORD: testpassword
-        # Note: MinIO health check uses mc which is not in the image
-        # Use HTTP health check instead
         options: >-
           --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
           --health-interval 10s
@@ -277,8 +325,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Services with integration tests
-        # Add stt, tts, nlp here when integration tests are implemented
         service: [smr, stt-v2]
 
     defaults:
@@ -301,8 +347,25 @@ jobs:
           fi
         working-directory: .
 
-      - name: Setup test environment
-        if: steps.check-service.outputs.should-run == 'true'
+      - name: Setup test environment (external)
+        if: steps.check-service.outputs.should-run == 'true' && needs.resolve-infra.outputs.use-external == 'true'
+        uses: ./.github/actions/setup-test-env
+        with:
+          use-external-db: 'true'
+          external-pg-host: ${{ secrets.TEST_PG_HOST || '10.10.1.250' }}
+          external-pg-port: ${{ secrets.TEST_PG_PORT || '5000' }}
+          external-pg-user: ${{ secrets.TEST_PG_USER }}
+          external-pg-password: ${{ secrets.TEST_PG_PASSWORD }}
+          external-pg-database: ${{ secrets.TEST_PG_DB || 'vox_dev' }}
+          external-redis-host: ${{ secrets.TEST_REDIS_HOST || '10.10.1.120' }}
+          external-redis-port: ${{ secrets.TEST_REDIS_PORT || '6379' }}
+          external-redis-password: ${{ secrets.TEST_REDIS_PASSWORD }}
+          external-redis-db: ${{ secrets.TEST_REDIS_DB || '8' }}
+          minio-port: '9002'
+          minio-console-port: '9003'
+
+      - name: Setup test environment (service containers)
+        if: steps.check-service.outputs.should-run == 'true' && needs.resolve-infra.outputs.use-external != 'true'
         uses: ./.github/actions/setup-test-env
         with:
           database-port: '5433'
@@ -320,7 +383,6 @@ jobs:
         if: steps.check-service.outputs.should-run == 'true'
         run: |
           if [ -d "tests/integration" ]; then
-            # Use uv run to ensure correct environment
             uv run pytest tests/integration -v \
               --cov=src \
               --cov-report=xml:coverage.xml \
@@ -346,13 +408,21 @@ jobs:
   integration-tests-summary:
     name: Integration Tests Summary
     runs-on: ubuntu-latest
-    needs: [integration-tests-typescript, integration-tests-python]
+    needs: [resolve-infra, integration-tests-typescript, integration-tests-python]
     if: always()
 
     steps:
       - name: Check test results
         run: |
           echo "## Integration Tests Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          USE_EXT="${{ needs.resolve-infra.outputs.use-external }}"
+          if [ "$USE_EXT" == "true" ]; then
+            echo "**Infrastructure:** External HA-Postgres + Redis" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Infrastructure:** Service containers (ephemeral)" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
 
           TS_RESULT="${{ needs.integration-tests-typescript.result }}"

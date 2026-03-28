@@ -6,17 +6,17 @@ import { IAppSettingsService } from './IAppSettingsService';
 @Global()
 @Module({})
 export class AppSettingsModule {
-    static forRoot(): DynamicModule {
-        return {
-            module: AppSettingsModule,
-            imports: [CoreDatabaseModule],
-            providers: [
-                {
-                    provide: IAppSettingsService,
-                    useClass: AppSettingsService,
-                },
-            ],
-            exports: [IAppSettingsService],
-        };
-    }
+  static forRoot(): DynamicModule {
+    return {
+      module: AppSettingsModule,
+      imports: [CoreDatabaseModule],
+      providers: [
+        {
+          provide: IAppSettingsService,
+          useClass: AppSettingsService,
+        },
+      ],
+      exports: [IAppSettingsService],
+    };
+  }
 }

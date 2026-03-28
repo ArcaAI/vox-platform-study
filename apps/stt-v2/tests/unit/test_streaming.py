@@ -10,7 +10,14 @@ Covers:
 - _runtime.py: singleton accessors
 """
 
+from __future__ import annotations
+
 import asyncio
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from stt_v2.streaming.session import StreamSession
+    from stt_v2.streaming.session_manager import SessionManager
 import json
 import time
 from datetime import datetime, timedelta
@@ -382,7 +389,7 @@ class TestSessionMetadata:
         assert "last_activity" in d
 
     def test_roundtrip(self):
-        from stt_v2.streaming.schemas import SessionMetadata, SessionStatus
+        from stt_v2.streaming.schemas import SessionMetadata
 
         original = SessionMetadata(
             session_id="sess_round",
@@ -423,95 +430,6 @@ class TestSessionMetadata:
         assert "closed_at" not in d
         assert "raw_audio_uri" not in d
         assert "transcript_uri" not in d
-
-    def test_language_and_code_switching_to_redis_dict(self):
-        from stt_v2.streaming.schemas import SessionMetadata
-
-        meta = SessionMetadata(
-            session_id="s1", tenant_id="t1", pipeline_id="p1",
-            language="ml", code_switching=True,
-        )
-        d = meta.to_redis_dict()
-        assert d["language"] == "ml"
-        assert d["code_switching"] == "1"
-
-    def test_language_none_to_redis_dict(self):
-        from stt_v2.streaming.schemas import SessionMetadata
-
-        meta = SessionMetadata(
-            session_id="s1", tenant_id="t1", pipeline_id="p1",
-            language=None, code_switching=False,
-        )
-        d = meta.to_redis_dict()
-        assert d["language"] == ""
-        assert d["code_switching"] == "0"
-
-    def test_language_and_code_switching_roundtrip(self):
-        from stt_v2.streaming.schemas import SessionMetadata
-
-        original = SessionMetadata(
-            session_id="s1", tenant_id="t1", pipeline_id="p1",
-            language="en-US", code_switching=True,
-        )
-        d = original.to_redis_dict()
-        restored = SessionMetadata.from_redis_dict(d)
-        assert restored.language == "en-US"
-        assert restored.code_switching is True
-
-    def test_code_switching_false_roundtrip(self):
-        from stt_v2.streaming.schemas import SessionMetadata
-
-        original = SessionMetadata(
-            session_id="s1", tenant_id="t1", pipeline_id="p1",
-            language=None, code_switching=False,
-        )
-        d = original.to_redis_dict()
-        restored = SessionMetadata.from_redis_dict(d)
-        assert restored.language is None
-        assert restored.code_switching is False
-
-    def test_language_empty_string_from_redis_becomes_none(self):
-        from stt_v2.streaming.schemas import SessionMetadata
-
-        d = {
-            "session_id": "s1",
-            "tenant_id": "t1",
-            "pipeline_id": "p1",
-            "status": "active",
-            "created_at": "2024-01-01T00:00:00",
-            "last_activity": "2024-01-01T00:00:00",
-            "language": "",
-            "code_switching": "0",
-        }
-        restored = SessionMetadata.from_redis_dict(d)
-        assert restored.language is None
-        assert restored.code_switching is False
-
-    def test_code_switching_from_redis_bytes_keys(self):
-        from stt_v2.streaming.schemas import SessionMetadata
-
-        d = {
-            b"session_id": b"s1",
-            b"tenant_id": b"t1",
-            b"pipeline_id": b"p1",
-            b"status": b"active",
-            b"created_at": b"2024-01-01T00:00:00",
-            b"last_activity": b"2024-01-01T00:00:00",
-            b"language": b"ml",
-            b"code_switching": b"1",
-        }
-        restored = SessionMetadata.from_redis_dict(d)
-        assert restored.language == "ml"
-        assert restored.code_switching is True
-
-    def test_code_switching_defaults(self):
-        from stt_v2.streaming.schemas import SessionMetadata
-
-        meta = SessionMetadata(
-            session_id="s1", tenant_id="t1", pipeline_id="p1",
-        )
-        assert meta.language is None
-        assert meta.code_switching is False
 
 
 # ---------------------------------------------------------------------------
@@ -576,7 +494,6 @@ class TestExecutionProfile:
 
     def test_settings_override_max_concurrent(self):
         from stt_v2.streaming.execution_profile import (
-            ExecutionProfile,
             _apply_settings_overrides,
             _build_cpu_profile,
         )
@@ -774,7 +691,7 @@ class TestCapacityGuard:
                 await guard.release(sid)
             return acquired
 
-        results = await asyncio.gather(*[acquire_release(i) for i in range(100)])
+        _results = await asyncio.gather(*[acquire_release(i) for i in range(100)])
         # All should have been able to acquire (capacity = 50, but tasks finish fast)
         assert guard.active_count == 0  # all released
 
@@ -787,7 +704,7 @@ class TestCapacityGuard:
 class TestStreamSession:
     """Tests for StreamSession."""
 
-    def _make_session(self, session_id: str = "sess_test") -> "StreamSession":
+    def _make_session(self, session_id: str = "sess_test") -> StreamSession:
         from stt_v2.streaming.schemas import SessionMetadata, SessionStatus
         from stt_v2.streaming.session import StreamSession
 
@@ -1170,7 +1087,7 @@ class TestRuntime:
 class TestSessionManager:
     """Tests for SessionManager."""
 
-    def _make_manager(self) -> "SessionManager":
+    def _make_manager(self) -> SessionManager:
         from stt_v2.core.platform import PlatformType
         from stt_v2.streaming.execution_profile import ExecutionProfile
         from stt_v2.streaming.session_manager import SessionManager

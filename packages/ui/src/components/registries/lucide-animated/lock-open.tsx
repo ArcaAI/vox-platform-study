@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { motion, useAnimation } from "motion/react";
-import type { HTMLAttributes } from "react";
-import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
+import { motion, useAnimation } from 'motion/react';
+import type { HTMLAttributes } from 'react';
+import { forwardRef, useCallback, useImperativeHandle, useRef } from 'react';
 
-import { cn } from "@/lib/utils";
+import { cn } from '@/lib/utils';
 
 export interface LockOpenIconHandle {
   startAnimation: () => void;
@@ -15,100 +15,93 @@ interface LockOpenIconProps extends HTMLAttributes<HTMLDivElement> {
   size?: number;
 }
 
-const LockOpenIcon = forwardRef<LockOpenIconHandle, LockOpenIconProps>(
-  ({ onMouseEnter, onMouseLeave, className, size = 28, ...props }, ref) => {
-    const controls = useAnimation();
-    const isControlledRef = useRef(false);
+const LockOpenIcon = forwardRef<LockOpenIconHandle, LockOpenIconProps>(({ onMouseEnter, onMouseLeave, className, size = 28, ...props }, ref) => {
+  const controls = useAnimation();
+  const isControlledRef = useRef(false);
 
-    useImperativeHandle(ref, () => {
-      isControlledRef.current = true;
+  useImperativeHandle(ref, () => {
+    isControlledRef.current = true;
 
-      return {
-        startAnimation: () => controls.start("animate"),
-        stopAnimation: () => controls.start("normal"),
-      };
-    });
+    return {
+      startAnimation: () => controls.start('animate'),
+      stopAnimation: () => controls.start('normal'),
+    };
+  });
 
-    const handleMouseEnter = useCallback(
-      (e: React.MouseEvent<HTMLDivElement>) => {
-        if (isControlledRef.current) {
-          onMouseEnter?.(e);
-        } else {
-          controls.start("animate");
-        }
-      },
-      [controls, onMouseEnter]
-    );
+  const handleMouseEnter = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (isControlledRef.current) {
+        onMouseEnter?.(e);
+      } else {
+        controls.start('animate');
+      }
+    },
+    [controls, onMouseEnter],
+  );
 
-    const handleMouseLeave = useCallback(
-      (e: React.MouseEvent<HTMLDivElement>) => {
-        if (isControlledRef.current) {
-          onMouseLeave?.(e);
-        } else {
-          controls.start("normal");
-        }
-      },
-      [controls, onMouseLeave]
-    );
+  const handleMouseLeave = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (isControlledRef.current) {
+        onMouseLeave?.(e);
+      } else {
+        controls.start('normal');
+      }
+    },
+    [controls, onMouseLeave],
+  );
 
-    return (
-      <div
-        className={cn(className)}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        {...props}
+  return (
+    <div className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
+      <motion.svg
+        animate={controls}
+        fill="none"
+        height={size}
+        initial="normal"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        transition={{
+          duration: 1,
+          ease: [0.4, 0, 0.2, 1],
+        }}
+        variants={{
+          normal: {
+            rotate: 0,
+            scale: 1,
+          },
+          animate: {
+            rotate: [2, 4, -2, 0],
+            scale: [1.05, 0.95, 1.02, 1],
+          },
+        }}
+        viewBox="0 0 24 24"
+        width={size}
+        xmlns="http://www.w3.org/2000/svg"
       >
-        <motion.svg
+        <rect height="11" rx="2" ry="2" width="18" x="3" y="11" />
+        <motion.path
           animate={controls}
-          fill="none"
-          height={size}
+          d="M7 11V7a5 5 0 0 1 10 0v4"
           initial="normal"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2"
           transition={{
-            duration: 1,
+            duration: 0.3,
             ease: [0.4, 0, 0.2, 1],
           }}
           variants={{
             normal: {
-              rotate: 0,
-              scale: 1,
+              pathLength: 0.8,
             },
             animate: {
-              rotate: [2, 4, -2, 0],
-              scale: [1.05, 0.95, 1.02, 1],
+              pathLength: 1,
             },
           }}
-          viewBox="0 0 24 24"
-          width={size}
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <rect height="11" rx="2" ry="2" width="18" x="3" y="11" />
-          <motion.path
-            animate={controls}
-            d="M7 11V7a5 5 0 0 1 10 0v4"
-            initial="normal"
-            transition={{
-              duration: 0.3,
-              ease: [0.4, 0, 0.2, 1],
-            }}
-            variants={{
-              normal: {
-                pathLength: 0.8,
-              },
-              animate: {
-                pathLength: 1,
-              },
-            }}
-          />
-        </motion.svg>
-      </div>
-    );
-  }
-);
+        />
+      </motion.svg>
+    </div>
+  );
+});
 
-LockOpenIcon.displayName = "LockOpenIcon";
+LockOpenIcon.displayName = 'LockOpenIcon';
 
 export { LockOpenIcon };

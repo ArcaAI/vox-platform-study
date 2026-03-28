@@ -1,12 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ConversationScrollButton,
-} from '../../elevenlabs/conversation'
-import { Message, MessageContent, MessageAvatar } from '../../elevenlabs/message'
+import { Conversation, ConversationContent, ConversationEmptyState, ConversationScrollButton } from '../../elevenlabs/conversation';
+import { Message, MessageContent, MessageAvatar } from '../../elevenlabs/message';
 
 const meta: Meta<typeof Conversation> = {
   title: 'ElevenLabs/Conversation',
@@ -15,10 +10,10 @@ const meta: Meta<typeof Conversation> = {
     layout: 'fullscreen',
   },
   tags: ['autodocs'],
-}
+};
 
-export default meta
-type Story = StoryObj<typeof Conversation>
+export default meta;
+type Story = StoryObj<typeof Conversation>;
 
 export const EmptyState: Story = {
   render: () => (
@@ -30,22 +25,19 @@ export const EmptyState: Story = {
       </Conversation>
     </div>
   ),
-}
+};
 
 export const CustomEmptyState: Story = {
   render: () => (
     <div className="h-[400px]">
       <Conversation>
         <ConversationContent>
-          <ConversationEmptyState
-            title="Welcome!"
-            description="Ask me anything to get started."
-          />
+          <ConversationEmptyState title="Welcome!" description="Ask me anything to get started." />
         </ConversationContent>
       </Conversation>
     </div>
   ),
-}
+};
 
 export const WithMessages: Story = {
   render: () => (
@@ -58,22 +50,17 @@ export const WithMessages: Story = {
           </Message>
           <Message from="assistant">
             <MessageAvatar src="https://github.com/vercel.png" name="AI" />
-            <MessageContent>
-              Of course! I am here to help. What do you need assistance with?
-            </MessageContent>
+            <MessageContent>Of course! I am here to help. What do you need assistance with?</MessageContent>
           </Message>
           <Message from="user">
             <MessageAvatar src="https://github.com/shadcn.png" name="User" />
-            <MessageContent>
-              I need help understanding how to use the ElevenLabs API.
-            </MessageContent>
+            <MessageContent>I need help understanding how to use the ElevenLabs API.</MessageContent>
           </Message>
           <Message from="assistant">
             <MessageAvatar src="https://github.com/vercel.png" name="AI" />
             <MessageContent>
-              The ElevenLabs API allows you to generate speech from text, clone
-              voices, and build conversational AI agents. Would you like me to
-              walk you through the basics?
+              The ElevenLabs API allows you to generate speech from text, clone voices, and build conversational AI agents. Would you like me to walk
+              you through the basics?
             </MessageContent>
           </Message>
         </ConversationContent>
@@ -81,7 +68,7 @@ export const WithMessages: Story = {
       </Conversation>
     </div>
   ),
-}
+};
 
 export const ManyMessages: Story = {
   render: () => (
@@ -102,4 +89,4 @@ export const ManyMessages: Story = {
       </Conversation>
     </div>
   ),
-}
+};

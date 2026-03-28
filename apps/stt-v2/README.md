@@ -239,9 +239,9 @@ cp .env.example .env.dev
 
 | Variable              | Description                         | Default           |
 | --------------------- | ----------------------------------- | ----------------- |
-| `WORKER_THREADS`      | Dramatiq worker threads per process | `4`               |
-| `WORKER_TIMEOUT_MS`   | Job timeout in ms                   | `600000` (10 min) |
-| `WORKER_MAX_RETRIES`  | Max retry attempts                  | `3`               |
+| `WORKER_THREADS`          | Dramatiq worker threads per process     | `4`               |
+| `WORKER_POLL_TIMEOUT_MS`  | Consumer poll max-backoff in ms          | `1000`            |
+| `WORKER_MAX_RETRIES`      | Max retry attempts                       | `3`               |
 | `INFERENCE_POOL_SIZE` | ProcessPoolExecutor size (0 = auto) | `0`               |
 
 #### Future / Reserved

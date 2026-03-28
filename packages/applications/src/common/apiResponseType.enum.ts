@@ -1,4 +1,4 @@
 export enum ApiResponseType {
-    SINGLE = 'single',
-    MULTIPLE = 'multiple',
+  SINGLE = 'single',
+  MULTIPLE = 'multiple',
 }

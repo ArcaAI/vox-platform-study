@@ -6,7 +6,7 @@ Ensures the SMR runtime uses tenant-facing provider keys
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio

@@ -9,59 +9,59 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 export interface IUserRoleAssignmentEntity extends IBaseTenantEntity {
-    userId: string;
-    roleId: string;
-    User: Entities.UserEntity | null;
-    Roles?: Entities.RoleEntity[] | null;
+  userId: string;
+  roleId: string;
+  User: Entities.UserEntity | null;
+  Roles?: Entities.RoleEntity[] | null;
 }
 
 export class UserRoleAssignmentEntity extends BaseTenantEntity {
-    private _userId: IUserRoleAssignmentEntity['userId'];
-    private _roleId: IUserRoleAssignmentEntity['roleId'];
-    private _User: IUserRoleAssignmentEntity['User'];
-    private _Roles?: IUserRoleAssignmentEntity['Roles'];
+  private _userId: IUserRoleAssignmentEntity['userId'];
+  private _roleId: IUserRoleAssignmentEntity['roleId'];
+  private _User: IUserRoleAssignmentEntity['User'];
+  private _Roles?: IUserRoleAssignmentEntity['Roles'];
 
-    constructor(init: IUserRoleAssignmentEntity) {
-        super(init);
-        this._userId = init.userId;
-        this._roleId = init.roleId;
-        this._User = init.User;
-        this._Roles = init.Roles;
-    }
+  constructor(init: IUserRoleAssignmentEntity) {
+    super(init);
+    this._userId = init.userId;
+    this._roleId = init.roleId;
+    this._User = init.User;
+    this._Roles = init.Roles;
+  }
 
-    get userId(): IUserRoleAssignmentEntity['userId'] {
-        return this._userId;
-    }
+  get userId(): IUserRoleAssignmentEntity['userId'] {
+    return this._userId;
+  }
 
-    set userId(value: IUserRoleAssignmentEntity['userId']) {
-        this.setProperty('userId', value);
-    }
+  set userId(value: IUserRoleAssignmentEntity['userId']) {
+    this.setProperty('userId', value);
+  }
 
-    get roleId(): IUserRoleAssignmentEntity['roleId'] {
-        return this._roleId;
-    }
+  get roleId(): IUserRoleAssignmentEntity['roleId'] {
+    return this._roleId;
+  }
 
-    set roleId(value: IUserRoleAssignmentEntity['roleId']) {
-        this.setProperty('roleId', value);
-    }
+  set roleId(value: IUserRoleAssignmentEntity['roleId']) {
+    this.setProperty('roleId', value);
+  }
 
-    get User(): IUserRoleAssignmentEntity['User'] {
-        return this._User;
-    }
+  get User(): IUserRoleAssignmentEntity['User'] {
+    return this._User;
+  }
 
-    set User(value: IUserRoleAssignmentEntity['User']) {
-        this.setProperty('User', value);
-    }
+  set User(value: IUserRoleAssignmentEntity['User']) {
+    this.setProperty('User', value);
+  }
 
-    get Roles(): IUserRoleAssignmentEntity['Roles'] {
-        return this._Roles;
-    }
+  get Roles(): IUserRoleAssignmentEntity['Roles'] {
+    return this._Roles;
+  }
 
-    set Roles(value: IUserRoleAssignmentEntity['Roles']) {
-        this.setProperty('Roles', value);
-    }
+  set Roles(value: IUserRoleAssignmentEntity['Roles']) {
+    this.setProperty('Roles', value);
+  }
 
-    public override validate(): void {
-        throw new BusinessException('Method not implemented.');
-    }
+  public override validate(): void {
+    throw new BusinessException('Method not implemented.');
+  }
 }

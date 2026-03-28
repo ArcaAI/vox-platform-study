@@ -1,5 +1,5 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { IconSlash } from '@tabler/icons-react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { IconSlash } from '@tabler/icons-react';
 
 import {
   Breadcrumb,
@@ -9,7 +9,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
   BreadcrumbEllipsis,
-} from '../../shadcn/breadcrumb'
+} from '../../shadcn/breadcrumb';
 
 const meta = {
   title: 'Components/Breadcrumb',
@@ -18,10 +18,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Breadcrumb>
+} satisfies Meta<typeof Breadcrumb>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 // Simple 3-level breadcrumb
 export const Default: Story = {
@@ -42,7 +42,7 @@ export const Default: Story = {
       </BreadcrumbList>
     </Breadcrumb>
   ),
-}
+};
 
 // Breadcrumb with ellipsis for collapsed items
 export const WithEllipsis: Story = {
@@ -67,7 +67,7 @@ export const WithEllipsis: Story = {
       </BreadcrumbList>
     </Breadcrumb>
   ),
-}
+};
 
 // Custom separator character
 export const CustomSeparator: Story = {
@@ -92,4 +92,4 @@ export const CustomSeparator: Story = {
       </BreadcrumbList>
     </Breadcrumb>
   ),
-}
+};

@@ -1,31 +1,17 @@
-"use client";
+'use client';
 
-import { cn } from "@/lib/utils";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/shadcn/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableCaption,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/shadcn/table";
-import { Badge } from "@/components/shadcn/badge";
-import { CalendarDays, Download, ReceiptText } from "lucide-react";
-import { Button } from "@/components/shadcn/button";
+import { cn } from '@/lib/utils';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/shadcn/card';
+import { Table, TableBody, TableCell, TableCaption, TableHead, TableHeader, TableRow } from '@/components/shadcn/table';
+import { Badge } from '@/components/shadcn/badge';
+import { CalendarDays, Download, ReceiptText } from 'lucide-react';
+import { Button } from '@/components/shadcn/button';
 
 export interface InvoiceItem {
   id: string;
   date: string;
   amount: string;
-  status: "paid" | "refunded" | "open" | "void";
+  status: 'paid' | 'refunded' | 'open' | 'void';
   invoiceUrl?: string;
   description?: string;
 }
@@ -40,32 +26,28 @@ interface InvoiceHistoryProps {
 
 export function InvoiceHistory({
   className,
-  title = "Invoice History",
-  description = "Your past invoices and payment receipts.",
+  title = 'Invoice History',
+  description = 'Your past invoices and payment receipts.',
   invoices,
   onDownload,
 }: InvoiceHistoryProps) {
   if (!invoices) return null;
 
-  const statusBadge = (status: InvoiceItem["status"]) => {
+  const statusBadge = (status: InvoiceItem['status']) => {
     switch (status) {
-      case "paid":
-        return (
-          <Badge className="border-emerald-700/40 bg-emerald-600 text-emerald-50">
-            Paid
-          </Badge>
-        );
-      case "refunded":
+      case 'paid':
+        return <Badge className="border-emerald-700/40 bg-emerald-600 text-emerald-50">Paid</Badge>;
+      case 'refunded':
         return <Badge variant="secondary">Refunded</Badge>;
-      case "open":
+      case 'open':
         return <Badge variant="outline">Open</Badge>;
-      case "void":
+      case 'void':
         return <Badge variant="outline">Void</Badge>;
     }
   };
 
   return (
-    <Card className={cn("w-full", className)}>
+    <Card className={cn('w-full', className)}>
       {(title || description) && (
         <CardHeader className="space-y-1">
           {title && (
@@ -74,19 +56,12 @@ export function InvoiceHistory({
               {title}
             </CardTitle>
           )}
-          {description && (
-            <CardDescription className="text-muted-foreground text-sm">
-              {description}
-            </CardDescription>
-          )}
+          {description && <CardDescription className="text-muted-foreground text-sm">{description}</CardDescription>}
         </CardHeader>
       )}
       <CardContent>
         <Table>
-          <TableCaption className="sr-only">
-            List of past invoices with dates, amounts, status and download
-            actions
-          </TableCaption>
+          <TableCaption className="sr-only">List of past invoices with dates, amounts, status and download actions</TableCaption>
           <TableHeader>
             <TableRow>
               <TableHead className="w-[120px]">Date</TableHead>
@@ -99,10 +74,7 @@ export function InvoiceHistory({
           <TableBody>
             {invoices.length === 0 && (
               <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="text-muted-foreground h-24 text-center"
-                >
+                <TableCell colSpan={5} className="text-muted-foreground h-24 text-center">
                   No invoices yet
                 </TableCell>
               </TableRow>
@@ -116,33 +88,18 @@ export function InvoiceHistory({
                   </div>
                 </TableCell>
                 <TableCell className="max-w-[320px]">
-                  <div
-                    className="truncate"
-                    title={inv.description || "Invoice"}
-                  >
-                    {inv.description || "Invoice"}
+                  <div className="truncate" title={inv.description || 'Invoice'}>
+                    {inv.description || 'Invoice'}
                   </div>
                 </TableCell>
-                <TableCell className="text-right font-medium">
-                  {inv.amount}
-                </TableCell>
-                <TableCell className="text-right">
-                  {statusBadge(inv.status)}
-                </TableCell>
+                <TableCell className="text-right font-medium">{inv.amount}</TableCell>
+                <TableCell className="text-right">{statusBadge(inv.status)}</TableCell>
                 <TableCell className="text-right">
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-8 text-xs"
-                    onClick={() =>
-                      inv.invoiceUrl
-                        ? window.open(
-                            inv.invoiceUrl,
-                            "_blank",
-                            "noopener,noreferrer",
-                          )
-                        : onDownload?.(inv.id)
-                    }
+                    onClick={() => (inv.invoiceUrl ? window.open(inv.invoiceUrl, '_blank', 'noopener,noreferrer') : onDownload?.(inv.id))}
                     aria-label={`Download invoice ${inv.id}`}
                   >
                     <Download className="h-3.5 w-3.5" />

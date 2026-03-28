@@ -1,16 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from '../../shadcn/select'
-import { Label } from '../../shadcn/label'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '../../shadcn/select';
+import { Label } from '../../shadcn/label';
 
 const meta = {
   title: 'Components/Select',
@@ -19,10 +10,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Select>
+} satisfies Meta<typeof Select>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -39,7 +30,7 @@ export const Default: Story = {
       </SelectContent>
     </Select>
   ),
-}
+};
 
 export const WithGroups: Story = {
   render: () => (
@@ -63,7 +54,7 @@ export const WithGroups: Story = {
       </SelectContent>
     </Select>
   ),
-}
+};
 
 export const WithLabel: Story = {
   render: () => (
@@ -82,7 +73,7 @@ export const WithLabel: Story = {
       </Select>
     </div>
   ),
-}
+};
 
 export const Small: Story = {
   render: () => (
@@ -96,7 +87,7 @@ export const Small: Story = {
       </SelectContent>
     </Select>
   ),
-}
+};
 
 export const Disabled: Story = {
   render: () => (
@@ -109,4 +100,4 @@ export const Disabled: Story = {
       </SelectContent>
     </Select>
   ),
-}
+};

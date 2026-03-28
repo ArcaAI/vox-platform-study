@@ -9,8 +9,7 @@ Following TDD: These tests are written FIRST before implementation.
 """
 
 import platform
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 class TestPlatformType:
@@ -40,13 +39,13 @@ class TestDetectPlatform:
 
     def test_detect_platform_returns_platform_type(self):
         """detect_platform should return a PlatformType."""
-        from stt_v2.core.platform import detect_platform, PlatformType
+        from stt_v2.core.platform import PlatformType, detect_platform
         result = detect_platform()
         assert isinstance(result, PlatformType)
 
     def test_detect_cuda_when_torch_cuda_available(self):
         """Should detect CUDA when torch.cuda.is_available() returns True."""
-        from stt_v2.core.platform import detect_platform, PlatformType
+        from stt_v2.core.platform import PlatformType, detect_platform
 
         mock_torch = MagicMock()
         mock_torch.cuda.is_available.return_value = True
@@ -59,7 +58,7 @@ class TestDetectPlatform:
 
     def test_detect_mps_on_apple_silicon(self):
         """Should detect MPS on Apple Silicon when torch.backends.mps.is_available()."""
-        from stt_v2.core.platform import detect_platform, PlatformType
+        from stt_v2.core.platform import PlatformType, detect_platform
 
         with patch("stt_v2.core.platform._has_torch", return_value=True):
             with patch("stt_v2.core.platform._torch_cuda_available", return_value=False):
@@ -69,7 +68,7 @@ class TestDetectPlatform:
 
     def test_detect_cpu_as_fallback(self):
         """Should detect CPU when no GPU is available."""
-        from stt_v2.core.platform import detect_platform, PlatformType
+        from stt_v2.core.platform import PlatformType, detect_platform
 
         with patch("stt_v2.core.platform._has_torch", return_value=True):
             with patch("stt_v2.core.platform._torch_cuda_available", return_value=False):
@@ -79,7 +78,7 @@ class TestDetectPlatform:
 
     def test_detect_cpu_when_torch_not_installed(self):
         """Should detect CPU when torch is not installed."""
-        from stt_v2.core.platform import detect_platform, PlatformType
+        from stt_v2.core.platform import PlatformType, detect_platform
 
         with patch("stt_v2.core.platform._has_torch", return_value=False):
             result = detect_platform()
@@ -183,7 +182,7 @@ class TestGetPlatformInfo:
 
     def test_get_platform_info_returns_platform_info(self):
         """get_platform_info should return PlatformInfo instance."""
-        from stt_v2.core.platform import get_platform_info, PlatformInfo
+        from stt_v2.core.platform import PlatformInfo, get_platform_info
         result = get_platform_info()
         assert isinstance(result, PlatformInfo)
 
@@ -203,7 +202,8 @@ class TestRequiresPlatformMarker:
     def test_skip_if_not_cuda(self):
         """skip_if_not_cuda should return skip marker when CUDA not available."""
         import pytest as _pytest
-        from stt_v2.core.platform import detect_platform, PlatformType
+
+        from stt_v2.core.platform import PlatformType, detect_platform
 
         with patch("stt_v2.core.platform.detect_platform", return_value=PlatformType.CPU):
             platform_type = detect_platform()
@@ -217,7 +217,8 @@ class TestRequiresPlatformMarker:
     def test_skip_if_not_mps(self):
         """skip_if_not_mps should return skip marker when MPS not available."""
         import pytest as _pytest
-        from stt_v2.core.platform import detect_platform, PlatformType
+
+        from stt_v2.core.platform import PlatformType, detect_platform
 
         with patch("stt_v2.core.platform.detect_platform", return_value=PlatformType.CPU):
             platform_type = detect_platform()
@@ -230,7 +231,8 @@ class TestRequiresPlatformMarker:
     def test_skip_if_not_gpu(self):
         """skip_if_not_gpu should return skip marker when no GPU available."""
         import pytest as _pytest
-        from stt_v2.core.platform import detect_platform, PlatformType
+
+        from stt_v2.core.platform import PlatformType, detect_platform
 
         with patch("stt_v2.core.platform.detect_platform", return_value=PlatformType.CPU):
             platform_type = detect_platform()
@@ -246,21 +248,21 @@ class TestGetDeviceString:
 
     def test_get_device_string_cpu(self):
         """get_device_string should return 'cpu' for CPU platform."""
-        from stt_v2.core.platform import get_device_string, PlatformType
+        from stt_v2.core.platform import PlatformType, get_device_string
 
         with patch("stt_v2.core.platform.detect_platform", return_value=PlatformType.CPU):
             assert get_device_string() == "cpu"
 
     def test_get_device_string_cuda(self):
         """get_device_string should return 'cuda' for CUDA platform."""
-        from stt_v2.core.platform import get_device_string, PlatformType
+        from stt_v2.core.platform import PlatformType, get_device_string
 
         with patch("stt_v2.core.platform.detect_platform", return_value=PlatformType.CUDA):
             assert get_device_string() == "cuda"
 
     def test_get_device_string_mps(self):
         """get_device_string should return 'mps' for MPS platform."""
-        from stt_v2.core.platform import get_device_string, PlatformType
+        from stt_v2.core.platform import PlatformType, get_device_string
 
         with patch("stt_v2.core.platform.detect_platform", return_value=PlatformType.MPS):
             assert get_device_string() == "mps"

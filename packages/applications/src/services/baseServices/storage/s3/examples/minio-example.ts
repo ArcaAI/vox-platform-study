@@ -10,166 +10,167 @@ import { IS3Service } from '../IS3Service';
 
 @Injectable()
 export class MinIOExampleService {
-    private readonly logger = new Logger(MinIOExampleService.name);
+  private readonly logger = new Logger(MinIOExampleService.name);
 
-    constructor(private readonly s3Service: IS3Service) {}
+  constructor(private readonly s3Service: IS3Service) {}
 
-    /**
-     * Complete MinIO setup and testing example
-     */
-    async runMinIOExample(): Promise<void> {
-        try {
-            // 1. Check if MinIO is configured
-            this.logger.log('=== MinIO Configuration Check ===');
-            const isConfigured = await this.s3Service.isConfigured();
-            const isMinIO = this.s3Service.isMinIOConfigured();
-            const minioInfo = this.s3Service.getMinIOInfo();
+  /**
+   * Complete MinIO setup and testing example
+   */
+  async runMinIOExample(): Promise<void> {
+    try {
+      // 1. Check if MinIO is configured
+      this.logger.log('=== MinIO Configuration Check ===');
+      const isConfigured = await this.s3Service.isConfigured();
+      const isMinIO = this.s3Service.isMinIOConfigured();
+      const minioInfo = this.s3Service.getMinIOInfo();
 
-            this.logger.log(`S3 Configured: ${isConfigured}`);
-            this.logger.log(`MinIO Detected: ${isMinIO}`);
-            this.logger.log(`MinIO Info:`, minioInfo);
+      this.logger.log(`S3 Configured: ${isConfigured}`);
+      this.logger.log(`MinIO Detected: ${isMinIO}`);
+      this.logger.log(`MinIO Info:`, minioInfo);
 
-            if (!isConfigured) {
-                throw new Error('S3/MinIO is not configured. Please set up the database configuration first.');
-            }
+      if (!isConfigured) {
+        throw new Error('S3/MinIO is not configured. Please set up the database configuration first.');
+      }
 
-            // 2. Test connection
-            this.logger.log('=== Connection Test ===');
-            const isConnected = await this.s3Service.testConnection();
-            this.logger.log(`Connection Status: ${isConnected ? 'SUCCESS' : 'FAILED'}`);
+      // 2. Test connection
+      this.logger.log('=== Connection Test ===');
+      const isConnected = await this.s3Service.testConnection();
+      this.logger.log(`Connection Status: ${isConnected ? 'SUCCESS' : 'FAILED'}`);
 
-            if (!isConnected) {
-                throw new Error('Cannot connect to MinIO server. Please check your configuration and ensure MinIO is running.');
-            }
+      if (!isConnected) {
+        throw new Error('Cannot connect to MinIO server. Please check your configuration and ensure MinIO is running.');
+      }
 
-            // 3. Get bucket names
-            this.logger.log('=== Bucket Configuration ===');
-            const publicBucket = this.s3Service.getPublicBucketName();
-            const privateBucket = this.s3Service.getPrivateBucketName();
-            this.logger.log(`Public Bucket: ${publicBucket || 'Not configured'}`);
-            this.logger.log(`Private Bucket: ${privateBucket || 'Not configured'}`);
+      // 3. Get bucket names
+      this.logger.log('=== Bucket Configuration ===');
+      const publicBucket = this.s3Service.getPublicBucketName();
+      const privateBucket = this.s3Service.getPrivateBucketName();
+      this.logger.log(`Public Bucket: ${publicBucket || 'Not configured'}`);
+      this.logger.log(`Private Bucket: ${privateBucket || 'Not configured'}`);
 
-            // 4. File operations example
-            if (publicBucket) {
-                await this.demonstrateFileOperations(publicBucket);
-            } else {
-                this.logger.warn('No public bucket configured, skipping file operations demo');
-            }
+      // 4. File operations example
+      if (publicBucket) {
+        await this.demonstrateFileOperations(publicBucket);
+      } else {
+        this.logger.warn('No public bucket configured, skipping file operations demo');
+      }
 
-            this.logger.log('=== MinIO Example Completed Successfully ===');
-        } catch (error) {
-            this.logger.error('MinIO Example Failed:', error);
-            throw error;
-        }
+      this.logger.log('=== MinIO Example Completed Successfully ===');
+    } catch (error) {
+      this.logger.error('MinIO Example Failed:', error);
+      throw error;
     }
+  }
 
-    /**
-     * Demonstrate basic file operations
-     */
-    private async demonstrateFileOperations(bucketName: string): Promise<void> {
-        this.logger.log('=== File Operations Demo ===');
+  /**
+   * Demonstrate basic file operations
+   */
+  private async demonstrateFileOperations(bucketName: string): Promise<void> {
+    this.logger.log('=== File Operations Demo ===');
 
-        const testFileName = 'test-file.txt';
-        const testContent = Buffer.from('Hello MinIO! This is a test file.', 'utf-8');
+    const testFileName = 'test-file.txt';
+    const testContent = Buffer.from('Hello MinIO! This is a test file.', 'utf-8');
 
-        try {
-            // Upload file
-            this.logger.log(`Uploading file: ${testFileName}`);
-            await this.s3Service.putFile(bucketName, testFileName, testContent, 'text/plain');
-            this.logger.log('✓ File uploaded successfully');
+    try {
+      // Upload file
+      this.logger.log(`Uploading file: ${testFileName}`);
+      await this.s3Service.putFile(bucketName, testFileName, testContent, 'text/plain');
+      this.logger.log('✓ File uploaded successfully');
 
-            // Download file
-            this.logger.log(`Downloading file: ${testFileName}`);
-            const downloadedContent = await this.s3Service.getFile(bucketName, testFileName);
-            this.logger.log(`✓ File downloaded, size: ${downloadedContent.length} bytes`);
-            this.logger.log(`Content: ${downloadedContent.toString('utf-8')}`);
+      // Download file
+      this.logger.log(`Downloading file: ${testFileName}`);
+      const downloadedContent = await this.s3Service.getFile(bucketName, testFileName);
+      this.logger.log(`✓ File downloaded, size: ${downloadedContent.length} bytes`);
+      this.logger.log(`Content: ${downloadedContent.toString('utf-8')}`);
 
-            // Generate presigned URL
-            this.logger.log('Generating presigned URL...');
-            const presignedUrl = await this.s3Service.signUrl(bucketName, testFileName, 'get');
-            this.logger.log(`✓ Presigned URL: ${presignedUrl}`);
+      // Generate presigned URL
+      this.logger.log('Generating presigned URL...');
+      const presignedUrl = await this.s3Service.signUrl(bucketName, testFileName, 'get');
+      this.logger.log(`✓ Presigned URL: ${presignedUrl}`);
 
-            // List files
-            this.logger.log('Listing files...');
-            const files = await this.s3Service.listFiles(bucketName, '');
-            this.logger.log(`✓ Found ${files.length} files in bucket`);
-            files.forEach((file) => {
-                this.logger.log(`  - ${file.key} (${file.size} bytes)`);
-            });
+      // List files
+      this.logger.log('Listing files...');
+      const files = await this.s3Service.listFiles(bucketName, '');
+      this.logger.log(`✓ Found ${files.length} files in bucket`);
+      files.forEach((file) => {
+        this.logger.log(`  - ${file.key} (${file.size} bytes)`);
+      });
 
-            // Copy file
-            const copiedFileName = 'copied-test-file.txt';
-            this.logger.log(`Copying file to: ${copiedFileName}`);
-            await this.s3Service.copyFile(bucketName, copiedFileName, `${bucketName}/${testFileName}`);
-            this.logger.log('✓ File copied successfully');
+      // Copy file
+      const copiedFileName = 'copied-test-file.txt';
+      this.logger.log(`Copying file to: ${copiedFileName}`);
+      await this.s3Service.copyFile(bucketName, copiedFileName, `${bucketName}/${testFileName}`);
+      this.logger.log('✓ File copied successfully');
 
-            // Clean up - delete files
-            this.logger.log('Cleaning up test files...');
-            await this.s3Service.deleteFile(bucketName, testFileName);
-            await this.s3Service.deleteFile(bucketName, copiedFileName);
-            this.logger.log('✓ Test files deleted');
-        } catch (error) {
-            this.logger.error('File operations failed:', error);
-            throw error;
-        }
+      // Clean up - delete files
+      this.logger.log('Cleaning up test files...');
+      await this.s3Service.deleteFile(bucketName, testFileName);
+      await this.s3Service.deleteFile(bucketName, copiedFileName);
+      this.logger.log('✓ Test files deleted');
+    } catch (error) {
+      this.logger.error('File operations failed:', error);
+      throw error;
     }
+  }
 
-    /**
-     * Health check example for monitoring
-     */
-    async checkMinIOHealth(): Promise<{
-        status: 'healthy' | 'unhealthy';
-        details: any;
-    }> {
-        try {
-            const isConfigured = await this.s3Service.isConfigured();
-            const isMinIO = this.s3Service.isMinIOConfigured();
-            const isConnected = await this.s3Service.testConnection();
-            const minioInfo = this.s3Service.getMinIOInfo();
+  /**
+   * Health check example for monitoring
+   */
+  async checkMinIOHealth(): Promise<{
+    status: 'healthy' | 'unhealthy';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    details: any;
+  }> {
+    try {
+      const isConfigured = await this.s3Service.isConfigured();
+      const isMinIO = this.s3Service.isMinIOConfigured();
+      const isConnected = await this.s3Service.testConnection();
+      const minioInfo = this.s3Service.getMinIOInfo();
 
-            const status = isConfigured && isConnected ? 'healthy' : 'unhealthy';
+      const status = isConfigured && isConnected ? 'healthy' : 'unhealthy';
 
-            return {
-                status,
-                details: {
-                    configured: isConfigured,
-                    isMinIO,
-                    connected: isConnected,
-                    endpoint: minioInfo.endpoint,
-                    publicBucket: this.s3Service.getPublicBucketName(),
-                    privateBucket: this.s3Service.getPrivateBucketName(),
-                    timestamp: new Date().toISOString(),
-                },
-            };
-        } catch (error) {
-            return {
-                status: 'unhealthy',
-                details: {
-                    error: error instanceof Error ? error.message : String(error),
-                    timestamp: new Date().toISOString(),
-                },
-            };
-        }
+      return {
+        status,
+        details: {
+          configured: isConfigured,
+          isMinIO,
+          connected: isConnected,
+          endpoint: minioInfo.endpoint,
+          publicBucket: this.s3Service.getPublicBucketName(),
+          privateBucket: this.s3Service.getPrivateBucketName(),
+          timestamp: new Date().toISOString(),
+        },
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        details: {
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString(),
+        },
+      };
     }
+  }
 
-    /**
-     * Configuration refresh example
-     */
-    async refreshMinIOConfiguration(): Promise<void> {
-        this.logger.log('Refreshing MinIO configuration...');
+  /**
+   * Configuration refresh example
+   */
+  async refreshMinIOConfiguration(): Promise<void> {
+    this.logger.log('Refreshing MinIO configuration...');
 
-        try {
-            await this.s3Service.refreshConfiguration();
-            this.logger.log('✓ Configuration refreshed successfully');
+    try {
+      await this.s3Service.refreshConfiguration();
+      this.logger.log('✓ Configuration refreshed successfully');
 
-            // Test the new configuration
-            const isConnected = await this.s3Service.testConnection();
-            this.logger.log(`New configuration test: ${isConnected ? 'SUCCESS' : 'FAILED'}`);
-        } catch (error) {
-            this.logger.error('Configuration refresh failed:', error);
-            throw error;
-        }
+      // Test the new configuration
+      const isConnected = await this.s3Service.testConnection();
+      this.logger.log(`New configuration test: ${isConnected ? 'SUCCESS' : 'FAILED'}`);
+    } catch (error) {
+      this.logger.error('Configuration refresh failed:', error);
+      throw error;
     }
+  }
 }
 
 /**

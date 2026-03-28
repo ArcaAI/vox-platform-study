@@ -5,12 +5,8 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { SttInternalService } from './sttInternal.service';
 
 @Module({
-    imports: [
-        CoreDatabaseModule,
-        EventEmitterModule,
-        ClsModule,
-    ],
-    providers: [SttInternalService],
-    exports: [SttInternalService],
+  imports: [CoreDatabaseModule, EventEmitterModule, ClsModule],
+  providers: [SttInternalService],
+  exports: [SttInternalService],
 })
 export class SttInternalServiceModule {}

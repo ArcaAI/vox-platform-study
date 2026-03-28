@@ -13,95 +13,95 @@
  * Discriminator for transcription event types.
  */
 export enum TranscriptionEventType {
-    /** Job lifecycle transitions (QUEUED -> PROCESSING -> COMPLETED/FAILED) */
-    STATUS = 'status',
-    /** Processing percentage updates */
-    PROGRESS = 'progress',
-    /** Partial transcript as each audio segment completes */
-    CHUNK = 'chunk',
-    /** Full final transcript result */
-    TRANSCRIPT = 'transcript',
-    /** Failure notification */
-    ERROR = 'error',
+  /** Job lifecycle transitions (QUEUED -> PROCESSING -> COMPLETED/FAILED) */
+  STATUS = 'status',
+  /** Processing percentage updates */
+  PROGRESS = 'progress',
+  /** Partial transcript as each audio segment completes */
+  CHUNK = 'chunk',
+  /** Full final transcript result */
+  TRANSCRIPT = 'transcript',
+  /** Failure notification */
+  ERROR = 'error',
 }
 
 /**
  * Status event — job lifecycle transitions.
  */
 export interface TranscriptionStatusEvent {
-    jobId: string;
-    status: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
-    timestamp: string;
-    workerId?: string;
+  jobId: string;
+  status: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  timestamp: string;
+  workerId?: string;
 }
 
 /**
  * Progress event — processing percentage.
  */
 export interface TranscriptionProgressEvent {
-    jobId: string;
-    progress: number;
-    stage?: string;
+  jobId: string;
+  progress: number;
+  stage?: string;
 }
 
 /**
  * Word-level timestamp for transcript chunks and final results.
  */
 export interface WordTimestamp {
-    word: string;
-    start: number;
-    end: number;
-    confidence: number;
+  word: string;
+  start: number;
+  end: number;
+  confidence: number;
 }
 
 /**
  * Sentence-level timestamp for final transcript results.
  */
 export interface SentenceTimestamp {
-    text: string;
-    startTime: number;
-    endTime: number;
+  text: string;
+  startTime: number;
+  endTime: number;
 }
 
 /**
  * Chunk event — partial transcript as each audio segment completes.
  */
 export interface TranscriptionChunkEvent {
-    jobId: string;
-    chunkIndex: number;
-    text: string;
-    startTime: number;
-    endTime: number;
-    isFinal: boolean;
-    speaker?: string;
-    speakerId?: string;
-    speakerLabel?: string;
-    speakerConfidence?: number;
-    wordTimestamps?: WordTimestamp[];
+  jobId: string;
+  chunkIndex: number;
+  text: string;
+  startTime: number;
+  endTime: number;
+  isFinal: boolean;
+  speaker?: string;
+  speakerId?: string;
+  speakerLabel?: string;
+  speakerConfidence?: number;
+  wordTimestamps?: WordTimestamp[];
 }
 
 /**
  * Transcript event — full final result after all chunks are processed.
  */
 export interface TranscriptionTranscriptEvent {
-    jobId: string;
-    text: string;
-    language?: string;
-    languageProbability?: number;
-    durationSeconds: number;
-    processingTimeSeconds: number;
-    wordTimestamps: WordTimestamp[];
-    sentenceTimestamps: SentenceTimestamp[];
-    metadata: Record<string, unknown>;
+  jobId: string;
+  text: string;
+  language?: string;
+  languageProbability?: number;
+  durationSeconds: number;
+  processingTimeSeconds: number;
+  wordTimestamps: WordTimestamp[];
+  sentenceTimestamps: SentenceTimestamp[];
+  metadata: Record<string, unknown>;
 }
 
 /**
  * Error event — failure notification.
  */
 export interface TranscriptionErrorEvent {
-    jobId: string;
-    errorCode: string;
-    message: string;
+  jobId: string;
+  errorCode: string;
+  message: string;
 }
 
 /**
@@ -111,8 +111,8 @@ export interface TranscriptionErrorEvent {
  * This is the JSON structure published to Redis and forwarded as SSE.
  */
 export type TranscriptionEvent =
-    | { type: TranscriptionEventType.STATUS; data: TranscriptionStatusEvent }
-    | { type: TranscriptionEventType.PROGRESS; data: TranscriptionProgressEvent }
-    | { type: TranscriptionEventType.CHUNK; data: TranscriptionChunkEvent }
-    | { type: TranscriptionEventType.TRANSCRIPT; data: TranscriptionTranscriptEvent }
-    | { type: TranscriptionEventType.ERROR; data: TranscriptionErrorEvent };
+  | { type: TranscriptionEventType.STATUS; data: TranscriptionStatusEvent }
+  | { type: TranscriptionEventType.PROGRESS; data: TranscriptionProgressEvent }
+  | { type: TranscriptionEventType.CHUNK; data: TranscriptionChunkEvent }
+  | { type: TranscriptionEventType.TRANSCRIPT; data: TranscriptionTranscriptEvent }
+  | { type: TranscriptionEventType.ERROR; data: TranscriptionErrorEvent };

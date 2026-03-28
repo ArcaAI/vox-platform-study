@@ -5,7 +5,6 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
-from opentelemetry.exporter.jaeger.thrift import JaegerExporter
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -37,25 +36,11 @@ def setup_opentelemetry(app: FastAPI) -> None:
         trace.set_tracer_provider(tracer_provider)
         app.state.tracer_provider = tracer_provider
 
-        if settings.service.jaeger_endpoint or (settings.service.jaeger_agent_host and settings.service.jaeger_agent_port):
+        otlp_endpoint = settings.service.otlp_endpoint or settings.service.opentelemetry_endpoint
+        if otlp_endpoint:
             tracer_provider.add_span_processor(
                 BatchSpanProcessor(
-                    JaegerExporter(
-                        agent_host_name=settings.service.jaeger_agent_host,
-                        agent_port=settings.service.jaeger_agent_port,
-                    ),
-                    max_export_batch_size=512,
-                    export_timeout_millis=2000,
-                    schedule_delay_millis=500,
-                ),
-            )
-
-        if settings.service.otlp_endpoint:
-            tracer_provider.add_span_processor(
-                BatchSpanProcessor(
-                    OTLPSpanExporter(
-                        endpoint=settings.service.otlp_endpoint,
-                    ),
+                    OTLPSpanExporter(endpoint=otlp_endpoint),
                     max_export_batch_size=512,
                     export_timeout_millis=2000,
                     schedule_delay_millis=500,

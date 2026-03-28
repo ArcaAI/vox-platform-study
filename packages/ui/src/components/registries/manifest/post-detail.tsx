@@ -9,9 +9,31 @@ import { demoPostDetailData } from './demo/blogging';
 
 // DOM-based allowlist HTML sanitizer for post content
 const ALLOWED_TAGS = new Set([
-  'p', 'br', 'b', 'i', 'em', 'strong', 'a', 'ul', 'ol', 'li',
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'code', 'pre',
-  'span', 'div', 'img', 'figure', 'figcaption', 'hr',
+  'p',
+  'br',
+  'b',
+  'i',
+  'em',
+  'strong',
+  'a',
+  'ul',
+  'ol',
+  'li',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'blockquote',
+  'code',
+  'pre',
+  'span',
+  'div',
+  'img',
+  'figure',
+  'figcaption',
+  'hr',
 ]);
 const ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(['href', 'target', 'rel', 'title']),
@@ -61,23 +83,13 @@ function sanitizeHtml(html: string): string {
   return doc.body.innerHTML;
 }
 
-function TagList({
-  tags,
-  maxVisible = 2,
-  size = 'default',
-}: {
-  tags: string[];
-  maxVisible?: number;
-  size?: 'small' | 'default';
-}) {
+function TagList({ tags, maxVisible = 2, size = 'default' }: { tags: string[]; maxVisible?: number; size?: 'small' | 'default' }) {
   const visibleTags = tags.slice(0, maxVisible);
   const remainingTags = tags.slice(maxVisible);
   const hasMore = remainingTags.length > 0;
 
   const tagClass =
-    size === 'small'
-      ? 'rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium'
-      : 'rounded-full bg-muted px-3 py-1 text-xs font-medium';
+    size === 'small' ? 'rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium' : 'rounded-full bg-muted px-3 py-1 text-xs font-medium';
 
   return (
     <>
@@ -196,7 +208,7 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
   const resolved: NonNullable<PostDetailProps['data']> = data ?? demoPostDetailData;
   const post = resolved.post;
   const rawContent = resolved.content;
-  const content = useMemo(() => rawContent ? sanitizeHtml(rawContent) : undefined, [rawContent]);
+  const content = useMemo(() => (rawContent ? sanitizeHtml(rawContent) : undefined), [rawContent]);
   const relatedPosts = resolved.relatedPosts ?? [];
   const onReadMore = actions?.onReadMore;
   const showCover = appearance?.showCover ?? true;
@@ -222,11 +234,7 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
       <div className="flex flex-col sm:flex-row gap-4 rounded-lg border bg-card p-3">
         {showCover && post?.coverImage && (
           <div className="aspect-video sm:aspect-square sm:h-24 sm:w-24 shrink-0 overflow-hidden rounded-md">
-            <img
-              src={post.coverImage}
-              alt={post?.title || ''}
-              className="h-full w-full object-cover"
-            />
+            <img src={post.coverImage} alt={post?.title || ''} className="h-full w-full object-cover" />
           </div>
         )}
 
@@ -234,15 +242,9 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
           <div>
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
-                {post?.category && (
-                  <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                    {post.category}
-                  </p>
-                )}
+                {post?.category && <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>}
 
-                {post?.title && (
-                  <h1 className="line-clamp-2 text-sm font-bold leading-tight">{post.title}</h1>
-                )}
+                {post?.title && <h1 className="line-clamp-2 text-sm font-bold leading-tight">{post.title}</h1>}
               </div>
               <button
                 onClick={handleReadMore}
@@ -253,9 +255,7 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
               </button>
             </div>
 
-            {post?.excerpt && (
-              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{post.excerpt}</p>
-            )}
+            {post?.excerpt && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{post.excerpt}</p>}
 
             {post?.tags && post.tags.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
@@ -266,13 +266,7 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
 
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {showAuthor && post?.author?.avatar && (
-                <img
-                  src={post.author.avatar}
-                  alt={post?.author?.name || ''}
-                  className="h-4 w-4 rounded-full"
-                />
-              )}
+              {showAuthor && post?.author?.avatar && <img src={post.author.avatar} alt={post?.author?.name || ''} className="h-4 w-4 rounded-full" />}
               {showAuthor && post?.author?.name && <span>{post.author.name}</span>}
               {post?.publishedAt && (
                 <span className="flex items-center gap-1">
@@ -303,29 +297,17 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
       <div className="flex flex-col sm:flex-row gap-4 rounded-lg border bg-card p-3">
         {showCover && post?.coverImage && (
           <div className="aspect-video sm:aspect-square sm:h-24 sm:w-24 shrink-0 overflow-hidden rounded-md">
-            <img
-              src={post.coverImage}
-              alt={post?.title || ''}
-              className="h-full w-full object-cover"
-            />
+            <img src={post.coverImage} alt={post?.title || ''} className="h-full w-full object-cover" />
           </div>
         )}
 
         <div className="flex flex-1 flex-col justify-between min-w-0">
           <div>
-            {post?.category && (
-              <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                {post.category}
-              </p>
-            )}
+            {post?.category && <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>}
 
-            {post?.title && (
-              <h1 className="line-clamp-2 text-sm font-bold leading-tight">{post.title}</h1>
-            )}
+            {post?.title && <h1 className="line-clamp-2 text-sm font-bold leading-tight">{post.title}</h1>}
 
-            {post?.excerpt && (
-              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{post.excerpt}</p>
-            )}
+            {post?.excerpt && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{post.excerpt}</p>}
 
             {post?.tags && post.tags.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
@@ -336,13 +318,7 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
 
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {showAuthor && post?.author?.avatar && (
-                <img
-                  src={post.author.avatar}
-                  alt={post?.author?.name || ''}
-                  className="h-4 w-4 rounded-full"
-                />
-              )}
+              {showAuthor && post?.author?.avatar && <img src={post.author.avatar} alt={post?.author?.name || ''} className="h-4 w-4 rounded-full" />}
               {showAuthor && post?.author?.name && <span>{post.author.name}</span>}
               {post?.publishedAt && (
                 <span className="flex items-center gap-1">
@@ -372,24 +348,12 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
       <article className="mx-auto w-full max-w-[680px] px-6 py-10">
         {showCover && post?.coverImage && (
           <div className="aspect-video w-full overflow-hidden rounded-lg mb-8">
-            <img
-              src={post.coverImage}
-              alt={post?.title || ''}
-              className="h-full w-full object-cover"
-            />
+            <img src={post.coverImage} alt={post?.title || ''} className="h-full w-full object-cover" />
           </div>
         )}
-        {post?.category && (
-          <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            {post.category}
-          </p>
-        )}
+        {post?.category && <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>}
 
-        {post?.title && (
-          <h1 className="text-[32px] font-bold leading-[1.25] tracking-tight md:text-[42px]">
-            {post.title}
-          </h1>
-        )}
+        {post?.title && <h1 className="text-[32px] font-bold leading-[1.25] tracking-tight md:text-[42px]">{post.title}</h1>}
 
         {post?.tags && post.tags.length > 0 && (
           <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -399,13 +363,7 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
 
         {showAuthor && post?.author && (
           <div className="mt-8 flex items-center gap-4 border-b pb-8">
-            {post.author.avatar && (
-              <img
-                src={post.author.avatar}
-                alt={post.author.name || ''}
-                className="h-12 w-12 rounded-full"
-              />
-            )}
+            {post.author.avatar && <img src={post.author.avatar} alt={post.author.name || ''} className="h-12 w-12 rounded-full" />}
             <div>
               {post.author.name && <p className="font-medium">{post.author.name}</p>}
               {(post?.publishedAt || post?.readTime) && (
@@ -430,9 +388,7 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
 
         {/* Medium-style content */}
         <div className="mt-10">
-          {post?.excerpt && (
-            <p className="text-[21px] leading-[1.8] text-muted-foreground mb-8">{post.excerpt}</p>
-          )}
+          {post?.excerpt && <p className="text-[21px] leading-[1.8] text-muted-foreground mb-8">{post.excerpt}</p>}
           {content && (
             <div
               className="
@@ -463,23 +419,13 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
                 >
                   {related.coverImage && (
                     <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg">
-                      <img
-                        src={related.coverImage}
-                        alt={related.title || ''}
-                        className="h-full w-full object-cover"
-                      />
+                      <img src={related.coverImage} alt={related.title || ''} className="h-full w-full object-cover" />
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
                     {related.title && <p className="font-medium">{related.title}</p>}
-                    {related.excerpt && (
-                      <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
-                        {related.excerpt}
-                      </p>
-                    )}
-                    {related.readTime && (
-                      <p className="mt-1 text-xs text-muted-foreground">{related.readTime}</p>
-                    )}
+                    {related.excerpt && <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">{related.excerpt}</p>}
+                    {related.readTime && <p className="mt-1 text-xs text-muted-foreground">{related.readTime}</p>}
                   </div>
                   <ExternalLink className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </a>

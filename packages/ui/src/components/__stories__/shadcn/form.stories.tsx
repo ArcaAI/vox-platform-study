@@ -1,26 +1,18 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 
-import { Button } from '../../shadcn/button'
-import { Input } from '../../shadcn/input'
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '../../shadcn/form'
+import { Button } from '../../shadcn/button';
+import { Input } from '../../shadcn/input';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '../../shadcn/form';
 
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
-})
+});
 
-type FormValues = z.infer<typeof formSchema>
+type FormValues = z.infer<typeof formSchema>;
 
 function FormDemo() {
   const form = useForm<FormValues>({
@@ -29,10 +21,10 @@ function FormDemo() {
       name: '',
       email: '',
     },
-  })
+  });
 
   function onSubmit(values: FormValues) {
-    console.log(values)
+    console.log(values);
   }
 
   return (
@@ -69,7 +61,7 @@ function FormDemo() {
         <Button type="submit">Submit</Button>
       </form>
     </Form>
-  )
+  );
 }
 
 const meta = {
@@ -78,11 +70,11 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Form>
+} satisfies Meta<typeof Form>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => <FormDemo />,
-}
+};

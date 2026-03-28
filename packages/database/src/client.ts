@@ -156,34 +156,34 @@ function createExtendedPrismaClient() {
     name: 'softDeleteFilter',
     query: {
       $allModels: {
-        async findMany({ model, operation, args, query }) {
+        async findMany({ model, operation, args, query }: any) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async findFirst({ model, operation, args, query }) {
+        async findFirst({ model, operation, args, query }: any) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async findUnique({ model, operation, args, query }) {
+        async findUnique({ model, operation, args, query }: any) {
           return query(args);
         },
-        async count({ model, operation, args, query }) {
+        async count({ model, operation, args, query }: any) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async aggregate({ model, operation, args, query }) {
+        async aggregate({ model, operation, args, query }: any) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async groupBy({ model, operation, args, query }) {
+        async groupBy({ model, operation, args, query }: any) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }

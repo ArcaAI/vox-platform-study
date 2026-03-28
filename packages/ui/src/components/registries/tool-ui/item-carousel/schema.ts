@@ -1,10 +1,6 @@
-import { z } from "zod";
-import { defineToolUiContract } from "../shared/contract";
-import {
-  ActionSchema,
-  SerializableActionSchema,
-  ToolUIIdSchema,
-} from "../shared/schema";
+import { z } from 'zod';
+import { defineToolUiContract } from '../shared/contract';
+import { ActionSchema, SerializableActionSchema, ToolUIIdSchema } from '../shared/schema';
 
 export const ItemSchema = z.object({
   id: z.string().min(1),
@@ -48,7 +44,7 @@ export const SerializableItemCarouselSchema = ItemCarouselPropsSchema.omit({
       if (firstSeenAt !== undefined) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["items", index, "id"],
+          path: ['items', index, 'id'],
           message: `duplicate item id '${item.id}' (first seen at index ${firstSeenAt})`,
         });
         return;
@@ -58,20 +54,11 @@ export const SerializableItemCarouselSchema = ItemCarouselPropsSchema.omit({
   });
 
 export type SerializableItem = z.infer<typeof SerializableItemSchema>;
-export type SerializableItemCarousel = z.infer<
-  typeof SerializableItemCarouselSchema
->;
+export type SerializableItemCarousel = z.infer<typeof SerializableItemCarouselSchema>;
 
-const SerializableItemCarouselSchemaContract = defineToolUiContract(
-  "ItemCarousel",
-  SerializableItemCarouselSchema,
-);
+const SerializableItemCarouselSchemaContract = defineToolUiContract('ItemCarousel', SerializableItemCarouselSchema);
 
-export const parseSerializableItemCarousel: (
-  input: unknown,
-) => SerializableItemCarousel = SerializableItemCarouselSchemaContract.parse;
+export const parseSerializableItemCarousel: (input: unknown) => SerializableItemCarousel = SerializableItemCarouselSchemaContract.parse;
 
-export const safeParseSerializableItemCarousel: (
-  input: unknown,
-) => SerializableItemCarousel | null =
+export const safeParseSerializableItemCarousel: (input: unknown) => SerializableItemCarousel | null =
   SerializableItemCarouselSchemaContract.safeParse;

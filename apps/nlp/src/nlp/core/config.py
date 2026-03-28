@@ -4,7 +4,6 @@ from pydantic import Field
 from enum import Enum
 import os
 import dotenv
-from urllib.parse import urlparse
 from nlp.utils import get_project_root
 
 dotenv.load_dotenv()
@@ -43,24 +42,10 @@ class NLPServiceConfig(BaseSettings):
     workers: int = Field(default=os.getenv("WORKERS", 1))
 
     opentelemetry_endpoint: Optional[str] = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
-    jaeger_endpoint: Optional[str] = Field(default=os.getenv("OTEL_EXPORTER_JAEGER_ENDPOINT", None))
-    jaeger_agent_host: Optional[str] = Field(default=os.getenv("OTEL_EXPORTER_JAEGER_AGENT_HOST", None))
-    jaeger_agent_port: Optional[int] = Field(default=os.getenv("OTEL_EXPORTER_JAEGER_AGENT_PORT", None))
     otlp_endpoint: Optional[str] = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
     resource_attributes: Optional[dict] = Field(default=os.getenv("OTEL_RESOURCE_ATTRIBUTES", None))
     traces_enabled: bool = Field(default=os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
     metrics_enabled: bool = Field(default=os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true")
-
-    def model_post_init(self, __context):
-        if self.jaeger_endpoint and not self.jaeger_agent_host:
-            try:
-                parsed = urlparse(self.jaeger_endpoint)
-                if parsed.hostname:
-                    self.jaeger_agent_host = parsed.hostname
-                if parsed.port:
-                    self.jaeger_agent_port = parsed.port
-            except Exception:
-                pass
 
     class Config:
         env_prefix = "NLP_"

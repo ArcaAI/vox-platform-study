@@ -21,49 +21,49 @@ import { tap } from 'rxjs/operators';
  */
 @Injectable()
 export class ImpersonationAuditInterceptor implements NestInterceptor {
-    private readonly logger = new Logger(ImpersonationAuditInterceptor.name);
+  private readonly logger = new Logger(ImpersonationAuditInterceptor.name);
 
-    constructor(
-        private readonly clsService: ClsService,
-        private readonly eventEmitter: EventEmitter2,
-    ) {}
+  constructor(
+    private readonly clsService: ClsService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
-    intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-        const httpContext = context.switchToHttp();
-        const request = httpContext.getRequest();
-        const user = this.clsService.get('user');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    const httpContext = context.switchToHttp();
+    const request = httpContext.getRequest();
+    const user = this.clsService.get('user');
 
-        if (!user?.impersonatedBy) {
-            return next.handle();
-        }
-
-        const adminId: string = user.impersonatedBy;
-        const impersonatedUserId: string = user.id;
-        const method = request.method;
-        const url = request.url;
-        const ip = request.ip || '127.0.0.1';
-        const userAgent = request.headers['user-agent'] || 'Unknown';
-
-        return next.handle().pipe(
-            tap({
-                next: () => {
-                    try {
-                        this.eventEmitter.emit(EventTypes.UserAuthenticated, {
-                            userId: adminId,
-                            impersonatedUserId,
-                            timestamp: new Date(),
-                            ip,
-                            userAgent,
-                            endpoint: url,
-                            method,
-                        });
-                    } catch (err: any) {
-                        this.logger.warn(
-                            `Failed to audit impersonation action: ${err?.message}`,
-                        );
-                    }
-                },
-            }),
-        );
+    if (!user?.impersonatedBy) {
+      return next.handle();
     }
+
+    const adminId: string = user.impersonatedBy;
+    const impersonatedUserId: string = user.id;
+    const method = request.method;
+    const url = request.url;
+    const ip = request.ip || '127.0.0.1';
+    const userAgent = request.headers['user-agent'] || 'Unknown';
+
+    return next.handle().pipe(
+      tap({
+        next: () => {
+          try {
+            this.eventEmitter.emit(EventTypes.UserAuthenticated, {
+              userId: adminId,
+              impersonatedUserId,
+              timestamp: new Date(),
+              ip,
+              userAgent,
+              endpoint: url,
+              method,
+            });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } catch (err: any) {
+            this.logger.warn(`Failed to audit impersonation action: ${err?.message}`);
+          }
+        },
+      }),
+    );
+  }
 }

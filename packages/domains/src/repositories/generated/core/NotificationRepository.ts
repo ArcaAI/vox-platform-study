@@ -8,9 +8,7 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 @Injectable()
 export class NotificationRepository extends Repository<NotificationEntity, Notification> {
-    constructor(
-        private readonly unitOfWorkService: CoreUnitOfWorkService
-    ) {
-        super(unitOfWorkService, 'notification', NotificationEntityMapper.getInstance(), undefined, ['title', 'messageText']);
-    }
+  constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
+    super(unitOfWorkService, 'notification', NotificationEntityMapper.getInstance(), undefined, ['title', 'messageText']);
+  }
 }

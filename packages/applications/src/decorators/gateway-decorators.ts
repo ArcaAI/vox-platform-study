@@ -1,4 +1,4 @@
-import { SetMetadata, UseGuards, applyDecorators } from '@nestjs/common';
+import { SetMetadata, applyDecorators } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { PERMISSIONS_KEY, RATE_LIMIT_KEY } from '../services/auth/gateway-auth.guard';
 
@@ -6,10 +6,11 @@ import { PERMISSIONS_KEY, RATE_LIMIT_KEY } from '../services/auth/gateway-auth.g
  * Rate limit configuration interface
  */
 export interface RateLimitOptions {
-    requests: number;
-    windowMs: number;
-    message?: string;
-    skipIf?: (request: any) => boolean;
+  requests: number;
+  windowMs: number;
+  message?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  skipIf?: (request: any) => boolean;
 }
 
 /**
@@ -29,15 +30,15 @@ export const RateLimit = (options: RateLimitOptions) => SetMetadata(RATE_LIMIT_K
  * Combines common decorators for medical data endpoints
  */
 export const MedicalEndpoint = (permissions: string[], summary?: string) => {
-    return applyDecorators(
-        Permissions(...permissions),
-        ApiBearerAuth(),
-        ApiOperation({ summary: summary || 'Medical data endpoint' }),
-        ApiResponse({ status: 401, description: 'Unauthorized - Invalid or missing token' }),
-        ApiResponse({ status: 403, description: 'Forbidden - Insufficient permissions' }),
-        ApiResponse({ status: 429, description: 'Too Many Requests - Rate limit exceeded' }),
-        RateLimit({ requests: 100, windowMs: 60000 }) // Default rate limit for medical endpoints
-    );
+  return applyDecorators(
+    Permissions(...permissions),
+    ApiBearerAuth(),
+    ApiOperation({ summary: summary || 'Medical data endpoint' }),
+    ApiResponse({ status: 401, description: 'Unauthorized - Invalid or missing token' }),
+    ApiResponse({ status: 403, description: 'Forbidden - Insufficient permissions' }),
+    ApiResponse({ status: 429, description: 'Too Many Requests - Rate limit exceeded' }),
+    RateLimit({ requests: 100, windowMs: 60000 }), // Default rate limit for medical endpoints
+  );
 };
 
 /**
@@ -45,15 +46,15 @@ export const MedicalEndpoint = (permissions: string[], summary?: string) => {
  * For administrative operations with higher rate limits
  */
 export const AdminEndpoint = (permissions: string[], summary?: string) => {
-    return applyDecorators(
-        Permissions(...permissions),
-        ApiBearerAuth(),
-        ApiOperation({ summary: summary || 'Administrative endpoint' }),
-        ApiResponse({ status: 401, description: 'Unauthorized - Invalid or missing token' }),
-        ApiResponse({ status: 403, description: 'Forbidden - Admin access required' }),
-        ApiResponse({ status: 429, description: 'Too Many Requests - Rate limit exceeded' }),
-        RateLimit({ requests: 500, windowMs: 60000 }) // Higher rate limit for admin operations
-    );
+  return applyDecorators(
+    Permissions(...permissions),
+    ApiBearerAuth(),
+    ApiOperation({ summary: summary || 'Administrative endpoint' }),
+    ApiResponse({ status: 401, description: 'Unauthorized - Invalid or missing token' }),
+    ApiResponse({ status: 403, description: 'Forbidden - Admin access required' }),
+    ApiResponse({ status: 429, description: 'Too Many Requests - Rate limit exceeded' }),
+    RateLimit({ requests: 500, windowMs: 60000 }), // Higher rate limit for admin operations
+  );
 };
 
 /**
@@ -61,11 +62,11 @@ export const AdminEndpoint = (permissions: string[], summary?: string) => {
  * For endpoints that don't require authentication
  */
 export const PublicEndpoint = (summary?: string) => {
-    return applyDecorators(
-        ApiOperation({ summary: summary || 'Public endpoint' }),
-        ApiResponse({ status: 200, description: 'Success' }),
-        RateLimit({ requests: 50, windowMs: 60000 }) // Conservative rate limit for public endpoints
-    );
+  return applyDecorators(
+    ApiOperation({ summary: summary || 'Public endpoint' }),
+    ApiResponse({ status: 200, description: 'Success' }),
+    RateLimit({ requests: 50, windowMs: 60000 }), // Conservative rate limit for public endpoints
+  );
 };
 
 /**
@@ -73,7 +74,7 @@ export const PublicEndpoint = (summary?: string) => {
  * Marks endpoints that require HIPAA audit logging
  */
 export const HIPAAAudit = (auditAction: string) => {
-    return SetMetadata('hipaa-audit', { action: auditAction, timestamp: new Date() });
+  return SetMetadata('hipaa-audit', { action: auditAction, timestamp: new Date() });
 };
 
 /**
@@ -81,14 +82,14 @@ export const HIPAAAudit = (auditAction: string) => {
  * For session-related endpoints with specific rate limits and permissions
  */
 export const SessionEndpoint = (permissions: string[], summary?: string) => {
-    return applyDecorators(
-        Permissions(...permissions),
-        ApiBearerAuth(),
-        ApiOperation({ summary: summary || 'Session management endpoint' }),
-        ApiResponse({ status: 401, description: 'Unauthorized - Invalid or missing token' }),
-        ApiResponse({ status: 403, description: 'Forbidden - Session access required' }),
-        ApiResponse({ status: 429, description: 'Too Many Requests - Rate limit exceeded' }),
-        HIPAAAudit('session_access'),
-        RateLimit({ requests: 200, windowMs: 60000 }) // Higher rate limit for session operations
-    );
+  return applyDecorators(
+    Permissions(...permissions),
+    ApiBearerAuth(),
+    ApiOperation({ summary: summary || 'Session management endpoint' }),
+    ApiResponse({ status: 401, description: 'Unauthorized - Invalid or missing token' }),
+    ApiResponse({ status: 403, description: 'Forbidden - Session access required' }),
+    ApiResponse({ status: 429, description: 'Too Many Requests - Rate limit exceeded' }),
+    HIPAAAudit('session_access'),
+    RateLimit({ requests: 200, windowMs: 60000 }), // Higher rate limit for session operations
+  );
 };

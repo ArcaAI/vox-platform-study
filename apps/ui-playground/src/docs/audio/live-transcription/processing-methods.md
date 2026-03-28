@@ -28,7 +28,7 @@ const stt = useSTT({
 
 // Backend — WebSocket streaming
 const realtime = useRealtimeTranscription();
-await realtime.start({ sampleRate: 16000, language: 'en' });
+await realtime.start({ pipelineId: '81000000-0000-0000-0001-000000000001' });
 ```
 
 <!-- @/example -->

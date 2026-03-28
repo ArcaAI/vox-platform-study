@@ -23,17 +23,9 @@ export function SmrStatusBadge() {
 
   return (
     <Badge variant={isHealthy ? 'default' : 'secondary'} className="gap-1.5 text-xs">
-      {isHealthy ? (
-        <CheckCircle2 className="size-3" />
-      ) : (
-        <Activity className="size-3" />
-      )}
+      {isHealthy ? <CheckCircle2 className="size-3" /> : <Activity className="size-3" />}
       SMR {isHealthy ? 'Online' : 'Degraded'}
-      {health.uptime_seconds != null && (
-        <span className="text-[10px] opacity-70">
-          ({Math.floor(health.uptime_seconds / 3600)}h)
-        </span>
-      )}
+      {health.uptime_seconds != null && <span className="text-[10px] opacity-70">({Math.floor(health.uptime_seconds / 3600)}h)</span>}
     </Badge>
   );
 }

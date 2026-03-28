@@ -8,48 +8,48 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 export interface CreateMediaProps extends BaseEntityFactoryCreateProps {
-    name: IMediaEntity['name'];
-    uri: IMediaEntity['uri'];
-    extension: IMediaEntity['extension'];
-    mimeType: IMediaEntity['mimeType'];
-    size: IMediaEntity['size'];
-    hash: IMediaEntity['hash'];
-    UserMedias?: IMediaEntity['UserMedias'];
-    tenantId?: IMediaEntity['tenantId'];
-    Tenant?: IMediaEntity['Tenant'];
-    tags?: IMediaEntity['tags'];
-    Tags?: IMediaEntity['Tags'];
+  name: IMediaEntity['name'];
+  uri: IMediaEntity['uri'];
+  extension: IMediaEntity['extension'];
+  mimeType: IMediaEntity['mimeType'];
+  size: IMediaEntity['size'];
+  hash: IMediaEntity['hash'];
+  UserMedias?: IMediaEntity['UserMedias'];
+  tenantId?: IMediaEntity['tenantId'];
+  Tenant?: IMediaEntity['Tenant'];
+  tags?: IMediaEntity['tags'];
+  Tags?: IMediaEntity['Tags'];
 
-    createdAt?: IMediaEntity['createdAt'];
-    updatedAt?: IMediaEntity['updatedAt'];
-    createdBy?: IMediaEntity['createdBy'];
-    updatedBy?: IMediaEntity['updatedBy'];
+  createdAt?: IMediaEntity['createdAt'];
+  updatedAt?: IMediaEntity['updatedAt'];
+  createdBy?: IMediaEntity['createdBy'];
+  updatedBy?: IMediaEntity['updatedBy'];
 }
 
 export class MediaFactory {
-    static CreateMedia(props: CreateMediaProps): MediaEntity {
-        const id = generateId();
-        const now = new Date();
+  static CreateMedia(props: CreateMediaProps): MediaEntity {
+    const id = generateId();
+    const now = new Date();
 
-        return new MediaEntity({
-            id,
+    return new MediaEntity({
+      id,
 
-            createdAt: props.createdAt || now,
-            updatedAt: props.updatedAt || now,
-            createdBy: props.createdBy ?? null,
-            updatedBy: props.updatedBy || null,
+      createdAt: props.createdAt || now,
+      updatedAt: props.updatedAt || now,
+      createdBy: props.createdBy ?? null,
+      updatedBy: props.updatedBy || null,
 
-            name: props.name,
-            uri: props.uri,
-            extension: props.extension,
-            mimeType: props.mimeType,
-            size: props.size,
-            hash: props.hash,
-            UserMedias: props.UserMedias ?? [],
-            tenantId: props.tenantId ?? "",
-            Tenant: props.Tenant ?? null,
-            tags: props.tags ?? [],
-            Tags: props.Tags ?? [],
-        });
-    }
+      name: props.name,
+      uri: props.uri,
+      extension: props.extension,
+      mimeType: props.mimeType,
+      size: props.size,
+      hash: props.hash,
+      UserMedias: props.UserMedias ?? [],
+      tenantId: props.tenantId ?? '',
+      Tenant: props.Tenant ?? null,
+      tags: props.tags ?? [],
+      Tags: props.Tags ?? [],
+    });
+  }
 }

@@ -63,121 +63,140 @@ function CustomPipeline() {
 }`;
 
 const sections: TocSection[] = [
-    { id: 'install', title: 'Install' },
-    { id: 'requirements', title: 'Requirements' },
-    { id: 'basic-usage', title: 'Basic Usage' },
-    { id: 'configuration', title: 'Configuration' },
-    { id: 'processor-api', title: 'Processor API' },
+  { id: 'install', title: 'Install' },
+  { id: 'requirements', title: 'Requirements' },
+  { id: 'basic-usage', title: 'Basic Usage' },
+  { id: 'configuration', title: 'Configuration' },
+  { id: 'processor-api', title: 'Processor API' },
 ];
 
 export default function VadInstallation() {
-    return (
-        <DocsLayout
-            title="@arcaai/vad"
-            description="Voice Activity Detection using Silero VAD v5."
-            sections={sections}
-            cta={{ title: 'Next: Noise Filter', description: 'Add AI noise cancellation to your pipeline.', buttonLabel: 'View Noise Filter Guide', href: '/installation/noise-filter' }}
-        >
-            <Alert>
-                <Info />
-                <AlertTitle>Peer Dependency</AlertTitle>
-                <AlertDescription>
-                    This package requires <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-[13px]">@arcaai/room</code> as
-                    a peer dependency. Install it first.
-                </AlertDescription>
-            </Alert>
+  return (
+    <DocsLayout
+      title="@arcaai/vad"
+      description="Voice Activity Detection using Silero VAD v5."
+      sections={sections}
+      cta={{
+        title: 'Next: Noise Filter',
+        description: 'Add AI noise cancellation to your pipeline.',
+        buttonLabel: 'View Noise Filter Guide',
+        href: '/installation/noise-filter',
+      }}
+    >
+      <Alert>
+        <Info />
+        <AlertTitle>Peer Dependency</AlertTitle>
+        <AlertDescription>
+          This package requires <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-[13px]">@arcaai/room</code> as a peer dependency.
+          Install it first.
+        </AlertDescription>
+      </Alert>
 
-            <section id="install">
-                <h2 className="text-xl font-semibold tracking-tight">Install</h2>
-                <div className="mt-3">
-                    <Tabs defaultValue="pnpm">
-                        <TabsList>
-                            <TabsTrigger value="pnpm">pnpm</TabsTrigger>
-                            <TabsTrigger value="npm">npm</TabsTrigger>
-                            <TabsTrigger value="yarn">yarn</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="pnpm" className="mt-3">
-                            <CodeBlock code="pnpm add @arcaai/vad @arcaai/room" />
-                        </TabsContent>
-                        <TabsContent value="npm" className="mt-3">
-                            <CodeBlock code="npm install @arcaai/vad @arcaai/room" />
-                        </TabsContent>
-                        <TabsContent value="yarn" className="mt-3">
-                            <CodeBlock code="yarn add @arcaai/vad @arcaai/room" />
-                        </TabsContent>
-                    </Tabs>
-                </div>
-            </section>
+      <section id="install">
+        <h2 className="text-xl font-semibold tracking-tight">Install</h2>
+        <div className="mt-3">
+          <Tabs defaultValue="pnpm">
+            <TabsList>
+              <TabsTrigger value="pnpm">pnpm</TabsTrigger>
+              <TabsTrigger value="npm">npm</TabsTrigger>
+              <TabsTrigger value="yarn">yarn</TabsTrigger>
+            </TabsList>
+            <TabsContent value="pnpm" className="mt-3">
+              <CodeBlock code="pnpm add @arcaai/vad @arcaai/room" />
+            </TabsContent>
+            <TabsContent value="npm" className="mt-3">
+              <CodeBlock code="npm install @arcaai/vad @arcaai/room" />
+            </TabsContent>
+            <TabsContent value="yarn" className="mt-3">
+              <CodeBlock code="yarn add @arcaai/vad @arcaai/room" />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </section>
 
-            <section id="requirements">
-                <h2 className="text-xl font-semibold tracking-tight">Requirements</h2>
-                <ul className="text-muted-foreground mt-3 flex flex-col gap-2 leading-6 text-sm">
-                    <li>React <Badge variant="outline" className="ml-1">^18.3.0 || ^19.0.4</Badge></li>
-                    <li><code className="bg-muted rounded px-1.5 py-0.5 font-mono text-[13px]">@arcaai/room</code> <Badge variant="outline" className="ml-1">^0.1.0</Badge></li>
-                    <li>Browser with WebAssembly support</li>
-                </ul>
-            </section>
+      <section id="requirements">
+        <h2 className="text-xl font-semibold tracking-tight">Requirements</h2>
+        <ul className="text-muted-foreground mt-3 flex flex-col gap-2 leading-6 text-sm">
+          <li>
+            React{' '}
+            <Badge variant="outline" className="ml-1">
+              ^18.3.0 || ^19.0.4
+            </Badge>
+          </li>
+          <li>
+            <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-[13px]">@arcaai/room</code>{' '}
+            <Badge variant="outline" className="ml-1">
+              ^0.1.0
+            </Badge>
+          </li>
+          <li>Browser with WebAssembly support</li>
+        </ul>
+      </section>
 
-            <Separator className="my-6" />
+      <Separator className="my-6" />
 
-            <section id="basic-usage">
-                <h2 className="text-xl font-semibold tracking-tight">Basic Usage</h2>
-                <p className="text-muted-foreground mt-1.5 leading-6 text-sm">
-                    The <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-[13px]">useVAD</code> hook
-                    detects speech segments in real-time from an audio track.
-                </p>
-                <div className="mt-3">
-                    <CodeBlock code={hookExample} />
-                </div>
-            </section>
+      <section id="basic-usage">
+        <h2 className="text-xl font-semibold tracking-tight">Basic Usage</h2>
+        <p className="text-muted-foreground mt-1.5 leading-6 text-sm">
+          The <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-[13px]">useVAD</code> hook detects speech segments in real-time from an
+          audio track.
+        </p>
+        <div className="mt-3">
+          <CodeBlock code={hookExample} />
+        </div>
+      </section>
 
-            <section id="configuration">
-                <h2 className="text-xl font-semibold tracking-tight">Configuration</h2>
-                <p className="text-muted-foreground mt-1.5 leading-6 text-sm">
-                    Tune sensitivity and timing thresholds for your use case.
-                </p>
-                <div className="mt-3">
-                    <CodeBlock code={configExample} />
-                </div>
-                <div className="bg-muted/50 mt-3 overflow-hidden rounded-lg border">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="border-b">
-                                <th className="px-4 py-2 text-left font-medium">Option</th>
-                                <th className="px-4 py-2 text-left font-medium">Default</th>
-                                <th className="px-4 py-2 text-left font-medium">Description</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr className="border-b">
-                                <td className="px-4 py-2"><code className="font-mono text-[13px]">sensitivity</code></td>
-                                <td className="px-4 py-2">0.5</td>
-                                <td className="text-muted-foreground px-4 py-2">0.0 (least) to 1.0 (most sensitive)</td>
-                            </tr>
-                            <tr className="border-b">
-                                <td className="px-4 py-2"><code className="font-mono text-[13px]">minSpeechDuration</code></td>
-                                <td className="px-4 py-2">250ms</td>
-                                <td className="text-muted-foreground px-4 py-2">Minimum duration to trigger speech</td>
-                            </tr>
-                            <tr>
-                                <td className="px-4 py-2"><code className="font-mono text-[13px]">minSilenceDuration</code></td>
-                                <td className="px-4 py-2">300ms</td>
-                                <td className="text-muted-foreground px-4 py-2">Silence needed to end a speech segment</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+      <section id="configuration">
+        <h2 className="text-xl font-semibold tracking-tight">Configuration</h2>
+        <p className="text-muted-foreground mt-1.5 leading-6 text-sm">Tune sensitivity and timing thresholds for your use case.</p>
+        <div className="mt-3">
+          <CodeBlock code={configExample} />
+        </div>
+        <div className="bg-muted/50 mt-3 overflow-hidden rounded-lg border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b">
+                <th className="px-4 py-2 text-left font-medium">Option</th>
+                <th className="px-4 py-2 text-left font-medium">Default</th>
+                <th className="px-4 py-2 text-left font-medium">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b">
+                <td className="px-4 py-2">
+                  <code className="font-mono text-[13px]">sensitivity</code>
+                </td>
+                <td className="px-4 py-2">0.5</td>
+                <td className="text-muted-foreground px-4 py-2">0.0 (least) to 1.0 (most sensitive)</td>
+              </tr>
+              <tr className="border-b">
+                <td className="px-4 py-2">
+                  <code className="font-mono text-[13px]">minSpeechDuration</code>
+                </td>
+                <td className="px-4 py-2">250ms</td>
+                <td className="text-muted-foreground px-4 py-2">Minimum duration to trigger speech</td>
+              </tr>
+              <tr>
+                <td className="px-4 py-2">
+                  <code className="font-mono text-[13px]">minSilenceDuration</code>
+                </td>
+                <td className="px-4 py-2">300ms</td>
+                <td className="text-muted-foreground px-4 py-2">Silence needed to end a speech segment</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-            <section id="processor-api">
-                <h2 className="text-xl font-semibold tracking-tight">Processor API</h2>
-                <p className="text-muted-foreground mt-1.5 leading-6 text-sm">
-                    For advanced use, create a VAD processor and attach it to a track's processor pipeline directly.
-                </p>
-                <div className="mt-3">
-                    <CodeBlock code={processorExample} />
-                </div>
-            </section>
-        </DocsLayout>
-    );
+      <section id="processor-api">
+        <h2 className="text-xl font-semibold tracking-tight">Processor API</h2>
+        <p className="text-muted-foreground mt-1.5 leading-6 text-sm">
+          For advanced use, create a VAD processor and attach it to a track's processor pipeline directly.
+        </p>
+        <div className="mt-3">
+          <CodeBlock code={processorExample} />
+        </div>
+      </section>
+    </DocsLayout>
+  );
 }
