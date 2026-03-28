@@ -99,7 +99,7 @@ export function getHardwareConcurrency(): number {
   if (!isBrowser()) {
     // In Node.js, use os.cpus()
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
       const os = require('os');
       return os.cpus().length;
     } catch {
