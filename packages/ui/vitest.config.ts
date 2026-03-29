@@ -8,6 +8,7 @@ export default defineConfig({
       { find: '@/components/data-table', replacement: resolve(__dirname, './src/components/registries/diceui/data-table') },
       { find: '@', replacement: resolve(__dirname, './src') },
     ],
+    dedupe: ['react', 'react-dom'],
   },
   test: {
     globals: true,
