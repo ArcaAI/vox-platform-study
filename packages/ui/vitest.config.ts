@@ -7,6 +7,8 @@ export default defineConfig({
       { find: '@/components/ui', replacement: resolve(__dirname, './src/components/shadcn') },
       { find: '@/components/data-table', replacement: resolve(__dirname, './src/components/registries/diceui/data-table') },
       { find: '@', replacement: resolve(__dirname, './src') },
+      { find: 'react', replacement: resolve(__dirname, 'node_modules/react') },
+      { find: 'react-dom', replacement: resolve(__dirname, 'node_modules/react-dom') },
     ],
     dedupe: ['react', 'react-dom'],
   },
