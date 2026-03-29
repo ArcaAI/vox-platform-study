@@ -8,6 +8,11 @@
             "outputs": ["dist/**", ".next/**", "!.next/cache/**", "public/dist/**", "storybook-static/**", "pkg/**"],
             "env": ["NEXT_PUBLIC_API_HOST"]
         },
+        "@arcaai/database#build": {
+            "dependsOn": ["db:generate", "^build"],
+            "cache": false,
+            "outputs": ["dist/**"]
+        },
         "lint": {
             "dependsOn": ["^build"]
         },
