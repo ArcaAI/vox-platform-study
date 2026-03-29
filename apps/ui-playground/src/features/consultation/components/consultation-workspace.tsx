@@ -18,6 +18,17 @@ import { StartConsultationDialog } from './start-consultation-dialog';
 import { VersionDetailPanel } from './version-detail-panel';
 
 // ---------------------------------------------------------------------------
+// Hooks
+// ---------------------------------------------------------------------------
+
+function useQueryErrorToast(error: Error | null, fallbackMessage: string) {
+  useEffect(() => {
+    if (!error) return;
+    toast.error(error instanceof Error ? error.message : fallbackMessage);
+  }, [error, fallbackMessage]);
+}
+
+// ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
@@ -237,26 +248,9 @@ export function ConsultationWorkspace() {
 
   const selectedVersion = selectedVersions.length === 1 ? selectedVersions[0]! : null;
 
-  useEffect(() => {
-    const error = consultationsQuery.error;
-    if (!error) return;
-    const message = error instanceof Error ? error.message : 'Failed to load consultations';
-    toast.error(message);
-  }, [consultationsQuery.error]);
-
-  useEffect(() => {
-    const error = contextItemsQuery.error;
-    if (!error) return;
-    const message = error instanceof Error ? error.message : 'Failed to load context items';
-    toast.error(message);
-  }, [contextItemsQuery.error]);
-
-  useEffect(() => {
-    const error = versionsQuery.error;
-    if (!error) return;
-    const message = error instanceof Error ? error.message : 'Failed to load versions';
-    toast.error(message);
-  }, [versionsQuery.error]);
+  useQueryErrorToast(consultationsQuery.error, 'Failed to load consultations');
+  useQueryErrorToast(contextItemsQuery.error, 'Failed to load context items');
+  useQueryErrorToast(versionsQuery.error, 'Failed to load versions');
 
   const handleSearch = useCallback((value: string) => {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
@@ -459,21 +453,23 @@ export function ConsultationWorkspace() {
               Add
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          <DialogContent className="flex h-[70vh] w-[70vw] flex-col sm:max-w-[70vw]">
             <DialogHeader>
               <DialogTitle>Add Context Item</DialogTitle>
-              <DialogDescription>Add case notes, summaries, or audio files to this consultation.</DialogDescription>
+              <DialogDescription>Add context items to this consultation.</DialogDescription>
             </DialogHeader>
-            <CaseNoteForm
-              consultationId={selectedConsultationId}
-              onSuccess={() => {
-                setIsAddContextDialogOpen(false);
-                setContextTypeFilter('_all');
-                void queryClient.invalidateQueries({
-                  queryKey: consultationKeys.contextItems(selectedConsultationId),
-                });
-              }}
-            />
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <CaseNoteForm
+                consultationId={selectedConsultationId}
+                onSuccess={() => {
+                  setIsAddContextDialogOpen(false);
+                  setContextTypeFilter('_all');
+                  void queryClient.invalidateQueries({
+                    queryKey: consultationKeys.contextItems(selectedConsultationId),
+                  });
+                }}
+              />
+            </div>
           </DialogContent>
         </Dialog>
       </div>
@@ -512,7 +508,7 @@ export function ConsultationWorkspace() {
                 </Badge>
               )}
             </div>
-            <p className="text-muted-foreground truncate text-xs">{item.content.slice(0, 60)}</p>
+            <p className="text-muted-foreground truncate text-xs">{(item.content ?? '').slice(0, 60) || '(empty)'}</p>
           </div>
         </div>
       );

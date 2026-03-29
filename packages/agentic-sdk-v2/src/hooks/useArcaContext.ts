@@ -7,7 +7,7 @@
 
 import { useMemo, useCallback } from 'react';
 import { useAgenticStore, selectTranscriptions, selectCaseNotes, selectWorknotes, selectAttachments } from '../store';
-import type { ContextItem, MedicalEntity, ContextVersionEntry } from '../types';
+import type { ContextItem, ContextFilters, MedicalEntity, ContextVersionEntry } from '../types';
 import { CONTEXT_ENDPOINTS, SUMMARY_ENDPOINTS, ENTITY_ENDPOINTS } from '../core/constants';
 import type { ISDKLogger } from '../core/logger';
 
@@ -195,6 +195,39 @@ export function useArcaContext() {
     [store, getLogger],
   );
 
+  const getItems = useCallback(
+    async (filters?: ContextFilters): Promise<ContextItem[]> => {
+      const { apiClient, consultation } = store;
+      const logger = getLogger();
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
+
+      const timer = logger?.startOperation('getItems', {
+        component: 'useArcaContext',
+        sdk: { consultationId: consultation.id },
+        attributes: { filters },
+      });
+
+      try {
+        const params = new URLSearchParams();
+        if (filters?.type) params.set('type', filters.type);
+        if (filters?.source) params.set('source', filters.source);
+        if (filters?.limit) params.set('limit', String(filters.limit));
+        if (filters?.page) params.set('page', String(filters.page));
+
+        const qs = params.toString();
+        const url = CONTEXT_ENDPOINTS.GET(consultation.id) + (qs ? `?${qs}` : '');
+        const items = await apiClient.get<ContextItem[]>(url);
+        timer?.end(true, { attributes: { itemCount: items.length } });
+        return items;
+      } catch (error) {
+        timer?.error(error as Error);
+        throw error;
+      }
+    },
+    [store, getLogger],
+  );
+
   const loadSharedContext = useCallback(async (): Promise<ContextItem[]> => {
     const { apiClient, consultation } = store;
     const logger = getLogger();
@@ -359,6 +392,7 @@ export function useArcaContext() {
       addWorknote,
       addAttachment,
       updateItem,
+      getItems,
       loadSharedContext,
       extractEntities,
       getContextVersions,
@@ -383,6 +417,7 @@ export function useArcaContext() {
       addWorknote,
       addAttachment,
       updateItem,
+      getItems,
       loadSharedContext,
       extractEntities,
       getContextVersions,
