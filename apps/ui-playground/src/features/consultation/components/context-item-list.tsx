@@ -7,7 +7,20 @@ import { Skeleton } from '@arcaai/ui/skeleton';
 import { Separator } from '@arcaai/ui/separator';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { FileText, History, RefreshCw, ChevronDown, ChevronUp, AlertCircle, Mic, ClipboardList, Bot } from 'lucide-react';
+import {
+  FileText,
+  History,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+  Mic,
+  ClipboardList,
+  Bot,
+  StickyNote,
+  Tags,
+  Paperclip,
+} from 'lucide-react';
 import { ContextVersionList } from './context-version-list';
 import { toast } from 'sonner';
 
@@ -22,6 +35,9 @@ const typeIcon: Record<string, React.ElementType> = {
   RAW_SUMMARY: Bot,
   MODIFIED_SUMMARY: Bot,
   PRE_SUMMARY: Bot,
+  WORKNOTE: StickyNote,
+  NAMED_ENTITY: Tags,
+  ATTACHMENT: Paperclip,
 };
 
 const typeLabel: Record<string, string> = {
@@ -33,6 +49,7 @@ const typeLabel: Record<string, string> = {
   PRE_SUMMARY: 'Pre-Summary',
   WORKNOTE: 'Work Note',
   ATTACHMENT: 'Attachment',
+  NAMED_ENTITY: 'Named Entity',
 };
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -50,8 +67,8 @@ export function ContextItemList({ consultationId }: ContextItemListProps) {
     setIsLoading(true);
     setError(null);
     try {
-      const [caseNotes, transcriptions] = await Promise.all([contextRef.current.fetchCaseNotes(), contextRef.current.fetchTranscriptions()]);
-      const all = [...(caseNotes ?? []), ...(transcriptions ?? [])];
+      const items = await contextRef.current.getItems();
+      const all = items ?? [];
       all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setItems(all);
     } catch (err) {
