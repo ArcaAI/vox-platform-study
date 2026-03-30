@@ -16,11 +16,15 @@ class OllamaConfig(BaseSettings):
     enabled: bool = True
     base_url: str = "http://localhost:11434"
     
-    # General guardrail model for content safety, PII, prompt injection
-    guardrail_model: str = "meta-llama/Prompt-Guard-86M"
+    # Default fallback model for generic guardrail analysis.
+    guardrail_model: str = "gemma3:latest"
+    content_safety_model: str = "gemma3:latest"
+    pii_detection_model: str = "gemma3:latest"
+    prompt_injection_model: str = "gemma3:latest"
+    comprehensive_model: str = "gemma3:latest"
     
     # Dedicated guardian model for medical context validation
-    guardian_model: str = "meta-llama/Prompt-Guard-86M"
+    guardian_model: str = "gemma3:latest"
     guardian_enabled: bool = True
     
     timeout_s: int = 60

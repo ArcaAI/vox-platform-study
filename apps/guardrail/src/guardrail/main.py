@@ -85,7 +85,7 @@ async def lifespan(app: FastAPI):
         )
         
         # Start background job processing
-        asyncio.create_task(app.state.job_processor.start_processing())
+        app.state.job_processor_task = asyncio.create_task(app.state.job_processor.start_processing())
         logger.info("guardrail.job_processor_started")
 
     yield
@@ -95,6 +95,9 @@ async def lifespan(app: FastAPI):
     
     if hasattr(app.state, "job_processor") and app.state.job_processor:
         await app.state.job_processor.stop()
+    
+    if hasattr(app.state, "job_processor_task") and app.state.job_processor_task:
+        await app.state.job_processor_task
     
     if hasattr(app.state, "http_client") and app.state.http_client:
         await app.state.http_client.aclose()

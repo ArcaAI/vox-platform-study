@@ -24,7 +24,6 @@ RUN pip install --no-cache-dir -e .
 
 # Copy application code
 COPY src/ ./src/
-COPY .env.example .env
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash guardrail && \
@@ -33,7 +32,7 @@ USER guardrail
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8863/api/v1/health/live || exit 1
+    CMD curl -f http://localhost:8863/api/health/live || exit 1
 
 # Expose port
 EXPOSE 8863
