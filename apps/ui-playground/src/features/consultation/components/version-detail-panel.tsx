@@ -43,7 +43,7 @@ function getVersionDescription(version: ContextVersionEntry | SummaryVersionEntr
   return undefined;
 }
 
-type ContextItemKind = 'case_note' | 'transcription' | 'audio' | 'pre_summary' | 'summary';
+type ContextItemKind = 'case_note' | 'transcription' | 'audio' | 'pre_summary' | 'summary' | 'worknote' | 'attachment' | 'named_entity';
 
 function resolveKind(item: ContextItem): ContextItemKind {
   switch (item.type) {
@@ -58,6 +58,12 @@ function resolveKind(item: ContextItem): ContextItemKind {
     case 'RAW_SUMMARY':
     case 'MODIFIED_SUMMARY':
       return 'summary';
+    case 'WORKNOTE':
+      return 'worknote';
+    case 'ATTACHMENT':
+      return 'attachment';
+    case 'NAMED_ENTITY':
+      return 'named_entity';
     default:
       return 'case_note';
   }
@@ -107,6 +113,27 @@ const kindConfig: Record<
     canGenerateSummary: false,
     canRegenerate: true,
     label: 'Summary',
+  },
+  worknote: {
+    editable: true,
+    canGeneratePreSummary: false,
+    canGenerateSummary: false,
+    canRegenerate: false,
+    label: 'Work Note',
+  },
+  attachment: {
+    editable: false,
+    canGeneratePreSummary: false,
+    canGenerateSummary: false,
+    canRegenerate: false,
+    label: 'Attachment',
+  },
+  named_entity: {
+    editable: false,
+    canGeneratePreSummary: false,
+    canGenerateSummary: false,
+    canRegenerate: false,
+    label: 'Named Entity',
   },
 };
 
