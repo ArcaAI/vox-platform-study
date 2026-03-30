@@ -420,7 +420,7 @@ install_dependencies() {
     local nlp_dir="$PROJECT_ROOT/apps/nlp"
     if [[ -f "$nlp_dir/pyproject.toml" ]]; then
         print_step "Installing nlp dependencies..."
-        "${CR[@]}" pip install -e "${nlp_dir}"
+        "${CR[@]}" pip install -e "${nlp_dir}[dev,test]"
         print_ok "nlp installed"
     else
         print_warn "nlp pyproject.toml not found at $nlp_dir — skipping"
@@ -494,6 +494,12 @@ print(f'  MPS available: {mps}')
         else
             print_warn "PyTorch import failed — ML features may not work"
         fi
+    fi
+
+    if "${CR[@]}" python -c "import structlog; print(f'  structlog {structlog.__version__}')" 2>/dev/null; then
+        print_ok "structlog OK"
+    else
+        print_fail "structlog import failed"
     fi
 
     if "${CR[@]}" python -c "import spacy; print(f'  spacy {spacy.__version__}')" 2>/dev/null; then
