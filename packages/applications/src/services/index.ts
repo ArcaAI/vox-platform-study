@@ -24,3 +24,4 @@ export * from './stt';
 export * from './pstudio';
 export * from './tenant-bucket';
 export * from './storage-access-key';
+export * from './queue-admin';
