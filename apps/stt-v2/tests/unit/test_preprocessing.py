@@ -1,16 +1,17 @@
 """Unit tests for Audio Preprocessing."""
 
-import pytest
-import numpy as np
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from stt_v2.transcription.preprocessing import AudioPreprocessor, get_preprocessor
-from stt_v2.transcription.dto import AudioSegment
+import numpy as np
+import pytest
+
 from stt_v2.pipeline.dto import (
     DenoiseConfig,
     PreprocessingConfig,
     VadConfig,
 )
+from stt_v2.transcription.dto import AudioSegment
+from stt_v2.transcription.preprocessing import AudioPreprocessor, get_preprocessor
 
 
 class TestAudioPreprocessor:
@@ -32,8 +33,8 @@ class TestAudioPreprocessor:
     @pytest.fixture
     def sample_wav_bytes(self):
         """Generate sample WAV audio bytes (1 second of sine wave)."""
-        import struct
         import io
+        import struct
 
         # Generate 1 second of 440Hz sine wave at 16kHz
         sample_rate = 16000
@@ -448,8 +449,8 @@ class TestAudioLoadingWithFallback:
     def test_load_audio_with_soundfile(self, preprocessor):
         """Test loading audio with soundfile."""
         # Create valid WAV bytes
-        import struct
         import io
+        import struct
 
         sample_rate = 16000
         samples = np.sin(np.linspace(0, 2 * np.pi * 440, 1600)).astype(np.float32)
@@ -670,7 +671,7 @@ class TestApplyVadSmartPriority:
         ), patch(
             "stt_v2.vad.silero_service.get_vad_service",
             return_value=mock_vad_service,
-        ) as mock_get_vad:
+        ) as _mock_get_vad:
             segments, applied = await preprocessor._apply_vad_smart(
                 audio_samples, 16000, vad_config, pipeline_model
             )
@@ -733,8 +734,8 @@ class TestPipelineOrder:
         """Verify denoise is applied before VAD when both enabled."""
         call_order = []
 
-        original_denoise = preprocessor._apply_denoise
-        original_vad_smart = preprocessor._apply_vad_smart
+        _original_denoise = preprocessor._apply_denoise
+        _original_vad_smart = preprocessor._apply_vad_smart
 
         async def mock_denoise(samples, sr, strength):
             call_order.append("denoise")
@@ -1120,7 +1121,7 @@ class TestPreprocessingCombinedFeatures:
         with patch.object(preprocessor, '_load_audio') as mock_load:
             mock_load.return_value = (stereo, 16000)
 
-            result = await preprocessor.process(audio_bytes=b"dummy", config=config)
+            _result = await preprocessor.process(audio_bytes=b"dummy", config=config)
 
         # Denoise must receive mono (1-D) audio, not stereo (2-D)
         assert len(received_shapes) == 1

@@ -92,9 +92,7 @@ export interface NoiseFilterOptions {
 /**
  * Default options for NoiseFilterProcessor.
  */
-export const DEFAULT_NOISE_FILTER_OPTIONS: Required<
-  Omit<NoiseFilterOptions, 'wasmPath' | 'debugMode'>
-> = {
+export const DEFAULT_NOISE_FILTER_OPTIONS: Required<Omit<NoiseFilterOptions, 'wasmPath' | 'debugMode'>> = {
   noiseCancellation: true,
   noiseCancellationLevel: 'medium',
   echoCancellation: true,
@@ -299,7 +297,7 @@ export class NoiseFilterError extends Error {
   constructor(
     public readonly code: NoiseFilterErrorCode,
     message: string,
-    public readonly cause?: Error
+    public readonly cause?: Error,
   ) {
     super(message);
     this.name = 'NoiseFilterError';

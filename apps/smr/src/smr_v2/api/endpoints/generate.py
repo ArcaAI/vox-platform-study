@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
+import structlog.contextvars
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
-import structlog.contextvars
-
+from smr_v2.core.config import Settings
 from smr_v2.core.dependencies import (
     get_audit_logger,
     get_circuit_breakers,
@@ -22,21 +22,28 @@ from smr_v2.core.dependencies import (
     get_provider_registry,
     get_provider_semaphores,
     get_rate_limiters,
-    get_settings as get_dep_settings,
     get_shutdown_manager,
     get_task_manager,
+)
+from smr_v2.core.dependencies import (
+    get_settings as get_dep_settings,
 )
 from smr_v2.core.exceptions import (
     CircuitOpenError,
     ConcurrencyLimitError,
     ContentBlockedError,
-    ProviderError as DomainProviderError,
-    ProviderNotFoundError as DomainProviderNotFoundError,
-    ProviderTimeoutError as DomainProviderTimeoutError,
-    QueueFullError as DomainQueueFullError,
     QueueTimeoutError,
     RateLimitError,
     ShutdownError,
+)
+from smr_v2.core.exceptions import (
+    ProviderNotFoundError as DomainProviderNotFoundError,
+)
+from smr_v2.core.exceptions import (
+    ProviderTimeoutError as DomainProviderTimeoutError,
+)
+from smr_v2.core.exceptions import (
+    QueueFullError as DomainQueueFullError,
 )
 from smr_v2.core.logging import get_logger
 from smr_v2.core.metrics import (
@@ -53,11 +60,15 @@ from smr_v2.core.metrics import (
     TOKENS_TOTAL,
 )
 from smr_v2.models.requests import GenerateRequest
-from smr_v2.models.responses import ErrorResponse, GenerateResponse, StreamingGenerateResponse, TokenUsage
+from smr_v2.models.responses import (
+    ErrorResponse,
+    GenerateResponse,
+    StreamingGenerateResponse,
+    TokenUsage,
+)
 from smr_v2.models.stream import StreamChunk
 from smr_v2.models.task import TaskStatus
 from smr_v2.providers.base import ProviderNotFoundError, ProviderRegistry
-from smr_v2.core.config import Settings
 from smr_v2.services.audit import GuardrailAuditEvent, GuardrailAuditLogger
 from smr_v2.services.circuit_breaker import CircuitBreaker, CircuitState
 from smr_v2.services.external_guardrail import ExternalGuardrailClient
@@ -150,7 +161,7 @@ async def generate(
     audit_logger.log_scan(
         GuardrailAuditEvent(
             request_id=ctx.get("request_id", "unknown"),
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             guardrail_type="prompt_injection_scan",
             action=action,
             is_suspicious=scan_result.is_suspicious,
@@ -206,19 +217,19 @@ async def generate(
                     await asyncio.wait_for(future, timeout=settings.queue.max_wait_s)
                     QUEUE_WAIT_TIME.labels(provider=request_body.provider).observe(time.monotonic() - queue_start)
                     QUEUE_SIZE.labels(provider=request_body.provider).set(queue.size)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     QUEUE_SIZE.labels(provider=request_body.provider).set(queue.size)
                     RATE_LIMIT_REJECTIONS.labels(provider=request_body.provider).inc()
                     raise QueueTimeoutError(
                         "Request queued but timed out waiting for capacity",
                         provider=request_body.provider,
-                    )
+                    ) from None
                 except QueueFullError:
                     RATE_LIMIT_REJECTIONS.labels(provider=request_body.provider).inc()
                     raise DomainQueueFullError(
                         "Rate limit exceeded and queue is full",
                         provider=request_body.provider,
-                    )
+                    ) from None
             else:
                 RATE_LIMIT_REJECTIONS.labels(provider=request_body.provider).inc()
                 wait = rate_limiter.get_wait_seconds(estimated)
@@ -242,7 +253,7 @@ async def generate(
         raise DomainProviderNotFoundError(
             f"Provider '{request_body.provider}' not found",
             provider=request_body.provider,
-        )
+        ) from None
 
     task = await task_manager.create_task(provider=request_body.provider, model=model)
 
@@ -263,7 +274,7 @@ async def generate(
         generation_audit.log_generation(
             GenerationAuditEvent(
                 request_id=ctx.get("request_id", "unknown"),
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 provider=request_body.provider,
                 model=model,
                 status="streaming",
@@ -289,11 +300,11 @@ async def generate(
     if semaphore:
         try:
             await asyncio.wait_for(semaphore.acquire(), timeout=_SEMAPHORE_ACQUIRE_TIMEOUT)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise ConcurrencyLimitError(
                 "Too many concurrent requests — try again later",
                 provider=request_body.provider,
-            )
+            ) from None
         CONCURRENT_REQUESTS.labels(provider=request_body.provider).inc()
 
     await task_manager.update_task(task.task_id, status=TaskStatus.RUNNING)
@@ -319,7 +330,7 @@ async def generate(
                     _update_cb_metric(request_body.provider, cb)
                 last_exc = None
                 break
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 error_type = "timeout"
                 last_exc = exc
                 logger.warning(
@@ -361,7 +372,7 @@ async def generate(
         generation_audit.log_generation(
             GenerationAuditEvent(
                 request_id=ctx.get("request_id", "unknown"),
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 provider=request_body.provider,
                 model=model,
                 status="completed",
@@ -387,7 +398,7 @@ async def generate(
             latency_ms=latency_ms,
             finish_reason="stop",
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         latency_ms = int((time.monotonic() - start) * 1000)
         logger.error("generation.timeout_final", task_id=task.task_id, provider=request_body.provider, timeout_s=timeout_s)
         await task_manager.update_task(task.task_id, status=TaskStatus.FAILED, error="Request timed out")
@@ -397,7 +408,7 @@ async def generate(
         generation_audit.log_generation(
             GenerationAuditEvent(
                 request_id=ctx.get("request_id", "unknown"),
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 provider=request_body.provider,
                 model=model,
                 status="failed",
@@ -413,7 +424,7 @@ async def generate(
         raise DomainProviderTimeoutError(
             f"Generation timed out after {timeout_s}s for provider '{request_body.provider}'.",
             provider=request_body.provider,
-        )
+        ) from None
     except Exception as exc:
         if cb:
             cb.record_failure()
@@ -427,7 +438,7 @@ async def generate(
         generation_audit.log_generation(
             GenerationAuditEvent(
                 request_id=ctx.get("request_id", "unknown"),
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 provider=request_body.provider,
                 model=model,
                 status="failed",
@@ -440,7 +451,7 @@ async def generate(
             )
         )
 
-        raise HTTPException(status_code=502, detail="Generation failed due to an internal error. Check server logs for details.")
+        raise HTTPException(status_code=502, detail="Generation failed due to an internal error. Check server logs for details.") from exc
     finally:
         ACTIVE_GENERATIONS.labels(provider=request_body.provider).dec()
         if semaphore:

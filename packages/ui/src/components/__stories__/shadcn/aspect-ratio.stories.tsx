@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { AspectRatio } from '../../shadcn/aspect-ratio'
+import { AspectRatio } from '../../shadcn/aspect-ratio';
 
 const meta = {
   title: 'Components/AspectRatio',
@@ -9,10 +9,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof AspectRatio>
+} satisfies Meta<typeof AspectRatio>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 // Default 16:9 ratio
 export const Default: Story = {
@@ -25,7 +25,7 @@ export const Default: Story = {
       </AspectRatio>
     </div>
   ),
-}
+};
 
 // Square 1:1 ratio
 export const Square: Story = {
@@ -38,7 +38,7 @@ export const Square: Story = {
       </AspectRatio>
     </div>
   ),
-}
+};
 
 // Multiple ratios side by side
 export const Ratios: Story = {
@@ -70,4 +70,4 @@ export const Ratios: Story = {
       </div>
     </div>
   ),
-}
+};

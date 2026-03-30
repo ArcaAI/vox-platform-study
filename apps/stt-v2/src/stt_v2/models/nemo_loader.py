@@ -1,13 +1,12 @@
 """NVIDIA NeMo model loader."""
 
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
-from ..pipeline.dto import AiModelConfig, AiModelFormat, ModelTaskType
+from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, LoadedModel
 
 logger = logging.getLogger(__name__)
@@ -31,7 +30,7 @@ class NeMoLoader(BaseModelLoader):
             LoadedModel with NeMo model
         """
         try:
-            import torch
+            import torch  # noqa: F401
 
             # Determine device
             # Device is always auto-detected from hardware; compute_type only affects dtype
@@ -135,7 +134,6 @@ class NeMoLoader(BaseModelLoader):
 
     async def _load_from_huggingface(self, model_id: str, device: str) -> Any:
         """Load NeMo model from HuggingFace."""
-        import nemo.collections.asr as nemo_asr
 
         logger.info(f"Loading NeMo model from HuggingFace: {model_id}")
 
@@ -208,7 +206,6 @@ class NeMoLoader(BaseModelLoader):
     def _estimate_nemo_memory(self, model: Any) -> int:
         """Estimate actual memory usage of loaded NeMo model."""
         try:
-            import torch
 
             total_params = sum(p.numel() for p in model.parameters())
             # Assuming float32 (4 bytes per param)

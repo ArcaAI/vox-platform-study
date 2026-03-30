@@ -28,6 +28,8 @@ Test Matrix:
   | #4    | EN (20260206_*_en.wav)        | Full q4 (VAD + denoise + diarize)          |
   +-------+-------------------------------+--------------------------------------------+
 
+.. rubric:: Imports
+
 Requirements:
   - ML dependencies installed: pip install -e ".[ml]"
   - HuggingFace models will be downloaded on first run (uses default HF_HOME)
@@ -56,6 +58,11 @@ Output:
 """
 
 import asyncio
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from stt_v2.pipeline.dto import PipelineConfig
+    from stt_v2.transcription.dto import TranscriptionResult
 import contextlib
 import json
 import logging
@@ -999,7 +1006,7 @@ async def _run_transcription(
                 ),
                 timeout=effective_timeout,
             )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         if not sse_task.done():
             sse_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -1020,7 +1027,7 @@ async def _run_transcription(
         # Worker finished but no terminal SSE observed yet; wait briefly.
         try:
             sse_events = await asyncio.wait_for(sse_task, timeout=5)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             sse_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await sse_task
@@ -1888,7 +1895,7 @@ class TestRealDataTranscription:
             )
 
             assert transcript_uri, "Transcript URI should not be empty"
-            assert transcript_uri.startswith("s3://"), f"Transcript URI should start with s3://"
+            assert transcript_uri.startswith("s3://"), "Transcript URI should start with s3://"
             assert f"/consultations/{consultation_id}/transcripts/" in transcript_uri, (
                 f"Transcript URI should contain consultation transcript path, got: {transcript_uri}"
             )
@@ -2023,7 +2030,7 @@ class TestRealDataTranscription:
             )
 
             assert minio_uri, "MinIO URI should not be empty"
-            assert minio_uri.startswith("s3://"), f"URI should start with s3://"
+            assert minio_uri.startswith("s3://"), "URI should start with s3://"
             assert f"/consultations/{consultation_id}/" in minio_uri, (
                 f"Raw audio URI should contain consultation path, got: {minio_uri}"
             )

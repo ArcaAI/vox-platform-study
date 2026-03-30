@@ -129,21 +129,14 @@ async function initPipeline(id: string, payload: InitPayload): Promise<void> {
     //   which may not be present, and nested workers are unreliable
     type OnnxWasmEnv = { proxy?: boolean; numThreads?: number; wasmPaths?: string };
     type OnnxEnv = { wasm?: OnnxWasmEnv; webgpu?: Record<string, unknown> };
-    const onnxEnv = (env as Record<string, unknown>).backends as
-      { onnx?: OnnxEnv } | undefined;
+    const onnxEnv = (env as Record<string, unknown>).backends as { onnx?: OnnxEnv } | undefined;
     if (onnxEnv?.onnx?.wasm) {
       const wasmCfg = onnxEnv.onnx.wasm;
       wasmCfg.proxy = false;
       wasmCfg.numThreads = 1;
     }
 
-    const progressCallback = (progressData: {
-      status: string;
-      file?: string;
-      progress?: number;
-      loaded?: number;
-      total?: number;
-    }) => {
+    const progressCallback = (progressData: { status: string; file?: string; progress?: number; loaded?: number; total?: number }) => {
       if (progressData.status === 'progress' && progressData.progress !== undefined) {
         postResponse({
           type: 'progress',
@@ -166,12 +159,9 @@ async function initPipeline(id: string, payload: InitPayload): Promise<void> {
     };
 
     const buildPipelineOptions = (device: 'webgpu' | 'wasm') => {
-      const normalizedDevice: 'webgpu' | undefined =
-        device === 'webgpu' ? 'webgpu' : undefined;
+      const normalizedDevice: 'webgpu' | undefined = device === 'webgpu' ? 'webgpu' : undefined;
       // fp16 for WebGPU (faster, lower VRAM), default precision for WASM.
-      const dtype = device === 'webgpu'
-        ? { encoder_model: 'fp16' as const, decoder_model_merged: 'fp16' as const }
-        : undefined;
+      const dtype = device === 'webgpu' ? { encoder_model: 'fp16' as const, decoder_model_merged: 'fp16' as const } : undefined;
       return {
         device: normalizedDevice,
         dtype,
@@ -182,11 +172,7 @@ async function initPipeline(id: string, payload: InitPayload): Promise<void> {
     const createPipelineWithRetry = async (device: 'webgpu' | 'wasm') => {
       const options = buildPipelineOptions(device);
       try {
-        return await pipeline(
-          'automatic-speech-recognition',
-          payload.modelId,
-          options,
-        );
+        return await pipeline('automatic-speech-recognition', payload.modelId, options);
       } catch (firstError) {
         const msg = getErrorMessage(firstError);
         if (!isNumericOnnxError(msg)) {
@@ -205,11 +191,7 @@ async function initPipeline(id: string, payload: InitPayload): Promise<void> {
 
         await clearOnnxCaches();
 
-        return pipeline(
-          'automatic-speech-recognition',
-          payload.modelId,
-          options,
-        );
+        return pipeline('automatic-speech-recognition', payload.modelId, options);
       }
     };
 
@@ -219,8 +201,7 @@ async function initPipeline(id: string, payload: InitPayload): Promise<void> {
       whisperPipeline = await createPipelineWithRetry(actualDevice);
     } catch (error) {
       const msg = getErrorMessage(error);
-      const shouldFallbackToWasm =
-        actualDevice === 'webgpu' && (isWebGpuInitError(msg) || isNumericOnnxError(msg));
+      const shouldFallbackToWasm = actualDevice === 'webgpu' && (isWebGpuInitError(msg) || isNumericOnnxError(msg));
 
       if (!shouldFallbackToWasm) {
         throw error;
@@ -385,9 +366,7 @@ async function checkModelCache(id: string, payload: CheckCachePayload): Promise<
       if (key.includes('transformers')) {
         const cache = await caches.open(key);
         const requests = await cache.keys();
-        cachedFileCount += requests.filter(
-          (r) => r.url.includes(payload.modelId.replace('/', '%2F')) || r.url.includes(payload.modelId)
-        ).length;
+        cachedFileCount += requests.filter((r) => r.url.includes(payload.modelId.replace('/', '%2F')) || r.url.includes(payload.modelId)).length;
       }
     }
 

@@ -1,17 +1,17 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Checkbox } from '../../../registries/basecn/checkbox'
-import { Label } from '../../../registries/basecn/label'
+import { Checkbox } from '../../../registries/basecn/checkbox';
+import { Label } from '../../../registries/basecn/label';
 
 const meta = {
   title: 'Registries/Basecn/Checkbox',
   component: Checkbox,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Checkbox>
+} satisfies Meta<typeof Checkbox>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -21,7 +21,7 @@ export const Default: Story = {
       <Label htmlFor="terms">Accept terms and conditions</Label>
     </div>
   ),
-}
+};
 
 export const Disabled: Story = {
   args: {} as any,
@@ -31,4 +31,4 @@ export const Disabled: Story = {
       <Label htmlFor="disabled">Disabled</Label>
     </div>
   ),
-}
+};

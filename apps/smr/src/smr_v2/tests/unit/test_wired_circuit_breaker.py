@@ -13,10 +13,9 @@ Tests verify that:
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
-import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from smr_v2.core.config import Settings
@@ -26,12 +25,11 @@ from smr_v2.providers.base import ProviderRegistry
 from smr_v2.services.circuit_breaker import CircuitBreaker, CircuitState
 from smr_v2.services.shutdown_manager import ShutdownManager
 
-
 # ── Helpers ──
 
 
 def _make_settings(**overrides) -> Settings:
-    defaults = dict(host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False)
+    defaults = {"host": "127.0.0.1", "port": 5099, "debug": True, "log_level": "debug", "metrics_enabled": False}
     defaults.update(overrides)
     return Settings(**defaults)
 
@@ -282,7 +280,6 @@ class TestShutdownManagerWiring:
         sm = ShutdownManager()
 
         app = _build_app(settings, registry, _make_task_manager(), shutdown_manager=sm)
-        transport = ASGITransport(app=app)
 
         registered_ids: list[str] = []
         completed_ids: list[str] = []

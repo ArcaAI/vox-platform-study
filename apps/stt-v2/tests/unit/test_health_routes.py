@@ -21,7 +21,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -83,6 +82,8 @@ class TestReadinessEndpoint:
     """Tests for GET /api/v1/ready."""
 
     def test_healthy_when_all_deps_ok(self, client):
+        from stt_v2.health.api.routes import ComponentHealth, HealthStatus
+
         mock_db_session = AsyncMock()
         mock_db_session.__aenter__ = AsyncMock(return_value=AsyncMock())
         mock_db_session.__aexit__ = AsyncMock(return_value=False)
@@ -91,14 +92,19 @@ class TestReadinessEndpoint:
         mock_minio = MagicMock()
         mock_minio.health_check.return_value = True
 
-        mock_broker = MagicMock()
-        mock_broker.client.ping.return_value = True
+        redis_ok = ComponentHealth(
+            name="redis",
+            status=HealthStatus.HEALTHY,
+            latency_ms=0.1,
+        )
 
         with patch("stt_v2.health.api.routes.get_db_session", mock_db_session_ctx), \
              patch("stt_v2.health.api.routes.get_minio_client", return_value=mock_minio), \
-             patch.dict("sys.modules", {
-                 "stt_v2.core.messaging.broker": MagicMock(get_broker=lambda: mock_broker),
-             }):
+             patch(
+                 "stt_v2.health.api.routes._check_redis",
+                 new_callable=AsyncMock,
+                 return_value=redis_ok,
+             ):
             resp = client.get("/api/v1/ready")
 
         assert resp.status_code == 200
@@ -107,10 +113,7 @@ class TestReadinessEndpoint:
 
     def test_unhealthy_when_db_down(self, client):
         with patch("stt_v2.health.api.routes.get_db_session", side_effect=RuntimeError("DB down")), \
-             patch("stt_v2.health.api.routes.get_minio_client", return_value=MagicMock(health_check=MagicMock(return_value=True))), \
-             patch.dict("sys.modules", {
-                 "stt_v2.core.messaging.broker": MagicMock(get_broker=lambda: MagicMock()),
-             }):
+             patch("stt_v2.health.api.routes.get_minio_client", return_value=MagicMock(health_check=MagicMock(return_value=True))):
             resp = client.get("/api/v1/ready")
 
         assert resp.status_code == 503
@@ -119,18 +122,25 @@ class TestReadinessEndpoint:
 
     def test_streaming_not_checked_in_readiness(self, client):
         """Readiness only checks db, minio, redis — not streaming."""
+        from stt_v2.health.api.routes import ComponentHealth, HealthStatus
+
         mock_db_session = AsyncMock()
         mock_db_session.__aenter__ = AsyncMock(return_value=AsyncMock())
         mock_db_session.__aexit__ = AsyncMock(return_value=False)
 
-        mock_broker = MagicMock()
-        mock_broker.client.ping.return_value = True
+        redis_ok = ComponentHealth(
+            name="redis",
+            status=HealthStatus.HEALTHY,
+            latency_ms=0.1,
+        )
 
         with patch("stt_v2.health.api.routes.get_db_session", MagicMock(return_value=mock_db_session)), \
              patch("stt_v2.health.api.routes.get_minio_client", return_value=MagicMock(health_check=MagicMock(return_value=True))), \
-             patch.dict("sys.modules", {
-                 "stt_v2.core.messaging.broker": MagicMock(get_broker=lambda: mock_broker),
-             }):
+             patch(
+                 "stt_v2.health.api.routes._check_redis",
+                 new_callable=AsyncMock,
+                 return_value=redis_ok,
+             ):
             resp = client.get("/api/v1/ready")
 
         assert resp.status_code == 200
@@ -288,12 +298,10 @@ class TestCheckRedis:
     async def test_healthy_redis(self):
         from stt_v2.health.api.routes import _check_redis
 
-        mock_broker = MagicMock()
-        mock_broker.connection = MagicMock()
+        mock_client = AsyncMock()
+        mock_client.ping = AsyncMock(return_value=True)
 
-        with patch.dict("sys.modules", {
-            "stt_v2.core.messaging.broker": MagicMock(get_broker=lambda: mock_broker),
-        }):
+        with patch("stt_v2.streaming._runtime.get_redis_client", return_value=mock_client):
             result = await _check_redis()
 
         assert result.name == "redis"
@@ -303,11 +311,10 @@ class TestCheckRedis:
     async def test_unhealthy_redis(self):
         from stt_v2.health.api.routes import _check_redis
 
-        with patch.dict("sys.modules", {
-            "stt_v2.core.messaging.broker": MagicMock(
-                get_broker=MagicMock(side_effect=RuntimeError("redis down"))
-            ),
-        }):
+        with patch(
+            "stt_v2.streaming._runtime.get_redis_client",
+            side_effect=RuntimeError("redis down"),
+        ):
             result = await _check_redis()
 
         assert result.name == "redis"

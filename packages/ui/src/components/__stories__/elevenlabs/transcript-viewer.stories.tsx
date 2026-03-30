@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   TranscriptViewerContainer,
@@ -6,7 +6,7 @@ import {
   TranscriptViewerAudio,
   TranscriptViewerPlayPauseButton,
   TranscriptViewerScrubBar,
-} from '../../elevenlabs/transcript-viewer'
+} from '../../elevenlabs/transcript-viewer';
 
 const mockAlignment = {
   characters: ['H', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd'],
@@ -14,7 +14,7 @@ const mockAlignment = {
   character_end_times_seconds: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1],
   characterStartTimesSeconds: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
   characterEndTimesSeconds: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1],
-}
+};
 
 const meta: Meta<typeof TranscriptViewerContainer> = {
   title: 'ElevenLabs/TranscriptViewer',
@@ -23,10 +23,10 @@ const meta: Meta<typeof TranscriptViewerContainer> = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-}
+};
 
-export default meta
-type Story = StoryObj<typeof TranscriptViewerContainer>
+export default meta;
+type Story = StoryObj<typeof TranscriptViewerContainer>;
 
 export const Default: Story = {
   render: () => (
@@ -45,7 +45,7 @@ export const Default: Story = {
       </TranscriptViewerContainer>
     </div>
   ),
-}
+};
 
 export const WithoutTimeLabels: Story = {
   render: () => (
@@ -64,7 +64,7 @@ export const WithoutTimeLabels: Story = {
       </TranscriptViewerContainer>
     </div>
   ),
-}
+};
 
 export const PlayPauseOnly: Story = {
   render: () => (
@@ -82,7 +82,7 @@ export const PlayPauseOnly: Story = {
       </TranscriptViewerContainer>
     </div>
   ),
-}
+};
 
 export const CustomPlayPauseButton: Story = {
   render: () => (
@@ -96,13 +96,11 @@ export const CustomPlayPauseButton: Story = {
         <TranscriptViewerWords />
         <div className="flex items-center gap-3 pt-4">
           <TranscriptViewerPlayPauseButton>
-            {({ isPlaying }) => (
-              <span className="text-xs">{isPlaying ? 'Pause' : 'Play'}</span>
-            )}
+            {({ isPlaying }) => <span className="text-xs">{isPlaying ? 'Pause' : 'Play'}</span>}
           </TranscriptViewerPlayPauseButton>
           <TranscriptViewerScrubBar className="flex-1" />
         </div>
       </TranscriptViewerContainer>
     </div>
   ),
-}
+};

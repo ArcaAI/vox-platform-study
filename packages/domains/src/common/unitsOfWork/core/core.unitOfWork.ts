@@ -10,38 +10,36 @@ type DatabaseContext = any;
 
 @Injectable()
 export class CoreUnitOfWorkService {
-    private readonly TRANSACTION_CLIENT_KEY = 'coreTransactionClient';
-    private transactionClient: Prisma.TransactionClient | null = null;
+  private readonly TRANSACTION_CLIENT_KEY = 'coreTransactionClient';
+  private transactionClient: Prisma.TransactionClient | null = null;
 
-    constructor(
-        @Inject('CORE_DATABASE_SERVICE')
-        private readonly databaseService: CoreDatabaseService,
-        private readonly cls: ClsService
-    ) {}
+  constructor(
+    @Inject('CORE_DATABASE_SERVICE')
+    private readonly databaseService: CoreDatabaseService,
+    private readonly cls: ClsService,
+  ) {}
 
-    async startTransaction(): Promise<void> {
-        // Use the base client for transactions
-        this.transactionClient = await this.databaseService.baseClient.$transaction(
-            async (tx) => tx
-        );
-        this.cls.set(this.TRANSACTION_CLIENT_KEY, this.transactionClient);
+  async startTransaction(): Promise<void> {
+    // Use the base client for transactions
+    this.transactionClient = await this.databaseService.baseClient.$transaction(async (tx) => tx);
+    this.cls.set(this.TRANSACTION_CLIENT_KEY, this.transactionClient);
+  }
+
+  /**
+   * Get the database client for repository operations
+   * Returns either the transaction client (if in transaction) or the extended Prisma client
+   */
+  getDatabaseService(): DatabaseContext {
+    const txClient = this.cls.get(this.TRANSACTION_CLIENT_KEY);
+    if (txClient) {
+      return txClient;
     }
+    // Return the extended client which has model accessors
+    return this.databaseService.client;
+  }
 
-    /**
-     * Get the database client for repository operations
-     * Returns either the transaction client (if in transaction) or the extended Prisma client
-     */
-    getDatabaseService(): DatabaseContext {
-        const txClient = this.cls.get(this.TRANSACTION_CLIENT_KEY);
-        if (txClient) {
-            return txClient;
-        }
-        // Return the extended client which has model accessors
-        return this.databaseService.client;
-    }
-
-    endTransaction(): void {
-        this.transactionClient = null;
-        this.cls.set(this.TRANSACTION_CLIENT_KEY, null);
-    }
+  endTransaction(): void {
+    this.transactionClient = null;
+    this.cls.set(this.TRANSACTION_CLIENT_KEY, null);
+  }
 }

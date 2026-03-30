@@ -30,11 +30,7 @@
  */
 
 import type { ISDKLogger } from './logger';
-import type {
-  WorkerMessage,
-  SSESubscription,
-  WSSubscription,
-} from './SharedConnectionWorker';
+import type { WorkerMessage, SSESubscription, WSSubscription } from './SharedConnectionWorker';
 
 type SSEEventCallback = (eventName: string, data: string) => void;
 type WSMessageCallback = (data: unknown) => void;
@@ -124,7 +120,9 @@ export class SharedConnectionManager {
 
   onTabCountChange(callback: TabCountCallback): () => void {
     this.tabCountCallbacks.add(callback);
-    return () => { this.tabCountCallbacks.delete(callback); };
+    return () => {
+      this.tabCountCallbacks.delete(callback);
+    };
   }
 
   // =========================================================================
@@ -369,8 +367,12 @@ export class SharedConnectionManager {
 
     const es = new EventSource(url);
 
-    es.onopen = () => { this.sseCallbacks.get(id)?.onOpen?.(); };
-    es.onerror = () => { this.sseCallbacks.get(id)?.onError?.(); };
+    es.onopen = () => {
+      this.sseCallbacks.get(id)?.onOpen?.();
+    };
+    es.onerror = () => {
+      this.sseCallbacks.get(id)?.onError?.();
+    };
     es.onmessage = (event: MessageEvent) => {
       this.sseCallbacks.get(id)?.onEvent?.('message', event.data);
     };
@@ -389,9 +391,15 @@ export class SharedConnectionManager {
   private createFallbackWS(id: string, sub: WSSubscription): void {
     const ws = new WebSocket(sub.url, sub.protocols);
 
-    ws.onopen = () => { this.wsCallbacks.get(id)?.onOpen?.(); };
-    ws.onerror = () => { this.wsCallbacks.get(id)?.onError?.(); };
-    ws.onmessage = (event: MessageEvent) => { this.wsCallbacks.get(id)?.onMessage?.(event.data); };
+    ws.onopen = () => {
+      this.wsCallbacks.get(id)?.onOpen?.();
+    };
+    ws.onerror = () => {
+      this.wsCallbacks.get(id)?.onError?.();
+    };
+    ws.onmessage = (event: MessageEvent) => {
+      this.wsCallbacks.get(id)?.onMessage?.(event.data);
+    };
     ws.onclose = (event: CloseEvent) => {
       this.wsCallbacks.get(id)?.onClose?.(event.code, event.reason);
       this.fallbackWS.delete(id);

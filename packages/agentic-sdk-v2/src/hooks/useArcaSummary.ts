@@ -47,9 +47,7 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const summary = await apiClient.post<SummaryResponse>(
-          SUMMARY_ENDPOINTS.PRE_SUMMARY(consultation.id), options
-        );
+        const summary = await apiClient.post<SummaryResponse>(SUMMARY_ENDPOINTS.PRE_SUMMARY(consultation.id), options);
         store.addSummary(summary);
         timer?.end(true, { attributes: { summaryId: summary.id } });
         return summary;
@@ -61,7 +59,7 @@ export function useArcaSummary() {
         store.setSummaryGenerating(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const generateSummary = useCallback(
@@ -79,9 +77,7 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const summary = await apiClient.post<SummaryResponse>(
-          SUMMARY_ENDPOINTS.GENERATE(consultation.id), options
-        );
+        const summary = await apiClient.post<SummaryResponse>(SUMMARY_ENDPOINTS.GENERATE(consultation.id), options);
         store.addSummary(summary);
         timer?.end(true, { attributes: { summaryId: summary.id } });
         return summary;
@@ -93,7 +89,7 @@ export function useArcaSummary() {
         store.setSummaryGenerating(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const updateSummary = useCallback(
@@ -122,49 +118,54 @@ export function useArcaSummary() {
         store.setSummaryGenerating(false);
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /** @deprecated Use the dedicated useDnaStyle hook for DNA operations. */
   const analyzeDNA = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Stub; use useDnaStyle; param kept for API compatibility.
     async (_texts: string[]): Promise<DNAStyle> => {
       getLogger()?.warn('analyzeDNA called on useArcaSummary; use useDnaStyle instead', {
-        operation: 'analyzeDNA', component: 'useArcaSummary',
+        operation: 'analyzeDNA',
+        component: 'useArcaSummary',
       });
       throw new Error('DNA analysis is available via the dedicated useDnaStyle hook, not useArcaSummary.analyzeDNA().');
     },
-    [getLogger]
+    [getLogger],
   );
 
-  const loadSummaries = useCallback(async (pagination?: PaginationParams): Promise<SummaryResponse[]> => {
-    const { apiClient, consultation } = store;
-    if (!apiClient) throw new Error('SDK not initialized');
-    if (!consultation) throw new Error('No active consultation');
+  const loadSummaries = useCallback(
+    async (pagination?: PaginationParams): Promise<SummaryResponse[]> => {
+      const { apiClient, consultation } = store;
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
 
-    const timer = getLogger()?.startOperation('loadSummaries', {
-      component: 'useArcaSummary',
-      sdk: { consultationId: consultation.id },
-    });
+      const timer = getLogger()?.startOperation('loadSummaries', {
+        component: 'useArcaSummary',
+        sdk: { consultationId: consultation.id },
+      });
 
-    try {
-      let url = SUMMARY_ENDPOINTS.LIST(consultation.id);
-      if (pagination) {
-        const params = new URLSearchParams();
-        if (pagination.page != null) params.set('page', String(pagination.page));
-        if (pagination.limit != null) params.set('limit', String(pagination.limit));
-        const qs = params.toString();
-        if (qs) url += `?${qs}`;
+      try {
+        let url = SUMMARY_ENDPOINTS.LIST(consultation.id);
+        if (pagination) {
+          const params = new URLSearchParams();
+          if (pagination.page != null) params.set('page', String(pagination.page));
+          if (pagination.limit != null) params.set('limit', String(pagination.limit));
+          const qs = params.toString();
+          if (qs) url += `?${qs}`;
+        }
+
+        const summaries = await apiClient.get<SummaryResponse[]>(url);
+        store.setSummaries(summaries);
+        timer?.end(true, { attributes: { summaryCount: summaries.length } });
+        return summaries;
+      } catch (error) {
+        timer?.error(error as Error);
+        throw error;
       }
-
-      const summaries = await apiClient.get<SummaryResponse[]>(url);
-      store.setSummaries(summaries);
-      timer?.end(true, { attributes: { summaryCount: summaries.length } });
-      return summaries;
-    } catch (error) {
-      timer?.error(error as Error);
-      throw error;
-    }
-  }, [store, getLogger]);
+    },
+    [store, getLogger],
+  );
 
   const generateSummaryAsync = useCallback(
     async (options?: SummaryGenerationOptions): Promise<AsyncJobResponse> => {
@@ -176,9 +177,7 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const job = await apiClient.post<AsyncJobResponse>(
-          SUMMARY_ENDPOINTS.GENERATE_ASYNC(consultation.id), options || {}
-        );
+        const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.GENERATE_ASYNC(consultation.id), options || {});
         return job;
       } catch (error) {
         store.setSummaryError(error as Error);
@@ -187,7 +186,7 @@ export function useArcaSummary() {
         store.setSummaryGenerating(false);
       }
     },
-    [store]
+    [store],
   );
 
   const generatePreSummaryAsync = useCallback(
@@ -200,9 +199,7 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const job = await apiClient.post<AsyncJobResponse>(
-          SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(consultation.id), options || {}
-        );
+        const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(consultation.id), options || {});
         return job;
       } catch (error) {
         store.setSummaryError(error as Error);
@@ -211,7 +208,7 @@ export function useArcaSummary() {
         store.setSummaryGenerating(false);
       }
     },
-    [store]
+    [store],
   );
 
   const generateComprehensiveSummary = useCallback(
@@ -224,9 +221,7 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const result = await apiClient.post<ComprehensiveSummaryResponse>(
-          SUMMARY_ENDPOINTS.COMPREHENSIVE(consultation.id), options || {}
-        );
+        const result = await apiClient.post<ComprehensiveSummaryResponse>(SUMMARY_ENDPOINTS.COMPREHENSIVE(consultation.id), options || {});
         return result;
       } catch (error) {
         store.setSummaryError(error as Error);
@@ -235,7 +230,7 @@ export function useArcaSummary() {
         store.setSummaryGenerating(false);
       }
     },
-    [store]
+    [store],
   );
 
   const getLatestPreSummary = useCallback(async (): Promise<SummaryResponse> => {
@@ -246,27 +241,31 @@ export function useArcaSummary() {
     return apiClient.get<SummaryResponse>(SUMMARY_ENDPOINTS.LATEST_PRE_SUMMARY(consultation.id));
   }, [store]);
 
-  const getSummaryHistory = useCallback(async (summaryId: string): Promise<SummaryVersionEntry[]> => {
-    const { apiClient, consultation } = store;
-    if (!apiClient) throw new Error('SDK not initialized');
-    if (!consultation) throw new Error('No active consultation');
+  const getSummaryHistory = useCallback(
+    async (summaryId: string): Promise<SummaryVersionEntry[]> => {
+      const { apiClient, consultation } = store;
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
 
-    return apiClient.get<SummaryVersionEntry[]>(SUMMARY_ENDPOINTS.VERSIONS(consultation.id, summaryId));
-  }, [store]);
+      return apiClient.get<SummaryVersionEntry[]>(SUMMARY_ENDPOINTS.VERSIONS(consultation.id, summaryId));
+    },
+    [store],
+  );
 
-  const compareSummaryVersions = useCallback(async (
-    contextItemId: string, v1: number, v2: number
-  ): Promise<DiffResult> => {
-    const { apiClient, consultation } = store;
-    if (!apiClient) throw new Error('SDK not initialized');
-    if (!consultation) throw new Error('No active consultation');
+  const compareSummaryVersions = useCallback(
+    async (contextItemId: string, v1: number, v2: number): Promise<DiffResult> => {
+      const { apiClient, consultation } = store;
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
 
-    const [version1, version2] = await Promise.all([
-      apiClient.get<{ content: string }>(CONTEXT_ENDPOINTS.VERSION(consultation.id, contextItemId, v1)),
-      apiClient.get<{ content: string }>(CONTEXT_ENDPOINTS.VERSION(consultation.id, contextItemId, v2)),
-    ]);
-    return computeSummaryDiff(version1.content, version2.content);
-  }, [store]);
+      const [version1, version2] = await Promise.all([
+        apiClient.get<{ content: string }>(CONTEXT_ENDPOINTS.VERSION(consultation.id, contextItemId, v1)),
+        apiClient.get<{ content: string }>(CONTEXT_ENDPOINTS.VERSION(consultation.id, contextItemId, v2)),
+      ]);
+      return computeSummaryDiff(version1.content, version2.content);
+    },
+    [store],
+  );
 
   /**
    * Approve and lock a summary, preventing further edits.
@@ -286,10 +285,7 @@ export function useArcaSummary() {
       });
 
       try {
-        const result = await apiClient.post<SummaryApprovalResponse>(
-          SUMMARY_ENDPOINTS.APPROVE(consultation.id, contextItemId),
-          {}
-        );
+        const result = await apiClient.post<SummaryApprovalResponse>(SUMMARY_ENDPOINTS.APPROVE(consultation.id, contextItemId), {});
         timer?.end(true);
         return result;
       } catch (error) {
@@ -297,7 +293,7 @@ export function useArcaSummary() {
         throw error;
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const latestSummary = store.summaries.find((s) => s.type === 'summary') ?? null;
@@ -325,12 +321,24 @@ export function useArcaSummary() {
       approveSummary,
     }),
     [
-      latestPreSummary, latestSummary, store.summaries, store.dnaStyle,
-      store.summaryGenerating, store.summaryError,
-      generatePreSummary, generateSummary, updateSummary, analyzeDNA,
-      loadSummaries, generateSummaryAsync, generatePreSummaryAsync,
-      generateComprehensiveSummary, getLatestPreSummary,
-      getSummaryHistory, compareSummaryVersions, approveSummary,
-    ]
+      latestPreSummary,
+      latestSummary,
+      store.summaries,
+      store.dnaStyle,
+      store.summaryGenerating,
+      store.summaryError,
+      generatePreSummary,
+      generateSummary,
+      updateSummary,
+      analyzeDNA,
+      loadSummaries,
+      generateSummaryAsync,
+      generatePreSummaryAsync,
+      generateComprehensiveSummary,
+      getLatestPreSummary,
+      getSummaryHistory,
+      compareSummaryVersions,
+      approveSummary,
+    ],
   );
 }

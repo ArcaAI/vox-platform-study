@@ -58,10 +58,7 @@ export interface TextProcessorOptions {
  * await processor.destroy();
  * ```
  */
-export abstract class BaseTextProcessor<
-  TInput = string,
-  TOutput = unknown,
-> extends TypedEventEmitter<ProcessorEventMap> {
+export abstract class BaseTextProcessor<TInput = string, TOutput = unknown> extends TypedEventEmitter<ProcessorEventMap> {
   readonly name: string;
 
   protected status: ProcessorStatus = ProcessorStatus.IDLE;
@@ -102,11 +99,7 @@ export abstract class BaseTextProcessor<
    * Check if the processor has been initialized.
    */
   isInitialized(): boolean {
-    return (
-      this.status === ProcessorStatus.READY ||
-      this.status === ProcessorStatus.ENABLED ||
-      this.status === ProcessorStatus.DISABLED
-    );
+    return this.status === ProcessorStatus.READY || this.status === ProcessorStatus.ENABLED || this.status === ProcessorStatus.DISABLED;
   }
 
   /**

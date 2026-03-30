@@ -7,14 +7,14 @@ cancel nonexistent task, providers empty registry.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from smr_v2.core.config import Settings
-from smr_v2.models.provider import ModelInfo, ProviderInfo
+from smr_v2.models.provider import ProviderInfo
 from smr_v2.models.stream import StreamChunk
 from smr_v2.models.task import TaskState, TaskStatus
 from smr_v2.providers.base import ProviderRegistry

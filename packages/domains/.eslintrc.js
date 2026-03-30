@@ -6,5 +6,25 @@ module.exports = {
     parserOptions: {
         project: true,
     },
-    ignorePatterns: ["dist/", ".turbo/", "node_modules/"],
+    ignorePatterns: [
+        "dist/",
+        ".turbo/",
+        "node_modules/",
+        "src/__tests__/",
+        "src/integration/",
+        "**/generated/**",
+        "**/__tests__/",
+    ],
+    overrides: [
+        {
+            files: [
+                "src/common/repository.ts",
+                "src/common/databaseServices/**/*.ts",
+                "src/common/autoMappers/**/*.ts",
+            ],
+            rules: {
+                "@typescript-eslint/no-explicit-any": "off",
+            },
+        },
+    ],
 };

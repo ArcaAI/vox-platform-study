@@ -6,14 +6,7 @@
 export { useArcaSession, type UseArcaSessionReturn } from './useArcaSession';
 
 // Main hook with all functionality
-export {
-  useArca,
-  type UseArcaReturn,
-  type UseArcaSession,
-  type UseArcaAudio,
-  type UseArcaContext,
-  type UseArcaSummary,
-} from './useArca';
+export { useArca, type UseArcaReturn, type UseArcaSession, type UseArcaAudio, type UseArcaContext, type UseArcaSummary } from './useArca';
 
 // Focused domain hooks (REFACTOR-01)
 export { useArcaAudio } from './useArcaAudio';

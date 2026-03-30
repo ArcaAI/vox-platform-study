@@ -1,15 +1,7 @@
-"use client";
+'use client';
 
-import { useMemo, useCallback, memo } from "react";
-import {
-  BarChart,
-  LineChart,
-  Bar,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-} from "recharts";
+import { useMemo, useCallback, memo } from 'react';
+import { BarChart, LineChart, Bar, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 import {
   cn,
@@ -24,16 +16,10 @@ import {
   CardDescription,
   CardContent,
   type ChartConfig,
-} from "./_adapter";
-import type { ChartProps } from "./schema";
+} from './_adapter';
+import type { ChartProps } from './schema';
 
-const DEFAULT_COLORS = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-];
+const DEFAULT_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
 
 export const Chart = memo(function Chart({
   id,
@@ -51,14 +37,7 @@ export const Chart = memo(function Chart({
 }: ChartProps) {
   const palette = colors?.length ? colors : DEFAULT_COLORS;
 
-  const seriesColors = useMemo(
-    () =>
-      series.map(
-        (seriesItem, index) =>
-          seriesItem.color ?? palette[index % palette.length],
-      ),
-    [series, palette],
-  );
+  const seriesColors = useMemo(() => series.map((seriesItem, index) => seriesItem.color ?? palette[index % palette.length]), [series, palette]);
 
   const chartConfig: ChartConfig = useMemo(
     () =>
@@ -75,12 +54,7 @@ export const Chart = memo(function Chart({
   );
 
   const handleDataPointClick = useCallback(
-    (
-      seriesKey: string,
-      seriesLabel: string,
-      payload: Record<string, unknown>,
-      index: number,
-    ) => {
+    (seriesKey: string, seriesLabel: string, payload: Record<string, unknown>, index: number) => {
       onDataPointClick?.({
         seriesKey,
         seriesLabel,
@@ -93,41 +67,30 @@ export const Chart = memo(function Chart({
     [onDataPointClick, xKey],
   );
 
-  const ChartComponent = type === "bar" ? BarChart : LineChart;
+  const ChartComponent = type === 'bar' ? BarChart : LineChart;
 
   const chartContent = (
-    <ChartContainer
-      config={chartConfig}
-      className="min-h-[200px] w-full"
-      data-tool-ui-id={id}
-    >
+    <ChartContainer config={chartConfig} className="min-h-[200px] w-full" data-tool-ui-id={id}>
       <ChartComponent data={data} accessibilityLayer>
         {showGrid && <CartesianGrid vertical={false} />}
-        <XAxis
-          dataKey={xKey}
-          tickLine={false}
-          tickMargin={10}
-          axisLine={false}
-        />
+        <XAxis dataKey={xKey} tickLine={false} tickMargin={10} axisLine={false} />
         <YAxis tickLine={false} axisLine={false} tickMargin={10} />
         <ChartTooltip content={<ChartTooltipContent />} />
         {showLegend && <ChartLegend content={<ChartLegendContent />} />}
 
-        {type === "bar" &&
+        {type === 'bar' &&
           series.map((s, i) => (
             <Bar
               key={s.key}
               dataKey={s.key}
               fill={seriesColors[i]}
               radius={4}
-              onClick={(data) =>
-                handleDataPointClick(s.key, s.label, data.payload, data.index)
-              }
-              cursor={onDataPointClick ? "pointer" : undefined}
+              onClick={(data) => handleDataPointClick(s.key, s.label, data.payload, data.index)}
+              cursor={onDataPointClick ? 'pointer' : undefined}
             />
           ))}
 
-        {type === "line" &&
+        {type === 'line' &&
           series.map((s, i) => (
             <Line
               key={s.key}
@@ -135,21 +98,13 @@ export const Chart = memo(function Chart({
               type="monotone"
               stroke={seriesColors[i]}
               strokeWidth={2}
-              dot={{ r: 4, cursor: onDataPointClick ? "pointer" : undefined }}
+              dot={{ r: 4, cursor: onDataPointClick ? 'pointer' : undefined }}
               activeDot={{
                 r: 6,
-                cursor: onDataPointClick ? "pointer" : undefined,
+                cursor: onDataPointClick ? 'pointer' : undefined,
                 // Recharts types are incorrect - onClick receives (event, dotData) at runtime
-                onClick: ((
-                  _: unknown,
-                  dotData: { payload: Record<string, unknown>; index: number },
-                ) => {
-                  handleDataPointClick(
-                    s.key,
-                    s.label,
-                    dotData.payload,
-                    dotData.index,
-                  );
+                onClick: ((_: unknown, dotData: { payload: Record<string, unknown>; index: number }) => {
+                  handleDataPointClick(s.key, s.label, dotData.payload, dotData.index);
                 }) as unknown as React.MouseEventHandler,
               }}
             />
@@ -159,19 +114,11 @@ export const Chart = memo(function Chart({
   );
 
   return (
-    <Card
-      className={cn("w-full min-w-80", className)}
-      data-tool-ui-id={id}
-      data-slot="chart"
-    >
+    <Card className={cn('w-full min-w-80', className)} data-tool-ui-id={id} data-slot="chart">
       {(title || description) && (
         <CardHeader>
           {title && <CardTitle className="text-pretty">{title}</CardTitle>}
-          {description && (
-            <CardDescription className="text-pretty">
-              {description}
-            </CardDescription>
-          )}
+          {description && <CardDescription className="text-pretty">{description}</CardDescription>}
         </CardHeader>
       )}
       <CardContent>{chartContent}</CardContent>

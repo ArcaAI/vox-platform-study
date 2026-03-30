@@ -1,28 +1,28 @@
-import { useCallback, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useRef, useSyncExternalStore } from 'react';
 
 export interface NetworkState {
-  since?: Date
-  online?: boolean
-  rtt?: number
-  type?: string
-  downlink?: number
-  saveData?: boolean
-  downlinkMax?: number
-  effectiveType?: string
+  since?: Date;
+  online?: boolean;
+  rtt?: number;
+  type?: string;
+  downlink?: number;
+  saveData?: boolean;
+  downlinkMax?: number;
+  effectiveType?: string;
 }
 
 function getConnection() {
-  const nav = navigator as any
+  const nav = navigator as any;
   if (typeof nav !== 'object') {
-    return null
+    return null;
   }
-  return nav.connection || nav.mozConnection || nav.webkitConnection
+  return nav.connection || nav.mozConnection || nav.webkitConnection;
 }
 
 function getConnectionProperty(): NetworkState {
-  const c = getConnection()
+  const c = getConnection();
   if (!c) {
-    return {}
+    return {};
   }
   return {
     rtt: c.rtt,
@@ -31,7 +31,7 @@ function getConnectionProperty(): NetworkState {
     downlink: c.downlink,
     downlinkMax: c.downlinkMax,
     effectiveType: c.effectiveType,
-  }
+  };
 }
 
 function serverSnapshot() {
@@ -39,14 +39,14 @@ function serverSnapshot() {
     since: undefined,
     online: true,
     ...getConnectionProperty(),
-  }
+  };
 }
 
 function getInitialOnlineState(): boolean {
   if (typeof navigator !== 'object') {
-    return true
+    return true;
   }
-  return navigator.onLine
+  return navigator.onLine;
 }
 
 export function useNetwork() {
@@ -54,7 +54,7 @@ export function useNetwork() {
     since: undefined,
     online: getInitialOnlineState(),
     ...getConnectionProperty(),
-  })
+  });
 
   const subscribe = useCallback((onStoreChange: () => void) => {
     const onOnline = () => {
@@ -63,9 +63,9 @@ export function useNetwork() {
         since: new Date(),
         online: true,
         ...getConnectionProperty(),
-      }
-      onStoreChange()
-    }
+      };
+      onStoreChange();
+    };
 
     const onOffline = () => {
       networkState.current = {
@@ -73,33 +73,33 @@ export function useNetwork() {
         since: new Date(),
         online: false,
         ...getConnectionProperty(),
-      }
-      onStoreChange()
-    }
+      };
+      onStoreChange();
+    };
 
     const onConnectionChange = () => {
       networkState.current = {
         ...networkState.current,
         since: new Date(),
         ...getConnectionProperty(),
-      }
-      onStoreChange()
-    }
+      };
+      onStoreChange();
+    };
 
-    window.addEventListener('online', onOnline)
-    window.addEventListener('offline', onOffline)
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
 
-    const connection = getConnection()
-    connection?.addEventListener('change', onConnectionChange)
+    const connection = getConnection();
+    connection?.addEventListener('change', onConnectionChange);
 
     return () => {
-      window.removeEventListener('online', onOnline)
-      window.removeEventListener('offline', onOffline)
-      connection?.removeEventListener('change', onConnectionChange)
-    }
-  }, [])
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+      connection?.removeEventListener('change', onConnectionChange);
+    };
+  }, []);
 
-  const snapshot = useCallback(() => networkState.current, [])
+  const snapshot = useCallback(() => networkState.current, []);
 
-  return useSyncExternalStore(subscribe, snapshot, serverSnapshot)
+  return useSyncExternalStore(subscribe, snapshot, serverSnapshot);
 }

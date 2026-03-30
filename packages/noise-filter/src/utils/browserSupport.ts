@@ -41,9 +41,7 @@ export function isWebAssemblySupported(): boolean {
 
   try {
     if (typeof WebAssembly === 'object') {
-      const module = new WebAssembly.Module(
-        new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
-      );
+      const module = new WebAssembly.Module(new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
       return module instanceof WebAssembly.Module;
     }
   } catch {
@@ -60,10 +58,7 @@ export function isScriptProcessorSupported(): boolean {
   if (!isBrowser()) return false;
 
   try {
-    const AudioContextConstructor =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
+    const AudioContextConstructor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
 
     if (!AudioContextConstructor) return false;
 
@@ -103,8 +98,7 @@ export function isSafariAudioWorkletSupported(): boolean {
 export function isRNNoiseSupported(): boolean {
   const hasWasm = isWebAssemblySupported();
   const hasAudioContext = isAudioContextSupported();
-  const hasWorkletOrFallback =
-    isAudioWorkletSupported() || isScriptProcessorSupported();
+  const hasWorkletOrFallback = isAudioWorkletSupported() || isScriptProcessorSupported();
 
   return hasWasm && hasAudioContext && hasWorkletOrFallback;
 }
@@ -120,8 +114,7 @@ export function getNoiseFilterBrowserSupport(): NoiseFilterBrowserSupport {
   const audioContext = isAudioContextSupported();
   const scriptProcessor = isScriptProcessorSupported();
 
-  const rnnoiseSupported =
-    webAssembly && audioContext && (audioWorklet || scriptProcessor);
+  const rnnoiseSupported = webAssembly && audioContext && (audioWorklet || scriptProcessor);
 
   const nativeFallbackAvailable = nativeNS && audioContext;
 
@@ -186,8 +179,6 @@ export function logBrowserSupport(): void {
 
   if (isSafari()) {
     console.log(`  Safari Version: ${getSafariVersion()}`);
-    console.log(
-      `  Safari AudioWorklet: ${isSafariAudioWorkletSupported() ? 'Yes' : 'No'}`
-    );
+    console.log(`  Safari AudioWorklet: ${isSafariAudioWorkletSupported() ? 'Yes' : 'No'}`);
   }
 }

@@ -2,17 +2,23 @@
 
 This conftest integrates with the monorepo's centralized test infrastructure.
 
-IMPORTANT: Uses the monorepo's test infrastructure (tests/docker-compose.test.yml)
-- Start services: pnpm docker:test:up (from monorepo root)
-- Stop services: pnpm docker:test:down
+Infrastructure modes (resolved in this priority order):
+  1. Environment variables — TEST_DATABASE_URL, TEST_REDIS_URL, TEST_MINIO_ENDPOINT
+     Set by CI pipelines (GitLab CI, GitHub Actions) for external infrastructure.
+  2. Docker Compose test containers — tests/docker-compose.test.yml
+     Start: pnpm docker:test:up   Stop: pnpm docker:test:down
 
-Test Ports (matching monorepo's docker-compose.test.yml):
-- PostgreSQL: 5433 (test) vs 5432 (dev)
-- Redis: 6380 (test) vs 6379 (dev)
-- MinIO: 9002 (test) vs 9000 (dev)
+External Test Infrastructure (CI):
+  PostgreSQL HA:  10.10.1.250:5000  (HAProxy R/W VIP → vox_dev)
+  Redis Dev:      10.10.1.120:6379  (DB 8 reserved for CI tests)
+
+Local Test Ports (matching monorepo's docker-compose.test.yml):
+  PostgreSQL: 5433 (test) vs 5432 (dev)
+  Redis:      6380 (test) vs 6379 (dev)
+  MinIO:      9002 (test) vs 9000 (dev)
 
 Conda Environment: arcaenv
-- All test commands use: conda run --no-banner -n arcaenv pytest ...
+  All test commands use: conda run --no-banner -n arcaenv pytest ...
 
 Platform Auto-Detection:
   The test framework automatically detects the best available hardware
@@ -23,17 +29,19 @@ Platform Auto-Detection:
     TEST_PLATFORM=cpu make test-e2e   # Force CPU-only (skip ML tests)
     TEST_PLATFORM=all make test-e2e   # Force all tests regardless
 
-This conftest provides fixtures that work with both:
-1. Monorepo's centralized test infrastructure
-2. GitHub Actions service containers (CI/CD)
-3. Environment variables (for custom setups)
-4. Automatic hardware-based test selection
+This conftest provides fixtures that work with:
+  1. Monorepo's centralized test infrastructure (docker-compose.test.yml)
+  2. GitHub Actions service containers (CI/CD)
+  3. GitLab CI with external HA-Postgres and Redis
+  4. Environment variables (for custom setups)
+  5. Automatic hardware-based test selection
 """
 
 import asyncio
 import os
+from collections.abc import Generator
+
 import pytest
-from typing import Generator, Optional
 
 # Test infrastructure ports (matching monorepo's tests/docker-compose.test.yml)
 TEST_DB_PORT = 5433
@@ -42,9 +50,22 @@ TEST_MINIO_PORT = 9002
 
 
 def _get_db_url(sync: bool = False) -> str:
-    """Get database URL for tests."""
+    """Get database URL for tests.
+
+    Priority: TEST_DATABASE_URL env var > local docker-compose defaults.
+    When the env var is set (CI pipelines), normalise the driver prefix
+    so callers always get the correct sync/async URL.
+    """
     test_url = os.environ.get("TEST_DATABASE_URL")
     if test_url:
+        if sync:
+            return (
+                test_url
+                .replace("postgresql+asyncpg://", "postgresql://")
+                .replace("postgres+asyncpg://", "postgresql://")
+            )
+        if "asyncpg" not in test_url:
+            return test_url.replace("postgresql://", "postgresql+asyncpg://")
         return test_url
 
     base_url = f"postgresql://test:test@localhost:{TEST_DB_PORT}/hope_test"
@@ -149,7 +170,7 @@ def _get_platform_type() -> str:
 
 def skip_if_not_cuda():
     """Return pytest skip marker if CUDA is not available."""
-    from stt_v2.core.platform import detect_platform, PlatformType
+    from stt_v2.core.platform import PlatformType, detect_platform
 
     platform_type = detect_platform()
     return pytest.mark.skipif(
@@ -160,7 +181,7 @@ def skip_if_not_cuda():
 
 def skip_if_not_mps():
     """Return pytest skip marker if MPS is not available."""
-    from stt_v2.core.platform import detect_platform, PlatformType
+    from stt_v2.core.platform import PlatformType, detect_platform
 
     platform_type = detect_platform()
     return pytest.mark.skipif(
@@ -171,7 +192,7 @@ def skip_if_not_mps():
 
 def skip_if_not_gpu():
     """Return pytest skip marker if no GPU is available."""
-    from stt_v2.core.platform import detect_platform, PlatformType
+    from stt_v2.core.platform import PlatformType, detect_platform
 
     platform_type = detect_platform()
     return pytest.mark.skipif(
@@ -332,8 +353,9 @@ def minio_config():
 @pytest.fixture
 def sample_audio_bytes():
     """Generate sample WAV audio bytes."""
-    import struct
     import io
+    import struct
+
     import numpy as np
 
     sample_rate = 16000
@@ -390,14 +412,15 @@ postprocessing:
 def sample_pipeline_config():
     """Sample parsed pipeline config."""
     from datetime import datetime
+
     from stt_v2.pipeline.dto import (
+        InferenceConfig,
+        ModelRef,
+        ModelRefs,
         PipelineConfig,
         PipelineSpec,
-        ModelRefs,
-        ModelRef,
-        PreprocessingConfig,
-        InferenceConfig,
         PostprocessingConfig,
+        PreprocessingConfig,
     )
 
     return PipelineConfig(

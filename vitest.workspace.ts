@@ -92,6 +92,16 @@ export default defineWorkspace([
   {
     extends: './vitest.config.ts',
     test: {
+      name: 'packages-utils',
+      root: './packages/utils',
+      include: ['src/**/*.test.ts', 'src/**/__tests__/**/*.test.ts'],
+      environment: 'node',
+      setupFiles: [],
+    },
+  },
+  {
+    extends: './vitest.config.ts',
+    test: {
       name: 'packages-pipeline',
       root: './packages/pipeline',
       include: ['src/**/*.test.ts', 'src/**/__tests__/**/*.test.ts'],

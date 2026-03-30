@@ -259,7 +259,7 @@ class TestPerRequestTimeout:
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(
             side_effect=[
-                asyncio.TimeoutError(),
+                TimeoutError(),
                 ("Fast!", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}),
             ]
         )
@@ -312,8 +312,8 @@ class TestRetryWithTimeout:
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(
             side_effect=[
-                asyncio.TimeoutError(),
-                asyncio.TimeoutError(),
+                TimeoutError(),
+                TimeoutError(),
                 ("Finally!", {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}),
             ]
         )
@@ -335,7 +335,7 @@ class TestRetryWithTimeout:
 
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(
-            side_effect=asyncio.TimeoutError("always times out")
+            side_effect=TimeoutError("always times out")
         )
         app = _app_factory(mock_provider)
         app.state.settings = settings

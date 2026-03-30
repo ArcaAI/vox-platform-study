@@ -10,21 +10,16 @@ import { EntityId } from '../../../common';
 
 @Injectable()
 export class ResourceSubscriptionRepository extends Repository<ResourceSubscriptionEntity, ResourceSubscription> {
-    constructor(
-        private readonly unitOfWorkService: CoreUnitOfWorkService
-    ) {
-        super(unitOfWorkService, 'resourceSubscription', ResourceSubscriptionEntityMapper.getInstance(), undefined, ['resourceTypeName']);
-    }
+  constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
+    super(unitOfWorkService, 'resourceSubscription', ResourceSubscriptionEntityMapper.getInstance(), undefined, ['resourceTypeName']);
+  }
 
-    public async findByResource(
-        resourceTypeName: ResourceType,
-        resourceId: EntityId
-    ): Promise<ResourceSubscriptionEntity> {
-        return await this.findFirst({
-            where: {
-                resourceTypeName,
-                resourceId
-            }
-        });
-    }
+  public async findByResource(resourceTypeName: ResourceType, resourceId: EntityId): Promise<ResourceSubscriptionEntity> {
+    return await this.findFirst({
+      where: {
+        resourceTypeName,
+        resourceId,
+      },
+    });
+  }
 }

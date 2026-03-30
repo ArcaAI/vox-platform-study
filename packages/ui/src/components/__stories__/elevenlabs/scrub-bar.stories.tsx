@@ -1,29 +1,12 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useState } from 'react';
 
-import {
-  ScrubBarContainer,
-  ScrubBarTrack,
-  ScrubBarProgress,
-  ScrubBarThumb,
-  ScrubBarTimeLabel,
-} from '../../elevenlabs/scrub-bar'
+import { ScrubBarContainer, ScrubBarTrack, ScrubBarProgress, ScrubBarThumb, ScrubBarTimeLabel } from '../../elevenlabs/scrub-bar';
 
-function ScrubBarDemo({
-  duration = 180,
-  initialValue = 45,
-}: {
-  duration?: number
-  initialValue?: number
-}) {
-  const [value, setValue] = useState(initialValue)
+function ScrubBarDemo({ duration = 180, initialValue = 45 }: { duration?: number; initialValue?: number }) {
+  const [value, setValue] = useState(initialValue);
   return (
-    <ScrubBarContainer
-      duration={duration}
-      value={value}
-      onScrub={setValue}
-      className="w-full"
-    >
+    <ScrubBarContainer duration={duration} value={value} onScrub={setValue} className="w-full">
       <ScrubBarTimeLabel time={value} className="mr-2 text-xs" />
       <ScrubBarTrack>
         <ScrubBarProgress />
@@ -31,7 +14,7 @@ function ScrubBarDemo({
       </ScrubBarTrack>
       <ScrubBarTimeLabel time={duration} className="ml-2 text-xs" />
     </ScrubBarContainer>
-  )
+  );
 }
 
 const meta: Meta<typeof ScrubBarContainer> = {
@@ -41,10 +24,10 @@ const meta: Meta<typeof ScrubBarContainer> = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-}
+};
 
-export default meta
-type Story = StoryObj<typeof ScrubBarContainer>
+export default meta;
+type Story = StoryObj<typeof ScrubBarContainer>;
 
 export const Default: Story = {
   render: () => (
@@ -52,7 +35,7 @@ export const Default: Story = {
       <ScrubBarDemo />
     </div>
   ),
-}
+};
 
 export const AtStart: Story = {
   render: () => (
@@ -60,7 +43,7 @@ export const AtStart: Story = {
       <ScrubBarDemo initialValue={0} />
     </div>
   ),
-}
+};
 
 export const AtEnd: Story = {
   render: () => (
@@ -68,7 +51,7 @@ export const AtEnd: Story = {
       <ScrubBarDemo initialValue={180} />
     </div>
   ),
-}
+};
 
 export const ShortDuration: Story = {
   render: () => (
@@ -76,7 +59,7 @@ export const ShortDuration: Story = {
       <ScrubBarDemo duration={30} initialValue={15} />
     </div>
   ),
-}
+};
 
 export const LongDuration: Story = {
   render: () => (
@@ -84,11 +67,11 @@ export const LongDuration: Story = {
       <ScrubBarDemo duration={3600} initialValue={1200} />
     </div>
   ),
-}
+};
 
 export const TrackOnly: Story = {
   render: () => {
-    const [value, setValue] = useState(60)
+    const [value, setValue] = useState(60);
     return (
       <div className="w-[400px]">
         <ScrubBarContainer duration={180} value={value} onScrub={setValue}>
@@ -97,6 +80,6 @@ export const TrackOnly: Story = {
           </ScrubBarTrack>
         </ScrubBarContainer>
       </div>
-    )
+    );
   },
-}
+};

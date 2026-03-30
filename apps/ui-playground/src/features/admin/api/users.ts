@@ -1,9 +1,4 @@
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-  type UseQueryOptions,
-} from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { adminClient } from './admin-client';
 
 // ---------------------------------------------------------------------------
@@ -121,10 +116,8 @@ const keys = {
   list: (params?: PaginationParams) => [...keys.lists(), params] as const,
   details: () => [...keys.all, 'detail'] as const,
   detail: (id: string) => [...keys.details(), id] as const,
-  byTenant: (tenantId: string, params?: PaginationParams) =>
-    [...keys.all, 'tenant', tenantId, params] as const,
-  apiKeys: (userId: string, params?: PaginationParams) =>
-    [...keys.all, 'api-keys', userId, params] as const,
+  byTenant: (tenantId: string, params?: PaginationParams) => [...keys.all, 'tenant', tenantId, params] as const,
+  apiKeys: (userId: string, params?: PaginationParams) => [...keys.all, 'api-keys', userId, params] as const,
   settings: (userId: string) => [...keys.all, 'settings', userId] as const,
 };
 
@@ -139,27 +132,15 @@ function qs(params?: PaginationParams): string {
 // Query hooks
 // ---------------------------------------------------------------------------
 
-export function useAdminUsers(
-  params?: PaginationParams,
-  options?: Omit<
-    UseQueryOptions<PaginatedResponse<AdminUser>>,
-    'queryKey' | 'queryFn'
-  >,
-) {
+export function useAdminUsers(params?: PaginationParams, options?: Omit<UseQueryOptions<PaginatedResponse<AdminUser>>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.list(params),
-    queryFn: () =>
-      adminClient.get<PaginatedResponse<AdminUser>>(
-        `/admin/users${qs(params)}`,
-      ),
+    queryFn: () => adminClient.get<PaginatedResponse<AdminUser>>(`/admin/users${qs(params)}`),
     ...options,
   });
 }
 
-export function useAdminUser(
-  id: string,
-  options?: Omit<UseQueryOptions<AdminUser>, 'queryKey' | 'queryFn'>,
-) {
+export function useAdminUser(id: string, options?: Omit<UseQueryOptions<AdminUser>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.detail(id),
     queryFn: () => adminClient.get<AdminUser>(`/admin/users/${id}`),
@@ -171,17 +152,11 @@ export function useAdminUser(
 export function useAdminUsersByTenant(
   tenantId: string,
   params?: PaginationParams,
-  options?: Omit<
-    UseQueryOptions<PaginatedResponse<AdminUser>>,
-    'queryKey' | 'queryFn'
-  >,
+  options?: Omit<UseQueryOptions<PaginatedResponse<AdminUser>>, 'queryKey' | 'queryFn'>,
 ) {
   return useQuery({
     queryKey: keys.byTenant(tenantId, params),
-    queryFn: () =>
-      adminClient.get<PaginatedResponse<AdminUser>>(
-        `/admin/users/tenant/${tenantId}${qs(params)}`,
-      ),
+    queryFn: () => adminClient.get<PaginatedResponse<AdminUser>>(`/admin/users/tenant/${tenantId}${qs(params)}`),
     enabled: !!tenantId,
     ...options,
   });
@@ -190,17 +165,11 @@ export function useAdminUsersByTenant(
 export function useUserApiKeys(
   userId: string,
   params?: PaginationParams,
-  options?: Omit<
-    UseQueryOptions<PaginatedResponse<UserApiKey>>,
-    'queryKey' | 'queryFn'
-  >,
+  options?: Omit<UseQueryOptions<PaginatedResponse<UserApiKey>>, 'queryKey' | 'queryFn'>,
 ) {
   return useQuery({
     queryKey: keys.apiKeys(userId, params),
-    queryFn: () =>
-      adminClient.get<PaginatedResponse<UserApiKey>>(
-        `/admin/users/${userId}/api-keys${qs(params)}`,
-      ),
+    queryFn: () => adminClient.get<PaginatedResponse<UserApiKey>>(`/admin/users/${userId}/api-keys${qs(params)}`),
     enabled: !!userId,
     ...options,
   });
@@ -213,8 +182,7 @@ export function useUserApiKeys(
 export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateUserInput) =>
-      adminClient.post<AdminUser>('/admin/users', input),
+    mutationFn: (input: CreateUserInput) => adminClient.post<AdminUser>('/admin/users', input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },
@@ -224,8 +192,7 @@ export function useCreateUser() {
 export function useUpdateUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: UpdateUserInput & { id: string }) =>
-      adminClient.patch<AdminUser>(`/admin/users/${id}`, input),
+    mutationFn: ({ id, ...input }: UpdateUserInput & { id: string }) => adminClient.patch<AdminUser>(`/admin/users/${id}`, input),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all });
       qc.invalidateQueries({ queryKey: keys.detail(variables.id) });
@@ -236,11 +203,7 @@ export function useUpdateUser() {
 export function useUpdateUserStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      ...input
-    }: UpdateUserStatusInput & { id: string }) =>
-      adminClient.patch<AdminUser>(`/admin/users/${id}/status`, input),
+    mutationFn: ({ id, ...input }: UpdateUserStatusInput & { id: string }) => adminClient.patch<AdminUser>(`/admin/users/${id}/status`, input),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all });
       qc.invalidateQueries({ queryKey: keys.detail(variables.id) });
@@ -251,8 +214,7 @@ export function useUpdateUserStatus() {
 export function useDeleteUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      adminClient.delete<void>(`/admin/users/${id}`),
+    mutationFn: (id: string) => adminClient.delete<void>(`/admin/users/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },
@@ -262,8 +224,7 @@ export function useDeleteUser() {
 export function useBulkDeleteUsers() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (ids: string[]) =>
-      adminClient.deleteWithBody<void>('/admin/users/bulk', { ids }),
+    mutationFn: (ids: string[]) => adminClient.deleteWithBody<void>('/admin/users/bulk', { ids }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },
@@ -273,8 +234,7 @@ export function useBulkDeleteUsers() {
 export function useRevokeApiKey() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (apiKeyId: string) =>
-      adminClient.post<UserApiKey>(`/admin/api-keys/${apiKeyId}/revoke`),
+    mutationFn: (apiKeyId: string) => adminClient.post<UserApiKey>(`/admin/api-keys/${apiKeyId}/revoke`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },
@@ -296,10 +256,7 @@ export interface UserSetting {
   [k: string]: unknown;
 }
 
-export function useAdminUserSettings(
-  userId: string,
-  options?: Omit<UseQueryOptions<UserSetting[]>, 'queryKey' | 'queryFn'>,
-) {
+export function useAdminUserSettings(userId: string, options?: Omit<UseQueryOptions<UserSetting[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.settings(userId),
     queryFn: () => adminClient.get<UserSetting[]>(`/admin/users/${userId}/settings`),
@@ -325,11 +282,7 @@ export function useUpdateAdminUserSetting() {
       value: string;
       dataType?: string;
       name?: string;
-    }) =>
-      adminClient.patch<UserSetting>(
-        `/admin/users/${userId}/settings/${namespace}/${key}`,
-        { value, dataType, name },
-      ),
+    }) => adminClient.patch<UserSetting>(`/admin/users/${userId}/settings/${namespace}/${key}`, { value, dataType, name }),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.settings(variables.userId) });
     },

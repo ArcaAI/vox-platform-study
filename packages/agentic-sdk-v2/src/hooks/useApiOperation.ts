@@ -32,10 +32,7 @@ const DEFAULT_RETRY: RetryOptions = { maxRetries: 2, delayMs: 800 };
 export function useApiOperation(hookName: string) {
   const store = useAgenticStore();
   const apiClient = store.apiClient;
-  const logger = useMemo(
-    () => store.logger?.child(hookName) as ISDKLogger | undefined,
-    [store.logger, hookName],
-  );
+  const logger = useMemo(() => store.logger?.child(hookName) as ISDKLogger | undefined, [store.logger, hookName]);
 
   const [pendingCount, setPendingCount] = useState(0);
   const [error, setError] = useState<Error | null>(null);

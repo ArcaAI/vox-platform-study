@@ -16,11 +16,10 @@ Also covers the ``_check_streaming()`` health helper added to
 
 import asyncio
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -242,7 +241,7 @@ class TestLoadAsrPipeline:
     @pytest.mark.asyncio
     async def test_returns_none_when_config_is_none(self):
         mgr = _make_manager()
-        result = await mgr._load_asr_pipeline(None, None, None, "s-1")
+        result = await mgr._load_asr_pipeline(None, "s-1")
         assert result is None
 
     @pytest.mark.asyncio
@@ -265,13 +264,13 @@ class TestLoadAsrPipeline:
             "stt_v2.pipeline.dto": MagicMock(ModelTaskType=MagicMock(AUTOMATIC_SPEECH_RECOGNITION="asr")),
             "stt_v2.transcription.batch_service": MagicMock(BatchTranscriptionService=lambda: mock_batch_svc),
         }):
-            result = await mgr._load_asr_pipeline(config, None, None, "s-1")
+            result = await mgr._load_asr_pipeline(config, "s-1")
 
         assert callable(result)
 
     @pytest.mark.asyncio
-    async def test_applies_language_override(self):
-        """Verify language override reaches _make_asr_callable via captured args."""
+    async def test_uses_pipeline_inference_config_directly(self):
+        """Verify pipeline inference config is used as-is without overrides."""
         mgr = _make_manager()
         config = _make_pipeline_config()
 
@@ -292,68 +291,23 @@ class TestLoadAsrPipeline:
 
         mgr._make_asr_callable = spy_make_asr
 
-        # Use a real dataclass for inference_config so dataclasses.replace works
-        from dataclasses import dataclass
-
         @dataclass
         class FakeInferenceConfig:
             language: str = "en"
             code_switching: bool = False
 
-        config.inference = FakeInferenceConfig(language="en", code_switching=False)
+        config.inference = FakeInferenceConfig(language="ml", code_switching=True)
 
         with patch.dict("sys.modules", {
             "stt_v2.models": MagicMock(get_model_cache=lambda: mock_cache),
             "stt_v2.pipeline.dto": MagicMock(ModelTaskType=MagicMock(AUTOMATIC_SPEECH_RECOGNITION="asr")),
         }):
-            result = await mgr._load_asr_pipeline(config, "ml", None, "s-1")
+            result = await mgr._load_asr_pipeline(config, "s-1")
 
         assert result is not None
-        # Verify the real dataclasses.replace produced a config with language="ml"
+        # Pipeline config values should be used directly
         assert captured["config"].language == "ml"
-        # code_switching should remain unchanged since we passed None
-        assert captured["config"].code_switching is False
-
-    @pytest.mark.asyncio
-    async def test_applies_code_switching_override(self):
-        """Verify code_switching override reaches _make_asr_callable."""
-        mgr = _make_manager()
-        config = _make_pipeline_config()
-
-        mock_model = MagicMock()
-        mock_model.model_slug = "whisper-test"
-        mock_model.format = MagicMock(value="onnx")
-
-        mock_cache = AsyncMock()
-        mock_cache.get_or_load_from_ref = AsyncMock(return_value=mock_model)
-
-        captured = {}
-
-        def spy_make_asr(asr_model, inference_config):
-            captured["config"] = inference_config
-            return AsyncMock(return_value="text")
-
-        mgr._make_asr_callable = spy_make_asr
-
-        from dataclasses import dataclass
-
-        @dataclass
-        class FakeInferenceConfig:
-            language: str = "en"
-            code_switching: bool = False
-
-        config.inference = FakeInferenceConfig(language="en", code_switching=False)
-
-        with patch.dict("sys.modules", {
-            "stt_v2.models": MagicMock(get_model_cache=lambda: mock_cache),
-            "stt_v2.pipeline.dto": MagicMock(ModelTaskType=MagicMock(AUTOMATIC_SPEECH_RECOGNITION="asr")),
-        }):
-            result = await mgr._load_asr_pipeline(config, None, True, "s-1")
-
-        assert result is not None
         assert captured["config"].code_switching is True
-        # language should remain unchanged since we passed None
-        assert captured["config"].language == "en"
 
     @pytest.mark.asyncio
     async def test_returns_none_on_model_load_failure(self):
@@ -367,7 +321,7 @@ class TestLoadAsrPipeline:
             "stt_v2.models": MagicMock(get_model_cache=lambda: mock_cache),
             "stt_v2.pipeline.dto": MagicMock(ModelTaskType=MagicMock(AUTOMATIC_SPEECH_RECOGNITION="asr")),
         }):
-            result = await mgr._load_asr_pipeline(config, None, None, "s-1")
+            result = await mgr._load_asr_pipeline(config, "s-1")
 
         assert result is None
 
@@ -388,7 +342,7 @@ class TestMakeAsrCallable:
         mock_inference_config = MagicMock()
         mock_batch_svc = MagicMock()
         mock_batch_svc._run_inference = AsyncMock(
-            return_value=MagicMock(text="transcribed text")
+            return_value=MagicMock(text="transcribed text", word_timestamps=[])
         )
 
         with patch.dict("sys.modules", {
@@ -401,7 +355,7 @@ class TestMakeAsrCallable:
         assert callable(fn)
         samples = np.zeros(16000, dtype=np.float32)
         result = await fn(samples, 16000)
-        assert result == "transcribed text"
+        assert result == {"text": "transcribed text", "word_timestamps": []}
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_inference_returns_none(self):
@@ -418,7 +372,7 @@ class TestMakeAsrCallable:
             fn = mgr._make_asr_callable(MagicMock(), MagicMock())
 
         result = await fn(np.zeros(100), 16000)
-        assert result == ""
+        assert result == {"text": "", "word_timestamps": []}
 
     @pytest.mark.asyncio
     async def test_passes_correct_args_to_run_inference(self):
@@ -548,19 +502,18 @@ class TestCreateSessionModelWiring:
         assert mgr._inference_workers["s-3"]._asr_pipeline is None
 
     @pytest.mark.asyncio
-    async def test_create_session_forwards_language_to_asr_loader(self):
-        """Verify language and code_switching from create_session reach _load_asr_pipeline."""
+    async def test_create_session_calls_asr_loader_with_pipeline_config(self):
+        """Verify _load_asr_pipeline receives pipeline_config and session_id only."""
         mgr = _make_manager()
 
         # Use a spy to capture args while still returning a value
         captured_args = {}
         original_load = AsyncMock(return_value=None)
 
-        async def spy_load_asr(pipeline_config, language, code_switching, session_id):
-            captured_args["language"] = language
-            captured_args["code_switching"] = code_switching
+        async def spy_load_asr(pipeline_config, session_id):
+            captured_args["pipeline_config"] = pipeline_config
             captured_args["session_id"] = session_id
-            return await original_load(pipeline_config, language, code_switching, session_id)
+            return await original_load(pipeline_config, session_id)
 
         mgr._load_pipeline_config = AsyncMock(return_value=_make_pipeline_config())
         mgr._load_vad_service = AsyncMock(return_value=None)
@@ -576,13 +529,10 @@ class TestCreateSessionModelWiring:
                 session_id="s-4",
                 tenant_id="t-1",
                 pipeline_id="pipe-1",
-                language="ml",
-                code_switching=True,
             )
 
-        # Verify the actual values that reached the ASR loader
-        assert captured_args["language"] == "ml"
-        assert captured_args["code_switching"] is True
+        # Verify the ASR loader received pipeline config and session_id
+        assert captured_args["pipeline_config"] is not None
         assert captured_args["session_id"] == "s-4"
 
     @pytest.mark.asyncio
@@ -603,7 +553,7 @@ class TestCreateSessionModelWiring:
             MockConsumer.return_value = AsyncMock()
             MockListener.return_value = AsyncMock()
 
-            session = await mgr.create_session(
+            _session = await mgr.create_session(
                 session_id="s-5",
                 tenant_id="t-1",
                 pipeline_id="pipe-1",
@@ -754,10 +704,12 @@ class TestFrameHandlerWithModels:
     @pytest.mark.asyncio
     async def test_frame_handler_feeds_preprocessor_and_runs_inference(self):
         from stt_v2.streaming.preprocessor import AudioUtterance
+        from stt_v2.streaming.schemas import SessionStatus
 
         mgr = _make_manager()
         session = MagicMock()
         session.session_id = "s-1"
+        session.status = SessionStatus.ACTIVE
         session.pending_segments = asyncio.Queue()
         session.persist_if_needed = AsyncMock(return_value=False)
         session.record_frame = MagicMock()
@@ -794,9 +746,12 @@ class TestFrameHandlerWithModels:
 
     @pytest.mark.asyncio
     async def test_frame_handler_works_without_preprocessor(self):
+        from stt_v2.streaming.schemas import SessionStatus
+
         mgr = _make_manager()
         session = MagicMock()
         session.session_id = "s-1"
+        session.status = SessionStatus.ACTIVE
         session.pending_segments = asyncio.Queue()
         session.persist_if_needed = AsyncMock()
         session.record_frame = MagicMock()
@@ -1161,6 +1116,7 @@ class TestReaper:
     @pytest.mark.asyncio
     async def test_reap_expired_sessions(self):
         from datetime import datetime, timedelta
+
         from stt_v2.streaming.schemas import SessionStatus
 
         mgr = _make_manager()
@@ -1182,6 +1138,7 @@ class TestReaper:
     @pytest.mark.asyncio
     async def test_reap_skips_active_sessions(self):
         from datetime import datetime
+
         from stt_v2.streaming.schemas import SessionStatus
 
         mgr = _make_manager()
@@ -1202,6 +1159,7 @@ class TestReaper:
     @pytest.mark.asyncio
     async def test_reap_flushes_final_utterance_before_finalize(self):
         from datetime import datetime, timedelta
+
         from stt_v2.streaming.preprocessor import AudioUtterance
         from stt_v2.streaming.schemas import SessionStatus
 
@@ -1250,11 +1208,12 @@ class TestFrameHandlerFinalFrame:
 
     @pytest.mark.asyncio
     async def test_final_frame_triggers_finalize(self):
-        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame
+        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame, SessionStatus
 
         mgr = _make_manager()
         session = MagicMock()
         session.session_id = "s-1"
+        session.status = SessionStatus.ACTIVE
         session.pending_segments = asyncio.Queue()
         session.persist_if_needed = AsyncMock(return_value=False)
         session.record_frame = MagicMock()
@@ -1280,11 +1239,12 @@ class TestFrameHandlerFinalFrame:
     @pytest.mark.asyncio
     async def test_final_frame_flushes_before_finalize(self):
         from stt_v2.streaming.preprocessor import AudioUtterance
-        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame
+        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame, SessionStatus
 
         mgr = _make_manager()
         session = MagicMock()
         session.session_id = "s-1"
+        session.status = SessionStatus.ACTIVE
         session.pending_segments = asyncio.Queue()
         session.persist_if_needed = AsyncMock(return_value=False)
         session.record_frame = MagicMock()
@@ -1481,7 +1441,7 @@ class TestFinalizeSessionPendingSegments:
             side_effect=lambda: call_order.append("finalize")
         )
         session.close = AsyncMock(
-            side_effect=lambda: call_order.append("close")
+            side_effect=lambda **kwargs: call_order.append("close")
         )
 
         mgr._publishers["s-order"] = publisher
@@ -1750,6 +1710,7 @@ class TestSessionLeakPrevention:
     async def test_skips_non_active_status_in_reaper(self):
         """Only ACTIVE sessions should be considered for reaping."""
         from datetime import datetime, timedelta
+
         from stt_v2.streaming.schemas import SessionStatus
 
         mgr = _make_manager()

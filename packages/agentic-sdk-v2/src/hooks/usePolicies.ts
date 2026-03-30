@@ -115,9 +115,7 @@ export function usePolicies(): UsePoliciesReturn {
 
   const validate = useCallback(
     (input: CreatePolicyInput) =>
-      execute<PolicyValidationResult>('validate', (client) =>
-        client.post<PolicyValidationResult>(POLICY_ENDPOINTS.VALIDATE, input),
-      ),
+      execute<PolicyValidationResult>('validate', (client) => client.post<PolicyValidationResult>(POLICY_ENDPOINTS.VALIDATE, input)),
     [execute],
   );
 

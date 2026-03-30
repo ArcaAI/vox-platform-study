@@ -8,12 +8,7 @@
  * to keep the UI responsive. Falls back to main thread if Workers unavailable.
  */
 
-import type {
-  TranscriptionResult,
-  STTStats,
-  LocalProviderConfig,
-  ComputeDevice,
-} from '../types/index.js';
+import type { TranscriptionResult, STTStats, LocalProviderConfig, ComputeDevice } from '../types/index.js';
 import { isWhisperModelSize, normalizeModelId } from '../types/index.js';
 import { BaseSTTProvider } from './BaseSTTProvider.js';
 import { WhisperWorkerEngine } from '../engines/WhisperWorkerEngine.js';
@@ -237,9 +232,7 @@ export class LocalSTTProvider extends BaseSTTProvider {
           this.emitTranscription(result);
         }
       } catch (error) {
-        this.emitError(
-          error instanceof Error ? error : new Error(String(error))
-        );
+        this.emitError(error instanceof Error ? error : new Error(String(error)));
       } finally {
         this.isTranscribing = false;
       }
@@ -262,9 +255,7 @@ export class LocalSTTProvider extends BaseSTTProvider {
         const result = await this.transcribeSegment(remaining);
         this.emitTranscription(result);
       } catch (error) {
-        this.emitError(
-          error instanceof Error ? error : new Error(String(error))
-        );
+        this.emitError(error instanceof Error ? error : new Error(String(error)));
       } finally {
         this.isTranscribing = false;
       }
@@ -292,10 +283,7 @@ export class LocalSTTProvider extends BaseSTTProvider {
     return this.bufferManager;
   }
 
-  private applyLocalDiarization(
-    result: TranscriptionResult,
-    audio: Float32Array
-  ): TranscriptionResult {
+  private applyLocalDiarization(result: TranscriptionResult, audio: Float32Array): TranscriptionResult {
     if (!this.config?.diarization || !this.diarizer) {
       return result;
     }

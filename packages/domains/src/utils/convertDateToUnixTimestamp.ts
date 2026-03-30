@@ -6,11 +6,11 @@
  * @throws Will throw an error if the provided value is not a valid Date object.
  */
 export function convertDateToUnixTimestamp(date: Date): number {
-    // Ensure the provided input is a valid Date object
-    if (!(date instanceof Date) || isNaN(date.getTime())) {
-        throw new Error('Invalid Date object provided.');
-    }
+  // Ensure the provided input is a valid Date object
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    throw new Error('Invalid Date object provided.');
+  }
 
-    // Convert the date to milliseconds since epoch, then to seconds
-    return Math.floor(date.getTime() / 1000);
+  // Convert the date to milliseconds since epoch, then to seconds
+  return Math.floor(date.getTime() / 1000);
 }

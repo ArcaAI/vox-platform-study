@@ -65,7 +65,7 @@ class QdrantClientManager:
                 raise VectorStoreConnectionError(
                     "qdrant-client is not installed. "
                     "Install with: pip install qdrant-client"
-                )
+                ) from None
             except Exception as e:
                 self._client = None
                 raise VectorStoreConnectionError(

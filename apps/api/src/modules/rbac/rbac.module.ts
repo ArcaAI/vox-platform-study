@@ -19,13 +19,7 @@ import { PermissionCheckController } from './permission-check.controller';
  * - POST /rbac/check/my-permissions - Get current user's permissions
  */
 @Module({
-    imports: [
-        CoreDatabaseModule,
-    ],
-    controllers: [
-        RolesController,
-        PoliciesController,
-        PermissionCheckController,
-    ],
+  imports: [CoreDatabaseModule],
+  controllers: [RolesController, PoliciesController, PermissionCheckController],
 })
 export class RbacModule {}

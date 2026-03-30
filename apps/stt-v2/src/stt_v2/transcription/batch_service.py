@@ -18,7 +18,8 @@ import tempfile
 import threading
 import time
 import wave
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 from azure.cognitiveservices.speech import (
@@ -29,7 +30,6 @@ from azure.cognitiveservices.speech import (
     transcription,
 )
 
-from ..core.api_client.gateway import get_api_client
 from ..core.config.settings import get_settings
 from ..core.exceptions import (
     CloudASRAuthError,
@@ -40,9 +40,8 @@ from ..core.exceptions import (
 from ..models.azure_speech_loader import normalize_language_for_azure
 from ..models.base_loader import LoadedModel
 from ..models.cache import get_model_cache
-from ..pipeline.config_reader import get_model_reader, get_pipeline_reader
+from ..pipeline.config_reader import get_model_reader
 from ..pipeline.dto import AiModelFormat, ModelTaskType, PipelineConfig
-from ..storage.blob_service import get_blob_service
 from .dto import (
     AudioSegment,
     ChunkTranscriptionResult,

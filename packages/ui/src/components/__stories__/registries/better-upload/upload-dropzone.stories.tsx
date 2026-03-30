@@ -1,10 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { UploadDropzone } from '../../../registries/better-upload'
-import type { UploadHookControl } from '@better-upload/client'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { UploadDropzone } from '../../../registries/better-upload';
+import type { UploadHookControl } from '@better-upload/client';
 
-function createMockControl(
-  overrides: Partial<UploadHookControl<true>> = {},
-): UploadHookControl<true> {
+function createMockControl(overrides: Partial<UploadHookControl<true>> = {}): UploadHookControl<true> {
   return {
     upload: () => {},
     isPending: false,
@@ -12,7 +10,7 @@ function createMockControl(
     isSuccess: false,
     isError: false,
     ...overrides,
-  } as unknown as UploadHookControl<true>
+  } as unknown as UploadHookControl<true>;
 }
 
 function UploadDropzoneIdle() {
@@ -25,16 +23,11 @@ function UploadDropzoneIdle() {
         maxFiles: 5,
       }}
     />
-  )
+  );
 }
 
 function UploadDropzoneLoading() {
-  return (
-    <UploadDropzone
-      control={createMockControl({ isPending: true })}
-      description="Uploading your files..."
-    />
-  )
+  return <UploadDropzone control={createMockControl({ isPending: true })} description="Uploading your files..." />;
 }
 
 const meta = {
@@ -42,22 +35,17 @@ const meta = {
   component: UploadDropzoneIdle,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof UploadDropzoneIdle>
+} satisfies Meta<typeof UploadDropzoneIdle>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {}
+export const Default: Story = {};
 
 export const Loading: Story = {
   render: () => <UploadDropzoneLoading />,
-}
+};
 
 export const CustomDescription: Story = {
-  render: () => (
-    <UploadDropzone
-      control={createMockControl()}
-      description="Drop your documents here to get started"
-    />
-  ),
-}
+  render: () => <UploadDropzone control={createMockControl()} description="Drop your documents here to get started" />,
+};

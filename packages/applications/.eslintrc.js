@@ -6,5 +6,5 @@ module.exports = {
     parserOptions: {
         project: true,
     },
-    ignorePatterns: ["dist/", ".turbo/", "node_modules/"],
+    ignorePatterns: ["dist/", ".turbo/", "node_modules/", "**/__tests__/", "**/*.test.ts"],
 };

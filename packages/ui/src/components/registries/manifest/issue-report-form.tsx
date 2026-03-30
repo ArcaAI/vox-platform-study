@@ -1,20 +1,13 @@
-'use client'
+'use client';
 
-import { Button } from '@/components/shadcn/button'
-import { Input } from '@/components/shadcn/input'
-import { Label } from '@/components/shadcn/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/shadcn/select'
-import { cn } from '@/lib/utils'
-import { demoIssueReportFormData } from './demo/form'
-import { ChevronDown, ChevronUp, Paperclip, Send, X } from 'lucide-react'
-import { useRef, useState } from 'react'
-
+import { Button } from '@/components/shadcn/button';
+import { Input } from '@/components/shadcn/input';
+import { Label } from '@/components/shadcn/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/shadcn/select';
+import { cn } from '@/lib/utils';
+import { demoIssueReportFormData } from './demo/form';
+import { ChevronDown, ChevronUp, Paperclip, Send, X } from 'lucide-react';
+import { useRef, useState } from 'react';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -27,38 +20,38 @@ import { useRef, useState } from 'react'
 export interface IssueReportFormProps {
   data?: {
     /** Form title displayed at the top. */
-    title?: string
+    title?: string;
     /** List of team options for the dropdown. */
-    teams?: string[]
+    teams?: string[];
     /** List of location options. */
-    locations?: string[]
+    locations?: string[];
     /** Category to subcategory mapping. */
-    categories?: Record<string, string[]>
+    categories?: Record<string, string[]>;
     /** Impact level options. */
-    impacts?: { value: string; label: string }[]
+    impacts?: { value: string; label: string }[];
     /** Urgency level options. */
-    urgencies?: { value: string; label: string }[]
+    urgencies?: { value: string; label: string }[];
     /** Frequency options. */
-    frequencies?: { value: string; label: string }[]
+    frequencies?: { value: string; label: string }[];
     /** Pre-defined actions user may have tried. */
-    attemptedActions?: string[]
-  }
+    attemptedActions?: string[];
+  };
   actions?: {
     /** Called when the form is submitted. */
-    onSubmit?: (formData: IssueFormData) => void
-  }
+    onSubmit?: (formData: IssueFormData) => void;
+  };
   appearance?: {
     /**
      * Whether to display the title.
      * @default true
      */
-    showTitle?: boolean
+    showTitle?: boolean;
     /**
      * Use compact layout.
      * @default true
      */
-    compactMode?: boolean
-  }
+    compactMode?: boolean;
+  };
 }
 
 /**
@@ -83,23 +76,23 @@ export interface IssueReportFormProps {
  * @property {string} additionalComments - Any extra information
  */
 export interface IssueFormData {
-  declarantName?: string
-  email?: string
-  team?: string
-  location?: string
-  office?: string
-  workstation?: string
-  category?: string
-  subcategory?: string
-  issueTitle?: string
-  description?: string
-  impact?: string
-  urgency?: string
-  frequency?: string
-  startDate?: string
-  attemptedActions?: string[]
-  attachments?: File[]
-  additionalComments?: string
+  declarantName?: string;
+  email?: string;
+  team?: string;
+  location?: string;
+  office?: string;
+  workstation?: string;
+  category?: string;
+  subcategory?: string;
+  issueTitle?: string;
+  description?: string;
+  impact?: string;
+  urgency?: string;
+  frequency?: string;
+  startDate?: string;
+  attemptedActions?: string[];
+  attachments?: File[];
+  additionalComments?: string;
 }
 
 /**
@@ -135,22 +128,18 @@ export interface IssueFormData {
  * />
  * ```
  */
-export function IssueReportForm({
-  data,
-  actions,
-  appearance
-}: IssueReportFormProps) {
-  const resolved: NonNullable<IssueReportFormProps['data']> = data ?? demoIssueReportFormData
-  const title = resolved.title
-  const teams = resolved.teams ?? []
-  const locations = resolved.locations ?? []
-  const categories = resolved.categories ?? {}
-  const impacts = resolved.impacts ?? []
-  const urgencies = resolved.urgencies ?? []
-  const frequencies = resolved.frequencies ?? []
-  const attemptedActions = resolved.attemptedActions ?? []
-  const { onSubmit } = actions ?? {}
-  const { showTitle = true } = appearance ?? {}
+export function IssueReportForm({ data, actions, appearance }: IssueReportFormProps) {
+  const resolved: NonNullable<IssueReportFormProps['data']> = data ?? demoIssueReportFormData;
+  const title = resolved.title;
+  const teams = resolved.teams ?? [];
+  const locations = resolved.locations ?? [];
+  const categories = resolved.categories ?? {};
+  const impacts = resolved.impacts ?? [];
+  const urgencies = resolved.urgencies ?? [];
+  const frequencies = resolved.frequencies ?? [];
+  const attemptedActions = resolved.attemptedActions ?? [];
+  const { onSubmit } = actions ?? {};
+  const { showTitle = true } = appearance ?? {};
 
   const [formData, setFormData] = useState<IssueFormData>({
     declarantName: '',
@@ -169,64 +158,55 @@ export function IssueReportForm({
     startDate: '',
     attemptedActions: [],
     attachments: [],
-    additionalComments: ''
-  })
+    additionalComments: '',
+  });
 
-  const [expandedSection, setExpandedSection] = useState<
-    'details' | 'context' | null
-  >('details')
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [expandedSection, setExpandedSection] = useState<'details' | 'context' | null>('details');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const subcategories = formData.category
-    ? categories[formData.category] || []
-    : []
+  const subcategories = formData.category ? categories[formData.category] || [] : [];
 
-  const updateField = <K extends keyof IssueFormData>(
-    field: K,
-    value: IssueFormData[K]
-  ) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
-  }
+  const updateField = <K extends keyof IssueFormData>(field: K, value: IssueFormData[K]) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
 
   const handleCategoryChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, category: value, subcategory: '' }))
-  }
+    setFormData((prev) => ({ ...prev, category: value, subcategory: '' }));
+  };
 
   const toggleAttemptedAction = (action: string) => {
     setFormData((prev) => {
-      const currentActions = prev.attemptedActions ?? []
+      const currentActions = prev.attemptedActions ?? [];
       return {
         ...prev,
-        attemptedActions: currentActions.includes(action)
-          ? currentActions.filter((a) => a !== action)
-          : [...currentActions, action]
-      }
-    })
-  }
+        attemptedActions: currentActions.includes(action) ? currentActions.filter((a) => a !== action) : [...currentActions, action],
+      };
+    });
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
+    const files = Array.from(e.target.files || []);
     setFormData((prev) => ({
       ...prev,
-      attachments: [...(prev.attachments ?? []), ...files]
-    }))
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }
+      attachments: [...(prev.attachments ?? []), ...files],
+    }));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const removeFile = (index: number) => {
     setFormData((prev) => ({
       ...prev,
-      attachments: (prev.attachments ?? []).filter((_, i) => i !== index)
-    }))
-  }
+      attachments: (prev.attachments ?? []).filter((_, i) => i !== index),
+    }));
+  };
 
   const handleSubmit = () => {
-    onSubmit?.(formData)
-  }
+    onSubmit?.(formData);
+  };
 
   const toggleSection = (section: 'details' | 'context') => {
-    setExpandedSection((prev) => (prev === section ? null : section))
-  }
+    setExpandedSection((prev) => (prev === section ? null : section));
+  };
 
   return (
     <div className="w-full bg-card rounded-xl p-4">
@@ -240,9 +220,7 @@ export function IssueReportForm({
         {/* Declarant Info - Always visible */}
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">
-              Name
-            </Label>
+            <Label className="text-xs text-muted-foreground mb-1 block">Name</Label>
             <Input
               placeholder="Your name"
               value={formData.declarantName}
@@ -251,9 +229,7 @@ export function IssueReportForm({
             />
           </div>
           <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">
-              Email
-            </Label>
+            <Label className="text-xs text-muted-foreground mb-1 block">Email</Label>
             <Input
               type="email"
               placeholder="your@email.com"
@@ -267,13 +243,8 @@ export function IssueReportForm({
         {/* Team, Location, Category, Subcategory - 2 cols on mobile, 4 on desktop */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <div className="min-w-0">
-            <Label className="text-xs text-muted-foreground mb-1 block">
-              Team
-            </Label>
-            <Select
-              value={formData.team}
-              onValueChange={(v) => updateField('team', v)}
-            >
+            <Label className="text-xs text-muted-foreground mb-1 block">Team</Label>
+            <Select value={formData.team} onValueChange={(v) => updateField('team', v)}>
               <SelectTrigger className="h-9 text-sm w-full">
                 <SelectValue placeholder="Select" />
               </SelectTrigger>
@@ -287,13 +258,8 @@ export function IssueReportForm({
             </Select>
           </div>
           <div className="min-w-0">
-            <Label className="text-xs text-muted-foreground mb-1 block">
-              Location
-            </Label>
-            <Select
-              value={formData.location}
-              onValueChange={(v) => updateField('location', v)}
-            >
+            <Label className="text-xs text-muted-foreground mb-1 block">Location</Label>
+            <Select value={formData.location} onValueChange={(v) => updateField('location', v)}>
               <SelectTrigger className="h-9 text-sm w-full">
                 <SelectValue placeholder="Select" />
               </SelectTrigger>
@@ -307,13 +273,8 @@ export function IssueReportForm({
             </Select>
           </div>
           <div className="min-w-0">
-            <Label className="text-xs text-muted-foreground mb-1 block">
-              Category
-            </Label>
-            <Select
-              value={formData.category}
-              onValueChange={handleCategoryChange}
-            >
+            <Label className="text-xs text-muted-foreground mb-1 block">Category</Label>
+            <Select value={formData.category} onValueChange={handleCategoryChange}>
               <SelectTrigger className="h-9 text-sm w-full">
                 <SelectValue placeholder="Select" />
               </SelectTrigger>
@@ -327,18 +288,10 @@ export function IssueReportForm({
             </Select>
           </div>
           <div className="min-w-0">
-            <Label className="text-xs text-muted-foreground mb-1 block">
-              Subcategory
-            </Label>
-            <Select
-              value={formData.subcategory}
-              onValueChange={(v) => updateField('subcategory', v)}
-              disabled={!formData.category}
-            >
+            <Label className="text-xs text-muted-foreground mb-1 block">Subcategory</Label>
+            <Select value={formData.subcategory} onValueChange={(v) => updateField('subcategory', v)} disabled={!formData.category}>
               <SelectTrigger className="h-9 text-sm w-full">
-                <SelectValue
-                  placeholder={formData.category ? 'Select' : 'Pick category'}
-                />
+                <SelectValue placeholder={formData.category ? 'Select' : 'Pick category'} />
               </SelectTrigger>
               <SelectContent>
                 {subcategories.map((sub) => (
@@ -353,9 +306,7 @@ export function IssueReportForm({
 
         {/* Issue Title */}
         <div>
-          <Label className="text-xs text-muted-foreground mb-1 block">
-            Issue Title
-          </Label>
+          <Label className="text-xs text-muted-foreground mb-1 block">Issue Title</Label>
           <Input
             placeholder="Summarize your issue in a few words"
             value={formData.issueTitle}
@@ -366,9 +317,7 @@ export function IssueReportForm({
 
         {/* Description */}
         <div>
-          <Label className="text-xs text-muted-foreground mb-1 block">
-            Description
-          </Label>
+          <Label className="text-xs text-muted-foreground mb-1 block">Description</Label>
           <textarea
             placeholder="Describe the issue in detail..."
             value={formData.description}
@@ -390,21 +339,11 @@ export function IssueReportForm({
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             )}
           </button>
-          <div
-            className={cn(
-              'overflow-hidden transition-all duration-200',
-              expandedSection === 'details' ? 'max-h-[500px] p-3' : 'max-h-0'
-            )}
-          >
+          <div className={cn('overflow-hidden transition-all duration-200', expandedSection === 'details' ? 'max-h-[500px] p-3' : 'max-h-0')}>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <div className="min-w-0">
-                <Label className="text-xs text-muted-foreground mb-1 block">
-                  Impact
-                </Label>
-                <Select
-                  value={formData.impact}
-                  onValueChange={(v) => updateField('impact', v)}
-                >
+                <Label className="text-xs text-muted-foreground mb-1 block">Impact</Label>
+                <Select value={formData.impact} onValueChange={(v) => updateField('impact', v)}>
                   <SelectTrigger className="h-9 text-sm w-full">
                     <SelectValue placeholder="Impact" />
                   </SelectTrigger>
@@ -418,13 +357,8 @@ export function IssueReportForm({
                 </Select>
               </div>
               <div className="min-w-0">
-                <Label className="text-xs text-muted-foreground mb-1 block">
-                  Urgency
-                </Label>
-                <Select
-                  value={formData.urgency}
-                  onValueChange={(v) => updateField('urgency', v)}
-                >
+                <Label className="text-xs text-muted-foreground mb-1 block">Urgency</Label>
+                <Select value={formData.urgency} onValueChange={(v) => updateField('urgency', v)}>
                   <SelectTrigger className="h-9 text-sm w-full">
                     <SelectValue placeholder="Urgency" />
                   </SelectTrigger>
@@ -438,13 +372,8 @@ export function IssueReportForm({
                 </Select>
               </div>
               <div className="min-w-0">
-                <Label className="text-xs text-muted-foreground mb-1 block">
-                  Frequency
-                </Label>
-                <Select
-                  value={formData.frequency}
-                  onValueChange={(v) => updateField('frequency', v)}
-                >
+                <Label className="text-xs text-muted-foreground mb-1 block">Frequency</Label>
+                <Select value={formData.frequency} onValueChange={(v) => updateField('frequency', v)}>
                   <SelectTrigger className="h-9 text-sm w-full">
                     <SelectValue placeholder="Frequency" />
                   </SelectTrigger>
@@ -458,9 +387,7 @@ export function IssueReportForm({
                 </Select>
               </div>
               <div className="min-w-0">
-                <Label className="text-xs text-muted-foreground mb-1 block">
-                  Start Date
-                </Label>
+                <Label className="text-xs text-muted-foreground mb-1 block">Start Date</Label>
                 <Input
                   type="date"
                   value={formData.startDate}
@@ -485,17 +412,10 @@ export function IssueReportForm({
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             )}
           </button>
-          <div
-            className={cn(
-              'overflow-hidden transition-all duration-200',
-              expandedSection === 'context' ? 'max-h-[500px] p-3' : 'max-h-0'
-            )}
-          >
+          <div className={cn('overflow-hidden transition-all duration-200', expandedSection === 'context' ? 'max-h-[500px] p-3' : 'max-h-0')}>
             <div className="space-y-3">
               <div>
-                <Label className="text-xs text-muted-foreground mb-2 block">
-                  Actions Already Tried
-                </Label>
+                <Label className="text-xs text-muted-foreground mb-2 block">Actions Already Tried</Label>
                 <div className="flex flex-wrap gap-1.5">
                   {attemptedActions.map((action) => (
                     <button
@@ -505,7 +425,7 @@ export function IssueReportForm({
                         'px-2 py-1 text-xs rounded-md border transition-colors',
                         (formData.attemptedActions ?? []).includes(action)
                           ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-background text-foreground border-border hover:border-primary'
+                          : 'bg-background text-foreground border-border hover:border-primary',
                       )}
                     >
                       {action}
@@ -518,9 +438,7 @@ export function IssueReportForm({
                 {/* Left column: Office and Workstation stacked */}
                 <div className="space-y-2">
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">
-                      Office / Area
-                    </Label>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Office / Area</Label>
                     <Input
                       placeholder="E.g.: Office 3B"
                       value={formData.office}
@@ -529,30 +447,22 @@ export function IssueReportForm({
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">
-                      Workstation / Machine
-                    </Label>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Workstation / Machine</Label>
                     <Input
                       placeholder="E.g.: PC-DEV-042"
                       value={formData.workstation}
-                      onChange={(e) =>
-                        updateField('workstation', e.target.value)
-                      }
+                      onChange={(e) => updateField('workstation', e.target.value)}
                       className="h-9 text-sm"
                     />
                   </div>
                 </div>
                 {/* Right column: Comments matching height of left column */}
                 <div className="flex flex-col">
-                  <Label className="text-xs text-muted-foreground mb-1 block">
-                    Comments
-                  </Label>
+                  <Label className="text-xs text-muted-foreground mb-1 block">Comments</Label>
                   <textarea
                     placeholder="Additional information..."
                     value={formData.additionalComments}
-                    onChange={(e) =>
-                      updateField('additionalComments', e.target.value)
-                    }
+                    onChange={(e) => updateField('additionalComments', e.target.value)}
                     className="flex-1 w-full px-3 py-2 text-sm border rounded-lg resize-none focus:outline-none focus:border-primary bg-background"
                   />
                 </div>
@@ -563,27 +473,14 @@ export function IssueReportForm({
 
         {/* Attachments */}
         <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            onChange={handleFileSelect}
-            className="hidden"
-          />
+          <input ref={fileInputRef} type="file" multiple onChange={handleFileSelect} className="hidden" />
           {(formData.attachments ?? []).length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-2">
               {(formData.attachments ?? []).map((file, index) => (
-                <div
-                  key={index}
-                  className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-xs"
-                >
+                <div key={index} className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-xs">
                   <Paperclip className="h-3 w-3" />
                   <span className="max-w-[100px] truncate">{file.name}</span>
-                  <button
-                    onClick={() => removeFile(index)}
-                    aria-label="Remove file"
-                    className="text-muted-foreground hover:text-foreground"
-                  >
+                  <button onClick={() => removeFile(index)} aria-label="Remove file" className="text-muted-foreground hover:text-foreground">
                     <X className="h-3 w-3" />
                   </button>
                 </div>
@@ -594,25 +491,16 @@ export function IssueReportForm({
 
         {/* Actions */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            className="h-9 w-full sm:w-auto"
-          >
+          <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="h-9 w-full sm:w-auto">
             <Paperclip className="h-4 w-4 mr-1.5" />
             Attach a file
           </Button>
-          <Button
-            onClick={handleSubmit}
-            size="sm"
-            className="h-9 w-full sm:w-auto"
-          >
+          <Button onClick={handleSubmit} size="sm" className="h-9 w-full sm:w-auto">
             <Send className="h-4 w-4 mr-1.5" />
             Submit
           </Button>
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -12,4 +12,4 @@ export {
   MapClusterLayer,
   type MapRef,
   type MapViewport,
-} from './map'
+} from './map';

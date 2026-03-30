@@ -7,17 +7,17 @@ export const MAX_TRANSCRIPT_ENTRIES = 300;
  * This avoids repeated full-array filtering on every partial update.
  */
 export function upsertTranscriptEntry(
-    previousEntries: TranscriptEntry[],
-    nextEntry: TranscriptEntry,
-    maxEntries = MAX_TRANSCRIPT_ENTRIES,
+  previousEntries: TranscriptEntry[],
+  nextEntry: TranscriptEntry,
+  maxEntries = MAX_TRANSCRIPT_ENTRIES,
 ): TranscriptEntry[] {
-    const hasTrailingPartial = previousEntries.length > 0 && !previousEntries[previousEntries.length - 1]!.isFinal;
-    const baseEntries = hasTrailingPartial ? previousEntries.slice(0, -1) : previousEntries;
-    const nextEntries = [...baseEntries, nextEntry];
+  const hasTrailingPartial = previousEntries.length > 0 && !previousEntries[previousEntries.length - 1]!.isFinal;
+  const baseEntries = hasTrailingPartial ? previousEntries.slice(0, -1) : previousEntries;
+  const nextEntries = [...baseEntries, nextEntry];
 
-    if (nextEntries.length <= maxEntries) {
-        return nextEntries;
-    }
+  if (nextEntries.length <= maxEntries) {
+    return nextEntries;
+  }
 
-    return nextEntries.slice(nextEntries.length - maxEntries);
+  return nextEntries.slice(nextEntries.length - maxEntries);
 }

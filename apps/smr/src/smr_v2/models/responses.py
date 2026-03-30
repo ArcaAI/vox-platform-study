@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
@@ -51,14 +50,14 @@ class GenerateResponse(BaseModel):
     usage: TokenUsage = Field(default_factory=TokenUsage)
     latency_ms: int = 0
     finish_reason: str = "stop"
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class StreamingGenerateResponse(BaseModel):
     task_id: str
     status: str
     stream_url: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class TaskResponse(BaseModel):
@@ -68,7 +67,7 @@ class TaskResponse(BaseModel):
     model: str
     retry_count: int = 0
     max_retries: int = 3
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     completed_at: datetime | None = None
     error: str | None = None

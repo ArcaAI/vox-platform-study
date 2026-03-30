@@ -2,17 +2,58 @@
 # Build stage — Docker image build + push
 # ══════════════════════════════════════════════════════════════════════════════
 #
-# Builds only run on:
-#   - Tags (release)
-#   - Main branch (with change detection)
-#   - devops/* branches (feature)
-# MR pipelines skip builds — they only run lint + test + scan.
+# Branch behavior:
+#   cicd    — all builds run but require MANUAL approval (when: manual)
+#   staging — only changed services build AUTOMATICALLY
+#   main    — same as staging
+#   MR      — no builds
+#   feature — no builds
+#   release — no builds (SDK publish only)
+
+# ── Pre-pull base images ─────────────────────────────────────────────────────
+# Warm up the host Docker daemon's image cache so that BuildKit (docker-container
+# driver) can resolve FROM images locally instead of pulling ~3 GB from upstream
+# registries on every build.  Runs once per pipeline before any build job.
+
+warm-up-base-images:
+  stage: build
+  tags: [build]
+  image: docker:27
+  timeout: 15m
+  interruptible: true
+  script:
+    - |
+      set -eu
+      images="
+        nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
+        ghcr.io/astral-sh/uv:python3.11-bookworm-slim
+        ghcr.io/astral-sh/uv:0.8.13
+        python:3.11-slim-bookworm
+        python:3.11-slim-trixie
+        node:22-alpine
+      "
+      for img in $images; do
+        if docker image inspect "$img" >/dev/null 2>&1; then
+          echo "CACHED  $img"
+        else
+          echo "PULLING $img ..."
+          docker pull "$img"
+        fi
+      done
+      echo "All base images warm"
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
+      when: never
+    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
 
 # ── API Gateway ──────────────────────────────────────────────────────────────
 
 build-api:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-api
       optional: true
     - job: typecheck
@@ -22,25 +63,13 @@ build-api:
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/api/Dockerfile
   rules:
-    - if: $PIPELINE_TYPE == "merge_request"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
       when: never
+    - if: $PIPELINE_TYPE == "cicd"
+      when: manual
+      allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        paths:
-          - apps/api/**/*
-          - packages/database/**/*
-          - packages/domains/**/*
-          - packages/applications/**/*
-          - packages/exceptions/**/*
-          - packages/logger/**/*
-          - packages/tools/**/*
-          - packages/config-eslint/**/*
-          - packages/config-rollup/**/*
-          - packages/config-ts/**/*
-        compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
       changes:
         - apps/api/**/*
         - packages/database/**/*
@@ -49,15 +78,14 @@ build-api:
         - packages/exceptions/**/*
         - packages/logger/**/*
         - packages/tools/**/*
-        - packages/config-eslint/**/*
-        - packages/config-rollup/**/*
-        - packages/config-ts/**/*
 
 # ── UI Playground ────────────────────────────────────────────────────────────
 
 build-ui-playground:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-sdk
       optional: true
     - job: typecheck
@@ -68,26 +96,13 @@ build-ui-playground:
     DOCKERFILE: apps/ui-playground/Dockerfile
     BUILD_ARGS: "--build-arg VITE_API_URL=$VITE_API_URL"
   rules:
-    - if: $PIPELINE_TYPE == "merge_request"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
       when: never
+    - if: $PIPELINE_TYPE == "cicd"
+      when: manual
+      allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        paths:
-          - apps/ui-playground/**/*
-          - packages/ui/**/*
-          - packages/room/**/*
-          - packages/vad/**/*
-          - packages/stt/**/*
-          - packages/noise-filter/**/*
-          - packages/agentic-sdk-v2/**/*
-          - packages/med-ner/**/*
-          - packages/pipeline/**/*
-          - packages/utils/**/*
-          - packages/config-tailwind/**/*
-        compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
       changes:
         - apps/ui-playground/**/*
         - packages/ui/**/*
@@ -97,15 +112,40 @@ build-ui-playground:
         - packages/noise-filter/**/*
         - packages/agentic-sdk-v2/**/*
         - packages/med-ner/**/*
-        - packages/pipeline/**/*
-        - packages/utils/**/*
-        - packages/config-tailwind/**/*
+
+# ── Live Transcription Example UI ───────────────────────────────────────────
+
+build-example-ui:
+  extends: .build-template
+  needs:
+    - job: warm-up-base-images
+      optional: true
+    - job: test-sdk
+      optional: true
+    - job: typecheck
+      optional: true
+  variables:
+    SERVICE_NAME: example-ui
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: apps/example/Dockerfile
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
+      when: never
+    - if: $PIPELINE_TYPE == "cicd"
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
+      changes:
+        - apps/example/**/*
 
 # ── NLP ──────────────────────────────────────────────────────────────────────
 
 build-nlp:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-nlp
       optional: true
   variables:
@@ -113,46 +153,23 @@ build-nlp:
     DOCKER_CONTEXT: apps/nlp
     DOCKERFILE: apps/nlp/Dockerfile
   rules:
-    - if: $PIPELINE_TYPE == "merge_request"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
       when: never
+    - if: $PIPELINE_TYPE == "cicd"
+      when: manual
+      allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        paths:
-          - apps/nlp/**/*
-        compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
       changes:
         - apps/nlp/**/*
-
-# ── Guardrail ────────────────────────────────────────────────────────────────
-
-build-guardrail:
-  extends: .build-template
-  variables:
-    SERVICE_NAME: guardrail
-    DOCKER_CONTEXT: apps/guardrail
-    DOCKERFILE: apps/guardrail/Dockerfile
-  rules:
-    - if: $PIPELINE_TYPE == "merge_request"
-      when: never
-    - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        paths:
-          - apps/guardrail/**/*
-        compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - apps/guardrail/**/*
 
 # ── SMR ──────────────────────────────────────────────────────────────────────
 
 build-smr:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-smr
       optional: true
   variables:
@@ -160,16 +177,13 @@ build-smr:
     DOCKER_CONTEXT: apps/smr
     DOCKERFILE: apps/smr/Dockerfile
   rules:
-    - if: $PIPELINE_TYPE == "merge_request"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
       when: never
+    - if: $PIPELINE_TYPE == "cicd"
+      when: manual
+      allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        paths:
-          - apps/smr/**/*
-        compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
       changes:
         - apps/smr/**/*
 
@@ -178,6 +192,8 @@ build-smr:
 build-stt-v2:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-stt-v2
       optional: true
   variables:
@@ -186,16 +202,13 @@ build-stt-v2:
     DOCKERFILE: apps/stt-v2/docker/Dockerfile
     BUILD_TARGET: ml-runtime
   rules:
-    - if: $PIPELINE_TYPE == "merge_request"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
       when: never
+    - if: $PIPELINE_TYPE == "cicd"
+      when: manual
+      allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        paths:
-          - apps/stt-v2/**/*
-        compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
       changes:
         - apps/stt-v2/**/*
 
@@ -204,6 +217,8 @@ build-stt-v2:
 build-stt-v2-worker:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-stt-v2
       optional: true
   variables:
@@ -212,16 +227,13 @@ build-stt-v2-worker:
     DOCKERFILE: apps/stt-v2/docker/Dockerfile
     BUILD_TARGET: worker
   rules:
-    - if: $PIPELINE_TYPE == "merge_request"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
       when: never
+    - if: $PIPELINE_TYPE == "cicd"
+      when: manual
+      allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        paths:
-          - apps/stt-v2/**/*
-        compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
       changes:
         - apps/stt-v2/**/*
 
@@ -230,6 +242,8 @@ build-stt-v2-worker:
 build-database:
   extends: .build-template
   needs:
+    - job: warm-up-base-images
+      optional: true
     - job: test-packages
       optional: true
   variables:
@@ -237,15 +251,12 @@ build-database:
     DOCKER_CONTEXT: .
     DOCKERFILE: packages/database/Dockerfile
   rules:
-    - if: $PIPELINE_TYPE == "merge_request"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
       when: never
+    - if: $PIPELINE_TYPE == "cicd"
+      when: manual
+      allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        paths:
-          - packages/database/**/*
-        compare_to: refs/heads/main
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
       changes:
         - packages/database/**/*

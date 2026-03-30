@@ -1,17 +1,8 @@
 import { Main } from '@/components/layout/main';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
 import { Badge } from '@arcaai/ui/badge';
-import { Button } from '@arcaai/ui/button';
 import { Link } from '@tanstack/react-router';
-import {
-  BookOpen,
-  Brain,
-  FileText,
-  History,
-  Radio,
-  Sparkles,
-  Zap,
-} from 'lucide-react';
+import { BookOpen, Brain, FileText, History, Radio, Sparkles, Zap } from 'lucide-react';
 import { Skeleton } from '@arcaai/ui/skeleton';
 import { SmrStatusBadge } from '../components/smr-status-badge';
 import { useSmrProviders } from '../api';
@@ -19,7 +10,8 @@ import { useSmrProviders } from '../api';
 const features = [
   {
     title: 'Pre-Summary Generation',
-    description: 'Generate concise pre-summaries from clinical context, case notes, and historical consultation data. Supports template-based generation.',
+    description:
+      'Generate concise pre-summaries from clinical context, case notes, and historical consultation data. Supports template-based generation.',
     icon: FileText,
     href: '/summarization/pre-summary',
     badge: 'US #127-133',
@@ -27,7 +19,8 @@ const features = [
   },
   {
     title: 'Full Summary Generation',
-    description: 'Generate comprehensive clinical summaries using transcripts, pre-summaries, templates, and DNA writing styles. Supports SOAP and narrative formats.',
+    description:
+      'Generate comprehensive clinical summaries using transcripts, pre-summaries, templates, and DNA writing styles. Supports SOAP and narrative formats.',
     icon: Sparkles,
     href: '/summarization/summary',
     badge: 'US #134-143',
@@ -35,7 +28,8 @@ const features = [
   },
   {
     title: 'Live Streaming Demo',
-    description: 'WebSocket bidirectional audio streaming with live transcription, and SSE file upload with streaming transcript and summary generation.',
+    description:
+      'WebSocket bidirectional audio streaming with live transcription, and SSE file upload with streaming transcript and summary generation.',
     icon: Radio,
     href: '/summarization/live-demo',
     badge: 'WS + SSE',
@@ -92,9 +86,7 @@ export default function SummarizationOverview() {
                 <CardDescription>Providers</CardDescription>
                 <CardTitle className="text-3xl tabular-nums">
                   {availableProviders.length}
-                  <span className="text-muted-foreground text-sm font-normal">
-                    /{providers?.length ?? 0}
-                  </span>
+                  <span className="text-muted-foreground text-sm font-normal">/{providers?.length ?? 0}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -130,14 +122,12 @@ export default function SummarizationOverview() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <feature.icon className={`size-8 ${feature.color}`} />
-                  <Badge variant="outline" className="text-[10px]">{feature.badge}</Badge>
+                  <Badge variant="outline" className="text-[10px]">
+                    {feature.badge}
+                  </Badge>
                 </div>
-                <CardTitle className="mt-3 text-lg group-hover:text-primary transition-colors">
-                  {feature.title}
-                </CardTitle>
-                <CardDescription className="text-xs leading-relaxed">
-                  {feature.description}
-                </CardDescription>
+                <CardTitle className="mt-3 text-lg group-hover:text-primary transition-colors">{feature.title}</CardTitle>
+                <CardDescription className="text-xs leading-relaxed">{feature.description}</CardDescription>
               </CardHeader>
             </Card>
           </Link>
@@ -150,9 +140,7 @@ export default function SummarizationOverview() {
             <BookOpen className="size-5" />
             <CardTitle>User Stories Coverage</CardTitle>
           </div>
-          <CardDescription>
-            This section demonstrates summarization capabilities from the HOPE user stories.
-          </CardDescription>
+          <CardDescription>This section demonstrates summarization capabilities from the HOPE user stories.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2">

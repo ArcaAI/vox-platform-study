@@ -1,19 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Suggestions,
-  Suggestion,
-} from '../../../registries/ai-elements/suggestion'
+import { Suggestions, Suggestion } from '../../../registries/ai-elements/suggestion';
 
 const meta = {
   title: 'Registries/AiElements/Suggestion',
   component: Suggestions,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Suggestions>
+} satisfies Meta<typeof Suggestions>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -27,4 +24,4 @@ export const Default: Story = {
       </Suggestions>
     </div>
   ),
-}
+};

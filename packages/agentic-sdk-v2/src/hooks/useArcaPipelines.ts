@@ -6,11 +6,7 @@
  */
 
 import { useMemo, useCallback } from 'react';
-import {
-  useAgenticStore,
-  selectTranscriptionPipelineState,
-  selectKnowledgePipelineState,
-} from '../store';
+import { useAgenticStore, selectTranscriptionPipelineState, selectKnowledgePipelineState } from '../store';
 import type { MedicalEntity, PipelineStateInfo } from '../types';
 import type { ISDKLogger } from '../core/logger';
 
@@ -118,7 +114,7 @@ export function useArcaPipelines(): UseArcaPipelineControl {
         throw error;
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   const triggerSummarization = useCallback(async (): Promise<string> => {
@@ -173,13 +169,6 @@ export function useArcaPipelines(): UseArcaPipelineControl {
       triggerNER,
       triggerSummarization,
     }),
-    [
-      transcriptionPipelineState,
-      knowledgePipelineState,
-      pauseTranscription,
-      resumeTranscription,
-      triggerNER,
-      triggerSummarization,
-    ]
+    [transcriptionPipelineState, knowledgePipelineState, pauseTranscription, resumeTranscription, triggerNER, triggerSummarization],
   );
 }

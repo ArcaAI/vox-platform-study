@@ -75,36 +75,20 @@ export class NativeProcessor extends BaseProcessor {
    */
   private async applyConstraints(track: MediaStreamTrack): Promise<void> {
     if (this.options.echoCancellation !== undefined) {
-      await applyFeatureConstraint(
-        track,
-        AudioFeature.ECHO_CANCELLATION,
-        this.options.echoCancellation
-      );
+      await applyFeatureConstraint(track, AudioFeature.ECHO_CANCELLATION, this.options.echoCancellation);
     }
 
     if (this.options.noiseSuppression !== undefined) {
-      await applyFeatureConstraint(
-        track,
-        AudioFeature.NOISE_SUPPRESSION,
-        this.options.noiseSuppression
-      );
+      await applyFeatureConstraint(track, AudioFeature.NOISE_SUPPRESSION, this.options.noiseSuppression);
     }
 
     if (this.options.autoGainControl !== undefined) {
-      await applyFeatureConstraint(
-        track,
-        AudioFeature.AUTO_GAIN_CONTROL,
-        this.options.autoGainControl
-      );
+      await applyFeatureConstraint(track, AudioFeature.AUTO_GAIN_CONTROL, this.options.autoGainControl);
     }
 
     if (this.options.voiceIsolation !== undefined) {
       try {
-        await applyFeatureConstraint(
-          track,
-          AudioFeature.VOICE_ISOLATION,
-          this.options.voiceIsolation
-        );
+        await applyFeatureConstraint(track, AudioFeature.VOICE_ISOLATION, this.options.voiceIsolation);
       } catch {
         // Voice isolation may not be supported
         console.warn('Voice isolation not supported');
@@ -137,8 +121,6 @@ export class NativeProcessor extends BaseProcessor {
  * @param options - Processor options
  * @returns NativeProcessor instance
  */
-export function createNativeProcessor(
-  options?: NativeProcessorOptions
-): NativeProcessor {
+export function createNativeProcessor(options?: NativeProcessorOptions): NativeProcessor {
   return new NativeProcessor(options);
 }

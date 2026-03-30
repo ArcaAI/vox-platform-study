@@ -3,7 +3,7 @@ import { Module } from '@nestjs/common';
 import { PrismaStudioController } from './pstudio.controller';
 
 @Module({
-    imports: [PrismaStudioServiceModule],
-    controllers: [PrismaStudioController],
+  imports: [PrismaStudioServiceModule],
+  controllers: [PrismaStudioController],
 })
 export class PrismaStudioModule {}

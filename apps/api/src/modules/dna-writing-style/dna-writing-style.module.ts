@@ -4,7 +4,7 @@ import { DnaWritingStyleController } from './dna-writing-style.controller';
 import { DnaWritingStyleAdminController } from './dna-writing-style-admin.controller';
 
 @Module({
-    imports: [DnaWritingStyleServiceModule],
-    controllers: [DnaWritingStyleController, DnaWritingStyleAdminController],
+  imports: [DnaWritingStyleServiceModule],
+  controllers: [DnaWritingStyleController, DnaWritingStyleAdminController],
 })
 export class DnaWritingStyleModule {}

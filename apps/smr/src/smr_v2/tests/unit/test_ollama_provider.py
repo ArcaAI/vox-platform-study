@@ -7,11 +7,10 @@ RED: Written before implementation.
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-import pytest_asyncio
 
 from smr_v2.core.config import OllamaConfig
 from smr_v2.models.requests import GenerateRequest
@@ -104,7 +103,7 @@ class TestOllamaGenerate:
         mock_http_client.post.return_value = mock_response
 
         provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        with pytest.raises(Exception):
+        with pytest.raises(httpx.HTTPStatusError):
             await provider.generate(GenerateRequest(prompt="hi"))
 
 
@@ -115,9 +114,8 @@ class TestOllamaGenerateStream:
     @pytest.mark.asyncio
     async def test_stream_yields_chunks(self, ollama_config, mock_http_client):
         from smr_v2.providers.ollama import OllamaProvider
-        from smr_v2.models.stream import StreamChunk
 
-        ndjson_lines = [
+        _raw_lines = [
             json.dumps({"response": "Hello", "done": False}).encode() + b"\n",
             json.dumps({"response": " world", "done": False}).encode() + b"\n",
             json.dumps({"response": "", "done": True}).encode() + b"\n",
@@ -151,7 +149,6 @@ class TestOllamaGenerateStream:
     @pytest.mark.asyncio
     async def test_stream_ends_with_done(self, ollama_config, mock_http_client):
         from smr_v2.providers.ollama import OllamaProvider
-        from smr_v2.models.stream import StreamChunk
 
         mock_response = MagicMock()
         mock_response.status_code = 200

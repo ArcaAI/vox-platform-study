@@ -75,11 +75,7 @@ export function useRoles(): UseRolesReturn {
     [execute],
   );
 
-  const getRole = useCallback(
-    (id: string) =>
-      execute<Role>('getRole', (client) => client.get<Role>(ROLE_ENDPOINTS.GET(id))),
-    [execute],
-  );
+  const getRole = useCallback((id: string) => execute<Role>('getRole', (client) => client.get<Role>(ROLE_ENDPOINTS.GET(id))), [execute]);
 
   const createRole = useCallback(
     (input: CreateRoleInput) =>
@@ -113,18 +109,14 @@ export function useRoles(): UseRolesReturn {
   const assignPolicy = useCallback(
     (roleId: string, policyId: string, priority?: number) =>
       execute<unknown>('assignPolicy', (client) =>
-        client.post(ROLE_ENDPOINTS.ASSIGN_POLICY(roleId, policyId),
-          priority !== undefined ? { priority } : {},
-        ),
+        client.post(ROLE_ENDPOINTS.ASSIGN_POLICY(roleId, policyId), priority !== undefined ? { priority } : {}),
       ),
     [execute],
   );
 
   const removePolicy = useCallback(
     (roleId: string, policyId: string) =>
-      execute<void>('removePolicy', (client) =>
-        client.delete(ROLE_ENDPOINTS.REMOVE_POLICY(roleId, policyId)) as Promise<void>,
-      ),
+      execute<void>('removePolicy', (client) => client.delete(ROLE_ENDPOINTS.REMOVE_POLICY(roleId, policyId)) as Promise<void>),
     [execute],
   );
 
@@ -140,25 +132,30 @@ export function useRoles(): UseRolesReturn {
   const assignRole = useCallback(
     (userId: string, roleId: string, tenantId?: string) =>
       execute<UserRoleAssignment>('assignRole', (client) =>
-        client.post<UserRoleAssignment>(ROLE_ENDPOINTS.USER_ROLES(userId),
-          tenantId ? { roleId, tenantId } : { roleId },
-        ),
+        client.post<UserRoleAssignment>(ROLE_ENDPOINTS.USER_ROLES(userId), tenantId ? { roleId, tenantId } : { roleId }),
       ),
     [execute],
   );
 
   const removeRole = useCallback(
     (userId: string, roleId: string) =>
-      execute<void>('removeRole', (client) =>
-        client.delete(ROLE_ENDPOINTS.USER_ROLE(userId, roleId)) as Promise<void>,
-      ),
+      execute<void>('removeRole', (client) => client.delete(ROLE_ENDPOINTS.USER_ROLE(userId, roleId)) as Promise<void>),
     [execute],
   );
 
   return {
-    roles, isLoading, error,
-    listRoles, getRole, createRole, updateRole, deleteRole,
-    assignPolicy, removePolicy,
-    getUserRoles, assignRole, removeRole,
+    roles,
+    isLoading,
+    error,
+    listRoles,
+    getRole,
+    createRole,
+    updateRole,
+    deleteRole,
+    assignPolicy,
+    removePolicy,
+    getUserRoles,
+    assignRole,
+    removeRole,
   };
 }

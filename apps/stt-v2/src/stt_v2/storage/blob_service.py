@@ -1,9 +1,10 @@
 """Blob storage service for MinIO operations."""
 
+import asyncio
 import io
 import logging
+from collections.abc import AsyncGenerator
 from datetime import timedelta
-from typing import AsyncGenerator
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import StorageError
@@ -150,6 +151,182 @@ class BlobService:
         )
 
         return self._resolver.get_full_uri(self._resolver.chunk_bucket, path)
+
+    async def upload_streaming_raw_chunk(
+        self,
+        chunk_bytes: bytes,
+        tenant_id: str,
+        session_id: str,
+        chunk_index: int,
+    ) -> str:
+        """Upload a periodic raw PCM chunk to storage.
+
+        Path: ``{tenant_id}/{year}/{month}/streaming/{session_id}/raw/chunk_{NNNN}.pcm``
+
+        Args:
+            chunk_bytes: Raw PCM s16le bytes for this chunk.
+            tenant_id: Tenant ID.
+            session_id: Streaming session ID.
+            chunk_index: Zero-based chunk sequence number.
+
+        Returns:
+            Full storage URI.
+        """
+        path = self._resolver.streaming_raw_chunk_path(
+            tenant_id=tenant_id,
+            session_id=session_id,
+            chunk_index=chunk_index,
+        )
+
+        await self._upload_bytes(
+            bucket=self._resolver.audio_bucket,
+            path=path,
+            data=chunk_bytes,
+            content_type="application/octet-stream",
+        )
+
+        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        logger.info(f"Uploaded streaming raw chunk to: {uri} ({len(chunk_bytes)} bytes)")
+        return uri
+
+    async def upload_streaming_processed_chunk(
+        self,
+        chunk_bytes: bytes,
+        tenant_id: str,
+        session_id: str,
+        chunk_index: int,
+    ) -> str:
+        """Upload a processed audio chunk to storage.
+
+        Path: ``{tenant_id}/{year}/{month}/streaming/{session_id}/processed/chunk_{NNNN}.pcm``
+
+        Args:
+            chunk_bytes: Processed PCM bytes for this chunk.
+            tenant_id: Tenant ID.
+            session_id: Streaming session ID.
+            chunk_index: Zero-based chunk sequence number.
+
+        Returns:
+            Full storage URI.
+        """
+        path = self._resolver.streaming_processed_chunk_path(
+            tenant_id=tenant_id,
+            session_id=session_id,
+            chunk_index=chunk_index,
+        )
+
+        await self._upload_bytes(
+            bucket=self._resolver.audio_bucket,
+            path=path,
+            data=chunk_bytes,
+            content_type="application/octet-stream",
+        )
+
+        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        logger.info(f"Uploaded streaming processed chunk to: {uri} ({len(chunk_bytes)} bytes)")
+        return uri
+
+    async def upload_streaming_raw_complete(
+        self,
+        wav_bytes: bytes,
+        tenant_id: str,
+        session_id: str,
+    ) -> str:
+        """Upload the final combined WAV to storage.
+
+        Path: ``{tenant_id}/{year}/{month}/streaming/{session_id}/raw/complete.wav``
+
+        Args:
+            wav_bytes: WAV-encoded audio bytes.
+            tenant_id: Tenant ID.
+            session_id: Streaming session ID.
+
+        Returns:
+            Full storage URI.
+        """
+        path = self._resolver.streaming_raw_complete_path(
+            tenant_id=tenant_id,
+            session_id=session_id,
+        )
+
+        await self._upload_bytes(
+            bucket=self._resolver.audio_bucket,
+            path=path,
+            data=wav_bytes,
+            content_type="audio/wav",
+        )
+
+        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        logger.info(f"Uploaded streaming complete WAV to: {uri} ({len(wav_bytes)} bytes)")
+        return uri
+
+    async def upload_streaming_transcript(
+        self,
+        transcript_bytes: bytes,
+        tenant_id: str,
+        session_id: str,
+    ) -> str:
+        """Upload streaming session transcript to storage.
+
+        Path: ``{tenant_id}/{year}/{month}/streaming/{session_id}/transcript.json``
+
+        Args:
+            transcript_bytes: JSON-encoded transcript bytes.
+            tenant_id: Tenant ID.
+            session_id: Streaming session ID.
+
+        Returns:
+            Full storage URI.
+        """
+        path = self._resolver.streaming_transcript_path(
+            tenant_id=tenant_id,
+            session_id=session_id,
+        )
+
+        await self._upload_bytes(
+            bucket=self._resolver.audio_bucket,
+            path=path,
+            data=transcript_bytes,
+            content_type="application/json",
+        )
+
+        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        logger.info(f"Uploaded streaming transcript to: {uri} ({len(transcript_bytes)} bytes)")
+        return uri
+
+    async def upload_streaming_metadata(
+        self,
+        metadata_bytes: bytes,
+        tenant_id: str,
+        session_id: str,
+    ) -> str:
+        """Upload streaming session metadata to storage.
+
+        Path: ``{tenant_id}/{year}/{month}/streaming/{session_id}/metadata.json``
+
+        Args:
+            metadata_bytes: JSON-encoded metadata bytes.
+            tenant_id: Tenant ID.
+            session_id: Streaming session ID.
+
+        Returns:
+            Full storage URI.
+        """
+        path = self._resolver.streaming_metadata_path(
+            tenant_id=tenant_id,
+            session_id=session_id,
+        )
+
+        await self._upload_bytes(
+            bucket=self._resolver.audio_bucket,
+            path=path,
+            data=metadata_bytes,
+            content_type="application/json",
+        )
+
+        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        logger.info(f"Uploaded streaming metadata to: {uri} ({len(metadata_bytes)} bytes)")
+        return uri
 
     async def upload_transcript(
         self,
@@ -363,10 +540,15 @@ class BlobService:
         data: bytes,
         content_type: str,
     ) -> None:
-        """Upload bytes to MinIO."""
+        """Upload bytes to MinIO.
+
+        The MinIO SDK is synchronous, so the actual I/O is offloaded
+        to the default thread-pool executor to avoid blocking the
+        event loop (and stalling frame processing / inference).
+        """
         client = get_minio_client()
 
-        try:
+        def _sync_upload() -> None:
             # Ensure bucket exists
             if not client.client.bucket_exists(bucket):
                 client.client.make_bucket(bucket)
@@ -380,6 +562,9 @@ class BlobService:
                 content_type=content_type,
             )
 
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, _sync_upload)
         except Exception as e:
             raise StorageError(f"Failed to upload to {bucket}/{path}: {e}") from e
 

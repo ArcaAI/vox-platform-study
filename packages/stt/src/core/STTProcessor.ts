@@ -162,10 +162,7 @@ export class STTProcessor extends BaseProcessor {
     const support = getSTTBrowserSupport();
 
     if (!support.localSupported && !support.backendSupported) {
-      throw new STTError(
-        STTErrorCode.NOT_SUPPORTED,
-        support.unsupportedReason ?? 'STT not supported in this browser'
-      );
+      throw new STTError(STTErrorCode.NOT_SUPPORTED, support.unsupportedReason ?? 'STT not supported in this browser');
     }
 
     // Resolve provider type
@@ -208,8 +205,7 @@ export class STTProcessor extends BaseProcessor {
     // model weights remain in-memory and we avoid repeated model downloads.
     if (this.provider) {
       await this.provider.stop();
-      const keepLocalProviderWarm =
-        this.resolvedProviderType === 'local' && this.provider instanceof LocalSTTProvider;
+      const keepLocalProviderWarm = this.resolvedProviderType === 'local' && this.provider instanceof LocalSTTProvider;
       if (!keepLocalProviderWarm) {
         await this.provider.destroy();
         this.provider = null;
@@ -291,10 +287,7 @@ export class STTProcessor extends BaseProcessor {
    */
   async transcribeSegment(audio: Float32Array): Promise<TranscriptionResult> {
     if (!this.provider) {
-      throw new STTError(
-        STTErrorCode.PROVIDER_INIT_FAILED,
-        'Provider not initialized'
-      );
+      throw new STTError(STTErrorCode.PROVIDER_INIT_FAILED, 'Provider not initialized');
     }
 
     return this.provider.transcribeSegment(audio);
@@ -356,9 +349,7 @@ export class STTProcessor extends BaseProcessor {
     // For local provider, would need to reinitialize
     // For remote, the next session can use the new language
     if (this.provider && this.resolvedProviderType === 'local') {
-      console.warn(
-        '[STTProcessor] Language change requires reinitialization for local provider'
-      );
+      console.warn('[STTProcessor] Language change requires reinitialization for local provider');
     }
   }
 
@@ -375,18 +366,12 @@ export class STTProcessor extends BaseProcessor {
 
     // For local provider, modelId is required
     if (provider === 'local' && !features?.modelId) {
-      throw new STTError(
-        STTErrorCode.INVALID_CONFIG,
-        'modelId is required when provider is "local"'
-      );
+      throw new STTError(STTErrorCode.INVALID_CONFIG, 'modelId is required when provider is "local"');
     }
 
     // For remote provider, sttSocket is required
     if (provider === 'remote' && !this.options.sttSocket) {
-      throw new STTError(
-        STTErrorCode.INVALID_CONFIG,
-        'sttSocket is required when provider is "remote"'
-      );
+      throw new STTError(STTErrorCode.INVALID_CONFIG, 'sttSocket is required when provider is "remote"');
     }
   }
 
@@ -410,12 +395,9 @@ export class STTProcessor extends BaseProcessor {
   private async initializeProvider(): Promise<void> {
     if (this.resolvedProviderType === 'local') {
       const nextCacheKey = this.getLocalProviderCacheKey();
-      const canReuseLocalProvider =
-        this.provider instanceof LocalSTTProvider &&
-        this.localProviderCacheKey === nextCacheKey;
+      const canReuseLocalProvider = this.provider instanceof LocalSTTProvider && this.localProviderCacheKey === nextCacheKey;
       const pooledProvider = STTProcessor.localProviderPool.get(nextCacheKey);
-      const canReusePooledProvider =
-        pooledProvider && pooledProvider.isReady() && !pooledProvider.isProcessing();
+      const canReusePooledProvider = pooledProvider && pooledProvider.isReady() && !pooledProvider.isProcessing();
 
       if (!canReuseLocalProvider) {
         if (canReusePooledProvider) {
@@ -487,10 +469,7 @@ export class STTProcessor extends BaseProcessor {
     const provider = new LocalSTTProvider();
 
     if (!provider.isSupported()) {
-      throw new STTError(
-        STTErrorCode.NOT_SUPPORTED,
-        'Local STT not supported in this browser'
-      );
+      throw new STTError(STTErrorCode.NOT_SUPPORTED, 'Local STT not supported in this browser');
     }
 
     const audio = this.options.audio ?? DEFAULT_AUDIO_CONFIG;
@@ -560,10 +539,7 @@ export class STTProcessor extends BaseProcessor {
     const provider = new RemoteSTTProvider();
 
     if (!provider.isSupported()) {
-      throw new STTError(
-        STTErrorCode.NOT_SUPPORTED,
-        'Remote STT not supported in this browser'
-      );
+      throw new STTError(STTErrorCode.NOT_SUPPORTED, 'Remote STT not supported in this browser');
     }
 
     const audio = this.options.audio ?? DEFAULT_AUDIO_CONFIG;
@@ -600,10 +576,7 @@ export class STTProcessor extends BaseProcessor {
   /**
    * Set up audio capture from the MediaStreamTrack.
    */
-  private async setupAudioCapture(
-    audioContext: AudioContext,
-    track: MediaStreamTrack
-  ): Promise<void> {
+  private async setupAudioCapture(audioContext: AudioContext, track: MediaStreamTrack): Promise<void> {
     // Create source from track
     const stream = new MediaStream([track]);
     this.sourceNode = audioContext.createMediaStreamSource(stream);
@@ -634,7 +607,6 @@ export class STTProcessor extends BaseProcessor {
 
       // Send to provider
       this.provider.processAudio(audioData, audioContext.sampleRate);
-
     };
 
     // Connect audio graph

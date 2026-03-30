@@ -1,14 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import {
-  IconBold,
-  IconItalic,
-  IconUnderline,
-  IconAlignLeft,
-  IconAlignCenter,
-  IconAlignRight,
-} from '@tabler/icons-react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { IconBold, IconItalic, IconUnderline, IconAlignLeft, IconAlignCenter, IconAlignRight } from '@tabler/icons-react';
 
-import { ToggleGroup, ToggleGroupItem } from '../../shadcn/toggle-group'
+import { ToggleGroup, ToggleGroupItem } from '../../shadcn/toggle-group';
 
 const meta = {
   title: 'Components/ToggleGroup',
@@ -17,10 +10,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof ToggleGroup>
+} satisfies Meta<typeof ToggleGroup>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -37,7 +30,7 @@ export const Default: Story = {
       </ToggleGroupItem>
     </ToggleGroup>
   ),
-}
+};
 
 export const Single: Story = {
   args: {} as any,
@@ -54,7 +47,7 @@ export const Single: Story = {
       </ToggleGroupItem>
     </ToggleGroup>
   ),
-}
+};
 
 export const Outline: Story = {
   args: {} as any,
@@ -71,7 +64,7 @@ export const Outline: Story = {
       </ToggleGroupItem>
     </ToggleGroup>
   ),
-}
+};
 
 export const Sizes: Story = {
   args: {} as any,
@@ -103,7 +96,7 @@ export const Sizes: Story = {
       </ToggleGroup>
     </div>
   ),
-}
+};
 
 export const Disabled: Story = {
   args: {} as any,
@@ -117,4 +110,4 @@ export const Disabled: Story = {
       </ToggleGroupItem>
     </ToggleGroup>
   ),
-}
+};

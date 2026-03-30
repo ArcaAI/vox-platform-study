@@ -5,7 +5,7 @@
  * values to a format suitable for serialization.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { convertEntityValue } from './convertEntityValue';
 // Import directly from source files to avoid circular dependency issues
 import { BaseEntity, IBaseEntity } from '../common/baseEntity/base.entity';
@@ -126,8 +126,14 @@ describe('convertEntityValue', () => {
     });
 
     it('should handle nested arrays', () => {
-      const arr = [[1, 2], [3, 4]];
-      expect(convertEntityValue(arr)).toEqual([[1, 2], [3, 4]]);
+      const arr = [
+        [1, 2],
+        [3, 4],
+      ];
+      expect(convertEntityValue(arr)).toEqual([
+        [1, 2],
+        [3, 4],
+      ]);
     });
 
     it('should handle empty arrays', () => {
@@ -257,10 +263,7 @@ describe('convertEntityValue', () => {
     });
 
     it('should handle array of entities', () => {
-      const entities = [
-        createTestEntity({ id: '1', name: 'Entity 1' }),
-        createTestEntity({ id: '2', name: 'Entity 2' }),
-      ];
+      const entities = [createTestEntity({ id: '1', name: 'Entity 1' }), createTestEntity({ id: '2', name: 'Entity 2' })];
 
       const result = convertEntityValue(entities);
 
@@ -272,10 +275,7 @@ describe('convertEntityValue', () => {
     });
 
     it('should handle object with array of value objects', () => {
-      const valueObjects = [
-        new TestValueObject(100, 'USD'),
-        new TestValueObject(200, 'EUR'),
-      ];
+      const valueObjects = [new TestValueObject(100, 'USD'), new TestValueObject(200, 'EUR')];
 
       const obj = {
         name: 'Test',
@@ -305,10 +305,11 @@ describe('convertEntityValue', () => {
     it('should handle circular reference prevention (if implemented)', () => {
       // Note: The current implementation doesn't handle circular references
       // This test documents the expected behavior
-      const obj: any = { name: 'Test' };
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _obj: Record<string, unknown> = { name: 'Test' };
       // Uncomment to test circular reference handling if implemented
-      // obj.self = obj;
-      // expect(() => convertEntityValue(obj)).not.toThrow();
+      // _obj.self = _obj;
+      // expect(() => convertEntityValue(_obj)).not.toThrow();
     });
 
     it('should handle functions in objects (skip or convert)', () => {

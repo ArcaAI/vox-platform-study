@@ -6,8 +6,6 @@ Providers are enabled/disabled via SMR_V2_*_ENABLED flags.
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

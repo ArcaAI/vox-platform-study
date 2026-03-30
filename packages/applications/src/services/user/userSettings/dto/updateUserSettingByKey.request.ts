@@ -8,20 +8,20 @@ import { ValueType } from '@arcaai/domains';
  * Updates a specific setting by namespace and key.
  */
 export class UpdateUserSettingByKeyRequest extends BaseRequest {
-    @ApiProperty({ description: 'Value of the setting' })
-    @IsString()
-    value!: string;
+  @ApiProperty({ description: 'Value of the setting' })
+  @IsString()
+  value!: string;
 
-    @ApiPropertyOptional({
-        description: 'Data type of the setting value',
-        enum: ValueType,
-    })
-    @IsOptional()
-    @IsEnum(ValueType)
-    dataType?: ValueType;
+  @ApiPropertyOptional({
+    description: 'Data type of the setting value',
+    enum: ValueType,
+  })
+  @IsOptional()
+  @IsEnum(ValueType)
+  dataType?: ValueType;
 
-    @ApiPropertyOptional({ description: 'Display name of the setting' })
-    @IsOptional()
-    @IsString()
-    name?: string;
+  @ApiPropertyOptional({ description: 'Display name of the setting' })
+  @IsOptional()
+  @IsString()
+  name?: string;
 }

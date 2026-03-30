@@ -1,10 +1,5 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import {
-  GlassTabs,
-  GlassTabsList,
-  GlassTabsTrigger,
-  GlassTabsContent,
-} from '@/components/registries/einui/glass-tabs'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { GlassTabs, GlassTabsList, GlassTabsTrigger, GlassTabsContent } from '@/components/registries/einui/glass-tabs';
 
 function GlassTabsDemo() {
   return (
@@ -16,7 +11,7 @@ function GlassTabsDemo() {
       <GlassTabsContent value="tab1">Content for Tab 1</GlassTabsContent>
       <GlassTabsContent value="tab2">Content for Tab 2</GlassTabsContent>
     </GlassTabs>
-  )
+  );
 }
 
 const meta = {
@@ -24,11 +19,11 @@ const meta = {
   component: GlassTabsDemo,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof GlassTabsDemo>
+} satisfies Meta<typeof GlassTabsDemo>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => <GlassTabsDemo />,
-}
+};

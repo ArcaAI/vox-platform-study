@@ -8,12 +8,11 @@ import numpy as np
 import pytest
 
 from stt_v2.streaming.preprocessor import (
-    AudioUtterance,
-    StreamingPreprocessor,
     _FRAME_SIZE_16K,
     _PRE_SPEECH_CONTEXT_MS,
+    AudioUtterance,
+    StreamingPreprocessor,
 )
-
 
 # =========================================================================
 # Helpers
@@ -358,7 +357,7 @@ class TestPreprocessorWithVAD:
         )
 
         pcm = _make_speech_pcm(100)
-        utts = await pp.feed(pcm)
+        _utts = await pp.feed(pcm)
 
         # Should not crash; error treated as prob=1.0
         assert pp.in_speech is True
@@ -456,7 +455,7 @@ class TestPreprocessorIncrementalFeed:
 
         # Exactly one frame = 512 samples * 2 bytes = 1024 bytes
         one_frame = np.zeros(512, dtype=np.int16).tobytes()
-        utts = await pp.feed(one_frame)
+        _utts = await pp.feed(one_frame)
 
         assert pp._state.total_samples_fed == 512
         assert len(pp._state.pcm_remainder) == 0

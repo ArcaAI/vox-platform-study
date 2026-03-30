@@ -41,9 +41,9 @@ export function extractPaginated<T>(raw: unknown): PaginatedResponse<T> {
   }
 
   const obj = raw as Record<string, unknown>;
-  const total = typeof obj.count === 'number' ? obj.count : (typeof obj.total === 'number' ? obj.total : data.length);
+  const total = typeof obj.count === 'number' ? obj.count : typeof obj.total === 'number' ? obj.total : data.length;
   const limit = typeof obj.limit === 'number' && obj.limit > 0 ? obj.limit : DEFAULT_PAGE_SIZE;
-  const page  = typeof obj.page  === 'number' ? obj.page : 1;
+  const page = typeof obj.page === 'number' ? obj.page : 1;
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const hasMore = page < totalPages;
 

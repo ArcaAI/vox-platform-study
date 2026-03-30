@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useEventListener } from '@/hooks/registries/use-event-listener'
-import { useMemoizedFn } from '@/hooks/registries/use-memoized-fn'
-import { useUnmount } from '@/hooks/registries/use-unmount'
-import { isBrowser } from '@/lib/is-browser'
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEventListener } from '@/hooks/registries/use-event-listener';
+import { useMemoizedFn } from '@/hooks/registries/use-memoized-fn';
+import { useUnmount } from '@/hooks/registries/use-unmount';
+import { isBrowser } from '@/lib/is-browser';
 
 export interface UseClipboardOptions {
   /**
@@ -10,55 +10,55 @@ export interface UseClipboardOptions {
    *
    * @default false
    */
-  read?: boolean
+  read?: boolean;
 
   /**
    * Copy source
    */
-  source?: string
+  source?: string;
 
   /**
    * Milliseconds to reset state of `copied` ref
    *
    * @default 1500
    */
-  copiedDuring?: number
+  copiedDuring?: number;
 
   /**
    * Whether fallback to document.execCommand('copy') if clipboard is undefined.
    *
    * @default false
    */
-  legacy?: boolean
+  legacy?: boolean;
 }
 
 export interface UseClipboardReturn {
-  isSupported: boolean
-  text: string
-  copied: boolean
-  copy: (text?: string) => Promise<void>
+  isSupported: boolean;
+  text: string;
+  copied: boolean;
+  copy: (text?: string) => Promise<void>;
 }
 
-type PermissionState = 'granted' | 'denied' | 'prompt' | undefined
+type PermissionState = 'granted' | 'denied' | 'prompt' | undefined;
 
 function isAllowed(status: PermissionState): boolean {
-  return status === 'granted' || status === 'prompt'
+  return status === 'granted' || status === 'prompt';
 }
 
 function legacyCopy(value: string): void {
-  const ta = document.createElement('textarea')
-  ta.value = value
-  ta.style.position = 'absolute'
-  ta.style.opacity = '0'
-  ta.setAttribute('readonly', '')
-  document.body.appendChild(ta)
-  ta.select()
-  document.execCommand('copy')
-  ta.remove()
+  const ta = document.createElement('textarea');
+  ta.value = value;
+  ta.style.position = 'absolute';
+  ta.style.opacity = '0';
+  ta.setAttribute('readonly', '');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
 }
 
 function legacyRead(): string {
-  return document?.getSelection?.()?.toString() ?? ''
+  return document?.getSelection?.()?.toString() ?? '';
 }
 
 /**
@@ -67,124 +67,120 @@ function legacyRead(): string {
  * @param options - Configuration options
  * @returns Clipboard state and methods
  */
-export function useClipboard(
-  options: UseClipboardOptions = {},
-): UseClipboardReturn {
-  const { read = false, source, copiedDuring = 1500, legacy = false } = options
+export function useClipboard(options: UseClipboardOptions = {}): UseClipboardReturn {
+  const { read = false, source, copiedDuring = 1500, legacy = false } = options;
 
-  const [text, setText] = useState<string>('')
-  const [copied, setCopied] = useState<boolean>(false)
-  const [permissionRead, setPermissionRead] =
-    useState<PermissionState>(undefined)
-  const [permissionWrite, setPermissionWrite] =
-    useState<PermissionState>(undefined)
+  const [text, setText] = useState<string>('');
+  const [copied, setCopied] = useState<boolean>(false);
+  const [permissionRead, setPermissionRead] = useState<PermissionState>(undefined);
+  const [permissionWrite, setPermissionWrite] = useState<PermissionState>(undefined);
 
-  const timeoutRef = useRef<number | null>(null)
+  const timeoutRef = useRef<number | null>(null);
 
   const isClipboardApiSupported = useMemo(() => {
-    if (!isBrowser) return false
-    return 'clipboard' in navigator
-  }, [])
+    if (!isBrowser) return false;
+    return 'clipboard' in navigator;
+  }, []);
 
   const isSupported = useMemo(() => {
-    return isClipboardApiSupported || legacy
-  }, [isClipboardApiSupported, legacy])
+    return isClipboardApiSupported || legacy;
+  }, [isClipboardApiSupported, legacy]);
 
   // Check permissions
   useEffect(() => {
-    if (!isBrowser || !isClipboardApiSupported) return
+    if (!isBrowser || !isClipboardApiSupported) return;
 
     const checkPermissions = async () => {
       try {
         if ('permissions' in navigator) {
           const readPermission = await navigator.permissions.query({
             name: 'clipboard-read' as PermissionName,
-          })
-          setPermissionRead(readPermission.state)
+          });
+          setPermissionRead(readPermission.state);
           readPermission.onchange = () => {
-            setPermissionRead(readPermission.state)
-          }
+            setPermissionRead(readPermission.state);
+          };
 
           const writePermission = await navigator.permissions.query({
             name: 'clipboard-write' as PermissionName,
-          })
-          setPermissionWrite(writePermission.state)
+          });
+          setPermissionWrite(writePermission.state);
           writePermission.onchange = () => {
-            setPermissionWrite(writePermission.state)
-          }
+            setPermissionWrite(writePermission.state);
+          };
         }
       } catch {
         // Permissions API might not be supported or clipboard permissions might not be queryable
         // In this case, we'll try to use the clipboard API directly
       }
-    }
+    };
 
-    checkPermissions()
-  }, [isClipboardApiSupported])
+    checkPermissions();
+  }, [isClipboardApiSupported]);
 
   const updateText = useMemoizedFn(async () => {
-    let useLegacy = !(isClipboardApiSupported && isAllowed(permissionRead))
+    let useLegacy = !(isClipboardApiSupported && isAllowed(permissionRead));
     if (!useLegacy) {
       try {
-        const clipboardText = await navigator.clipboard.readText()
-        setText(clipboardText)
+        const clipboardText = await navigator.clipboard.readText();
+        setText(clipboardText);
       } catch {
-        useLegacy = true
+        useLegacy = true;
       }
     }
     if (useLegacy) {
-      setText(legacyRead())
+      setText(legacyRead());
     }
-  })
+  });
 
   // Listen to copy/cut events if read is enabled
   useEventListener(isSupported && read ? ['copy', 'cut'] : [], updateText, {
     passive: true,
     enable: isSupported && read,
-  })
+  });
 
   const copy = useMemoizedFn(async (value?: string) => {
-    const textToCopy = value ?? source
-    if (!isSupported || textToCopy == null) return
+    const textToCopy = value ?? source;
+    if (!isSupported || textToCopy == null) return;
 
-    let useLegacy = !(isClipboardApiSupported && isAllowed(permissionWrite))
+    let useLegacy = !(isClipboardApiSupported && isAllowed(permissionWrite));
     if (!useLegacy) {
       try {
-        await navigator.clipboard.writeText(textToCopy)
+        await navigator.clipboard.writeText(textToCopy);
       } catch {
-        useLegacy = true
+        useLegacy = true;
       }
     }
     if (useLegacy) {
-      legacyCopy(textToCopy)
+      legacyCopy(textToCopy);
     }
 
-    setText(textToCopy)
-    setCopied(true)
+    setText(textToCopy);
+    setCopied(true);
 
     // Clear existing timeout
     if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
+      clearTimeout(timeoutRef.current);
     }
 
     // Set new timeout
     timeoutRef.current = window.setTimeout(() => {
-      setCopied(false)
-      timeoutRef.current = null
-    }, copiedDuring)
-  })
+      setCopied(false);
+      timeoutRef.current = null;
+    }, copiedDuring);
+  });
 
   // Cleanup timeout on unmount
   useUnmount(() => {
     if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
+      clearTimeout(timeoutRef.current);
     }
-  })
+  });
 
   return {
     isSupported,
     text,
     copied,
     copy,
-  }
+  };
 }

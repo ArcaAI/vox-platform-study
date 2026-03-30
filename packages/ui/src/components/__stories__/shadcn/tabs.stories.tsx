@@ -1,9 +1,9 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../shadcn/tabs'
-import { Input } from '../../shadcn/input'
-import { Label } from '../../shadcn/label'
-import { Button } from '../../shadcn/button'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../shadcn/tabs';
+import { Input } from '../../shadcn/input';
+import { Label } from '../../shadcn/label';
+import { Button } from '../../shadcn/button';
 
 const meta = {
   title: 'Components/Tabs',
@@ -12,10 +12,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Tabs>
+} satisfies Meta<typeof Tabs>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -52,7 +52,7 @@ export const Default: Story = {
       </TabsContent>
     </Tabs>
   ),
-}
+};
 
 export const LineVariant: Story = {
   render: () => (
@@ -73,7 +73,7 @@ export const LineVariant: Story = {
       </TabsContent>
     </Tabs>
   ),
-}
+};
 
 export const Vertical: Story = {
   render: () => (
@@ -96,7 +96,7 @@ export const Vertical: Story = {
       </div>
     </Tabs>
   ),
-}
+};
 
 export const Disabled: Story = {
   render: () => (
@@ -116,4 +116,4 @@ export const Disabled: Story = {
       </TabsContent>
     </Tabs>
   ),
-}
+};

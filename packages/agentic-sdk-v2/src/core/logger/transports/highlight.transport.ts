@@ -11,7 +11,6 @@
 
 import type { ILogTransport, LogEntry, HighlightTransportConfig, LogLevel } from '../types';
 import { LOG_LEVEL_VALUES } from '../types';
-import { safeStringify, serializeError } from '../utils';
 
 /**
  * Highlight.io SDK interface (loaded dynamically)
@@ -25,11 +24,7 @@ interface HighlightInstance {
   getSessionURL: () => string | undefined;
   getSessionId: () => string | undefined;
   consumeError: (error: Error, metadata?: Record<string, unknown>) => void;
-  log: (
-    message: string,
-    level: string,
-    attributes?: Record<string, unknown>
-  ) => void;
+  log: (message: string, level: string, attributes?: Record<string, unknown>) => void;
 }
 
 interface HighlightOptions {
@@ -261,11 +256,7 @@ export class HighlightTransport implements ILogTransport {
   private reportError(entry: LogEntry): void {
     if (!this.highlight) return;
 
-    const error = entry.error
-      ? entry.error.stack
-        ? new Error(entry.message)
-        : new Error(entry.message)
-      : new Error(entry.message);
+    const error = entry.error ? (entry.error.stack ? new Error(entry.message) : new Error(entry.message)) : new Error(entry.message);
 
     // Set error properties
     if (entry.error?.name) {

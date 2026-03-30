@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   Menubar,
@@ -14,7 +14,7 @@ import {
   MenubarSub,
   MenubarSubContent,
   MenubarSubTrigger,
-} from '../../shadcn/menubar'
+} from '../../shadcn/menubar';
 
 const meta = {
   title: 'Components/Menubar',
@@ -23,10 +23,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Menubar>
+} satisfies Meta<typeof Menubar>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -84,7 +84,7 @@ export const Default: Story = {
       </MenubarMenu>
     </Menubar>
   ),
-}
+};
 
 export const WithSubmenus: Story = {
   render: () => (
@@ -108,4 +108,4 @@ export const WithSubmenus: Story = {
       </MenubarMenu>
     </Menubar>
   ),
-}
+};

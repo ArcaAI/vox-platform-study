@@ -3,7 +3,6 @@
 TASK-017: Per-Segment Inference Optimization
 """
 
-import pytest
 
 from stt_v2.transcription.dto import AudioSegment
 from stt_v2.transcription.segment_merger import merge_vad_segments

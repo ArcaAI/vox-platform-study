@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useState } from 'react';
 
-import { WorkflowToggle, type WorkflowMode } from '../../custom/workflow-toggle'
+import { WorkflowToggle, type WorkflowMode } from '../../custom/workflow-toggle';
 
 const meta = {
   title: 'Custom/WorkflowToggle',
@@ -15,24 +15,24 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof WorkflowToggle>
+} satisfies Meta<typeof WorkflowToggle>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const LocalSelected: Story = {
   args: {
     mode: 'local',
     onChange: (mode) => console.log('Mode:', mode),
   },
-}
+};
 
 export const RemoteSelected: Story = {
   args: {
     mode: 'remote',
     onChange: (mode) => console.log('Mode:', mode),
   },
-}
+};
 
 export const WithLocalContent: Story = {
   args: {
@@ -48,7 +48,7 @@ export const WithLocalContent: Story = {
       </div>
     ),
   },
-}
+};
 
 export const WithRemoteContent: Story = {
   args: {
@@ -57,36 +57,26 @@ export const WithRemoteContent: Story = {
     remoteContent: (
       <div className="space-y-2 text-sm">
         <p className="font-medium">Remote pipeline configuration:</p>
-        <p className="text-muted-foreground">
-          Connected to tenant pipeline at api.arcaai.com. Processing is handled server-side.
-        </p>
+        <p className="text-muted-foreground">Connected to tenant pipeline at api.arcaai.com. Processing is handled server-side.</p>
       </div>
     ),
   },
-}
+};
 
 function InteractiveDemo() {
-  const [mode, setMode] = useState<WorkflowMode>('local')
+  const [mode, setMode] = useState<WorkflowMode>('local');
 
   return (
     <WorkflowToggle
       mode={mode}
       onChange={setMode}
-      localContent={
-        <p className="text-sm text-muted-foreground">
-          Running on-device with WebGPU acceleration.
-        </p>
-      }
-      remoteContent={
-        <p className="text-sm text-muted-foreground">
-          Connected to cloud pipeline. Low-latency inference enabled.
-        </p>
-      }
+      localContent={<p className="text-sm text-muted-foreground">Running on-device with WebGPU acceleration.</p>}
+      remoteContent={<p className="text-sm text-muted-foreground">Connected to cloud pipeline. Low-latency inference enabled.</p>}
     />
-  )
+  );
 }
 
 export const Interactive: Story = {
   args: {} as any,
   render: () => <InteractiveDemo />,
-}
+};

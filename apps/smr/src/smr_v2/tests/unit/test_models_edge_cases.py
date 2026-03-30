@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
+from smr_v2.models.provider import ModelInfo, ProviderInfo, RateLimitState
 from smr_v2.models.requests import GenerateRequest, RetryConfig
-from smr_v2.models.responses import GenerateResponse, StreamingGenerateResponse, TaskResponse, TokenUsage
+from smr_v2.models.responses import (
+    GenerateResponse,
+    TaskResponse,
+    TokenUsage,
+)
 from smr_v2.models.stream import StreamChunk
 from smr_v2.models.task import TaskState, TaskStatus
-from smr_v2.models.provider import ModelInfo, ProviderInfo, RateLimitState
 
 
 class TestGenerateRequestEdgeCases:
     def test_whitespace_only_prompt_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="   ")
 
     def test_max_tokens_exactly_one(self):
@@ -21,7 +26,7 @@ class TestGenerateRequestEdgeCases:
         assert req.max_tokens == 1
 
     def test_max_tokens_zero_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="hi", max_tokens=0)
 
     def test_temperature_exactly_zero(self):
@@ -33,11 +38,11 @@ class TestGenerateRequestEdgeCases:
         assert req.temperature == 2.0
 
     def test_temperature_below_zero_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="hi", temperature=-0.1)
 
     def test_temperature_above_two_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="hi", temperature=2.1)
 
     def test_top_p_exactly_zero(self):
@@ -49,11 +54,11 @@ class TestGenerateRequestEdgeCases:
         assert req.top_p == 1.0
 
     def test_top_p_above_one_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="hi", top_p=1.1)
 
     def test_top_p_below_zero_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             GenerateRequest(prompt="hi", top_p=-0.01)
 
     def test_default_retry_config_embedded(self):
@@ -125,7 +130,7 @@ class TestStreamChunkEdgeCases:
         assert c.content is None
 
     def test_invalid_type_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             StreamChunk(type="invalid")
 
     def test_json_roundtrip(self):

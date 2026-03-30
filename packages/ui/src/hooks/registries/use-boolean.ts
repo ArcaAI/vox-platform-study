@@ -1,8 +1,8 @@
-import { useMemo } from 'react'
-import useToggle from '@/hooks/registries/use-toggle'
+import { useMemo } from 'react';
+import useToggle from '@/hooks/registries/use-toggle';
 
 export function useBoolean(defaultValue: boolean = false) {
-  const [state, actions] = useToggle(defaultValue)
+  const [state, actions] = useToggle(defaultValue);
 
   return [
     state,
@@ -15,5 +15,5 @@ export function useBoolean(defaultValue: boolean = false) {
       }),
       [actions],
     ),
-  ] as const
+  ] as const;
 }

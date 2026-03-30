@@ -1,17 +1,10 @@
-"use client";
+'use client';
 
-import {
-  createContext,
-  use,
-  useState,
-  useCallback,
-  useMemo,
-  useRef,
-} from "react";
-import { flushSync } from "react-dom";
-import type { ImageGalleryItem } from "./schema";
+import { createContext, use, useState, useCallback, useMemo, useRef } from 'react';
+import { flushSync } from 'react-dom';
+import type { ImageGalleryItem } from './schema';
 
-const VIEW_TRANSITION_NAME = "active-gallery-image";
+const VIEW_TRANSITION_NAME = 'active-gallery-image';
 
 interface ImageGalleryContextValue {
   images: ImageGalleryItem[];
@@ -23,32 +16,26 @@ interface ImageGalleryContextValue {
   setDialogRef: (element: HTMLDialogElement | null) => void;
 }
 
-const ImageGalleryContext = createContext<ImageGalleryContextValue | null>(
-  null,
-);
+const ImageGalleryContext = createContext<ImageGalleryContextValue | null>(null);
 
 export function useImageGallery(): ImageGalleryContextValue {
   const context = use(ImageGalleryContext);
   if (!context) {
-    throw new Error("useImageGallery must be used within ImageGalleryProvider");
+    throw new Error('useImageGallery must be used within ImageGalleryProvider');
   }
   return context;
 }
 
 function supportsViewTransitions(): boolean {
   return (
-    typeof document !== "undefined" &&
-    "startViewTransition" in document &&
-    typeof window !== "undefined" &&
-    !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches
+    typeof document !== 'undefined' &&
+    'startViewTransition' in document &&
+    typeof window !== 'undefined' &&
+    !window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
   );
 }
 
-function withViewTransition(
-  element: HTMLElement,
-  domUpdate: () => void,
-  onFinished?: () => void,
-): void {
+function withViewTransition(element: HTMLElement, domUpdate: () => void, onFinished?: () => void): void {
   if (!supportsViewTransitions()) {
     domUpdate();
     onFinished?.();
@@ -60,7 +47,7 @@ function withViewTransition(
   const transition = document.startViewTransition(() => domUpdate());
 
   transition.finished.finally(() => {
-    element.style.removeProperty("view-transition-name");
+    element.style.removeProperty('view-transition-name');
     onFinished?.();
   });
 }
@@ -70,10 +57,7 @@ interface ImageGalleryProviderProps {
   children: React.ReactNode;
 }
 
-export function ImageGalleryProvider({
-  images,
-  children,
-}: ImageGalleryProviderProps) {
+export function ImageGalleryProvider({ images, children }: ImageGalleryProviderProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const imageElementsRef = useRef<Map<string, HTMLElement>>(new Map());
@@ -81,16 +65,13 @@ export function ImageGalleryProvider({
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const originalParentRef = useRef<HTMLElement | null>(null);
 
-  const registerImage = useCallback(
-    (id: string, element: HTMLElement | null) => {
-      if (element) {
-        imageElementsRef.current.set(id, element);
-      } else {
-        imageElementsRef.current.delete(id);
-      }
-    },
-    [],
-  );
+  const registerImage = useCallback((id: string, element: HTMLElement | null) => {
+    if (element) {
+      imageElementsRef.current.set(id, element);
+    } else {
+      imageElementsRef.current.delete(id);
+    }
+  }, []);
 
   const setDialogRef = useCallback((element: HTMLDialogElement | null) => {
     dialogRef.current = element;
@@ -166,19 +147,8 @@ export function ImageGalleryProvider({
       lightboxContentRef,
       setDialogRef,
     }),
-    [
-      images,
-      activeIndex,
-      openLightbox,
-      closeLightbox,
-      registerImage,
-      setDialogRef,
-    ],
+    [images, activeIndex, openLightbox, closeLightbox, registerImage, setDialogRef],
   );
 
-  return (
-    <ImageGalleryContext.Provider value={value}>
-      {children}
-    </ImageGalleryContext.Provider>
-  );
+  return <ImageGalleryContext.Provider value={value}>{children}</ImageGalleryContext.Provider>;
 }

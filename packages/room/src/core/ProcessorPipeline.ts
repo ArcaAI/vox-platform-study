@@ -5,11 +5,7 @@
  * Each processor in the pipeline receives the output of the previous processor.
  */
 
-import type {
-  TrackProcessor,
-  AudioProcessorOptions,
-  ProcessorConfig,
-} from '../processors/types.js';
+import type { TrackProcessor, AudioProcessorOptions, ProcessorConfig } from '../processors/types.js';
 
 /**
  * ProcessorPipeline allows chaining multiple audio processors.
@@ -47,9 +43,7 @@ export class ProcessorPipeline implements TrackProcessor<AudioProcessorOptions> 
    *
    * @param processors - Optional initial processors to add
    */
-  constructor(
-    processors?: Array<TrackProcessor | { processor: TrackProcessor; priority?: number }>
-  ) {
+  constructor(processors?: Array<TrackProcessor | { processor: TrackProcessor; priority?: number }>) {
     if (processors) {
       processors.forEach((p, index) => {
         if ('processor' in p) {
@@ -67,10 +61,7 @@ export class ProcessorPipeline implements TrackProcessor<AudioProcessorOptions> 
    * @param processor - The processor to add
    * @param options - Options for the processor
    */
-  add(
-    processor: TrackProcessor,
-    options: { priority?: number; enabled?: boolean } = {}
-  ): void {
+  add(processor: TrackProcessor, options: { priority?: number; enabled?: boolean } = {}): void {
     const config: ProcessorConfig = {
       processor,
       enabled: options.enabled ?? true,
@@ -87,10 +78,7 @@ export class ProcessorPipeline implements TrackProcessor<AudioProcessorOptions> 
    * @param processorOrName - The processor instance or name to remove
    */
   async remove(processorOrName: TrackProcessor | string): Promise<void> {
-    const name =
-      typeof processorOrName === 'string'
-        ? processorOrName
-        : processorOrName.name;
+    const name = typeof processorOrName === 'string' ? processorOrName : processorOrName.name;
 
     const index = this.processors.findIndex((p) => p.processor.name === name);
     if (index === -1) return;
@@ -144,9 +132,7 @@ export class ProcessorPipeline implements TrackProcessor<AudioProcessorOptions> 
    * Get enabled processors in execution order.
    */
   getEnabledProcessors(): TrackProcessor[] {
-    return this.processors
-      .filter((p) => p.enabled)
-      .map((p) => p.processor);
+    return this.processors.filter((p) => p.enabled).map((p) => p.processor);
   }
 
   /**
@@ -230,10 +216,7 @@ export class ProcessorPipeline implements TrackProcessor<AudioProcessorOptions> 
       try {
         await config.processor.destroy();
       } catch (error) {
-        console.warn(
-          `Failed to destroy processor ${config.processor.name}:`,
-          error
-        );
+        console.warn(`Failed to destroy processor ${config.processor.name}:`, error);
       }
     }
   }

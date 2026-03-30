@@ -1,14 +1,13 @@
 """Unit tests for updated Pipeline DTOs (diarization, KSERVE, and ONNX quantization)."""
 
-import pytest
 
 from stt_v2.pipeline.dto import (
     VALID_ONNX_QUANTIZATIONS,
     AiModelFormat,
     AiModelSource,
     DiarizationConfig,
-    InlineModelDef,
     InferenceConfig,
+    InlineModelDef,
     ModelRef,
     ModelRefs,
     ModelTaskType,
@@ -16,7 +15,6 @@ from stt_v2.pipeline.dto import (
     PostprocessingConfig,
     PreprocessingConfig,
 )
-
 
 # =============================================================================
 # DIARIZATION CONFIG TESTS
@@ -351,12 +349,12 @@ class TestAiModelSource:
     def test_kserve_is_string_enum(self):
         """Test that KSERVE can be compared as string."""
         assert AiModelSource.KSERVE == "KSERVE"
-        assert str(AiModelSource.KSERVE) == "AiModelSource.KSERVE"
+        assert str(AiModelSource.KSERVE) == "KSERVE"
 
     def test_mlflow_is_string_enum(self):
         """Test that MLFLOW can be compared as string."""
         assert AiModelSource.MLFLOW == "MLFLOW"
-        assert str(AiModelSource.MLFLOW) == "AiModelSource.MLFLOW"
+        assert str(AiModelSource.MLFLOW) == "MLFLOW"
 
 
 # =============================================================================

@@ -1,21 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Steps,
-  StepsContent,
-  StepsItem,
-  StepsTrigger,
-} from '../../../registries/prompt-kit/steps'
+import { Steps, StepsContent, StepsItem, StepsTrigger } from '../../../registries/prompt-kit/steps';
 
 const meta = {
   title: 'Registries/PromptKit/Steps',
   component: Steps,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Steps>
+} satisfies Meta<typeof Steps>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -34,4 +29,4 @@ export const Default: Story = {
       </StepsItem>
     </Steps>
   ),
-}
+};

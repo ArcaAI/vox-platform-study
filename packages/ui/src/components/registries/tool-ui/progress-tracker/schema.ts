@@ -1,10 +1,6 @@
-import { z } from "zod";
-import {
-  ToolUISurfaceSchema,
-  ToolUIReceiptSchema,
-  type ToolUIReceipt,
-} from "../shared/schema";
-import { defineToolUiContract } from "../shared/contract";
+import { z } from 'zod';
+import { ToolUISurfaceSchema, ToolUIReceiptSchema, type ToolUIReceipt } from '../shared/schema';
+import { defineToolUiContract } from '../shared/contract';
 
 /**
  * Receipt state for ProgressTracker showing the outcome of a workflow.
@@ -15,7 +11,7 @@ export const ProgressStepSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   description: z.string().optional(),
-  status: z.enum(["pending", "in-progress", "completed", "failed"]),
+  status: z.enum(['pending', 'in-progress', 'completed', 'failed']),
 });
 
 export type ProgressStep = z.infer<typeof ProgressStepSchema>;
@@ -31,7 +27,7 @@ const ProgressStepsSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `Duplicate step id: "${step.id}"`,
-          path: [index, "id"],
+          path: [index, 'id'],
         });
       }
 
@@ -52,23 +48,13 @@ export const SerializableProgressTrackerSchema = ToolUISurfaceSchema.omit({
   })
   .strict();
 
-export type SerializableProgressTracker = z.infer<
-  typeof SerializableProgressTrackerSchema
->;
+export type SerializableProgressTracker = z.infer<typeof SerializableProgressTrackerSchema>;
 
-const SerializableProgressTrackerSchemaContract = defineToolUiContract(
-  "ProgressTracker",
-  SerializableProgressTrackerSchema,
-);
+const SerializableProgressTrackerSchemaContract = defineToolUiContract('ProgressTracker', SerializableProgressTrackerSchema);
 
-export const parseSerializableProgressTracker: (
-  input: unknown,
-) => SerializableProgressTracker =
-  SerializableProgressTrackerSchemaContract.parse;
+export const parseSerializableProgressTracker: (input: unknown) => SerializableProgressTracker = SerializableProgressTrackerSchemaContract.parse;
 
-export const safeParseSerializableProgressTracker: (
-  input: unknown,
-) => SerializableProgressTracker | null =
+export const safeParseSerializableProgressTracker: (input: unknown) => SerializableProgressTracker | null =
   SerializableProgressTrackerSchemaContract.safeParse;
 
 export interface ProgressTrackerProps extends SerializableProgressTracker {

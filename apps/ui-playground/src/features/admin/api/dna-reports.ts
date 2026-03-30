@@ -1,10 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
-import type {
-    DnaReport,
-    DnaStyleVersion,
-} from '@/features/dna-writing-style/api/dna-writing-styles';
+import type { DnaReport, DnaStyleVersion } from '@/features/dna-writing-style/api/dna-writing-styles';
 
 import { adminClient } from './admin-client';
 import type { AdminUser } from './users';
@@ -23,10 +20,8 @@ export interface TenantDnaReportData {
 
 export const dnaReportsAdminKeys = {
   all: ['dna-reports-admin'] as const,
-  tenantData: (tenantId: string) =>
-    [...dnaReportsAdminKeys.all, 'tenant-data', tenantId] as const,
-  versions: (tenantId: string, reportId: string) =>
-    [...dnaReportsAdminKeys.all, 'versions', tenantId, reportId] as const,
+  tenantData: (tenantId: string) => [...dnaReportsAdminKeys.all, 'tenant-data', tenantId] as const,
+  versions: (tenantId: string, reportId: string) => [...dnaReportsAdminKeys.all, 'versions', tenantId, reportId] as const,
 };
 
 export function useTenantDnaReportData(tenantId: string) {
@@ -40,14 +35,8 @@ export function useTenantDnaReportData(tenantId: string) {
       }
 
       const [usersResponse, reportsResponse] = await Promise.all([
-        adminClient.get<PaginatedResponse<AdminUser>>(
-          `/admin/users/tenant/${tenantId}?page=1&limit=100`,
-          { tenantId },
-        ),
-        adminClient.get<PaginatedResponse<DnaReport>>(
-          '/admin/dna-writing-styles?page=1&limit=500&includeDisabled=true',
-          { tenantId },
-        ),
+        adminClient.get<PaginatedResponse<AdminUser>>(`/admin/users/tenant/${tenantId}?page=1&limit=100`, { tenantId }),
+        adminClient.get<PaginatedResponse<DnaReport>>('/admin/dna-writing-styles?page=1&limit=500&includeDisabled=true', { tenantId }),
       ]);
 
       return {
@@ -68,10 +57,7 @@ export function useDnaReportVersions(tenantId: string, reportId: string) {
         return [];
       }
 
-      const response = await adminClient.get<DnaStyleVersion[]>(
-        `/admin/dna-writing-styles/${reportId}/versions`,
-        { tenantId },
-      );
+      const response = await adminClient.get<DnaStyleVersion[]>(`/admin/dna-writing-styles/${reportId}/versions`, { tenantId });
 
       return [...response].sort((a, b) => b.versionNumber - a.versionNumber);
     },

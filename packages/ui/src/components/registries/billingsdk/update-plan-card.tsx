@@ -1,15 +1,15 @@
-"use client";
+'use client';
 
-import { useState, useCallback } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/shadcn/card";
-import { Button } from "@/components/shadcn/button";
-import { Badge } from "@/components/shadcn/badge";
-import { RadioGroup, RadioGroupItem } from "@/components/shadcn/radio-group";
-import { Toggle } from "@/components/shadcn/toggle";
-import { Label } from "@/components/shadcn/label";
-import { type Plan } from "@/lib/billingsdk-config";
-import { cn } from "@/lib/utils";
+import { useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/shadcn/card';
+import { Button } from '@/components/shadcn/button';
+import { Badge } from '@/components/shadcn/badge';
+import { RadioGroup, RadioGroupItem } from '@/components/shadcn/radio-group';
+import { Toggle } from '@/components/shadcn/toggle';
+import { Label } from '@/components/shadcn/label';
+import { type Plan } from '@/lib/billingsdk-config';
+import { cn } from '@/lib/utils';
 
 export interface UpdatePlanCardProps {
   currentPlan: Plan;
@@ -21,52 +21,25 @@ export interface UpdatePlanCardProps {
 
 const easing = [0.4, 0, 0.2, 1] as const;
 
-export function UpdatePlanCard({
-  currentPlan,
-  plans,
-  onPlanChange,
-  className,
-  title,
-}: UpdatePlanCardProps) {
+export function UpdatePlanCard({ currentPlan, plans, onPlanChange, className, title }: UpdatePlanCardProps) {
   const [isYearly, setIsYearly] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<string | undefined>(
-    undefined,
-  );
+  const [selectedPlan, setSelectedPlan] = useState<string | undefined>(undefined);
 
-  const getCurrentPrice = useCallback(
-    (plan: Plan) => (isYearly ? `${plan.yearlyPrice}` : `${plan.monthlyPrice}`),
-    [isYearly],
-  );
+  const getCurrentPrice = useCallback((plan: Plan) => (isYearly ? `${plan.yearlyPrice}` : `${plan.monthlyPrice}`), [isYearly]);
 
   const handlePlanChange = useCallback((planId: string) => {
     setSelectedPlan((prev) => (prev === planId ? undefined : planId));
   }, []);
 
   return (
-    <Card
-      className={cn(
-        "mx-auto w-full max-w-xl overflow-hidden text-left shadow-lg",
-        className,
-      )}
-    >
+    <Card className={cn('mx-auto w-full max-w-xl overflow-hidden text-left shadow-lg', className)}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-base font-semibold">
-          {title || "Upgrade Plan"}
-        </CardTitle>
+        <CardTitle className="text-base font-semibold">{title || 'Upgrade Plan'}</CardTitle>
         <div className="flex items-center gap-2 text-sm">
-          <Toggle
-            size="sm"
-            pressed={!isYearly}
-            onPressedChange={(pressed) => setIsYearly(!pressed)}
-            className="px-3"
-          >
+          <Toggle size="sm" pressed={!isYearly} onPressedChange={(pressed) => setIsYearly(!pressed)} className="px-3">
             Monthly
           </Toggle>
-          <Toggle
-            pressed={isYearly}
-            onPressedChange={(pressed) => setIsYearly(pressed)}
-            className="px-3"
-          >
+          <Toggle pressed={isYearly} onPressedChange={(pressed) => setIsYearly(pressed)} className="px-3">
             Yearly
           </Toggle>
         </div>
@@ -87,7 +60,7 @@ export function UpdatePlanCard({
                 }}
                 onClick={() => handlePlanChange(plan.id)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
+                  if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     handlePlanChange(plan.id);
                   }
@@ -96,41 +69,29 @@ export function UpdatePlanCard({
                 tabIndex={0}
                 aria-pressed={selectedPlan === plan.id}
                 className={cn(
-                  "relative cursor-pointer overflow-hidden rounded-lg border transition-all duration-200 sm:rounded-xl",
-                  "focus-visible:ring-primary touch-manipulation focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
+                  'relative cursor-pointer overflow-hidden rounded-lg border transition-all duration-200 sm:rounded-xl',
+                  'focus-visible:ring-primary touch-manipulation focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
                   selectedPlan === plan.id
-                    ? "border-primary from-muted/60 to-muted/30 bg-gradient-to-br shadow-sm"
-                    : "border-border hover:border-primary/50",
+                    ? 'border-primary from-muted/60 to-muted/30 bg-gradient-to-br shadow-sm'
+                    : 'border-border hover:border-primary/50',
                 )}
               >
                 <motion.div layout="position" className="p-3 sm:p-4">
                   <div className="flex items-start justify-between gap-2 sm:gap-3">
                     <div className="flex min-w-0 flex-1 gap-2 sm:gap-3">
-                      <RadioGroupItem
-                        value={plan.id}
-                        id={plan.id}
-                        className="pointer-events-none mt-0.5 flex-shrink-0 sm:mt-1"
-                      />
+                      <RadioGroupItem value={plan.id} id={plan.id} className="pointer-events-none mt-0.5 flex-shrink-0 sm:mt-1" />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                          <Label
-                            htmlFor={plan.id}
-                            className="cursor-pointer text-sm leading-tight font-semibold sm:text-base sm:font-medium"
-                          >
+                          <Label htmlFor={plan.id} className="cursor-pointer text-sm leading-tight font-semibold sm:text-base sm:font-medium">
                             {plan.title}
                           </Label>
                           {plan.badge && (
-                            <Badge
-                              variant="secondary"
-                              className="h-5 flex-shrink-0 px-1.5 py-0 text-[10px] sm:h-auto sm:px-2 sm:py-0.5 sm:text-xs"
-                            >
+                            <Badge variant="secondary" className="h-5 flex-shrink-0 px-1.5 py-0 text-[10px] sm:h-auto sm:px-2 sm:py-0.5 sm:text-xs">
                               {plan.badge}
                             </Badge>
                           )}
                         </div>
-                        <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed sm:text-xs">
-                          {plan.description}
-                        </p>
+                        <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed sm:text-xs">{plan.description}</p>
                         {plan.features.length > 0 && (
                           <div className="pt-2 sm:pt-3">
                             <div className="flex flex-wrap gap-1.5 sm:gap-2">
@@ -140,9 +101,7 @@ export function UpdatePlanCard({
                                   className="bg-muted/20 border-border/30 flex flex-shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 sm:gap-2 sm:rounded-lg"
                                 >
                                   <div className="bg-primary h-1 w-1 flex-shrink-0 rounded-full sm:h-1.5 sm:w-1.5" />
-                                  <span className="text-muted-foreground text-[10px] leading-none whitespace-nowrap sm:text-xs">
-                                    {feature.name}
-                                  </span>
+                                  <span className="text-muted-foreground text-[10px] leading-none whitespace-nowrap sm:text-xs">{feature.name}</span>
                                 </div>
                               ))}
                             </div>
@@ -152,13 +111,9 @@ export function UpdatePlanCard({
                     </div>
                     <div className="min-w-[60px] flex-shrink-0 text-right sm:min-w-[80px]">
                       <div className="text-base leading-tight font-bold sm:text-xl sm:font-semibold">
-                        {parseFloat(getCurrentPrice(plan)) >= 0
-                          ? `${plan.currency}${getCurrentPrice(plan)}`
-                          : getCurrentPrice(plan)}
+                        {parseFloat(getCurrentPrice(plan)) >= 0 ? `${plan.currency}${getCurrentPrice(plan)}` : getCurrentPrice(plan)}
                       </div>
-                      <div className="text-muted-foreground mt-0.5 text-[10px] sm:text-xs">
-                        /{isYearly ? "year" : "month"}
-                      </div>
+                      <div className="text-muted-foreground mt-0.5 text-[10px] sm:text-xs">/{isYearly ? 'year' : 'month'}</div>
                     </div>
                   </div>
                 </motion.div>
@@ -168,7 +123,7 @@ export function UpdatePlanCard({
                     <motion.div
                       initial={{ height: 0, opacity: 0 }}
                       animate={{
-                        height: "auto",
+                        height: 'auto',
                         opacity: 1,
                         transition: {
                           height: { duration: 0.3, ease: easing },
@@ -210,9 +165,7 @@ export function UpdatePlanCard({
                             onPlanChange(plan.id);
                           }}
                         >
-                          {selectedPlan === currentPlan.id
-                            ? "Current Plan"
-                            : "Upgrade"}
+                          {selectedPlan === currentPlan.id ? 'Current Plan' : 'Upgrade'}
                         </Button>
                       </motion.div>
                     </motion.div>

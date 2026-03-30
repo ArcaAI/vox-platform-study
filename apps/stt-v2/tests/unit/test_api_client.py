@@ -4,14 +4,14 @@ These tests focus on behavior verification rather than mock verification.
 Tests verify actual outcomes and transformations, not just that mocks were called.
 """
 
-import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
+import pytest
 
 from stt_v2.core.api_client.gateway import APIGatewayClient, get_api_client
 from stt_v2.core.exceptions import APIGatewayError
-
 
 # =============================================================================
 # Complete Response Fixtures (Anti-Pattern #4 Prevention)
@@ -389,7 +389,7 @@ class TestAPIGatewayClientMethods:
             return {"id": "m-123", "uri": "s3://bucket/path/recording.wav"}
 
         with patch.object(client, "_request", side_effect=capture_request):
-            result = await client.create_media(
+            _result = await client.create_media(
                 tenant_id="t-123",
                 name="recording.wav",
                 uri="s3://bucket/path/recording.wav",

@@ -73,10 +73,13 @@ export function useAudioMixer(): UseAudioMixerReturn {
     };
   }, []);
 
-  const addSource = useCallback((id: string, stream: MediaStream, gain?: number) => {
-    const mixer = ensureMixer();
-    mixer.addSource(id, stream, gain);
-  }, [ensureMixer]);
+  const addSource = useCallback(
+    (id: string, stream: MediaStream, gain?: number) => {
+      const mixer = ensureMixer();
+      mixer.addSource(id, stream, gain);
+    },
+    [ensureMixer],
+  );
 
   const removeSource = useCallback((id: string) => {
     mixerRef.current?.removeSource(id);

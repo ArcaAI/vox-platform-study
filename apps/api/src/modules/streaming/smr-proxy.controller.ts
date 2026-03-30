@@ -1,10 +1,5 @@
 import { Authorize, IActiveUserContext, ITenantService } from '@arcaai/applications';
-import {
-  ContextItemRepository,
-  DepartmentRepository,
-  DnaWritingStyleReportRepository,
-  PromptTemplateRepository,
-} from '@arcaai/domains';
+import { ContextItemRepository, DepartmentRepository, DnaWritingStyleReportRepository, PromptTemplateRepository } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import {
   BadRequestException,
@@ -121,6 +116,7 @@ export class SmrProxyController {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
+    // eslint-disable-next-line turbo/no-undeclared-env-vars
     const serviceToken = process.env.SMR_SERVICE_TOKEN;
     if (serviceToken) {
       headers['X-Service-Token'] = serviceToken;
@@ -135,10 +131,7 @@ export class SmrProxyController {
     return status === 502 || status === 503 || status === 504;
   }
 
-  private buildUpstreamException(
-    err: unknown,
-    fallbackMessage: string,
-  ): HttpException {
+  private buildUpstreamException(err: unknown, fallbackMessage: string): HttpException {
     const axiosError = err as AxiosError<UpstreamErrorPayload | string>;
     const status = axiosError.response?.status;
     const payload = axiosError.response?.data;
@@ -153,17 +146,10 @@ export class SmrProxyController {
       return new HttpException({ detail: fallbackMessage }, status);
     }
 
-    return new HttpException(
-      { detail: fallbackMessage },
-      HttpStatus.BAD_GATEWAY,
-    );
+    return new HttpException({ detail: fallbackMessage }, HttpStatus.BAD_GATEWAY);
   }
 
-  private async withRetry<T>(
-    fn: () => Promise<T>,
-    context: string,
-    maxRetries = 2,
-  ): Promise<T> {
+  private async withRetry<T>(fn: () => Promise<T>, context: string, maxRetries = 2): Promise<T> {
     let lastErr: unknown;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -236,6 +222,7 @@ export class SmrProxyController {
       .filter((model) => model.name.length > 0);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private buildProvidersFromTenantSettings(settings: TenantSettingLike[]): any[] {
     const defaultProvider = settings.find((setting) => setting.key === 'default-smr-provider')?.value?.trim();
     const defaultModelRaw = settings.find((setting) => setting.key === 'default-smr-model')?.value;
@@ -246,16 +233,14 @@ export class SmrProxyController {
       return catalog.map((entry: ProviderCatalogEntry) => {
         const models = this.normalizeCatalogModels(entry.models);
         const firstModelName = models[0]?.name;
-        return ({
-        name: entry.provider,
-        models,
-        is_available: true,
-        is_default: entry.provider === defaultProvider,
-        default_model: entry.provider === defaultProvider
-          ? (defaultModelRaw?.trim() || firstModelName)
-          : firstModelName,
+        return {
+          name: entry.provider,
+          models,
+          is_available: true,
+          is_default: entry.provider === defaultProvider,
+          default_model: entry.provider === defaultProvider ? defaultModelRaw?.trim() || firstModelName : firstModelName,
+        };
       });
-    });
     }
 
     const models = this.parseModelList(defaultModelRaw);
@@ -279,13 +264,7 @@ export class SmrProxyController {
     if (!rawValue) return null;
     try {
       const parsed = JSON.parse(rawValue) as unknown;
-      if (
-        Array.isArray(parsed) &&
-        parsed.length > 0 &&
-        parsed[0] &&
-        typeof parsed[0] === 'object' &&
-        'provider' in parsed[0]
-      ) {
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0] && typeof parsed[0] === 'object' && 'provider' in parsed[0]) {
         return parsed as ProviderCatalogEntry[];
       }
     } catch {
@@ -298,6 +277,7 @@ export class SmrProxyController {
   @Authorize()
   @ApiExcludeEndpoint()
   @ApiOperation({ summary: 'Generate text via SMR v2 (sync or streaming)' })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(@Body() body: SmrGenerateRequest): Promise<any> {
     const base = this.getSmrBaseUrl();
 
@@ -328,6 +308,7 @@ export class SmrProxyController {
   @Authorize()
   @ApiOperation({ summary: 'Get task status from SMR v2' })
   @ApiParam({ name: 'taskId', description: 'Task ID' })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getTaskStatus(@Param('taskId') taskId: string): Promise<any> {
     const base = this.getSmrBaseUrl();
 
@@ -357,15 +338,12 @@ export class SmrProxyController {
   @Authorize()
   @ApiOperation({ summary: 'Cancel a running SMR task' })
   @ApiParam({ name: 'taskId', description: 'Task ID to cancel' })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async cancelTask(@Param('taskId') taskId: string): Promise<any> {
     const base = this.getSmrBaseUrl();
 
     try {
-      const response = await this.httpService.axiosRef.post(
-        `${base}/api/v1/tasks/${taskId}/cancel`,
-        {},
-        { headers: this.getForwardHeaders() },
-      );
+      const response = await this.httpService.axiosRef.post(`${base}/api/v1/tasks/${taskId}/cancel`, {}, { headers: this.getForwardHeaders() });
 
       return response.data;
     } catch (err) {
@@ -384,10 +362,7 @@ export class SmrProxyController {
   @Authorize()
   @ApiOperation({ summary: 'Stream task chunks via SSE from SMR v2' })
   @ApiParam({ name: 'taskId', description: 'Task ID to stream' })
-  async streamTaskEvents(
-    @Param('taskId') taskId: string,
-    @Res() res: Response,
-  ): Promise<void> {
+  async streamTaskEvents(@Param('taskId') taskId: string, @Res() res: Response): Promise<void> {
     const base = this.getSmrBaseUrl();
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -399,14 +374,11 @@ export class SmrProxyController {
     let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
     try {
-      const upstream = await this.httpService.axiosRef.get(
-        `${base}/api/v1/tasks/${taskId}/stream`,
-        {
-          headers: { ...this.getForwardHeaders(), Accept: 'text/event-stream' },
-          responseType: 'stream',
-          timeout: 300_000,
-        },
-      );
+      const upstream = await this.httpService.axiosRef.get(`${base}/api/v1/tasks/${taskId}/stream`, {
+        headers: { ...this.getForwardHeaders(), Accept: 'text/event-stream' },
+        responseType: 'stream',
+        timeout: 300_000,
+      });
 
       const stream = upstream.data;
 
@@ -471,6 +443,7 @@ export class SmrProxyController {
   @Post('generate/assembled')
   @Authorize()
   @ApiOperation({ summary: 'Generate text with server-side prompt assembly (debug mode)' })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generateAssembled(@Body() body: AssembledGenerateRequest): Promise<any> {
     this.validateAssembledRequest(body);
     this.requireDebugAccess(body.debug);
@@ -548,14 +521,10 @@ export class SmrProxyController {
 
     const user = this.clsService.get('user') as { roles?: string[] } | undefined;
     const roles = user?.roles ?? [];
-    const hasAdminAccess = roles.some((r) =>
-      ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'].includes(r),
-    );
+    const hasAdminAccess = roles.some((r) => ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'].includes(r));
 
     if (!hasAdminAccess) {
-      throw new ForbiddenException(
-        'Debug mode requires SUPER_ADMIN, GLOBAL_ADMIN, or TENANT_ADMIN role',
-      );
+      throw new ForbiddenException('Debug mode requires SUPER_ADMIN, GLOBAL_ADMIN, or TENANT_ADMIN role');
     }
   }
 
@@ -613,9 +582,10 @@ export class SmrProxyController {
       promptTemplateId = template.id;
       promptTemplateName = template.name;
     } else {
-      systemPrompt = body.type === 'pre-summary'
-        ? 'You are a medical documentation assistant. Generate a concise pre-summary from the provided clinical context. Focus on key findings, diagnoses, medications, and treatment plans.'
-        : 'You are a medical documentation assistant. Generate a comprehensive clinical summary from the provided transcript and context.';
+      systemPrompt =
+        body.type === 'pre-summary'
+          ? 'You are a medical documentation assistant. Generate a concise pre-summary from the provided clinical context. Focus on key findings, diagnoses, medications, and treatment plans.'
+          : 'You are a medical documentation assistant. Generate a comprehensive clinical summary from the provided transcript and context.';
     }
 
     if (body.dna_writing_style_id) {
@@ -647,6 +617,7 @@ export class SmrProxyController {
   @Get('providers')
   @Authorize()
   @ApiOperation({ summary: 'List configured LLM providers from tenant settings' })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getProviders(): Promise<any[]> {
     const tenantId = await this.resolveTenantId();
     const configs = await this.tenantService.fetchTenantConfigs({
@@ -662,5 +633,4 @@ export class SmrProxyController {
       })),
     );
   }
-
 }

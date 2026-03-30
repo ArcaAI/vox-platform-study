@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Progress } from '../../shadcn/progress'
+import { Progress } from '../../shadcn/progress';
 
 const meta = {
   title: 'Components/Progress',
@@ -15,17 +15,17 @@ const meta = {
       description: 'The progress value (0-100)',
     },
   },
-} satisfies Meta<typeof Progress>
+} satisfies Meta<typeof Progress>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
     value: 60,
     className: 'w-60',
   },
-}
+};
 
 export const Values: Story = {
   render: () => (
@@ -52,4 +52,4 @@ export const Values: Story = {
       </div>
     </div>
   ),
-}
+};

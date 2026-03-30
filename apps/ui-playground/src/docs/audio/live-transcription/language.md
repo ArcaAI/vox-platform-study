@@ -1,6 +1,6 @@
 ## Language
 
-Sets the transcription language for Local AI mode. Explicitly specifying the language improves recognition accuracy.
+Sets the transcription language for Local AI mode. Explicitly specifying the language improves recognition accuracy. In Backend mode, the language is determined by the selected pipeline configuration.
 
 <!-- @section -->
 
@@ -37,7 +37,8 @@ const stt = useSTT({
 - Cannot be changed while actively capturing audio.
 - Defaults to English (`en`).
 - When **Code-Switching** is enabled, the language is automatically overridden to `auto`.
-- Only available in Local AI processing mode.
+- In Local AI mode, the language is set directly on the Whisper model.
+- In Backend mode, the language is configured in the pipeline.
 
 ### Tips
 

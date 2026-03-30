@@ -332,18 +332,30 @@ describe('AudioContextManager', () => {
 });
 
 describe('getNewAudioContext', () => {
+  let originalAudioContext: typeof globalThis.AudioContext;
+  let originalWebkitAudioContext: unknown;
+
+  beforeEach(() => {
+    originalAudioContext = globalThis.AudioContext;
+    originalWebkitAudioContext = (globalThis as Record<string, unknown>).webkitAudioContext;
+  });
+
   afterEach(() => {
+    globalThis.AudioContext = originalAudioContext;
+    (globalThis as Record<string, unknown>).webkitAudioContext = originalWebkitAudioContext;
     vi.unstubAllGlobals();
   });
 
   it('should return undefined in Node environment', () => {
-    // In Node.js, AudioContext is not available
+    (globalThis as Record<string, unknown>).AudioContext = undefined as unknown as typeof AudioContext;
+    (globalThis as Record<string, unknown>).webkitAudioContext = undefined;
     const ctx = getNewAudioContext();
     expect(ctx).toBeUndefined();
   });
 
   it('should accept options parameter', () => {
-    // Even though it returns undefined in Node, it should accept options
+    (globalThis as Record<string, unknown>).AudioContext = undefined as unknown as typeof AudioContext;
+    (globalThis as Record<string, unknown>).webkitAudioContext = undefined;
     const ctx = getNewAudioContext({
       latencyHint: 'playback',
       sampleRate: 44100,

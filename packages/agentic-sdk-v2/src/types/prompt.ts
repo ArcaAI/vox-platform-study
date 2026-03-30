@@ -114,11 +114,7 @@ export interface PromptListFilters {
 /**
  * Valid department prompt field names for assignment.
  */
-export type DepartmentPromptField =
-  | 'newPatientPromptId'
-  | 'revisitPromptId'
-  | 'summaryPromptId'
-  | 'preSummaryPromptId';
+export type DepartmentPromptField = 'newPatientPromptId' | 'revisitPromptId' | 'summaryPromptId' | 'preSummaryPromptId';
 
 /**
  * Input for assigning a prompt template to a department field.

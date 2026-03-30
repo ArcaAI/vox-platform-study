@@ -112,8 +112,9 @@ class TestOllamaEdgeCases:
 
     @pytest.mark.asyncio
     async def test_stream_empty_lines_skipped(self, ollama_config, mock_http):
-        from smr_v2.providers.ollama import OllamaProvider
         from contextlib import asynccontextmanager
+
+        from smr_v2.providers.ollama import OllamaProvider
 
         async def _async_iter(items):
             for item in items:

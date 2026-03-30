@@ -6,14 +6,14 @@ import { CommonServiceModule } from '../baseServices';
 import { S3ServiceModule } from '../baseServices/storage/s3/s3.service.module';
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule, S3ServiceModule],
-    providers: [
-        {
-            provide: ITenantBucketService,
-            useClass: TenantBucketService,
-        },
-        TenantBucketService,
-    ],
-    exports: [ITenantBucketService, TenantBucketService],
+  imports: [CommonServiceModule, CoreDatabaseModule, S3ServiceModule],
+  providers: [
+    {
+      provide: ITenantBucketService,
+      useClass: TenantBucketService,
+    },
+    TenantBucketService,
+  ],
+  exports: [ITenantBucketService, TenantBucketService],
 })
 export class TenantBucketServiceModule {}

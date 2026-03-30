@@ -1,12 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@arcaai/ui/card';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@arcaai/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@arcaai/ui/tooltip';
 import { Check, Clock, Copy, Download, Sparkles, Zap } from 'lucide-react';
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
@@ -115,16 +110,8 @@ export function ResultCard({
               {(processingTimeMs / 1000).toFixed(1)}s
             </span>
           )}
-          {tokenUsage && (
-            <span className="text-muted-foreground">
-              {tokenUsage.total_tokens.toLocaleString()} tokens
-            </span>
-          )}
-          {createdAt && (
-            <span className="text-muted-foreground">
-              {new Date(createdAt).toLocaleString()}
-            </span>
-          )}
+          {tokenUsage && <span className="text-muted-foreground">{tokenUsage.total_tokens.toLocaleString()} tokens</span>}
+          {createdAt && <span className="text-muted-foreground">{new Date(createdAt).toLocaleString()}</span>}
         </div>
       </CardHeader>
       <CardContent>

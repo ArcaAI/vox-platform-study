@@ -1,8 +1,8 @@
-'use client'
+'use client';
 
-import { Button } from '@/components/shadcn/button'
-import { ArrowRight, Calendar, MapPin } from 'lucide-react'
-import { demoOrderConfirm } from './demo/payment'
+import { Button } from '@/components/shadcn/button';
+import { ArrowRight, Calendar, MapPin } from 'lucide-react';
+import { demoOrderConfirm } from './demo/payment';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -15,46 +15,46 @@ import { demoOrderConfirm } from './demo/payment'
 export interface OrderConfirmProps {
   data?: {
     /** Name of the product being ordered. */
-    productName?: string
+    productName?: string;
     /** Product variant such as color or size. */
-    productVariant?: string
+    productVariant?: string;
     /** URL to the product image. */
-    productImage?: string
+    productImage?: string;
     /**
      * Quantity of items being ordered.
      * @default 1
      */
-    quantity?: number
+    quantity?: number;
     /** Total price for the order. */
-    price?: number
+    price?: number;
     /** Expected delivery date string (e.g., "Tue. Dec 10"). */
-    deliveryDate?: string
+    deliveryDate?: string;
     /** Delivery address for the order. */
-    deliveryAddress?: string
+    deliveryAddress?: string;
     /**
      * Whether shipping is free for this order.
      * @default true
      */
-    freeShipping?: boolean
-  }
+    freeShipping?: boolean;
+  };
   actions?: {
     /** Called when the user confirms the order. */
-    onConfirm?: () => void
-  }
+    onConfirm?: () => void;
+  };
   appearance?: {
     /**
      * Currency code for formatting the price.
      * @default "USD"
      */
-    currency?: string
-  }
+    currency?: string;
+  };
   control?: {
     /**
      * Shows loading state on the confirm button.
      * @default false
      */
-    isLoading?: boolean
-  }
+    isLoading?: boolean;
+  };
 }
 
 /**
@@ -92,24 +92,24 @@ export interface OrderConfirmProps {
  * ```
  */
 export function OrderConfirm({ data, actions, appearance, control }: OrderConfirmProps) {
-  const resolved: NonNullable<OrderConfirmProps['data']> = data ?? demoOrderConfirm
-  const productName = resolved?.productName
-  const productVariant = resolved?.productVariant
-  const productImage = resolved?.productImage
-  const quantity = resolved?.quantity ?? 1
-  const price = resolved?.price
-  const deliveryDate = resolved?.deliveryDate
-  const deliveryAddress = resolved?.deliveryAddress
-  const freeShipping = resolved?.freeShipping ?? true
-  const { onConfirm } = actions ?? {}
-  const { currency = 'USD' } = appearance ?? {}
-  const { isLoading = false } = control ?? {}
+  const resolved: NonNullable<OrderConfirmProps['data']> = data ?? demoOrderConfirm;
+  const productName = resolved?.productName;
+  const productVariant = resolved?.productVariant;
+  const productImage = resolved?.productImage;
+  const quantity = resolved?.quantity ?? 1;
+  const price = resolved?.price;
+  const deliveryDate = resolved?.deliveryDate;
+  const deliveryAddress = resolved?.deliveryAddress;
+  const freeShipping = resolved?.freeShipping ?? true;
+  const { onConfirm } = actions ?? {};
+  const { currency = 'USD' } = appearance ?? {};
+  const { isLoading = false } = control ?? {};
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency
-    }).format(value)
-  }
+      currency,
+    }).format(value);
+  };
 
   return (
     <div className="w-full rounded-md sm:rounded-lg bg-card">
@@ -124,30 +124,23 @@ export function OrderConfirm({ data, actions, appearance, control }: OrderConfir
         )}
         <div className="flex-1 min-w-0">
           {/* Mobile: stacked layout */}
-          {productName && (
-            <h3 className="text-sm sm:text-base font-medium truncate">
-              {productName}
-            </h3>
-          )}
+          {productName && <h3 className="text-sm sm:text-base font-medium truncate">{productName}</h3>}
           {(productVariant || quantity) && (
             <p className="text-xs sm:text-sm text-muted-foreground">
-              {productVariant}{productVariant && quantity ? ' • ' : ''}Qty: {quantity}
+              {productVariant}
+              {productVariant && quantity ? ' • ' : ''}Qty: {quantity}
             </p>
           )}
           {/* Mobile: price below product info */}
           <div className="mt-1 sm:hidden">
             {price !== undefined && <p className="text-sm font-semibold">{formatCurrency(price)}</p>}
-            {freeShipping && (
-              <p className="text-xs text-green-600">Free shipping</p>
-            )}
+            {freeShipping && <p className="text-xs text-green-600">Free shipping</p>}
           </div>
         </div>
         {/* Desktop: price on the right */}
         <div className="hidden sm:block text-right">
           {price !== undefined && <p className="font-semibold">{formatCurrency(price)}</p>}
-          {freeShipping && (
-            <p className="text-sm text-green-600">Free shipping</p>
-          )}
+          {freeShipping && <p className="text-sm text-green-600">Free shipping</p>}
         </div>
       </div>
 
@@ -172,16 +165,11 @@ export function OrderConfirm({ data, actions, appearance, control }: OrderConfir
           )}
         </div>
 
-        <Button
-          size="sm"
-          className="w-full sm:w-auto"
-          onClick={onConfirm}
-          disabled={isLoading}
-        >
+        <Button size="sm" className="w-full sm:w-auto" onClick={onConfirm} disabled={isLoading}>
           {isLoading ? 'Confirming...' : 'Confirm order'}
           <ArrowRight className="ml-1.5 h-3.5 w-3.5 sm:h-4 sm:w-4" />
         </Button>
       </div>
     </div>
-  )
+  );
 }

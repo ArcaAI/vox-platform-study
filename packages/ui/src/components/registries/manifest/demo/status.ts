@@ -3,9 +3,9 @@ export const demoProgressSteps = [
   { label: 'Shipping', status: 'current' as const },
   { label: 'Payment', status: 'pending' as const },
   { label: 'Confirm', status: 'pending' as const },
-]
+];
 
 export const demoStatusBadge = {
   status: 'processing' as const,
   label: 'Processing',
-}
+};

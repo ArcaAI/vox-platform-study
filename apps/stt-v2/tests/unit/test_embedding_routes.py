@@ -14,7 +14,7 @@ from __future__ import annotations
 import io
 import struct
 import wave
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
@@ -22,7 +22,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from stt_v2.diarization.dto import SpeakerEmbedding
-
 
 # ---------------------------------------------------------------------------
 # Helpers

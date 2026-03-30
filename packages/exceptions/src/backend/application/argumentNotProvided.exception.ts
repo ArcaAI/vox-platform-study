@@ -7,10 +7,10 @@ import { ARGUMENT_NOT_PROVIDED, BaseException } from '../../common';
  * @extends {BaseException}
  */
 export class ArgumentNotProvidedException extends BaseException {
-    static readonly message = 'Expected argument not provided.';
-    readonly code = ARGUMENT_NOT_PROVIDED;
+  static readonly message = 'Expected argument not provided.';
+  readonly code = ARGUMENT_NOT_PROVIDED;
 
-    constructor(message = ArgumentNotProvidedException.message) {
-        super(message);
-    }
+  constructor(message = ArgumentNotProvidedException.message) {
+    super(message);
+  }
 }

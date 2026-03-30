@@ -10,7 +10,7 @@ RED: Written before implementation.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -20,7 +20,6 @@ from smr_v2.core.config import Settings
 from smr_v2.models.task import TaskState, TaskStatus
 from smr_v2.providers.base import ProviderRegistry
 from smr_v2.services.guardrails import PromptInjectionScanner, ScanResult
-
 
 # ── Fixtures ──
 
@@ -69,14 +68,14 @@ def mock_task_manager():
 
 
 def _make_settings(**overrides) -> Settings:
-    defaults = dict(
-        host="127.0.0.1",
-        port=5099,
-        debug=True,
-        log_level="debug",
-        guardrail_enabled=True,
-        guardrail_mode="log",
-    )
+    defaults = {
+        "host": "127.0.0.1",
+        "port": 5099,
+        "debug": True,
+        "log_level": "debug",
+        "guardrail_enabled": True,
+        "guardrail_mode": "log",
+    }
     defaults.update(overrides)
     return Settings(**defaults)
 

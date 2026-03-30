@@ -1,0 +1,114 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Prepare stage — reset test database before tests run
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Uses the HA-Postgres instance with database `vox-staging`.
+# Runs Prisma db push --force-reset (drops all tables + recreates schema)
+# then seeds with test data.
+#
+# This runs ONCE per pipeline, before all test jobs. Test jobs that need
+# the database will find it ready with a clean schema + seed data.
+#
+# ── Required CI/CD Variables ────────────────────────────────────────────────
+#
+#   CI_DATABASE_URL        — postgresql://ci_user:<pass>@10.10.1.250:5000/vox_staging
+#   CI_DATABASE_URL_DIRECT — same (for Prisma migrate)
+
+prepare-test-db:
+  stage: prepare
+  extends: .test-node-base
+  needs:
+    - job: install-node
+      optional: true
+  variables:
+    DATABASE_URL: $CI_DATABASE_URL
+    DATABASE_URL_DIRECT: $CI_DATABASE_URL_DIRECT
+  script:
+    - echo "══ prepare-test-db ══"
+    - |
+      if [ -z "$DATABASE_URL" ]; then
+        echo "ERROR: DATABASE_URL is empty."
+        echo "  CI_DATABASE_URL must be set in GitLab CI/CD Variables"
+        echo "  (Settings → CI/CD → Variables → CI_DATABASE_URL)"
+        echo ""
+        echo "  Expected format: postgresql://user:pass@host:port/dbname"
+        exit 1
+      fi
+    - |
+      DB_HOST=$(echo "$DATABASE_URL" | sed 's|.*@\([^/]*\)/.*|\1|')
+      DB_HOST_ONLY=$(echo "$DB_HOST" | cut -d: -f1)
+      DB_PORT=$(echo "$DB_HOST" | cut -d: -f2)
+      echo "  DATABASE_URL target = $DB_HOST"
+      echo "  Container hostname: $(hostname)"
+      echo "  Container IP: $(hostname -i 2>/dev/null || echo 'unknown')"
+      echo ""
+
+      MAX_RETRIES=3
+      RETRY_DELAY=10
+      TIMEOUT_MS=10000
+      attempt=0
+      connected=false
+
+      while [ "$attempt" -lt "$MAX_RETRIES" ]; do
+        attempt=$((attempt + 1))
+        echo "  Attempt $attempt/$MAX_RETRIES — connecting to $DB_HOST_ONLY:$DB_PORT (timeout ${TIMEOUT_MS}ms)..."
+        if node -e "const s=require('net').createConnection({host:'$DB_HOST_ONLY',port:$DB_PORT,timeout:$TIMEOUT_MS});s.on('connect',()=>{console.log('  ✓ Database reachable');s.destroy();process.exit(0)});s.on('error',e=>{console.error('  ✗ '+e.message);process.exit(1)});s.on('timeout',()=>{console.error('  ✗ Connection timed out');s.destroy();process.exit(1)})"; then
+          connected=true
+          break
+        fi
+
+        if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+          echo "  Retrying in ${RETRY_DELAY}s..."
+          sleep "$RETRY_DELAY"
+        fi
+      done
+
+      if [ "$connected" != "true" ]; then
+        echo ""
+        echo "ERROR: Cannot reach database at $DB_HOST_ONLY:$DB_PORT after $MAX_RETRIES attempts"
+        echo "  Possible causes:"
+        echo "    - Docker network isolation (fix: set network_mode=host in runner config)"
+        echo "    - Firewall blocking port $DB_PORT from this host"
+        echo "    - HA cluster unhealthy (check HAProxy + Keepalived on VMs 500/501)"
+        echo "    - Keepalived VIP failover in progress"
+        echo "    - Database server not running"
+        echo ""
+        echo "  Diagnostics:"
+        echo "    Container hostname: $(hostname)"
+        echo "    Container IP:       $(hostname -i 2>/dev/null || echo 'unknown')"
+        echo "    Network mode:       $(cat /proc/1/cgroup 2>/dev/null | head -1)"
+        exit 1
+      fi
+
+    - echo "── Generating Prisma client..."
+    - pnpm --filter @arcaai/database db:generate
+
+    - echo "── Building @arcaai/database..."
+    - pnpm turbo build --filter=@arcaai/database
+
+    - echo "── Pushing schema (force reset)..."
+    - pnpm --filter @arcaai/database db:push:force
+
+    - echo "── Seeding test data..."
+    - pnpm --filter @arcaai/database seed
+
+    - echo "══ Test database ready ══"
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/api/**/*
+          - packages/database/**/*
+          - packages/domains/**/*
+          - packages/applications/**/*
+        compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+      changes:
+        - apps/api/**/*
+        - packages/database/**/*
+        - packages/domains/**/*
+        - packages/applications/**/*
