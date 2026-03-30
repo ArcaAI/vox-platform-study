@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../types'
+import type { ChatMessage } from '../types';
 
 // Default messages for ChatConversation
 export const demoMessages: ChatMessage[] = [
@@ -8,7 +8,7 @@ export const demoMessages: ChatMessage[] = [
     author: 'Sarah',
     avatarFallback: 'S',
     time: '10:30 AM',
-    isOwn: false
+    isOwn: false,
   },
   {
     type: 'text',
@@ -17,17 +17,16 @@ export const demoMessages: ChatMessage[] = [
     avatarFallback: 'Y',
     time: '10:31 AM',
     isOwn: true,
-    status: 'read'
+    status: 'read',
   },
   {
     type: 'image',
     content: "Here's a preview of the dashboard",
-    image:
-      'https://images.unsplash.com/photo-1618477388954-7852f32655ec?w=400&h=300&fit=crop',
+    image: 'https://images.unsplash.com/photo-1618477388954-7852f32655ec?w=400&h=300&fit=crop',
     author: 'Sarah',
     avatarFallback: 'S',
     time: '10:32 AM',
-    isOwn: false
+    isOwn: false,
   },
   {
     type: 'text',
@@ -36,9 +35,9 @@ export const demoMessages: ChatMessage[] = [
     avatarFallback: 'Y',
     time: '10:33 AM',
     isOwn: true,
-    status: 'delivered'
-  }
-]
+    status: 'delivered',
+  },
+];
 
 // Text message bubble data
 export const demoTextMessages = [
@@ -55,26 +54,24 @@ export const demoTextMessages = [
     isOwn: true,
     status: 'read' as const,
   },
-]
+];
 
 // Image message bubble data
 export const demoImageMessages = [
   {
-    image:
-      'https://images.unsplash.com/photo-1682687220742-aba13b6e50ba?w=400&h=300&fit=crop',
+    image: 'https://images.unsplash.com/photo-1682687220742-aba13b6e50ba?w=400&h=300&fit=crop',
     content: 'Check out this view!',
     avatarUrl: 'https://i.pravatar.cc/150?u=alex',
     avatarFallback: 'A',
     time: 'Dec 8, 2:45 PM',
   },
   {
-    image:
-      'https://images.unsplash.com/photo-1618477388954-7852f32655ec?w=400&h=300&fit=crop',
+    image: 'https://images.unsplash.com/photo-1618477388954-7852f32655ec?w=400&h=300&fit=crop',
     time: 'Dec 8, 2:46 PM',
     isOwn: true,
     status: 'delivered' as const,
   },
-]
+];
 
 // Voice message bubble data
 export const demoVoiceMessage = {
@@ -82,7 +79,7 @@ export const demoVoiceMessage = {
   avatarUrl: 'https://i.pravatar.cc/150?u=mickael',
   avatarFallback: 'M',
   time: 'Dec 8, 3:15 PM',
-}
+};
 
 // Reaction message data
 export const demoReactionMessage = {
@@ -94,4 +91,4 @@ export const demoReactionMessage = {
     { emoji: '❤️', count: 3 },
     { emoji: '👏', count: 2 },
   ],
-}
+};

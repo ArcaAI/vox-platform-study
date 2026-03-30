@@ -21,11 +21,7 @@ export const VAD_SAMPLE_RATE = 16000;
  * @param outputSampleRate - Target sample rate
  * @returns Resampled audio samples
  */
-export function linearResample(
-  inputSamples: Float32Array,
-  inputSampleRate: number,
-  outputSampleRate: number
-): Float32Array {
+export function linearResample(inputSamples: Float32Array, inputSampleRate: number, outputSampleRate: number): Float32Array {
   return resampleAudio(inputSamples, inputSampleRate, outputSampleRate);
 }
 
@@ -119,10 +115,7 @@ export class Resampler {
  * @param sampleRate - Input sample rate
  * @returns Downsampled audio at 16kHz
  */
-export function downsampleTo16kHz(
-  samples: Float32Array,
-  sampleRate: number
-): Float32Array {
+export function downsampleTo16kHz(samples: Float32Array, sampleRate: number): Float32Array {
   return linearResample(samples, sampleRate, VAD_SAMPLE_RATE);
 }
 
@@ -133,9 +126,6 @@ export function downsampleTo16kHz(
  * @param targetSampleRate - Target sample rate
  * @returns Upsampled audio
  */
-export function upsampleFrom16kHz(
-  samples: Float32Array,
-  targetSampleRate: number
-): Float32Array {
+export function upsampleFrom16kHz(samples: Float32Array, targetSampleRate: number): Float32Array {
   return linearResample(samples, VAD_SAMPLE_RATE, targetSampleRate);
 }

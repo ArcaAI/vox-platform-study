@@ -21,6 +21,7 @@ export interface UseSharedConnectionReturn {
 let globalManager: SharedConnectionManager | null = null;
 let globalManagerRefCount = 0;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Optional SDK logger shape.
 function getOrCreateManager(workerUrl?: string, logger?: any): SharedConnectionManager {
   if (!globalManager) {
     globalManager = new SharedConnectionManager(workerUrl, logger);
@@ -63,11 +64,14 @@ export function useSharedConnection(workerUrl?: string): UseSharedConnectionRetu
 
   const isSharedWorkerActive = managerRef.current?.isUsingSharedWorker() ?? false;
 
-  return useMemo(() => ({
-    manager: managerRef.current,
-    tabCount,
-    isSharedWorkerActive,
-  }), [tabCount, isSharedWorkerActive]);
+  return useMemo(
+    () => ({
+      manager: managerRef.current,
+      tabCount,
+      isSharedWorkerActive,
+    }),
+    [tabCount, isSharedWorkerActive],
+  );
 }
 
 export interface UseSharedSSEOptions {
@@ -85,11 +89,7 @@ export interface UseSharedSSEReturn {
   error: boolean;
 }
 
-export function useSharedSSE(
-  connectionId: string,
-  options: UseSharedSSEOptions,
-  manager: SharedConnectionManager | null,
-): UseSharedSSEReturn {
+export function useSharedSSE(connectionId: string, options: UseSharedSSEOptions, manager: SharedConnectionManager | null): UseSharedSSEReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState(false);
   const optionsRef = useRef(options);
@@ -98,22 +98,26 @@ export function useSharedSSE(
   useEffect(() => {
     if (!manager || options.enabled === false) return;
 
-    manager.subscribeSSE(connectionId, {
-      url: options.url,
-      authToken: options.authToken,
-      autoReconnect: options.autoReconnect ?? true,
-    }, {
-      onEvent: (eventName, data) => optionsRef.current.onEvent?.(eventName, data),
-      onOpen: () => {
-        setIsConnected(true);
-        setError(false);
-        optionsRef.current.onOpen?.();
+    manager.subscribeSSE(
+      connectionId,
+      {
+        url: options.url,
+        authToken: options.authToken,
+        autoReconnect: options.autoReconnect ?? true,
       },
-      onError: () => {
-        setError(true);
-        optionsRef.current.onError?.();
+      {
+        onEvent: (eventName, data) => optionsRef.current.onEvent?.(eventName, data),
+        onOpen: () => {
+          setIsConnected(true);
+          setError(false);
+          optionsRef.current.onOpen?.();
+        },
+        onError: () => {
+          setError(true);
+          optionsRef.current.onError?.();
+        },
       },
-    });
+    );
 
     return () => {
       manager.unsubscribeSSE(connectionId);
@@ -140,42 +144,45 @@ export interface UseSharedWSReturn {
   send: (data: unknown) => void;
 }
 
-export function useSharedWS(
-  connectionId: string,
-  options: UseSharedWSOptions,
-  manager: SharedConnectionManager | null,
-): UseSharedWSReturn {
+export function useSharedWS(connectionId: string, options: UseSharedWSOptions, manager: SharedConnectionManager | null): UseSharedWSReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState(false);
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
-  const send = useCallback((data: unknown) => {
-    manager?.sendWS(connectionId, data);
-  }, [manager, connectionId]);
+  const send = useCallback(
+    (data: unknown) => {
+      manager?.sendWS(connectionId, data);
+    },
+    [manager, connectionId],
+  );
 
   useEffect(() => {
     if (!manager || options.enabled === false) return;
 
-    manager.subscribeWS(connectionId, {
-      url: options.url,
-      protocols: options.protocols,
-    }, {
-      onMessage: (data) => optionsRef.current.onMessage?.(data),
-      onOpen: () => {
-        setIsConnected(true);
-        setError(false);
-        optionsRef.current.onOpen?.();
+    manager.subscribeWS(
+      connectionId,
+      {
+        url: options.url,
+        protocols: options.protocols,
       },
-      onClose: (code, reason) => {
-        setIsConnected(false);
-        optionsRef.current.onClose?.(code, reason);
+      {
+        onMessage: (data) => optionsRef.current.onMessage?.(data),
+        onOpen: () => {
+          setIsConnected(true);
+          setError(false);
+          optionsRef.current.onOpen?.();
+        },
+        onClose: (code, reason) => {
+          setIsConnected(false);
+          optionsRef.current.onClose?.(code, reason);
+        },
+        onError: () => {
+          setError(true);
+          optionsRef.current.onError?.();
+        },
       },
-      onError: () => {
-        setError(true);
-        optionsRef.current.onError?.();
-      },
-    });
+    );
 
     return () => {
       manager.unsubscribeWS(connectionId);

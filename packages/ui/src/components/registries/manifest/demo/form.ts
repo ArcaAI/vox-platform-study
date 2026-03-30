@@ -18,7 +18,7 @@ export const demoContactFormData = {
   title: 'Get in Touch',
   subtitle: "We'd love to hear from you. Fill out the form below.",
   submitLabel: 'Send Message',
-}
+};
 
 export const demoIssueReportFormData = {
   title: 'Report an Issue',
@@ -55,18 +55,11 @@ export const demoIssueReportFormData = {
     'Checked internet connection',
     'Contacted a colleague',
   ],
-}
+};
 
 export const demoDateTimePickerData = {
   title: 'Select a Date & Time',
   availableDates: generateAvailableDates(),
-  availableTimeSlots: [
-    '9:00am',
-    '10:00am',
-    '11:30am',
-    '1:00pm',
-    '2:30pm',
-    '4:00pm',
-  ],
+  availableTimeSlots: ['9:00am', '10:00am', '11:30am', '1:00pm', '2:30pm', '4:00pm'],
   timezone: 'Eastern Time - US & Canada',
 };

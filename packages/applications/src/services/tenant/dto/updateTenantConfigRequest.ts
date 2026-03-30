@@ -5,16 +5,16 @@ import { EntityId } from '@arcaai/domains';
 import { EntityIdProperty } from '../../../decorators';
 
 export class UpdateTenantConfigRequest extends BaseRequest {
-    @ApiProperty({ description: 'ID of the configuration' })
-    @EntityIdProperty()
-    id!: EntityId;
+  @ApiProperty({ description: 'ID of the configuration' })
+  @EntityIdProperty()
+  id!: EntityId;
 
-    @ApiProperty({ description: 'Description of the configuration', required: false })
-    @IsString()
-    @IsOptional()
-    description?: string;
+  @ApiProperty({ description: 'Description of the configuration', required: false })
+  @IsString()
+  @IsOptional()
+  description?: string;
 
-    @ApiProperty({ description: 'Value for the configuration' })
-    @IsString()
-    value!: string;
+  @ApiProperty({ description: 'Value for the configuration' })
+  @IsString()
+  value!: string;
 }

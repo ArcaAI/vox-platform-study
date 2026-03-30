@@ -2,29 +2,52 @@
 # Shared Test Environment Setup Action
 # ============================================================================
 # This composite action sets up test environment variables for CI pipelines.
-# These values MUST match the .env.test file used for local development.
+#
+# Two modes of operation:
+#
+#   1. Service Containers (default) — ephemeral PostgreSQL/Redis spun up per job
+#      Uses localhost with isolated ports (5433/6380/9002).
+#
+#   2. External Infrastructure — connect to shared HA-Postgres and Redis
+#      Set `use-external-db: 'true'` and provide connection details.
+#      Designed for GitLab-hosted runners on the 10.10.1.0/24 network, but
+#      also usable in GitHub Actions if a VPN/tunnel is available.
+#
+# External Test Infrastructure:
+#   PostgreSQL HA:  10.10.1.250:5000  (HAProxy R/W VIP → vox_dev)
+#   Redis Dev:      10.10.1.120:6379  (DB 8 reserved for CI tests)
 #
 # IMPORTANT: Keep in sync with:
 #   - .env.test (local development)
 #   - tests/docker-compose.test.yml (test containers)
+#   - .gitlab/ci/test.yml (GitLab CI test jobs)
 #
-# Test Infrastructure Ports (ISOLATED from dev):
-#   - PostgreSQL: 5433 (dev uses 5432)
-#   - Redis:      6380 (dev uses 6379)
-#   - MinIO:      9002 (dev uses 9000)
-#   - Qdrant:     6335 (dev uses 6333)
-#
-# Usage:
+# Usage (service containers — default):
 #   - uses: ./.github/actions/setup-test-env
 #     with:
 #       database-port: '5433'
 #       redis-port: '6380'
+#
+# Usage (external infrastructure):
+#   - uses: ./.github/actions/setup-test-env
+#     with:
+#       use-external-db: 'true'
+#       external-pg-host: '10.10.1.250'
+#       external-pg-port: '5000'
+#       external-pg-user: ${{ secrets.TEST_PG_USER }}
+#       external-pg-password: ${{ secrets.TEST_PG_PASSWORD }}
+#       external-pg-database: 'vox_dev'
+#       external-redis-host: '10.10.1.120'
+#       external-redis-port: '6379'
+#       external-redis-password: ${{ secrets.TEST_REDIS_PASSWORD }}
+#       external-redis-db: '8'
 # ============================================================================
 
 name: 'Setup Test Environment'
 description: 'Sets up test environment variables for HOPE platform (mirrors .env.test)'
 
 inputs:
+  # --- Service container mode (default) ---
   database-port:
     description: 'PostgreSQL port for test database (default: 5433)'
     required: false
@@ -37,6 +60,10 @@ inputs:
     description: 'MinIO port for test storage (default: 9002)'
     required: false
     default: '9002'
+  minio-console-port:
+    description: 'MinIO console port (default: 9003)'
+    required: false
+    default: '9003'
   log-level:
     description: 'Log level for tests (default: error)'
     required: false
@@ -45,6 +72,48 @@ inputs:
     description: 'Enable file logging during tests'
     required: false
     default: 'false'
+
+  # --- External infrastructure mode ---
+  use-external-db:
+    description: 'Use external HA-Postgres and Redis instead of service containers'
+    required: false
+    default: 'false'
+  external-pg-host:
+    description: 'External PostgreSQL host (e.g. 10.10.1.250)'
+    required: false
+    default: ''
+  external-pg-port:
+    description: 'External PostgreSQL port (e.g. 5000 for HAProxy)'
+    required: false
+    default: '5000'
+  external-pg-user:
+    description: 'External PostgreSQL user'
+    required: false
+    default: ''
+  external-pg-password:
+    description: 'External PostgreSQL password'
+    required: false
+    default: ''
+  external-pg-database:
+    description: 'External PostgreSQL database name'
+    required: false
+    default: 'vox_dev'
+  external-redis-host:
+    description: 'External Redis host (e.g. 10.10.1.120)'
+    required: false
+    default: ''
+  external-redis-port:
+    description: 'External Redis port'
+    required: false
+    default: '6379'
+  external-redis-password:
+    description: 'External Redis password'
+    required: false
+    default: ''
+  external-redis-db:
+    description: 'External Redis database number'
+    required: false
+    default: '8'
 
 outputs:
   database-url:
@@ -60,10 +129,7 @@ runs:
     - id: set-env
       shell: bash
       run: |
-        echo "🔧 Setting up test environment (CI mode)..."
-        echo "   Database port: ${{ inputs.database-port }}"
-        echo "   Redis port: ${{ inputs.redis-port }}"
-        echo "   MinIO port: ${{ inputs.minio-port }}"
+        USE_EXTERNAL="${{ inputs.use-external-db }}"
 
         # =============================================================================
         # Core Environment
@@ -72,22 +138,61 @@ runs:
         echo "CI=true" >> $GITHUB_ENV
 
         # =============================================================================
-        # Database Configuration (matches .env.test)
+        # Database & Redis Configuration
         # =============================================================================
-        DB_URL="postgresql://test:test@localhost:${{ inputs.database-port }}/hope_test?schema=public"
-        echo "DATABASE_URL=${DB_URL}" >> $GITHUB_ENV
-        echo "DATABASE_URL_DIRECT=${DB_URL}" >> $GITHUB_ENV
-        echo "database-url=${DB_URL}" >> $GITHUB_OUTPUT
+        if [ "$USE_EXTERNAL" = "true" ]; then
+          echo "🔧 Setting up test environment (EXTERNAL infrastructure)..."
+          echo "   PostgreSQL: ${{ inputs.external-pg-host }}:${{ inputs.external-pg-port }}/${{ inputs.external-pg-database }}"
+          echo "   Redis:      ${{ inputs.external-redis-host }}:${{ inputs.external-redis-port }}/db${{ inputs.external-redis-db }}"
 
-        # =============================================================================
-        # Redis Configuration (matches .env.test)
-        # =============================================================================
-        REDIS_URL="redis://:test_redis_pass@localhost:${{ inputs.redis-port }}"
-        echo "REDIS_URL=${REDIS_URL}" >> $GITHUB_ENV
-        echo "REDIS_HOST=localhost" >> $GITHUB_ENV
-        echo "REDIS_PORT=${{ inputs.redis-port }}" >> $GITHUB_ENV
-        echo "REDIS_PASS=test_redis_pass" >> $GITHUB_ENV
-        echo "redis-url=${REDIS_URL}" >> $GITHUB_OUTPUT
+          PG_HOST="${{ inputs.external-pg-host }}"
+          PG_PORT="${{ inputs.external-pg-port }}"
+          PG_USER="${{ inputs.external-pg-user }}"
+          PG_PASS="${{ inputs.external-pg-password }}"
+          PG_DB="${{ inputs.external-pg-database }}"
+          REDIS_HOST="${{ inputs.external-redis-host }}"
+          REDIS_PORT="${{ inputs.external-redis-port }}"
+          REDIS_PASS="${{ inputs.external-redis-password }}"
+          REDIS_DB="${{ inputs.external-redis-db }}"
+
+          DB_URL="postgresql://${PG_USER}:${PG_PASS}@${PG_HOST}:${PG_PORT}/${PG_DB}?schema=public&connect_timeout=10"
+          REDIS_URL="redis://:${REDIS_PASS}@${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}"
+
+          echo "DATABASE_URL=${DB_URL}" >> $GITHUB_ENV
+          echo "DATABASE_URL_DIRECT=${DB_URL}" >> $GITHUB_ENV
+          echo "database-url=${DB_URL}" >> $GITHUB_OUTPUT
+
+          echo "REDIS_URL=${REDIS_URL}" >> $GITHUB_ENV
+          echo "REDIS_HOST=${REDIS_HOST}" >> $GITHUB_ENV
+          echo "REDIS_PORT=${REDIS_PORT}" >> $GITHUB_ENV
+          echo "REDIS_PASS=${REDIS_PASS}" >> $GITHUB_ENV
+          echo "redis-url=${REDIS_URL}" >> $GITHUB_OUTPUT
+
+          echo "TEST_DATABASE_URL=postgresql+asyncpg://${PG_USER}:${PG_PASS}@${PG_HOST}:${PG_PORT}/${PG_DB}" >> $GITHUB_ENV
+          echo "TEST_REDIS_URL=${REDIS_URL}" >> $GITHUB_ENV
+          echo "SUMMARY_AGENT_DATABASE_URL=postgresql+asyncpg://${PG_USER}:${PG_PASS}@${PG_HOST}:${PG_PORT}/${PG_DB}" >> $GITHUB_ENV
+          echo "SUMMARY_AGENT_REDIS_URL=${REDIS_URL}" >> $GITHUB_ENV
+          echo "CELERY_BROKER_URL=${REDIS_URL}" >> $GITHUB_ENV
+          echo "CELERY_RESULT_BACKEND=${REDIS_URL}" >> $GITHUB_ENV
+        else
+          echo "🔧 Setting up test environment (service containers)..."
+          echo "   Database port: ${{ inputs.database-port }}"
+          echo "   Redis port: ${{ inputs.redis-port }}"
+          echo "   MinIO port: ${{ inputs.minio-port }}"
+
+          DB_URL="postgresql://test:test@localhost:${{ inputs.database-port }}/hope_test?schema=public"
+          REDIS_URL="redis://:test_redis_pass@localhost:${{ inputs.redis-port }}"
+
+          echo "DATABASE_URL=${DB_URL}" >> $GITHUB_ENV
+          echo "DATABASE_URL_DIRECT=${DB_URL}" >> $GITHUB_ENV
+          echo "database-url=${DB_URL}" >> $GITHUB_OUTPUT
+
+          echo "REDIS_URL=${REDIS_URL}" >> $GITHUB_ENV
+          echo "REDIS_HOST=localhost" >> $GITHUB_ENV
+          echo "REDIS_PORT=${{ inputs.redis-port }}" >> $GITHUB_ENV
+          echo "REDIS_PASS=test_redis_pass" >> $GITHUB_ENV
+          echo "redis-url=${REDIS_URL}" >> $GITHUB_OUTPUT
+        fi
 
         # =============================================================================
         # MinIO Configuration (matches .env.test)

@@ -1,8 +1,8 @@
 """HuggingFace model loader for SafeTensor/Transformers models."""
 
+import asyncio
 import logging
 import os
-from transformers import GenerationConfig
 from typing import Any
 
 from ..core.config.settings import get_settings
@@ -29,12 +29,12 @@ class HuggingFaceLoader(BaseModelLoader):
         settings = get_settings()
 
         try:
-            import torch
+            import torch  # noqa: F401
             from transformers import (
-                AutoFeatureExtractor,
-                AutoModelForSpeechSeq2Seq,
-                AutoProcessor,
-                AutoTokenizer,
+                AutoFeatureExtractor,  # noqa: F401
+                AutoModelForSpeechSeq2Seq,  # noqa: F401
+                AutoProcessor,  # noqa: F401
+                AutoTokenizer,  # noqa: F401
             )
 
             # Determine device and dtype
@@ -54,8 +54,9 @@ class HuggingFaceLoader(BaseModelLoader):
                 f"(device={device}, dtype={torch_dtype})"
             )
 
-            # Load model based on task type
-            model, tokenizer, processor, feature_extractor = await self._load_by_task(
+            # Load model in a thread pool to avoid blocking the event loop.
+            model, tokenizer, processor, feature_extractor = await asyncio.to_thread(
+                self._load_by_task,
                 model_source=model_source,
                 task_type=model_config.task_type,
                 device=device,
@@ -98,7 +99,7 @@ class HuggingFaceLoader(BaseModelLoader):
                 f"Failed to load HuggingFace model {model_config.slug}: {e}"
             ) from e
 
-    async def _load_by_task(
+    def _load_by_task(
         self,
         model_source: str,
         task_type: ModelTaskType,
@@ -109,7 +110,6 @@ class HuggingFaceLoader(BaseModelLoader):
         token: str | None,
     ) -> tuple[Any, Any, Any, Any]:
         """Load model components based on task type."""
-        import torch
         from transformers import (
             AutoFeatureExtractor,
             AutoModelForAudioClassification,
@@ -117,7 +117,7 @@ class HuggingFaceLoader(BaseModelLoader):
             AutoModelForSpeechSeq2Seq,
             AutoProcessor,
             AutoTokenizer,
-            Wav2Vec2ForCTC,
+            GenerationConfig,
             WhisperForConditionalGeneration,
             WhisperProcessor,
         )

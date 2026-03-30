@@ -10,13 +10,7 @@ import { AudioContextManager } from './AudioContextManager.js';
 import { AudioMixer } from './AudioMixer.js';
 import { AudioTrack, type AudioTrackOptions } from './AudioTrack.js';
 import type { TrackProcessor } from '../processors/types.js';
-import {
-  type RoomOptions,
-  type AudioCaptureOptions,
-  DEFAULT_ROOM_OPTIONS,
-  RoomError,
-  RoomErrorCode,
-} from '../types/index.js';
+import { type RoomOptions, type AudioCaptureOptions, DEFAULT_ROOM_OPTIONS, RoomError, RoomErrorCode } from '../types/index.js';
 
 // ============================================================================
 // Room Events
@@ -208,10 +202,7 @@ export class Room extends TypedEventEmitter<RoomEventMap> {
 
     const audioContext = this.getAudioContext();
     if (!audioContext) {
-      throw new RoomError(
-        RoomErrorCode.AUDIO_CONTEXT_SUSPENDED,
-        'AudioContext not available'
-      );
+      throw new RoomError(RoomErrorCode.AUDIO_CONTEXT_SUSPENDED, 'AudioContext not available');
     }
 
     const trackOptions: AudioTrackOptions = {
@@ -237,19 +228,14 @@ export class Room extends TypedEventEmitter<RoomEventMap> {
    * @param mediaTrack - The MediaStreamTrack to use
    * @returns The created AudioTrack
    */
-  async createLocalTrackFromMediaStreamTrack(
-    mediaTrack: MediaStreamTrack
-  ): Promise<AudioTrack> {
+  async createLocalTrackFromMediaStreamTrack(mediaTrack: MediaStreamTrack): Promise<AudioTrack> {
     if (!this.isConnected()) {
       await this.connect();
     }
 
     const audioContext = this.getAudioContext();
     if (!audioContext) {
-      throw new RoomError(
-        RoomErrorCode.AUDIO_CONTEXT_SUSPENDED,
-        'AudioContext not available'
-      );
+      throw new RoomError(RoomErrorCode.AUDIO_CONTEXT_SUSPENDED, 'AudioContext not available');
     }
 
     const track = new AudioTrack({ audioContext });
@@ -342,9 +328,7 @@ export class Room extends TypedEventEmitter<RoomEventMap> {
  * @param options - Audio capture options
  * @returns Array of AudioTracks
  */
-export async function createLocalTracks(
-  options?: AudioCaptureOptions & { processor?: TrackProcessor }
-): Promise<AudioTrack[]> {
+export async function createLocalTracks(options?: AudioCaptureOptions & { processor?: TrackProcessor }): Promise<AudioTrack[]> {
   const track = new AudioTrack();
   await track.initialize(options);
 

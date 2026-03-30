@@ -4,13 +4,6 @@
  * Audio processor implementations for noise filtering.
  */
 
-export {
-  NoiseFilterProcessor,
-  createNoiseFilter,
-} from './NoiseFilterProcessor.js';
+export { NoiseFilterProcessor, createNoiseFilter } from './NoiseFilterProcessor.js';
 
-export {
-  RNNoiseProcessor,
-  RNNOISE_FRAME_SIZE,
-  RNNOISE_SAMPLE_RATE,
-} from './RNNoiseProcessor.js';
+export { RNNoiseProcessor, RNNOISE_FRAME_SIZE, RNNOISE_SAMPLE_RATE } from './RNNoiseProcessor.js';

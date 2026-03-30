@@ -1,102 +1,80 @@
-import { isBrowser, isEqual, isFunction } from 'es-toolkit'
-import { useRef } from 'react'
-import { useUnmount } from '@/hooks/registries/use-unmount'
-import type {
-  DependencyList,
-  EffectCallback,
-  RefObject,
-  useEffect,
-  useLayoutEffect,
-} from 'react'
+import { isBrowser, isEqual, isFunction } from 'es-toolkit';
+import { useRef } from 'react';
+import { useUnmount } from '@/hooks/registries/use-unmount';
+import type { DependencyList, EffectCallback, RefObject, useEffect, useLayoutEffect } from 'react';
 
-type TargetValue<T> = T | undefined | null
+type TargetValue<T> = T | undefined | null;
 
-type TargetType = HTMLElement | Element | Window | Document
+type TargetType = HTMLElement | Element | Window | Document;
 
-export type BasicTarget<T extends TargetType = Element> =
-  | (() => TargetValue<T>)
-  | TargetValue<T>
-  | RefObject<TargetValue<T>>
+export type BasicTarget<T extends TargetType = Element> = (() => TargetValue<T>) | TargetValue<T> | RefObject<TargetValue<T>>;
 
-export function getTargetElement<T extends TargetType>(
-  target: BasicTarget<T>,
-  defaultElement?: T,
-) {
+export function getTargetElement<T extends TargetType>(target: BasicTarget<T>, defaultElement?: T) {
   if (!isBrowser) {
-    return undefined
+    return undefined;
   }
 
   if (!target) {
-    return defaultElement
+    return defaultElement;
   }
 
-  let targetElement: TargetValue<T>
+  let targetElement: TargetValue<T>;
 
   if (isFunction(target)) {
-    targetElement = target()
+    targetElement = target();
   } else if ('current' in target) {
-    targetElement = target.current
+    targetElement = target.current;
   } else {
-    targetElement = target
+    targetElement = target;
   }
 
-  return targetElement
+  return targetElement;
 }
 
-export function createEffectWithTarget(
-  useEffectType: typeof useEffect | typeof useLayoutEffect,
-) {
+export function createEffectWithTarget(useEffectType: typeof useEffect | typeof useLayoutEffect) {
   /**
    *
    * @param effect
    * @param deps
    * @param target target should compare ref.current vs ref.current, dom vs dom, ()=>dom vs ()=>dom
    */
-  const useEffectWithTarget = (
-    effect: EffectCallback,
-    deps: DependencyList,
-    target: BasicTarget<any> | BasicTarget<any>[],
-  ) => {
-    const hasInitRef = useRef(false)
+  const useEffectWithTarget = (effect: EffectCallback, deps: DependencyList, target: BasicTarget<any> | BasicTarget<any>[]) => {
+    const hasInitRef = useRef(false);
 
-    const lastElementRef = useRef<(Element | null)[]>([])
-    const lastDepsRef = useRef<DependencyList>([])
+    const lastElementRef = useRef<(Element | null)[]>([]);
+    const lastDepsRef = useRef<DependencyList>([]);
 
-    const unLoadRef = useRef<any>(undefined)
+    const unLoadRef = useRef<any>(undefined);
 
     useEffectType(() => {
-      const targets = Array.isArray(target) ? target : [target]
-      const els = targets.map((item) => getTargetElement(item))
+      const targets = Array.isArray(target) ? target : [target];
+      const els = targets.map((item) => getTargetElement(item));
 
       // init run
       if (!hasInitRef.current) {
-        hasInitRef.current = true
-        lastElementRef.current = els
-        lastDepsRef.current = deps
+        hasInitRef.current = true;
+        lastElementRef.current = els;
+        lastDepsRef.current = deps;
 
-        unLoadRef.current = effect()
-        return
+        unLoadRef.current = effect();
+        return;
       }
 
-      if (
-        els.length !== lastElementRef.current.length ||
-        !isEqual(lastElementRef.current, els) ||
-        !isEqual(lastDepsRef.current, deps)
-      ) {
-        unLoadRef.current?.()
+      if (els.length !== lastElementRef.current.length || !isEqual(lastElementRef.current, els) || !isEqual(lastDepsRef.current, deps)) {
+        unLoadRef.current?.();
 
-        lastElementRef.current = els
-        lastDepsRef.current = deps
-        unLoadRef.current = effect()
+        lastElementRef.current = els;
+        lastDepsRef.current = deps;
+        unLoadRef.current = effect();
       }
-    })
+    });
 
     useUnmount(() => {
-      unLoadRef.current?.()
+      unLoadRef.current?.();
       // for react-refresh
-      hasInitRef.current = false
-    })
-  }
+      hasInitRef.current = false;
+    });
+  };
 
-  return useEffectWithTarget
+  return useEffectWithTarget;
 }

@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Marquee } from '../../../registries/magicui/marquee'
+import { Marquee } from '../../../registries/magicui/marquee';
 
 const meta: Meta = {
   title: 'Registries/MagicUI/Marquee',
   component: Marquee,
   parameters: { layout: 'fullscreen' },
   tags: ['autodocs'],
-}
+};
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -22,4 +22,4 @@ export const Default: Story = {
       <div className="rounded-lg border bg-muted px-4 py-2">Item 5</div>
     </Marquee>
   ),
-}
+};

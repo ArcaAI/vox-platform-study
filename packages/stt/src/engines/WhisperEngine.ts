@@ -5,12 +5,7 @@
  * Supports WebGPU acceleration with WASM fallback.
  */
 
-import type {
-  TranscriptionResult,
-  TranscriptionTimestamp,
-  ComputeDevice,
-  LanguageLocale,
-} from '../types/index.js';
+import type { TranscriptionResult, TranscriptionTimestamp, ComputeDevice, LanguageLocale } from '../types/index.js';
 import { getLanguageCode } from '../types/index.js';
 import type { EngineConfig, TranscribeOptions } from './types.js';
 import { BaseEngine } from './BaseEngine.js';
@@ -69,12 +64,7 @@ export class WhisperEngine extends BaseEngine {
       // Determine device to use
       this.actualDevice = this.resolveDevice(config.device);
 
-      const modelId = config.modelPath ?? this.getModelId(
-        config.model,
-        config.language,
-        config.quantized,
-        config.returnTimestamps,
-      );
+      const modelId = config.modelPath ?? this.getModelId(config.model, config.language, config.quantized, config.returnTimestamps);
 
       // Report loading progress
       config.onProgress?.({
@@ -88,36 +78,30 @@ export class WhisperEngine extends BaseEngine {
 
       // Specify dtype to avoid "dtype not specified" warnings and optimize GPU memory.
       // fp16 for WebGPU (faster, less VRAM), fp32 for WASM (no fp16 support).
-      const dtype = this.actualDevice === 'webgpu'
-        ? { encoder_model: 'fp16' as const, decoder_model_merged: 'fp16' as const }
-        : undefined;
+      const dtype = this.actualDevice === 'webgpu' ? { encoder_model: 'fp16' as const, decoder_model_merged: 'fp16' as const } : undefined;
 
       // Create the pipeline with progress callback
-      this.pipeline = await pipeline(
-        'automatic-speech-recognition',
-        modelId,
-        {
-          device: this.actualDevice === 'webgpu' ? 'webgpu' : undefined,
-          dtype,
-          progress_callback: (progressData: { status: string; file?: string; progress?: number; loaded?: number; total?: number }) => {
-            if (progressData.status === 'progress' && progressData.progress !== undefined) {
-              config.onProgress?.({
-                status: 'downloading',
-                progress: progressData.progress / 100,
-                file: progressData.file,
-                loaded: progressData.loaded,
-                total: progressData.total,
-              });
-            } else if (progressData.status === 'done') {
-              config.onProgress?.({
-                status: 'loading',
-                progress: 1,
-                file: progressData.file,
-              });
-            }
-          },
-        }
-      );
+      this.pipeline = await pipeline('automatic-speech-recognition', modelId, {
+        device: this.actualDevice === 'webgpu' ? 'webgpu' : undefined,
+        dtype,
+        progress_callback: (progressData: { status: string; file?: string; progress?: number; loaded?: number; total?: number }) => {
+          if (progressData.status === 'progress' && progressData.progress !== undefined) {
+            config.onProgress?.({
+              status: 'downloading',
+              progress: progressData.progress / 100,
+              file: progressData.file,
+              loaded: progressData.loaded,
+              total: progressData.total,
+            });
+          } else if (progressData.status === 'done') {
+            config.onProgress?.({
+              status: 'loading',
+              progress: 1,
+              file: progressData.file,
+            });
+          }
+        },
+      });
 
       this.modelLoadTimeMs = performance.now() - startTime;
       this.initialized = true;
@@ -136,10 +120,7 @@ export class WhisperEngine extends BaseEngine {
     }
   }
 
-  async transcribe(
-    audio: Float32Array,
-    options?: TranscribeOptions
-  ): Promise<TranscriptionResult> {
+  async transcribe(audio: Float32Array, options?: TranscribeOptions): Promise<TranscriptionResult> {
     if (!this.pipeline || !this.config) {
       throw new Error('Engine not initialized. Call init() first.');
     }
@@ -153,15 +134,10 @@ export class WhisperEngine extends BaseEngine {
 
       // English-only models (.en suffix) reject `language` and `task` parameters.
       // Only pass language for multilingual models.
-      const modelId = this.config.modelPath ?? this.getModelId(
-        this.config.model,
-        this.config.language,
-        this.config.quantized,
-        this.config.returnTimestamps,
-      );
+      const modelId =
+        this.config.modelPath ?? this.getModelId(this.config.model, this.config.language, this.config.quantized, this.config.returnTimestamps);
       const isEnglishOnlyModel = modelId.endsWith('.en');
-      const allowAutoLanguage =
-        Boolean(this.config.codeSwitching) || language.toLowerCase() === 'auto';
+      const allowAutoLanguage = Boolean(this.config.codeSwitching) || language.toLowerCase() === 'auto';
 
       const transcribeOptions: Record<string, unknown> = {
         return_timestamps: returnTimestamps,
@@ -184,12 +160,12 @@ export class WhisperEngine extends BaseEngine {
 
       let result: PipelineResult;
       try {
-        result = await this.pipeline(audio, transcribeOptions) as PipelineResult;
+        result = (await this.pipeline(audio, transcribeOptions)) as PipelineResult;
       } catch (pipelineError) {
         const msg = pipelineError instanceof Error ? pipelineError.message : String(pipelineError);
         if (returnTimestamps === 'word' && /cross.attentions|output_attentions/i.test(msg)) {
           transcribeOptions.return_timestamps = true;
-          result = await this.pipeline(audio, transcribeOptions) as PipelineResult;
+          result = (await this.pipeline(audio, transcribeOptions)) as PipelineResult;
         } else {
           throw pipelineError;
         }

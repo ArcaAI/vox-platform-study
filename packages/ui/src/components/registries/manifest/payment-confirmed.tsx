@@ -1,6 +1,6 @@
-import { Button } from '@/components/shadcn/button'
-import { Check, ExternalLink } from 'lucide-react'
-import { demoPaymentConfirmed } from './demo/payment'
+import { Button } from '@/components/shadcn/button';
+import { Check, ExternalLink } from 'lucide-react';
+import { demoPaymentConfirmed } from './demo/payment';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -13,34 +13,34 @@ import { demoPaymentConfirmed } from './demo/payment'
 export interface PaymentConfirmedProps {
   data?: {
     /** Order reference number displayed in the header. */
-    orderId?: string
+    orderId?: string;
     /** Name of the purchased product. */
-    productName?: string
+    productName?: string;
     /** Product description or variant details (e.g., "Nike - Size 42 - White"). Only shown in default variant. */
-    productDescription?: string
+    productDescription?: string;
     /** URL to the product image. */
-    productImage?: string
+    productImage?: string;
     /** Total price paid for the order. */
-    price?: number
+    price?: number;
     /** Expected delivery date string (e.g., "Tue. Dec 10"). */
-    deliveryDate?: string
-  }
+    deliveryDate?: string;
+  };
   actions?: {
     /** Called when the user clicks the track order button. */
-    onTrackOrder?: () => void
-  }
+    onTrackOrder?: () => void;
+  };
   appearance?: {
     /**
      * Display variant: "default" shows detailed layout with header, "compressed" shows compact inline layout.
      * @default "default"
      */
-    variant?: 'default' | 'compressed'
+    variant?: 'default' | 'compressed';
     /**
      * Currency code for formatting the price.
      * @default "EUR"
      */
-    currency?: string
-  }
+    currency?: string;
+  };
 }
 
 /**
@@ -75,22 +75,22 @@ export interface PaymentConfirmedProps {
  * ```
  */
 export function PaymentConfirmed({ data, actions, appearance }: PaymentConfirmedProps) {
-  const resolved: NonNullable<PaymentConfirmedProps['data']> = data ?? demoPaymentConfirmed
-  const orderId = resolved?.orderId
-  const productName = resolved?.productName
-  const productDescription = resolved?.productDescription
-  const productImage = resolved?.productImage
-  const price = resolved?.price
-  const deliveryDate = resolved?.deliveryDate
-  const { onTrackOrder } = actions ?? {}
-  const { variant = 'default', currency = 'EUR' } = appearance ?? {}
+  const resolved: NonNullable<PaymentConfirmedProps['data']> = data ?? demoPaymentConfirmed;
+  const orderId = resolved?.orderId;
+  const productName = resolved?.productName;
+  const productDescription = resolved?.productDescription;
+  const productImage = resolved?.productImage;
+  const price = resolved?.price;
+  const deliveryDate = resolved?.deliveryDate;
+  const { onTrackOrder } = actions ?? {};
+  const { variant = 'default', currency = 'EUR' } = appearance ?? {};
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency
-    }).format(value)
-  }
+      currency,
+    }).format(value);
+  };
 
   // Compressed variant - compact inline layout
   if (variant === 'compressed') {
@@ -110,11 +110,7 @@ export function PaymentConfirmed({ data, actions, appearance }: PaymentConfirmed
           <div className="flex justify-center">
             <div className="h-20 w-20 rounded-lg overflow-hidden bg-muted">
               {productImage ? (
-                <img
-                  src={productImage}
-                  alt={productName ?? 'Product image'}
-                  className="h-full w-full object-cover"
-                />
+                <img src={productImage} alt={productName ?? 'Product image'} className="h-full w-full object-cover" />
               ) : (
                 <div className="h-full w-full bg-muted" />
               )}
@@ -145,12 +141,7 @@ export function PaymentConfirmed({ data, actions, appearance }: PaymentConfirmed
             </div>
           )}
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onTrackOrder}
-            className="w-full"
-          >
+          <Button variant="outline" size="sm" onClick={onTrackOrder} className="w-full">
             Track order
             <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
           </Button>
@@ -163,11 +154,7 @@ export function PaymentConfirmed({ data, actions, appearance }: PaymentConfirmed
           </div>
           <div className="h-9 w-9 flex-shrink-0 rounded-lg overflow-hidden bg-muted">
             {productImage ? (
-              <img
-                src={productImage}
-                alt={productName ?? 'Product image'}
-                className="h-full w-full object-cover"
-              />
+              <img src={productImage} alt={productName ?? 'Product image'} className="h-full w-full object-cover" />
             ) : (
               <div className="h-full w-full bg-muted" />
             )}
@@ -188,18 +175,13 @@ export function PaymentConfirmed({ data, actions, appearance }: PaymentConfirmed
               <p className="font-semibold">{formatCurrency(price)}</p>
             </div>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onTrackOrder}
-            className="flex-shrink-0"
-          >
+          <Button variant="outline" size="sm" onClick={onTrackOrder} className="flex-shrink-0">
             Track
             <ExternalLink className="ml-1 h-3 w-3" />
           </Button>
         </div>
       </div>
-    )
+    );
   }
 
   // Default variant - detailed layout with header
@@ -212,14 +194,8 @@ export function PaymentConfirmed({ data, actions, appearance }: PaymentConfirmed
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-foreground">
             <Check className="h-4 w-4 text-background" />
           </div>
-          <span className="text-sm font-medium">
-            Payment confirmed
-          </span>
-          {orderId && (
-            <span className="text-xs text-muted-foreground">
-              #{orderId}
-            </span>
-          )}
+          <span className="text-sm font-medium">Payment confirmed</span>
+          {orderId && <span className="text-xs text-muted-foreground">#{orderId}</span>}
         </div>
         {/* Content */}
         <div className="p-4 space-y-4">
@@ -227,11 +203,7 @@ export function PaymentConfirmed({ data, actions, appearance }: PaymentConfirmed
           {productImage && (
             <div className="flex justify-center">
               <div className="h-20 w-20 rounded-lg overflow-hidden bg-muted">
-                <img
-                  src={productImage}
-                  alt={productName ?? 'Product image'}
-                  className="h-full w-full object-cover"
-                />
+                <img src={productImage} alt={productName ?? 'Product image'} className="h-full w-full object-cover" />
               </div>
             </div>
           )}
@@ -271,25 +243,15 @@ export function PaymentConfirmed({ data, actions, appearance }: PaymentConfirmed
           <div className="flex h-6 w-6 items-center justify-center rounded-full bg-foreground flex-shrink-0">
             <Check className="h-3 w-3 text-background" />
           </div>
-          <span className="text-sm font-medium">
-            Payment confirmed
-          </span>
-          {orderId && (
-            <span className="text-xs text-muted-foreground ml-auto">
-              #{orderId}
-            </span>
-          )}
+          <span className="text-sm font-medium">Payment confirmed</span>
+          {orderId && <span className="text-xs text-muted-foreground ml-auto">#{orderId}</span>}
         </div>
         {/* Product info */}
         <div className="p-4">
           <div className="flex gap-4">
             <div className="h-20 w-20 flex-shrink-0 rounded-lg overflow-hidden bg-muted">
               {productImage ? (
-                <img
-                  src={productImage}
-                  alt={productName ?? 'Product image'}
-                  className="h-full w-full object-cover"
-                />
+                <img src={productImage} alt={productName ?? 'Product image'} className="h-full w-full object-cover" />
               ) : (
                 <div className="h-full w-full bg-muted" />
               )}
@@ -299,11 +261,7 @@ export function PaymentConfirmed({ data, actions, appearance }: PaymentConfirmed
               {productDescription && <p className="text-sm text-muted-foreground">{productDescription}</p>}
               <div className="flex items-center justify-between mt-2">
                 {price !== undefined && <span className="text-lg font-semibold">{formatCurrency(price)}</span>}
-                {deliveryDate && (
-                  <span className="text-sm text-muted-foreground">
-                    Delivery: {deliveryDate}
-                  </span>
-                )}
+                {deliveryDate && <span className="text-sm text-muted-foreground">Delivery: {deliveryDate}</span>}
               </div>
             </div>
           </div>
@@ -316,5 +274,5 @@ export function PaymentConfirmed({ data, actions, appearance }: PaymentConfirmed
         </div>
       </div>
     </div>
-  )
+  );
 }

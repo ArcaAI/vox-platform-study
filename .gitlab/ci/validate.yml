@@ -1,6 +1,11 @@
 # ══════════════════════════════════════════════════════════════════════════════
 # Validate stage — fast feedback (lint + type-check)
 # ══════════════════════════════════════════════════════════════════════════════
+#
+# IMPORTANT: Prisma client must be generated BEFORE any turbo build/lint.
+# turbo's `build` depends on `^db:generate` (upstream packages), but
+# db:generate lives in @arcaai/database itself — the `^` prefix doesn't
+# trigger same-package tasks. We run db:generate explicitly first.
 
 # ── TypeScript linting (ESLint via Turborepo) ────────────────────────────────
 
@@ -10,7 +15,10 @@ lint-ts:
   needs:
     - job: install-node
       optional: true
+  variables:
+    DATABASE_URL: $CI_DATABASE_URL
   script:
+    - pnpm --filter @arcaai/database db:generate
     - pnpm turbo lint
   rules:
     - !reference [.rules-any-ts, rules]
@@ -23,7 +31,10 @@ typecheck:
   needs:
     - job: install-node
       optional: true
+  variables:
+    DATABASE_URL: $CI_DATABASE_URL
   script:
+    - pnpm --filter @arcaai/database db:generate
     - pnpm turbo build --filter=@arcaai/database
     - pnpm turbo build --filter=@arcaai/exceptions
     - pnpm turbo build --filter=@arcaai/logger
@@ -38,6 +49,7 @@ typecheck:
 lint-python:
   stage: validate
   image: python:3.11-slim
+  tags: [fast]
   needs: []
   script:
     - pip install --quiet ruff

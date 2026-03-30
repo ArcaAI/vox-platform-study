@@ -8,10 +8,7 @@
  */
 
 // Re-export from the database package
-export {
-    PrismaClient as CorePrismaClient,
-    Prisma as CorePrisma
-} from '@arcaai/database';
+export { PrismaClient as CorePrismaClient, Prisma as CorePrisma } from '@arcaai/database';
 export * as CoreDataModel from '@arcaai/database';
 
 // Symbol for dependency injection

@@ -15,7 +15,7 @@ import { AuditLogController } from './audit-log.controller';
  * - AuthModule: Provides authentication guards and decorators
  */
 @Module({
-    imports: [AuditLogServiceModule, AuthModule],
-    controllers: [AuditLogController],
+  imports: [AuditLogServiceModule, AuthModule],
+  controllers: [AuditLogController],
 })
 export class AuditLogModule {}

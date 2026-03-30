@@ -1,6 +1,6 @@
-import * as React from 'react'
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { IconCopy, IconScissors, IconClipboard, IconTrash } from '@tabler/icons-react'
+import * as React from 'react';
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { IconCopy, IconScissors, IconClipboard, IconTrash } from '@tabler/icons-react';
 
 import {
   ContextMenu,
@@ -16,7 +16,7 @@ import {
   ContextMenuSubContent,
   ContextMenuSubTrigger,
   ContextMenuRadioGroup,
-} from '../../shadcn/context-menu'
+} from '../../shadcn/context-menu';
 
 const meta = {
   title: 'Components/ContextMenu',
@@ -25,10 +25,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof ContextMenu>
+} satisfies Meta<typeof ContextMenu>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -61,7 +61,7 @@ export const Default: Story = {
       </ContextMenuContent>
     </ContextMenu>
   ),
-}
+};
 
 export const WithSubmenu: Story = {
   render: () => (
@@ -97,13 +97,13 @@ export const WithSubmenu: Story = {
       </ContextMenuContent>
     </ContextMenu>
   ),
-}
+};
 
 export const WithCheckboxAndRadio: Story = {
   render: () => {
-    const [showBookmarks, setShowBookmarks] = React.useState(true)
-    const [showUrls, setShowUrls] = React.useState(false)
-    const [person, setPerson] = React.useState('pedro')
+    const [showBookmarks, setShowBookmarks] = React.useState(true);
+    const [showUrls, setShowUrls] = React.useState(false);
+    const [person, setPerson] = React.useState('pedro');
 
     return (
       <ContextMenu>
@@ -113,16 +113,10 @@ export const WithCheckboxAndRadio: Story = {
         <ContextMenuContent className="w-64">
           <ContextMenuLabel>Appearance</ContextMenuLabel>
           <ContextMenuSeparator />
-          <ContextMenuCheckboxItem
-            checked={showBookmarks}
-            onCheckedChange={setShowBookmarks}
-          >
+          <ContextMenuCheckboxItem checked={showBookmarks} onCheckedChange={setShowBookmarks}>
             Show Bookmarks Bar
           </ContextMenuCheckboxItem>
-          <ContextMenuCheckboxItem
-            checked={showUrls}
-            onCheckedChange={setShowUrls}
-          >
+          <ContextMenuCheckboxItem checked={showUrls} onCheckedChange={setShowUrls}>
             Show Full URLs
           </ContextMenuCheckboxItem>
           <ContextMenuSeparator />
@@ -134,6 +128,6 @@ export const WithCheckboxAndRadio: Story = {
           </ContextMenuRadioGroup>
         </ContextMenuContent>
       </ContextMenu>
-    )
+    );
   },
-}
+};

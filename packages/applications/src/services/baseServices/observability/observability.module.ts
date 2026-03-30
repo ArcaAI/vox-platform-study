@@ -10,33 +10,27 @@ import { JobMetricsService } from './job-metrics.service';
 import { ConfigModule } from '../_meta/config';
 
 @Module({
-    imports: [
-        ConfigModule,
-        PrometheusModule.register({
-            path: '/metrics',
-            defaultMetrics: {
-                enabled: false, // We handle default metrics in our service
-            },
-        }),
-    ],
-    providers: [
-        OpenTelemetryService,
-        JobMetricsService,
-        {
-            provide: IMetricsService,
-            useClass: SimplifiedMetricsService,
-        },
-        {
-            provide: IMonitoringService,
-            useClass: SimplifiedMonitoringService,
-        },
-    ],
-    exports: [
-        IMetricsService,
-        IMonitoringService,
-        OpenTelemetryService,
-        JobMetricsService,
-        PrometheusModule,
-    ],
+  imports: [
+    ConfigModule,
+    PrometheusModule.register({
+      path: '/metrics',
+      defaultMetrics: {
+        enabled: false, // We handle default metrics in our service
+      },
+    }),
+  ],
+  providers: [
+    OpenTelemetryService,
+    JobMetricsService,
+    {
+      provide: IMetricsService,
+      useClass: SimplifiedMetricsService,
+    },
+    {
+      provide: IMonitoringService,
+      useClass: SimplifiedMonitoringService,
+    },
+  ],
+  exports: [IMetricsService, IMonitoringService, OpenTelemetryService, JobMetricsService, PrometheusModule],
 })
-export class ObservabilityModule {} 
+export class ObservabilityModule {}

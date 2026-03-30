@@ -5,12 +5,8 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { PipelineService } from './pipeline.service';
 
 @Module({
-    imports: [
-        CoreDatabaseModule,
-        EventEmitterModule,
-        ClsModule,
-    ],
-    providers: [PipelineService],
-    exports: [PipelineService],
+  imports: [CoreDatabaseModule, EventEmitterModule, ClsModule],
+  providers: [PipelineService],
+  exports: [PipelineService],
 })
 export class PipelineServiceModule {}

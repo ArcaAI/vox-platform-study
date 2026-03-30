@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import {
   ColorPicker,
@@ -8,17 +8,17 @@ import {
   ColorPickerEyeDropper,
   ColorPickerOutput,
   ColorPickerFormat,
-} from '../../../registries/kibo-ui/color-picker'
+} from '../../../registries/kibo-ui/color-picker';
 
 const meta = {
   title: 'Registries/KiboUI/ColorPicker',
   component: ColorPicker,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof ColorPicker>
+} satisfies Meta<typeof ColorPicker>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -33,4 +33,4 @@ export const Default: Story = {
       </div>
     </ColorPicker>
   ),
-}
+};

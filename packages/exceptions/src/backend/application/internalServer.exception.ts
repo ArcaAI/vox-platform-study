@@ -7,11 +7,10 @@ import { INTERNAL_SERVER_ERROR, BaseException } from '../../common';
  * @extends {BaseException}
  */
 export class InternalServerErrorException extends BaseException {
-    static readonly message =
-        'An unexpected internal server error has occurred.';
-    readonly code = INTERNAL_SERVER_ERROR;
+  static readonly message = 'An unexpected internal server error has occurred.';
+  readonly code = INTERNAL_SERVER_ERROR;
 
-    constructor(message = InternalServerErrorException.message) {
-        super(message);
-    }
+  constructor(message = InternalServerErrorException.message) {
+    super(message);
+  }
 }

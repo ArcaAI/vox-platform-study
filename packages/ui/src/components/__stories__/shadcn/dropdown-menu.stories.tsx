@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import { useState } from 'react';
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import {
   IconUser,
   IconSettings,
@@ -11,9 +11,9 @@ import {
   IconCloud,
   IconCreditCard,
   IconKeyboard,
-} from '@tabler/icons-react'
+} from '@tabler/icons-react';
 
-import { Button } from '../../shadcn/button'
+import { Button } from '../../shadcn/button';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -29,7 +29,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from '../../shadcn/dropdown-menu'
+} from '../../shadcn/dropdown-menu';
 
 const meta = {
   title: 'Components/DropdownMenu',
@@ -38,10 +38,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof DropdownMenu>
+} satisfies Meta<typeof DropdownMenu>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -78,12 +78,12 @@ export const Default: Story = {
       </DropdownMenuContent>
     </DropdownMenu>
   ),
-}
+};
 
 function CheckboxMenuDemo() {
-  const [showStatusBar, setShowStatusBar] = useState(true)
-  const [showActivityBar, setShowActivityBar] = useState(false)
-  const [showPanel, setShowPanel] = useState(false)
+  const [showStatusBar, setShowStatusBar] = useState(true);
+  const [showActivityBar, setShowActivityBar] = useState(false);
+  const [showPanel, setShowPanel] = useState(false);
 
   return (
     <DropdownMenu>
@@ -104,15 +104,15 @@ function CheckboxMenuDemo() {
         </DropdownMenuCheckboxItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
+  );
 }
 
 export const WithCheckboxes: Story = {
   render: () => <CheckboxMenuDemo />,
-}
+};
 
 function RadioGroupMenuDemo() {
-  const [position, setPosition] = useState('bottom')
+  const [position, setPosition] = useState('bottom');
 
   return (
     <DropdownMenu>
@@ -129,12 +129,12 @@ function RadioGroupMenuDemo() {
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
+  );
 }
 
 export const WithRadioGroup: Story = {
   render: () => <RadioGroupMenuDemo />,
-}
+};
 
 export const WithSubmenu: Story = {
   render: () => (
@@ -195,4 +195,4 @@ export const WithSubmenu: Story = {
       </DropdownMenuContent>
     </DropdownMenu>
   ),
-}
+};

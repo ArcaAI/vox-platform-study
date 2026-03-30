@@ -1,26 +1,19 @@
-"use client";
+'use client';
 
-import {
-  useMemo,
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-  Fragment,
-} from "react";
-import type { KeyboardEvent } from "react";
+import { useMemo, useState, useCallback, useRef, useEffect, Fragment } from 'react';
+import type { KeyboardEvent } from 'react';
 import type {
   QuestionFlowProps,
   QuestionFlowProgressiveProps,
   QuestionFlowUpfrontProps,
   QuestionFlowReceiptProps,
   QuestionFlowOption,
-} from "./schema";
-import { cn, Button, Separator } from "./_adapter";
-import { Check, ChevronLeft } from "lucide-react";
+} from './schema';
+import { cn, Button, Separator } from './_adapter';
+import { Check, ChevronLeft } from 'lucide-react';
 
 interface SelectionIndicatorProps {
-  mode: "single" | "multi";
+  mode: 'single' | 'multi';
   isSelected: boolean;
   disabled?: boolean;
 }
@@ -32,23 +25,14 @@ interface ProgressBarProps {
 
 function ProgressBar({ current, total }: ProgressBarProps) {
   return (
-    <div
-      className="flex h-1.5 gap-1"
-      role="progressbar"
-      aria-valuenow={current}
-      aria-valuemin={1}
-      aria-valuemax={total}
-    >
+    <div className="flex h-1.5 gap-1" role="progressbar" aria-valuenow={current} aria-valuemin={1} aria-valuemax={total}>
       {Array.from({ length: total }).map((_, i) => (
-        <div
-          key={i}
-          className="relative flex-1 overflow-hidden rounded-full bg-muted"
-        >
+        <div key={i} className="relative flex-1 overflow-hidden rounded-full bg-muted">
           <div
             className={cn(
-              "absolute inset-0 origin-left rounded-full bg-primary",
-              "motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-[var(--cubic-ease-in-out)]",
-              i < current ? "scale-x-100" : "scale-x-0",
+              'absolute inset-0 origin-left rounded-full bg-primary',
+              'motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-[var(--cubic-ease-in-out)]',
+              i < current ? 'scale-x-100' : 'scale-x-0',
             )}
           />
         </div>
@@ -57,34 +41,30 @@ function ProgressBar({ current, total }: ProgressBarProps) {
   );
 }
 
-function SelectionIndicator({
-  mode,
-  isSelected,
-  disabled,
-}: SelectionIndicatorProps) {
-  const shape = mode === "single" ? "rounded-full" : "rounded";
+function SelectionIndicator({ mode, isSelected, disabled }: SelectionIndicatorProps) {
+  const shape = mode === 'single' ? 'rounded-full' : 'rounded';
 
   return (
     <div
       className={cn(
-        "flex size-4 shrink-0 items-center justify-center border-2",
-        "motion-safe:transition-colors motion-safe:duration-200",
+        'flex size-4 shrink-0 items-center justify-center border-2',
+        'motion-safe:transition-colors motion-safe:duration-200',
         shape,
         isSelected && [
-          "border-primary bg-primary text-primary-foreground",
-          "motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-300 motion-safe:ease-out",
+          'border-primary bg-primary text-primary-foreground',
+          'motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-300 motion-safe:ease-out',
         ],
-        !isSelected && "border-muted-foreground/50",
-        disabled && "opacity-50",
+        !isSelected && 'border-muted-foreground/50',
+        disabled && 'opacity-50',
       )}
     >
-      {mode === "multi" && isSelected && (
+      {mode === 'multi' && isSelected && (
         <Check
           className="size-3 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:delay-75 motion-safe:duration-200 motion-safe:fill-mode-both"
           strokeWidth={3}
         />
       )}
-      {mode === "single" && isSelected && (
+      {mode === 'single' && isSelected && (
         <span className="size-2 rounded-full bg-current motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-300 motion-safe:ease-out" />
       )}
     </div>
@@ -95,7 +75,7 @@ interface OptionItemProps {
   option: QuestionFlowOption;
   isSelected: boolean;
   isDisabled: boolean;
-  selectionMode: "single" | "multi";
+  selectionMode: 'single' | 'multi';
   isFirst: boolean;
   isLast: boolean;
   onToggle: () => void;
@@ -104,18 +84,7 @@ interface OptionItemProps {
   buttonRef?: (el: HTMLButtonElement | null) => void;
 }
 
-function OptionItem({
-  option,
-  isSelected,
-  isDisabled,
-  selectionMode,
-  isFirst,
-  isLast,
-  onToggle,
-  tabIndex,
-  onFocus,
-  buttonRef,
-}: OptionItemProps) {
+function OptionItem({ option, isSelected, isDisabled, selectionMode, isFirst, isLast, onToggle, tabIndex, onFocus, buttonRef }: OptionItemProps) {
   const hasAdjacentOptions = !isFirst && !isLast;
 
   return (
@@ -131,52 +100,34 @@ function OptionItem({
       tabIndex={tabIndex}
       disabled={isDisabled}
       className={cn(
-        "peer group relative h-auto min-h-[50px] w-full justify-start text-left text-sm font-medium",
-        "rounded-none border-0 bg-transparent px-0 py-2 text-base shadow-none transition-none hover:bg-transparent! @md/question-flow:text-sm",
-        isFirst && "pb-2.5",
-        hasAdjacentOptions && "py-2.5",
+        'peer group relative h-auto min-h-[50px] w-full justify-start text-left text-sm font-medium',
+        'rounded-none border-0 bg-transparent px-0 py-2 text-base shadow-none transition-none hover:bg-transparent! @md/question-flow:text-sm',
+        isFirst && 'pb-2.5',
+        hasAdjacentOptions && 'py-2.5',
       )}
     >
-      <span
-        className={cn(
-          "bg-primary/5 absolute inset-0 -mx-3 -my-0.5 rounded-xl opacity-0 transition-opacity group-hover:opacity-100",
-        )}
-      />
+      <span className={cn('bg-primary/5 absolute inset-0 -mx-3 -my-0.5 rounded-xl opacity-0 transition-opacity group-hover:opacity-100')} />
       <div className="relative flex items-start gap-3">
         <span className="flex h-6 items-center">
-          <SelectionIndicator
-            mode={selectionMode}
-            isSelected={isSelected}
-            disabled={option.disabled}
-          />
+          <SelectionIndicator mode={selectionMode} isSelected={isSelected} disabled={option.disabled} />
         </span>
-        {option.icon && (
-          <span className="flex h-6 items-center">{option.icon}</span>
-        )}
+        {option.icon && <span className="flex h-6 items-center">{option.icon}</span>}
         <div className="flex flex-col text-left">
           <span className="leading-6 text-pretty">{option.label}</span>
-          {option.description && (
-            <span className="text-muted-foreground text-sm font-normal text-pretty">
-              {option.description}
-            </span>
-          )}
+          {option.description && <span className="text-muted-foreground text-sm font-normal text-pretty">{option.description}</span>}
         </div>
       </div>
     </Button>
   );
 }
 
-function QuestionFlowReceipt({
-  id,
-  choice,
-  className,
-}: QuestionFlowReceiptProps) {
+function QuestionFlowReceipt({ id, choice, className }: QuestionFlowReceiptProps) {
   return (
     <div
       className={cn(
-        "@container/question-flow flex w-full min-w-80 max-w-md flex-col",
-        "text-foreground",
-        "motion-safe:animate-in motion-safe:fade-in motion-safe:blur-in-sm motion-safe:zoom-in-95 motion-safe:duration-300 motion-safe:ease-out motion-safe:fill-mode-both",
+        '@container/question-flow flex w-full min-w-80 max-w-md flex-col',
+        'text-foreground',
+        'motion-safe:animate-in motion-safe:fade-in motion-safe:blur-in-sm motion-safe:zoom-in-95 motion-safe:duration-300 motion-safe:ease-out motion-safe:fill-mode-both',
         className,
       )}
       data-slot="question-flow"
@@ -185,11 +136,7 @@ function QuestionFlowReceipt({
       role="status"
       aria-label={choice.title}
     >
-      <div
-        className={cn(
-          "bg-card/60 flex w-full flex-col gap-3 rounded-2xl border px-5 py-4 shadow-xs",
-        )}
-      >
+      <div className={cn('bg-card/60 flex w-full flex-col gap-3 rounded-2xl border px-5 py-4 shadow-xs')}>
         <div className="flex items-center justify-between gap-3">
           <span className="text-base font-medium">{choice.title}</span>
           <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-500">
@@ -221,13 +168,13 @@ interface StepBodyData {
   title: string;
   description?: string;
   options: QuestionFlowOption[];
-  selectionMode: "single" | "multi";
+  selectionMode: 'single' | 'multi';
   selectedIds: Set<string>;
 }
 
 export function getQuestionFlowStepIds(id: string, stepKey: string) {
-  const safeId = encodeURIComponent(id).replace(/%/g, "_");
-  const safeStepKey = encodeURIComponent(stepKey).replace(/%/g, "_");
+  const safeId = encodeURIComponent(id).replace(/%/g, '_');
+  const safeStepKey = encodeURIComponent(stepKey).replace(/%/g, '_');
   return {
     titleId: `${safeId}-${safeStepKey}-title`,
     descriptionId: `${safeId}-${safeStepKey}-description`,
@@ -240,7 +187,7 @@ interface StepContentProps {
   title: string;
   description?: string;
   options: QuestionFlowOption[];
-  selectionMode: "single" | "multi";
+  selectionMode: 'single' | 'multi';
   selectedIds: Set<string>;
   onToggle: (optionId: string) => void;
   onBack?: () => void;
@@ -251,7 +198,7 @@ interface StepContentProps {
   className?: string;
   stepKey?: string;
   exitingStepData?: StepBodyData | null;
-  transitionDirection?: "forward" | "backward";
+  transitionDirection?: 'forward' | 'backward';
 }
 
 function StepBodyContent({
@@ -270,12 +217,12 @@ function StepBodyContent({
   title: string;
   description?: string;
   options: QuestionFlowOption[];
-  selectionMode: "single" | "multi";
+  selectionMode: 'single' | 'multi';
   selectedIds: Set<string>;
   onToggle?: (optionId: string) => void;
   id: string;
   isExiting?: boolean;
-  transitionDirection?: "forward" | "backward";
+  transitionDirection?: 'forward' | 'backward';
 }) {
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const { titleId, descriptionId } = getQuestionFlowStepIds(id, stepKey);
@@ -289,9 +236,7 @@ function StepBodyContent({
   }, [options, selectedIds]);
 
   const [activeIndex, setActiveIndex] = useState(() => {
-    const firstSelected = optionStates.findIndex(
-      (s) => s.isSelected && !s.isDisabled,
-    );
+    const firstSelected = optionStates.findIndex((s) => s.isSelected && !s.isDisabled);
     if (firstSelected >= 0) return firstSelected;
     const firstEnabled = optionStates.findIndex((s) => !s.isDisabled);
     return firstEnabled >= 0 ? firstEnabled : 0;
@@ -322,26 +267,26 @@ function StepBodyContent({
 
       const key = e.key;
 
-      if (key === "ArrowDown") {
+      if (key === 'ArrowDown') {
         e.preventDefault();
         focusOptionAt(findNextEnabledIndex(activeIndex, 1));
         return;
       }
 
-      if (key === "ArrowUp") {
+      if (key === 'ArrowUp') {
         e.preventDefault();
         focusOptionAt(findNextEnabledIndex(activeIndex, -1));
         return;
       }
 
-      if (key === "Home") {
+      if (key === 'Home') {
         e.preventDefault();
         const first = optionStates.findIndex((s) => !s.isDisabled);
         focusOptionAt(first >= 0 ? first : 0);
         return;
       }
 
-      if (key === "End") {
+      if (key === 'End') {
         e.preventDefault();
         for (let i = optionStates.length - 1; i >= 0; i--) {
           if (!optionStates[i].isDisabled) {
@@ -352,7 +297,7 @@ function StepBodyContent({
         return;
       }
 
-      if (key === "Enter" || key === " ") {
+      if (key === 'Enter' || key === ' ') {
         e.preventDefault();
         const current = optionStates[activeIndex];
         if (!current || current.isDisabled) return;
@@ -360,41 +305,28 @@ function StepBodyContent({
         return;
       }
     },
-    [
-      activeIndex,
-      findNextEnabledIndex,
-      focusOptionAt,
-      isExiting,
-      onToggle,
-      optionStates,
-    ],
+    [activeIndex, findNextEnabledIndex, focusOptionAt, isExiting, onToggle, optionStates],
   );
 
   const isTransitioning = transitionDirection !== undefined;
 
-  const enterClass =
-    transitionDirection === "forward"
-      ? "motion-safe:slide-in-from-right-4"
-      : "motion-safe:slide-in-from-left-4";
+  const enterClass = transitionDirection === 'forward' ? 'motion-safe:slide-in-from-right-4' : 'motion-safe:slide-in-from-left-4';
 
-  const exitClass =
-    transitionDirection === "forward"
-      ? "motion-safe:slide-out-to-left-4"
-      : "motion-safe:slide-out-to-right-4";
+  const exitClass = transitionDirection === 'forward' ? 'motion-safe:slide-out-to-left-4' : 'motion-safe:slide-out-to-right-4';
 
   return (
     <div
       key={stepKey}
       className={cn(
-        "flex flex-col gap-4",
+        'flex flex-col gap-4',
         isExiting && [
-          "absolute inset-0",
-          "motion-safe:animate-out motion-safe:fade-out motion-safe:blur-out-sm motion-safe:duration-250 motion-safe:ease-[var(--cubic-ease-in-out)] motion-safe:fill-mode-forwards",
+          'absolute inset-0',
+          'motion-safe:animate-out motion-safe:fade-out motion-safe:blur-out-sm motion-safe:duration-250 motion-safe:ease-[var(--cubic-ease-in-out)] motion-safe:fill-mode-forwards',
           exitClass,
         ],
         !isExiting &&
           isTransitioning && [
-            "motion-safe:animate-in motion-safe:fade-in motion-safe:blur-in-sm motion-safe:duration-250 motion-safe:ease-[var(--cubic-ease-in-out)] motion-safe:fill-mode-both",
+            'motion-safe:animate-in motion-safe:fade-in motion-safe:blur-in-sm motion-safe:duration-250 motion-safe:ease-[var(--cubic-ease-in-out)] motion-safe:fill-mode-both',
             enterClass,
           ],
       )}
@@ -414,7 +346,7 @@ function StepBodyContent({
       <div
         className="flex flex-col px-1"
         role="listbox"
-        aria-multiselectable={selectionMode === "multi"}
+        aria-multiselectable={selectionMode === 'multi'}
         onKeyDown={isExiting ? undefined : handleKeyDown}
       >
         {optionStates.map(({ option, isSelected, isDisabled }, index) => (
@@ -463,45 +395,28 @@ function StepContent({
   className,
   stepKey,
   exitingStepData,
-  transitionDirection = "forward",
+  transitionDirection = 'forward',
 }: StepContentProps) {
-  const isTransitioning =
-    exitingStepData !== null && exitingStepData !== undefined;
+  const isTransitioning = exitingStepData !== null && exitingStepData !== undefined;
   const canProceed = selectedIds.size > 0;
-  const resolvedStepKey = stepKey ?? "current";
-  const { titleId, descriptionId } = getQuestionFlowStepIds(
-    id,
-    resolvedStepKey,
-  );
+  const resolvedStepKey = stepKey ?? 'current';
+  const { titleId, descriptionId } = getQuestionFlowStepIds(id, resolvedStepKey);
 
-  const stepLabel = totalSteps
-    ? `Step ${step} of ${totalSteps}`
-    : `Step ${step}`;
+  const stepLabel = totalSteps ? `Step ${step} of ${totalSteps}` : `Step ${step}`;
 
   return (
     <div
-      className={cn(
-        "@container/question-flow flex w-full min-w-80 max-w-md flex-col gap-3",
-        "text-foreground",
-        className,
-      )}
+      className={cn('@container/question-flow flex w-full min-w-80 max-w-md flex-col gap-3', 'text-foreground', className)}
       data-slot="question-flow"
       data-tool-ui-id={id}
       role="form"
       aria-labelledby={titleId}
       aria-describedby={description ? descriptionId : undefined}
     >
-      <div
-        className={cn(
-          "bg-card flex w-full flex-col gap-4 rounded-2xl border p-5 shadow-xs",
-        )}
-      >
+      <div className={cn('bg-card flex w-full flex-col gap-4 rounded-2xl border p-5 shadow-xs')}>
         <div className="flex flex-col gap-1">
           <div className="flex flex-col gap-2">
-            <span
-              className="text-muted-foreground text-xs font-medium uppercase tracking-wide"
-              aria-label={stepLabel}
-            >
+            <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide" aria-label={stepLabel}>
               {stepLabel}
             </span>
             {totalSteps && <ProgressBar current={step} total={totalSteps} />}
@@ -534,35 +449,21 @@ function StepContent({
             onToggle={onToggle}
             id={id}
             isExiting={false}
-            transitionDirection={
-              exitingStepData ? transitionDirection : undefined
-            }
+            transitionDirection={exitingStepData ? transitionDirection : undefined}
           />
         </div>
 
         <div className="flex items-center justify-between pt-2">
           {showBack ? (
-            <Button
-              variant="ghost"
-              size="default"
-              onClick={onBack}
-              disabled={isTransitioning}
-              className="gap-1 rounded-full text-muted-foreground"
-            >
+            <Button variant="ghost" size="default" onClick={onBack} disabled={isTransitioning} className="gap-1 rounded-full text-muted-foreground">
               <ChevronLeft className="size-4" />
               Back
             </Button>
           ) : (
             <div />
           )}
-          <Button
-            variant="default"
-            size="default"
-            onClick={onNext}
-            disabled={!canProceed || isTransitioning}
-            className="rounded-full"
-          >
-            {isLastStep ? "Complete" : "Next"}
+          <Button variant="default" size="default" onClick={onNext} disabled={!canProceed || isTransitioning} className="rounded-full">
+            {isLastStep ? 'Complete' : 'Next'}
           </Button>
         </div>
       </div>
@@ -576,21 +477,19 @@ function QuestionFlowProgressive({
   title,
   description,
   options,
-  selectionMode = "single",
+  selectionMode = 'single',
   defaultValue,
   onSelect,
   onBack,
   className,
 }: QuestionFlowProgressiveProps) {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    () => new Set(defaultValue ?? []),
-  );
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(defaultValue ?? []));
 
   const handleToggle = useCallback(
     (optionId: string) => {
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        if (selectionMode === "single") {
+        if (selectionMode === 'single') {
           if (next.has(optionId)) {
             next.delete(optionId);
           } else {
@@ -635,21 +534,11 @@ function QuestionFlowProgressive({
   );
 }
 
-function QuestionFlowUpfront({
-  id,
-  steps,
-  onStepChange,
-  onComplete,
-  className,
-}: QuestionFlowUpfrontProps) {
+function QuestionFlowUpfront({ id, steps, onStepChange, onComplete, className }: QuestionFlowUpfrontProps) {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
-  const [exitingStepData, setExitingStepData] = useState<StepBodyData | null>(
-    null,
-  );
-  const [transitionDirection, setTransitionDirection] = useState<
-    "forward" | "backward"
-  >("forward");
+  const [exitingStepData, setExitingStepData] = useState<StepBodyData | null>(null);
+  const [transitionDirection, setTransitionDirection] = useState<'forward' | 'backward'>('forward');
 
   const currentStep = steps[currentStepIndex];
   const isLastStep = currentStepIndex === steps.length - 1;
@@ -669,17 +558,15 @@ function QuestionFlowUpfront({
 
   const handleToggle = useCallback(
     (optionId: string) => {
-      const mode = currentStep.selectionMode ?? "single";
+      const mode = currentStep.selectionMode ?? 'single';
       setAnswers((prev) => {
         const current = prev[currentStep.id] ?? [];
         let next: string[];
 
-        if (mode === "single") {
+        if (mode === 'single') {
           next = current.includes(optionId) ? [] : [optionId];
         } else {
-          next = current.includes(optionId)
-            ? current.filter((id) => id !== optionId)
-            : [...current, optionId];
+          next = current.includes(optionId) ? current.filter((id) => id !== optionId) : [...current, optionId];
         }
 
         return { ...prev, [currentStep.id]: next };
@@ -691,22 +578,20 @@ function QuestionFlowUpfront({
   const handleBack = useCallback(() => {
     if (currentStepIndex > 0) {
       const currentStepData = steps[currentStepIndex];
-      const stepOptions: QuestionFlowOption[] = currentStepData.options.map(
-        (opt) => ({
-          ...opt,
-          icon: undefined,
-        }),
-      );
+      const stepOptions: QuestionFlowOption[] = currentStepData.options.map((opt) => ({
+        ...opt,
+        icon: undefined,
+      }));
 
       setExitingStepData({
         stepKey: currentStepData.id,
         title: currentStepData.title,
         description: currentStepData.description,
         options: stepOptions,
-        selectionMode: currentStepData.selectionMode ?? "single",
+        selectionMode: currentStepData.selectionMode ?? 'single',
         selectedIds: new Set(answers[currentStepData.id] ?? []),
       });
-      setTransitionDirection("backward");
+      setTransitionDirection('backward');
       const prevIndex = currentStepIndex - 1;
       setCurrentStepIndex(prevIndex);
       onStepChange?.(steps[prevIndex].id);
@@ -720,35 +605,25 @@ function QuestionFlowUpfront({
       onComplete?.(answers);
     } else {
       const currentStepData = steps[currentStepIndex];
-      const stepOptions: QuestionFlowOption[] = currentStepData.options.map(
-        (opt) => ({
-          ...opt,
-          icon: undefined,
-        }),
-      );
+      const stepOptions: QuestionFlowOption[] = currentStepData.options.map((opt) => ({
+        ...opt,
+        icon: undefined,
+      }));
 
       setExitingStepData({
         stepKey: currentStepData.id,
         title: currentStepData.title,
         description: currentStepData.description,
         options: stepOptions,
-        selectionMode: currentStepData.selectionMode ?? "single",
+        selectionMode: currentStepData.selectionMode ?? 'single',
         selectedIds: new Set(answers[currentStepData.id] ?? []),
       });
-      setTransitionDirection("forward");
+      setTransitionDirection('forward');
       const nextIndex = currentStepIndex + 1;
       setCurrentStepIndex(nextIndex);
       onStepChange?.(steps[nextIndex].id);
     }
-  }, [
-    answers,
-    currentSelection.size,
-    currentStepIndex,
-    isLastStep,
-    onComplete,
-    onStepChange,
-    steps,
-  ]);
+  }, [answers, currentSelection.size, currentStepIndex, isLastStep, onComplete, onStepChange, steps]);
 
   const stepOptions: QuestionFlowOption[] = currentStep.options.map((opt) => ({
     ...opt,
@@ -763,7 +638,7 @@ function QuestionFlowUpfront({
       title={currentStep.title}
       description={currentStep.description}
       options={stepOptions}
-      selectionMode={currentStep.selectionMode ?? "single"}
+      selectionMode={currentStep.selectionMode ?? 'single'}
       selectedIds={currentSelection}
       onToggle={handleToggle}
       onBack={handleBack}
@@ -779,15 +654,13 @@ function QuestionFlowUpfront({
 }
 
 export function QuestionFlow(props: QuestionFlowProps) {
-  if ("choice" in props && props.choice !== undefined) {
+  if ('choice' in props && props.choice !== undefined) {
     return <QuestionFlowReceipt {...(props as QuestionFlowReceiptProps)} />;
   }
 
-  if ("steps" in props && props.steps !== undefined) {
+  if ('steps' in props && props.steps !== undefined) {
     return <QuestionFlowUpfront {...(props as QuestionFlowUpfrontProps)} />;
   }
 
-  return (
-    <QuestionFlowProgressive {...(props as QuestionFlowProgressiveProps)} />
-  );
+  return <QuestionFlowProgressive {...(props as QuestionFlowProgressiveProps)} />;
 }

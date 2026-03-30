@@ -8,9 +8,7 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 @Injectable()
 export class WebhookRunHistoryRepository extends Repository<WebhookRunHistoryEntity, WebhookRunHistory> {
-    constructor(
-        private readonly unitOfWorkService: CoreUnitOfWorkService
-    ) {
-        super(unitOfWorkService, 'webhookRunHistory', WebhookRunHistoryEntityMapper.getInstance());
-    }
+  constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
+    super(unitOfWorkService, 'webhookRunHistory', WebhookRunHistoryEntityMapper.getInstance());
+  }
 }

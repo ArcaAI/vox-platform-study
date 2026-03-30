@@ -1,23 +1,17 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  Message,
-  MessageAction,
-  MessageActions,
-  MessageAvatar,
-  MessageContent,
-} from '../../../registries/prompt-kit/message'
-import { Copy, ThumbsDown, ThumbsUp } from 'lucide-react'
+import { Message, MessageAction, MessageActions, MessageAvatar, MessageContent } from '../../../registries/prompt-kit/message';
+import { Copy, ThumbsDown, ThumbsUp } from 'lucide-react';
 
 const meta = {
   title: 'Registries/PromptKit/Message',
   component: Message,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Message>
+} satisfies Meta<typeof Message>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -27,7 +21,7 @@ export const Default: Story = {
       <MessageContent>Hello! This is a sample message content.</MessageContent>
     </Message>
   ),
-}
+};
 
 export const WithActions: Story = {
   args: {} as any,
@@ -56,4 +50,4 @@ export const WithActions: Story = {
       </div>
     </Message>
   ),
-}
+};

@@ -1,21 +1,20 @@
 """Integration tests for SessionManager with preprocessor + inference wiring.
 
-Tests the _make_frame_handler and _make_control_handler methods with
-actual StreamingPreprocessor and StreamingInferenceWorker instances
-(mocked at the VAD/ASR level).
+Tests ``_make_frame_handler`` and ``_make_control_handler`` with real or mock
+preprocessors. Frame handlers enqueue utterances to ``_inference_queues``;
+ASR runs in background inference tasks (see ``create_session`` tests for worker wiring).
 """
 
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
 
 from stt_v2.streaming.inference import StreamingInferenceWorker
 from stt_v2.streaming.preprocessor import AudioUtterance, StreamingPreprocessor
-from stt_v2.streaming.redis_streams import ResultPublisher
 from stt_v2.streaming.schemas import (
     AudioEncoding,
     AudioFrame,
@@ -23,11 +22,9 @@ from stt_v2.streaming.schemas import (
     SessionControl,
     SessionMetadata,
     SessionStatus,
-    SegmentResult,
 )
 from stt_v2.streaming.session import StreamSession
 from stt_v2.streaming.session_manager import SessionManager
-
 
 # =========================================================================
 # Helpers
@@ -91,7 +88,7 @@ def _make_audio_frame(seq: int = 0, final: bool = False) -> AudioFrame:
 
 
 class TestFrameHandlerIntegration:
-    """Test _make_frame_handler with preprocessor and inference worker."""
+    """Test _make_frame_handler with preprocessor and inference queue enqueue."""
 
     def _make_manager(self) -> tuple[SessionManager, AsyncMock]:
         redis = _make_mock_redis()
@@ -135,9 +132,8 @@ class TestFrameHandlerIntegration:
             threshold=0.5,
             min_speech_duration_ms=32,
         )
-        inference = StreamingInferenceWorker()
 
-        handler = mgr._make_frame_handler(session, preprocessor, inference)
+        handler = mgr._make_frame_handler(session, preprocessor)
         frame = _make_audio_frame(seq=1)
 
         await handler(frame)
@@ -163,21 +159,16 @@ class TestFrameHandlerIntegration:
         mock_pp.feed = AsyncMock(return_value=[mock_utt])
         mock_pp.utterance_count = 1
 
-        # Mock inference that returns a result
-        mock_result = SegmentResult(text="hello", start_time=0.0, end_time=0.032)
-        mock_inf = AsyncMock(spec=StreamingInferenceWorker)
-        mock_inf.process_utterance = AsyncMock(return_value=mock_result)
-
-        handler = mgr._make_frame_handler(session, mock_pp, mock_inf)
+        inference_queue = asyncio.Queue(maxsize=4)
+        mgr._inference_queues["test-sess"] = inference_queue
+        handler = mgr._make_frame_handler(session, mock_pp)
         frame = _make_audio_frame(seq=1)
 
         await handler(frame)
 
         mock_pp.feed.assert_awaited_once_with(frame.data)
-        mock_inf.process_utterance.assert_awaited_once_with("test-sess", mock_utt)
-        assert len(session.results) == 1
-        assert session.results[0].text == "hello"
-        assert session.utterance_count == 1
+        queued = inference_queue.get_nowait()
+        assert queued is mock_utt
 
     @pytest.mark.asyncio
     async def test_frame_handler_multiple_utterances_in_one_frame(self):
@@ -193,20 +184,12 @@ class TestFrameHandlerIntegration:
         mock_pp.feed = AsyncMock(return_value=utts)
         mock_pp.utterance_count = 2
 
-        results = [
-            SegmentResult(text="first", start_time=0.0, end_time=0.5),
-            SegmentResult(text="second", start_time=0.5, end_time=1.0),
-        ]
-        mock_inf = AsyncMock(spec=StreamingInferenceWorker)
-        mock_inf.process_utterance = AsyncMock(side_effect=results)
-
-        handler = mgr._make_frame_handler(session, mock_pp, mock_inf)
+        inference_queue = asyncio.Queue(maxsize=4)
+        mgr._inference_queues["test-sess"] = inference_queue
+        handler = mgr._make_frame_handler(session, mock_pp)
         await handler(_make_audio_frame(seq=1))
 
-        assert mock_inf.process_utterance.await_count == 2
-        assert len(session.results) == 2
-        assert session.results[0].text == "first"
-        assert session.results[1].text == "second"
+        assert inference_queue.qsize() == 2
 
     @pytest.mark.asyncio
     async def test_final_frame_triggers_finalization(self):
@@ -254,7 +237,7 @@ class TestControlHandlerIntegration:
 
     @pytest.mark.asyncio
     async def test_finalize_flushes_preprocessor(self):
-        """FINALIZE control should flush preprocessor and run inference on remainder."""
+        """FINALIZE control should invoke flush/drain/finalize orchestration."""
         mgr, redis = self._make_manager()
         session = self._make_session(redis)
 
@@ -263,31 +246,22 @@ class TestControlHandlerIntegration:
         publisher.publish_status = AsyncMock()
         mgr._publishers["test-sess"] = publisher
 
-        # Mock preprocessor that has remaining audio
-        final_utt = AudioUtterance(
-            samples=np.zeros(256, dtype=np.float32),
-            sample_rate=16000,
-            start_time=1.0,
-            end_time=1.5,
-            utterance_index=3,
-            is_final=True,
-        )
         mock_pp = AsyncMock(spec=StreamingPreprocessor)
-        mock_pp.flush = AsyncMock(return_value=final_utt)
-        mock_pp.utterance_count = 4
 
-        mock_result = SegmentResult(text="final words", start_time=1.0, end_time=1.5, is_final=True)
-        mock_inf = AsyncMock(spec=StreamingInferenceWorker)
-        mock_inf.process_utterance = AsyncMock(return_value=mock_result)
+        mgr._flush_final_utterance = AsyncMock()
+        mgr._drain_inference_queue = AsyncMock()
+        mgr._finalize_session = AsyncMock()
 
-        control_handler = mgr._make_control_handler(session, mock_pp, mock_inf)
+        control_handler = mgr._make_control_handler(session, mock_pp)
 
         finalize_cmd = SessionControl(action=ControlAction.FINALIZE)
         await control_handler(finalize_cmd)
 
-        mock_pp.flush.assert_awaited_once()
-        mock_inf.process_utterance.assert_awaited_once_with("test-sess", final_utt)
-        assert any(r.text == "final words" for r in session.results)
+        mgr._flush_final_utterance.assert_awaited_once_with(
+            session=session, preprocessor=mock_pp
+        )
+        mgr._drain_inference_queue.assert_awaited_once_with("test-sess")
+        mgr._finalize_session.assert_awaited_once_with(session)
 
     @pytest.mark.asyncio
     async def test_finalize_no_remaining_audio(self):
@@ -304,15 +278,20 @@ class TestControlHandlerIntegration:
         mock_pp.flush = AsyncMock(return_value=None)
         mock_pp.utterance_count = 0
 
-        mock_inf = AsyncMock(spec=StreamingInferenceWorker)
+        mgr._flush_final_utterance = AsyncMock()
+        mgr._drain_inference_queue = AsyncMock()
+        mgr._finalize_session = AsyncMock()
 
-        control_handler = mgr._make_control_handler(session, mock_pp, mock_inf)
+        control_handler = mgr._make_control_handler(session, mock_pp)
 
         finalize_cmd = SessionControl(action=ControlAction.FINALIZE)
         await control_handler(finalize_cmd)
 
-        mock_pp.flush.assert_awaited_once()
-        mock_inf.process_utterance.assert_not_awaited()
+        mgr._flush_final_utterance.assert_awaited_once_with(
+            session=session, preprocessor=mock_pp
+        )
+        mgr._drain_inference_queue.assert_awaited_once_with("test-sess")
+        mgr._finalize_session.assert_awaited_once_with(session)
 
     @pytest.mark.asyncio
     async def test_cancel_does_not_flush(self):
@@ -326,9 +305,8 @@ class TestControlHandlerIntegration:
         mgr._publishers["test-sess"] = publisher
 
         mock_pp = AsyncMock(spec=StreamingPreprocessor)
-        mock_inf = AsyncMock(spec=StreamingInferenceWorker)
 
-        control_handler = mgr._make_control_handler(session, mock_pp, mock_inf)
+        control_handler = mgr._make_control_handler(session, mock_pp)
 
         cancel_cmd = SessionControl(action=ControlAction.CANCEL)
         await control_handler(cancel_cmd)
@@ -446,17 +424,16 @@ class TestCreateSessionIntegration:
 
 
 # =========================================================================
-# Tests: SessionManager._guard alias
+# Tests: SessionManager capacity guard
 # =========================================================================
 
 
 class TestGuardAlias:
-    """Test that _guard alias works for API routes."""
+    """``SessionManager`` exposes ``_capacity_guard`` for concurrent stream limits."""
 
-    def test_guard_alias_matches_capacity_guard(self):
+    def test_capacity_guard_configured(self):
         redis = _make_mock_redis()
         profile = _make_mock_profile(max_concurrent=8)
         mgr = SessionManager(redis=redis, profile=profile, worker_id="test")
 
-        assert mgr._guard is mgr._capacity_guard
-        assert mgr._guard.max_streams == 8
+        assert mgr._capacity_guard.max_streams == 8

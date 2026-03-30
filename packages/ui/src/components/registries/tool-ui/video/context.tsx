@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import * as React from "react";
+import * as React from 'react';
 
 export interface VideoPlaybackState {
   playing: boolean;
@@ -19,7 +19,7 @@ const VideoContext = React.createContext<VideoContextValue | null>(null);
 export function useVideo() {
   const ctx = React.use(VideoContext);
   if (!ctx) {
-    throw new Error("useVideo must be used within a <VideoProvider />");
+    throw new Error('useVideo must be used within a <VideoProvider />');
   }
   return ctx;
 }
@@ -35,19 +35,13 @@ export function VideoProvider({ children, defaultState }: VideoProviderProps) {
     muted: defaultState?.muted ?? true,
   });
 
-  const [videoElement, setVideoElement] =
-    React.useState<HTMLVideoElement | null>(null);
+  const [videoElement, setVideoElement] = React.useState<HTMLVideoElement | null>(null);
 
   const setState = React.useCallback((patch: Partial<VideoPlaybackState>) => {
     setStateInternal((prev) => ({ ...prev, ...patch }));
   }, []);
 
-  const value = React.useMemo(
-    () => ({ state, setState, videoElement, setVideoElement }),
-    [state, setState, videoElement],
-  );
+  const value = React.useMemo(() => ({ state, setState, videoElement, setVideoElement }), [state, setState, videoElement]);
 
-  return (
-    <VideoContext.Provider value={value}>{children}</VideoContext.Provider>
-  );
+  return <VideoContext.Provider value={value}>{children}</VideoContext.Provider>;
 }

@@ -15,11 +15,7 @@ import { AuthController } from './auth.controller';
  * UnifiedAuthGuard can resolve it across all feature modules.
  */
 @Module({
-    imports: [
-        AuthServiceModule,
-        UserServiceModule,
-        CoreDatabaseModule,
-    ],
-    controllers: [AuthController],
+  imports: [AuthServiceModule, UserServiceModule, CoreDatabaseModule],
+  controllers: [AuthController],
 })
 export class AuthModule {}

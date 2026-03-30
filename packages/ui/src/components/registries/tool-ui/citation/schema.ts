@@ -1,23 +1,12 @@
-import { z } from "zod";
-import { defineToolUiContract } from "../shared/contract";
-import {
-  ToolUIIdSchema,
-  ToolUIReceiptSchema,
-  ToolUIRoleSchema,
-} from "../shared/schema";
+import { z } from 'zod';
+import { defineToolUiContract } from '../shared/contract';
+import { ToolUIIdSchema, ToolUIReceiptSchema, ToolUIRoleSchema } from '../shared/schema';
 
-export const CitationTypeSchema = z.enum([
-  "webpage",
-  "document",
-  "article",
-  "api",
-  "code",
-  "other",
-]);
+export const CitationTypeSchema = z.enum(['webpage', 'document', 'article', 'api', 'code', 'other']);
 
 export type CitationType = z.infer<typeof CitationTypeSchema>;
 
-export const CitationVariantSchema = z.enum(["default", "inline", "stacked"]);
+export const CitationVariantSchema = z.enum(['default', 'inline', 'stacked']);
 
 export type CitationVariant = z.infer<typeof CitationVariantSchema>;
 
@@ -38,15 +27,8 @@ export const SerializableCitationSchema = z.object({
 
 export type SerializableCitation = z.infer<typeof SerializableCitationSchema>;
 
-const SerializableCitationSchemaContract = defineToolUiContract(
-  "Citation",
-  SerializableCitationSchema,
-);
+const SerializableCitationSchemaContract = defineToolUiContract('Citation', SerializableCitationSchema);
 
-export const parseSerializableCitation: (
-  input: unknown,
-) => SerializableCitation = SerializableCitationSchemaContract.parse;
+export const parseSerializableCitation: (input: unknown) => SerializableCitation = SerializableCitationSchemaContract.parse;
 
-export const safeParseSerializableCitation: (
-  input: unknown,
-) => SerializableCitation | null = SerializableCitationSchemaContract.safeParse;
+export const safeParseSerializableCitation: (input: unknown) => SerializableCitation | null = SerializableCitationSchemaContract.safeParse;

@@ -118,18 +118,13 @@ export function usePrompts(): UsePromptsReturn {
   );
 
   const getUsageStats = useCallback(
-    (id: string) =>
-      execute<PromptUsageStats>('getUsageStats', (client) =>
-        client.get<PromptUsageStats>(PROMPT_TEMPLATE_ENDPOINTS.USAGE(id)),
-      ),
+    (id: string) => execute<PromptUsageStats>('getUsageStats', (client) => client.get<PromptUsageStats>(PROMPT_TEMPLATE_ENDPOINTS.USAGE(id))),
     [execute],
   );
 
   const assignToDepartment = useCallback(
     (input: AssignDepartmentPromptInput) =>
-      execute<void>('assignToDepartment', (client) =>
-        client.post(PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT, input) as Promise<void>,
-      ),
+      execute<void>('assignToDepartment', (client) => client.post(PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT, input) as Promise<void>),
     [execute],
   );
 
@@ -148,10 +143,7 @@ export function usePrompts(): UsePromptsReturn {
   const activateVersion = useCallback(
     (promptId: string, versionNumber: number) =>
       execute<PromptTemplate>('activateVersion', async (client) => {
-        const data = await client.post<PromptTemplate>(
-          PROMPT_TEMPLATE_ENDPOINTS.ACTIVATE_VERSION(promptId, versionNumber),
-          {}
-        );
+        const data = await client.post<PromptTemplate>(PROMPT_TEMPLATE_ENDPOINTS.ACTIVATE_VERSION(promptId, versionNumber), {});
         setPrompts((prev) => prev.map((p) => (p.id === promptId ? data : p)));
         setCurrentPrompt(data);
         return data;
@@ -160,9 +152,19 @@ export function usePrompts(): UsePromptsReturn {
   );
 
   return {
-    prompts, currentPrompt, isLoading, error,
-    create, list, get, update, remove,
-    getVersions, getUsageStats, assignToDepartment, compareVersions,
+    prompts,
+    currentPrompt,
+    isLoading,
+    error,
+    create,
+    list,
+    get,
+    update,
+    remove,
+    getVersions,
+    getUsageStats,
+    assignToDepartment,
+    compareVersions,
     activateVersion,
   };
 }

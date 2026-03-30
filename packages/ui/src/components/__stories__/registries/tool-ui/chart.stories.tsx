@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Chart } from '../../../registries/tool-ui/chart'
+import { Chart } from '../../../registries/tool-ui/chart';
 
 const meta = {
   title: 'Registries/ToolUI/Chart',
   component: Chart,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Chart>
+} satisfies Meta<typeof Chart>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
@@ -24,4 +24,4 @@ export const Default: Story = {
       { month: 'Mar', revenue: 150 },
     ],
   },
-}
+};

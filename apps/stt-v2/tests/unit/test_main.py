@@ -3,8 +3,9 @@
 Tests cover app creation, middleware setup, and signal handling.
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 
 
 class TestCreateApp:
@@ -12,8 +13,9 @@ class TestCreateApp:
 
     def test_create_app_returns_fastapi_instance(self):
         """Test create_app returns FastAPI instance."""
-        from stt_v2.main import create_app
         from fastapi import FastAPI
+
+        from stt_v2.main import create_app
 
         with patch("stt_v2.main.settings") as mock_settings:
             mock_settings.app_version = "2.0.0"
@@ -105,8 +107,9 @@ class TestLifespan:
     @pytest.mark.asyncio
     async def test_lifespan_startup_and_shutdown(self):
         """Test lifespan context manager calls init and close functions."""
-        from stt_v2.main import lifespan
         from fastapi import FastAPI
+
+        from stt_v2.main import lifespan
 
         mock_app = FastAPI()
 
@@ -148,8 +151,9 @@ class TestAppInstance:
 
     def test_app_is_fastapi_instance(self):
         """Test that app is a FastAPI instance."""
-        from stt_v2.main import app
         from fastapi import FastAPI
+
+        from stt_v2.main import app
 
         assert isinstance(app, FastAPI)
 

@@ -1,22 +1,21 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# Install stage — dependency cache warming
+# Install stage — dependency installation with persistent pnpm store
 # ══════════════════════════════════════════════════════════════════════════════
+#
+# The pnpm content-addressable store is mounted as a Docker volume at
+# /pnpm-store (configured in config.toml for fast-runner-01 and test-runner-01).
+# This persists across containers — subsequent pnpm installs resolve from the
+# warm store and only link into node_modules (~10-15s vs ~2 min cold).
+#
+# Host path: /srv/gitlab-runner/pnpm-store
+# Container path: /pnpm-store
 
 install-node:
   stage: install
   extends: .node-base
-  cache:
-    - key:
-        files:
-          - pnpm-lock.yaml
-      paths:
-        - .pnpm-store
-      policy: pull-push
-      fallback_keys:
-        - pnpm-$CI_DEFAULT_BRANCH
   script:
-    - echo "Node dependencies installed and cache warmed"
-    - pnpm --version
-    - node --version
+    - echo "Node $(node --version), pnpm $(pnpm --version)"
+    - echo "Packages installed — $(ls node_modules | wc -l) top-level deps"
+    - echo "Store size — $(du -sh /pnpm-store 2>/dev/null | cut -f1 || echo 'N/A')"
   rules:
     - !reference [.rules-any-ts, rules]

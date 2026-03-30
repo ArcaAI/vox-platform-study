@@ -141,10 +141,8 @@ export interface TrackProcessor<TOptions extends ProcessorOptions = AudioProcess
  * Interface for processors that emit events.
  * Extends TrackProcessor with event emission capabilities.
  */
-export interface EventEmittingProcessor<
-  TOptions extends ProcessorOptions = AudioProcessorOptions,
-> extends TrackProcessor<TOptions>,
-    TypedEventEmitter<ProcessorEventMap> {}
+export interface EventEmittingProcessor<TOptions extends ProcessorOptions = AudioProcessorOptions>
+  extends TrackProcessor<TOptions>, TypedEventEmitter<ProcessorEventMap> {}
 
 // ============================================================================
 // Processor Factory Types
@@ -153,10 +151,9 @@ export interface EventEmittingProcessor<
 /**
  * Factory function type for creating processors.
  */
-export type ProcessorFactory<
-  TConfig = unknown,
-  TOptions extends ProcessorOptions = AudioProcessorOptions,
-> = (config?: TConfig) => TrackProcessor<TOptions>;
+export type ProcessorFactory<TConfig = unknown, TOptions extends ProcessorOptions = AudioProcessorOptions> = (
+  config?: TConfig,
+) => TrackProcessor<TOptions>;
 
 /**
  * Configuration for a processor in the pipeline.

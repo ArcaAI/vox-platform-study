@@ -18,12 +18,7 @@ import type {
   TranscriptionPipelineConfig,
   KnowledgePipelineConfig,
 } from '../types';
-import {
-  DEFAULT_NOISE_FILTER_CONFIG,
-  DEFAULT_VAD_CONFIG,
-  DEFAULT_STT_CONFIG,
-  DEFAULT_NER_CONFIG,
-} from './constants';
+import { DEFAULT_NOISE_FILTER_CONFIG, DEFAULT_VAD_CONFIG, DEFAULT_STT_CONFIG, DEFAULT_NER_CONFIG } from './constants';
 import type { ISDKLogger } from './logger';
 import { TranscriptionPipeline, createTranscriptionPipeline } from './TranscriptionPipeline';
 import { KnowledgePipeline, createKnowledgePipeline } from './KnowledgePipeline';
@@ -179,14 +174,19 @@ export class PluginManager {
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { createMedNER } = await import('@arcaai/med-ner') as any;
+      const { createMedNER } = (await import('@arcaai/med-ner')) as any;
 
       const processor = createMedNER({
         model: this.nerConfig.model ?? DEFAULT_NER_CONFIG.model,
         threshold: this.nerConfig.threshold ?? DEFAULT_NER_CONFIG.threshold,
         entityTypes: this.nerConfig.entityTypes as unknown[],
         dtype: this.nerConfig.dtype ?? DEFAULT_NER_CONFIG.dtype,
-        onEntitiesExtracted: (result: { entities: Array<{ text: string; type: string; start: number; end: number; score: number }>; text: string; processingTime: number; timestamp: number }) => {
+        onEntitiesExtracted: (result: {
+          entities: Array<{ text: string; type: string; start: number; end: number; score: number }>;
+          text: string;
+          processingTime: number;
+          timestamp: number;
+        }) => {
           this.logger?.debug('NER extraction complete', {
             operation: 'nerExtraction',
             component: 'PluginManager',
@@ -304,10 +304,7 @@ export class PluginManager {
   /**
    * Initialize all configured plugins using the transcription pipeline.
    */
-  async initialize(
-    track: MediaStreamTrack,
-    audioContext: AudioContext
-  ): Promise<void> {
+  async initialize(track: MediaStreamTrack, audioContext: AudioContext): Promise<void> {
     if (this._initialized) {
       this.logger?.debug('PluginManager already initialized, skipping', {
         operation: 'initialize',
@@ -381,9 +378,7 @@ export class PluginManager {
   /**
    * Initialize the knowledge pipeline.
    */
-  async initializeKnowledgePipeline(
-    config?: Partial<KnowledgePipelineConfig>
-  ): Promise<void> {
+  async initializeKnowledgePipeline(config?: Partial<KnowledgePipelineConfig>): Promise<void> {
     if (this.knowledgePipeline) {
       this.logger?.debug('KnowledgePipeline already initialized', {
         operation: 'initializeKnowledgePipeline',
@@ -393,11 +388,7 @@ export class PluginManager {
     }
 
     const knowledgeConfig = this.buildKnowledgePipelineConfig(config);
-    this.knowledgePipeline = createKnowledgePipeline(
-      knowledgeConfig,
-      this.apiClient,
-      this.logger
-    );
+    this.knowledgePipeline = createKnowledgePipeline(knowledgeConfig, this.apiClient, this.logger);
 
     // Set up knowledge pipeline event handlers
     this.knowledgePipeline.on('nerComplete', ({ entities, processingTime }) => {
@@ -475,19 +466,17 @@ export class PluginManager {
   /**
    * Build knowledge pipeline config.
    */
-  private buildKnowledgePipelineConfig(
-    config?: Partial<KnowledgePipelineConfig>
-  ): KnowledgePipelineConfig {
+  private buildKnowledgePipelineConfig(config?: Partial<KnowledgePipelineConfig>): KnowledgePipelineConfig {
     const nerConfig = this.nerConfig;
 
     return {
       ner: {
         enabled: nerConfig?.enabled ?? config?.ner?.enabled ?? false,
         location: config?.ner?.location ?? 'browser',
-        triggerMode: nerConfig?.autoExtract ? 'auto' : config?.ner?.triggerMode ?? 'auto',
+        triggerMode: nerConfig?.autoExtract ? 'auto' : (config?.ner?.triggerMode ?? 'auto'),
         model: nerConfig?.model ?? config?.ner?.model ?? DEFAULT_NER_CONFIG.model,
         threshold: nerConfig?.threshold ?? config?.ner?.threshold ?? DEFAULT_NER_CONFIG.threshold,
-        entityTypes: nerConfig?.entityTypes ?? config?.ner?.entityTypes as string[] | undefined,
+        entityTypes: nerConfig?.entityTypes ?? (config?.ner?.entityTypes as string[] | undefined),
       },
       spellCheck: config?.spellCheck ?? {
         enabled: false,
@@ -676,10 +665,7 @@ export class PluginManager {
   /**
    * Restart all processors with new track
    */
-  async restart(
-    track: MediaStreamTrack,
-    audioContext: AudioContext
-  ): Promise<void> {
+  async restart(track: MediaStreamTrack, audioContext: AudioContext): Promise<void> {
     const timer = this.logger?.startOperation('restartPlugins', {
       component: 'PluginManager',
     });

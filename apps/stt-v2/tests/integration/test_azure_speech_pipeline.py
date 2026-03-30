@@ -21,17 +21,19 @@ NOTE: These tests do NOT require Docker/external services. They only mock the Az
 SDK boundary and the settings lookup.
 """
 
-import json
 from datetime import datetime
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from stt_v2.models.cache import ModelCache
+from stt_v2.core.exceptions import (
+    CloudASRAuthError,
+    CloudASRQuotaError,
+)
 from stt_v2.models.azure_speech_loader import AzureSpeechLoader
 from stt_v2.models.base_loader import LoadedModel
+from stt_v2.models.cache import ModelCache
 from stt_v2.pipeline.dto import (
     AiModelConfig,
     AiModelDownloadStatus,
@@ -41,12 +43,6 @@ from stt_v2.pipeline.dto import (
 )
 from stt_v2.transcription.batch_service import BatchTranscriptionService
 from stt_v2.transcription.dto import RawTranscription
-from stt_v2.core.exceptions import (
-    CloudASRAuthError,
-    CloudASRQuotaError,
-    CloudASRTranscriptionError,
-)
-
 
 # =============================================================================
 # Fixtures

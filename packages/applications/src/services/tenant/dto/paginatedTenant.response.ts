@@ -5,6 +5,6 @@ import { TenantResponse } from '.';
 // TODO: Implement this
 
 export class PaginatedTenantResponse extends PaginatedResponse<TenantResponse> {
-    @ApiProperty({ type: [TenantResponse] })
-    override readonly data!: readonly TenantResponse[];
+  @ApiProperty({ type: [TenantResponse] })
+  override readonly data!: readonly TenantResponse[];
 }

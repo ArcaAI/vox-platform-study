@@ -7,13 +7,13 @@ import { CommonServiceModule } from '../baseServices';
 // TODO: Implement this
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule],
-    providers: [
-        {
-            provide: INotificationService,
-            useClass: NotificationService
-        }
-    ],
-    exports: [INotificationService]
+  imports: [CommonServiceModule, CoreDatabaseModule],
+  providers: [
+    {
+      provide: INotificationService,
+      useClass: NotificationService,
+    },
+  ],
+  exports: [INotificationService],
 })
 export class NotificationServiceModule {}

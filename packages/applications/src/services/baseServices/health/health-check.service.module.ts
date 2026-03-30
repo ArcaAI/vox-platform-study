@@ -13,13 +13,13 @@ import { IHealthCheckService } from './IHealthCheckService';
  * HOPE standardized health contract.
  */
 @Module({
-    imports: [TerminusModule, HttpModule],
-    providers: [
-        {
-            provide: IHealthCheckService,
-            useClass: HealthCheckService,
-        },
-    ],
-    exports: [IHealthCheckService],
+  imports: [TerminusModule, HttpModule],
+  providers: [
+    {
+      provide: IHealthCheckService,
+      useClass: HealthCheckService,
+    },
+  ],
+  exports: [IHealthCheckService],
 })
 export class HealthCheckServiceModule {}

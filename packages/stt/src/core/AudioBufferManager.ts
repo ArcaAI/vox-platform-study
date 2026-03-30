@@ -5,11 +5,7 @@
  * Optimized for Whisper model processing which works best with 30-second chunks.
  */
 
-import {
-  WHISPER_SAMPLE_RATE,
-  prepareFloat32ForWhisper,
-  concatenateFloat32Arrays,
-} from '../utils/audioResampler.js';
+import { WHISPER_SAMPLE_RATE, prepareFloat32ForWhisper, concatenateFloat32Arrays } from '../utils/audioResampler.js';
 
 /**
  * Options for AudioBufferManager.
@@ -92,15 +88,9 @@ export class AudioBufferManager {
     };
 
     // Calculate sample counts
-    this.chunkSamples = Math.floor(
-      this.options.chunkLengthS * this.options.sampleRate
-    );
-    this.overlapSamples = Math.floor(
-      this.options.overlapLengthS * this.options.sampleRate
-    );
-    this.minBufferSamples = Math.floor(
-      this.options.minBufferS * this.options.sampleRate
-    );
+    this.chunkSamples = Math.floor(this.options.chunkLengthS * this.options.sampleRate);
+    this.overlapSamples = Math.floor(this.options.overlapLengthS * this.options.sampleRate);
+    this.minBufferSamples = Math.floor(this.options.minBufferS * this.options.sampleRate);
   }
 
   /**

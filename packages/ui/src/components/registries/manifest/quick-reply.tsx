@@ -1,5 +1,5 @@
-import { cn } from '@/lib/utils'
-import { demoQuickReplies } from './demo/selection'
+import { cn } from '@/lib/utils';
+import { demoQuickReplies } from './demo/selection';
 
 /**
  * Represents a quick reply option.
@@ -9,8 +9,8 @@ import { demoQuickReplies } from './demo/selection'
  * @property {React.ReactNode} [icon] - Optional icon displayed before the label
  */
 export interface QuickReply {
-  label?: string
-  icon?: React.ReactNode
+  label?: string;
+  icon?: React.ReactNode;
 }
 
 /**
@@ -24,14 +24,13 @@ export interface QuickReply {
 export interface QuickReplyProps {
   data?: {
     /** Array of quick reply options to display as buttons. */
-    replies?: QuickReply[]
-  }
+    replies?: QuickReply[];
+  };
   actions?: {
     /** Called when a user selects a quick reply option. */
-    onSelectReply?: (reply: QuickReply) => void
-  }
+    onSelectReply?: (reply: QuickReply) => void;
+  };
 }
-
 
 /**
  * A quick reply button set for chat interfaces.
@@ -61,9 +60,9 @@ export interface QuickReplyProps {
  * ```
  */
 export function QuickReply({ data, actions }: QuickReplyProps) {
-  const resolved: NonNullable<QuickReplyProps['data']> = data ?? { replies: demoQuickReplies }
-  const replies = resolved.replies ?? []
-  const onSelectReply = actions?.onSelectReply
+  const resolved: NonNullable<QuickReplyProps['data']> = data ?? { replies: demoQuickReplies };
+  const replies = resolved.replies ?? [];
+  const onSelectReply = actions?.onSelectReply;
   return (
     <div className="w-full bg-card rounded-lg p-4">
       <div className="flex flex-wrap gap-2">
@@ -73,7 +72,7 @@ export function QuickReply({ data, actions }: QuickReplyProps) {
             onClick={() => onSelectReply?.(reply)}
             className={cn(
               'inline-flex items-center gap-1 sm:gap-1.5 rounded-full border border-border bg-background px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm text-foreground transition-colors cursor-pointer',
-              'hover:bg-foreground hover:text-background hover:border-foreground'
+              'hover:bg-foreground hover:text-background hover:border-foreground',
             )}
           >
             {reply.icon}
@@ -82,5 +81,5 @@ export function QuickReply({ data, actions }: QuickReplyProps) {
         ))}
       </div>
     </div>
-  )
+  );
 }

@@ -1,10 +1,4 @@
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@arcaai/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
 import { Label } from '@arcaai/ui/label';
 import { Badge } from '@arcaai/ui/badge';
 import { Skeleton } from '@arcaai/ui/skeleton';
@@ -23,12 +17,7 @@ interface NormalizedModelOption {
   label: string;
 }
 
-export function ProviderModelSelect({
-  provider,
-  model,
-  onProviderChange,
-  onModelChange,
-}: ProviderModelSelectProps) {
+export function ProviderModelSelect({ provider, model, onProviderChange, onModelChange }: ProviderModelSelectProps) {
   const { data: providers, isLoading } = useSmrProviders();
 
   const selectedProvider = providers?.find((p: SmrProvider) => p.name === provider);
@@ -65,10 +54,13 @@ export function ProviderModelSelect({
     <div className="grid grid-cols-2 gap-4">
       <div className="space-y-2">
         <Label>Provider</Label>
-        <Select value={provider} onValueChange={(v: string) => {
-          onProviderChange(v);
-          onModelChange('');
-        }}>
+        <Select
+          value={provider}
+          onValueChange={(v: string) => {
+            onProviderChange(v);
+            onModelChange('');
+          }}
+        >
           <SelectTrigger>
             <SelectValue placeholder="Select provider" />
           </SelectTrigger>
@@ -78,14 +70,14 @@ export function ProviderModelSelect({
                 <span className="flex items-center gap-2">
                   {p.name}
                   {!p.is_available && (
-                    <Badge variant="secondary" className="text-[10px]">offline</Badge>
+                    <Badge variant="secondary" className="text-[10px]">
+                      offline
+                    </Badge>
                   )}
                 </span>
               </SelectItem>
             ))}
-            {(!providers || providers.length === 0) && (
-              <SelectItem value="ollama">ollama</SelectItem>
-            )}
+            {(!providers || providers.length === 0) && <SelectItem value="ollama">ollama</SelectItem>}
           </SelectContent>
         </Select>
       </div>
@@ -101,7 +93,9 @@ export function ProviderModelSelect({
               <SelectItem key={`${m.value}-${index}`} value={m.value}>
                 {m.label}
                 {m.value === selectedProvider?.default_model && (
-                  <Badge variant="outline" className="ml-2 text-[10px]">default</Badge>
+                  <Badge variant="outline" className="ml-2 text-[10px]">
+                    default
+                  </Badge>
                 )}
               </SelectItem>
             ))}

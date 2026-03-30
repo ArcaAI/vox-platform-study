@@ -14,5 +14,5 @@ import { uuidv7 } from 'uuidv7';
  * console.log("Generated ID:", id);
  */
 export function generateId(): string {
-    return uuidv7();
+  return uuidv7();
 }

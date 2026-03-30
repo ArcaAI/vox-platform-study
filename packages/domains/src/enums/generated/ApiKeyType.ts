@@ -2,11 +2,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-
 export enum ApiKeyType {
-    SDK = 'SDK',
-    WEBHOOK = 'WEBHOOK',
-    INTEGRATION = 'INTEGRATION',
-    SERVICE_ACCOUNT = 'SERVICE_ACCOUNT',
+  SDK = 'SDK',
+  WEBHOOK = 'WEBHOOK',
+  INTEGRATION = 'INTEGRATION',
+  SERVICE_ACCOUNT = 'SERVICE_ACCOUNT',
 }
-

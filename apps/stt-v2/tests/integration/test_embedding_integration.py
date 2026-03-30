@@ -83,8 +83,8 @@ def mock_speaker_store():
 @pytest.fixture
 def embedding_app(mock_embedding_service, mock_speaker_store):
     """Create a fresh FastAPI app with the embedding router and overridden deps."""
-    from stt_v2.diarization.embedding_service import get_embedding_service
     from stt_v2.core.vectorstore.speaker_store import get_speaker_store
+    from stt_v2.diarization.embedding_service import get_embedding_service
 
     app = FastAPI()
     app.include_router(embedding_router)

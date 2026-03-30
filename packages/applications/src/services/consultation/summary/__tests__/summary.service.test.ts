@@ -621,7 +621,7 @@ describe('SummaryService', () => {
             } as any);
 
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
-                `${customSmrUrl}/api/v1/summary/sync`,
+                `${customSmrUrl}/api/v1/generate`,
                 expect.any(Object),
                 expect.objectContaining({
                     headers: expect.objectContaining({
@@ -668,8 +668,6 @@ describe('SummaryService', () => {
             );
         });
 
-        // ----- NLP URL path correctness -----
-
         it('should call NLP service at /api/v1/classify/tokens (not /classify/tokens)', async () => {
             mockContextItemRepository.findById.mockResolvedValue(
                 createMockContextItem({ content: 'Test content' }),
@@ -682,10 +680,7 @@ describe('SummaryService', () => {
 
             const calledUrl = mockHttpService.axiosRef.post.mock.calls[0][0] as string;
 
-            // Must include /api/v1/ prefix
             expect(calledUrl).toContain('/api/v1/classify/tokens');
-
-            // Must NOT be the old bare path without /api/v1/
             expect(calledUrl).not.toBe('http://localhost:8864/classify/tokens');
         });
 
@@ -700,16 +695,11 @@ describe('SummaryService', () => {
 
             await service.extractEntities('ctx-item-123');
 
-            // The NerProcessor (async path) uses:
-            //   `${this.nlpServiceUrl}/api/v1/classify/tokens`
-            // SummaryService (sync path) must use the identical path.
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
                 'http://localhost:8864/api/v1/classify/tokens',
                 expect.any(Object),
             );
         });
-
-        // ----- Default port standardization -----
 
         it('should default SMR URL to http://localhost:8862 when ConfigService returns undefined', () => {
             const configWithNoUrls = {
@@ -729,7 +719,6 @@ describe('SummaryService', () => {
                 mockPromptAssemblyService as any,
             );
 
-            // Trigger an SMR call to observe the URL
             mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1' });
             mockContextItemRepository.findTranscripts.mockResolvedValue([
                 { content: 'transcript' },
@@ -749,9 +738,7 @@ describe('SummaryService', () => {
                 .generateSummary('c-1', { dnaStyleId: 's' } as any)
                 .then(() => {
                     const calledUrl = mockHttpService.axiosRef.post.mock.calls[0][0] as string;
-                    expect(calledUrl).toBe('http://localhost:8862/api/v1/summary/sync');
-
-                    // Must NOT be the old wrong defaults
+                    expect(calledUrl).toBe('http://localhost:8862/api/v1/generate');
                     expect(calledUrl).not.toContain(':8003');
                 });
         });
@@ -785,14 +772,10 @@ describe('SummaryService', () => {
 
             const calledUrl = mockHttpService.axiosRef.post.mock.calls[0][0] as string;
             expect(calledUrl).toBe('http://localhost:8864/api/v1/classify/tokens');
-
-            // Must NOT be the old wrong defaults
             expect(calledUrl).not.toContain(':8004');
         });
 
-        // ----- SMR URL path verification -----
-
-        it('should call SMR service at /api/v1/{endpoint}/sync', async () => {
+        it('should call SMR service at /api/v1/generate', async () => {
             mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1' });
             mockContextItemRepository.findCaseNotes.mockResolvedValue([
                 { content: 'Historical case note content' },
@@ -813,7 +796,7 @@ describe('SummaryService', () => {
             } as any);
 
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
-                'http://localhost:8862/api/v1/presummary/sync',
+                'http://localhost:8862/api/v1/generate',
                 expect.any(Object),
                 expect.objectContaining({
                     headers: expect.objectContaining({
@@ -822,8 +805,6 @@ describe('SummaryService', () => {
                 }),
             );
         });
-
-        // ----- Port alignment with other processors -----
 
         it('should use same default NLP port (8864) as NerProcessor', () => {
             const configWithNoUrls = { get: vi.fn().mockReturnValue(undefined) };
@@ -848,7 +829,6 @@ describe('SummaryService', () => {
 
             return serviceWithDefaults.extractEntities('ctx-item-123').then(() => {
                 const calledUrl = mockHttpService.axiosRef.post.mock.calls[0][0] as string;
-                // NerProcessor default: http://localhost:8864
                 expect(calledUrl).toMatch(/^http:\/\/localhost:8864\//);
             });
         });
@@ -870,13 +850,15 @@ describe('SummaryService', () => {
             );
 
             mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1' });
-            mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'text' }]);
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                { content: 'transcript' },
+            ]);
             mockHttpService.axiosRef.post.mockResolvedValue({
-                data: { summary: 's', modelName: 'm' },
+                data: { summary: 'result', modelName: 'test' },
             });
             mockContextItemRepository.create.mockResolvedValue({
                 id: 'ctx-1',
-                content: 's',
+                content: 'result',
                 createdAt: new Date(),
                 updatedAt: new Date(),
             });
@@ -886,7 +868,6 @@ describe('SummaryService', () => {
                 .generateSummary('c-1', { dnaStyleId: 's' } as any)
                 .then(() => {
                     const calledUrl = mockHttpService.axiosRef.post.mock.calls[0][0] as string;
-                    // SummaryProcessor default: http://localhost:8862
                     expect(calledUrl).toMatch(/^http:\/\/localhost:8862\//);
                 });
         });

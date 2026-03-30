@@ -15,14 +15,14 @@ All I/O uses ``redis.asyncio`` for non-blocking operation.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable, Coroutine
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 import structlog
 
 from stt_v2.core.config.settings import get_settings
 from stt_v2.streaming.schemas import (
     AudioFrame,
-    ControlAction,
     SegmentResult,
     SessionControl,
 )

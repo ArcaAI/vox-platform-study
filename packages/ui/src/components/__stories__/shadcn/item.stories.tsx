@@ -1,17 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { IconFile, IconFolder, IconSettings, IconTrash } from '@tabler/icons-react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { IconFile, IconFolder, IconSettings, IconTrash } from '@tabler/icons-react';
 
-import {
-  Item,
-  ItemMedia,
-  ItemContent,
-  ItemTitle,
-  ItemDescription,
-  ItemActions,
-  ItemGroup,
-  ItemSeparator,
-} from '../../shadcn/item'
-import { Button } from '../../shadcn/button'
+import { Item, ItemMedia, ItemContent, ItemTitle, ItemDescription, ItemActions, ItemGroup, ItemSeparator } from '../../shadcn/item';
+import { Button } from '../../shadcn/button';
 
 const meta = {
   title: 'Components/Item',
@@ -30,10 +21,10 @@ const meta = {
       options: ['default', 'sm'],
     },
   },
-} satisfies Meta<typeof Item>
+} satisfies Meta<typeof Item>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -47,7 +38,7 @@ export const Default: Story = {
       </ItemContent>
     </Item>
   ),
-}
+};
 
 export const Variants: Story = {
   render: () => (
@@ -69,7 +60,7 @@ export const Variants: Story = {
       </Item>
     </div>
   ),
-}
+};
 
 export const WithActions: Story = {
   render: () => (
@@ -91,7 +82,7 @@ export const WithActions: Story = {
       </ItemActions>
     </Item>
   ),
-}
+};
 
 export const Group: Story = {
   render: () => (
@@ -124,7 +115,7 @@ export const Group: Story = {
       </Item>
     </ItemGroup>
   ),
-}
+};
 
 export const Small: Story = {
   render: () => (
@@ -137,4 +128,4 @@ export const Small: Story = {
       </ItemContent>
     </Item>
   ),
-}
+};

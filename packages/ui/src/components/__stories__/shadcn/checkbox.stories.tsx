@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Checkbox } from '../../shadcn/checkbox'
-import { Label } from '../../shadcn/label'
+import { Checkbox } from '../../shadcn/checkbox';
+import { Label } from '../../shadcn/label';
 
 const meta = {
   title: 'Components/Checkbox',
@@ -20,12 +20,12 @@ const meta = {
       description: 'Whether the checkbox is checked by default',
     },
   },
-} satisfies Meta<typeof Checkbox>
+} satisfies Meta<typeof Checkbox>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {}
+export const Default: Story = {};
 
 export const WithLabel: Story = {
   render: () => (
@@ -34,7 +34,7 @@ export const WithLabel: Story = {
       <Label htmlFor="terms">Accept terms and conditions</Label>
     </div>
   ),
-}
+};
 
 export const Disabled: Story = {
   args: {
@@ -48,7 +48,7 @@ export const Disabled: Story = {
       </Label>
     </div>
   ),
-}
+};
 
 export const CheckedByDefault: Story = {
   render: () => (
@@ -57,4 +57,4 @@ export const CheckedByDefault: Story = {
       <Label htmlFor="checked">Checked by default</Label>
     </div>
   ),
-}
+};

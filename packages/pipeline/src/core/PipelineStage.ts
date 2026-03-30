@@ -5,11 +5,7 @@
  * Provides common functionality and a template for stage implementations.
  */
 
-import type {
-  IPipelineStage,
-  PipelineContext,
-  StageConfig,
-} from '../types/index.js';
+import type { IPipelineStage, PipelineContext, StageConfig } from '../types/index.js';
 import { DEFAULT_STAGE_CONFIG } from '../types/index.js';
 
 /**
@@ -34,9 +30,7 @@ import { DEFAULT_STAGE_CONFIG } from '../types/index.js';
  * }
  * ```
  */
-export abstract class PipelineStage<TInput, TOutput>
-  implements IPipelineStage<TInput, TOutput>
-{
+export abstract class PipelineStage<TInput, TOutput> implements IPipelineStage<TInput, TOutput> {
   readonly name: string;
   config: StageConfig;
 
@@ -134,11 +128,7 @@ export abstract class PipelineStage<TInput, TOutput>
   /**
    * Execute with timeout.
    */
-  private async executeWithTimeout(
-    input: TInput,
-    context: PipelineContext,
-    timeoutMs: number
-  ): Promise<TOutput> {
+  private async executeWithTimeout(input: TInput, context: PipelineContext, timeoutMs: number): Promise<TOutput> {
     return new Promise<TOutput>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         reject(new Error(`Stage '${this.name}' timed out after ${timeoutMs}ms`));
@@ -159,10 +149,7 @@ export abstract class PipelineStage<TInput, TOutput>
   /**
    * Execute with retry logic.
    */
-  private async executeWithRetry(
-    input: TInput,
-    context: PipelineContext
-  ): Promise<TOutput> {
+  private async executeWithRetry(input: TInput, context: PipelineContext): Promise<TOutput> {
     const { maxRetries, retryDelayMs, exponentialBackoff } = this.config.retry!;
     let lastError: Error | undefined;
 
@@ -173,14 +160,11 @@ export abstract class PipelineStage<TInput, TOutput>
         lastError = error as Error;
 
         if (attempt < maxRetries) {
-          const delay = exponentialBackoff
-            ? retryDelayMs * Math.pow(2, attempt)
-            : retryDelayMs;
+          const delay = exponentialBackoff ? retryDelayMs * Math.pow(2, attempt) : retryDelayMs;
 
-          context.logger?.warn(
-            `Stage '${this.name}' failed, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
-            { error: lastError.message }
-          );
+          context.logger?.warn(`Stage '${this.name}' failed, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`, {
+            error: lastError.message,
+          });
 
           await this.sleep(delay);
         }
@@ -212,10 +196,7 @@ export abstract class PipelineStage<TInput, TOutput>
    * Execute the stage logic.
    * Must be implemented by subclasses.
    */
-  protected abstract onExecute(
-    input: TInput,
-    context: PipelineContext
-  ): Promise<TOutput>;
+  protected abstract onExecute(input: TInput, context: PipelineContext): Promise<TOutput>;
 
   /**
    * Initialize stage-specific resources.
@@ -253,7 +234,8 @@ export abstract class PipelineStage<TInput, TOutput>
    * Check if the stage can execute with the given input.
    * Override to implement validation logic.
    */
-  canExecute?(input: TInput, context: PipelineContext): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  canExecute?(_input: TInput, _context: PipelineContext): boolean {
     return true;
   }
 }
@@ -261,6 +243,4 @@ export abstract class PipelineStage<TInput, TOutput>
 /**
  * Factory function type for creating pipeline stages.
  */
-export type PipelineStageFactory<TInput, TOutput, TConfig = unknown> = (
-  config?: TConfig
-) => PipelineStage<TInput, TOutput>;
+export type PipelineStageFactory<TInput, TOutput, TConfig = unknown> = (config?: TConfig) => PipelineStage<TInput, TOutput>;

@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState, useEffect } from 'react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useState, useEffect } from 'react';
 
-import { AudioMeter } from '../../custom/audio-meter'
+import { AudioMeter } from '../../custom/audio-meter';
 
 const meta = {
   title: 'Custom/AudioMeter',
@@ -33,10 +33,10 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof AudioMeter>
+} satisfies Meta<typeof AudioMeter>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
@@ -45,7 +45,7 @@ export const Default: Story = {
     isSpeaking: false,
     isMuted: false,
   },
-}
+};
 
 export const Silent: Story = {
   args: {
@@ -54,7 +54,7 @@ export const Silent: Story = {
     isSpeaking: false,
     isMuted: false,
   },
-}
+};
 
 export const LowLevel: Story = {
   args: {
@@ -63,7 +63,7 @@ export const LowLevel: Story = {
     isSpeaking: false,
     isMuted: false,
   },
-}
+};
 
 export const MediumLevel: Story = {
   args: {
@@ -72,7 +72,7 @@ export const MediumLevel: Story = {
     isSpeaking: true,
     isMuted: false,
   },
-}
+};
 
 export const HighLevel: Story = {
   args: {
@@ -81,7 +81,7 @@ export const HighLevel: Story = {
     isSpeaking: true,
     isMuted: false,
   },
-}
+};
 
 export const Muted: Story = {
   args: {
@@ -90,7 +90,7 @@ export const Muted: Story = {
     isSpeaking: false,
     isMuted: true,
   },
-}
+};
 
 export const NotCapturing: Story = {
   args: {
@@ -99,32 +99,25 @@ export const NotCapturing: Story = {
     isSpeaking: false,
     isMuted: false,
   },
-}
+};
 
 function AnimatedMeter() {
-  const [level, setLevel] = useState(0)
-  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [level, setLevel] = useState(0);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const next = Math.random() * 100
-      setLevel(next)
-      setIsSpeaking(next > 30)
-    }, 150)
-    return () => clearInterval(interval)
-  }, [])
+      const next = Math.random() * 100;
+      setLevel(next);
+      setIsSpeaking(next > 30);
+    }, 150);
+    return () => clearInterval(interval);
+  }, []);
 
-  return (
-    <AudioMeter
-      level={level}
-      isCapturing={true}
-      isSpeaking={isSpeaking}
-      isMuted={false}
-    />
-  )
+  return <AudioMeter level={level} isCapturing={true} isSpeaking={isSpeaking} isMuted={false} />;
 }
 
 export const Animated: Story = {
   args: {} as any,
   render: () => <AnimatedMeter />,
-}
+};

@@ -1,18 +1,10 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { IconDots } from '@tabler/icons-react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { IconDots } from '@tabler/icons-react';
 
-import { Button } from '../../shadcn/button'
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-  CardAction,
-} from '../../shadcn/card'
-import { Input } from '../../shadcn/input'
-import { Label } from '../../shadcn/label'
+import { Button } from '../../shadcn/button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, CardAction } from '../../shadcn/card';
+import { Input } from '../../shadcn/input';
+import { Label } from '../../shadcn/label';
 
 const meta = {
   title: 'Components/Card',
@@ -21,10 +13,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Card>
+} satisfies Meta<typeof Card>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 // Default card
 export const Default: Story = {
@@ -42,7 +34,7 @@ export const Default: Story = {
       </CardFooter>
     </Card>
   ),
-}
+};
 
 // Card with form
 export const WithForm: Story = {
@@ -72,7 +64,7 @@ export const WithForm: Story = {
       </CardFooter>
     </Card>
   ),
-}
+};
 
 // Card with action
 export const WithAction: Story = {
@@ -92,7 +84,7 @@ export const WithAction: Story = {
       </CardContent>
     </Card>
   ),
-}
+};
 
 // Simple card
 export const Simple: Story = {
@@ -103,7 +95,7 @@ export const Simple: Story = {
       </CardContent>
     </Card>
   ),
-}
+};
 
 // Card grid
 export const Grid: Story = {
@@ -141,4 +133,4 @@ export const Grid: Story = {
       </Card>
     </div>
   ),
-}
+};

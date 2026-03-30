@@ -143,6 +143,12 @@ sudo systemctl restart docker
 # Cache directory for CI jobs
 sudo mkdir -p /cache
 sudo chmod 777 /cache
+
+# Persistent pnpm store — mounted into Docker containers as /pnpm-store.
+# This eliminates ~2 min pnpm install per job by keeping the content-addressable
+# store warm across containers and pipelines.
+sudo mkdir -p /srv/gitlab-runner/pnpm-store
+sudo chmod 777 /srv/gitlab-runner/pnpm-store
 ```
 
 ## 5. Install GitLab Runner
@@ -715,6 +721,15 @@ docker system prune -af --filter "until=168h" 2>&1 | logger -t "$LOG_TAG"
 # Clean CI cache older than 14 days
 find /cache -type f -mtime +14 -delete 2>/dev/null || true
 find /cache -type d -empty -delete 2>/dev/null || true
+
+# Prune unused pnpm store entries (keeps only packages referenced by current installs)
+if [ -d /srv/gitlab-runner/pnpm-store ]; then
+  STORE_BEFORE=$(du -sh /srv/gitlab-runner/pnpm-store | cut -f1)
+  docker run --rm -v /srv/gitlab-runner/pnpm-store:/pnpm-store node:22-alpine \
+    sh -c "corepack enable && corepack prepare pnpm@latest --activate && pnpm store prune --store-dir /pnpm-store" 2>&1 | logger -t "$LOG_TAG"
+  STORE_AFTER=$(du -sh /srv/gitlab-runner/pnpm-store | cut -f1)
+  logger -t "$LOG_TAG" "pnpm store: $STORE_BEFORE → $STORE_AFTER"
+fi
 
 DISK_FREE=$(df -h / | tail -1 | awk '{print $4}')
 logger -t "$LOG_TAG" "Cleanup complete. Disk free: $DISK_FREE"

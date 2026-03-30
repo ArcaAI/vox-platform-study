@@ -12,10 +12,17 @@
  * @see SDK-206 Gap Analysis — ASR-R-10
  */
 
+import { TranscriptionJobStatus, TranscriptionJobType, type TranscriptionJobResponse } from '../types/stt-v2';
 import type { AgenticClient } from './AgenticClient';
 import { STT_V2_ENDPOINTS } from './constants';
 import type { ISDKLogger } from './logger';
-import type { TranscriptionJobResponse } from '../types/stt-v2';
+
+type BatchTranscribeResponse = {
+  id: string;
+  status: string;
+  sseUrl?: string;
+  audioUri?: string;
+};
 
 /**
  * Options for file transcription upload
@@ -54,10 +61,7 @@ export class FileTranscriptionService {
    * Sends a multipart/form-data POST to the transcribe endpoint.
    * Returns the job response with the job ID for SSE subscription.
    */
-  async uploadAndTranscribe(
-    file: File,
-    options: FileTranscribeOptions,
-  ): Promise<TranscriptionJobResponse> {
+  async uploadAndTranscribe(file: File, options: FileTranscribeOptions): Promise<TranscriptionJobResponse> {
     this.logger?.debug('Uploading file for transcription', {
       operation: 'uploadAndTranscribe',
       component: 'FileTranscriptionService',
@@ -90,10 +94,9 @@ export class FileTranscriptionService {
       formData.append('diarization', String(options.diarization));
     }
 
-    const job = await this.apiClient.postFormData<TranscriptionJobResponse>(
-      STT_V2_ENDPOINTS.TRANSCRIBE,
-      formData,
-    );
+    const response = await this.apiClient.postFormData<TranscriptionJobResponse | BatchTranscribeResponse>(STT_V2_ENDPOINTS.TRANSCRIBE, formData);
+
+    const job = this.normalizeJobResponse(response, options.pipelineId);
     this.activeJobId = job.id;
 
     this.logger?.info('File uploaded for transcription', {
@@ -108,6 +111,39 @@ export class FileTranscriptionService {
     });
 
     return job;
+  }
+
+  private normalizeJobResponse(response: TranscriptionJobResponse | BatchTranscribeResponse, pipelineId: string): TranscriptionJobResponse {
+    // If the response already has the full TranscriptionJobResponse shape, return it directly
+    const asFull = response as Partial<TranscriptionJobResponse>;
+    if (asFull.jobType !== undefined && typeof asFull.id === 'string' && asFull.id.length > 0) {
+      return response as TranscriptionJobResponse;
+    }
+
+    // Batch response: map minimal fields to TranscriptionJobResponse
+    const batch = response as BatchTranscribeResponse;
+    if (!batch.id) {
+      throw new Error('Invalid transcription response: missing job id');
+    }
+
+    const status = (batch.status ?? '').trim().toUpperCase() as TranscriptionJobStatus;
+    const validStatuses: string[] = Object.values(TranscriptionJobStatus);
+    if (!validStatuses.includes(status)) {
+      throw new Error(`Invalid transcription response status: ${batch.status}`);
+    }
+
+    return {
+      id: batch.id,
+      jobType: TranscriptionJobType.BATCH,
+      pipelineId,
+      status,
+      progress: 0,
+      retryCount: 0,
+      maxRetries: 0,
+      tenantId: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
   }
 
   /**

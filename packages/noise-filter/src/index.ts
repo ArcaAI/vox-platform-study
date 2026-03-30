@@ -86,11 +86,7 @@ export {
 // React Hooks
 // ============================================================================
 
-export {
-  useNoiseFilter,
-  type UseNoiseFilterOptions,
-  type UseNoiseFilterReturn,
-} from './hooks/index.js';
+export { useNoiseFilter, type UseNoiseFilterOptions, type UseNoiseFilterReturn } from './hooks/index.js';
 
 // ============================================================================
 // Worklets

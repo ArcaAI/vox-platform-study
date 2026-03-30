@@ -41,11 +41,7 @@ export class AgenticError extends Error {
   /** Additional context */
   context?: Record<string, unknown>;
 
-  constructor(
-    code: AgenticErrorCode,
-    message: string,
-    options?: { cause?: Error; context?: Record<string, unknown> }
-  ) {
+  constructor(code: AgenticErrorCode, message: string, options?: { cause?: Error; context?: Record<string, unknown> }) {
     super(message);
     this.name = 'AgenticError';
     this.code = code;
@@ -150,5 +146,4 @@ export type DeepPartial<T> = {
 /**
  * Extract function parameters as object
  */
-export type FunctionParams<T extends (...args: unknown[]) => unknown> =
-  T extends (...args: infer P) => unknown ? P : never;
+export type FunctionParams<T extends (...args: unknown[]) => unknown> = T extends (...args: infer P) => unknown ? P : never;

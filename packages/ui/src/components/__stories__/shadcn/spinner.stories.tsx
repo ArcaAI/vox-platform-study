@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Spinner } from '../../shadcn/spinner'
+import { Spinner } from '../../shadcn/spinner';
 
 const meta = {
   title: 'Components/Spinner',
@@ -9,12 +9,12 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof Spinner>
+} satisfies Meta<typeof Spinner>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {}
+export const Default: Story = {};
 
 export const Sizes: Story = {
   render: () => (
@@ -25,7 +25,7 @@ export const Sizes: Story = {
       <Spinner className="size-8" />
     </div>
   ),
-}
+};
 
 export const WithText: Story = {
   render: () => (
@@ -34,4 +34,4 @@ export const WithText: Story = {
       <span className="text-muted-foreground text-sm">Loading...</span>
     </div>
   ),
-}
+};

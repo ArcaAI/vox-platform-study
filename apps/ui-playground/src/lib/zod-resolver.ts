@@ -3,9 +3,7 @@ import type { z } from 'zod';
 
 type ZodSchema = z.ZodType<unknown>;
 
-export function zodResolver<T extends FieldValues>(
-  schema: ZodSchema,
-): Resolver<T> {
+export function zodResolver<T extends FieldValues>(schema: ZodSchema): Resolver<T> {
   return async (values) => {
     const result = schema.safeParse(values);
 

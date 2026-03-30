@@ -9,14 +9,7 @@ import { ProcessorEvent } from '@arcaai/room';
 import type { AudioTrack, ProcessorDataPayload } from '@arcaai/room';
 
 import { STTProcessor } from '../core/STTProcessor.js';
-import type {
-  STTOptions,
-  STTStats,
-  TranscriptionResult,
-  ModelLoadProgress,
-  STTProviderType,
-  LanguageLocale,
-} from '../types/index.js';
+import type { STTOptions, STTStats, TranscriptionResult, ModelLoadProgress, STTProviderType, LanguageLocale } from '../types/index.js';
 
 /**
  * Options for useSTT hook.
@@ -150,15 +143,7 @@ export interface UseSTTReturn {
  * ```
  */
 export function useSTT(options: UseSTTOptions): UseSTTReturn {
-  const {
-    track,
-    autoAttach = true,
-    onTranscription,
-    onPartialTranscription,
-    onError,
-    onProgress,
-    ...sttOptions
-  } = options;
+  const { track, autoAttach = true, onTranscription, onPartialTranscription, onError, onProgress, ...sttOptions } = options;
 
   // State
   const [isReady, setIsReady] = useState(false);
@@ -171,9 +156,7 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
   const [stats, setStats] = useState<STTStats | null>(null);
   const [isAttached, setIsAttached] = useState(false);
   const [providerType, setProviderType] = useState<STTProviderType>('remote');
-  const [language, setLanguageState] = useState<LanguageLocale>(
-    sttOptions.audio?.language ?? 'en-US'
-  );
+  const [language, setLanguageState] = useState<LanguageLocale>(sttOptions.audio?.language ?? 'en-US');
   const [error, setError] = useState<Error | null>(null);
 
   // Refs
@@ -199,23 +182,27 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
     };
   }, [onTranscription, onPartialTranscription, onError, onProgress]);
 
-  const configFingerprint = useMemo(() => JSON.stringify({
-    modelId: sttOptions.features?.modelId,
-    language: sttOptions.audio?.language,
-    provider: sttOptions.features?.provider,
-    diarization: sttOptions.features?.diarization,
-    codeSwitching: sttOptions.features?.codeSwitching,
-    vadGate: sttOptions.features?.vadGate,
-    returnTimestamps: sttOptions.features?.returnTimestamps,
-  }), [
-    sttOptions.features?.modelId,
-    sttOptions.features?.provider,
-    sttOptions.features?.diarization,
-    sttOptions.features?.codeSwitching,
-    sttOptions.features?.vadGate,
-    sttOptions.features?.returnTimestamps,
-    sttOptions.audio?.language,
-  ]);
+  const configFingerprint = useMemo(
+    () =>
+      JSON.stringify({
+        modelId: sttOptions.features?.modelId,
+        language: sttOptions.audio?.language,
+        provider: sttOptions.features?.provider,
+        diarization: sttOptions.features?.diarization,
+        codeSwitching: sttOptions.features?.codeSwitching,
+        vadGate: sttOptions.features?.vadGate,
+        returnTimestamps: sttOptions.features?.returnTimestamps,
+      }),
+    [
+      sttOptions.features?.modelId,
+      sttOptions.features?.provider,
+      sttOptions.features?.diarization,
+      sttOptions.features?.codeSwitching,
+      sttOptions.features?.vadGate,
+      sttOptions.features?.returnTimestamps,
+      sttOptions.audio?.language,
+    ],
+  );
 
   // Ref to hold latest sttOptions for processor creation without stale closure
   const sttOptionsRef = useRef(sttOptions);
@@ -256,7 +243,8 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
     setProviderType(processorRef.current.getProviderType());
 
     if (wasAttached && previousTrack) {
-      previousTrack.setProcessor(processorRef.current)
+      previousTrack
+        .setProcessor(processorRef.current)
         .then(() => {
           if (mountedRef.current) {
             setIsAttached(true);

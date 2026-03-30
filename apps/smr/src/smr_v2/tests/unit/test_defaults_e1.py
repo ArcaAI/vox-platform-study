@@ -6,8 +6,6 @@ ONLY when the request body omits hyperparameters (None).
 
 from __future__ import annotations
 
-import pytest
-
 
 class TestResolveRequestDefaults:
     """Test the resolve_request_defaults() utility function."""

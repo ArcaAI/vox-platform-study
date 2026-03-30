@@ -74,7 +74,10 @@ log_format = "text"
     disable_entrypoint_overwrite = false
     oom_kill_disable = false
     disable_cache = false
-    volumes = ["/cache:/cache"]
+    volumes = [
+      "/cache:/cache",
+      "/srv/gitlab-runner/pnpm-store:/pnpm-store:rw"
+    ]
     shm_size = 0
     pull_policy = ["if-not-present"]
     wait_for_services_timeout = 30
@@ -138,7 +141,8 @@ log_format = "text"
     disable_cache = false
     volumes = [
       "/var/run/docker.sock:/var/run/docker.sock",
-      "/cache:/cache"
+      "/cache:/cache",
+      "/srv/gitlab-runner/buildkit:/var/lib/buildkit:rw"
     ]
     shm_size = 536870912
     pull_policy = ["if-not-present"]
@@ -165,8 +169,10 @@ log_format = "text"
 ## RUNNER 3 — TEST (E2E, integration, Playwright)
 ## ═══════════════════════════════════════════════════════════════════════════
 ##
-## For browser-based E2E tests that need extra shared memory.
-## 256 MB shm_size prevents Chrome/Playwright OOM.
+## For tests that need access to LAN infrastructure (HA-Postgres, Redis).
+## Uses network_mode="host" so containers share the host's network stack,
+## enabling direct connectivity to 10.10.1.x services without NAT.
+## 512 MB shm_size prevents Chrome/Playwright OOM.
 ##
 ## GitLab Admin UI:
 ##   Tags: test,e2e,playwright,integration
@@ -197,11 +203,14 @@ log_format = "text"
     disable_entrypoint_overwrite = false
     oom_kill_disable = false
     disable_cache = false
-    volumes = ["/cache:/cache"]
+    volumes = [
+      "/cache:/cache",
+      "/srv/gitlab-runner/pnpm-store:/pnpm-store:rw"
+    ]
+    network_mode = "host"
     shm_size = 536870912
     pull_policy = ["if-not-present"]
     wait_for_services_timeout = 30
-    dns = ["8.8.8.8", "1.1.1.1"]
     extra_hosts = [
       "registry.taphuynh.dev:10.10.1.110",
       "pages.taphuynh.dev:10.10.1.110"

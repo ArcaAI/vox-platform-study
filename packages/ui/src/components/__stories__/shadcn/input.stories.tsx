@@ -1,9 +1,9 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { IconSearch, IconMail } from '@tabler/icons-react'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { IconSearch, IconMail } from '@tabler/icons-react';
 
-import { Input } from '../../shadcn/input'
-import { Label } from '../../shadcn/label'
-import { Button } from '../../shadcn/button'
+import { Input } from '../../shadcn/input';
+import { Label } from '../../shadcn/label';
+import { Button } from '../../shadcn/button';
 
 const meta = {
   title: 'Components/Input',
@@ -27,17 +27,17 @@ const meta = {
       description: 'Whether the input is disabled',
     },
   },
-} satisfies Meta<typeof Input>
+} satisfies Meta<typeof Input>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 // Default input
 export const Default: Story = {
   args: {
     placeholder: 'Enter text...',
   },
-}
+};
 
 // With label
 export const WithLabel: Story = {
@@ -47,7 +47,7 @@ export const WithLabel: Story = {
       <Input type="email" id="email" placeholder="Email" />
     </div>
   ),
-}
+};
 
 // Input types
 export const Types: Story = {
@@ -71,7 +71,7 @@ export const Types: Story = {
       </div>
     </div>
   ),
-}
+};
 
 // Disabled state
 export const Disabled: Story = {
@@ -79,7 +79,7 @@ export const Disabled: Story = {
     placeholder: 'Disabled input',
     disabled: true,
   },
-}
+};
 
 // With icon (using wrapper)
 export const WithIcon: Story = {
@@ -95,7 +95,7 @@ export const WithIcon: Story = {
       </div>
     </div>
   ),
-}
+};
 
 // With button
 export const WithButton: Story = {
@@ -105,7 +105,7 @@ export const WithButton: Story = {
       <Button type="submit">Subscribe</Button>
     </div>
   ),
-}
+};
 
 // File input
 export const File: Story = {
@@ -115,21 +115,15 @@ export const File: Story = {
       <Input id="picture" type="file" />
     </div>
   ),
-}
+};
 
 // Invalid state
 export const Invalid: Story = {
   render: () => (
     <div className="grid w-full max-w-sm items-center gap-1.5">
       <Label htmlFor="email-invalid">Email</Label>
-      <Input
-        type="email"
-        id="email-invalid"
-        placeholder="Email"
-        aria-invalid="true"
-        defaultValue="invalid-email"
-      />
+      <Input type="email" id="email-invalid" placeholder="Email" aria-invalid="true" defaultValue="invalid-email" />
       <p className="text-sm text-destructive">Please enter a valid email address.</p>
     </div>
   ),
-}
+};

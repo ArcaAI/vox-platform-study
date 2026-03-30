@@ -11,5 +11,5 @@ export type PrismaClients = any;
  * This allows accessing any model from any of the generated Prisma clients
  */
 export type GeneralPrismaClient = {
-    [K in keyof CorePrismaClient]: CorePrismaClient[K];
+  [K in keyof CorePrismaClient]: CorePrismaClient[K];
 };

@@ -1,22 +1,14 @@
-"use client";
+'use client';
 
-import type React from "react";
-import { Button } from "@/components/shadcn/button";
-import { InfoIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { motion, useMotionValue, useSpring, useTransform } from "motion/react";
-import { useRef } from "react";
+import type React from 'react';
+import { Button } from '@/components/shadcn/button';
+import { InfoIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { motion, useMotionValue, useSpring, useTransform } from 'motion/react';
+import { useRef } from 'react';
 
 // Internal CreditCard component (not exported)
-function CreditCard({
-  balance,
-  username,
-  className,
-}: {
-  balance: string;
-  username: string;
-  className?: string;
-}) {
+function CreditCard({ balance, username, className }: { balance: string; username: string; className?: string }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
@@ -52,41 +44,39 @@ function CreditCard({
   };
 
   return (
-    <div
-      className={cn("relative mx-auto w-full max-w-md font-sans", className)}
-    >
+    <div className={cn('relative mx-auto w-full max-w-md font-sans', className)}>
       <motion.div
         ref={cardRef}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         className="group relative w-full overflow-hidden bg-zinc-950 p-6 shadow-xl ring ring-black/10 dark:bg-zinc-900"
         style={{
-          aspectRatio: "190/123",
-          alignSelf: "stretch",
-          borderRadius: "12px",
+          aspectRatio: '190/123',
+          alignSelf: 'stretch',
+          borderRadius: '12px',
           rotateX,
           rotateY,
           transformPerspective: 1000,
           scale: 1,
-          transition: "box-shadow 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
+          transition: 'box-shadow 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
           boxShadow:
-            "0 10px 15px -3px rgba(0, 0, 0, 0.06), 0 4px 6px -2px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.2)",
+            '0 10px 15px -3px rgba(0, 0, 0, 0.06), 0 4px 6px -2px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.2)',
         }}
         whileHover={{
           scale: 1.02,
           boxShadow:
-            "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.3)",
+            '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.3)',
         }}
       >
         <motion.div
           className="pointer-events-none absolute inset-0 will-change-transform"
           style={{
-            width: "60%",
-            height: "100%",
+            width: '60%',
+            height: '100%',
             background:
-              "linear-gradient(90deg, transparent 0%, transparent 20%, rgba(128,128,128,0.1) 30%, rgba(128,128,128,0.2) 50%, rgba(128,128,128,0.1) 70%, transparent 80%, transparent 100%)",
-            filter: "blur(2px)",
-            mixBlendMode: "normal",
+              'linear-gradient(90deg, transparent 0%, transparent 20%, rgba(128,128,128,0.1) 30%, rgba(128,128,128,0.2) 50%, rgba(128,128,128,0.1) 70%, transparent 80%, transparent 100%)',
+            filter: 'blur(2px)',
+            mixBlendMode: 'normal',
             opacity: 0.7,
             x: shineX,
             skewX: -15,
@@ -97,9 +87,8 @@ function CreditCard({
         <motion.div
           className="pointer-events-none absolute top-0 right-0 left-0 h-1"
           style={{
-            background:
-              "linear-gradient(180deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 50%, transparent 100%)",
-            borderRadius: "12px 12px 0 0",
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 50%, transparent 100%)',
+            borderRadius: '12px 12px 0 0',
           }}
           initial={{ opacity: 0 }}
           whileHover={{ opacity: 1 }}
@@ -110,9 +99,8 @@ function CreditCard({
         <motion.div
           className="pointer-events-none absolute top-0 bottom-0 left-0 w-1"
           style={{
-            background:
-              "linear-gradient(90deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.03) 50%, transparent 100%)",
-            borderRadius: "12px 0 0 12px",
+            background: 'linear-gradient(90deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.03) 50%, transparent 100%)',
+            borderRadius: '12px 0 0 12px',
           }}
           initial={{ opacity: 0 }}
           whileHover={{ opacity: 1 }}
@@ -123,9 +111,8 @@ function CreditCard({
         <motion.div
           className="pointer-events-none absolute right-0 bottom-0 left-0 h-1"
           style={{
-            background:
-              "linear-gradient(0deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.1) 50%, transparent 100%)",
-            borderRadius: "0 0 12px 12px",
+            background: 'linear-gradient(0deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.1) 50%, transparent 100%)',
+            borderRadius: '0 0 12px 12px',
           }}
           initial={{ opacity: 0 }}
           whileHover={{ opacity: 1 }}
@@ -136,9 +123,8 @@ function CreditCard({
         <motion.div
           className="pointer-events-none absolute top-0 right-0 bottom-0 w-1"
           style={{
-            background:
-              "linear-gradient(270deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.05) 50%, transparent 100%)",
-            borderRadius: "0 12px 12px 0",
+            background: 'linear-gradient(270deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.05) 50%, transparent 100%)',
+            borderRadius: '0 12px 12px 0',
           }}
           initial={{ opacity: 0 }}
           whileHover={{ opacity: 1 }}
@@ -149,12 +135,8 @@ function CreditCard({
         <div className="relative z-10 h-full">
           {/* Centered amount and username */}
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <div className="text-5xl font-bold tracking-tight text-zinc-200">
-              {balance}
-            </div>
-            <div className="mt-1 text-base font-medium text-zinc-400">
-              {username}
-            </div>
+            <div className="text-5xl font-bold tracking-tight text-zinc-200">{balance}</div>
+            <div className="mt-1 text-base font-medium text-zinc-400">{username}</div>
           </div>
         </div>
       </motion.div>
@@ -187,15 +169,15 @@ export interface BillingScreenProps {
 
 export function BillingScreen({
   className,
-  planName = "Premium Plan",
-  planPrice = "$20/mo",
-  renewalDate = "Oct 7, 2025",
-  totalBalance = "$6.59",
-  username = "rajoninternet",
-  giftedCredits = "$1.73",
-  monthlyCredits = "$3.13",
-  monthlyCreditsLimit = "$20.00",
-  purchasedCredits = "$0.00",
+  planName = 'Premium Plan',
+  planPrice = '$20/mo',
+  renewalDate = 'Oct 7, 2025',
+  totalBalance = '$6.59',
+  username = 'rajoninternet',
+  giftedCredits = '$1.73',
+  monthlyCredits = '$3.13',
+  monthlyCreditsLimit = '$20.00',
+  purchasedCredits = '$0.00',
   resetDays = 4,
   autoRechargeEnabled = false,
   onViewPlans,
@@ -204,12 +186,7 @@ export function BillingScreen({
   onEnableAutoRecharge,
 }: BillingScreenProps) {
   return (
-    <div
-      className={cn(
-        "bg-background text-foreground min-h-screen p-6 md:p-12",
-        className,
-      )}
-    >
+    <div className={cn('bg-background text-foreground min-h-screen p-6 md:p-12', className)}>
       <div className="mx-auto max-w-5xl space-y-8">
         {/* Page Title */}
         <div className="flex items-center justify-between">
@@ -225,9 +202,7 @@ export function BillingScreen({
                 <span className="text-xl font-semibold">{planName}</span>
                 <span className="text-muted-foreground">{planPrice}</span>
               </div>
-              <p className="text-muted-foreground text-sm">
-                Renews on {renewalDate}
-              </p>
+              <p className="text-muted-foreground text-sm">Renews on {renewalDate}</p>
             </div>
             <div className="flex gap-3">
               <Button variant="outline" onClick={onViewPlans}>
@@ -251,12 +226,8 @@ export function BillingScreen({
             {/* Credit info header */}
             <div className="border-border border-b p-6">
               <p className="text-muted-foreground text-sm">
-                Your monthly credits reset in{" "}
-                <span className="text-foreground font-semibold">
-                  {resetDays} days
-                </span>
-                . Credits are used in the following order: gifted, monthly,
-                purchased.
+                Your monthly credits reset in <span className="text-foreground font-semibold">{resetDays} days</span>. Credits are used in the
+                following order: gifted, monthly, purchased.
               </p>
             </div>
 
@@ -271,17 +242,13 @@ export function BillingScreen({
                 {/* Credit Breakdown */}
                 <div className="flex-1 space-y-3">
                   <div className="flex items-center justify-between py-2">
-                    <span className="text-muted-foreground">
-                      Gifted Credits
-                    </span>
+                    <span className="text-muted-foreground">Gifted Credits</span>
                     <span className="font-mono">{giftedCredits}</span>
                   </div>
 
                   <div className="flex items-center justify-between py-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">
-                        Monthly Credits
-                      </span>
+                      <span className="text-muted-foreground">Monthly Credits</span>
                       <InfoIcon className="text-muted-foreground h-4 w-4" />
                     </div>
                     <span className="font-mono">
@@ -291,21 +258,15 @@ export function BillingScreen({
 
                   <div className="flex items-center justify-between py-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">
-                        Purchased Credits
-                      </span>
+                      <span className="text-muted-foreground">Purchased Credits</span>
                       <InfoIcon className="text-muted-foreground h-4 w-4" />
                     </div>
                     <span className="font-mono">{purchasedCredits}</span>
                   </div>
 
                   <div className="border-border mt-2 flex items-center justify-between border-t py-3">
-                    <span className="font-semibold">
-                      Total Available Credits
-                    </span>
-                    <span className="font-mono font-semibold">
-                      {totalBalance}
-                    </span>
+                    <span className="font-semibold">Total Available Credits</span>
+                    <span className="font-mono font-semibold">{totalBalance}</span>
                   </div>
                 </div>
               </div>
@@ -317,23 +278,16 @@ export function BillingScreen({
                 <div className="flex items-start gap-3">
                   <InfoIcon className="text-muted-foreground mt-0.5 h-5 w-5 flex-shrink-0" />
                   <div>
-                    <p className="font-medium">
-                      Auto-recharge is{" "}
-                      {autoRechargeEnabled ? "enabled" : "not enabled"}.
-                    </p>
+                    <p className="font-medium">Auto-recharge is {autoRechargeEnabled ? 'enabled' : 'not enabled'}.</p>
                     <p className="text-muted-foreground text-sm">
                       {autoRechargeEnabled
-                        ? "Credits will be automatically added when your balance is low."
-                        : "Enable to automatically add credits when your balance is low."}
+                        ? 'Credits will be automatically added when your balance is low.'
+                        : 'Enable to automatically add credits when your balance is low.'}
                     </p>
                   </div>
                 </div>
-                <Button
-                  variant="outline"
-                  className="bg-transparent md:flex-shrink-0"
-                  onClick={onEnableAutoRecharge}
-                >
-                  {autoRechargeEnabled ? "Disable" : "Enable"}
+                <Button variant="outline" className="bg-transparent md:flex-shrink-0" onClick={onEnableAutoRecharge}>
+                  {autoRechargeEnabled ? 'Disable' : 'Enable'}
                 </Button>
               </div>
             </div>

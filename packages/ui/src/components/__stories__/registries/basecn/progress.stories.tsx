@@ -1,16 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Progress, ProgressTrack, ProgressIndicator } from '../../../registries/basecn/progress'
+import { Progress, ProgressTrack, ProgressIndicator } from '../../../registries/basecn/progress';
 
 const meta = {
   title: 'Registries/Basecn/Progress',
   component: Progress,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Progress>
+} satisfies Meta<typeof Progress>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -21,7 +21,7 @@ export const Default: Story = {
       </ProgressTrack>
     </Progress>
   ),
-}
+};
 
 export const Half: Story = {
   args: {} as any,
@@ -32,4 +32,4 @@ export const Half: Story = {
       </ProgressTrack>
     </Progress>
   ),
-}
+};

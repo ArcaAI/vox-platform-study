@@ -7,13 +7,12 @@ RED: Written before implementation.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
-import pytest_asyncio
 
-from smr_v2.models.task import TaskState, TaskStatus
 from smr_v2.models.stream import StreamChunk
+from smr_v2.models.task import TaskState, TaskStatus
 
 
 @pytest.fixture
@@ -60,8 +59,8 @@ class TestTaskManagerCreate:
 class TestTaskManagerGet:
     @pytest.mark.asyncio
     async def test_get_existing_task(self, mock_redis):
+
         from smr_v2.services.task_manager import TaskManager
-        import json
         task_data = TaskState(
             task_id="abc", status=TaskStatus.RUNNING, provider="ollama", model="m"
         ).model_dump_json()

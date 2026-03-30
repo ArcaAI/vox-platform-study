@@ -74,6 +74,12 @@ spec:
                   name: hope-secrets
                   key: HUGGINGFACE_TOKEN
                   optional: true
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: HUGGINGFACE_TOKEN
+                  optional: true
             - name: OTEL_SERVICE_NAME
               value: hope-stt-v2-worker
             - name: OMP_NUM_THREADS
@@ -84,8 +90,8 @@ spec:
               value: "2"
           resources:
             requests:
-              cpu: "1"
-              memory: "1Gi"
+              cpu: "8"
+              memory: "16Gi"
             limits:
-              cpu: "2"
-              memory: "4Gi"
+              cpu: "24"
+              memory: "32Gi"

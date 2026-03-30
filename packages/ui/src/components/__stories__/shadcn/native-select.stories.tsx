@@ -1,11 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  NativeSelect,
-  NativeSelectOption,
-  NativeSelectOptGroup,
-} from '../../shadcn/native-select'
-import { Label } from '../../shadcn/label'
+import { NativeSelect, NativeSelectOption, NativeSelectOptGroup } from '../../shadcn/native-select';
+import { Label } from '../../shadcn/label';
 
 const meta = {
   title: 'Components/NativeSelect',
@@ -14,10 +10,10 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-} satisfies Meta<typeof NativeSelect>
+} satisfies Meta<typeof NativeSelect>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -28,7 +24,7 @@ export const Default: Story = {
       <NativeSelectOption value="cherry">Cherry</NativeSelectOption>
     </NativeSelect>
   ),
-}
+};
 
 export const WithLabel: Story = {
   render: () => (
@@ -42,7 +38,7 @@ export const WithLabel: Story = {
       </NativeSelect>
     </div>
   ),
-}
+};
 
 export const WithGroups: Story = {
   render: () => (
@@ -58,7 +54,7 @@ export const WithGroups: Story = {
       </NativeSelectOptGroup>
     </NativeSelect>
   ),
-}
+};
 
 export const Disabled: Story = {
   render: () => (
@@ -66,4 +62,4 @@ export const Disabled: Story = {
       <NativeSelectOption value="locked">Locked option</NativeSelectOption>
     </NativeSelect>
   ),
-}
+};

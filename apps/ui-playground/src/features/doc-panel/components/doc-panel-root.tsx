@@ -44,6 +44,7 @@ export function DocPanelRoot() {
     const clearDocParam = () =>
       void navigate({
         search: ((prev: Record<string, unknown>) => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { doc: _doc, ...rest } = prev;
           return rest;
         }) as never,

@@ -7,13 +7,13 @@ import { CommonServiceModule } from '../../baseServices';
 // TODO: Implement this
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule],
-    providers: [
-        {
-            provide: IUserSettingsService,
-            useClass: UserSettingsService
-        }
-    ],
-    exports: [IUserSettingsService]
+  imports: [CommonServiceModule, CoreDatabaseModule],
+  providers: [
+    {
+      provide: IUserSettingsService,
+      useClass: UserSettingsService,
+    },
+  ],
+  exports: [IUserSettingsService],
 })
 export class UserSettingsServiceModule {}

@@ -4,13 +4,7 @@
  * Type definitions for STT provider implementations.
  */
 
-import type {
-  TranscriptionResult,
-  STTStats,
-  LocalProviderConfig,
-  RemoteProviderConfig,
-  ProviderConfig,
-} from '../types/index.js';
+import type { TranscriptionResult, STTStats, LocalProviderConfig, RemoteProviderConfig, ProviderConfig } from '../types/index.js';
 
 /**
  * Callback for transcription results.

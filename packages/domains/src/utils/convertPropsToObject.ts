@@ -7,34 +7,34 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function convertPropsToObject(obj: any): any {
-    if (obj === null || obj === undefined) {
-        return obj;
-    }
-
-    if (Array.isArray(obj)) {
-        return obj.map(convertPropsToObject);
-    }
-
-    if (typeof obj === 'object') {
-        // Handle Date object specifically to return ISO string
-        if (obj instanceof Date) {
-            return obj.toISOString();
-        }
-
-        // Check for a method typically used to identify domain entities or value objects
-        if (typeof obj.toObject === 'function') {
-            return obj.toObject();
-        }
-
-        // Convert all object properties recursively
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const plainObject: any = {};
-        for (const key of Object.keys(obj)) {
-            plainObject[key] = convertPropsToObject(obj[key]);
-        }
-        return plainObject;
-    }
-
-    // Return primitives as is
+  if (obj === null || obj === undefined) {
     return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(convertPropsToObject);
+  }
+
+  if (typeof obj === 'object') {
+    // Handle Date object specifically to return ISO string
+    if (obj instanceof Date) {
+      return obj.toISOString();
+    }
+
+    // Check for a method typically used to identify domain entities or value objects
+    if (typeof obj.toObject === 'function') {
+      return obj.toObject();
+    }
+
+    // Convert all object properties recursively
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const plainObject: any = {};
+    for (const key of Object.keys(obj)) {
+      plainObject[key] = convertPropsToObject(obj[key]);
+    }
+    return plainObject;
+  }
+
+  // Return primitives as is
+  return obj;
 }

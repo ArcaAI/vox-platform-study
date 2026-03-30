@@ -6,18 +6,18 @@ import { IApiKeyService } from './IApiKeyService';
 import { ApiKeyRateLimiter, IApiKeyRateLimiter } from './apikey-rate-limiter.service';
 
 @Module({
-    imports: [CommonServiceModule, CoreDatabaseModule],
-    providers: [
-        {
-            provide: IApiKeyService,
-            useClass: ApiKeyService,
-        },
-        {
-            provide: IApiKeyRateLimiter,
-            useClass: ApiKeyRateLimiter,
-        },
-        ApiKeyRepository,
-    ],
-    exports: [IApiKeyService, IApiKeyRateLimiter],
+  imports: [CommonServiceModule, CoreDatabaseModule],
+  providers: [
+    {
+      provide: IApiKeyService,
+      useClass: ApiKeyService,
+    },
+    {
+      provide: IApiKeyRateLimiter,
+      useClass: ApiKeyRateLimiter,
+    },
+    ApiKeyRepository,
+  ],
+  exports: [IApiKeyService, IApiKeyRateLimiter],
 })
 export class ApiKeyServiceModule {}

@@ -6,105 +6,105 @@ import { IConfigService } from '../_meta/config';
  * Interface for Redis cache operations
  */
 export interface IRedisCacheService {
-    /**
-     * Get a value from cache
-     * @param key - Cache key
-     * @returns Cached value or null if not found
-     */
-    get(key: string): Promise<string | null>;
+  /**
+   * Get a value from cache
+   * @param key - Cache key
+   * @returns Cached value or null if not found
+   */
+  get(key: string): Promise<string | null>;
 
-    /**
-     * Set a value in cache with optional TTL
-     * @param key - Cache key
-     * @param value - Value to cache
-     * @param ttlSeconds - Time to live in seconds (optional)
-     */
-    set(key: string, value: string, ttlSeconds?: number): Promise<void>;
+  /**
+   * Set a value in cache with optional TTL
+   * @param key - Cache key
+   * @param value - Value to cache
+   * @param ttlSeconds - Time to live in seconds (optional)
+   */
+  set(key: string, value: string, ttlSeconds?: number): Promise<void>;
 
-    /**
-     * Set a value in cache with TTL (setex)
-     * @param key - Cache key
-     * @param ttlSeconds - Time to live in seconds
-     * @param value - Value to cache
-     */
-    setex(key: string, ttlSeconds: number, value: string): Promise<void>;
+  /**
+   * Set a value in cache with TTL (setex)
+   * @param key - Cache key
+   * @param ttlSeconds - Time to live in seconds
+   * @param value - Value to cache
+   */
+  setex(key: string, ttlSeconds: number, value: string): Promise<void>;
 
-    /**
-     * Delete a key from cache
-     * @param key - Cache key
-     */
-    del(key: string): Promise<void>;
+  /**
+   * Delete a key from cache
+   * @param key - Cache key
+   */
+  del(key: string): Promise<void>;
 
-    /**
-     * Delete multiple keys from cache
-     * @param keys - Array of cache keys
-     */
-    delMany(keys: string[]): Promise<void>;
+  /**
+   * Delete multiple keys from cache
+   * @param keys - Array of cache keys
+   */
+  delMany(keys: string[]): Promise<void>;
 
-    /**
-     * Find keys matching a pattern
-     * @param pattern - Key pattern (supports * wildcard)
-     * @returns Array of matching keys
-     */
-    keys(pattern: string): Promise<string[]>;
+  /**
+   * Find keys matching a pattern
+   * @param pattern - Key pattern (supports * wildcard)
+   * @returns Array of matching keys
+   */
+  keys(pattern: string): Promise<string[]>;
 
-    /**
-     * Check if a key exists
-     * @param key - Cache key
-     * @returns true if key exists
-     */
-    exists(key: string): Promise<boolean>;
+  /**
+   * Check if a key exists
+   * @param key - Cache key
+   * @returns true if key exists
+   */
+  exists(key: string): Promise<boolean>;
 
-    /**
-     * Publish a message to a channel
-     * @param channel - Channel name
-     * @param message - Message to publish
-     */
-    publish(channel: string, message: string): Promise<void>;
+  /**
+   * Publish a message to a channel
+   * @param channel - Channel name
+   * @param message - Message to publish
+   */
+  publish(channel: string, message: string): Promise<void>;
 
-    /**
-     * Push a value to the head of a Redis list (LPUSH)
-     * @param key - List key
-     * @param value - Value to push
-     * @returns Number of elements in the list after push, or 0 if not connected
-     */
-    lpush(key: string, value: string): Promise<number>;
+  /**
+   * Push a value to the head of a Redis list (LPUSH)
+   * @param key - List key
+   * @param value - Value to push
+   * @returns Number of elements in the list after push, or 0 if not connected
+   */
+  lpush(key: string, value: string): Promise<number>;
 
-    /**
-     * Push a value to the tail of a Redis list (RPUSH)
-     * @param key - List key
-     * @param value - Value to push
-     * @returns Number of elements in the list after push, or 0 if not connected
-     */
-    rpush(key: string, value: string): Promise<number>;
+  /**
+   * Push a value to the tail of a Redis list (RPUSH)
+   * @param key - List key
+   * @param value - Value to push
+   * @returns Number of elements in the list after push, or 0 if not connected
+   */
+  rpush(key: string, value: string): Promise<number>;
 
-    /**
-     * Set a field in a Redis hash (HSET)
-     * @param key - Hash key
-     * @param field - Field name within the hash
-     * @param value - Value to set
-     */
-    hset(key: string, field: string, value: string): Promise<void>;
+  /**
+   * Set a field in a Redis hash (HSET)
+   * @param key - Hash key
+   * @param field - Field name within the hash
+   * @param value - Value to set
+   */
+  hset(key: string, field: string, value: string): Promise<void>;
 
-    /**
-     * Increment a key's integer value by 1 (INCR)
-     * @param key - Cache key
-     * @returns The value after increment, or 0 if not connected
-     */
-    incr(key: string): Promise<number>;
+  /**
+   * Increment a key's integer value by 1 (INCR)
+   * @param key - Cache key
+   * @returns The value after increment, or 0 if not connected
+   */
+  incr(key: string): Promise<number>;
 
-    /**
-     * Set a timeout on a key in seconds (EXPIRE)
-     * @param key - Cache key
-     * @param ttlSeconds - Time to live in seconds
-     * @returns true if the timeout was set, false otherwise
-     */
-    expire(key: string, ttlSeconds: number): Promise<boolean>;
+  /**
+   * Set a timeout on a key in seconds (EXPIRE)
+   * @param key - Cache key
+   * @param ttlSeconds - Time to live in seconds
+   * @returns true if the timeout was set, false otherwise
+   */
+  expire(key: string, ttlSeconds: number): Promise<boolean>;
 
-    /**
-     * Check if Redis is connected and available
-     */
-    isConnected(): boolean;
+  /**
+   * Check if Redis is connected and available
+   */
+  isConnected(): boolean;
 }
 
 export const IRedisCacheService = Symbol('IRedisCacheService');
@@ -132,433 +132,430 @@ export const IRedisCacheService = Symbol('IRedisCacheService');
  */
 @Injectable()
 export class RedisCacheService implements IRedisCacheService, OnModuleInit, OnModuleDestroy {
-    private readonly logger = new Logger(RedisCacheService.name);
-    private redis: Redis | null = null;
-    private connected = false;
-    private reconnecting = false;
+  private readonly logger = new Logger(RedisCacheService.name);
+  private redis: Redis | null = null;
+  private connected = false;
+  private reconnecting = false;
 
-    constructor(
-        @Optional() @Inject(IConfigService) private readonly configService?: IConfigService,
-    ) {
+  constructor(@Optional() @Inject(IConfigService) private readonly configService?: IConfigService) {
+    this.logger.log({
+      message: 'Service created',
+      service: RedisCacheService.name,
+    });
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.connect();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.disconnect();
+  }
+
+  /**
+   * Connect to Redis
+   */
+  private async connect(): Promise<void> {
+    if (!this.configService) {
+      this.logger.warn({
+        message: 'ConfigService not available',
+        status: 'cache_disabled',
+      });
+      return;
+    }
+
+    if (!this.configService.isRedisConfigured()) {
+      this.logger.warn({
+        message: 'Redis not configured',
+        status: 'cache_disabled',
+      });
+      return;
+    }
+
+    try {
+      const config = this.configService.getRedisConfig();
+
+      this.redis = new Redis({
+        host: config.host,
+        port: config.port,
+        password: config.password,
+        retryStrategy: (times) => {
+          if (times > 3) {
+            this.logger.error({
+              message: 'Redis connection failed after retries',
+              retries: times,
+            });
+            return null; // Stop retrying
+          }
+          return Math.min(times * 200, 2000);
+        },
+        maxRetriesPerRequest: 3,
+        enableReadyCheck: true,
+        lazyConnect: false,
+      });
+
+      this.redis.on('connect', () => {
+        this.connected = true;
+        this.reconnecting = false;
         this.logger.log({
-            message: 'Service created',
-            service: RedisCacheService.name,
+          message: 'Connected to Redis',
+          host: config.host,
+          port: config.port,
         });
+      });
+
+      this.redis.on('error', (error) => {
+        this.logger.error({
+          message: 'Redis error',
+          error: error.message,
+        });
+        this.connected = false;
+      });
+
+      this.redis.on('close', () => {
+        this.connected = false;
+        this.logger.warn({
+          message: 'Redis connection closed',
+        });
+      });
+
+      this.redis.on('reconnecting', () => {
+        this.reconnecting = true;
+        this.logger.log({
+          message: 'Reconnecting to Redis',
+        });
+      });
+
+      // Wait for connection
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Redis connection timeout'));
+        }, 5000);
+
+        this.redis!.once('ready', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+
+        this.redis!.once('error', (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+      });
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to connect to Redis',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.redis = null;
+      this.connected = false;
+    }
+  }
+
+  /**
+   * Disconnect from Redis
+   */
+  private async disconnect(): Promise<void> {
+    if (this.redis) {
+      try {
+        await this.redis.quit();
+        this.logger.log({
+          message: 'Disconnected from Redis',
+        });
+      } catch (error) {
+        this.logger.error({
+          message: 'Error disconnecting from Redis',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        this.redis = null;
+        this.connected = false;
+      }
+    }
+  }
+
+  /**
+   * Check if Redis is connected
+   */
+  isConnected(): boolean {
+    return this.connected && this.redis !== null;
+  }
+
+  /**
+   * Get a value from cache
+   */
+  async get(key: string): Promise<string | null> {
+    if (!this.isConnected()) {
+      return null;
     }
 
-    async onModuleInit(): Promise<void> {
-        await this.connect();
+    try {
+      return await this.redis!.get(key);
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to get key',
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Set a value in cache
+   */
+  async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
+    if (!this.isConnected()) {
+      return;
     }
 
-    async onModuleDestroy(): Promise<void> {
-        await this.disconnect();
+    try {
+      if (ttlSeconds) {
+        await this.redis!.setex(key, ttlSeconds, value);
+      } else {
+        await this.redis!.set(key, value);
+      }
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to set key',
+        key,
+        ttlSeconds,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Set a value with TTL
+   */
+  async setex(key: string, ttlSeconds: number, value: string): Promise<void> {
+    if (!this.isConnected()) {
+      return;
     }
 
-    /**
-     * Connect to Redis
-     */
-    private async connect(): Promise<void> {
-        if (!this.configService) {
-            this.logger.warn({
-                message: 'ConfigService not available',
-                status: 'cache_disabled',
-            });
-            return;
-        }
+    try {
+      await this.redis!.setex(key, ttlSeconds, value);
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to setex key',
+        key,
+        ttlSeconds,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
-        if (!this.configService.isRedisConfigured()) {
-            this.logger.warn({
-                message: 'Redis not configured',
-                status: 'cache_disabled',
-            });
-            return;
-        }
-
-        try {
-            const config = this.configService.getRedisConfig();
-
-            this.redis = new Redis({
-                host: config.host,
-                port: config.port,
-                password: config.password,
-                retryStrategy: (times) => {
-                    if (times > 3) {
-                        this.logger.error({
-                            message: 'Redis connection failed after retries',
-                            retries: times,
-                        });
-                        return null; // Stop retrying
-                    }
-                    return Math.min(times * 200, 2000);
-                },
-                maxRetriesPerRequest: 3,
-                enableReadyCheck: true,
-                lazyConnect: false,
-            });
-
-            this.redis.on('connect', () => {
-                this.connected = true;
-                this.reconnecting = false;
-                this.logger.log({
-                    message: 'Connected to Redis',
-                    host: config.host,
-                    port: config.port,
-                });
-            });
-
-            this.redis.on('error', (error) => {
-                this.logger.error({
-                    message: 'Redis error',
-                    error: error.message,
-                });
-                this.connected = false;
-            });
-
-            this.redis.on('close', () => {
-                this.connected = false;
-                this.logger.warn({
-                    message: 'Redis connection closed',
-                });
-            });
-
-            this.redis.on('reconnecting', () => {
-                this.reconnecting = true;
-                this.logger.log({
-                    message: 'Reconnecting to Redis',
-                });
-            });
-
-            // Wait for connection
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error('Redis connection timeout'));
-                }, 5000);
-
-                this.redis!.once('ready', () => {
-                    clearTimeout(timeout);
-                    resolve();
-                });
-
-                this.redis!.once('error', (err) => {
-                    clearTimeout(timeout);
-                    reject(err);
-                });
-            });
-
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to connect to Redis',
-                error: error instanceof Error ? error.message : String(error),
-            });
-            this.redis = null;
-            this.connected = false;
-        }
+  /**
+   * Delete a key
+   */
+  async del(key: string): Promise<void> {
+    if (!this.isConnected()) {
+      return;
     }
 
-    /**
-     * Disconnect from Redis
-     */
-    private async disconnect(): Promise<void> {
-        if (this.redis) {
-            try {
-                await this.redis.quit();
-                this.logger.log({
-                    message: 'Disconnected from Redis',
-                });
-            } catch (error) {
-                this.logger.error({
-                    message: 'Error disconnecting from Redis',
-                    error: error instanceof Error ? error.message : String(error),
-                });
-            } finally {
-                this.redis = null;
-                this.connected = false;
-            }
-        }
+    try {
+      await this.redis!.del(key);
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to delete key',
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Delete multiple keys
+   */
+  async delMany(keys: string[]): Promise<void> {
+    if (!this.isConnected() || keys.length === 0) {
+      return;
     }
 
-    /**
-     * Check if Redis is connected
-     */
-    isConnected(): boolean {
-        return this.connected && this.redis !== null;
+    try {
+      await this.redis!.del(...keys);
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to delete keys',
+        keyCount: keys.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Find keys matching a pattern
+   */
+  async keys(pattern: string): Promise<string[]> {
+    if (!this.isConnected()) {
+      return [];
     }
 
-    /**
-     * Get a value from cache
-     */
-    async get(key: string): Promise<string | null> {
-        if (!this.isConnected()) {
-            return null;
-        }
+    try {
+      return await this.redis!.keys(pattern);
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to find keys with pattern',
+        pattern,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  }
 
-        try {
-            return await this.redis!.get(key);
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to get key',
-                key,
-                error: error instanceof Error ? error.message : String(error),
-            });
-            return null;
-        }
+  /**
+   * Check if a key exists
+   */
+  async exists(key: string): Promise<boolean> {
+    if (!this.isConnected()) {
+      return false;
     }
 
-    /**
-     * Set a value in cache
-     */
-    async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
-        if (!this.isConnected()) {
-            return;
-        }
+    try {
+      const result = await this.redis!.exists(key);
+      return result === 1;
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to check existence of key',
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
 
-        try {
-            if (ttlSeconds) {
-                await this.redis!.setex(key, ttlSeconds, value);
-            } else {
-                await this.redis!.set(key, value);
-            }
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to set key',
-                key,
-                ttlSeconds,
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
+  /**
+   * Publish a message to a channel
+   */
+  async publish(channel: string, message: string): Promise<void> {
+    if (!this.isConnected()) {
+      return;
     }
 
-    /**
-     * Set a value with TTL
-     */
-    async setex(key: string, ttlSeconds: number, value: string): Promise<void> {
-        if (!this.isConnected()) {
-            return;
-        }
+    try {
+      await this.redis!.publish(channel, message);
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to publish to channel',
+        channel,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
-        try {
-            await this.redis!.setex(key, ttlSeconds, value);
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to setex key',
-                key,
-                ttlSeconds,
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
+  /**
+   * Push a value to the head of a Redis list (LPUSH)
+   *
+   * Used for enqueueing messages into Dramatiq task queues.
+   * Dramatiq workers consume from Redis lists via BRPOP.
+   */
+  async lpush(key: string, value: string): Promise<number> {
+    if (!this.isConnected()) {
+      return 0;
     }
 
-    /**
-     * Delete a key
-     */
-    async del(key: string): Promise<void> {
-        if (!this.isConnected()) {
-            return;
-        }
+    try {
+      return await this.redis!.lpush(key, value);
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to lpush to list',
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 0;
+    }
+  }
 
-        try {
-            await this.redis!.del(key);
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to delete key',
-                key,
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
+  /**
+   * Push a value to the tail of a Redis list (RPUSH)
+   *
+   * Used for Dramatiq message dispatch: the message ID is RPUSHed
+   * to the queue list while the payload is stored in a hash.
+   */
+  async rpush(key: string, value: string): Promise<number> {
+    if (!this.isConnected()) {
+      return 0;
     }
 
-    /**
-     * Delete multiple keys
-     */
-    async delMany(keys: string[]): Promise<void> {
-        if (!this.isConnected() || keys.length === 0) {
-            return;
-        }
+    try {
+      return await this.redis!.rpush(key, value);
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to rpush to list',
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 0;
+    }
+  }
 
-        try {
-            await this.redis!.del(...keys);
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to delete keys',
-                keyCount: keys.length,
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
+  /**
+   * Increment a key's integer value by 1 (INCR)
+   *
+   * Used for rate limiting counters. Returns the value after increment.
+   * If the key does not exist, it is set to 0 before performing the increment.
+   */
+  async incr(key: string): Promise<number> {
+    if (!this.isConnected()) {
+      return 0;
     }
 
-    /**
-     * Find keys matching a pattern
-     */
-    async keys(pattern: string): Promise<string[]> {
-        if (!this.isConnected()) {
-            return [];
-        }
+    try {
+      return await this.redis!.incr(key);
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to increment key',
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 0;
+    }
+  }
 
-        try {
-            return await this.redis!.keys(pattern);
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to find keys with pattern',
-                pattern,
-                error: error instanceof Error ? error.message : String(error),
-            });
-            return [];
-        }
+  /**
+   * Set a timeout on a key in seconds (EXPIRE)
+   *
+   * Used alongside INCR for sliding-window rate limiting.
+   */
+  async expire(key: string, ttlSeconds: number): Promise<boolean> {
+    if (!this.isConnected()) {
+      return false;
     }
 
-    /**
-     * Check if a key exists
-     */
-    async exists(key: string): Promise<boolean> {
-        if (!this.isConnected()) {
-            return false;
-        }
+    try {
+      const result = await this.redis!.expire(key, ttlSeconds);
+      return result === 1;
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to set expiry on key',
+        key,
+        ttlSeconds,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
 
-        try {
-            const result = await this.redis!.exists(key);
-            return result === 1;
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to check existence of key',
-                key,
-                error: error instanceof Error ? error.message : String(error),
-            });
-            return false;
-        }
+  /**
+   * Set a field in a Redis hash (HSET)
+   *
+   * Used for Dramatiq message dispatch: the message payload is stored
+   * in a hash keyed by message ID (e.g. dramatiq:stt_batch.msgs).
+   */
+  async hset(key: string, field: string, value: string): Promise<void> {
+    if (!this.isConnected()) {
+      return;
     }
 
-    /**
-     * Publish a message to a channel
-     */
-    async publish(channel: string, message: string): Promise<void> {
-        if (!this.isConnected()) {
-            return;
-        }
-
-        try {
-            await this.redis!.publish(channel, message);
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to publish to channel',
-                channel,
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
+    try {
+      await this.redis!.hset(key, field, value);
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to hset in hash',
+        key,
+        field,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
-
-    /**
-     * Push a value to the head of a Redis list (LPUSH)
-     *
-     * Used for enqueueing messages into Dramatiq task queues.
-     * Dramatiq workers consume from Redis lists via BRPOP.
-     */
-    async lpush(key: string, value: string): Promise<number> {
-        if (!this.isConnected()) {
-            return 0;
-        }
-
-        try {
-            return await this.redis!.lpush(key, value);
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to lpush to list',
-                key,
-                error: error instanceof Error ? error.message : String(error),
-            });
-            return 0;
-        }
-    }
-
-    /**
-     * Push a value to the tail of a Redis list (RPUSH)
-     *
-     * Used for Dramatiq message dispatch: the message ID is RPUSHed
-     * to the queue list while the payload is stored in a hash.
-     */
-    async rpush(key: string, value: string): Promise<number> {
-        if (!this.isConnected()) {
-            return 0;
-        }
-
-        try {
-            return await this.redis!.rpush(key, value);
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to rpush to list',
-                key,
-                error: error instanceof Error ? error.message : String(error),
-            });
-            return 0;
-        }
-    }
-
-    /**
-     * Increment a key's integer value by 1 (INCR)
-     *
-     * Used for rate limiting counters. Returns the value after increment.
-     * If the key does not exist, it is set to 0 before performing the increment.
-     */
-    async incr(key: string): Promise<number> {
-        if (!this.isConnected()) {
-            return 0;
-        }
-
-        try {
-            return await this.redis!.incr(key);
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to increment key',
-                key,
-                error: error instanceof Error ? error.message : String(error),
-            });
-            return 0;
-        }
-    }
-
-    /**
-     * Set a timeout on a key in seconds (EXPIRE)
-     *
-     * Used alongside INCR for sliding-window rate limiting.
-     */
-    async expire(key: string, ttlSeconds: number): Promise<boolean> {
-        if (!this.isConnected()) {
-            return false;
-        }
-
-        try {
-            const result = await this.redis!.expire(key, ttlSeconds);
-            return result === 1;
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to set expiry on key',
-                key,
-                ttlSeconds,
-                error: error instanceof Error ? error.message : String(error),
-            });
-            return false;
-        }
-    }
-
-    /**
-     * Set a field in a Redis hash (HSET)
-     *
-     * Used for Dramatiq message dispatch: the message payload is stored
-     * in a hash keyed by message ID (e.g. dramatiq:stt_batch.msgs).
-     */
-    async hset(key: string, field: string, value: string): Promise<void> {
-        if (!this.isConnected()) {
-            return;
-        }
-
-        try {
-            await this.redis!.hset(key, field, value);
-        } catch (error) {
-            this.logger.error({
-                message: 'Failed to hset in hash',
-                key,
-                field,
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
-    }
+  }
 }

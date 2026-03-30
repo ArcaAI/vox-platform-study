@@ -8,11 +8,7 @@
  * Falls back to main thread execution if Workers are not available.
  */
 
-import type {
-  TranscriptionResult,
-  ComputeDevice,
-  ModelLoadProgress,
-} from '../types/index.js';
+import type { TranscriptionResult, ComputeDevice, ModelLoadProgress } from '../types/index.js';
 import { getLanguageCode } from '../types/index.js';
 import type { EngineConfig, TranscribeOptions, EngineStats } from './types.js';
 import { BaseEngine } from './BaseEngine.js';
@@ -112,8 +108,7 @@ export class WhisperWorkerEngine extends BaseEngine {
 
     this.actualDevice = this.resolveDevice(config.device);
 
-    const modelId =
-      config.modelPath ?? this.getModelId(config.model, config.language, config.quantized, config.returnTimestamps);
+    const modelId = config.modelPath ?? this.getModelId(config.model, config.language, config.quantized, config.returnTimestamps);
 
     if (this.initialized && this.worker) {
       await this.reinitExistingWorker(modelId, config);
@@ -128,9 +123,7 @@ export class WhisperWorkerEngine extends BaseEngine {
     if (this.workerSupported) {
       await this.initWithWorker(modelId, config);
     } else {
-      console.warn(
-        '[WhisperWorkerEngine] Web Workers not available, falling back to main thread'
-      );
+      console.warn('[WhisperWorkerEngine] Web Workers not available, falling back to main thread');
       await this.initMainThread(modelId, config);
     }
 
@@ -145,10 +138,7 @@ export class WhisperWorkerEngine extends BaseEngine {
     return new Promise((resolve, reject) => {
       try {
         // Path is relative to dist/index.mjs after tsup bundles everything into dist/
-        this.worker = new Worker(
-          new URL('./workers/whisper.worker.mjs', import.meta.url),
-          { type: 'module' }
-        );
+        this.worker = new Worker(new URL('./workers/whisper.worker.mjs', import.meta.url), { type: 'module' });
 
         // Set up message handler
         this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
@@ -185,8 +175,7 @@ export class WhisperWorkerEngine extends BaseEngine {
         };
 
         // Temporarily store progress handler
-        (this as unknown as { _progressHandler: typeof progressHandler })._progressHandler =
-          progressHandler;
+        (this as unknown as { _progressHandler: typeof progressHandler })._progressHandler = progressHandler;
 
         this.worker.postMessage({
           type: 'init',
@@ -231,8 +220,7 @@ export class WhisperWorkerEngine extends BaseEngine {
           config.onProgress?.(response.payload as ModelLoadProgress);
         }
       };
-      (this as unknown as { _progressHandler: typeof progressHandler })._progressHandler =
-        progressHandler;
+      (this as unknown as { _progressHandler: typeof progressHandler })._progressHandler = progressHandler;
 
       this.worker!.postMessage({
         type: 'init',
@@ -261,8 +249,7 @@ export class WhisperWorkerEngine extends BaseEngine {
     await mainThreadEngine.init(config);
 
     // Store reference for fallback transcription
-    (this as unknown as { _mainThreadEngine: typeof mainThreadEngine })._mainThreadEngine =
-      mainThreadEngine;
+    (this as unknown as { _mainThreadEngine: typeof mainThreadEngine })._mainThreadEngine = mainThreadEngine;
   }
 
   /**
@@ -273,9 +260,7 @@ export class WhisperWorkerEngine extends BaseEngine {
 
     // Handle progress messages specially
     if (type === 'progress') {
-      const progressHandler = (
-        this as unknown as { _progressHandler?: (r: WorkerResponse) => void }
-      )._progressHandler;
+      const progressHandler = (this as unknown as { _progressHandler?: (r: WorkerResponse) => void })._progressHandler;
       progressHandler?.(response);
       return;
     }
@@ -318,8 +303,7 @@ export class WhisperWorkerEngine extends BaseEngine {
     }
 
     // Use main thread fallback if worker not available
-    const mainThreadEngine = (this as unknown as { _mainThreadEngine?: BaseEngine })
-      ._mainThreadEngine;
+    const mainThreadEngine = (this as unknown as { _mainThreadEngine?: BaseEngine })._mainThreadEngine;
     if (mainThreadEngine) {
       return mainThreadEngine.transcribe(audio, options);
     }
@@ -376,8 +360,7 @@ export class WhisperWorkerEngine extends BaseEngine {
 
   async destroy(): Promise<void> {
     // Clean up main thread engine if used
-    const mainThreadEngine = (this as unknown as { _mainThreadEngine?: BaseEngine })
-      ._mainThreadEngine;
+    const mainThreadEngine = (this as unknown as { _mainThreadEngine?: BaseEngine })._mainThreadEngine;
     if (mainThreadEngine) {
       await mainThreadEngine.destroy();
       (this as unknown as { _mainThreadEngine?: BaseEngine })._mainThreadEngine = undefined;

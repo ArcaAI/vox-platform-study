@@ -10,10 +10,7 @@ import type { ContextItem } from '../types';
 /**
  * Event types that can be broadcast
  */
-export type CrossTabEventType =
-  | 'context_added'
-  | 'context_updated'
-  | 'consultation_loaded';
+export type CrossTabEventType = 'context_added' | 'context_updated' | 'consultation_loaded';
 
 /**
  * Event payload structure
@@ -60,12 +57,7 @@ export class SimpleCrossTabSync {
   private listeners: Map<CrossTabEventType, Set<(data: unknown) => void>> = new Map();
   private isSupported: boolean;
 
-  constructor(config: {
-    patientId: string;
-    doctorId: string;
-    appointmentDate: string;
-    sessionSecret?: string;
-  }) {
+  constructor(config: { patientId: string; doctorId: string; appointmentDate: string; sessionSecret?: string }) {
     this.tabId = `tab_${crypto.randomUUID()}`;
     this.consultationKey = `${config.patientId}_${config.doctorId}_${config.appointmentDate}`;
     this.sessionSecret = config.sessionSecret;
@@ -93,7 +85,7 @@ export class SimpleCrossTabSync {
 
         const typeListeners = this.listeners.get(msg.type);
         if (typeListeners) {
-          typeListeners.forEach(listener => listener(msg.data));
+          typeListeners.forEach((listener) => listener(msg.data));
         }
       };
     } catch {
@@ -107,8 +99,10 @@ export class SimpleCrossTabSync {
       typeof msg === 'object' &&
       msg !== null &&
       'type' in msg &&
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Narrow unknown message shape.
       typeof (msg as any).type === 'string' &&
       'tabId' in msg &&
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Narrow unknown message shape.
       typeof (msg as any).tabId === 'string'
     );
   }
@@ -236,10 +230,6 @@ export class SimpleCrossTabSync {
  * });
  * ```
  */
-export function createCrossTabSync(config: {
-  patientId: string;
-  doctorId: string;
-  appointmentDate: string;
-}): SimpleCrossTabSync {
+export function createCrossTabSync(config: { patientId: string; doctorId: string; appointmentDate: string }): SimpleCrossTabSync {
   return new SimpleCrossTabSync(config);
 }

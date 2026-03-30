@@ -1,17 +1,17 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Switch } from '../../../registries/basecn/switch'
-import { Label } from '../../../registries/basecn/label'
+import { Switch } from '../../../registries/basecn/switch';
+import { Label } from '../../../registries/basecn/label';
 
 const meta = {
   title: 'Registries/Basecn/Switch',
   component: Switch,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof Switch>
+} satisfies Meta<typeof Switch>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {} as any,
@@ -21,7 +21,7 @@ export const Default: Story = {
       <Label htmlFor="airplane">Airplane Mode</Label>
     </div>
   ),
-}
+};
 
 export const Disabled: Story = {
   args: {} as any,
@@ -31,4 +31,4 @@ export const Disabled: Story = {
       <Label htmlFor="disabled">Disabled</Label>
     </div>
   ),
-}
+};

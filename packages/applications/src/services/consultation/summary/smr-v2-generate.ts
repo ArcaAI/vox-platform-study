@@ -1,0 +1,109 @@
+import type { AssembledPrompt } from '../prompt/prompt-assembly.service';
+
+export interface LegacySmrSummaryResponse {
+  summary: string;
+  llmProvider?: string;
+  modelName?: string;
+  processingTimeMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+interface SmrGeneratePayload {
+  prompt: string;
+  system_prompt?: string;
+  provider?: string;
+  model?: string;
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  stream: false;
+  response_format?: AssembledPrompt['responseFormat'];
+  context?: Record<string, unknown>;
+}
+
+interface SmrGenerateResponse {
+  summary?: string;
+  content?: string;
+  llmProvider?: string;
+  provider?: string;
+  modelName?: string;
+  model?: string;
+  processingTimeMs?: number;
+  latency_ms?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+  };
+}
+
+function pickNumber(source: Record<string, unknown> | undefined, ...keys: string[]): number | undefined {
+  if (!source) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function pickString(source: Record<string, unknown> | undefined, ...keys: string[]): string | undefined {
+  if (!source) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+export function buildSmrGeneratePayload(
+  assembledPrompt: AssembledPrompt,
+  options?: Record<string, unknown>,
+  contextExtras?: Record<string, unknown>,
+): SmrGeneratePayload {
+  const context = {
+    ...(options ?? {}),
+    ...(contextExtras ?? {}),
+  };
+
+  const temperature = pickNumber(options, 'temperature') ?? pickNumber(assembledPrompt.hyperparameters, 'temperature');
+  const maxTokens = pickNumber(options, 'max_tokens', 'maxTokens') ?? pickNumber(assembledPrompt.hyperparameters, 'max_tokens', 'maxTokens');
+  const topP = pickNumber(options, 'top_p', 'topP') ?? pickNumber(assembledPrompt.hyperparameters, 'top_p', 'topP');
+
+  return {
+    prompt: assembledPrompt.userPrompt,
+    system_prompt: assembledPrompt.systemPrompt,
+    provider: pickString(options, 'provider', 'smrProvider', 'defaultSmrProvider'),
+    model: pickString(options, 'model', 'smrModel', 'defaultSmrModel'),
+    temperature,
+    max_tokens: maxTokens,
+    top_p: topP,
+    stream: false,
+    response_format: assembledPrompt.responseFormat ?? undefined,
+    context: Object.keys(context).length > 0 ? context : undefined,
+  };
+}
+
+export function mapSmrGenerateResponse(responseData: SmrGenerateResponse): LegacySmrSummaryResponse {
+  return {
+    summary: responseData.summary ?? responseData.content ?? '',
+    llmProvider: responseData.llmProvider ?? responseData.provider,
+    modelName: responseData.modelName ?? responseData.model,
+    processingTimeMs: responseData.processingTimeMs ?? responseData.latency_ms,
+    inputTokens: responseData.inputTokens ?? responseData.usage?.prompt_tokens,
+    outputTokens: responseData.outputTokens ?? responseData.usage?.completion_tokens,
+  };
+}

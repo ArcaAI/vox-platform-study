@@ -4,15 +4,16 @@ Note: Tests that require torch/ML dependencies are marked with @pytest.mark.slow
 and will be skipped if torch is not installed.
 """
 
-import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from stt_v2.models.base_loader import BaseModelLoader, LoadedModel
-from stt_v2.models.huggingface_loader import HuggingFaceLoader
-from stt_v2.models.onnx_loader import ONNXLoader
-from stt_v2.models.nemo_loader import NeMoLoader
+import pytest
+
 from stt_v2.models.azure_speech_loader import AzureSpeechLoader
+from stt_v2.models.base_loader import LoadedModel
+from stt_v2.models.huggingface_loader import HuggingFaceLoader
+from stt_v2.models.nemo_loader import NeMoLoader
+from stt_v2.models.onnx_loader import ONNXLoader
 from stt_v2.pipeline.dto import (
     AiModelConfig,
     AiModelDownloadStatus,
@@ -23,7 +24,7 @@ from stt_v2.pipeline.dto import (
 
 # Check if torch is available for tests that need it
 try:
-    import torch
+    import torch  # noqa: F401
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
@@ -484,7 +485,6 @@ class TestHuggingFaceLoaderLoad:
     @pytest.mark.asyncio
     async def test_load_with_mock_transformers(self, loader, sample_config):
         """Test load with fully mocked transformers."""
-        from stt_v2.core.exceptions import ModelLoadError
 
         mock_model = MagicMock()
         mock_model.num_parameters.return_value = 10_000_000

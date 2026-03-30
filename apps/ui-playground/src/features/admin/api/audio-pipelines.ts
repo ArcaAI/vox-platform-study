@@ -1,9 +1,4 @@
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type UseQueryOptions,
-} from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { adminClient } from './admin-client';
 
 // ---------------------------------------------------------------------------
@@ -59,37 +54,26 @@ export interface YamlValidationResult {
 // ---------------------------------------------------------------------------
 
 export const audioPipelineKeys = {
-  all: (tenantId?: string) =>
-    ['admin', 'audio-pipelines', tenantId ?? ''] as const,
+  all: (tenantId?: string) => ['admin', 'audio-pipelines', tenantId ?? ''] as const,
   list: (tenantId?: string) => [...audioPipelineKeys.all(tenantId), 'list'] as const,
-  detail: (tenantId: string | undefined, id: string) =>
-    [...audioPipelineKeys.all(tenantId), 'detail', id] as const,
-  slug: (tenantId: string | undefined, slug: string) =>
-    [...audioPipelineKeys.all(tenantId), 'slug', slug] as const,
+  detail: (tenantId: string | undefined, id: string) => [...audioPipelineKeys.all(tenantId), 'detail', id] as const,
+  slug: (tenantId: string | undefined, slug: string) => [...audioPipelineKeys.all(tenantId), 'slug', slug] as const,
 };
 
 // ---------------------------------------------------------------------------
 // Query hooks
 // ---------------------------------------------------------------------------
 
-export function useAudioPipelines(
-  tenantId: string,
-  options?: Omit<UseQueryOptions<AudioPipeline[]>, 'queryKey' | 'queryFn'>,
-) {
+export function useAudioPipelines(tenantId: string, options?: Omit<UseQueryOptions<AudioPipeline[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: audioPipelineKeys.list(tenantId),
-    queryFn: () =>
-      adminClient.get<AudioPipeline[]>('/audio/pipelines', { tenantId }),
+    queryFn: () => adminClient.get<AudioPipeline[]>('/audio/pipelines', { tenantId }),
     enabled: !!tenantId,
     ...options,
   });
 }
 
-export function useAudioPipeline(
-  tenantId: string,
-  id: string,
-  options?: Omit<UseQueryOptions<AudioPipeline | null>, 'queryKey' | 'queryFn'>,
-) {
+export function useAudioPipeline(tenantId: string, id: string, options?: Omit<UseQueryOptions<AudioPipeline | null>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: audioPipelineKeys.detail(tenantId, id),
     queryFn: () =>
@@ -108,8 +92,7 @@ export function useAudioPipeline(
 export function useCreateAudioPipeline(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateAudioPipelineInput) =>
-      adminClient.post<AudioPipeline>('/audio/pipelines', input, { tenantId }),
+    mutationFn: (input: CreateAudioPipelineInput) => adminClient.post<AudioPipeline>('/audio/pipelines', input, { tenantId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: audioPipelineKeys.all(tenantId) });
     },
@@ -135,8 +118,7 @@ export function useUpdateAudioPipeline(tenantId: string) {
 export function useDeleteAudioPipeline(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      adminClient.delete<void>(`/audio/pipelines/${id}`, { tenantId }),
+    mutationFn: (id: string) => adminClient.delete<void>(`/audio/pipelines/${id}`, { tenantId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: audioPipelineKeys.all(tenantId) });
     },
@@ -145,11 +127,6 @@ export function useDeleteAudioPipeline(tenantId: string) {
 
 export function useValidateAudioPipelineYaml(tenantId: string) {
   return useMutation({
-    mutationFn: (yaml: string) =>
-      adminClient.post<YamlValidationResult>(
-        '/audio/pipelines/validate-yaml',
-        { yaml },
-        { tenantId },
-      ),
+    mutationFn: (yaml: string) => adminClient.post<YamlValidationResult>('/audio/pipelines/validate-yaml', { yaml }, { tenantId }),
   });
 }

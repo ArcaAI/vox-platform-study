@@ -101,6 +101,12 @@ spec:
                   name: hope-secrets
                   key: HUGGINGFACE_TOKEN
                   optional: true
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: HUGGINGFACE_TOKEN
+                  optional: true
             - name: OTEL_SERVICE_NAME
               value: hope-stt-v2
             - name: OMP_NUM_THREADS
@@ -134,19 +140,21 @@ spec:
             timeoutSeconds: 5
           resources:
             requests:
-              cpu: "2"
-              memory: "4Gi"
+              cpu: "8"
+              memory: "16Gi"
               nvidia.com/gpu: "1"
             limits:
-              cpu: "8"
-              memory: "12Gi"
+              cpu: "24"
+              memory: "32Gi"
               nvidia.com/gpu: "1"
           volumeMounts:
             - name: models-cache
               mountPath: /models
       volumes:
         - name: models-cache
-          emptyDir: {}
+          hostPath:
+            path: /srv/vox/models-cache
+            type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service

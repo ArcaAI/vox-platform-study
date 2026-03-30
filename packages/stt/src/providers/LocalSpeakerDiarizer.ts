@@ -239,9 +239,7 @@ export class LocalSpeakerDiarizer {
     }
 
     const inv = 1 / nFrames;
-    const feature = new Float32Array(
-      NUM_MFCC + NUM_MFCC + NUM_MEL_BANDS + 9
-    );
+    const feature = new Float32Array(NUM_MFCC + NUM_MFCC + NUM_MEL_BANDS + 9);
     let idx = 0;
 
     for (let i = 0; i < NUM_MFCC; i += 1) feature[idx++] = avgMfcc[i]!;
@@ -297,25 +295,47 @@ export class LocalSpeakerDiarizer {
     return out;
   }
 
-  // ─── FFT magnitudes (real DFT, first half) ───────────────────────────
+  // ─── FFT magnitudes (radix-2 Cooley–Tukey) ─────────────────────────
 
   private computeFFTMagnitudes(frame: Float32Array): Float32Array {
     const n = frame.length;
     const numBins = Math.floor(n / 2) + 1;
-    const magnitudes = new Float32Array(numBins);
 
-    for (let k = 0; k < numBins; k += 1) {
-      let real = 0;
-      let imag = 0;
-      for (let t = 0; t < n; t += 1) {
-        const angle = (2 * Math.PI * k * t) / n;
-        const s = frame[t]!;
-        real += s * Math.cos(angle);
-        imag -= s * Math.sin(angle);
+    const real = new Float32Array(n);
+    const imag = new Float32Array(n);
+
+    // Bit-reversal permutation
+    for (let i = 0; i < n; i += 1) {
+      let rev = 0;
+      let bits = i;
+      for (let b = 1; b < n; b <<= 1) {
+        rev = (rev << 1) | (bits & 1);
+        bits >>= 1;
       }
-      magnitudes[k] = Math.sqrt(real * real + imag * imag);
+      real[rev] = frame[i]!;
     }
 
+    // Cooley–Tukey butterfly stages
+    for (let size = 2; size <= n; size <<= 1) {
+      const half = size >> 1;
+      const step = (2 * Math.PI) / size;
+      for (let i = 0; i < n; i += size) {
+        for (let j = 0; j < half; j += 1) {
+          const angle = -step * j;
+          const tRe = Math.cos(angle) * real[i + j + half]! - Math.sin(angle) * imag[i + j + half]!;
+          const tIm = Math.cos(angle) * imag[i + j + half]! + Math.sin(angle) * real[i + j + half]!;
+          real[i + j + half] = real[i + j]! - tRe;
+          imag[i + j + half] = imag[i + j]! - tIm;
+          real[i + j] = real[i + j]! + tRe;
+          imag[i + j] = imag[i + j]! + tIm;
+        }
+      }
+    }
+
+    const magnitudes = new Float32Array(numBins);
+    for (let k = 0; k < numBins; k += 1) {
+      magnitudes[k] = Math.sqrt(real[k]! * real[k]! + imag[k]! * imag[k]!);
+    }
     return magnitudes;
   }
 
@@ -459,24 +479,32 @@ export class LocalSpeakerDiarizer {
       return { pitchCorrelation: 0, pitchPosition: 0, hnr: 0 };
     }
 
+    // Downsample 2× for faster autocorrelation (8kHz still captures up to 4kHz)
+    const ds = 2;
+    const dn = Math.floor(n / ds);
+    const dsFrame = new Float32Array(dn);
+    for (let i = 0; i < dn; i += 1) {
+      dsFrame[i] = frame[i * ds]!;
+    }
+
     let energy = 0;
-    for (let i = 0; i < n; i += 1) {
-      energy += frame[i]! * frame[i]!;
+    for (let i = 0; i < dn; i += 1) {
+      energy += dsFrame[i]! * dsFrame[i]!;
     }
     if (energy < 1e-9) {
       return { pitchCorrelation: 0, pitchPosition: 0, hnr: 0 };
     }
 
-    // Lag range: 60Hz–500Hz at 16kHz → lag 32–267
-    const lagMin = Math.max(16, Math.floor(ASSUMED_SAMPLE_RATE / 500));
-    const lagMax = Math.min(Math.floor(ASSUMED_SAMPLE_RATE / 60), n - 2);
+    const dsRate = ASSUMED_SAMPLE_RATE / ds;
+    const lagMin = Math.max(8, Math.floor(dsRate / 500));
+    const lagMax = Math.min(Math.floor(dsRate / 60), dn - 2);
     let bestCorr = 0;
     let bestLag = lagMin;
 
     for (let lag = lagMin; lag <= lagMax; lag += 1) {
       let corr = 0;
-      for (let i = 0; i < n - lag; i += 1) {
-        corr += frame[i]! * frame[i + lag]!;
+      for (let i = 0; i < dn - lag; i += 1) {
+        corr += dsFrame[i]! * dsFrame[i + lag]!;
       }
       const normalized = corr / energy;
       if (normalized > bestCorr) {
@@ -486,14 +514,9 @@ export class LocalSpeakerDiarizer {
     }
 
     const pitchCorrelation = Math.max(0, Math.min(1, bestCorr));
-    const pitchPosition = lagMax > lagMin
-      ? (bestLag - lagMin) / (lagMax - lagMin)
-      : 0;
+    const pitchPosition = lagMax > lagMin ? (bestLag - lagMin) / (lagMax - lagMin) : 0;
 
-    // Harmonics-to-Noise Ratio (HNR) approximation
-    const hnr = pitchCorrelation > 0.01
-      ? 10 * Math.log10(pitchCorrelation / (1 - pitchCorrelation + 1e-9))
-      : 0;
+    const hnr = pitchCorrelation > 0.01 ? 10 * Math.log10(pitchCorrelation / (1 - pitchCorrelation + 1e-9)) : 0;
     const normalizedHnr = Math.max(0, Math.min(1, (hnr + 10) / 40));
 
     return {

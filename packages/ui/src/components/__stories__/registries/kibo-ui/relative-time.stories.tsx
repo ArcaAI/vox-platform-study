@@ -1,21 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import {
-  RelativeTime,
-  RelativeTimeZone,
-  RelativeTimeZoneDisplay,
-  RelativeTimeZoneLabel,
-} from '../../../registries/kibo-ui/relative-time'
+import { RelativeTime, RelativeTimeZone, RelativeTimeZoneDisplay, RelativeTimeZoneLabel } from '../../../registries/kibo-ui/relative-time';
 
 const meta = {
   title: 'Registries/KiboUI/RelativeTime',
   component: RelativeTime,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
-} satisfies Meta<typeof RelativeTime>
+} satisfies Meta<typeof RelativeTime>;
 
-export default meta
-type Story = StoryObj<typeof meta>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
@@ -34,4 +29,4 @@ export const Default: Story = {
       </RelativeTimeZone>
     </RelativeTime>
   ),
-}
+};

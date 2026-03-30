@@ -275,11 +275,7 @@ describe('BaseValueObject', () => {
     });
 
     it('should handle value objects with special characters', () => {
-      const address = new AddressValueObject(
-        '123 Main St, Apt #4',
-        "O'Brien City",
-        '10001-2345'
-      );
+      const address = new AddressValueObject('123 Main St, Apt #4', "O'Brien City", '10001-2345');
 
       const obj = address.toObject() as { street: string; city: string; zipCode: string };
 

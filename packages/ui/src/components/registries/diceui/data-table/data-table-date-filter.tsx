@@ -1,30 +1,25 @@
-"use client";
+'use client';
 
-import type { Column } from "@tanstack/react-table";
-import { CalendarIcon, XCircle } from "lucide-react";
-import * as React from "react";
-import type { DateRange } from "react-day-picker";
+import type { Column } from '@tanstack/react-table';
+import { CalendarIcon, XCircle } from 'lucide-react';
+import * as React from 'react';
+import type { DateRange } from 'react-day-picker';
 
-import { Button } from "@/components/shadcn/button";
-import { Calendar } from "@/components/shadcn/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/shadcn/popover";
-import { Separator } from "@/components/shadcn/separator";
-import { formatDate } from "@/lib/format";
+import { Button } from '@/components/shadcn/button';
+import { Calendar } from '@/components/shadcn/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/shadcn/popover';
+import { Separator } from '@/components/shadcn/separator';
+import { formatDate } from '@/lib/format';
 
 type DateSelection = Date[] | DateRange;
 
 function getIsDateRange(value: DateSelection): value is DateRange {
-  return value && typeof value === "object" && !Array.isArray(value);
+  return value && typeof value === 'object' && !Array.isArray(value);
 }
 
 function parseAsDate(timestamp: number | string | undefined): Date | undefined {
   if (!timestamp) return undefined;
-  const numericTimestamp =
-    typeof timestamp === "string" ? Number(timestamp) : timestamp;
+  const numericTimestamp = typeof timestamp === 'string' ? Number(timestamp) : timestamp;
   const date = new Date(numericTimestamp);
   return !Number.isNaN(date.getTime()) ? date : undefined;
 }
@@ -36,14 +31,14 @@ function parseColumnFilterValue(value: unknown) {
 
   if (Array.isArray(value)) {
     return value.map((item) => {
-      if (typeof item === "number" || typeof item === "string") {
+      if (typeof item === 'number' || typeof item === 'string') {
         return item;
       }
       return undefined;
     });
   }
 
-  if (typeof value === "string" || typeof value === "number") {
+  if (typeof value === 'string' || typeof value === 'number') {
     return [value];
   }
 
@@ -56,11 +51,7 @@ interface DataTableDateFilterProps<TData> {
   multiple?: boolean;
 }
 
-export function DataTableDateFilter<TData>({
-  column,
-  title,
-  multiple,
-}: DataTableDateFilterProps<TData>) {
+export function DataTableDateFilter<TData>({ column, title, multiple }: DataTableDateFilterProps<TData>) {
   const columnFilterValue = column.getFilterValue();
 
   const selectedDates = React.useMemo<DateSelection>(() => {
@@ -88,11 +79,11 @@ export function DataTableDateFilter<TData>({
         return;
       }
 
-      if (multiple && !("getTime" in date)) {
+      if (multiple && !('getTime' in date)) {
         const from = date.from?.getTime();
         const to = date.to?.getTime();
         column.setFilterValue(from || to ? [from, to] : undefined);
-      } else if (!multiple && "getTime" in date) {
+      } else if (!multiple && 'getTime' in date) {
         column.setFilterValue(date.getTime());
       }
     },
@@ -117,7 +108,7 @@ export function DataTableDateFilter<TData>({
   }, [multiple, selectedDates]);
 
   const formatDateRange = React.useCallback((range: DateRange) => {
-    if (!range.from && !range.to) return "";
+    if (!range.from && !range.to) return '';
     if (range.from && range.to) {
       return `${formatDate(range.from)} - ${formatDate(range.to)}`;
     }
@@ -129,19 +120,14 @@ export function DataTableDateFilter<TData>({
       if (!getIsDateRange(selectedDates)) return null;
 
       const hasSelectedDates = selectedDates.from || selectedDates.to;
-      const dateText = hasSelectedDates
-        ? formatDateRange(selectedDates)
-        : "Select date range";
+      const dateText = hasSelectedDates ? formatDateRange(selectedDates) : 'Select date range';
 
       return (
         <span className="flex items-center gap-2">
           <span>{title}</span>
           {hasSelectedDates && (
             <>
-              <Separator
-                orientation="vertical"
-                className="mx-0.5 data-[orientation=vertical]:h-4"
-              />
+              <Separator orientation="vertical" className="mx-0.5 data-[orientation=vertical]:h-4" />
               <span>{dateText}</span>
             </>
           )}
@@ -152,19 +138,14 @@ export function DataTableDateFilter<TData>({
     if (getIsDateRange(selectedDates)) return null;
 
     const hasSelectedDate = selectedDates.length > 0;
-    const dateText = hasSelectedDate
-      ? formatDate(selectedDates[0])
-      : "Select date";
+    const dateText = hasSelectedDate ? formatDate(selectedDates[0]) : 'Select date';
 
     return (
       <span className="flex items-center gap-2">
         <span>{title}</span>
         {hasSelectedDate && (
           <>
-            <Separator
-              orientation="vertical"
-              className="mx-0.5 data-[orientation=vertical]:h-4"
-            />
+            <Separator orientation="vertical" className="mx-0.5 data-[orientation=vertical]:h-4" />
             <span>{dateText}</span>
           </>
         )}
@@ -175,11 +156,7 @@ export function DataTableDateFilter<TData>({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="border-dashed font-normal"
-        >
+        <Button variant="outline" size="sm" className="border-dashed font-normal">
           {hasValue ? (
             <div
               role="button"
@@ -202,20 +179,14 @@ export function DataTableDateFilter<TData>({
             autoFocus
             captionLayout="dropdown"
             mode="range"
-            selected={
-              getIsDateRange(selectedDates)
-                ? selectedDates
-                : { from: undefined, to: undefined }
-            }
+            selected={getIsDateRange(selectedDates) ? selectedDates : { from: undefined, to: undefined }}
             onSelect={onSelect}
           />
         ) : (
           <Calendar
             captionLayout="dropdown"
             mode="single"
-            selected={
-              !getIsDateRange(selectedDates) ? selectedDates[0] : undefined
-            }
+            selected={!getIsDateRange(selectedDates) ? selectedDates[0] : undefined}
             onSelect={onSelect}
           />
         )}

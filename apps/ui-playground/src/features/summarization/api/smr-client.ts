@@ -14,8 +14,7 @@ export class SmrApiError extends Error {
 }
 
 function getEffectiveToken(): string {
-  const { accessToken, isImpersonating, impersonationToken } =
-    useAuthStore.getState();
+  const { accessToken, isImpersonating, impersonationToken } = useAuthStore.getState();
   return isImpersonating && impersonationToken ? impersonationToken : accessToken;
 }
 
@@ -45,18 +44,10 @@ function getBaseUrl(): string {
   return usePlaygroundStore.getState().apiBaseUrl;
 }
 
-async function request<T>(
-  method: string,
-  path: string,
-  body?: unknown,
-  options?: { timeout?: number },
-  isRetry = false,
-): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, options?: { timeout?: number }, isRetry = false): Promise<T> {
   const url = `${getBaseUrl()}${path}`;
   const controller = new AbortController();
-  const timeoutId = options?.timeout
-    ? setTimeout(() => controller.abort(), options.timeout)
-    : undefined;
+  const timeoutId = options?.timeout ? setTimeout(() => controller.abort(), options.timeout) : undefined;
 
   try {
     const init: RequestInit = {
@@ -76,10 +67,7 @@ async function request<T>(
       if (fetchErr instanceof DOMException && fetchErr.name === 'AbortError') {
         throw new SmrApiError('Request timed out', 408);
       }
-      throw new SmrApiError(
-        `Network error: Unable to reach ${url}. Is the API gateway running?`,
-        0,
-      );
+      throw new SmrApiError(`Network error: Unable to reach ${url}. Is the API gateway running?`, 0);
     }
 
     if (!res.ok) {
@@ -96,9 +84,7 @@ async function request<T>(
       } catch {
         /* empty */
       }
-      const message =
-        (errorBody as { message?: string })?.message ??
-        `Request failed: ${method} ${path} (${res.status})`;
+      const message = (errorBody as { message?: string })?.message ?? `Request failed: ${method} ${path} (${res.status})`;
       throw new SmrApiError(message, res.status, errorBody);
     }
 
@@ -109,12 +95,7 @@ async function request<T>(
   }
 }
 
-async function requestSSE(
-  path: string,
-  onChunk: (data: string) => void,
-  onDone?: () => void,
-  isRetry = false,
-): Promise<void> {
+async function requestSSE(path: string, onChunk: (data: string) => void, onDone?: () => void, isRetry = false): Promise<void> {
   const url = `${getBaseUrl()}${path}`;
   const res = await fetch(url, { headers: getHeaders() });
 
@@ -180,10 +161,7 @@ async function requestPostSSE(
     });
   } catch (fetchErr) {
     if (fetchErr instanceof DOMException && fetchErr.name === 'AbortError') return;
-    const err = new SmrApiError(
-      `Network error: Unable to reach ${url}. Is the API gateway running?`,
-      0,
-    );
+    const err = new SmrApiError(`Network error: Unable to reach ${url}. Is the API gateway running?`, 0);
     callbacks.onError?.(err);
     throw err;
   }
@@ -225,14 +203,10 @@ async function requestPostSSE(
 }
 
 export const smrClient = {
-  get: <T>(path: string) =>
-    request<T>('GET', path),
-  post: <T>(path: string, body?: unknown, opts?: { timeout?: number }) =>
-    request<T>('POST', path, body, opts),
-  patch: <T>(path: string, body?: unknown) =>
-    request<T>('PATCH', path, body),
-  delete: <T>(path: string) =>
-    request<T>('DELETE', path),
+  get: <T>(path: string) => request<T>('GET', path),
+  post: <T>(path: string, body?: unknown, opts?: { timeout?: number }) => request<T>('POST', path, body, opts),
+  patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
+  delete: <T>(path: string) => request<T>('DELETE', path),
   sse: requestSSE,
   postSSE: requestPostSSE,
 };

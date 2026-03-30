@@ -29,10 +29,7 @@ import { useDepartment } from '@/features/admin/api/departments';
 import type { PromptTemplate } from '@/features/admin/api/prompts';
 import { usePromptTemplates } from '@/features/admin/api/prompts';
 import type { DnaReport } from '@/features/dna-writing-style/api/dna-writing-styles';
-import {
-  useMyDnaStyle,
-  useDnaStyleByDoctor,
-} from '@/features/dna-writing-style/api/dna-writing-styles';
+import { useMyDnaStyle, useDnaStyleByDoctor } from '@/features/dna-writing-style/api/dna-writing-styles';
 import { CONTEXT_ENDPOINTS, useAgenticStore, useArca, type ContextItem } from '@arcaai/vox';
 import { buildAssembledPayload } from '../utils/build-assembled-payload';
 import { filterContextItems, type ContextRecency } from '../utils/filter-context-items';
@@ -96,18 +93,13 @@ export default function PreSummaryPage() {
 
   const userDeptId = ctx.primaryDepartmentId ?? '';
   const { data: userDepartment } = useDepartment(userDeptId, { enabled: !!userDeptId });
-  const { data: promptTemplatesResponse, isLoading: promptsLoading } = usePromptTemplates(
-    tenantId,
-    undefined,
-    { enabled: !!tenantId && !ctx.requiresImpersonation },
-  );
-  const { data: doctorDnaStyle, isLoading: dnaLoading } = useDnaStyleByDoctor(
-    ctx.effectiveUserId,
-    { enabled: !!ctx.effectiveUserId && !ctx.requiresImpersonation },
-  );
-  const { data: myDnaStyle } = useMyDnaStyle(
-    { enabled: debugMode && !ctx.requiresImpersonation },
-  );
+  const { data: promptTemplatesResponse, isLoading: promptsLoading } = usePromptTemplates(tenantId, undefined, {
+    enabled: !!tenantId && !ctx.requiresImpersonation,
+  });
+  const { data: doctorDnaStyle, isLoading: dnaLoading } = useDnaStyleByDoctor(ctx.effectiveUserId, {
+    enabled: !!ctx.effectiveUserId && !ctx.requiresImpersonation,
+  });
+  const { data: myDnaStyle } = useMyDnaStyle({ enabled: debugMode && !ctx.requiresImpersonation });
 
   const generateMutation = useGeneratePreSummary();
 
@@ -863,7 +855,7 @@ export default function PreSummaryPage() {
                               />
                             </div>
                           </div>
-                          <div className='sm:col-span-1'>
+                          <div className="sm:col-span-1">
                             <Label className="text-xs">Item Type</Label>
                             <Select value={contextTypeFilter} onValueChange={setContextTypeFilter}>
                               <SelectTrigger className="mt-1 w-full">
@@ -879,7 +871,7 @@ export default function PreSummaryPage() {
                             </Select>
                           </div>
 
-                          <div className='sm:col-span-1'>
+                          <div className="sm:col-span-1">
                             <Label className="text-xs">Recency</Label>
                             <Select value={contextRecencyFilter} onValueChange={(value) => setContextRecencyFilter(value as ContextRecency)}>
                               <SelectTrigger className="mt-1 w-full">

@@ -306,6 +306,7 @@ class TestDtypeCastingFix:
         not derived from the compute_type string.
         """
         import inspect
+
         from stt_v2.models.huggingface_loader import HuggingFaceLoader
 
         source = inspect.getsource(HuggingFaceLoader.load)
@@ -319,6 +320,7 @@ class TestDtypeCastingFix:
     def test_onnx_loader_uses_auto_device(self):
         """ONNXLoader._load_with_optimum() should call _get_device('auto')."""
         import inspect
+
         from stt_v2.models.onnx_loader import ONNXLoader
 
         source = inspect.getsource(ONNXLoader._load_with_optimum)
@@ -330,6 +332,7 @@ class TestDtypeCastingFix:
     def test_nemo_loader_uses_auto_device(self):
         """NeMoLoader.load() should call _get_device('auto')."""
         import inspect
+
         from stt_v2.models.nemo_loader import NeMoLoader
 
         source = inspect.getsource(NeMoLoader.load)
@@ -344,6 +347,7 @@ class TestDtypeCastingFix:
         This verifies the fix is present in the source code.
         """
         import inspect
+
         from stt_v2.transcription.batch_service import BatchTranscriptionService
 
         source = inspect.getsource(
@@ -375,6 +379,7 @@ class TestDtypeCastingFix:
             pytest.skip("torch not installed")
 
         from unittest.mock import patch
+
         from stt_v2.models.base_loader import BaseModelLoader
 
         class _TestLoader(BaseModelLoader):
@@ -420,6 +425,7 @@ class TestDtypeCastingFix:
         must detect this and cast the model to float32 before running.
         """
         import inspect
+
         from stt_v2.transcription.batch_service import BatchTranscriptionService
 
         source = inspect.getsource(
@@ -551,6 +557,7 @@ class TestHuggingFacePipelineTranscription:
         Returns the pipeline slug for use in transcription requests.
         """
         from sqlalchemy import text
+
         from stt_v2.core.database.connection import get_session
 
         slug = "e2e-test-hf-turbo-float32"
@@ -616,6 +623,7 @@ class TestHuggingFacePipelineTranscription:
         in half precision while the processor outputs float32 tensors.
         """
         from sqlalchemy import text
+
         from stt_v2.core.database.connection import get_session
 
         slug = "e2e-test-hf-turbo-auto"
@@ -858,6 +866,7 @@ class TestHuggingFacePipelineTranscription:
         ``RuntimeError: Input type (float) and bias type (c10::Half)``
         """
         from sqlalchemy import text
+
         from stt_v2.core.database.connection import get_session
 
         slug = "e2e-test-hf-turbo-fp16"

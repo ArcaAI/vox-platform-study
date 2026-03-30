@@ -57,50 +57,50 @@ import { AppSettingsModule } from '../../_meta/appSettings';
  * Includes S3HealthService for monitoring and health checks.
  */
 @Module({
-    providers: [
-        {
-            provide: IS3Service,
-            useClass: S3Service,
-        },
-        S3HealthService,
-    ],
-    exports: [IS3Service, S3HealthService],
+  providers: [
+    {
+      provide: IS3Service,
+      useClass: S3Service,
+    },
+    S3HealthService,
+  ],
+  exports: [IS3Service, S3HealthService],
 })
 export class S3ServiceModule {
-    /**
-     * Import S3ServiceModule with AppSettingsModule dependency included.
-     * This is the recommended way to import the module as it ensures all dependencies are available.
-     */
-    static forRoot(): DynamicModule {
-        return {
-            module: S3ServiceModule,
-            imports: [AppSettingsModule.forRoot()],
-            providers: [
-                {
-                    provide: IS3Service,
-                    useClass: S3Service,
-                },
-                S3HealthService,
-            ],
-            exports: [IS3Service, S3HealthService],
-        };
-    }
+  /**
+   * Import S3ServiceModule with AppSettingsModule dependency included.
+   * This is the recommended way to import the module as it ensures all dependencies are available.
+   */
+  static forRoot(): DynamicModule {
+    return {
+      module: S3ServiceModule,
+      imports: [AppSettingsModule.forRoot()],
+      providers: [
+        {
+          provide: IS3Service,
+          useClass: S3Service,
+        },
+        S3HealthService,
+      ],
+      exports: [IS3Service, S3HealthService],
+    };
+  }
 
-    /**
-     * Import S3ServiceModule assuming AppSettingsModule is already globally available.
-     * Use this only if you're certain AppSettingsModule.forRoot() is imported at the root level.
-     */
-    static forFeature(): DynamicModule {
-        return {
-            module: S3ServiceModule,
-            providers: [
-                {
-                    provide: IS3Service,
-                    useClass: S3Service,
-                },
-                S3HealthService,
-            ],
-            exports: [IS3Service, S3HealthService],
-        };
-    }
+  /**
+   * Import S3ServiceModule assuming AppSettingsModule is already globally available.
+   * Use this only if you're certain AppSettingsModule.forRoot() is imported at the root level.
+   */
+  static forFeature(): DynamicModule {
+    return {
+      module: S3ServiceModule,
+      providers: [
+        {
+          provide: IS3Service,
+          useClass: S3Service,
+        },
+        S3HealthService,
+      ],
+      exports: [IS3Service, S3HealthService],
+    };
+  }
 }

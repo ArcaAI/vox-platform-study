@@ -7,11 +7,11 @@ import { UNAUTHORIZED, BaseException } from '../../common';
  * @extends {BaseException}
  */
 export class UnauthorizedException extends BaseException {
-    static readonly message = 'Unauthorized';
+  static readonly message = 'Unauthorized';
 
-    constructor(message = UnauthorizedException.message) {
-        super(message);
-    }
+  constructor(message = UnauthorizedException.message) {
+    super(message);
+  }
 
-    readonly code = UNAUTHORIZED;
+  readonly code = UNAUTHORIZED;
 }

@@ -13,154 +13,206 @@
 
 ### Description
 
-Rebuild the GitLab CI/CD pipeline from a build-only configuration (2 stages) into a full-lifecycle pipeline with linting, type-checking, testing, building, and security scanning stages for all apps and services in the monorepo.
-
-### Business Context
-
-The existing pipeline only builds Docker images and mirrors to GitHub. There is no CI-level quality gate — broken code, type errors, lint violations, and security vulnerabilities can reach production undetected.
+Rebuild the GitLab CI/CD pipeline with proper branch strategy (`cicd`, `staging`, `release`), image versioning (no `latest` tag), SDK package publishing via GitLab Package Registry, and Argo CD integration for staging deployments.
 
 ### Acceptance Criteria
 
-- [x] Pipeline has stages: install, validate, test, build, scan, notify
-- [x] TypeScript linting (ESLint via Turborepo) runs on TS changes
-- [x] TypeScript type-checking runs on TS changes
-- [x] Python linting (ruff) runs on Python changes
-- [x] API unit tests (Vitest) run on API/package changes
-- [x] Package unit tests (Vitest) run on package changes
-- [x] SDK/UI unit tests (Vitest) run on frontend package changes
-- [x] Python tests (pytest) run per-service: stt-v2, smr, nlp
-- [x] Docker builds depend on successful tests (DAG)
-- [x] Trivy container scanning after builds
-- [x] Trivy source code scanning on MRs
-- [x] MR pipelines supported (lint + test + scan, no builds)
-- [x] Duplicate pipelines prevented (branch + MR)
-- [x] Auto-cancel on new commits to same MR
-- [x] Change-path detection with corrected package directory names
-- [x] GitHub backup preserved
-- [x] Modular file structure (.gitlab/ci/*.yml)
+- [x] Pipeline stages: install, validate, test, build, scan, publish, deploy, notify
+- [x] `cicd` branch: runs all stages, builds require manual approval
+- [x] `staging` branch: runs only changed services, auto-builds, triggers Argo CD
+- [x] `release` branch: publishes SDK packages to GitLab Package Registry
+- [x] `main` branch: same as staging behavior
+- [x] `devops/*` branches: lint + test only (no builds)
+- [x] MR pipelines: lint + test + source scan (no builds)
+- [x] No `latest` tag — proper semver/sha-based image versioning
+- [x] Runner tags: `node`, `python`, `build`, `deploy`
+- [x] Trivy pinned to specific version (not `latest`)
+- [x] Changesets-based SDK publishing workflow documented
 
 ---
 
-## Current State Evaluation
+## Branch Strategy
 
-### Previous Pipeline
-
-- **Stages**: `build`, `github-backup` (2 stages only)
-- **Jobs**: 7 Docker build jobs + 1 backup job
-- **Gaps**: No lint, no type-check, no tests, no security scanning, no MR pipeline support
-- **Bugs**: Incorrect package paths in `rules:changes` (missing 's' suffixes, wrong directory names)
-
-### Bugs Fixed
-
-| Old Path | Corrected Path |
-|----------|---------------|
-| `packages/application/**/*` | `packages/applications/**/*` |
-| `packages/domain/**/*` | `packages/domains/**/*` |
-| `packages/exception/**/*` | `packages/exceptions/**/*` |
-| `packages/vox/**/*` | `packages/agentic-sdk-v2/**/*` |
+| Branch | Pipeline Type | Validate | Test | Build | Scan | Publish | Deploy | Notify |
+|--------|-------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `cicd` | cicd | All | All | Manual approval | Source | - | - | - |
+| `staging` | staging | Changed | Changed | Auto (changed) | Container + source | - | Argo CD | GitHub backup |
+| `release` | release | - | - | - | Source | SDK packages | - | - |
+| `main` | main | Changed | Changed | Auto (changed) | Container + source | - | - | GitHub backup |
+| `devops/*` | feature | Changed | Changed | - | - | - | - | - |
+| MR | merge_request | Changed | Changed | - | Source | - | - | - |
+| Tag `v*` | tag_release | All | All | All | Container + source | - | - | GitHub backup |
 
 ---
 
-## Implementation Summary
+## Image Versioning
 
-### Architecture
+**No `latest` tag is ever produced.** Every image tag is traceable to a specific commit.
 
-The pipeline follows a 6-stage lifecycle with DAG-based parallelism:
+| Trigger | Tags Produced | Example |
+|---------|--------------|---------|
+| Tag `v1.2.3` | `1.2.3`, `1.2`, `1`, `sha-a1b2c3d4` | Semver + rolling major/minor |
+| `staging` push | `staging-a1b2c3d4`, `sha-a1b2c3d4` | Environment-prefixed |
+| `cicd` push | `cicd-a1b2c3d4`, `sha-a1b2c3d4` | Environment-prefixed |
+| `main` push | `main-a1b2c3d4`, `sha-a1b2c3d4` | Environment-prefixed |
+| `devops/*` push | `devops-foo-a1b2c3d4`, `sha-a1b2c3d4` | Branch-slug-prefixed |
 
-```
-install → validate → test → build → scan → notify
-```
+The `sha-<sha8>` tag is always present as an immutable audit trail reference.
 
-#### Pipeline Types
+---
 
-| Type | Trigger | Behavior |
-|------|---------|----------|
-| `release` | Tag `v*` | Full pipeline (all stages, all services) |
-| `merge_request` | MR open/update | Lint + test + source scan (no Docker builds) |
-| `main` | Push to default branch | Lint + test + build (changed) + container scan + backup |
-| `feature` | Push to devops/* | Lint + test + build |
+## Runner Tags
 
-#### Stage Details
+| Tag | Runner Type | Jobs | Resource Notes |
+|-----|-----------|------|----------------|
+| `node` | Node.js runner | lint-ts, typecheck, install-node, test-api, test-packages, test-sdk, scan-source, publish-sdk | 4GB RAM, 2 CPU |
+| `python` | Python runner | lint-python, test-stt-v2, test-smr, test-nlp | 4GB RAM, 2 CPU |
+| `build` | Docker builder (Buildx) | All Docker image builds, container scans | 8GB RAM, 4 CPU, `privileged: true` |
+| `deploy` | Deploy runner | deploy-staging, sync-argocd, github-backup | 2GB RAM, 1 CPU |
 
-| Stage | Jobs | Duration (est.) |
-|-------|------|-----------------|
-| **install** | `install-node` — pnpm cache warming | ~30s (cached) |
-| **validate** | `lint-ts`, `typecheck`, `lint-python` — parallel | ~1-2min |
-| **test** | `test-api`, `test-packages`, `test-sdk`, `test-stt-v2`, `test-smr`, `test-nlp` — DAG parallel | ~2-5min |
-| **build** | 7 Docker build jobs — parallel after respective tests | ~5-15min |
-| **scan** | Trivy container scans (per image) + source code scan | ~2-3min |
-| **notify** | `github-backup` | ~30s |
+---
 
-#### DAG Dependencies
+## Package Registry Setup (for `release` branch)
 
-```
-install-node
-├── lint-ts → test-api → build-api → scan-api
-│           → test-packages → build-database
-│           → test-sdk → build-ui-playground → scan-ui-playground
-│
-├── typecheck → build-api (also)
-│             → build-ui-playground (also)
-│
-└── lint-python → test-stt-v2 → build-stt-v2 → scan-stt-v2
-               │              → build-stt-v2-worker
-               → test-smr → build-smr → scan-smr
-               → test-nlp → build-nlp → scan-nlp
+### Prerequisites
 
-scan-source (no dependencies, runs parallel)
-github-backup (last stage, tags + main only)
+1. **Enable Package Registry** in GitLab:
+   - Settings -> General -> Visibility -> Package registry -> Everyone with access
+
+2. **Create Project Access Token**:
+   - Settings -> Access Tokens -> Add new token
+   - Name: `npm-publish`
+   - Role: Developer
+   - Scopes: `api`, `read_package_registry`, `write_package_registry`
+   - Save as CI variable: `NPM_PUBLISH_TOKEN`
+
+3. **Install Changesets** in the repo:
+
+```bash
+pnpm add -Dw @changesets/cli @changesets/changelog-github
+pnpm changeset init
 ```
 
-### File Structure
+4. **Configure `.changeset/config.json`**:
+
+```json
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [],
+  "linked": [
+    ["@arcaai/vox", "@arcaai/room", "@arcaai/stt",
+     "@arcaai/vad", "@arcaai/noise-filter"]
+  ],
+  "access": "restricted",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": [
+    "@arcaai/api", "@arcaai/ui-playground", "@arcaai/database",
+    "@arcaai/domains", "@arcaai/applications", "@arcaai/exceptions",
+    "@arcaai/logger", "@arcaai/tools", "@arcaai/config-eslint",
+    "@arcaai/config-rollup", "@arcaai/config-tailwind", "@arcaai/config-ts",
+    "@arcaai/ui"
+  ]
+}
+```
+
+5. **Add `publishConfig`** to each publishable package.json:
+
+```json
+{
+  "publishConfig": {
+    "@arcaai:registry": "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/"
+  }
+}
+```
+
+6. **Add root scripts** to `package.json`:
+
+```json
+{
+  "scripts": {
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "changeset:publish": "changeset publish"
+  }
+}
+```
+
+### Publishable Packages
+
+| Package | Purpose | Status |
+|---------|---------|--------|
+| `@arcaai/vox` | Consultation SDK | Ready (needs `publishConfig`) |
+| `@arcaai/room` | Audio track management | Ready |
+| `@arcaai/stt` | Whisper STT WebWorker | Ready (needs `publishConfig`) |
+| `@arcaai/vad` | Silero VAD v5 | Ready |
+| `@arcaai/noise-filter` | RNNoise WASM | Ready |
+| `@arcaai/med-ner` | Medical NER | Ready |
+| `@arcaai/pipeline` | Processing pipeline | Ready |
+| `@arcaai/utils` | Shared utilities | Needs `publishConfig` + `files` |
+| `@arcaai/types` | Shared types | Needs `publishConfig` + `files` |
+
+### Developer Workflow
+
+1. Make changes to SDK packages
+2. Run: `pnpm changeset` -> select packages, bump type, write summary
+3. Commit the `.changeset/<name>.md` with your code
+4. Merge to `release` branch
+5. Pipeline: version -> build -> publish to GitLab Package Registry
+
+### Consumer Installation
+
+```ini
+# .npmrc
+@arcaai:registry=https://<gitlab-host>/api/v4/projects/<PROJECT_ID>/packages/npm/
+//<gitlab-host>/api/v4/projects/<PROJECT_ID>/packages/npm/:_authToken=<TOKEN>
+```
+
+```bash
+pnpm add @arcaai/vox@1.2.3
+```
+
+---
+
+## Argo CD Integration (for `staging` branch)
+
+### Setup
+
+1. Create deployment repository `arcaai/hope-deployments`
+2. Add CI variables: `DEPLOY_REPO_URL`, `DEPLOY_TOKEN`
+3. Configure Argo CD to watch the deployment repo
+4. Optionally add `ARGOCD_SERVER` + `ARGOCD_AUTH_TOKEN` for direct sync
+
+### Flow
 
 ```
-.gitlab-ci.yml                  # Main: workflow, stages, defaults, variables, includes
+staging push -> lint + test + build -> deploy-staging job
+  -> clones hope-deployments repo
+  -> updates values-staging.yaml with staging-<sha8> tag
+  -> git push to deployment repo
+  -> Argo CD detects change and syncs to Kubernetes
+```
+
+---
+
+## File Structure
+
+```
+.gitlab-ci.yml                   # Main: workflow, stages, defaults, includes
 .gitlab/ci/
-  templates.yml                 # .node-base, .python-base, .build-template
-  rules.yml                     # .rules-always, .rules-api, .rules-*, .rules-any-*
-  install.yml                   # install-node (cache warming, pull-push policy)
-  validate.yml                  # lint-ts, typecheck, lint-python
-  test.yml                      # test-api, test-packages, test-sdk, test-stt-v2, test-smr, test-nlp
-  build.yml                     # build-api, build-ui-playground, build-nlp, build-smr, build-stt-v2, build-stt-v2-worker, build-database
-  scan.yml                      # scan-api, scan-ui-playground, scan-stt-v2, scan-smr, scan-nlp, scan-source
-  notify.yml                    # github-backup
+  templates.yml                  # .node-base, .python-base, .build-template
+  rules.yml                      # Change-path rules per service + branch logic
+  install.yml                    # install-node (cache warming)
+  validate.yml                   # lint-ts, typecheck, lint-python
+  test.yml                       # test-api, test-packages, test-sdk, test-stt-v2, test-smr, test-nlp
+  build.yml                      # 7 Docker build jobs (manual on cicd, auto on staging)
+  scan.yml                       # Trivy container + source scans
+  publish.yml                    # SDK package publishing (release branch)
+  deploy.yml                     # Argo CD staging deployment
+  notify.yml                     # GitHub backup
 ```
-
-### Key Design Decisions
-
-1. **Modular files over monolith**: 8 included files vs 1 giant file. Each file owns one concern — easier to review, edit, and debug.
-
-2. **`needs` with `optional: true`**: Build jobs depend on test jobs via DAG, but use `optional: true` so the pipeline doesn't break if change-path rules skip the dependency.
-
-3. **MR pipelines skip Docker builds**: Building images on every MR push is wasteful. MRs get lint + test + source scan. Builds only happen on main/tags/devops.
-
-4. **Trivy over GitLab templates**: Trivy is open-source, doesn't require GitLab Ultimate license. Covers both container scanning and source code SAST/secret detection.
-
-5. **`auto_cancel: on_new_commit: interruptible`**: Superseded MR pipeline runs are automatically cancelled, saving runner capacity.
-
-6. **`fallback_keys` for caching**: When a branch-specific pnpm cache misses, it falls back to the main branch cache instead of a cold install.
-
-7. **Separate Python test jobs (not matrix)**: Each Python service has different requirements, test paths, and potentially different base images. Explicit jobs are clearer than a matrix with conditional logic.
-
-8. **Build template exports `IMAGE` via dotenv**: The `.build-template` writes the primary image tag to `build.env`, which scan jobs consume via `artifacts: reports: dotenv`. This ensures scans always target the exact image that was just built.
-
-### Caching Strategy
-
-| Cache | Key | Policy | Used By |
-|-------|-----|--------|---------|
-| pnpm store | `pnpm-lock.yaml` (file hash) | `pull-push` in install, `pull` elsewhere | All Node.js jobs |
-| Turbo cache | Turborepo's built-in | Via Turborepo | build/test commands |
-| pip cache (stt-v2) | `pip-stt-v2` | `pull-push` | test-stt-v2 |
-| pip cache (smr) | `pip-smr` | `pull-push` | test-smr |
-| pip cache (nlp) | `pip-nlp` | `pull-push` | test-nlp |
-| Docker layers | Registry-based (mode=max, zstd) | Via BuildKit | All build jobs |
-
-### Security Scanning Coverage
-
-| Scanner | Scope | Stage | Trigger |
-|---------|-------|-------|---------|
-| Trivy container scan | Each built Docker image | scan | After builds (main/tags) |
-| Trivy filesystem scan | Source code (vuln + secrets + misconfig) | scan | All pipeline types |
 
 ---
 
@@ -168,4 +220,5 @@ github-backup (last stage, tags + main only)
 
 | Date | Description | Files Modified |
 |------|-------------|----------------|
-| 2026-03-23 | Initial pipeline rebuild: 6 stages, modular structure, full test coverage, Trivy scanning | `.gitlab-ci.yml`, `.gitlab/ci/*.yml` (8 files) |
+| 2026-03-23 | Initial pipeline rebuild: 6 stages, modular structure | `.gitlab-ci.yml`, `.gitlab/ci/*.yml` (8 files) |
+| 2026-03-23 | Add branch strategy (cicd/staging/release), image versioning (no latest), SDK publishing, Argo CD deploy, runner tags | `.gitlab-ci.yml`, all `.gitlab/ci/*.yml` (10 files), docs |

@@ -12,23 +12,11 @@
 
 import { useMemo, useCallback, useEffect, useRef } from 'react';
 import { useAgenticStore } from '../store';
-import type {
-  Consultation,
-  OpenSessionInput,
-  SessionState,
-  SessionActions,
-  AddContextInput,
-  ContextItem,
-  SummaryResponse,
-} from '../types';
+import type { Consultation, OpenSessionInput, SessionState, SessionActions, AddContextInput, ContextItem, SummaryResponse } from '../types';
 import { CONSULTATION_ENDPOINTS, CONTEXT_ENDPOINTS, SUMMARY_ENDPOINTS } from '../core/constants';
 import { SimpleCrossTabSync, createCrossTabSync } from '../core/SimpleCrossTabSync';
 import type { ISDKLogger } from '../core/logger';
-import {
-  openSessionOperation,
-  loadConsultationOperation,
-  getPatientHistoryOperation,
-} from '../core/sessionUtils';
+import { openSessionOperation, loadConsultationOperation, getPatientHistoryOperation } from '../core/sessionUtils';
 
 // =============================================================================
 // Return Type
@@ -142,10 +130,7 @@ export function useArcaSession(): UseArcaSessionReturn {
       });
 
       try {
-        const contextItem = await apiClient.post<ContextItem>(
-          CONTEXT_ENDPOINTS.ADD(consultation.id),
-          input
-        );
+        const contextItem = await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), input);
 
         // Add to local store
         store.addContextItem(contextItem);
@@ -165,7 +150,7 @@ export function useArcaSession(): UseArcaSessionReturn {
         throw error;
       }
     },
-    [store, getLogger]
+    [store, getLogger],
   );
 
   /**
@@ -183,9 +168,7 @@ export function useArcaSession(): UseArcaSessionReturn {
       sdk: { consultationId: consultation.id },
     });
 
-    const sharedContext = await apiClient.get<ContextItem[]>(
-      CONTEXT_ENDPOINTS.SHARED(consultation.id)
-    );
+    const sharedContext = await apiClient.get<ContextItem[]>(CONTEXT_ENDPOINTS.SHARED(consultation.id));
 
     // Update store with shared context
     store.setSharedContext(sharedContext);
@@ -237,10 +220,7 @@ export function useArcaSession(): UseArcaSessionReturn {
     });
 
     try {
-      const updated = await apiClient.post<Consultation>(
-        CONSULTATION_ENDPOINTS.CLOSE(consultation.id),
-        {}
-      );
+      const updated = await apiClient.post<Consultation>(CONSULTATION_ENDPOINTS.CLOSE(consultation.id), {});
       store.setConsultation(updated);
       timer?.end(true);
       return updated;
@@ -265,10 +245,7 @@ export function useArcaSession(): UseArcaSessionReturn {
     });
 
     try {
-      const updated = await apiClient.post<Consultation>(
-        CONSULTATION_ENDPOINTS.REOPEN(consultation.id),
-        {}
-      );
+      const updated = await apiClient.post<Consultation>(CONSULTATION_ENDPOINTS.REOPEN(consultation.id), {});
       store.setConsultation(updated);
       timer?.end(true);
       return updated;
@@ -294,9 +271,7 @@ export function useArcaSession(): UseArcaSessionReturn {
       sdk: { consultationId: consultation.id },
     });
 
-    const summaries = await apiClient.get<SummaryResponse[]>(
-      SUMMARY_ENDPOINTS.LIST(consultation.id)
-    );
+    const summaries = await apiClient.get<SummaryResponse[]>(SUMMARY_ENDPOINTS.LIST(consultation.id));
     store.setSummaries(summaries);
 
     return summaries;
@@ -348,6 +323,6 @@ export function useArcaSession(): UseArcaSessionReturn {
       loadSummaries,
       close,
       reopen,
-    ]
+    ],
   );
 }
