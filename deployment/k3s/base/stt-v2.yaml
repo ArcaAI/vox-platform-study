@@ -117,14 +117,14 @@ spec:
               value: "8"
           startupProbe:
             httpGet:
-              path: /api/v1/health/ready
+              path: /health/ready
               port: 8861
             failureThreshold: 60
             periodSeconds: 5
             timeoutSeconds: 10
           readinessProbe:
             httpGet:
-              path: /api/v1/health/ready
+              path: /health/ready
               port: 8861
             initialDelaySeconds: 10
             periodSeconds: 10
@@ -132,7 +132,7 @@ spec:
             timeoutSeconds: 10
           livenessProbe:
             httpGet:
-              path: /api/v1/health/live
+              path: /health/live
               port: 8861
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -141,7 +141,7 @@ spec:
           resources:
             requests:
               cpu: "2"
-              memory: "4Gi"
+              memory: "8Gi"
               nvidia.com/gpu: "1"
             limits:
               cpu: "16"
