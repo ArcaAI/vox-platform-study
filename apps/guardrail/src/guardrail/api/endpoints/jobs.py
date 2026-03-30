@@ -8,8 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
 
-from guardrail.core.dependencies import get_job_processor, get_redis
-from guardrail.core.config import Settings
+from guardrail.core.dependencies import get_job_processor
 
 router = APIRouter()
 

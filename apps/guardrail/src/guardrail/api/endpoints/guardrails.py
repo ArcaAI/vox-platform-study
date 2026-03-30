@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from guardrail.core.dependencies import get_settings, get_ollama_provider, get_job_processor
@@ -160,7 +160,6 @@ async def analyze_batch(
 @router.post("/guardrail/analyze/async", response_model=dict[str, str])
 async def analyze_content_async(
     request: GuardrailRequest,
-    background_tasks: BackgroundTasks,
     job_processor = Depends(get_job_processor),
 ) -> dict[str, str]:
     """Submit content for asynchronous guardrail analysis."""

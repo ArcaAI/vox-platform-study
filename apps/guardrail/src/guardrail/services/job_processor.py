@@ -1,4 +1,4 @@
-"""Job processor for async guardrail analysis using Redis streams."""
+"""Job processor for async guardrail analysis using Redis-backed priority queues."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import json
 import time
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 import redis.asyncio as aioredis
 
@@ -17,7 +18,7 @@ logger = get_logger(__name__)
 
 
 class JobProcessor:
-    """Processes guardrail analysis jobs using Redis streams."""
+    """Processes guardrail analysis jobs using Redis-backed priority queues."""
     
     def __init__(
         self,
@@ -30,9 +31,13 @@ class JobProcessor:
         self.max_concurrent = max_concurrent
         self.processing = False
         self.semaphore = asyncio.Semaphore(max_concurrent)
+        self._active_tasks: set[asyncio.Task[None]] = set()
+        self.worker_id = f"worker-{uuid4()}"
+        self.claim_timeout_ms = 300000
         
-        # Redis stream names
-        self.job_stream = "guardrail:jobs"
+        # Redis queue names
+        self.job_queue = "guardrail:jobs:pending"
+        self.processing_queue = "guardrail:jobs:processing"
         self.result_stream = "guardrail:results"
         self.status_key_prefix = "guardrail:status:"
         
@@ -53,29 +58,31 @@ class JobProcessor:
         """Submit a new guardrail analysis job."""
         
         job_id = request_id or f"job_{int(time.time() * 1000)}"
-        
+        created_at_ms = int(time.time() * 1000)
+        priority_score = self.priority_map.get(priority, 5)
+        created_at = datetime.now(timezone.utc).isoformat()
+         
         job_data = {
             "job_id": job_id,
             "text": text,
             "guardrail_type": guardrail_type,
             "request_id": request_id,
             "priority": priority,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "priority_score": str(priority_score),
+            "created_at": created_at,
+            "updated_at": created_at,
+            "created_at_ms": str(created_at_ms),
             "status": "pending",
         }
         
-        # Store job status
         await self.redis.hset(
             f"{self.status_key_prefix}{job_id}",
             mapping=job_data,
         )
         
-        # Add to job stream with priority
-        priority_score = self.priority_map.get(priority, 5)
-        await self.redis.xadd(
-            self.job_stream,
-            job_data,
-            maxlen=10000,
+        await self.redis.zadd(
+            self.job_queue,
+            {job_id: self._queue_score(priority_score, created_at_ms)},
         )
         
         logger.info(
@@ -158,6 +165,9 @@ class JobProcessor:
             },
         )
         
+        await self.redis.zrem(self.job_queue, job_id)
+        await self.redis.zrem(self.processing_queue, job_id)
+        
         logger.info("job_processor.job_cancelled", job_id=job_id)
         return True
     
@@ -191,21 +201,16 @@ class JobProcessor:
         
         while self.processing:
             try:
-                # Read jobs from stream
-                messages = await self.redis.xread(
-                    {self.job_stream: "$"},
-                    block=1000,  # 1 second timeout
-                    count=1,
-                )
-                
-                if not messages:
+                await self._requeue_stale_jobs()
+                job_ids = await self._claim_pending_jobs()
+                if not job_ids:
+                    await asyncio.sleep(0.25)
                     continue
                 
-                for stream, msgs in messages:
-                    for msg_id, fields in msgs:
-                        async with self.semaphore:
-                            await self._process_job(msg_id, fields)
-                            
+                tasks = [self._create_processing_task(job_id) for job_id in job_ids]
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+            
             except Exception as e:
                 logger.error("job_processor.error", error=str(e))
                 await asyncio.sleep(1)  # Brief pause on error
@@ -214,70 +219,147 @@ class JobProcessor:
         """Stop the job processing loop."""
         
         self.processing = False
+        if self._active_tasks:
+            await asyncio.gather(*self._active_tasks, return_exceptions=True)
         logger.info("job_processor.stopped")
     
-    async def _process_job(self, msg_id: str, job_data: dict[str, str]) -> None:
-        """Process a single guardrail analysis job."""
+    async def _claim_pending_jobs(self) -> list[str]:
+        """Claim a batch of pending jobs atomically from the priority queue."""
         
-        job_id = job_data.get("job_id")
-        text = job_data.get("text", "")
-        guardrail_type = job_data.get("guardrail_type", "comprehensive")
-        
-        try:
-            # Update status to processing
+        claimed_job_ids: list[str] = []
+        claimed_at_ms = int(time.time() * 1000)
+        for _ in range(self.max_concurrent):
+            popped = await self.redis.zpopmax(self.job_queue, count=1)
+            if not popped:
+                break
+            
+            job_id = popped[0][0]
+            status_data = await self.redis.hgetall(f"{self.status_key_prefix}{job_id}")
+            if not status_data:
+                continue
+            if status_data.get("status") != "pending":
+                continue
+            
             await self.redis.hset(
                 f"{self.status_key_prefix}{job_id}",
                 mapping={
                     "status": "processing",
                     "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "claimed_at_ms": str(claimed_at_ms),
+                    "claimed_by": self.worker_id,
                 },
             )
+            await self.redis.zadd(self.processing_queue, {job_id: claimed_at_ms})
+            claimed_job_ids.append(job_id)
+        
+        return claimed_job_ids
+    
+    async def _requeue_stale_jobs(self) -> None:
+        """Requeue jobs left in processing beyond the claim timeout."""
+        
+        cutoff_ms = int(time.time() * 1000) - self.claim_timeout_ms
+        stale_jobs = await self.redis.zrangebyscore(self.processing_queue, 0, cutoff_ms)
+        for job_id in stale_jobs:
+            status_data = await self.redis.hgetall(f"{self.status_key_prefix}{job_id}")
+            if not status_data:
+                await self.redis.zrem(self.processing_queue, job_id)
+                continue
+            if status_data.get("status") != "processing":
+                await self.redis.zrem(self.processing_queue, job_id)
+                continue
             
-            logger.info("job_processor.job_started", job_id=job_id)
-            
-            # Perform guardrail analysis
-            start_time = time.monotonic()
-            result = await self.ollama_provider.analyze_content(
-                text=text,
-                guardrail_type=guardrail_type,
-            )
-            processing_time = (time.monotonic() - start_time) * 1000
-            
-            # Add processing time to result
-            result["processing_time_ms"] = processing_time
-            result["timestamp"] = datetime.now(timezone.utc).isoformat()
-            
-            # Update job status with result
+            priority_score = int(status_data.get("priority_score", self.priority_map["normal"]))
+            created_at_ms = int(status_data.get("created_at_ms", "0") or "0")
             await self.redis.hset(
                 f"{self.status_key_prefix}{job_id}",
                 mapping={
-                    "status": "completed",
-                    "result": json.dumps(result),
+                    "status": "pending",
                     "updated_at": datetime.now(timezone.utc).isoformat(),
-                    "processing_time_ms": str(processing_time),
                 },
             )
-            
-            # Add to result stream
-            await self.redis.xadd(
-                self.result_stream,
-                {
-                    "job_id": job_id,
-                    "status": "completed",
-                    "result": json.dumps(result),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
+            await self.redis.zadd(
+                self.job_queue,
+                {job_id: self._queue_score(priority_score, created_at_ms)},
             )
-            
-            # Remove from job stream
-            await self.redis.xdel(self.job_stream, msg_id)
-            
-            logger.info(
-                "job_processor.job_completed",
-                job_id=job_id,
-                safe=result.get("safe", True),
-                processing_time_ms=processing_time,
-            )
+            await self.redis.zrem(self.processing_queue, job_id)
+    
+    def _queue_score(self, priority_score: int, created_at_ms: int) -> float:
+        """Build a sortable queue score where higher priority and older jobs win."""
+        
+        return float(priority_score * 10000000000000 - created_at_ms)
+    
+    def _create_processing_task(self, job_id: str) -> asyncio.Task[None]:
+        """Create a task to process a job."""
+        
+        task = asyncio.create_task(self._process_job(job_id))
+        self._active_tasks.add(task)
+        task.add_done_callback(self._active_tasks.discard)
+        return task
+    
+    async def _process_job(self, job_id: str) -> None:
+        """Process a single guardrail analysis job."""
+        
+        try:
+            async with self.semaphore:
+                status_data = await self.redis.hgetall(f"{self.status_key_prefix}{job_id}")
+                if not status_data:
+                    await self.redis.zrem(self.processing_queue, job_id)
+                    return
+                
+                if status_data.get("status") == "cancelled":
+                    await self.redis.zrem(self.processing_queue, job_id)
+                    logger.info("job_processor.job_skipped_cancelled", job_id=job_id)
+                    return
+                
+                text = status_data.get("text", "")
+                guardrail_type = status_data.get("guardrail_type", "comprehensive")
+                
+                logger.info("job_processor.job_started", job_id=job_id)
+                
+                start_time = time.monotonic()
+                result = await self.ollama_provider.analyze_content(
+                    text=text,
+                    guardrail_type=guardrail_type,
+                )
+                processing_time = (time.monotonic() - start_time) * 1000
+                
+                result["processing_time_ms"] = processing_time
+                result["timestamp"] = datetime.now(timezone.utc).isoformat()
+                
+                latest_status = await self.redis.hgetall(f"{self.status_key_prefix}{job_id}")
+                if latest_status.get("status") == "cancelled":
+                    await self.redis.zrem(self.processing_queue, job_id)
+                    logger.info("job_processor.job_cancelled_during_processing", job_id=job_id)
+                    return
+                
+                await self.redis.hset(
+                    f"{self.status_key_prefix}{job_id}",
+                    mapping={
+                        "status": "completed",
+                        "result": json.dumps(result),
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                        "processing_time_ms": str(processing_time),
+                    },
+                )
+                
+                await self.redis.xadd(
+                    self.result_stream,
+                    {
+                        "job_id": job_id,
+                        "status": "completed",
+                        "result": json.dumps(result),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+                
+                await self.redis.zrem(self.processing_queue, job_id)
+                
+                logger.info(
+                    "job_processor.job_completed",
+                    job_id=job_id,
+                    safe=result.get("safe", True),
+                    processing_time_ms=processing_time,
+                )
             
         except Exception as e:
             # Update job status with error
@@ -301,8 +383,8 @@ class JobProcessor:
                 },
             )
             
-            # Remove from job stream
-            await self.redis.xdel(self.job_stream, msg_id)
+            # Remove from processing queue
+            await self.redis.zrem(self.processing_queue, job_id)
             
             logger.error(
                 "job_processor.job_failed",

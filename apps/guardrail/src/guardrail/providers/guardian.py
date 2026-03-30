@@ -22,6 +22,9 @@ class GuardianProvider:
         self.base_url = settings.base_url.rstrip("/")
         self.model = settings.guardian_model
         self.enabled = settings.guardian_enabled
+        self.guardian_temperature = settings.guardian_temperature
+        self.guardian_max_tokens = settings.guardian_max_tokens
+        self.guardian_min_confidence = settings.guardian_min_confidence
         
         # Medical context validation system prompt
         self.medical_validation_prompt = (
@@ -62,8 +65,8 @@ class GuardianProvider:
                 "prompt": f"Analyze this text for medical context:\n\n{text_sample}",
                 "stream": False,
                 "options": {
-                    "temperature": self.settings.guardian_temperature,
-                    "num_predict": self.settings.guardian_max_tokens,
+                    "temperature": self.guardian_temperature,
+                    "num_predict": self.guardian_max_tokens,
                 },
                 "format": "json",  # Request JSON format from Ollama
             }
@@ -82,11 +85,11 @@ class GuardianProvider:
             validation_result = self._parse_validation_response(content)
             
             # Apply confidence threshold
-            if validation_result["confidence"] < self.settings.guardian_min_confidence:
+            if validation_result["confidence"] < self.guardian_min_confidence:
                 logger.warning(
                     "guardian.low_confidence",
                     confidence=validation_result["confidence"],
-                    threshold=self.settings.guardian_min_confidence,
+                    threshold=self.guardian_min_confidence,
                 )
             
             return validation_result

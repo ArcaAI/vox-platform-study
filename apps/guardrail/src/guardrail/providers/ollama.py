@@ -7,8 +7,8 @@ from typing import Any
 
 import httpx
 
-from guardrail_v2.core.config import OllamaConfig
-from guardrail_v2.core.logging import get_logger
+from guardrail.core.config import OllamaConfig
+from guardrail.core.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -20,7 +20,13 @@ class OllamaProvider:
         self.settings = settings
         self.http_client = http_client
         self.base_url = settings.base_url.rstrip("/")
-        self.model = settings.guardrail_model
+        self.default_model = settings.guardrail_model
+        self.model_by_type = {
+            "content_safety": settings.content_safety_model,
+            "pii_detection": settings.pii_detection_model,
+            "prompt_injection": settings.prompt_injection_model,
+            "comprehensive": settings.comprehensive_model,
+        }
         
         # Guardrail system prompts
         self.system_prompts = {
@@ -68,9 +74,10 @@ class OllamaProvider:
         
         try:
             system_prompt = self.system_prompts.get(guardrail_type, self.system_prompts["comprehensive"])
+            model = self.model_by_type.get(guardrail_type, self.default_model)
             
             payload = {
-                "model": self.model,
+                "model": model,
                 "system": system_prompt,
                 "prompt": text,
                 "stream": False,
@@ -97,7 +104,7 @@ class OllamaProvider:
                 return self._parse_binary_response(content, guardrail_type)
                 
         except httpx.TimeoutException:
-            logger.error("ollama.timeout", model=self.model, guardrail_type=guardrail_type)
+            logger.error("ollama.timeout", model=model, guardrail_type=guardrail_type)
             return {
                 "safe": True,  # Fail open for timeout
                 "issues": ["timeout"],
@@ -105,7 +112,7 @@ class OllamaProvider:
                 "error": "Request timeout",
             }
         except Exception as e:
-            logger.error("ollama.error", error=str(e), model=self.model, guardrail_type=guardrail_type)
+            logger.error("ollama.error", error=str(e), model=model, guardrail_type=guardrail_type)
             return {
                 "safe": True,  # Fail open for errors
                 "issues": ["error"],
@@ -173,11 +180,15 @@ class OllamaProvider:
             response.raise_for_status()
             
             models = response.json().get("models", [])
-            model_available = any(model.get("name") == self.model for model in models)
+            configured_models = {self.default_model, *self.model_by_type.values()}
+            available_model_names = {model.get("name") for model in models}
+            missing_models = sorted(configured_models - available_model_names)
             
             return {
                 "healthy": True,
-                "model_available": model_available,
+                "model_available": not missing_models,
+                "configured_models": sorted(configured_models),
+                "missing_models": missing_models,
                 "total_models": len(models),
                 "base_url": self.base_url,
             }

@@ -9,6 +9,7 @@ resources:
   - redis.yaml
   - ollama.yaml
   - api.yaml
+  - guardrail.yaml
   - smr.yaml
   - stt-v2.yaml
   - stt-v2-worker.yaml
