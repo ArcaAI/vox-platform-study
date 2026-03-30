@@ -7,6 +7,9 @@
 #   - ml-runtime: Full ML inference stack (CUDA GPU with automatic CPU fallback)
 #   - worker:     Dramatiq worker extending ml-runtime
 #
+# Requires hope-python-base image to be built first (for CPU stages):
+#   docker build -t hope-python-base infrastructure/docker/python-base/
+#
 # GPU/CPU behavior:
 #   ml-runtime and worker auto-detect GPU at runtime via torch.cuda.is_available().
 #   Run with `--gpus all` on NVIDIA hosts; omit for CPU-only fallback.
@@ -19,30 +22,18 @@
 # =============================================================================
 # Stage 1: Builder — install base Python packages (CPU-only, no ML)
 # =============================================================================
-FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS builder
-
-ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy \
-    UV_NO_INSTALLER_METADATA=1 \
-    UV_PYTHON_DOWNLOADS=0
-
-WORKDIR /app
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update \
-    && apt-get install -y --no-install-recommends build-essential
+FROM hope-python-base:latest AS builder
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=README.md,target=README.md \
-    uv sync --locked --no-install-project --no-dev --no-editable
+    uv sync --frozen --no-install-project --no-dev --no-editable
 
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable
+    uv sync --frozen --no-dev --no-editable
 
 # =============================================================================
 # Stage 2: ML Builder — unified ML packages (CUDA-capable, CPU fallback)
@@ -128,20 +119,17 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /opt/venv/bin/python \
         --override /tmp/cuda-overrides.txt \
         ".[ml-gpu]" \
-    # ── Cleanup: remove directories ──
     && find /opt/venv \( \
         -name "__pycache__" \
         -o -name "*.egg-info" \
         -o -name "tests" -o -name "test" \
         -o -name "docs" -o -name "doc" -o -name "examples" -o -name "benchmarks" \
     \) -type d -exec rm -rf {} + 2>/dev/null || true \
-    # ── Cleanup: remove files ──
     && find /opt/venv \( \
         -name "*.pyc" -o -name "*.pyo" \
         -o -name "*.pyi" -o -name "py.typed" \
         -o -name "*.mo" -o -name "*.ipynb" \
     \) -type f -delete 2>/dev/null || true \
-    # ── Cleanup: torch inference-only (remove test/inductor/benchmark/caffe2) ──
     && rm -rf /opt/venv/lib/python3.11/site-packages/torch/test \
               /opt/venv/lib/python3.11/site-packages/torch/_inductor \
               /opt/venv/lib/python3.11/site-packages/torch/utils/benchmark \
@@ -151,30 +139,22 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # =============================================================================
 # Stage 3: Runtime — lightweight API server (CPU only, no ML deps)
 # =============================================================================
-FROM python:3.11-slim-bookworm AS runtime
+FROM hope-python-base:latest AS runtime
 
 LABEL org.opencontainers.image.title="stt-v2" \
-    org.opencontainers.image.description="High-availability Speech-to-Text service" \
-    org.opencontainers.image.vendor="ARCA AI"
+    org.opencontainers.image.description="High-availability Speech-to-Text service"
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
-    && apt-get install -y --no-install-recommends libsndfile1 ffmpeg \
-    && groupadd --gid 1000 app \
-    && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash app
+    && apt-get install -y --no-install-recommends libsndfile1 ffmpeg
 
-WORKDIR /app
+COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
+COPY --chown=hope:hope src/ ./src/
 
-COPY --from=builder --chown=app:app /app/.venv /app/.venv
-COPY --chown=app:app src/ ./src/
+ENV PYTHONPATH=/app/src
 
-ENV PATH="/app/.venv/bin:$PATH" \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app/src
-
-USER app
+USER hope
 
 EXPOSE 8861
 
@@ -199,14 +179,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update \
     && apt-get install -y --no-install-recommends \
         python3.11 python3.11-venv libsndfile1 ffmpeg \
-    && groupadd --gid 1000 app \
-    && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash app \
-    && mkdir -p /models && chown -R app:app /app /models
+    && groupadd --gid 1001 hope \
+    && useradd --uid 1001 --gid hope --create-home --shell /bin/bash hope \
+    && mkdir -p /models && chown -R hope:hope /app /models
 
-COPY --from=ml-builder --chown=app:app /opt/venv /opt/venv
-COPY --chown=app:app src/ ./src/
+COPY --from=ml-builder --chown=hope:hope /opt/venv /opt/venv
+COPY --chown=hope:hope src/ ./src/
 
-USER app
+USER hope
 
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
