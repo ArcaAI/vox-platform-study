@@ -313,16 +313,21 @@ class BatchTranscriptionService:
                         logger.warning(f"[{job_id}] VAD fallback failed: {e}")
 
                 logger.info(f"[{job_id}] Running speaker diarization...")
+                diarization_raw = RawTranscription(text="", segments=diarization_segments)
                 try:
                     diarization_meta = await self._run_diarization(
                         processed.samples,
                         processed.sample_rate,
-                        RawTranscription(text="", segments=diarization_segments),
+                        diarization_raw,
                         tenant_id,
                         consultation_id,
                         spec.diarization,
                         pipeline_config,
                     )
+                    if diarization_segments is not raw_result.segments:
+                        self._attach_speaker_metadata_to_segments(
+                            raw_result.segments, diarization_raw.segments
+                        )
                 except Exception as e:
                     logger.warning(f"[{job_id}] Diarization failed (non-fatal): {e}")
 
@@ -634,6 +639,58 @@ class BatchTranscriptionService:
                 "confidence": 1.0,
             })
         return normalized
+
+    @staticmethod
+    def _build_single_segment(
+        text: str,
+        start_time: float,
+        end_time: float,
+        english_text: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Build a single sentence/segment entry when only full-text output exists."""
+        cleaned = text.strip()
+        if not cleaned:
+            return []
+
+        segment: dict[str, Any] = {
+            "text": cleaned,
+            "start": start_time,
+            "end": end_time,
+        }
+        if english_text:
+            segment["english_text"] = english_text.strip()
+        return [segment]
+
+    @staticmethod
+    def _decode_whisper_text(processor: Any, generated_ids: Any) -> str:
+        """Decode generated token IDs into plain text."""
+        return processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+
+    def _generate_english_translation(
+        self,
+        model: Any,
+        processor: Any,
+        inputs: dict[str, Any],
+        base_generate_kwargs: dict[str, Any],
+    ) -> str | None:
+        """Best-effort Whisper translation to English for one segment/chunk."""
+        translate_kwargs = {
+            k: v for k, v in base_generate_kwargs.items() if k != "language"
+        }
+        translate_kwargs["task"] = "translate"
+        translate_kwargs["language"] = "en"
+
+        try:
+            translated_ids = model.generate(
+                **inputs,
+                **translate_kwargs,
+            )
+            translated = self._decode_whisper_text(processor, translated_ids)
+        except Exception as e:
+            logger.debug("English translation generation failed: %s", e)
+            return None
+
+        return translated or None
 
     async def _run_per_segment_inference(
         self,
@@ -1267,6 +1324,8 @@ class BatchTranscriptionService:
             for k, v in inputs.items()
         }
 
+        outputs = None
+
         # Generate
         with torch.no_grad():
             # Check if model supports generate (Whisper, Seq2Seq)
@@ -1293,9 +1352,15 @@ class BatchTranscriptionService:
                 )
 
                 # Decode
-                transcription = processor.batch_decode(
-                    outputs, skip_special_tokens=True
-                )[0]
+                transcription = self._decode_whisper_text(processor, outputs)
+                english_text: str | None = None
+                if code_switching:
+                    english_text = self._generate_english_translation(
+                        asr_model,
+                        processor,
+                        inputs,
+                        generate_kwargs,
+                    )
 
                 # Try to get timestamps — normalise Whisper offset format
                 try:
@@ -1309,18 +1374,32 @@ class BatchTranscriptionService:
                 except Exception:
                     word_timestamps = []
 
+                duration_seconds = len(samples) / sample_rate
+                segments = self._build_single_segment(
+                    transcription,
+                    0.0,
+                    duration_seconds,
+                    english_text=english_text,
+                )
+
             else:
                 # CTC model (Wav2Vec2)
                 logits = asr_model(**inputs).logits
                 predicted_ids = torch.argmax(logits, dim=-1)
                 transcription = processor.batch_decode(predicted_ids)[0]
                 word_timestamps = []
+                segments = self._build_single_segment(
+                    transcription,
+                    0.0,
+                    len(samples) / sample_rate,
+                )
 
         if progress_callback:
             progress_callback(1.0)
 
         return RawTranscription(
             text=transcription,
+            segments=segments,
             word_timestamps=word_timestamps,
             model_output=outputs if torch.is_tensor(outputs) else None,
         )
@@ -1447,6 +1526,7 @@ class BatchTranscriptionService:
             result = await self._optimum_single_pass(
                 samples, sample_rate, onnx_model, processor, device,
                 generate_kwargs, progress_callback,
+                code_switching=code_switching,
             )
             # Fire TTFW and chunk callback for single-pass
             if result.text.strip():
@@ -1508,9 +1588,15 @@ class BatchTranscriptionService:
                     **generate_kwargs,
                 )
 
-            raw_chunk_text = processor.batch_decode(
-                generated_ids, skip_special_tokens=True,
-            )[0].strip()
+            raw_chunk_text = self._decode_whisper_text(processor, generated_ids)
+            chunk_english_text: str | None = None
+            if code_switching and raw_chunk_text:
+                chunk_english_text = self._generate_english_translation(
+                    onnx_model,
+                    processor,
+                    inputs,
+                    generate_kwargs,
+                )
 
             # ---- Word timestamps via output_offsets (Phase 3.1) ----
             chunk_word_timestamps: list[dict[str, Any]] = []
@@ -1554,6 +1640,8 @@ class BatchTranscriptionService:
                     "start": chunk_start_s,
                     "end": chunk_end_s,
                 })
+                if chunk_english_text:
+                    all_segments[-1]["english_text"] = chunk_english_text
 
                 # Use offset-based timestamps if available, else proportional
                 if chunk_word_timestamps:
@@ -1618,6 +1706,7 @@ class BatchTranscriptionService:
         device: str,
         generate_kwargs: dict[str, Any],
         progress_callback: Callable[[float], None] | None = None,
+        code_switching: bool = False,
     ) -> RawTranscription:
         """Single-pass Optimum inference for short audio (<= chunk_length_s)."""
         import torch
@@ -1631,9 +1720,15 @@ class BatchTranscriptionService:
         with torch.no_grad():
             generated_ids = onnx_model.generate(**inputs, **generate_kwargs)
 
-        full_text = processor.batch_decode(
-            generated_ids, skip_special_tokens=True,
-        )[0].strip()
+        full_text = self._decode_whisper_text(processor, generated_ids)
+        english_text: str | None = None
+        if code_switching and full_text:
+            english_text = self._generate_english_translation(
+                onnx_model,
+                processor,
+                inputs,
+                generate_kwargs,
+            )
 
         audio_duration_s = len(samples) / sample_rate
 
@@ -1674,6 +1769,8 @@ class BatchTranscriptionService:
                 "start": 0.0,
                 "end": audio_duration_s,
             })
+            if english_text:
+                segments[0]["english_text"] = english_text
 
         if progress_callback:
             progress_callback(1.0)
@@ -1758,6 +1855,7 @@ class BatchTranscriptionService:
                             text=seg.get("text", ""),
                             start_time=seg.get("start", 0.0),
                             end_time=seg.get("end", 0.0),
+                            english_text=seg.get("english_text"),
                         )
                     )
 
