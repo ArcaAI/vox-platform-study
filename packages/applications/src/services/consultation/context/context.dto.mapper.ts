@@ -19,7 +19,11 @@ export class ContextDtoMapper {
       isSummary: entity.isSummary,
       isFinalSummary: entity.isFinalSummary,
       isPreSummary: entity.isPreSummary,
-      isTranscript: entity.isTranscript, // Using isTranscript from entity
+      isTranscript: entity.isTranscript,
+      isCaseNote: entity.isCaseNote,
+      isWorknote: entity.isWorknote,
+      isNamedEntity: entity.isNamedEntity,
+      isAttachment: entity.isAttachment,
       isAiGenerated: entity.isAiGenerated,
       isMediaType: !entity.requiresContent,
       createdAt: entity.createdAt.toISOString(),

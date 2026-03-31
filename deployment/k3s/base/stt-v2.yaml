@@ -92,7 +92,7 @@ spec:
             - name: MINIO_CHUNK_BUCKET
               value: hope-audio-chunks
             - name: API_GATEWAY_URL
-              value: "http://hope-api:8868"
+              value: "http://hope-api:8868/api/v1"
             - name: STT_PROVIDER
               value: "whisper"
             - name: HUGGINGFACE_TOKEN
@@ -117,14 +117,14 @@ spec:
               value: "8"
           startupProbe:
             httpGet:
-              path: /api/v1/health/ready
+              path: /api/v1/health
               port: 8861
             failureThreshold: 60
             periodSeconds: 5
             timeoutSeconds: 10
           readinessProbe:
             httpGet:
-              path: /api/v1/health/ready
+              path: /api/v1/health
               port: 8861
             initialDelaySeconds: 10
             periodSeconds: 10
@@ -132,7 +132,7 @@ spec:
             timeoutSeconds: 10
           livenessProbe:
             httpGet:
-              path: /api/v1/health/live
+              path: /api/v1/health
               port: 8861
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -140,12 +140,12 @@ spec:
             timeoutSeconds: 5
           resources:
             requests:
-              cpu: "8"
-              memory: "16Gi"
+              cpu: "2"
+              memory: "8Gi"
               nvidia.com/gpu: "1"
             limits:
-              cpu: "24"
-              memory: "32Gi"
+              cpu: "16"
+              memory: "24Gi"
               nvidia.com/gpu: "1"
           volumeMounts:
             - name: models-cache
