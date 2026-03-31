@@ -28,10 +28,19 @@ export interface ContextItem {
   source: ContextSource;
   /** Derived: true if type is summary or pre_summary */
   isSummary: boolean;
-  /** Derived: true if type is transcription */
-  isTranscription: boolean;
+  /** Derived: true if type is transcript */
+  isTranscript: boolean;
+  /** @deprecated Use isTranscript instead */
+  isTranscription?: boolean;
   /** Derived: true if source is AI */
   isAiGenerated: boolean;
+  isCaseNote: boolean;
+  isWorknote: boolean;
+  isNamedEntity: boolean;
+  isAttachment: boolean;
+  isFinalSummary: boolean;
+  isPreSummary: boolean;
+  isMediaType: boolean;
   /** Creation timestamp */
   createdAt: string;
   /** Last update timestamp */
@@ -198,6 +207,10 @@ export interface ContextState {
   caseNotes: ContextItem[];
   /** Summary items only (summaries and pre-summaries) */
   summaries: ContextItem[];
+  /** Worknote items only */
+  worknotes: ContextItem[];
+  /** Attachment items only */
+  attachments: ContextItem[];
   /** Extracted medical entities */
   entities: MedicalEntity[];
   /** Shared context from consultation chain */
@@ -226,6 +239,10 @@ export interface ContextActions {
   loadSharedContext: () => Promise<ContextItem[]>;
   /** Extract medical entities (NER) */
   extractEntities: (contextItemId?: string) => Promise<MedicalEntity[]>;
+  /** Add a worknote */
+  addWorknote: (content: string, metadata?: Record<string, unknown>) => Promise<ContextItem>;
+  /** Add an attachment */
+  addAttachment: (content?: string, metadata?: Record<string, unknown>) => Promise<ContextItem>;
   /** Clear local context state */
   clear: () => void;
 }

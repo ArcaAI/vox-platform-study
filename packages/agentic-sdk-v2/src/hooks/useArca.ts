@@ -17,6 +17,7 @@ import type {
   Consultation,
   OpenSessionInput,
   ContextItem,
+  ContextFilters,
   MedicalEntity,
   SummaryResponse,
   DNAStyle,
@@ -133,6 +134,8 @@ export interface UseArcaContext {
   addCaseNote: (content: string, metadata?: Record<string, unknown>) => Promise<ContextItem>;
   addTranscription: (text: string, metadata?: Record<string, unknown>) => Promise<ContextItem>;
   updateItem: (id: string, content: string) => Promise<void>;
+  /** Fetch all context items from backend with optional filters */
+  getItems: (filters?: ContextFilters) => Promise<ContextItem[]>;
   loadSharedContext: () => Promise<ContextItem[]>;
   extractEntities: (contextItemId?: string) => Promise<MedicalEntity[]>;
   /** Get version history for a context item (SES-05) */
@@ -926,6 +929,39 @@ export function useArca(): UseArcaReturn {
     [store, getLogger],
   );
 
+  const getItems = useCallback(
+    async (filters?: ContextFilters): Promise<ContextItem[]> => {
+      const { apiClient, consultation } = store;
+      const logger = getLogger();
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
+
+      const timer = logger?.startOperation('getItems', {
+        component: 'useArca',
+        sdk: { consultationId: consultation.id },
+        attributes: { filters },
+      });
+
+      try {
+        const params = new URLSearchParams();
+        if (filters?.type) params.set('type', filters.type);
+        if (filters?.source) params.set('source', filters.source);
+        if (filters?.limit) params.set('limit', String(filters.limit));
+        if (filters?.page) params.set('page', String(filters.page));
+
+        const qs = params.toString();
+        const url = CONTEXT_ENDPOINTS.GET(consultation.id) + (qs ? `?${qs}` : '');
+        const items = await apiClient.get<ContextItem[]>(url);
+        timer?.end(true, { attributes: { itemCount: items.length } });
+        return items;
+      } catch (error) {
+        timer?.error(error as Error);
+        throw error;
+      }
+    },
+    [store, getLogger],
+  );
+
   /**
    * Fetch transcriptions from backend.
    * SES-07: Uses dedicated /consultations/:id/context/transcriptions endpoint.
@@ -1591,6 +1627,7 @@ export function useArca(): UseArcaReturn {
       addCaseNote,
       addTranscription,
       updateItem: updateContextItem,
+      getItems,
       loadSharedContext,
       extractEntities,
       getContextVersions,
@@ -1609,6 +1646,7 @@ export function useArca(): UseArcaReturn {
       addCaseNote,
       addTranscription,
       updateContextItem,
+      getItems,
       loadSharedContext,
       extractEntities,
       getContextVersions,
