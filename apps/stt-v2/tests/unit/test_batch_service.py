@@ -2134,6 +2134,7 @@ class TestOptimumOnnxInference:
         samples = np.zeros(160000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
+        config.code_switching = False
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
              patch("stt_v2.transcription.batch_service.get_settings") as ms:
@@ -2155,6 +2156,7 @@ class TestOptimumOnnxInference:
         samples = np.zeros(960000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
+        config.code_switching = False
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
              patch("stt_v2.transcription.batch_service.get_settings") as ms:
@@ -2176,6 +2178,7 @@ class TestOptimumOnnxInference:
         samples = np.zeros(48000, dtype=np.float32)
         config = MagicMock()
         config.language = None
+        config.code_switching = False
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
              patch("stt_v2.transcription.batch_service.get_settings") as ms:
@@ -2220,6 +2223,7 @@ class TestOptimumOnnxInference:
         samples = np.zeros(1040000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
+        config.code_switching = False
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
              patch("stt_v2.transcription.batch_service.get_settings") as ms:
@@ -2243,6 +2247,7 @@ class TestOptimumOnnxInference:
         samples = np.zeros(160000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
+        config.code_switching = False
 
         progress_values = []
 
@@ -2333,6 +2338,7 @@ class TestOptimumOnnxInference:
         samples = np.zeros(1040000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
+        config.code_switching = False
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
              patch("stt_v2.transcription.batch_service.get_settings") as ms:
@@ -2481,6 +2487,7 @@ class TestChunkCallbackAndTTFW:
         samples = np.zeros(720000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
+        config.code_switching = False
         chunks_received: list[ChunkTranscriptionResult] = []
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
@@ -2506,6 +2513,7 @@ class TestChunkCallbackAndTTFW:
         samples = np.zeros(720000, dtype=np.float32)
         config = MagicMock()
         config.language = None
+        config.code_switching = False
 
         hook_calls: list[bool] = []
 
@@ -2531,6 +2539,7 @@ class TestChunkCallbackAndTTFW:
         samples = np.zeros(160000, dtype=np.float32)
         config = MagicMock()
         config.language = None
+        config.code_switching = False
 
         chunks_received: list[ChunkTranscriptionResult] = []
 
