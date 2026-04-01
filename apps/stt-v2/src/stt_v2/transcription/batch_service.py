@@ -859,11 +859,18 @@ class BatchTranscriptionService:
                     if chunk_text:
                         seg_text_parts.append(chunk_text)
                         previous_chunk_text = sub_result.text.strip()  # use original for dedup matching
-                        seg_segments.append({
+                        sub_seg: dict[str, Any] = {
                             "text": chunk_text,
                             "start": sub_start_global,
                             "end": sub_end_global,
-                        })
+                        }
+                        # Carry english_text from the sub-result segment when code-switching
+                        if sub_result.segments:
+                            for _s in sub_result.segments:
+                                if isinstance(_s, dict) and _s.get("english_text"):
+                                    sub_seg["english_text"] = _s["english_text"]
+                                    break
+                        seg_segments.append(sub_seg)
 
                     # Offset word timestamps to global timeline
                     time_offset = sub_start_global
