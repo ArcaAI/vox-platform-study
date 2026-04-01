@@ -59,22 +59,24 @@ def setup_opentelemetry(app: FastAPI) -> None:
         "/metrics",
     ]
 
-    instrument_kwargs = dict(
-        excluded_urls=",".join(excluded_endpoints),
-        server_request_hook=None,
-        client_request_hook=None,
-        client_response_hook=None,
-    )
+    excluded_urls = ",".join(excluded_endpoints)
+
     if tracer_provider is not None:
-        instrument_kwargs["tracer_provider"] = tracer_provider
-
-    FastAPIInstrumentor().instrument_app(app, **instrument_kwargs)
-
-    logging_kwargs = dict(set_logging_format=False)
-    if tracer_provider is not None:
-        logging_kwargs["tracer_provider"] = tracer_provider
-
-    LoggingInstrumentor().instrument(**logging_kwargs)
+        FastAPIInstrumentor().instrument_app(
+            app,
+            excluded_urls=excluded_urls,
+            tracer_provider=tracer_provider,
+        )
+        LoggingInstrumentor().instrument(
+            set_logging_format=False,
+            tracer_provider=tracer_provider,
+        )
+    else:
+        FastAPIInstrumentor().instrument_app(
+            app,
+            excluded_urls=excluded_urls,
+        )
+        LoggingInstrumentor().instrument(set_logging_format=False)
 
 
 def shutdown_opentelemetry(app: FastAPI) -> None:

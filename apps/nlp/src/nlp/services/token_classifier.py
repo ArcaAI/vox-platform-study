@@ -1,7 +1,7 @@
 import uuid
 import torch
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional
 from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
 
 from nlp.core.logging import get_logger
@@ -31,7 +31,7 @@ class TokenClassifier(ABC):
         pass
 
     @abstractmethod
-    def shutdown(self) -> None:
+    async def shutdown(self) -> None:
         """Shutdown the token classification model"""
         pass
 
@@ -46,9 +46,9 @@ class TransformerTokenClassifier(TokenClassifier):
         super().__init__(configs.model_name, configs.model_version)
 
         self.configs = configs
-        self.tokenizer = None
-        self.model = None
-        self.pipeline = None
+        self.tokenizer: Any = None
+        self.model: Any = None
+        self.pipeline: Any = None
 
     async def initialize(self) -> None:
         """Load transformer token classification model"""
@@ -80,7 +80,7 @@ class TransformerTokenClassifier(TokenClassifier):
             await self.initialize()
 
         try:
-            pipeline_results = self.pipeline(request["text"])
+            pipeline_results = self.pipeline(request.text)
 
             # tokenized = self.tokenizer(text, return_tensors="pt", add_special_tokens=True)
             # tokens = self.tokenizer.convert_ids_to_tokens(tokenized["input_ids"][0])
@@ -149,6 +149,6 @@ class TransformerTokenClassifier(TokenClassifier):
 
         return entities
 
-    def shutdown(self) -> None:
+    async def shutdown(self) -> None:
         """Shutdown the token classification model"""
         pass

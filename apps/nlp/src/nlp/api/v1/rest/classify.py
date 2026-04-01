@@ -58,7 +58,7 @@ async def classify_tokens(
 
         result = await service.process(request)
 
-        logger.info(f"Token classification extracted {len(result.entities)} entities from {len(result.tokens)} tokens")
+        logger.info(f"Token classification extracted {len(result.entities)} entities")
 
         return result
 

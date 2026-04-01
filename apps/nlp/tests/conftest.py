@@ -11,10 +11,10 @@ class FakeService:
 
     is_initialized = True
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         pass
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         pass
 
 

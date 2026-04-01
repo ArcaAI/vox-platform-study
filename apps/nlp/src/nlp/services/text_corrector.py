@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from symspellpy import SymSpell, Verbosity
+from symspellpy import SymSpell, Verbosity  # type: ignore[import-untyped]
 from typing import Dict, Optional
 
 from nlp.core.logging import get_logger
@@ -124,9 +124,7 @@ class SymSpellCorrector(TextCorrector):
         try:
             logger.info("Shutting down SymSpell corrector...")
 
-            # Clear dictionaries and instances
             self.sym_spell_instances.clear()
-            self.language_configs.clear()
 
             self.is_initialized = False
             logger.info("SymSpell corrector shutdown complete")

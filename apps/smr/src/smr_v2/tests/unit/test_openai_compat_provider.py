@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -53,7 +54,11 @@ async def _async_stream_chunks(chunks):
 # ---------------------------------------------------------------------------
 
 class TestOpenAICompatConfig:
-    def test_openai_compat_config_defaults(self):
+    def test_openai_compat_config_defaults(self, monkeypatch):
+        for key in list(os.environ):
+            if key.startswith("SMR_V2_"):
+                monkeypatch.delenv(key, raising=False)
+
         from smr_v2.core.config import OpenAICompatConfig
 
         cfg = OpenAICompatConfig()

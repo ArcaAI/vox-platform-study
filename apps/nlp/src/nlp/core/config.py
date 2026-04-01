@@ -17,7 +17,7 @@ class Environment(str, Enum):
     PRODUCTION = "production"
 
 
-class LogLevel(str, Enum):
+class LogLevel(int, Enum):
     """Possible log levels."""
 
     NOTSET = 0
@@ -38,12 +38,12 @@ class NLPServiceConfig(BaseSettings):
     log_level: int = Field(default=LogLevel.INFO)
 
     host: str = Field(default=os.getenv("HOST", "0.0.0.0"))
-    port: int = Field(default=os.getenv("PORT", 8864))
-    workers: int = Field(default=os.getenv("WORKERS", 1))
+    port: int = Field(default=int(os.getenv("PORT", "8864")))
+    workers: int = Field(default=int(os.getenv("WORKERS", "1")))
 
     opentelemetry_endpoint: Optional[str] = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
     otlp_endpoint: Optional[str] = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
-    resource_attributes: Optional[dict] = Field(default=os.getenv("OTEL_RESOURCE_ATTRIBUTES", None))
+    resource_attributes: Optional[dict[str, str]] = Field(default=None)
     traces_enabled: bool = Field(default=os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
     metrics_enabled: bool = Field(default=os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true")
 
