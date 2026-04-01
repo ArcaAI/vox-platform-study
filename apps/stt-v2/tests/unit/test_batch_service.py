@@ -3057,8 +3057,8 @@ class TestCodeSwitchingInference:
                     samples, 16000, loaded_model, config, None
                 )
 
-        call_kwargs = loaded_model.model.generate.call_args[1]
-        assert "language" not in call_kwargs
+        transcribe_call_kwargs = loaded_model.model.generate.call_args_list[0][1]
+        assert "language" not in transcribe_call_kwargs
 
     @pytest.mark.asyncio
     async def test_no_code_switching_language_none_omits_language(self, service):
