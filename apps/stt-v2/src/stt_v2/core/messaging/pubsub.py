@@ -221,7 +221,7 @@ class TranscriptionEventPublisher:
             ]
 
         await self._publish(job_id, {"type": "chunk", "data": data})
- 
+
     async def publish_transcript(
         self,
         job_id: str,
