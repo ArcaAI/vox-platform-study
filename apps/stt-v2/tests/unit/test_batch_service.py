@@ -1188,6 +1188,37 @@ class TestBatchServicePostprocessingSentenceTimestamps:
         assert result.sentence_timestamps[0].start_time == 0.0
         assert result.sentence_timestamps[1].text == "How are you?"
 
+    def test_postprocess_preserves_segment_english_text(self, service):
+        """Sentence timestamps should include per-segment english_text when present."""
+        raw = RawTranscription(
+            text="ഹലോ ലോകം. നിങ്ങൾക്ക് സുഖമാണോ?",
+            segments=[
+                {
+                    "text": "ഹലോ ലോകം.",
+                    "start": 0.0,
+                    "end": 1.5,
+                    "english_text": "Hello world.",
+                },
+                {
+                    "text": "നിങ്ങൾക്ക് സുഖമാണോ?",
+                    "start": 1.6,
+                    "end": 3.0,
+                    "english_text": "How are you?",
+                },
+            ],
+        )
+
+        config = MagicMock()
+        config.lowercase = False
+        config.timestamps = MagicMock()
+        config.timestamps.word_timestamps = False
+        config.timestamps.sentence_timestamps = True
+
+        result = service._postprocess(raw, config, 3.0)
+
+        assert result.sentence_timestamps[0].english_text == "Hello world."
+        assert result.sentence_timestamps[1].english_text == "How are you?"
+
     def test_postprocess_with_empty_segments(self, service):
         """Test handling of empty segments list."""
         raw = RawTranscription(
@@ -2103,6 +2134,7 @@ class TestOptimumOnnxInference:
         samples = np.zeros(160000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
+        config.code_switching = False
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
              patch("stt_v2.transcription.batch_service.get_settings") as ms:
@@ -2124,6 +2156,7 @@ class TestOptimumOnnxInference:
         samples = np.zeros(960000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
+        config.code_switching = False
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
              patch("stt_v2.transcription.batch_service.get_settings") as ms:
@@ -2145,6 +2178,7 @@ class TestOptimumOnnxInference:
         samples = np.zeros(48000, dtype=np.float32)
         config = MagicMock()
         config.language = None
+        config.code_switching = False
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
              patch("stt_v2.transcription.batch_service.get_settings") as ms:
@@ -2189,6 +2223,7 @@ class TestOptimumOnnxInference:
         samples = np.zeros(1040000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
+        config.code_switching = False
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
              patch("stt_v2.transcription.batch_service.get_settings") as ms:
@@ -2212,6 +2247,7 @@ class TestOptimumOnnxInference:
         samples = np.zeros(160000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
+        config.code_switching = False
 
         progress_values = []
 
@@ -2302,6 +2338,7 @@ class TestOptimumOnnxInference:
         samples = np.zeros(1040000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
+        config.code_switching = False
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
              patch("stt_v2.transcription.batch_service.get_settings") as ms:
@@ -2450,6 +2487,7 @@ class TestChunkCallbackAndTTFW:
         samples = np.zeros(720000, dtype=np.float32)
         config = MagicMock()
         config.language = "en"
+        config.code_switching = False
         chunks_received: list[ChunkTranscriptionResult] = []
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
@@ -2475,6 +2513,7 @@ class TestChunkCallbackAndTTFW:
         samples = np.zeros(720000, dtype=np.float32)
         config = MagicMock()
         config.language = None
+        config.code_switching = False
 
         hook_calls: list[bool] = []
 
@@ -2500,6 +2539,7 @@ class TestChunkCallbackAndTTFW:
         samples = np.zeros(160000, dtype=np.float32)
         config = MagicMock()
         config.language = None
+        config.code_switching = False
 
         chunks_received: list[ChunkTranscriptionResult] = []
 
@@ -2778,8 +2818,27 @@ class TestCodeSwitchingInference:
                     samples, 16000, loaded_model, config, None
                 )
 
-        call_kwargs = loaded_model.model.generate.call_args[1]
-        assert "language" not in call_kwargs
+        transcribe_call_kwargs = loaded_model.model.generate.call_args_list[0][1]
+        assert "language" not in transcribe_call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_transformers_code_switching_adds_english_segment(self, service):
+        """Transformers code-switching should attach english_text to the output segment."""
+        pipeline_config = create_complete_pipeline_config(language="fr")
+        pipeline_config.spec.inference.code_switching = True
+
+        loaded_model = self._create_transformers_loaded_model()
+        samples = np.zeros(16000, dtype=np.float32)
+        config = pipeline_config.spec.inference
+
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}):
+            with patch.object(service, "_generate_english_translation", return_value="Hello world"):
+                result = await service._run_transformers_inference(
+                    samples, 16000, loaded_model, config, None
+                )
+
+        assert len(result.segments) == 1
+        assert result.segments[0]["english_text"] == "Hello world"
 
     @pytest.mark.asyncio
     async def test_optimum_onnx_no_code_switching_includes_language(self, service):
@@ -2804,6 +2863,30 @@ class TestCodeSwitchingInference:
         call_kwargs = loaded_model.model.generate.call_args[1]
         assert "language" in call_kwargs
         assert call_kwargs["language"] == "en"
+
+    @pytest.mark.asyncio
+    async def test_optimum_single_pass_code_switching_adds_english_segment(self, service):
+        """Optimum single-pass code-switching should attach english_text to the output segment."""
+        pipeline_config = create_complete_pipeline_config(language="en")
+        pipeline_config.spec.inference.code_switching = True
+
+        loaded_model = self._create_optimum_loaded_model()
+        samples = np.zeros(16000, dtype=np.float32)
+        config = pipeline_config.spec.inference
+
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}):
+            with patch("stt_v2.transcription.batch_service.get_settings") as ms:
+                ms.return_value = MagicMock(
+                    transcription_chunk_length_s=30,
+                    transcription_stride_length_s="4,2",
+                )
+                with patch.object(service, "_generate_english_translation", return_value="Hello world"):
+                    result = await service._run_optimum_onnx_inference(
+                        samples, 16000, loaded_model, config, None
+                    )
+
+        assert len(result.segments) == 1
+        assert result.segments[0]["english_text"] == "Hello world"
 
     def _create_transformers_loaded_model(self) -> LoadedModel:
         """Create a mock LoadedModel for Transformers/SafeTensor tests."""
@@ -2840,8 +2923,8 @@ class TestCodeSwitchingInference:
                 samples, 16000, loaded_model, config, None
             )
 
-        call_kwargs = loaded_model.model.generate.call_args[1]
-        assert "language" not in call_kwargs
+        transcribe_call_kwargs = loaded_model.model.generate.call_args_list[0][1]
+        assert "language" not in transcribe_call_kwargs
 
     @pytest.mark.asyncio
     async def test_transformers_no_code_switching_includes_language(self, service):
@@ -2974,8 +3057,8 @@ class TestCodeSwitchingInference:
                     samples, 16000, loaded_model, config, None
                 )
 
-        call_kwargs = loaded_model.model.generate.call_args[1]
-        assert "language" not in call_kwargs
+        transcribe_call_kwargs = loaded_model.model.generate.call_args_list[0][1]
+        assert "language" not in transcribe_call_kwargs
 
     @pytest.mark.asyncio
     async def test_no_code_switching_language_none_omits_language(self, service):
