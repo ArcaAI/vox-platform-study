@@ -69,6 +69,15 @@ function pickString(source: Record<string, unknown> | undefined, ...keys: string
   return undefined;
 }
 
+function shouldForwardResponseFormat(provider: string | undefined): boolean {
+  if (!provider) {
+    return false;
+  }
+
+  const normalized = provider.trim().toLowerCase();
+  return normalized !== 'ollama';
+}
+
 export function buildSmrGeneratePayload(
   assembledPrompt: AssembledPrompt,
   options?: Record<string, unknown>,
@@ -82,17 +91,18 @@ export function buildSmrGeneratePayload(
   const temperature = pickNumber(options, 'temperature') ?? pickNumber(assembledPrompt.hyperparameters, 'temperature');
   const maxTokens = pickNumber(options, 'max_tokens', 'maxTokens') ?? pickNumber(assembledPrompt.hyperparameters, 'max_tokens', 'maxTokens');
   const topP = pickNumber(options, 'top_p', 'topP') ?? pickNumber(assembledPrompt.hyperparameters, 'top_p', 'topP');
+  const provider = pickString(options, 'provider', 'smrProvider', 'defaultSmrProvider');
 
   return {
     prompt: assembledPrompt.userPrompt,
     system_prompt: assembledPrompt.systemPrompt,
-    provider: pickString(options, 'provider', 'smrProvider', 'defaultSmrProvider'),
+    provider,
     model: pickString(options, 'model', 'smrModel', 'defaultSmrModel'),
     temperature,
     max_tokens: maxTokens,
     top_p: topP,
     stream: false,
-    response_format: assembledPrompt.responseFormat ?? undefined,
+    response_format: shouldForwardResponseFormat(provider) ? (assembledPrompt.responseFormat ?? undefined) : undefined,
     context: Object.keys(context).length > 0 ? context : undefined,
   };
 }
