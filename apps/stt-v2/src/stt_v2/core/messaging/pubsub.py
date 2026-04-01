@@ -221,7 +221,7 @@ class TranscriptionEventPublisher:
             ]
 
         await self._publish(job_id, {"type": "chunk", "data": data})
-
+ 
     async def publish_transcript(
         self,
         job_id: str,
@@ -259,6 +259,7 @@ class TranscriptionEventPublisher:
                     "text": s.get("text", ""),
                     "startTime": s.get("start_time", 0.0),
                     "endTime": s.get("end_time", 0.0),
+                    "englishText": s.get("english_text"),
                 }
                 for s in result_dict.get("sentence_timestamps", [])
             ],
