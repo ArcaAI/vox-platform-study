@@ -172,6 +172,8 @@ export interface WsTranscriptResult {
   endTime: number;
   /** Whether this is a final (committed) transcript */
   isFinal: boolean;
+  /** English translation for code-switching output, if available */
+  englishText?: string;
   /** Speaker identifier from diarization, if available */
   speakerId?: string;
   /** Human-readable speaker label, if provided by backend */
