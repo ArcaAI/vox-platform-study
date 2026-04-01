@@ -125,6 +125,7 @@ class TestSegmentResult:
 
         result = SegmentResult(
             text="Hello world",
+            english_text="Hello world",
             speaker_id="spk_123",
             speaker_confidence=0.95,
             start_time=1.5,
@@ -134,6 +135,7 @@ class TestSegmentResult:
         d = result.to_redis_dict()
         assert d["type"] == "segment"
         assert d["text"] == "Hello world"
+        assert d["english_text"] == "Hello world"
         assert d["speaker_id"] == "spk_123"
         assert d["is_final"] == "1"
 
@@ -143,6 +145,7 @@ class TestSegmentResult:
         d = {
             "type": "segment",
             "text": "Test text",
+            "english_text": "Translated text",
             "speaker_id": "spk_abc",
             "speaker_confidence": "0.85",
             "start_time": "2.0",
@@ -151,6 +154,7 @@ class TestSegmentResult:
         }
         result = SegmentResult.from_redis_dict(d)
         assert result.text == "Test text"
+        assert result.english_text == "Translated text"
         assert result.speaker_id == "spk_abc"
         assert result.speaker_confidence == pytest.approx(0.85)
         assert result.is_final is False
@@ -160,6 +164,7 @@ class TestSegmentResult:
 
         original = SegmentResult(
             text="Patient reports headache",
+            english_text="Patient reports headache",
             speaker_id="spk_dr_smith",
             speaker_confidence=0.92,
             start_time=12.5,
@@ -169,6 +174,7 @@ class TestSegmentResult:
         d = original.to_redis_dict()
         restored = SegmentResult.from_redis_dict(d)
         assert restored.text == original.text
+        assert restored.english_text == original.english_text
         assert restored.speaker_id == original.speaker_id
         assert restored.is_final == original.is_final
 

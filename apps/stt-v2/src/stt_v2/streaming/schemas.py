@@ -142,6 +142,7 @@ class SegmentResult:
     """
 
     text: str
+    english_text: str | None = None
     speaker_id: str | None = None
     speaker_confidence: float = 0.0
     start_time: float = 0.0
@@ -162,6 +163,8 @@ class SegmentResult:
             "is_final": "1" if self.is_final else "0",
             "inference_ms": str(round(self.inference_ms, 1)),
         }
+        if self.english_text:
+            d["english_text"] = self.english_text
         if self.word_timestamps:
             d["word_timestamps_json"] = json.dumps(
                 self.word_timestamps, ensure_ascii=False,
@@ -195,6 +198,7 @@ class SegmentResult:
 
         return cls(
             text=_get("text"),
+            english_text=_get("english_text") or None,
             speaker_id=speaker_id,
             speaker_confidence=float(_get("speaker_confidence") or "0"),
             start_time=float(_get("start_time") or "0"),

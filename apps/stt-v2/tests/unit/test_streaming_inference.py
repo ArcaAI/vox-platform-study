@@ -95,6 +95,22 @@ class TestProcessUtterance:
         assert result.text == "from dict"
 
     @pytest.mark.asyncio
+    async def test_sync_pipeline_preserves_english_text(self):
+        """Dict pipeline english_text should be preserved on live segment results."""
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda samples, sr: {
+                "text": "வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்",
+                "english_text": "Will not call ...",
+            }
+        )
+        utt = _make_utterance()
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == "வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்"
+        assert result.english_text == "Will not call ..."
+
+    @pytest.mark.asyncio
     async def test_async_pipeline(self):
         """Async pipeline should be awaited."""
         async def _asr(samples, sr):
@@ -213,6 +229,27 @@ class TestResultPublishing:
         published_result = publisher.publish.call_args[0][0]
         assert isinstance(published_result, SegmentResult)
         assert published_result.text == "published text"
+
+    @pytest.mark.asyncio
+    async def test_publishes_english_text_when_present(self):
+        """Published live segment should carry english_text for code-switching."""
+        publisher = AsyncMock()
+
+        worker = StreamingInferenceWorker(
+            result_publisher=publisher,
+            asr_pipeline=lambda s, sr: {
+                "text": "வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்",
+                "english_text": "Will not call ...",
+            },
+        )
+        utt = _make_utterance()
+
+        await worker.process_utterance("sess-1", utt)
+
+        publisher.publish.assert_awaited_once()
+        published_result = publisher.publish.call_args[0][0]
+        assert isinstance(published_result, SegmentResult)
+        assert published_result.english_text == "Will not call ..."
 
     @pytest.mark.asyncio
     async def test_no_publisher_no_error(self):
