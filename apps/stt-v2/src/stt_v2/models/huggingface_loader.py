@@ -172,7 +172,7 @@ class HuggingFaceLoader(BaseModelLoader):
                     processor = AutoProcessor.from_pretrained(
                         model_source, **common_kwargs
                     )
-                except Exception:
+                except Exception as err:
                     tokenizer = AutoTokenizer.from_pretrained(
                         model_source, **common_kwargs
                     )
@@ -180,7 +180,7 @@ class HuggingFaceLoader(BaseModelLoader):
                         raise ImportError(
                             "AutoFeatureExtractor is unavailable in the installed "
                             "transformers package"
-                        )
+                        ) from err
                     feature_extractor = AutoFeatureExtractor.from_pretrained(
                         model_source, **common_kwargs
                     )
