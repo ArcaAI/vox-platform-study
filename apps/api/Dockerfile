@@ -48,7 +48,7 @@ COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
 
 RUN set -ex; \
-    export DATABASE_URL="${DATABASE_URL}"; \
+    export DATABASE_URL="${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/hope?schema=public}"; \
     # Ensure no stale Prisma engines remain and generate client for correct targets
     rm -rf /app/node_modules/.prisma && \
     pnpm exec prisma generate --schema=packages/database/src/prisma/db_main/schema.prisma; \
