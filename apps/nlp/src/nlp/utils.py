@@ -15,4 +15,4 @@ def get_project_root() -> Path:
 
 
 def get_current_time() -> datetime:
-    return datetime.now().isoformat()
+    return datetime.now()

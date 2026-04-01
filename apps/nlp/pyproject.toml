@@ -131,7 +131,16 @@ warn_unused_ignores = true
 warn_return_any = true
 
 [[tool.mypy.overrides]]
-module = ["transformers", "torch", "spacy", "symspellpy", "passlib.*", "jose.*"]
+module = ["transformers", "torch", "spacy", "passlib.*", "jose.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["symspellpy", "symspellpy.*"]
+ignore_missing_imports = true
+follow_untyped_imports = false
+
+[[tool.mypy.overrides]]
+module = ["prometheus_fastapi_instrumentator", "prometheus_fastapi_instrumentator.*"]
 ignore_missing_imports = true
 
 # pytest configuration

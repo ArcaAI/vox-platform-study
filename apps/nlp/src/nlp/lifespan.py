@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
         medical_suggester_service.shutdown(),
         websocket_service.shutdown(),
     )
-    
+
     shutdown_opentelemetry(app)
 
     logger.info("Medical NLP Service shutdown complete")

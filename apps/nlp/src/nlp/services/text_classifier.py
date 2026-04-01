@@ -24,7 +24,7 @@ class TextClassifier(ABC):
         pass
 
     @abstractmethod
-    async def process(self, text: str, **kwargs) -> Any | None:
+    async def process(self, request: TextClassificationRequest) -> TextClassificationResponse:
         """Classify medical text into categories"""
         pass
 
@@ -44,9 +44,9 @@ class TransformerTextClassifier(TextClassifier):
         super().__init__(config.model_name, config.model_version)
 
         self.config = config
-        self.tokenizer = None
-        self.model = None
-        self.pipeline = None
+        self.tokenizer: Any = None
+        self.model: Any = None
+        self.pipeline: Any = None
 
     async def initialize(self) -> None:
         """Load transformer text classification model"""
@@ -78,7 +78,7 @@ class TransformerTextClassifier(TextClassifier):
             await self.initialize()
 
         try:
-            pipeline_results = self.pipeline(request["text"])
+            pipeline_results = self.pipeline(request.text)
             top_prediction = max(pipeline_results, key=lambda x: x["score"])
             probabilities = {score_item["label"]: float(score_item["score"]) for score_item in pipeline_results}
 
@@ -97,7 +97,7 @@ class TransformerTextClassifier(TextClassifier):
                 model_version=self.version,
             )
 
-    def shutdown(self) -> None:
+    async def shutdown(self) -> None:
         """Shutdown the text classification model"""
         self.tokenizer = None
         self.model = None

@@ -4,6 +4,7 @@ import logging
 import logging.handlers
 from pathlib import Path
 from datetime import datetime
+from typing import Union
 
 
 class JsonFormatter(logging.Formatter):
@@ -119,7 +120,7 @@ class LoggingConfig:
         simple_formatter = logging.Formatter(cls.SIMPLE_FORMAT)
         json_formatter = JsonFormatter()
 
-        handlers = []
+        handlers: list[logging.Handler] = []
 
         # Console handler (always uses simple format for readability)
         if console_enabled:
@@ -139,18 +140,19 @@ class LoggingConfig:
             # Main log file (all levels)
             main_log_file = log_dir / f"{service_name}.log"
 
+            main_file_handler: Union[
+                logging.handlers.TimedRotatingFileHandler, logging.handlers.RotatingFileHandler
+            ]
             if use_daily_rotation:
-                # Use TimedRotatingFileHandler for daily rotation
                 main_file_handler = logging.handlers.TimedRotatingFileHandler(
                     filename=str(main_log_file),
                     when=rotation_when,
                     interval=rotation_interval,
                     backupCount=rotation_backup_count,
                     encoding="utf-8",
-                    utc=False,  # Use local time
+                    utc=False,
                 )
             else:
-                # Use RotatingFileHandler for size-based rotation
                 main_file_handler = logging.handlers.RotatingFileHandler(
                     filename=str(main_log_file), maxBytes=max_bytes, backupCount=log_file_max_files, encoding="utf-8"
                 )
@@ -163,18 +165,19 @@ class LoggingConfig:
             if log_file_separate_error:
                 error_log_file = log_dir / f"{service_name}_errors.log"
 
+                error_file_handler: Union[
+                    logging.handlers.TimedRotatingFileHandler, logging.handlers.RotatingFileHandler
+                ]
                 if use_daily_rotation:
-                    # Use TimedRotatingFileHandler for daily rotation
                     error_file_handler = logging.handlers.TimedRotatingFileHandler(
                         filename=str(error_log_file),
                         when=rotation_when,
                         interval=rotation_interval,
                         backupCount=rotation_backup_count,
                         encoding="utf-8",
-                        utc=False,  # Use local time
+                        utc=False,
                     )
                 else:
-                    # Use RotatingFileHandler for size-based rotation
                     error_file_handler = logging.handlers.RotatingFileHandler(
                         filename=str(error_log_file), maxBytes=max_bytes, backupCount=log_file_max_files, encoding="utf-8"
                     )

@@ -20,11 +20,11 @@ class WebSocketSession:
 
 
 class WebSocketManager:
-    def __init__(self):
+    def __init__(self) -> None:
         self.sessions: Dict[str, WebSocketSession] = {}
         self.websockets: Set[WebSocket] = set()
-        self.heartbeat_task: Optional[asyncio.Task] = None
-        self.cleanup_task: Optional[asyncio.Task] = None
+        self.heartbeat_task: Optional[asyncio.Task[None]] = None
+        self.cleanup_task: Optional[asyncio.Task[None]] = None
 
         self.HEARTBEAT_INTERVAL = 30
         self.CLEANUP_INTERVAL = 60
@@ -47,7 +47,7 @@ class WebSocketManager:
             logger.error(f"Failed to initialize WebSocket service: {str(e)}")
             raise
 
-    async def handle_connection(self, websocket: WebSocket, session_id: str, process: Callable[[dict], Any]) -> None:
+    async def handle_connection(self, websocket: WebSocket, session_id: str, process: Callable[..., Any]) -> None:
         """Handle a new WebSocket connection"""
         await websocket.accept()
 
