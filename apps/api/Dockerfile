@@ -38,6 +38,8 @@ LABEL maintainer="HOPE Team" \
     description="HOPE API Backend Service - Builder" \
     stage="builder"
 
+ARG DATABASE_URL
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends openssl && \
     rm -rf /var/lib/apt/lists/*
@@ -46,6 +48,7 @@ COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
 
 RUN set -ex; \
+    export DATABASE_URL="${DATABASE_URL}"; \
     # Ensure no stale Prisma engines remain and generate client for correct targets
     rm -rf /app/node_modules/.prisma && \
     pnpm exec prisma generate --schema=packages/database/src/prisma/db_main/schema.prisma; \
