@@ -1,0 +1,87 @@
+###############################################################################
+# Grafana Datasource Provisioning — HOPE Observability Stack
+#
+# Cross-signal correlation:
+#   Prometheus → exemplar links → Tempo
+#   Loki → derived fields → Tempo
+#   Tempo → tracesToLogs → Loki, tracesToMetrics → Prometheus
+###############################################################################
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      exemplarTraceIdDestinations:
+        - name: traceID
+          datasourceUid: tempo
+      incrementalQuerying: true
+      incrementalQueryOverlapWindow: 10m
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      derivedFields:
+        - datasourceUid: tempo
+          matcherRegex: '"traceId"\s*:\s*"(\w+)"'
+          name: TraceID
+          url: "$${__value.raw}"
+        - datasourceUid: tempo
+          matcherRegex: 'traceId=(\w+)'
+          name: TraceID
+          url: "$${__value.raw}"
+      maxLines: 1000
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      httpMethod: GET
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        filterByTraceID: true
+        filterBySpanID: false
+        customQuery: true
+        query: '{service_name="${__span.tags["service.name"]}"} | json | traceId = `${__span.traceId}`'
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        tags:
+          - key: service.name
+            value: service
+        queries:
+          - name: "Request Rate"
+            query: 'rate(http_requests_total{service="$${__tags.service}"}[5m])'
+          - name: "Error Rate"
+            query: 'rate(http_requests_total{service="$${__tags.service}",status=~"5.."}[5m])'
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      search:
+        filters:
+          - id: service-name
+            tag: service.name
+            operator: "="
+            scope: resource
+          - id: span-name
+            tag: name
+            operator: "="
+            scope: span
+      lokiSearch:
+        datasourceUid: loki
