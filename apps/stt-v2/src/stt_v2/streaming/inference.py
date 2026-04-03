@@ -109,7 +109,8 @@ class StreamingInferenceWorker:
         )
 
         word_timestamps = self._offset_word_timestamps(
-            split_timestamps, utterance.start_time,
+            split_timestamps,
+            utterance.start_time,
         )
 
         elapsed = time.monotonic() - start_ts
@@ -124,8 +125,7 @@ class StreamingInferenceWorker:
             inference_ms=round(elapsed * 1000, 1),
         )
         diarization_enabled = bool(
-            self._diarization_config
-            and getattr(self._diarization_config, "enabled", False)
+            self._diarization_config and getattr(self._diarization_config, "enabled", False)
         )
         speaker_id, speaker_confidence = await self._identify_speaker(utterance, result.text)
         if diarization_enabled and result.text.strip() and not speaker_id:
@@ -242,14 +242,16 @@ class StreamingInferenceWorker:
             for i, word in enumerate(words):
                 w_start = start + i * word_dur
                 w_end = start + (i + 1) * word_dur
-                result.append({
-                    "word": word,
-                    "start": round(w_start, 4),
-                    "end": round(w_end, 4),
-                    "start_time": round(w_start, 4),
-                    "end_time": round(w_end, 4),
-                    "confidence": confidence,
-                })
+                result.append(
+                    {
+                        "word": word,
+                        "start": round(w_start, 4),
+                        "end": round(w_end, 4),
+                        "start_time": round(w_start, 4),
+                        "end_time": round(w_end, 4),
+                        "confidence": confidence,
+                    }
+                )
         return result
 
     def _sanitize_text(self, text: str) -> str:

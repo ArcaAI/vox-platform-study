@@ -21,6 +21,7 @@ from stt_v2.pipeline.dto import DiarizationConfig
 
 try:
     import pyannote.audio  # noqa: F401
+
     HAS_PYANNOTE = True
 except ImportError:
     HAS_PYANNOTE = False
@@ -45,6 +46,7 @@ def _make_mock_torch():
 
     mock.from_numpy = MagicMock(side_effect=_from_numpy)
     return mock
+
 
 # =============================================================================
 # DTO Tests
@@ -194,8 +196,7 @@ class TestEmbeddingServicePyannoteWarnings:
         torchcodec_warnings = [
             msg
             for msg in messages
-            if "torchcodec is not installed correctly so built-in audio decoding will fail"
-            in msg
+            if "torchcodec is not installed correctly so built-in audio decoding will fail" in msg
         ]
         assert torchcodec_warnings == []
 
@@ -233,9 +234,7 @@ class TestEmbeddingServiceBatch:
         """Batch extraction on uninitialized service should raise."""
         svc = EmbeddingService()
         with pytest.raises(EmbeddingExtractionError, match="not initialised"):
-            await svc.extract_batch(
-                [np.zeros(16000, dtype=np.float32)], 16000, [(0.0, 1.0)]
-            )
+            await svc.extract_batch([np.zeros(16000, dtype=np.float32)], 16000, [(0.0, 1.0)])
 
     async def test_extract_batch_partial_failure_returns_none(self):
         """If inference fails for one segment, that entry should be None."""
@@ -294,9 +293,7 @@ class TestEmbeddingServiceBatch:
 
         samples_16k = np.random.randn(16000).astype(np.float32)
         samples_24k = np.random.randn(24000).astype(np.float32)
-        await svc.extract_batch(
-            [samples_16k, samples_24k], 16000, [(0.0, 1.0), (1.0, 2.5)]
-        )
+        await svc.extract_batch([samples_16k, samples_24k], 16000, [(0.0, 1.0), (1.0, 2.5)])
 
         assert len(captured_inputs) == 2
         # Check waveform shape: (1, num_samples)
@@ -342,9 +339,7 @@ class TestSpeakerIdentifier:
             {"speaker_id": "spk-1", "score": 0.85, "point_id": "pt-1", "payload": {}}
         ]
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         result = await identifier.identify_speaker(
             samples=np.zeros(16000, dtype=np.float32),
             sample_rate=16000,
@@ -358,9 +353,7 @@ class TestSpeakerIdentifier:
     async def test_identify_new_speaker_auto_register(self):
         mock_emb, mock_store = _make_mock_services()
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, auto_register_speakers=True)
         result = await identifier.identify_speaker(
             samples=np.zeros(16000, dtype=np.float32),
@@ -385,9 +378,7 @@ class TestSpeakerIdentifier:
     async def test_identify_no_register_returns_unknown(self):
         mock_emb, mock_store = _make_mock_services()
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, auto_register_speakers=False)
         result = await identifier.identify_speaker(
             samples=np.zeros(16000, dtype=np.float32),
@@ -406,9 +397,7 @@ class TestSpeakerIdentifier:
         mock_emb, mock_store = _make_mock_services()
         mock_emb.extract_from_samples.side_effect = RuntimeError("Model crashed")
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         with pytest.raises(SpeakerIdentificationError, match="Speaker identification failed"):
             await identifier.identify_speaker(
                 samples=np.zeros(16000, dtype=np.float32),
@@ -421,9 +410,7 @@ class TestSpeakerIdentifier:
         mock_emb, mock_store = _make_mock_services()
         mock_store.search_similar.side_effect = ConnectionError("Qdrant down")
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         with pytest.raises(SpeakerIdentificationError, match="Speaker identification failed"):
             await identifier.identify_speaker(
                 samples=np.zeros(16000, dtype=np.float32),
@@ -438,9 +425,7 @@ class TestSpeakerIdentifier:
             {"speaker_id": "spk-1", "score": 0.85, "point_id": "pt-1", "payload": {}}
         ]
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, similarity_threshold=0.82)
         await identifier.identify_speaker(
             samples=np.zeros(16000, dtype=np.float32),
@@ -458,9 +443,7 @@ class TestSpeakerIdentifier:
 
     async def test_diarize_disabled_returns_not_applied(self):
         mock_emb, mock_store = _make_mock_services()
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=False)
 
         result = await identifier.diarize_segments(
@@ -479,9 +462,7 @@ class TestSpeakerIdentifier:
             {"speaker_id": "spk-1", "score": 0.9, "point_id": "pt-1", "payload": {}}
         ]
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, min_segment_duration_s=0.5)
 
         # 3 seconds of audio
@@ -502,9 +483,7 @@ class TestSpeakerIdentifier:
 
     async def test_diarize_skips_short_segments(self):
         mock_emb, mock_store = _make_mock_services()
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, min_segment_duration_s=2.0)
 
         result = await identifier.diarize_segments(
@@ -533,9 +512,7 @@ class TestSpeakerIdentifier:
             ]
         )
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, min_segment_duration_s=0.5)
 
         result = await identifier.diarize_segments(
@@ -560,9 +537,7 @@ class TestSpeakerIdentifier:
         # All Qdrant searches return empty — would register new speakers
         mock_store.search_similar = AsyncMock(return_value=[])
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         # Limit to 1 speaker
         config = DiarizationConfig(
             enabled=True,
@@ -610,9 +585,7 @@ class TestSpeakerIdentifier:
 
         mock_emb.extract_batch = AsyncMock(side_effect=capture_extract_batch)
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, min_segment_duration_s=0.5)
 
         # Use distinguishable audio so we can verify correct slicing
@@ -653,9 +626,7 @@ class TestSpeakerIdentifier:
 
         mock_store.search_similar = AsyncMock(side_effect=search_side_effect)
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, min_segment_duration_s=0.5)
 
         result = await identifier.diarize_segments(
@@ -677,9 +648,7 @@ class TestSpeakerIdentifier:
     async def test_diarize_empty_segments_list(self):
         """Empty segment list should return applied=True with empty results."""
         mock_emb, mock_store = _make_mock_services()
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True)
 
         result = await identifier.diarize_segments(
@@ -698,9 +667,7 @@ class TestSpeakerIdentifier:
     async def test_diarize_all_segments_too_short_skips_batch(self):
         """When all segments are too short, extract_batch should not be called."""
         mock_emb, mock_store = _make_mock_services()
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, min_segment_duration_s=5.0)
 
         result = await identifier.diarize_segments(
@@ -723,9 +690,7 @@ class TestSpeakerIdentifier:
         mock_emb, mock_store = _make_mock_services()
         mock_store.search_similar = AsyncMock(return_value=[])
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(
             enabled=True,
             auto_register_speakers=True,
@@ -755,9 +720,7 @@ class TestSpeakerIdentifier:
         mock_emb, mock_store = _make_mock_services()
         mock_emb.extract_batch = AsyncMock(side_effect=RuntimeError("GPU OOM"))
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, min_segment_duration_s=0.5)
 
         result = await identifier.diarize_segments(
@@ -787,12 +750,13 @@ class TestSpeakerIdentifier:
             {"speaker_id": "spk-1", "score": 0.9, "point_id": "pt-1", "payload": {}}
         ]
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, min_segment_duration_s=0.5)
 
-        wt = [{"word": "hello", "start": 0.0, "end": 0.5}, {"word": "world", "start": 0.5, "end": 1.0}]
+        wt = [
+            {"word": "hello", "start": 0.0, "end": 0.5},
+            {"word": "world", "start": 0.5, "end": 1.0},
+        ]
         result = await identifier.diarize_segments(
             samples=np.zeros(48000, dtype=np.float32),
             sample_rate=16000,
@@ -812,9 +776,7 @@ class TestSpeakerIdentifier:
             {"speaker_id": "spk-1", "score": 0.9, "point_id": "pt-1", "payload": {}}
         ]
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, min_segment_duration_s=0.5)
 
         result = await identifier.diarize_segments(
@@ -835,9 +797,7 @@ class TestSpeakerIdentifier:
         """Segment with duration >= min_segment_duration_s but sample count < 1s
         should be skipped (the second guard in production code)."""
         mock_emb, mock_store = _make_mock_services()
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, min_segment_duration_s=0.5)
 
         # Audio is only 0.5 seconds long but segment claims 2s
@@ -870,14 +830,14 @@ class TestSpeakerIdentifier:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return [{"speaker_id": "spk-existing", "score": 0.92, "point_id": "pt-1", "payload": {}}]
+                return [
+                    {"speaker_id": "spk-existing", "score": 0.92, "point_id": "pt-1", "payload": {}}
+                ]
             return []  # No match — triggers new registration
 
         mock_store.search_similar = AsyncMock(side_effect=search_side_effect)
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(
             enabled=True,
             auto_register_speakers=True,
@@ -914,9 +874,7 @@ class TestSpeakerIdentifier:
         mock_emb, mock_store = _make_mock_services()
         mock_store.search_similar = AsyncMock(return_value=[])
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(
             enabled=True,
             auto_register_speakers=True,
@@ -955,9 +913,7 @@ class TestSpeakerIdentifier:
             {"speaker_id": "spk-1", "score": 0.9, "point_id": "pt-1", "payload": {}}
         ]
 
-        identifier = SpeakerIdentifier(
-            embedding_service=mock_emb, speaker_store=mock_store
-        )
+        identifier = SpeakerIdentifier(embedding_service=mock_emb, speaker_store=mock_store)
         config = DiarizationConfig(enabled=True, min_segment_duration_s=0.5)
 
         result = await identifier.diarize_segments(

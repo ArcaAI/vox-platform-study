@@ -59,10 +59,8 @@ def _get_db_url(sync: bool = False) -> str:
     test_url = os.environ.get("TEST_DATABASE_URL")
     if test_url:
         if sync:
-            return (
-                test_url
-                .replace("postgresql+asyncpg://", "postgresql://")
-                .replace("postgres+asyncpg://", "postgresql://")
+            return test_url.replace("postgresql+asyncpg://", "postgresql://").replace(
+                "postgres+asyncpg://", "postgresql://"
             )
         if "asyncpg" not in test_url:
             return test_url.replace("postgresql://", "postgresql+asyncpg://")
@@ -94,31 +92,17 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "integration: marks tests as integration tests (require external services)"
     )
-    config.addinivalue_line(
-        "markers", "e2e: marks tests as end-to-end tests (require full stack)"
-    )
-    config.addinivalue_line(
-        "markers", "slow: marks tests as slow (long running)"
-    )
+    config.addinivalue_line("markers", "e2e: marks tests as end-to-end tests (require full stack)")
+    config.addinivalue_line("markers", "slow: marks tests as slow (long running)")
     # Platform-specific markers
-    config.addinivalue_line(
-        "markers", "cpu: marks tests that run on CPU only"
-    )
-    config.addinivalue_line(
-        "markers", "gpu: marks tests that require any GPU (CUDA or MPS)"
-    )
-    config.addinivalue_line(
-        "markers", "cuda: marks tests that require NVIDIA CUDA GPU"
-    )
-    config.addinivalue_line(
-        "markers", "mps: marks tests that require Apple Silicon MPS"
-    )
+    config.addinivalue_line("markers", "cpu: marks tests that run on CPU only")
+    config.addinivalue_line("markers", "gpu: marks tests that require any GPU (CUDA or MPS)")
+    config.addinivalue_line("markers", "cuda: marks tests that require NVIDIA CUDA GPU")
+    config.addinivalue_line("markers", "mps: marks tests that require Apple Silicon MPS")
     config.addinivalue_line(
         "markers", "apple_silicon: marks tests specific to Apple Silicon platform"
     )
-    config.addinivalue_line(
-        "markers", "ml: marks tests that require ML dependencies (torch, etc.)"
-    )
+    config.addinivalue_line("markers", "ml: marks tests that require ML dependencies (torch, etc.)")
 
 
 @pytest.fixture(scope="session")
@@ -141,11 +125,13 @@ def is_ci_environment() -> bool:
 
 def has_test_services_env() -> bool:
     """Check if test service env vars are set."""
-    return all([
-        os.environ.get("TEST_DATABASE_URL"),
-        os.environ.get("TEST_REDIS_URL"),
-        os.environ.get("TEST_MINIO_ENDPOINT"),
-    ])
+    return all(
+        [
+            os.environ.get("TEST_DATABASE_URL"),
+            os.environ.get("TEST_REDIS_URL"),
+            os.environ.get("TEST_MINIO_ENDPOINT"),
+        ]
+    )
 
 
 # =============================================================================
@@ -157,6 +143,7 @@ def _get_platform_type() -> str:
     """Get current platform type (cpu, cuda, mps)."""
     try:
         from stt_v2.core.platform import detect_platform
+
         return detect_platform().value
     except ImportError:
         return "cpu"
@@ -243,12 +230,8 @@ def pytest_collection_modifyitems(config, items):
     skip_cuda = pytest.mark.skip(
         reason=f"CUDA tests skipped (detected platform: {current_platform})"
     )
-    skip_mps = pytest.mark.skip(
-        reason=f"MPS tests skipped (detected platform: {current_platform})"
-    )
-    skip_gpu = pytest.mark.skip(
-        reason=f"GPU tests skipped (detected platform: {current_platform})"
-    )
+    skip_mps = pytest.mark.skip(reason=f"MPS tests skipped (detected platform: {current_platform})")
+    skip_gpu = pytest.mark.skip(reason=f"GPU tests skipped (detected platform: {current_platform})")
     skip_ml = pytest.mark.skip(
         reason=f"ML tests skipped (detected platform: {current_platform}, no accelerator)"
     )
@@ -305,6 +288,7 @@ def platform_info():
     """Get detailed platform information."""
     try:
         from stt_v2.core.platform import get_platform_info
+
         return get_platform_info()
     except ImportError:
         return None
@@ -366,19 +350,19 @@ def sample_audio_bytes():
     samples = (np.sin(2 * np.pi * frequency * t) * 0.5 * 32767).astype(np.int16)
 
     wav_buffer = io.BytesIO()
-    wav_buffer.write(b'RIFF')
-    wav_buffer.write(struct.pack('<I', 36 + len(samples) * 2))
-    wav_buffer.write(b'WAVE')
-    wav_buffer.write(b'fmt ')
-    wav_buffer.write(struct.pack('<I', 16))
-    wav_buffer.write(struct.pack('<H', 1))
-    wav_buffer.write(struct.pack('<H', 1))
-    wav_buffer.write(struct.pack('<I', sample_rate))
-    wav_buffer.write(struct.pack('<I', sample_rate * 2))
-    wav_buffer.write(struct.pack('<H', 2))
-    wav_buffer.write(struct.pack('<H', 16))
-    wav_buffer.write(b'data')
-    wav_buffer.write(struct.pack('<I', len(samples) * 2))
+    wav_buffer.write(b"RIFF")
+    wav_buffer.write(struct.pack("<I", 36 + len(samples) * 2))
+    wav_buffer.write(b"WAVE")
+    wav_buffer.write(b"fmt ")
+    wav_buffer.write(struct.pack("<I", 16))
+    wav_buffer.write(struct.pack("<H", 1))
+    wav_buffer.write(struct.pack("<H", 1))
+    wav_buffer.write(struct.pack("<I", sample_rate))
+    wav_buffer.write(struct.pack("<I", sample_rate * 2))
+    wav_buffer.write(struct.pack("<H", 2))
+    wav_buffer.write(struct.pack("<H", 16))
+    wav_buffer.write(b"data")
+    wav_buffer.write(struct.pack("<I", len(samples) * 2))
     wav_buffer.write(samples.tobytes())
 
     return wav_buffer.getvalue()

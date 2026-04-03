@@ -52,7 +52,8 @@ ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app/src" \
     SMR_V2_OTEL_SERVICE_NAME=smr-v2 \
     SMR_V2_OTEL_SERVICE_NAMESPACE=hope \
     SMR_V2_OTEL_DEPLOYMENT_ENVIRONMENT=production \
-    SMR_V2_OTEL_INSECURE=true
+    SMR_V2_OTEL_INSECURE=true \
+    SMR_V2_OTEL_LOGS_ENABLED=true
 
 COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
 COPY --chown=hope:hope src/ /app/src/

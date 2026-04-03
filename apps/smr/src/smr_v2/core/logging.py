@@ -30,6 +30,20 @@ def _add_otel_context(
     return event_dict
 
 
+def _configure_uvicorn_logging() -> None:
+    """Tame uvicorn loggers to prevent duplicate and unstructured output.
+
+    - Disables the uvicorn access logger (our RequestLoggingMiddleware
+      already emits structured JSON for every request).
+    - Makes uvicorn.error propagate to root so startup/shutdown messages
+      are captured by the OTel LoggingHandler.
+    """
+    logging.getLogger("uvicorn.access").disabled = True
+    uv_error = logging.getLogger("uvicorn.error")
+    uv_error.handlers = []
+    uv_error.propagate = True
+
+
 def setup_logging(log_level: str = "info") -> None:
     """Configure structlog with JSON output for production."""
 
@@ -60,6 +74,8 @@ def setup_logging(log_level: str = "info") -> None:
         stream=sys.stdout,
         level=level,
     )
+
+    _configure_uvicorn_logging()
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:

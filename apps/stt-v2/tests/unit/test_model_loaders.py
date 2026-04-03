@@ -25,6 +25,7 @@ from stt_v2.pipeline.dto import (
 # Check if torch is available for tests that need it
 try:
     import torch  # noqa: F401
+
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
@@ -366,7 +367,9 @@ class TestONNXLoaderOptimumDetection:
         result = loader._should_use_optimum(local_onnx_config)
         assert result is True
 
-    def test_should_not_use_optimum_for_non_whisper_non_onnx_community(self, loader, local_onnx_config):
+    def test_should_not_use_optimum_for_non_whisper_non_onnx_community(
+        self, loader, local_onnx_config
+    ):
         """Test that non-Whisper, non-ONNX-community models don't use Optimum."""
         local_onnx_config.source_uri = "some-org/vad-model"
         result = loader._should_use_optimum(local_onnx_config)
@@ -491,9 +494,11 @@ class TestHuggingFaceLoaderLoad:
         mock_model.dtype = MagicMock()
         mock_processor = MagicMock()
 
-        with patch("stt_v2.models.huggingface_loader.get_settings") as mock_settings, \
-             patch.object(loader, "_load_by_task", new_callable=AsyncMock) as mock_load_task, \
-             patch.object(loader, "_estimate_model_memory", return_value=100):
+        with (
+            patch("stt_v2.models.huggingface_loader.get_settings") as mock_settings,
+            patch.object(loader, "_load_by_task", new_callable=AsyncMock) as mock_load_task,
+            patch.object(loader, "_estimate_model_memory", return_value=100),
+        ):
 
             mock_settings.return_value = MagicMock(
                 huggingface_cache_dir="/tmp/hf-cache",

@@ -142,6 +142,7 @@ class TestInitializeStreaming:
 
         mock_redis = AsyncMock()
         import stt_v2.streaming._runtime as rt
+
         rt._redis_client = mock_redis
 
         await shutdown_streaming()
@@ -480,7 +481,10 @@ class TestSessionMetadataMicrophoneId:
             microphone_id="mic-001",
         )
         # Simulate redis.asyncio returning bytes keys
-        d = {k.encode(): v.encode() if isinstance(v, str) else v for k, v in meta.to_redis_dict().items()}
+        d = {
+            k.encode(): v.encode() if isinstance(v, str) else v
+            for k, v in meta.to_redis_dict().items()
+        }
         restored = SessionMetadata.from_redis_dict(d)
         assert restored.microphone_id == "mic-001"
 
@@ -515,12 +519,14 @@ class TestInitializeStreamingEdgeCases:
         """If redis.asyncio import raises, streaming stays disabled."""
         monkeypatch.setenv("LOG_LEVEL", "INFO")
 
-        with patch.dict("sys.modules", {"redis.asyncio": None}), \
-             patch(
-                 "stt_v2.streaming._runtime.aioredis",
-                 side_effect=ImportError("No module named 'redis.asyncio'"),
-                 create=True,
-             ):
+        with (
+            patch.dict("sys.modules", {"redis.asyncio": None}),
+            patch(
+                "stt_v2.streaming._runtime.aioredis",
+                side_effect=ImportError("No module named 'redis.asyncio'"),
+                create=True,
+            ),
+        ):
             mock_redis = AsyncMock()
             mock_redis.ping = AsyncMock(side_effect=Exception("redis unavailable"))
             with patch("redis.asyncio.from_url", side_effect=ImportError("no redis"), create=True):
@@ -545,6 +551,7 @@ class TestShutdownStreamingEdgeCases:
         set_session_manager(mock_mgr)
 
         import stt_v2.streaming._runtime as rt
+
         rt._redis_client = AsyncMock()
 
         # Should not raise
@@ -560,6 +567,7 @@ class TestShutdownStreamingEdgeCases:
         mock_redis.aclose = AsyncMock(side_effect=RuntimeError("Close error"))
 
         import stt_v2.streaming._runtime as rt
+
         rt._redis_client = mock_redis
 
         await shutdown_streaming()
@@ -570,6 +578,7 @@ class TestShutdownStreamingEdgeCases:
     async def test_shutdown_clears_execution_profile(self):
         """shutdown should clear the execution profile."""
         from stt_v2.streaming._runtime import set_execution_profile
+
         mock_profile = MagicMock()
         set_execution_profile(mock_profile)
 
@@ -665,9 +674,7 @@ class TestApiSchemas:
     def test_create_request_defaults(self):
         from stt_v2.streaming.api.schemas import CreateStreamingSessionRequest
 
-        req = CreateStreamingSessionRequest(
-            session_id="s1", tenant_id="t1", pipeline_id="p1"
-        )
+        req = CreateStreamingSessionRequest(session_id="s1", tenant_id="t1", pipeline_id="p1")
         assert req.sample_rate == 16000
         assert req.consultation_id is None
         assert req.microphone_id is None

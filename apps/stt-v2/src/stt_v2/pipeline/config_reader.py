@@ -120,9 +120,7 @@ class PipelineConfigReader:
                 try:
                     configs.append(self._to_pipeline_config(pipeline))
                 except ValidationError as e:
-                    logger.warning(
-                        f"Skipping invalid pipeline {pipeline.id}: {e}"
-                    )
+                    logger.warning(f"Skipping invalid pipeline {pipeline.id}: {e}")
 
             return configs
 
@@ -279,9 +277,7 @@ class ModelRegistryReader:
 
             return [self._to_model_config(m) for m in models]
 
-    async def get_models_for_pipeline(
-        self, pipeline: PipelineConfig
-    ) -> dict[str, AiModelConfig]:
+    async def get_models_for_pipeline(self, pipeline: PipelineConfig) -> dict[str, AiModelConfig]:
         """
         Get all models required by a pipeline.
 

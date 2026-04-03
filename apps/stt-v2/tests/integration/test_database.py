@@ -42,7 +42,8 @@ class TestAsrPipelineRead:
         """Test inserting and reading pipeline."""
         now = datetime.now(UTC).replace(tzinfo=None)
 
-        await db_session.execute(text("""
+        await db_session.execute(
+            text("""
             INSERT INTO core."AsrPipeline" (
                 id, "tenantId", name, slug, "configYaml",
                 "resourceStatus", tags, "_version", "createdAt", "updatedAt"
@@ -54,12 +55,13 @@ models:
   asr: whisper',
                 'ENABLED', '{}', 1, :now, :now
             )
-        """), {"now": now})
+        """),
+            {"now": now},
+        )
         await db_session.commit()
 
         result = await db_session.execute(
-            text('SELECT id, name, slug FROM core."AsrPipeline" WHERE id = :id'),
-            {"id": "p-1"}
+            text('SELECT id, name, slug FROM core."AsrPipeline" WHERE id = :id'), {"id": "p-1"}
         )
         row = result.fetchone()
 
@@ -78,7 +80,8 @@ class TestAiModelRead:
         """Test inserting and reading AI model."""
         now = datetime.now(UTC).replace(tzinfo=None)
 
-        await db_session.execute(text("""
+        await db_session.execute(
+            text("""
             INSERT INTO core."AiModel" (
                 id, "tenantId", name, slug, category, "taskType", "modelType",
                 source, "sourceUri", format,
@@ -91,12 +94,14 @@ class TestAiModelRead:
                 'ENABLED', 'NOT_DOWNLOADED', '{}', 1,
                 :now, :now
             )
-        """), {"now": now})
+        """),
+            {"now": now},
+        )
         await db_session.commit()
 
         result = await db_session.execute(
             text('SELECT id, name, slug, source FROM core."AiModel" WHERE slug = :slug'),
-            {"slug": "whisper-large"}
+            {"slug": "whisper-large"},
         )
         row = result.fetchone()
 
