@@ -1327,16 +1327,20 @@ class BatchTranscriptionService:
         device = model.device
         model_dtype = getattr(asr_model, "dtype", torch.float32)
 
-        # Safety: fp16 / bf16 is not supported on CPU — force float32.
-        # This guards against models that were loaded with the wrong dtype
-        # (e.g. DB has computeType=float16 but the server is CPU-only).
+        # Safety: fp16 / bf16 causes crashes on CPU (dtype mismatch) and
+        # on MPS (out-of-range integral conversion in Whisper's generate()).
+        # Force float32 for stable autoregressive decoding on non-CUDA.
         # The cast is done IN-PLACE on the LoadedModel so subsequent
         # requests use the already-converted model (no repeated 6 GB copies).
-        if str(device) == "cpu" and model_dtype in (torch.float16, torch.bfloat16):
+        needs_fp32 = model_dtype in (torch.float16, torch.bfloat16) and str(
+            device
+        ) in ("cpu", "mps")
+        if needs_fp32:
             logger.warning(
-                "Model dtype %s is not supported on CPU — "
-                "casting model to float32 for safe inference.",
+                "Model dtype %s on %s is unsafe for generation — "
+                "casting model to float32 for stable inference.",
                 model_dtype,
+                device,
             )
             asr_model = asr_model.float()  # cast all parameters to float32
             model.model = asr_model  # persist in LoadedModel so cache is updated

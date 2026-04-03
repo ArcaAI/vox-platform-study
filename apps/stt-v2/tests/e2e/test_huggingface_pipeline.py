@@ -416,24 +416,28 @@ class TestDtypeCastingFix:
             assert loader._get_torch_dtype("auto") == torch.float32
 
     def test_cpu_float16_guard_in_batch_inference(self):
-        """``_run_transformers_inference`` must cast fp16 models to float32 on CPU.
+        """``_run_transformers_inference`` must cast fp16 models to float32 on non-CUDA.
 
         This is the defense-in-depth guard: even if a model was somehow loaded
-        in float16 on CPU (e.g. from a cached checkpoint), the inference path
-        must detect this and cast the model to float32 before running.
+        in float16 on CPU or MPS (e.g. from a cached checkpoint), the inference
+        path must detect this and cast the model to float32 before running.
+
+        CPU: float16 causes ``RuntimeError: Input type (float) and bias type
+        (c10::Half) should be the same``.
+
+        MPS: float16 causes ``out of range integral type conversion attempted``
+        during Whisper's autoregressive ``generate()`` call.
         """
         import inspect
 
         from stt_v2.transcription.batch_service import BatchTranscriptionService
 
         source = inspect.getsource(BatchTranscriptionService._run_transformers_inference)
-        # The guard checks for fp16 model on CPU and casts to float32
         assert (
             "asr_model.float()" in source or "asr_model = asr_model.float()" in source
-        ), "_run_transformers_inference must cast fp16 model to float32 on CPU"
-        assert 'str(device) == "cpu"' in source, (
-            "_run_transformers_inference must check if device is CPU "
-            "before applying the float16 safety guard"
+        ), "_run_transformers_inference must cast fp16 model to float32"
+        assert '"cpu"' in source and '"mps"' in source, (
+            "_run_transformers_inference must guard against fp16 on both CPU and MPS"
         )
 
 
