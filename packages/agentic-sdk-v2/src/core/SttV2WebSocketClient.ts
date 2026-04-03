@@ -454,6 +454,16 @@ export class SttV2WebSocketClient {
       isFinal,
     };
 
+    const englishText =
+      typeof msg.englishText === 'string'
+        ? msg.englishText
+        : typeof msg.english_text === 'string'
+          ? msg.english_text
+          : undefined;
+    if (englishText && englishText.trim().length > 0) {
+      normalized.englishText = englishText;
+    }
+
     const speakerId = typeof msg.speakerId === 'string' ? msg.speakerId : typeof msg.speaker_id === 'string' ? msg.speaker_id : undefined;
     if (speakerId && speakerId.trim().length > 0) {
       normalized.speakerId = speakerId;

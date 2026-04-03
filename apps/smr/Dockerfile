@@ -49,7 +49,10 @@ ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app/src" \
     LOG_LEVEL=info \
     SMR_V2_OTEL_ENABLED=false \
     SMR_V2_OTEL_EXPORTER_ENDPOINT=http://localhost:4317 \
-    SMR_V2_OTEL_SERVICE_NAME=smr-v2
+    SMR_V2_OTEL_SERVICE_NAME=smr-v2 \
+    SMR_V2_OTEL_SERVICE_NAMESPACE=hope \
+    SMR_V2_OTEL_DEPLOYMENT_ENVIRONMENT=production \
+    SMR_V2_OTEL_INSECURE=true
 
 COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
 COPY --chown=hope:hope src/ /app/src/

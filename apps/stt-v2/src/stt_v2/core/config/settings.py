@@ -403,6 +403,26 @@ class Settings(BaseSettings):
         ),
     )
 
+    # -------------------------------------------------------------------------
+    # Observability (OpenTelemetry + Prometheus)
+    # -------------------------------------------------------------------------
+    otel_enabled: bool = Field(
+        default=False,
+        description="Enable OpenTelemetry distributed tracing",
+    )
+    otel_exporter_endpoint: str = Field(
+        default="http://localhost:4317",
+        description="OTLP gRPC collector endpoint",
+    )
+    otel_service_name: str = Field(
+        default="stt-v2",
+        description="Service name in traces and metrics",
+    )
+    metrics_enabled: bool = Field(
+        default=True,
+        description="Enable Prometheus metrics on /metrics",
+    )
+
     # MLFlow (reserved — not yet implemented)
     mlflow_tracking_uri: str | None = Field(
         default=None,

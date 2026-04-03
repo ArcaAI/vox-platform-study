@@ -296,6 +296,8 @@ class StreamSession:
                 "end_time": round(r.end_time, 4),
                 "is_final": r.is_final,
             }
+            if r.english_text:
+                seg["english_text"] = r.english_text
             if r.speaker_id:
                 seg["speaker_id"] = r.speaker_id
                 seg["speaker_confidence"] = round(r.speaker_confidence, 4)
