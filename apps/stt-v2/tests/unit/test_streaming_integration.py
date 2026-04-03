@@ -257,9 +257,7 @@ class TestControlHandlerIntegration:
         finalize_cmd = SessionControl(action=ControlAction.FINALIZE)
         await control_handler(finalize_cmd)
 
-        mgr._flush_final_utterance.assert_awaited_once_with(
-            session=session, preprocessor=mock_pp
-        )
+        mgr._flush_final_utterance.assert_awaited_once_with(session=session, preprocessor=mock_pp)
         mgr._drain_inference_queue.assert_awaited_once_with("test-sess")
         mgr._finalize_session.assert_awaited_once_with(session)
 
@@ -287,9 +285,7 @@ class TestControlHandlerIntegration:
         finalize_cmd = SessionControl(action=ControlAction.FINALIZE)
         await control_handler(finalize_cmd)
 
-        mgr._flush_final_utterance.assert_awaited_once_with(
-            session=session, preprocessor=mock_pp
-        )
+        mgr._flush_final_utterance.assert_awaited_once_with(session=session, preprocessor=mock_pp)
         mgr._drain_inference_queue.assert_awaited_once_with("test-sess")
         mgr._finalize_session.assert_awaited_once_with(session)
 

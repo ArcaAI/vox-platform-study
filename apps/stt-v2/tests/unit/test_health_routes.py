@@ -98,13 +98,15 @@ class TestReadinessEndpoint:
             latency_ms=0.1,
         )
 
-        with patch("stt_v2.health.api.routes.get_db_session", mock_db_session_ctx), \
-             patch("stt_v2.health.api.routes.get_minio_client", return_value=mock_minio), \
-             patch(
-                 "stt_v2.health.api.routes._check_redis",
-                 new_callable=AsyncMock,
-                 return_value=redis_ok,
-             ):
+        with (
+            patch("stt_v2.health.api.routes.get_db_session", mock_db_session_ctx),
+            patch("stt_v2.health.api.routes.get_minio_client", return_value=mock_minio),
+            patch(
+                "stt_v2.health.api.routes._check_redis",
+                new_callable=AsyncMock,
+                return_value=redis_ok,
+            ),
+        ):
             resp = client.get("/api/v1/ready")
 
         assert resp.status_code == 200
@@ -112,8 +114,13 @@ class TestReadinessEndpoint:
         assert data["status"] == "healthy"
 
     def test_unhealthy_when_db_down(self, client):
-        with patch("stt_v2.health.api.routes.get_db_session", side_effect=RuntimeError("DB down")), \
-             patch("stt_v2.health.api.routes.get_minio_client", return_value=MagicMock(health_check=MagicMock(return_value=True))):
+        with (
+            patch("stt_v2.health.api.routes.get_db_session", side_effect=RuntimeError("DB down")),
+            patch(
+                "stt_v2.health.api.routes.get_minio_client",
+                return_value=MagicMock(health_check=MagicMock(return_value=True)),
+            ),
+        ):
             resp = client.get("/api/v1/ready")
 
         assert resp.status_code == 503
@@ -134,13 +141,20 @@ class TestReadinessEndpoint:
             latency_ms=0.1,
         )
 
-        with patch("stt_v2.health.api.routes.get_db_session", MagicMock(return_value=mock_db_session)), \
-             patch("stt_v2.health.api.routes.get_minio_client", return_value=MagicMock(health_check=MagicMock(return_value=True))), \
-             patch(
-                 "stt_v2.health.api.routes._check_redis",
-                 new_callable=AsyncMock,
-                 return_value=redis_ok,
-             ):
+        with (
+            patch(
+                "stt_v2.health.api.routes.get_db_session", MagicMock(return_value=mock_db_session)
+            ),
+            patch(
+                "stt_v2.health.api.routes.get_minio_client",
+                return_value=MagicMock(health_check=MagicMock(return_value=True)),
+            ),
+            patch(
+                "stt_v2.health.api.routes._check_redis",
+                new_callable=AsyncMock,
+                return_value=redis_ok,
+            ),
+        ):
             resp = client.get("/api/v1/ready")
 
         assert resp.status_code == 200
@@ -158,9 +172,12 @@ class TestCheckStreamingUnit:
     def test_manager_none_returns_degraded(self):
         from stt_v2.health.api.routes import _check_streaming
 
-        with patch.dict("sys.modules", {
-            "stt_v2.streaming._runtime": MagicMock(get_session_manager=lambda: None),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.streaming._runtime": MagicMock(get_session_manager=lambda: None),
+            },
+        ):
             result = _check_streaming()
 
         assert result["status"] == "degraded"
@@ -171,9 +188,12 @@ class TestCheckStreamingUnit:
 
         mgr = MagicMock()
 
-        with patch.dict("sys.modules", {
-            "stt_v2.streaming._runtime": MagicMock(get_session_manager=lambda: mgr),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.streaming._runtime": MagicMock(get_session_manager=lambda: mgr),
+            },
+        ):
             result = _check_streaming()
 
         assert result["status"] == "healthy"
@@ -182,11 +202,14 @@ class TestCheckStreamingUnit:
     def test_import_error_returns_degraded(self):
         from stt_v2.health.api.routes import _check_streaming
 
-        with patch.dict("sys.modules", {
-            "stt_v2.streaming._runtime": MagicMock(
-                get_session_manager=MagicMock(side_effect=ImportError("no streaming"))
-            ),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.streaming._runtime": MagicMock(
+                    get_session_manager=MagicMock(side_effect=ImportError("no streaming"))
+                ),
+            },
+        ):
             result = _check_streaming()
 
         assert result["status"] == "degraded"
@@ -195,11 +218,14 @@ class TestCheckStreamingUnit:
     def test_runtime_error_returns_degraded(self):
         from stt_v2.health.api.routes import _check_streaming
 
-        with patch.dict("sys.modules", {
-            "stt_v2.streaming._runtime": MagicMock(
-                get_session_manager=MagicMock(side_effect=RuntimeError("crash"))
-            ),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.streaming._runtime": MagicMock(
+                    get_session_manager=MagicMock(side_effect=RuntimeError("crash"))
+                ),
+            },
+        ):
             result = _check_streaming()
 
         assert result["status"] == "degraded"
@@ -233,7 +259,9 @@ class TestCheckDatabase:
     async def test_unhealthy_database(self):
         from stt_v2.health.api.routes import _check_database
 
-        with patch("stt_v2.health.api.routes.get_db_session", side_effect=RuntimeError("conn refused")):
+        with patch(
+            "stt_v2.health.api.routes.get_db_session", side_effect=RuntimeError("conn refused")
+        ):
             result = await _check_database()
 
         assert result.name == "database"
@@ -279,7 +307,9 @@ class TestCheckMinio:
     async def test_minio_exception(self):
         from stt_v2.health.api.routes import _check_minio
 
-        with patch("stt_v2.health.api.routes.get_minio_client", side_effect=RuntimeError("no minio")):
+        with patch(
+            "stt_v2.health.api.routes.get_minio_client", side_effect=RuntimeError("no minio")
+        ):
             result = await _check_minio()
 
         assert result.status.value == "unhealthy"

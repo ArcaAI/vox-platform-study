@@ -22,6 +22,7 @@ from stt_v2.transcription.workers.transcribe_file import (
 # Test Fixtures for Complete Response Structures
 # =============================================================================
 
+
 def create_complete_transcription_result(
     text: str = "Hello world",
     language: str = "en",
@@ -63,25 +64,33 @@ class TestTranscribeFileWorker:
             if "result" in kwargs:
                 completed_with_text = kwargs["result"].get("text")
 
-        with patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_batch_service") as mock_batch:
+        with (
+            patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api,
+            patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
+            patch(
+                "stt_v2.transcription.workers.transcribe_file.get_pipeline_reader"
+            ) as mock_reader,
+            patch("stt_v2.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
+        ):
 
             mock_api_client = AsyncMock()
             mock_api_client.start_job = AsyncMock()
             mock_api_client.update_job_progress = AsyncMock()
             mock_api_client.complete_job = AsyncMock(side_effect=track_completion)
-            mock_api_client.create_transcript = AsyncMock(return_value={
-                "id": "ctx-123",
-                "contextItemId": "ctx-123",
-                "type": "TRANSCRIPT",
-            })
+            mock_api_client.create_transcript = AsyncMock(
+                return_value={
+                    "id": "ctx-123",
+                    "contextItemId": "ctx-123",
+                    "type": "TRANSCRIPT",
+                }
+            )
             mock_api.return_value = mock_api_client
 
             mock_blob_service = AsyncMock()
             mock_blob_service.download_audio = AsyncMock(return_value=b"audio data")
-            mock_blob_service.upload_transcript = AsyncMock(return_value="s3://bucket/transcript.json")
+            mock_blob_service.upload_transcript = AsyncMock(
+                return_value="s3://bucket/transcript.json"
+            )
             mock_blob.return_value = mock_blob_service
 
             mock_pipeline_reader = AsyncMock()
@@ -120,9 +129,13 @@ class TestTranscribeFileWorker:
             captured_error_code = error_code
             captured_error_message = error_message
 
-        with patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader:
+        with (
+            patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api,
+            patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
+            patch(
+                "stt_v2.transcription.workers.transcribe_file.get_pipeline_reader"
+            ) as mock_reader,
+        ):
 
             mock_api_client = AsyncMock()
             mock_api_client.start_job = AsyncMock()
@@ -147,7 +160,9 @@ class TestTranscribeFileWorker:
 
             # Test actual error handling behavior
             assert captured_error_code is not None
-            assert "not found" in captured_error_message.lower() or "PIPELINE" in captured_error_code
+            assert (
+                "not found" in captured_error_message.lower() or "PIPELINE" in captured_error_code
+            )
 
     @pytest.mark.asyncio
     async def test_fail_job_sends_correct_error_details(self):
@@ -208,10 +223,14 @@ class TestTranscribeFileErrorHandling:
             nonlocal captured_error_code
             captured_error_code = error_code
 
-        with patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_batch_service") as mock_batch:
+        with (
+            patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api,
+            patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
+            patch(
+                "stt_v2.transcription.workers.transcribe_file.get_pipeline_reader"
+            ) as mock_reader,
+            patch("stt_v2.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
+        ):
 
             mock_api_client = AsyncMock()
             mock_api_client.start_job = AsyncMock()
@@ -251,9 +270,13 @@ class TestTranscribeFileErrorHandling:
             nonlocal captured_error_code
             captured_error_code = error_code
 
-        with patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader:
+        with (
+            patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api,
+            patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
+            patch(
+                "stt_v2.transcription.workers.transcribe_file.get_pipeline_reader"
+            ) as mock_reader,
+        ):
 
             mock_api_client = AsyncMock()
             mock_api_client.start_job = AsyncMock()
@@ -291,10 +314,14 @@ class TestTranscribeFileErrorHandling:
             context_item_created = True
             return {"id": "ctx-123"}
 
-        with patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_batch_service") as mock_batch:
+        with (
+            patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api,
+            patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
+            patch(
+                "stt_v2.transcription.workers.transcribe_file.get_pipeline_reader"
+            ) as mock_reader,
+            patch("stt_v2.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
+        ):
 
             mock_api_client = AsyncMock()
             mock_api_client.start_job = AsyncMock()
@@ -305,7 +332,9 @@ class TestTranscribeFileErrorHandling:
 
             mock_blob_service = AsyncMock()
             mock_blob_service.download_audio = AsyncMock(return_value=b"audio")
-            mock_blob_service.upload_transcript = AsyncMock(return_value="s3://bucket/transcript.json")
+            mock_blob_service.upload_transcript = AsyncMock(
+                return_value="s3://bucket/transcript.json"
+            )
             mock_blob.return_value = mock_blob_service
 
             mock_pipeline_reader = AsyncMock()
@@ -338,10 +367,14 @@ class TestTranscribeFileErrorHandling:
             nonlocal job_completed
             job_completed = True
 
-        with patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_batch_service") as mock_batch:
+        with (
+            patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api,
+            patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
+            patch(
+                "stt_v2.transcription.workers.transcribe_file.get_pipeline_reader"
+            ) as mock_reader,
+            patch("stt_v2.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
+        ):
 
             mock_api_client = AsyncMock()
             mock_api_client.start_job = AsyncMock()
@@ -355,7 +388,9 @@ class TestTranscribeFileErrorHandling:
 
             mock_blob_service = AsyncMock()
             mock_blob_service.download_audio = AsyncMock(return_value=b"audio")
-            mock_blob_service.upload_transcript = AsyncMock(return_value="s3://bucket/transcript.json")
+            mock_blob_service.upload_transcript = AsyncMock(
+                return_value="s3://bucket/transcript.json"
+            )
             mock_blob.return_value = mock_blob_service
 
             mock_pipeline_reader = AsyncMock()
@@ -412,12 +447,18 @@ class TestPipelineConfigUsedDirectly:
         pipeline_config: MagicMock,
     ) -> None:
         """Run _transcribe_file_async with all external deps mocked."""
-        with patch("stt_v2.transcription.workers.transcribe_file.get_settings") as mock_settings, \
-             patch("stt_v2.transcription.workers.transcribe_file.TranscriptionEventPublisher") as mock_pub_cls, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader, \
-             patch("stt_v2.transcription.workers.transcribe_file.get_batch_service") as mock_batch:
+        with (
+            patch("stt_v2.transcription.workers.transcribe_file.get_settings") as mock_settings,
+            patch(
+                "stt_v2.transcription.workers.transcribe_file.TranscriptionEventPublisher"
+            ) as mock_pub_cls,
+            patch("stt_v2.transcription.workers.transcribe_file.get_api_client") as mock_api,
+            patch("stt_v2.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
+            patch(
+                "stt_v2.transcription.workers.transcribe_file.get_pipeline_reader"
+            ) as mock_reader,
+            patch("stt_v2.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
+        ):
 
             mock_settings.return_value = MagicMock()
 
@@ -435,11 +476,13 @@ class TestPipelineConfigUsedDirectly:
             mock_api_client.start_job = AsyncMock()
             mock_api_client.update_job_progress = AsyncMock()
             mock_api_client.complete_job = AsyncMock()
-            mock_api_client.create_transcript = AsyncMock(return_value={
-                "id": "ctx-123",
-                "contextItemId": "ctx-123",
-                "type": "TRANSCRIPT",
-            })
+            mock_api_client.create_transcript = AsyncMock(
+                return_value={
+                    "id": "ctx-123",
+                    "contextItemId": "ctx-123",
+                    "type": "TRANSCRIPT",
+                }
+            )
             mock_api.return_value = mock_api_client
 
             mock_blob_service = AsyncMock()

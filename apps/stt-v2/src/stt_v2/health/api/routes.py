@@ -371,14 +371,16 @@ async def get_loaded_pipelines() -> dict:
             required_slugs = set(pipeline.get_required_model_slugs())
             is_ready = required_slugs.issubset(cached_slugs)
 
-            ready_pipelines.append({
-                "id": pipeline.id,
-                "slug": pipeline.slug,
-                "name": pipeline.name,
-                "required_models": list(required_slugs),
-                "is_ready": is_ready,
-                "missing_models": list(required_slugs - cached_slugs),
-            })
+            ready_pipelines.append(
+                {
+                    "id": pipeline.id,
+                    "slug": pipeline.slug,
+                    "name": pipeline.name,
+                    "required_models": list(required_slugs),
+                    "is_ready": is_ready,
+                    "missing_models": list(required_slugs - cached_slugs),
+                }
+            )
 
         return {
             "total_pipelines": len(pipelines),

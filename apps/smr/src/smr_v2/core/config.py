@@ -140,6 +140,7 @@ class Settings(BaseSettings):
     otel_service_namespace: str = "hope"
     otel_deployment_environment: str = "production"
     otel_insecure: bool = True
+    otel_logs_enabled: bool = True
     metrics_enabled: bool = True
 
     # Sub-configs (loaded from their own env prefixes)

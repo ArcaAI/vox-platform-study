@@ -261,9 +261,7 @@ class TestCreateStreamingSessionNotInitializedE2E:
     async def test_create_session_503_when_not_initialized(self, configured_app):
         """Creating a session when streaming not initialized returns 503."""
         payload = _build_create_payload()
-        response = await configured_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        response = await configured_app.post("/internal/streaming/sessions", json=payload)
         assert response.status_code == 503
         detail = response.json()["detail"]
         assert "not initialized" in detail.lower()
@@ -271,9 +269,7 @@ class TestCreateStreamingSessionNotInitializedE2E:
     async def test_create_session_503_body_is_json(self, configured_app):
         """The 503 error body should be valid JSON with a 'detail' key."""
         payload = _build_create_payload()
-        response = await configured_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        response = await configured_app.post("/internal/streaming/sessions", json=payload)
         assert response.status_code == 503
         body = response.json()
         assert "detail" in body
@@ -285,9 +281,7 @@ class TestCreateStreamingSessionNotInitializedE2E:
         422 is returned by FastAPI's request validation *before* the route
         handler runs, so streaming initialization state is irrelevant.
         """
-        response = await configured_app.post(
-            "/internal/streaming/sessions", json={}
-        )
+        response = await configured_app.post("/internal/streaming/sessions", json={})
         assert response.status_code == 422
 
     async def test_create_session_missing_session_id_returns_422(self, configured_app):
@@ -296,9 +290,7 @@ class TestCreateStreamingSessionNotInitializedE2E:
             "tenant_id": "t-test",
             "pipeline_id": str(uuid.uuid4()),
         }
-        response = await configured_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        response = await configured_app.post("/internal/streaming/sessions", json=payload)
         assert response.status_code == 422
         errors = response.json()["detail"]
         field_names = [e["loc"][-1] for e in errors]
@@ -310,9 +302,7 @@ class TestCreateStreamingSessionNotInitializedE2E:
             "session_id": _random_session_id(),
             "pipeline_id": str(uuid.uuid4()),
         }
-        response = await configured_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        response = await configured_app.post("/internal/streaming/sessions", json=payload)
         assert response.status_code == 422
         errors = response.json()["detail"]
         field_names = [e["loc"][-1] for e in errors]
@@ -324,9 +314,7 @@ class TestCreateStreamingSessionNotInitializedE2E:
             "session_id": _random_session_id(),
             "tenant_id": "t-test",
         }
-        response = await configured_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        response = await configured_app.post("/internal/streaming/sessions", json=payload)
         assert response.status_code == 422
         errors = response.json()["detail"]
         field_names = [e["loc"][-1] for e in errors]
@@ -349,9 +337,7 @@ class TestCreateStreamingSessionNotInitializedE2E:
             "pipeline_id": str(uuid.uuid4()),
             "sample_rate": "not-a-number",
         }
-        response = await configured_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        response = await configured_app.post("/internal/streaming/sessions", json=payload)
         assert response.status_code == 422
 
     async def test_create_session_extra_unknown_fields_accepted(self, configured_app):
@@ -362,9 +348,7 @@ class TestCreateStreamingSessionNotInitializedE2E:
         """
         payload = _build_create_payload()
         payload["unknown_future_field"] = "some_value"
-        response = await configured_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        response = await configured_app.post("/internal/streaming/sessions", json=payload)
         # Should still reach the handler (503, not 422)
         assert response.status_code == 503
 
@@ -381,18 +365,14 @@ class TestGetStreamingSessionNotInitializedE2E:
     async def test_get_session_503_when_not_initialized(self, configured_app):
         """Getting a session when streaming not initialized returns 503."""
         fake_id = _random_session_id()
-        response = await configured_app.get(
-            f"/internal/streaming/sessions/{fake_id}"
-        )
+        response = await configured_app.get(f"/internal/streaming/sessions/{fake_id}")
         assert response.status_code == 503
         assert "not initialized" in response.json()["detail"].lower()
 
     async def test_get_session_503_body_structure(self, configured_app):
         """503 response should have a ``detail`` key with a string value."""
         fake_id = _random_session_id()
-        response = await configured_app.get(
-            f"/internal/streaming/sessions/{fake_id}"
-        )
+        response = await configured_app.get(f"/internal/streaming/sessions/{fake_id}")
         assert response.status_code == 503
         body = response.json()
         assert "detail" in body
@@ -401,18 +381,14 @@ class TestGetStreamingSessionNotInitializedE2E:
     async def test_get_session_returns_json_content_type(self, configured_app):
         """Even 503 responses should have JSON content-type."""
         fake_id = _random_session_id()
-        response = await configured_app.get(
-            f"/internal/streaming/sessions/{fake_id}"
-        )
+        response = await configured_app.get(f"/internal/streaming/sessions/{fake_id}")
         assert "application/json" in response.headers.get("content-type", "")
 
     async def test_get_session_with_random_uuid(self, configured_app):
         """Even with a valid UUID format, returns 503 when not initialized."""
         for _ in range(3):
             fake_id = _random_session_id()
-            response = await configured_app.get(
-                f"/internal/streaming/sessions/{fake_id}"
-            )
+            response = await configured_app.get(f"/internal/streaming/sessions/{fake_id}")
             assert response.status_code == 503
 
     async def test_get_session_special_chars_in_id(self, configured_app):
@@ -429,13 +405,13 @@ class TestGetStreamingSessionNotInitializedE2E:
         for sid in weird_ids:
             if not sid:
                 continue  # skip empty — path doesn't match
-            response = await configured_app.get(
-                f"/internal/streaming/sessions/{sid}"
-            )
+            response = await configured_app.get(f"/internal/streaming/sessions/{sid}")
             # Should be 503 (not initialized) — never 500
-            assert response.status_code in (503, 404, 422), (
-                f"Unexpected {response.status_code} for session_id={sid!r}"
-            )
+            assert response.status_code in (
+                503,
+                404,
+                422,
+            ), f"Unexpected {response.status_code} for session_id={sid!r}"
 
 
 # =========================================================================
@@ -450,18 +426,14 @@ class TestDeleteStreamingSessionNotInitializedE2E:
     async def test_delete_session_503_when_not_initialized(self, configured_app):
         """Deleting a session when streaming not initialized returns 503."""
         fake_id = _random_session_id()
-        response = await configured_app.delete(
-            f"/internal/streaming/sessions/{fake_id}"
-        )
+        response = await configured_app.delete(f"/internal/streaming/sessions/{fake_id}")
         assert response.status_code == 503
         assert "not initialized" in response.json()["detail"].lower()
 
     async def test_delete_session_503_body_structure(self, configured_app):
         """503 response should have a ``detail`` key."""
         fake_id = _random_session_id()
-        response = await configured_app.delete(
-            f"/internal/streaming/sessions/{fake_id}"
-        )
+        response = await configured_app.delete(f"/internal/streaming/sessions/{fake_id}")
         assert response.status_code == 503
         body = response.json()
         assert "detail" in body
@@ -470,9 +442,7 @@ class TestDeleteStreamingSessionNotInitializedE2E:
         """Multiple deletes should all return 503 consistently."""
         for _ in range(3):
             fake_id = _random_session_id()
-            response = await configured_app.delete(
-                f"/internal/streaming/sessions/{fake_id}"
-            )
+            response = await configured_app.delete(f"/internal/streaming/sessions/{fake_id}")
             assert response.status_code == 503
 
     async def test_delete_wrong_method_put_returns_405(self, configured_app):
@@ -496,9 +466,7 @@ class TestStreamingAvailabilityInitializedE2E:
 
     async def test_availability_shows_ready(self, streaming_initialized_app):
         """When streaming is initialized, status should be 'ready'."""
-        response = await streaming_initialized_app.get(
-            "/internal/streaming/availability"
-        )
+        response = await streaming_initialized_app.get("/internal/streaming/availability")
         assert response.status_code == 200
         data = response.json()
         assert data["available"] is True
@@ -509,9 +477,7 @@ class TestStreamingAvailabilityInitializedE2E:
 
     async def test_availability_schema_when_initialized(self, streaming_initialized_app):
         """Validate full schema with Pydantic when initialized."""
-        response = await streaming_initialized_app.get(
-            "/internal/streaming/availability"
-        )
+        response = await streaming_initialized_app.get("/internal/streaming/availability")
         data = response.json()
         parsed = StreamingAvailabilityResponse.model_validate(data)
         assert parsed.available is True
@@ -583,14 +549,10 @@ class TestCreateStreamingSessionInitializedE2E:
         session_id = _random_session_id()
         payload = _build_create_payload(session_id=session_id)
 
-        resp1 = await streaming_initialized_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        resp1 = await streaming_initialized_app.post("/internal/streaming/sessions", json=payload)
         assert resp1.status_code == 201
 
-        resp2 = await streaming_initialized_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        resp2 = await streaming_initialized_app.post("/internal/streaming/sessions", json=payload)
         assert resp2.status_code == 201
         assert resp2.json()["session_id"] == session_id
 
@@ -617,9 +579,7 @@ class TestGetStreamingSessionInitializedE2E:
         )
         assert create_resp.status_code == 201
 
-        response = await streaming_initialized_app.get(
-            f"/internal/streaming/sessions/{session_id}"
-        )
+        response = await streaming_initialized_app.get(f"/internal/streaming/sessions/{session_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["session_id"] == session_id
@@ -628,9 +588,7 @@ class TestGetStreamingSessionInitializedE2E:
     async def test_get_nonexistent_session_returns_404(self, streaming_initialized_app):
         """Getting a non-existent session returns 404 with descriptive detail."""
         fake_id = _random_session_id()
-        response = await streaming_initialized_app.get(
-            f"/internal/streaming/sessions/{fake_id}"
-        )
+        response = await streaming_initialized_app.get(f"/internal/streaming/sessions/{fake_id}")
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
@@ -638,13 +596,9 @@ class TestGetStreamingSessionInitializedE2E:
         """Validate response schema with Pydantic for existing session."""
         session_id = _random_session_id()
         payload = _build_create_payload(session_id=session_id)
-        await streaming_initialized_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        await streaming_initialized_app.post("/internal/streaming/sessions", json=payload)
 
-        response = await streaming_initialized_app.get(
-            f"/internal/streaming/sessions/{session_id}"
-        )
+        response = await streaming_initialized_app.get(f"/internal/streaming/sessions/{session_id}")
         assert response.status_code == 200
         parsed = StreamingSessionResponse.model_validate(response.json())
         assert parsed.session_id == session_id
@@ -657,29 +611,19 @@ class TestGetStreamingSessionInitializedE2E:
         """GET response should have JSON content-type."""
         session_id = _random_session_id()
         payload = _build_create_payload(session_id=session_id)
-        await streaming_initialized_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        await streaming_initialized_app.post("/internal/streaming/sessions", json=payload)
 
-        response = await streaming_initialized_app.get(
-            f"/internal/streaming/sessions/{session_id}"
-        )
+        response = await streaming_initialized_app.get(f"/internal/streaming/sessions/{session_id}")
         assert "application/json" in response.headers.get("content-type", "")
 
     async def test_get_deleted_session_returns_404(self, streaming_initialized_app):
         """After deleting a session, GET should return 404."""
         session_id = _random_session_id()
         payload = _build_create_payload(session_id=session_id)
-        await streaming_initialized_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
-        await streaming_initialized_app.delete(
-            f"/internal/streaming/sessions/{session_id}"
-        )
+        await streaming_initialized_app.post("/internal/streaming/sessions", json=payload)
+        await streaming_initialized_app.delete(f"/internal/streaming/sessions/{session_id}")
 
-        response = await streaming_initialized_app.get(
-            f"/internal/streaming/sessions/{session_id}"
-        )
+        response = await streaming_initialized_app.get(f"/internal/streaming/sessions/{session_id}")
         assert response.status_code == 404
 
 
@@ -691,9 +635,7 @@ class TestDeleteStreamingSessionInitializedE2E:
         """Deleting an existing session returns 204 with no body."""
         session_id = _random_session_id()
         payload = _build_create_payload(session_id=session_id)
-        await streaming_initialized_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        await streaming_initialized_app.post("/internal/streaming/sessions", json=payload)
 
         response = await streaming_initialized_app.delete(
             f"/internal/streaming/sessions/{session_id}"
@@ -704,9 +646,7 @@ class TestDeleteStreamingSessionInitializedE2E:
     async def test_delete_nonexistent_session_is_idempotent(self, streaming_initialized_app):
         """Deleting a non-existent session returns 204 (idempotent DELETE)."""
         fake_id = _random_session_id()
-        response = await streaming_initialized_app.delete(
-            f"/internal/streaming/sessions/{fake_id}"
-        )
+        response = await streaming_initialized_app.delete(f"/internal/streaming/sessions/{fake_id}")
         assert response.status_code == 204
         assert response.content == b""
 
@@ -714,18 +654,12 @@ class TestDeleteStreamingSessionInitializedE2E:
         """Deleting the same session twice returns 204 both times (idempotent)."""
         session_id = _random_session_id()
         payload = _build_create_payload(session_id=session_id)
-        await streaming_initialized_app.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        await streaming_initialized_app.post("/internal/streaming/sessions", json=payload)
 
-        resp1 = await streaming_initialized_app.delete(
-            f"/internal/streaming/sessions/{session_id}"
-        )
+        resp1 = await streaming_initialized_app.delete(f"/internal/streaming/sessions/{session_id}")
         assert resp1.status_code == 204
 
-        resp2 = await streaming_initialized_app.delete(
-            f"/internal/streaming/sessions/{session_id}"
-        )
+        resp2 = await streaming_initialized_app.delete(f"/internal/streaming/sessions/{session_id}")
         assert resp2.status_code == 204
         assert resp2.content == b""
 
@@ -741,9 +675,7 @@ class TestStreamingSessionFullLifecycleE2E:
 
         # 1. Create
         payload = _build_create_payload(session_id=session_id)
-        create_resp = await client.post(
-            "/internal/streaming/sessions", json=payload
-        )
+        create_resp = await client.post("/internal/streaming/sessions", json=payload)
         assert create_resp.status_code == 201
         create_data = create_resp.json()
         assert create_data["session_id"] == session_id
@@ -753,9 +685,7 @@ class TestStreamingSessionFullLifecycleE2E:
         assert create_data["current_active"] >= 1
 
         # 2. Get — session should be active
-        get_resp = await client.get(
-            f"/internal/streaming/sessions/{session_id}"
-        )
+        get_resp = await client.get(f"/internal/streaming/sessions/{session_id}")
         assert get_resp.status_code == 200
         get_data = get_resp.json()
         assert get_data["session_id"] == session_id
@@ -770,16 +700,12 @@ class TestStreamingSessionFullLifecycleE2E:
         assert avail_data["available_slots"] >= 1
 
         # 4. Delete
-        del_resp = await client.delete(
-            f"/internal/streaming/sessions/{session_id}"
-        )
+        del_resp = await client.delete(f"/internal/streaming/sessions/{session_id}")
         assert del_resp.status_code == 204
         assert del_resp.content == b""
 
         # 5. Verify deleted — should be 404
-        get_after = await client.get(
-            f"/internal/streaming/sessions/{session_id}"
-        )
+        get_after = await client.get(f"/internal/streaming/sessions/{session_id}")
         assert get_after.status_code == 404
 
     async def test_multiple_sessions_lifecycle(self, streaming_initialized_app):
@@ -791,9 +717,7 @@ class TestStreamingSessionFullLifecycleE2E:
         # Create 3 sessions
         for sid in session_ids:
             payload = _build_create_payload(session_id=sid)
-            resp = await client.post(
-                "/internal/streaming/sessions", json=payload
-            )
+            resp = await client.post("/internal/streaming/sessions", json=payload)
             assert resp.status_code == 201
 
         # Verify availability reflects 3 active

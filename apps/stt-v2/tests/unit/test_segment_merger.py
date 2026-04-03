@@ -3,7 +3,6 @@
 TASK-017: Per-Segment Inference Optimization
 """
 
-
 from stt_v2.transcription.dto import AudioSegment
 from stt_v2.transcription.segment_merger import merge_vad_segments
 
@@ -45,7 +44,9 @@ class TestMergeVadSegments:
             AudioSegment(start_time=4.0, end_time=5.0),
         ]
         result = merge_vad_segments(
-            segs, max_duration_s=15.0, gap_threshold_s=1.0,
+            segs,
+            max_duration_s=15.0,
+            gap_threshold_s=1.0,
         )
         assert len(result) == 1
         assert result[0].start_time == 1.0
@@ -58,7 +59,9 @@ class TestMergeVadSegments:
             AudioSegment(start_time=10.0, end_time=11.0),
         ]
         result = merge_vad_segments(
-            segs, max_duration_s=15.0, gap_threshold_s=2.0,
+            segs,
+            max_duration_s=15.0,
+            gap_threshold_s=2.0,
         )
         assert len(result) == 2
         assert result[0].start_time == 1.0
@@ -71,7 +74,9 @@ class TestMergeVadSegments:
             AudioSegment(start_time=8.5, end_time=16.0),
         ]
         result = merge_vad_segments(
-            segs, max_duration_s=10.0, gap_threshold_s=1.0,
+            segs,
+            max_duration_s=10.0,
+            gap_threshold_s=1.0,
         )
         assert len(result) == 2
 
@@ -82,7 +87,9 @@ class TestMergeVadSegments:
             AudioSegment(start_time=6.0, end_time=10.0),  # total span = 10s
         ]
         result = merge_vad_segments(
-            segs, max_duration_s=10.0, gap_threshold_s=2.0,
+            segs,
+            max_duration_s=10.0,
+            gap_threshold_s=2.0,
         )
         assert len(result) == 1
         assert result[0].end_time == 10.0
@@ -98,7 +105,9 @@ class TestMergeVadSegments:
             AudioSegment(start_time=4.0, end_time=5.0, confidence=0.90),
         ]
         result = merge_vad_segments(
-            segs, max_duration_s=15.0, gap_threshold_s=2.0,
+            segs,
+            max_duration_s=15.0,
+            gap_threshold_s=2.0,
         )
         assert len(result) == 1
         assert result[0].confidence == 0.80
@@ -115,7 +124,9 @@ class TestMergeVadSegments:
             AudioSegment(start_time=4.0, end_time=5.0, is_speech=True),
         ]
         result = merge_vad_segments(
-            segs, max_duration_s=15.0, gap_threshold_s=3.0,
+            segs,
+            max_duration_s=15.0,
+            gap_threshold_s=3.0,
         )
         # Gap between speech segments is 4.0 - 2.0 = 2.0, within threshold
         assert len(result) == 1
@@ -135,7 +146,9 @@ class TestMergeVadSegments:
             AudioSegment(start_time=2.5, end_time=3.5),
         ]
         result = merge_vad_segments(
-            segs, max_duration_s=15.0, gap_threshold_s=2.0,
+            segs,
+            max_duration_s=15.0,
+            gap_threshold_s=2.0,
         )
         assert len(result) == 1
         assert result[0].start_time == 1.0
@@ -152,7 +165,9 @@ class TestMergeVadSegments:
             AudioSegment(start_time=2.5, end_time=3.5),
         ]
         result = merge_vad_segments(
-            segs, max_duration_s=15.0, gap_threshold_s=0,
+            segs,
+            max_duration_s=15.0,
+            gap_threshold_s=0,
         )
         assert len(result) == 2
 
@@ -198,7 +213,9 @@ class TestMergeVadSegments:
         ]
 
         result = merge_vad_segments(
-            segs, max_duration_s=15.0, gap_threshold_s=2.0,
+            segs,
+            max_duration_s=15.0,
+            gap_threshold_s=2.0,
         )
 
         # Should be dramatically fewer than 28
@@ -215,8 +232,7 @@ class TestMergeVadSegments:
         # No merged segment exceeds max_duration_s
         for s in result:
             assert s.duration <= 15.0 + 0.001, (
-                f"Segment {s.start_time}–{s.end_time} "
-                f"duration {s.duration:.3f}s exceeds 15s"
+                f"Segment {s.start_time}–{s.end_time} " f"duration {s.duration:.3f}s exceeds 15s"
             )
 
     def test_real_world_segments_with_tighter_gap(self):
@@ -228,7 +244,9 @@ class TestMergeVadSegments:
             AudioSegment(start_time=9.570, end_time=10.206),
         ]
         result = merge_vad_segments(
-            segs, max_duration_s=15.0, gap_threshold_s=1.0,
+            segs,
+            max_duration_s=15.0,
+            gap_threshold_s=1.0,
         )
         # First segment stands alone (gap to second is 3.04s > 1.0)
         assert result[0].start_time == 3.362
