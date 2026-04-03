@@ -62,9 +62,12 @@ class TestHealthEndpointE2E:
         data = response.json()
 
         # Exactly these keys — nothing more, nothing less
-        assert set(data.keys()) == {"status", "service", "version", "timestamp"}, (
-            f"Unexpected keys in /health response: {set(data.keys())}"
-        )
+        assert set(data.keys()) == {
+            "status",
+            "service",
+            "version",
+            "timestamp",
+        }, f"Unexpected keys in /health response: {set(data.keys())}"
 
         # status
         assert data["status"] == "ok"
@@ -80,9 +83,7 @@ class TestHealthEndpointE2E:
         # timestamp — valid ISO-8601, must be within the last 30 seconds
         ts = datetime.fromisoformat(data["timestamp"])
         age_seconds = (datetime.utcnow() - ts).total_seconds()
-        assert 0 <= age_seconds < 30, (
-            f"Timestamp is {age_seconds:.1f}s old — expected < 30s"
-        )
+        assert 0 <= age_seconds < 30, f"Timestamp is {age_seconds:.1f}s old — expected < 30s"
 
     async def test_health_response_time_under_threshold(self, configured_app):
         """Health endpoint should respond in < 500 ms."""
@@ -108,9 +109,7 @@ class TestHealthEndpointE2E:
 
     async def test_health_concurrent_requests(self, configured_app):
         """Multiple concurrent /health requests must all succeed."""
-        responses = await asyncio.gather(
-            *[configured_app.get("/api/v1/health") for _ in range(10)]
-        )
+        responses = await asyncio.gather(*[configured_app.get("/api/v1/health") for _ in range(10)])
         for resp in responses:
             assert resp.status_code == 200
             assert resp.json()["status"] == "ok"
@@ -132,9 +131,7 @@ class TestLivenessEndpointE2E:
 
         data = response.json()
         # Exact match — catches accidental field leaks
-        assert data == {"status": "ok"}, (
-            f"Liveness response has unexpected data: {data}"
-        )
+        assert data == {"status": "ok"}, f"Liveness response has unexpected data: {data}"
 
     async def test_live_response_time_under_100ms(self, configured_app):
         """Liveness should be the fastest endpoint (< 100 ms)."""
@@ -188,9 +185,9 @@ class TestReadinessEndpointE2E:
 
         assert "uptime_seconds" in data
         assert isinstance(data["uptime_seconds"], (int, float))
-        assert 0 <= data["uptime_seconds"] < 86400, (
-            f"uptime_seconds={data['uptime_seconds']} seems unreasonable for a test"
-        )
+        assert (
+            0 <= data["uptime_seconds"] < 86400
+        ), f"uptime_seconds={data['uptime_seconds']} seems unreasonable for a test"
 
         assert "components" in data
         assert isinstance(data["components"], list)
@@ -225,23 +222,21 @@ class TestReadinessEndpointE2E:
 
             # status — must be a valid HealthStatus enum value
             assert "status" in component, f"Component {cname}: missing 'status'"
-            assert component["status"] in _VALID_HEALTH_STATUSES, (
-                f"Component {cname}: unknown status '{component['status']}'"
-            )
+            assert (
+                component["status"] in _VALID_HEALTH_STATUSES
+            ), f"Component {cname}: unknown status '{component['status']}'"
 
             # latency_ms — numeric, non-negative
             assert "latency_ms" in component, f"Component {cname}: missing 'latency_ms'"
-            assert isinstance(component["latency_ms"], (int, float)), (
-                f"Component {cname}: latency_ms is not numeric"
-            )
-            assert component["latency_ms"] >= 0, (
-                f"Component {cname}: negative latency"
-            )
+            assert isinstance(
+                component["latency_ms"], (int, float)
+            ), f"Component {cname}: latency_ms is not numeric"
+            assert component["latency_ms"] >= 0, f"Component {cname}: negative latency"
 
             # message — nullable string (always present, None when healthy)
-            assert "message" in component, (
-                f"Component {cname}: missing 'message' field (should be null when healthy)"
-            )
+            assert (
+                "message" in component
+            ), f"Component {cname}: missing 'message' field (should be null when healthy)"
             if component["message"] is not None:
                 assert isinstance(component["message"], str)
 
@@ -302,9 +297,7 @@ class TestReadinessEndpointE2E:
 
     async def test_ready_concurrent_requests(self, configured_app):
         """Concurrent readiness checks must not interfere with each other."""
-        responses = await asyncio.gather(
-            *[configured_app.get("/api/v1/ready") for _ in range(5)]
-        )
+        responses = await asyncio.gather(*[configured_app.get("/api/v1/ready") for _ in range(5)])
         for resp in responses:
             assert resp.status_code == 200
             assert resp.json()["status"] in _VALID_HEALTH_STATUSES
@@ -328,9 +321,9 @@ class TestMetricsEndpointE2E:
         lines = text.strip().splitlines()
 
         # Must have meaningful content — not just a header
-        assert len(lines) >= 3, (
-            f"Metrics response has only {len(lines)} lines — expected at least 3"
-        )
+        assert (
+            len(lines) >= 3
+        ), f"Metrics response has only {len(lines)} lines — expected at least 3"
 
         # Prometheus format requires # HELP and # TYPE lines
         has_help = any(line.startswith("# HELP") for line in lines)
@@ -359,9 +352,7 @@ class TestMetricsEndpointE2E:
         """Metrics endpoint must return text/plain content-type per Prometheus spec."""
         response = await configured_app.get("/metrics")
         content_type = response.headers.get("content-type", "")
-        assert "text/" in content_type, (
-            f"Unexpected content-type for metrics: '{content_type}'"
-        )
+        assert "text/" in content_type, f"Unexpected content-type for metrics: '{content_type}'"
 
     async def test_metrics_returns_non_empty_body(self, configured_app):
         """Metrics response should never be empty."""
@@ -375,9 +366,9 @@ class TestMetricsEndpointE2E:
         text = response.text
         has_python_info = "python_info" in text
         has_process = "process_" in text
-        assert has_python_info or has_process, (
-            "Expected at least python_info or process_* default metrics"
-        )
+        assert (
+            has_python_info or has_process
+        ), "Expected at least python_info or process_* default metrics"
 
     async def test_metrics_has_no_duplicate_metric_families(self, configured_app):
         """Each metric family should only be defined once (no duplicate TYPE lines)."""
@@ -387,9 +378,7 @@ class TestMetricsEndpointE2E:
         type_lines = [line for line in lines if line.startswith("# TYPE")]
         metric_names = [line.split()[2] for line in type_lines if len(line.split()) >= 3]
         duplicates = [name for name in metric_names if metric_names.count(name) > 1]
-        assert len(duplicates) == 0, (
-            f"Duplicate metric families found: {set(duplicates)}"
-        )
+        assert len(duplicates) == 0, f"Duplicate metric families found: {set(duplicates)}"
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +463,6 @@ class TestCORSHeadersE2E:
         assert response.status_code == 200
         # Depending on CORS config, may return * or the specific origin
         acao = response.headers.get("access-control-allow-origin")
-        assert acao is not None, (
-            "Missing Access-Control-Allow-Origin header on /api/v1/health response"
-        )
+        assert (
+            acao is not None
+        ), "Missing Access-Control-Allow-Origin header on /api/v1/health response"

@@ -78,9 +78,7 @@ class ProcessedAudio:
             wf.writeframes(pcm_int16.tobytes())
         return buf.getvalue()
 
-    def get_vad_merged_wav_bytes(
-        self, silence_padding_ms: int = 0
-    ) -> bytes | None:
+    def get_vad_merged_wav_bytes(self, silence_padding_ms: int = 0) -> bytes | None:
         """Extract and concatenate only the VAD speech segments as WAV.
 
         If VAD was not applied or no speech segments exist, returns

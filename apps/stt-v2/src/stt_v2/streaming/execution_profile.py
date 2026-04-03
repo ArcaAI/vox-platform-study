@@ -358,9 +358,7 @@ def detect_execution_profile() -> ExecutionProfile:
     return profile
 
 
-def _apply_settings_overrides(
-    profile: ExecutionProfile, settings: object
-) -> ExecutionProfile:
+def _apply_settings_overrides(profile: ExecutionProfile, settings: object) -> ExecutionProfile:
     """Override auto-detected profile values with explicit settings.
 
     Only non-zero / non-``auto`` values in ``Settings`` take effect,

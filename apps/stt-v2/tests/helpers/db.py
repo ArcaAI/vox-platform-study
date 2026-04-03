@@ -133,10 +133,13 @@ def is_redis_healthy() -> bool:
     """Check if Redis is accessible."""
     try:
         import redis
+
         password = os.environ.get("TEST_REDIS_PASSWORD", "test_redis_pass")
         client = redis.Redis(
-            host="localhost", port=TEST_REDIS_PORT,
-            password=password, socket_timeout=1,
+            host="localhost",
+            port=TEST_REDIS_PORT,
+            password=password,
+            socket_timeout=1,
         )
         return client.ping()
     except Exception:
@@ -147,6 +150,7 @@ def is_minio_healthy() -> bool:
     """Check if MinIO is accessible."""
     try:
         from minio import Minio
+
         config = get_minio_config()
         client = Minio(
             config["endpoint"],

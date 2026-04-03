@@ -5,7 +5,7 @@
 | **Ticket** | TASK-255 |
 | **Created** | 2026-04-03 |
 | **Updated** | 2026-04-03 |
-| **Status** | In Progress |
+| **Status** | Completed |
 | **Type** | Infrastructure |
 | **Priority** | High |
 | **Parent** | TASK-251 (Observability Stack) |
@@ -73,20 +73,21 @@ Wire the STT-v2 service (`apps/stt-v2/`) with structured logging, OpenTelemetry 
 
 | File | Purpose |
 |------|---------|
-| `src/stt_v2/core/logging.py` | `setup_logging()` with `structlog.configure()` — JSON renderer, contextvars, stdlib bridge |
-| `src/stt_v2/core/telemetry.py` | `setup_telemetry()` — TracerProvider, OTLPSpanExporter, FastAPI/HTTPX auto-instrumentation |
+| `src/stt_v2/core/logging.py` | `setup_logging()` with `structlog.configure()` — JSON renderer, contextvars, stdlib bridge, `_add_otel_context` processor, `ProcessorFormatter` for stdlib logs |
+| `src/stt_v2/core/telemetry.py` | `setup_telemetry()` — TracerProvider + LoggerProvider, OTLP gRPC exporters (spans + logs), FastAPI/HTTPX/Logging auto-instrumentation, `TelemetryResult` dataclass |
 | `src/stt_v2/core/metrics.py` | 14 custom Prometheus metrics (transcription, streaming, models, VAD, workers) |
 | `src/stt_v2/core/middleware/__init__.py` | Package init |
 | `src/stt_v2/core/middleware/request_id.py` | X-Request-ID extraction/generation, structlog contextvars binding |
 | `src/stt_v2/core/middleware/logging.py` | Request lifecycle logging (start/complete/failed with duration_ms) |
+| `tests/unit/test_observability.py` | 20 TDD tests covering all observability layers (trace context, stdlib bridge, OTLP export, worker pipeline, edge cases) |
 
 ### 3.2 Files Modified
 
 | File | Changes |
 |------|---------|
 | `src/stt_v2/core/config/settings.py` | Added `otel_enabled`, `otel_exporter_endpoint`, `otel_service_name`, `metrics_enabled` fields |
-| `src/stt_v2/main.py` | Wired `setup_logging()`, `RequestIDMiddleware`, `RequestLoggingMiddleware`, conditional `setup_telemetry()`, conditional Prometheus |
-| `src/stt_v2/worker.py` | Wired `setup_logging()` at startup (replaced bare `structlog.get_logger`) |
+| `src/stt_v2/main.py` | Wired `setup_logging()`, middleware, conditional `setup_telemetry()` with `TelemetryResult` stored on `app.state`, graceful OTel shutdown in lifespan, `log_config=None` for uvicorn |
+| `src/stt_v2/worker.py` | Wired `setup_logging()`, conditional `setup_telemetry_logs()` for OTel log export, graceful shutdown of LoggerProvider |
 | `.env.example` | Added Observability section with OTEL_ENABLED, OTEL_EXPORTER_ENDPOINT, OTEL_SERVICE_NAME, METRICS_ENABLED |
 | `docker/Dockerfile` | Added OTEL_SERVICE_NAME, OTEL_EXPORTER_ENDPOINT, OTEL_ENABLED, METRICS_ENABLED env vars to runtime + ml-runtime stages |
 
@@ -153,3 +154,4 @@ All implementations follow the SMR gold-standard patterns:
 | Date | Description | Files Modified |
 |------|-------------|----------------|
 | 2026-04-03 | Initial implementation — structured logging, OTel tracing, middleware, custom metrics, settings, Dockerfile | 6 created, 5 modified |
+| 2026-04-03 | Log capture pipeline (TDD) — `_add_otel_context` processor for traceId/spanId in structlog, `ProcessorFormatter` bridge for stdlib→JSON, `LoggerProvider` + `OTLPLogExporter` for OTLP log push, `LoggingInstrumentor` for auto trace context, `setup_telemetry_logs()` for worker processes, graceful OTel shutdown, uvicorn `log_config=None` override. 20 TDD tests (all passing). | `core/logging.py`, `core/telemetry.py`, `main.py`, `worker.py`, `tests/unit/test_observability.py` |

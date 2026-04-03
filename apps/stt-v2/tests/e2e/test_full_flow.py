@@ -223,6 +223,7 @@ class TestTranscriptionResultFlow:
 
         # Should be JSON serializable
         import json
+
         json_str = json.dumps(result_dict)
         assert json_str is not None
 

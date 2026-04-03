@@ -114,9 +114,7 @@ class BlobService:
         )
 
         uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
-        logger.info(
-            f"Uploaded processed audio to: {uri} ({len(audio_bytes)} bytes)"
-        )
+        logger.info(f"Uploaded processed audio to: {uri} ({len(audio_bytes)} bytes)")
         return uri
 
     async def upload_chunk(

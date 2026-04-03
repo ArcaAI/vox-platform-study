@@ -63,14 +63,11 @@ class QdrantClientManager:
 
             except ImportError:
                 raise VectorStoreConnectionError(
-                    "qdrant-client is not installed. "
-                    "Install with: pip install qdrant-client"
+                    "qdrant-client is not installed. " "Install with: pip install qdrant-client"
                 ) from None
             except Exception as e:
                 self._client = None
-                raise VectorStoreConnectionError(
-                    f"Failed to connect to Qdrant: {e}"
-                ) from e
+                raise VectorStoreConnectionError(f"Failed to connect to Qdrant: {e}") from e
 
     async def close(self) -> None:
         """Close the Qdrant client connection."""

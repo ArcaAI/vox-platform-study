@@ -226,9 +226,19 @@ export interface OTelTransportConfig extends BaseTransportConfig {
 }
 
 /**
+ * OpenTelemetry Log Bridge transport configuration
+ * Bridges LoggingService to the OTel Logs API (logger.emit())
+ */
+export interface OTelLogBridgeTransportConfig extends BaseTransportConfig {
+  name: 'otel-bridge';
+  serviceName: string;
+  serviceVersion?: string;
+}
+
+/**
  * Union type for all transport configurations
  */
-export type TransportConfig = ConsoleTransportConfig | FileTransportConfig | HighlightTransportConfig | LokiTransportConfig | OTelTransportConfig;
+export type TransportConfig = ConsoleTransportConfig | FileTransportConfig | HighlightTransportConfig | LokiTransportConfig | OTelTransportConfig | OTelLogBridgeTransportConfig;
 
 /**
  * Transport interface that all transports must implement

@@ -1,6 +1,5 @@
 """Unit tests for updated Pipeline DTOs (diarization, KSERVE, and ONNX quantization)."""
 
-
 from stt_v2.pipeline.dto import (
     VALID_ONNX_QUANTIZATIONS,
     AiModelFormat,
@@ -458,12 +457,14 @@ class TestModelRefFromValueQuantization:
 
     def test_parse_inline_with_quantization(self):
         """Test parsing inline definition with quantization from dict."""
-        ref = ModelRef.from_value({
-            "hf_model_id": "onnx-community/whisper-large-v3-turbo_timestamped",
-            "engine": "onnx",
-            "quantization": "q4",
-            "subfolder": "onnx",
-        })
+        ref = ModelRef.from_value(
+            {
+                "hf_model_id": "onnx-community/whisper-large-v3-turbo_timestamped",
+                "engine": "onnx",
+                "quantization": "q4",
+                "subfolder": "onnx",
+            }
+        )
 
         assert ref.is_inline
         assert ref.inline is not None
@@ -474,10 +475,12 @@ class TestModelRefFromValueQuantization:
 
     def test_parse_inline_without_quantization(self):
         """Test parsing inline definition without quantization (backward compat)."""
-        ref = ModelRef.from_value({
-            "hf_model_id": "onnx-community/whisper-small-ONNX",
-            "engine": "onnx",
-        })
+        ref = ModelRef.from_value(
+            {
+                "hf_model_id": "onnx-community/whisper-small-ONNX",
+                "engine": "onnx",
+            }
+        )
 
         assert ref.is_inline
         assert ref.inline is not None
@@ -486,15 +489,17 @@ class TestModelRefFromValueQuantization:
 
     def test_parse_inline_with_all_fields(self):
         """Test parsing inline definition with all optional fields."""
-        ref = ModelRef.from_value({
-            "hf_model_id": "onnx-community/whisper-large-v3-turbo_timestamped",
-            "engine": "onnx",
-            "revision": "main",
-            "quantization": "int8",
-            "subfolder": "onnx",
-            "compute_type": "float32",
-            "device": "cpu",
-        })
+        ref = ModelRef.from_value(
+            {
+                "hf_model_id": "onnx-community/whisper-large-v3-turbo_timestamped",
+                "engine": "onnx",
+                "revision": "main",
+                "quantization": "int8",
+                "subfolder": "onnx",
+                "compute_type": "float32",
+                "device": "cpu",
+            }
+        )
 
         assert ref.inline is not None
         assert ref.inline.quantization == "int8"
