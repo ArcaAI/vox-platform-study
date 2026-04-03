@@ -46,9 +46,13 @@ class TestGetProviders:
         """CUDA provider should be returned as a plain string."""
         loader = ONNXLoader()
 
-        with patch("onnxruntime.get_available_providers", return_value=[
-            "CUDAExecutionProvider", "CPUExecutionProvider",
-        ]):
+        with patch(
+            "onnxruntime.get_available_providers",
+            return_value=[
+                "CUDAExecutionProvider",
+                "CPUExecutionProvider",
+            ],
+        ):
             providers = loader._get_providers()
 
         assert providers[0] == "CUDAExecutionProvider"
@@ -58,9 +62,12 @@ class TestGetProviders:
         """When only CPU is available, return simple string list."""
         loader = ONNXLoader()
 
-        with patch("onnxruntime.get_available_providers", return_value=[
-            "CPUExecutionProvider",
-        ]):
+        with patch(
+            "onnxruntime.get_available_providers",
+            return_value=[
+                "CPUExecutionProvider",
+            ],
+        ):
             providers = loader._get_providers()
 
         assert providers == ["CPUExecutionProvider"]
@@ -109,9 +116,7 @@ class TestONNXUnload:
         mock_model.model = MagicMock()
         mock_model.model_slug = "test-onnx"
 
-        with patch(
-            "stt_v2.models.base_loader.cleanup_accelerator_memory"
-        ) as mock_cleanup:
+        with patch("stt_v2.models.base_loader.cleanup_accelerator_memory") as mock_cleanup:
             await loader.unload(mock_model)
 
             mock_cleanup.assert_called_once()

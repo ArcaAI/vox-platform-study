@@ -184,9 +184,7 @@ class TestAzureSpeechYamlParsing:
         spec = parser.parse(_pipeline_yaml_azure_basic())
 
         inline = spec.models.asr.inline
-        config = inline.to_ai_model_config(
-            ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
-        )
+        config = inline.to_ai_model_config(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION)
 
         assert config.format == AiModelFormat.AZURE_SPEECH
         assert config.source_revision == "eastus"  # Region from revision field
@@ -220,12 +218,16 @@ class TestAzureSpeechFullFlowMocked:
     @pytest.fixture
     def mock_azure_env(self):
         """Set up mock Azure credentials in environment."""
-        with patch.dict(os.environ, {
-            "AZURE_SPEECH_KEY": "e2e-test-key-12345",
-            "AZURE_SPEECH_REGION": "eastus",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "AZURE_SPEECH_KEY": "e2e-test-key-12345",
+                "AZURE_SPEECH_REGION": "eastus",
+            },
+        ):
             # Clear settings cache
             from stt_v2.core.config.settings import get_settings
+
             get_settings.cache_clear()
             yield
             get_settings.cache_clear()
@@ -253,9 +255,7 @@ class TestAzureSpeechFullFlowMocked:
 
         # Step 2: Build model config (real code)
         inline = spec.models.asr.inline
-        model_config = inline.to_ai_model_config(
-            ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
-        )
+        model_config = inline.to_ai_model_config(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION)
 
         # Step 3: Load model through AzureSpeechLoader (real code, mocked SpeechConfig)
         mock_speech_config = MagicMock()
@@ -290,27 +290,65 @@ class TestAzureSpeechFullFlowMocked:
                 },
             ],
             word_timestamps=[
-                {"text": "Hello", "word": "Hello", "start": 0.0, "end": 0.3,
-                 "start_time": 0.0, "end_time": 0.3, "confidence": 0.98},
-                {"text": "this", "word": "this", "start": 0.35, "end": 0.5,
-                 "start_time": 0.35, "end_time": 0.5, "confidence": 0.95},
-                {"text": "is", "word": "is", "start": 0.55, "end": 0.65,
-                 "start_time": 0.55, "end_time": 0.65, "confidence": 0.97},
-                {"text": "an", "word": "an", "start": 0.7, "end": 0.8,
-                 "start_time": 0.7, "end_time": 0.8, "confidence": 0.96},
-                {"text": "end-to-end", "word": "end-to-end", "start": 0.85, "end": 1.3,
-                 "start_time": 0.85, "end_time": 1.3, "confidence": 0.92},
-                {"text": "test.", "word": "test.", "start": 1.35, "end": 1.6,
-                 "start_time": 1.35, "end_time": 1.6, "confidence": 0.94},
+                {
+                    "text": "Hello",
+                    "word": "Hello",
+                    "start": 0.0,
+                    "end": 0.3,
+                    "start_time": 0.0,
+                    "end_time": 0.3,
+                    "confidence": 0.98,
+                },
+                {
+                    "text": "this",
+                    "word": "this",
+                    "start": 0.35,
+                    "end": 0.5,
+                    "start_time": 0.35,
+                    "end_time": 0.5,
+                    "confidence": 0.95,
+                },
+                {
+                    "text": "is",
+                    "word": "is",
+                    "start": 0.55,
+                    "end": 0.65,
+                    "start_time": 0.55,
+                    "end_time": 0.65,
+                    "confidence": 0.97,
+                },
+                {
+                    "text": "an",
+                    "word": "an",
+                    "start": 0.7,
+                    "end": 0.8,
+                    "start_time": 0.7,
+                    "end_time": 0.8,
+                    "confidence": 0.96,
+                },
+                {
+                    "text": "end-to-end",
+                    "word": "end-to-end",
+                    "start": 0.85,
+                    "end": 1.3,
+                    "start_time": 0.85,
+                    "end_time": 1.3,
+                    "confidence": 0.92,
+                },
+                {
+                    "text": "test.",
+                    "word": "test.",
+                    "start": 1.35,
+                    "end": 1.6,
+                    "start_time": 1.35,
+                    "end_time": 1.6,
+                    "confidence": 0.94,
+                },
             ],
         )
 
-        with patch.object(
-            service, "_azure_transcribe_sync", return_value=mock_result
-        ):
-            result = await service._run_inference(
-                samples, 16000, loaded_model, config
-            )
+        with patch.object(service, "_azure_transcribe_sync", return_value=mock_result):
+            result = await service._run_inference(samples, 16000, loaded_model, config)
 
         # Step 5: Verify full result structure
         assert result.text == "Hello this is an end-to-end test."
@@ -354,7 +392,8 @@ class TestAzureSpeechFullFlowMocked:
         config.language = "ml"
 
         with patch.object(
-            service, "_azure_transcribe_sync",
+            service,
+            "_azure_transcribe_sync",
             return_value=RawTranscription(text="Test", language="ml-IN"),
         ) as mock_sync:
             await service._run_inference(samples, 16000, loaded_model, config)
@@ -371,6 +410,7 @@ class TestAzureSpeechFullFlowMocked:
         from stt_v2.models.azure_speech_loader import AzureSpeechLoader
         from stt_v2.pipeline.dto import ModelTaskType
         from stt_v2.pipeline.yaml_parser import get_yaml_parser
+
         get_settings.cache_clear()
 
         parser = get_yaml_parser()
@@ -385,8 +425,10 @@ class TestAzureSpeechFullFlowMocked:
         fake_settings.azure_speech_key = None
         fake_settings.azure_speech_region = None
 
-        with patch.dict(os.environ, {}, clear=True), \
-             patch("stt_v2.models.azure_speech_loader.get_settings", return_value=fake_settings):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("stt_v2.models.azure_speech_loader.get_settings", return_value=fake_settings),
+        ):
             get_settings.cache_clear()
             loader = AzureSpeechLoader()
 
@@ -403,10 +445,7 @@ class TestAzureSpeechFullFlowMocked:
 
 def _has_azure_credentials() -> bool:
     """Check if Azure Speech credentials are available."""
-    return bool(
-        os.environ.get("AZURE_SPEECH_KEY")
-        and os.environ.get("AZURE_SPEECH_REGION")
-    )
+    return bool(os.environ.get("AZURE_SPEECH_KEY") and os.environ.get("AZURE_SPEECH_REGION"))
 
 
 @pytest.mark.e2e
@@ -508,7 +547,9 @@ class TestAzureSpeechRealTranscription:
             logger.info(f"Segments: {len(result.segments)}")
 
         # Step 5: Write report
-        report_path = OUTPUT_DIR / f"azure_real_transcription_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+        report_path = (
+            OUTPUT_DIR / f"azure_real_transcription_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+        )
         lines = [
             "# Azure Speech Real Transcription Report",
             "",

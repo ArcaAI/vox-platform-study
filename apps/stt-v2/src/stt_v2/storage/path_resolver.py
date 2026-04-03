@@ -154,7 +154,9 @@ class StoragePathResolver:
         filename = f"{job_id}_transcript.{format}"
 
         if consultation_id:
-            return f"{tenant_id}/{year}/{month}/consultations/{consultation_id}/transcripts/{filename}"
+            return (
+                f"{tenant_id}/{year}/{month}/consultations/{consultation_id}/transcripts/{filename}"
+            )
         else:
             return f"{tenant_id}/{year}/{month}/jobs/transcripts/{filename}"
 

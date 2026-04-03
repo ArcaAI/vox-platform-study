@@ -164,9 +164,7 @@ class AudioPreprocessor:
                 )
                 return segments, True
             except Exception as e:
-                logger.warning(
-                    "Pipeline VAD model failed: %s, falling back to Silero", e
-                )
+                logger.warning("Pipeline VAD model failed: %s, falling back to Silero", e)
 
         # Priority 2: Silero VAD ONNX singleton (fallback)
         try:
@@ -228,9 +226,7 @@ class AudioPreprocessor:
             samples, sr = librosa.load(audio_io, sr=None)
             return samples, sr
 
-    def _resample(
-        self, samples: np.ndarray, original_sr: int, target_sr: int
-    ) -> np.ndarray:
+    def _resample(self, samples: np.ndarray, original_sr: int, target_sr: int) -> np.ndarray:
         """Resample audio to target sample rate."""
         try:
             import librosa
@@ -384,9 +380,7 @@ class AudioPreprocessor:
                 samples_48k = samples.copy()
 
             # Step 2: float32 [-1, 1] → int16 (pyrnnoise expects int16)
-            int16_audio = (
-                (samples_48k * 32767).clip(-32768, 32767).astype(np.int16)
-            )
+            int16_audio = (samples_48k * 32767).clip(-32768, 32767).astype(np.int16)
             # pyrnnoise expects shape [num_channels, num_samples] — mono = (1, N)
             int16_chunk = int16_audio.reshape(1, -1)
 
@@ -410,15 +404,11 @@ class AudioPreprocessor:
             if len(denoised_48k) > len(samples_48k):
                 denoised_48k = denoised_48k[: len(samples_48k)]
             elif len(denoised_48k) < len(samples_48k):
-                denoised_48k = np.pad(
-                    denoised_48k, (0, len(samples_48k) - len(denoised_48k))
-                )
+                denoised_48k = np.pad(denoised_48k, (0, len(samples_48k) - len(denoised_48k)))
 
             # Step 5: Blend with upsampled original based on strength
             if strength < 1.0:
-                denoised_48k = (
-                    strength * denoised_48k + (1.0 - strength) * samples_48k
-                )
+                denoised_48k = strength * denoised_48k + (1.0 - strength) * samples_48k
 
             logger.debug(
                 "RNNoise denoising applied (strength=%.2f, frames=%d, "

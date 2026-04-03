@@ -139,7 +139,9 @@ class TestUpsertEmbedding:
 
         mock_speaker_store.upsert_embedding.assert_called_once()
         call_args = mock_speaker_store.upsert_embedding.call_args
-        assert call_args.kwargs.get("tenant_id") == "tenant-001" or call_args.args[0] == "tenant-001"
+        assert (
+            call_args.kwargs.get("tenant_id") == "tenant-001" or call_args.args[0] == "tenant-001"
+        )
 
     def test_returns_422_when_missing_tenant_id(self, client):
         wav_data = _make_wav_bytes()
@@ -206,7 +208,9 @@ class TestUpsertEmbedding:
         )
         assert resp.status_code == 500
 
-    def test_returns_503_when_embedding_service_not_initialized(self, client, mock_embedding_service):
+    def test_returns_503_when_embedding_service_not_initialized(
+        self, client, mock_embedding_service
+    ):
         mock_embedding_service.is_loaded = False
         wav_data = _make_wav_bytes()
         resp = client.post(
@@ -231,7 +235,9 @@ class TestUpsertEmbedding:
         call_kwargs = mock_speaker_store.upsert_embedding.call_args.kwargs
         assert call_kwargs.get("metadata") == {"source": "web-recorder"}
 
-    def test_returns_500_when_qdrant_store_fails(self, client, mock_speaker_store, mock_embedding_service):
+    def test_returns_500_when_qdrant_store_fails(
+        self, client, mock_speaker_store, mock_embedding_service
+    ):
         mock_speaker_store.upsert_embedding.side_effect = RuntimeError("Qdrant unavailable")
         wav_data = _make_wav_bytes(duration_s=5.0)
         resp = client.post(
@@ -419,7 +425,11 @@ class TestGetEmbeddingStatus:
 
     def test_created_at_passes_through_if_already_string(self, client, mock_speaker_store):
         mock_speaker_store.get_speakers_for_tenant.return_value = [
-            {"speaker_id": "user-123", "embedding_count": 1, "created_at": "2026-02-21T00:00:00+00:00"},
+            {
+                "speaker_id": "user-123",
+                "embedding_count": 1,
+                "created_at": "2026-02-21T00:00:00+00:00",
+            },
         ]
 
         resp = client.get(

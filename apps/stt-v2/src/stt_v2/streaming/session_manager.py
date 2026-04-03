@@ -150,22 +150,16 @@ class SessionManager:
 
         # Register worker heartbeat
         await self._register_worker()
-        self._heartbeat_task = asyncio.create_task(
-            self._heartbeat_loop(), name="worker-heartbeat"
-        )
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name="worker-heartbeat")
 
         # Recover active sessions from Redis
         await self._recover_sessions()
 
         # Start background reaper
-        self._reaper_task = asyncio.create_task(
-            self._reaper_loop(), name="session-reaper"
-        )
+        self._reaper_task = asyncio.create_task(self._reaper_loop(), name="session-reaper")
 
         # Start audio snapshot loop
-        self._snapshot_task = asyncio.create_task(
-            self._snapshot_loop(), name="audio-snapshot"
-        )
+        self._snapshot_task = asyncio.create_task(self._snapshot_loop(), name="audio-snapshot")
 
         logger.info(
             "SessionManager started",
@@ -291,11 +285,14 @@ class SessionManager:
 
             # Load ASR pipeline from pipeline config (B2: Wire ASR)
             asr_pipeline = await self._load_asr_pipeline(
-                pipeline_config, session_id,
+                pipeline_config,
+                session_id,
             )
 
             diarization_config = pipeline_config.diarization if pipeline_config else None
-            effective_diarization = bool(getattr(diarization_config, "enabled", False)) if diarization_config else False
+            effective_diarization = (
+                bool(getattr(diarization_config, "enabled", False)) if diarization_config else False
+            )
 
             metadata.diarization = effective_diarization
             await session.force_persist()
@@ -465,9 +462,7 @@ class SessionManager:
     # Model loading helpers (B1/B2: VAD + ASR pipeline wiring)
     # ------------------------------------------------------------------
 
-    async def _load_pipeline_config(
-        self, pipeline_id: str
-    ) -> Any:
+    async def _load_pipeline_config(self, pipeline_id: str) -> Any:
         """Load pipeline spec from the pipeline reader.
 
         Returns the ``PipelineSpec`` if found, or ``None`` on failure.
@@ -637,9 +632,7 @@ class SessionManager:
             maxsize=self._inference_queue_maxsize
         )
         self._inference_queues[session.session_id] = inference_queue
-        inference_task = self._start_inference_loop(
-            session, inference_worker, inference_queue
-        )
+        inference_task = self._start_inference_loop(session, inference_worker, inference_queue)
         self._inference_tasks[session.session_id] = inference_task
 
     def _start_inference_loop(
@@ -661,9 +654,7 @@ class SessionManager:
                     queue.task_done()
                     break
                 try:
-                    result = await inference_worker.process_utterance(
-                        session.session_id, utt
-                    )
+                    result = await inference_worker.process_utterance(session.session_id, utt)
                     session.add_result(result)
                     session.utterance_count = utt.utterance_index + 1
                 except Exception as exc:
@@ -676,9 +667,7 @@ class SessionManager:
                 finally:
                     queue.task_done()
 
-        return asyncio.create_task(
-            _loop(), name=f"inference-{session.session_id}"
-        )
+        return asyncio.create_task(_loop(), name=f"inference-{session.session_id}")
 
     async def _drain_inference_queue(self, session_id: str) -> None:
         """Wait for all pending utterances in the inference queue to finish."""
@@ -1091,9 +1080,7 @@ class SessionManager:
                         continue
                     if meta.worker_id and meta.worker_id != self._worker_id:
                         # Check if the other worker is still alive
-                        other_alive = await self._redis.exists(
-                            worker_key(meta.worker_id)
-                        )
+                        other_alive = await self._redis.exists(worker_key(meta.worker_id))
                         if other_alive:
                             continue  # another worker owns this session
 
@@ -1112,14 +1099,10 @@ class SessionManager:
                     session = StreamSession(metadata=meta, redis=self._redis)
 
                     # Load pipeline config and models for recovered session
-                    pipeline_config = await self._load_pipeline_config(
-                        meta.pipeline_id
-                    )
+                    pipeline_config = await self._load_pipeline_config(meta.pipeline_id)
 
                     # Load VAD service
-                    vad_service = await self._load_vad_service(
-                        pipeline_config, meta.session_id
-                    )
+                    vad_service = await self._load_vad_service(pipeline_config, meta.session_id)
 
                     # Build preprocessor with VAD config from pipeline
                     vad_kwargs: dict[str, Any] = {}
@@ -1142,9 +1125,7 @@ class SessionManager:
                         meta.session_id,
                     )
 
-                    publisher = ResultPublisher(
-                        redis=self._redis, session_id=meta.session_id
-                    )
+                    publisher = ResultPublisher(redis=self._redis, session_id=meta.session_id)
 
                     inference_worker = StreamingInferenceWorker(
                         result_publisher=publisher,
@@ -1173,17 +1154,13 @@ class SessionManager:
                     consumer = IngestionConsumer(
                         redis=self._redis,
                         session_id=meta.session_id,
-                        on_frame=self._make_frame_handler(
-                            session, preprocessor
-                        ),
+                        on_frame=self._make_frame_handler(session, preprocessor),
                         last_id=last_id,
                     )
                     control_listener = ControlListener(
                         redis=self._redis,
                         session_id=meta.session_id,
-                        on_control=self._make_control_handler(
-                            session, preprocessor
-                        ),
+                        on_control=self._make_control_handler(session, preprocessor),
                     )
 
                     self._sessions[meta.session_id] = session

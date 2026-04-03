@@ -3,6 +3,7 @@ import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { uuidv7 } from 'uuidv7';
+import { trace } from '@opentelemetry/api';
 
 @Injectable()
 export class ContextInterceptor implements NestInterceptor {
@@ -32,7 +33,16 @@ export class ContextInterceptor implements NestInterceptor {
     const httpContext = context.switchToHttp();
     const request = httpContext.getRequest();
 
-    // Ensure requestId is assigned once, avoid overwriting if it's already set
+    const activeSpan = trace.getActiveSpan();
+    const spanContext = activeSpan?.spanContext();
+    const traceId = spanContext?.traceId;
+    const spanId = spanContext?.spanId;
+
+    if (traceId) {
+      this.tryClsSet('traceId', traceId);
+      this.tryClsSet('spanId', spanId);
+    }
+
     if (!request.requestId) {
       request.requestId = request?.body?.requestId ?? uuidv7();
       this.tryClsSet('correlationId', request.requestId);
@@ -59,6 +69,8 @@ export class ContextInterceptor implements NestInterceptor {
           this.logger.log({
             message: 'Request completed',
             requestId: request.requestId,
+            traceId,
+            spanId,
             method: request.method,
             path: request.url,
             durationMs,
@@ -72,6 +84,8 @@ export class ContextInterceptor implements NestInterceptor {
           this.logger.error({
             message: 'Request failed',
             requestId: request.requestId,
+            traceId,
+            spanId,
             method: request.method,
             path: request.url,
             durationMs,

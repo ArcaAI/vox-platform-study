@@ -1,0 +1,184 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Database Cluster",
+      "type": "row"
+    },
+    {
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 1 },
+      "id": 1,
+      "title": "Patroni Leader",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "patroni_master", "legendFormat": "{{instance}}" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "Replica", "color": "blue" } }, "type": "value" },
+            { "options": { "1": { "text": "Primary", "color": "green" } }, "type": "value" }
+          ]
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 1 },
+      "id": 2,
+      "title": "Replication Lag",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "pg_replication_lag_seconds", "legendFormat": "{{instance}}" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 30 }] }
+        }
+      }
+    },
+    {
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 1 },
+      "id": 3,
+      "title": "Connection Saturation %",
+      "type": "gauge",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{
+        "expr": "pg_stat_activity_count / on(instance) pg_settings_max_connections * 100",
+        "legendFormat": "{{instance}}"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 60 }, { "color": "red", "value": 80 }] }
+        }
+      }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "id": 4,
+      "title": "Transactions/sec",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "rate(pg_stat_database_xact_commit{datname!=\"\"}[5m])", "legendFormat": "{{datname}}" }],
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "id": 5,
+      "title": "Cache Hit Ratio %",
+      "type": "gauge",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{
+        "expr": "pg_stat_database_blks_hit / (pg_stat_database_blks_hit + pg_stat_database_blks_read) * 100",
+        "legendFormat": "{{datname}}"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 90 }, { "color": "green", "value": 95 }] }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "id": 101,
+      "title": "Redis",
+      "type": "row"
+    },
+    {
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 14 },
+      "id": 6,
+      "title": "Redis Memory Usage %",
+      "type": "gauge",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "redis_memory_used_bytes / redis_memory_max_bytes * 100", "legendFormat": "{{instance}}" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 80 }, { "color": "red", "value": 95 }] }
+        }
+      }
+    },
+    {
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 14 },
+      "id": 7,
+      "title": "Connected Clients",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "redis_connected_clients", "legendFormat": "{{instance}}" }],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 14 },
+      "id": 8,
+      "title": "Commands/sec",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "rate(redis_commands_processed_total[5m])", "legendFormat": "{{instance}}" }],
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 14 },
+      "id": 9,
+      "title": "Hit Ratio %",
+      "type": "gauge",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{
+        "expr": "irate(redis_keyspace_hits_total[5m]) / (irate(redis_keyspace_hits_total[5m]) + irate(redis_keyspace_misses_total[5m])) * 100",
+        "legendFormat": "{{instance}}"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 80 }, { "color": "green", "value": 95 }] }
+        }
+      }
+    },
+    {
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 20 },
+      "id": 10,
+      "title": "Redis Network I/O",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(redis_net_input_bytes_total[5m])", "legendFormat": "rx {{instance}}" },
+        { "expr": "rate(redis_net_output_bytes_total[5m])", "legendFormat": "tx {{instance}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 20 },
+      "id": 11,
+      "title": "Redis Evictions & Blocked Clients",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(redis_evicted_keys_total[5m])", "legendFormat": "evictions/s" },
+        { "expr": "redis_blocked_clients", "legendFormat": "blocked clients" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.01 }] }
+        }
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["hope", "database", "redis"],
+  "templating": {
+    "list": [
+      { "name": "DS_PROMETHEUS", "type": "datasource", "query": "prometheus", "current": { "text": "Prometheus", "value": "Prometheus" } }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "HOPE Database & Redis",
+  "uid": "hope-database-redis",
+  "version": 1
+}

@@ -486,6 +486,7 @@ class TestHTTPClientEdgeCases:
     @pytest.mark.asyncio
     async def test_health_check_returns_true_on_success(self, client):
         """Verify health_check returns True when API is reachable."""
+
         async def mock_request(method, path, json=None, params=None):
             return {"status": "ok"}
 

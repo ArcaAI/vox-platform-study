@@ -137,6 +137,10 @@ class Settings(BaseSettings):
     otel_enabled: bool = False
     otel_exporter_endpoint: str = "http://localhost:4317"
     otel_service_name: str = "smr-v2"
+    otel_service_namespace: str = "hope"
+    otel_deployment_environment: str = "production"
+    otel_insecure: bool = True
+    otel_logs_enabled: bool = True
     metrics_enabled: bool = True
 
     # Sub-configs (loaded from their own env prefixes)

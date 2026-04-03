@@ -130,10 +130,7 @@ class BaseModelLoader(ABC):
             import torch
 
             has_cuda = torch.cuda.is_available()
-            has_mps = (
-                hasattr(torch.backends, "mps")
-                and torch.backends.mps.is_available()
-            )
+            has_mps = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
             on_cpu = not has_cuda and not has_mps
 
             def _auto_dtype() -> torch.dtype:

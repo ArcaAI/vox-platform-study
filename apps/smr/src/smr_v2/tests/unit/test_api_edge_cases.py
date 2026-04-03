@@ -71,6 +71,9 @@ def _build_app(settings, registry, task_manager):
     app.state.provider_registry = registry
     app.state.task_manager = task_manager
     app.state.settings = settings
+    mock_redis = AsyncMock()
+    mock_redis.ping = AsyncMock(return_value=True)
+    app.state.redis = mock_redis
     return app
 
 
@@ -167,7 +170,7 @@ class TestHealthEdgeCases:
 
     @pytest.mark.asyncio
     async def test_health_degraded_when_all_down(self, settings):
-        """Health endpoint returns 200 with 'unhealthy' when all providers are down."""
+        """Health endpoint returns 200 with 'degraded' when all providers down but Redis is up."""
         registry = ProviderRegistry()
         registry.register("down", _make_provider(health_result=False))
         app = _build_app(settings, registry, _make_task_manager())
@@ -175,7 +178,7 @@ class TestHealthEdgeCases:
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             resp = await c.get("/api/v1/health")
         assert resp.status_code == 200
-        assert resp.json()["status"] == "unhealthy"
+        assert resp.json()["status"] == "degraded"
 
 
 # ── Health: empty registry ──
@@ -190,7 +193,10 @@ class TestHealthNoProviders:
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             resp = await c.get("/api/v1/health")
         assert resp.status_code == 200
-        assert resp.json()["checks"] == {}
+        checks = resp.json()["checks"]
+        assert "redis" in checks
+        provider_checks = {k: v for k, v in checks.items() if k != "redis"}
+        assert provider_checks == {}
 
 
 # ── Providers: empty registry ──
