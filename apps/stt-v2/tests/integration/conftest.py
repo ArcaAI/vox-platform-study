@@ -103,8 +103,9 @@ async def db_engine(database_url):
 
         yield engine
 
-        async with engine.begin() as conn:
-            await conn.execute(text("DROP SCHEMA IF EXISTS core CASCADE"))
+        # No teardown needed: db_session rolls back each test's transaction,
+        # so seed data from Prisma (pnpm test:db:seed) stays intact for
+        # other test suites (e2e ML tests, etc.) that share port 5433.
     finally:
         await engine.dispose()
 

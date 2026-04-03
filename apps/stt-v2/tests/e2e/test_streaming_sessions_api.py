@@ -148,11 +148,11 @@ def _make_mock_session_manager(
 
     mock_mgr.get_session = MagicMock(side_effect=_get_session)
 
-    async def _remove_session(session_id: str) -> None:
+    async def _end_session(session_id: str) -> None:
         sessions.pop(session_id, None)
         await guard.release(session_id)
 
-    mock_mgr.remove_session = AsyncMock(side_effect=_remove_session)
+    mock_mgr.end_session = AsyncMock(side_effect=_end_session)
 
     return mock_mgr, guard, sessions
 

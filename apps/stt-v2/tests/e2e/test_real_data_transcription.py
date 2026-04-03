@@ -832,6 +832,9 @@ async def _run_transcription(
                 )
             return self._config
 
+        async def close(self) -> None:
+            pass
+
     async def _collect_realtime_events(
         inbound_job_id: str,
         wait_timeout_s: int,
