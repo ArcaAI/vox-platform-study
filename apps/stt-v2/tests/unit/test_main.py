@@ -21,6 +21,8 @@ class TestCreateApp:
             mock_settings.app_version = "2.0.0"
             mock_settings.debug = False
             mock_settings.cors_origins = ["*"]
+            mock_settings.otel_enabled = False
+            mock_settings.metrics_enabled = False
 
             app = create_app()
 
@@ -35,6 +37,8 @@ class TestCreateApp:
             mock_settings.app_version = "2.0.0"
             mock_settings.debug = True
             mock_settings.cors_origins = ["*"]
+            mock_settings.otel_enabled = False
+            mock_settings.metrics_enabled = False
 
             app = create_app()
 
@@ -49,6 +53,8 @@ class TestCreateApp:
             mock_settings.app_version = "2.0.0"
             mock_settings.debug = False
             mock_settings.cors_origins = ["*"]
+            mock_settings.otel_enabled = False
+            mock_settings.metrics_enabled = False
 
             app = create_app()
 
@@ -63,10 +69,11 @@ class TestCreateApp:
             mock_settings.app_version = "2.0.0"
             mock_settings.debug = False
             mock_settings.cors_origins = ["*"]
+            mock_settings.otel_enabled = False
+            mock_settings.metrics_enabled = False
 
             app = create_app()
 
-            # Check that routes exist
             routes = [r.path for r in app.routes]
             assert "/api/v1/health" in routes
             assert "/api/v1/ready" in routes
@@ -80,6 +87,8 @@ class TestCreateApp:
             mock_settings.app_version = "2.0.0"
             mock_settings.debug = False
             mock_settings.cors_origins = ["*"]
+            mock_settings.otel_enabled = False
+            mock_settings.metrics_enabled = False
 
             app = create_app()
 
