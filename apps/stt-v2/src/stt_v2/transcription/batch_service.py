@@ -176,7 +176,9 @@ class BatchTranscriptionService:
             denoise_model = models.get("denoise")
 
             if asr_model is None:
-                raise TranscriptionError(f"ASR model not loaded for pipeline {pipeline_config.slug}")
+                raise TranscriptionError(
+                    f"ASR model not loaded for pipeline {pipeline_config.slug}"
+                )
 
             update_progress(20)
 
@@ -247,13 +249,8 @@ class BatchTranscriptionService:
                 timing.ttfw_seconds = time.time() - pipeline_start
 
             # Extract per-segment latencies if available (from per-segment ASR)
-            if (
-                raw_result.model_output is not None
-                and isinstance(raw_result.model_output, dict)
-            ):
-                timing.segment_latencies = raw_result.model_output.get(
-                    "segment_latencies", []
-                )
+            if raw_result.model_output is not None and isinstance(raw_result.model_output, dict):
+                timing.segment_latencies = raw_result.model_output.get("segment_latencies", [])
 
             update_progress(75)
 
@@ -293,7 +290,8 @@ class BatchTranscriptionService:
                         if not vad_svc.is_loaded:
                             await vad_svc.initialize()
                         vad_result = vad_svc.detect_speech(
-                            processed.samples, processed.sample_rate,
+                            processed.samples,
+                            processed.sample_rate,
                         )
                         # USE the fallback segments (not discarded)
                         diarization_segments = [
@@ -491,7 +489,10 @@ class BatchTranscriptionService:
                 diarized_start = float(diarized.get("start", 0.0))
                 diarized_end = float(diarized.get("end", diarized_start))
                 overlap = self._segment_overlap(
-                    seg_start, seg_end, diarized_start, diarized_end,
+                    seg_start,
+                    seg_end,
+                    diarized_start,
+                    diarized_end,
                 )
                 if overlap <= 0:
                     continue
@@ -511,9 +512,7 @@ class BatchTranscriptionService:
                 if best_confidence is not None:
                     per_seg["speaker_confidence"] = round(best_confidence, 4)
 
-    async def _load_models(
-        self, pipeline: PipelineConfig
-    ) -> dict[str, LoadedModel | None]:
+    async def _load_models(self, pipeline: PipelineConfig) -> dict[str, LoadedModel | None]:
         """
         Load all models required by pipeline.
 
@@ -537,8 +536,7 @@ class BatchTranscriptionService:
             # Inline model definition
             logger.info(f"Loading inline ASR model: {asr_ref.inline.hf_model_id}")
             models["asr"] = await cache.get_or_load_inline(
-                asr_ref.inline,
-                ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
+                asr_ref.inline, ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
             )
         elif asr_ref.slug:
             # Slug reference from database
@@ -556,8 +554,7 @@ class BatchTranscriptionService:
                 if vad_ref.is_inline and vad_ref.inline:
                     logger.info(f"Loading inline VAD model: {vad_ref.inline.hf_model_id}")
                     models["vad"] = await cache.get_or_load_inline(
-                        vad_ref.inline,
-                        ModelTaskType.VOICE_ACTIVITY_DETECTION
+                        vad_ref.inline, ModelTaskType.VOICE_ACTIVITY_DETECTION
                     )
                 elif vad_ref.slug and vad_ref.slug in model_configs:
                     models["vad"] = await cache.get_or_load(model_configs[vad_ref.slug])
@@ -577,8 +574,7 @@ class BatchTranscriptionService:
                 if denoise_ref.is_inline and denoise_ref.inline:
                     logger.info(f"Loading inline denoise model: {denoise_ref.inline.hf_model_id}")
                     models["denoise"] = await cache.get_or_load_inline(
-                        denoise_ref.inline,
-                        ModelTaskType.AUDIO_TO_AUDIO
+                        denoise_ref.inline, ModelTaskType.AUDIO_TO_AUDIO
                     )
                 elif denoise_ref.slug and denoise_ref.slug in model_configs:
                     models["denoise"] = await cache.get_or_load(model_configs[denoise_ref.slug])
@@ -629,15 +625,17 @@ class BatchTranscriptionService:
             # Whisper may return None for the last chunk boundary
             start = (start if start is not None else 0.0) + time_offset
             end = (end if end is not None else start) + time_offset
-            normalized.append({
-                "text": entry.get("text", ""),
-                "word": entry.get("text", ""),
-                "start": start,
-                "end": end,
-                "start_time": start,
-                "end_time": end,
-                "confidence": 1.0,
-            })
+            normalized.append(
+                {
+                    "text": entry.get("text", ""),
+                    "word": entry.get("text", ""),
+                    "start": start,
+                    "end": end,
+                    "start_time": start,
+                    "end_time": end,
+                    "confidence": 1.0,
+                }
+            )
         return normalized
 
     @staticmethod
@@ -674,9 +672,7 @@ class BatchTranscriptionService:
         base_generate_kwargs: dict[str, Any],
     ) -> str | None:
         """Best-effort Whisper translation to English for one segment/chunk."""
-        translate_kwargs = {
-            k: v for k, v in base_generate_kwargs.items() if k != "language"
-        }
+        translate_kwargs = {k: v for k, v in base_generate_kwargs.items() if k != "language"}
         translate_kwargs["task"] = "translate"
         translate_kwargs["language"] = "en"
 
@@ -734,10 +730,7 @@ class BatchTranscriptionService:
         """
         settings = get_settings()
         chunk_length_s = float(settings.transcription_chunk_length_s)
-        stride_parts = [
-            int(s.strip())
-            for s in settings.transcription_stride_length_s.split(",")
-        ]
+        stride_parts = [int(s.strip()) for s in settings.transcription_stride_length_s.split(",")]
         stride_left = stride_parts[0] if len(stride_parts) >= 1 else 4
         stride_right = stride_parts[1] if len(stride_parts) >= 2 else 2
 
@@ -808,8 +801,12 @@ class BatchTranscriptionService:
                 logger.info(
                     "[%s] VAD segment %d (%.1f–%.1fs, %.1fs) exceeds "
                     "chunk_length_s=%.0fs — sub-splitting into ~%d chunks",
-                    job_id, idx, seg.start_time, seg.end_time,
-                    seg_duration_s, chunk_length_s,
+                    job_id,
+                    idx,
+                    seg.start_time,
+                    seg.end_time,
+                    seg_duration_s,
+                    chunk_length_s,
                     max(1, int(np.ceil((len(segment_audio) - chunk_samples) / step_samples)) + 1),
                 )
 
@@ -828,7 +825,9 @@ class BatchTranscriptionService:
                     except Exception as e:
                         logger.warning(
                             "[%s] ASR failed for sub-chunk of segment %d: %s",
-                            job_id, idx, e,
+                            job_id,
+                            idx,
+                            e,
                         )
                         sub_offset += step_samples
                         continue
@@ -842,9 +841,7 @@ class BatchTranscriptionService:
 
                     # De-duplicate overlap with previous chunk
                     if chunk_text and previous_chunk_text:
-                        chunk_text = self._dedup_overlap(
-                            previous_chunk_text, chunk_text
-                        )
+                        chunk_text = self._dedup_overlap(previous_chunk_text, chunk_text)
 
                     # Track TTFW
                     if chunk_text and not first_word_fired:
@@ -858,7 +855,9 @@ class BatchTranscriptionService:
 
                     if chunk_text:
                         seg_text_parts.append(chunk_text)
-                        previous_chunk_text = sub_result.text.strip()  # use original for dedup matching
+                        previous_chunk_text = (
+                            sub_result.text.strip()
+                        )  # use original for dedup matching
                         sub_seg: dict[str, Any] = {
                             "text": chunk_text,
                             "start": sub_start_global,
@@ -885,15 +884,17 @@ class BatchTranscriptionService:
                     # Emit chunk callback
                     is_last_sub = (sub_offset + step_samples) >= len(segment_audio)
                     if chunk_callback:
-                        chunk_callback(ChunkTranscriptionResult(
-                            chunk_index=global_chunk_idx,
-                            text=chunk_text,
-                            start_time=sub_start_global,
-                            end_time=sub_end_global,
-                            is_final=is_last_sub,
-                            word_timestamps=sub_result.word_timestamps,
-                            vad_segment_index=idx,
-                        ))
+                        chunk_callback(
+                            ChunkTranscriptionResult(
+                                chunk_index=global_chunk_idx,
+                                text=chunk_text,
+                                start_time=sub_start_global,
+                                end_time=sub_end_global,
+                                is_final=is_last_sub,
+                                word_timestamps=sub_result.word_timestamps,
+                                vad_segment_index=idx,
+                            )
+                        )
 
                     global_chunk_idx += 1
                     sub_offset += step_samples
@@ -907,7 +908,10 @@ class BatchTranscriptionService:
                 except Exception as e:
                     logger.warning(
                         "[%s] ASR failed for segment [%.1f–%.1f]: %s",
-                        job_id, seg.start_time, seg.end_time, e,
+                        job_id,
+                        seg.start_time,
+                        seg.end_time,
+                        e,
                     )
                     continue
 
@@ -945,38 +949,46 @@ class BatchTranscriptionService:
 
                 # Emit chunk callback
                 if chunk_callback:
-                    chunk_callback(ChunkTranscriptionResult(
-                        chunk_index=global_chunk_idx,
-                        text=chunk_text,
-                        start_time=seg.start_time,
-                        end_time=seg.end_time,
-                        is_final=True,
-                        word_timestamps=seg_result.word_timestamps,
-                        vad_segment_index=idx,
-                    ))
+                    chunk_callback(
+                        ChunkTranscriptionResult(
+                            chunk_index=global_chunk_idx,
+                            text=chunk_text,
+                            start_time=seg.start_time,
+                            end_time=seg.end_time,
+                            is_final=True,
+                            word_timestamps=seg_result.word_timestamps,
+                            vad_segment_index=idx,
+                        )
+                    )
                 global_chunk_idx += 1
 
             # ---- Merge per-segment results ----
             seg_elapsed = time.time() - seg_start_time
             seg_merged_text = " ".join(seg_text_parts)
 
-            segment_latencies.append({
-                "segment_index": idx,
-                "start_time": round(seg.start_time, 4),
-                "end_time": round(seg.end_time, 4),
-                "duration_s": round(seg.duration, 4),
-                "inference_time_s": round(seg_elapsed, 4),
-                "sub_chunks": max(1, global_chunk_idx - (global_chunk_idx - len(seg_text_parts))),
-            })
+            segment_latencies.append(
+                {
+                    "segment_index": idx,
+                    "start_time": round(seg.start_time, 4),
+                    "end_time": round(seg.end_time, 4),
+                    "duration_s": round(seg.duration, 4),
+                    "inference_time_s": round(seg_elapsed, 4),
+                    "sub_chunks": max(
+                        1, global_chunk_idx - (global_chunk_idx - len(seg_text_parts))
+                    ),
+                }
+            )
 
             # Per-segment result for metadata
-            per_segment_results.append({
-                "segment_index": idx,
-                "start_time": round(seg.start_time, 4),
-                "end_time": round(seg.end_time, 4),
-                "text": seg_merged_text,
-                "chunks": len(seg_text_parts),
-            })
+            per_segment_results.append(
+                {
+                    "segment_index": idx,
+                    "start_time": round(seg.start_time, 4),
+                    "end_time": round(seg.end_time, 4),
+                    "text": seg_merged_text,
+                    "chunks": len(seg_text_parts),
+                }
+            )
 
             if seg_merged_text:
                 all_text_parts.append(seg_merged_text)
@@ -1006,10 +1018,12 @@ class BatchTranscriptionService:
         }
 
         logger.info(
-            "[%s] Per-segment ASR: %d/%d segments transcribed, %d chars, "
-            "%d total chunks",
-            job_id, len(segment_latencies), len(speech_segments),
-            len(merged_text), global_chunk_idx,
+            "[%s] Per-segment ASR: %d/%d segments transcribed, %d chars, " "%d total chunks",
+            job_id,
+            len(segment_latencies),
+            len(speech_segments),
+            len(merged_text),
+            global_chunk_idx,
         )
 
         return result
@@ -1035,7 +1049,11 @@ class BatchTranscriptionService:
             return await self._run_azure_speech_inference(
                 samples, sample_rate, model, config, progress_callback
             )
-        elif model.format in [AiModelFormat.SAFETENSOR, AiModelFormat.PYTORCH, AiModelFormat.CTRANSLATE2]:
+        elif model.format in [
+            AiModelFormat.SAFETENSOR,
+            AiModelFormat.PYTORCH,
+            AiModelFormat.CTRANSLATE2,
+        ]:
             return await self._run_transformers_inference(
                 samples, sample_rate, model, config, progress_callback
             )
@@ -1043,7 +1061,11 @@ class BatchTranscriptionService:
             # Check if loaded with Optimum (has proper processor)
             if model.extra.get("optimum") or model.processor is not None:
                 return await self._run_optimum_onnx_inference(
-                    samples, sample_rate, model, config, progress_callback,
+                    samples,
+                    sample_rate,
+                    model,
+                    config,
+                    progress_callback,
                     chunk_callback=chunk_callback,
                     first_word_hook=first_word_hook,
                 )
@@ -1091,9 +1113,7 @@ class BatchTranscriptionService:
         code_switching = getattr(config, "code_switching", False)
 
         # Resolve language from pipeline config
-        language = normalize_language_for_azure(
-            getattr(config, "language", None)
-        )
+        language = normalize_language_for_azure(getattr(config, "language", None))
 
         # Run the synchronous Azure transcription in a background thread
         # so we don't block the asyncio event loop.
@@ -1167,9 +1187,7 @@ class BatchTranscriptionService:
                 )
 
                 auto_detect_config = AutoDetectSourceLanguageConfig()
-                logger.info(
-                    "Azure code-switching: using AutoDetectSourceLanguageConfig"
-                )
+                logger.info("Azure code-switching: using AutoDetectSourceLanguageConfig")
             else:
                 speech_config.speech_recognition_language = language
 
@@ -1207,15 +1225,19 @@ class BatchTranscriptionService:
                                 seg["confidence"] = nbest[0].get("Confidence")
                                 # Extract word-level timestamps from NBest
                                 for w in nbest[0].get("Words", []):
-                                    word_timestamps.append({
-                                        "text": w.get("Word", ""),
-                                        "word": w.get("Word", ""),
-                                        "start": w.get("Offset", 0) / 10_000_000,
-                                        "end": (w.get("Offset", 0) + w.get("Duration", 0)) / 10_000_000,
-                                        "start_time": w.get("Offset", 0) / 10_000_000,
-                                        "end_time": (w.get("Offset", 0) + w.get("Duration", 0)) / 10_000_000,
-                                        "confidence": w.get("Confidence", 1.0),
-                                    })
+                                    word_timestamps.append(
+                                        {
+                                            "text": w.get("Word", ""),
+                                            "word": w.get("Word", ""),
+                                            "start": w.get("Offset", 0) / 10_000_000,
+                                            "end": (w.get("Offset", 0) + w.get("Duration", 0))
+                                            / 10_000_000,
+                                            "start_time": w.get("Offset", 0) / 10_000_000,
+                                            "end_time": (w.get("Offset", 0) + w.get("Duration", 0))
+                                            / 10_000_000,
+                                            "confidence": w.get("Confidence", 1.0),
+                                        }
+                                    )
                     except Exception:
                         pass
 
@@ -1237,18 +1259,16 @@ class BatchTranscriptionService:
 
             # ---- Run transcription --------------------------------
             logger.info(
-                "Starting Azure conversation transcription "
-                "(language=%s, code_switching=%s)",
-                language, code_switching,
+                "Starting Azure conversation transcription " "(language=%s, code_switching=%s)",
+                language,
+                code_switching,
             )
             transcriber.start_transcribing_async()
 
             # Wait with a generous timeout (30 min for very long files)
             if not recognition_done.wait(timeout=1800):
                 transcriber.stop_transcribing_async()
-                raise CloudASRTranscriptionError(
-                    "Azure transcription timed out after 30 minutes"
-                )
+                raise CloudASRTranscriptionError("Azure transcription timed out after 30 minutes")
 
             transcriber.stop_transcribing_async()
 
@@ -1266,9 +1286,7 @@ class BatchTranscriptionService:
 
             # Compute average confidence
             confidences = [s["confidence"] for s in segments if s["confidence"] is not None]
-            avg_confidence = (
-                sum(confidences) / len(confidences) if confidences else None
-            )
+            avg_confidence = sum(confidences) / len(confidences) if confidences else None
 
             return RawTranscription(
                 text=full_text,
@@ -1325,9 +1343,11 @@ class BatchTranscriptionService:
             model_dtype = torch.float32
 
         inputs = {
-            k: v.to(device=device, dtype=model_dtype)
-            if v.is_floating_point()
-            else v.to(device=device)
+            k: (
+                v.to(device=device, dtype=model_dtype)
+                if v.is_floating_point()
+                else v.to(device=device)
+            )
             for k, v in inputs.items()
         }
 
@@ -1492,10 +1512,7 @@ class BatchTranscriptionService:
         chunk_length_s = float(settings.transcription_chunk_length_s)
 
         # Parse stride from settings (e.g. "4,2" -> left=4, right=2)
-        stride_parts = [
-            int(s.strip())
-            for s in settings.transcription_stride_length_s.split(",")
-        ]
+        stride_parts = [int(s.strip()) for s in settings.transcription_stride_length_s.split(",")]
         stride_left = stride_parts[0] if len(stride_parts) >= 1 else 4
         stride_right = stride_parts[1] if len(stride_parts) >= 2 else 2
         stride_s = stride_left + stride_right
@@ -1528,11 +1545,18 @@ class BatchTranscriptionService:
             logger.info(
                 "Running single-pass Optimum inference on %.1fs audio "
                 "(language=%s, code_switching=%s)",
-                audio_duration_s, lang, code_switching,
+                audio_duration_s,
+                lang,
+                code_switching,
             )
             result = await self._optimum_single_pass(
-                samples, sample_rate, onnx_model, processor, device,
-                generate_kwargs, progress_callback,
+                samples,
+                sample_rate,
+                onnx_model,
+                processor,
+                device,
+                generate_kwargs,
+                progress_callback,
                 code_switching=code_switching,
             )
             # Fire TTFW and chunk callback for single-pass
@@ -1540,27 +1564,32 @@ class BatchTranscriptionService:
                 if first_word_hook:
                     first_word_hook()
                 if chunk_callback:
-                    chunk_callback(ChunkTranscriptionResult(
-                        chunk_index=0,
-                        text=result.text.strip(),
-                        start_time=0.0,
-                        end_time=audio_duration_s,
-                        is_final=True,
-                        word_timestamps=result.word_timestamps,
-                    ))
+                    chunk_callback(
+                        ChunkTranscriptionResult(
+                            chunk_index=0,
+                            text=result.text.strip(),
+                            start_time=0.0,
+                            end_time=audio_duration_s,
+                            is_final=True,
+                            word_timestamps=result.word_timestamps,
+                        )
+                    )
             return result
 
         # --- Long audio: chunked path -----------------------------------
         chunk_samples = int(chunk_length_s * sample_rate)
         step_samples = int(step_s * sample_rate)
-        num_chunks = max(1, int(np.ceil(
-            (len(samples) - chunk_samples) / step_samples
-        )) + 1)
+        num_chunks = max(1, int(np.ceil((len(samples) - chunk_samples) / step_samples)) + 1)
 
         logger.info(
             "Running chunked Optimum inference on %.1fs audio "
             "(%d chunks of %.0fs, stride=%.0fs, language=%s, code_switching=%s)",
-            audio_duration_s, num_chunks, chunk_length_s, stride_s, lang, code_switching,
+            audio_duration_s,
+            num_chunks,
+            chunk_length_s,
+            stride_s,
+            lang,
+            code_switching,
         )
 
         all_text_parts: list[str] = []
@@ -1620,7 +1649,8 @@ class BatchTranscriptionService:
                 raw_offsets = decoded.get("offsets", [])
                 if raw_offsets:
                     chunk_word_timestamps = self._normalize_whisper_offsets(
-                        raw_offsets, time_offset=chunk_start_s,
+                        raw_offsets,
+                        time_offset=chunk_start_s,
                     )
             except Exception:
                 pass  # Fall through to proportional estimation
@@ -1628,9 +1658,7 @@ class BatchTranscriptionService:
             # De-duplicate overlap with previous chunk
             chunk_text = raw_chunk_text
             if chunk_text and previous_chunk_text:
-                chunk_text = self._dedup_overlap(
-                    previous_chunk_text, chunk_text
-                )
+                chunk_text = self._dedup_overlap(previous_chunk_text, chunk_text)
 
             # Accumulate results
             if chunk_text:
@@ -1642,11 +1670,13 @@ class BatchTranscriptionService:
 
                 all_text_parts.append(chunk_text)
                 previous_chunk_text = raw_chunk_text  # use raw for dedup matching
-                all_segments.append({
-                    "text": chunk_text,
-                    "start": chunk_start_s,
-                    "end": chunk_end_s,
-                })
+                all_segments.append(
+                    {
+                        "text": chunk_text,
+                        "start": chunk_start_s,
+                        "end": chunk_end_s,
+                    }
+                )
                 if chunk_english_text:
                     all_segments[-1]["english_text"] = chunk_english_text
 
@@ -1660,25 +1690,29 @@ class BatchTranscriptionService:
                         for wi, word in enumerate(words):
                             w_start = chunk_start_s + wi * word_duration
                             w_end = w_start + word_duration
-                            all_word_timestamps.append({
-                                "word": word,
-                                "start": round(w_start, 3),
-                                "end": round(w_end, 3),
-                                "confidence": 1.0,
-                            })
+                            all_word_timestamps.append(
+                                {
+                                    "word": word,
+                                    "start": round(w_start, 3),
+                                    "end": round(w_end, 3),
+                                    "confidence": 1.0,
+                                }
+                            )
 
             is_last_chunk = (offset + step_samples) >= len(samples)
 
             # Emit chunk callback for near-real-time output
             if chunk_callback:
-                chunk_callback(ChunkTranscriptionResult(
-                    chunk_index=chunk_idx,
-                    text=chunk_text,
-                    start_time=chunk_start_s,
-                    end_time=chunk_end_s,
-                    is_final=is_last_chunk,
-                    word_timestamps=chunk_word_timestamps or [],
-                ))
+                chunk_callback(
+                    ChunkTranscriptionResult(
+                        chunk_index=chunk_idx,
+                        text=chunk_text,
+                        start_time=chunk_start_s,
+                        end_time=chunk_end_s,
+                        is_final=is_last_chunk,
+                        word_timestamps=chunk_word_timestamps or [],
+                    )
+                )
 
             chunk_idx += 1
             if progress_callback:
@@ -1691,8 +1725,12 @@ class BatchTranscriptionService:
         logger.info(
             "Chunked Optimum inference: %d chunks (%.0fs each, %.0fs stride), "
             "%d chars, %d word timestamps, %d segments",
-            chunk_idx, chunk_length_s, stride_s,
-            len(merged_text), len(all_word_timestamps), len(all_segments),
+            chunk_idx,
+            chunk_length_s,
+            stride_s,
+            len(merged_text),
+            len(all_word_timestamps),
+            len(all_segments),
         )
 
         if progress_callback:
@@ -1719,7 +1757,9 @@ class BatchTranscriptionService:
         import torch
 
         inputs = processor(
-            samples, sampling_rate=sample_rate, return_tensors="pt",
+            samples,
+            sampling_rate=sample_rate,
+            return_tensors="pt",
         )
         if device != "cpu":
             inputs = {k: v.to(device) for k, v in inputs.items()}
@@ -1762,20 +1802,24 @@ class BatchTranscriptionService:
                 for wi, word in enumerate(words):
                     w_start = wi * word_dur
                     w_end = w_start + word_dur
-                    word_timestamps.append({
-                        "word": word,
-                        "start": round(w_start, 3),
-                        "end": round(w_end, 3),
-                        "confidence": 1.0,
-                    })
+                    word_timestamps.append(
+                        {
+                            "word": word,
+                            "start": round(w_start, 3),
+                            "end": round(w_end, 3),
+                            "confidence": 1.0,
+                        }
+                    )
 
         segments: list[dict[str, Any]] = []
         if full_text:
-            segments.append({
-                "text": full_text,
-                "start": 0.0,
-                "end": audio_duration_s,
-            })
+            segments.append(
+                {
+                    "text": full_text,
+                    "start": 0.0,
+                    "end": audio_duration_s,
+                }
+            )
             if english_text:
                 segments[0]["english_text"] = english_text
 

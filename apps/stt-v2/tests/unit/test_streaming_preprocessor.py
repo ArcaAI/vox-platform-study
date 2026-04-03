@@ -192,9 +192,7 @@ class TestPreprocessorWithVAD:
         """VAD returns high prob for N frames then low → utterance emitted."""
         # Speech for 20 frames, then silence
         speech_frames = 20
-        vad = _make_alternating_vad(
-            speech_prob=0.9, silence_prob=0.1, speech_frames=speech_frames
-        )
+        vad = _make_alternating_vad(speech_prob=0.9, silence_prob=0.1, speech_frames=speech_frames)
 
         pp = StreamingPreprocessor(
             session_id="s1",
@@ -209,9 +207,7 @@ class TestPreprocessorWithVAD:
         # 20 speech frames + 5 silence frames = 25 frames
         # Each frame = 512 samples = 1024 bytes
         total_frames = 30
-        pcm = _make_speech_pcm(
-            duration_ms=int(total_frames * 512 / 16000 * 1000)
-        )
+        pcm = _make_speech_pcm(duration_ms=int(total_frames * 512 / 16000 * 1000))
 
         utts = await pp.feed(pcm)
 
@@ -293,9 +289,7 @@ class TestPreprocessorWithVAD:
         )
 
         total_frames = 25
-        pcm = _make_speech_pcm(
-            duration_ms=int(total_frames * 512 / 16000 * 1000)
-        )
+        pcm = _make_speech_pcm(duration_ms=int(total_frames * 512 / 16000 * 1000))
         utts = await pp.feed(pcm)
 
         assert len(utts) == 1
@@ -306,6 +300,7 @@ class TestPreprocessorWithVAD:
     async def test_multiple_utterances(self):
         """Two speech bursts separated by silence → two utterances."""
         call_count = 0
+
         # Pattern: 15 speech, 5 silence, 15 speech, 5 silence
         def _vad(chunk, session_state, threshold=None):
             nonlocal call_count
@@ -332,9 +327,7 @@ class TestPreprocessorWithVAD:
         )
 
         total_frames = 45
-        pcm = _make_speech_pcm(
-            duration_ms=int(total_frames * 512 / 16000 * 1000)
-        )
+        pcm = _make_speech_pcm(duration_ms=int(total_frames * 512 / 16000 * 1000))
         utts = await pp.feed(pcm)
 
         assert len(utts) == 2
@@ -647,9 +640,7 @@ class TestPreSpeechContext:
         )
 
         total_frames = pre_silence + speech_frames + 5
-        pcm = _make_speech_pcm(
-            duration_ms=int(total_frames * 512 / 16000 * 1000)
-        )
+        pcm = _make_speech_pcm(duration_ms=int(total_frames * 512 / 16000 * 1000))
         utts = await pp.feed(pcm)
 
         assert len(utts) == 1

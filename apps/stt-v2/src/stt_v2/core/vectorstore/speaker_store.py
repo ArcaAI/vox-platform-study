@@ -115,9 +115,7 @@ class SpeakerEmbeddingStore:
             self._initialised = True
 
         except Exception as e:
-            raise VectorStoreConnectionError(
-                f"Failed to ensure Qdrant collection: {e}"
-            ) from e
+            raise VectorStoreConnectionError(f"Failed to ensure Qdrant collection: {e}") from e
 
     # ------------------------------------------------------------------
     # CRUD
@@ -173,9 +171,7 @@ class SpeakerEmbeddingStore:
                 ],
                 wait=True,
             )
-            logger.debug(
-                "Upserted speaker embedding: tenant=%s speaker=%s", tenant_id, speaker_id
-            )
+            logger.debug("Upserted speaker embedding: tenant=%s speaker=%s", tenant_id, speaker_id)
             return point_id
 
         except Exception as e:
@@ -281,8 +277,7 @@ class SpeakerEmbeddingStore:
                 speakers[sid] = speakers.get(sid, 0) + 1
 
             return [
-                {"speaker_id": sid, "embedding_count": count}
-                for sid, count in speakers.items()
+                {"speaker_id": sid, "embedding_count": count} for sid, count in speakers.items()
             ]
 
         except Exception as e:

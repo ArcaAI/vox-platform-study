@@ -65,9 +65,7 @@ class SpeakerIdentifier:
 
         try:
             # Step 1: Extract embedding
-            embedding = await self._embedding_service.extract_from_samples(
-                samples, sample_rate
-            )
+            embedding = await self._embedding_service.extract_from_samples(samples, sample_rate)
 
             # Step 2: Search Qdrant
             matches = await self._speaker_store.search_similar(
@@ -116,9 +114,7 @@ class SpeakerIdentifier:
             )
 
         except Exception as e:
-            raise SpeakerIdentificationError(
-                f"Speaker identification failed: {e}"
-            ) from e
+            raise SpeakerIdentificationError(f"Speaker identification failed: {e}") from e
 
     # ------------------------------------------------------------------
     # Multi-segment diarization (for batch transcription)
@@ -209,7 +205,9 @@ class SpeakerIdentifier:
         if batch_audio:
             try:
                 embeddings = await self._embedding_service.extract_batch(
-                    batch_audio, sample_rate, batch_times,
+                    batch_audio,
+                    sample_rate,
+                    batch_times,
                 )
             except Exception as e:
                 logger.warning("Batch embedding extraction failed: %s", e)
