@@ -61,12 +61,12 @@ spec:
             failureThreshold: 10
           resources:
             requests:
-              cpu: "4"
-              memory: "16Gi"
+              cpu: "2"
+              memory: "8Gi"
               nvidia.com/gpu: "1"
             limits:
-              cpu: "8"
-              memory: "32Gi"
+              cpu: "4"
+              memory: "24Gi"
               nvidia.com/gpu: "1"
   volumeClaimTemplates:
     - apiVersion: v1

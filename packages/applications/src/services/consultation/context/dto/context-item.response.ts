@@ -224,6 +224,18 @@ export class ContextItemResponse {
   @ApiProperty({ description: 'Derived: true if type is TRANSCRIPT' })
   isTranscript: boolean;
 
+  @ApiProperty({ description: 'Derived: true if type is CASE_NOTE' })
+  isCaseNote: boolean;
+
+  @ApiProperty({ description: 'Derived: true if type is WORKNOTE' })
+  isWorknote: boolean;
+
+  @ApiProperty({ description: 'Derived: true if type is NAMED_ENTITY' })
+  isNamedEntity: boolean;
+
+  @ApiProperty({ description: 'Derived: true if type is ATTACHMENT' })
+  isAttachment: boolean;
+
   @ApiProperty({ description: 'Derived: true if source is AI' })
   isAiGenerated: boolean;
 

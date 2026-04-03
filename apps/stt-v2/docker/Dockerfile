@@ -138,12 +138,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     # ── Cleanup: remove files ──
     && find /opt/venv \( \
         -name "*.pyc" -o -name "*.pyo" \
-        -o -name "*.pyi" -o -name "py.typed" \
         -o -name "*.mo" -o -name "*.ipynb" \
     \) -type f -delete 2>/dev/null || true \
-    # ── Cleanup: torch inference-only (remove test/inductor/benchmark/caffe2) ──
+    # ── Cleanup: torch inference-only (remove test/benchmark/caffe2) ──
     && rm -rf /opt/venv/lib/python3.11/site-packages/torch/test \
-              /opt/venv/lib/python3.11/site-packages/torch/_inductor \
               /opt/venv/lib/python3.11/site-packages/torch/utils/benchmark \
               /opt/venv/lib/python3.11/site-packages/caffe2 \
        2>/dev/null || true
@@ -172,7 +170,11 @@ COPY --chown=app:app src/ ./src/
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src \
+    OTEL_SERVICE_NAME=stt-v2 \
+    OTEL_EXPORTER_ENDPOINT=http://localhost:4317 \
+    OTEL_ENABLED=false \
+    METRICS_ENABLED=true
 
 USER app
 
@@ -214,7 +216,11 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH=/app/src \
     HF_HOME=/models/hf-cache \
     NVIDIA_VISIBLE_DEVICES=all \
-    NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    OTEL_SERVICE_NAME=stt-v2 \
+    OTEL_EXPORTER_ENDPOINT=http://localhost:4317 \
+    OTEL_ENABLED=false \
+    METRICS_ENABLED=true
 
 EXPOSE 8861
 

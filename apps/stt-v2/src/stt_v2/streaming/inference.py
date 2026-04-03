@@ -33,6 +33,7 @@ class _InferenceResult:
     """Internal container for ASR inference output."""
 
     text: str = ""
+    english_text: str | None = None
     word_timestamps: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -115,6 +116,7 @@ class StreamingInferenceWorker:
 
         result = SegmentResult(
             text=text,
+            english_text=inference_out.english_text,
             start_time=utterance.start_time,
             end_time=utterance.end_time,
             is_final=utterance.is_final,
@@ -182,6 +184,7 @@ class StreamingInferenceWorker:
         if isinstance(result, dict):
             return _InferenceResult(
                 text=result.get("text") or "",
+                english_text=result.get("english_text") or result.get("englishText"),
                 word_timestamps=result.get("word_timestamps") or [],
             )
         if isinstance(result, str):

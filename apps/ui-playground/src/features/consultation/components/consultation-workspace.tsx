@@ -10,12 +10,23 @@ import type { Consultation, ContextItem, ContextVersionEntry, SummaryVersionEntr
 import { DEFAULT_PAGE_SIZE, useArca } from '@arcaai/vox';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
-import { Bot, ClipboardList, FileText, History, Mic, Plus, Search } from 'lucide-react';
+import { Bot, ClipboardList, FileText, History, Mic, Paperclip, Plus, Search, StickyNote, Tags } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ElementType } from 'react';
 import { toast } from 'sonner';
 import { CaseNoteForm } from './case-note-form';
 import { StartConsultationDialog } from './start-consultation-dialog';
 import { VersionDetailPanel } from './version-detail-panel';
+
+// ---------------------------------------------------------------------------
+// Hooks
+// ---------------------------------------------------------------------------
+
+function useQueryErrorToast(error: Error | null, fallbackMessage: string) {
+  useEffect(() => {
+    if (!error) return;
+    toast.error(error instanceof Error ? error.message : fallbackMessage);
+  }, [error, fallbackMessage]);
+}
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -41,6 +52,9 @@ const typeIcon: Record<string, ElementType> = {
   RAW_SUMMARY: Bot,
   MODIFIED_SUMMARY: Bot,
   PRE_SUMMARY: Bot,
+  WORKNOTE: StickyNote,
+  NAMED_ENTITY: Tags,
+  ATTACHMENT: Paperclip,
 };
 
 const typeLabel: Record<string, string> = {
@@ -52,6 +66,7 @@ const typeLabel: Record<string, string> = {
   PRE_SUMMARY: 'Pre-Summary',
   WORKNOTE: 'Work Note',
   ATTACHMENT: 'Attachment',
+  NAMED_ENTITY: 'Named Entity',
 };
 
 const contextTypeOptions: Array<{ value: string; label: string }> = [
@@ -62,6 +77,9 @@ const contextTypeOptions: Array<{ value: string; label: string }> = [
   { value: 'RAW_SUMMARY', label: typeLabel.RAW_SUMMARY },
   { value: 'MODIFIED_SUMMARY', label: typeLabel.MODIFIED_SUMMARY },
   { value: 'PRE_SUMMARY', label: typeLabel.PRE_SUMMARY },
+  { value: 'WORKNOTE', label: typeLabel.WORKNOTE },
+  { value: 'NAMED_ENTITY', label: typeLabel.NAMED_ENTITY },
+  { value: 'ATTACHMENT', label: typeLabel.ATTACHMENT },
 ];
 
 interface DoctorInfo {
@@ -188,8 +206,8 @@ export function ConsultationWorkspace() {
       const consultationId = selectedConsultationId;
       if (!consultationId) return [];
       await sessionRef.current.load(consultationId);
-      const [caseNotes, transcriptions] = await Promise.all([contextRef.current.fetchCaseNotes(), contextRef.current.fetchTranscriptions()]);
-      const all = [...(caseNotes ?? []), ...(transcriptions ?? [])];
+      const items = await contextRef.current.getItems();
+      const all = items ?? [];
       all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       return all;
     },
@@ -230,26 +248,9 @@ export function ConsultationWorkspace() {
 
   const selectedVersion = selectedVersions.length === 1 ? selectedVersions[0]! : null;
 
-  useEffect(() => {
-    const error = consultationsQuery.error;
-    if (!error) return;
-    const message = error instanceof Error ? error.message : 'Failed to load consultations';
-    toast.error(message);
-  }, [consultationsQuery.error]);
-
-  useEffect(() => {
-    const error = contextItemsQuery.error;
-    if (!error) return;
-    const message = error instanceof Error ? error.message : 'Failed to load context items';
-    toast.error(message);
-  }, [contextItemsQuery.error]);
-
-  useEffect(() => {
-    const error = versionsQuery.error;
-    if (!error) return;
-    const message = error instanceof Error ? error.message : 'Failed to load versions';
-    toast.error(message);
-  }, [versionsQuery.error]);
+  useQueryErrorToast(consultationsQuery.error, 'Failed to load consultations');
+  useQueryErrorToast(contextItemsQuery.error, 'Failed to load context items');
+  useQueryErrorToast(versionsQuery.error, 'Failed to load versions');
 
   const handleSearch = useCallback((value: string) => {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
@@ -452,21 +453,23 @@ export function ConsultationWorkspace() {
               Add
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          <DialogContent className="flex h-[70vh] w-[70vw] flex-col sm:max-w-[70vw]">
             <DialogHeader>
               <DialogTitle>Add Context Item</DialogTitle>
-              <DialogDescription>Add case notes, summaries, or audio files to this consultation.</DialogDescription>
+              <DialogDescription>Add context items to this consultation.</DialogDescription>
             </DialogHeader>
-            <CaseNoteForm
-              consultationId={selectedConsultationId}
-              onSuccess={() => {
-                setIsAddContextDialogOpen(false);
-                setContextTypeFilter('_all');
-                void queryClient.invalidateQueries({
-                  queryKey: consultationKeys.contextItems(selectedConsultationId),
-                });
-              }}
-            />
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <CaseNoteForm
+                consultationId={selectedConsultationId}
+                onSuccess={() => {
+                  setIsAddContextDialogOpen(false);
+                  setContextTypeFilter('_all');
+                  void queryClient.invalidateQueries({
+                    queryKey: consultationKeys.contextItems(selectedConsultationId),
+                  });
+                }}
+              />
+            </div>
           </DialogContent>
         </Dialog>
       </div>
@@ -505,7 +508,7 @@ export function ConsultationWorkspace() {
                 </Badge>
               )}
             </div>
-            <p className="text-muted-foreground truncate text-xs">{item.content.slice(0, 60)}</p>
+            <p className="text-muted-foreground truncate text-xs">{(item.content ?? '').slice(0, 60) || '(empty)'}</p>
           </div>
         </div>
       );

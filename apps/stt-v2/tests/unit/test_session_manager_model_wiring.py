@@ -358,6 +358,44 @@ class TestMakeAsrCallable:
         assert result == {"text": "transcribed text", "word_timestamps": []}
 
     @pytest.mark.asyncio
+    async def test_preserves_english_text_from_segment_results(self):
+        mgr = _make_manager()
+
+        mock_model = MagicMock()
+        mock_inference_config = MagicMock()
+        mock_batch_svc = MagicMock()
+        mock_batch_svc._run_inference = AsyncMock(
+            return_value=MagicMock(
+                text="வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்",
+                word_timestamps=[],
+                segments=[
+                    {
+                        "text": "வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்",
+                        "start": 0.0,
+                        "end": 1.0,
+                        "english_text": "Will not call ...",
+                    },
+                ],
+            )
+        )
+
+        with patch.dict("sys.modules", {
+            "stt_v2.transcription.batch_service": MagicMock(
+                BatchTranscriptionService=lambda: mock_batch_svc
+            ),
+        }):
+            fn = mgr._make_asr_callable(mock_model, mock_inference_config)
+
+        samples = np.zeros(16000, dtype=np.float32)
+        result = await fn(samples, 16000)
+
+        assert result == {
+            "text": "வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்",
+            "english_text": "Will not call ...",
+            "word_timestamps": [],
+        }
+
+    @pytest.mark.asyncio
     async def test_returns_empty_when_inference_returns_none(self):
         mgr = _make_manager()
 

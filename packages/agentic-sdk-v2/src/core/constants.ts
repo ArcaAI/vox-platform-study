@@ -61,6 +61,10 @@ export const CONTEXT_ENDPOINTS = {
   TRANSCRIPTIONS: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/context/transcriptions`,
   /** Get case note context items only (SES-07) */
   CASE_NOTES: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/context/case-notes`,
+  /** Get worknote context items only */
+  WORKNOTES: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/context/worknotes`,
+  /** Get attachment context items only */
+  ATTACHMENTS: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/context/attachments`,
 } as const;
 
 /**

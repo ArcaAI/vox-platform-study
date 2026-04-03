@@ -29,7 +29,7 @@ class TestOllamaConfig:
         cfg = OllamaConfig()
         assert cfg.enabled is False
         assert cfg.base_url == "http://localhost:11434"
-        assert cfg.default_model == "llama3.2:latest"
+        assert cfg.default_model == "qwen3.5:2b"
         assert cfg.timeout_s == 300
         assert cfg.max_concurrent == 4
 

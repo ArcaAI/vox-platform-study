@@ -104,7 +104,12 @@ class TestTranscriptionResult:
                 WordTimestamp("world", 0.6, 1.0),
             ],
             sentence_timestamps=[
-                SentenceTimestamp("Hello world, this is a test.", 0.0, 3.5),
+                SentenceTimestamp(
+                    "Hello world, this is a test.",
+                    0.0,
+                    3.5,
+                    english_text="Hello world, this is a test.",
+                ),
             ],
             metadata={"model": "whisper-large"},
         )
@@ -120,6 +125,7 @@ class TestTranscriptionResult:
         assert result_dict["processing_time_seconds"] == 1.2
         assert len(result_dict["word_timestamps"]) == 2
         assert len(result_dict["sentence_timestamps"]) == 1
+        assert result_dict["sentence_timestamps"][0]["english_text"] == "Hello world, this is a test."
         assert result_dict["metadata"]["model"] == "whisper-large"
 
     def test_to_dict_word_timestamps_format(self, sample_result):

@@ -8,6 +8,11 @@
             "outputs": ["dist/**", ".next/**", "!.next/cache/**", "public/dist/**", "storybook-static/**", "pkg/**"],
             "env": ["NEXT_PUBLIC_API_HOST"]
         },
+        "@arcaai/database#build": {
+            "dependsOn": ["db:generate", "^build"],
+            "cache": false,
+            "outputs": ["dist/**"]
+        },
         "lint": {
             "dependsOn": ["^build"]
         },
@@ -96,6 +101,10 @@
         "SESSION_SECRET_KEY",
         "REDIS_HOST",
         "REDIS_PORT",
-        "REDIS_PASS"
+        "REDIS_PASS",
+        "OTEL_DEBUG",
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+        "OTEL_SERVICE_NAME",
+        "OTEL_SERVICE_VERSION"
     ]
 }

@@ -62,6 +62,7 @@ build-api:
     SERVICE_NAME: api
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/api/Dockerfile
+    BUILD_ARGS: "--build-arg DATABASE_URL=$DATABASE_URL"
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
       when: never

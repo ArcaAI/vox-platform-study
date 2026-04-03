@@ -506,6 +506,10 @@ export const selectCaseNotes = (state: AgenticState): ContextItem[] => state.con
 /**
  * Get summary items only
  */
+export const selectWorknotes = (state: AgenticState): ContextItem[] => state.contextItems.filter((item) => item.type === 'WORKNOTE');
+
+export const selectAttachments = (state: AgenticState): ContextItem[] => state.contextItems.filter((item) => item.type === 'ATTACHMENT');
+
 export const selectSummaryItems = (state: AgenticState): ContextItem[] =>
   state.contextItems.filter((item) => item.type === 'summary' || item.type === 'pre_summary');
 

@@ -25,13 +25,13 @@ Usage:
 import asyncio
 import signal
 
-import structlog
-
 from stt_v2.core.config.settings import get_settings
+from stt_v2.core.logging import get_logger, setup_logging
 from stt_v2.core.messaging.broker import configure_broker
 
-logger = structlog.get_logger(__name__)
 settings = get_settings()
+setup_logging(settings.log_level)
+logger = get_logger(__name__)
 
 # Configure the Dramatiq broker FIRST (before importing actors)
 broker = configure_broker(settings.redis_url)

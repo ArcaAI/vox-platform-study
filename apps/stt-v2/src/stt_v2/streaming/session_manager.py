@@ -609,8 +609,15 @@ class SessionManager:
             )
             if not result:
                 return {"text": "", "word_timestamps": []}
+            english_text = None
+            if result.segments:
+                for segment in result.segments:
+                    if isinstance(segment, dict) and segment.get("english_text"):
+                        english_text = segment["english_text"]
+                        break
             return {
                 "text": result.text,
+                **({"english_text": english_text} if english_text else {}),
                 "word_timestamps": result.word_timestamps or [],
             }
 
