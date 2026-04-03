@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from opentelemetry import trace
+from opentelemetry.trace import StatusCode
 
 from smr_v2.core.exceptions import (
     CircuitOpenError,
@@ -56,6 +58,12 @@ def _get_headers(exc: SmrError) -> dict[str, str] | None:
 async def smr_exception_handler(request: Request, exc: SmrError) -> JSONResponse:
     status = _get_status_code(exc)
     headers = _get_headers(exc)
+
+    span = trace.get_current_span()
+    if span.is_recording():
+        span.set_status(StatusCode.ERROR, exc.message)
+        span.record_exception(exc)
+
     return JSONResponse(
         status_code=status,
         content={"detail": exc.message, "error_code": exc.error_code},

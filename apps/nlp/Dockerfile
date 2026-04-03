@@ -106,9 +106,11 @@ ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app" \
 
 ENV OTEL_SERVICE_NAME=hope-nlp \
     OTEL_RESOURCE_ATTRIBUTES="service.name=hope-nlp,service.namespace=hope,deployment.environment=production" \
+    OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 \
     OTEL_TRACES_ENABLED=true \
     OTEL_METRICS_ENABLED=true \
-    LOG_LEVEL=info
+    LOG_LEVEL=info \
+    LOG_CONSOLE_JSON_FORMAT=true
 
 WORKDIR /app
 

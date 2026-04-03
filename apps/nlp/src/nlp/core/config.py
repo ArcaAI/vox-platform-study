@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from enum import Enum
@@ -27,28 +27,58 @@ class LogLevel(str, Enum):
     ERROR = 40
     FATAL = 50
 
+
+def _parse_otel_resource_attributes(raw: Optional[str]) -> Dict[str, str]:
+    """Parse OTel-standard `key=val,key=val` format into a dict."""
+    if not raw:
+        return {}
+    result: Dict[str, str] = {}
+    for pair in raw.split(","):
+        pair = pair.strip()
+        if "=" in pair:
+            key, value = pair.split("=", 1)
+            result[key.strip()] = value.strip()
+    return result
+
+
 class NLPServiceConfig(BaseSettings):
     """Main configuration for NLP service"""
 
-    name: str = Field(default=os.getenv("OTEL_SERVICE_NAME", os.getenv("SERVICE_NAME", "nlp")))
-    version: str = Field(default=os.getenv("OTEL_SERVICE_VERSION", os.getenv("SERVICE_VERSION", "0.1.0")))
-    namespace: str = Field(default=os.getenv("OTEL_SERVICE_NAMESPACE", os.getenv("SERVICE_NAMESPACE", "hope")))
+    name: str = Field(default="nlp")
+    version: str = Field(default="0.1.0")
+    namespace: str = Field(default="hope")
     environment: Environment = Field(default=Environment.DEVELOPMENT)
     debug: bool = Field(default=False)
     log_level: int = Field(default=LogLevel.INFO)
 
-    host: str = Field(default=os.getenv("HOST", "0.0.0.0"))
-    port: int = Field(default=os.getenv("PORT", 8864))
-    workers: int = Field(default=os.getenv("WORKERS", 1))
+    host: str = Field(default="0.0.0.0")
+    port: int = Field(default=8864)
+    workers: int = Field(default=1)
 
-    opentelemetry_endpoint: Optional[str] = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
-    otlp_endpoint: Optional[str] = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
-    resource_attributes: Optional[dict] = Field(default=os.getenv("OTEL_RESOURCE_ATTRIBUTES", None))
-    traces_enabled: bool = Field(default=os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
-    metrics_enabled: bool = Field(default=os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true")
+    otlp_endpoint: Optional[str] = Field(default=None)
+    resource_attributes_raw: Optional[str] = Field(default=None)
+    traces_enabled: bool = Field(default=True)
+    metrics_enabled: bool = Field(default=True)
 
     class Config:
         env_prefix = "NLP_"
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("name", os.getenv("OTEL_SERVICE_NAME", os.getenv("SERVICE_NAME", "nlp")))
+        kwargs.setdefault("version", os.getenv("OTEL_SERVICE_VERSION", os.getenv("SERVICE_VERSION", "0.1.0")))
+        kwargs.setdefault("namespace", os.getenv("OTEL_SERVICE_NAMESPACE", os.getenv("SERVICE_NAMESPACE", "hope")))
+        kwargs.setdefault("host", os.getenv("HOST", "0.0.0.0"))
+        kwargs.setdefault("port", int(os.getenv("PORT", "8864")))
+        kwargs.setdefault("workers", int(os.getenv("WORKERS", "1")))
+        kwargs.setdefault("otlp_endpoint", os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+        kwargs.setdefault("resource_attributes_raw", os.getenv("OTEL_RESOURCE_ATTRIBUTES"))
+        kwargs.setdefault("traces_enabled", os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
+        kwargs.setdefault("metrics_enabled", os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true")
+        super().__init__(**kwargs)
+
+    @property
+    def resource_attributes(self) -> Dict[str, str]:
+        return _parse_otel_resource_attributes(self.resource_attributes_raw)
 
 
 class TextClassificationConfig(BaseSettings):
