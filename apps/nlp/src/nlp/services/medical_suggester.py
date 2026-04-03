@@ -1,19 +1,24 @@
 import logging
 import re
-from typing import Any, List, Optional, Dict
+from typing import Any
+
 import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
 
 from nlp.core.config import MedicalSuggesterConfig
-from nlp.schemas.diagnosis import DiagnosisSuggestion, DiagnosisSuggestionRequest, DiagnosisSuggestionResponse
 from nlp.schemas.classification import TokenClassificationRequest
+from nlp.schemas.diagnosis import (
+    DiagnosisSuggestion,
+    DiagnosisSuggestionRequest,
+    DiagnosisSuggestionResponse,
+)
 from nlp.services.token_classifier import TokenClassifier
 
 logger = logging.getLogger(__name__)
 
 
 class MedicalSuggester:
-    def __init__(self, config: Optional[MedicalSuggesterConfig] = None, token_classifier: Optional[TokenClassifier] = None):
+    def __init__(self, config: MedicalSuggesterConfig | None = None, token_classifier: TokenClassifier | None = None):
         if config is None:
             config = MedicalSuggesterConfig()
 
@@ -135,7 +140,7 @@ class MedicalSuggester:
             logger.error(f"Failed to generate medical suggestions: {str(e)}")
             raise
 
-    def _filter_relevant_entities(self, entities: List, min_confidence: float) -> List:
+    def _filter_relevant_entities(self, entities: list, min_confidence: float) -> list:
         """Filter entities that are relevant for disease prediction"""
         relevant_entity_types = {
             "B-SIGN_SYMPTOM",
@@ -167,13 +172,13 @@ class MedicalSuggester:
 
         return filtered_entities
 
-    def _create_symptom_text(self, entities: List) -> str:
+    def _create_symptom_text(self, entities: list) -> str:
         """Create a coherent symptom description from extracted entities"""
         if not entities:
             return ""
 
         # Group entities by type for better text construction
-        entity_groups: Dict[str, List[str]] = {}
+        entity_groups: dict[str, list[str]] = {}
         for entity in entities:
             entity_type = entity.entity_type.replace("B-", "").replace("I-", "")
             if entity_type not in entity_groups:
@@ -203,7 +208,7 @@ class MedicalSuggester:
         symptom_text = ", ".join(set(symptom_parts)).replace("▁", "")
         return symptom_text.strip()
 
-    async def _predict_diseases(self, symptom_text: str) -> Dict[str, float]:
+    async def _predict_diseases(self, symptom_text: str) -> dict[str, float]:
         """Use HuggingFace model to predict diseases from symptoms"""
         if not symptom_text:
             return {}
@@ -241,8 +246,8 @@ class MedicalSuggester:
         return model_label
 
     def _create_medical_suggestions(
-        self, disease_predictions: Dict[str, float], min_confidence: float
-    ) -> List[DiagnosisSuggestion]:
+        self, disease_predictions: dict[str, float], min_confidence: float
+    ) -> list[DiagnosisSuggestion]:
         """Create medical suggestions from disease predictions and entities"""
         suggestions = []
 

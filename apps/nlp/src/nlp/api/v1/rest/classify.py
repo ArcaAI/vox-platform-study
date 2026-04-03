@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from nlp.core.logging import get_logger
+from nlp.dependencies import get_text_classifier, get_token_classifier
 from nlp.schemas.classification import (
     TextClassificationRequest,
     TextClassificationResponse,
@@ -9,7 +10,6 @@ from nlp.schemas.classification import (
 )
 from nlp.services.text_classifier import TextClassifier
 from nlp.services.token_classifier import TokenClassifier
-from nlp.dependencies import get_text_classifier, get_token_classifier
 
 logger = get_logger(__name__)
 
@@ -38,7 +38,7 @@ async def classify_text(
 
     except Exception as e:
         logger.error(f"Text classification failed: {str(e)}")
-        raise HTTPException(status_code=500, detail="Text classification failed")
+        raise HTTPException(status_code=500, detail="Text classification failed") from e
 
 
 @router.post("/tokens", response_model=TokenClassificationResponse)
@@ -64,4 +64,4 @@ async def classify_tokens(
 
     except Exception as e:
         logger.error(f"Token classification failed: {str(e)}")
-        raise HTTPException(status_code=500, detail="Token classification failed")
+        raise HTTPException(status_code=500, detail="Token classification failed") from e

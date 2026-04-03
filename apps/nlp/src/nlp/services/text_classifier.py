@@ -1,10 +1,11 @@
-import torch
 from abc import ABC, abstractmethod
-from typing import Any, Optional
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+from typing import Any
 
-from nlp.core.logging import get_logger
+import torch
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
+
 from nlp.core.config import TextClassificationConfig
+from nlp.core.logging import get_logger
 from nlp.schemas.classification import TextClassificationRequest, TextClassificationResponse
 
 logger = get_logger(__name__)
@@ -37,7 +38,7 @@ class TextClassifier(ABC):
 class TransformerTextClassifier(TextClassifier):
     """Transformer-based text classification for medical documents"""
 
-    def __init__(self, config: Optional[TextClassificationConfig] = None):
+    def __init__(self, config: TextClassificationConfig | None = None):
         if config is None:
             config = TextClassificationConfig()
 
@@ -70,7 +71,7 @@ class TransformerTextClassifier(TextClassifier):
             logger.info("TextClassifier initialized successfully")
 
         except Exception as e:
-            raise RuntimeError(f"Failed to load TextClassifier: {str(e)}")
+            raise RuntimeError(f"Failed to load TextClassifier: {str(e)}") from e
 
     async def process(self, request: TextClassificationRequest) -> TextClassificationResponse:
         """Classify medical text into document categories"""

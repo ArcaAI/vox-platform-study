@@ -13,17 +13,17 @@ from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
-from opentelemetry import trace, metrics
+from opentelemetry import metrics, trace
 from opentelemetry._logs import set_logger_provider
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import InMemoryLogExporter, SimpleLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 from nlp.core.config import Environment, _parse_otel_resource_attributes
 from nlp.core.logging import JsonFormatter
@@ -32,7 +32,6 @@ from nlp.core.observability import (
     setup_opentelemetry,
     shutdown_opentelemetry,
 )
-
 
 _TEST_RESOURCE = Resource({SERVICE_NAME: "test-nlp"})
 

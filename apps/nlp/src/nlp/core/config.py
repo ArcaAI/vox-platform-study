@@ -1,15 +1,16 @@
-from typing import Dict, List, Optional
-from pydantic_settings import BaseSettings
-from pydantic import Field
-from enum import Enum
 import os
+from enum import IntEnum, StrEnum
+
 import dotenv
+from pydantic import Field
+from pydantic_settings import BaseSettings
+
 from nlp.utils import get_project_root
 
 dotenv.load_dotenv()
 
 
-class Environment(str, Enum):
+class Environment(StrEnum):
     """Deployment environments"""
 
     DEVELOPMENT = "development"
@@ -17,7 +18,7 @@ class Environment(str, Enum):
     PRODUCTION = "production"
 
 
-class LogLevel(int, Enum):
+class LogLevel(IntEnum):
     """Possible log levels."""
 
     NOTSET = 0
@@ -28,11 +29,11 @@ class LogLevel(int, Enum):
     FATAL = 50
 
 
-def _parse_otel_resource_attributes(raw: Optional[str]) -> Dict[str, str]:
+def _parse_otel_resource_attributes(raw: str | None) -> dict[str, str]:
     """Parse OTel-standard `key=val,key=val` format into a dict."""
     if not raw:
         return {}
-    result: Dict[str, str] = {}
+    result: dict[str, str] = {}
     for pair in raw.split(","):
         pair = pair.strip()
         if "=" in pair:
@@ -55,9 +56,9 @@ class NLPServiceConfig(BaseSettings):
     port: int = Field(default=int(os.getenv("PORT", "8864")))
     workers: int = Field(default=int(os.getenv("WORKERS", "1")))
 
-    opentelemetry_endpoint: Optional[str] = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
-    otlp_endpoint: Optional[str] = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
-    resource_attributes_raw: Optional[str] = Field(default=None)
+    opentelemetry_endpoint: str | None = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
+    otlp_endpoint: str | None = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
+    resource_attributes_raw: str | None = Field(default=None)
     traces_enabled: bool = Field(default=os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
     metrics_enabled: bool = Field(default=os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true")
 
@@ -78,7 +79,7 @@ class NLPServiceConfig(BaseSettings):
         super().__init__(**kwargs)
 
     @property
-    def resource_attributes(self) -> Dict[str, str]:
+    def resource_attributes(self) -> dict[str, str]:
         return _parse_otel_resource_attributes(self.resource_attributes_raw)
 
 
@@ -88,7 +89,7 @@ class TextClassificationConfig(BaseSettings):
     # Model settings
     model_name: str = Field(default="michellejieli/emotion_text_classifier")
     model_version: str = Field(default="1.0.0")
-    model_path: Optional[str] = Field(default=None)
+    model_path: str | None = Field(default=None)
     tokenizer_name: str = Field(default="michellejieli/emotion_text_classifier")
 
     # Processing settings
@@ -114,7 +115,7 @@ class TokenClassificationConfig(BaseSettings):
     # Model settings
     model_name: str = Field(default="blaze999/Medical-NER")
     model_version: str = Field(default="1.0.0")
-    model_path: Optional[str] = Field(default=None)
+    model_path: str | None = Field(default=None)
     tokenizer_name: str = Field(default="blaze999/Medical-NER")
 
     # Processing settings
@@ -124,7 +125,7 @@ class TokenClassificationConfig(BaseSettings):
 
     # NER specific settings
     aggregation_strategy: str = Field(default="simple")  # simple, first, max, average
-    ignore_labels: List[str] = Field(default_factory=lambda: ["O"])
+    ignore_labels: list[str] = Field(default_factory=lambda: ["O"])
 
     # Performance settings
     use_gpu: bool = Field(default=True)
@@ -180,9 +181,9 @@ class WebSocketTokenClassificationConfig(BaseSettings):
 class SecurityConfig(BaseSettings):
     """Security configuration"""
 
-    cors_origins: List[str] = Field(default=["*"])
-    cors_methods: List[str] = Field(default=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-    cors_headers: List[str] = Field(default=["*"])
+    cors_origins: list[str] = Field(default=["*"])
+    cors_methods: list[str] = Field(default=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+    cors_headers: list[str] = Field(default=["*"])
     cors_allow_credentials: bool = Field(default=True)
     cors_max_age: int = Field(default=3600)
 

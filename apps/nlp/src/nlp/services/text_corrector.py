@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
-from symspellpy import SymSpell, Verbosity  # type: ignore[import-untyped]
-from typing import Dict, Optional
 
-from nlp.core.logging import get_logger
-from nlp.schemas.correction import TextCorrectionResponse, SupportedLanguage, TextCorrectionRequest
+from symspellpy import SymSpell, Verbosity  # type: ignore[import-untyped]
+
 from nlp.core.config import TextCorrectorConfig
+from nlp.core.logging import get_logger
+from nlp.schemas.correction import SupportedLanguage, TextCorrectionRequest, TextCorrectionResponse
 
 logger = get_logger(__name__)
 
@@ -31,14 +31,14 @@ class TextCorrector(ABC):
 class SymSpellCorrector(TextCorrector):
     """SymSpell-based corrector for English and Malayalam"""
 
-    def __init__(self, config: Optional[TextCorrectorConfig] = None):
+    def __init__(self, config: TextCorrectorConfig | None = None):
         if config is None:
             config = TextCorrectorConfig()
 
         super().__init__()
 
         self.config = config
-        self.sym_spell_instances: Dict[SupportedLanguage, SymSpell] = {}
+        self.sym_spell_instances: dict[SupportedLanguage, SymSpell] = {}
 
     async def initialize(self) -> None:
         """Load SymSpell instances and dictionaries for both languages"""
