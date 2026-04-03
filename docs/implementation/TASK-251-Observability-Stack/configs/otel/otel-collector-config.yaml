@@ -1,0 +1,105 @@
+###############################################################################
+# OpenTelemetry Collector Configuration — HOPE Observability Stack
+#
+# Image: otel/opentelemetry-collector-contrib:0.149.0
+# Deployment: VM 400 (10.10.1.100)
+# Purpose: Central telemetry gateway — receives OTLP from all services and
+#          the browser SDK, routes logs→Loki, traces→Tempo, metrics→Prometheus
+###############################################################################
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
+        cors:
+          allowed_origins:
+            - "https://*.taphuynh.dev"
+            - "http://localhost:*"
+            - "http://127.0.0.1:*"
+          allowed_headers:
+            - "Content-Type"
+            - "X-Scope-OrgID"
+            - "X-Tenant-ID"
+            - "X-Request-ID"
+            - "X-Correlation-ID"
+            - "traceparent"
+            - "tracestate"
+
+processors:
+  batch:
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+    timeout: 5s
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 400
+    spike_limit_mib: 100
+
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: "production"
+        action: upsert
+      - key: service.namespace
+        value: "hope"
+        action: upsert
+
+exporters:
+  # Loki — uses OTLP native endpoint (loki exporter is deprecated)
+  otlphttp/loki:
+    endpoint: "http://loki:3100/otlp"
+    tls:
+      insecure: true
+
+  # Tempo — OTLP gRPC
+  otlp/tempo:
+    endpoint: "tempo:4317"
+    tls:
+      insecure: true
+
+  # Prometheus — remote write
+  prometheusremotewrite:
+    endpoint: "http://prometheus:9090/api/v1/write"
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Debug — useful during initial deployment, disable in steady state
+  debug:
+    verbosity: basic
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+
+  zpages:
+    endpoint: "0.0.0.0:55679"
+
+service:
+  extensions: [health_check, zpages]
+  telemetry:
+    metrics:
+      address: "0.0.0.0:8889"
+    logs:
+      level: "info"
+
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp/loki]
+
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/tempo]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheusremotewrite]

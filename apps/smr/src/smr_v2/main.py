@@ -158,6 +158,15 @@ async def lifespan(app: FastAPI):
             logger.warning("redis.close_failed", error=str(exc))
         except Exception as exc:
             logger.error("redis.close_unexpected_error", error=str(exc))
+
+    tracer_provider = getattr(app.state, "tracer_provider", None)
+    if tracer_provider is not None:
+        try:
+            tracer_provider.force_flush(timeout_millis=5000)
+            tracer_provider.shutdown()
+        except Exception as exc:
+            logger.warning("otel.shutdown_failed", error=str(exc))
+
     logger.info("smr_v2.shutdown_complete")
 
 
@@ -184,6 +193,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.state.provider_queues = {}
     app.state.shutdown_manager = None
     app.state.provider_semaphores = {}
+    app.state.tracer_provider = None
 
     from smr_v2.core.exception_handlers import register_exception_handlers
     register_exception_handlers(app)
@@ -223,10 +233,13 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     if settings.otel_enabled:
         from smr_v2.core.telemetry import setup_telemetry
-        setup_telemetry(
+        app.state.tracer_provider = setup_telemetry(
             app,
             endpoint=settings.otel_exporter_endpoint,
             service_name=settings.otel_service_name,
+            service_namespace=settings.otel_service_namespace,
+            deployment_environment=settings.otel_deployment_environment,
+            insecure=settings.otel_insecure,
         )
 
     if settings.metrics_enabled:

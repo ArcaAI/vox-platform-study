@@ -8,12 +8,12 @@ from typing import Union
 
 
 class JsonFormatter(logging.Formatter):
-    """Custom JSON formatter for structured logging."""
+    """Custom JSON formatter for structured logging with OTel trace correlation."""
 
     def format(self, record):
-        """Format log record as JSON."""
+        """Format log record as JSON with traceId/spanId from OTel LoggingInstrumentor."""
         log_data = {
-            "timestamp": datetime.fromtimestamp(record.created).isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -25,11 +25,20 @@ class JsonFormatter(logging.Formatter):
             "process": record.process,
         }
 
-        # Add exception information if present
+        trace_id = getattr(record, "otelTraceID", "0")
+        span_id = getattr(record, "otelSpanID", "0")
+        if trace_id and trace_id != "0":
+            log_data["traceId"] = trace_id
+            log_data["spanId"] = span_id
+            log_data["traceFlags"] = getattr(record, "otelTraceFlags", "00")
+
+        service_name = getattr(record, "otelServiceName", None)
+        if service_name:
+            log_data["service.name"] = service_name
+
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
 
-        # Add extra fields if present
         if hasattr(record, "extra_fields"):
             log_data.update(record.extra_fields)
 
@@ -122,11 +131,12 @@ class LoggingConfig:
 
         handlers: list[logging.Handler] = []
 
-        # Console handler (always uses simple format for readability)
+        console_json_format = cls._get_env_bool("LOG_CONSOLE_JSON_FORMAT", False)
+
         if console_enabled:
             console_handler = logging.StreamHandler()
             console_handler.setLevel(getattr(logging, log_level, logging.INFO))
-            console_handler.setFormatter(simple_formatter)
+            console_handler.setFormatter(json_formatter if console_json_format else simple_formatter)
             handlers.append(console_handler)
 
         # File handlers
@@ -150,7 +160,7 @@ class LoggingConfig:
                     interval=rotation_interval,
                     backupCount=rotation_backup_count,
                     encoding="utf-8",
-                    utc=False,
+                    utc=True,
                 )
             else:
                 main_file_handler = logging.handlers.RotatingFileHandler(
@@ -175,7 +185,7 @@ class LoggingConfig:
                         interval=rotation_interval,
                         backupCount=rotation_backup_count,
                         encoding="utf-8",
-                        utc=False,
+                        utc=True,
                     )
                 else:
                     error_file_handler = logging.handlers.RotatingFileHandler(

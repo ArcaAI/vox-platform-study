@@ -136,6 +136,115 @@ describe('ContextInterceptor', () => {
         });
     });
 
+    describe('OTel trace context propagation', () => {
+        const mockTraceId = 'abc123def456789012345678abcdef01';
+        const mockSpanId = '1234567890abcdef';
+
+        beforeEach(async () => {
+            vi.clearAllMocks();
+            vi.resetModules();
+
+            vi.doMock('@opentelemetry/api', () => ({
+                trace: {
+                    getActiveSpan: vi.fn().mockReturnValue({
+                        spanContext: () => ({
+                            traceId: mockTraceId,
+                            spanId: mockSpanId,
+                        }),
+                    }),
+                },
+            }));
+
+            mockClsService = {
+                get: vi.fn().mockReturnValue(undefined),
+                set: vi.fn(),
+                getId: vi.fn().mockReturnValue('test-request-id'),
+            };
+            const { ContextInterceptor } = await import('../context.interceptor');
+            interceptor = new ContextInterceptor(mockClsService);
+        });
+
+        it('should store traceId in CLS context when OTel span is active', async () => {
+            const context = createMockContext();
+            const handler = createMockHandler();
+
+            const result$ = interceptor.intercept(context, handler);
+            await firstValueFrom(result$);
+
+            expect(mockClsService.set).toHaveBeenCalledWith('traceId', mockTraceId);
+        });
+
+        it('should store spanId in CLS context when OTel span is active', async () => {
+            const context = createMockContext();
+            const handler = createMockHandler();
+
+            const result$ = interceptor.intercept(context, handler);
+            await firstValueFrom(result$);
+
+            expect(mockClsService.set).toHaveBeenCalledWith('spanId', mockSpanId);
+        });
+
+        it('should include traceId and spanId in request completion log', async () => {
+            const logSpy = vi.spyOn(interceptor['logger'], 'log');
+            const context = createMockContext();
+            const handler = createMockHandler();
+
+            const result$ = interceptor.intercept(context, handler);
+            await firstValueFrom(result$);
+
+            expect(logSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    traceId: mockTraceId,
+                    spanId: mockSpanId,
+                }),
+            );
+        });
+    });
+
+    describe('OTel trace context when no active span', () => {
+        beforeEach(async () => {
+            vi.clearAllMocks();
+            vi.resetModules();
+
+            vi.doMock('@opentelemetry/api', () => ({
+                trace: {
+                    getActiveSpan: vi.fn().mockReturnValue(undefined),
+                },
+            }));
+
+            mockClsService = {
+                get: vi.fn().mockReturnValue(undefined),
+                set: vi.fn(),
+                getId: vi.fn().mockReturnValue('test-request-id'),
+            };
+            const { ContextInterceptor } = await import('../context.interceptor');
+            interceptor = new ContextInterceptor(mockClsService);
+        });
+
+        it('should not set traceId in CLS when no active span', async () => {
+            const context = createMockContext();
+            const handler = createMockHandler();
+
+            const result$ = interceptor.intercept(context, handler);
+            await firstValueFrom(result$);
+
+            const traceIdCalls = mockClsService.set.mock.calls.filter(
+                (call: unknown[]) => call[0] === 'traceId',
+            );
+            expect(traceIdCalls).toHaveLength(0);
+        });
+
+        it('should still complete request successfully without OTel', async () => {
+            const context = createMockContext();
+            const handler = createMockHandler();
+
+            const result$ = interceptor.intercept(context, handler);
+            const result = await firstValueFrom(result$);
+
+            expect(result).toBe('response-value');
+        });
+    });
+
     describe('request completion logging when CLS is unavailable', () => {
         beforeEach(async () => {
             vi.clearAllMocks();

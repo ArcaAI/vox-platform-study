@@ -38,6 +38,8 @@ LABEL maintainer="HOPE Team" \
     description="HOPE API Backend Service - Builder" \
     stage="builder"
 
+ARG DATABASE_URL
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends openssl && \
     rm -rf /var/lib/apt/lists/*
@@ -46,6 +48,7 @@ COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
 
 RUN set -ex; \
+    export DATABASE_URL="${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/hope?schema=public}"; \
     # Ensure no stale Prisma engines remain and generate client for correct targets
     rm -rf /app/node_modules/.prisma && \
     pnpm exec prisma generate --schema=packages/database/src/prisma/db_main/schema.prisma; \
@@ -140,11 +143,11 @@ RUN mkdir -p /app/logs && chown -R api:hope /app/logs
 
 ENV NODE_ENV=production \
     PORT=8868 \
-    OTEL_SERVICE_NAME=hope-api \
+    OTEL_SERVICE_NAME=api-gateway \
     OTEL_SERVICE_VERSION=1.0.0 \
-    OTEL_RESOURCE_ATTRIBUTES=service.name=hope-api,service.version=1.0.0,service.namespace=hope,deployment.environment=production \
     OTEL_TRACES_ENABLED=true \
-    OTEL_METRICS_ENABLED=true
+    OTEL_METRICS_ENABLED=true \
+    OTEL_LOGS_ENABLED=true
 
 EXPOSE 8868
 
@@ -152,4 +155,4 @@ EXPOSE 8868
 ENTRYPOINT ["dumb-init", "--"]
 
 # Start the app (schema sync should be handled by a Kubernetes initContainer)
-CMD ["node", "apps/api/dist/main.js"]
+CMD ["node", "--import", "./apps/api/dist/instrumentation.js", "apps/api/dist/main.js"]

@@ -1,0 +1,143 @@
+###############################################################################
+# Prometheus Configuration — HOPE Observability Stack
+#
+# Image: prom/prometheus:v3.10.0
+# Deployment: VM 400 (10.10.1.100)
+# Purpose: Metric scraping from all services, databases, and Redis.
+#          15-day local retention, remote-write receiver enabled for OTel.
+###############################################################################
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: "hope-production"
+    environment: "production"
+
+# ── Application Services (VM 200 — 10.10.1.10) ──
+
+scrape_configs:
+  - job_name: "api-gateway"
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["10.10.1.10:8868"]
+        labels:
+          service: "api-gateway"
+          vm: "200"
+
+  - job_name: "stt-v2"
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["10.10.1.10:8861"]
+        labels:
+          service: "stt-v2"
+          vm: "200"
+
+  - job_name: "smr"
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["10.10.1.10:8862"]
+        labels:
+          service: "smr"
+          vm: "200"
+
+  - job_name: "nlp"
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["10.10.1.10:8864"]
+        labels:
+          service: "nlp"
+          vm: "200"
+
+  # ── Database Cluster (VMs 500-502) ──
+
+  - job_name: "postgres-exporter"
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - "10.10.1.200:9187"
+          - "10.10.1.201:9187"
+          - "10.10.1.202:9187"
+        labels:
+          service: "postgresql"
+
+  - job_name: "patroni"
+    scrape_interval: 30s
+    metrics_path: "/metrics"
+    static_configs:
+      - targets:
+          - "10.10.1.200:8008"
+          - "10.10.1.201:8008"
+          - "10.10.1.202:8008"
+        labels:
+          service: "patroni"
+
+  - job_name: "etcd"
+    scrape_interval: 30s
+    metrics_path: "/metrics"
+    static_configs:
+      - targets:
+          - "10.10.1.200:2379"
+          - "10.10.1.201:2379"
+          - "10.10.1.202:2379"
+        labels:
+          service: "etcd"
+
+  # ── Redis (VMs 420-421) ──
+
+  - job_name: "redis"
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - "10.10.1.120:9121"
+          - "10.10.1.121:9121"
+        labels:
+          service: "redis"
+
+  # ── Observability Stack Self-Monitoring ──
+
+  - job_name: "otel-collector"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["otel-collector:8889"]
+        labels:
+          service: "otel-collector"
+
+  - job_name: "loki"
+    scrape_interval: 30s
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          service: "loki"
+
+  - job_name: "tempo"
+    scrape_interval: 30s
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["tempo:3200"]
+        labels:
+          service: "tempo"
+
+  - job_name: "grafana"
+    scrape_interval: 30s
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["grafana:3000"]
+        labels:
+          service: "grafana"
+
+  - job_name: "prometheus"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          service: "prometheus"
+
+# Storage configured via CLI flags:
+#   --storage.tsdb.retention.time=15d
+#   --storage.tsdb.retention.size=15GB

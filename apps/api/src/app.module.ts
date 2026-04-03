@@ -18,7 +18,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ClsModule } from 'nestjs-cls';
 import { uuidv7 } from 'uuidv7';
 import { JwtAuthGuard } from './guards';
-import { ContextInterceptor, ExceptionInterceptor, ImpersonationAuditInterceptor, MaintenanceInterceptor } from './interceptors';
+import { ContextInterceptor, ExceptionInterceptor, ImpersonationAuditInterceptor, MaintenanceInterceptor, MetricsInterceptor } from './interceptors';
 import { GracefulShutdownModule } from './services';
 
 // Feature modules
@@ -43,6 +43,10 @@ import { TenantModule } from './modules/tenant/tenant.module';
 import { UserModule } from './modules/user/user.module';
 
 const interceptors = [
+  {
+    provide: APP_INTERCEPTOR,
+    useClass: MetricsInterceptor,
+  },
   {
     provide: APP_INTERCEPTOR,
     useClass: ContextInterceptor,
