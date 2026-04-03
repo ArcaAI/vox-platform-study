@@ -170,7 +170,11 @@ COPY --chown=app:app src/ ./src/
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src \
+    OTEL_SERVICE_NAME=stt-v2 \
+    OTEL_EXPORTER_ENDPOINT=http://localhost:4317 \
+    OTEL_ENABLED=false \
+    METRICS_ENABLED=true
 
 USER app
 
@@ -212,7 +216,11 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH=/app/src \
     HF_HOME=/models/hf-cache \
     NVIDIA_VISIBLE_DEVICES=all \
-    NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    OTEL_SERVICE_NAME=stt-v2 \
+    OTEL_EXPORTER_ENDPOINT=http://localhost:4317 \
+    OTEL_ENABLED=false \
+    METRICS_ENABLED=true
 
 EXPOSE 8861
 

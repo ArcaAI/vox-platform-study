@@ -248,6 +248,7 @@ async def generate(
             provider_name=request_body.provider,
             model=model,
             shutdown_manager=shutdown_manager,
+            circuit_breakers=circuit_breakers,
         )
         generation_audit.log_generation(
             GenerationAuditEvent(
@@ -459,6 +460,7 @@ async def _run_streaming_generation(
     provider_name: str = "unknown",
     model: str = "default",
     shutdown_manager: ShutdownManager | None = None,
+    circuit_breakers: dict[str, CircuitBreaker] | None = None,
 ):
     from smr_v2.core.metrics import TTFT_SECONDS
 
@@ -468,23 +470,39 @@ async def _run_streaming_generation(
     ACTIVE_GENERATIONS.labels(provider=resolved_provider).inc()
     start = time.monotonic()
     first_chunk_recorded = False
+    total_input_tokens = 0
+    total_output_tokens = 0
     try:
         async for chunk in provider.generate_stream(request_body):
             if not first_chunk_recorded:
                 ttft = time.monotonic() - start
                 TTFT_SECONDS.labels(provider=resolved_provider, model=resolved_model).observe(ttft)
                 first_chunk_recorded = True
+            if chunk.type == "usage" and isinstance(chunk.data, dict):
+                total_input_tokens += chunk.data.get("prompt_tokens", 0)
+                total_output_tokens += chunk.data.get("completion_tokens", 0)
             await task_manager.append_chunk(task_id, chunk)
         latency_ms = int((time.monotonic() - start) * 1000)
         await task_manager.update_task(task_id, status=TaskStatus.COMPLETED)
         GENERATION_TOTAL.labels(provider=resolved_provider, model=resolved_model, status="completed").inc()
         GENERATION_LATENCY.labels(provider=resolved_provider, model=resolved_model).observe(latency_ms / 1000)
+        if total_input_tokens or total_output_tokens:
+            TOKENS_TOTAL.labels(provider=resolved_provider, model=resolved_model, direction="input").inc(total_input_tokens)
+            TOKENS_TOTAL.labels(provider=resolved_provider, model=resolved_model, direction="output").inc(total_output_tokens)
+        cb = (circuit_breakers or {}).get(resolved_provider)
+        if cb:
+            cb.record_success()
+            _update_cb_metric(resolved_provider, cb)
     except Exception as exc:
         logger.error("streaming_generation.failed", task_id=task_id, error=str(exc), exc_info=True)
         await task_manager.update_task(task_id, status=TaskStatus.FAILED, error=str(exc))
         await task_manager.append_chunk(task_id, StreamChunk(type="error", data={"error": "Generation failed due to an internal error."}))
         GENERATION_ERRORS.labels(provider=resolved_provider, model=resolved_model, error_type="provider_error").inc()
         GENERATION_TOTAL.labels(provider=resolved_provider, model=resolved_model, status="failed").inc()
+        cb = (circuit_breakers or {}).get(resolved_provider)
+        if cb:
+            cb.record_failure()
+            _update_cb_metric(resolved_provider, cb)
     finally:
         ACTIVE_GENERATIONS.labels(provider=resolved_provider).dec()
         if shutdown_manager:
