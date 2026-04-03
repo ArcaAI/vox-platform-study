@@ -821,6 +821,9 @@ async def _run_transcription(
             _ = transcript_text, metadata, consultation_id
             return {"contextItemId": f"ctx-{job_id}"}
 
+        async def close(self) -> None:
+            pass
+
     class _PipelineReaderStub:
         def __init__(self, config: "PipelineConfig") -> None:
             self._config = config
@@ -831,9 +834,6 @@ async def _run_transcription(
                     f"Pipeline mismatch. expected={self._config.id}, got={pipeline_id}"
                 )
             return self._config
-
-        async def close(self) -> None:
-            pass
 
     async def _collect_realtime_events(
         inbound_job_id: str,
