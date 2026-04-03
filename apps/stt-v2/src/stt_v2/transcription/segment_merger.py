@@ -74,28 +74,31 @@ def merge_vad_segments(
             cur_confidence = min(cur_confidence, seg.confidence)
         else:
             # Emit current group and start a new one
-            merged.append(AudioSegment(
-                start_time=cur_start,
-                end_time=cur_end,
-                is_speech=True,
-                confidence=cur_confidence,
-            ))
+            merged.append(
+                AudioSegment(
+                    start_time=cur_start,
+                    end_time=cur_end,
+                    is_speech=True,
+                    confidence=cur_confidence,
+                )
+            )
             cur_start = seg.start_time
             cur_end = seg.end_time
             cur_confidence = seg.confidence
 
     # Emit the last group
-    merged.append(AudioSegment(
-        start_time=cur_start,
-        end_time=cur_end,
-        is_speech=True,
-        confidence=cur_confidence,
-    ))
+    merged.append(
+        AudioSegment(
+            start_time=cur_start,
+            end_time=cur_end,
+            is_speech=True,
+            confidence=cur_confidence,
+        )
+    )
 
     if len(merged) < len(speech):
         logger.info(
-            "Merged %d VAD segments into %d chunks "
-            "(max_duration=%.1fs, gap_threshold=%.1fs)",
+            "Merged %d VAD segments into %d chunks " "(max_duration=%.1fs, gap_threshold=%.1fs)",
             len(speech),
             len(merged),
             max_duration_s,

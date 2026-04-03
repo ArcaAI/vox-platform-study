@@ -59,8 +59,17 @@ def _clear_smr_env(monkeypatch):
 # 1. Config tests
 # ---------------------------------------------------------------------------
 
+def _clear_smr_env(monkeypatch):
+    """Remove all SMR_V2_* env vars so pydantic-settings reads only code defaults."""
+    import os
+    for key in list(os.environ):
+        if key.startswith("SMR_V2_"):
+            monkeypatch.delenv(key, raising=False)
+
+
 class TestOpenAICompatConfig:
     def test_openai_compat_config_defaults(self, monkeypatch):
+        _clear_smr_env(monkeypatch)
         from smr_v2.core.config import OpenAICompatConfig
 
         _clear_smr_env(monkeypatch)
@@ -73,6 +82,7 @@ class TestOpenAICompatConfig:
         assert cfg.organization is None
 
     def test_openai_compat_config_api_key_is_secret(self, monkeypatch):
+        _clear_smr_env(monkeypatch)
         from smr_v2.core.config import OpenAICompatConfig
 
         _clear_smr_env(monkeypatch)

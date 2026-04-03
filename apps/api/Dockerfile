@@ -143,11 +143,11 @@ RUN mkdir -p /app/logs && chown -R api:hope /app/logs
 
 ENV NODE_ENV=production \
     PORT=8868 \
-    OTEL_SERVICE_NAME=hope-api \
+    OTEL_SERVICE_NAME=api-gateway \
     OTEL_SERVICE_VERSION=1.0.0 \
-    OTEL_RESOURCE_ATTRIBUTES=service.name=hope-api,service.version=1.0.0,service.namespace=hope,deployment.environment=production \
     OTEL_TRACES_ENABLED=true \
-    OTEL_METRICS_ENABLED=true
+    OTEL_METRICS_ENABLED=true \
+    OTEL_LOGS_ENABLED=true
 
 EXPOSE 8868
 
@@ -155,4 +155,4 @@ EXPOSE 8868
 ENTRYPOINT ["dumb-init", "--"]
 
 # Start the app (schema sync should be handled by a Kubernetes initContainer)
-CMD ["node", "apps/api/dist/main.js"]
+CMD ["node", "--import", "./apps/api/dist/instrumentation.js", "apps/api/dist/main.js"]

@@ -11,7 +11,9 @@ import pytest
 _mock_qdrant = MagicMock()
 _mock_qdrant_models = MagicMock()
 # Ensure model classes are available
-_mock_qdrant_models.PointStruct = type("PointStruct", (), {"__init__": lambda self, **kw: self.__dict__.update(kw)})
+_mock_qdrant_models.PointStruct = type(
+    "PointStruct", (), {"__init__": lambda self, **kw: self.__dict__.update(kw)}
+)
 _mock_qdrant_models.PointIdsList = MagicMock()
 _mock_qdrant_models.FilterSelector = MagicMock()
 _mock_qdrant_models.Filter = MagicMock()
@@ -106,10 +108,13 @@ def _make_store_with_mock() -> tuple[SpeakerEmbeddingStore, AsyncMock]:
 
 class TestSpeakerEmbeddingStoreEnsureCollection:
     async def test_skips_when_exists(self, mocker):
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         mock_client.collection_exists.return_value = True
 
@@ -117,10 +122,13 @@ class TestSpeakerEmbeddingStoreEnsureCollection:
         mock_client.create_collection.assert_not_called()
 
     async def test_creates_when_not_exists(self, mocker):
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         mock_client.collection_exists.return_value = False
         store._initialised = False
@@ -132,10 +140,13 @@ class TestSpeakerEmbeddingStoreEnsureCollection:
 class TestSpeakerEmbeddingStoreUpsert:
     async def test_upsert_stores_point_with_correct_payload(self, mocker):
         """Verify upsert sends correct tenant/speaker/consultation payload to Qdrant."""
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
 
@@ -170,10 +181,13 @@ class TestSpeakerEmbeddingStoreUpsert:
 
     async def test_upsert_without_consultation_id(self, mocker):
         """Verify upsert omits consultation_id from payload when not provided."""
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
 
@@ -189,10 +203,13 @@ class TestSpeakerEmbeddingStoreUpsert:
         assert "consultation_id" not in point.payload
 
     async def test_upsert_raises_on_error(self, mocker):
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
         mock_client.upsert.side_effect = RuntimeError("upsert failed")
@@ -203,10 +220,13 @@ class TestSpeakerEmbeddingStoreUpsert:
 
 class TestSpeakerEmbeddingStoreSearch:
     async def test_search_filters_by_tenant(self, mocker):
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
 
@@ -225,10 +245,13 @@ class TestSpeakerEmbeddingStoreSearch:
         mock_client.search.assert_called_once()
 
     async def test_search_returns_empty_for_no_match(self, mocker):
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
 
@@ -238,10 +261,13 @@ class TestSpeakerEmbeddingStoreSearch:
 
 class TestSpeakerEmbeddingStoreDelete:
     async def test_delete_speaker(self, mocker):
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
 
@@ -255,10 +281,13 @@ class TestSpeakerEmbeddingStoreDelete:
         mock_client.delete.assert_called_once()
 
     async def test_delete_no_points(self, mocker):
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
         mock_client.scroll.return_value = ([], None)
@@ -278,10 +307,13 @@ class TestSpeakerEmbeddingStoreSearchEdgeCases:
 
     async def test_search_with_consultation_id_filter(self, mocker):
         """Verify search passes consultation_id filter to Qdrant."""
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
 
@@ -295,10 +327,13 @@ class TestSpeakerEmbeddingStoreSearchEdgeCases:
 
     async def test_search_with_custom_threshold(self, mocker):
         """Verify search respects custom score_threshold over settings default."""
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
 
@@ -309,10 +344,13 @@ class TestSpeakerEmbeddingStoreSearchEdgeCases:
 
     async def test_search_raises_on_error(self, mocker):
         """Verify search wraps Qdrant errors in SpeakerEmbeddingError."""
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
         mock_client.search.side_effect = RuntimeError("Qdrant connection lost")
@@ -326,10 +364,13 @@ class TestSpeakerEmbeddingStoreGetSpeakers:
 
     async def test_get_speakers_returns_aggregated_counts(self, mocker):
         """Verify get_speakers aggregates embedding counts per speaker."""
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
 
@@ -351,10 +392,13 @@ class TestSpeakerEmbeddingStoreGetSpeakers:
 
     async def test_get_speakers_empty_tenant(self, mocker):
         """Verify empty tenant returns empty list."""
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
 
@@ -367,10 +411,13 @@ class TestSpeakerEmbeddingStoreCleanupExpired:
 
     async def test_cleanup_calls_delete_with_filter(self, mocker):
         """Verify cleanup calls delete with timestamp range filter."""
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
 
@@ -381,10 +428,13 @@ class TestSpeakerEmbeddingStoreCleanupExpired:
 
     async def test_cleanup_raises_on_error(self, mocker):
         """Verify cleanup wraps errors in SpeakerEmbeddingError."""
-        mocker.patch("stt_v2.core.vectorstore.speaker_store.get_settings", return_value=MagicMock(
-            qdrant_collection_speakers="stt_speaker_embeddings",
-            diarization_similarity_threshold=0.7,
-        ))
+        mocker.patch(
+            "stt_v2.core.vectorstore.speaker_store.get_settings",
+            return_value=MagicMock(
+                qdrant_collection_speakers="stt_speaker_embeddings",
+                diarization_similarity_threshold=0.7,
+            ),
+        )
         store, mock_client = _make_store_with_mock()
         store._initialised = True
         mock_client.delete.side_effect = RuntimeError("delete failed")

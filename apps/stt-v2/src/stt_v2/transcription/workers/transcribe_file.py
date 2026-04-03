@@ -158,9 +158,7 @@ async def _transcribe_file_async(
                             stage="inference",
                         )
                     except Exception as e:
-                        logger.warning(
-                            f"[{job_id}] Failed to publish progress event: {e}"
-                        )
+                        logger.warning(f"[{job_id}] Failed to publish progress event: {e}")
 
         async def on_chunk(chunk: object) -> None:
             """Publish each partial transcript chunk for real-time SSE."""
@@ -184,8 +182,10 @@ async def _transcribe_file_async(
             value = int(progress)
             if value <= _last_progress_scheduled:
                 return
-            if value < 100 and (_last_progress_scheduled >= 0) and (
-                value - _last_progress_scheduled < 2
+            if (
+                value < 100
+                and (_last_progress_scheduled >= 0)
+                and (value - _last_progress_scheduled < 2)
             ):
                 return
 
@@ -240,9 +240,7 @@ async def _transcribe_file_async(
                     config=spec.preprocessing,
                 )
                 silence_ms = (
-                    spec.diarization.segment_silence_padding_ms
-                    if spec.diarization.enabled
-                    else 0
+                    spec.diarization.segment_silence_padding_ms if spec.diarization.enabled else 0
                 )
                 vad_wav = processed.get_vad_merged_wav_bytes(
                     silence_padding_ms=silence_ms,

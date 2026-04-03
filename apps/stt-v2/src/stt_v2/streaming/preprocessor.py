@@ -318,9 +318,7 @@ class StreamingPreprocessor:
             and state.noise_floor_cooldown == 0
         ):
             self._fallback_noise_floor = (0.95 * self._fallback_noise_floor) + (0.05 * rms)
-            self._fallback_noise_floor = min(
-                self._fallback_noise_floor, _FALLBACK_NOISE_FLOOR_MAX
-            )
+            self._fallback_noise_floor = min(self._fallback_noise_floor, _FALLBACK_NOISE_FLOOR_MAX)
 
         if state.noise_floor_cooldown > 0:
             state.noise_floor_cooldown -= 1

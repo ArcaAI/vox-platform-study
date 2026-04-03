@@ -3,8 +3,6 @@ import { Logger, LogLevel, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-// Sentry removed - using Highlight.io and Grafana stack for observability
-// import * as Sentry from '@sentry/node';
 import { AppModule } from './app.module';
 import { GracefulShutdownService } from './services';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -186,84 +184,16 @@ async function bootstrap() {
   const loggingService = app.get(ILoggingService);
   app.useLogger(loggingService);
 
+  // Register crash handlers so uncaught exceptions/rejections are logged and flushed
+  const { registerCrashHandlers } = await import('./crash-handlers');
+  registerCrashHandlers(loggingService);
+
   // Use native WebSocket adapter for WebSocket support
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   app.useWebSocketAdapter(new WsAdapter(app) as any);
 
   const port = process.env.PORT || 8868;
   const globalPrefix = 'api/v1';
-
-  try {
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
-    const highlightProjectId = process.env.HIGHLIGHT_PROJECT_ID || process.env.AGENTIC_HIGHLIGHT_PROJECT_ID;
-    if (highlightProjectId) {
-      loggingService.info(
-        'Initializing Highlight server SDK',
-        {
-          projectId: highlightProjectId,
-          serviceName: 'api',
-          environment: nodeEnv,
-        },
-        'Bootstrap',
-      );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mod: any = (() => {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          return require('@highlight-run/node');
-        } catch {
-          return null;
-        }
-      })();
-      const H = mod?.H || mod;
-      if (H?.init) {
-        H.init({
-          projectID: highlightProjectId,
-          serviceName: 'api',
-          environment: nodeEnv,
-          // eslint-disable-next-line turbo/no-undeclared-env-vars
-          backendUrl: process.env.HIGHLIGHT_BACKEND_URL,
-          // eslint-disable-next-line turbo/no-undeclared-env-vars
-          otlpEndpoint: process.env.HIGHLIGHT_OTLP_ENDPOINT,
-        });
-        if (H.requestHandler) app.use(H.requestHandler());
-        if (H.errorHandler) app.use(H.errorHandler());
-        loggingService.info(
-          'Highlight server SDK initialized',
-          {
-            hasRequestHandler: !!H.requestHandler,
-            hasErrorHandler: !!H.errorHandler,
-          },
-          'Bootstrap',
-        );
-      } else {
-        loggingService.warn(
-          'Highlight server SDK initialization skipped',
-          {
-            reason: 'H.init_not_found',
-            module: '@highlight-run/node',
-          },
-          'Bootstrap',
-        );
-      }
-    } else {
-      loggingService.debug(
-        'Highlight server SDK skipped',
-        {
-          reason: 'no_project_id',
-        },
-        'Bootstrap',
-      );
-    }
-  } catch (err) {
-    loggingService.error(
-      'Highlight server SDK initialization failed',
-      {
-        error: err instanceof Error ? err : new Error(String(err)),
-      },
-      'Bootstrap',
-    );
-  }
 
   app.setGlobalPrefix(globalPrefix, {
     exclude: ['/metrics'],
@@ -321,17 +251,11 @@ async function bootstrap() {
       'api-key',
       'apikey',
       'x-api-key',
-      'X-Highlight-Request',
-      'x-highlight-request',
-      // W3C trace context headers used by many SDKs
       'traceparent',
       'tracestate',
       'X-Request-Id',
       'X-Correlation-ID',
       'x-correlation-id',
-      'x-highlight-request',
-      'traceparent',
-      'tracestate',
       'X-Tenant-Id',
       'X-Project-Id',
       'X-Session-Id',
