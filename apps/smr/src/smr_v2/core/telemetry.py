@@ -18,20 +18,30 @@ def setup_telemetry(
     *,
     endpoint: str = "http://localhost:4317",
     service_name: str = "smr-v2",
-) -> None:
-    """Configure OpenTelemetry tracing with OTLP gRPC exporter."""
+    service_namespace: str = "hope",
+    deployment_environment: str = "production",
+    insecure: bool = True,
+) -> TracerProvider:
+    """Configure OpenTelemetry tracing with OTLP gRPC exporter.
+
+    Returns the TracerProvider so callers can shut it down gracefully.
+    """
     resource = Resource.create({
         "service.name": service_name,
         "service.version": _TRACER_VERSION,
+        "service.namespace": service_namespace,
+        "deployment.environment": deployment_environment,
     })
 
     provider = TracerProvider(resource=resource)
-    exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
+    exporter = OTLPSpanExporter(endpoint=endpoint, insecure=insecure)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
 
     FastAPIInstrumentor.instrument_app(app)
     HTTPXClientInstrumentor().instrument()
+
+    return provider
 
 
 def get_tracer(name: str = "smr_v2") -> trace.Tracer:

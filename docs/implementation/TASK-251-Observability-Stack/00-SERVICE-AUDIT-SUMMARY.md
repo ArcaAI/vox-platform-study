@@ -86,8 +86,8 @@
 Based on the audit, the implementation order for Phase 2 should be:
 
 1. **SMR** — Already 9.5/10. Just enable OTel with env vars. (30 min)
-2. **NLP** — Has OTel infrastructure but needs bug fixes. (2-3 hours)
-3. **API Gateway** — Needs `instrumentation.ts` and env var fixes. (4 hours)
+2. **NLP** — Has OTel infrastructure but needs bug fixes. (2-3 hours) → **TASK-253**
+3. **API Gateway** — Needs `instrumentation.ts` and env var fixes. (4 hours) → **TASK-252**
 4. **STT-v2** — Needs logging, telemetry, and middleware modules from scratch. (1 day)
 5. **@arcaai/vox** — Needs Faro integration. (1-2 days, Phase 4)
 
