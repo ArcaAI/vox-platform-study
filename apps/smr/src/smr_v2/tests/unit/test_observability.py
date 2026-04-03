@@ -74,6 +74,7 @@ class TestSetupOpentelemetry:
 
     def test_creates_logger_provider_when_logs_enabled(self):
         from opentelemetry.sdk._logs import LoggerProvider
+
         from smr_v2.core.observability import setup_opentelemetry
 
         app = MagicMock()
@@ -91,6 +92,7 @@ class TestSetupOpentelemetry:
 
     def test_adds_logging_handler_to_root(self):
         from opentelemetry.sdk._logs import LoggingHandler
+
         from smr_v2.core.observability import setup_opentelemetry
 
         app = MagicMock()
@@ -131,7 +133,7 @@ class TestSetupOpentelemetry:
         with patch(
             "smr_v2.core.observability.FastAPIInstrumentor"
         ) as MockFastAPI:
-            from smr_v2.core.observability import setup_opentelemetry, _phi_sanitization_hook
+            from smr_v2.core.observability import _phi_sanitization_hook, setup_opentelemetry
 
             app = MagicMock()
             setup_opentelemetry(app, endpoint="http://localhost:4317")
