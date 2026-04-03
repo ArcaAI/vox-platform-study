@@ -1118,6 +1118,40 @@ describe('SttV2WebSocketClient', () => {
       client.disconnect();
     });
 
+    it('should normalize english_text from backend stream', async () => {
+      const mockLogger = createMockLogger();
+      const client = new SttV2WebSocketClient(mockLogger);
+
+      const connectPromise = client.connect('wss://api.example.com/ws/stream');
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+
+      const transcriptCb = vi.fn();
+      client.onTranscript(transcriptCb);
+
+      lastMockWs!.simulateMessage(JSON.stringify({
+        type: 'transcript',
+        text: 'வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்',
+        english_text: 'Will not call ...',
+        start_time: 74.784,
+        end_time: 82.88,
+        is_final: '1',
+      }));
+
+      expect(transcriptCb).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'transcript',
+          text: 'வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்',
+          englishText: 'Will not call ...',
+          startTime: 74.784,
+          endTime: 82.88,
+          isFinal: true,
+        }),
+      );
+
+      client.disconnect();
+    });
+
     it('should normalize optional speaker metadata fields', async () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);

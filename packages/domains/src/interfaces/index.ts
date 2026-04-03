@@ -8,3 +8,4 @@ export * from './IRepository';
 export * from './IUnitOfWork';
 export * from './jobTypes';
 export * from './jsonValue.type';
+export * from './queueAdminTypes';

@@ -115,7 +115,7 @@ def mock_task_manager():
     return tm
 
 
-def _create_app(settings_obj, *, provider_registry=None, task_manager=None):
+def _create_app(settings_obj, *, provider_registry=None, task_manager=None, redis=None):
     from smr_v2.main import create_app
 
     app = create_app(settings_override=settings_obj)
@@ -123,6 +123,12 @@ def _create_app(settings_obj, *, provider_registry=None, task_manager=None):
         app.state.provider_registry = provider_registry
     if task_manager is not None:
         app.state.task_manager = task_manager
+    if redis is not None:
+        app.state.redis = redis
+    else:
+        mock_redis = AsyncMock()
+        mock_redis.ping = AsyncMock(return_value=True)
+        app.state.redis = mock_redis
     app.state.settings = settings_obj
     return app
 

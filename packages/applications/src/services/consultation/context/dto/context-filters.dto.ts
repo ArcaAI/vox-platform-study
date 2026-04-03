@@ -1,15 +1,20 @@
-import { IsString, IsOptional, IsEnum, IsInt, Min } from 'class-validator';
+import { IsOptional, IsEnum, IsInt, IsIn, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
+
+const VALID_CONTEXT_TYPES = [
+  'TRANSCRIPT', 'CASE_NOTE', 'RAW_SUMMARY', 'MODIFIED_SUMMARY',
+  'PRE_SUMMARY', 'NAMED_ENTITY', 'AUDIO_RECORDING', 'WORKNOTE', 'ATTACHMENT',
+] as const;
 
 export class ContextFiltersDto {
   @ApiPropertyOptional({
     description: 'Filter by context type',
-    enum: ['TRANSCRIPT', 'CASE_NOTE', 'RAW_SUMMARY', 'MODIFIED_SUMMARY', 'PRE_SUMMARY', 'NAMED_ENTITY', 'AUDIO_RECORDING', 'WORKNOTE', 'ATTACHMENT'],
+    enum: VALID_CONTEXT_TYPES,
   })
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.toUpperCase() : value))
-  @IsString()
+  @IsIn(VALID_CONTEXT_TYPES, { message: `type must be one of: ${VALID_CONTEXT_TYPES.join(', ')}` })
   type?: string;
 
   @ApiPropertyOptional({

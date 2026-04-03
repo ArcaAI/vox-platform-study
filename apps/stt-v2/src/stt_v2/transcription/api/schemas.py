@@ -24,6 +24,7 @@ class SentenceTimestampResponse(BaseModel):
     text: str
     start_time: float
     end_time: float
+    english_text: str | None = None
 
 
 class SegmentResponse(BaseModel):

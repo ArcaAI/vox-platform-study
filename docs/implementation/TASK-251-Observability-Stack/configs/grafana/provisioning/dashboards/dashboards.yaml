@@ -1,0 +1,21 @@
+###############################################################################
+# Grafana Dashboard Provisioning — HOPE Observability Stack
+#
+# Grafana auto-discovers dashboard JSON files from the configured path.
+# updateIntervalSeconds: 30 means new/changed dashboards appear within 30s.
+###############################################################################
+
+apiVersion: 1
+
+providers:
+  - name: "HOPE Dashboards"
+    orgId: 1
+    folder: "HOPE"
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

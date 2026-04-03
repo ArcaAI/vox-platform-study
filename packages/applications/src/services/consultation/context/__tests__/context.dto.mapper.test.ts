@@ -43,6 +43,10 @@ const createMockContextItemEntity = (overrides: Partial<{
     isFinalSummary: boolean;
     isPreSummary: boolean;
     isTranscript: boolean;
+    isCaseNote: boolean;
+    isWorknote: boolean;
+    isNamedEntity: boolean;
+    isAttachment: boolean;
     isAiGenerated: boolean;
     requiresContent: boolean;
     AudioRecordings: any[] | null;
@@ -65,6 +69,10 @@ const createMockContextItemEntity = (overrides: Partial<{
     isFinalSummary: overrides.isFinalSummary ?? false,
     isPreSummary: overrides.isPreSummary ?? false,
     isTranscript: overrides.isTranscript ?? true,
+    isCaseNote: overrides.isCaseNote ?? false,
+    isWorknote: overrides.isWorknote ?? false,
+    isNamedEntity: overrides.isNamedEntity ?? false,
+    isAttachment: overrides.isAttachment ?? false,
     isAiGenerated: overrides.isAiGenerated ?? false,
     requiresContent: overrides.requiresContent ?? true,
     AudioRecordings: overrides.AudioRecordings ?? null,
@@ -380,6 +388,63 @@ describe('ContextDtoMapper', () => {
 
             expect(ContextDtoMapper.toResponse(audioEntity as any).isMediaType).toBe(true);
             expect(ContextDtoMapper.toResponse(textEntity as any).isMediaType).toBe(false);
+        });
+
+        it('should map isCaseNote flag correctly', () => {
+            const caseNoteEntity = createMockContextItemEntity({
+                type: ContextItemType.CASE_NOTE,
+                isCaseNote: true,
+            });
+            const nonCaseNoteEntity = createMockContextItemEntity({
+                type: ContextItemType.TRANSCRIPT,
+                isCaseNote: false,
+            });
+
+            expect(ContextDtoMapper.toResponse(caseNoteEntity as any).isCaseNote).toBe(true);
+            expect(ContextDtoMapper.toResponse(nonCaseNoteEntity as any).isCaseNote).toBe(false);
+        });
+
+        it('should map isWorknote flag correctly', () => {
+            const worknoteEntity = createMockContextItemEntity({
+                type: ContextItemType.WORKNOTE,
+                isWorknote: true,
+            });
+            const nonWorknoteEntity = createMockContextItemEntity({
+                type: ContextItemType.TRANSCRIPT,
+                isWorknote: false,
+            });
+
+            expect(ContextDtoMapper.toResponse(worknoteEntity as any).isWorknote).toBe(true);
+            expect(ContextDtoMapper.toResponse(nonWorknoteEntity as any).isWorknote).toBe(false);
+        });
+
+        it('should map isNamedEntity flag correctly', () => {
+            const nerEntity = createMockContextItemEntity({
+                type: ContextItemType.NAMED_ENTITY,
+                isNamedEntity: true,
+            });
+            const nonNerEntity = createMockContextItemEntity({
+                type: ContextItemType.TRANSCRIPT,
+                isNamedEntity: false,
+            });
+
+            expect(ContextDtoMapper.toResponse(nerEntity as any).isNamedEntity).toBe(true);
+            expect(ContextDtoMapper.toResponse(nonNerEntity as any).isNamedEntity).toBe(false);
+        });
+
+        it('should map isAttachment flag correctly', () => {
+            const attachmentEntity = createMockContextItemEntity({
+                type: ContextItemType.ATTACHMENT,
+                isAttachment: true,
+                requiresContent: false,
+            });
+            const nonAttachmentEntity = createMockContextItemEntity({
+                type: ContextItemType.TRANSCRIPT,
+                isAttachment: false,
+            });
+
+            expect(ContextDtoMapper.toResponse(attachmentEntity as any).isAttachment).toBe(true);
+            expect(ContextDtoMapper.toResponse(nonAttachmentEntity as any).isAttachment).toBe(false);
         });
 
         it('should map all context item types correctly', () => {

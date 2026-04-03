@@ -31,7 +31,6 @@ class HuggingFaceLoader(BaseModelLoader):
         try:
             import torch  # noqa: F401
             from transformers import (
-                AutoFeatureExtractor,  # noqa: F401
                 AutoModelForSpeechSeq2Seq,  # noqa: F401
                 AutoProcessor,  # noqa: F401
                 AutoTokenizer,  # noqa: F401
@@ -110,17 +109,17 @@ class HuggingFaceLoader(BaseModelLoader):
         token: str | None,
     ) -> tuple[Any, Any, Any, Any]:
         """Load model components based on task type."""
-        from transformers import (
-            AutoFeatureExtractor,
-            AutoModelForAudioClassification,
-            AutoModelForCTC,
-            AutoModelForSpeechSeq2Seq,
-            AutoProcessor,
-            AutoTokenizer,
-            GenerationConfig,
-            WhisperForConditionalGeneration,
-            WhisperProcessor,
-        )
+        import transformers
+
+        AutoFeatureExtractor = getattr(transformers, "AutoFeatureExtractor", None)
+        AutoModelForAudioClassification = transformers.AutoModelForAudioClassification
+        AutoModelForCTC = transformers.AutoModelForCTC
+        AutoModelForSpeechSeq2Seq = transformers.AutoModelForSpeechSeq2Seq
+        AutoProcessor = transformers.AutoProcessor
+        AutoTokenizer = transformers.AutoTokenizer
+        GenerationConfig = transformers.GenerationConfig
+        WhisperForConditionalGeneration = transformers.WhisperForConditionalGeneration
+        WhisperProcessor = transformers.WhisperProcessor
 
         model = None
         tokenizer = None
@@ -173,10 +172,15 @@ class HuggingFaceLoader(BaseModelLoader):
                     processor = AutoProcessor.from_pretrained(
                         model_source, **common_kwargs
                     )
-                except Exception:
+                except Exception as err:
                     tokenizer = AutoTokenizer.from_pretrained(
                         model_source, **common_kwargs
                     )
+                    if AutoFeatureExtractor is None:
+                        raise ImportError(
+                            "AutoFeatureExtractor is unavailable in the installed "
+                            "transformers package"
+                        ) from err
                     feature_extractor = AutoFeatureExtractor.from_pretrained(
                         model_source, **common_kwargs
                     )
@@ -188,6 +192,10 @@ class HuggingFaceLoader(BaseModelLoader):
                 torch_dtype=torch_dtype,
                 **common_kwargs,
             )
+            if AutoFeatureExtractor is None:
+                raise ImportError(
+                    "AutoFeatureExtractor is unavailable in the installed transformers package"
+                )
             feature_extractor = AutoFeatureExtractor.from_pretrained(
                 model_source, **common_kwargs
             )
