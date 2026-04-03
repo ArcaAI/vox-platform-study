@@ -1,89 +1,347 @@
-"""TDD tests for observability: metrics + structured logging.
+"""Tests for the consolidated observability module (TASK-257).
 
-RED: Written before implementation.
+Covers: setup_opentelemetry, shutdown_opentelemetry, LoggerProvider,
+LoggingHandler, LoggingInstrumentor, PHI hook, uvicorn logging taming.
 """
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+import logging
+from unittest.mock import MagicMock, patch
 
 import pytest
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
 
 from smr_v2.core.config import Settings
-from smr_v2.models.provider import ProviderInfo
 
 
-@pytest.fixture
-def settings():
-    return Settings(host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=True)
+def _force_reset_otel():
+    """Force-reset OTel global state so each test gets a clean provider."""
+    import opentelemetry.trace as _trace_mod
+
+    _trace_mod._TRACER_PROVIDER = None
+    _trace_mod._TRACER_PROVIDER_SET_ONCE._done = False
+    _trace_mod._PROXY_TRACER_PROVIDER._real_tracer_provider = None
+
+    try:
+        import opentelemetry._logs as _logs_mod
+
+        _logs_mod._LOGGER_PROVIDER = None
+        _logs_mod._LOGGER_PROVIDER_SET_ONCE._done = False
+    except (AttributeError, ImportError):
+        pass
 
 
-@pytest.fixture
-def mock_provider_registry():
-    from smr_v2.providers.base import ProviderRegistry
-    registry = ProviderRegistry()
-    mock_provider = AsyncMock()
-    mock_provider.health_check = AsyncMock(return_value=True)
-    mock_provider.get_info = AsyncMock(return_value=ProviderInfo(
-        name="ollama", display_name="Ollama", status="available",
-        default_model="llama3.2:latest", models=[], supports_streaming=True,
-    ))
-    registry.register("ollama", mock_provider)
-    return registry
+def _cleanup_root_logging_handlers():
+    """Remove any OTel LoggingHandler from root logger."""
+    from opentelemetry.sdk._logs import LoggingHandler
+
+    root = logging.getLogger()
+    root.handlers = [h for h in root.handlers if not isinstance(h, LoggingHandler)]
 
 
-@pytest.fixture
-def mock_task_manager():
-    return AsyncMock()
+@pytest.fixture(autouse=True)
+def reset_otel():
+    _force_reset_otel()
+    _cleanup_root_logging_handlers()
+    yield
+    _force_reset_otel()
+    _cleanup_root_logging_handlers()
+    try:
+        from opentelemetry.instrumentation.logging import LoggingInstrumentor
+
+        LoggingInstrumentor().uninstrument()
+    except Exception:
+        pass
 
 
-@pytest_asyncio.fixture
-async def app(settings, mock_provider_registry, mock_task_manager):
-    from smr_v2.main import create_app
-    application = create_app(settings_override=settings)
-    application.state.provider_registry = mock_provider_registry
-    application.state.task_manager = mock_task_manager
-    application.state.settings = settings
-    return application
+# ---------------------------------------------------------------------------
+# setup_opentelemetry
+# ---------------------------------------------------------------------------
 
 
-@pytest_asyncio.fixture
-async def client(app):
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
+class TestSetupOpentelemetry:
+    def test_creates_tracer_provider(self):
+        from smr_v2.core.observability import setup_opentelemetry
+
+        app = MagicMock()
+        setup_opentelemetry(app, endpoint="http://localhost:4317")
+
+        provider = trace.get_tracer_provider()
+        assert isinstance(provider, TracerProvider)
+        assert app.state.tracer_provider is not None
+
+    def test_creates_logger_provider_when_logs_enabled(self):
+        from opentelemetry.sdk._logs import LoggerProvider
+
+        from smr_v2.core.observability import setup_opentelemetry
+
+        app = MagicMock()
+        setup_opentelemetry(app, endpoint="http://localhost:4317", logs_enabled=True)
+
+        assert isinstance(app.state.logger_provider, LoggerProvider)
+
+    def test_no_logger_provider_when_logs_disabled(self):
+        from smr_v2.core.observability import setup_opentelemetry
+
+        app = MagicMock()
+        setup_opentelemetry(app, endpoint="http://localhost:4317", logs_enabled=False)
+
+        assert app.state.logger_provider is None
+
+    def test_adds_logging_handler_to_root(self):
+        from opentelemetry.sdk._logs import LoggingHandler
+
+        from smr_v2.core.observability import setup_opentelemetry
+
+        app = MagicMock()
+        setup_opentelemetry(app, endpoint="http://localhost:4317", logs_enabled=True)
+
+        root = logging.getLogger()
+        otel_handlers = [h for h in root.handlers if isinstance(h, LoggingHandler)]
+        assert len(otel_handlers) >= 1
+
+    def test_calls_logging_instrumentor(self):
+        with patch(
+            "smr_v2.core.observability.LoggingInstrumentor"
+        ) as MockInstrumentor:
+            mock_instance = MagicMock()
+            MockInstrumentor.return_value = mock_instance
+
+            from smr_v2.core.observability import setup_opentelemetry
+
+            app = MagicMock()
+            setup_opentelemetry(app, endpoint="http://localhost:4317", logs_enabled=True)
+
+            mock_instance.instrument.assert_called_once_with(set_logging_format=False)
+
+    def test_excludes_health_urls_from_fastapi(self):
+        with patch(
+            "smr_v2.core.observability.FastAPIInstrumentor"
+        ) as MockFastAPI:
+            from smr_v2.core.observability import setup_opentelemetry
+
+            app = MagicMock()
+            setup_opentelemetry(app, endpoint="http://localhost:4317")
+
+            call_kwargs = MockFastAPI.instrument_app.call_args
+            assert "excluded_urls" in call_kwargs.kwargs
+            assert "/health" in call_kwargs.kwargs["excluded_urls"]
+
+    def test_adds_phi_hook_to_fastapi(self):
+        with patch(
+            "smr_v2.core.observability.FastAPIInstrumentor"
+        ) as MockFastAPI:
+            from smr_v2.core.observability import _phi_sanitization_hook, setup_opentelemetry
+
+            app = MagicMock()
+            setup_opentelemetry(app, endpoint="http://localhost:4317")
+
+            call_kwargs = MockFastAPI.instrument_app.call_args
+            assert call_kwargs.kwargs.get("server_request_hook") is _phi_sanitization_hook
+
+    def test_resource_has_sdk_constants(self):
+        from smr_v2.core.observability import setup_opentelemetry
+
+        app = MagicMock()
+        setup_opentelemetry(app, endpoint="http://localhost:4317")
+
+        provider = trace.get_tracer_provider()
+        attrs = dict(provider.resource.attributes)
+        assert attrs["telemetry.sdk.language"] == "python"
+        assert "service.namespace" in attrs
+
+    def test_preserves_tracer_provider_on_app_state(self):
+        from smr_v2.core.observability import setup_opentelemetry
+
+        app = MagicMock()
+        setup_opentelemetry(app, endpoint="http://localhost:4317")
+
+        assert isinstance(app.state.tracer_provider, TracerProvider)
 
 
-class TestPrometheusMetrics:
-    @pytest.mark.asyncio
-    async def test_metrics_endpoint_exists(self, client):
-        resp = await client.get("/metrics")
-        assert resp.status_code == 200
-        assert "HELP" in resp.text or "TYPE" in resp.text
-
-    @pytest.mark.asyncio
-    async def test_request_counter_increments(self, client):
-        await client.get("/api/v1/health")
-        await client.get("/api/v1/health")
-        resp = await client.get("/metrics")
-        assert resp.status_code == 200
+# ---------------------------------------------------------------------------
+# get_tracer (backward compat via new module)
+# ---------------------------------------------------------------------------
 
 
-class TestStructuredLogging:
-    def test_logging_module_imports(self):
-        from smr_v2.core.logging import get_logger, setup_logging
-        assert callable(setup_logging)
-        assert callable(get_logger)
+class TestGetTracer:
+    def test_get_tracer_from_observability(self):
+        from smr_v2.core.observability import get_tracer
 
-    def test_get_logger_returns_bound_logger(self):
-        from smr_v2.core.logging import get_logger
-        log = get_logger("test")
-        assert hasattr(log, "info")
-        assert hasattr(log, "error")
-        assert hasattr(log, "warning")
+        tracer = get_tracer()
+        assert tracer is not None
+        assert hasattr(tracer, "start_as_current_span")
 
-    def test_setup_logging_does_not_raise(self):
+    def test_get_tracer_from_telemetry_shim(self):
+        from smr_v2.core.telemetry import get_tracer
+
+        tracer = get_tracer()
+        assert tracer is not None
+        assert hasattr(tracer, "start_as_current_span")
+
+
+# ---------------------------------------------------------------------------
+# shutdown_opentelemetry
+# ---------------------------------------------------------------------------
+
+
+class TestShutdownOpentelemetry:
+    def test_shutdown_stops_tracer_provider(self):
+        from smr_v2.core.observability import shutdown_opentelemetry
+
+        mock_tracer = MagicMock()
+        app = MagicMock()
+        app.state.tracer_provider = mock_tracer
+        app.state.logger_provider = None
+
+        shutdown_opentelemetry(app)
+
+        mock_tracer.force_flush.assert_called_once()
+        mock_tracer.shutdown.assert_called_once()
+
+    def test_shutdown_stops_logger_provider(self):
+        from smr_v2.core.observability import shutdown_opentelemetry
+
+        mock_logger_prov = MagicMock()
+        app = MagicMock()
+        app.state.tracer_provider = None
+        app.state.logger_provider = mock_logger_prov
+
+        shutdown_opentelemetry(app)
+
+        mock_logger_prov.force_flush.assert_called_once()
+        mock_logger_prov.shutdown.assert_called_once()
+
+    def test_shutdown_uninstruments_logging(self):
+        with patch(
+            "smr_v2.core.observability.LoggingInstrumentor"
+        ) as MockInstrumentor:
+            mock_instance = MagicMock()
+            MockInstrumentor.return_value = mock_instance
+
+            from smr_v2.core.observability import shutdown_opentelemetry
+
+            app = MagicMock()
+            app.state.tracer_provider = None
+            app.state.logger_provider = None
+
+            shutdown_opentelemetry(app)
+            mock_instance.uninstrument.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# PHI sanitization hook
+# ---------------------------------------------------------------------------
+
+
+class TestPhiSanitizationHook:
+    def test_redacts_body_attributes(self):
+        from smr_v2.core.observability import _phi_sanitization_hook
+
+        span = MagicMock()
+        span.is_recording.return_value = True
+        span.attributes = {
+            "http.request.body.content": "patient data",
+            "http.response.body.content": "diagnosis",
+        }
+
+        _phi_sanitization_hook(span, {})
+
+        span.set_attribute.assert_any_call("http.request.body.content", "[REDACTED]")
+        span.set_attribute.assert_any_call("http.response.body.content", "[REDACTED]")
+
+    def test_noop_when_not_recording(self):
+        from smr_v2.core.observability import _phi_sanitization_hook
+
+        span = MagicMock()
+        span.is_recording.return_value = False
+
+        _phi_sanitization_hook(span, {})
+
+        span.set_attribute.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Uvicorn logging
+# ---------------------------------------------------------------------------
+
+
+class TestUvicornLogging:
+    def test_uvicorn_access_disabled(self):
         from smr_v2.core.logging import setup_logging
-        setup_logging("debug")
+
+        setup_logging("info")
+
+        assert logging.getLogger("uvicorn.access").disabled is True
+
+    def test_uvicorn_error_propagates(self):
+        from smr_v2.core.logging import setup_logging
+
+        setup_logging("info")
+
+        assert logging.getLogger("uvicorn.error").propagate is True
+
+    def test_uvicorn_error_no_own_handlers(self):
+        from smr_v2.core.logging import setup_logging
+
+        setup_logging("info")
+
+        assert len(logging.getLogger("uvicorn.error").handlers) == 0
+
+
+# ---------------------------------------------------------------------------
+# Settings — otel_logs_enabled
+# ---------------------------------------------------------------------------
+
+
+class TestOtelLogsEnabledSetting:
+    def test_default_true(self):
+        settings = Settings(host="127.0.0.1", port=5099)
+        assert settings.otel_logs_enabled is True
+
+    def test_from_env(self, monkeypatch):
+        monkeypatch.setenv("SMR_V2_OTEL_LOGS_ENABLED", "false")
+        settings = Settings(host="127.0.0.1", port=5099)
+        assert settings.otel_logs_enabled is False
+
+
+# ---------------------------------------------------------------------------
+# create_app integration
+# ---------------------------------------------------------------------------
+
+
+class TestCreateAppObservability:
+    def test_initializes_logger_provider_state(self):
+        settings = Settings(
+            host="127.0.0.1", port=5099, debug=True,
+            otel_enabled=False, metrics_enabled=False,
+        )
+        from smr_v2.main import create_app
+
+        app = create_app(settings_override=settings)
+        assert hasattr(app.state, "logger_provider")
+        assert app.state.logger_provider is None
+
+    def test_calls_setup_opentelemetry_when_enabled(self):
+        settings = Settings(
+            host="127.0.0.1", port=5099, debug=True,
+            otel_enabled=True, metrics_enabled=False,
+        )
+        with patch("smr_v2.core.observability.setup_opentelemetry") as mock_setup:
+            from smr_v2.main import create_app
+
+            create_app(settings_override=settings)
+            mock_setup.assert_called_once()
+
+    def test_skips_setup_when_disabled(self):
+        settings = Settings(
+            host="127.0.0.1", port=5099, debug=True,
+            otel_enabled=False, metrics_enabled=False,
+        )
+        with patch("smr_v2.core.observability.setup_opentelemetry") as mock_setup:
+            from smr_v2.main import create_app
+
+            create_app(settings_override=settings)
+            mock_setup.assert_not_called()

@@ -73,9 +73,7 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_sync_pipeline_returns_string(self):
         """Sync pipeline returning a string."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda samples, sr: "hello world"
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda samples, sr: "hello world")
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -85,9 +83,7 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_sync_pipeline_returns_dict(self):
         """Sync pipeline returning a dict with text key."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda samples, sr: {"text": "from dict"}
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda samples, sr: {"text": "from dict"})
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -113,6 +109,7 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_async_pipeline(self):
         """Async pipeline should be awaited."""
+
         async def _asr(samples, sr):
             return "async result"
 
@@ -126,6 +123,7 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_pipeline_error_returns_empty(self):
         """Pipeline error should not crash — returns empty text."""
+
         def _failing_pipeline(samples, sr):
             raise RuntimeError("Model crashed")
 
@@ -140,9 +138,7 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_timing_preserved(self):
         """Result should preserve utterance timing."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "test"
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "test")
         utt = _make_utterance(index=3, duration_s=2.5)
 
         result = await worker.process_utterance("sess-1", utt)
@@ -154,9 +150,7 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_final_flag_preserved(self):
         """is_final should pass through to SegmentResult."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "final"
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "final")
         utt = _make_utterance(is_final=True)
 
         result = await worker.process_utterance("sess-1", utt)
@@ -166,9 +160,7 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_sanitizes_chevron_spam(self):
         """Pathological leading chevron spam should be removed."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: ">> >> >> >> hello world"
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: ">> >> >> >> hello world")
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -254,9 +246,7 @@ class TestResultPublishing:
     @pytest.mark.asyncio
     async def test_no_publisher_no_error(self):
         """No publisher configured should not crash."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "no pub"
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "no pub")
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -292,9 +282,7 @@ class TestPipelineReturnTypes:
     @pytest.mark.asyncio
     async def test_pipeline_returns_integer(self):
         """Pipeline returning an integer should be str()-ified."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: 42
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: 42)
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -304,9 +292,7 @@ class TestPipelineReturnTypes:
     @pytest.mark.asyncio
     async def test_pipeline_returns_dict_without_text(self):
         """Pipeline returning a dict without 'text' key returns empty."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: {"confidence": 0.95}
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: {"confidence": 0.95})
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -316,9 +302,7 @@ class TestPipelineReturnTypes:
     @pytest.mark.asyncio
     async def test_pipeline_returns_empty_string(self):
         """Pipeline returning empty string is valid."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: ""
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "")
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -328,9 +312,7 @@ class TestPipelineReturnTypes:
     @pytest.mark.asyncio
     async def test_pipeline_returns_none_via_dict(self):
         """Pipeline returning dict with None text should yield empty string."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: {"text": None}
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: {"text": None})
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -341,6 +323,7 @@ class TestPipelineReturnTypes:
     @pytest.mark.asyncio
     async def test_async_pipeline_error(self):
         """Async pipeline that throws should be handled gracefully."""
+
         async def _failing_async(samples, sr):
             raise ValueError("Async model error")
 

@@ -76,6 +76,7 @@ class EmbeddingService:
             if not token:
                 try:
                     from huggingface_hub import get_token as hf_get_token
+
                     token = hf_get_token()
                 except Exception:
                     pass
@@ -107,9 +108,7 @@ class EmbeddingService:
                 f"pip install pyannote.audio. Error: {e}"
             ) from e
         except Exception as e:
-            raise EmbeddingExtractionError(
-                f"Failed to load pyannote embedding model: {e}"
-            ) from e
+            raise EmbeddingExtractionError(f"Failed to load pyannote embedding model: {e}") from e
 
     @staticmethod
     def _import_pyannote_audio() -> tuple[Any, Any]:
@@ -171,9 +170,7 @@ class EmbeddingService:
             end_time = len(samples) / sample_rate
 
         # Write to temp WAV and run inference in a thread
-        embedding = await asyncio.to_thread(
-            self._extract_sync, samples, sample_rate
-        )
+        embedding = await asyncio.to_thread(self._extract_sync, samples, sample_rate)
 
         return SpeakerEmbedding(
             embedding=embedding,
@@ -206,9 +203,7 @@ class EmbeddingService:
             if len(segment_samples) < sample_rate:  # Skip segments < 1 second
                 continue
 
-            emb = await self.extract_from_samples(
-                segment_samples, sample_rate, start, end
-            )
+            emb = await self.extract_from_samples(segment_samples, sample_rate, start, end)
             embeddings.append(emb)
 
         return embeddings
@@ -241,9 +236,7 @@ class EmbeddingService:
                 "EmbeddingService not initialised — call initialize() first"
             )
 
-        raw = await asyncio.to_thread(
-            self._extract_batch_sync, segment_samples, sample_rate
-        )
+        raw = await asyncio.to_thread(self._extract_batch_sync, segment_samples, sample_rate)
 
         results: list[SpeakerEmbedding | None] = []
         for emb, (start, end) in zip(raw, segment_times, strict=False):
@@ -308,9 +301,7 @@ class EmbeddingService:
                 return list(embedding.flatten())
 
             except Exception as e:
-                raise EmbeddingExtractionError(
-                    f"Embedding extraction failed: {e}"
-                ) from e
+                raise EmbeddingExtractionError(f"Embedding extraction failed: {e}") from e
 
     # ------------------------------------------------------------------
     # Device resolution

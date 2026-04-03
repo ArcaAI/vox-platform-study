@@ -84,22 +84,25 @@ class TestNormalizeLanguageForAzure:
         assert normalize_language_for_azure("zh-TW") == "zh-TW"
         assert normalize_language_for_azure("pt-PT") == "pt-PT"
 
-    @pytest.mark.parametrize("short,expected", [
-        ("en", "en-US"),
-        ("ml", "ml-IN"),
-        ("hi", "hi-IN"),
-        ("ta", "ta-IN"),
-        ("te", "te-IN"),
-        ("kn", "kn-IN"),
-        ("ar", "ar-SA"),
-        ("fr", "fr-FR"),
-        ("de", "de-DE"),
-        ("es", "es-ES"),
-        ("pt", "pt-BR"),
-        ("ja", "ja-JP"),
-        ("ko", "ko-KR"),
-        ("zh", "zh-CN"),
-    ])
+    @pytest.mark.parametrize(
+        "short,expected",
+        [
+            ("en", "en-US"),
+            ("ml", "ml-IN"),
+            ("hi", "hi-IN"),
+            ("ta", "ta-IN"),
+            ("te", "te-IN"),
+            ("kn", "kn-IN"),
+            ("ar", "ar-SA"),
+            ("fr", "fr-FR"),
+            ("de", "de-DE"),
+            ("es", "es-ES"),
+            ("pt", "pt-BR"),
+            ("ja", "ja-JP"),
+            ("ko", "ko-KR"),
+            ("zh", "zh-CN"),
+        ],
+    )
     def test_all_known_aliases(self, short, expected):
         """Test all known language aliases map correctly."""
         assert normalize_language_for_azure(short) == expected
@@ -193,12 +196,13 @@ class TestAzureSpeechLoaderLoad:
 
         mock_speech_config = MagicMock()
 
-        with patch(
-            "stt_v2.models.azure_speech_loader.get_settings"
-        ) as mock_settings, patch(
-            "stt_v2.models.azure_speech_loader.SpeechConfig",
-            return_value=mock_speech_config,
-        ) as mock_sc_class:
+        with (
+            patch("stt_v2.models.azure_speech_loader.get_settings") as mock_settings,
+            patch(
+                "stt_v2.models.azure_speech_loader.SpeechConfig",
+                return_value=mock_speech_config,
+            ) as mock_sc_class,
+        ):
             mock_settings.return_value = MagicMock(
                 azure_speech_key="test-key-123",
                 azure_speech_region="westeurope",
@@ -207,9 +211,7 @@ class TestAzureSpeechLoaderLoad:
             result = await loader.load(config)
 
             # Verify SpeechConfig was created with correct args
-            mock_sc_class.assert_called_once_with(
-                subscription="test-key-123", region="eastus"
-            )
+            mock_sc_class.assert_called_once_with(subscription="test-key-123", region="eastus")
             # region from source_uri takes priority over settings
             assert isinstance(result, LoadedModel)
             assert result.model_slug == "azure-speech"
@@ -229,12 +231,13 @@ class TestAzureSpeechLoaderLoad:
 
         mock_speech_config = MagicMock()
 
-        with patch(
-            "stt_v2.models.azure_speech_loader.get_settings"
-        ) as mock_settings, patch(
-            "stt_v2.models.azure_speech_loader.SpeechConfig",
-            return_value=mock_speech_config,
-        ) as mock_sc_class:
+        with (
+            patch("stt_v2.models.azure_speech_loader.get_settings") as mock_settings,
+            patch(
+                "stt_v2.models.azure_speech_loader.SpeechConfig",
+                return_value=mock_speech_config,
+            ) as mock_sc_class,
+        ):
             mock_settings.return_value = MagicMock(
                 azure_speech_key="test-key",
                 azure_speech_region="centralus",
@@ -243,18 +246,14 @@ class TestAzureSpeechLoaderLoad:
             _result = await loader.load(config)
 
             # Should use settings region since source_uri looks like a URL
-            mock_sc_class.assert_called_once_with(
-                subscription="test-key", region="centralus"
-            )
+            mock_sc_class.assert_called_once_with(subscription="test-key", region="centralus")
 
     @pytest.mark.asyncio
     async def test_load_raises_when_no_key(self, loader):
         """Test that missing key raises CloudASRAuthError."""
         config = create_azure_model_config()
 
-        with patch(
-            "stt_v2.models.azure_speech_loader.get_settings"
-        ) as mock_settings:
+        with patch("stt_v2.models.azure_speech_loader.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(
                 azure_speech_key=None,
                 azure_speech_region="eastus",
@@ -275,9 +274,7 @@ class TestAzureSpeechLoaderLoad:
             source_revision=None,
         )
 
-        with patch(
-            "stt_v2.models.azure_speech_loader.get_settings"
-        ) as mock_settings:
+        with patch("stt_v2.models.azure_speech_loader.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(
                 azure_speech_key="valid-key",
                 azure_speech_region=None,
@@ -295,9 +292,7 @@ class TestAzureSpeechLoaderLoad:
         """Test that missing key and region raises CloudASRAuthError."""
         config = create_azure_model_config(source_uri=None, source_revision=None)
 
-        with patch(
-            "stt_v2.models.azure_speech_loader.get_settings"
-        ) as mock_settings:
+        with patch("stt_v2.models.azure_speech_loader.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(
                 azure_speech_key=None,
                 azure_speech_region=None,
@@ -318,12 +313,13 @@ class TestAzureSpeechLoaderLoad:
 
         mock_speech_config = MagicMock()
 
-        with patch(
-            "stt_v2.models.azure_speech_loader.get_settings"
-        ) as mock_settings, patch(
-            "stt_v2.models.azure_speech_loader.SpeechConfig",
-            return_value=mock_speech_config,
-        ) as mock_sc_class:
+        with (
+            patch("stt_v2.models.azure_speech_loader.get_settings") as mock_settings,
+            patch(
+                "stt_v2.models.azure_speech_loader.SpeechConfig",
+                return_value=mock_speech_config,
+            ) as mock_sc_class,
+        ):
             mock_settings.return_value = MagicMock(
                 azure_speech_key="env-key",
                 azure_speech_region="westus",
@@ -345,12 +341,13 @@ class TestAzureSpeechLoaderLoad:
 
         mock_speech_config = MagicMock()
 
-        with patch(
-            "stt_v2.models.azure_speech_loader.get_settings"
-        ) as mock_settings, patch(
-            "stt_v2.models.azure_speech_loader.SpeechConfig",
-            return_value=mock_speech_config,
-        ) as mock_sc_class:
+        with (
+            patch("stt_v2.models.azure_speech_loader.get_settings") as mock_settings,
+            patch(
+                "stt_v2.models.azure_speech_loader.SpeechConfig",
+                return_value=mock_speech_config,
+            ) as mock_sc_class,
+        ):
             mock_settings.return_value = MagicMock(
                 azure_speech_key="env-key-123",
                 azure_speech_region="westus",
@@ -358,9 +355,7 @@ class TestAzureSpeechLoaderLoad:
 
             await loader.load(config)
 
-            mock_sc_class.assert_called_once_with(
-                subscription="env-key-123", region="eastus"
-            )
+            mock_sc_class.assert_called_once_with(subscription="env-key-123", region="eastus")
 
     @pytest.mark.asyncio
     async def test_load_enables_word_timestamps(self, loader):
@@ -369,11 +364,12 @@ class TestAzureSpeechLoaderLoad:
 
         mock_speech_config = MagicMock()
 
-        with patch(
-            "stt_v2.models.azure_speech_loader.get_settings"
-        ) as mock_settings, patch(
-            "stt_v2.models.azure_speech_loader.SpeechConfig",
-            return_value=mock_speech_config,
+        with (
+            patch("stt_v2.models.azure_speech_loader.get_settings") as mock_settings,
+            patch(
+                "stt_v2.models.azure_speech_loader.SpeechConfig",
+                return_value=mock_speech_config,
+            ),
         ):
             mock_settings.return_value = MagicMock(
                 azure_speech_key="key",
@@ -394,11 +390,12 @@ class TestAzureSpeechLoaderLoad:
 
         mock_speech_config = MagicMock()
 
-        with patch(
-            "stt_v2.models.azure_speech_loader.get_settings"
-        ) as mock_settings, patch(
-            "stt_v2.models.azure_speech_loader.SpeechConfig",
-            return_value=mock_speech_config,
+        with (
+            patch("stt_v2.models.azure_speech_loader.get_settings") as mock_settings,
+            patch(
+                "stt_v2.models.azure_speech_loader.SpeechConfig",
+                return_value=mock_speech_config,
+            ),
         ):
             mock_settings.return_value = MagicMock(
                 azure_speech_key="key",

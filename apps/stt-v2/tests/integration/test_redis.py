@@ -132,11 +132,14 @@ class TestRedisHash:
         """Test hash operations."""
         key = "job:j-123"
 
-        redis_client.hset(key, mapping={
-            "status": "PROCESSING",
-            "progress": "50",
-            "worker_id": "worker-1",
-        })
+        redis_client.hset(
+            key,
+            mapping={
+                "status": "PROCESSING",
+                "progress": "50",
+                "worker_id": "worker-1",
+            },
+        )
 
         status = redis_client.hget(key, "status")
         progress = redis_client.hget(key, "progress")
@@ -148,10 +151,13 @@ class TestRedisHash:
         """Test getting all hash fields."""
         key = "job:j-456"
 
-        redis_client.hset(key, mapping={
-            "status": "COMPLETED",
-            "result": "transcription text",
-        })
+        redis_client.hset(
+            key,
+            mapping={
+                "status": "COMPLETED",
+                "result": "transcription text",
+            },
+        )
 
         data = redis_client.hgetall(key)
 

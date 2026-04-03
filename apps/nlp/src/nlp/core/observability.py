@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator, metrics as prometheus_metrics
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION, DEPLOYMENT_ENVIRONMENT, TELEMETRY_SDK_LANGUAGE
@@ -6,10 +8,14 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry import trace, metrics
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 
 from nlp.core.logging import get_logger
 from nlp.core.config import settings
@@ -68,6 +74,15 @@ def setup_opentelemetry(app: FastAPI) -> None:
         metrics.set_meter_provider(meter_provider)
         app.state.meter_provider = meter_provider
 
+    log_exporter = OTLPLogExporter(endpoint=otlp_endpoint, insecure=True)
+    logger_provider = LoggerProvider(resource=resource)
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
+    set_logger_provider(logger_provider)
+    app.state.logger_provider = logger_provider
+
+    otel_log_handler = LoggingHandler(level=logging.DEBUG, logger_provider=logger_provider)
+    logging.getLogger().addHandler(otel_log_handler)
+
     excluded_endpoints = [
         "/docs",
         "/redoc",
@@ -111,6 +126,8 @@ def shutdown_opentelemetry(app: FastAPI) -> None:
         app.state.tracer_provider.shutdown()
     if hasattr(app.state, "meter_provider") and app.state.meter_provider:
         app.state.meter_provider.shutdown()
+    if hasattr(app.state, "logger_provider") and app.state.logger_provider:
+        app.state.logger_provider.shutdown()
 
     try:
         LoggingInstrumentor().uninstrument()

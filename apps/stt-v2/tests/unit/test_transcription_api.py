@@ -156,7 +156,11 @@ class TestSchemaModels:
     def test_segment_response(self):
         """SegmentResponse fields."""
         seg = SegmentResponse(
-            start_time=0.0, end_time=1.0, duration=1.0, is_speech=True, confidence=0.9,
+            start_time=0.0,
+            end_time=1.0,
+            duration=1.0,
+            is_speech=True,
+            confidence=0.9,
         )
         assert seg.is_speech is True
 
@@ -342,7 +346,8 @@ class TestTranscribeAudioEndpoint:
             )
 
             mock_reader.get_pipeline_by_slug.assert_called_once_with(
-                "my-slug", tenant_id="t-456",
+                "my-slug",
+                tenant_id="t-456",
             )
             assert isinstance(resp, TranscriptionResponse)
 

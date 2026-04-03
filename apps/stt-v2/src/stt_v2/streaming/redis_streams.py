@@ -166,9 +166,7 @@ class IngestionConsumer:
                             # Always advance last_id to avoid poisoning
                             # the stream with a permanently failing entry.
                             self._last_id = (
-                                entry_id.decode()
-                                if isinstance(entry_id, bytes)
-                                else entry_id
+                                entry_id.decode() if isinstance(entry_id, bytes) else entry_id
                             )
         except asyncio.CancelledError:
             logger.debug("IngestionConsumer cancelled", session_id=self._session_id)
@@ -341,9 +339,7 @@ class ControlListener:
                         finally:
                             # Always advance to avoid poisoning the stream.
                             self._last_id = (
-                                entry_id.decode()
-                                if isinstance(entry_id, bytes)
-                                else entry_id
+                                entry_id.decode() if isinstance(entry_id, bytes) else entry_id
                             )
         except asyncio.CancelledError:
             logger.debug("ControlListener cancelled", session_id=self._session_id)

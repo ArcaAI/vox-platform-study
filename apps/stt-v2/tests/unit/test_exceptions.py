@@ -1,6 +1,5 @@
 """Unit tests for custom exceptions."""
 
-
 from stt_v2.core.exceptions import (
     NON_RETRYABLE_EXCEPTIONS,
     RETRYABLE_EXCEPTIONS,
