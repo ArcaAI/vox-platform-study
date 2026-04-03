@@ -1,7 +1,8 @@
-import dotenv
 import os
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import dotenv
 
 dotenv.load_dotenv()
 

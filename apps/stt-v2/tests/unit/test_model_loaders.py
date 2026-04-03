@@ -6,7 +6,7 @@ and will be skipped if torch is not installed.
 
 import os
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 

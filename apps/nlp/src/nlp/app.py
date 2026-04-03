@@ -1,12 +1,12 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from nlp.core.logging import get_logger
-from nlp.core.config import settings
-from nlp.utils import is_production
-from nlp.lifespan import lifespan
 from nlp.api import api_router
+from nlp.core.config import settings
+from nlp.core.logging import get_logger
+from nlp.lifespan import lifespan
+from nlp.utils import is_production
 
 logger = get_logger(__name__)
 

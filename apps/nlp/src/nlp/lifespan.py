@@ -1,14 +1,15 @@
 import asyncio
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from nlp.core.logging import get_logger
 from nlp.core.observability import setup_opentelemetry, setup_prometheus, shutdown_opentelemetry
 from nlp.dependencies import (
-    get_text_classifier,
-    get_token_classifier,
-    get_text_corrector,
     get_medical_suggester,
+    get_text_classifier,
+    get_text_corrector,
+    get_token_classifier,
     get_websocket_manager,
 )
 
@@ -27,7 +28,7 @@ async def lifespan(app: FastAPI):
 
     setup_opentelemetry(app)
     setup_prometheus(app)
-    
+
     await asyncio.gather(
         text_classifier_service.initialize(),
         token_classifier_service.initialize(),
