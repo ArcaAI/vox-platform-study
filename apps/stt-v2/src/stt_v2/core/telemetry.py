@@ -1,4 +1,9 @@
-"""OpenTelemetry setup for SMR V2."""
+"""OpenTelemetry setup for STT-v2.
+
+Configures distributed tracing with OTLP gRPC export to the central
+OTel Collector. Auto-instruments FastAPI (inbound) and HTTPX (outbound)
+so that trace context propagates across service boundaries.
+"""
 
 from __future__ import annotations
 
@@ -17,34 +22,31 @@ def setup_telemetry(
     app,
     *,
     endpoint: str = "http://localhost:4317",
-    service_name: str = "smr-v2",
-    service_namespace: str = "hope",
-    deployment_environment: str = "production",
-    insecure: bool = True,
-) -> TracerProvider:
-    """Configure OpenTelemetry tracing with OTLP gRPC exporter.
-
-    Returns the TracerProvider so callers can shut it down gracefully.
-    """
-    resource = Resource.create({
-        "service.name": service_name,
-        "service.version": _TRACER_VERSION,
-        "service.namespace": service_namespace,
-        "deployment.environment": deployment_environment,
-    })
+    service_name: str = "stt-v2",
+) -> None:
+    """Configure OpenTelemetry tracing with OTLP gRPC exporter."""
+    resource = Resource.create(
+        {
+            "service.name": service_name,
+            "service.version": _TRACER_VERSION,
+            "service.namespace": "hope",
+            "deployment.environment": "production",
+        }
+    )
 
     provider = TracerProvider(resource=resource)
-    exporter = OTLPSpanExporter(endpoint=endpoint, insecure=insecure)
+    exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
 
-    FastAPIInstrumentor.instrument_app(app)
+    FastAPIInstrumentor.instrument_app(
+        app,
+        excluded_urls="docs,redoc,openapi.json,metrics,health,live,ready",
+    )
     HTTPXClientInstrumentor().instrument()
 
-    return provider
 
-
-def get_tracer(name: str = "smr_v2") -> trace.Tracer:
+def get_tracer(name: str = "stt_v2") -> trace.Tracer:
     """Get a tracer instance for creating spans.
 
     Returns a proxy that always resolves against the current global

@@ -71,6 +71,9 @@ async def app(settings, mock_provider_registry, mock_task_manager):
     application.state.provider_registry = mock_provider_registry
     application.state.task_manager = mock_task_manager
     application.state.settings = settings
+    mock_redis = AsyncMock()
+    mock_redis.ping = AsyncMock(return_value=True)
+    application.state.redis = mock_redis
     return application
 
 
