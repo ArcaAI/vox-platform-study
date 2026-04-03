@@ -14,12 +14,16 @@ from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+try:
+    from opentelemetry.instrumentation.logging import LoggingInstrumentor
+except ImportError:
+    LoggingInstrumentor = None
 
 _TRACER_VERSION = "2.0.0"
 
@@ -87,7 +91,12 @@ def setup_opentelemetry(
         handler = LoggingHandler(level=logging.DEBUG, logger_provider=logger_provider)
         logging.getLogger().addHandler(handler)
 
-        LoggingInstrumentor().instrument(set_logging_format=False)
+        if LoggingInstrumentor is not None:
+            LoggingInstrumentor().instrument(set_logging_format=False)
+        else:
+            logging.getLogger(__name__).warning(
+                "OpenTelemetry logging instrumentation package not installed; continuing without LoggingInstrumentor"
+            )
 
     app.state.logger_provider = logger_provider
 
@@ -125,10 +134,11 @@ def shutdown_opentelemetry(app) -> None:
         except Exception as exc:
             logger.warning("otel.logger_shutdown_failed: %s", exc)
 
-    try:
-        LoggingInstrumentor().uninstrument()
-    except Exception:
-        pass
+    if LoggingInstrumentor is not None:
+        try:
+            LoggingInstrumentor().uninstrument()
+        except Exception:
+            pass
 
     try:
         FastAPIInstrumentor().uninstrument_app(app)
