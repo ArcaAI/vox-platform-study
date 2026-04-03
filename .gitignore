@@ -11,6 +11,7 @@ node_modules
 
 # Testing
 coverage
+coverage.xml
 **/*/coverage.xml
 .nyc_output
 test-results/

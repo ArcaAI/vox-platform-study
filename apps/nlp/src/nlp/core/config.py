@@ -57,7 +57,7 @@ class NLPServiceConfig(BaseSettings):
 
     opentelemetry_endpoint: Optional[str] = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
     otlp_endpoint: Optional[str] = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
-    resource_attributes: Optional[dict[str, str]] = Field(default=None)
+    resource_attributes_raw: Optional[str] = Field(default=None)
     traces_enabled: bool = Field(default=os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
     metrics_enabled: bool = Field(default=os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true")
 

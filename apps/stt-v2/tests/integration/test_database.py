@@ -3,8 +3,13 @@
 These tests use the tables created by SQLAlchemy models (via Base.metadata.create_all
 in the db_engine fixture) rather than manually creating tables. This ensures the test
 schema matches the real model definitions including enum types and constraints.
+
+IMPORTANT: Use flush() (not commit()) so the db_session fixture can rollback all
+writes on teardown, keeping the shared test DB clean for other test suites.
+Use unique IDs (uuid4) to avoid conflicts with Prisma-seeded data.
 """
 
+import uuid
 from datetime import UTC, datetime
 
 import pytest
@@ -41,6 +46,7 @@ class TestAsrPipelineRead:
     async def test_insert_and_read_pipeline(self, db_session: AsyncSession):
         """Test inserting and reading pipeline."""
         now = datetime.now(UTC).replace(tzinfo=None)
+        pid = f"intg-{uuid.uuid4().hex[:8]}"
 
         await db_session.execute(
             text("""
@@ -49,26 +55,26 @@ class TestAsrPipelineRead:
                 "resourceStatus", tags, "_version", "createdAt", "updatedAt"
             )
             VALUES (
-                'p-1', 't-1', 'Test Pipeline', 'test-pipeline',
+                :pid, 't-1', 'Test Pipeline', :slug,
                 'version: "1.0"
 models:
   asr: whisper',
                 'ENABLED', '{}', 1, :now, :now
             )
         """),
-            {"now": now},
+            {"pid": pid, "slug": f"test-pipeline-{pid}", "now": now},
         )
-        await db_session.commit()
+        await db_session.flush()
 
         result = await db_session.execute(
-            text('SELECT id, name, slug FROM core."AsrPipeline" WHERE id = :id'), {"id": "p-1"}
+            text('SELECT id, name, slug FROM core."AsrPipeline" WHERE id = :id'), {"id": pid}
         )
         row = result.fetchone()
 
         assert row is not None
-        assert row[0] == "p-1"
+        assert row[0] == pid
         assert row[1] == "Test Pipeline"
-        assert row[2] == "test-pipeline"
+        assert row[2] == f"test-pipeline-{pid}"
 
 
 @pytest.mark.integration
@@ -79,6 +85,7 @@ class TestAiModelRead:
     async def test_insert_and_read_model(self, db_session: AsyncSession):
         """Test inserting and reading AI model."""
         now = datetime.now(UTC).replace(tzinfo=None)
+        mid = f"intg-{uuid.uuid4().hex[:8]}"
 
         await db_session.execute(
             text("""
@@ -88,24 +95,24 @@ class TestAiModelRead:
                 "resourceStatus", "downloadStatus", tags, "_version",
                 "createdAt", "updatedAt"
             ) VALUES (
-                'm-1', 't-1', 'Whisper Large', 'whisper-large',
+                :mid, 't-1', 'Whisper Large', :slug,
                 'AUDIO', 'AUTOMATIC_SPEECH_RECOGNITION', 'BASE_MODEL',
                 'HUGGINGFACE', 'openai/whisper-large-v3', 'SAFETENSOR',
                 'ENABLED', 'NOT_DOWNLOADED', '{}', 1,
                 :now, :now
             )
         """),
-            {"now": now},
+            {"mid": mid, "slug": f"whisper-large-{mid}", "now": now},
         )
-        await db_session.commit()
+        await db_session.flush()
 
         result = await db_session.execute(
             text('SELECT id, name, slug, source FROM core."AiModel" WHERE slug = :slug'),
-            {"slug": "whisper-large"},
+            {"slug": f"whisper-large-{mid}"},
         )
         row = result.fetchone()
 
         assert row is not None
-        assert row[0] == "m-1"
+        assert row[0] == mid
         assert row[1] == "Whisper Large"
         assert row[3] == "HUGGINGFACE"

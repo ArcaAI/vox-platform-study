@@ -1,6 +1,14 @@
 """Unit tests for Pipeline DTOs."""
 
+import os
+
 import pytest
+
+_MODEL_BASE = (
+    os.environ.get("HUGGINGFACE_CACHE_DIR")
+    or os.environ.get("HF_HOME")
+    or os.path.join(os.sep, "models", "hf-cache")
+)
 
 from stt_v2.pipeline.dto import (
     VALID_WHISPER_LANGUAGES,
@@ -434,7 +442,7 @@ class TestAiModelConfig:
             memory_size_mb=3000,
             compute_type="float16",
             download_status=AiModelDownloadStatus.DOWNLOADED,
-            local_path="/models/whisper",
+            local_path=os.path.join(_MODEL_BASE, "whisper"),
             downloaded_at=None,
             file_size_mb=3000,
             checksum=None,

@@ -8,6 +8,7 @@ These tests focus on behavior verification:
 """
 
 import logging
+import os
 import sys
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,6 +18,12 @@ import pytest
 
 from stt_v2.core.exceptions import TranscriptionError
 from stt_v2.models.base_loader import LoadedModel
+
+_MODEL_BASE = (
+    os.environ.get("HUGGINGFACE_CACHE_DIR")
+    or os.environ.get("HF_HOME")
+    or os.path.join(os.sep, "models", "hf-cache")
+)
 from stt_v2.pipeline.dto import (
     AiModelConfig,
     AiModelDownloadStatus,
@@ -121,7 +128,7 @@ def create_complete_model_config(
         download_status=(
             AiModelDownloadStatus.DOWNLOADED if is_downloaded else AiModelDownloadStatus.PENDING
         ),
-        local_path="/models/whisper-tiny" if is_downloaded else None,
+        local_path=os.path.join(_MODEL_BASE, "whisper-tiny") if is_downloaded else None,
         downloaded_at=datetime(2024, 1, 1) if is_downloaded else None,
         file_size_mb=80 if is_downloaded else None,
         checksum="sha256:abc123" if is_downloaded else None,

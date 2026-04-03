@@ -4,10 +4,17 @@ Note: Tests that require torch/ML dependencies are marked with @pytest.mark.slow
 and will be skipped if torch is not installed.
 """
 
+import os
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+_MODEL_BASE = (
+    os.environ.get("HUGGINGFACE_CACHE_DIR")
+    or os.environ.get("HF_HOME")
+    or os.path.join(os.sep, "models", "hf-cache")
+)
 
 from stt_v2.models.azure_speech_loader import AzureSpeechLoader
 from stt_v2.models.base_loader import LoadedModel
@@ -195,13 +202,13 @@ class TestONNXLoader:
             description="Test ONNX model",
             task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
             source=AiModelSource.LOCAL,
-            source_uri="/models/whisper.onnx",
+            source_uri=os.path.join(_MODEL_BASE, "whisper.onnx"),
             source_revision=None,
             format=AiModelFormat.ONNX,
             memory_size_mb=None,
             compute_type=None,
             download_status=AiModelDownloadStatus.DOWNLOADED,
-            local_path="/models/whisper.onnx",
+            local_path=os.path.join(_MODEL_BASE, "whisper.onnx"),
             downloaded_at=datetime.utcnow(),
             file_size_mb=500,
             checksum=None,
@@ -308,13 +315,13 @@ class TestONNXLoaderOptimumDetection:
             description="Local ONNX model",
             task_type=ModelTaskType.VOICE_ACTIVITY_DETECTION,
             source=AiModelSource.LOCAL,
-            source_uri="/models/silero-vad.onnx",
+            source_uri=os.path.join(_MODEL_BASE, "silero-vad.onnx"),
             source_revision=None,
             format=AiModelFormat.ONNX,
             memory_size_mb=64,
             compute_type="float32",
             download_status=AiModelDownloadStatus.DOWNLOADED,
-            local_path="/models/silero-vad.onnx",
+            local_path=os.path.join(_MODEL_BASE, "silero-vad.onnx"),
             downloaded_at=datetime.utcnow(),
             file_size_mb=64,
             checksum=None,
@@ -400,7 +407,7 @@ class TestNeMoLoader:
             memory_size_mb=None,
             compute_type=None,
             download_status=AiModelDownloadStatus.DOWNLOADED,
-            local_path="/models/conformer.nemo",
+            local_path=os.path.join(_MODEL_BASE, "conformer.nemo"),
             downloaded_at=datetime.utcnow(),
             file_size_mb=1000,
             checksum=None,
@@ -496,12 +503,13 @@ class TestHuggingFaceLoaderLoad:
 
         with (
             patch("stt_v2.models.huggingface_loader.get_settings") as mock_settings,
-            patch.object(loader, "_load_by_task", new_callable=AsyncMock) as mock_load_task,
+            patch("stt_v2.models.huggingface_loader.os.makedirs"),
+            patch.object(loader, "_load_by_task") as mock_load_task,
             patch.object(loader, "_estimate_model_memory", return_value=100),
         ):
 
             mock_settings.return_value = MagicMock(
-                huggingface_cache_dir="/tmp/hf-cache",
+                huggingface_cache_dir=_MODEL_BASE,
                 huggingface_token=None,
             )
             mock_load_task.return_value = (mock_model, None, mock_processor, None)
@@ -674,13 +682,13 @@ class TestONNXLoaderLoad:
             description="Test VAD",
             task_type=ModelTaskType.VOICE_ACTIVITY_DETECTION,
             source=AiModelSource.LOCAL,
-            source_uri="/models/silero-vad.onnx",
+            source_uri=os.path.join(_MODEL_BASE, "silero-vad.onnx"),
             source_revision=None,
             format=AiModelFormat.ONNX,
             memory_size_mb=64,
             compute_type="float32",
             download_status=AiModelDownloadStatus.DOWNLOADED,
-            local_path="/models/silero-vad.onnx",
+            local_path=os.path.join(_MODEL_BASE, "silero-vad.onnx"),
             downloaded_at=datetime.utcnow(),
             file_size_mb=64,
             checksum=None,
@@ -727,7 +735,7 @@ class TestNeMoLoaderLoad:
             memory_size_mb=2000,
             compute_type="float32",
             download_status=AiModelDownloadStatus.DOWNLOADED,
-            local_path="/models/conformer.nemo",
+            local_path=os.path.join(_MODEL_BASE, "conformer.nemo"),
             downloaded_at=datetime.utcnow(),
             file_size_mb=1500,
             checksum=None,
@@ -789,13 +797,13 @@ class TestNeMoLoaderLoad:
             description="Test",
             task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
             source=AiModelSource.LOCAL,
-            source_uri="/models/custom.nemo",
+            source_uri=os.path.join(_MODEL_BASE, "custom.nemo"),
             source_revision=None,
             format=AiModelFormat.NEMO,
             memory_size_mb=None,
             compute_type=None,
             download_status=AiModelDownloadStatus.DOWNLOADED,
-            local_path="/models/custom.nemo",
+            local_path=os.path.join(_MODEL_BASE, "custom.nemo"),
             downloaded_at=datetime.utcnow(),
             file_size_mb=800,
             checksum=None,
