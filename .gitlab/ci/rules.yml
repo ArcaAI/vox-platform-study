@@ -3,11 +3,13 @@
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Branch behavior:
-#   cicd    — all stages run (no change filtering), builds manual
-#   staging — only changed services trigger, builds auto
-#   release — SDK publish only
-#   main    — same as staging
-#   devops  — lint + test only
+#   main               — validate + test via MR gates only, no builds
+#   dev                — validate + test + manual builds + scan
+#   staging            — validate + test + manual builds + scan + deploy
+#   cicd               — all stages run (no change filtering), builds manual
+#   release-sdk        — SDK publish only (@arcaai/vox → GitLab Package Registry)
+#   release-playground — ui-playground Docker build + push
+#   maintenance/*      — validate + test + scan (no builds)
 
 # ── Always-run conditions ───────────────────────────────────────────────────
 
@@ -41,7 +43,7 @@
           - packages/config-rollup/**/*
           - packages/config-ts/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
       changes:
         - apps/api/**/*
         - packages/database/**/*
@@ -66,6 +68,7 @@
   rules:
     - !reference [.rules-always, rules]
     - !reference [.rules-cicd-always, rules]
+    - if: $PIPELINE_TYPE == "release_playground"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
@@ -81,7 +84,7 @@
           - packages/utils/**/*
           - packages/config-tailwind/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
       changes:
         - apps/ui-playground/**/*
         - packages/ui/**/*
@@ -111,7 +114,7 @@
         paths:
           - apps/stt-v2/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/stt-v2/**/*
 
@@ -126,7 +129,7 @@
         paths:
           - apps/smr/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/smr/**/*
 
@@ -141,7 +144,7 @@
         paths:
           - apps/nlp/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/nlp/**/*
 
@@ -156,7 +159,7 @@
         paths:
           - packages/database/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - packages/database/**/*
 
@@ -174,11 +177,12 @@
           - packages/**/*
           - "*.json"
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/api/**/*
         - apps/ui-playground/**/*
         - packages/**/*
+    - if: $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground"
 
 # ── Any Python change ───────────────────────────────────────────────────────
 
@@ -199,7 +203,7 @@
           - "apps/smr/**/pyproject.toml"
           - "apps/nlp/**/pyproject.toml"
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - "apps/stt-v2/**/*.py"
         - "apps/smr/**/*.py"
@@ -209,7 +213,7 @@
 
 .rules-sdk-publish:
   rules:
-    - if: $PIPELINE_TYPE == "release"
+    - if: $PIPELINE_TYPE == "release_sdk"
       changes:
         - packages/agentic-sdk-v2/**/*
         - packages/room/**/*
@@ -221,3 +225,9 @@
         - packages/utils/**/*
         - packages/types/**/*
         - ".changeset/**/*"
+
+# ── UI Playground release (for build + push) ────────────────────────────────
+
+.rules-playground-release:
+  rules:
+    - if: $PIPELINE_TYPE == "release_playground"

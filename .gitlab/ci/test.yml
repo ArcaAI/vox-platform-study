@@ -127,7 +127,7 @@ test-packages:
         paths:
           - packages/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - packages/**/*
 
@@ -167,7 +167,8 @@ test-sdk:
           - packages/med-ner/**/*
           - packages/utils/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground"
+    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - packages/ui/**/*
         - packages/room/**/*
