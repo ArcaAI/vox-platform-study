@@ -2,7 +2,7 @@
 # Publish stage — SDK package release to GitLab Package Registry
 # ══════════════════════════════════════════════════════════════════════════════
 #
-# Triggered on the `release` branch only.
+# Triggered on the `release-sdk` branch only.
 # Uses Changesets to version and publish @arcaai/* packages.
 #
 # ── Setup ────────────────────────────────────────────────────────────────────
@@ -68,7 +68,7 @@
 #    → Select affected packages, bump type (patch/minor/major)
 #    → Creates .changeset/<random-name>.md
 # 3. Commit the changeset file with your code changes
-# 4. Merge to release branch
+# 4. Merge to release-sdk branch
 # 5. Pipeline runs:
 #    → changeset version (bumps versions + generates CHANGELOGs)
 #    → build packages
@@ -133,7 +133,7 @@ publish-sdk:
     - |
       if ! git diff --cached --quiet; then
         git commit -m "chore(release): version packages [skip ci]"
-        git push "http://gitlab-ci-token:${NPM_PUBLISH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:release
+        git push "http://gitlab-ci-token:${NPM_PUBLISH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:release-sdk
       fi
   cache:
     - key:
@@ -143,4 +143,4 @@ publish-sdk:
         - .pnpm-store
       policy: pull
   rules:
-    - if: $PIPELINE_TYPE == "release"
+    - if: $PIPELINE_TYPE == "release_sdk"
