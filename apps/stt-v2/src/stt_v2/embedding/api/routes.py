@@ -100,9 +100,7 @@ async def upsert_embedding(
         raise HTTPException(status_code=400, detail=f"Invalid audio file: {e}") from e
 
     try:
-        speaker_embedding = await embedding_service.extract_from_samples(
-            samples, sample_rate
-        )
+        speaker_embedding = await embedding_service.extract_from_samples(samples, sample_rate)
     except Exception as e:
         logger.exception("Embedding extraction failed for speaker %s", speaker_id)
         raise HTTPException(

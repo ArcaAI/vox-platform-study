@@ -1,0 +1,95 @@
+###############################################################################
+# Grafana Contact Points & Notification Policies — HOPE Observability Stack
+#
+# Contact points define WHERE alerts are sent (Slack channels).
+# Notification policies define routing rules based on alert labels.
+#
+# After deploying, update the Slack webhook URLs in the Grafana UI:
+#   Alerting > Contact Points > Edit each contact point > set Webhook URL
+###############################################################################
+
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: Slack Critical
+    receivers:
+      - uid: slack-critical
+        type: slack
+        settings:
+          url: ""  # SET IN GRAFANA UI: https://hooks.slack.com/services/T.../B.../...
+          recipient: "#hope-alerts-critical"
+          title: '{{ .CommonLabels.alertname }}'
+          text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+
+  - orgId: 1
+    name: Slack Warning
+    receivers:
+      - uid: slack-warning
+        type: slack
+        settings:
+          url: ""  # SET IN GRAFANA UI
+          recipient: "#hope-alerts-warning"
+          title: '{{ .CommonLabels.alertname }}'
+          text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+
+  - orgId: 1
+    name: Slack Info
+    receivers:
+      - uid: slack-info
+        type: slack
+        settings:
+          url: ""  # SET IN GRAFANA UI
+          recipient: "#hope-alerts-info"
+          title: '{{ .CommonLabels.alertname }}'
+          text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+
+policies:
+  - orgId: 1
+    receiver: Slack Info
+    group_by: ['alertname', 'job']
+    group_wait: 5m
+    group_interval: 30m
+    repeat_interval: 2h
+    routes:
+      - receiver: Slack Critical
+        matchers:
+          - severity = critical
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 5m
+        continue: false
+
+      - receiver: Slack Warning
+        matchers:
+          - severity = warning
+        group_wait: 1m
+        group_interval: 10m
+        repeat_interval: 30m
+        mute_time_intervals:
+          - nighttime
+        continue: false
+
+      - receiver: Slack Info
+        matchers:
+          - severity = info
+        group_wait: 5m
+        group_interval: 30m
+        repeat_interval: 2h
+        mute_time_intervals:
+          - weekends
+        continue: false
+
+muteTimes:
+  - orgId: 1
+    name: nighttime
+    time_intervals:
+      - times:
+          - start_time: "22:00"
+            end_time: "07:00"
+        weekdays: ['monday:friday']
+
+  - orgId: 1
+    name: weekends
+    time_intervals:
+      - weekdays: ['saturday', 'sunday']

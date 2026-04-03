@@ -562,6 +562,51 @@ describe('LoggingService', () => {
         });
     });
 
+    describe('OTel Log Bridge transport selection', () => {
+        const originalEnv = { ...process.env };
+
+        afterEach(() => {
+            process.env = { ...originalEnv };
+        });
+
+        it('should use OTelLogBridgeTransport when OTEL_LOGS_ENABLED=true and OTEL_LOG_BRIDGE=true', () => {
+            process.env.OTEL_LOGS_ENABLED = 'true';
+            process.env.OTEL_LOG_BRIDGE = 'true';
+            process.env.LOG_CONSOLE_ENABLED = 'false';
+
+            const service = new LoggingService();
+            const names = service.getTransportNames();
+
+            expect(names).toContain('otel-bridge');
+        });
+
+        it('should NOT use OTelTransport (HTTP) when OTEL_LOG_BRIDGE=true', () => {
+            process.env.OTEL_LOGS_ENABLED = 'true';
+            process.env.OTEL_LOG_BRIDGE = 'true';
+            process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4317';
+            process.env.LOG_CONSOLE_ENABLED = 'false';
+
+            const service = new LoggingService();
+            const names = service.getTransportNames();
+
+            expect(names).toContain('otel-bridge');
+            expect(names).not.toContain('otel');
+        });
+
+        it('should fall back to OTelTransport (HTTP) when OTEL_LOG_BRIDGE is not set', () => {
+            process.env.OTEL_LOGS_ENABLED = 'true';
+            process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://localhost:4317';
+            process.env.LOG_CONSOLE_ENABLED = 'false';
+            delete process.env.OTEL_LOG_BRIDGE;
+
+            const service = new LoggingService();
+            const names = service.getTransportNames();
+
+            expect(names).toContain('otel');
+            expect(names).not.toContain('otel-bridge');
+        });
+    });
+
     describe('testLogging', () => {
         it('should output test messages at all levels', () => {
             const service = new LoggingService();

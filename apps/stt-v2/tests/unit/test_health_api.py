@@ -108,11 +108,13 @@ class TestHealthCheckEndpoint:
     @pytest.mark.asyncio
     async def test_health_check_returns_status(self):
         """Test health check returns overall status with checks."""
-        with patch("stt_v2.health.api.routes._check_database") as mock_db, \
-             patch("stt_v2.health.api.routes._check_minio") as mock_minio, \
-             patch("stt_v2.health.api.routes._check_redis") as mock_redis, \
-             patch("stt_v2.health.api.routes._check_streaming") as mock_streaming, \
-             patch("stt_v2.health.api.routes.settings") as mock_settings:
+        with (
+            patch("stt_v2.health.api.routes._check_database") as mock_db,
+            patch("stt_v2.health.api.routes._check_minio") as mock_minio,
+            patch("stt_v2.health.api.routes._check_redis") as mock_redis,
+            patch("stt_v2.health.api.routes._check_streaming") as mock_streaming,
+            patch("stt_v2.health.api.routes.settings") as mock_settings,
+        ):
 
             mock_settings.app_name = "stt-v2"
             mock_settings.app_version = "1.0.0"
@@ -208,7 +210,9 @@ class TestMinioHealthCheck:
     @pytest.mark.asyncio
     async def test_minio_unhealthy_exception(self):
         """Test MinIO check when exception occurs."""
-        with patch("stt_v2.health.api.routes.get_minio_client", side_effect=Exception("MinIO error")):
+        with patch(
+            "stt_v2.health.api.routes.get_minio_client", side_effect=Exception("MinIO error")
+        ):
             result = await _check_minio()
 
             assert result.status == HealthStatus.UNHEALTHY
@@ -227,9 +231,11 @@ class TestReadinessCheck:
     @pytest.mark.asyncio
     async def test_readiness_all_healthy(self):
         """Test readiness when all components healthy returns simple healthy dict."""
-        with patch("stt_v2.health.api.routes._check_database") as mock_db, \
-             patch("stt_v2.health.api.routes._check_minio") as mock_minio, \
-             patch("stt_v2.health.api.routes._check_redis") as mock_redis:
+        with (
+            patch("stt_v2.health.api.routes._check_database") as mock_db,
+            patch("stt_v2.health.api.routes._check_minio") as mock_minio,
+            patch("stt_v2.health.api.routes._check_redis") as mock_redis,
+        ):
 
             mock_db.return_value = ComponentHealth("database", HealthStatus.HEALTHY, 5.0)
             mock_minio.return_value = ComponentHealth("minio", HealthStatus.HEALTHY, 3.0)
@@ -244,11 +250,15 @@ class TestReadinessCheck:
         """Test readiness when one component is unhealthy returns JSONResponse."""
         from fastapi.responses import JSONResponse
 
-        with patch("stt_v2.health.api.routes._check_database") as mock_db, \
-             patch("stt_v2.health.api.routes._check_minio") as mock_minio, \
-             patch("stt_v2.health.api.routes._check_redis") as mock_redis:
+        with (
+            patch("stt_v2.health.api.routes._check_database") as mock_db,
+            patch("stt_v2.health.api.routes._check_minio") as mock_minio,
+            patch("stt_v2.health.api.routes._check_redis") as mock_redis,
+        ):
 
-            mock_db.return_value = ComponentHealth("database", HealthStatus.UNHEALTHY, 5.0, "DB error")
+            mock_db.return_value = ComponentHealth(
+                "database", HealthStatus.UNHEALTHY, 5.0, "DB error"
+            )
             mock_minio.return_value = ComponentHealth("minio", HealthStatus.HEALTHY, 3.0)
             mock_redis.return_value = ComponentHealth("redis", HealthStatus.HEALTHY, 2.0)
 
@@ -260,9 +270,11 @@ class TestReadinessCheck:
     @pytest.mark.asyncio
     async def test_readiness_all_healthy_no_degraded_check(self):
         """Test readiness returns healthy when no components are unhealthy."""
-        with patch("stt_v2.health.api.routes._check_database") as mock_db, \
-             patch("stt_v2.health.api.routes._check_minio") as mock_minio, \
-             patch("stt_v2.health.api.routes._check_redis") as mock_redis:
+        with (
+            patch("stt_v2.health.api.routes._check_database") as mock_db,
+            patch("stt_v2.health.api.routes._check_minio") as mock_minio,
+            patch("stt_v2.health.api.routes._check_redis") as mock_redis,
+        ):
 
             mock_db.return_value = ComponentHealth("database", HealthStatus.HEALTHY, 5.0)
             mock_minio.return_value = ComponentHealth("minio", HealthStatus.HEALTHY, 3.0)

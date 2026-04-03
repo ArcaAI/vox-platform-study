@@ -382,6 +382,7 @@ class TestSingletons:
         """Test pipeline reader singleton."""
         # Reset singleton
         import stt_v2.pipeline.config_reader as module
+
         module._pipeline_reader = None
 
         reader1 = get_pipeline_reader()
@@ -392,6 +393,7 @@ class TestSingletons:
     def test_get_model_reader_singleton(self):
         """Test model reader singleton."""
         import stt_v2.pipeline.config_reader as module
+
         module._model_reader = None
 
         reader1 = get_model_reader()
