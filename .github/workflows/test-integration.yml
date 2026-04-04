@@ -66,7 +66,7 @@ on:
         type: boolean
 
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev, 'maintenance/*']
     paths:
       # TypeScript/JavaScript source files
       - 'apps/api/**/*.ts'
@@ -92,7 +92,7 @@ on:
       - '.github/actions/**'
 
   push:
-    branches: [main]
+    branches: [main, 'maintenance/*']
     paths:
       - 'apps/api/**/*.ts'
       - 'packages/**/*.ts'

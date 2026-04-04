@@ -6,7 +6,6 @@ from .rest.diagnosis import router as diagnosis_router
 from .rest.monitoring import router as monitoring_router
 from .ws.classify import router as ws_classify_router
 
-
 # REST
 rest_api_router_v1 = APIRouter(prefix="/api/v1")
 

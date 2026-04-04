@@ -1,12 +1,12 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from nlp.core.logging import get_logger
-from nlp.core.config import settings
-from nlp.utils import is_production
-from nlp.lifespan import lifespan
 from nlp.api import api_router
+from nlp.core.config import settings
+from nlp.core.logging import get_logger
+from nlp.lifespan import lifespan
+from nlp.utils import is_production
 
 logger = get_logger(__name__)
 
@@ -43,11 +43,14 @@ def get_app() -> FastAPI:
     return app
 
 
-async def http_exception_handler(request: Request, exc: HTTPException):
-    logger.error(f"HTTP {exc.status_code}: {exc.detail}")
-    return JSONResponse(status_code=exc.status_code, content={"error": exc.detail, "status_code": exc.status_code})
+async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    if isinstance(exc, HTTPException):
+        logger.error(f"HTTP {exc.status_code}: {exc.detail}")
+        return JSONResponse(status_code=exc.status_code, content={"error": exc.detail, "status_code": exc.status_code})
+    logger.error(f"Unexpected error: {str(exc)}", exc_info=True)
+    return JSONResponse(status_code=500, content={"error": "Internal server error", "status_code": 500})
 
 
-async def general_exception_handler(request: Request, exc: Exception):
+async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
     return JSONResponse(status_code=500, content={"error": "Internal server error", "status_code": 500})

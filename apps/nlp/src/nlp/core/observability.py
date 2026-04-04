@@ -1,24 +1,31 @@
 import logging
 
 from fastapi import FastAPI
-from prometheus_fastapi_instrumentator import Instrumentator, metrics as prometheus_metrics
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION, DEPLOYMENT_ENVIRONMENT, TELEMETRY_SDK_LANGUAGE
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry import metrics, trace
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
-from opentelemetry import trace, metrics
-from opentelemetry._logs import set_logger_provider
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.sdk.resources import (
+    DEPLOYMENT_ENVIRONMENT,
+    SERVICE_NAME,
+    SERVICE_VERSION,
+    TELEMETRY_SDK_LANGUAGE,
+    Resource,
+)
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_fastapi_instrumentator import metrics as prometheus_metrics
 
-from nlp.core.logging import get_logger
 from nlp.core.config import settings
+from nlp.core.logging import get_logger
 
 logger = get_logger("observability")
 
@@ -93,22 +100,24 @@ def setup_opentelemetry(app: FastAPI) -> None:
         "/api/v1/health/ready",
     ]
 
-    instrument_kwargs = dict(
-        excluded_urls=",".join(excluded_endpoints),
-        server_request_hook=_phi_sanitization_hook,
-        client_request_hook=None,
-        client_response_hook=None,
-    )
+    excluded_urls = ",".join(excluded_endpoints)
+
     if tracer_provider is not None:
-        instrument_kwargs["tracer_provider"] = tracer_provider
-
-    FastAPIInstrumentor().instrument_app(app, **instrument_kwargs)
-
-    logging_kwargs = dict(set_logging_format=False)
-    if tracer_provider is not None:
-        logging_kwargs["tracer_provider"] = tracer_provider
-
-    LoggingInstrumentor().instrument(**logging_kwargs)
+        FastAPIInstrumentor().instrument_app(
+            app,
+            excluded_urls=excluded_urls,
+            tracer_provider=tracer_provider,
+        )
+        LoggingInstrumentor().instrument(
+            set_logging_format=False,
+            tracer_provider=tracer_provider,
+        )
+    else:
+        FastAPIInstrumentor().instrument_app(
+            app,
+            excluded_urls=excluded_urls,
+        )
+        LoggingInstrumentor().instrument(set_logging_format=False)
 
     logger.info(
         "OpenTelemetry initialized",

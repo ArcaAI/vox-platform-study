@@ -1,26 +1,31 @@
 import logging
 import re
-from typing import List, Optional, Dict
+from typing import Any
+
 import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
 
 from nlp.core.config import MedicalSuggesterConfig
-from nlp.schemas.diagnosis import DiagnosisSuggestion, DiagnosisSuggestionRequest, DiagnosisSuggestionResponse
 from nlp.schemas.classification import TokenClassificationRequest
+from nlp.schemas.diagnosis import (
+    DiagnosisSuggestion,
+    DiagnosisSuggestionRequest,
+    DiagnosisSuggestionResponse,
+)
 from nlp.services.token_classifier import TokenClassifier
 
 logger = logging.getLogger(__name__)
 
 
 class MedicalSuggester:
-    def __init__(self, config: Optional[MedicalSuggesterConfig] = None, token_classifier: Optional[TokenClassifier] = None):
+    def __init__(self, config: MedicalSuggesterConfig | None = None, token_classifier: TokenClassifier | None = None):
         if config is None:
             config = MedicalSuggesterConfig()
 
         self.config = config
         self.token_classifier = token_classifier
         self.is_initialized = False
-        self.text_classifier_pipeline = None
+        self.text_classifier_pipeline: Any = None
 
     async def initialize(self) -> None:
         try:
@@ -99,13 +104,18 @@ class MedicalSuggester:
             if not self.is_initialized:
                 raise RuntimeError("MedicalSuggester not initialized")
 
+            if self.token_classifier is None:
+                raise RuntimeError("TokenClassifier not configured")
+
+            min_confidence = request.min_confidence or 0.1
+
             # Step 1: Extract medical entities using token classification
             token_classification_result = await self.token_classifier.process(
                 request=TokenClassificationRequest(text=request.text, language=request.language)
             )
 
             # Filter entities based on confidence and relevance for disease prediction
-            relevant_entities = self._filter_relevant_entities(token_classification_result.entities, request.min_confidence)
+            relevant_entities = self._filter_relevant_entities(token_classification_result.entities, min_confidence)
 
             # Step 2: Create symptom text from entities for disease prediction
             symptom_text = self._create_symptom_text(relevant_entities)
@@ -114,13 +124,12 @@ class MedicalSuggester:
             disease_predictions = await self._predict_diseases(symptom_text)
 
             # Step 4: Create medical suggestions from predictions
-            suggestions = self._create_medical_suggestions(disease_predictions, request.min_confidence)
+            suggestions = self._create_medical_suggestions(disease_predictions, min_confidence)
 
             # Create structured response
             response = DiagnosisSuggestionResponse(
                 suggestions=suggestions,
                 model_version=self.config.model_version,
-                total_suggestions=len(suggestions),
                 symptoms_analyzed=[entity.text for entity in relevant_entities],
             )
 
@@ -131,7 +140,7 @@ class MedicalSuggester:
             logger.error(f"Failed to generate medical suggestions: {str(e)}")
             raise
 
-    def _filter_relevant_entities(self, entities: List, min_confidence: float) -> List:
+    def _filter_relevant_entities(self, entities: list, min_confidence: float) -> list:
         """Filter entities that are relevant for disease prediction"""
         relevant_entity_types = {
             "B-SIGN_SYMPTOM",
@@ -163,13 +172,13 @@ class MedicalSuggester:
 
         return filtered_entities
 
-    def _create_symptom_text(self, entities: List) -> str:
+    def _create_symptom_text(self, entities: list) -> str:
         """Create a coherent symptom description from extracted entities"""
         if not entities:
             return ""
 
         # Group entities by type for better text construction
-        entity_groups = {}
+        entity_groups: dict[str, list[str]] = {}
         for entity in entities:
             entity_type = entity.entity_type.replace("B-", "").replace("I-", "")
             if entity_type not in entity_groups:
@@ -199,7 +208,7 @@ class MedicalSuggester:
         symptom_text = ", ".join(set(symptom_parts)).replace("▁", "")
         return symptom_text.strip()
 
-    async def _predict_diseases(self, symptom_text: str) -> Dict[str, float]:
+    async def _predict_diseases(self, symptom_text: str) -> dict[str, float]:
         """Use HuggingFace model to predict diseases from symptoms"""
         if not symptom_text:
             return {}
@@ -237,8 +246,8 @@ class MedicalSuggester:
         return model_label
 
     def _create_medical_suggestions(
-        self, disease_predictions: Dict[str, float], min_confidence: float
-    ) -> List[DiagnosisSuggestion]:
+        self, disease_predictions: dict[str, float], min_confidence: float
+    ) -> list[DiagnosisSuggestion]:
         """Create medical suggestions from disease predictions and entities"""
         suggestions = []
 
@@ -256,5 +265,5 @@ class MedicalSuggester:
     async def shutdown(self) -> None:
         if self.is_initialized:
             if self.token_classifier and hasattr(self.token_classifier, "shutdown"):
-                self.token_classifier.shutdown()
+                await self.token_classifier.shutdown()
             self.is_initialized = False

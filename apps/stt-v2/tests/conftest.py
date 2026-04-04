@@ -88,7 +88,38 @@ def _get_minio_config() -> dict:
 
 
 def pytest_configure(config):
-    """Configure pytest markers."""
+    """Configure pytest markers, Docker socket, and HuggingFace cache."""
+    from pathlib import Path
+
+    # Override HUGGINGFACE_CACHE_DIR when the .env / production default
+    # (/models/hf-cache) doesn't exist.  This allows tests to use the
+    # HF_HOME path or the standard ~/.cache/huggingface/hub fallback.
+    configured = os.environ.get("HUGGINGFACE_CACHE_DIR", "/models/hf-cache")
+    if not Path(configured).is_dir():
+        hf_cache = os.environ.get("HF_HOME") or str(
+            Path.home() / ".cache" / "huggingface" / "hub"
+        )
+        os.environ["HUGGINGFACE_CACHE_DIR"] = hf_cache
+
+    # Ensure testcontainers can reach the Docker daemon.  OrbStack and Colima
+    # place their socket at a non-standard path; /var/run/docker.sock may be a
+    # broken symlink when Docker Desktop is not installed.
+    if "DOCKER_HOST" not in os.environ:
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            host = result.stdout.strip()
+            if host and host.startswith("unix://"):
+                os.environ["DOCKER_HOST"] = host
+        except Exception:
+            pass
+
     config.addinivalue_line(
         "markers", "integration: marks tests as integration tests (require external services)"
     )

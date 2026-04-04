@@ -69,7 +69,10 @@ def _clear_smr_env(monkeypatch):
 
 class TestOpenAICompatConfig:
     def test_openai_compat_config_defaults(self, monkeypatch):
-        _clear_smr_env(monkeypatch)
+        for key in list(os.environ):
+            if key.startswith("SMR_V2_"):
+                monkeypatch.delenv(key, raising=False)
+
         from smr_v2.core.config import OpenAICompatConfig
 
         _clear_smr_env(monkeypatch)
