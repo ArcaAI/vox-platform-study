@@ -79,7 +79,7 @@ class TestDrainProcessedSamples:
 
     async def test_feed_collects_processed_without_denoiser(self):
         """Without denoiser, processed samples should still be collected
-        when VAD detects speech (TASK-259)."""
+        when VAD detects speech."""
         from unittest.mock import MagicMock
 
         # Mock VAD that always returns speech

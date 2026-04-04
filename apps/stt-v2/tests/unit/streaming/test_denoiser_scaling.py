@@ -1,16 +1,3 @@
-"""Tests for TASK-258: denoiser int16 scaling, fade-in crossfade, fixed
-downsample ratio, and temporal alignment for blending.
-
-Root causes:
-1. StreamingDenoiser.process() fed float32 [-1, 1] audio directly to
-   pyrnnoise which expects int16-scale input (~[-32768, 32768]).
-2. Fade-in ramped FROM SILENCE instead of crossfading original->denoised.
-3. Variable consumption from denoised_48k buffer caused pitch wobble.
-4. Blending mixed current frame (time T) with denoised previous frame
-   (time T-32ms), creating a comb filter with -10dB notches at speech
-   frequencies perceived as echo.
-"""
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -37,7 +24,7 @@ def _identity_denoise_side_effect(chunk):
 
 
 class TestDenoiserInt16Scaling:
-    """Verify input to pyrnnoise is scaled to int16 range (TASK-258 bug 1)."""
+    """Verify input to pyrnnoise is scaled to int16 range."""
 
     def test_denoise_chunk_receives_int16_dtype(self):
         """denoise_chunk should receive int16 numpy array, not float32."""
@@ -104,7 +91,7 @@ class TestDenoiserInt16Scaling:
 
 
 class TestDenoiserFadeInCrossfade:
-    """Verify fade-in crossfades between original and denoised (TASK-258 bug 2)."""
+    """Verify fade-in crossfades between original and denoised."""
 
     def test_fade_in_preserves_energy(self):
         """During fade-in with denoised=0, output should still have energy
@@ -134,7 +121,7 @@ class TestDenoiserFadeInCrossfade:
 
 
 class TestDenoiserFixedDownsampleRatio:
-    """Verify fixed consumption prevents pitch wobble (TASK-258 bug 3).
+    """Verify fixed consumption prevents pitch wobble.
 
     The old approach consumed variable amounts from the denoised_48k
     buffer (1440, 1440, 1440, 1440, 1920 in a 5-frame cycle) because
@@ -356,7 +343,7 @@ class TestDenoiserFrequencyPreservation:
 
 
 class TestDenoiserTemporalAlignment:
-    """Verify blending uses temporally-aligned signals (TASK-258 bug 4).
+    """Verify blending uses temporally-aligned signals.
 
     The denoised output is delayed by ~1 frame relative to the input.
     When strength < 1.0, blending current frame (time T) with denoised
