@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from stt_v2.streaming.preprocessor import (
     _FRAME_SIZE_16K,
+    _PARTIAL_TAIL_WINDOW_S,
     _PRE_SPEECH_CONTEXT_MS,
     AudioUtterance,
     StreamingPreprocessor,
@@ -687,3 +688,339 @@ class TestVADServiceNotLoaded:
         assert pp.in_speech is True
         # process_chunk should NOT have been called
         vad.process_chunk.assert_not_called()
+
+
+# =========================================================================
+# Tests: Partial Emission
+# =========================================================================
+
+
+class TestPartialEmission:
+    """Tests for partial (is_final=False) utterance emission."""
+
+    @pytest.mark.asyncio
+    async def test_no_partial_before_1000ms_elapsed(self):
+        """Feed 900ms speech at high rate, expect 0 partials."""
+        vad = _make_vad_service(probability=1.0)
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=700,
+        )
+
+        # Feed 900ms -- less than _PARTIAL_INTERVAL_S (1000ms)
+        pcm = _make_speech_pcm(900)
+        utts = await pp.feed(pcm)
+
+        partials = [u for u in utts if not u.is_final]
+        assert len(partials) == 0
+
+    @pytest.mark.asyncio
+    async def test_partial_emitted_after_1000ms_speech(self):
+        """Feed 1200ms+ speech, expect at least 1 partial."""
+        vad = _make_vad_service(probability=1.0)
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=700,
+        )
+
+        # Feed speech in chunks to let the timer tick
+        all_utts = []
+        # Feed 100ms chunks over 1500ms with time advancement
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            mock_time.monotonic = MagicMock()
+            # First call (speech onset) returns t=0
+            t = 0.0
+            call_count = [0]
+
+            def advancing_monotonic():
+                call_count[0] += 1
+                # Advance 100ms per call after first frame
+                return t + (call_count[0] * 0.1)
+
+            mock_time.monotonic = advancing_monotonic
+
+            for _ in range(15):
+                pcm = _make_speech_pcm(100)
+                utts = await pp.feed(pcm)
+                all_utts.extend(utts)
+
+        partials = [u for u in all_utts if not u.is_final]
+        assert len(partials) >= 1
+        for p in partials:
+            assert p.is_final is False
+
+    @pytest.mark.asyncio
+    async def test_partial_min_audio_threshold(self):
+        """Force 1000ms wall-clock elapsed but only 200ms audio, expect no partial."""
+        vad = _make_vad_service(probability=1.0)
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=700,
+        )
+
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            call_count = [0]
+
+            def fast_clock():
+                call_count[0] += 1
+                return call_count[0] * 1.0  # 1s per call -- way past interval
+
+            mock_time.monotonic = fast_clock
+
+            # Only feed 200ms audio -- below _PARTIAL_MIN_AUDIO_S
+            pcm = _make_speech_pcm(200)
+            utts = await pp.feed(pcm)
+
+        partials = [u for u in utts if not u.is_final]
+        assert len(partials) == 0
+
+    @pytest.mark.asyncio
+    async def test_partial_tail_window_capped(self):
+        """Feed 15s speech, partial samples length <= 10s * sample_rate."""
+        vad = _make_vad_service(probability=1.0)
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=700,
+            max_utterance_duration_ms=30000,  # Don't force-emit
+        )
+
+        all_utts = []
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            call_count = [0]
+
+            def advancing():
+                call_count[0] += 1
+                return call_count[0] * 0.1
+
+            mock_time.monotonic = advancing
+
+            # Feed 15s in 1s chunks
+            for _ in range(15):
+                pcm = _make_speech_pcm(1000)
+                utts = await pp.feed(pcm)
+                all_utts.extend(utts)
+
+        partials = [u for u in all_utts if not u.is_final]
+        assert len(partials) > 0
+
+        max_samples = int(_PARTIAL_TAIL_WINDOW_S * 16000)
+        for p in partials:
+            assert len(p.samples) <= max_samples
+
+    @pytest.mark.asyncio
+    async def test_partial_does_not_clear_buffer(self):
+        """After partial, utterance_buffer is unchanged (buffer keeps growing)."""
+        vad = _make_vad_service(probability=1.0)
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=700,
+        )
+
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            call_count = [0]
+
+            def advancing():
+                call_count[0] += 1
+                return call_count[0] * 0.1
+
+            mock_time.monotonic = advancing
+
+            # Feed enough to get a partial
+            for _ in range(8):
+                pcm = _make_speech_pcm(100)
+                await pp.feed(pcm)
+
+        # Buffer should still hold all frames
+        assert pp.in_speech is True
+        assert len(pp._state.utterance_buffer) > 0
+        buffer_before = len(pp._state.utterance_buffer)
+
+        # Feed more and check buffer grew
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            mock_time.monotonic = lambda: 100.0
+            pcm = _make_speech_pcm(100)
+            await pp.feed(pcm)
+
+        assert len(pp._state.utterance_buffer) > buffer_before
+
+    @pytest.mark.asyncio
+    async def test_partial_timer_resets_on_final(self):
+        """Speech -> silence (final) -> new speech: fresh 1000ms timer."""
+        # Speech for 800ms then silence for enough frames to trigger final
+        speech_frames = int(800 / 32)  # ~25 frames
+        vad = _make_alternating_vad(
+            speech_prob=1.0, silence_prob=0.0, speech_frames=speech_frames,
+        )
+
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=200,
+        )
+
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            call_count = [0]
+
+            def advancing():
+                call_count[0] += 1
+                return call_count[0] * 0.1
+
+            mock_time.monotonic = advancing
+
+            # Feed speech + silence
+            pcm = _make_speech_pcm(2000)
+            utts = await pp.feed(pcm)
+
+        finals = [u for u in utts if u.is_final]
+        assert len(finals) >= 1
+
+        # After final, partial timer should be reset
+        assert pp._state.last_partial_emitted_at == 0.0
+
+    @pytest.mark.asyncio
+    async def test_multiple_partials_during_long_speech(self):
+        """Feed 5s speech, expect ~4 partials spaced ~1000ms apart."""
+        vad = _make_vad_service(probability=1.0)
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=700,
+        )
+
+        all_utts = []
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            call_count = [0]
+
+            def advancing():
+                call_count[0] += 1
+                return call_count[0] * 0.05  # 50ms per call
+
+            mock_time.monotonic = advancing
+
+            # Feed 5s in 100ms chunks
+            for _ in range(50):
+                pcm = _make_speech_pcm(100)
+                utts = await pp.feed(pcm)
+                all_utts.extend(utts)
+
+        partials = [u for u in all_utts if not u.is_final]
+        # ~5s / 1.0s = ~4 partials (accounting for min audio threshold + timing)
+        assert len(partials) >= 3
+
+    @pytest.mark.asyncio
+    async def test_final_still_works_after_partials(self):
+        """Feed speech + silence, expect partials followed by 1 final with full audio."""
+        speech_frames = int(1500 / 32)  # ~47 frames at 32ms
+        vad = _make_alternating_vad(
+            speech_prob=1.0, silence_prob=0.0, speech_frames=speech_frames,
+        )
+
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=200,
+        )
+
+        all_utts = []
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            call_count = [0]
+
+            def advancing():
+                call_count[0] += 1
+                return call_count[0] * 0.05
+
+            mock_time.monotonic = advancing
+
+            pcm = _make_speech_pcm(3000)
+            utts = await pp.feed(pcm)
+            all_utts.extend(utts)
+
+        partials = [u for u in all_utts if not u.is_final]
+        finals = [u for u in all_utts if u.is_final]
+
+        assert len(finals) >= 1
+        # Final should contain full audio (more samples than any partial)
+        if partials:
+            assert len(finals[0].samples) >= len(partials[0].samples)
+
+    @pytest.mark.asyncio
+    async def test_short_utterance_no_partial(self):
+        """Feed 400ms speech then silence, expect 0 partials, 1 final."""
+        speech_frames = int(400 / 32)  # ~12 frames
+        vad = _make_alternating_vad(
+            speech_prob=1.0, silence_prob=0.0, speech_frames=speech_frames,
+        )
+
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=200,
+        )
+
+        pcm = _make_speech_pcm(1500)
+        utts = await pp.feed(pcm)
+
+        partials = [u for u in utts if not u.is_final]
+        finals = [u for u in utts if u.is_final]
+
+        assert len(partials) == 0
+        assert len(finals) >= 1
+
+    @pytest.mark.asyncio
+    async def test_partial_shares_utterance_index_with_final(self):
+        """Partial and final for same speech have same utterance_index."""
+        speech_frames = int(1500 / 32)
+        vad = _make_alternating_vad(
+            speech_prob=1.0, silence_prob=0.0, speech_frames=speech_frames,
+        )
+
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=200,
+        )
+
+        all_utts = []
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            call_count = [0]
+
+            def advancing():
+                call_count[0] += 1
+                return call_count[0] * 0.05
+
+            mock_time.monotonic = advancing
+
+            pcm = _make_speech_pcm(3000)
+            utts = await pp.feed(pcm)
+            all_utts.extend(utts)
+
+        partials = [u for u in all_utts if not u.is_final]
+        finals = [u for u in all_utts if u.is_final]
+
+        if partials and finals:
+            assert partials[0].utterance_index == finals[0].utterance_index

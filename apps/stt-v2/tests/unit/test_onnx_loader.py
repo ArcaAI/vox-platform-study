@@ -182,16 +182,17 @@ class TestDownloadOnnxModelAllowPatterns:
             tags=[],
         )
 
-        with patch("stt_v2.models.onnx_loader.get_settings") as mock_settings, patch(
-            "huggingface_hub.snapshot_download",
-            return_value="/tmp/model-cache",
-        ) as mock_snapshot, patch("os.makedirs"):
-            settings = MagicMock()
-            settings.huggingface_cache_dir = "/tmp/hf-cache"
-            mock_settings.return_value = settings
+        mock_hf = MagicMock()
+        mock_hf.snapshot_download = MagicMock(return_value="/tmp/model-cache")
 
-            _ = await loader._download_onnx_model(model_config)
+        with patch.dict("sys.modules", {"huggingface_hub": mock_hf}):
+            with patch("stt_v2.models.onnx_loader.get_settings") as mock_settings, patch("os.makedirs"):
+                settings = MagicMock()
+                settings.huggingface_cache_dir = "/tmp/hf-cache"
+                mock_settings.return_value = settings
 
-        allow_patterns = mock_snapshot.call_args.kwargs["allow_patterns"]
+                _ = await loader._download_onnx_model(model_config)
+
+        allow_patterns = mock_hf.snapshot_download.call_args.kwargs["allow_patterns"]
         assert "onnx/model.onnx" in allow_patterns
         assert "onnx/model.onnx_data" in allow_patterns

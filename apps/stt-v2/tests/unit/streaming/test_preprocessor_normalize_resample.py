@@ -6,7 +6,8 @@ Tests:
 - feed(): normalize before VAD, resample before VAD, no-normalize passthrough
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
 
@@ -16,11 +17,11 @@ from stt_v2.streaming.preprocessor import StreamingPreprocessor
 def _make_preprocessor(**kwargs) -> StreamingPreprocessor:
     """Create a preprocessor with a mock VAD service."""
     vad_service = MagicMock()
-    defaults = dict(
-        session_id="test",
-        sample_rate=16000,
-        vad_service=vad_service,
-    )
+    defaults = {
+        "session_id": "test",
+        "sample_rate": 16000,
+        "vad_service": vad_service,
+    }
     defaults.update(kwargs)
     return StreamingPreprocessor(**defaults)
 
