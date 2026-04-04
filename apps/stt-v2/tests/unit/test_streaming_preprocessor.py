@@ -9,8 +9,6 @@ import pytest
 
 from stt_v2.streaming.preprocessor import (
     _FRAME_SIZE_16K,
-    _PARTIAL_INTERVAL_S,
-    _PARTIAL_MIN_AUDIO_S,
     _PARTIAL_TAIL_WINDOW_S,
     _PRE_SPEECH_CONTEXT_MS,
     AudioUtterance,

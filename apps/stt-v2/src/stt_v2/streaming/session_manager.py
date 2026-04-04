@@ -648,6 +648,7 @@ class SessionManager:
     ) -> StreamingAsrCallable:
         """Create a standalone callable ASR pipeline for streaming inference"""
         import torch
+
         from stt_v2.models.base_loader import LoadedModel
 
         loaded_model: LoadedModel = asr_model
