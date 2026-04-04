@@ -339,7 +339,7 @@ class StreamingPreprocessor:
                 state.utterance_buffer.append(frame_copy)
                 self._processed_samples.append(frame_copy)
 
-                # Force-emit if utterance exceeds max duration to prevent websocket 
+                # Force-emit if utterance exceeds max duration to prevent websocket
                 # Whisper accuracy degradation on oversized segments.
                 if len(state.utterance_buffer) >= self._max_utterance_frames:
                     logger.debug(

@@ -573,7 +573,7 @@ class TestProcessPartial:
         utt = _make_utterance(is_final=False)
 
         with patch.object(worker, "_identify_with_embedding") as mock_diar:
-            result = await worker.process_partial("sess-1", utt)
+            await worker.process_partial("sess-1", utt)
             mock_diar.assert_not_called()
 
     @pytest.mark.asyncio
