@@ -439,6 +439,80 @@ class TestAudioPreprocessorEdgeCases:
 # because they require torch to be imported dynamically inside the method.
 # These methods should be tested in integration tests with actual PyTorch installed.
 
+
+class TestApplyVadWithOnnxSession:
+    """Regression tests for ONNX-session pipeline VAD handling."""
+
+    @pytest.fixture
+    def preprocessor(self):
+        return AudioPreprocessor()
+
+    @pytest.mark.asyncio
+    async def test_apply_vad_supports_onnx_session_model(self, preprocessor):
+        """Pipeline ONNX Silero session should return scored speech segments."""
+
+        class _Input:
+            def __init__(self, name: str):
+                self.name = name
+
+        class _FakeOnnxSileroSession:
+            def get_inputs(self):
+                return [_Input("input"), _Input("state"), _Input("sr")]
+
+            def run(self, _outputs, _inputs):
+                return [
+                    np.array([[0.8]], dtype=np.float32),
+                    np.zeros((2, 1, 128), dtype=np.float32),
+                ]
+
+        loaded_model = MagicMock()
+        loaded_model.model = _FakeOnnxSileroSession()
+
+        samples = np.ones(16000, dtype=np.float32) * 0.01
+
+        segments = await preprocessor._apply_vad(
+            samples=samples,
+            sample_rate=16000,
+            vad_model=loaded_model,
+            threshold=0.5,
+        )
+
+        assert len(segments) == 1
+        assert segments[0].confidence == pytest.approx(0.8, abs=1e-3)
+
+    @pytest.mark.asyncio
+    async def test_non_silero_onnx_like_session_falls_back(self, preprocessor):
+        """Non-Silero ONNX-like sessions should not use the Silero ONNX path."""
+
+        class _Input:
+            def __init__(self, name: str):
+                self.name = name
+
+        class _NonSileroSession:
+            def get_inputs(self):
+                return [_Input("audio")]
+
+            def run(self, _outputs, _inputs):
+                return [
+                    np.array([[0.8]], dtype=np.float32),
+                    np.zeros((2, 1, 128), dtype=np.float32),
+                ]
+
+        loaded_model = MagicMock()
+        loaded_model.model = _NonSileroSession()
+
+        samples = np.ones(16000, dtype=np.float32) * 0.01
+
+        segments = await preprocessor._apply_vad(
+            samples=samples,
+            sample_rate=16000,
+            vad_model=loaded_model,
+            threshold=0.5,
+        )
+
+        assert len(segments) == 1
+        assert segments[0].confidence == pytest.approx(1.0, abs=1e-3)
+
 class TestAudioLoadingWithFallback:
     """Tests for audio loading with fallback to librosa."""
 

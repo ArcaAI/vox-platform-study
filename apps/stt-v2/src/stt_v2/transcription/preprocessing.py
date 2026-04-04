@@ -53,6 +53,7 @@ class AudioPreprocessor:
         config: PreprocessingConfig,
         vad_model: LoadedModel | None = None,
         denoise_model: LoadedModel | None = None,
+        job_id: str = "",
     ) -> ProcessedAudio:
         """
         Apply preprocessing pipeline.
@@ -93,8 +94,9 @@ class AudioPreprocessor:
         if len(samples.shape) > 1:
             samples = samples.mean(axis=1)
 
-        # Normalize (before denoise — operates on original-rate audio)
+        # Normalize (before denoise -- operates on original-rate audio)
         if config.normalize:
+            logger.debug(f"[{job_id}] [PREPROCESSOR] Normalize :: Normalizing audio...")
             samples = self._normalize(samples)
             was_normalized = True
 
@@ -104,6 +106,7 @@ class AudioPreprocessor:
         # resample to target_sr happens once afterward.
         denoise_applied = False
         if config.denoise.enabled:
+            logger.debug(f"[{job_id}] [NOISE_SUPPRESSION] Applying RNNoise for noise suppression...")
             samples, current_sr = await self._apply_denoise(
                 samples, current_sr, config.denoise.strength
             )
@@ -111,6 +114,9 @@ class AudioPreprocessor:
 
         # ----- Single final resample to target_sample_rate -----
         if current_sr != config.target_sample_rate:
+            logger.debug(
+                f"[{job_id}] [PREPROCESSOR] Resample :: Resampling audio from {current_sr}Hz to {config.target_sample_rate}Hz..."
+            )
             samples = self._resample(samples, current_sr, config.target_sample_rate)
             was_resampled = True
 
@@ -121,6 +127,7 @@ class AudioPreprocessor:
         segments: list[AudioSegment] = []
         vad_applied = False
         if config.vad.enabled:
+            logger.debug(f"[{job_id}] [VAD] Running VAD to detect speech segments...")
             segments, vad_applied = await self._apply_vad_smart(
                 samples, config.target_sample_rate, config.vad, vad_model
             )
@@ -270,9 +277,17 @@ class AudioPreprocessor:
             List of audio segments
         """
         try:
-            import torch
-
             model = vad_model.model
+
+            if self._is_silero_onnx_session(model):
+                return self._apply_onnx_session_vad(
+                    samples=samples,
+                    sample_rate=sample_rate,
+                    session=model,
+                    threshold=threshold,
+                )
+
+            import torch
 
             # Convert to tensor
             audio_tensor = torch.from_numpy(samples).float()
@@ -338,6 +353,68 @@ class AudioPreprocessor:
                     is_speech=True,
                 )
             ]
+
+    @staticmethod
+    def _is_silero_onnx_session(model: Any) -> bool:
+        """Check whether *model* looks like a Silero ONNX Runtime session."""
+        if callable(model) or not hasattr(model, "run") or not hasattr(model, "get_inputs"):
+            return False
+
+        try:
+            input_names = {inp.name for inp in model.get_inputs()}
+        except Exception:
+            return False
+
+        return {"input", "state", "sr"}.issubset(input_names)
+
+    def _apply_onnx_session_vad(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        session: Any,
+        threshold: float,
+    ) -> list[AudioSegment]:
+        """Run Silero-style VAD directly on an ONNX Runtime session."""
+        from ..vad.silero_service import SileroVADService
+
+        frame_size = 512 if sample_rate == 16000 else 256
+        state = np.zeros((2, 1, 128), dtype=np.float32)
+        sr_array = np.array(sample_rate, dtype=np.int64)
+
+        probs: list[float] = []
+        for offset in range(0, len(samples), frame_size):
+            chunk = samples[offset: offset + frame_size]
+            if len(chunk) < frame_size:
+                chunk = np.pad(chunk, (0, frame_size - len(chunk)))
+
+            input_data = chunk.reshape(1, -1).astype(np.float32)
+            ort_out = session.run(
+                None,
+                {"input": input_data, "state": state, "sr": sr_array},
+            )
+            probs.append(float(ort_out[0][0][0]))
+            state = ort_out[1]
+
+        detected_segments = SileroVADService.probs_to_segments(
+            probs=probs,
+            frame_size=frame_size,
+            sample_rate=sample_rate,
+            threshold=threshold,
+            min_speech_ms=250,
+            min_silence_ms=100,
+            pad_ms=30,
+            total_samples=len(samples),
+        )
+
+        return [
+            AudioSegment(
+                start_time=segment.start_time,
+                end_time=segment.end_time,
+                is_speech=True,
+                confidence=segment.probability,
+            )
+            for segment in detected_segments
+        ]
 
     async def _apply_denoise(
         self,

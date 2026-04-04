@@ -333,6 +333,29 @@ class SileroVADService:
 
         return segments
 
+    @staticmethod
+    def probs_to_segments(
+        probs: list[float],
+        frame_size: int,
+        sample_rate: int,
+        threshold: float,
+        min_speech_ms: int,
+        min_silence_ms: int,
+        pad_ms: int,
+        total_samples: int,
+    ) -> list[SpeechSegment]:
+        """Public wrapper for converting VAD frame probabilities to segments."""
+        return SileroVADService._probs_to_segments(
+            probs=probs,
+            frame_size=frame_size,
+            sample_rate=sample_rate,
+            threshold=threshold,
+            min_speech_ms=min_speech_ms,
+            min_silence_ms=min_silence_ms,
+            pad_ms=pad_ms,
+            total_samples=total_samples,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Singleton

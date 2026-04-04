@@ -260,6 +260,40 @@ class BlobService:
         logger.info(f"Uploaded streaming complete WAV to: {uri} ({len(wav_bytes)} bytes)")
         return uri
 
+    async def upload_streaming_processed_complete(
+        self,
+        wav_bytes: bytes,
+        tenant_id: str,
+        session_id: str,
+    ) -> str:
+        """Upload the processed (post-denoise) combined WAV to storage.
+
+        Path: ``{tenant_id}/{year}/{month}/streaming/{session_id}/processed/complete.wav``
+
+        Args:
+            wav_bytes: WAV-encoded processed audio bytes.
+            tenant_id: Tenant ID.
+            session_id: Streaming session ID.
+
+        Returns:
+            Full storage URI.
+        """
+        path = self._resolver.streaming_processed_complete_path(
+            tenant_id=tenant_id,
+            session_id=session_id,
+        )
+
+        await self._upload_bytes(
+            bucket=self._resolver.audio_bucket,
+            path=path,
+            data=wav_bytes,
+            content_type="audio/wav",
+        )
+
+        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        logger.info(f"Uploaded streaming processed WAV to: {uri} ({len(wav_bytes)} bytes)")
+        return uri
+
     async def upload_streaming_transcript(
         self,
         transcript_bytes: bytes,

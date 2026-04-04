@@ -242,6 +242,27 @@ class StoragePathResolver:
         base = self._streaming_base(tenant_id, session_id, timestamp)
         return f"{base}/raw/complete.wav"
 
+    def streaming_processed_complete_path(
+        self,
+        tenant_id: str,
+        session_id: str,
+        timestamp: datetime | None = None,
+    ) -> str:
+        """Generate path for the processed (post-denoise) combined WAV.
+
+        Format: ``{tenant_id}/{year}/{month}/streaming/{session_id}/processed/complete.wav``
+
+        Args:
+            tenant_id: Tenant ID.
+            session_id: Streaming session ID.
+            timestamp: Optional timestamp for year/month partitioning.
+
+        Returns:
+            Storage path (without bucket prefix).
+        """
+        base = self._streaming_base(tenant_id, session_id, timestamp)
+        return f"{base}/processed/complete.wav"
+
     def streaming_transcript_path(
         self,
         tenant_id: str,

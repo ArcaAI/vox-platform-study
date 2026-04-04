@@ -153,11 +153,11 @@ class Settings(BaseSettings):
         description="Path to Silero VAD ONNX model (auto-downloaded if None)",
     )
     vad_threshold: float = Field(
-        default=0.5,
-        description="Silero VAD speech detection threshold (0.0–1.0)",
+        default=0.6,
+        description="Silero VAD speech detection threshold (0.0-1.0)",
     )
     vad_min_speech_duration_ms: int = Field(
-        default=250,
+        default=350,
         description="Minimum speech segment length in ms",
     )
     vad_min_silence_duration_ms: int = Field(
@@ -167,6 +167,10 @@ class Settings(BaseSettings):
     vad_speech_pad_ms: int = Field(
         default=30,
         description="Padding before speech onset in ms",
+    )
+    vad_pre_speech_context_ms: int = Field(
+        default=500,
+        description="Pre-speech context in ms to keep before speech onset",
     )
     vad_sample_rate: int = Field(
         default=16000,
@@ -180,7 +184,7 @@ class Settings(BaseSettings):
     )
     diarization_similarity_threshold: float = Field(
         default=0.7,
-        description="Cosine similarity threshold for speaker matching (0.0–1.0)",
+        description="Cosine similarity threshold for speaker matching (0.0-1.0)",
     )
     diarization_device: str = Field(
         default="auto",
