@@ -121,6 +121,130 @@ class SpeakerIdentifier:
             ) from e
 
     # ------------------------------------------------------------------
+    # Single-segment identification with precomputed embedding
+    # ------------------------------------------------------------------
+
+    async def identify_with_embedding(
+        self,
+        embedding: SpeakerEmbedding,
+        tenant_id: str,
+        consultation_id: str | None = None,
+        config: DiarizationConfig | None = None,
+    ) -> SpeakerIdentification:
+        """Identify a speaker from a precomputed embedding (no extraction).
+
+        Single-segment variant for streaming: skips Phase 1 (extraction),
+        only does Qdrant search + match/register.
+
+        Args:
+            embedding: Precomputed speaker embedding.
+            tenant_id: Tenant for scoped Qdrant search.
+            consultation_id: Optional consultation context.
+            config: Diarization configuration overrides.
+
+        Returns:
+            SpeakerIdentification with speaker_id and confidence.
+        """
+        config = config or DiarizationConfig()
+
+        try:
+            # Search Qdrant
+            matches = await self._speaker_store.search_similar(
+                tenant_id=tenant_id,
+                query_embedding=embedding.embedding,
+                limit=5,
+                score_threshold=config.similarity_threshold,
+                consultation_id=consultation_id,
+            )
+
+            if matches:
+                best = matches[0]
+                return SpeakerIdentification(
+                    speaker_id=best["speaker_id"],
+                    confidence=best["score"],
+                    is_new_speaker=False,
+                    point_id=best.get("point_id"),
+                )
+
+            # No match -- register new speaker if enabled
+            if config.auto_register_speakers:
+                new_speaker_id = f"speaker-{uuid.uuid4().hex[:8]}"
+                point_id = await self._speaker_store.upsert_embedding(
+                    tenant_id=tenant_id,
+                    speaker_id=new_speaker_id,
+                    embedding=embedding.embedding,
+                    consultation_id=consultation_id,
+                )
+                logger.info(
+                    "Registered new speaker %s for tenant %s",
+                    new_speaker_id,
+                    tenant_id,
+                )
+                return SpeakerIdentification(
+                    speaker_id=new_speaker_id,
+                    confidence=None,
+                    is_new_speaker=True,
+                    point_id=point_id,
+                )
+
+            return SpeakerIdentification(
+                speaker_id="unknown",
+                confidence=None,
+                is_new_speaker=False,
+            )
+
+        except Exception as e:
+            raise SpeakerIdentificationError(
+                f"Speaker identification with embedding failed: {e}"
+            ) from e
+
+    # ------------------------------------------------------------------
+    # Multi-segment diarization with precomputed embeddings
+    # ------------------------------------------------------------------
+
+    async def diarize_with_embeddings(
+        self,
+        embeddings: list[SpeakerEmbedding | None],
+        segments: list[dict[str, Any]],
+        tenant_id: str,
+        consultation_id: str | None = None,
+        config: DiarizationConfig | None = None,
+    ) -> DiarizationResult:
+        """Assign speaker IDs using precomputed embeddings (Phase 3 only).
+
+        Accepts precomputed embeddings and only does Qdrant lookup +
+        match/register per embedding. Skips Phase 1 (classify) and
+        Phase 2 (extraction).
+
+        Args:
+            embeddings: Precomputed embeddings (same length as segments).
+                        None entries are skipped.
+            segments: Transcription segments with ``start``, ``end``, ``text``.
+            tenant_id: Tenant for Qdrant scope.
+            consultation_id: Optional consultation context.
+            config: Diarization configuration.
+
+        Returns:
+            DiarizationResult with speaker-annotated segments.
+        """
+        config = config or DiarizationConfig()
+        diarized_segments, speakers_seen, new_speakers = await self._identify_from_embeddings(
+            embeddings=embeddings,
+            segments=segments,
+            indices=list(range(len(segments))),
+            tenant_id=tenant_id,
+            consultation_id=consultation_id,
+            config=config,
+        )
+
+        return DiarizationResult(
+            segments=diarized_segments,
+            speakers_detected=len(speakers_seen),
+            new_speakers_created=new_speakers,
+            applied=True,
+        )
+
+    # ------------------------------------------------------------------
     # Multi-segment diarization (for batch transcription)
     # ------------------------------------------------------------------
 
@@ -216,29 +340,87 @@ class SpeakerIdentifier:
                 embeddings = [None] * len(batch_audio)
 
         # ----------------------------------------------------------
-        # Phase 3: Identify speakers per embedding
+        # Phase 3: Identify speakers per embedding (delegated)
         # ----------------------------------------------------------
+        # Build per-index embedding map for the shared helper
+        indexed_embeddings: list[SpeakerEmbedding | None] = [None] * len(segments)
+        for emb, idx in zip(embeddings, batch_indices, strict=False):
+            indexed_embeddings[idx] = emb
+
+        diarized_segments_out, speakers_seen, new_speakers = await self._identify_from_embeddings(
+            embeddings=indexed_embeddings,
+            segments=segments,
+            indices=batch_indices,
+            tenant_id=tenant_id,
+            consultation_id=consultation_id,
+            config=config,
+            prefilled=diarized_segments,
+        )
+
+        return DiarizationResult(
+            segments=diarized_segments_out,
+            speakers_detected=len(speakers_seen),
+            new_speakers_created=new_speakers,
+            applied=True,
+        )
+
+    # ------------------------------------------------------------------
+    # Shared Phase 3: Qdrant lookup per embedding
+    # ------------------------------------------------------------------
+
+    async def _identify_from_embeddings(
+        self,
+        embeddings: list[SpeakerEmbedding | None],
+        segments: list[dict[str, Any]],
+        indices: list[int],
+        tenant_id: str,
+        consultation_id: str | None = None,
+        config: DiarizationConfig | None = None,
+        prefilled: list[DiarizedSegment | None] | None = None,
+    ) -> tuple[list[DiarizedSegment], set[str], int]:
+        """Shared Phase 3: Qdrant lookup + match/register per embedding.
+
+        Args:
+            embeddings: List of embeddings, same length as segments.
+            segments: Transcription segments.
+            indices: Which indices to process.
+            tenant_id: Tenant for Qdrant scope.
+            consultation_id: Optional consultation context.
+            config: Diarization config.
+            prefilled: Optional pre-filled diarized segments (from Phase 1).
+
+        Returns:
+            Tuple of (diarized_segments, speakers_seen, new_speakers_count).
+        """
+        config = config or DiarizationConfig()
+
+        if prefilled is not None:
+            diarized_segments = list(prefilled)
+        else:
+            diarized_segments = [None] * len(segments)  # type: ignore[list-item]
+
         speakers_seen: set[str] = set()
         new_speakers = 0
 
-        for emb, idx in zip(embeddings, batch_indices, strict=False):
+        for idx in indices:
+            emb = embeddings[idx] if idx < len(embeddings) else None
             seg = segments[idx]
             start = seg.get("start", 0.0)
             end = seg.get("end", 0.0)
             text = seg.get("text", "")
 
             if emb is None:
-                diarized_segments[idx] = DiarizedSegment(
-                    text=text,
-                    start_time=start,
-                    end_time=end,
-                    speaker_id=None,
-                    word_timestamps=seg.get("word_timestamps", []),
-                )
+                if diarized_segments[idx] is None:
+                    diarized_segments[idx] = DiarizedSegment(
+                        text=text,
+                        start_time=start,
+                        end_time=end,
+                        speaker_id=None,
+                        word_timestamps=seg.get("word_timestamps", []),
+                    )
                 continue
 
             try:
-                # Search Qdrant
                 matches = await self._speaker_store.search_similar(
                     tenant_id=tenant_id,
                     query_embedding=emb.embedding,
@@ -253,7 +435,6 @@ class SpeakerIdentifier:
                     confidence = best["score"]
                     is_new = False
                 elif config.auto_register_speakers:
-                    # Enforce max_speakers limit
                     if config.max_speakers > 0 and len(speakers_seen) >= config.max_speakers:
                         speaker_id = "unknown"
                         confidence = None
@@ -293,7 +474,7 @@ class SpeakerIdentifier:
 
             except Exception as e:
                 logger.warning(
-                    "Diarization failed for segment [%.1f–%.1f]: %s",
+                    "Diarization failed for segment [%.1f-%.1f]: %s",
                     start,
                     end,
                     e,
@@ -306,12 +487,7 @@ class SpeakerIdentifier:
                     word_timestamps=seg.get("word_timestamps", []),
                 )
 
-        return DiarizationResult(
-            segments=diarized_segments,  # type: ignore[arg-type]
-            speakers_detected=len(speakers_seen),
-            new_speakers_created=new_speakers,
-            applied=True,
-        )
+        return diarized_segments, speakers_seen, new_speakers
 
 
 # ---------------------------------------------------------------------------

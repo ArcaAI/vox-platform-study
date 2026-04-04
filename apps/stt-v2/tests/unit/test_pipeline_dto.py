@@ -306,10 +306,11 @@ class TestVadConfig:
         """Test default configuration values."""
         config = VadConfig()
         assert config.enabled is True
-        assert config.threshold == 0.5
-        assert config.min_speech_duration_ms == 250
+        assert config.threshold == 0.6
+        assert config.min_speech_duration_ms == 350
         assert config.min_silence_duration_ms == 100
         assert config.padding_ms == 30
+        assert config.pre_speech_context_ms == 500
 
     def test_custom_values(self):
         """Test custom configuration values."""

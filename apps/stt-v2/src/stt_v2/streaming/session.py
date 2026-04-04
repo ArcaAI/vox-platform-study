@@ -103,6 +103,12 @@ class StreamSession:
         # Full-session audio accumulator (append-only, never trimmed)
         self.audio_buffer: bytearray = bytearray()
 
+        # Processed audio buffer (post-preprocess: normalize + resample + optional denoise) for MinIO upload
+        self.processed_audio_buffer: bytearray = bytearray()
+        self.processed_sample_rate: int | None = None
+        self._denoise_active: bool = False  # Deprecated: use len(processed_audio_buffer) > 0
+        self._vad_active: bool = False
+
         # Ring buffer overflow throttle state
         self._overflow_window_start: float = 0.0
         self._overflow_acc_bytes: int = 0
@@ -260,11 +266,19 @@ class StreamSession:
     # Audio encoding
     # ------------------------------------------------------------------
 
-    def encode_wav(self) -> bytes:
-        """Encode the full ``audio_buffer`` as a WAV file.
+    def encode_wav(
+        self,
+        audio_data: bytes | None = None,
+        sample_rate: int | None = None,
+    ) -> bytes:
+        """Encode PCM s16le samples as a WAV file.
 
-        The buffer contains raw PCM s16le samples, so no sample
-        conversion is needed — frames are written directly.
+        Parameters
+        ----------
+        audio_data:
+            Raw PCM bytes to encode. Defaults to ``self.audio_buffer``.
+        sample_rate:
+            Sample rate for the WAV header. Defaults to ``self.sample_rate``.
 
         Returns:
             WAV file bytes (empty WAV if buffer is empty).
@@ -272,12 +286,14 @@ class StreamSession:
         import io
         import wave
 
+        pcm = audio_data if audio_data is not None else bytes(self.audio_buffer)
+        sr = sample_rate if sample_rate is not None else self.sample_rate
         buf = io.BytesIO()
         with wave.open(buf, "wb") as wf:
             wf.setnchannels(1)
             wf.setsampwidth(2)  # 16-bit
-            wf.setframerate(self.sample_rate)
-            wf.writeframes(bytes(self.audio_buffer))
+            wf.setframerate(sr)
+            wf.writeframes(pcm)
         return buf.getvalue()
 
     def build_transcript_json(self) -> bytes:

@@ -28,6 +28,7 @@ import structlog
 from stt_v2.core.config.settings import get_settings
 from stt_v2.storage.blob_service import BlobService
 from stt_v2.streaming.capacity_guard import CapacityGuard
+from stt_v2.streaming.denoiser import StreamingDenoiser
 from stt_v2.streaming.execution_profile import ExecutionProfile
 from stt_v2.streaming.inference import StreamingInferenceWorker
 from stt_v2.streaming.preprocessor import AudioUtterance, StreamingPreprocessor
@@ -89,7 +90,9 @@ class SessionManager:
         self._blob_service: BlobService | None = None
         self._last_snapshot_at: dict[str, float] = {}
         self._chunk_indices: dict[str, int] = {}
+        self._processed_chunk_indices: dict[str, int] = {}
         self._chunk_offsets: dict[str, int] = {}
+        self._processed_chunk_offsets: dict[str, int] = {}
         self._running = False
 
         # Cache settings values at init time to avoid calling get_settings()
@@ -276,18 +279,54 @@ class SessionManager:
 
             # Create streaming preprocessor (VAD + utterance extraction)
             vad_kwargs: dict[str, Any] = {}
-            if pipeline_config and pipeline_config.preprocessing.vad.enabled:
+            vad_enabled = bool(pipeline_config and pipeline_config.preprocessing.vad.enabled)
+            if vad_enabled:
                 vad_cfg = pipeline_config.preprocessing.vad
                 vad_kwargs["threshold"] = vad_cfg.threshold
                 vad_kwargs["min_speech_duration_ms"] = vad_cfg.min_speech_duration_ms
                 vad_kwargs["min_silence_duration_ms"] = vad_cfg.min_silence_duration_ms
+                if hasattr(vad_cfg, "pre_speech_context_ms"):
+                    vad_kwargs["pre_speech_context_ms"] = vad_cfg.pre_speech_context_ms
+
+            target_sr = (
+                pipeline_config.preprocessing.target_sample_rate
+                if pipeline_config and pipeline_config.preprocessing.target_sample_rate
+                else sample_rate
+            )
+
+            # Noise suppression setup
+            denoiser = None
+            if pipeline_config:
+                denoise_enabled = pipeline_config.preprocessing.denoise.enabled
+            else:
+                denoise_enabled = self._profile.denoise_enabled_default
+            if denoise_enabled:
+                strength = (
+                    pipeline_config.preprocessing.denoise.strength
+                    if pipeline_config
+                    else 1.0
+                )
+                denoiser = StreamingDenoiser(input_sr=target_sr, strength=strength)
+                if not denoiser.initialize():
+                    denoiser = None  # pyrnnoise unavailable, degrade gracefully
+            normalize = (
+                pipeline_config.preprocessing.normalize
+                if pipeline_config
+                else False
+            )
 
             preprocessor = StreamingPreprocessor(
                 session_id=session_id,
                 sample_rate=sample_rate,
                 vad_service=vad_service,
+                target_sample_rate=target_sr,
+                normalize=normalize,
+                denoiser=denoiser,
                 **vad_kwargs,
             )
+
+            session.processed_sample_rate = target_sr
+            session._vad_active = vad_enabled
 
             # Load ASR pipeline from pipeline config (B2: Wire ASR)
             asr_pipeline = await self._load_asr_pipeline(
@@ -301,12 +340,19 @@ class SessionManager:
             await session.force_persist()
 
             # Create inference worker (per-utterance ASR)
+            punctuation_config = None
+            if pipeline_config and hasattr(pipeline_config, "postprocessing"):
+                pp_cfg = getattr(pipeline_config.postprocessing, "punctuation", None)
+                if pp_cfg and getattr(pp_cfg, "enabled", False):
+                    punctuation_config = pp_cfg
+
             inference_worker = StreamingInferenceWorker(
                 result_publisher=publisher,
                 asr_pipeline=asr_pipeline,
                 tenant_id=tenant_id,
                 consultation_id=consultation_id,
                 diarization_config=diarization_config,
+                punctuation_config=punctuation_config,
             )
 
             self._register_inference_runtime(session, inference_worker)
@@ -341,6 +387,7 @@ class SessionManager:
                 pipeline_id=pipeline_id,
                 has_vad=vad_service is not None,
                 has_asr=asr_pipeline is not None,
+                has_denoiser=denoiser is not None,
                 active_sessions=self.active_session_count,
             )
             return session
@@ -432,7 +479,9 @@ class SessionManager:
         self._sessions.pop(session_id, None)
         self._last_snapshot_at.pop(session_id, None)
         self._chunk_indices.pop(session_id, None)
+        self._processed_chunk_indices.pop(session_id, None)
         self._chunk_offsets.pop(session_id, None)
+        self._processed_chunk_offsets.pop(session_id, None)
 
         # Release capacity (must happen even if other cleanup fails)
         try:
@@ -753,6 +802,12 @@ class SessionManager:
             if preprocessor is not None:
                 utterances = await preprocessor.feed(frame.data)
 
+                processed_pcm = preprocessor.drain_processed_samples()
+                if processed_pcm:
+                    session.processed_audio_buffer.extend(processed_pcm)
+                    if session.processed_sample_rate is None:
+                        session.processed_sample_rate = preprocessor.target_sample_rate
+
                 # Enqueue utterances for background ASR inference
                 if inference_queue is not None:
                     for utt in utterances:
@@ -874,6 +929,13 @@ class SessionManager:
 
         try:
             final_utt = await preprocessor.flush()
+
+            remaining_pcm = preprocessor.drain_processed_samples()
+            if remaining_pcm:
+                session.processed_audio_buffer.extend(remaining_pcm)
+                if session.processed_sample_rate is None:
+                    session.processed_sample_rate = preprocessor.target_sample_rate
+
             if final_utt is None:
                 return
 
@@ -920,6 +982,7 @@ class SessionManager:
 
         publisher = self._publishers.get(session.session_id)
         raw_audio_uri: str | None = None
+        processed_audio_uri: str | None = None
         transcript_uri: str | None = None
 
         try:
@@ -931,42 +994,67 @@ class SessionManager:
                     await publisher.publish_status("finalizing")
 
             # Upload audio + transcript + metadata
-            if len(session.audio_buffer) > 0:
+            has_processed = len(session.processed_audio_buffer) > 0
+            has_raw = len(session.audio_buffer) > 0
+
+            if has_raw or has_processed:
                 blob = self._get_blob_service()
 
-                # Upload any remaining PCM chunk
-                offset = self._chunk_offsets.get(session.session_id, 0)
-                if offset < len(session.audio_buffer):
+                # Upload any remaining raw PCM chunk
+                if has_raw:
+                    raw_offset = self._chunk_offsets.get(session.session_id, 0)
+                    if raw_offset < len(session.audio_buffer):
+                        try:
+                            remaining = bytes(session.audio_buffer[raw_offset:])
+                            chunk_idx = self._chunk_indices.get(session.session_id, 0)
+                            await blob.upload_streaming_raw_chunk(
+                                chunk_bytes=remaining,
+                                tenant_id=session.tenant_id,
+                                session_id=session.session_id,
+                                chunk_index=chunk_idx,
+                            )
+                            self._chunk_indices[session.session_id] = chunk_idx + 1
+                        except Exception as exc:
+                            logger.error(
+                                "Failed to upload remaining raw PCM chunk (non-fatal)",
+                                session_id=session.session_id,
+                                error=str(exc),
+                            )
+
+                # Upload raw complete WAV (always — browser PCM, no server processing)
+                if has_raw:
                     try:
-                        remaining = bytes(session.audio_buffer[offset:])
-                        chunk_idx = self._chunk_indices.get(session.session_id, 0)
-                        await blob.upload_streaming_raw_chunk(
-                            chunk_bytes=remaining,
+                        raw_wav_bytes = session.encode_wav()
+                        raw_audio_uri = await blob.upload_streaming_raw_complete(
+                            wav_bytes=raw_wav_bytes,
                             tenant_id=session.tenant_id,
                             session_id=session.session_id,
-                            chunk_index=chunk_idx,
                         )
                     except Exception as exc:
                         logger.error(
-                            "Failed to upload remaining PCM chunk (non-fatal)",
+                            "Failed to upload raw complete WAV (non-fatal)",
                             session_id=session.session_id,
                             error=str(exc),
                         )
 
-                # Upload final combined WAV
-                try:
-                    wav_bytes = session.encode_wav()
-                    raw_audio_uri = await blob.upload_streaming_raw_complete(
-                        wav_bytes=wav_bytes,
-                        tenant_id=session.tenant_id,
-                        session_id=session.session_id,
-                    )
-                except Exception as exc:
-                    logger.error(
-                        "Failed to upload complete WAV (non-fatal)",
-                        session_id=session.session_id,
-                        error=str(exc),
-                    )
+                # Upload processed complete WAV (post-preprocess) when available
+                if has_processed:
+                    try:
+                        processed_wav_bytes = session.encode_wav(
+                            audio_data=bytes(session.processed_audio_buffer),
+                            sample_rate=session.processed_sample_rate,
+                        )
+                        processed_audio_uri = await blob.upload_streaming_processed_complete(
+                            wav_bytes=processed_wav_bytes,
+                            tenant_id=session.tenant_id,
+                            session_id=session.session_id,
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "Failed to upload processed complete WAV (non-fatal)",
+                            session_id=session.session_id,
+                            error=str(exc),
+                        )
 
                 # Upload transcript
                 try:
@@ -998,11 +1086,12 @@ class SessionManager:
                         error=str(exc),
                     )
 
-                if raw_audio_uri or transcript_uri:
+                if raw_audio_uri or processed_audio_uri or transcript_uri:
                     logger.info(
                         "Session recordings uploaded",
                         session_id=session.session_id,
                         raw_audio_uri=raw_audio_uri,
+                        processed_audio_uri=processed_audio_uri,
                         transcript_uri=transcript_uri,
                     )
         except Exception as exc:
@@ -1017,6 +1106,7 @@ class SessionManager:
             try:
                 await session.close(
                     raw_audio_uri=raw_audio_uri,
+                    processed_audio_uri=processed_audio_uri,
                     transcript_uri=transcript_uri,
                 )
                 if publisher:
@@ -1116,18 +1206,55 @@ class SessionManager:
 
                     # Build preprocessor with VAD config from pipeline
                     vad_kwargs: dict[str, Any] = {}
-                    if pipeline_config and pipeline_config.preprocessing.vad.enabled:
+                    vad_enabled = bool(
+                        pipeline_config and pipeline_config.preprocessing.vad.enabled
+                    )
+                    if vad_enabled:
                         vad_cfg = pipeline_config.preprocessing.vad
                         vad_kwargs["threshold"] = vad_cfg.threshold
                         vad_kwargs["min_speech_duration_ms"] = vad_cfg.min_speech_duration_ms
                         vad_kwargs["min_silence_duration_ms"] = vad_cfg.min_silence_duration_ms
+                        if hasattr(vad_cfg, "pre_speech_context_ms"):
+                            vad_kwargs["pre_speech_context_ms"] = vad_cfg.pre_speech_context_ms
+
+                    target_sr = (
+                        pipeline_config.preprocessing.target_sample_rate
+                        if pipeline_config and pipeline_config.preprocessing.target_sample_rate
+                        else meta.sample_rate
+                    )
+
+                    denoiser = None
+                    if pipeline_config:
+                        denoise_enabled = pipeline_config.preprocessing.denoise.enabled
+                    else:
+                        denoise_enabled = self._profile.denoise_enabled_default
+                    if denoise_enabled:
+                        strength = (
+                            pipeline_config.preprocessing.denoise.strength
+                            if pipeline_config
+                            else 1.0
+                        )
+                        denoiser = StreamingDenoiser(input_sr=target_sr, strength=strength)
+                        if not denoiser.initialize():
+                            denoiser = None
+
+                    normalize = (
+                        pipeline_config.preprocessing.normalize
+                        if pipeline_config
+                        else False
+                    )
 
                     preprocessor = StreamingPreprocessor(
                         session_id=meta.session_id,
                         sample_rate=meta.sample_rate,
                         vad_service=vad_service,
+                        target_sample_rate=target_sr,
+                        normalize=normalize,
+                        denoiser=denoiser,
                         **vad_kwargs,
                     )
+                    session.processed_sample_rate = target_sr
+                    session._vad_active = vad_enabled
 
                     # Load ASR pipeline
                     asr_pipeline = await self._load_asr_pipeline(
@@ -1139,6 +1266,12 @@ class SessionManager:
                         redis=self._redis, session_id=meta.session_id
                     )
 
+                    recovery_punct_config = None
+                    if pipeline_config and hasattr(pipeline_config, "postprocessing"):
+                        pp_cfg = getattr(pipeline_config.postprocessing, "punctuation", None)
+                        if pp_cfg and getattr(pp_cfg, "enabled", False):
+                            recovery_punct_config = pp_cfg
+
                     inference_worker = StreamingInferenceWorker(
                         result_publisher=publisher,
                         asr_pipeline=asr_pipeline,
@@ -1147,6 +1280,7 @@ class SessionManager:
                         diarization_config=(
                             pipeline_config.diarization if pipeline_config else None
                         ),
+                        punctuation_config=recovery_punct_config,
                     )
 
                     # TODO: Replay last ~2 s of audio from Redis Stream to
@@ -1288,9 +1422,14 @@ class SessionManager:
                 for session_id, session in list(self._sessions.items()):
                     if session.status != SessionStatus.ACTIVE:
                         continue
-                    offset = self._chunk_offsets.get(session_id, 0)
-                    if offset >= len(session.audio_buffer):
-                        continue
+                    if len(session.processed_audio_buffer) > 0:
+                        p_offset = self._processed_chunk_offsets.get(session_id, 0)
+                        if p_offset >= len(session.processed_audio_buffer):
+                            continue
+                    else:
+                        offset = self._chunk_offsets.get(session_id, 0)
+                        if offset >= len(session.audio_buffer):
+                            continue
                     last = self._last_snapshot_at.get(session_id, 0.0)
                     if (time.monotonic() - last) < self._snapshot_interval_s:
                         continue
@@ -1299,24 +1438,44 @@ class SessionManager:
             pass
 
     async def _upload_snapshot(self, session: StreamSession) -> None:
-        """Upload the next raw PCM chunk of new audio since last snapshot."""
+        """Upload the next raw PCM chunk of new audio since last snapshot.
+
+        When processed audio is available, prefer the processed buffer
+        so that uploaded audio matches what was actually transcribed.
+        """
         try:
-            offset = self._chunk_offsets.get(session.session_id, 0)
-            chunk_data = bytes(session.audio_buffer[offset:])
-            if not chunk_data:
-                return
-
-            chunk_idx = self._chunk_indices.get(session.session_id, 0)
-            blob = self._get_blob_service()
-            await blob.upload_streaming_raw_chunk(
-                chunk_bytes=chunk_data,
-                tenant_id=session.tenant_id,
-                session_id=session.session_id,
-                chunk_index=chunk_idx,
-            )
-
-            self._chunk_offsets[session.session_id] = len(session.audio_buffer)
-            self._chunk_indices[session.session_id] = chunk_idx + 1
+            if len(session.processed_audio_buffer) > 0:
+                p_offset = self._processed_chunk_offsets.get(session.session_id, 0)
+                chunk_data = bytes(session.processed_audio_buffer[p_offset:])
+                if not chunk_data:
+                    return
+                chunk_idx = self._processed_chunk_indices.get(session.session_id, 0)
+                blob = self._get_blob_service()
+                await blob.upload_streaming_processed_chunk(
+                    chunk_bytes=chunk_data,
+                    tenant_id=session.tenant_id,
+                    session_id=session.session_id,
+                    chunk_index=chunk_idx,
+                )
+                self._processed_chunk_offsets[session.session_id] = len(
+                    session.processed_audio_buffer
+                )
+                self._processed_chunk_indices[session.session_id] = chunk_idx + 1
+            else:
+                offset = self._chunk_offsets.get(session.session_id, 0)
+                chunk_data = bytes(session.audio_buffer[offset:])
+                if not chunk_data:
+                    return
+                chunk_idx = self._chunk_indices.get(session.session_id, 0)
+                blob = self._get_blob_service()
+                await blob.upload_streaming_raw_chunk(
+                    chunk_bytes=chunk_data,
+                    tenant_id=session.tenant_id,
+                    session_id=session.session_id,
+                    chunk_index=chunk_idx,
+                )
+                self._chunk_offsets[session.session_id] = len(session.audio_buffer)
+                self._chunk_indices[session.session_id] = chunk_idx + 1
             self._last_snapshot_at[session.session_id] = time.monotonic()
             logger.info(
                 "Audio chunk uploaded",

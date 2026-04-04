@@ -78,7 +78,17 @@ class ONNXLoader(BaseModelLoader):
                         "ONNX models must be downloaded first."
                     )
 
-            if not Path(model_path).exists():
+            model_path_obj = Path(model_path)
+            if model_path_obj.is_dir():
+                resolved_model_file = self._resolve_onnx_model_file(model_path_obj)
+                if resolved_model_file is None:
+                    raise ModelLoadError(
+                        f"No ONNX model file found in directory: {model_path}"
+                    )
+                model_path = str(resolved_model_file)
+                model_path_obj = resolved_model_file
+
+            if not model_path_obj.exists():
                 raise ModelLoadError(
                     f"ONNX model file not found: {model_path}"
                 )
@@ -231,20 +241,32 @@ class ONNXLoader(BaseModelLoader):
 
         Returns True for:
         - Models with ONNX_OPTIMUM format
-        - ONNX-community whisper models
-        - Models ending with .onnx format that are on HuggingFace
+        - ASR ONNX models from onnx-community
+        - ASR ONNX models whose source contains "whisper"
+
+        Non-ASR ONNX models (for example VAD) should stay on plain
+        ONNX Runtime because Optimum's speech-seq2seq loader only supports
+        transformer-style speech generation models.
         """
         if model_config.format == AiModelFormat.ONNX_OPTIMUM:
             return True
 
+        # Auto-detection only applies to standard ONNX models.
+        if model_config.format != AiModelFormat.ONNX:
+            return False
+
+        # Restrict Optimum routing to ASR models.
+        if not model_config.is_asr:
+            return False
+
         source_uri = model_config.source_uri.lower()
 
-        # ONNX-community models should use Optimum for better support
+        # ONNX-community ASR models are expected to follow Optimum layout.
         if "onnx-community" in source_uri:
             return True
 
-        # Check for Whisper ONNX models
-        if "whisper" in source_uri and model_config.format == AiModelFormat.ONNX:
+        # Whisper ONNX models should use Optimum.
+        if "whisper" in source_uri:
             return True
 
         return False
@@ -309,6 +331,8 @@ class ONNXLoader(BaseModelLoader):
                     f"{onnx_prefix}decoder_model_merged.onnx_data",
                     f"{onnx_prefix}decoder_model.onnx",
                     f"{onnx_prefix}decoder_with_past_model.onnx",
+                    f"{onnx_prefix}model.onnx",
+                    f"{onnx_prefix}model.onnx_data",
                 ])
 
             local_path = snapshot_download(
@@ -349,6 +373,27 @@ class ONNXLoader(BaseModelLoader):
             return "onnx"
 
         return ""
+
+    @staticmethod
+    def _resolve_onnx_model_file(model_path: Path) -> Path | None:
+        """Resolve a concrete ONNX file when the given path is a directory."""
+        preferred_candidates = [
+            model_path / "onnx" / "model.onnx",
+            model_path / "model.onnx",
+        ]
+        for candidate in preferred_candidates:
+            if candidate.is_file():
+                return candidate
+
+        top_level_onnx = sorted(model_path.glob("*.onnx"))
+        if len(top_level_onnx) == 1:
+            return top_level_onnx[0]
+
+        nested_model_files = sorted(model_path.rglob("model.onnx"))
+        if len(nested_model_files) == 1:
+            return nested_model_files[0]
+
+        return None
 
     @staticmethod
     def _resolve_quantized_file_names(
