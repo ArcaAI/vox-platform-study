@@ -507,7 +507,7 @@ class TestGuardAlias:
 
 
 # =========================================================================
-# Tests: VAD + denoise frame handler integration (TASK-254)
+# Tests: VAD + denoise frame handler integration
 # =========================================================================
 
 
@@ -533,7 +533,7 @@ def _make_speech_vad_service(speech_frames: int = 10):
 
 
 class TestFrameHandlerVADDenoise:
-    """TASK-254: Verify frame handler with VAD + denoise produces utterances
+    """Verify frame handler with VAD + denoise produces utterances
     and populates both inference queue and processed audio buffer."""
 
     def _make_manager(self):
@@ -651,12 +651,12 @@ class TestFrameHandlerVADDenoise:
 
 
 # =========================================================================
-# Tests: VAD-only (no denoise) processed audio upload (TASK-259)
+# Tests: VAD-only (no denoise) processed audio upload
 # =========================================================================
 
 
 class TestVADOnlyProcessedAudio:
-    """TASK-259: VAD-only sessions (denoise=off, vad=on) must populate
+    """VAD-only sessions (denoise=off, vad=on) must populate
     processed_audio_buffer and upload processed audio to MinIO."""
 
     def _make_manager(self):
