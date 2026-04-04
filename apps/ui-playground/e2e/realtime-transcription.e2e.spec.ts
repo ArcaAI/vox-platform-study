@@ -9,12 +9,7 @@ import {
   type TimestampedFinal,
   type TimestampedPartial,
 } from './helpers/latency-metrics.js';
-import {
-  computeHallucinationRate,
-  computeSer,
-  computeTaskSuccess,
-  type TranscriptFinal,
-} from './helpers/segment-metrics.js';
+import { computeHallucinationRate, computeSer, computeTaskSuccess, type TranscriptFinal } from './helpers/segment-metrics.js';
 import { concatenateSegmentTexts, parseGroundTruth } from './helpers/transcript-parser.js';
 import { computeCer, computeWer, formatWerReport } from './helpers/wer.js';
 
@@ -24,8 +19,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Constants
 // ---------------------------------------------------------------------------
 
-const WER_THRESHOLD = 0.20;
-const AUDIO_DURATION_SECONDS = 38; // wait time: audio_1.wav is ~35.3s (5s silence lead-in + 27.3s speech + 3s silence)
+const WER_THRESHOLD = 0.2;
+const AUDIO_DURATION_SECONDS = 36; // wait time: audio_1.wav is ~35.3s (5s silence lead-in + 27.3s speech + 3s silence)
 const SPEECH_END_SECONDS = 32.3; // ground truth speech boundary for hallucination detection (27.3 + 5s offset)
 const DRAIN_IDLE_TIMEOUT_MS = 5_000;
 const DRAIN_POLL_INTERVAL_MS = 500;
@@ -76,10 +71,7 @@ async function injectAuth(page: Page): Promise<void> {
   const tenantId = process.env.PLAYGROUND_TENANT_ID;
 
   if (!apiKey || !tenantId) {
-    throw new Error(
-      'Missing PLAYGROUND_API_KEY or PLAYGROUND_TENANT_ID environment variables. ' +
-        'Set them before running E2E tests.',
-    );
+    throw new Error('Missing PLAYGROUND_API_KEY or PLAYGROUND_TENANT_ID environment variables. ' + 'Set them before running E2E tests.');
   }
 
   await page.addInitScript(
@@ -190,9 +182,7 @@ async function setupAudioTrackCapture(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     (window as any).__e2eMediaStreams = [] as MediaStream[];
-    navigator.mediaDevices.getUserMedia = async function (
-      constraints?: MediaStreamConstraints,
-    ) {
+    navigator.mediaDevices.getUserMedia = async function (constraints?: MediaStreamConstraints) {
       const stream = await orig(constraints);
       (window as any).__e2eMediaStreams.push(stream);
       return stream;
@@ -264,14 +254,8 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
   // 7. Verify streaming stays active
   await page.waitForTimeout(3_000);
   const hasServerError = await page.locator('text=Internal server error').isVisible();
-  expect(
-    hasServerError,
-    'Backend returned "Internal server error". Check STT service logs and ensure the pipeline exists.',
-  ).toBe(false);
-  await expect(
-    page.getByText('streaming', { exact: true }),
-    'Streaming status lost -- backend may have errored or disconnected.',
-  ).toBeVisible();
+  expect(hasServerError, 'Backend returned "Internal server error". Check STT service logs and ensure the pipeline exists.').toBe(false);
+  await expect(page.getByText('streaming', { exact: true }), 'Streaming status lost -- backend may have errored or disconnected.').toBeVisible();
 
   // 8. Wait for audio playback, then mute tracks to prevent Chrome loop
   await page.waitForTimeout(AUDIO_DURATION_SECONDS * 1000);
@@ -296,7 +280,7 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
   expect(
     maxStartTime,
     `Looped audio detected: transcript at ${maxStartTime.toFixed(1)}s exceeds audio duration. ` +
-    `Audio track muting may not have prevented Chrome's fake audio loop.`,
+      `Audio track muting may not have prevented Chrome's fake audio loop.`,
   ).toBeLessThan(AUDIO_DURATION_SECONDS);
 
   // 12. DOM transcript for cross-validation
@@ -389,17 +373,47 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
     audioDurationSec: AUDIO_DURATION_SECONDS,
     speechEndSec: SPEECH_END_SECONDS,
     accuracy: {
-      wer: { value: werResult.wer, referenceWords: werResult.referenceWords, hypothesisWords: werResult.hypothesisWords, substitutions: werResult.substitutions, deletions: werResult.deletions, insertions: werResult.insertions },
+      wer: {
+        value: werResult.wer,
+        referenceWords: werResult.referenceWords,
+        hypothesisWords: werResult.hypothesisWords,
+        substitutions: werResult.substitutions,
+        deletions: werResult.deletions,
+        insertions: werResult.insertions,
+      },
       cer: { value: cerResult.cer, referenceChars: cerResult.referenceChars, hypothesisChars: cerResult.hypothesisChars },
-      ser: { value: serResult.ser, totalSegments: serResult.totalSegments, errorSegments: serResult.errorSegments, segmentDetails: serResult.segmentDetails.map((d) => ({ reference: d.reference.text, hypothesis: d.hypothesisCombined, segmentWer: d.segmentWer, covered: d.covered })) },
+      ser: {
+        value: serResult.ser,
+        totalSegments: serResult.totalSegments,
+        errorSegments: serResult.errorSegments,
+        segmentDetails: serResult.segmentDetails.map((d) => ({
+          reference: d.reference.text,
+          hypothesis: d.hypothesisCombined,
+          segmentWer: d.segmentWer,
+          covered: d.covered,
+        })),
+      },
     },
     latency: {
-      finalTranscriptMs: { p50: finalLatency.latencies.p50, p95: finalLatency.latencies.p95, p99: finalLatency.latencies.p99, min: finalLatency.latencies.min, max: finalLatency.latencies.max, mean: finalLatency.latencies.mean, count: finalLatency.latencies.count },
+      finalTranscriptMs: {
+        p50: finalLatency.latencies.p50,
+        p95: finalLatency.latencies.p95,
+        p99: finalLatency.latencies.p99,
+        min: finalLatency.latencies.min,
+        max: finalLatency.latencies.max,
+        mean: finalLatency.latencies.mean,
+        count: finalLatency.latencies.count,
+      },
       firstPartialMs: firstPartial.latencyMs,
       rtf: { value: rtfResult.rtf, wallClockMs: rtfResult.wallClockMs },
     },
     reliability: {
-      silenceHallucination: { rate: hallucination.rate, totalFinals: hallucination.totalFinals, hallucinatedFinals: hallucination.hallucinatedFinals, hallucinatedTexts: hallucination.hallucinatedTexts },
+      silenceHallucination: {
+        rate: hallucination.rate,
+        totalFinals: hallucination.totalFinals,
+        hallucinatedFinals: hallucination.hallucinatedFinals,
+        hallucinatedTexts: hallucination.hallucinatedTexts,
+      },
       taskSuccess: { rate: taskSuccess.rate, totalSegments: taskSuccess.totalSegments, coveredSegments: taskSuccess.coveredSegments },
     },
   };
@@ -452,8 +466,5 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
   const domWords = normalizedDom.split(' ').filter(Boolean);
   const wsWords = new Set(normalizedWs.split(' '));
   const overlap = domWords.filter((w) => wsWords.has(w)).length;
-  expect(
-    overlap / domWords.length,
-    `DOM-WS overlap too low: ${overlap}/${domWords.length} words match`,
-  ).toBeGreaterThan(0.5);
+  expect(overlap / domWords.length, `DOM-WS overlap too low: ${overlap}/${domWords.length} words match`).toBeGreaterThan(0.5);
 });

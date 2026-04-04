@@ -11,14 +11,14 @@
 
 export interface TimestampedFinal {
   text: string;
-  startTime: number;   // audio-seconds
-  endTime: number;      // audio-seconds
-  receivedAt: number;   // wall-clock ms (Date.now())
+  startTime: number; // audio-seconds
+  endTime: number; // audio-seconds
+  receivedAt: number; // wall-clock ms (Date.now())
 }
 
 export interface TimestampedPartial {
   text: string;
-  receivedAt: number;   // wall-clock ms (Date.now())
+  receivedAt: number; // wall-clock ms (Date.now())
 }
 
 export interface PercentileSet {
@@ -97,10 +97,7 @@ function computePercentiles(values: number[]): PercentileSet {
  * @param finals - Timestamped final transcripts with receivedAt wall-clock.
  * @param streamStartedAt - Wall-clock ms when streaming started (audio T0).
  */
-export function computeFinalTranscriptLatency(
-  finals: TimestampedFinal[],
-  streamStartedAt: number,
-): FinalLatencyResult {
+export function computeFinalTranscriptLatency(finals: TimestampedFinal[], streamStartedAt: number): FinalLatencyResult {
   const latencies = finals.map((f) => {
     const expectedDoneAt = streamStartedAt + f.endTime * 1000;
     return Math.max(0, f.receivedAt - expectedDoneAt);
@@ -116,10 +113,7 @@ export function computeFinalTranscriptLatency(
 /**
  * Compute time from stream start to first partial transcript received.
  */
-export function computeFirstPartialLatency(
-  partials: TimestampedPartial[],
-  streamStartedAt: number,
-): FirstPartialResult {
+export function computeFirstPartialLatency(partials: TimestampedPartial[], streamStartedAt: number): FirstPartialResult {
   if (partials.length === 0) {
     return { latencyMs: null };
   }
@@ -139,11 +133,7 @@ export function computeFirstPartialLatency(
  * RTF = 1.0 means exactly realtime.
  * RTF > 1.0 means slower than realtime.
  */
-export function computeRtf(
-  finals: TimestampedFinal[],
-  audioDurationSec: number,
-  streamStartedAt: number,
-): RtfResult {
+export function computeRtf(finals: TimestampedFinal[], audioDurationSec: number, streamStartedAt: number): RtfResult {
   if (finals.length === 0 || audioDurationSec <= 0) {
     return { rtf: 0, wallClockMs: 0, audioDurationSec };
   }

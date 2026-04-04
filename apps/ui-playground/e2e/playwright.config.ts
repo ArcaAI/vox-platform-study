@@ -36,11 +36,7 @@ export default defineConfig({
     timeout: 15_000,
   },
 
-  reporter: [
-    ['list'],
-    ['html', { open: 'never', outputFolder: './test-results/html' }],
-    ...(process.env.CI ? [['github'] as const] : []),
-  ],
+  reporter: [['list'], ['html', { open: 'never', outputFolder: './test-results/html' }], ...(process.env.CI ? [['github'] as const] : [])],
 
   outputDir: './test-results/artifacts',
 

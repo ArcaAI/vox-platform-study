@@ -98,14 +98,8 @@ function simpleWordWer(reference: string, hypothesis: string): number {
  *
  * Requires ground truth segments to have startTime/endTime.
  */
-export function computeSer(
-  referenceSegments: ExpectedSegment[],
-  hypothesisFinals: TranscriptFinal[],
-  overlapToleranceSec = 0.5,
-): SerResult {
-  const segmentsWithTime = referenceSegments.filter(
-    (s) => s.startTime != null && s.endTime != null,
-  );
+export function computeSer(referenceSegments: ExpectedSegment[], hypothesisFinals: TranscriptFinal[], overlapToleranceSec = 0.5): SerResult {
+  const segmentsWithTime = referenceSegments.filter((s) => s.startTime != null && s.endTime != null);
 
   if (segmentsWithTime.length === 0) {
     return { ser: 0, totalSegments: 0, errorSegments: 0, segmentDetails: [] };
@@ -161,9 +155,7 @@ export function computeTaskSuccess(
   werCutoff = 0.5,
   overlapToleranceSec = 0.5,
 ): TaskSuccessResult {
-  const segmentsWithTime = referenceSegments.filter(
-    (s) => s.startTime != null && s.endTime != null,
-  );
+  const segmentsWithTime = referenceSegments.filter((s) => s.startTime != null && s.endTime != null);
 
   if (segmentsWithTime.length === 0) {
     return { rate: 1, totalSegments: 0, coveredSegments: 0, uncoveredSegments: [] };
@@ -210,10 +202,7 @@ export function computeTaskSuccess(
  *
  * @param speechEndTimeSec - The time in audio-seconds where speech ends (e.g., 27.3s).
  */
-export function computeHallucinationRate(
-  hypothesisFinals: TranscriptFinal[],
-  speechEndTimeSec: number,
-): HallucinationResult {
+export function computeHallucinationRate(hypothesisFinals: TranscriptFinal[], speechEndTimeSec: number): HallucinationResult {
   if (hypothesisFinals.length === 0) {
     return { rate: 0, totalFinals: 0, hallucinatedFinals: 0, hallucinatedTexts: [] };
   }

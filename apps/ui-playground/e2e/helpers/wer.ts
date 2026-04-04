@@ -194,13 +194,7 @@ export function computeCer(reference: string, hypothesis: string): CerResult {
 /**
  * Format WER result for test output reporting.
  */
-export function formatWerReport(
-  result: WerResult,
-  pipelineName: string,
-  threshold: number,
-  referenceText?: string,
-  hypothesisText?: string,
-): string {
+export function formatWerReport(result: WerResult, pipelineName: string, threshold: number, referenceText?: string, hypothesisText?: string): string {
   const status = result.wer <= threshold ? 'PASS' : 'FAIL';
   const matches = result.referenceWords - result.substitutions - result.deletions;
   const lines: string[] = [
