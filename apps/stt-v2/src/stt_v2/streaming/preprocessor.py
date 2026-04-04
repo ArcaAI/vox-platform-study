@@ -15,6 +15,7 @@ Key design:
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -34,6 +35,11 @@ _ENERGY_MULTIPLIER = 2.5  # Speech threshold multiplier above learned noise floo
 _FALLBACK_NOISE_FLOOR_MAX = 0.015  # Hard cap to prevent runaway adaptation
 _NOISE_FLOOR_COOLDOWN_FRAMES = 15  # ~480ms cooldown after utterance emission
 _DEFAULT_MAX_UTTERANCE_DURATION_MS = 25000  # Force-emit after 25s to avoid Whisper degradation
+
+# Partial emission constants
+_PARTIAL_INTERVAL_S = 1.0        # emit partial every 1000ms wall-clock
+_PARTIAL_MIN_AUDIO_S = 0.5       # minimum buffered audio before first partial
+_PARTIAL_TAIL_WINDOW_S = 10.0    # cap Whisper input for partials to last 10s
 
 
 @dataclass
@@ -71,6 +77,9 @@ class _PreprocessorState:
 
     # Pre-speech context ring (keeps last N ms of audio before onset)
     pre_speech_ring: list[np.ndarray] = field(default_factory=list)
+
+    # Partial emission timer
+    last_partial_emitted_at: float = 0.0
 
     # Counters
     total_samples_fed: int = 0
@@ -303,6 +312,9 @@ class StreamingPreprocessor:
                         self._processed_samples.append(frame_f32.copy())
                         state.pre_speech_ring.clear()
 
+                        # Initialize partial timer (no immediate partial)
+                        state.last_partial_emitted_at = time.monotonic()
+
                         logger.debug(
                             "Speech onset detected",
                             session_id=self.session_id,
@@ -349,6 +361,10 @@ class StreamingPreprocessor:
                             utterances.append(utt)
                 else:
                     state.silence_frames = 0
+                    # Check for partial emission
+                    partial = self._maybe_emit_partial()
+                    if partial is not None:
+                        utterances.append(partial)
 
         return utterances
 
@@ -447,6 +463,46 @@ class StreamingPreprocessor:
         probability = rms / (adaptive_threshold * 2.0)
         return float(np.clip(probability, 0.0, 1.0))
 
+    def _maybe_emit_partial(self) -> AudioUtterance | None:
+        """Emit a non-final partial utterance if the timer interval has elapsed.
+
+        Returns an ``AudioUtterance(is_final=False)`` containing a
+        tail-window snapshot of the current buffer, or ``None`` if
+        conditions are not yet met.  The buffer is *not* cleared.
+        """
+        state = self._state
+
+        if not state.in_speech or not state.utterance_buffer:
+            return None
+
+        now = time.monotonic()
+        if now - state.last_partial_emitted_at < _PARTIAL_INTERVAL_S:
+            return None
+
+        # Check minimum audio duration
+        buffer_duration_s = len(state.utterance_buffer) * self._frame_size / self._target_sr
+        if buffer_duration_s < _PARTIAL_MIN_AUDIO_S:
+            return None
+
+        # Tail window cap: only send last N seconds to bound Whisper cost
+        max_frames = int(_PARTIAL_TAIL_WINDOW_S * self._target_sr / self._frame_size)
+        tail = state.utterance_buffer[-max_frames:]
+        samples = np.concatenate(tail)
+
+        end_time = state.total_samples_fed / self._target_sr
+
+        partial = AudioUtterance(
+            samples=samples,
+            sample_rate=self._target_sr,
+            start_time=state.utterance_start_time,
+            end_time=end_time,
+            utterance_index=state.utterance_count,
+            is_final=False,
+        )
+
+        state.last_partial_emitted_at = now
+        return partial
+
     def _emit_utterance(self, is_final: bool) -> AudioUtterance | None:
         """Concatenate buffered frames into an AudioUtterance and reset state."""
         state = self._state
@@ -495,6 +551,7 @@ class StreamingPreprocessor:
         state.speech_onset_frames = 0
         state.silence_frames = 0
         state.noise_floor_cooldown = _NOISE_FLOOR_COOLDOWN_FRAMES
+        state.last_partial_emitted_at = 0.0
         state.utterance_count += 1
 
         return utterance

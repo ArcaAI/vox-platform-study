@@ -84,6 +84,7 @@ class SessionManager:
         self._inference_workers: dict[str, StreamingInferenceWorker] = {}
         self._inference_queues: dict[str, asyncio.Queue[AudioUtterance | None]] = {}
         self._inference_tasks: dict[str, asyncio.Task[None]] = {}
+        self._partial_tasks: dict[str, asyncio.Task[None]] = {}
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._reaper_task: asyncio.Task[None] | None = None
         self._snapshot_task: asyncio.Task[None] | None = None
@@ -199,6 +200,12 @@ class SessionManager:
         for sid in list(self._inference_queues):
             await self._drain_inference_queue(sid)
             await self._stop_inference_loop(sid, force_cancel=True)
+
+        # Cancel all in-flight partial tasks
+        for task in self._partial_tasks.values():
+            if not task.done():
+                task.cancel()
+        self._partial_tasks.clear()
 
         # Persist all sessions one final time
         for session in self._sessions.values():
@@ -357,6 +364,11 @@ class SessionManager:
 
             self._register_inference_runtime(session, inference_worker)
 
+            self._sessions[session_id] = session
+            self._publishers[session_id] = publisher
+            self._preprocessors[session_id] = preprocessor
+            self._inference_workers[session_id] = inference_worker
+
             # Wire up Redis consumers and listeners
             consumer = IngestionConsumer(
                 redis=self._redis,
@@ -369,12 +381,8 @@ class SessionManager:
                 on_control=self._make_control_handler(session, preprocessor),
             )
 
-            self._sessions[session_id] = session
             self._consumers[session_id] = consumer
             self._control_listeners[session_id] = control_listener
-            self._publishers[session_id] = publisher
-            self._preprocessors[session_id] = preprocessor
-            self._inference_workers[session_id] = inference_worker
 
             # Start consuming
             await consumer.start()
@@ -476,6 +484,8 @@ class SessionManager:
         self._inference_workers.pop(session_id, None)
         self._inference_queues.pop(session_id, None)
         self._inference_tasks.pop(session_id, None)
+        self._cancel_partial(session_id)
+        self._partial_tasks.pop(session_id, None)
         self._sessions.pop(session_id, None)
         self._last_snapshot_at.pop(session_id, None)
         self._chunk_indices.pop(session_id, None)
@@ -636,32 +646,145 @@ class SessionManager:
         asr_model: Any,
         inference_config: Any,
     ) -> StreamingAsrCallable:
-        """Create a callable ASR pipeline for streaming inference.
+        """Create a standalone callable ASR pipeline for streaming inference"""
+        import torch
+        from stt_v2.models.base_loader import LoadedModel
 
-        Returns an async function:
-            ``(samples: np.ndarray, sample_rate: int) -> dict[str, Any]``
+        loaded_model: LoadedModel = asr_model
+        model = loaded_model.model
+        processor = loaded_model.processor or loaded_model.feature_extractor
+        device = loaded_model.device
 
-        Reuses ``BatchTranscriptionService._run_inference()`` to ensure
-        streaming and batch share the same ASR code path, reducing
-        maintenance burden and ensuring consistency.
-        """
-        from stt_v2.transcription.batch_service import BatchTranscriptionService
+        if processor is None:
+            raise RuntimeError("ASR model has no processor/feature_extractor")
 
-        batch_svc = BatchTranscriptionService()
-
-        async def run_inference(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
-            result = await batch_svc._run_inference(
-                samples=samples,
-                sample_rate=sample_rate,
-                model=asr_model,
-                config=inference_config,
+        # One-time dtype safety: fp16/bf16 on CPU/MPS causes Whisper hallucinations
+        # Cast to float32 once at pipeline creation time.
+        model_dtype = getattr(model, "dtype", torch.float32)
+        device_str = str(device)
+        if device_str in ("cpu", "mps") and model_dtype in (torch.float16, torch.bfloat16):
+            logger.warning(
+                "Casting ASR model from %s to float32 for safe %s inference",
+                model_dtype,
+                device_str,
             )
-            if not result:
-                return {"text": "", "word_timestamps": []}
-            return {
-                "text": result.text,
-                "word_timestamps": result.word_timestamps or [],
+            model = model.float()
+            loaded_model.model = model
+            model_dtype = torch.float32
+
+        # Pre-build static generate kwargs from pipeline config
+        code_switching = getattr(inference_config, "code_switching", False)
+        lang = getattr(inference_config, "language", None)
+
+        static_kwargs: dict[str, Any] = {
+            "task": "transcribe",
+            "return_timestamps": True,
+            "no_repeat_ngram_size": 3,
+        }
+
+        if not code_switching and lang is not None:
+            static_kwargs["language"] = lang
+
+        beam_size = getattr(inference_config, "beam_size", None)
+        if beam_size and beam_size > 1:
+            static_kwargs["num_beams"] = beam_size
+
+        temperature = getattr(inference_config, "temperature", None)
+        if temperature is not None and temperature == 0.0:
+            static_kwargs["do_sample"] = False
+        elif temperature is not None:
+            static_kwargs["do_sample"] = True
+            static_kwargs["temperature"] = temperature
+
+        async def run_inference(
+            samples: np.ndarray,
+            sample_rate: int,
+            *,
+            prompt: str | None = None,
+        ) -> dict[str, Any]:
+            def _sync_inference() -> dict[str, Any]:
+                return _run_model(samples, sample_rate, prompt=prompt)
+
+            return await asyncio.to_thread(_sync_inference)
+
+        def _run_model(
+            samples: np.ndarray,
+            sample_rate: int,
+            *,
+            prompt: str | None = None,
+        ) -> dict[str, Any]:
+            inputs = processor(
+                samples,
+                sampling_rate=sample_rate,
+                return_tensors="pt",
+                return_attention_mask=True,
+            )
+            inputs = {
+                k: (
+                    v.to(device=device, dtype=model_dtype)
+                    if v.is_floating_point()
+                    else v.to(device=device)
+                )
+                for k, v in inputs.items()
             }
+
+            generate_kwargs = dict(static_kwargs)
+
+            if prompt and hasattr(processor, "get_prompt_ids"):
+                try:
+                    prompt_ids = processor.get_prompt_ids(prompt, return_tensors="pt")
+                    generate_kwargs["prompt_ids"] = prompt_ids.to(device)
+                except Exception:
+                    logger.debug(
+                        "Failed to encode prompt_ids for context carry-forward",
+                        exc_info=True,
+                    )
+
+            with torch.no_grad():
+                if hasattr(model, "generate"):
+                    outputs = model.generate(**inputs, **generate_kwargs)
+                    text = processor.batch_decode(
+                        outputs, skip_special_tokens=True,
+                    )[0].strip()
+
+                    # Extract word timestamps from Whisper offsets
+                    word_timestamps: list[dict[str, Any]] = []
+                    try:
+                        decoded = processor.decode(
+                            outputs[0],
+                            skip_special_tokens=False,
+                            output_offsets=True,
+                        )
+                        for entry in decoded.get("offsets", []):
+                            ts = entry.get("timestamp", (0.0, 0.0))
+                            if isinstance(ts, (list, tuple)) and len(ts) == 2:
+                                start, end = ts
+                            else:
+                                start, end = 0.0, 0.0
+                            start = start if start is not None else 0.0
+                            end = end if end is not None else start
+                            word_timestamps.append({
+                                "word": entry.get("text", ""),
+                                "start": start,
+                                "end": end,
+                                "start_time": start,
+                                "end_time": end,
+                                "confidence": 1.0,
+                            })
+                    except Exception:
+                        logger.debug(
+                            "Failed to extract word timestamps from Whisper offsets",
+                            exc_info=True,
+                        )
+
+                else:
+                    # CTC model fallback (Wav2Vec2)
+                    logits = model(**inputs).logits
+                    predicted_ids = torch.argmax(logits, dim=-1)
+                    text = processor.batch_decode(predicted_ids)[0].strip()
+                    word_timestamps = []
+
+            return {"text": text, "word_timestamps": word_timestamps}
 
         return run_inference
 
@@ -706,8 +829,9 @@ class SessionManager:
                     result = await inference_worker.process_utterance(
                         session.session_id, utt
                     )
-                    session.add_result(result)
-                    session.utterance_count = utt.utterance_index + 1
+                    if result.is_final:
+                        session.add_result(result)
+                        session.utterance_count = utt.utterance_index + 1
                 except Exception as exc:
                     logger.error(
                         "Background inference failed",
@@ -778,6 +902,50 @@ class SessionManager:
                         timeout_s=self._inference_stop_timeout_s,
                     )
 
+    def _cancel_partial(self, session_id: str) -> None:
+        """Cancel any in-flight partial task for this session."""
+        task = self._partial_tasks.pop(session_id, None)
+        if task is not None and not task.done():
+            task.cancel()
+
+    def _fire_partial(
+        self,
+        session_id: str,
+        utterance: AudioUtterance,
+        worker: StreamingInferenceWorker | None,
+        publisher: ResultPublisher | None,
+    ) -> None:
+        """Fire a partial inference task if none is already in-flight.
+
+        Uses skip-if-busy instead of cancel-and-replace so that at least
+        one partial per inference cycle survives to be published.
+        """
+        if worker is None or publisher is None:
+            return
+
+        existing = self._partial_tasks.get(session_id)
+        if existing is not None and not existing.done():
+            return
+
+        async def _run_partial() -> None:
+            try:
+                result = await worker.process_partial(session_id, utterance)
+                if result.text.strip() and publisher is not None:
+                    await publisher.publish(result)
+            except asyncio.CancelledError:
+                pass  # Expected when cancelled by a final utterance
+            except Exception as exc:
+                logger.debug(
+                    "Partial inference failed (non-fatal)",
+                    session_id=session_id,
+                    utterance_index=utterance.utterance_index,
+                    error=str(exc),
+                )
+
+        self._partial_tasks[session_id] = asyncio.create_task(
+            _run_partial(), name=f"partial-{session_id}"
+        )
+
     def _make_frame_handler(
         self,
         session: StreamSession,
@@ -791,6 +959,8 @@ class SessionManager:
         only records the frame for bookkeeping.
         """
         inference_queue = self._inference_queues.get(session.session_id)
+        inference_worker = self._inference_workers.get(session.session_id)
+        publisher = self._publishers.get(session.session_id)
 
         async def _on_frame(frame: AudioFrame) -> None:
             if session.status != SessionStatus.ACTIVE:
@@ -808,10 +978,16 @@ class SessionManager:
                     if session.processed_sample_rate is None:
                         session.processed_sample_rate = preprocessor.target_sample_rate
 
-                # Enqueue utterances for background ASR inference
-                if inference_queue is not None:
-                    for utt in utterances:
-                        await inference_queue.put(utt)
+                # Route utterances: finals to queue, partials to fire-and-forget
+                for utt in utterances:
+                    if utt.is_final:
+                        self._cancel_partial(session.session_id)
+                        if inference_queue is not None:
+                            await inference_queue.put(utt)
+                    else:
+                        self._fire_partial(
+                            session.session_id, utt, inference_worker, publisher,
+                        )
 
             # Periodic Tier-1 persistence
             await session.persist_if_needed()

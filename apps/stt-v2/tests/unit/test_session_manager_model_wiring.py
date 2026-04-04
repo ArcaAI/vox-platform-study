@@ -771,6 +771,7 @@ class TestFrameHandlerWithModels:
             start_time=0.0,
             end_time=1.0,
             utterance_index=0,
+            is_final=True,
         )
 
         preprocessor = AsyncMock()
