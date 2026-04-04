@@ -49,6 +49,12 @@ async def _async_stream_chunks(chunks):
         yield c
 
 
+def _clear_smr_env(monkeypatch):
+    for key in list(os.environ):
+        if key.startswith("SMR_V2_"):
+            monkeypatch.delenv(key, raising=False)
+
+
 # ---------------------------------------------------------------------------
 # 1. Config tests
 # ---------------------------------------------------------------------------
@@ -69,6 +75,7 @@ class TestOpenAICompatConfig:
 
         from smr_v2.core.config import OpenAICompatConfig
 
+        _clear_smr_env(monkeypatch)
         cfg = OpenAICompatConfig()
         assert cfg.enabled is False
         assert cfg.base_url == "http://localhost:1234/v1"
@@ -81,6 +88,7 @@ class TestOpenAICompatConfig:
         _clear_smr_env(monkeypatch)
         from smr_v2.core.config import OpenAICompatConfig
 
+        _clear_smr_env(monkeypatch)
         cfg = OpenAICompatConfig()
         assert isinstance(cfg.api_key, SecretStr)
         assert cfg.api_key.get_secret_value() == "not-needed"

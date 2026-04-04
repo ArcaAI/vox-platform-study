@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from smr_v2.core.config import (
     AzureOpenAIConfig,
     BedrockConfig,
@@ -21,6 +23,11 @@ def _clear_smr_env(monkeypatch):
     for key in list(os.environ):
         if key.startswith("SMR_V2_"):
             monkeypatch.delenv(key, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_smr_env(monkeypatch):
+    _clear_smr_env(monkeypatch)
 
 
 class TestOllamaConfig:
