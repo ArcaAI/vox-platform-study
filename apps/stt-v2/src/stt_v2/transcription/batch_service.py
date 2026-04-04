@@ -1262,7 +1262,7 @@ class BatchTranscriptionService:
             AiModelFormat.CTRANSLATE2,
         ]:
             return await self._run_transformers_inference(
-                samples, sample_rate, model, config, progress_callback
+                samples, sample_rate, model, config, progress_callback,
             )
         elif model.format in [AiModelFormat.ONNX, AiModelFormat.ONNX_OPTIMUM]:
             # Check if loaded with Optimum (has proper processor)

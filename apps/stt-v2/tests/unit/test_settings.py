@@ -85,10 +85,10 @@ class TestSettings:
     def test_transcription_defaults(self):
         """Test transcription default configuration."""
         with patch.dict(os.environ, {}, clear=True):
-            settings = Settings()
+            settings = Settings(_env_file=None)
 
             assert settings.transcription_timeout_seconds == 600
-            assert settings.transcription_chunk_length_s == 30
+            assert settings.transcription_chunk_length_s == 15
             assert settings.transcription_stride_length_s == "4,2"
 
     def test_env_override(self):

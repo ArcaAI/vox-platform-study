@@ -6,13 +6,12 @@ Tests:
 - diarize_segments() delegation -- regression, same results via new pathway
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
 
 from stt_v2.diarization.dto import (
-    DiarizationResult,
     SpeakerEmbedding,
     SpeakerIdentification,
 )

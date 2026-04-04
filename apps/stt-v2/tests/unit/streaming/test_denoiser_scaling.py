@@ -3,9 +3,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import numpy as np
-import pytest
 
-from stt_v2.streaming.denoiser import StreamingDenoiser, _RNNOISE_FRAME_SIZE
+from stt_v2.streaming.denoiser import _RNNOISE_FRAME_SIZE, StreamingDenoiser
 
 
 def _make_denoiser(strength: float = 1.0) -> tuple[StreamingDenoiser, MagicMock]:
@@ -156,7 +155,6 @@ class TestDenoiserFixedDownsampleRatio:
 
         sr = 16000
         freq = 440.0
-        samples_per_period = sr / freq  # ~36.36 samples
 
         # Need to prime buffer first (frame 1 is passthrough)
         prime = np.sin(2 * np.pi * freq * np.arange(512) / sr).astype(np.float32)

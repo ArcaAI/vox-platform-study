@@ -7,6 +7,7 @@ Tests:
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import numpy as np
 import pytest
 
@@ -67,7 +68,6 @@ class TestBatchEmbeddingSeparation:
         call_order = []
 
         # Track call ordering
-        original_inference = svc._run_inference
 
         async def tracked_inference(*args, **kwargs):
             call_order.append("asr")
@@ -129,7 +129,7 @@ class TestBatchEmbeddingSeparation:
 
             mock_preproc.return_value.process = AsyncMock(return_value=processed)
 
-            result = await svc.transcribe(
+            await svc.transcribe(
                 job_id="test-job",
                 audio_bytes=b"\x00" * 1000,
                 pipeline_config=pipeline_config,
@@ -173,7 +173,7 @@ class TestBatchEmbeddingSeparation:
 
             mock_preproc.return_value.process = AsyncMock(return_value=processed)
 
-            result = await svc.transcribe(
+            await svc.transcribe(
                 job_id="test-job",
                 audio_bytes=b"\x00" * 1000,
                 pipeline_config=pipeline_config,
