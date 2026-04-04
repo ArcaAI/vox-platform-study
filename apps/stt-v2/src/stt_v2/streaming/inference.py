@@ -32,6 +32,8 @@ _MAX_SEGMENT_TEXT_CHARS = 1200
 # Hallucination filter constants
 _HALLUCINATION_RMS_THRESHOLD = 0.01  # ~-40 dBFS — below this is near-silence
 _HALLUCINATION_SHORT_WORD_COUNT = 3  # texts with <= N words on low energy are suspect
+_CONTEXT_CARRY_MAX_WORDS = 20  # max words from previous utterance as prompt context
+_PARTIAL_TAIL_WINDOW_S = 10.0  # cap Whisper input for partials to last 10s
 _FILLER_PATTERN = re.compile(
     r"^\s*(?:uh|um|ah|oh|hmm|huh|mhm|mm|oh\s*,?\s*man|\.\..+|,|\s)*\.?\s*$",
     re.IGNORECASE,
@@ -76,6 +78,7 @@ class StreamingInferenceWorker:
         self._diarization_config = diarization_config
         self._punctuation_config = punctuation_config
         self._punctuation_model: Any = None
+        self._previous_text: str = ""
 
     @property
     def has_pipeline(self) -> bool:
@@ -144,6 +147,10 @@ class StreamingInferenceWorker:
                 hallucination_filtered=True,
             )
             text = ""
+
+        if text.strip():
+            words = text.strip().split()
+            self._previous_text = " ".join(words[-_CONTEXT_CARRY_MAX_WORDS:])
 
         # Step 2b: Punctuation restoration (postprocessor)
         logger.debug(
@@ -230,7 +237,15 @@ class StreamingInferenceWorker:
 
         # The ASR pipeline can be sync or async. If it's a coroutine,
         # we await it; otherwise we call it directly.
-        result = self._asr_pipeline(utterance.samples, utterance.sample_rate)
+        prompt = self._previous_text or None
+        try:
+            result = self._asr_pipeline(
+                utterance.samples,
+                utterance.sample_rate,
+                prompt=prompt,
+            )
+        except TypeError:
+            result = self._asr_pipeline(utterance.samples, utterance.sample_rate)
 
         if hasattr(result, "__await__"):
             result = await result
@@ -336,6 +351,9 @@ class StreamingInferenceWorker:
                 deduped.append(current)
                 previous = current_norm
             cleaned = " ".join(deduped) if deduped else cleaned
+
+        # Final cleanup: collapse any remaining multiple spaces
+        cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
 
         if len(cleaned) > _MAX_SEGMENT_TEXT_CHARS:
             logger.warning(
@@ -459,3 +477,58 @@ class StreamingInferenceWorker:
         """Postprocessor: Punctuation restoration."""
         # [TODO] Implement Punctuation
         return text
+
+    async def process_partial(
+        self,
+        session_id: str,
+        utterance: AudioUtterance,
+    ) -> SegmentResult:
+        """Run ASR-only inference for a partial (non-final) utterance.
+
+        Skips embedding extraction, diarization, punctuation, and
+        context carry-forward.  Returns ``SegmentResult(is_final=False)``.
+        """
+        start_ts = time.monotonic()
+
+        # Defense-in-depth: crop to tail window
+        max_samples = int(_PARTIAL_TAIL_WINDOW_S * utterance.sample_rate)
+        if len(utterance.samples) > max_samples:
+            cropped_samples = utterance.samples[-max_samples:]
+            utterance = AudioUtterance(
+                samples=cropped_samples,
+                sample_rate=utterance.sample_rate,
+                start_time=utterance.start_time,
+                end_time=utterance.end_time,
+                utterance_index=utterance.utterance_index,
+                is_final=False,
+            )
+
+        try:
+            inference_out = await self._run_inference(utterance)
+        except Exception as exc:
+            logger.error(
+                "Partial ASR inference failed",
+                session_id=session_id,
+                utterance_index=utterance.utterance_index,
+                error=str(exc),
+            )
+            inference_out = _InferenceResult()
+
+        text = self._sanitize_text(inference_out.text)
+
+        if self._is_hallucination(text, utterance):
+            text = ""
+
+        # NOTE: Do NOT update self._previous_text for partials
+
+        elapsed = time.monotonic() - start_ts
+
+        return SegmentResult(
+            text=text,
+            start_time=utterance.start_time,
+            end_time=utterance.end_time,
+            is_final=False,
+            speaker_id=None,
+            speaker_confidence=0.0,
+            inference_ms=round(elapsed * 1000, 1),
+        )
