@@ -7,7 +7,6 @@ These tests focus on behavior verification:
 - Use complete fixtures matching real data structures
 """
 
-import logging
 import sys
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
