@@ -48,23 +48,23 @@ class TestAudioPreprocessor:
         wav_buffer = io.BytesIO()
 
         # RIFF header
-        wav_buffer.write(b'RIFF')
-        wav_buffer.write(struct.pack('<I', 36 + len(samples) * 2))  # File size - 8
-        wav_buffer.write(b'WAVE')
+        wav_buffer.write(b"RIFF")
+        wav_buffer.write(struct.pack("<I", 36 + len(samples) * 2))  # File size - 8
+        wav_buffer.write(b"WAVE")
 
         # fmt chunk
-        wav_buffer.write(b'fmt ')
-        wav_buffer.write(struct.pack('<I', 16))  # Chunk size
-        wav_buffer.write(struct.pack('<H', 1))   # Audio format (PCM)
-        wav_buffer.write(struct.pack('<H', 1))   # Channels
-        wav_buffer.write(struct.pack('<I', sample_rate))  # Sample rate
-        wav_buffer.write(struct.pack('<I', sample_rate * 2))  # Byte rate
-        wav_buffer.write(struct.pack('<H', 2))   # Block align
-        wav_buffer.write(struct.pack('<H', 16))  # Bits per sample
+        wav_buffer.write(b"fmt ")
+        wav_buffer.write(struct.pack("<I", 16))  # Chunk size
+        wav_buffer.write(struct.pack("<H", 1))  # Audio format (PCM)
+        wav_buffer.write(struct.pack("<H", 1))  # Channels
+        wav_buffer.write(struct.pack("<I", sample_rate))  # Sample rate
+        wav_buffer.write(struct.pack("<I", sample_rate * 2))  # Byte rate
+        wav_buffer.write(struct.pack("<H", 2))  # Block align
+        wav_buffer.write(struct.pack("<H", 16))  # Bits per sample
 
         # data chunk
-        wav_buffer.write(b'data')
-        wav_buffer.write(struct.pack('<I', len(samples) * 2))
+        wav_buffer.write(b"data")
+        wav_buffer.write(struct.pack("<I", len(samples) * 2))
         wav_buffer.write(samples.tobytes())
 
         return wav_buffer.getvalue()
@@ -112,7 +112,7 @@ class TestAudioPreprocessor:
     @pytest.mark.asyncio
     async def test_process_basic(self, preprocessor, sample_wav_bytes, default_config):
         """Test basic processing without VAD or denoise."""
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             # Mock loading audio
             mock_load.return_value = (
                 np.sin(np.linspace(0, 2 * np.pi * 440, 16000)).astype(np.float32),
@@ -140,7 +140,7 @@ class TestAudioPreprocessor:
             denoise=DenoiseConfig(enabled=False),
         )
 
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             # Original audio at 16kHz
             mock_load.return_value = (
                 np.sin(np.linspace(0, 2 * np.pi * 440, 16000)).astype(np.float32),
@@ -159,12 +159,15 @@ class TestAudioPreprocessor:
     @pytest.mark.asyncio
     async def test_process_stereo_to_mono(self, preprocessor, default_config):
         """Test converting stereo to mono."""
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             # Stereo audio (2 channels)
-            stereo = np.stack([
-                np.sin(np.linspace(0, 2 * np.pi * 440, 16000)),
-                np.sin(np.linspace(0, 2 * np.pi * 880, 16000)),
-            ], axis=1).astype(np.float32)
+            stereo = np.stack(
+                [
+                    np.sin(np.linspace(0, 2 * np.pi * 440, 16000)),
+                    np.sin(np.linspace(0, 2 * np.pi * 880, 16000)),
+                ],
+                axis=1,
+            ).astype(np.float32)
 
             mock_load.return_value = (stereo, 16000)
 
@@ -381,7 +384,7 @@ class TestAudioPreprocessorEdgeCases:
     @pytest.mark.asyncio
     async def test_process_with_very_long_audio(self, preprocessor, default_config):
         """Test processing long audio (simulated 10 minutes)."""
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             # 10 minutes at 16kHz = 9,600,000 samples
             long_audio = np.sin(np.linspace(0, 2 * np.pi * 440, 16000 * 600)).astype(np.float32)
             mock_load.return_value = (long_audio, 16000)
@@ -396,7 +399,7 @@ class TestAudioPreprocessorEdgeCases:
     @pytest.mark.asyncio
     async def test_process_with_very_short_audio(self, preprocessor, default_config):
         """Test processing very short audio (10ms)."""
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             # 10ms at 16kHz = 160 samples
             short_audio = np.sin(np.linspace(0, 2 * np.pi * 440, 160)).astype(np.float32)
             mock_load.return_value = (short_audio, 16000)
@@ -412,14 +415,17 @@ class TestAudioPreprocessorEdgeCases:
     @pytest.mark.asyncio
     async def test_process_multichannel_audio(self, preprocessor, default_config):
         """Test processing 4-channel audio (converted to mono)."""
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             # 4 channels
-            multichannel = np.stack([
-                np.sin(np.linspace(0, 2 * np.pi * 440, 16000)),
-                np.sin(np.linspace(0, 2 * np.pi * 550, 16000)),
-                np.sin(np.linspace(0, 2 * np.pi * 660, 16000)),
-                np.sin(np.linspace(0, 2 * np.pi * 770, 16000)),
-            ], axis=1).astype(np.float32)
+            multichannel = np.stack(
+                [
+                    np.sin(np.linspace(0, 2 * np.pi * 440, 16000)),
+                    np.sin(np.linspace(0, 2 * np.pi * 550, 16000)),
+                    np.sin(np.linspace(0, 2 * np.pi * 660, 16000)),
+                    np.sin(np.linspace(0, 2 * np.pi * 770, 16000)),
+                ],
+                axis=1,
+            ).astype(np.float32)
 
             mock_load.return_value = (multichannel, 16000)
 
@@ -530,19 +536,19 @@ class TestAudioLoadingWithFallback:
         samples = np.sin(np.linspace(0, 2 * np.pi * 440, 1600)).astype(np.float32)
 
         wav_buffer = io.BytesIO()
-        wav_buffer.write(b'RIFF')
-        wav_buffer.write(struct.pack('<I', 36 + len(samples) * 2))
-        wav_buffer.write(b'WAVE')
-        wav_buffer.write(b'fmt ')
-        wav_buffer.write(struct.pack('<I', 16))
-        wav_buffer.write(struct.pack('<H', 1))
-        wav_buffer.write(struct.pack('<H', 1))
-        wav_buffer.write(struct.pack('<I', sample_rate))
-        wav_buffer.write(struct.pack('<I', sample_rate * 2))
-        wav_buffer.write(struct.pack('<H', 2))
-        wav_buffer.write(struct.pack('<H', 16))
-        wav_buffer.write(b'data')
-        wav_buffer.write(struct.pack('<I', len(samples) * 2))
+        wav_buffer.write(b"RIFF")
+        wav_buffer.write(struct.pack("<I", 36 + len(samples) * 2))
+        wav_buffer.write(b"WAVE")
+        wav_buffer.write(b"fmt ")
+        wav_buffer.write(struct.pack("<I", 16))
+        wav_buffer.write(struct.pack("<H", 1))
+        wav_buffer.write(struct.pack("<H", 1))
+        wav_buffer.write(struct.pack("<I", sample_rate))
+        wav_buffer.write(struct.pack("<I", sample_rate * 2))
+        wav_buffer.write(struct.pack("<H", 2))
+        wav_buffer.write(struct.pack("<H", 16))
+        wav_buffer.write(b"data")
+        wav_buffer.write(struct.pack("<I", len(samples) * 2))
         wav_buffer.write((samples * 32767).astype(np.int16).tobytes())
 
         audio_bytes = wav_buffer.getvalue()
@@ -601,9 +607,7 @@ class TestApplyVadSmartPriority:
 
         assert applied is True
         assert segments == expected_segments
-        mock_vad.assert_called_once_with(
-            audio_samples, 16000, pipeline_model, vad_config.threshold
-        )
+        mock_vad.assert_called_once_with(audio_samples, 16000, pipeline_model, vad_config.threshold)
 
     @pytest.mark.asyncio
     async def test_silero_fallback_when_no_pipeline_model(
@@ -652,12 +656,17 @@ class TestApplyVadSmartPriority:
             applied=True,
         )
 
-        with patch.object(
-            preprocessor, "_apply_vad", new_callable=AsyncMock,
-            side_effect=RuntimeError("model crashed"),
-        ), patch(
-            "stt_v2.vad.silero_service.get_vad_service",
-            return_value=mock_vad_service,
+        with (
+            patch.object(
+                preprocessor,
+                "_apply_vad",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("model crashed"),
+            ),
+            patch(
+                "stt_v2.vad.silero_service.get_vad_service",
+                return_value=mock_vad_service,
+            ),
         ):
             segments, applied = await preprocessor._apply_vad_smart(
                 audio_samples, 16000, vad_config, pipeline_model
@@ -684,9 +693,7 @@ class TestApplyVadSmartPriority:
         assert segments == []
 
     @pytest.mark.asyncio
-    async def test_silero_not_loaded_returns_empty(
-        self, preprocessor, vad_config, audio_samples
-    ):
+    async def test_silero_not_loaded_returns_empty(self, preprocessor, vad_config, audio_samples):
         """Silero service exists but model not loaded returns empty."""
         mock_vad_service = MagicMock()
         mock_vad_service.is_loaded = False
@@ -740,12 +747,15 @@ class TestApplyVadSmartPriority:
 
         mock_vad_service = MagicMock()
 
-        with patch.object(
-            preprocessor, "_apply_vad", new_callable=AsyncMock, return_value=expected_segments
-        ), patch(
-            "stt_v2.vad.silero_service.get_vad_service",
-            return_value=mock_vad_service,
-        ) as _mock_get_vad:
+        with (
+            patch.object(
+                preprocessor, "_apply_vad", new_callable=AsyncMock, return_value=expected_segments
+            ),
+            patch(
+                "stt_v2.vad.silero_service.get_vad_service",
+                return_value=mock_vad_service,
+            ) as _mock_get_vad,
+        ):
             segments, applied = await preprocessor._apply_vad_smart(
                 audio_samples, 16000, vad_config, pipeline_model
             )
@@ -775,9 +785,7 @@ class TestApplyVadSmartPriority:
             "stt_v2.vad.silero_service.get_vad_service",
             return_value=mock_vad_service,
         ):
-            await preprocessor._apply_vad_smart(
-                audio_samples, 16000, vad_config, None
-            )
+            await preprocessor._apply_vad_smart(audio_samples, 16000, vad_config, None)
 
         # Verify all params were forwarded correctly
         call_kwargs = mock_vad_service.detect_speech.call_args.kwargs
@@ -829,7 +837,7 @@ class TestPipelineOrder:
             denoise=DenoiseConfig(enabled=True, strength=0.7),
         )
 
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             mock_load.return_value = (
                 np.sin(np.linspace(0, 2 * np.pi * 440, 16000)).astype(np.float32),
                 16000,
@@ -837,9 +845,7 @@ class TestPipelineOrder:
 
             await preprocessor.process(audio_bytes=b"dummy", config=config)
 
-        assert call_order == ["denoise", "vad"], (
-            f"Expected denoise before vad, got: {call_order}"
-        )
+        assert call_order == ["denoise", "vad"], f"Expected denoise before vad, got: {call_order}"
 
     @pytest.mark.asyncio
     async def test_resample_deferred_until_after_denoise(self, preprocessor):
@@ -861,14 +867,16 @@ class TestPipelineOrder:
             denoise=DenoiseConfig(enabled=True, strength=0.8),
         )
 
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             # Audio at 44100 Hz
             mock_load.return_value = (
                 np.sin(np.linspace(0, 2 * np.pi * 440, 44100)).astype(np.float32),
                 44100,
             )
 
-            with patch("stt_v2.transcription.preprocessing.AudioPreprocessor._apply_denoise") as mock_denoise:
+            with patch(
+                "stt_v2.transcription.preprocessing.AudioPreprocessor._apply_denoise"
+            ) as mock_denoise:
                 mock_denoise.return_value = (
                     np.sin(np.linspace(0, 2 * np.pi * 440, 48000)).astype(np.float32),
                     48000,
@@ -879,9 +887,9 @@ class TestPipelineOrder:
         # The final resample should be from 48000 (denoise output) to 16000
         assert result.sample_rate == 16000
         # There should be resampling calls: the last one should be 48000 -> 16000
-        assert any(call == (48000, 16000) for call in resample_calls), (
-            f"Expected resample from 48000 to 16000 after denoise, got calls: {resample_calls}"
-        )
+        assert any(
+            call == (48000, 16000) for call in resample_calls
+        ), f"Expected resample from 48000 to 16000 after denoise, got calls: {resample_calls}"
 
     @pytest.mark.asyncio
     async def test_no_denoise_still_resamples_directly(self, preprocessor):
@@ -893,7 +901,7 @@ class TestPipelineOrder:
             denoise=DenoiseConfig(enabled=False),
         )
 
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             mock_load.return_value = (
                 np.sin(np.linspace(0, 2 * np.pi * 440, 44100)).astype(np.float32),
                 44100,
@@ -915,7 +923,7 @@ class TestPipelineOrder:
             denoise=DenoiseConfig(enabled=False),
         )
 
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             mock_load.return_value = (
                 np.sin(np.linspace(0, 2 * np.pi * 440, 16000)).astype(np.float32),
                 16000,
@@ -951,7 +959,7 @@ class TestPipelineOrder:
             denoise=DenoiseConfig(enabled=True, strength=0.7),
         )
 
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             mock_load.return_value = (
                 np.sin(np.linspace(0, 2 * np.pi * 440, 16000)).astype(np.float32),
                 16000,
@@ -1020,10 +1028,10 @@ class TestApplyDenoise:
         samples = np.sin(np.linspace(0, 2 * np.pi * 440, 16000)).astype(np.float32)
 
         with patch.dict("sys.modules", {"pyrnnoise": None}):
-            with patch("builtins.__import__", side_effect=ImportError("No module named 'pyrnnoise'")):
-                result_samples, result_sr = await preprocessor._apply_denoise(
-                    samples, 16000, 0.8
-                )
+            with patch(
+                "builtins.__import__", side_effect=ImportError("No module named 'pyrnnoise'")
+            ):
+                result_samples, result_sr = await preprocessor._apply_denoise(samples, 16000, 0.8)
 
         np.testing.assert_array_equal(result_samples, samples)
         assert result_sr == 16000
@@ -1040,9 +1048,7 @@ class TestApplyDenoise:
         mock_module.RNNoise = mock_rnnoise_class
 
         with patch.dict("sys.modules", {"pyrnnoise": mock_module}):
-            result_samples, result_sr = await preprocessor._apply_denoise(
-                samples, 16000, 0.8
-            )
+            result_samples, result_sr = await preprocessor._apply_denoise(samples, 16000, 0.8)
 
         np.testing.assert_array_equal(result_samples, samples)
         assert result_sr == 16000
@@ -1070,14 +1076,12 @@ class TestApplyDenoise:
         preprocessor._resample = tracking_resample
 
         with patch.dict("sys.modules", {"pyrnnoise": mock_module}):
-            result_samples, result_sr = await preprocessor._apply_denoise(
-                samples_48k, 48000, 1.0
-            )
+            result_samples, result_sr = await preprocessor._apply_denoise(samples_48k, 48000, 1.0)
 
         # Should not have resampled (already at 48kHz)
-        assert not any(orig == 48000 and target != 48000 for orig, target in resample_called_with), (
-            f"Should not resample from 48kHz, got: {resample_called_with}"
-        )
+        assert not any(
+            orig == 48000 and target != 48000 for orig, target in resample_called_with
+        ), f"Should not resample from 48kHz, got: {resample_called_with}"
         assert result_sr == 48000
 
 
@@ -1109,9 +1113,9 @@ class TestPreprocessingCombinedFeatures:
         )
 
         # 1s of audio at 44100 Hz
-        original_audio = np.sin(
-            np.linspace(0, 2 * np.pi * 440, 44100)
-        ).astype(np.float32) * 0.5  # half-amplitude
+        original_audio = (
+            np.sin(np.linspace(0, 2 * np.pi * 440, 44100)).astype(np.float32) * 0.5
+        )  # half-amplitude
 
         async def fake_denoise(samples, sr, strength):
             # Simulate denoise returning at 48 kHz
@@ -1126,7 +1130,7 @@ class TestPreprocessingCombinedFeatures:
         preprocessor._apply_denoise = fake_denoise
         preprocessor._apply_vad_smart = fake_vad_smart
 
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             mock_load.return_value = (original_audio, 44100)
 
             result = await preprocessor.process(audio_bytes=b"dummy", config=config)
@@ -1156,9 +1160,10 @@ class TestPreprocessingCombinedFeatures:
 
         preprocessor._apply_denoise = fake_denoise
 
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             mock_load.return_value = (
-                np.zeros(16000, dtype=np.float32), 16000,
+                np.zeros(16000, dtype=np.float32),
+                16000,
             )
 
             result = await preprocessor.process(audio_bytes=b"dummy", config=config)
@@ -1187,21 +1192,24 @@ class TestPreprocessingCombinedFeatures:
         )
 
         # Stereo audio (2 channels)
-        stereo = np.stack([
-            np.sin(np.linspace(0, 2 * np.pi * 440, 16000)),
-            np.sin(np.linspace(0, 2 * np.pi * 880, 16000)),
-        ], axis=1).astype(np.float32)
+        stereo = np.stack(
+            [
+                np.sin(np.linspace(0, 2 * np.pi * 440, 16000)),
+                np.sin(np.linspace(0, 2 * np.pi * 880, 16000)),
+            ],
+            axis=1,
+        ).astype(np.float32)
 
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             mock_load.return_value = (stereo, 16000)
 
             _result = await preprocessor.process(audio_bytes=b"dummy", config=config)
 
         # Denoise must receive mono (1-D) audio, not stereo (2-D)
         assert len(received_shapes) == 1
-        assert len(received_shapes[0]) == 1, (
-            f"Denoise received {len(received_shapes[0])}-D audio, expected 1-D mono"
-        )
+        assert (
+            len(received_shapes[0]) == 1
+        ), f"Denoise received {len(received_shapes[0])}-D audio, expected 1-D mono"
 
     @pytest.mark.asyncio
     async def test_process_with_only_normalize_disabled(self, preprocessor):
@@ -1214,11 +1222,9 @@ class TestPreprocessingCombinedFeatures:
         )
 
         # Half-amplitude signal
-        half_amp = np.sin(
-            np.linspace(0, 2 * np.pi * 440, 16000)
-        ).astype(np.float32) * 0.3
+        half_amp = np.sin(np.linspace(0, 2 * np.pi * 440, 16000)).astype(np.float32) * 0.3
 
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             mock_load.return_value = (half_amp, 16000)
 
             result = await preprocessor.process(audio_bytes=b"dummy", config=config)
@@ -1238,9 +1244,10 @@ class TestPreprocessingCombinedFeatures:
         )
 
         # 2 seconds at 48 kHz
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             mock_load.return_value = (
-                np.zeros(96000, dtype=np.float32), 48000,
+                np.zeros(96000, dtype=np.float32),
+                48000,
             )
 
             result = await preprocessor.process(audio_bytes=b"dummy", config=config)
@@ -1268,13 +1275,14 @@ class TestPreprocessingCombinedFeatures:
             denoise=DenoiseConfig(enabled=False),
         )
 
-        with patch.object(preprocessor, '_load_audio') as mock_load:
+        with patch.object(preprocessor, "_load_audio") as mock_load:
             mock_load.return_value = (
-                np.zeros(44100, dtype=np.float32), 44100,
+                np.zeros(44100, dtype=np.float32),
+                44100,
             )
 
             await preprocessor.process(audio_bytes=b"dummy", config=config)
 
-        assert vad_received_sr == [16000], (
-            f"VAD should receive target_sample_rate (16000), got: {vad_received_sr}"
-        )
+        assert vad_received_sr == [
+            16000
+        ], f"VAD should receive target_sample_rate (16000), got: {vad_received_sr}"
