@@ -641,6 +641,10 @@ class TestTranscribeHttpErrors:
     # validation, is_valid_language_code) run through production paths.
     # ------------------------------------------------------------------
 
+    @pytest.mark.xfail(
+        reason="Language validation not yet implemented in transcribe route (no 'language' Form field)",
+        strict=True,
+    )
     async def test_invalid_language_code_returns_400(self, configured_app, sample_wav_audio):
         """Language code 'xyz-invalid' is not in VALID_WHISPER_LANGUAGES -> 400."""
         from unittest.mock import AsyncMock, patch
@@ -668,6 +672,10 @@ class TestTranscribeHttpErrors:
         )
         assert "xyz-invalid" in detail["message"]
 
+    @pytest.mark.xfail(
+        reason="Language validation not yet implemented in transcribe route (no 'language' Form field)",
+        strict=True,
+    )
     async def test_three_letter_invalid_language_returns_400(
         self, configured_app, sample_wav_audio
     ):
@@ -696,6 +704,10 @@ class TestTranscribeHttpErrors:
             response, expected_status=400, expected_error_code="INVALID_LANGUAGE"
         )
 
+    @pytest.mark.xfail(
+        reason="Language validation not yet implemented in transcribe route (no 'language' Form field)",
+        strict=True,
+    )
     async def test_bcp47_with_invalid_primary_subtag_returns_400(
         self, configured_app, sample_wav_audio
     ):

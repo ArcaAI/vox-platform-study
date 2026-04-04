@@ -1,17 +1,22 @@
 """Application settings using Pydantic Settings."""
 
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_SERVICE_ROOT = Path(__file__).resolve().parents[4]  # …/apps/stt-v2
+_ENV_FILE = _SERVICE_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE) if _ENV_FILE.is_file() else None,
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -78,8 +83,8 @@ class Settings(BaseSettings):
 
     # MinIO (Object storage)
     minio_endpoint: str = "localhost:9000"
-    minio_access_key: str = "minioadmin"
-    minio_secret_key: str = "minioadmin"
+    minio_access_key: str = "minio_admin"
+    minio_secret_key: str = "minio_admin"
     minio_secure: bool = False
     minio_audio_bucket: str = "hope-audio"
     minio_chunk_bucket: str = "hope-audio-chunks"
@@ -107,7 +112,7 @@ class Settings(BaseSettings):
 
     # HuggingFace
     huggingface_cache_dir: str = Field(
-        default="/models/hf-cache",
+        default_factory=lambda: os.environ.get("HF_HOME", "/models/hf-cache"),
         description="HuggingFace model cache directory",
     )
     huggingface_token: str | None = Field(

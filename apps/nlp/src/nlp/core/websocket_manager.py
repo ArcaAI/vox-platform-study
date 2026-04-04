@@ -1,9 +1,11 @@
 import asyncio
 import json
 import logging
-from typing import Any, Callable, Dict, Optional, Set
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
+
 from fastapi import WebSocket, WebSocketDisconnect
-from datetime import datetime, timezone
 
 from nlp.schemas.common import WebSocketMessage, WebSocketMessageType
 from nlp.utils import get_current_time
@@ -20,11 +22,11 @@ class WebSocketSession:
 
 
 class WebSocketManager:
-    def __init__(self):
-        self.sessions: Dict[str, WebSocketSession] = {}
-        self.websockets: Set[WebSocket] = set()
-        self.heartbeat_task: Optional[asyncio.Task] = None
-        self.cleanup_task: Optional[asyncio.Task] = None
+    def __init__(self) -> None:
+        self.sessions: dict[str, WebSocketSession] = {}
+        self.websockets: set[WebSocket] = set()
+        self.heartbeat_task: asyncio.Task[None] | None = None
+        self.cleanup_task: asyncio.Task[None] | None = None
 
         self.HEARTBEAT_INTERVAL = 30
         self.CLEANUP_INTERVAL = 60
@@ -47,7 +49,7 @@ class WebSocketManager:
             logger.error(f"Failed to initialize WebSocket service: {str(e)}")
             raise
 
-    async def handle_connection(self, websocket: WebSocket, session_id: str, process: Callable[[dict], Any]) -> None:
+    async def handle_connection(self, websocket: WebSocket, session_id: str, process: Callable[..., Any]) -> None:
         """Handle a new WebSocket connection"""
         await websocket.accept()
 
@@ -72,7 +74,7 @@ class WebSocketManager:
                         )
                     )
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     await self._send_heartbeat(session)
 
                 except WebSocketDisconnect:
@@ -110,7 +112,7 @@ class WebSocketManager:
             try:
                 await asyncio.sleep(self.CLEANUP_INTERVAL)
 
-                current_time = datetime.now(timezone.utc)
+                current_time = datetime.now(UTC)
                 inactive_sessions = []
 
                 # Find inactive sessions
@@ -179,10 +181,10 @@ class WebSocketManager:
             logger.error(f"Failed to send message to session {session.session_id}: {str(e)}")
             raise
 
-    async def _send_error(self, session: WebSocketSession, error_code: str, error_message: str, details: Optional[Dict] = None) -> None:
+    async def _send_error(self, session: WebSocketSession, error_code: str, error_message: str, details: dict | None = None) -> None:
         error_msg = WebSocketMessage(
             type=WebSocketMessageType.ERROR,
-            session_id=session.session_id, 
+            session_id=session.session_id,
             data={
                 "error_code": error_code,
                 "error_message": error_message,
