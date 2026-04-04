@@ -1,6 +1,6 @@
-"""RED tests for S5 -- streaming punctuation restoration."""
+"""Tests for streaming punctuation behavior."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 
@@ -48,61 +48,48 @@ class TestApplyPunctuationEnabled:
         result = await worker._apply_punctuation("   ")
         assert result == "   "
 
-    async def test_restores_punctuation(self):
+    async def test_enabled_mode_returns_original_until_implemented(self):
         cfg = MagicMock()
         cfg.enabled = True
         cfg.model = "test-model"
 
-        mock_model = MagicMock()
-        mock_model.restore_punctuation.return_value = "Hello world."
-
         worker = _make_worker(punctuation_config=cfg)
 
-        with patch("stt_v2.streaming.inference.PunctuationModel", return_value=mock_model) as mock_cls:
-            result = await worker._apply_punctuation("hello world")
-            assert result == "Hello world."
-            mock_cls.assert_called_once_with(model="test-model")
+        result = await worker._apply_punctuation("hello world")
+        assert result == "hello world"
+        assert worker._punctuation_model is None
 
-    async def test_lazy_loads_model_once(self):
+    async def test_multiple_calls_remain_passthrough(self):
         cfg = MagicMock()
         cfg.enabled = True
         cfg.model = "test-model"
 
-        mock_model = MagicMock()
-        mock_model.restore_punctuation.return_value = "Hello."
-
         worker = _make_worker(punctuation_config=cfg)
 
-        with patch("stt_v2.streaming.inference.PunctuationModel", return_value=mock_model) as mock_cls:
-            await worker._apply_punctuation("hello")
-            await worker._apply_punctuation("world")
-            # Should load model only once
-            assert mock_cls.call_count == 1
+        first = await worker._apply_punctuation("hello")
+        second = await worker._apply_punctuation("world")
 
-    async def test_model_failure_returns_original(self):
+        assert first == "hello"
+        assert second == "world"
+        assert worker._punctuation_model is None
+
+    async def test_enabled_mode_keeps_original_text(self):
         cfg = MagicMock()
         cfg.enabled = True
         cfg.model = "test-model"
 
-        mock_model = MagicMock()
-        mock_model.restore_punctuation.side_effect = RuntimeError("boom")
-
         worker = _make_worker(punctuation_config=cfg)
 
-        with patch("stt_v2.streaming.inference.PunctuationModel", return_value=mock_model):
-            result = await worker._apply_punctuation("hello world")
-            assert result == "hello world"
+        result = await worker._apply_punctuation("hello world")
+        assert result == "hello world"
 
 
 class TestProcessUtteranceWithPunctuation:
-    async def test_punctuation_applied_to_asr_output(self):
-        """process_utterance should apply punctuation after ASR."""
+    async def test_process_utterance_keeps_asr_output_when_punctuation_noop(self):
+        """process_utterance currently keeps ASR output unchanged."""
         cfg = MagicMock()
         cfg.enabled = True
         cfg.model = "test-model"
-
-        mock_model = MagicMock()
-        mock_model.restore_punctuation.return_value = "Hello world."
 
         publisher = AsyncMock()
         worker = StreamingInferenceWorker(
@@ -119,7 +106,6 @@ class TestProcessUtteranceWithPunctuation:
             utterance_index=0,
         )
 
-        with patch("stt_v2.streaming.inference.PunctuationModel", return_value=mock_model):
-            result = await worker.process_utterance("s1", utt)
+        result = await worker.process_utterance("s1", utt)
 
-        assert result.text == "Hello world."
+        assert result.text == "hello world"
