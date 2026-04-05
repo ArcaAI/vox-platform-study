@@ -91,6 +91,17 @@ class StreamingInferenceWorker:
             The transcription result (also published to Redis).
         """
         start_ts = time.monotonic()
+        embedding = None
+
+        try:
+            embedding = await self._extract_embedding(utterance)
+        except Exception as exc:
+            logger.warning(
+                "Streaming embedding extraction failed",
+                session_id=session_id,
+                utterance_index=utterance.utterance_index,
+                error=str(exc),
+            )
 
         try:
             inference_out = await self._run_inference(utterance)
@@ -128,7 +139,7 @@ class StreamingInferenceWorker:
         diarization_enabled = bool(
             self._diarization_config and getattr(self._diarization_config, "enabled", False)
         )
-        speaker_id, speaker_confidence = await self._identify_speaker(utterance, result.text)
+        speaker_id, speaker_confidence = await self._identify_with_embedding(embedding, result.text)
         if diarization_enabled and result.text.strip() and not speaker_id:
             # Preserve a speaker marker even when identification cannot
             # confidently resolve to a known profile.
@@ -296,6 +307,63 @@ class StreamingInferenceWorker:
             cleaned = cleaned[:_MAX_SEGMENT_TEXT_CHARS].rstrip()
 
         return cleaned
+
+    async def _extract_embedding(self, utterance: AudioUtterance) -> Any | None:
+        """Extract a speaker embedding for the utterance when diarization is enabled."""
+        if not self._tenant_id:
+            return None
+        if not self._diarization_config or not getattr(self._diarization_config, "enabled", False):
+            return None
+
+        min_duration = float(getattr(self._diarization_config, "min_segment_duration_s", 1.0))
+        if (utterance.end_time - utterance.start_time) < min_duration:
+            return None
+
+        from stt_v2.diarization.embedding_service import get_embedding_service
+
+        embedding_service = get_embedding_service()
+        return await embedding_service.extract_from_samples(
+            utterance.samples,
+            utterance.sample_rate,
+            utterance.start_time,
+            utterance.end_time,
+        )
+
+    async def _identify_with_embedding(
+        self,
+        embedding: Any | None,
+        text: str,
+    ) -> tuple[str | None, float | None]:
+        """Identify a speaker from a precomputed embedding when possible."""
+        if not embedding:
+            return None, None
+        if not text.strip():
+            return None, None
+        if not self._tenant_id:
+            return None, None
+        if not self._diarization_config or not getattr(self._diarization_config, "enabled", False):
+            return None, None
+
+        try:
+            from stt_v2.diarization.speaker_identifier import get_speaker_identifier
+
+            identifier = get_speaker_identifier()
+            match = await identifier.identify_with_embedding(
+                embedding=embedding,
+                tenant_id=self._tenant_id,
+                consultation_id=self._consultation_id,
+                config=self._diarization_config,
+            )
+            if match is None:
+                return None, None
+            return match.speaker_id, match.confidence
+        except Exception as exc:
+            logger.warning(
+                "Streaming speaker identification with embedding failed",
+                tenant_id=self._tenant_id,
+                error=str(exc),
+            )
+            return None, None
 
     async def _identify_speaker(
         self,
