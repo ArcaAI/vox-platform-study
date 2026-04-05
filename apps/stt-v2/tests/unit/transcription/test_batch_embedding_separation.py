@@ -124,8 +124,8 @@ class TestBatchEmbeddingSeparation:
         with patch.object(svc, "_load_models", new_callable=AsyncMock, return_value={"asr": MagicMock(), "vad": None, "denoise": None}), \
              patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
              patch.object(svc, "_run_inference", side_effect=tracked_inference), \
-             patch("stt_v2.transcription.batch_service.EmbeddingService", return_value=mock_emb_service), \
-             patch("stt_v2.transcription.batch_service.get_speaker_identifier", return_value=mock_identifier):
+             patch("stt_v2.diarization.embedding_service.EmbeddingService", return_value=mock_emb_service), \
+             patch("stt_v2.diarization.speaker_identifier.get_speaker_identifier", return_value=mock_identifier):
 
             mock_preproc.return_value.process = AsyncMock(return_value=processed)
 
@@ -169,7 +169,7 @@ class TestBatchEmbeddingSeparation:
         with patch.object(svc, "_load_models", new_callable=AsyncMock, return_value={"asr": MagicMock(), "vad": None, "denoise": None}), \
              patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
              patch.object(svc, "_run_inference", new_callable=AsyncMock, return_value=raw), \
-             patch("stt_v2.transcription.batch_service.EmbeddingService") as mock_emb_cls:
+             patch("stt_v2.diarization.embedding_service.EmbeddingService") as mock_emb_cls:
 
             mock_preproc.return_value.process = AsyncMock(return_value=processed)
 

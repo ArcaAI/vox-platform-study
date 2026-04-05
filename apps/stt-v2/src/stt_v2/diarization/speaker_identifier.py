@@ -127,20 +127,10 @@ class SpeakerIdentifier:
         consultation_id: str | None = None,
         config: DiarizationConfig | None = None,
     ) -> SpeakerIdentification:
-        """Identify a speaker from a precomputed embedding.
+        """Identify a speaker from a precomputed embedding (no audio extraction).
 
-        Same logic as :meth:`identify_speaker` but skips the extraction
-        step — useful when the caller already has an embedding (e.g.
-        streaming inference).
-
-        Args:
-            embedding: Precomputed speaker embedding.
-            tenant_id: Tenant for scoped Qdrant search.
-            consultation_id: Optional consultation context.
-            config: Diarization configuration overrides.
-
-        Returns:
-            SpeakerIdentification with speaker_id and confidence.
+        Used by streaming inference where the embedding is extracted
+        separately from the identification step.
         """
         config = config or DiarizationConfig()
 
@@ -189,7 +179,9 @@ class SpeakerIdentifier:
             )
 
         except Exception as e:
-            raise SpeakerIdentificationError(f"Speaker identification failed: {e}") from e
+            raise SpeakerIdentificationError(
+                f"Speaker identification with embedding failed: {e}"
+            ) from e
 
     # ------------------------------------------------------------------
     # Multi-segment diarization from precomputed embeddings
@@ -203,22 +195,11 @@ class SpeakerIdentifier:
         consultation_id: str | None = None,
         config: DiarizationConfig | None = None,
     ) -> DiarizationResult:
-        """Assign speaker IDs using precomputed embeddings.
+        """Assign speaker IDs using precomputed embeddings (no audio extraction).
 
-        Same logic as :meth:`diarize_segments` phase 3, but skips audio
-        slicing and embedding extraction — the caller provides embeddings
-        directly (e.g. streaming pipeline where embeddings are extracted
-        per-utterance).
-
-        Args:
-            embeddings: One embedding per segment (or ``None`` to skip).
-            segments: Transcription segments with ``start``, ``end``, ``text``.
-            tenant_id: Tenant for Qdrant scope.
-            consultation_id: Optional consultation context.
-            config: Diarization configuration.
-
-        Returns:
-            DiarizationResult with speaker-annotated segments.
+        Skips the embedding extraction phase and goes directly to Qdrant
+        lookup.  Used by batch transcription when embeddings have already
+        been extracted in a separate step.
         """
         config = config or DiarizationConfig()
 
@@ -268,11 +249,6 @@ class SpeakerIdentifier:
                             embedding=emb.embedding,
                             consultation_id=consultation_id,
                         )
-                        logger.info(
-                            "Registered new speaker %s for tenant %s",
-                            speaker_id,
-                            tenant_id,
-                        )
                         confidence = None
                         is_new = True
                 else:
@@ -296,9 +272,7 @@ class SpeakerIdentifier:
             except Exception as e:
                 logger.warning(
                     "Diarization failed for segment [%.1f–%.1f]: %s",
-                    start,
-                    end,
-                    e,
+                    start, end, e,
                 )
                 diarized_segments.append(DiarizedSegment(
                     text=text,
