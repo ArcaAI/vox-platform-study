@@ -1210,6 +1210,23 @@ async def _ensure_minio_initialized() -> None:
     settings.minio_secret_key = test_secret_key
     settings.minio_secure = False
 
+    # Probe MinIO reachability before attempting to initialize.
+    import socket
+
+    host, _, port_str = test_endpoint.partition(":")
+    port = int(port_str) if port_str else 9002
+    _sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    _sock.settimeout(2)
+    try:
+        _sock.connect((host, port))
+    except OSError as exc:
+        pytest.skip(
+            f"MinIO test infrastructure not available at {test_endpoint} "
+            f"(pnpm docker:test:up required): {exc}"
+        )
+    finally:
+        _sock.close()
+
     await initialize_minio()
     _minio_initialized = True
     logger.info(f"MinIO initialized for tests (endpoint={test_endpoint})")

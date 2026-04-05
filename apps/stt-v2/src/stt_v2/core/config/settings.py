@@ -438,6 +438,27 @@ class Settings(BaseSettings):
         description="MLFlow model registry URI (reserved for future use)",
     )
 
+    # -------------------------------------------------------------------------
+    # Punctuation restoration (Cadence)
+    # -------------------------------------------------------------------------
+    punctuation_model_name: str = Field(
+        default="Cadence",
+        description="Default punctuation model: 'Cadence' (1B) or 'Cadence-Fast' (270M). "
+        "Can be overridden per-pipeline via YAML.",
+    )
+    punctuation_model_cache_dir: str | None = Field(
+        default=None,
+        description="Cache dir for punctuation model weights (None = HF default cache)",
+    )
+    punctuation_device: str = Field(
+        default="auto",
+        description="Device for punctuation inference: 'cpu', 'cuda', 'auto'",
+    )
+    punctuation_max_length: int = Field(
+        default=300,
+        description="Max sequence length / sliding window width for punctuation model",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

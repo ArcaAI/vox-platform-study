@@ -1949,6 +1949,33 @@ class BatchTranscriptionService:
         """Postprocess raw transcription."""
         text = raw.text.strip()
 
+        # Punctuation restoration (sync -- batch runs in worker thread already)
+        if getattr(config, "punctuation", None) and getattr(config.punctuation, "enabled", False):
+            try:
+                from stt_v2.punctuation.service import punctuate_sync
+
+                texts_to_punctuate = [text]
+
+                # Also punctuate segment texts
+                segment_texts = []
+                if config.timestamps.sentence_timestamps and raw.segments:
+                    segment_texts = [
+                        seg.get("text", "") if isinstance(seg, dict) else ""
+                        for seg in raw.segments
+                    ]
+                    texts_to_punctuate.extend(segment_texts)
+
+                punct_model = getattr(config.punctuation, "model", None)
+                results = punctuate_sync(texts_to_punctuate, batch_size=8, model_name=punct_model)
+                text = results[0]
+
+                if segment_texts:
+                    for i, seg in enumerate(raw.segments):
+                        if isinstance(seg, dict):
+                            seg["text"] = results[i + 1]
+            except Exception:
+                logger.warning("Batch punctuation failed, using original text", exc_info=True)
+
         # Apply lowercase if configured
         if config.lowercase:
             text = text.lower()
