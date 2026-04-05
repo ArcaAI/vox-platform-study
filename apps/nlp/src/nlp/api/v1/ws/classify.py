@@ -1,10 +1,10 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from nlp.core.logging import get_logger
-from nlp.services.token_classifier import TokenClassifier
-from nlp.services.text_classifier import TextClassifier
 from nlp.core.websocket_manager import WebSocketManager
 from nlp.dependencies import get_text_classifier, get_token_classifier, get_websocket_manager
+from nlp.services.text_classifier import TextClassifier
+from nlp.services.token_classifier import TokenClassifier
 
 logger = get_logger(__name__)
 

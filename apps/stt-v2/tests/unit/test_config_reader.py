@@ -1,9 +1,16 @@
 """Unit tests for Pipeline config reader."""
 
+import os
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+_MODEL_BASE = (
+    os.environ.get("HUGGINGFACE_CACHE_DIR")
+    or os.environ.get("HF_HOME")
+    or os.path.join(os.sep, "models", "hf-cache")
+)
 
 from stt_v2.core.exceptions import NotFoundError, ValidationError
 from stt_v2.pipeline.config_reader import (
@@ -228,7 +235,7 @@ class TestModelRegistryReader:
         mock.memory_size_mb = 3000
         mock.compute_type = "float16"
         mock.download_status = "DOWNLOADED"
-        mock.local_path = "/models/whisper"
+        mock.local_path = os.path.join(_MODEL_BASE, "whisper")
         mock.downloaded_at = datetime(2024, 1, 1)
         mock.file_size_mb = 3000
         mock.checksum = "abc123"
@@ -382,6 +389,7 @@ class TestSingletons:
         """Test pipeline reader singleton."""
         # Reset singleton
         import stt_v2.pipeline.config_reader as module
+
         module._pipeline_reader = None
 
         reader1 = get_pipeline_reader()
@@ -392,6 +400,7 @@ class TestSingletons:
     def test_get_model_reader_singleton(self):
         """Test model reader singleton."""
         import stt_v2.pipeline.config_reader as module
+
         module._model_reader = None
 
         reader1 = get_model_reader()

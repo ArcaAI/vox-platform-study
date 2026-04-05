@@ -3,17 +3,16 @@
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Branch behavior:
-#   cicd    — all builds run but require MANUAL approval (when: manual)
-#   staging — only changed services build AUTOMATICALLY
-#   main    — same as staging
-#   MR      — no builds
-#   feature — no builds
-#   release — no builds (SDK publish only)
+#   cicd               — all builds run but require MANUAL approval (when: manual)
+#   dev                — only changed services, MANUAL approval (when: manual)
+#   staging            — only changed services, MANUAL approval (when: manual)
+#   main               — no builds
+#   release-sdk        — no builds (SDK publish only)
+#   release-playground — ui-playground build ONLY (automatic)
+#   MR                 — no builds
+#   feature            — no builds
 
 # ── Pre-pull base images ─────────────────────────────────────────────────────
-# Warm up the host Docker daemon's image cache so that BuildKit (docker-container
-# driver) can resolve FROM images locally instead of pulling ~3 GB from upstream
-# registries on every build.  Runs once per pipeline before any build job.
 
 warm-up-base-images:
   stage: build
@@ -42,9 +41,9 @@ warm-up-base-images:
       done
       echo "All base images warm"
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "release_playground"
     - if: $CI_COMMIT_TAG =~ /^v\d+/
 
 # ── API Gateway ──────────────────────────────────────────────────────────────
@@ -62,22 +61,14 @@ build-api:
     SERVICE_NAME: api
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/api/Dockerfile
+    BUILD_ARGS: "--build-arg DATABASE_URL=$DATABASE_URL"
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
       when: never
-    - if: $PIPELINE_TYPE == "cicd"
+    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging"
       when: manual
       allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
-      changes:
-        - apps/api/**/*
-        - packages/database/**/*
-        - packages/domains/**/*
-        - packages/applications/**/*
-        - packages/exceptions/**/*
-        - packages/logger/**/*
-        - packages/tools/**/*
 
 # ── UI Playground ────────────────────────────────────────────────────────────
 
@@ -96,22 +87,13 @@ build-ui-playground:
     DOCKERFILE: apps/ui-playground/Dockerfile
     BUILD_ARGS: "--build-arg VITE_API_URL=$VITE_API_URL"
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - if: $PIPELINE_TYPE == "cicd"
+    - if: $PIPELINE_TYPE == "release_playground"
+    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging"
       when: manual
       allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
-      changes:
-        - apps/ui-playground/**/*
-        - packages/ui/**/*
-        - packages/room/**/*
-        - packages/vad/**/*
-        - packages/stt/**/*
-        - packages/noise-filter/**/*
-        - packages/agentic-sdk-v2/**/*
-        - packages/med-ner/**/*
 
 # ── Live Transcription Example UI ───────────────────────────────────────────
 
@@ -129,15 +111,12 @@ build-example-ui:
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/example/Dockerfile
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
       when: never
-    - if: $PIPELINE_TYPE == "cicd"
+    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging"
       when: manual
       allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
-      changes:
-        - apps/example/**/*
 
 # ── NLP ──────────────────────────────────────────────────────────────────────
 
@@ -153,15 +132,12 @@ build-nlp:
     DOCKER_CONTEXT: apps/nlp
     DOCKERFILE: apps/nlp/Dockerfile
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
       when: never
-    - if: $PIPELINE_TYPE == "cicd"
+    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging"
       when: manual
       allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
-      changes:
-        - apps/nlp/**/*
 
 # ── SMR ──────────────────────────────────────────────────────────────────────
 
@@ -177,15 +153,12 @@ build-smr:
     DOCKER_CONTEXT: apps/smr
     DOCKERFILE: apps/smr/Dockerfile
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
       when: never
-    - if: $PIPELINE_TYPE == "cicd"
+    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging"
       when: manual
       allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
-      changes:
-        - apps/smr/**/*
 
 # ── STT-v2 ML Runtime ───────────────────────────────────────────────────────
 
@@ -202,15 +175,12 @@ build-stt-v2:
     DOCKERFILE: apps/stt-v2/docker/Dockerfile
     BUILD_TARGET: ml-runtime
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
       when: never
-    - if: $PIPELINE_TYPE == "cicd"
+    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging"
       when: manual
       allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
-      changes:
-        - apps/stt-v2/**/*
 
 # ── STT-v2 Worker ───────────────────────────────────────────────────────────
 
@@ -227,15 +197,12 @@ build-stt-v2-worker:
     DOCKERFILE: apps/stt-v2/docker/Dockerfile
     BUILD_TARGET: worker
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
       when: never
-    - if: $PIPELINE_TYPE == "cicd"
+    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging"
       when: manual
       allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
-      changes:
-        - apps/stt-v2/**/*
 
 # ── Database (Prisma migrations image) ──────────────────────────────────────
 
@@ -251,12 +218,9 @@ build-database:
     DOCKER_CONTEXT: .
     DOCKERFILE: packages/database/Dockerfile
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
       when: never
-    - if: $PIPELINE_TYPE == "cicd"
+    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging"
       when: manual
       allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
-      changes:
-        - packages/database/**/*

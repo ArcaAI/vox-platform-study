@@ -1343,52 +1343,6 @@ resources:
   max_memory_mb: 8192
   timeout_seconds: 300
 `,
-
-    // =========================================================================
-    // E2E TEST PIPELINES
-    // =========================================================================
-
-    e2e_test: `version: "1.1"
-
-# E2E test
-models:
-  asr:
-    hf_model_id: "openai/whisper-tiny"
-    engine: "safetensor"
-  vad:
-    hf_model_id: "onnx-community/silero-vad"
-    engine: "onnx"
-
-preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  denoise:
-    enabled: true
-    strength: 0.8
-  vad:
-    enabled: true
-    threshold: 0.5
-    min_speech_duration_ms: 250
-    min_silence_duration_ms: 500
-
-inference:
-  batch_size: 1
-  compute_type: float32
-  device: cpu
-  beam_size: 5
-  temperature: 0.0
-  language: "en"
-
-postprocessing:
-  timestamps:
-    word_timestamps: false
-    sentence_timestamps: false
-  punctuation:
-    enabled: false
-
-diarization:
-  enabled: false
-`,
 };
 
 export const DEFAULT_ASR_PIPELINES = [
@@ -1458,18 +1412,6 @@ export const DEFAULT_ASR_PIPELINES = [
         configYaml: PIPELINE_CONFIGS.best_practice_batch,
         tags: ['best-practice', 'batch', 'high-quality', 'v1.1'],
     },
-    // =========================================================================
-    // E2E TEST PIPELINES (Whisper Tiny, float32, CPU — fast & deterministic)
-    // =========================================================================
-    {
-        id: '81000000-0000-0000-0001-000000000010',
-        tenantId: DEFAULT_TENANT_ID,
-        name: 'E2E Test',
-        slug: 'e2e-test-basic',
-        description: 'E2E test pipeline: Whisper Tiny, no VAD, no denoise. Fast CPU inference for automated testing.',
-        configYaml: PIPELINE_CONFIGS.e2e_test,
-        tags: ['e2e', 'test', 'basic', 'whisper-tiny'],
-    }
 ];
 
 // =============================================================================

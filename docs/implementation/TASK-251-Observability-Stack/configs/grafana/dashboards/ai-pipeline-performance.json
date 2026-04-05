@@ -1,0 +1,169 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "STT Transcription Latency P95",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, rate(stt_v2_transcription_latency_seconds_bucket[5m]))",
+        "legendFormat": "p95"
+      }, {
+        "expr": "histogram_quantile(0.50, rate(stt_v2_transcription_latency_seconds_bucket[5m]))",
+        "legendFormat": "p50"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 15 }] }
+        }
+      }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "title": "STT Transcription Throughput",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "rate(stt_v2_transcription_total[5m])", "legendFormat": "{{pipeline}} / {{status}}" }],
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "bars", "fillOpacity": 50 } } }
+    },
+    {
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "id": 3,
+      "title": "SMR Token Throughput",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "rate(smr_v2_tokens_total[5m])", "legendFormat": "tokens/s" }],
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "id": 4,
+      "title": "SMR Time to First Token P95",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, rate(smr_v2_time_to_first_token_seconds_bucket[5m]))",
+        "legendFormat": "p95"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 2 }, { "color": "red", "value": 5 }] }
+        }
+      }
+    },
+    {
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "id": 5,
+      "title": "NLP Inference Latency P95",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, rate(nlp_http_request_duration_seconds_bucket[5m]))",
+        "legendFormat": "p95"
+      }],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 16 },
+      "id": 6,
+      "title": "SMR Circuit Breaker State (by provider)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "smr_v2_circuit_breaker_state", "legendFormat": "{{provider}}" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "CLOSED", "color": "green" } }, "type": "value" },
+            { "options": { "1": { "text": "OPEN", "color": "red" } }, "type": "value" },
+            { "options": { "2": { "text": "HALF-OPEN", "color": "yellow" } }, "type": "value" }
+          ],
+          "thresholds": { "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "orientation": "horizontal" }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "id": 7,
+      "title": "SMR Generation Errors (rate)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "rate(smr_v2_generation_errors_total[5m])", "legendFormat": "{{error_type}}" }],
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "id": 8,
+      "title": "SMR Rate Limit Rejections",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "rate(smr_v2_rate_limit_rejections_total[5m])", "legendFormat": "rejections/s" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.01 }] }
+        }
+      }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "id": 9,
+      "title": "STT Streaming Inference Latency",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, rate(stt_v2_streaming_inference_latency_seconds_bucket[5m]))",
+        "legendFormat": "p95"
+      }],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "id": 10,
+      "title": "STT Model Cache Hit/Miss",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(stt_v2_model_cache_hits_total[5m])", "legendFormat": "hits/s" },
+        { "expr": "rate(stt_v2_model_cache_misses_total[5m])", "legendFormat": "misses/s" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
+      "id": 11,
+      "title": "STT VAD Segments Detected (rate)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "rate(stt_v2_vad_segments_total[5m])", "legendFormat": "segments/s" }],
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
+      "id": 12,
+      "title": "STT Transcription Errors (by type)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "rate(stt_v2_transcription_errors_total[5m])", "legendFormat": "{{pipeline}} / {{error_type}}" }],
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["hope", "ai", "pipeline"],
+  "templating": {
+    "list": [
+      { "name": "DS_PROMETHEUS", "type": "datasource", "query": "prometheus", "current": { "text": "Prometheus", "value": "Prometheus" } }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "HOPE AI Pipeline Performance",
+  "uid": "hope-ai-pipeline",
+  "version": 1
+}

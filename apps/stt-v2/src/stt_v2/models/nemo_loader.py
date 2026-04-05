@@ -38,19 +38,13 @@ class NeMoLoader(BaseModelLoader):
 
             # Load based on source
             if model_config.local_path and Path(model_config.local_path).exists():
-                model = await self._load_from_checkpoint(
-                    model_config.local_path, device
-                )
+                model = await self._load_from_checkpoint(model_config.local_path, device)
             elif model_config.source_uri.startswith("nvidia/"):
                 # NGC model
-                model = await self._load_from_ngc(
-                    model_config.source_uri, device
-                )
+                model = await self._load_from_ngc(model_config.source_uri, device)
             else:
                 # Try HuggingFace
-                model = await self._load_from_huggingface(
-                    model_config.source_uri, device
-                )
+                model = await self._load_from_huggingface(model_config.source_uri, device)
 
             # Estimate memory
             memory_mb = self._estimate_nemo_memory(model)
@@ -78,13 +72,10 @@ class NeMoLoader(BaseModelLoader):
 
         except ImportError as e:
             raise ModelLoadError(
-                "NeMo toolkit not installed. Install with: "
-                "pip install nemo_toolkit[asr]"
+                "NeMo toolkit not installed. Install with: " "pip install nemo_toolkit[asr]"
             ) from e
         except Exception as e:
-            raise ModelLoadError(
-                f"Failed to load NeMo model {model_config.slug}: {e}"
-            ) from e
+            raise ModelLoadError(f"Failed to load NeMo model {model_config.slug}: {e}") from e
 
     async def _load_from_checkpoint(self, checkpoint_path: str, device: str) -> Any:
         """Restore model from .nemo checkpoint."""

@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from nlp.core.logging import get_logger
+from nlp.dependencies import get_medical_suggester
 from nlp.schemas.diagnosis import DiagnosisSuggestionRequest, DiagnosisSuggestionResponse
 from nlp.services.medical_suggester import MedicalSuggester
-from nlp.dependencies import get_medical_suggester
 
 logger = get_logger(__name__)
 
@@ -26,4 +26,4 @@ async def get_diagnosis_suggestions(request: DiagnosisSuggestionRequest, service
         raise
     except Exception as e:
         logger.error(f"Medical suggester error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Medical suggester error")
+        raise HTTPException(status_code=500, detail="Medical suggester error") from e

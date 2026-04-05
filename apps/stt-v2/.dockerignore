@@ -1,12 +1,13 @@
 # =============================================================================
-# STT-V2 Docker Build Context Exclusions
+# HOPE Python Service — Docker Build Context Exclusions
 # =============================================================================
 # Keeps the build context small and prevents secrets/dev artifacts from leaking
-# into the image. The Dockerfile only needs: pyproject.toml, README.md, src/
+# into the image. The Dockerfile only needs: pyproject.toml, uv.lock, README.md, src/
 
 # --- Version control ---
 .git
 .gitignore
+.gitattributes
 
 # --- Python artifacts ---
 __pycache__
@@ -39,6 +40,10 @@ tests/
 .coverage
 coverage.xml
 htmlcov/
+
+# --- Linter caches ---
+.mypy_cache/
+.ruff_cache/
 
 # --- Environment & secrets ---
 .env

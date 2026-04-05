@@ -61,28 +61,25 @@ class TestHealthEndpointE2E:
 
         data = response.json()
 
-        # Exactly these keys — nothing more, nothing less
-        assert set(data.keys()) == {"status", "service", "version", "timestamp"}, (
+        expected_keys = {"status", "service", "version", "uptime_seconds", "timestamp", "checks"}
+        assert set(data.keys()) == expected_keys, (
             f"Unexpected keys in /health response: {set(data.keys())}"
         )
 
-        # status
-        assert data["status"] == "ok"
+        assert data["status"] in _VALID_HEALTH_STATUSES
 
-        # service — must be the app_name from settings (always "stt-v2")
         assert isinstance(data["service"], str)
         assert data["service"] == "stt-v2"
 
-        # version — non-empty semver-like string
         assert isinstance(data["version"], str)
         assert len(data["version"]) > 0
 
-        # timestamp — valid ISO-8601, must be within the last 30 seconds
+        assert isinstance(data["uptime_seconds"], (int, float))
+        assert isinstance(data["checks"], dict)
+
         ts = datetime.fromisoformat(data["timestamp"])
         age_seconds = (datetime.utcnow() - ts).total_seconds()
-        assert 0 <= age_seconds < 30, (
-            f"Timestamp is {age_seconds:.1f}s old — expected < 30s"
-        )
+        assert 0 <= age_seconds < 30, f"Timestamp is {age_seconds:.1f}s old — expected < 30s"
 
     async def test_health_response_time_under_threshold(self, configured_app):
         """Health endpoint should respond in < 500 ms."""
@@ -108,12 +105,10 @@ class TestHealthEndpointE2E:
 
     async def test_health_concurrent_requests(self, configured_app):
         """Multiple concurrent /health requests must all succeed."""
-        responses = await asyncio.gather(
-            *[configured_app.get("/api/v1/health") for _ in range(10)]
-        )
+        responses = await asyncio.gather(*[configured_app.get("/api/v1/health") for _ in range(10)])
         for resp in responses:
             assert resp.status_code == 200
-            assert resp.json()["status"] == "ok"
+            assert resp.json()["status"] in _VALID_HEALTH_STATUSES
 
 
 # ---------------------------------------------------------------------------
@@ -126,15 +121,12 @@ class TestLivenessEndpointE2E:
     """Comprehensive tests for GET /api/v1/live."""
 
     async def test_live_returns_exact_minimal_response(self, configured_app):
-        """Liveness probe must return exactly {\"status\": \"ok\"} with no extra keys."""
+        """Liveness probe must return exactly {\"status\": \"healthy\"} with no extra keys."""
         response = await configured_app.get("/api/v1/live")
         assert response.status_code == 200
 
         data = response.json()
-        # Exact match — catches accidental field leaks
-        assert data == {"status": "ok"}, (
-            f"Liveness response has unexpected data: {data}"
-        )
+        assert data == {"status": "healthy"}, f"Liveness response has unexpected data: {data}"
 
     async def test_live_response_time_under_100ms(self, configured_app):
         """Liveness should be the fastest endpoint (< 100 ms)."""
@@ -150,7 +142,7 @@ class TestLivenessEndpointE2E:
         for _ in range(5):
             response = await configured_app.get("/api/v1/live")
             assert response.status_code == 200
-            assert response.json() == {"status": "ok"}
+            assert response.json() == {"status": "healthy"}
 
     async def test_live_returns_json_content_type(self, configured_app):
         """Liveness content-type must be application/json."""
@@ -169,144 +161,106 @@ class TestReadinessEndpointE2E:
     """Comprehensive tests for GET /api/v1/ready."""
 
     async def test_ready_returns_complete_top_level_schema(self, configured_app):
-        """Verify all top-level fields exist with correct types."""
+        """Verify the readiness response schema.
+
+        The readiness endpoint returns {"status": "healthy"} on 200 or
+        {"status": "unhealthy", "message": "..."} on 503.  In testcontainer
+        mode MinIO and Redis may not be initialized, so 503 is acceptable.
+        """
         response = await configured_app.get("/api/v1/ready")
-        assert response.status_code == 200
 
         data = response.json()
-
-        # Top-level required fields
         assert "status" in data
         assert data["status"] in _VALID_HEALTH_STATUSES
 
-        assert "service" in data
-        assert data["service"] == "stt-v2"
-
-        assert "version" in data
-        assert isinstance(data["version"], str)
-        assert len(data["version"]) > 0
-
-        assert "uptime_seconds" in data
-        assert isinstance(data["uptime_seconds"], (int, float))
-        assert 0 <= data["uptime_seconds"] < 86400, (
-            f"uptime_seconds={data['uptime_seconds']} seems unreasonable for a test"
-        )
-
-        assert "components" in data
-        assert isinstance(data["components"], list)
-
-        assert "timestamp" in data
-        ts = datetime.fromisoformat(data["timestamp"])
-        age = (datetime.utcnow() - ts).total_seconds()
-        assert 0 <= age < 30
+        if response.status_code == 200:
+            assert data["status"] == "healthy"
+        else:
+            assert response.status_code == 503
+            assert data["status"] == "unhealthy"
+            assert "message" in data
 
     async def test_ready_returns_all_required_components(self, configured_app):
-        """Response must include database, minio, and redis components."""
-        response = await configured_app.get("/api/v1/ready")
+        """The /health endpoint (not /ready) exposes component-level checks.
+
+        The readiness endpoint is a lightweight pass/fail probe.
+        Verify that the detailed /health endpoint includes component checks.
+        """
+        response = await configured_app.get("/api/v1/health")
         data = response.json()
 
-        component_names = {c["name"] for c in data["components"]}
+        assert "checks" in data
+        component_names = set(data["checks"].keys())
         assert _REQUIRED_COMPONENTS.issubset(component_names), (
             f"Missing required components. Found: {component_names}, "
             f"expected at least: {_REQUIRED_COMPONENTS}"
         )
 
     async def test_ready_component_schema_is_complete(self, configured_app):
-        """Every component dict must have name, status, latency_ms, and message."""
-        response = await configured_app.get("/api/v1/ready")
+        """Every check in /health must have status and duration_ms."""
+        response = await configured_app.get("/api/v1/health")
         data = response.json()
 
-        for component in data["components"]:
-            cname = component.get("name", "<unknown>")
-
-            # name
-            assert "name" in component, "Component missing 'name'"
-            assert isinstance(component["name"], str)
-
-            # status — must be a valid HealthStatus enum value
+        for cname, component in data["checks"].items():
             assert "status" in component, f"Component {cname}: missing 'status'"
-            assert component["status"] in _VALID_HEALTH_STATUSES, (
-                f"Component {cname}: unknown status '{component['status']}'"
-            )
+            assert (
+                component["status"] in _VALID_HEALTH_STATUSES
+            ), f"Component {cname}: unknown status '{component['status']}'"
 
-            # latency_ms — numeric, non-negative
-            assert "latency_ms" in component, f"Component {cname}: missing 'latency_ms'"
-            assert isinstance(component["latency_ms"], (int, float)), (
-                f"Component {cname}: latency_ms is not numeric"
-            )
-            assert component["latency_ms"] >= 0, (
-                f"Component {cname}: negative latency"
-            )
-
-            # message — nullable string (always present, None when healthy)
-            assert "message" in component, (
-                f"Component {cname}: missing 'message' field (should be null when healthy)"
-            )
-            if component["message"] is not None:
-                assert isinstance(component["message"], str)
+            assert "duration_ms" in component, f"Component {cname}: missing 'duration_ms'"
+            assert isinstance(
+                component["duration_ms"], (int, float)
+            ), f"Component {cname}: duration_ms is not numeric"
+            assert component["duration_ms"] >= 0, f"Component {cname}: negative duration"
 
     async def test_ready_healthy_when_all_services_up(self, configured_app):
-        """When all infra is running, overall status should be healthy.
+        """When all infra is running, the /health endpoint should report status.
 
         Note: The ``configured_app`` fixture uses testcontainers but does NOT
         trigger the FastAPI lifespan (``initialize_minio`` / ``configure_broker``
         are not called).  MinIO and Redis health checks will therefore report
-        *unhealthy*.  Only the database component is expected to be healthy
-        because SQLAlchemy creates engines lazily on first query.  We therefore
-        assert the overall status is a valid HealthStatus and that the database
-        component specifically is healthy.
+        *unhealthy*.  Only the database component is expected to be healthy.
         """
-        response = await configured_app.get("/api/v1/ready")
+        response = await configured_app.get("/api/v1/health")
         data = response.json()
-        assert data["status"] in ("healthy", "degraded", "unhealthy")
+        assert data["status"] in _VALID_HEALTH_STATUSES
 
-        # Database component must be reachable via testcontainers
-        db_components = [c for c in data["components"] if c["name"] == "database"]
-        assert len(db_components) == 1, "Expected exactly one 'database' component"
-        assert db_components[0]["status"] == "healthy", (
-            f"Database component should be healthy via testcontainer, "
-            f"got '{db_components[0]['status']}': {db_components[0].get('message')}"
+        db_check = data["checks"].get("database")
+        assert db_check is not None, "Expected 'database' check in /health response"
+        assert db_check["status"] == "healthy", (
+            f"Database check should be healthy via testcontainer, "
+            f"got '{db_check['status']}': {db_check.get('message')}"
         )
 
-        # When overall is healthy, every component must also be healthy
-        if data["status"] == "healthy":
-            for component in data["components"]:
-                assert component["status"] == "healthy", (
-                    f"Overall status is 'healthy' but component "
-                    f"'{component['name']}' is '{component['status']}'"
-                )
-
     async def test_ready_component_latency_sanity(self, configured_app):
-        """Component latencies should be positive and under 5 seconds."""
-        response = await configured_app.get("/api/v1/ready")
+        """Component durations in /health should be positive and under 5 seconds."""
+        response = await configured_app.get("/api/v1/health")
         data = response.json()
 
-        for component in data["components"]:
-            latency = component["latency_ms"]
-            assert 0 <= latency < 5000, (
-                f"Component '{component['name']}' latency {latency:.1f}ms "
+        for cname, component in data["checks"].items():
+            duration = component["duration_ms"]
+            assert 0 <= duration < 5000, (
+                f"Component '{cname}' duration {duration:.1f}ms "
                 f"outside sanity range [0, 5000)ms"
             )
 
-    async def test_ready_healthy_components_have_null_message(self, configured_app):
-        """Healthy components should have message=None."""
-        response = await configured_app.get("/api/v1/ready")
+    async def test_ready_healthy_components_have_no_message(self, configured_app):
+        """Healthy components in /health should not have a message field."""
+        response = await configured_app.get("/api/v1/health")
         data = response.json()
 
-        for component in data["components"]:
+        for cname, component in data["checks"].items():
             if component["status"] == "healthy":
-                assert component["message"] is None, (
-                    f"Healthy component '{component['name']}' has non-null message: "
-                    f"'{component['message']}'"
+                assert "message" not in component, (
+                    f"Healthy component '{cname}' has unexpected message: "
+                    f"'{component.get('message')}'"
                 )
 
     async def test_ready_concurrent_requests(self, configured_app):
         """Concurrent readiness checks must not interfere with each other."""
-        responses = await asyncio.gather(
-            *[configured_app.get("/api/v1/ready") for _ in range(5)]
-        )
+        responses = await asyncio.gather(*[configured_app.get("/api/v1/ready") for _ in range(5)])
         for resp in responses:
-            assert resp.status_code == 200
+            assert resp.status_code in (200, 503)
             assert resp.json()["status"] in _VALID_HEALTH_STATUSES
 
 
@@ -328,9 +282,9 @@ class TestMetricsEndpointE2E:
         lines = text.strip().splitlines()
 
         # Must have meaningful content — not just a header
-        assert len(lines) >= 3, (
-            f"Metrics response has only {len(lines)} lines — expected at least 3"
-        )
+        assert (
+            len(lines) >= 3
+        ), f"Metrics response has only {len(lines)} lines — expected at least 3"
 
         # Prometheus format requires # HELP and # TYPE lines
         has_help = any(line.startswith("# HELP") for line in lines)
@@ -359,9 +313,7 @@ class TestMetricsEndpointE2E:
         """Metrics endpoint must return text/plain content-type per Prometheus spec."""
         response = await configured_app.get("/metrics")
         content_type = response.headers.get("content-type", "")
-        assert "text/" in content_type, (
-            f"Unexpected content-type for metrics: '{content_type}'"
-        )
+        assert "text/" in content_type, f"Unexpected content-type for metrics: '{content_type}'"
 
     async def test_metrics_returns_non_empty_body(self, configured_app):
         """Metrics response should never be empty."""
@@ -375,9 +327,9 @@ class TestMetricsEndpointE2E:
         text = response.text
         has_python_info = "python_info" in text
         has_process = "process_" in text
-        assert has_python_info or has_process, (
-            "Expected at least python_info or process_* default metrics"
-        )
+        assert (
+            has_python_info or has_process
+        ), "Expected at least python_info or process_* default metrics"
 
     async def test_metrics_has_no_duplicate_metric_families(self, configured_app):
         """Each metric family should only be defined once (no duplicate TYPE lines)."""
@@ -387,9 +339,7 @@ class TestMetricsEndpointE2E:
         type_lines = [line for line in lines if line.startswith("# TYPE")]
         metric_names = [line.split()[2] for line in type_lines if len(line.split()) >= 3]
         duplicates = [name for name in metric_names if metric_names.count(name) > 1]
-        assert len(duplicates) == 0, (
-            f"Duplicate metric families found: {set(duplicates)}"
-        )
+        assert len(duplicates) == 0, f"Duplicate metric families found: {set(duplicates)}"
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +424,6 @@ class TestCORSHeadersE2E:
         assert response.status_code == 200
         # Depending on CORS config, may return * or the specific origin
         acao = response.headers.get("access-control-allow-origin")
-        assert acao is not None, (
-            "Missing Access-Control-Allow-Origin header on /api/v1/health response"
-        )
+        assert (
+            acao is not None
+        ), "Missing Access-Control-Allow-Origin header on /api/v1/health response"

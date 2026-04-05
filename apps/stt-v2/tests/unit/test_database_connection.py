@@ -49,9 +49,16 @@ class TestDatabaseEngineCreation:
         mock_session_factory = MagicMock()
 
         try:
-            with patch.object(conn_module, "_get_loop_id", return_value=12345), \
-                 patch("stt_v2.core.database.connection.create_async_engine", return_value=mock_engine), \
-                 patch("stt_v2.core.database.connection.async_sessionmaker", return_value=mock_session_factory):
+            with (
+                patch.object(conn_module, "_get_loop_id", return_value=12345),
+                patch(
+                    "stt_v2.core.database.connection.create_async_engine", return_value=mock_engine
+                ),
+                patch(
+                    "stt_v2.core.database.connection.async_sessionmaker",
+                    return_value=mock_session_factory,
+                ),
+            ):
 
                 engine, factory = conn_module._get_or_create_engine()
 
@@ -110,7 +117,9 @@ class TestDatabaseInitialization:
         mock_begin.__aexit__ = AsyncMock(return_value=None)
         mock_engine.begin = MagicMock(return_value=mock_begin)
 
-        with patch.object(conn_module, "_get_or_create_engine", return_value=(mock_engine, MagicMock())):
+        with patch.object(
+            conn_module, "_get_or_create_engine", return_value=(mock_engine, MagicMock())
+        ):
             await conn_module.initialize_database()
 
             mock_conn.execute.assert_called_once()
@@ -169,7 +178,9 @@ class TestDatabaseSession:
         mock_session_context.__aexit__ = AsyncMock(return_value=None)
         mock_factory.return_value = mock_session_context
 
-        with patch.object(conn_module, "_get_or_create_engine", return_value=(MagicMock(), mock_factory)):
+        with patch.object(
+            conn_module, "_get_or_create_engine", return_value=(MagicMock(), mock_factory)
+        ):
             async with conn_module.get_db_session() as session:
                 assert session is mock_session
 
@@ -187,7 +198,9 @@ class TestDatabaseSession:
         mock_session_context.__aexit__ = AsyncMock(return_value=None)
         mock_factory.return_value = mock_session_context
 
-        with patch.object(conn_module, "_get_or_create_engine", return_value=(MagicMock(), mock_factory)):
+        with patch.object(
+            conn_module, "_get_or_create_engine", return_value=(MagicMock(), mock_factory)
+        ):
             try:
                 async with conn_module.get_db_session() as _session:
                     raise ValueError("Test error")

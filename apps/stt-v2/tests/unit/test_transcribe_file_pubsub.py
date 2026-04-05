@@ -110,8 +110,12 @@ def _patch_worker_deps(
     return (
         patch("stt_v2.transcription.workers.transcribe_file.get_api_client", return_value=_api),
         patch("stt_v2.transcription.workers.transcribe_file.get_blob_service", return_value=_blob),
-        patch("stt_v2.transcription.workers.transcribe_file.get_pipeline_reader", return_value=_reader),
-        patch("stt_v2.transcription.workers.transcribe_file.get_batch_service", return_value=_batch),
+        patch(
+            "stt_v2.transcription.workers.transcribe_file.get_pipeline_reader", return_value=_reader
+        ),
+        patch(
+            "stt_v2.transcription.workers.transcribe_file.get_batch_service", return_value=_batch
+        ),
         _api,
         _blob,
         _reader,
@@ -234,7 +238,10 @@ class TestWorkerPubSubHappyPath:
 
         # Transcript event carries the full text
         assert len(pubsub_capture.transcript_events) == 1
-        assert pubsub_capture.transcript_events[0]["data"]["text"] == "Patient reports mild discomfort."
+        assert (
+            pubsub_capture.transcript_events[0]["data"]["text"]
+            == "Patient reports mild discomfort."
+        )
 
     @pytest.mark.asyncio
     async def test_processing_status_includes_worker_id(self, pubsub_capture):
@@ -429,7 +436,8 @@ class TestWorkerErrorPaths:
         reader.get_pipeline = AsyncMock(side_effect=NotFoundError("Pipeline gone"))
 
         p1, p2, p3, p4, *_ = _patch_worker_deps(
-            api_client=api, pipeline_reader=reader,
+            api_client=api,
+            pipeline_reader=reader,
         )
 
         with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
@@ -465,7 +473,9 @@ class TestWorkerErrorPaths:
         blob.download_audio = AsyncMock(return_value=b"audio")
 
         p1, p2, p3, p4, *_ = _patch_worker_deps(
-            api_client=api, batch_service=batch, blob_service=blob,
+            api_client=api,
+            batch_service=batch,
+            blob_service=blob,
         )
 
         with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
@@ -494,7 +504,8 @@ class TestWorkerErrorPaths:
         blob.download_audio = AsyncMock(side_effect=RuntimeError("disk full"))
 
         p1, p2, p3, p4, *_ = _patch_worker_deps(
-            api_client=api, blob_service=blob,
+            api_client=api,
+            blob_service=blob,
         )
 
         with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
@@ -520,7 +531,8 @@ class TestWorkerErrorPaths:
         blob.download_audio = AsyncMock(side_effect=RuntimeError("boom"))
 
         p1, p2, p3, p4, *_ = _patch_worker_deps(
-            api_client=api, blob_service=blob,
+            api_client=api,
+            blob_service=blob,
         )
 
         with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
@@ -557,6 +569,7 @@ class TestWorkerProgressCallback:
         _progress_values = []
 
         batch = AsyncMock()
+
         async def fake_transcribe(**kwargs):
             cb = kwargs.get("progress_callback")
             if cb:
@@ -575,7 +588,9 @@ class TestWorkerProgressCallback:
         blob.upload_transcript = AsyncMock(return_value="s3://t.json")
 
         p1, p2, p3, p4, *_ = _patch_worker_deps(
-            api_client=api, batch_service=batch, blob_service=blob,
+            api_client=api,
+            batch_service=batch,
+            blob_service=blob,
         )
 
         with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
@@ -604,6 +619,7 @@ class TestWorkerProgressCallback:
         api.create_transcript = AsyncMock(return_value={"contextItemId": "ctx-1"})
 
         batch = AsyncMock()
+
         async def fake_transcribe(**kwargs):
             cb = kwargs.get("progress_callback")
             if cb:
@@ -618,7 +634,9 @@ class TestWorkerProgressCallback:
         blob.upload_transcript = AsyncMock(return_value="s3://t.json")
 
         p1, p2, p3, p4, *_ = _patch_worker_deps(
-            api_client=api, batch_service=batch, blob_service=blob,
+            api_client=api,
+            batch_service=batch,
+            blob_service=blob,
         )
 
         with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
@@ -687,7 +705,8 @@ class TestWorkerChunkCallback:
         blob.upload_transcript = AsyncMock(return_value="s3://t.json")
 
         p1, p2, p3, p4, *_ = _patch_worker_deps(
-            batch_service=batch, blob_service=blob,
+            batch_service=batch,
+            blob_service=blob,
         )
 
         with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
@@ -808,7 +827,8 @@ class TestWorkerWithPublisherDisabled:
         blob.upload_processed_audio = AsyncMock(return_value="s3://p.wav")
 
         p1, p2, p3, p4, *_ = _patch_worker_deps(
-            api_client=api, blob_service=blob,
+            api_client=api,
+            blob_service=blob,
         )
 
         mock_settings = MagicMock()
@@ -816,8 +836,13 @@ class TestWorkerWithPublisherDisabled:
         mock_settings.pubsub_channel_prefix = "stt:transcription:"
         mock_settings.redis_url = "redis://localhost:6379/0"
 
-        with p1, p2, p3, p4, \
-             patch("stt_v2.core.messaging.pubsub.get_settings", return_value=mock_settings):
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            patch("stt_v2.core.messaging.pubsub.get_settings", return_value=mock_settings),
+        ):
             await _transcribe_file_async(
                 job_id="j-700",
                 tenant_id="t-1",
@@ -856,14 +881,20 @@ class TestWorkerWithPublisherDisabled:
                 self_pub._connected = False
 
         p1, p2, p3, p4, *_ = _patch_worker_deps(
-            api_client=api, blob_service=blob,
+            api_client=api,
+            blob_service=blob,
         )
 
-        with p1, p2, p3, p4, \
-             patch(
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            patch(
                 "stt_v2.core.messaging.pubsub.TranscriptionEventPublisher.connect",
                 patched_connect,
-             ):
+            ),
+        ):
             await _transcribe_file_async(
                 job_id="j-701",
                 tenant_id="t-1",

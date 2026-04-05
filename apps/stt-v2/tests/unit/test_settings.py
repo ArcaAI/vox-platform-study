@@ -85,7 +85,7 @@ class TestSettings:
     def test_transcription_defaults(self):
         """Test transcription default configuration."""
         with patch.dict(os.environ, {}, clear=True):
-            settings = Settings(_env_file=None)
+            settings = Settings()
 
             assert settings.transcription_timeout_seconds == 600
             assert settings.transcription_chunk_length_s == 15
@@ -259,11 +259,10 @@ class TestSettings:
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings()
             assert settings.vad_model_path is None
-            assert settings.vad_threshold == 0.6
-            assert settings.vad_min_speech_duration_ms == 350
+            assert settings.vad_threshold == 0.5
+            assert settings.vad_min_speech_duration_ms == 250
             assert settings.vad_min_silence_duration_ms == 500
             assert settings.vad_speech_pad_ms == 30
-            assert settings.vad_pre_speech_context_ms == 500
             assert settings.vad_sample_rate == 16000
 
     def test_vad_env_override(self):

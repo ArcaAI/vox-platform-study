@@ -239,9 +239,7 @@ class TestMinIOClientDelete:
         """Test successful object deletion."""
         client.delete_object("test-bucket", "path/to/file.txt")
 
-        client._client.remove_object.assert_called_once_with(
-            "test-bucket", "path/to/file.txt"
-        )
+        client._client.remove_object.assert_called_once_with("test-bucket", "path/to/file.txt")
 
     def test_delete_object_raises_storage_error_on_failure(self, client):
         """Test delete_object raises StorageError on S3Error."""
@@ -345,6 +343,7 @@ class TestMinIOClientGlobalFunctions:
     async def test_initialize_minio(self):
         """Test initialize_minio creates client and ensures buckets."""
         import stt_v2.core.storage.minio_client as module
+
         module._client = None
 
         mock_settings = MagicMock()
@@ -355,8 +354,10 @@ class TestMinIOClientGlobalFunctions:
         mock_settings.minio_audio_bucket = "audio"
         mock_settings.minio_chunk_bucket = "chunks"
 
-        with patch("stt_v2.core.storage.minio_client.settings", mock_settings), \
-             patch("stt_v2.core.storage.minio_client.Minio") as mock_minio:
+        with (
+            patch("stt_v2.core.storage.minio_client.settings", mock_settings),
+            patch("stt_v2.core.storage.minio_client.Minio") as mock_minio,
+        ):
 
             mock_instance = MagicMock()
             mock_instance.bucket_exists.return_value = True
@@ -370,6 +371,7 @@ class TestMinIOClientGlobalFunctions:
     async def test_close_minio(self):
         """Test close_minio resets client."""
         import stt_v2.core.storage.minio_client as module
+
         module._client = MagicMock()
 
         await close_minio()
@@ -379,6 +381,7 @@ class TestMinIOClientGlobalFunctions:
     def test_get_minio_client_success(self):
         """Test get_minio_client returns client when initialized."""
         import stt_v2.core.storage.minio_client as module
+
         mock_client = MagicMock()
         module._client = mock_client
 
@@ -389,6 +392,7 @@ class TestMinIOClientGlobalFunctions:
     def test_get_minio_client_raises_if_not_initialized(self):
         """Test get_minio_client raises if not initialized."""
         import stt_v2.core.storage.minio_client as module
+
         module._client = None
 
         with pytest.raises(RuntimeError, match="MinIO not initialized"):

@@ -200,7 +200,9 @@ class TestPublishStatus:
         assert "timestamp" in event["data"]
 
     @pytest.mark.asyncio
-    async def test_status_omits_worker_id_when_none(self, connected_publisher, mock_redis, mock_settings):
+    async def test_status_omits_worker_id_when_none(
+        self, connected_publisher, mock_redis, mock_settings
+    ):
         """Verify workerId is omitted when not provided."""
         with patch("stt_v2.core.messaging.pubsub.get_settings", return_value=mock_settings):
             await connected_publisher.publish_status("job-1", "COMPLETED")
@@ -230,7 +232,9 @@ class TestPublishProgress:
         assert event["data"]["stage"] == "inference"
 
     @pytest.mark.asyncio
-    async def test_progress_omits_stage_when_empty(self, connected_publisher, mock_redis, mock_settings):
+    async def test_progress_omits_stage_when_empty(
+        self, connected_publisher, mock_redis, mock_settings
+    ):
         """Verify stage is omitted when empty string."""
         with patch("stt_v2.core.messaging.pubsub.get_settings", return_value=mock_settings):
             await connected_publisher.publish_progress("job-1", 80)
@@ -247,6 +251,7 @@ class TestPublishChunk:
     @dataclass
     class MockChunk:
         """Mimics ChunkTranscriptionResult.to_dict() output."""
+
         chunk_index: int = 3
         text: str = "The patient reports mild discomfort."
         start_time: float = 12.5
@@ -293,7 +298,9 @@ class TestPublishChunk:
         assert event["data"]["wordTimestamps"][0]["confidence"] == 0.99
 
     @pytest.mark.asyncio
-    async def test_chunk_without_word_timestamps(self, connected_publisher, mock_redis, mock_settings):
+    async def test_chunk_without_word_timestamps(
+        self, connected_publisher, mock_redis, mock_settings
+    ):
         """Verify chunk event works without word timestamps."""
         chunk = self.MockChunk()
 
@@ -409,7 +416,9 @@ class TestGracefulDegradation:
         publisher._redis = None
 
     @pytest.mark.asyncio
-    async def test_publish_handles_serialization_edge_cases(self, connected_publisher, mock_redis, mock_settings):
+    async def test_publish_handles_serialization_edge_cases(
+        self, connected_publisher, mock_redis, mock_settings
+    ):
         """Verify publish handles non-standard types via default=str."""
         from datetime import datetime
 
@@ -484,7 +493,9 @@ class TestPublishChunkEdgeCases:
     """Edge cases for chunk serialization."""
 
     @pytest.mark.asyncio
-    async def test_chunk_as_dict_without_to_dict(self, connected_publisher, mock_redis, mock_settings):
+    async def test_chunk_as_dict_without_to_dict(
+        self, connected_publisher, mock_redis, mock_settings
+    ):
         """Verify chunk works with a plain dict (no to_dict method)."""
         plain_dict_chunk = {
             "chunk_index": 5,
@@ -506,7 +517,9 @@ class TestPublishChunkEdgeCases:
         assert event["data"]["isFinal"] is True
 
     @pytest.mark.asyncio
-    async def test_chunk_with_word_timestamps_using_start_end_keys(self, connected_publisher, mock_redis, mock_settings):
+    async def test_chunk_with_word_timestamps_using_start_end_keys(
+        self, connected_publisher, mock_redis, mock_settings
+    ):
         """Verify word timestamp fallback keys (start/end vs start_time/end_time)."""
         chunk = MagicMock()
         chunk.to_dict.return_value = {
@@ -532,7 +545,9 @@ class TestPublishChunkEdgeCases:
         assert wt["end"] == 0.4
 
     @pytest.mark.asyncio
-    async def test_chunk_missing_optional_fields_uses_defaults(self, connected_publisher, mock_redis, mock_settings):
+    async def test_chunk_missing_optional_fields_uses_defaults(
+        self, connected_publisher, mock_redis, mock_settings
+    ):
         """Verify chunk with minimal fields uses sane defaults."""
         chunk = MagicMock()
         chunk.to_dict.return_value = {
@@ -555,7 +570,9 @@ class TestPublishTranscriptEdgeCases:
     """Edge cases for transcript serialization."""
 
     @pytest.mark.asyncio
-    async def test_transcript_as_dict_without_to_dict(self, connected_publisher, mock_redis, mock_settings):
+    async def test_transcript_as_dict_without_to_dict(
+        self, connected_publisher, mock_redis, mock_settings
+    ):
         """Verify transcript works with a plain dict (no to_dict method)."""
         plain_result = {
             "text": "Dict result",
@@ -578,7 +595,9 @@ class TestPublishTranscriptEdgeCases:
         assert event["data"]["durationSeconds"] == 30.0
 
     @pytest.mark.asyncio
-    async def test_transcript_with_empty_result(self, connected_publisher, mock_redis, mock_settings):
+    async def test_transcript_with_empty_result(
+        self, connected_publisher, mock_redis, mock_settings
+    ):
         """Verify transcript handles empty/minimal result gracefully."""
         empty_result = MagicMock()
         empty_result.to_dict.return_value = {

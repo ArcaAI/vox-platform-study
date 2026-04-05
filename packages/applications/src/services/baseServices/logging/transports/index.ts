@@ -16,6 +16,7 @@ export { FileTransport, createFileTransport } from './file.transport';
 export { HighlightTransport, createHighlightTransport } from './highlight.transport';
 export { LokiTransport, createLokiTransport } from './loki.transport';
 export { OTelTransport, createOTelTransport } from './otel.transport';
+export { OTelLogBridgeTransport, createOTelLogBridgeTransport } from './otel-log-bridge.transport';
 
 // Re-export types for convenience
 export type {
@@ -28,6 +29,7 @@ export type {
   HighlightTransportConfig,
   LokiTransportConfig,
   OTelTransportConfig,
+  OTelLogBridgeTransportConfig,
   TransportConfig,
   ILogTransport,
   TransportFactory,

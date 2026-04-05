@@ -10,15 +10,18 @@
 #               @arcaai/noise-filter, @arcaai/med-ner, @arcaai/pipeline
 #
 # Branch strategy:
-#   cicd     — pipeline testing: all stages run, builds require manual approval
-#   staging  — auto-build changed services, trigger Argo CD staging sync
-#   release  — SDK package publishing to GitLab Package Registry
-#   main     — default branch, same as staging behavior
-#   devops/* — feature branches, lint + test only
+#   main                 — default branch: validate + test via MR gates, no builds
+#   dev                  — integration branch: validate + test + manual builds + scan
+#   staging              — pre-production: validate + test + manual builds + scan + deploy
+#   cicd                 — pipeline testing: all stages, builds manual
+#   release-sdk          — SDK publishing: @arcaai/vox + deps → GitLab Package Registry
+#   release-playground   — ui-playground release: build + push Docker image
+#   maintenance/*        — maintenance branches: validate + test + scan
 #
 # Image versioning (NO `latest` tag):
 #   Tags:      <semver>, <major>.<minor>, <major>   (e.g. 1.2.3, 1.2, 1)
 #   staging:   staging-<sha8>
+#   dev:       dev-<sha8>
 #   cicd:      cicd-<sha8>
 #   feature:   <branch>-<sha8>
 #   All:       sha-<sha8>  (immutable audit trail)
@@ -40,18 +43,24 @@ workflow:
     - if: $CI_COMMIT_BRANCH == "cicd"
       variables:
         PIPELINE_TYPE: "cicd"
+    - if: $CI_COMMIT_BRANCH == "dev"
+      variables:
+        PIPELINE_TYPE: "dev"
     - if: $CI_COMMIT_BRANCH == "staging"
       variables:
         PIPELINE_TYPE: "staging"
-    - if: $CI_COMMIT_BRANCH == "release"
+    - if: $CI_COMMIT_BRANCH == "release-sdk"
       variables:
-        PIPELINE_TYPE: "release"
-    # - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    #   variables:
-    #     PIPELINE_TYPE: "main"
-    # - if: $CI_COMMIT_BRANCH =~ /^devops\//
-    #   variables:
-    #     PIPELINE_TYPE: "feature"
+        PIPELINE_TYPE: "release_sdk"
+    - if: $CI_COMMIT_BRANCH == "release-playground"
+      variables:
+        PIPELINE_TYPE: "release_playground"
+    - if: $CI_COMMIT_BRANCH =~ /^maintenance\//
+      variables:
+        PIPELINE_TYPE: "feature"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      variables:
+        PIPELINE_TYPE: "main"
 
 stages:
   - install

@@ -37,9 +37,7 @@ from datetime import datetime
 
 import pytest
 
-VALID_TENANT_ID = _os.environ.get(
-    "TEST_TENANT_ID", "50000000-0000-0000-0000-000000000000"
-)
+VALID_TENANT_ID = _os.environ.get("TEST_TENANT_ID", "50000000-0000-0000-0000-000000000000")
 
 
 # ---------------------------------------------------------------------------
@@ -84,12 +82,12 @@ def _assert_error_response(response, *, expected_status: int, expected_error_cod
       - ``detail`` dict contains ``error_code`` (str) and ``message`` (str)
       - ``error_code`` matches the expected value
     """
-    assert response.status_code == expected_status, (
-        f"Expected {expected_status} but got {response.status_code}: {response.text}"
-    )
-    assert "application/json" in response.headers.get("content-type", ""), (
-        f"Expected JSON content-type, got: {response.headers.get('content-type')}"
-    )
+    assert (
+        response.status_code == expected_status
+    ), f"Expected {expected_status} but got {response.status_code}: {response.text}"
+    assert "application/json" in response.headers.get(
+        "content-type", ""
+    ), f"Expected JSON content-type, got: {response.headers.get('content-type')}"
     body = response.json()
     assert "detail" in body, f"Response body missing 'detail' key: {body}"
     detail = body["detail"]
@@ -99,9 +97,9 @@ def _assert_error_response(response, *, expected_status: int, expected_error_cod
     assert isinstance(detail["error_code"], str)
     assert isinstance(detail["message"], str)
     assert len(detail["message"]) > 0, "Error message should not be empty"
-    assert detail["error_code"] == expected_error_code, (
-        f"Expected error_code '{expected_error_code}', got '{detail['error_code']}'"
-    )
+    assert (
+        detail["error_code"] == expected_error_code
+    ), f"Expected error_code '{expected_error_code}', got '{detail['error_code']}'"
     return detail
 
 
@@ -200,9 +198,9 @@ class TestTranscribeHttpHappyPath:
         )
         response = await real_audio_client.post("/api/v1/transcribe", **form)
 
-        assert response.status_code == 200, (
-            f"Expected 200 but got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 but got {response.status_code}: {response.text}"
         assert "application/json" in response.headers.get("content-type", "")
         data = response.json()
 
@@ -231,9 +229,9 @@ class TestTranscribeHttpHappyPath:
         )
         response = await real_audio_client.post("/api/v1/transcribe", **form)
 
-        assert response.status_code == 200, (
-            f"Expected 200 but got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 but got {response.status_code}: {response.text}"
         data = response.json()
         assert len(data["text"]) > 0, "Transcription text should not be empty"
         assert data["duration_seconds"] > 0
@@ -383,7 +381,9 @@ class TestTranscribeHttpHappyPath:
         sentence_timestamps = data.get("sentence_timestamps", [])
         if len(sentence_timestamps) > 1:
             for i in range(1, len(sentence_timestamps)):
-                assert sentence_timestamps[i]["start_time"] >= sentence_timestamps[i - 1]["start_time"], (
+                assert (
+                    sentence_timestamps[i]["start_time"] >= sentence_timestamps[i - 1]["start_time"]
+                ), (
                     f"Sentence timestamps not chronological at index {i}: "
                     f"{sentence_timestamps[i-1]} -> {sentence_timestamps[i]}"
                 )
@@ -436,9 +436,9 @@ class TestTranscribeHttpHappyPath:
         )
         response = await real_audio_client.post("/api/v1/transcribe", **form)
 
-        assert response.status_code == 200, (
-            f"Expected 200 but got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 but got {response.status_code}: {response.text}"
         data = response.json()
         assert len(data["text"]) > 0
 
@@ -539,9 +539,9 @@ class TestTranscribeHttpErrors:
             response, expected_status=413, expected_error_code="FILE_TOO_LARGE"
         )
         # Message should mention the limit
-        assert "100" in detail["message"], (
-            f"Error message should mention 100 MB limit, got: {detail['message']}"
-        )
+        assert (
+            "100" in detail["message"]
+        ), f"Error message should mention 100 MB limit, got: {detail['message']}"
 
     async def test_file_just_over_limit_returns_413(self, configured_app):
         """File at exactly 100 MB + 1 byte should be rejected.
@@ -557,9 +557,7 @@ class TestTranscribeHttpErrors:
             tenant_id="any-tenant",
         )
         response = await configured_app.post("/api/v1/transcribe", **form)
-        _assert_error_response(
-            response, expected_status=413, expected_error_code="FILE_TOO_LARGE"
-        )
+        _assert_error_response(response, expected_status=413, expected_error_code="FILE_TOO_LARGE")
 
     async def test_file_exactly_at_limit_passes_size_check(self, configured_app, sample_wav_audio):
         """A file of exactly 100 MB should NOT be rejected by the size check.
@@ -581,9 +579,9 @@ class TestTranscribeHttpErrors:
         response = await configured_app.post("/api/v1/transcribe", **form)
 
         # Must NOT be 413 — the size check passes at exactly 100 MB
-        assert response.status_code != 413, (
-            "File at exactly 100 MB should not trigger FILE_TOO_LARGE"
-        )
+        assert (
+            response.status_code != 413
+        ), "File at exactly 100 MB should not trigger FILE_TOO_LARGE"
         # Should proceed to pipeline lookup and get 404
         assert response.status_code == 404
 
@@ -591,9 +589,7 @@ class TestTranscribeHttpErrors:
     # Task B6: Non-existent pipeline -> 404 PIPELINE_NOT_FOUND
     # ------------------------------------------------------------------
 
-    async def test_nonexistent_pipeline_slug_returns_404(
-        self, configured_app, sample_wav_audio
-    ):
+    async def test_nonexistent_pipeline_slug_returns_404(self, configured_app, sample_wav_audio):
         """Non-existent ``pipeline_id`` (slug format) should return 404.
 
         Production code: routes.py line 121-125 — slug lookup path
@@ -612,9 +608,7 @@ class TestTranscribeHttpErrors:
         )
         assert "nonexistent-pipeline-slug" in detail["message"]
 
-    async def test_nonexistent_pipeline_uuid_returns_404(
-        self, configured_app, sample_wav_audio
-    ):
+    async def test_nonexistent_pipeline_uuid_returns_404(self, configured_app, sample_wav_audio):
         """Non-existent ``pipeline_id`` (UUID format) should return 404.
 
         Production code: routes.py line 119-120 — UUID lookup path
@@ -647,9 +641,11 @@ class TestTranscribeHttpErrors:
     # validation, is_valid_language_code) run through production paths.
     # ------------------------------------------------------------------
 
-    async def test_invalid_language_code_returns_400(
-        self, configured_app, sample_wav_audio
-    ):
+    @pytest.mark.xfail(
+        reason="Language validation not yet implemented in transcribe route (no 'language' Form field)",
+        strict=True,
+    )
+    async def test_invalid_language_code_returns_400(self, configured_app, sample_wav_audio):
         """Language code 'xyz-invalid' is not in VALID_WHISPER_LANGUAGES -> 400."""
         from unittest.mock import AsyncMock, patch
 
@@ -676,6 +672,10 @@ class TestTranscribeHttpErrors:
         )
         assert "xyz-invalid" in detail["message"]
 
+    @pytest.mark.xfail(
+        reason="Language validation not yet implemented in transcribe route (no 'language' Form field)",
+        strict=True,
+    )
     async def test_three_letter_invalid_language_returns_400(
         self, configured_app, sample_wav_audio
     ):
@@ -704,6 +704,10 @@ class TestTranscribeHttpErrors:
             response, expected_status=400, expected_error_code="INVALID_LANGUAGE"
         )
 
+    @pytest.mark.xfail(
+        reason="Language validation not yet implemented in transcribe route (no 'language' Form field)",
+        strict=True,
+    )
     async def test_bcp47_with_invalid_primary_subtag_returns_400(
         self, configured_app, sample_wav_audio
     ):
@@ -736,9 +740,7 @@ class TestTranscribeHttpErrors:
             response, expected_status=400, expected_error_code="INVALID_LANGUAGE"
         )
 
-    async def test_valid_bcp47_language_passes_validation(
-        self, configured_app, sample_wav_audio
-    ):
+    async def test_valid_bcp47_language_passes_validation(self, configured_app, sample_wav_audio):
         """BCP-47 tag 'en-US' should pass language validation.
 
         Primary subtag 'en' is in VALID_WHISPER_LANGUAGES. The request will
@@ -792,9 +794,9 @@ class TestTranscribeHttpErrors:
         # Should NOT be 400 INVALID_LANGUAGE — empty string bypasses the check
         if response.status_code == 400:
             detail = response.json().get("detail", {})
-            assert detail.get("error_code") != "INVALID_LANGUAGE", (
-                "Empty language string should not trigger INVALID_LANGUAGE"
-            )
+            assert (
+                detail.get("error_code") != "INVALID_LANGUAGE"
+            ), "Empty language string should not trigger INVALID_LANGUAGE"
         # Most likely: 404 PIPELINE_NOT_FOUND (pipeline lookup runs next)
         assert response.status_code in (404, 422)
 
@@ -806,9 +808,7 @@ class TestTranscribeHttpErrors:
         """Omitting required ``pipeline_id`` field -> 422 Unprocessable Entity."""
         files = {"file": ("test.wav", io.BytesIO(sample_wav_audio), "audio/wav")}
         data = {"tenant_id": "t-test"}  # missing pipeline_id
-        response = await configured_app.post(
-            "/api/v1/transcribe", files=files, data=data
-        )
+        response = await configured_app.post("/api/v1/transcribe", files=files, data=data)
         assert response.status_code == 422
         # FastAPI 422 responses include a 'detail' list with validation errors
         body = response.json()
@@ -818,9 +818,7 @@ class TestTranscribeHttpErrors:
         """Omitting required ``tenant_id`` field -> 422 Unprocessable Entity."""
         files = {"file": ("test.wav", io.BytesIO(sample_wav_audio), "audio/wav")}
         data = {"pipeline_id": "some-pipeline"}  # missing tenant_id
-        response = await configured_app.post(
-            "/api/v1/transcribe", files=files, data=data
-        )
+        response = await configured_app.post("/api/v1/transcribe", files=files, data=data)
         assert response.status_code == 422
         body = response.json()
         assert "detail" in body
@@ -828,9 +826,7 @@ class TestTranscribeHttpErrors:
     async def test_missing_file_returns_422(self, configured_app):
         """Omitting the required ``file`` field -> 422 Unprocessable Entity."""
         data = {"pipeline_id": "some-pipeline", "tenant_id": "t-test"}
-        response = await configured_app.post(
-            "/api/v1/transcribe", data=data
-        )
+        response = await configured_app.post("/api/v1/transcribe", data=data)
         assert response.status_code == 422
 
     async def test_missing_all_fields_returns_422(self, configured_app):

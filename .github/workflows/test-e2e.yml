@@ -54,7 +54,7 @@ on:
         type: boolean
 
   pull_request:
-    branches: [main]
+    branches: [main, 'maintenance/*']
     paths:
       # API source files
       - 'apps/api/**/*.ts'
@@ -73,7 +73,7 @@ on:
       - '.github/actions/**'
 
   push:
-    branches: [main]
+    branches: [main, 'maintenance/*']
     paths:
       - 'apps/api/**/*.ts'
       - 'packages/**/*.ts'

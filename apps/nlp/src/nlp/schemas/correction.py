@@ -1,11 +1,11 @@
-from enum import Enum
+from enum import StrEnum
+
 from pydantic import BaseModel, Field
-from typing import List
 
 from nlp.schemas.common import SupportedLanguage
 
 
-class CorrectionType(str, Enum):
+class CorrectionType(StrEnum):
     ALL = "all"
     SPELLING = "spelling"
     GRAMMAR = "grammar"
@@ -28,7 +28,7 @@ class TextCorrectionResponse(BaseModel):
     original_text: str = Field(..., description="Original text (word for individual correction, full text for overall result)")
     corrected_text: str = Field(..., description="Corrected text (word for individual correction, full text for overall result)")
     language: SupportedLanguage = Field(default=SupportedLanguage.ENGLISH, description="Language of the text/correction")
-    alternatives: List[str] = Field(default_factory=list, description="List of individual corrections made")
+    alternatives: list[str] = Field(default_factory=list, description="List of individual corrections made")
 
 
 # WebSocket

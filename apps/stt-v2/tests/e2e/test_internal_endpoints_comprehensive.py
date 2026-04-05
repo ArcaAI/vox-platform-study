@@ -37,9 +37,7 @@ import pytest
 def _assert_json_content_type(response) -> None:
     """Assert the response Content-Type is application/json."""
     ct = response.headers.get("content-type", "")
-    assert "application/json" in ct, (
-        f"Expected application/json Content-Type, got: {ct!r}"
-    )
+    assert "application/json" in ct, f"Expected application/json Content-Type, got: {ct!r}"
 
 
 def _assert_iso8601_timestamp(value: str) -> datetime:
@@ -108,9 +106,7 @@ class TestCacheStatsEndpointE2E:
         """hit_rate must be between 0.0 and 1.0 inclusive."""
         response = await configured_app.get("/internal/cache/stats")
         data = response.json()
-        assert 0.0 <= data["hit_rate"] <= 1.0, (
-            f"hit_rate out of range: {data['hit_rate']}"
-        )
+        assert 0.0 <= data["hit_rate"] <= 1.0, f"hit_rate out of range: {data['hit_rate']}"
 
     async def test_cache_stats_counters_non_negative(self, configured_app):
         """All counter fields must be >= 0 (no negative bookkeeping)."""
@@ -137,17 +133,15 @@ class TestCacheStatsEndpointE2E:
         """max_memory_mb should be > 0 (config-derived limit)."""
         response = await configured_app.get("/internal/cache/stats")
         data = response.json()
-        assert data["max_memory_mb"] > 0, (
-            "max_memory_mb should be positive (from settings)"
-        )
+        assert data["max_memory_mb"] > 0, "max_memory_mb should be positive (from settings)"
 
     async def test_cache_stats_consistency_invariant(self, configured_app):
         """total_models must not exceed max_models."""
         response = await configured_app.get("/internal/cache/stats")
         data = response.json()
-        assert data["total_models"] <= data["max_models"], (
-            f"total_models ({data['total_models']}) > max_models ({data['max_models']})"
-        )
+        assert (
+            data["total_models"] <= data["max_models"]
+        ), f"total_models ({data['total_models']}) > max_models ({data['max_models']})"
 
     async def test_cache_stats_wrong_method_returns_405(self, configured_app):
         """POST to cache/stats should return 405 Method Not Allowed."""
@@ -245,67 +239,60 @@ class TestCacheModelLookupE2E:
 
     async def test_nonexistent_model_returns_404(self, configured_app):
         """Looking up a model slug that isn't cached must return 404."""
-        response = await configured_app.get(
-            "/internal/cache/model/nonexistent-slug"
-        )
+        response = await configured_app.get("/internal/cache/model/nonexistent-slug")
         assert response.status_code == 404
 
     async def test_nonexistent_model_404_has_detail(self, configured_app):
         """404 response must have a 'detail' field mentioning 'not in cache'."""
-        response = await configured_app.get(
-            "/internal/cache/model/nonexistent-slug"
-        )
+        response = await configured_app.get("/internal/cache/model/nonexistent-slug")
         assert response.status_code == 404
         _assert_json_content_type(response)
         body = response.json()
         assert "detail" in body, "404 response missing 'detail' field"
-        assert "not in cache" in body["detail"].lower(), (
-            f"Expected 'not in cache' in detail, got: {body['detail']!r}"
-        )
+        assert (
+            "not in cache" in body["detail"].lower()
+        ), f"Expected 'not in cache' in detail, got: {body['detail']!r}"
 
     async def test_nonexistent_model_detail_contains_slug(self, configured_app):
         """404 detail should echo back the requested slug for debuggability."""
         slug = "my-test-model-xyz"
         response = await configured_app.get(f"/internal/cache/model/{slug}")
         assert response.status_code == 404
-        assert slug in response.json()["detail"], (
-            "404 detail should contain the requested slug"
-        )
+        assert slug in response.json()["detail"], "404 detail should contain the requested slug"
 
     async def test_special_chars_in_slug_no_500(self, configured_app):
         """URL-encoded slashes in slug must not cause a 500 server error."""
-        response = await configured_app.get(
-            "/internal/cache/model/model%2Fwith%2Fslashes"
-        )
-        assert response.status_code in (404, 400), (
-            f"Expected 404 or 400, got {response.status_code}"
-        )
+        response = await configured_app.get("/internal/cache/model/model%2Fwith%2Fslashes")
+        assert response.status_code in (
+            404,
+            400,
+        ), f"Expected 404 or 400, got {response.status_code}"
 
     async def test_whitespace_slug_no_500(self, configured_app):
         """Whitespace-only slug after URL decode must not cause a 500."""
         response = await configured_app.get("/internal/cache/model/%20")
-        assert response.status_code in (404, 400), (
-            f"Expected 404 or 400, got {response.status_code}"
-        )
+        assert response.status_code in (
+            404,
+            400,
+        ), f"Expected 404 or 400, got {response.status_code}"
 
     async def test_very_long_slug_no_500(self, configured_app):
         """A 500-char slug must be handled gracefully (404 or 400/422)."""
         long_slug = "a" * 500
-        response = await configured_app.get(
-            f"/internal/cache/model/{long_slug}"
-        )
-        assert response.status_code in (404, 400, 422), (
-            f"Expected 404/400/422, got {response.status_code}"
-        )
+        response = await configured_app.get(f"/internal/cache/model/{long_slug}")
+        assert response.status_code in (
+            404,
+            400,
+            422,
+        ), f"Expected 404/400/422, got {response.status_code}"
 
     async def test_slug_with_unicode_no_500(self, configured_app):
         """Unicode slug must not cause a 500."""
-        response = await configured_app.get(
-            "/internal/cache/model/模型-test-🔥"
-        )
-        assert response.status_code in (404, 400), (
-            f"Expected 404 or 400, got {response.status_code}"
-        )
+        response = await configured_app.get("/internal/cache/model/模型-test-🔥")
+        assert response.status_code in (
+            404,
+            400,
+        ), f"Expected 404 or 400, got {response.status_code}"
 
 
 # ============================================================================
@@ -345,9 +332,9 @@ class TestPipelinesLoadedE2E:
         """ready_pipelines must be <= total_pipelines (invariant)."""
         response = await configured_app.get("/internal/pipelines/loaded")
         data = response.json()
-        assert data["ready_pipelines"] <= data["total_pipelines"], (
-            f"ready ({data['ready_pipelines']}) > total ({data['total_pipelines']})"
-        )
+        assert (
+            data["ready_pipelines"] <= data["total_pipelines"]
+        ), f"ready ({data['ready_pipelines']}) > total ({data['total_pipelines']})"
 
     async def test_pipelines_list_length_matches_total(self, configured_app):
         """len(pipelines) must equal total_pipelines."""
@@ -378,15 +365,13 @@ class TestPipelinesLoadedE2E:
             assert isinstance(pipeline.get("id"), str), f"{ctx}: 'id' must be str"
             assert isinstance(pipeline.get("slug"), str), f"{ctx}: 'slug' must be str"
             assert isinstance(pipeline.get("name"), str), f"{ctx}: 'name' must be str"
-            assert isinstance(pipeline.get("required_models"), list), (
-                f"{ctx}: 'required_models' must be list"
-            )
-            assert isinstance(pipeline.get("is_ready"), bool), (
-                f"{ctx}: 'is_ready' must be bool"
-            )
-            assert isinstance(pipeline.get("missing_models"), list), (
-                f"{ctx}: 'missing_models' must be list"
-            )
+            assert isinstance(
+                pipeline.get("required_models"), list
+            ), f"{ctx}: 'required_models' must be list"
+            assert isinstance(pipeline.get("is_ready"), bool), f"{ctx}: 'is_ready' must be bool"
+            assert isinstance(
+                pipeline.get("missing_models"), list
+            ), f"{ctx}: 'missing_models' must be list"
 
     async def test_pipelines_entry_missing_models_consistency(self, configured_app):
         """
@@ -399,13 +384,13 @@ class TestPipelinesLoadedE2E:
         for i, p in enumerate(data["pipelines"]):
             ctx = f"Pipeline[{i}] ({p.get('slug', '?')})"
             if p["is_ready"]:
-                assert p["missing_models"] == [], (
-                    f"{ctx}: is_ready=True but missing_models={p['missing_models']}"
-                )
+                assert (
+                    p["missing_models"] == []
+                ), f"{ctx}: is_ready=True but missing_models={p['missing_models']}"
             else:
-                assert len(p["missing_models"]) > 0, (
-                    f"{ctx}: is_ready=False but missing_models is empty"
-                )
+                assert (
+                    len(p["missing_models"]) > 0
+                ), f"{ctx}: is_ready=False but missing_models is empty"
 
     async def test_pipelines_loaded_timestamp_is_valid(self, configured_app):
         """Timestamp must be valid ISO 8601."""
@@ -464,9 +449,10 @@ class TestSessionsEndpointE2E:
         """Status must be one of the known enum values."""
         response = await configured_app.get("/internal/sessions")
         data = response.json()
-        assert data["status"] in ("running", "not_initialized"), (
-            f"Unexpected status: {data['status']!r}"
-        )
+        assert data["status"] in (
+            "running",
+            "not_initialized",
+        ), f"Unexpected status: {data['status']!r}"
 
     async def test_sessions_not_initialized_state_is_consistent(self, configured_app):
         """
@@ -536,17 +522,13 @@ class TestSessionsCleanupE2E:
 
     async def test_cleanup_custom_max_age_60(self, configured_app):
         """max_age_seconds=60 must be reflected in response."""
-        response = await configured_app.post(
-            "/internal/sessions/cleanup?max_age_seconds=60"
-        )
+        response = await configured_app.post("/internal/sessions/cleanup?max_age_seconds=60")
         assert response.status_code == 200
         assert response.json()["max_age_seconds"] == 60
 
     async def test_cleanup_custom_max_age_86400(self, configured_app):
         """Large max_age (24h) must be accepted and echoed back."""
-        response = await configured_app.post(
-            "/internal/sessions/cleanup?max_age_seconds=86400"
-        )
+        response = await configured_app.post("/internal/sessions/cleanup?max_age_seconds=86400")
         assert response.status_code == 200
         assert response.json()["max_age_seconds"] == 86400
 
@@ -568,8 +550,7 @@ class TestSessionsCleanupE2E:
         data = response.json()
 
         assert data["status"] == "not_initialized", (
-            "Expected 'not_initialized' in testcontainer E2E. "
-            f"Got: {data['status']!r}"
+            "Expected 'not_initialized' in testcontainer E2E. " f"Got: {data['status']!r}"
         )
         assert data["sessions_cleaned"] == 0
 
@@ -618,9 +599,10 @@ class TestStreamingStatusE2E:
         """Status must be one of the known enum values."""
         response = await configured_app.get("/internal/streaming/status")
         data = response.json()
-        assert data["status"] in ("running", "not_initialized"), (
-            f"Unexpected streaming status: {data['status']!r}"
-        )
+        assert data["status"] in (
+            "running",
+            "not_initialized",
+        ), f"Unexpected streaming status: {data['status']!r}"
 
     async def test_streaming_not_initialized_full_contract(self, configured_app):
         """
@@ -637,12 +619,9 @@ class TestStreamingStatusE2E:
         data = response.json()
 
         assert data["status"] == "not_initialized", (
-            "Expected 'not_initialized' in testcontainer E2E. "
-            f"Got: {data['status']!r}"
+            "Expected 'not_initialized' in testcontainer E2E. " f"Got: {data['status']!r}"
         )
-        assert "message" in data, (
-            "not_initialized response must include a 'message' field"
-        )
+        assert "message" in data, "not_initialized response must include a 'message' field"
         assert isinstance(data["message"], str)
         assert len(data["message"]) > 0, "message must not be empty"
 
@@ -694,13 +673,11 @@ class TestInternalEndpointConsistencyE2E:
 
         stats = (await configured_app.get("/internal/cache/stats")).json()
         assert stats["total_models"] == 0
-        assert stats["models"] == [], (
-            f"Expected empty models list after clear, got {len(stats['models'])} items"
-        )
+        assert (
+            stats["models"] == []
+        ), f"Expected empty models list after clear, got {len(stats['models'])} items"
 
-    async def test_pipelines_total_matches_list_and_ready_is_subset(
-        self, configured_app
-    ):
+    async def test_pipelines_total_matches_list_and_ready_is_subset(self, configured_app):
         """
         Verify three invariants at once from /internal/pipelines/loaded:
         1. total_pipelines == len(pipelines)
@@ -727,9 +704,9 @@ class TestInternalEndpointConsistencyE2E:
                 f"/internal/sessions/cleanup?max_age_seconds={max_age}"
             )
             assert resp.status_code == 200
-            assert resp.json()["max_age_seconds"] == max_age, (
-                f"max_age_seconds not echoed for input={max_age}"
-            )
+            assert (
+                resp.json()["max_age_seconds"] == max_age
+            ), f"max_age_seconds not echoed for input={max_age}"
 
     async def test_all_internal_get_endpoints_return_json(self, configured_app):
         """
@@ -744,7 +721,5 @@ class TestInternalEndpointConsistencyE2E:
         ]
         for endpoint in get_endpoints:
             response = await configured_app.get(endpoint)
-            assert response.status_code == 200, (
-                f"{endpoint} returned {response.status_code}"
-            )
+            assert response.status_code == 200, f"{endpoint} returned {response.status_code}"
             _assert_json_content_type(response)

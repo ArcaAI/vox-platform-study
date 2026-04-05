@@ -288,9 +288,8 @@ function TranscriptList({
 
   useEffect(() => {
     const frameId = requestAnimationFrame(() => {
-      const viewport = scrollRef.current?.querySelector('[data-slot="scroll-area-viewport"]');
-      if (viewport) {
-        viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' });
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       }
     });
 

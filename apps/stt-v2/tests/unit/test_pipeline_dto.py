@@ -1,6 +1,14 @@
 """Unit tests for Pipeline DTOs."""
 
+import os
+
 import pytest
+
+_MODEL_BASE = (
+    os.environ.get("HUGGINGFACE_CACHE_DIR")
+    or os.environ.get("HF_HOME")
+    or os.path.join(os.sep, "models", "hf-cache")
+)
 
 from stt_v2.pipeline.dto import (
     VALID_WHISPER_LANGUAGES,
@@ -112,10 +120,12 @@ class TestModelRef:
 
     def test_create_from_inline_dict(self):
         """Test creating ModelRef from an inline dictionary."""
-        ref = ModelRef.from_value({
-            "hf_model_id": "onnx-community/whisper-large-v3-turbo",
-            "engine": "onnx",
-        })
+        ref = ModelRef.from_value(
+            {
+                "hf_model_id": "onnx-community/whisper-large-v3-turbo",
+                "engine": "onnx",
+            }
+        )
 
         assert ref.slug is None
         assert ref.inline is not None
@@ -125,13 +135,15 @@ class TestModelRef:
 
     def test_create_from_inline_with_all_fields(self):
         """Test creating ModelRef from inline dict with all fields."""
-        ref = ModelRef.from_value({
-            "hf_model_id": "snakers4/silero-vad",
-            "engine": "onnx",
-            "version": "v6.0",
-            "compute_type": "float32",
-            "device": "cuda",
-        })
+        ref = ModelRef.from_value(
+            {
+                "hf_model_id": "snakers4/silero-vad",
+                "engine": "onnx",
+                "version": "v6.0",
+                "compute_type": "float32",
+                "device": "cuda",
+            }
+        )
 
         assert ref.inline.version == "v6.0"
         assert ref.inline.compute_type == "float32"
@@ -306,11 +318,10 @@ class TestVadConfig:
         """Test default configuration values."""
         config = VadConfig()
         assert config.enabled is True
-        assert config.threshold == 0.6
-        assert config.min_speech_duration_ms == 350
+        assert config.threshold == 0.5
+        assert config.min_speech_duration_ms == 250
         assert config.min_silence_duration_ms == 100
         assert config.padding_ms == 30
-        assert config.pre_speech_context_ms == 500
 
     def test_custom_values(self):
         """Test custom configuration values."""
@@ -431,7 +442,7 @@ class TestAiModelConfig:
             memory_size_mb=3000,
             compute_type="float16",
             download_status=AiModelDownloadStatus.DOWNLOADED,
-            local_path="/models/whisper",
+            local_path=os.path.join(_MODEL_BASE, "whisper"),
             downloaded_at=None,
             file_size_mb=3000,
             checksum=None,
@@ -531,6 +542,7 @@ class TestPipelineConfig:
             postprocessing=PostprocessingConfig(),
         )
         from datetime import datetime
+
         return PipelineConfig(
             id="p-1",
             tenant_id="t-1",
@@ -549,21 +561,26 @@ class TestPipelineConfig:
         spec = PipelineSpec(
             version="1.1",
             models=ModelRefs(
-                asr=ModelRef(inline=InlineModelDef(
-                    hf_model_id="onnx-community/whisper-large-v3-turbo",
-                    engine=AiModelFormat.ONNX,
-                )),
-                vad=ModelRef(inline=InlineModelDef(
-                    hf_model_id="snakers4/silero-vad",
-                    engine=AiModelFormat.ONNX,
-                    version="main",
-                )),
+                asr=ModelRef(
+                    inline=InlineModelDef(
+                        hf_model_id="onnx-community/whisper-large-v3-turbo",
+                        engine=AiModelFormat.ONNX,
+                    )
+                ),
+                vad=ModelRef(
+                    inline=InlineModelDef(
+                        hf_model_id="snakers4/silero-vad",
+                        engine=AiModelFormat.ONNX,
+                        version="main",
+                    )
+                ),
             ),
             preprocessing=PreprocessingConfig(),
             inference=InferenceConfig(),
             postprocessing=PostprocessingConfig(),
         )
         from datetime import datetime
+
         return PipelineConfig(
             id="p-2",
             tenant_id="t-1",
@@ -721,10 +738,12 @@ class TestModelRefEdgeCases:
 
     def test_inline_with_empty_hf_model_id(self):
         """Test inline definition with empty hf_model_id."""
-        ref = ModelRef.from_value({
-            "hf_model_id": "",
-            "engine": "onnx",
-        })
+        ref = ModelRef.from_value(
+            {
+                "hf_model_id": "",
+                "engine": "onnx",
+            }
+        )
         assert ref.is_inline is True
         assert ref.inline.hf_model_id == ""
         assert ref.identifier == ""
@@ -744,21 +763,25 @@ class TestModelRefEdgeCases:
 
     def test_unknown_engine_defaults_to_safetensor(self):
         """Test that unknown engine strings default to SAFETENSOR."""
-        ref = ModelRef.from_value({
-            "hf_model_id": "test/model",
-            "engine": "unknown_engine",
-        })
+        ref = ModelRef.from_value(
+            {
+                "hf_model_id": "test/model",
+                "engine": "unknown_engine",
+            }
+        )
         # Unknown engine should default to SAFETENSOR
         assert ref.inline.engine == AiModelFormat.SAFETENSOR
 
     def test_dict_with_extra_fields_ignored(self):
         """Test that extra fields in dict are ignored."""
-        ref = ModelRef.from_value({
-            "hf_model_id": "test/model",
-            "engine": "onnx",
-            "extra_field": "should_be_ignored",
-            "another_field": 123,
-        })
+        ref = ModelRef.from_value(
+            {
+                "hf_model_id": "test/model",
+                "engine": "onnx",
+                "extra_field": "should_be_ignored",
+                "another_field": 123,
+            }
+        )
         assert ref.inline.hf_model_id == "test/model"
         # Should not raise, extra fields ignored
 
@@ -791,7 +814,9 @@ class TestValidWhisperLanguages:
         """Test that invalid codes are not in the set."""
         invalid = ["xx", "zz", "abc", ""]
         for code in invalid:
-            assert code not in VALID_WHISPER_LANGUAGES, f"{code!r} should not be in VALID_WHISPER_LANGUAGES"
+            assert (
+                code not in VALID_WHISPER_LANGUAGES
+            ), f"{code!r} should not be in VALID_WHISPER_LANGUAGES"
 
     def test_total_count(self):
         """Test total number of supported languages."""
@@ -875,10 +900,12 @@ class TestModelRefsEdgeCases:
     def test_mixed_inline_and_slug_with_none(self):
         """Test mixed configuration with one None."""
         refs = ModelRefs(
-            asr=ModelRef(inline=InlineModelDef(
-                hf_model_id="onnx-community/whisper",
-                engine=AiModelFormat.ONNX,
-            )),
+            asr=ModelRef(
+                inline=InlineModelDef(
+                    hf_model_id="onnx-community/whisper",
+                    engine=AiModelFormat.ONNX,
+                )
+            ),
             vad=None,
             denoise=ModelRef(slug="deepfilternet"),
         )

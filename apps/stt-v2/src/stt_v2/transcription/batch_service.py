@@ -12,6 +12,7 @@ ASR engines supported:
 import asyncio
 import io
 import json
+import logging
 import os
 import tempfile
 import threading
@@ -21,7 +22,6 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
-import structlog
 from azure.cognitiveservices.speech import (
     CancellationReason,
     ResultReason,
@@ -37,8 +37,6 @@ from ..core.exceptions import (
     CloudASRTranscriptionError,
     TranscriptionError,
 )
-from ..diarization.embedding_service import EmbeddingService
-from ..diarization.speaker_identifier import SpeakerIdentifier, get_speaker_identifier
 from ..models.azure_speech_loader import normalize_language_for_azure
 from ..models.base_loader import LoadedModel
 from ..models.cache import get_model_cache
@@ -55,11 +53,7 @@ from .dto import (
 )
 from .preprocessing import get_preprocessor
 
-logger = structlog.get_logger(__name__)
-
-# Whisper's maximum context window in seconds. Audio beyond this
-# limit causes ONNX position-embedding overflow.
-_WHISPER_MAX_CONTEXT_S = 30
+logger = logging.getLogger(__name__)
 
 
 class BatchTranscriptionService:
@@ -67,37 +61,6 @@ class BatchTranscriptionService:
 
     Pipeline: Preprocess → VAD → ASR → Diarization → Postprocess
     """
-
-    # ------------------------------------------------------------------
-    # Segment splitting for embedding extraction
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _split_vad_segments_for_embedding(
-        segments: list[AudioSegment],
-        max_window_s: float = 5.0,
-    ) -> list[tuple[float, float]]:
-        """Split VAD segments into <= max_window_s chunks for embedding.
-
-        Only speech segments are included. Long segments are split into
-        equal-width chunks of at most *max_window_s* seconds.
-
-        Returns list of (start_time, end_time) tuples.
-        """
-        result: list[tuple[float, float]] = []
-        for seg in segments:
-            if not seg.is_speech:
-                continue
-            duration = seg.end_time - seg.start_time
-            if duration <= max_window_s:
-                result.append((seg.start_time, seg.end_time))
-            else:
-                t = seg.start_time
-                while t < seg.end_time:
-                    chunk_end = min(t + max_window_s, seg.end_time)
-                    result.append((t, chunk_end))
-                    t = chunk_end
-        return result
 
     # ------------------------------------------------------------------
     # Chunk overlap de-duplication
@@ -164,7 +127,6 @@ class BatchTranscriptionService:
         tenant_id: str | None = None,
         consultation_id: str | None = None,
         chunk_callback: Callable[[ChunkTranscriptionResult], None] | None = None,
-        blob_service: Any | None = None,
     ) -> TranscriptionResult:
         """
         Transcribe audio file with optional speaker diarization.
@@ -174,9 +136,8 @@ class BatchTranscriptionService:
         2. Preprocess audio (resample, normalize, denoise, VAD)
         3. Run ASR inference (per-segment when VAD active, full-audio otherwise)
         4. Run speaker diarization (if enabled)
-        5. Store audio to MinIO (before postprocessor)
-        6. Postprocess (timestamps, punctuation)
-        7. Return result with timing metrics
+        5. Postprocess (timestamps, punctuation)
+        6. Return result with timing metrics
 
         Args:
             job_id: Job ID for tracking
@@ -187,7 +148,6 @@ class BatchTranscriptionService:
             consultation_id: Optional consultation context for diarization
             chunk_callback: Optional callback invoked after each sliding-window
                 chunk is transcribed, enabling near-real-time partial results.
-            blob_service: Optional BlobService for pre-postprocess audio upload.
 
         Returns:
             TranscriptionResult with timing metrics in metadata["timing"]
@@ -206,7 +166,7 @@ class BatchTranscriptionService:
             # ----------------------------------------------------------
             # Step 1: Load models
             # ----------------------------------------------------------
-            logger.debug("Loading models...", job_id=job_id)
+            logger.info(f"[{job_id}] Loading models...")
             model_start = time.time()
             models = await self._load_models(pipeline_config)
             timing.model_loading_seconds = time.time() - model_start
@@ -225,7 +185,7 @@ class BatchTranscriptionService:
             # ----------------------------------------------------------
             # Step 2: Preprocess audio
             # ----------------------------------------------------------
-            logger.debug("Preprocessing audio (normalize, resample, denoise, VAD)", job_id=job_id, component="PREPROCESSOR")
+            logger.info(f"[{job_id}] Preprocessing audio...")
             preprocess_start = time.time()
             preprocessor = get_preprocessor()
             processed = await preprocessor.process(
@@ -233,88 +193,15 @@ class BatchTranscriptionService:
                 config=spec.preprocessing,
                 vad_model=vad_model,
                 denoise_model=denoise_model,
-                job_id=job_id,
             )
             timing.preprocessing_seconds = time.time() - preprocess_start
 
             update_progress(35)
 
             # ----------------------------------------------------------
-            # Step 2b: Extract speaker embeddings from VAD segments
-            # ----------------------------------------------------------
-            precomputed_embeddings: list[Any] | None = None
-            embedding_segment_times: list[tuple[float, float]] | None = None
-            embedding_start = time.time()
-
-            if (
-                spec.diarization.enabled
-                and tenant_id
-                and processed.vad_applied
-                and processed.segments
-            ):
-                logger.debug("Extracting speaker embeddings using pyannote", job_id=job_id, component="SPEAKER_EMBEDDING")
-                try:
-                    split_times = self._split_vad_segments_for_embedding(
-                        processed.segments, max_window_s=5.0,
-                    )
-                    if split_times:
-                        # Collect audio arrays for each split segment
-                        segment_samples: list[np.ndarray] = []
-                        for start_t, end_t in split_times:
-                            start_idx = int(start_t * processed.sample_rate)
-                            end_idx = int(end_t * processed.sample_rate)
-                            start_idx = max(0, start_idx)
-                            end_idx = min(len(processed.samples), end_idx)
-                            segment_samples.append(
-                                np.asarray(processed.samples[start_idx:end_idx], dtype=np.float32)
-                            )
-
-                        # Resolve embedding model
-                        hf_model_id: str | None = None
-                        if pipeline_config and pipeline_config.spec.models.diarization:
-                            diar_ref = pipeline_config.spec.models.diarization
-                            if diar_ref.is_inline and diar_ref.inline:
-                                hf_model_id = diar_ref.inline.hf_model_id
-
-                        if hf_model_id:
-                            emb_service = EmbeddingService(hf_model_id=hf_model_id)
-                            await emb_service.initialize()
-                        else:
-                            from ..diarization.embedding_service import get_embedding_service
-                            emb_service = get_embedding_service()
-                            if not emb_service.is_loaded:
-                                await emb_service.initialize()
-
-                        precomputed_embeddings = await emb_service.extract_batch(
-                            segment_samples=segment_samples,
-                            sample_rate=processed.sample_rate,
-                            segment_times=split_times,
-                        )
-                        embedding_segment_times = split_times
-                        logger.info(
-                            "Extracted embeddings from segments",
-                            job_id=job_id,
-                            embedding_count=len(precomputed_embeddings),
-                            segment_count=len(split_times),
-                        )
-                except Exception as e:
-                    logger.warning(
-                        "Embedding extraction failed (non-fatal)",
-                        job_id=job_id,
-                        component="SPEAKER_EMBEDDING",
-                        error=str(e),
-                    )
-                    precomputed_embeddings = None
-                    embedding_segment_times = None
-
-            timing.embedding_seconds = time.time() - embedding_start
-
-            update_progress(40)
-
-            # ----------------------------------------------------------
             # Step 3: Run ASR inference
             # ----------------------------------------------------------
-            logger.debug("Transcribing audio using ASR model", job_id=job_id, component="ASR")
+            logger.info(f"[{job_id}] Running ASR inference...")
             inference_start = time.time()
 
             # TTFW tracker: records wall-clock time when the first
@@ -374,171 +261,82 @@ class BatchTranscriptionService:
             diarization_start = time.time()
 
             if spec.diarization.enabled and tenant_id:
-                if precomputed_embeddings and embedding_segment_times:
-                    # Use precomputed embeddings (Step 2b) for identification only
-                    logger.debug("Performing speaker diarization with precomputed embeddings", job_id=job_id, component="SPEAKER_DIARIZATION")
+                # Build segments list for diarization:
+                # Prefer VAD segments, then fallback Silero, then ASR segments
+                diarization_segments = raw_result.segments  # default: ASR segments
+
+                if processed.vad_applied and processed.segments:
+                    # Use VAD speech segments (more accurate boundaries)
+                    diarization_segments = [
+                        {
+                            "start": seg.start_time,
+                            "end": seg.end_time,
+                            "text": "",
+                            "is_speech": seg.is_speech,
+                        }
+                        for seg in processed.segments
+                        if seg.is_speech
+                    ]
+                elif not processed.vad_applied:
+                    # VAD was not applied — run Silero fallback for diarization
+                    logger.warning(
+                        f"[{job_id}] Diarization requires VAD but VAD was not applied. "
+                        f"Running Silero VAD fallback..."
+                    )
                     try:
-                        hf_model_id_diar: str | None = None
-                        if pipeline_config and pipeline_config.spec.models.diarization:
-                            diar_ref = pipeline_config.spec.models.diarization
-                            if diar_ref.is_inline and diar_ref.inline:
-                                hf_model_id_diar = diar_ref.inline.hf_model_id
+                        from ..vad.silero_service import get_vad_service
 
-                        if hf_model_id_diar:
-                            emb_svc = EmbeddingService(hf_model_id=hf_model_id_diar)
-                            await emb_svc.initialize()
-                            identifier = SpeakerIdentifier(embedding_service=emb_svc)
-                        else:
-                            identifier = get_speaker_identifier()
-
-                        # Build segments dicts for diarize_with_embeddings
-                        diarization_segments_dicts = [
-                            {"start": st, "end": et, "text": "", "is_speech": True}
-                            for st, et in embedding_segment_times
-                        ]
-                        embeddings_list = [
-                            emb.embedding if emb is not None else None
-                            for emb in precomputed_embeddings
-                        ]
-
-                        diar_result = await identifier.diarize_with_embeddings(
-                            embeddings=embeddings_list,
-                            segments=diarization_segments_dicts,
-                            tenant_id=tenant_id,
-                            consultation_id=consultation_id,
-                            config=spec.diarization,
-                        )
-                        if diar_result.applied:
-                            # Project speaker IDs onto raw_result segments by time overlap
-                            for raw_seg in raw_result.segments:
-                                best_speaker = None
-                                best_overlap = 0.0
-                                best_conf = None
-                                raw_start = float(raw_seg.get("start", 0.0))
-                                raw_end = float(raw_seg.get("end", raw_start))
-                                for diar_seg in diar_result.segments:
-                                    overlap = self._segment_overlap(
-                                        raw_start, raw_end,
-                                        diar_seg.start_time, diar_seg.end_time,
-                                    )
-                                    if overlap > best_overlap:
-                                        best_overlap = overlap
-                                        best_speaker = diar_seg.speaker_id
-                                        best_conf = diar_seg.speaker_confidence
-                                if best_speaker:
-                                    raw_seg["speaker_id"] = best_speaker
-                                    raw_seg["speaker_confidence"] = best_conf
-
-                            diarization_meta = {
-                                "speakers_detected": diar_result.speakers_detected,
-                                "new_speakers_created": diar_result.new_speakers_created,
-                                "speaker_ids": diar_result.get_speaker_ids(),
-                            }
-                    except Exception as e:
-                        logger.warning("Diarization with precomputed embeddings failed (non-fatal)", job_id=job_id, error=str(e))
-                else:
-                    # Fallback: original diarization (embed + identify combined)
-                    diarization_segments = raw_result.segments
-
-                    if processed.vad_applied and processed.segments:
-                        diarization_segments = [
-                            {
-                                "start": seg.start_time,
-                                "end": seg.end_time,
-                                "text": "",
-                                "is_speech": seg.is_speech,
-                            }
-                            for seg in processed.segments
-                            if seg.is_speech
-                        ]
-                    elif not processed.vad_applied:
-                        logger.warning(
-                            "Diarization requires VAD but VAD was not applied, running Silero VAD fallback",
-                            job_id=job_id,
-                        )
-                        try:
-                            from ..vad.silero_service import get_vad_service
-
-                            vad_svc = get_vad_service()
-                            if not vad_svc.is_loaded:
-                                await vad_svc.initialize()
-                            vad_result = vad_svc.detect_speech(
-                                processed.samples, processed.sample_rate,
-                            )
-                            diarization_segments = [
-                                {
-                                    "start": s.start_time,
-                                    "end": s.end_time,
-                                    "text": "",
-                                    "is_speech": True,
-                                }
-                                for s in vad_result.segments
-                            ]
-                            logger.info(
-                                "Silero VAD fallback completed",
-                                job_id=job_id,
-                                segment_count=len(diarization_segments),
-                            )
-                        except Exception as e:
-                            logger.warning("VAD fallback failed", job_id=job_id, error=str(e))
-
-                    logger.debug("Performing speaker diarization", job_id=job_id, component="SPEAKER_DIARIZATION")
-                    try:
-                        diarization_meta = await self._run_diarization(
+                        vad_svc = get_vad_service()
+                        if not vad_svc.is_loaded:
+                            await vad_svc.initialize()
+                        vad_result = vad_svc.detect_speech(
                             processed.samples,
                             processed.sample_rate,
-                            RawTranscription(text="", segments=diarization_segments),
-                            tenant_id,
-                            consultation_id,
-                            spec.diarization,
-                            pipeline_config,
+                        )
+                        # USE the fallback segments (not discarded)
+                        diarization_segments = [
+                            {
+                                "start": s.start_time,
+                                "end": s.end_time,
+                                "text": "",
+                                "is_speech": True,
+                            }
+                            for s in vad_result.segments
+                        ]
+                        logger.info(
+                            f"[{job_id}] Silero VAD fallback: "
+                            f"{len(diarization_segments)} segments for diarization"
                         )
                     except Exception as e:
-                        logger.warning("Diarization failed (non-fatal)", job_id=job_id, component="SPEAKER_DIARIZATION", error=str(e))
+                        logger.warning(f"[{job_id}] VAD fallback failed: {e}")
 
-            timing.diarization_seconds = time.time() - diarization_start
-
-            update_progress(82)
-
-            # ----------------------------------------------------------
-            # Step 5: Store Audio to MinIO (BEFORE postprocessor)
-            # ----------------------------------------------------------
-            logger.debug("Storing processed audio to MinIO", job_id=job_id, component="STORE_AUDIO")
-            if blob_service and tenant_id:
+                logger.info(f"[{job_id}] Running speaker diarization...")
+                diarization_raw = RawTranscription(text="", segments=diarization_segments)
                 try:
-                    silence_ms = (
-                        spec.diarization.segment_silence_padding_ms
-                        if spec.diarization.enabled
-                        else 0
+                    diarization_meta = await self._run_diarization(
+                        processed.samples,
+                        processed.sample_rate,
+                        diarization_raw,
+                        tenant_id,
+                        consultation_id,
+                        spec.diarization,
+                        pipeline_config,
                     )
-                    vad_wav = processed.get_vad_merged_wav_bytes(
-                        silence_padding_ms=silence_ms,
-                    )
-                    if vad_wav:
-                        await blob_service.upload_processed_audio(
-                            audio_bytes=vad_wav,
-                            tenant_id=tenant_id,
-                            job_id=job_id,
-                            consultation_id=consultation_id,
-                        )
-                        logger.info(
-                            "Pre-postprocess audio uploaded",
-                            job_id=job_id,
-                            bytes=len(vad_wav),
+                    if diarization_segments is not raw_result.segments:
+                        self._attach_speaker_metadata_to_segments(
+                            raw_result.segments, diarization_raw.segments
                         )
                 except Exception as e:
-                    logger.warning(
-                        "Pre-postprocess audio upload failed (non-fatal)",
-                        job_id=job_id,
-                        error=str(e),
-                    )
+                    logger.warning(f"[{job_id}] Diarization failed (non-fatal): {e}")
+
+            timing.diarization_seconds = time.time() - diarization_start
 
             update_progress(85)
 
             # ----------------------------------------------------------
-            # Step 6: Postprocess
+            # Step 5: Postprocess
             # ----------------------------------------------------------
-            logger.debug("Applying postprocessing (timestamps, punctuation)", job_id=job_id, component="POSTPROCESSOR")
+            logger.info(f"[{job_id}] Postprocessing...")
             postprocess_start = time.time()
             result = self._postprocess(
                 raw_result,
@@ -574,20 +372,18 @@ class BatchTranscriptionService:
             update_progress(100)
 
             logger.info(
-                "Transcription complete",
-                job_id=job_id,
-                text_chars=len(result.text),
-                total_s=round(result.processing_time_seconds, 2),
-                ttfw_s=round(timing.ttfw_seconds, 2),
-                preprocess_s=round(timing.preprocessing_seconds, 2),
-                inference_s=round(timing.inference_seconds, 2),
-                diarization_s=round(timing.diarization_seconds, 2),
+                f"[{job_id}] Transcription complete: {len(result.text)} chars, "
+                f"{result.processing_time_seconds:.2f}s "
+                f"(TTFW={timing.ttfw_seconds:.2f}s, "
+                f"preprocess={timing.preprocessing_seconds:.2f}s, "
+                f"inference={timing.inference_seconds:.2f}s, "
+                f"diarization={timing.diarization_seconds:.2f}s)"
             )
 
             return result
 
         except Exception as e:
-            logger.error("Transcription failed", job_id=job_id, error=str(e))
+            logger.error(f"[{job_id}] Transcription failed: {e}")
             raise TranscriptionError(f"Transcription failed: {e}") from e
 
     async def _run_diarization(
@@ -607,6 +403,8 @@ class BatchTranscriptionService:
 
         Returns metadata dict with speaker info.
         """
+        from ..diarization.embedding_service import EmbeddingService
+        from ..diarization.speaker_identifier import SpeakerIdentifier, get_speaker_identifier
 
         # Resolve diarization model — pipeline inline takes precedence
         hf_model_id: str | None = None
@@ -736,7 +534,7 @@ class BatchTranscriptionService:
         asr_ref = model_refs.asr
         if asr_ref.is_inline and asr_ref.inline:
             # Inline model definition
-            logger.info("Loading inline ASR model", hf_model_id=asr_ref.inline.hf_model_id)
+            logger.info(f"Loading inline ASR model: {asr_ref.inline.hf_model_id}")
             models["asr"] = await cache.get_or_load_inline(
                 asr_ref.inline, ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
             )
@@ -754,17 +552,17 @@ class BatchTranscriptionService:
             vad_ref = model_refs.vad
             try:
                 if vad_ref.is_inline and vad_ref.inline:
-                    logger.info("Loading inline VAD model", hf_model_id=vad_ref.inline.hf_model_id)
+                    logger.info(f"Loading inline VAD model: {vad_ref.inline.hf_model_id}")
                     models["vad"] = await cache.get_or_load_inline(
                         vad_ref.inline, ModelTaskType.VOICE_ACTIVITY_DETECTION
                     )
                 elif vad_ref.slug and vad_ref.slug in model_configs:
                     models["vad"] = await cache.get_or_load(model_configs[vad_ref.slug])
                 else:
-                    logger.warning("VAD model not found", identifier=vad_ref.identifier)
+                    logger.warning(f"VAD model '{vad_ref.identifier}' not found")
                     models["vad"] = None
             except Exception as e:
-                logger.warning("Failed to load VAD model", error=str(e))
+                logger.warning(f"Failed to load VAD model: {e}")
                 models["vad"] = None
         else:
             models["vad"] = None
@@ -774,17 +572,17 @@ class BatchTranscriptionService:
             denoise_ref = model_refs.denoise
             try:
                 if denoise_ref.is_inline and denoise_ref.inline:
-                    logger.info("Loading inline denoise model", hf_model_id=denoise_ref.inline.hf_model_id)
+                    logger.info(f"Loading inline denoise model: {denoise_ref.inline.hf_model_id}")
                     models["denoise"] = await cache.get_or_load_inline(
                         denoise_ref.inline, ModelTaskType.AUDIO_TO_AUDIO
                     )
                 elif denoise_ref.slug and denoise_ref.slug in model_configs:
                     models["denoise"] = await cache.get_or_load(model_configs[denoise_ref.slug])
                 else:
-                    logger.warning("Denoise model not found", identifier=denoise_ref.identifier)
+                    logger.warning(f"Denoise model '{denoise_ref.identifier}' not found")
                     models["denoise"] = None
             except Exception as e:
-                logger.warning("Failed to load denoise model", error=str(e))
+                logger.warning(f"Failed to load denoise model: {e}")
                 models["denoise"] = None
         else:
             models["denoise"] = None
@@ -1103,14 +901,9 @@ class BatchTranscriptionService:
 
             else:
                 # ---- Short segment: single inference call ----
-                # Clamp to Whisper's 30s context window to prevent ONNX
-                # position-embedding overflow on near-boundary segments.
-                max_samples = int(_WHISPER_MAX_CONTEXT_S * sample_rate)
-                inference_audio = segment_audio[:max_samples]
-
                 try:
                     seg_result = await self._run_inference(
-                        inference_audio, sample_rate, model, config
+                        segment_audio, sample_rate, model, config
                     )
                 except Exception as e:
                     logger.warning(
@@ -1262,7 +1055,7 @@ class BatchTranscriptionService:
             AiModelFormat.CTRANSLATE2,
         ]:
             return await self._run_transformers_inference(
-                samples, sample_rate, model, config, progress_callback,
+                samples, sample_rate, model, config, progress_callback
             )
         elif model.format in [AiModelFormat.ONNX, AiModelFormat.ONNX_OPTIMUM]:
             # Check if loaded with Optimum (has proper processor)
@@ -1528,25 +1321,26 @@ class BatchTranscriptionService:
             samples,
             sampling_rate=sample_rate,
             return_tensors="pt",
-            return_attention_mask=True,
         )
 
         # Move to device
         device = model.device
         model_dtype = getattr(asr_model, "dtype", torch.float32)
 
-        # Safety: fp16 / bf16 causes issues on CPU (not supported) and MPS
-        # (Whisper generate() produces degenerate hallucinated output due to
-        # numerical instability in float16 attention on Apple Metal backend).
-        # Force float32 on both.  The cast is done IN-PLACE on the LoadedModel
-        # so subsequent requests use the already-converted model.
-        device_str = str(device)
-        if device_str in ("cpu", "mps") and model_dtype in (torch.float16, torch.bfloat16):
+        # Safety: fp16 / bf16 causes crashes on CPU (dtype mismatch) and
+        # on MPS (out-of-range integral conversion in Whisper's generate()).
+        # Force float32 for stable autoregressive decoding on non-CUDA.
+        # The cast is done IN-PLACE on the LoadedModel so subsequent
+        # requests use the already-converted model (no repeated 6 GB copies).
+        needs_fp32 = model_dtype in (torch.float16, torch.bfloat16) and str(
+            device
+        ) in ("cpu", "mps")
+        if needs_fp32:
             logger.warning(
-                "Model dtype %s on %s causes inference issues — "
-                "casting model to float32 for safe inference.",
+                "Model dtype %s on %s is unsafe for generation — "
+                "casting model to float32 for stable inference.",
                 model_dtype,
-                device_str,
+                device,
             )
             asr_model = asr_model.float()  # cast all parameters to float32
             model.model = asr_model  # persist in LoadedModel so cache is updated
@@ -1579,21 +1373,6 @@ class BatchTranscriptionService:
                 # Whisper auto-detect per generation, enabling multilingual output.
                 if not code_switching and lang is not None:
                     generate_kwargs["language"] = lang
-
-                # Forward beam search and sampling parameters from pipeline config.
-                beam_size = getattr(config, "beam_size", None)
-                if beam_size and beam_size > 1:
-                    generate_kwargs["num_beams"] = beam_size
-
-                temperature = getattr(config, "temperature", None)
-                if temperature is not None and temperature == 0.0:
-                    generate_kwargs["do_sample"] = False
-                elif temperature is not None:
-                    generate_kwargs["do_sample"] = True
-                    generate_kwargs["temperature"] = temperature
-
-                # Prevent degenerate repetition loops common in small models.
-                generate_kwargs["no_repeat_ngram_size"] = 3
 
                 # Remove None values
                 generate_kwargs = {k: v for k, v in generate_kwargs.items() if v is not None}
@@ -1752,7 +1531,6 @@ class BatchTranscriptionService:
         generate_kwargs: dict[str, Any] = {
             "task": "transcribe",
             "return_timestamps": False,
-            "no_repeat_ngram_size": 3,
         }
         code_switching = getattr(config, "code_switching", False)
         lang = getattr(config, "language", None)
@@ -1840,7 +1618,6 @@ class BatchTranscriptionService:
                 chunk_audio,
                 sampling_rate=sample_rate,
                 return_tensors="pt",
-                return_attention_mask=True,
             )
             if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
@@ -1983,13 +1760,10 @@ class BatchTranscriptionService:
         """Single-pass Optimum inference for short audio (<= chunk_length_s)."""
         import torch
 
-        # Clamp to Whisper's 30s context window
-        max_samples = int(_WHISPER_MAX_CONTEXT_S * sample_rate)
-        samples = samples[:max_samples]
-
         inputs = processor(
-            samples, sampling_rate=sample_rate, return_tensors="pt",
-            return_attention_mask=True,
+            samples,
+            sampling_rate=sample_rate,
+            return_tensors="pt",
         )
         if device != "cpu":
             inputs = {k: v.to(device) for k, v in inputs.items()}

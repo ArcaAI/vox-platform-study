@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -25,10 +26,19 @@ def settings() -> Settings:
 
 
 @pytest.fixture
-def app(settings: Settings):
-    """Create a test FastAPI app."""
+def mock_redis():
+    """Mock Redis client that responds to ping()."""
+    redis = AsyncMock()
+    redis.ping = AsyncMock(return_value=True)
+    return redis
+
+
+@pytest.fixture
+def app(settings: Settings, mock_redis):
+    """Create a test FastAPI app with mock Redis."""
     application = create_app()
     application.state.settings = settings
+    application.state.redis = mock_redis
     return application
 
 

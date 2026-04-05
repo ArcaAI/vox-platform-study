@@ -109,6 +109,7 @@ postprocessing:
 
 
 @pytest.mark.e2e
+@pytest.mark.ml
 class TestPreprocessingFlow:
     """E2E tests for audio preprocessing flow."""
 
@@ -223,6 +224,7 @@ class TestTranscriptionResultFlow:
 
         # Should be JSON serializable
         import json
+
         json_str = json.dumps(result_dict)
         assert json_str is not None
 
@@ -289,7 +291,7 @@ models:
   vad:
     hf_model_id: "snakers4/silero-vad"
     engine: "onnx"
-    version: "main"
+    version: "v6.0"
   denoise:
     hf_model_id: "nickolay/rnnoise"
     engine: "onnx"
