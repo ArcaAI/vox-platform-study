@@ -71,6 +71,7 @@ class StreamingDenoiser:
         """Create RNNoise instance. Returns False if pyrnnoise unavailable."""
         try:
             import pyrnnoise
+
             self._rnnoise = pyrnnoise.RNNoise(sample_rate=_RNNOISE_SR)
             self._available = True
             logger.info("StreamingDenoiser initialized (pyrnnoise available)")
@@ -133,10 +134,7 @@ class StreamingDenoiser:
                 ring_pos += _RNNOISE_FRAME_SIZE
 
                 chunk_int16 = (
-                    (chunk_f32 * 32767.0)
-                    .clip(-32768, 32767)
-                    .astype(np.int16)
-                    .reshape(1, -1)
+                    (chunk_f32 * 32767.0).clip(-32768, 32767).astype(np.int16).reshape(1, -1)
                 )
 
                 for _speech_prob, denoised_chunk in self._rnnoise.denoise_chunk(chunk_int16):
@@ -195,9 +193,7 @@ class StreamingDenoiser:
         # notches at speech frequencies (200Hz, 300Hz) -- the "echo."
         #
         # Fix: use the PREVIOUS frame (same time as denoised) for blending.
-        original_for_blend = (
-            self._prev_frame_16k if self._prev_frame_16k is not None else frame_16k
-        )
+        original_for_blend = self._prev_frame_16k if self._prev_frame_16k is not None else frame_16k
         self._prev_frame_16k = frame_16k.copy()
 
         if self._total_input_samples <= self._fade_in_samples:
@@ -221,6 +217,7 @@ class StreamingDenoiser:
         if self._available:
             try:
                 import pyrnnoise
+
                 self._rnnoise = pyrnnoise.RNNoise(sample_rate=_RNNOISE_SR)
             except Exception:
                 pass

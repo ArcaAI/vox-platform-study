@@ -309,9 +309,9 @@ class TestFlushDenoisePipeline:
 
         await pp.flush()
         remaining_pcm = pp.drain_processed_samples()
-        assert len(remaining_pcm) > 0, (
-            "flush() should populate _processed_samples for downstream drain"
-        )
+        assert (
+            len(remaining_pcm) > 0
+        ), "flush() should populate _processed_samples for downstream drain"
 
     @pytest.mark.asyncio
     async def test_flush_resamples_remainder_when_rates_differ(self):
