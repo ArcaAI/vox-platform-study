@@ -23,7 +23,7 @@ github-backup:
       if git show-ref --verify --quiet refs/remotes/github/$GITHUB_BACKUP_BRANCH; then
         echo "Branch $GITHUB_BACKUP_BRANCH exists on GitHub, checking out..."
         git checkout -b $GITHUB_BACKUP_BRANCH github/$GITHUB_BACKUP_BRANCH
-        git merge $CI_COMMIT_SHA --no-ff -m "Merge $CI_COMMIT_REF_NAME into $GITHUB_BACKUP_BRANCH"
+        git merge $CI_COMMIT_SHA --no-ff --allow-unrelated-histories -m "Merge $CI_COMMIT_REF_NAME into $GITHUB_BACKUP_BRANCH"
       else
         echo "Branch $GITHUB_BACKUP_BRANCH does not exist on GitHub, creating it..."
         git checkout -b $GITHUB_BACKUP_BRANCH

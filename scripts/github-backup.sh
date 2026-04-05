@@ -47,7 +47,7 @@ if git show-ref --verify --quiet refs/remotes/github/$BACKUP_BRANCH; then
     
     # Merge current changes into backup branch
     echo "Merging current changes into backup branch..."
-    git merge $CURRENT_COMMIT --no-ff -m "Merge $CURRENT_BRANCH into $BACKUP_BRANCH"
+    git merge $CURRENT_COMMIT --no-ff --allow-unrelated-histories -m "Merge $CURRENT_BRANCH into $BACKUP_BRANCH"
 else
     echo "Branch '$BACKUP_BRANCH' does not exist on GitHub, creating it..."
     
