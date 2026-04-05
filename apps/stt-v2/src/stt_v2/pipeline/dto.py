@@ -374,10 +374,11 @@ class VadConfig:
     """Voice Activity Detection configuration."""
 
     enabled: bool = True
-    threshold: float = 0.5
-    min_speech_duration_ms: int = 250
+    threshold: float = 0.6
+    min_speech_duration_ms: int = 350
     min_silence_duration_ms: int = 100
     padding_ms: int = 30
+    pre_speech_context_ms: int = 500
 
 
 @dataclass

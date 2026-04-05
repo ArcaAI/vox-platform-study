@@ -263,6 +263,7 @@ class TestSettings:
             assert settings.vad_min_speech_duration_ms == 250
             assert settings.vad_min_silence_duration_ms == 500
             assert settings.vad_speech_pad_ms == 30
+            assert settings.vad_pre_speech_context_ms == 500
             assert settings.vad_sample_rate == 16000
 
     def test_vad_env_override(self):

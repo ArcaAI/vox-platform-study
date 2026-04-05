@@ -293,7 +293,7 @@ class TestStreamingInferenceWorker:
         )
 
         utterance = AudioUtterance(
-            samples=np.zeros(16000, dtype=np.float32),
+            samples=np.random.randn(16000).astype(np.float32) * 0.1,
             sample_rate=16000,
             start_time=1.0,
             end_time=2.0,
@@ -329,7 +329,7 @@ class TestStreamingInferenceWorker:
 
         worker = StreamingInferenceWorker(asr_pipeline=fake_pipeline)
         utterance = AudioUtterance(
-            samples=np.zeros(8000, dtype=np.float32),
+            samples=np.random.randn(8000).astype(np.float32) * 0.1,
             sample_rate=16000,
             start_time=0.0,
             end_time=0.5,

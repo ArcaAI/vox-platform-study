@@ -7,6 +7,7 @@ number of samples as the input, across warmup and steady-state.
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from stt_v2.streaming.denoiser import StreamingDenoiser
 

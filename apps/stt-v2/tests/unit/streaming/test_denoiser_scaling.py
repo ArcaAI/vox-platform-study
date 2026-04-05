@@ -3,8 +3,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 
-from stt_v2.streaming.denoiser import _RNNOISE_FRAME_SIZE, StreamingDenoiser
+from stt_v2.streaming.denoiser import StreamingDenoiser, _RNNOISE_FRAME_SIZE
 
 
 def _make_denoiser(strength: float = 1.0) -> tuple[StreamingDenoiser, MagicMock]:
@@ -28,9 +29,11 @@ class TestDenoiserInt16Scaling:
     def test_denoise_chunk_receives_int16_dtype(self):
         """denoise_chunk should receive int16 numpy array, not float32."""
         d, mock_rnnoise = _make_denoiser(strength=1.0)
-        mock_rnnoise.denoise_chunk.return_value = iter([
-            (0.95, np.zeros((1, _RNNOISE_FRAME_SIZE), dtype=np.float32)),
-        ])
+        mock_rnnoise.denoise_chunk.return_value = iter(
+            [
+                (0.95, np.zeros((1, _RNNOISE_FRAME_SIZE), dtype=np.float32)),
+            ]
+        )
 
         # Skip fade-in
         d._total_input_samples = d._fade_in_samples + 1
@@ -40,16 +43,18 @@ class TestDenoiserInt16Scaling:
 
         assert mock_rnnoise.denoise_chunk.called
         call_args = mock_rnnoise.denoise_chunk.call_args[0][0]
-        assert call_args.dtype == np.int16, (
-            f"Expected int16 input to denoise_chunk, got {call_args.dtype}"
-        )
+        assert (
+            call_args.dtype == np.int16
+        ), f"Expected int16 input to denoise_chunk, got {call_args.dtype}"
 
     def test_denoise_chunk_receives_int16_scaled_values(self):
         """Input values to denoise_chunk should be in int16 range, not [-1, 1]."""
         d, mock_rnnoise = _make_denoiser(strength=1.0)
-        mock_rnnoise.denoise_chunk.return_value = iter([
-            (0.95, np.zeros((1, _RNNOISE_FRAME_SIZE), dtype=np.float32)),
-        ])
+        mock_rnnoise.denoise_chunk.return_value = iter(
+            [
+                (0.95, np.zeros((1, _RNNOISE_FRAME_SIZE), dtype=np.float32)),
+            ]
+        )
 
         d._total_input_samples = d._fade_in_samples + 1
 
@@ -79,8 +84,8 @@ class TestDenoiserInt16Scaling:
         frame = np.ones(512, dtype=np.float32) * 0.3
         result = d.process(frame)
 
-        input_rms = float(np.sqrt(np.mean(frame ** 2)))
-        output_rms = float(np.sqrt(np.mean(result ** 2)))
+        input_rms = float(np.sqrt(np.mean(frame**2)))
+        output_rms = float(np.sqrt(np.mean(result**2)))
 
         ratio = output_rms / max(input_rms, 1e-10)
         assert ratio > 0.01, (
@@ -96,22 +101,28 @@ class TestDenoiserFadeInCrossfade:
         """During fade-in with denoised=0, output should still have energy
         from the original signal (crossfade, not ramp-from-silence)."""
         d, mock_rnnoise = _make_denoiser(strength=1.0)
-        mock_rnnoise.denoise_chunk.return_value = iter([
-            (0.95, np.zeros((1, _RNNOISE_FRAME_SIZE), dtype=np.float32)),
-        ] * 10)
+        mock_rnnoise.denoise_chunk.return_value = iter(
+            [
+                (0.95, np.zeros((1, _RNNOISE_FRAME_SIZE), dtype=np.float32)),
+            ]
+            * 10
+        )
 
         # Fill buffer so second frame gets denoised output
         d.process(np.ones(512, dtype=np.float32) * 0.4)
 
         # Second frame during fade-in
         frame = np.ones(512, dtype=np.float32) * 0.4
-        mock_rnnoise.denoise_chunk.return_value = iter([
-            (0.95, np.zeros((1, _RNNOISE_FRAME_SIZE), dtype=np.float32)),
-        ] * 10)
+        mock_rnnoise.denoise_chunk.return_value = iter(
+            [
+                (0.95, np.zeros((1, _RNNOISE_FRAME_SIZE), dtype=np.float32)),
+            ]
+            * 10
+        )
         result = d.process(frame)
 
-        input_rms = float(np.sqrt(np.mean(frame ** 2)))
-        output_rms = float(np.sqrt(np.mean(result ** 2)))
+        input_rms = float(np.sqrt(np.mean(frame**2)))
+        output_rms = float(np.sqrt(np.mean(result**2)))
 
         assert output_rms > input_rms * 0.3, (
             f"Fade-in output RMS ({output_rms:.4f}) should preserve energy "
@@ -138,9 +149,7 @@ class TestDenoiserFixedDownsampleRatio:
         for i in range(20):
             frame = np.random.randn(512).astype(np.float32) * 0.3
             result = d.process(frame)
-            assert len(result) == 512, (
-                f"Frame {i}: output length {len(result)} != input length 512"
-            )
+            assert len(result) == 512, f"Frame {i}: output length {len(result)} != input length 512"
 
     def test_no_pitch_wobble_over_cycle(self):
         """Output should not have periodic speed variation.
@@ -155,6 +164,7 @@ class TestDenoiserFixedDownsampleRatio:
 
         sr = 16000
         freq = 440.0
+        samples_per_period = sr / freq  # ~36.36 samples
 
         # Need to prime buffer first (frame 1 is passthrough)
         prime = np.sin(2 * np.pi * freq * np.arange(512) / sr).astype(np.float32)
@@ -201,8 +211,7 @@ class TestDenoiserFixedDownsampleRatio:
         # Buffer should never exceed 2 * n_up (3072 for 512@16kHz)
         n_up = 512 * 3  # 1536
         assert max_buf_size < 2 * n_up, (
-            f"Buffer grew to {max_buf_size}, expected < {2 * n_up}. "
-            "Possible unbounded growth."
+            f"Buffer grew to {max_buf_size}, expected < {2 * n_up}. " "Possible unbounded growth."
         )
 
     def test_first_frame_passthrough_then_denoise(self):
