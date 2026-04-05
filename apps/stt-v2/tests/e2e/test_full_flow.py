@@ -116,6 +116,7 @@ class TestPreprocessingFlow:
     @pytest.mark.asyncio
     async def test_audio_preprocessing(self, sample_wav_audio):
         """Test audio preprocessing pipeline."""
+        pytest.importorskip("soundfile", reason="soundfile not installed (requires [ml] extra)")
         from stt_v2.pipeline.dto import DenoiseConfig, PreprocessingConfig, VadConfig
         from stt_v2.transcription.preprocessing import get_preprocessor
 

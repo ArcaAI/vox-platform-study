@@ -37,6 +37,7 @@ _FILLER_PATTERN = re.compile(
     r"^\s*(?:uh|um|ah|oh|hmm|huh|mhm|mm|oh\s*,?\s*man|\.\..+|,|\s)*\.?\s*$",
     re.IGNORECASE,
 )
+_DEVANAGARI_SCRIPT_RE = re.compile(r"[\u0900-\u097F]")
 
 
 @dataclass(frozen=True)
@@ -154,13 +155,14 @@ class StreamingInferenceWorker:
             self._previous_text = " ".join(words[-_CONTEXT_CARRY_MAX_WORDS:])
 
         # Step 2b: Punctuation restoration (postprocessor)
-        logger.debug(
-            "Restoring punctuation on transcript",
-            session_id=session_id,
-            component="POSTPROCESSOR",
-            utterance_index=utterance.utterance_index,
-        )
-        text = await self._apply_punctuation(text)
+        if self._punctuation_config and self._punctuation_config.enabled:
+            logger.debug(
+                "Restoring punctuation on transcript",
+                session_id=session_id,
+                component="POSTPROCESSOR",
+                utterance_index=utterance.utterance_index,
+            )
+            text = await self._apply_punctuation(text)
 
         split_timestamps = self._split_phrase_timestamps(
             inference_out.word_timestamps,
@@ -428,6 +430,10 @@ class StreamingInferenceWorker:
             return None, None
         if not text.strip():
             return None, None
+        if not self._tenant_id:
+            return None, None
+        if self._diarization_config is None:
+            return None, None
 
         try:
             from stt_v2.diarization.speaker_identifier import get_speaker_identifier
@@ -478,9 +484,52 @@ class StreamingInferenceWorker:
         return False
 
     async def _apply_punctuation(self, text: str) -> str:
-        """Postprocessor: Punctuation restoration."""
-        # [TODO] Implement Punctuation
-        return text
+        """Postprocessor: Punctuation restoration using Cadence."""
+        if not text.strip():
+            return text
+        if not self._punctuation_config or not self._punctuation_config.enabled:
+            return text
+
+        try:
+            from stt_v2.punctuation import service as punctuation_service
+
+            model_name = self._punctuation_config.model
+            raw_result = await punctuation_service.punctuate(text, model_name=model_name)
+            result = self._normalize_punctuation_output(raw_result)
+            if result != text:
+                logger.debug(
+                    "Punctuation applied",
+                    model=model_name,
+                    before=text,
+                    after=result,
+                )
+            return result
+        except Exception:
+            logger.warning(
+                "Punctuation restoration failed, returning original text",
+                exc_info=True,
+            )
+            return text
+
+    @staticmethod
+    def _normalize_punctuation_output(text: str) -> str:
+        """Normalize model punctuation artifacts for mixed-script output."""
+        normalized = (text or "").strip()
+        if not normalized:
+            return ""
+
+        # Cadence occasionally emits Devanagari danda for English text.
+        if "\u0964" in normalized or "\u0965" in normalized:
+            script_candidate = normalized.replace("\u0964", "").replace("\u0965", "")
+            if not _DEVANAGARI_SCRIPT_RE.search(script_candidate):
+                normalized = normalized.replace("\u0965", ".").replace("\u0964", ".")
+
+        # Keep ellipsis while removing accidental over-punctuation.
+        normalized = re.sub(r"\.{4,}", "...", normalized)
+        normalized = re.sub(r"(?<!\.)\.\.(?!\.)", ".", normalized)
+        normalized = re.sub(r"([!?])\.(?=\s|$)", r"\1", normalized)
+        normalized = re.sub(r"\s{2,}", " ", normalized).strip()
+        return normalized
 
     async def process_partial(
         self,
