@@ -7,8 +7,12 @@ github-backup:
   image: alpine:3.20
   tags: [deploy]
   interruptible: false
+  variables:
+    GIT_DEPTH: "0"            # full clone so all objects are available for push
+    GIT_LFS_SKIP_SMUDGE: "1"  # skip downloading LFS blobs during clone (saves time)
   before_script:
     - apk add --no-cache git git-lfs
+    - git lfs install
     - git config --global user.name "GitLab CI"
     - git config --global user.email "ci@gitlab.com"
   script:
@@ -17,6 +21,9 @@ github-backup:
 
       GITHUB_AUTH_URL="https://${GITHUB_BACKUP_USER}:${GITHUB_BACKUP_TOKEN}@github.com/4bits-vn/project-hope-v2.git"
       git remote add github $GITHUB_AUTH_URL
+
+      # Fetch LFS objects referenced by HEAD so they can be pushed
+      git lfs fetch origin HEAD
 
       echo "Force-pushing $CI_COMMIT_REF_NAME to GitHub branch: $GITHUB_BACKUP_BRANCH ..."
       git push github "HEAD:refs/heads/$GITHUB_BACKUP_BRANCH" --force
