@@ -74,6 +74,9 @@ dependencies = [
     "azure-cognitiveservices-speech>=1.47.0",
     # --- Qdrant (speaker embedding vector store, used by diarization) ---
     "qdrant-client>=1.13.0",
+    # --- Cadence punctuation runtime compatibility (Gemma3 bidirectional mask path) ---
+    "transformers>=4.57.6,<4.58.0",
+    "cadence-punctuation>=1.1.0",
 ]
 
 [project.optional-dependencies]
@@ -97,7 +100,6 @@ ml = [
     "torch>=2.8.0,<2.9.0",
     "torchaudio>=2.8.0,<2.9.0",
     # HuggingFace ecosystem
-    "transformers>=4.48.0",
     "accelerate>=1.12.0",
     "safetensors>=0.7.0",
     "huggingface_hub>=0.28.0",

@@ -166,12 +166,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Preload ML models (after DB is ready, since pipeline configs are in DB)
     await _preload_pipeline_models()
 
+    # Punctuation model (Cadence)
+    try:
+        import asyncio as _aio
+
+        from stt_v2.punctuation import service as punctuation_service
+
+        await _aio.to_thread(punctuation_service.initialize)
+        logger.info("Punctuation service initialized")
+    except Exception as exc:
+        logger.warning("Punctuation service initialization failed (non-fatal)", error=str(exc))
+
     logger.info("STT Service V2 started successfully")
 
     yield
 
     # Shutdown
     logger.info("Shutting down STT Service V2...")
+    try:
+        from stt_v2.punctuation import service as punctuation_service
+        punctuation_service.shutdown()
+    except Exception:
+        pass
     try:
         from stt_v2.diarization.embedding_service import get_embedding_service
 
