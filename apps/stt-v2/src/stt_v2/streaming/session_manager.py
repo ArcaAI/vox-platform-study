@@ -92,6 +92,8 @@ class SessionManager:
         self._last_snapshot_at: dict[str, float] = {}
         self._chunk_indices: dict[str, int] = {}
         self._chunk_offsets: dict[str, int] = {}
+        self._processed_chunk_indices: dict[str, int] = {}
+        self._processed_chunk_offsets: dict[str, int] = {}
         self._running = False
 
         # Cache settings values at init time to avoid calling get_settings()
@@ -449,6 +451,8 @@ class SessionManager:
         self._last_snapshot_at.pop(session_id, None)
         self._chunk_indices.pop(session_id, None)
         self._chunk_offsets.pop(session_id, None)
+        self._processed_chunk_indices.pop(session_id, None)
+        self._processed_chunk_offsets.pop(session_id, None)
 
         # Release capacity (must happen even if other cleanup fails)
         try:
@@ -1320,22 +1324,43 @@ class SessionManager:
     async def _upload_snapshot(self, session: StreamSession) -> None:
         """Upload the next raw PCM chunk of new audio since last snapshot."""
         try:
-            offset = self._chunk_offsets.get(session.session_id, 0)
-            chunk_data = bytes(session.audio_buffer[offset:])
-            if not chunk_data:
-                return
-
-            chunk_idx = self._chunk_indices.get(session.session_id, 0)
             blob = self._get_blob_service()
-            await blob.upload_streaming_raw_chunk(
-                chunk_bytes=chunk_data,
-                tenant_id=session.tenant_id,
-                session_id=session.session_id,
-                chunk_index=chunk_idx,
-            )
+            processed_audio_buffer = getattr(session, "processed_audio_buffer", None)
+            denoise_active = bool(getattr(session, "_denoise_active", False))
 
-            self._chunk_offsets[session.session_id] = len(session.audio_buffer)
-            self._chunk_indices[session.session_id] = chunk_idx + 1
+            if denoise_active and processed_audio_buffer:
+                offset = self._processed_chunk_offsets.get(session.session_id, 0)
+                chunk_data = bytes(processed_audio_buffer[offset:])
+                if not chunk_data:
+                    return
+
+                chunk_idx = self._processed_chunk_indices.get(session.session_id, 0)
+                await blob.upload_streaming_processed_chunk(
+                    chunk_bytes=chunk_data,
+                    tenant_id=session.tenant_id,
+                    session_id=session.session_id,
+                    chunk_index=chunk_idx,
+                )
+
+                self._processed_chunk_offsets[session.session_id] = len(processed_audio_buffer)
+                self._processed_chunk_indices[session.session_id] = chunk_idx + 1
+            else:
+                offset = self._chunk_offsets.get(session.session_id, 0)
+                chunk_data = bytes(session.audio_buffer[offset:])
+                if not chunk_data:
+                    return
+
+                chunk_idx = self._chunk_indices.get(session.session_id, 0)
+                await blob.upload_streaming_raw_chunk(
+                    chunk_bytes=chunk_data,
+                    tenant_id=session.tenant_id,
+                    session_id=session.session_id,
+                    chunk_index=chunk_idx,
+                )
+
+                self._chunk_offsets[session.session_id] = len(session.audio_buffer)
+                self._chunk_indices[session.session_id] = chunk_idx + 1
+
             self._last_snapshot_at[session.session_id] = time.monotonic()
             logger.info(
                 "Audio chunk uploaded",
