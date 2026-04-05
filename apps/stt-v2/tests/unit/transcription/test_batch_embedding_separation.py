@@ -25,7 +25,8 @@ class TestSplitVadSegmentsForEmbedding:
             AudioSegment(start_time=3.0, end_time=5.0, is_speech=True),
         ]
         result = BatchTranscriptionService._split_vad_segments_for_embedding(
-            segments, max_window_s=5.0,
+            segments,
+            max_window_s=5.0,
         )
         assert len(result) == 2
         assert result[0] == (0.0, 2.0)
@@ -37,7 +38,8 @@ class TestSplitVadSegmentsForEmbedding:
             AudioSegment(start_time=0.0, end_time=12.0, is_speech=True),
         ]
         result = BatchTranscriptionService._split_vad_segments_for_embedding(
-            segments, max_window_s=5.0,
+            segments,
+            max_window_s=5.0,
         )
         assert len(result) == 3
         assert result[0] == (0.0, 5.0)
@@ -52,7 +54,8 @@ class TestSplitVadSegmentsForEmbedding:
             AudioSegment(start_time=4.0, end_time=6.0, is_speech=True),
         ]
         result = BatchTranscriptionService._split_vad_segments_for_embedding(
-            segments, max_window_s=5.0,
+            segments,
+            max_window_s=5.0,
         )
         assert len(result) == 2
         assert result[0] == (0.0, 2.0)
@@ -139,8 +142,9 @@ class TestBatchEmbeddingSeparation:
         # Embedding extraction should happen before ASR
         assert "embedding" in call_order, f"Expected 'embedding' in {call_order}"
         assert "asr" in call_order, f"Expected 'asr' in {call_order}"
-        assert call_order.index("embedding") < call_order.index("asr"), \
-            f"Expected embedding before asr, got {call_order}"
+        assert call_order.index("embedding") < call_order.index(
+            "asr"
+        ), f"Expected embedding before asr, got {call_order}"
 
     @pytest.mark.asyncio
     async def test_transcribe_no_diarization_skips_embedding(self):

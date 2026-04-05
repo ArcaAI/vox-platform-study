@@ -43,12 +43,16 @@ class TestSessionManagerDenoiserWiring:
         mock_session = MagicMock()
         mock_session.force_persist = AsyncMock()
 
-        with patch("stt_v2.streaming.session_manager.StreamingDenoiser", return_value=mock_denoiser) as mock_dn_cls, \
-             patch("stt_v2.streaming.session_manager.StreamingPreprocessor") as mock_pp_cls, \
-             patch("stt_v2.streaming.session_manager.StreamSession", return_value=mock_session), \
-             patch("stt_v2.streaming.session_manager.ResultPublisher"), \
-             patch("stt_v2.streaming.session_manager.IngestionConsumer") as mock_ic, \
-             patch("stt_v2.streaming.session_manager.ControlListener") as mock_cl:
+        with (
+            patch(
+                "stt_v2.streaming.session_manager.StreamingDenoiser", return_value=mock_denoiser
+            ) as mock_dn_cls,
+            patch("stt_v2.streaming.session_manager.StreamingPreprocessor") as mock_pp_cls,
+            patch("stt_v2.streaming.session_manager.StreamSession", return_value=mock_session),
+            patch("stt_v2.streaming.session_manager.ResultPublisher"),
+            patch("stt_v2.streaming.session_manager.IngestionConsumer") as mock_ic,
+            patch("stt_v2.streaming.session_manager.ControlListener") as mock_cl,
+        ):
 
             mock_ic.return_value.start = AsyncMock()
             mock_cl.return_value.start = AsyncMock()
@@ -109,12 +113,14 @@ class TestSessionManagerDenoiserWiring:
         mock_session = MagicMock()
         mock_session.force_persist = AsyncMock()
 
-        with patch("stt_v2.streaming.session_manager.StreamingDenoiser") as mock_dn_cls, \
-             patch("stt_v2.streaming.session_manager.StreamingPreprocessor") as mock_pp_cls, \
-             patch("stt_v2.streaming.session_manager.StreamSession", return_value=mock_session), \
-             patch("stt_v2.streaming.session_manager.ResultPublisher"), \
-             patch("stt_v2.streaming.session_manager.IngestionConsumer") as mock_ic, \
-             patch("stt_v2.streaming.session_manager.ControlListener") as mock_cl:
+        with (
+            patch("stt_v2.streaming.session_manager.StreamingDenoiser") as mock_dn_cls,
+            patch("stt_v2.streaming.session_manager.StreamingPreprocessor") as mock_pp_cls,
+            patch("stt_v2.streaming.session_manager.StreamSession", return_value=mock_session),
+            patch("stt_v2.streaming.session_manager.ResultPublisher"),
+            patch("stt_v2.streaming.session_manager.IngestionConsumer") as mock_ic,
+            patch("stt_v2.streaming.session_manager.ControlListener") as mock_cl,
+        ):
 
             mock_ic.return_value.start = AsyncMock()
             mock_cl.return_value.start = AsyncMock()

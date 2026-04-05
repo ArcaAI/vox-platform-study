@@ -357,6 +357,13 @@ class TestONNXLoaderOptimumDetection:
         result = loader._should_use_optimum(onnx_community_config)
         assert result is True
 
+    def test_should_not_use_optimum_for_onnx_community_vad(self, loader, onnx_community_config):
+        """Test that onnx-community VAD models don't use Optimum."""
+        onnx_community_config.task_type = ModelTaskType.VOICE_ACTIVITY_DETECTION
+        onnx_community_config.source_uri = "onnx-community/silero-vad"
+        result = loader._should_use_optimum(onnx_community_config)
+        assert result is False
+
     def test_should_not_use_optimum_for_local_vad(self, loader, local_onnx_config):
         """Test that local VAD models don't use Optimum."""
         result = loader._should_use_optimum(local_onnx_config)

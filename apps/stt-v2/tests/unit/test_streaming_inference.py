@@ -20,9 +20,21 @@ def _make_utterance(
     index: int = 0,
     duration_s: float = 1.0,
     is_final: bool = False,
+    rms_level: float | None = None,
 ) -> AudioUtterance:
-    """Create a dummy AudioUtterance for testing."""
+    """Create a dummy AudioUtterance for testing.
+
+    Parameters
+    ----------
+    rms_level:
+        If provided, scale samples to have approximately this RMS level.
+        Use a very small value (e.g. 0.001) for near-silence.
+    """
     samples = np.random.randn(int(16000 * duration_s)).astype(np.float32)
+    if rms_level is not None:
+        current_rms = float(np.sqrt(np.mean(samples**2)))
+        if current_rms > 0:
+            samples = samples * (rms_level / current_rms)
     return AudioUtterance(
         samples=samples,
         sample_rate=16000,
@@ -385,3 +397,127 @@ class TestPipelineReturnTypes:
         assert results[0].text == "utterance 1"
         assert results[4].text == "utterance 5"
         assert publisher.publish.await_count == 5
+
+
+# =========================================================================
+# Tests: Hallucination filter
+# =========================================================================
+
+
+class TestHallucinationFilter:
+    """Tests for post-ASR hallucination filtering."""
+
+    @pytest.mark.asyncio
+    async def test_rejects_filler_only_text(self):
+        """Filler-only output like 'uh...' should be filtered to empty."""
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "uh...")
+        utt = _make_utterance(rms_level=0.005)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == ""
+
+    @pytest.mark.asyncio
+    async def test_rejects_um_filler(self):
+        """Single filler 'um' should be filtered."""
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "um")
+        utt = _make_utterance(rms_level=0.005)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == ""
+
+    @pytest.mark.asyncio
+    async def test_rejects_oh_man_hallucination(self):
+        """'Oh, man.' on low-energy segment should be filtered."""
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "Oh, man.")
+        utt = _make_utterance(rms_level=0.003)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == ""
+
+    @pytest.mark.asyncio
+    async def test_rejects_dots_only(self):
+        """Ellipsis-only output should be filtered."""
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "...")
+        utt = _make_utterance(rms_level=0.005)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == ""
+
+    @pytest.mark.asyncio
+    async def test_rejects_mixed_fillers(self):
+        """Mixed fillers 'uh um ah' should be filtered."""
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "uh um ah")
+        utt = _make_utterance(rms_level=0.005)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == ""
+
+    @pytest.mark.asyncio
+    async def test_keeps_real_speech(self):
+        """Real speech with normal energy should be preserved."""
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "hello world this is a test")
+        utt = _make_utterance(rms_level=0.1)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == "hello world this is a test"
+
+    @pytest.mark.asyncio
+    async def test_keeps_short_real_word_with_energy(self):
+        """Short real word 'yes' with sufficient energy should be preserved."""
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "yes")
+        utt = _make_utterance(rms_level=0.1)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == "yes"
+
+    @pytest.mark.asyncio
+    async def test_keeps_filler_with_real_content(self):
+        """Text containing fillers mixed with real words should be preserved."""
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "uh I think this is important")
+        utt = _make_utterance(rms_level=0.08)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == "uh I think this is important"
+
+    @pytest.mark.asyncio
+    async def test_low_energy_short_text_filtered(self):
+        """Short text on very low energy segment should be filtered."""
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "Oh.")
+        utt = _make_utterance(rms_level=0.002)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == ""
+
+    @pytest.mark.asyncio
+    async def test_rejects_thank_you_on_silence(self):
+        """'Thank you.' on near-silence is a common Whisper hallucination."""
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "Thank you.")
+        utt = _make_utterance(rms_level=0.002)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == ""
+
+    @pytest.mark.asyncio
+    async def test_hallucination_filtered_still_publishes(self):
+        """Filtered hallucination should still publish (with empty text)."""
+        publisher = AsyncMock()
+        worker = StreamingInferenceWorker(
+            result_publisher=publisher,
+            asr_pipeline=lambda s, sr: "uh...",
+        )
+        utt = _make_utterance(rms_level=0.005)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == ""
+        publisher.publish.assert_awaited_once()

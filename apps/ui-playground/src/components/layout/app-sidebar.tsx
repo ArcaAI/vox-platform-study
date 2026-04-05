@@ -81,9 +81,12 @@ const playgroundItems: NavItem[] = [
 ];
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
-  const isSuperAdmin = useAuthStore((s: { isSuperAdmin: () => boolean }) => s.isSuperAdmin);
-  const roles = useAuthStore((s: { user?: { roles?: string[] } | null }) => s.user?.roles ?? []);
-  const canAccessDnaReports = roles.includes('SUPER_ADMIN') || roles.includes('GLOBAL_ADMIN') || roles.includes('TENANT_ADMIN');
+  const isSuperAdmin = useAuthStore((s) => s.user?.roles?.includes('SUPER_ADMIN') ?? false);
+  const canAccessDnaReports = useAuthStore((s) => {
+    const roles = s.user?.roles;
+    if (!roles) return false;
+    return roles.includes('SUPER_ADMIN') || roles.includes('GLOBAL_ADMIN') || roles.includes('TENANT_ADMIN');
+  });
 
   const adminItems = useMemo<NavItem[]>(() => {
     const items: NavItem[] = [
@@ -103,7 +106,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       });
     }
 
-    if (isSuperAdmin()) {
+    if (isSuperAdmin) {
       items.push(
         {
           title: 'Tenants',

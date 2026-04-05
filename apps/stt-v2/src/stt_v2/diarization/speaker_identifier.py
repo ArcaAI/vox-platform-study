@@ -117,7 +117,7 @@ class SpeakerIdentifier:
             raise SpeakerIdentificationError(f"Speaker identification failed: {e}") from e
 
     # ------------------------------------------------------------------
-    # Single-segment identification from precomputed embedding
+    # Single-segment identification with precomputed embedding
     # ------------------------------------------------------------------
 
     async def identify_with_embedding(
@@ -135,6 +135,7 @@ class SpeakerIdentifier:
         config = config or DiarizationConfig()
 
         try:
+            # Search Qdrant
             matches = await self._speaker_store.search_similar(
                 tenant_id=tenant_id,
                 query_embedding=embedding.embedding,
@@ -149,9 +150,10 @@ class SpeakerIdentifier:
                     speaker_id=best["speaker_id"],
                     confidence=best["score"],
                     is_new_speaker=False,
-                    point_id=best["point_id"],
+                    point_id=best.get("point_id"),
                 )
 
+            # No match -- register new speaker if enabled
             if config.auto_register_speakers:
                 new_speaker_id = f"speaker-{uuid.uuid4().hex[:8]}"
                 point_id = await self._speaker_store.upsert_embedding(
@@ -184,7 +186,7 @@ class SpeakerIdentifier:
             ) from e
 
     # ------------------------------------------------------------------
-    # Multi-segment diarization from precomputed embeddings
+    # Multi-segment diarization with precomputed embeddings
     # ------------------------------------------------------------------
 
     async def diarize_with_embeddings(
@@ -387,29 +389,87 @@ class SpeakerIdentifier:
                 embeddings = [None] * len(batch_audio)
 
         # ----------------------------------------------------------
-        # Phase 3: Identify speakers per embedding
+        # Phase 3: Identify speakers per embedding (delegated)
         # ----------------------------------------------------------
+        # Build per-index embedding map for the shared helper
+        indexed_embeddings: list[SpeakerEmbedding | None] = [None] * len(segments)
+        for emb, idx in zip(embeddings, batch_indices, strict=False):
+            indexed_embeddings[idx] = emb
+
+        diarized_segments_out, speakers_seen, new_speakers = await self._identify_from_embeddings(
+            embeddings=indexed_embeddings,
+            segments=segments,
+            indices=batch_indices,
+            tenant_id=tenant_id,
+            consultation_id=consultation_id,
+            config=config,
+            prefilled=diarized_segments,
+        )
+
+        return DiarizationResult(
+            segments=diarized_segments_out,
+            speakers_detected=len(speakers_seen),
+            new_speakers_created=new_speakers,
+            applied=True,
+        )
+
+    # ------------------------------------------------------------------
+    # Shared Phase 3: Qdrant lookup per embedding
+    # ------------------------------------------------------------------
+
+    async def _identify_from_embeddings(
+        self,
+        embeddings: list[SpeakerEmbedding | None],
+        segments: list[dict[str, Any]],
+        indices: list[int],
+        tenant_id: str,
+        consultation_id: str | None = None,
+        config: DiarizationConfig | None = None,
+        prefilled: list[DiarizedSegment | None] | None = None,
+    ) -> tuple[list[DiarizedSegment], set[str], int]:
+        """Shared Phase 3: Qdrant lookup + match/register per embedding.
+
+        Args:
+            embeddings: List of embeddings, same length as segments.
+            segments: Transcription segments.
+            indices: Which indices to process.
+            tenant_id: Tenant for Qdrant scope.
+            consultation_id: Optional consultation context.
+            config: Diarization config.
+            prefilled: Optional pre-filled diarized segments (from Phase 1).
+
+        Returns:
+            Tuple of (diarized_segments, speakers_seen, new_speakers_count).
+        """
+        config = config or DiarizationConfig()
+
+        if prefilled is not None:
+            diarized_segments = list(prefilled)
+        else:
+            diarized_segments = [None] * len(segments)  # type: ignore[list-item]
+
         speakers_seen: set[str] = set()
         new_speakers = 0
 
-        for emb, idx in zip(embeddings, batch_indices, strict=False):
+        for idx in indices:
+            emb = embeddings[idx] if idx < len(embeddings) else None
             seg = segments[idx]
             start = seg.get("start", 0.0)
             end = seg.get("end", 0.0)
             text = seg.get("text", "")
 
             if emb is None:
-                diarized_segments[idx] = DiarizedSegment(
-                    text=text,
-                    start_time=start,
-                    end_time=end,
-                    speaker_id=None,
-                    word_timestamps=seg.get("word_timestamps", []),
-                )
+                if diarized_segments[idx] is None:
+                    diarized_segments[idx] = DiarizedSegment(
+                        text=text,
+                        start_time=start,
+                        end_time=end,
+                        speaker_id=None,
+                        word_timestamps=seg.get("word_timestamps", []),
+                    )
                 continue
 
             try:
-                # Search Qdrant
                 matches = await self._speaker_store.search_similar(
                     tenant_id=tenant_id,
                     query_embedding=emb.embedding,
@@ -424,7 +484,6 @@ class SpeakerIdentifier:
                     confidence = best["score"]
                     is_new = False
                 elif config.auto_register_speakers:
-                    # Enforce max_speakers limit
                     if config.max_speakers > 0 and len(speakers_seen) >= config.max_speakers:
                         speaker_id = "unknown"
                         confidence = None
@@ -464,7 +523,7 @@ class SpeakerIdentifier:
 
             except Exception as e:
                 logger.warning(
-                    "Diarization failed for segment [%.1f–%.1f]: %s",
+                    "Diarization failed for segment [%.1f-%.1f]: %s",
                     start,
                     end,
                     e,
@@ -477,12 +536,7 @@ class SpeakerIdentifier:
                     word_timestamps=seg.get("word_timestamps", []),
                 )
 
-        return DiarizationResult(
-            segments=diarized_segments,  # type: ignore[arg-type]
-            speakers_detected=len(speakers_seen),
-            new_speakers_created=new_speakers,
-            applied=True,
-        )
+        return diarized_segments, speakers_seen, new_speakers
 
 
 # ---------------------------------------------------------------------------
