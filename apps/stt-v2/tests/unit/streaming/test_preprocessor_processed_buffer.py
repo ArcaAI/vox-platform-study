@@ -1,7 +1,6 @@
 """RED tests for S4 — preprocessor processed-audio buffer and drain."""
 
 import numpy as np
-import pytest
 
 from stt_v2.streaming.preprocessor import StreamingPreprocessor
 
