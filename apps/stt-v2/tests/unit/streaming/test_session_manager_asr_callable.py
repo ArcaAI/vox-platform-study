@@ -1,58 +1,50 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
-from stt_v2.transcription.dto import RawTranscription
+torch = pytest.importorskip("torch")
 
 
 class TestSessionManagerAsrCallable:
 
     @pytest.mark.asyncio
-    async def test_make_asr_callable_uses_matching_translated_segment(self):
+    async def test_make_asr_callable_returns_text_and_timestamps(self):
         from stt_v2.streaming.session_manager import SessionManager
 
         mgr = MagicMock(spec=SessionManager)
 
-        mock_raw = RawTranscription(
-            text="Xin chào.",
-            language="vi",
-            segments=[
-                {
-                    "text": "Hello.",
-                    "english_text": "Hello.",
-                    "start": 0.0,
-                    "end": 0.5,
-                },
-                {
-                    "text": "Xin chào.",
-                    "english_text": "Hello.",
-                    "start": 0.5,
-                    "end": 1.0,
-                },
-            ],
-            word_timestamps=[{"word": "Xin", "start": 0.5, "end": 0.7}],
+        # Build a mock LoadedModel with .model, .processor, .device
+        fake_output = torch.tensor([[1, 2, 3]])
+        mock_model = MagicMock()
+        mock_model.dtype = torch.float32
+        mock_model.generate.return_value = fake_output
+
+        mock_processor = MagicMock()
+        mock_processor.batch_decode.return_value = ["  Xin chào.  "]
+        mock_processor.decode.return_value = {
+            "offsets": [
+                {"text": "Xin", "timestamp": (0.5, 0.7)},
+                {"text": "chào.", "timestamp": (0.7, 1.0)},
+            ]
+        }
+
+        mock_asr_model = MagicMock()
+        mock_asr_model.model = mock_model
+        mock_asr_model.processor = mock_processor
+        mock_asr_model.feature_extractor = None
+        mock_asr_model.device = torch.device("cpu")
+
+        run_inference = SessionManager._make_asr_callable(
+            mgr,
+            asr_model=mock_asr_model,
+            inference_config=MagicMock(beam_size=1, code_switching=False, language="vi"),
         )
 
-        mock_batch_service = MagicMock()
-        mock_batch_service._run_inference = AsyncMock(return_value=mock_raw)
-
-        with patch.dict(
-            "sys.modules",
-            {
-                "stt_v2.transcription.batch_service": MagicMock(
-                    BatchTranscriptionService=lambda: mock_batch_service
-                ),
-            },
-        ):
-            run_inference = SessionManager._make_asr_callable(
-                mgr,
-                asr_model=MagicMock(),
-                inference_config=MagicMock(),
-            )
-
-        result = await run_inference(MagicMock(), 16000)
+        samples = np.zeros(16000, dtype=np.float32)
+        result = await run_inference(samples, 16000)
 
         assert result["text"] == "Xin chào."
-        assert result["english_text"] == "Hello."
-        assert result["language"] == "vi"
-        assert result["word_timestamps"] == [{"word": "Xin", "start": 0.5, "end": 0.7}]
+        assert len(result["word_timestamps"]) == 2
+        assert result["word_timestamps"][0]["word"] == "Xin"
+        assert result["word_timestamps"][0]["start"] == 0.5
