@@ -59,12 +59,15 @@ class StreamingInferenceWorker:
         tenant_id: str | None = None,
         consultation_id: str | None = None,
         diarization_config: Any = None,
+        punctuation_config: Any = None,
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
         self._tenant_id = tenant_id
         self._consultation_id = consultation_id
         self._diarization_config = diarization_config
+        self._punctuation_config = punctuation_config
+        self._punctuation_model: Any | None = None
 
     @property
     def has_pipeline(self) -> bool:
@@ -115,6 +118,7 @@ class StreamingInferenceWorker:
             inference_out = _InferenceResult()
 
         text = self._sanitize_text(inference_out.text)
+        text = await self._apply_punctuation(text)
 
         split_timestamps = self._split_phrase_timestamps(
             inference_out.word_timestamps,
@@ -307,6 +311,21 @@ class StreamingInferenceWorker:
             cleaned = cleaned[:_MAX_SEGMENT_TEXT_CHARS].rstrip()
 
         return cleaned
+
+    async def _apply_punctuation(self, text: str) -> str:
+        """Apply punctuation restoration when configured.
+
+        Current streaming behavior is intentionally a no-op passthrough.
+        """
+        if text == "":
+            return ""
+        if text.isspace():
+            return text
+        if not self._punctuation_config:
+            return text
+        if not getattr(self._punctuation_config, "enabled", False):
+            return text
+        return text
 
     async def _extract_embedding(self, utterance: AudioUtterance) -> Any | None:
         """Extract a speaker embedding for the utterance when diarization is enabled."""
