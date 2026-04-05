@@ -247,6 +247,7 @@ class TranscriptionResult:
                     "text": s.text,
                     "start_time": s.start_time,
                     "end_time": s.end_time,
+                    "english_text": s.english_text,
                 }
                 for s in self.sentence_timestamps
             ],

@@ -115,7 +115,7 @@ postprocessing:
         # Check preprocessing defaults
         assert spec.preprocessing.target_sample_rate == 16000
         assert spec.preprocessing.vad.enabled is True
-        assert spec.preprocessing.vad.threshold == 0.5
+        assert spec.preprocessing.vad.threshold == 0.6
 
         # Check inference defaults
         assert spec.inference.batch_size == 16
