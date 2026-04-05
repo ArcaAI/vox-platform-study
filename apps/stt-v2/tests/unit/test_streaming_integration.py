@@ -155,6 +155,7 @@ class TestFrameHandlerIntegration:
             start_time=0.0,
             end_time=0.032,
             utterance_index=0,
+            is_final=True,
         )
         mock_pp.feed = AsyncMock(return_value=[mock_utt])
         mock_pp.utterance_count = 1
@@ -179,8 +180,8 @@ class TestFrameHandlerIntegration:
 
         mock_pp = AsyncMock(spec=StreamingPreprocessor)
         utts = [
-            AudioUtterance(np.zeros(100, dtype=np.float32), 16000, 0.0, 0.5, 0),
-            AudioUtterance(np.zeros(100, dtype=np.float32), 16000, 0.5, 1.0, 1),
+            AudioUtterance(np.zeros(100, dtype=np.float32), 16000, 0.0, 0.5, 0, is_final=True),
+            AudioUtterance(np.zeros(100, dtype=np.float32), 16000, 0.5, 1.0, 1, is_final=True),
         ]
         mock_pp.feed = AsyncMock(return_value=utts)
         mock_pp.utterance_count = 2
@@ -208,6 +209,7 @@ class TestFrameHandlerIntegration:
             start_time=0.0,
             end_time=0.032,
             utterance_index=0,
+            is_final=True,
         )
 
         mock_pp = AsyncMock(spec=StreamingPreprocessor)
