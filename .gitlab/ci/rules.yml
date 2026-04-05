@@ -3,13 +3,16 @@
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Branch behavior:
-#   main               — validate + test via MR gates only, no builds
-#   dev                — validate + test + manual builds + scan
-#   staging            — validate + test + manual builds + scan + deploy
+#   main               — validate + test (change-filtered) via MR gates only, no builds
+#   dev                — validate + test (ALL services, unconditional) + manual builds + scan
+#   staging            — validate + test (change-filtered) + manual builds + scan + deploy
 #   cicd               — all stages run (no change filtering), builds manual
 #   release-sdk        — SDK publish only (@arcaai/vox → GitLab Package Registry)
 #   release-playground — ui-playground Docker build + push
-#   maintenance/*      — validate + test + scan (no builds)
+#   maintenance/*      — validate + test (change-filtered) + scan (no builds)
+#
+# NOTE: `dev` runs ALL validate/test jobs unconditionally (no `changes` filter)
+# because it is the integration branch — the last safety net before staging.
 
 # ── Always-run conditions ───────────────────────────────────────────────────
 
@@ -43,7 +46,8 @@
           - packages/config-rollup/**/*
           - packages/config-ts/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
       changes:
         - apps/api/**/*
         - packages/database/**/*
@@ -84,7 +88,8 @@
           - packages/utils/**/*
           - packages/config-tailwind/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
       changes:
         - apps/ui-playground/**/*
         - packages/ui/**/*
@@ -114,7 +119,8 @@
         paths:
           - apps/stt-v2/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/stt-v2/**/*
 
@@ -129,7 +135,8 @@
         paths:
           - apps/smr/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/smr/**/*
 
@@ -144,7 +151,8 @@
         paths:
           - apps/nlp/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/nlp/**/*
 
@@ -159,7 +167,8 @@
         paths:
           - packages/database/**/*
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - packages/database/**/*
 
@@ -177,7 +186,8 @@
           - packages/**/*
           - "*.json"
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/api/**/*
         - apps/ui-playground/**/*
@@ -203,7 +213,8 @@
           - "apps/smr/**/pyproject.toml"
           - "apps/nlp/**/pyproject.toml"
         compare_to: refs/heads/main
-    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - "apps/stt-v2/**/*.py"
         - "apps/smr/**/*.py"

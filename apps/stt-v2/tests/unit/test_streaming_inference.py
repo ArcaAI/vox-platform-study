@@ -194,6 +194,11 @@ class TestProcessUtterance:
         )
         utt = _make_utterance(duration_s=1.2)
 
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.extract_from_samples = AsyncMock(
+            return_value=MagicMock()
+        )
+
         mock_identifier = MagicMock()
         mock_identifier.identify_with_embedding = AsyncMock(
             return_value=MagicMock(speaker_id="speaker-abc", confidence=0.93)

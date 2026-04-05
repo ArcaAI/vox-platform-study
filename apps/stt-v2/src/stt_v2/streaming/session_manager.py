@@ -15,6 +15,7 @@ Responsibilities:
 from __future__ import annotations
 
 import asyncio
+import importlib
 import os
 import time
 import uuid
@@ -46,6 +47,7 @@ from stt_v2.streaming.schemas import (
     SessionStatus,
 )
 from stt_v2.streaming.session import StreamSession
+from stt_v2.transcription.batch_service import BatchTranscriptionService
 
 logger = structlog.get_logger(__name__)
 
@@ -302,6 +304,21 @@ class SessionManager:
                 if not denoiser.initialize():
                     denoiser = None  # pyrnnoise unavailable, degrade gracefully
             normalize = pipeline_config.preprocessing.normalize if pipeline_config else False
+
+            if pipeline_config:
+                preprocessing_cfg = pipeline_config.preprocessing
+                vad_kwargs["normalize"] = bool(getattr(preprocessing_cfg, "normalize", False))
+                target_sample_rate = getattr(preprocessing_cfg, "target_sample_rate", None)
+                if target_sample_rate:
+                    vad_kwargs["target_sample_rate"] = target_sample_rate
+
+                denoise_cfg = getattr(preprocessing_cfg, "denoise", None)
+                if denoise_cfg and getattr(denoise_cfg, "enabled", False):
+                    denoiser = StreamingDenoiser(
+                        input_sr=sample_rate,
+                        strength=float(getattr(denoise_cfg, "strength", 1.0)),
+                    )
+                    denoiser.initialize()
 
             preprocessor = StreamingPreprocessor(
                 session_id=session_id,
@@ -634,9 +651,13 @@ class SessionManager:
         streaming and batch share the same ASR code path, reducing
         maintenance burden and ensuring consistency.
         """
-        from stt_v2.transcription.batch_service import BatchTranscriptionService
-
-        batch_svc = BatchTranscriptionService()
+        batch_service_module = importlib.import_module("stt_v2.transcription.batch_service")
+        batch_service_cls = getattr(
+            batch_service_module,
+            "BatchTranscriptionService",
+            BatchTranscriptionService,
+        )
+        batch_svc = batch_service_cls()
 
         async def run_inference(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
             result = await batch_svc._run_inference(
@@ -647,15 +668,33 @@ class SessionManager:
             )
             if not result:
                 return {"text": "", "word_timestamps": []}
+            text = (result.text or "").strip()
             english_text = None
             if result.segments:
-                for segment in result.segments:
-                    if isinstance(segment, dict) and segment.get("english_text"):
-                        english_text = segment["english_text"]
-                        break
+                translated_segments = [
+                    segment
+                    for segment in result.segments
+                    if isinstance(segment, dict) and segment.get("english_text")
+                ]
+                if translated_segments:
+                    matched_segment = next(
+                        (
+                            segment
+                            for segment in translated_segments
+                            if (segment.get("text") or "").strip() == text
+                        ),
+                        None,
+                    )
+                    english_text = (
+                        matched_segment.get("english_text")
+                        if matched_segment is not None
+                        else translated_segments[-1].get("english_text")
+                    )
+            language = getattr(result, "language", None)
             return {
                 "text": result.text,
                 **({"english_text": english_text} if english_text else {}),
+                **({"language": language} if isinstance(language, str) and language else {}),
                 "word_timestamps": result.word_timestamps or [],
             }
 

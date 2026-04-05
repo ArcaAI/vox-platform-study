@@ -43,6 +43,7 @@ class _InferenceResult:
 
     text: str = ""
     english_text: str | None = None
+    language: str | None = None
     word_timestamps: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -133,6 +134,7 @@ class StreamingInferenceWorker:
             inference_out = _InferenceResult()
 
         text = self._sanitize_text(inference_out.text)
+        text = await self._apply_punctuation(text)
 
         # Step 2a: Hallucination filter — reject filler/silence artifacts
         if self._is_hallucination(text, utterance):
@@ -241,6 +243,7 @@ class StreamingInferenceWorker:
             return _InferenceResult(
                 text=result.get("text") or "",
                 english_text=result.get("english_text") or result.get("englishText"),
+                language=result.get("language") or result.get("detected_language"),
                 word_timestamps=result.get("word_timestamps") or [],
             )
         if isinstance(result, str):
@@ -350,6 +353,78 @@ class StreamingInferenceWorker:
             cleaned = cleaned[:_MAX_SEGMENT_TEXT_CHARS].rstrip()
 
         return cleaned
+
+    async def _apply_punctuation(self, text: str) -> str:
+        """Apply punctuation restoration when configured.
+
+        Current streaming behavior is intentionally a no-op passthrough.
+        """
+        if text == "":
+            return ""
+        if text.isspace():
+            return text
+        if not self._punctuation_config:
+            return text
+        if not getattr(self._punctuation_config, "enabled", False):
+            return text
+        return text
+
+    async def _extract_embedding(self, utterance: AudioUtterance) -> Any | None:
+        """Extract a speaker embedding for the utterance when diarization is enabled."""
+        if not self._tenant_id:
+            return None
+        if not self._diarization_config or not getattr(self._diarization_config, "enabled", False):
+            return None
+
+        min_duration = float(getattr(self._diarization_config, "min_segment_duration_s", 1.0))
+        if (utterance.end_time - utterance.start_time) < min_duration:
+            return None
+
+        from stt_v2.diarization.embedding_service import get_embedding_service
+
+        embedding_service = get_embedding_service()
+        return await embedding_service.extract_from_samples(
+            utterance.samples,
+            utterance.sample_rate,
+            utterance.start_time,
+            utterance.end_time,
+        )
+
+    async def _identify_with_embedding(
+        self,
+        embedding: Any | None,
+        text: str,
+    ) -> tuple[str | None, float | None]:
+        """Identify a speaker from a precomputed embedding when possible."""
+        if not embedding:
+            return None, None
+        if not text.strip():
+            return None, None
+        if not self._tenant_id:
+            return None, None
+        if not self._diarization_config or not getattr(self._diarization_config, "enabled", False):
+            return None, None
+
+        try:
+            from stt_v2.diarization.speaker_identifier import get_speaker_identifier
+
+            identifier = get_speaker_identifier()
+            match = await identifier.identify_with_embedding(
+                embedding=embedding,
+                tenant_id=self._tenant_id,
+                consultation_id=self._consultation_id,
+                config=self._diarization_config,
+            )
+            if match is None:
+                return None, None
+            return match.speaker_id, match.confidence
+        except Exception as exc:
+            logger.warning(
+                "Streaming speaker identification with embedding failed",
+                tenant_id=self._tenant_id,
+                error=str(exc),
+            )
+            return None, None
 
     async def _identify_speaker(
         self,

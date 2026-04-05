@@ -3,6 +3,7 @@
 Tests:
 - Denoiser is created and passed to preprocessor when denoise enabled
 - Denoiser skipped when denoise disabled
+- Streaming ASR wrapper preserves english_text from the relevant translated segment
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
