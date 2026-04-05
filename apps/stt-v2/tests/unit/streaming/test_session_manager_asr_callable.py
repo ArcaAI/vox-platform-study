@@ -2,7 +2,8 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-import torch
+
+torch = pytest.importorskip("torch")
 
 
 class TestSessionManagerAsrCallable:
