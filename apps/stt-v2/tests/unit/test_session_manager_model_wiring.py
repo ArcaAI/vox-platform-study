@@ -353,13 +353,15 @@ class TestLoadAsrPipeline:
 # ---------------------------------------------------------------------------
 
 
+torch = pytest.importorskip("torch")
+
+
 class TestMakeAsrCallable:
     """Tests for SessionManager._make_asr_callable()."""
 
     @staticmethod
     def _mock_asr_model(text="transcribed text", word_offsets=None):
         """Build a mock LoadedModel with model.generate() + processor."""
-        import torch
 
         fake_output = torch.tensor([[1, 2, 3]])
 
@@ -1488,8 +1490,6 @@ class TestMakeAsrCallableEdgeCases:
     @pytest.mark.asyncio
     async def test_propagates_inference_exception(self):
         """Verify that exceptions from model.generate propagate through the closure."""
-        import torch
-
         mgr = _make_manager()
 
         mock_model = MagicMock()
