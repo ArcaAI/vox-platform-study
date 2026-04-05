@@ -117,6 +117,205 @@ class SpeakerIdentifier:
             raise SpeakerIdentificationError(f"Speaker identification failed: {e}") from e
 
     # ------------------------------------------------------------------
+    # Single-segment identification from precomputed embedding
+    # ------------------------------------------------------------------
+
+    async def identify_with_embedding(
+        self,
+        embedding: SpeakerEmbedding,
+        tenant_id: str,
+        consultation_id: str | None = None,
+        config: DiarizationConfig | None = None,
+    ) -> SpeakerIdentification:
+        """Identify a speaker from a precomputed embedding.
+
+        Same logic as :meth:`identify_speaker` but skips the extraction
+        step — useful when the caller already has an embedding (e.g.
+        streaming inference).
+
+        Args:
+            embedding: Precomputed speaker embedding.
+            tenant_id: Tenant for scoped Qdrant search.
+            consultation_id: Optional consultation context.
+            config: Diarization configuration overrides.
+
+        Returns:
+            SpeakerIdentification with speaker_id and confidence.
+        """
+        config = config or DiarizationConfig()
+
+        try:
+            matches = await self._speaker_store.search_similar(
+                tenant_id=tenant_id,
+                query_embedding=embedding.embedding,
+                limit=5,
+                score_threshold=config.similarity_threshold,
+                consultation_id=consultation_id,
+            )
+
+            if matches:
+                best = matches[0]
+                return SpeakerIdentification(
+                    speaker_id=best["speaker_id"],
+                    confidence=best["score"],
+                    is_new_speaker=False,
+                    point_id=best["point_id"],
+                )
+
+            if config.auto_register_speakers:
+                new_speaker_id = f"speaker-{uuid.uuid4().hex[:8]}"
+                point_id = await self._speaker_store.upsert_embedding(
+                    tenant_id=tenant_id,
+                    speaker_id=new_speaker_id,
+                    embedding=embedding.embedding,
+                    consultation_id=consultation_id,
+                )
+                logger.info(
+                    "Registered new speaker %s for tenant %s",
+                    new_speaker_id,
+                    tenant_id,
+                )
+                return SpeakerIdentification(
+                    speaker_id=new_speaker_id,
+                    confidence=None,
+                    is_new_speaker=True,
+                    point_id=point_id,
+                )
+
+            return SpeakerIdentification(
+                speaker_id="unknown",
+                confidence=None,
+                is_new_speaker=False,
+            )
+
+        except Exception as e:
+            raise SpeakerIdentificationError(f"Speaker identification failed: {e}") from e
+
+    # ------------------------------------------------------------------
+    # Multi-segment diarization from precomputed embeddings
+    # ------------------------------------------------------------------
+
+    async def diarize_with_embeddings(
+        self,
+        embeddings: list[SpeakerEmbedding | None],
+        segments: list[dict[str, Any]],
+        tenant_id: str,
+        consultation_id: str | None = None,
+        config: DiarizationConfig | None = None,
+    ) -> DiarizationResult:
+        """Assign speaker IDs using precomputed embeddings.
+
+        Same logic as :meth:`diarize_segments` phase 3, but skips audio
+        slicing and embedding extraction — the caller provides embeddings
+        directly (e.g. streaming pipeline where embeddings are extracted
+        per-utterance).
+
+        Args:
+            embeddings: One embedding per segment (or ``None`` to skip).
+            segments: Transcription segments with ``start``, ``end``, ``text``.
+            tenant_id: Tenant for Qdrant scope.
+            consultation_id: Optional consultation context.
+            config: Diarization configuration.
+
+        Returns:
+            DiarizationResult with speaker-annotated segments.
+        """
+        config = config or DiarizationConfig()
+
+        diarized_segments: list[DiarizedSegment] = []
+        speakers_seen: set[str] = set()
+        new_speakers = 0
+
+        for emb, seg in zip(embeddings, segments, strict=False):
+            start = seg.get("start", 0.0)
+            end = seg.get("end", 0.0)
+            text = seg.get("text", "")
+
+            if emb is None:
+                diarized_segments.append(DiarizedSegment(
+                    text=text,
+                    start_time=start,
+                    end_time=end,
+                    speaker_id=None,
+                    word_timestamps=seg.get("word_timestamps", []),
+                ))
+                continue
+
+            try:
+                matches = await self._speaker_store.search_similar(
+                    tenant_id=tenant_id,
+                    query_embedding=emb.embedding,
+                    limit=5,
+                    score_threshold=config.similarity_threshold,
+                    consultation_id=consultation_id,
+                )
+
+                if matches:
+                    best = matches[0]
+                    speaker_id = best["speaker_id"]
+                    confidence = best["score"]
+                    is_new = False
+                elif config.auto_register_speakers:
+                    if config.max_speakers > 0 and len(speakers_seen) >= config.max_speakers:
+                        speaker_id = "unknown"
+                        confidence = None
+                        is_new = False
+                    else:
+                        speaker_id = f"speaker-{uuid.uuid4().hex[:8]}"
+                        await self._speaker_store.upsert_embedding(
+                            tenant_id=tenant_id,
+                            speaker_id=speaker_id,
+                            embedding=emb.embedding,
+                            consultation_id=consultation_id,
+                        )
+                        logger.info(
+                            "Registered new speaker %s for tenant %s",
+                            speaker_id,
+                            tenant_id,
+                        )
+                        confidence = None
+                        is_new = True
+                else:
+                    speaker_id = "unknown"
+                    confidence = None
+                    is_new = False
+
+                speakers_seen.add(speaker_id)
+                if is_new:
+                    new_speakers += 1
+
+                diarized_segments.append(DiarizedSegment(
+                    text=text,
+                    start_time=start,
+                    end_time=end,
+                    speaker_id=speaker_id,
+                    speaker_confidence=confidence,
+                    word_timestamps=seg.get("word_timestamps", []),
+                ))
+
+            except Exception as e:
+                logger.warning(
+                    "Diarization failed for segment [%.1f–%.1f]: %s",
+                    start,
+                    end,
+                    e,
+                )
+                diarized_segments.append(DiarizedSegment(
+                    text=text,
+                    start_time=start,
+                    end_time=end,
+                    speaker_id=None,
+                    word_timestamps=seg.get("word_timestamps", []),
+                ))
+
+        return DiarizationResult(
+            segments=diarized_segments,
+            speakers_detected=len(speakers_seen),
+            new_speakers_created=new_speakers,
+            applied=True,
+        )
+
+    # ------------------------------------------------------------------
     # Multi-segment diarization (for batch transcription)
     # ------------------------------------------------------------------
 
