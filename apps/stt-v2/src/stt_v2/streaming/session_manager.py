@@ -305,21 +305,6 @@ class SessionManager:
                     denoiser = None  # pyrnnoise unavailable, degrade gracefully
             normalize = pipeline_config.preprocessing.normalize if pipeline_config else False
 
-            if pipeline_config:
-                preprocessing_cfg = pipeline_config.preprocessing
-                vad_kwargs["normalize"] = bool(getattr(preprocessing_cfg, "normalize", False))
-                target_sample_rate = getattr(preprocessing_cfg, "target_sample_rate", None)
-                if target_sample_rate:
-                    vad_kwargs["target_sample_rate"] = target_sample_rate
-
-                denoise_cfg = getattr(preprocessing_cfg, "denoise", None)
-                if denoise_cfg and getattr(denoise_cfg, "enabled", False):
-                    denoiser = StreamingDenoiser(
-                        input_sr=sample_rate,
-                        strength=float(getattr(denoise_cfg, "strength", 1.0)),
-                    )
-                    denoiser.initialize()
-
             preprocessor = StreamingPreprocessor(
                 session_id=session_id,
                 sample_rate=sample_rate,
