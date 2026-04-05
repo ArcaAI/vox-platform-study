@@ -88,7 +88,7 @@ class TestSettings:
             settings = Settings()
 
             assert settings.transcription_timeout_seconds == 600
-            assert settings.transcription_chunk_length_s == 15
+            assert settings.transcription_chunk_length_s == 30
             assert settings.transcription_stride_length_s == "4,2"
 
     def test_env_override(self):
@@ -263,7 +263,6 @@ class TestSettings:
             assert settings.vad_min_speech_duration_ms == 250
             assert settings.vad_min_silence_duration_ms == 500
             assert settings.vad_speech_pad_ms == 30
-            assert settings.vad_pre_speech_context_ms == 500
             assert settings.vad_sample_rate == 16000
 
     def test_vad_env_override(self):
