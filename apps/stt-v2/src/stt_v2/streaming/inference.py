@@ -34,6 +34,7 @@ class _InferenceResult:
 
     text: str = ""
     english_text: str | None = None
+    language: str | None = None
     word_timestamps: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -185,6 +186,7 @@ class StreamingInferenceWorker:
             return _InferenceResult(
                 text=result.get("text") or "",
                 english_text=result.get("english_text") or result.get("englishText"),
+                language=result.get("language") or result.get("detected_language"),
                 word_timestamps=result.get("word_timestamps") or [],
             )
         if isinstance(result, str):
