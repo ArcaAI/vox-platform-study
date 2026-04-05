@@ -109,8 +109,6 @@ async def configured_app(postgres_container, redis_container, minio_container):
     _saved_health_settings = health_routes.settings
     _saved_main_settings = main_mod.settings
     _saved_minio_settings = minio_mod.settings
-    _saved_engines = dict(db_conn._engines)
-    _saved_factories = dict(db_conn._session_factories)
 
     # ------------------------------------------------------------------
     # Configure environment for testcontainers
@@ -212,6 +210,12 @@ async def configured_app(postgres_container, redis_container, minio_container):
     # ------------------------------------------------------------------
     # Restore global state so session-scoped fixtures (real_audio_client)
     # continue to work correctly after this function-scoped test.
+    #
+    # We dispose testcontainer engines and clear the cache entirely so
+    # that _get_or_create_engine() lazily creates fresh engines with
+    # the restored (real DB) settings on next use.  Restoring the old
+    # engine objects is unsafe because they were disposed during setup
+    # and their pools may reconnect to stale addresses.
     # ------------------------------------------------------------------
     for engine in list(db_conn._engines.values()):
         try:
@@ -221,21 +225,18 @@ async def configured_app(postgres_container, redis_container, minio_container):
     db_conn._engines.clear()
     db_conn._session_factories.clear()
 
-    # Restore saved engines / factories
-    db_conn._engines.update(_saved_engines)
-    db_conn._session_factories.update(_saved_factories)
-
-    db_conn.settings = _saved_db_settings
-    health_routes.settings = _saved_health_settings
-    main_mod.settings = _saved_main_settings
-    minio_mod.settings = _saved_minio_settings
-
-    # Restore env vars
+    # Restore env vars BEFORE restoring settings so get_settings()
+    # picks up the original values.
     for k, v in _saved_env.items():
         if v is None:
             os.environ.pop(k, None)
         else:
             os.environ[k] = v
+
+    db_conn.settings = _saved_db_settings
+    health_routes.settings = _saved_health_settings
+    main_mod.settings = _saved_main_settings
+    minio_mod.settings = _saved_minio_settings
 
     get_settings.cache_clear()
 
@@ -389,24 +390,28 @@ async def valid_pipeline_id(real_audio_client) -> str:
         return override
 
     slug = "turbo-whisper-large-v3"
+    tenant_id = os.environ.get("TEST_TENANT_ID", "50000000-0000-0000-0000-000000000000")
 
-    # Verify the pipeline exists in the test DB (seeded by pnpm test:db:seed)
     from sqlalchemy import text
 
     from stt_v2.core.database.connection import get_session
 
     async with get_session() as session:
         result = await session.execute(
-            text('SELECT slug FROM core."AsrPipeline" WHERE slug = :slug'),
-            {"slug": slug},
+            text(
+                'SELECT slug FROM core."AsrPipeline"'
+                ' WHERE slug = :slug'
+                " AND \"resourceStatus\" = 'ENABLED'"
+                ' AND "tenantId" = :tenant_id'
+            ),
+            {"slug": slug, "tenant_id": tenant_id},
         )
         existing = result.scalar_one_or_none()
 
         if existing is None:
-            import pytest
-
             pytest.fail(
-                f"Pipeline '{slug}' not found in test DB. "
+                f"Pipeline '{slug}' not found in test DB "
+                f"(resourceStatus=ENABLED, tenantId={tenant_id}). "
                 f"Run 'pnpm test:db:seed' to seed the test database."
             )
 
