@@ -24,9 +24,11 @@ class TestStreamingDenoiserProcess:
         denoiser = StreamingDenoiser(input_sr=16000, strength=1.0)
         # Mock pyrnnoise
         mock_rnnoise = MagicMock()
-        mock_rnnoise.denoise_chunk.return_value = iter([
-            (np.zeros((1, 1), dtype=np.float32), np.zeros((1, 480), dtype=np.float32)),
-        ])
+        mock_rnnoise.denoise_chunk.return_value = iter(
+            [
+                (np.zeros((1, 1), dtype=np.float32), np.zeros((1, 480), dtype=np.float32)),
+            ]
+        )
         denoiser._rnnoise = mock_rnnoise
         denoiser._available = True
 
@@ -42,9 +44,11 @@ class TestStreamingDenoiserProcess:
 
         denoiser = StreamingDenoiser(input_sr=16000, strength=0.0)
         mock_rnnoise = MagicMock()
-        mock_rnnoise.denoise_chunk.return_value = iter([
-            (np.zeros((1, 1), dtype=np.float32), np.ones((1, 480), dtype=np.float32)),
-        ])
+        mock_rnnoise.denoise_chunk.return_value = iter(
+            [
+                (np.zeros((1, 1), dtype=np.float32), np.ones((1, 480), dtype=np.float32)),
+            ]
+        )
         denoiser._rnnoise = mock_rnnoise
         denoiser._available = True
 
@@ -59,9 +63,11 @@ class TestStreamingDenoiserProcess:
 
         denoiser = StreamingDenoiser(input_sr=16000, strength=1.0)
         mock_rnnoise = MagicMock()
+
         # Return zeros (fully denoised)
         def _zero_denoise(chunk):
             yield (np.zeros((1, 1), dtype=np.float32), np.zeros((1, 480), dtype=np.float32))
+
         mock_rnnoise.denoise_chunk.side_effect = _zero_denoise
         denoiser._rnnoise = mock_rnnoise
         denoiser._available = True
@@ -80,17 +86,21 @@ class TestStreamingDenoiserProcess:
 
         denoiser = StreamingDenoiser(input_sr=16000, strength=1.0)
         mock_rnnoise = MagicMock()
-        mock_rnnoise.denoise_chunk.return_value = iter([
-            (np.zeros((1, 1), dtype=np.float32), np.zeros((1, 480), dtype=np.float32)),
-        ])
+        mock_rnnoise.denoise_chunk.return_value = iter(
+            [
+                (np.zeros((1, 1), dtype=np.float32), np.zeros((1, 480), dtype=np.float32)),
+            ]
+        )
         denoiser._rnnoise = mock_rnnoise
         denoiser._available = True
 
         # Feed multiple frames
         for _ in range(5):
-            mock_rnnoise.denoise_chunk.return_value = iter([
-                (np.zeros((1, 1), dtype=np.float32), np.zeros((1, 480), dtype=np.float32)),
-            ])
+            mock_rnnoise.denoise_chunk.return_value = iter(
+                [
+                    (np.zeros((1, 1), dtype=np.float32), np.zeros((1, 480), dtype=np.float32)),
+                ]
+            )
             frame = np.random.randn(512).astype(np.float32) * 0.1
             result = denoiser.process(frame)
             assert result.shape == (512,)
@@ -133,9 +143,11 @@ class TestStreamingDenoiserInit:
 
         denoiser = StreamingDenoiser(input_sr=16000, strength=1.0)
         mock_rnnoise = MagicMock()
-        mock_rnnoise.denoise_chunk.return_value = iter([
-            (np.zeros((1, 1), dtype=np.float32), np.zeros((1, 480), dtype=np.float32)),
-        ])
+        mock_rnnoise.denoise_chunk.return_value = iter(
+            [
+                (np.zeros((1, 1), dtype=np.float32), np.zeros((1, 480), dtype=np.float32)),
+            ]
+        )
         denoiser._rnnoise = mock_rnnoise
         denoiser._available = True
 

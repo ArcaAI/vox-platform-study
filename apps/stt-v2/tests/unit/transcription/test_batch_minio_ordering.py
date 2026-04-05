@@ -67,10 +67,17 @@ class TestBatchMinioOrdering:
         )
         raw = RawTranscription(text="test", segments=[])
 
-        with patch.object(svc, "_load_models", new_callable=AsyncMock, return_value={"asr": MagicMock(), "vad": None, "denoise": None}), \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(svc, "_run_inference", new_callable=AsyncMock, return_value=raw), \
-             patch.object(svc, "_postprocess", side_effect=tracked_postprocess):
+        with (
+            patch.object(
+                svc,
+                "_load_models",
+                new_callable=AsyncMock,
+                return_value={"asr": MagicMock(), "vad": None, "denoise": None},
+            ),
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(svc, "_run_inference", new_callable=AsyncMock, return_value=raw),
+            patch.object(svc, "_postprocess", side_effect=tracked_postprocess),
+        ):
 
             mock_preproc.return_value.process = AsyncMock(return_value=processed)
 
@@ -113,9 +120,16 @@ class TestBatchMinioOrdering:
         )
         raw = RawTranscription(text="test", segments=[])
 
-        with patch.object(svc, "_load_models", new_callable=AsyncMock, return_value={"asr": MagicMock(), "vad": None, "denoise": None}), \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(svc, "_run_inference", new_callable=AsyncMock, return_value=raw):
+        with (
+            patch.object(
+                svc,
+                "_load_models",
+                new_callable=AsyncMock,
+                return_value={"asr": MagicMock(), "vad": None, "denoise": None},
+            ),
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(svc, "_run_inference", new_callable=AsyncMock, return_value=raw),
+        ):
 
             mock_preproc.return_value.process = AsyncMock(return_value=processed)
 

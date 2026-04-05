@@ -77,6 +77,9 @@ def _make_pipeline_config(vad_enabled: bool = True, asr_slug: str = "whisper-tes
 
     preprocessing = MagicMock()
     preprocessing.vad = vad_cfg
+    preprocessing.denoise.enabled = False
+    preprocessing.target_sample_rate = None
+    preprocessing.normalize = False
 
     asr_ref = MagicMock()
     asr_ref.slug = asr_slug
@@ -719,6 +722,54 @@ class TestRecoverSessionsModelWiring:
         await mgr._recover_sessions()
 
         assert "closed-1" not in mgr._sessions
+
+    @pytest.mark.asyncio
+    async def test_recover_wires_denoiser_and_preprocess_settings(self):
+        from stt_v2.streaming.schemas import SessionMetadata, SessionStatus
+
+        mgr = _make_manager()
+
+        meta = SessionMetadata(
+            session_id="recovered-2",
+            tenant_id="t-1",
+            pipeline_id="pipe-1",
+            status=SessionStatus.ACTIVE,
+            worker_id="test-worker",
+            sample_rate=16000,
+        )
+
+        mgr._redis.scan = AsyncMock(return_value=(0, [b"stt:session:recovered-2"]))
+        mgr._redis.hgetall = AsyncMock(return_value=meta.to_redis_dict())
+        mgr._redis.exists = AsyncMock(return_value=False)
+
+        pipeline_cfg = _make_pipeline_config()
+        pipeline_cfg.preprocessing.normalize = True
+        pipeline_cfg.preprocessing.target_sample_rate = 16000
+        pipeline_cfg.preprocessing.denoise.enabled = True
+        pipeline_cfg.preprocessing.denoise.strength = 0.7
+
+        mgr._load_pipeline_config = AsyncMock(return_value=pipeline_cfg)
+        mgr._load_vad_service = AsyncMock(return_value=MagicMock())
+        mgr._load_asr_pipeline = AsyncMock(return_value=AsyncMock())
+
+        with (
+            patch("stt_v2.streaming.session_manager.StreamingDenoiser") as MockDenoiser,
+            patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
+            patch("stt_v2.streaming.session_manager.ControlListener") as MockListener,
+            patch("stt_v2.streaming.session_manager.ResultPublisher"),
+        ):
+            mock_denoiser = MockDenoiser.return_value
+            mock_denoiser.initialize.return_value = True
+            MockConsumer.return_value = AsyncMock()
+            MockListener.return_value = AsyncMock()
+
+            await mgr._recover_sessions()
+
+        MockDenoiser.assert_called_once_with(input_sr=16000, strength=0.7)
+        preprocessor = mgr._preprocessors["recovered-2"]
+        assert preprocessor.has_denoiser is True
+        assert preprocessor._normalize is True
+        assert preprocessor.target_sample_rate == 16000
 
 
 # ---------------------------------------------------------------------------
