@@ -85,7 +85,10 @@ class TestExtractEmbedding:
         )
         utt = _make_utterance(duration_s=2.0)
 
-        with patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=mock_emb_service):
+        with patch(
+            "stt_v2.diarization.embedding_service.get_embedding_service",
+            return_value=mock_emb_service,
+        ):
             result = await worker._extract_embedding(utt)
 
         assert result is mock_embedding
@@ -112,7 +115,10 @@ class TestIdentifyWithEmbedding:
         embedding = MagicMock()
         embedding.embedding = [0.1] * 512
 
-        with patch("stt_v2.diarization.speaker_identifier.get_speaker_identifier", return_value=mock_identifier):
+        with patch(
+            "stt_v2.diarization.speaker_identifier.get_speaker_identifier",
+            return_value=mock_identifier,
+        ):
             sid, conf = await worker._identify_with_embedding(embedding, "hello world")
 
         assert sid == "spk-123"
@@ -146,6 +152,7 @@ class TestProcessUtterancePipelineOrder:
         async def mock_run_inference(utt):
             call_order.append("asr")
             from stt_v2.streaming.inference import _InferenceResult
+
             return _InferenceResult(text="hello world")
 
         async def mock_identify_with_embedding(emb, text):

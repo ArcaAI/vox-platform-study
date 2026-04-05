@@ -177,6 +177,7 @@ class TestFeedIntegration:
 
         class ScalingDenoiser:
             """Denoiser that scales by 0.5 so we can detect it reached VAD."""
+
             def process(self, frame):
                 return frame * 0.5
 
