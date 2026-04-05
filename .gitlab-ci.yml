@@ -32,6 +32,9 @@ workflow:
   auto_cancel:
     on_new_commit: interruptible
   rules:
+    - if: $RUN_NOTIFY_ONLY == "true"
+      variables:
+        PIPELINE_TYPE: "notify_only"
     - if: $CI_COMMIT_TAG =~ /^v\d+/
       variables:
         PIPELINE_TYPE: "tag_release"
@@ -84,6 +87,7 @@ variables:
   REGISTRY: 10.10.1.110:5050
   GITHUB_REPO_URL: "https://github.com/4bits-vn/project-hope-v2.git"
   GITHUB_BACKUP_BRANCH: "back-up"
+  RUN_NOTIFY_ONLY: ""
   #
   # ── Manual skip controls ────────────────────────────────────────────────────
   # Set any of these to "true" when running a pipeline to skip stages:
