@@ -12,7 +12,7 @@ github-backup:
     GIT_LFS_SKIP_SMUDGE: "1"  # skip downloading LFS blobs during clone (saves time)
   before_script:
     - apk add --no-cache git git-lfs
-    - git lfs install
+    - git lfs install --force
     - git config --global user.name "GitLab CI"
     - git config --global user.email "ci@gitlab.com"
   script:
