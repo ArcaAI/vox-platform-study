@@ -9,8 +9,6 @@ Tests:
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from stt_v2.transcription.dto import RawTranscription
-
 
 class TestSessionManagerDenoiserWiring:
 
