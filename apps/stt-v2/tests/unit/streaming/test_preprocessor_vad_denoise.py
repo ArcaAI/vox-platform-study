@@ -9,11 +9,12 @@ Covers:
 
 from __future__ import annotations
 
-import numpy as np
-import pytest
 from unittest.mock import MagicMock
 
-from stt_v2.streaming.preprocessor import AudioUtterance, StreamingPreprocessor
+import numpy as np
+import pytest
+
+from stt_v2.streaming.preprocessor import StreamingPreprocessor
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -140,7 +141,6 @@ class TestOnsetFrameIncluded:
         # Without fix: missing onset frame (14 speech frames in buffer)
         # With fix: onset frame included (15 speech frames in buffer)
         min_speech_frames = 8
-        pre_speech_frames = 9
         expected_min_frames = min_speech_frames + 1  # onset + remaining speech
         assert utt.samples.size >= expected_min_frames * 512
 
@@ -307,7 +307,7 @@ class TestFlushDenoisePipeline:
         await pp.feed(partial)
         pp.drain_processed_samples()
 
-        final = await pp.flush()
+        await pp.flush()
         remaining_pcm = pp.drain_processed_samples()
         assert (
             len(remaining_pcm) > 0
