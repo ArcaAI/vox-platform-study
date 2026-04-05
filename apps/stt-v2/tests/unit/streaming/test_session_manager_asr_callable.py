@@ -33,19 +33,24 @@ class TestSessionManagerAsrCallable:
             word_timestamps=[{"word": "Xin", "start": 0.5, "end": 0.7}],
         )
 
-        with patch(
-            "stt_v2.transcription.batch_service.BatchTranscriptionService"
-        ) as mock_batch_service_cls:
-            mock_batch_service = mock_batch_service_cls.return_value
-            mock_batch_service._run_inference = AsyncMock(return_value=mock_raw)
+        mock_batch_service = MagicMock()
+        mock_batch_service._run_inference = AsyncMock(return_value=mock_raw)
 
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.transcription.batch_service": MagicMock(
+                    BatchTranscriptionService=lambda: mock_batch_service
+                ),
+            },
+        ):
             run_inference = SessionManager._make_asr_callable(
                 mgr,
                 asr_model=MagicMock(),
                 inference_config=MagicMock(),
             )
 
-            result = await run_inference(MagicMock(), 16000)
+        result = await run_inference(MagicMock(), 16000)
 
         assert result["text"] == "Xin chào."
         assert result["english_text"] == "Hello."
