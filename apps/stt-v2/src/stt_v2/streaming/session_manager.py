@@ -604,15 +604,32 @@ class SessionManager:
             )
             if not result:
                 return {"text": "", "word_timestamps": []}
+            text = (result.text or "").strip()
             english_text = None
             if result.segments:
-                for segment in result.segments:
-                    if isinstance(segment, dict) and segment.get("english_text"):
-                        english_text = segment["english_text"]
-                        break
+                translated_segments = [
+                    segment
+                    for segment in result.segments
+                    if isinstance(segment, dict) and segment.get("english_text")
+                ]
+                if translated_segments:
+                    matched_segment = next(
+                        (
+                            segment
+                            for segment in translated_segments
+                            if (segment.get("text") or "").strip() == text
+                        ),
+                        None,
+                    )
+                    english_text = (
+                        matched_segment.get("english_text")
+                        if matched_segment is not None
+                        else translated_segments[-1].get("english_text")
+                    )
             return {
                 "text": result.text,
                 **({"english_text": english_text} if english_text else {}),
+                **({"language": result.language} if getattr(result, "language", None) else {}),
                 "word_timestamps": result.word_timestamps or [],
             }
 
