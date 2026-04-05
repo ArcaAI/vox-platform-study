@@ -88,7 +88,7 @@ class TestSettings:
             settings = Settings()
 
             assert settings.transcription_timeout_seconds == 600
-            assert settings.transcription_chunk_length_s == 30
+            assert settings.transcription_chunk_length_s == 15
             assert settings.transcription_stride_length_s == "4,2"
 
     def test_env_override(self):
