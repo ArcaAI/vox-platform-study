@@ -218,6 +218,37 @@ class StreamingInferenceWorker:
 
         return result
 
+    async def process_partial(
+        self,
+        session_id: str,
+        utterance: AudioUtterance,
+    ) -> SegmentResult:
+        """Run ASR on a partial (non-final) utterance without diarization."""
+        start_ts = time.monotonic()
+
+        try:
+            inference_out = await self._run_inference(utterance)
+        except Exception as exc:
+            logger.error(
+                "Partial ASR inference failed",
+                session_id=session_id,
+                utterance_index=utterance.utterance_index,
+                error=str(exc),
+            )
+            inference_out = _InferenceResult()
+
+        text = self._sanitize_text(inference_out.text)
+        elapsed = time.monotonic() - start_ts
+
+        return SegmentResult(
+            text=text,
+            english_text=inference_out.english_text,
+            start_time=utterance.start_time,
+            end_time=utterance.end_time,
+            is_final=False,
+            inference_ms=round(elapsed * 1000, 1),
+        )
+
     async def _run_inference(self, utterance: AudioUtterance) -> _InferenceResult:
         """Run the ASR pipeline on utterance samples.
 

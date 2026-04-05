@@ -95,6 +95,7 @@ class SessionManager:
         self._processed_chunk_indices: dict[str, int] = {}
         self._chunk_offsets: dict[str, int] = {}
         self._processed_chunk_offsets: dict[str, int] = {}
+        self._partial_tasks: dict[str, asyncio.Task[None]] = {}
         self._running = False
 
         # Cache settings values at init time to avoid calling get_settings()
@@ -475,6 +476,10 @@ class SessionManager:
         self._processed_chunk_indices.pop(session_id, None)
         self._chunk_offsets.pop(session_id, None)
         self._processed_chunk_offsets.pop(session_id, None)
+
+        partial_task = self._partial_tasks.pop(session_id, None)
+        if partial_task and not partial_task.done():
+            partial_task.cancel()
 
         # Release capacity (must happen even if other cleanup fails)
         try:
@@ -1133,6 +1138,40 @@ class SessionManager:
                 )
             # Always clean up in-memory and capacity state, even if graceful close failed.
             await self.remove_session(session.session_id)
+
+    def _fire_partial(
+        self,
+        session_id: str,
+        utterance: AudioUtterance,
+        worker: StreamingInferenceWorker,
+        publisher: ResultPublisher,
+    ) -> None:
+        """Launch (or skip if busy) a background task for partial utterance inference."""
+        existing = self._partial_tasks.get(session_id)
+        if existing and not existing.done():
+            return
+
+        async def _run() -> None:
+            try:
+                result = await worker.process_partial(session_id, utterance)
+                if result and publisher:
+                    await publisher.publish(result)
+            except Exception as exc:
+                logger.warning(
+                    "Partial inference failed",
+                    session_id=session_id,
+                    error=str(exc),
+                )
+            finally:
+                self._partial_tasks.pop(session_id, None)
+
+        self._partial_tasks[session_id] = asyncio.create_task(_run())
+
+    def _cancel_partial(self, session_id: str) -> None:
+        """Cancel an in-flight partial inference task."""
+        task = self._partial_tasks.pop(session_id, None)
+        if task and not task.done():
+            task.cancel()
 
     async def _cancel_session(self, session: StreamSession) -> None:
         """Cancel a session — immediate cleanup, no finalization."""

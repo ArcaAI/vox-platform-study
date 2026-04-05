@@ -155,6 +155,34 @@ class BatchTranscriptionService:
             return " ".join(curr_words[best_overlap:])
         return current_text
 
+    @staticmethod
+    def _split_vad_segments_for_embedding(
+        segments: list[Any],
+        max_window_s: float = 5.0,
+    ) -> list[tuple[float, float]]:
+        """Split long speech segments into embedding-sized windows.
+
+        Non-speech segments are excluded. Segments shorter than
+        *max_window_s* are returned as-is. Longer segments are split
+        into consecutive windows of *max_window_s*.
+        """
+        result: list[tuple[float, float]] = []
+        for seg in segments:
+            if not getattr(seg, "is_speech", True):
+                continue
+            start = seg.start_time
+            end = seg.end_time
+            duration = end - start
+            if duration <= max_window_s:
+                result.append((start, end))
+            else:
+                cursor = start
+                while cursor < end:
+                    window_end = min(cursor + max_window_s, end)
+                    result.append((cursor, window_end))
+                    cursor = window_end
+        return result
+
     async def transcribe(
         self,
         job_id: str,
@@ -164,7 +192,7 @@ class BatchTranscriptionService:
         tenant_id: str | None = None,
         consultation_id: str | None = None,
         chunk_callback: Callable[[ChunkTranscriptionResult], None] | None = None,
-        blob_service: Any | None = None,
+        blob_service: Any = None,
     ) -> TranscriptionResult:
         """
         Transcribe audio file with optional speaker diarization.
@@ -243,81 +271,29 @@ class BatchTranscriptionService:
             update_progress(35)
 
             # ----------------------------------------------------------
-            # Step 2b: Extract speaker embeddings from VAD segments
+            # Step 2b: Pre-extract speaker embeddings (if diarization enabled)
             # ----------------------------------------------------------
-            precomputed_embeddings: list[Any] | None = None
-            embedding_segment_times: list[tuple[float, float]] | None = None
-            embedding_start = time.time()
-
-            if (
-                spec.diarization.enabled
-                and tenant_id
-                and processed.vad_applied
-                and processed.segments
-            ):
-                logger.debug(
-                    "Extracting speaker embeddings using pyannote",
-                    extra={"job_id": job_id, "component": "SPEAKER_EMBEDDING"},
-                )
+            if spec.diarization.enabled and tenant_id and processed.vad_applied and processed.segments:
                 try:
-                    split_times = self._split_vad_segments_for_embedding(
-                        processed.segments,
-                        max_window_s=5.0,
+                    from ..diarization.embedding_service import EmbeddingService
+
+                    embedding_windows = self._split_vad_segments_for_embedding(
+                        processed.segments, max_window_s=5.0,
                     )
-                    if split_times:
-                        # Collect audio arrays for each split segment
-                        segment_samples: list[np.ndarray] = []
-                        for start_t, end_t in split_times:
-                            start_idx = int(start_t * processed.sample_rate)
-                            end_idx = int(end_t * processed.sample_rate)
-                            start_idx = max(0, start_idx)
-                            end_idx = min(len(processed.samples), end_idx)
-                            segment_samples.append(
-                                np.asarray(processed.samples[start_idx:end_idx], dtype=np.float32)
-                            )
-
-                        # Resolve embedding model
-                        hf_model_id: str | None = None
-                        if pipeline_config and pipeline_config.spec.models.diarization:
-                            diar_ref = pipeline_config.spec.models.diarization
-                            if diar_ref.is_inline and diar_ref.inline:
-                                hf_model_id = diar_ref.inline.hf_model_id
-
-                        if hf_model_id:
-                            emb_service = EmbeddingService(hf_model_id=hf_model_id)
-                            await emb_service.initialize()
-                        else:
-                            from ..diarization.embedding_service import get_embedding_service
-
-                            emb_service = get_embedding_service()
-                            if not emb_service.is_loaded:
-                                await emb_service.initialize()
-
-                        precomputed_embeddings = await emb_service.extract_batch(
-                            segment_samples=segment_samples,
-                            sample_rate=processed.sample_rate,
-                            segment_times=split_times,
-                        )
-                        embedding_segment_times = split_times
-                        logger.info(
-                            "Extracted embeddings from segments",
-                            extra={
-                                "job_id": job_id,
-                                "embedding_count": len(precomputed_embeddings),
-                                "segment_count": len(split_times),
-                            },
+                    if embedding_windows:
+                        emb_svc = EmbeddingService()
+                        batch_audio = []
+                        batch_times = []
+                        for w_start, w_end in embedding_windows:
+                            s_idx = int(w_start * processed.sample_rate)
+                            e_idx = int(w_end * processed.sample_rate)
+                            batch_audio.append(processed.samples[s_idx:e_idx])
+                            batch_times.append((w_start, w_end))
+                        await emb_svc.extract_batch(
+                            batch_audio, processed.sample_rate, batch_times,
                         )
                 except Exception as e:
-                    logger.warning(
-                        "Embedding extraction failed (non-fatal)",
-                        extra={"job_id": job_id, "component": "SPEAKER_EMBEDDING", "error": str(e)},
-                    )
-                    precomputed_embeddings = None
-                    embedding_segment_times = None
-
-            timing.embedding_seconds = time.time() - embedding_start
-
-            update_progress(40)
+                    logger.warning(f"[{job_id}] Pre-extraction of embeddings failed (non-fatal): {e}")
 
             # ----------------------------------------------------------
             # Step 3: Run ASR inference
@@ -570,7 +546,20 @@ class BatchTranscriptionService:
             update_progress(85)
 
             # ----------------------------------------------------------
-            # Step 6: Postprocess
+            # Step 4b: Upload processed audio (before postprocessing)
+            # ----------------------------------------------------------
+            if blob_service is not None:
+                try:
+                    await blob_service.upload_processed_audio(
+                        audio_bytes=processed.to_bytes() if hasattr(processed, "to_bytes") else audio_bytes,
+                        tenant_id=tenant_id,
+                        job_id=job_id,
+                    )
+                except Exception as e:
+                    logger.warning(f"[{job_id}] Processed audio upload failed (non-fatal): {e}")
+
+            # ----------------------------------------------------------
+            # Step 5: Postprocess
             # ----------------------------------------------------------
             logger.debug(
                 "Applying postprocessing (timestamps, punctuation)",
