@@ -77,9 +77,6 @@ def _make_pipeline_config(vad_enabled: bool = True, asr_slug: str = "whisper-tes
 
     preprocessing = MagicMock()
     preprocessing.vad = vad_cfg
-    preprocessing.denoise.enabled = False
-    preprocessing.target_sample_rate = None
-    preprocessing.normalize = False
 
     asr_ref = MagicMock()
     asr_ref.slug = asr_slug
@@ -96,54 +93,6 @@ def _make_pipeline_config(vad_enabled: bool = True, asr_slug: str = "whisper-tes
     config.models = models
     config.inference = inference
     return config
-
-
-def _make_mock_torch() -> MagicMock:
-    """Create a lightweight torch stub for tests."""
-    mock_torch = MagicMock()
-    mock_torch.float32 = object()
-    mock_torch.float16 = object()
-    mock_torch.bfloat16 = object()
-    mock_torch.argmax.return_value = MagicMock()
-    mock_torch.no_grad.return_value.__enter__ = MagicMock(return_value=None)
-    mock_torch.no_grad.return_value.__exit__ = MagicMock(return_value=False)
-    return mock_torch
-
-
-def _make_loaded_asr_model(
-    decoded_text: str = "transcribed text",
-    offsets: list[dict] | None = None,
-    generate_side_effect: Exception | None = None,
-):
-    """Create a mock loaded model compatible with _make_asr_callable()."""
-    input_features = MagicMock(name="input_features")
-    input_features.is_floating_point.return_value = True
-    input_features.to.return_value = input_features
-
-    attention_mask = MagicMock(name="attention_mask")
-    attention_mask.is_floating_point.return_value = False
-    attention_mask.to.return_value = attention_mask
-
-    processor = MagicMock()
-    processor.return_value = {
-        "input_features": input_features,
-        "attention_mask": attention_mask,
-    }
-    processor.batch_decode.return_value = [decoded_text]
-    processor.decode.return_value = {"offsets": offsets or []}
-
-    model = MagicMock()
-    model.generate = MagicMock(return_value=[MagicMock(name="generated_token")])
-    if generate_side_effect is not None:
-        model.generate.side_effect = generate_side_effect
-
-    loaded_model = MagicMock()
-    loaded_model.model = model
-    loaded_model.processor = processor
-    loaded_model.feature_extractor = None
-    loaded_model.device = "cpu"
-
-    return loaded_model, model, processor, input_features, attention_mask
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +121,11 @@ class TestLoadPipelineConfig:
             # Patch the import inside the method
             with patch.dict(
                 "sys.modules",
-                {"stt_v2.pipeline.config_reader": MagicMock(get_pipeline_reader=lambda: mock_reader)},
+                {
+                    "stt_v2.pipeline.config_reader": MagicMock(
+                        get_pipeline_reader=lambda: mock_reader
+                    )
+                },
             ):
                 result = await mgr._load_pipeline_config("pipe-1")
 
@@ -272,9 +225,11 @@ class TestLoadVadService:
 
         with patch.dict(
             "sys.modules",
-            {"stt_v2.vad.silero_service": MagicMock(
-                get_vad_service=MagicMock(side_effect=ImportError("no silero"))
-            )},
+            {
+                "stt_v2.vad.silero_service": MagicMock(
+                    get_vad_service=MagicMock(side_effect=ImportError("no silero"))
+                )
+            },
         ):
             result = await mgr._load_vad_service(config, "s-1")
 
@@ -303,21 +258,28 @@ class TestLoadAsrPipeline:
         mock_model = MagicMock()
         mock_model.model_slug = "whisper-test"
         mock_model.format = MagicMock(value="onnx")
-        mock_pipeline = AsyncMock(return_value={"text": "hello", "word_timestamps": []})
 
         mock_cache = AsyncMock()
         mock_cache.get_or_load_from_ref = AsyncMock(return_value=mock_model)
 
-        mgr._make_asr_callable = MagicMock(return_value=mock_pipeline)
+        mock_batch_svc = MagicMock()
+        mock_batch_svc._run_inference = AsyncMock(return_value=MagicMock(text="hello"))
 
-        with patch.dict("sys.modules", {
-            "stt_v2.models": MagicMock(get_model_cache=lambda: mock_cache),
-            "stt_v2.pipeline.dto": MagicMock(ModelTaskType=MagicMock(AUTOMATIC_SPEECH_RECOGNITION="asr")),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.models": MagicMock(get_model_cache=lambda: mock_cache),
+                "stt_v2.pipeline.dto": MagicMock(
+                    ModelTaskType=MagicMock(AUTOMATIC_SPEECH_RECOGNITION="asr")
+                ),
+                "stt_v2.transcription.batch_service": MagicMock(
+                    BatchTranscriptionService=lambda: mock_batch_svc
+                ),
+            },
+        ):
             result = await mgr._load_asr_pipeline(config, "s-1")
 
-        assert result is mock_pipeline
-        mgr._make_asr_callable.assert_called_once_with(mock_model, config.inference)
+        assert callable(result)
 
     @pytest.mark.asyncio
     async def test_uses_pipeline_inference_config_directly(self):
@@ -349,10 +311,15 @@ class TestLoadAsrPipeline:
 
         config.inference = FakeInferenceConfig(language="ml", code_switching=True)
 
-        with patch.dict("sys.modules", {
-            "stt_v2.models": MagicMock(get_model_cache=lambda: mock_cache),
-            "stt_v2.pipeline.dto": MagicMock(ModelTaskType=MagicMock(AUTOMATIC_SPEECH_RECOGNITION="asr")),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.models": MagicMock(get_model_cache=lambda: mock_cache),
+                "stt_v2.pipeline.dto": MagicMock(
+                    ModelTaskType=MagicMock(AUTOMATIC_SPEECH_RECOGNITION="asr")
+                ),
+            },
+        ):
             result = await mgr._load_asr_pipeline(config, "s-1")
 
         assert result is not None
@@ -368,10 +335,15 @@ class TestLoadAsrPipeline:
         mock_cache = AsyncMock()
         mock_cache.get_or_load_from_ref = AsyncMock(side_effect=RuntimeError("OOM"))
 
-        with patch.dict("sys.modules", {
-            "stt_v2.models": MagicMock(get_model_cache=lambda: mock_cache),
-            "stt_v2.pipeline.dto": MagicMock(ModelTaskType=MagicMock(AUTOMATIC_SPEECH_RECOGNITION="asr")),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.models": MagicMock(get_model_cache=lambda: mock_cache),
+                "stt_v2.pipeline.dto": MagicMock(
+                    ModelTaskType=MagicMock(AUTOMATIC_SPEECH_RECOGNITION="asr")
+                ),
+            },
+        ):
             result = await mgr._load_asr_pipeline(config, "s-1")
 
         assert result is None
@@ -389,16 +361,22 @@ class TestMakeAsrCallable:
     async def test_returns_async_callable(self):
         mgr = _make_manager()
 
-        loaded_model, _, _, _, _ = _make_loaded_asr_model(decoded_text="transcribed text")
-        mock_inference_config = MagicMock(
-            code_switching=False,
-            language="en",
-            beam_size=None,
-            temperature=None,
+        mock_model = MagicMock()
+        mock_inference_config = MagicMock()
+        mock_batch_svc = MagicMock()
+        mock_batch_svc._run_inference = AsyncMock(
+            return_value=MagicMock(text="transcribed text", word_timestamps=[])
         )
 
-        with patch.dict("sys.modules", {"torch": _make_mock_torch()}):
-            fn = mgr._make_asr_callable(loaded_model, mock_inference_config)
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.transcription.batch_service": MagicMock(
+                    BatchTranscriptionService=lambda: mock_batch_svc
+                ),
+            },
+        ):
+            fn = mgr._make_asr_callable(mock_model, mock_inference_config)
 
         assert callable(fn)
         samples = np.zeros(16000, dtype=np.float32)
@@ -406,58 +384,94 @@ class TestMakeAsrCallable:
         assert result == {"text": "transcribed text", "word_timestamps": []}
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_decoded_text_is_empty(self):
+    async def test_preserves_english_text_from_segment_results(self):
         mgr = _make_manager()
 
-        loaded_model, _, _, _, _ = _make_loaded_asr_model(decoded_text="")
-        mock_inference_config = MagicMock(
-            code_switching=False,
-            language=None,
-            beam_size=None,
-            temperature=None,
+        mock_model = MagicMock()
+        mock_inference_config = MagicMock()
+        mock_batch_svc = MagicMock()
+        mock_batch_svc._run_inference = AsyncMock(
+            return_value=MagicMock(
+                text="வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்",
+                word_timestamps=[],
+                segments=[
+                    {
+                        "text": "வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்",
+                        "start": 0.0,
+                        "end": 1.0,
+                        "english_text": "Will not call ...",
+                    },
+                ],
+            )
         )
 
-        with patch.dict("sys.modules", {"torch": _make_mock_torch()}):
-            fn = mgr._make_asr_callable(loaded_model, mock_inference_config)
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.transcription.batch_service": MagicMock(
+                    BatchTranscriptionService=lambda: mock_batch_svc
+                ),
+            },
+        ):
+            fn = mgr._make_asr_callable(mock_model, mock_inference_config)
 
-        result = await fn(np.zeros(100, dtype=np.float32), 16000)
+        samples = np.zeros(16000, dtype=np.float32)
+        result = await fn(samples, 16000)
+
+        assert result == {
+            "text": "வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்",
+            "english_text": "Will not call ...",
+            "word_timestamps": [],
+        }
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_inference_returns_none(self):
+        mgr = _make_manager()
+
+        mock_batch_svc = MagicMock()
+        mock_batch_svc._run_inference = AsyncMock(return_value=None)
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.transcription.batch_service": MagicMock(
+                    BatchTranscriptionService=lambda: mock_batch_svc
+                ),
+            },
+        ):
+            fn = mgr._make_asr_callable(MagicMock(), MagicMock())
+
+        result = await fn(np.zeros(100), 16000)
         assert result == {"text": "", "word_timestamps": []}
 
     @pytest.mark.asyncio
     async def test_passes_correct_args_to_run_inference(self):
         mgr = _make_manager()
 
-        loaded_model, model, processor, input_features, attention_mask = _make_loaded_asr_model(
-            decoded_text="ok"
-        )
-        mock_config = MagicMock(
-            code_switching=False,
-            language="en",
-            beam_size=None,
-            temperature=None,
-        )
+        mock_model = MagicMock()
+        mock_config = MagicMock()
+        mock_batch_svc = MagicMock()
+        mock_batch_svc._run_inference = AsyncMock(return_value=MagicMock(text="ok"))
 
-        with patch.dict("sys.modules", {"torch": _make_mock_torch()}):
-            fn = mgr._make_asr_callable(loaded_model, mock_config)
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.transcription.batch_service": MagicMock(
+                    BatchTranscriptionService=lambda: mock_batch_svc
+                ),
+            },
+        ):
+            fn = mgr._make_asr_callable(mock_model, mock_config)
 
         samples = np.ones(8000, dtype=np.float32)
         await fn(samples, 8000)
 
-        processor.assert_called_once_with(
-            samples,
-            sampling_rate=8000,
-            return_tensors="pt",
-            return_attention_mask=True,
-        )
-
-        model.generate.assert_called_once()
-        call_kwargs = model.generate.call_args.kwargs
-        assert call_kwargs["input_features"] is input_features
-        assert call_kwargs["attention_mask"] is attention_mask
-        assert call_kwargs["task"] == "transcribe"
-        assert call_kwargs["return_timestamps"] is True
-        assert call_kwargs["no_repeat_ngram_size"] == 3
-        assert call_kwargs["language"] == "en"
+        mock_batch_svc._run_inference.assert_awaited_once()
+        call_kwargs = mock_batch_svc._run_inference.call_args.kwargs
+        assert call_kwargs["model"] is mock_model
+        assert call_kwargs["config"] is mock_config
+        assert call_kwargs["sample_rate"] == 8000
+        np.testing.assert_array_equal(call_kwargs["samples"], samples)
 
 
 # ---------------------------------------------------------------------------
@@ -480,9 +494,11 @@ class TestCreateSessionModelWiring:
         mgr._load_asr_pipeline = AsyncMock(return_value=mock_asr_fn)
 
         # Mock the consumers/listeners to avoid real Redis operations
-        with patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer, \
-             patch("stt_v2.streaming.session_manager.ControlListener") as MockListener, \
-             patch("stt_v2.streaming.session_manager.ResultPublisher"):
+        with (
+            patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
+            patch("stt_v2.streaming.session_manager.ControlListener") as MockListener,
+            patch("stt_v2.streaming.session_manager.ResultPublisher"),
+        ):
             MockConsumer.return_value = AsyncMock()
             MockListener.return_value = AsyncMock()
 
@@ -518,9 +534,11 @@ class TestCreateSessionModelWiring:
         mgr._load_vad_service = AsyncMock(return_value=MagicMock())
         mgr._load_asr_pipeline = AsyncMock(return_value=None)
 
-        with patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer, \
-             patch("stt_v2.streaming.session_manager.ControlListener") as MockListener, \
-             patch("stt_v2.streaming.session_manager.ResultPublisher"):
+        with (
+            patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
+            patch("stt_v2.streaming.session_manager.ControlListener") as MockListener,
+            patch("stt_v2.streaming.session_manager.ResultPublisher"),
+        ):
             MockConsumer.return_value = AsyncMock()
             MockListener.return_value = AsyncMock()
 
@@ -541,9 +559,11 @@ class TestCreateSessionModelWiring:
 
         mgr._load_pipeline_config = AsyncMock(return_value=None)
 
-        with patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer, \
-             patch("stt_v2.streaming.session_manager.ControlListener") as MockListener, \
-             patch("stt_v2.streaming.session_manager.ResultPublisher"):
+        with (
+            patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
+            patch("stt_v2.streaming.session_manager.ControlListener") as MockListener,
+            patch("stt_v2.streaming.session_manager.ResultPublisher"),
+        ):
             MockConsumer.return_value = AsyncMock()
             MockListener.return_value = AsyncMock()
 
@@ -576,9 +596,11 @@ class TestCreateSessionModelWiring:
         mgr._load_vad_service = AsyncMock(return_value=None)
         mgr._load_asr_pipeline = spy_load_asr
 
-        with patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer, \
-             patch("stt_v2.streaming.session_manager.ControlListener") as MockListener, \
-             patch("stt_v2.streaming.session_manager.ResultPublisher"):
+        with (
+            patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
+            patch("stt_v2.streaming.session_manager.ControlListener") as MockListener,
+            patch("stt_v2.streaming.session_manager.ResultPublisher"),
+        ):
             MockConsumer.return_value = AsyncMock()
             MockListener.return_value = AsyncMock()
 
@@ -604,9 +626,11 @@ class TestCreateSessionModelWiring:
         mgr._load_vad_service = AsyncMock(return_value=mock_vad)
         mgr._load_asr_pipeline = AsyncMock(return_value=mock_asr_fn)
 
-        with patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer, \
-             patch("stt_v2.streaming.session_manager.ControlListener") as MockListener, \
-             patch("stt_v2.streaming.session_manager.ResultPublisher"):
+        with (
+            patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
+            patch("stt_v2.streaming.session_manager.ControlListener") as MockListener,
+            patch("stt_v2.streaming.session_manager.ResultPublisher"),
+        ):
             MockConsumer.return_value = AsyncMock()
             MockListener.return_value = AsyncMock()
 
@@ -651,9 +675,7 @@ class TestRecoverSessionsModelWiring:
         )
         redis_data = meta.to_redis_dict()
 
-        mgr._redis.scan = AsyncMock(
-            return_value=(0, [b"stt:session:recovered-1"])
-        )
+        mgr._redis.scan = AsyncMock(return_value=(0, [b"stt:session:recovered-1"]))
         mgr._redis.hgetall = AsyncMock(return_value=redis_data)
         mgr._redis.exists = AsyncMock(return_value=False)
 
@@ -664,9 +686,11 @@ class TestRecoverSessionsModelWiring:
         mgr._load_vad_service = AsyncMock(return_value=mock_vad)
         mgr._load_asr_pipeline = AsyncMock(return_value=mock_asr_fn)
 
-        with patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer, \
-             patch("stt_v2.streaming.session_manager.ControlListener") as MockListener, \
-             patch("stt_v2.streaming.session_manager.ResultPublisher"):
+        with (
+            patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
+            patch("stt_v2.streaming.session_manager.ControlListener") as MockListener,
+            patch("stt_v2.streaming.session_manager.ResultPublisher"),
+        ):
             MockConsumer.return_value = AsyncMock()
             MockListener.return_value = AsyncMock()
 
@@ -689,62 +713,12 @@ class TestRecoverSessionsModelWiring:
             status=SessionStatus.CLOSED,
         )
 
-        mgr._redis.scan = AsyncMock(
-            return_value=(0, [b"stt:session:closed-1"])
-        )
+        mgr._redis.scan = AsyncMock(return_value=(0, [b"stt:session:closed-1"]))
         mgr._redis.hgetall = AsyncMock(return_value=meta.to_redis_dict())
 
         await mgr._recover_sessions()
 
         assert "closed-1" not in mgr._sessions
-
-    @pytest.mark.asyncio
-    async def test_recover_wires_denoiser_and_preprocess_settings(self):
-        from stt_v2.streaming.schemas import SessionMetadata, SessionStatus
-
-        mgr = _make_manager()
-
-        meta = SessionMetadata(
-            session_id="recovered-2",
-            tenant_id="t-1",
-            pipeline_id="pipe-1",
-            status=SessionStatus.ACTIVE,
-            worker_id="test-worker",
-            sample_rate=16000,
-        )
-
-        mgr._redis.scan = AsyncMock(
-            return_value=(0, [b"stt:session:recovered-2"])
-        )
-        mgr._redis.hgetall = AsyncMock(return_value=meta.to_redis_dict())
-        mgr._redis.exists = AsyncMock(return_value=False)
-
-        pipeline_cfg = _make_pipeline_config()
-        pipeline_cfg.preprocessing.normalize = True
-        pipeline_cfg.preprocessing.target_sample_rate = 16000
-        pipeline_cfg.preprocessing.denoise.enabled = True
-        pipeline_cfg.preprocessing.denoise.strength = 0.7
-
-        mgr._load_pipeline_config = AsyncMock(return_value=pipeline_cfg)
-        mgr._load_vad_service = AsyncMock(return_value=MagicMock())
-        mgr._load_asr_pipeline = AsyncMock(return_value=AsyncMock())
-
-        with patch("stt_v2.streaming.session_manager.StreamingDenoiser") as MockDenoiser, \
-             patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer, \
-             patch("stt_v2.streaming.session_manager.ControlListener") as MockListener, \
-             patch("stt_v2.streaming.session_manager.ResultPublisher"):
-            mock_denoiser = MockDenoiser.return_value
-            mock_denoiser.initialize.return_value = True
-            MockConsumer.return_value = AsyncMock()
-            MockListener.return_value = AsyncMock()
-
-            await mgr._recover_sessions()
-
-        MockDenoiser.assert_called_once_with(input_sr=16000, strength=0.7)
-        preprocessor = mgr._preprocessors["recovered-2"]
-        assert preprocessor.has_denoiser is True
-        assert preprocessor._normalize is True
-        assert preprocessor.target_sample_rate == 16000
 
 
 # ---------------------------------------------------------------------------
@@ -763,9 +737,12 @@ class TestCheckStreamingHealth:
             return_value=None,
             create=True,
         ):
-            with patch.dict("sys.modules", {
-                "stt_v2.streaming._runtime": MagicMock(get_session_manager=lambda: None),
-            }):
+            with patch.dict(
+                "sys.modules",
+                {
+                    "stt_v2.streaming._runtime": MagicMock(get_session_manager=lambda: None),
+                },
+            ):
                 result = _check_streaming()
 
         assert result["status"] == "degraded"
@@ -776,9 +753,12 @@ class TestCheckStreamingHealth:
 
         mock_mgr = MagicMock()
 
-        with patch.dict("sys.modules", {
-            "stt_v2.streaming._runtime": MagicMock(get_session_manager=lambda: mock_mgr),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.streaming._runtime": MagicMock(get_session_manager=lambda: mock_mgr),
+            },
+        ):
             result = _check_streaming()
 
         assert result["status"] == "healthy"
@@ -787,11 +767,14 @@ class TestCheckStreamingHealth:
     def test_returns_degraded_on_exception(self):
         from stt_v2.health.api.routes import _check_streaming
 
-        with patch.dict("sys.modules", {
-            "stt_v2.streaming._runtime": MagicMock(
-                get_session_manager=MagicMock(side_effect=RuntimeError("boom"))
-            ),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.streaming._runtime": MagicMock(
+                    get_session_manager=MagicMock(side_effect=RuntimeError("boom"))
+                ),
+            },
+        ):
             result = _check_streaming()
 
         assert result["status"] == "degraded"
@@ -825,7 +808,6 @@ class TestFrameHandlerWithModels:
             start_time=0.0,
             end_time=1.0,
             utterance_index=0,
-            is_final=True,
         )
 
         preprocessor = AsyncMock()
@@ -840,8 +822,13 @@ class TestFrameHandlerWithModels:
         from stt_v2.streaming.schemas import AudioEncoding, AudioFrame
 
         frame = AudioFrame(
-            seq=1, sr=16000, enc=AudioEncoding.PCM_S16LE,
-            ch=1, data=b"\x00" * 960, final=False, ts=1000.0,
+            seq=1,
+            sr=16000,
+            enc=AudioEncoding.PCM_S16LE,
+            ch=1,
+            data=b"\x00" * 960,
+            final=False,
+            ts=1000.0,
         )
 
         await handler(frame)
@@ -868,16 +855,19 @@ class TestFrameHandlerWithModels:
 
         audio_data = b"\x00" * 960
         frame = AudioFrame(
-            seq=1, sr=16000, enc=AudioEncoding.PCM_S16LE,
-            ch=1, data=audio_data, final=False, ts=1000.0,
+            seq=1,
+            sr=16000,
+            enc=AudioEncoding.PCM_S16LE,
+            ch=1,
+            data=audio_data,
+            final=False,
+            ts=1000.0,
         )
 
         await handler(frame)
 
         # Verify record_frame is called with the correct args from the frame
-        session.record_frame.assert_called_once_with(
-            seq=1, data=audio_data, sample_rate=16000
-        )
+        session.record_frame.assert_called_once_with(seq=1, data=audio_data, sample_rate=16000)
 
 
 # ---------------------------------------------------------------------------
@@ -1330,8 +1320,13 @@ class TestFrameHandlerFinalFrame:
         handler = mgr._make_frame_handler(session, None)
 
         frame = AudioFrame(
-            seq=99, sr=16000, enc=AudioEncoding.PCM_S16LE,
-            ch=1, data=b"\x00" * 960, final=True, ts=1000.0,
+            seq=99,
+            sr=16000,
+            enc=AudioEncoding.PCM_S16LE,
+            ch=1,
+            data=b"\x00" * 960,
+            final=True,
+            ts=1000.0,
         )
         await handler(frame)
 
@@ -1377,8 +1372,13 @@ class TestFrameHandlerFinalFrame:
         handler = mgr._make_frame_handler(session, preprocessor)
 
         frame = AudioFrame(
-            seq=99, sr=16000, enc=AudioEncoding.PCM_S16LE,
-            ch=1, data=b"\x00" * 960, final=True, ts=1000.0,
+            seq=99,
+            sr=16000,
+            enc=AudioEncoding.PCM_S16LE,
+            ch=1,
+            data=b"\x00" * 960,
+            final=True,
+            ts=1000.0,
         )
         await handler(frame)
 
@@ -1407,9 +1407,12 @@ class TestReadinessWithStreaming:
 
         mock_mgr = MagicMock()
 
-        with patch.dict("sys.modules", {
-            "stt_v2.streaming._runtime": MagicMock(get_session_manager=lambda: mock_mgr),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.streaming._runtime": MagicMock(get_session_manager=lambda: mock_mgr),
+            },
+        ):
             result = _check_streaming()
 
         assert result["status"] == "healthy"
@@ -1419,9 +1422,12 @@ class TestReadinessWithStreaming:
         """Verify streaming degraded is informational only."""
         from stt_v2.health.api.routes import _check_streaming
 
-        with patch.dict("sys.modules", {
-            "stt_v2.streaming._runtime": MagicMock(get_session_manager=lambda: None),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.streaming._runtime": MagicMock(get_session_manager=lambda: None),
+            },
+        ):
             result = _check_streaming()
 
         assert result["status"] == "degraded"
@@ -1476,18 +1482,20 @@ class TestMakeAsrCallableEdgeCases:
         """Verify that exceptions from _run_inference propagate through the closure."""
         mgr = _make_manager()
 
-        loaded_model, _, _, _, _ = _make_loaded_asr_model(
-            generate_side_effect=RuntimeError("GPU OOM during inference")
-        )
-        mock_config = MagicMock(
-            code_switching=False,
-            language=None,
-            beam_size=None,
-            temperature=None,
+        mock_batch_svc = MagicMock()
+        mock_batch_svc._run_inference = AsyncMock(
+            side_effect=RuntimeError("GPU OOM during inference")
         )
 
-        with patch.dict("sys.modules", {"torch": _make_mock_torch()}):
-            fn = mgr._make_asr_callable(loaded_model, mock_config)
+        with patch.dict(
+            "sys.modules",
+            {
+                "stt_v2.transcription.batch_service": MagicMock(
+                    BatchTranscriptionService=lambda: mock_batch_svc
+                ),
+            },
+        ):
+            fn = mgr._make_asr_callable(MagicMock(), MagicMock())
 
         with pytest.raises(RuntimeError, match="GPU OOM"):
             await fn(np.zeros(16000, dtype=np.float32), 16000)
@@ -1544,18 +1552,12 @@ class TestFinalizeSessionPendingSegments:
         publisher.publish_status = AsyncMock(
             side_effect=lambda status: call_order.append(f"publish:{status}")
         )
-        session.finalize = AsyncMock(
-            side_effect=lambda: call_order.append("finalize")
-        )
-        session.close = AsyncMock(
-            side_effect=lambda **kwargs: call_order.append("close")
-        )
+        session.finalize = AsyncMock(side_effect=lambda: call_order.append("finalize"))
+        session.close = AsyncMock(side_effect=lambda **kwargs: call_order.append("close"))
 
         mgr._publishers["s-order"] = publisher
         mgr._sessions["s-order"] = session
-        mgr.remove_session = AsyncMock(
-            side_effect=lambda sid: call_order.append("remove")
-        )
+        mgr.remove_session = AsyncMock(side_effect=lambda sid: call_order.append("remove"))
 
         await mgr._finalize_session(session)
 
@@ -1591,9 +1593,7 @@ class TestRecoverSessionsEdgeCases:
             worker_id="other-worker-id",  # Different worker
         )
 
-        mgr._redis.scan = AsyncMock(
-            return_value=(0, [b"stt:session:other-worker-session"])
-        )
+        mgr._redis.scan = AsyncMock(return_value=(0, [b"stt:session:other-worker-session"]))
         mgr._redis.hgetall = AsyncMock(return_value=meta.to_redis_dict())
         # Other worker IS alive
         mgr._redis.exists = AsyncMock(return_value=True)
@@ -1618,9 +1618,7 @@ class TestRecoverSessionsEdgeCases:
             sample_rate=16000,
         )
 
-        mgr._redis.scan = AsyncMock(
-            return_value=(0, [b"stt:session:orphaned-session"])
-        )
+        mgr._redis.scan = AsyncMock(return_value=(0, [b"stt:session:orphaned-session"]))
         mgr._redis.hgetall = AsyncMock(return_value=meta.to_redis_dict())
         # Dead worker — does NOT exist in Redis
         mgr._redis.exists = AsyncMock(return_value=False)
@@ -1629,9 +1627,11 @@ class TestRecoverSessionsEdgeCases:
         mgr._load_vad_service = AsyncMock(return_value=None)
         mgr._load_asr_pipeline = AsyncMock(return_value=None)
 
-        with patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer, \
-             patch("stt_v2.streaming.session_manager.ControlListener") as MockListener, \
-             patch("stt_v2.streaming.session_manager.ResultPublisher"):
+        with (
+            patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
+            patch("stt_v2.streaming.session_manager.ControlListener") as MockListener,
+            patch("stt_v2.streaming.session_manager.ResultPublisher"),
+        ):
             MockConsumer.return_value = AsyncMock()
             MockListener.return_value = AsyncMock()
 
@@ -1644,16 +1644,16 @@ class TestRecoverSessionsEdgeCases:
         """Recovery should skip sessions with corrupt Redis data that cause exceptions."""
         mgr = _make_manager()
 
-        mgr._redis.scan = AsyncMock(
-            return_value=(0, [b"stt:session:corrupt"])
-        )
+        mgr._redis.scan = AsyncMock(return_value=(0, [b"stt:session:corrupt"]))
         # Return data with an invalid status value that SessionStatus() will reject
-        mgr._redis.hgetall = AsyncMock(return_value={
-            b"session_id": b"corrupt",
-            b"tenant_id": b"t-1",
-            b"pipeline_id": b"pipe-1",
-            b"status": b"INVALID_STATUS_VALUE",  # This will raise ValueError
-        })
+        mgr._redis.hgetall = AsyncMock(
+            return_value={
+                b"session_id": b"corrupt",
+                b"tenant_id": b"t-1",
+                b"pipeline_id": b"pipe-1",
+                b"status": b"INVALID_STATUS_VALUE",  # This will raise ValueError
+            }
+        )
 
         # Should not raise — errors are caught per-session
         await mgr._recover_sessions()
@@ -1709,9 +1709,13 @@ class TestSessionLeakPrevention:
         broken_consumer = AsyncMock()
         broken_consumer.start = AsyncMock(side_effect=RuntimeError("consumer start failed"))
 
-        with patch("stt_v2.streaming.session_manager.IngestionConsumer", return_value=broken_consumer), \
-             patch("stt_v2.streaming.session_manager.ControlListener", return_value=AsyncMock()), \
-             patch("stt_v2.streaming.session_manager.ResultPublisher"):
+        with (
+            patch(
+                "stt_v2.streaming.session_manager.IngestionConsumer", return_value=broken_consumer
+            ),
+            patch("stt_v2.streaming.session_manager.ControlListener", return_value=AsyncMock()),
+            patch("stt_v2.streaming.session_manager.ResultPublisher"),
+        ):
             with pytest.raises(RuntimeError, match="consumer start failed"):
                 await mgr.create_session("s-leak-create", "t1", "p1")
 
@@ -1746,9 +1750,13 @@ class TestSessionLeakPrevention:
         broken_consumer = AsyncMock()
         broken_consumer.start = AsyncMock(side_effect=RuntimeError("recover consumer start failed"))
 
-        with patch("stt_v2.streaming.session_manager.IngestionConsumer", return_value=broken_consumer), \
-             patch("stt_v2.streaming.session_manager.ControlListener", return_value=AsyncMock()), \
-             patch("stt_v2.streaming.session_manager.ResultPublisher"):
+        with (
+            patch(
+                "stt_v2.streaming.session_manager.IngestionConsumer", return_value=broken_consumer
+            ),
+            patch("stt_v2.streaming.session_manager.ControlListener", return_value=AsyncMock()),
+            patch("stt_v2.streaming.session_manager.ResultPublisher"),
+        ):
             await mgr._recover_sessions()
 
         assert mgr.capacity_guard.active_count == 0

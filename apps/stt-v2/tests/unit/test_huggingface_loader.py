@@ -26,9 +26,7 @@ class TestHuggingFaceUnload:
         mock_model.feature_extractor = MagicMock()
         mock_model.model_slug = "test-hf"
 
-        with patch(
-            "stt_v2.models.base_loader.cleanup_accelerator_memory"
-        ) as mock_cleanup:
+        with patch("stt_v2.models.base_loader.cleanup_accelerator_memory") as mock_cleanup:
             await loader.unload(mock_model)
 
             mock_cleanup.assert_called_once()
@@ -52,9 +50,7 @@ class TestHuggingFaceUnload:
             device="cpu",
         )
 
-        with patch(
-            "stt_v2.models.base_loader.cleanup_accelerator_memory"
-        ):
+        with patch("stt_v2.models.base_loader.cleanup_accelerator_memory"):
             await loader.unload(loaded)
 
         # After unload, model attribute should be deleted

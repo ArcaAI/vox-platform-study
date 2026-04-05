@@ -170,12 +170,15 @@ class TestAzureTranscribeSyncWavConversion:
             captured_filenames.append(filename)
             return original_audio_config
 
-        with patch(
-            "stt_v2.transcription.batch_service.audio.AudioConfig",
-            side_effect=capture_audio_config,
-        ), patch(
-            "stt_v2.transcription.batch_service.transcription.ConversationTranscriber",
-            return_value=mock_transcriber,
+        with (
+            patch(
+                "stt_v2.transcription.batch_service.audio.AudioConfig",
+                side_effect=capture_audio_config,
+            ),
+            patch(
+                "stt_v2.transcription.batch_service.transcription.ConversationTranscriber",
+                return_value=mock_transcriber,
+            ),
         ):
             result = service._azure_transcribe_sync(
                 mock_speech_config, samples, sample_rate, "en-US"
@@ -218,16 +221,17 @@ class TestAzureTranscribeSyncWavConversion:
                 captured_data.append(f.read())
             return MagicMock()
 
-        with patch(
-            "stt_v2.transcription.batch_service.audio.AudioConfig",
-            side_effect=capture_wav,
-        ), patch(
-            "stt_v2.transcription.batch_service.transcription.ConversationTranscriber",
-            return_value=mock_transcriber,
+        with (
+            patch(
+                "stt_v2.transcription.batch_service.audio.AudioConfig",
+                side_effect=capture_wav,
+            ),
+            patch(
+                "stt_v2.transcription.batch_service.transcription.ConversationTranscriber",
+                return_value=mock_transcriber,
+            ),
         ):
-            service._azure_transcribe_sync(
-                mock_speech_config, samples, sample_rate, "en-US"
-            )
+            service._azure_transcribe_sync(mock_speech_config, samples, sample_rate, "en-US")
 
         # Parse the captured WAV and verify PCM values are within 16-bit range
         wav_bytes = captured_data[0]
@@ -278,6 +282,7 @@ class TestAzureTranscribeSyncCallbacks:
         def capture_connect(name):
             def _connect(callback):
                 callbacks[name] = callback
+
             return _connect
 
         mock_transcriber.transcribed = MagicMock()
@@ -289,10 +294,10 @@ class TestAzureTranscribeSyncCallbacks:
 
         def start_transcribing():
             # Fire transcribed events
-            for evt in (transcribed_events or []):
+            for evt in transcribed_events or []:
                 callbacks["transcribed"](evt)
             # Fire canceled events
-            for evt in (canceled_events or []):
+            for evt in canceled_events or []:
                 callbacks["canceled"](evt)
             # Fire session_stopped (unless simulating timeout)
             if not timeout:
@@ -301,16 +306,17 @@ class TestAzureTranscribeSyncCallbacks:
         mock_transcriber.start_transcribing_async = start_transcribing
         mock_transcriber.stop_transcribing_async = MagicMock()
 
-        with patch(
-            "stt_v2.transcription.batch_service.audio.AudioConfig",
-            return_value=MagicMock(),
-        ), patch(
-            "stt_v2.transcription.batch_service.transcription.ConversationTranscriber",
-            return_value=mock_transcriber,
+        with (
+            patch(
+                "stt_v2.transcription.batch_service.audio.AudioConfig",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "stt_v2.transcription.batch_service.transcription.ConversationTranscriber",
+                return_value=mock_transcriber,
+            ),
         ):
-            return service._azure_transcribe_sync(
-                mock_speech_config, samples, 16000, "en-US"
-            )
+            return service._azure_transcribe_sync(mock_speech_config, samples, 16000, "en-US")
 
     def test_single_segment_result(self, service):
         """Test transcription with a single recognized segment."""
@@ -366,9 +372,7 @@ class TestAzureTranscribeSyncCallbacks:
 
         evt_real = make_azure_result_event(text="Real speech", confidence=0.9)
 
-        result = self._run_with_events(
-            service, transcribed_events=[evt_empty, evt_real]
-        )
+        result = self._run_with_events(service, transcribed_events=[evt_empty, evt_real])
 
         assert result.text == "Real speech"
         assert len(result.segments) == 1
@@ -457,6 +461,7 @@ class TestAzureTranscribeSyncErrors:
         def capture_connect(name):
             def _connect(callback):
                 callbacks[name] = callback
+
             return _connect
 
         mock_transcriber.transcribed = MagicMock()
@@ -473,16 +478,17 @@ class TestAzureTranscribeSyncErrors:
         mock_transcriber.start_transcribing_async = start_transcribing
         mock_transcriber.stop_transcribing_async = MagicMock()
 
-        with patch(
-            "stt_v2.transcription.batch_service.audio.AudioConfig",
-            return_value=MagicMock(),
-        ), patch(
-            "stt_v2.transcription.batch_service.transcription.ConversationTranscriber",
-            return_value=mock_transcriber,
+        with (
+            patch(
+                "stt_v2.transcription.batch_service.audio.AudioConfig",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "stt_v2.transcription.batch_service.transcription.ConversationTranscriber",
+                return_value=mock_transcriber,
+            ),
         ):
-            return service._azure_transcribe_sync(
-                mock_speech_config, samples, 16000, "en-US"
-            )
+            return service._azure_transcribe_sync(mock_speech_config, samples, 16000, "en-US")
 
     def test_401_maps_to_auth_error(self, service):
         """Test that 401 error is mapped to CloudASRAuthError."""
@@ -525,6 +531,7 @@ class TestAzureTranscribeSyncErrors:
         def capture_connect(name):
             def _connect(callback):
                 callbacks[name] = callback
+
             return _connect
 
         mock_transcriber.transcribed = MagicMock()
@@ -541,17 +548,18 @@ class TestAzureTranscribeSyncErrors:
         mock_transcriber.start_transcribing_async = start_transcribing
         mock_transcriber.stop_transcribing_async = MagicMock()
 
-        with patch(
-            "stt_v2.transcription.batch_service.audio.AudioConfig",
-            side_effect=capture_audio_config,
-        ), patch(
-            "stt_v2.transcription.batch_service.transcription.ConversationTranscriber",
-            return_value=mock_transcriber,
+        with (
+            patch(
+                "stt_v2.transcription.batch_service.audio.AudioConfig",
+                side_effect=capture_audio_config,
+            ),
+            patch(
+                "stt_v2.transcription.batch_service.transcription.ConversationTranscriber",
+                return_value=mock_transcriber,
+            ),
         ):
             with pytest.raises(CloudASRAuthError):
-                service._azure_transcribe_sync(
-                    mock_speech_config, samples, 16000, "en-US"
-                )
+                service._azure_transcribe_sync(mock_speech_config, samples, 16000, "en-US")
 
         # Temp file should be cleaned up in finally block
         assert len(captured_filenames) == 1
@@ -586,22 +594,22 @@ class TestAzureTranscribeSyncTimeout:
         mock_transcriber.stop_transcribing_async = MagicMock()
 
         # Patch threading.Event.wait to simulate timeout (return False)
-        with patch(
-            "stt_v2.transcription.batch_service.audio.AudioConfig",
-            return_value=MagicMock(),
-        ), patch(
-            "stt_v2.transcription.batch_service.transcription.ConversationTranscriber",
-            return_value=mock_transcriber,
-        ), patch(
-            "threading.Event.wait",
-            return_value=False,  # Simulate timeout
+        with (
+            patch(
+                "stt_v2.transcription.batch_service.audio.AudioConfig",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "stt_v2.transcription.batch_service.transcription.ConversationTranscriber",
+                return_value=mock_transcriber,
+            ),
+            patch(
+                "threading.Event.wait",
+                return_value=False,  # Simulate timeout
+            ),
         ):
-            with pytest.raises(
-                CloudASRTranscriptionError, match="timed out"
-            ):
-                service._azure_transcribe_sync(
-                    mock_speech_config, samples, 16000, "en-US"
-                )
+            with pytest.raises(CloudASRTranscriptionError, match="timed out"):
+                service._azure_transcribe_sync(mock_speech_config, samples, 16000, "en-US")
 
             # Should attempt to stop transcription
             mock_transcriber.stop_transcribing_async.assert_called()
@@ -666,12 +674,11 @@ class TestRunAzureSpeechInference:
         samples = np.zeros(16000, dtype=np.float32)
 
         with patch.object(
-            service, "_azure_transcribe_sync",
+            service,
+            "_azure_transcribe_sync",
             return_value=RawTranscription(text="Test"),
         ) as mock_sync:
-            await service._run_azure_speech_inference(
-                samples, 16000, azure_loaded_model, config
-            )
+            await service._run_azure_speech_inference(samples, 16000, azure_loaded_model, config)
 
             assert mock_sync.call_args[0][3] == "en-US"
 
@@ -682,20 +689,17 @@ class TestRunAzureSpeechInference:
         samples = np.zeros(16000, dtype=np.float32)
 
         with patch.object(
-            service, "_azure_transcribe_sync",
+            service,
+            "_azure_transcribe_sync",
             return_value=RawTranscription(text="Test"),
         ) as mock_sync:
-            await service._run_azure_speech_inference(
-                samples, 16000, azure_loaded_model, config
-            )
+            await service._run_azure_speech_inference(samples, 16000, azure_loaded_model, config)
 
             # getattr(config, "language", None) returns None
             assert mock_sync.call_args[0][3] == "en-US"
 
     @pytest.mark.asyncio
-    async def test_progress_callback_called_at_completion(
-        self, service, azure_loaded_model
-    ):
+    async def test_progress_callback_called_at_completion(self, service, azure_loaded_model):
         """Test that progress callback receives 1.0 after inference completes."""
         config = MagicMock()
         config.language = "en"
@@ -703,7 +707,8 @@ class TestRunAzureSpeechInference:
         progress_values = []
 
         with patch.object(
-            service, "_azure_transcribe_sync",
+            service,
+            "_azure_transcribe_sync",
             return_value=RawTranscription(text="Done"),
         ):
             await service._run_azure_speech_inference(
@@ -724,7 +729,8 @@ class TestRunAzureSpeechInference:
         samples = np.zeros(16000, dtype=np.float32)
 
         with patch.object(
-            service, "_azure_transcribe_sync",
+            service,
+            "_azure_transcribe_sync",
             return_value=RawTranscription(text="Done"),
         ):
             # Should not raise
@@ -735,21 +741,18 @@ class TestRunAzureSpeechInference:
         assert result.text == "Done"
 
     @pytest.mark.asyncio
-    async def test_speech_config_passed_from_loaded_model(
-        self, service, azure_loaded_model
-    ):
+    async def test_speech_config_passed_from_loaded_model(self, service, azure_loaded_model):
         """Test that the SpeechConfig from LoadedModel.model is passed correctly."""
         config = MagicMock()
         config.language = "en"
         samples = np.zeros(16000, dtype=np.float32)
 
         with patch.object(
-            service, "_azure_transcribe_sync",
+            service,
+            "_azure_transcribe_sync",
             return_value=RawTranscription(text="Test"),
         ) as mock_sync:
-            await service._run_azure_speech_inference(
-                samples, 16000, azure_loaded_model, config
-            )
+            await service._run_azure_speech_inference(samples, 16000, azure_loaded_model, config)
 
             # First arg to _azure_transcribe_sync should be the SpeechConfig
             assert mock_sync.call_args[0][0] is azure_loaded_model.model

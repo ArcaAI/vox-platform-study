@@ -53,12 +53,12 @@ class AiModelDownloadStatus(StrEnum):
 # None means default (fp32). These correspond to file name suffixes, e.g.,
 # encoder_model_{variant}.onnx / decoder_model_merged_{variant}.onnx
 VALID_ONNX_QUANTIZATIONS: list[str] = [
-    "fp16",       # Float16 — ~50% size of fp32, minimal quality loss
-    "int8",       # INT8 dynamic quantization
-    "uint8",      # UINT8 dynamic quantization (same size as int8)
-    "q4",         # 4-bit quantization — ~25% size of fp32
-    "q4f16",      # 4-bit weights + float16 activations — smallest
-    "bnb4",       # bitsandbytes 4-bit
+    "fp16",  # Float16 — ~50% size of fp32, minimal quality loss
+    "int8",  # INT8 dynamic quantization
+    "uint8",  # UINT8 dynamic quantization (same size as int8)
+    "q4",  # 4-bit quantization — ~25% size of fp32
+    "q4f16",  # 4-bit weights + float16 activations — smallest
+    "bnb4",  # bitsandbytes 4-bit
     "quantized",  # Default quantized (typically int8)
 ]
 
@@ -66,15 +66,106 @@ VALID_ONNX_QUANTIZATIONS: list[str] = [
 # Whisper-supported language codes (ISO 639-1 / 639-3).
 # Used for validation when a language hint is provided.
 VALID_WHISPER_LANGUAGES: set[str] = {
-    "af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs",
-    "ca", "cs", "cy", "da", "de", "el", "en", "es", "et", "eu", "fa", "fi",
-    "fo", "fr", "gl", "gu", "ha", "haw", "he", "hi", "hr", "ht", "hu", "hy",
-    "id", "is", "it", "ja", "jw", "ka", "kk", "km", "kn", "ko", "la", "lb",
-    "ln", "lo", "lt", "lv", "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt",
-    "my", "ne", "nl", "nn", "no", "oc", "pa", "pl", "ps", "pt", "ro", "ru",
-    "sa", "sd", "si", "sk", "sl", "sn", "so", "sq", "sr", "su", "sv", "sw",
-    "ta", "te", "tg", "th", "tk", "tl", "tr", "tt", "uk", "ur", "uz", "vi",
-    "yi", "yo", "yue", "zh",
+    "af",
+    "am",
+    "ar",
+    "as",
+    "az",
+    "ba",
+    "be",
+    "bg",
+    "bn",
+    "bo",
+    "br",
+    "bs",
+    "ca",
+    "cs",
+    "cy",
+    "da",
+    "de",
+    "el",
+    "en",
+    "es",
+    "et",
+    "eu",
+    "fa",
+    "fi",
+    "fo",
+    "fr",
+    "gl",
+    "gu",
+    "ha",
+    "haw",
+    "he",
+    "hi",
+    "hr",
+    "ht",
+    "hu",
+    "hy",
+    "id",
+    "is",
+    "it",
+    "ja",
+    "jw",
+    "ka",
+    "kk",
+    "km",
+    "kn",
+    "ko",
+    "la",
+    "lb",
+    "ln",
+    "lo",
+    "lt",
+    "lv",
+    "mg",
+    "mi",
+    "mk",
+    "ml",
+    "mn",
+    "mr",
+    "ms",
+    "mt",
+    "my",
+    "ne",
+    "nl",
+    "nn",
+    "no",
+    "oc",
+    "pa",
+    "pl",
+    "ps",
+    "pt",
+    "ro",
+    "ru",
+    "sa",
+    "sd",
+    "si",
+    "sk",
+    "sl",
+    "sn",
+    "so",
+    "sq",
+    "sr",
+    "su",
+    "sv",
+    "sw",
+    "ta",
+    "te",
+    "tg",
+    "th",
+    "tk",
+    "tl",
+    "tr",
+    "tt",
+    "uk",
+    "ur",
+    "uz",
+    "vi",
+    "yi",
+    "yo",
+    "yue",
+    "zh",
 }
 
 
@@ -283,11 +374,10 @@ class VadConfig:
     """Voice Activity Detection configuration."""
 
     enabled: bool = True
-    threshold: float = 0.6
-    min_speech_duration_ms: int = 350
+    threshold: float = 0.5
+    min_speech_duration_ms: int = 250
     min_silence_duration_ms: int = 100
     padding_ms: int = 30
-    pre_speech_context_ms: int = 500
 
 
 @dataclass

@@ -82,7 +82,7 @@ export class OpenTelemetryService implements OnModuleInit, OnModuleDestroy {
   private getConfigFromEnv(): OpenTelemetryConfig {
     return {
       // eslint-disable-next-line turbo/no-undeclared-env-vars
-      serviceName: process.env.OTEL_SERVICE_NAME || 'hope-service',
+      serviceName: process.env.OTEL_SERVICE_NAME || 'unknown-service',
       // eslint-disable-next-line turbo/no-undeclared-env-vars
       serviceVersion: process.env.OTEL_SERVICE_VERSION || '1.0.0',
       environment: process.env.NODE_ENV || 'development',

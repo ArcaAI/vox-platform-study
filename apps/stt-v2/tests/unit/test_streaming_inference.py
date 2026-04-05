@@ -20,21 +20,9 @@ def _make_utterance(
     index: int = 0,
     duration_s: float = 1.0,
     is_final: bool = False,
-    rms_level: float | None = None,
 ) -> AudioUtterance:
-    """Create a dummy AudioUtterance for testing.
-
-    Parameters
-    ----------
-    rms_level:
-        If provided, scale samples to have approximately this RMS level.
-        Use a very small value (e.g. 0.001) for near-silence.
-    """
+    """Create a dummy AudioUtterance for testing."""
     samples = np.random.randn(int(16000 * duration_s)).astype(np.float32)
-    if rms_level is not None:
-        current_rms = float(np.sqrt(np.mean(samples ** 2)))
-        if current_rms > 0:
-            samples = samples * (rms_level / current_rms)
     return AudioUtterance(
         samples=samples,
         sample_rate=16000,
@@ -85,9 +73,7 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_sync_pipeline_returns_string(self):
         """Sync pipeline returning a string."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda samples, sr: "hello world"
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda samples, sr: "hello world")
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -97,9 +83,7 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_sync_pipeline_returns_dict(self):
         """Sync pipeline returning a dict with text key."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda samples, sr: {"text": "from dict"}
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda samples, sr: {"text": "from dict"})
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -107,8 +91,25 @@ class TestProcessUtterance:
         assert result.text == "from dict"
 
     @pytest.mark.asyncio
+    async def test_sync_pipeline_preserves_english_text(self):
+        """Dict pipeline english_text should be preserved on live segment results."""
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda samples, sr: {
+                "text": "வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்",
+                "english_text": "Will not call ...",
+            }
+        )
+        utt = _make_utterance()
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == "வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்"
+        assert result.english_text == "Will not call ..."
+
+    @pytest.mark.asyncio
     async def test_async_pipeline(self):
         """Async pipeline should be awaited."""
+
         async def _asr(samples, sr):
             return "async result"
 
@@ -122,6 +123,7 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_pipeline_error_returns_empty(self):
         """Pipeline error should not crash — returns empty text."""
+
         def _failing_pipeline(samples, sr):
             raise RuntimeError("Model crashed")
 
@@ -136,9 +138,7 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_timing_preserved(self):
         """Result should preserve utterance timing."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "test"
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "test")
         utt = _make_utterance(index=3, duration_s=2.5)
 
         result = await worker.process_utterance("sess-1", utt)
@@ -150,9 +150,7 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_final_flag_preserved(self):
         """is_final should pass through to SegmentResult."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "final"
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "final")
         utt = _make_utterance(is_final=True)
 
         result = await worker.process_utterance("sess-1", utt)
@@ -162,9 +160,7 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_sanitizes_chevron_spam(self):
         """Pathological leading chevron spam should be removed."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: ">> >> >> >> hello world"
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: ">> >> >> >> hello world")
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -187,22 +183,13 @@ class TestProcessUtterance:
         utt = _make_utterance(duration_s=1.2)
 
         mock_identifier = MagicMock()
-        mock_identifier.identify_with_embedding = AsyncMock(
+        mock_identifier.identify_speaker = AsyncMock(
             return_value=MagicMock(speaker_id="speaker-abc", confidence=0.93)
-        )
-
-        mock_emb_service = MagicMock()
-        mock_emb_service.is_loaded = True
-        mock_emb_service.extract_from_samples = AsyncMock(
-            return_value=MagicMock(embedding=[0.1] * 512)
         )
 
         with patch(
             "stt_v2.diarization.speaker_identifier.get_speaker_identifier",
             return_value=mock_identifier,
-        ), patch(
-            "stt_v2.diarization.embedding_service.get_embedding_service",
-            return_value=mock_emb_service,
         ):
             result = await worker.process_utterance("sess-1", utt)
 
@@ -236,11 +223,30 @@ class TestResultPublishing:
         assert published_result.text == "published text"
 
     @pytest.mark.asyncio
+    async def test_publishes_english_text_when_present(self):
+        """Published live segment should carry english_text for code-switching."""
+        publisher = AsyncMock()
+
+        worker = StreamingInferenceWorker(
+            result_publisher=publisher,
+            asr_pipeline=lambda s, sr: {
+                "text": "வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்",
+                "english_text": "Will not call ...",
+            },
+        )
+        utt = _make_utterance()
+
+        await worker.process_utterance("sess-1", utt)
+
+        publisher.publish.assert_awaited_once()
+        published_result = publisher.publish.call_args[0][0]
+        assert isinstance(published_result, SegmentResult)
+        assert published_result.english_text == "Will not call ..."
+
+    @pytest.mark.asyncio
     async def test_no_publisher_no_error(self):
         """No publisher configured should not crash."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "no pub"
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "no pub")
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -276,9 +282,7 @@ class TestPipelineReturnTypes:
     @pytest.mark.asyncio
     async def test_pipeline_returns_integer(self):
         """Pipeline returning an integer should be str()-ified."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: 42
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: 42)
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -288,9 +292,7 @@ class TestPipelineReturnTypes:
     @pytest.mark.asyncio
     async def test_pipeline_returns_dict_without_text(self):
         """Pipeline returning a dict without 'text' key returns empty."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: {"confidence": 0.95}
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: {"confidence": 0.95})
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -300,9 +302,7 @@ class TestPipelineReturnTypes:
     @pytest.mark.asyncio
     async def test_pipeline_returns_empty_string(self):
         """Pipeline returning empty string is valid."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: ""
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "")
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -312,9 +312,7 @@ class TestPipelineReturnTypes:
     @pytest.mark.asyncio
     async def test_pipeline_returns_none_via_dict(self):
         """Pipeline returning dict with None text should yield empty string."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: {"text": None}
-        )
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: {"text": None})
         utt = _make_utterance()
 
         result = await worker.process_utterance("sess-1", utt)
@@ -325,6 +323,7 @@ class TestPipelineReturnTypes:
     @pytest.mark.asyncio
     async def test_async_pipeline_error(self):
         """Async pipeline that throws should be handled gracefully."""
+
         async def _failing_async(samples, sr):
             raise ValueError("Async model error")
 
@@ -380,257 +379,3 @@ class TestPipelineReturnTypes:
         assert results[0].text == "utterance 1"
         assert results[4].text == "utterance 5"
         assert publisher.publish.await_count == 5
-
-
-# =========================================================================
-# Tests: Hallucination filter
-# =========================================================================
-
-
-class TestHallucinationFilter:
-    """Tests for post-ASR hallucination filtering."""
-
-    @pytest.mark.asyncio
-    async def test_rejects_filler_only_text(self):
-        """Filler-only output like 'uh...' should be filtered to empty."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "uh..."
-        )
-        utt = _make_utterance(rms_level=0.005)
-
-        result = await worker.process_utterance("sess-1", utt)
-
-        assert result.text == ""
-
-    @pytest.mark.asyncio
-    async def test_rejects_um_filler(self):
-        """Single filler 'um' should be filtered."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "um"
-        )
-        utt = _make_utterance(rms_level=0.005)
-
-        result = await worker.process_utterance("sess-1", utt)
-
-        assert result.text == ""
-
-    @pytest.mark.asyncio
-    async def test_rejects_oh_man_hallucination(self):
-        """'Oh, man.' on low-energy segment should be filtered."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "Oh, man."
-        )
-        utt = _make_utterance(rms_level=0.003)
-
-        result = await worker.process_utterance("sess-1", utt)
-
-        assert result.text == ""
-
-    @pytest.mark.asyncio
-    async def test_rejects_dots_only(self):
-        """Ellipsis-only output should be filtered."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "..."
-        )
-        utt = _make_utterance(rms_level=0.005)
-
-        result = await worker.process_utterance("sess-1", utt)
-
-        assert result.text == ""
-
-    @pytest.mark.asyncio
-    async def test_rejects_mixed_fillers(self):
-        """Mixed fillers 'uh um ah' should be filtered."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "uh um ah"
-        )
-        utt = _make_utterance(rms_level=0.005)
-
-        result = await worker.process_utterance("sess-1", utt)
-
-        assert result.text == ""
-
-    @pytest.mark.asyncio
-    async def test_keeps_real_speech(self):
-        """Real speech with normal energy should be preserved."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "hello world this is a test"
-        )
-        utt = _make_utterance(rms_level=0.1)
-
-        result = await worker.process_utterance("sess-1", utt)
-
-        assert result.text == "hello world this is a test"
-
-    @pytest.mark.asyncio
-    async def test_keeps_short_real_word_with_energy(self):
-        """Short real word 'yes' with sufficient energy should be preserved."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "yes"
-        )
-        utt = _make_utterance(rms_level=0.1)
-
-        result = await worker.process_utterance("sess-1", utt)
-
-        assert result.text == "yes"
-
-    @pytest.mark.asyncio
-    async def test_keeps_filler_with_real_content(self):
-        """Text containing fillers mixed with real words should be preserved."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "uh I think this is important"
-        )
-        utt = _make_utterance(rms_level=0.08)
-
-        result = await worker.process_utterance("sess-1", utt)
-
-        assert result.text == "uh I think this is important"
-
-    @pytest.mark.asyncio
-    async def test_low_energy_short_text_filtered(self):
-        """Short text on very low energy segment should be filtered."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "Oh."
-        )
-        utt = _make_utterance(rms_level=0.002)
-
-        result = await worker.process_utterance("sess-1", utt)
-
-        assert result.text == ""
-
-    @pytest.mark.asyncio
-    async def test_rejects_thank_you_on_silence(self):
-        """'Thank you.' on near-silence is a common Whisper hallucination."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "Thank you."
-        )
-        utt = _make_utterance(rms_level=0.002)
-
-        result = await worker.process_utterance("sess-1", utt)
-
-        assert result.text == ""
-
-    @pytest.mark.asyncio
-    async def test_hallucination_filtered_still_publishes(self):
-        """Filtered hallucination should still publish (with empty text)."""
-        publisher = AsyncMock()
-        worker = StreamingInferenceWorker(
-            result_publisher=publisher,
-            asr_pipeline=lambda s, sr: "uh...",
-        )
-        utt = _make_utterance(rms_level=0.005)
-
-        result = await worker.process_utterance("sess-1", utt)
-
-        assert result.text == ""
-        publisher.publish.assert_awaited_once()
-
-
-# =========================================================================
-# Tests: process_partial
-# =========================================================================
-
-
-class TestProcessPartial:
-    """Tests for the lightweight partial inference path."""
-
-    @pytest.mark.asyncio
-    async def test_process_partial_returns_is_final_false(self):
-        """Partial result should have is_final=False and speaker_id=None."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "hello world",
-        )
-        utt = _make_utterance(is_final=False)
-
-        result = await worker.process_partial("sess-1", utt)
-
-        assert result.is_final is False
-        assert result.speaker_id is None
-        assert result.speaker_confidence == 0.0
-
-    @pytest.mark.asyncio
-    async def test_process_partial_skips_embedding(self):
-        """Embedding extraction should not be called for partials."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "hello",
-            tenant_id="t1",
-        )
-        utt = _make_utterance(is_final=False)
-
-        with patch.object(worker, "_extract_embedding") as mock_embed:
-            result = await worker.process_partial("sess-1", utt)
-            mock_embed.assert_not_called()
-
-        assert result.text == "hello"
-
-    @pytest.mark.asyncio
-    async def test_process_partial_skips_diarization(self):
-        """Diarization should not be called for partials."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "hello",
-            tenant_id="t1",
-        )
-        utt = _make_utterance(is_final=False)
-
-        with patch.object(worker, "_identify_with_embedding") as mock_diar:
-            await worker.process_partial("sess-1", utt)
-            mock_diar.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_process_partial_does_not_update_previous_text(self):
-        """_previous_text should remain unchanged after process_partial."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "partial text here",
-        )
-        worker._previous_text = "original context"
-        utt = _make_utterance(is_final=False)
-
-        await worker.process_partial("sess-1", utt)
-
-        assert worker._previous_text == "original context"
-
-    @pytest.mark.asyncio
-    async def test_process_partial_crops_to_tail_window(self):
-        """15s utterance should have ASR receive <= 10s of samples."""
-        received_samples = []
-
-        def capturing_pipeline(samples, sr, **kwargs):
-            received_samples.append(len(samples))
-            return "text"
-
-        worker = StreamingInferenceWorker(asr_pipeline=capturing_pipeline)
-        utt = _make_utterance(duration_s=15.0, is_final=False)
-
-        await worker.process_partial("sess-1", utt)
-
-        max_samples = int(10.0 * 16000)
-        assert received_samples[0] <= max_samples
-
-    @pytest.mark.asyncio
-    async def test_process_partial_hallucination_filtered(self):
-        """Near-silence input should produce empty text."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "uh",
-        )
-        utt = _make_utterance(is_final=False, rms_level=0.001)
-
-        result = await worker.process_partial("sess-1", utt)
-
-        assert result.text == ""
-
-    @pytest.mark.asyncio
-    async def test_process_utterance_unchanged_regression(self):
-        """is_final=True still runs full pipeline (embed + diarize + context carry)."""
-        worker = StreamingInferenceWorker(
-            asr_pipeline=lambda s, sr: "hello world",
-        )
-        utt = _make_utterance(is_final=True)
-
-        with patch.object(
-            worker, "_extract_embedding", new_callable=AsyncMock, return_value=None
-        ) as mock_embed:
-            result = await worker.process_utterance("sess-1", utt)
-            mock_embed.assert_awaited_once()
-
-        assert result.is_final is True
-        assert "hello world" in worker._previous_text

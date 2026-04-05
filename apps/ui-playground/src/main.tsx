@@ -1,16 +1,16 @@
-import { Skeleton } from '@arcaai/ui/skeleton';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { createRouter, RouterProvider } from '@tanstack/react-router';
-import { StrictMode, Suspense, useSyncExternalStore } from 'react';
+import { StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Skeleton } from '@arcaai/ui/skeleton';
 import { ErrorBoundary } from './components/error-boundary';
-import './index.css';
-import { createAppQueryClient } from './lib/query-client';
-import { SDKProvider } from './providers/sdk-provider';
 import { ThemeProvider } from './providers/theme-provider';
-import { routeTree } from './routeTree.gen';
+import { SDKProvider } from './providers/sdk-provider';
+import { createAppQueryClient } from './lib/query-client';
 import { useAuthStore } from './store/auth-store';
+import { routeTree } from './routeTree.gen';
+import './index.css';
 
 const router = createRouter({
   routeTree,
@@ -32,14 +32,7 @@ declare module '@tanstack/react-router' {
 const queryClient = createAppQueryClient((opts) => router.navigate(opts));
 
 function InnerApp() {
-  const hasHydrated = useSyncExternalStore(
-    useAuthStore.persist.onFinishHydration,
-    () => useAuthStore.persist.hasHydrated(),
-    () => false,
-  );
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-
-  if (!hasHydrated) return <AppSkeleton />;
 
   return <RouterProvider router={router} context={{ queryClient, isAuthenticated }} />;
 }

@@ -1,17 +1,22 @@
 """Application settings using Pydantic Settings."""
 
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_SERVICE_ROOT = Path(__file__).resolve().parents[4]  # …/apps/stt-v2
+_ENV_FILE = _SERVICE_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE) if _ENV_FILE.is_file() else None,
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -78,8 +83,8 @@ class Settings(BaseSettings):
 
     # MinIO (Object storage)
     minio_endpoint: str = "localhost:9000"
-    minio_access_key: str = "minioadmin"
-    minio_secret_key: str = "minioadmin"
+    minio_access_key: str = "minio_admin"
+    minio_secret_key: str = "minio_admin"
     minio_secure: bool = False
     minio_audio_bucket: str = "hope-audio"
     minio_chunk_bucket: str = "hope-audio-chunks"
@@ -107,7 +112,7 @@ class Settings(BaseSettings):
 
     # HuggingFace
     huggingface_cache_dir: str = Field(
-        default="/models/hf-cache",
+        default_factory=lambda: os.environ.get("HF_HOME", "/models/hf-cache"),
         description="HuggingFace model cache directory",
     )
     huggingface_token: str | None = Field(
@@ -153,11 +158,11 @@ class Settings(BaseSettings):
         description="Path to Silero VAD ONNX model (auto-downloaded if None)",
     )
     vad_threshold: float = Field(
-        default=0.6,
-        description="Silero VAD speech detection threshold (0.0-1.0)",
+        default=0.5,
+        description="Silero VAD speech detection threshold (0.0–1.0)",
     )
     vad_min_speech_duration_ms: int = Field(
-        default=350,
+        default=250,
         description="Minimum speech segment length in ms",
     )
     vad_min_silence_duration_ms: int = Field(
@@ -167,10 +172,6 @@ class Settings(BaseSettings):
     vad_speech_pad_ms: int = Field(
         default=30,
         description="Padding before speech onset in ms",
-    )
-    vad_pre_speech_context_ms: int = Field(
-        default=500,
-        description="Pre-speech context in ms to keep before speech onset",
     )
     vad_sample_rate: int = Field(
         default=16000,
@@ -184,7 +185,7 @@ class Settings(BaseSettings):
     )
     diarization_similarity_threshold: float = Field(
         default=0.7,
-        description="Cosine similarity threshold for speaker matching (0.0-1.0)",
+        description="Cosine similarity threshold for speaker matching (0.0–1.0)",
     )
     diarization_device: str = Field(
         default="auto",
@@ -405,6 +406,26 @@ class Settings(BaseSettings):
             "When disabled, the worker skips event publishing but still calls "
             "the gateway API for job lifecycle updates."
         ),
+    )
+
+    # -------------------------------------------------------------------------
+    # Observability (OpenTelemetry + Prometheus)
+    # -------------------------------------------------------------------------
+    otel_enabled: bool = Field(
+        default=False,
+        description="Enable OpenTelemetry distributed tracing",
+    )
+    otel_exporter_endpoint: str = Field(
+        default="http://localhost:4317",
+        description="OTLP gRPC collector endpoint",
+    )
+    otel_service_name: str = Field(
+        default="stt-v2",
+        description="Service name in traces and metrics",
+    )
+    metrics_enabled: bool = Field(
+        default=True,
+        description="Enable Prometheus metrics on /metrics",
     )
 
     # MLFlow (reserved — not yet implemented)

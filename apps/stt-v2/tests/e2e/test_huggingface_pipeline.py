@@ -42,9 +42,7 @@ import os
 
 import pytest
 
-VALID_TENANT_ID = os.environ.get(
-    "TEST_TENANT_ID", "50000000-0000-0000-0000-000000000000"
-)
+VALID_TENANT_ID = os.environ.get("TEST_TENANT_ID", "50000000-0000-0000-0000-000000000000")
 
 
 # ---------------------------------------------------------------------------
@@ -350,13 +348,11 @@ class TestDtypeCastingFix:
 
         from stt_v2.transcription.batch_service import BatchTranscriptionService
 
-        source = inspect.getsource(
-            BatchTranscriptionService._run_transformers_inference
-        )
+        source = inspect.getsource(BatchTranscriptionService._run_transformers_inference)
         # The fix adds dtype casting: v.to(device=device, dtype=model_dtype)
-        assert "model_dtype" in source, (
-            "_run_transformers_inference must extract model dtype for input casting"
-        )
+        assert (
+            "model_dtype" in source
+        ), "_run_transformers_inference must extract model dtype for input casting"
         assert "is_floating_point" in source, (
             "_run_transformers_inference must check is_floating_point() "
             "before casting (attention_mask is int, should not be cast)"
@@ -399,8 +395,10 @@ class TestDtypeCastingFix:
         loader = _TestLoader()
 
         # Simulate CPU-only environment (no CUDA, no MPS)
-        with patch("torch.cuda.is_available", return_value=False), \
-             patch.object(torch.backends, "mps", create=True) as mock_mps:
+        with (
+            patch("torch.cuda.is_available", return_value=False),
+            patch.object(torch.backends, "mps", create=True) as mock_mps,
+        ):
             mock_mps.is_available.return_value = False
 
             # float16 must be downgraded to float32 on CPU
@@ -409,35 +407,37 @@ class TestDtypeCastingFix:
                 "to prevent 'Input type (float) and bias type (c10::Half)' error"
             )
             # bfloat16 must also be downgraded
-            assert loader._get_torch_dtype("bfloat16") == torch.float32, (
-                "_get_torch_dtype('bfloat16') must return float32 on CPU"
-            )
+            assert (
+                loader._get_torch_dtype("bfloat16") == torch.float32
+            ), "_get_torch_dtype('bfloat16') must return float32 on CPU"
             # float32 stays float32
             assert loader._get_torch_dtype("float32") == torch.float32
             # auto on CPU should be float32
             assert loader._get_torch_dtype("auto") == torch.float32
 
     def test_cpu_float16_guard_in_batch_inference(self):
-        """``_run_transformers_inference`` must cast fp16 models to float32 on CPU.
+        """``_run_transformers_inference`` must cast fp16 models to float32 on non-CUDA.
 
         This is the defense-in-depth guard: even if a model was somehow loaded
-        in float16 on CPU (e.g. from a cached checkpoint), the inference path
-        must detect this and cast the model to float32 before running.
+        in float16 on CPU or MPS (e.g. from a cached checkpoint), the inference
+        path must detect this and cast the model to float32 before running.
+
+        CPU: float16 causes ``RuntimeError: Input type (float) and bias type
+        (c10::Half) should be the same``.
+
+        MPS: float16 causes ``out of range integral type conversion attempted``
+        during Whisper's autoregressive ``generate()`` call.
         """
         import inspect
 
         from stt_v2.transcription.batch_service import BatchTranscriptionService
 
-        source = inspect.getsource(
-            BatchTranscriptionService._run_transformers_inference
-        )
-        # The guard checks for fp16 model on CPU and casts to float32
-        assert "asr_model.float()" in source or "asr_model = asr_model.float()" in source, (
-            "_run_transformers_inference must cast fp16 model to float32 on CPU"
-        )
-        assert 'str(device) == "cpu"' in source, (
-            "_run_transformers_inference must check if device is CPU "
-            "before applying the float16 safety guard"
+        source = inspect.getsource(BatchTranscriptionService._run_transformers_inference)
+        assert (
+            "asr_model.float()" in source or "asr_model = asr_model.float()" in source
+        ), "_run_transformers_inference must cast fp16 model to float32"
+        assert '"cpu"' in source and '"mps"' in source, (
+            "_run_transformers_inference must guard against fp16 on both CPU and MPS"
         )
 
 
@@ -498,8 +498,7 @@ postprocessing:
 """
         spec = parser.parse(yaml_without_compute_type)
         assert spec.inference.compute_type == "auto", (
-            f"Parser should default compute_type to 'auto', "
-            f"got '{spec.inference.compute_type}'"
+            f"Parser should default compute_type to 'auto', " f"got '{spec.inference.compute_type}'"
         )
 
     def test_yaml_parser_explicit_float16_preserved(self):
@@ -566,9 +565,7 @@ class TestHuggingFacePipelineTranscription:
         async with get_session() as session:
             # Check if pipeline already exists
             result = await session.execute(
-                text(
-                    'SELECT id FROM core."AsrPipeline" WHERE slug = :slug'
-                ),
+                text('SELECT id FROM core."AsrPipeline" WHERE slug = :slug'),
                 {"slug": slug},
             )
             existing = result.scalar_one_or_none()
@@ -631,9 +628,7 @@ class TestHuggingFacePipelineTranscription:
 
         async with get_session() as session:
             result = await session.execute(
-                text(
-                    'SELECT id FROM core."AsrPipeline" WHERE slug = :slug'
-                ),
+                text('SELECT id FROM core."AsrPipeline" WHERE slug = :slug'),
                 {"slug": slug},
             )
             existing = result.scalar_one_or_none()
@@ -697,8 +692,7 @@ class TestHuggingFacePipelineTranscription:
         response = await real_audio_client.post("/api/v1/transcribe", **form)
 
         assert response.status_code == 200, (
-            f"HuggingFace float32 pipeline failed: {response.status_code} "
-            f"{response.text}"
+            f"HuggingFace float32 pipeline failed: {response.status_code} " f"{response.text}"
         )
         data = response.json()
         assert isinstance(data["text"], str)
@@ -733,16 +727,15 @@ class TestHuggingFacePipelineTranscription:
             body = response.json()
             detail = body.get("detail", {})
             error_msg = detail.get("message", "") if isinstance(detail, dict) else str(detail)
-            assert "c10::Half" not in error_msg, (
-                f"Dtype mismatch bug still present! Got: {error_msg}"
-            )
-            assert "Input type (float)" not in error_msg, (
-                f"Dtype mismatch bug still present! Got: {error_msg}"
-            )
+            assert (
+                "c10::Half" not in error_msg
+            ), f"Dtype mismatch bug still present! Got: {error_msg}"
+            assert (
+                "Input type (float)" not in error_msg
+            ), f"Dtype mismatch bug still present! Got: {error_msg}"
 
         assert response.status_code == 200, (
-            f"HuggingFace auto-compute pipeline failed: {response.status_code} "
-            f"{response.text}"
+            f"HuggingFace auto-compute pipeline failed: {response.status_code} " f"{response.text}"
         )
         data = response.json()
         assert len(data["text"]) > 0
@@ -764,8 +757,7 @@ class TestHuggingFacePipelineTranscription:
         response = await real_audio_client.post("/api/v1/transcribe", **form)
 
         assert response.status_code == 200, (
-            f"HuggingFace EN pipeline failed: {response.status_code} "
-            f"{response.text}"
+            f"HuggingFace EN pipeline failed: {response.status_code} " f"{response.text}"
         )
         data = response.json()
         assert len(data["text"]) > 0
@@ -874,9 +866,7 @@ class TestHuggingFacePipelineTranscription:
 
         async with get_session() as session:
             result = await session.execute(
-                text(
-                    'SELECT id FROM core."AsrPipeline" WHERE slug = :slug'
-                ),
+                text('SELECT id FROM core."AsrPipeline" WHERE slug = :slug'),
                 {"slug": slug},
             )
             existing = result.scalar_one_or_none()
@@ -947,12 +937,12 @@ class TestHuggingFacePipelineTranscription:
             body = response.json()
             detail = body.get("detail", {})
             error_msg = detail.get("message", "") if isinstance(detail, dict) else str(detail)
-            assert "c10::Half" not in error_msg, (
-                f"CPU float16 safety guard failed! Got: {error_msg}"
-            )
-            assert "Input type (float)" not in error_msg, (
-                f"CPU float16 safety guard failed! Got: {error_msg}"
-            )
+            assert (
+                "c10::Half" not in error_msg
+            ), f"CPU float16 safety guard failed! Got: {error_msg}"
+            assert (
+                "Input type (float)" not in error_msg
+            ), f"CPU float16 safety guard failed! Got: {error_msg}"
 
         assert response.status_code == 200, (
             f"HuggingFace float16 pipeline on CPU failed: "

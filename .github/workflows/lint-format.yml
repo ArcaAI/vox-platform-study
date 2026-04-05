@@ -23,7 +23,7 @@ on:
         type: boolean
 
   pull_request:
-    branches: [main, develop, 'feat/*', 'feature/*']
+    branches: [main, dev, 'feat/*', 'feature/*', 'maintenance/*']
     paths:
       # TypeScript/JavaScript files
       - '**.ts'
@@ -39,7 +39,7 @@ on:
       - 'pyproject.toml'
       - 'ruff.toml'
   push:
-    branches: [main, develop]
+    branches: [main, dev, 'maintenance/*']
     paths:
       - '**.ts'
       - '**.tsx'

@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 from nlp.schemas.common import Entity, SupportedLanguage
@@ -10,13 +10,13 @@ from nlp.schemas.common import Entity, SupportedLanguage
 
 class TextClassificationRequest(BaseModel):
     text: str = Field(..., description="Input text")
-    language: Optional[SupportedLanguage] = Field(default=SupportedLanguage.ENGLISH, description="Language of the text")
+    language: SupportedLanguage | None = Field(default=SupportedLanguage.ENGLISH, description="Language of the text")
 
 
 class TextClassificationResponse(BaseModel):
     predicted_label: str = Field(..., description="Top predicted classification label")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Classification confidence")
-    probabilities: Dict[str, float] = Field(..., description="All class probabilities")
+    probabilities: dict[str, float] = Field(..., description="All class probabilities")
     model_version: str = Field(..., description="Text classification model version")
 
 
@@ -26,14 +26,14 @@ class TextClassificationResponse(BaseModel):
 class TokenClassificationRequest(BaseModel):
     text: str = Field(..., description="Input text")
     aggregation_strategy: str = Field(default="simple", description="Entity aggregation strategy")
-    language: Optional[SupportedLanguage] = Field(default=SupportedLanguage.ENGLISH, description="Language of the text")
+    language: SupportedLanguage | None = Field(default=SupportedLanguage.ENGLISH, description="Language of the text")
 
 
 class TokenClassificationResponse(BaseModel):
     # tokens: List[str] = Field(..., description="Input tokens")
     # labels: List[str] = Field(..., description="Predicted labels for each token")
     # confidences: List[float] = Field(..., description="Confidence scores for each token")
-    entities: List[Entity] = Field(..., description="Extracted entities")
+    entities: list[Entity] = Field(..., description="Extracted entities")
     model_version: str = Field(..., description="Token classification model version")
 
 

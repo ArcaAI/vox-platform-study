@@ -259,6 +259,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
             // Emit transcript segment
             const speakerId = data.speaker_id || undefined;
             const speakerConfidence = data.speaker_confidence ? parseFloat(data.speaker_confidence) : undefined;
+            const englishText = data.english_text || data.englishText || undefined;
 
             subject.next({
               type: 'transcript',
@@ -266,6 +267,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
               startTime: parseFloat(data.start_time || '0'),
               endTime: parseFloat(data.end_time || '0'),
               isFinal: data.is_final === '1',
+              ...(englishText ? { englishText } : {}),
               ...(speakerId ? { speakerId } : {}),
               ...(speakerConfidence != null && !isNaN(speakerConfidence) ? { speakerConfidence } : {}),
             });

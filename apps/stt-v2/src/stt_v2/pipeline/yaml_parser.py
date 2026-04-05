@@ -107,7 +107,8 @@ class PipelineYamlParser:
         # Version validation
         if spec.version not in self.SUPPORTED_VERSIONS:
             result.add_error(
-                "version", f"Unsupported version '{spec.version}'. Supported: {self.SUPPORTED_VERSIONS}"
+                "version",
+                f"Unsupported version '{spec.version}'. Supported: {self.SUPPORTED_VERSIONS}",
             )
 
         # Models validation - ASR is required
@@ -115,7 +116,10 @@ class PipelineYamlParser:
         if asr_ref.is_inline and asr_ref.inline:
             # Validate inline model definition - check fields first for specific errors
             if not asr_ref.inline.hf_model_id or not asr_ref.inline.hf_model_id.strip():
-                result.add_error("models.asr.hf_model_id", "HuggingFace model ID is required for inline definition")
+                result.add_error(
+                    "models.asr.hf_model_id",
+                    "HuggingFace model ID is required for inline definition",
+                )
             if not asr_ref.inline.engine:
                 result.add_error("models.asr.engine", "Engine is required for inline definition")
         elif asr_ref.slug is not None:
@@ -129,17 +133,30 @@ class PipelineYamlParser:
         # Validate VAD inline model if present
         if spec.models.vad and spec.models.vad.is_inline and spec.models.vad.inline:
             if not spec.models.vad.inline.hf_model_id:
-                result.add_error("models.vad.hf_model_id", "HuggingFace model ID is required for inline definition")
+                result.add_error(
+                    "models.vad.hf_model_id",
+                    "HuggingFace model ID is required for inline definition",
+                )
 
         # Validate denoise inline model if present
         if spec.models.denoise and spec.models.denoise.is_inline and spec.models.denoise.inline:
             if not spec.models.denoise.inline.hf_model_id:
-                result.add_error("models.denoise.hf_model_id", "HuggingFace model ID is required for inline definition")
+                result.add_error(
+                    "models.denoise.hf_model_id",
+                    "HuggingFace model ID is required for inline definition",
+                )
 
         # Validate diarization inline model if present
-        if spec.models.diarization and spec.models.diarization.is_inline and spec.models.diarization.inline:
+        if (
+            spec.models.diarization
+            and spec.models.diarization.is_inline
+            and spec.models.diarization.inline
+        ):
             if not spec.models.diarization.inline.hf_model_id:
-                result.add_error("models.diarization.hf_model_id", "HuggingFace model ID is required for inline definition")
+                result.add_error(
+                    "models.diarization.hf_model_id",
+                    "HuggingFace model ID is required for inline definition",
+                )
 
         # Validate quantization values for all inline models
         for role, model_ref in spec.models.get_all_refs():
@@ -154,9 +171,7 @@ class PipelineYamlParser:
 
         # Preprocessing validation
         if spec.preprocessing.vad.threshold < 0 or spec.preprocessing.vad.threshold > 1:
-            result.add_error(
-                "preprocessing.vad.threshold", "VAD threshold must be between 0 and 1"
-            )
+            result.add_error("preprocessing.vad.threshold", "VAD threshold must be between 0 and 1")
 
         if spec.preprocessing.target_sample_rate not in [8000, 16000, 22050, 44100, 48000]:
             result.add_error(
@@ -166,9 +181,7 @@ class PipelineYamlParser:
 
         # Inference validation
         if spec.inference.batch_size < 1 or spec.inference.batch_size > 64:
-            result.add_error(
-                "inference.batch_size", "Batch size must be between 1 and 64"
-            )
+            result.add_error("inference.batch_size", "Batch size must be between 1 and 64")
 
         if spec.inference.compute_type not in ["float16", "float32", "int8", "auto"]:
             result.add_error(
@@ -177,19 +190,13 @@ class PipelineYamlParser:
             )
 
         if spec.inference.device not in ["auto", "cuda", "cpu", "mps"]:
-            result.add_error(
-                "inference.device", "Device must be: auto, cuda, cpu, or mps"
-            )
+            result.add_error("inference.device", "Device must be: auto, cuda, cpu, or mps")
 
         if spec.inference.beam_size < 1 or spec.inference.beam_size > 10:
-            result.add_error(
-                "inference.beam_size", "Beam size must be between 1 and 10"
-            )
+            result.add_error("inference.beam_size", "Beam size must be between 1 and 10")
 
         if spec.inference.temperature < 0 or spec.inference.temperature > 2:
-            result.add_error(
-                "inference.temperature", "Temperature must be between 0 and 2"
-            )
+            result.add_error("inference.temperature", "Temperature must be between 0 and 2")
 
         # Language code validation
         if spec.inference.language is not None:
@@ -281,11 +288,10 @@ class PipelineYamlParser:
         vad_data = data.get("vad", {})
         vad = VadConfig(
             enabled=vad_data.get("enabled", True),
-            threshold=float(vad_data.get("threshold", 0.6)),
-            min_speech_duration_ms=int(vad_data.get("min_speech_duration_ms", 350)),
+            threshold=float(vad_data.get("threshold", 0.5)),
+            min_speech_duration_ms=int(vad_data.get("min_speech_duration_ms", 250)),
             min_silence_duration_ms=int(vad_data.get("min_silence_duration_ms", 100)),
             padding_ms=int(vad_data.get("padding_ms", 30)),
-            pre_speech_context_ms=int(vad_data.get("pre_speech_context_ms", 500)),
         )
 
         denoise_data = data.get("denoise", {})

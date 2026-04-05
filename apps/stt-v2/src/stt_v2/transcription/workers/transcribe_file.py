@@ -207,7 +207,6 @@ async def _transcribe_file_async(
             chunk_callback=lambda c: _schedule_task(on_chunk(c)),
             tenant_id=tenant_id,
             consultation_id=consultation_id,
-            blob_service=blob_service,
         )
 
         # Await all pending chunk/progress tasks to ensure correct event ordering
@@ -225,6 +224,41 @@ async def _transcribe_file_async(
             format="json",
         )
         result.transcript_uri = transcript_uri
+
+        # Step 5b: Upload processed audio when VAD/diarization produced it
+        # Re-run lightweight preprocessing to access ProcessedAudio for
+        # the VAD-merged WAV.  The preprocessor is cached/fast.
+        processed_audio_uri = None
+        spec = pipeline_config.spec
+        if spec.preprocessing.vad.enabled or spec.diarization.enabled:
+            try:
+                from ..preprocessing import get_preprocessor
+
+                preprocessor = get_preprocessor()
+                processed = await preprocessor.process(
+                    audio_bytes=audio_bytes,
+                    config=spec.preprocessing,
+                )
+                silence_ms = (
+                    spec.diarization.segment_silence_padding_ms if spec.diarization.enabled else 0
+                )
+                vad_wav = processed.get_vad_merged_wav_bytes(
+                    silence_padding_ms=silence_ms,
+                )
+                if vad_wav:
+                    processed_audio_uri = await blob_service.upload_processed_audio(
+                        audio_bytes=vad_wav,
+                        tenant_id=tenant_id,
+                        job_id=job_id,
+                        consultation_id=consultation_id,
+                    )
+                    result.processed_audio_uri = processed_audio_uri
+                    logger.info(
+                        f"[{job_id}] Uploaded processed audio "
+                        f"({len(vad_wav)} bytes, padding={silence_ms}ms)"
+                    )
+            except Exception as e:
+                logger.warning(f"[{job_id}] Failed to upload processed audio: {e}")
 
         # Step 6: Create transcript context item (if consultation provided)
         context_item_id = None

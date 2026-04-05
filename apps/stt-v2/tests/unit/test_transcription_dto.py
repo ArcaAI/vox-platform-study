@@ -1,6 +1,5 @@
 """Unit tests for Transcription DTOs."""
 
-
 import pytest
 
 from stt_v2.transcription.dto import (
@@ -104,7 +103,12 @@ class TestTranscriptionResult:
                 WordTimestamp("world", 0.6, 1.0),
             ],
             sentence_timestamps=[
-                SentenceTimestamp("Hello world, this is a test.", 0.0, 3.5),
+                SentenceTimestamp(
+                    "Hello world, this is a test.",
+                    0.0,
+                    3.5,
+                    english_text="Hello world, this is a test.",
+                ),
             ],
             metadata={"model": "whisper-large"},
         )
@@ -120,6 +124,9 @@ class TestTranscriptionResult:
         assert result_dict["processing_time_seconds"] == 1.2
         assert len(result_dict["word_timestamps"]) == 2
         assert len(result_dict["sentence_timestamps"]) == 1
+        assert (
+            result_dict["sentence_timestamps"][0]["english_text"] == "Hello world, this is a test."
+        )
         assert result_dict["metadata"]["model"] == "whisper-large"
 
     def test_to_dict_word_timestamps_format(self, sample_result):
@@ -350,10 +357,20 @@ class TestTimingMetrics:
         from stt_v2.transcription.dto import TimingMetrics
 
         latencies = [
-            {"segment_index": 0, "start_time": 0.0, "end_time": 2.0,
-             "duration_s": 2.0, "inference_time_s": 0.45},
-            {"segment_index": 1, "start_time": 3.0, "end_time": 5.0,
-             "duration_s": 2.0, "inference_time_s": 0.52},
+            {
+                "segment_index": 0,
+                "start_time": 0.0,
+                "end_time": 2.0,
+                "duration_s": 2.0,
+                "inference_time_s": 0.45,
+            },
+            {
+                "segment_index": 1,
+                "start_time": 3.0,
+                "end_time": 5.0,
+                "duration_s": 2.0,
+                "inference_time_s": 0.52,
+            },
         ]
 
         tm = TimingMetrics(segment_latencies=latencies)
@@ -427,8 +444,12 @@ class TestTimingMetricsEdgeCases:
         d = tm.to_dict()
 
         for key in (
-            "ttfw_seconds", "model_loading_seconds", "preprocessing_seconds",
-            "inference_seconds", "diarization_seconds", "postprocessing_seconds",
+            "ttfw_seconds",
+            "model_loading_seconds",
+            "preprocessing_seconds",
+            "inference_seconds",
+            "diarization_seconds",
+            "postprocessing_seconds",
             "total_seconds",
         ):
             assert d[key] == 0.0, f"{key} should be 0.0, got {d[key]}"
@@ -439,14 +460,20 @@ class TestTimingMetricsEdgeCases:
         from stt_v2.transcription.dto import TimingMetrics
 
         tm = TimingMetrics(
-            ttfw_seconds=1, model_loading_seconds=2,
-            preprocessing_seconds=3, inference_seconds=4,
+            ttfw_seconds=1,
+            model_loading_seconds=2,
+            preprocessing_seconds=3,
+            inference_seconds=4,
         )
         d = tm.to_dict()
 
         for key in (
-            "ttfw_seconds", "model_loading_seconds", "preprocessing_seconds",
-            "inference_seconds", "diarization_seconds", "postprocessing_seconds",
+            "ttfw_seconds",
+            "model_loading_seconds",
+            "preprocessing_seconds",
+            "inference_seconds",
+            "diarization_seconds",
+            "postprocessing_seconds",
             "total_seconds",
         ):
             assert isinstance(d[key], float), f"{key} should be float, got {type(d[key])}"
@@ -552,9 +579,7 @@ class TestVadMergedWavSilencePadding:
         ) -> ProcessedAudio:
             num_samples = int(duration_s * sample_rate)
             # Use a recognisable non-zero signal so silence (zeros) is detectable
-            samples = np.sin(
-                np.linspace(0, 2 * np.pi * 440, num_samples)
-            ).astype(np.float32) * 0.5
+            samples = np.sin(np.linspace(0, 2 * np.pi * 440, num_samples)).astype(np.float32) * 0.5
 
             if segments is None:
                 segments = [AudioSegment(0.2, 0.8, is_speech=True)]
@@ -619,7 +644,7 @@ class TestVadMergedWavSilencePadding:
         with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
             n_frames = wf.getnframes()
 
-        speech_samples = int(0.5 * 16000)   # 8000
+        speech_samples = int(0.5 * 16000)  # 8000
         padding_samples = int(0.5 * 16000)  # 8000 per side
         expected = speech_samples + 2 * padding_samples  # 24000
         assert n_frames == expected
@@ -675,9 +700,9 @@ class TestVadMergedWavSilencePadding:
             n_frames = wf.getnframes()
 
         sr = 16000
-        speech1 = int(0.3 * sr)   # 4800
-        speech2 = int(0.3 * sr)   # 4800
-        padding = int(0.5 * sr)   # 8000 per pad
+        speech1 = int(0.3 * sr)  # 4800
+        speech2 = int(0.3 * sr)  # 4800
+        padding = int(0.5 * sr)  # 8000 per pad
         # 2 segments x 2 pads each = 4 pads
         expected = speech1 + speech2 + 4 * padding
         assert n_frames == expected

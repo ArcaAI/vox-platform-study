@@ -8,6 +8,42 @@ import sys
 import structlog
 
 
+def _add_otel_context(
+    logger: object, method_name: str, event_dict: dict
+) -> dict:
+    """Inject OpenTelemetry trace context into every log entry.
+
+    When OTel is not active the import succeeds but ``get_current_span()``
+    returns ``INVALID_SPAN`` whose trace_id is 0 — we skip injection in
+    that case so logs stay clean when tracing is disabled.
+    """
+    try:
+        from opentelemetry import trace
+
+        span = trace.get_current_span()
+        ctx = span.get_span_context()
+        if ctx and ctx.trace_id != 0:
+            event_dict["traceId"] = format(ctx.trace_id, "032x")
+            event_dict["spanId"] = format(ctx.span_id, "016x")
+    except Exception:
+        pass
+    return event_dict
+
+
+def _configure_uvicorn_logging() -> None:
+    """Tame uvicorn loggers to prevent duplicate and unstructured output.
+
+    - Disables the uvicorn access logger (our RequestLoggingMiddleware
+      already emits structured JSON for every request).
+    - Makes uvicorn.error propagate to root so startup/shutdown messages
+      are captured by the OTel LoggingHandler.
+    """
+    logging.getLogger("uvicorn.access").disabled = True
+    uv_error = logging.getLogger("uvicorn.error")
+    uv_error.handlers = []
+    uv_error.propagate = True
+
+
 def setup_logging(log_level: str = "info") -> None:
     """Configure structlog with JSON output for production."""
 
@@ -16,6 +52,7 @@ def setup_logging(log_level: str = "info") -> None:
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
+            _add_otel_context,
             structlog.stdlib.filter_by_level,
             structlog.stdlib.add_logger_name,
             structlog.stdlib.add_log_level,
@@ -37,6 +74,8 @@ def setup_logging(log_level: str = "info") -> None:
         stream=sys.stdout,
         level=level,
     )
+
+    _configure_uvicorn_logging()
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
