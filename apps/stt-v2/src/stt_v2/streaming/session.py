@@ -255,7 +255,9 @@ class StreamSession:
         self._overflow_acc_events = 0
 
     def add_result(self, result: SegmentResult) -> None:
-        """Append a completed transcription segment."""
+        """Append a completed transcription segment (finals only)."""
+        if not result.is_final:
+            return
         self.results.append(result)
 
     # ------------------------------------------------------------------
