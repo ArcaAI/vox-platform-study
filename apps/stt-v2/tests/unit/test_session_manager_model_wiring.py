@@ -265,8 +265,7 @@ class TestLoadAsrPipeline:
         mock_cache = AsyncMock()
         mock_cache.get_or_load_from_ref = AsyncMock(return_value=mock_model)
 
-        mock_batch_svc = MagicMock()
-        mock_batch_svc._run_inference = AsyncMock(return_value=MagicMock(text="hello"))
+        mgr._make_asr_callable = lambda asr_model, inference_config: AsyncMock(return_value="ok")
 
         with patch.dict(
             "sys.modules",
@@ -274,9 +273,6 @@ class TestLoadAsrPipeline:
                 "stt_v2.models": MagicMock(get_model_cache=lambda: mock_cache),
                 "stt_v2.pipeline.dto": MagicMock(
                     ModelTaskType=MagicMock(AUTOMATIC_SPEECH_RECOGNITION="asr")
-                ),
-                "stt_v2.transcription.batch_service": MagicMock(
-                    BatchTranscriptionService=lambda: mock_batch_svc
                 ),
             },
         ):
@@ -357,124 +353,86 @@ class TestLoadAsrPipeline:
 # ---------------------------------------------------------------------------
 
 
+torch = pytest.importorskip("torch")
+
+
 class TestMakeAsrCallable:
     """Tests for SessionManager._make_asr_callable()."""
+
+    @staticmethod
+    def _mock_asr_model(text="transcribed text", word_offsets=None):
+        """Build a mock LoadedModel with model.generate() + processor."""
+
+        fake_output = torch.tensor([[1, 2, 3]])
+
+        mock_model = MagicMock()
+        mock_model.dtype = torch.float32
+        mock_model.generate.return_value = fake_output
+
+        mock_processor = MagicMock()
+        mock_processor.batch_decode.return_value = [f"  {text}  "]
+        mock_processor.decode.return_value = {"offsets": word_offsets or []}
+
+        loaded = MagicMock()
+        loaded.model = mock_model
+        loaded.processor = mock_processor
+        loaded.feature_extractor = None
+        loaded.device = torch.device("cpu")
+        return loaded
+
+    @staticmethod
+    def _mock_inference_config(**overrides):
+        defaults = {"beam_size": 1, "code_switching": False, "language": "en", "temperature": None}
+        defaults.update(overrides)
+        return MagicMock(**defaults)
 
     @pytest.mark.asyncio
     async def test_returns_async_callable(self):
         mgr = _make_manager()
-
-        mock_model = MagicMock()
-        mock_inference_config = MagicMock()
-        mock_batch_svc = MagicMock()
-        mock_batch_svc._run_inference = AsyncMock(
-            return_value=MagicMock(text="transcribed text", word_timestamps=[])
-        )
-
-        with patch.dict(
-            "sys.modules",
-            {
-                "stt_v2.transcription.batch_service": MagicMock(
-                    BatchTranscriptionService=lambda: mock_batch_svc
-                ),
-            },
-        ):
-            fn = mgr._make_asr_callable(mock_model, mock_inference_config)
+        loaded = self._mock_asr_model(text="transcribed text")
+        fn = mgr._make_asr_callable(loaded, self._mock_inference_config())
 
         assert callable(fn)
         samples = np.zeros(16000, dtype=np.float32)
         result = await fn(samples, 16000)
-        assert result == {"text": "transcribed text", "word_timestamps": []}
+        assert result["text"] == "transcribed text"
 
     @pytest.mark.asyncio
-    async def test_preserves_english_text_from_segment_results(self):
+    async def test_extracts_word_timestamps(self):
         mgr = _make_manager()
+        offsets = [
+            {"text": "hello", "timestamp": (0.0, 0.5)},
+            {"text": "world", "timestamp": (0.5, 1.0)},
+        ]
+        loaded = self._mock_asr_model(text="hello world", word_offsets=offsets)
+        fn = mgr._make_asr_callable(loaded, self._mock_inference_config())
 
-        mock_model = MagicMock()
-        mock_inference_config = MagicMock()
-        mock_batch_svc = MagicMock()
-        mock_batch_svc._run_inference = AsyncMock(
-            return_value=MagicMock(
-                text="வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்",
-                word_timestamps=[],
-                segments=[
-                    {
-                        "text": "வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்",
-                        "start": 0.0,
-                        "end": 1.0,
-                        "english_text": "Will not call ...",
-                    },
-                ],
-            )
-        )
-
-        with patch.dict(
-            "sys.modules",
-            {
-                "stt_v2.transcription.batch_service": MagicMock(
-                    BatchTranscriptionService=lambda: mock_batch_svc
-                ),
-            },
-        ):
-            fn = mgr._make_asr_callable(mock_model, mock_inference_config)
-
-        samples = np.zeros(16000, dtype=np.float32)
-        result = await fn(samples, 16000)
-
-        assert result == {
-            "text": "வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்",
-            "english_text": "Will not call ...",
-            "word_timestamps": [],
-        }
+        result = await fn(np.zeros(16000, dtype=np.float32), 16000)
+        assert len(result["word_timestamps"]) == 2
+        assert result["word_timestamps"][0]["word"] == "hello"
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_inference_returns_none(self):
+    async def test_returns_empty_text_when_model_returns_empty(self):
         mgr = _make_manager()
+        loaded = self._mock_asr_model(text="")
+        fn = mgr._make_asr_callable(loaded, self._mock_inference_config())
 
-        mock_batch_svc = MagicMock()
-        mock_batch_svc._run_inference = AsyncMock(return_value=None)
-
-        with patch.dict(
-            "sys.modules",
-            {
-                "stt_v2.transcription.batch_service": MagicMock(
-                    BatchTranscriptionService=lambda: mock_batch_svc
-                ),
-            },
-        ):
-            fn = mgr._make_asr_callable(MagicMock(), MagicMock())
-
-        result = await fn(np.zeros(100), 16000)
-        assert result == {"text": "", "word_timestamps": []}
+        result = await fn(np.zeros(100, dtype=np.float32), 16000)
+        assert result["text"] == ""
 
     @pytest.mark.asyncio
-    async def test_passes_correct_args_to_run_inference(self):
+    async def test_passes_samples_to_processor(self):
         mgr = _make_manager()
-
-        mock_model = MagicMock()
-        mock_config = MagicMock()
-        mock_batch_svc = MagicMock()
-        mock_batch_svc._run_inference = AsyncMock(return_value=MagicMock(text="ok"))
-
-        with patch.dict(
-            "sys.modules",
-            {
-                "stt_v2.transcription.batch_service": MagicMock(
-                    BatchTranscriptionService=lambda: mock_batch_svc
-                ),
-            },
-        ):
-            fn = mgr._make_asr_callable(mock_model, mock_config)
+        loaded = self._mock_asr_model(text="ok")
+        fn = mgr._make_asr_callable(loaded, self._mock_inference_config())
 
         samples = np.ones(8000, dtype=np.float32)
         await fn(samples, 8000)
 
-        mock_batch_svc._run_inference.assert_awaited_once()
-        call_kwargs = mock_batch_svc._run_inference.call_args.kwargs
-        assert call_kwargs["model"] is mock_model
-        assert call_kwargs["config"] is mock_config
-        assert call_kwargs["sample_rate"] == 8000
-        np.testing.assert_array_equal(call_kwargs["samples"], samples)
+        loaded.processor.assert_called_once()
+        call_args = loaded.processor.call_args
+        np.testing.assert_array_equal(call_args[0][0], samples)
+        assert call_args[1]["sampling_rate"] == 8000
 
 
 # ---------------------------------------------------------------------------
@@ -859,6 +817,7 @@ class TestFrameHandlerWithModels:
             start_time=0.0,
             end_time=1.0,
             utterance_index=0,
+            is_final=True,
         )
 
         preprocessor = AsyncMock()
@@ -1530,23 +1489,24 @@ class TestMakeAsrCallableEdgeCases:
 
     @pytest.mark.asyncio
     async def test_propagates_inference_exception(self):
-        """Verify that exceptions from _run_inference propagate through the closure."""
+        """Verify that exceptions from model.generate propagate through the closure."""
         mgr = _make_manager()
 
-        mock_batch_svc = MagicMock()
-        mock_batch_svc._run_inference = AsyncMock(
-            side_effect=RuntimeError("GPU OOM during inference")
-        )
+        mock_model = MagicMock()
+        mock_model.dtype = torch.float32
+        mock_model.generate.side_effect = RuntimeError("GPU OOM during inference")
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "stt_v2.transcription.batch_service": MagicMock(
-                    BatchTranscriptionService=lambda: mock_batch_svc
-                ),
-            },
-        ):
-            fn = mgr._make_asr_callable(MagicMock(), MagicMock())
+        mock_processor = MagicMock()
+
+        loaded = MagicMock()
+        loaded.model = mock_model
+        loaded.processor = mock_processor
+        loaded.feature_extractor = None
+        loaded.device = torch.device("cpu")
+
+        fn = mgr._make_asr_callable(
+            loaded, MagicMock(beam_size=1, code_switching=False, language="en", temperature=None)
+        )
 
         with pytest.raises(RuntimeError, match="GPU OOM"):
             await fn(np.zeros(16000, dtype=np.float32), 16000)

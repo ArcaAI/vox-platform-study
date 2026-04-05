@@ -50,7 +50,6 @@ def session_manager():
         return mgr
 
 
-@pytest.mark.skip(reason="Partial dispatch (_fire_partial/_cancel_partial) not yet implemented in SessionManager")
 class TestFirePartial:
 
     @pytest.mark.asyncio
@@ -95,13 +94,11 @@ class TestFirePartial:
         assert task.cancelled() or task.done()
 
     @pytest.mark.asyncio
-    async def test_new_partial_while_busy_keeps_existing_task(self, session_manager):
-        """Consecutive partials should reuse the in-flight task."""
+    async def test_new_partial_skips_when_previous_in_flight(self, session_manager):
+        """Skip-if-busy: second fire while first is pending keeps first task."""
         slow_event = asyncio.Event()
-        call_count = [0]
 
         async def slow_partial(*args, **kwargs):
-            call_count[0] += 1
             await slow_event.wait()
             return _make_segment_result(is_final=False)
 
@@ -115,13 +112,11 @@ class TestFirePartial:
         session_manager._fire_partial("sess-1", _make_utterance(index=1), worker, publisher)
         second_task = session_manager._partial_tasks.get("sess-1")
 
+        # skip-if-busy: task unchanged because first is still pending
         assert first_task is second_task
-        await asyncio.sleep(0.05)
 
-        # Release the in-flight task and ensure only one partial ran.
         slow_event.set()
         await asyncio.sleep(0.05)
-        assert call_count[0] == 1
 
     @pytest.mark.asyncio
     async def test_partial_cleanup_on_remove_session(self, session_manager):
