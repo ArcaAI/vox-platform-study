@@ -288,7 +288,7 @@ test-nlp:
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - cd apps/nlp
-    - pip install --quiet ".[dev,test]"
+    - pip install --quiet ".[test]"
     - python -m pytest tests/ -v --tb=short --junitxml=../../junit-nlp.xml -x
   artifacts:
     when: always
