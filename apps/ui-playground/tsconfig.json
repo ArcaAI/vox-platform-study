@@ -18,6 +18,6 @@
       "@arcaai/vox/*": ["./node_modules/@arcaai/vox/src/*"]
     }
   },
-  "include": ["src", "vite-env.d.ts"],
+  "include": ["src", "e2e", "vite-env.d.ts"],
   "exclude": ["dist", "node_modules"]
 }
