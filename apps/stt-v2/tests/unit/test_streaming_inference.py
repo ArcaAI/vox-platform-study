@@ -521,3 +521,113 @@ class TestHallucinationFilter:
 
         assert result.text == ""
         publisher.publish.assert_awaited_once()
+
+
+# =========================================================================
+# Tests: process_partial
+# =========================================================================
+
+
+class TestProcessPartial:
+    """Tests for the lightweight partial inference path."""
+
+    @pytest.mark.asyncio
+    async def test_process_partial_returns_is_final_false(self):
+        """Partial result should have is_final=False and speaker_id=None."""
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: "hello world",
+        )
+        utt = _make_utterance(is_final=False)
+
+        result = await worker.process_partial("sess-1", utt)
+
+        assert result.is_final is False
+        assert result.speaker_id is None
+        assert result.speaker_confidence == 0.0
+
+    @pytest.mark.asyncio
+    async def test_process_partial_skips_embedding(self):
+        """Embedding extraction should not be called for partials."""
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: "hello",
+            tenant_id="t1",
+        )
+        utt = _make_utterance(is_final=False)
+
+        with patch.object(worker, "_extract_embedding") as mock_embed:
+            result = await worker.process_partial("sess-1", utt)
+            mock_embed.assert_not_called()
+
+        assert result.text == "hello"
+
+    @pytest.mark.asyncio
+    async def test_process_partial_skips_diarization(self):
+        """Diarization should not be called for partials."""
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: "hello",
+            tenant_id="t1",
+        )
+        utt = _make_utterance(is_final=False)
+
+        with patch.object(worker, "_identify_with_embedding") as mock_diar:
+            await worker.process_partial("sess-1", utt)
+            mock_diar.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_partial_does_not_update_previous_text(self):
+        """_previous_text should remain unchanged after process_partial."""
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: "partial text here",
+        )
+        worker._previous_text = "original context"
+        utt = _make_utterance(is_final=False)
+
+        await worker.process_partial("sess-1", utt)
+
+        assert worker._previous_text == "original context"
+
+    @pytest.mark.asyncio
+    async def test_process_partial_crops_to_tail_window(self):
+        """15s utterance should have ASR receive <= 10s of samples."""
+        received_samples = []
+
+        def capturing_pipeline(samples, sr, **kwargs):
+            received_samples.append(len(samples))
+            return "text"
+
+        worker = StreamingInferenceWorker(asr_pipeline=capturing_pipeline)
+        utt = _make_utterance(duration_s=15.0, is_final=False)
+
+        await worker.process_partial("sess-1", utt)
+
+        max_samples = int(10.0 * 16000)
+        assert received_samples[0] <= max_samples
+
+    @pytest.mark.asyncio
+    async def test_process_partial_hallucination_filtered(self):
+        """Near-silence input should produce empty text."""
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: "uh",
+        )
+        utt = _make_utterance(is_final=False, rms_level=0.001)
+
+        result = await worker.process_partial("sess-1", utt)
+
+        assert result.text == ""
+
+    @pytest.mark.asyncio
+    async def test_process_utterance_unchanged_regression(self):
+        """is_final=True still runs full pipeline (embed + diarize + context carry)."""
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: "hello world",
+        )
+        utt = _make_utterance(is_final=True)
+
+        with patch.object(
+            worker, "_extract_embedding", new_callable=AsyncMock, return_value=None
+        ) as mock_embed:
+            result = await worker.process_utterance("sess-1", utt)
+            mock_embed.assert_awaited_once()
+
+        assert result.is_final is True
+        assert "hello world" in worker._previous_text
