@@ -6,15 +6,16 @@ Tests:
 - Final transcript still uploaded after postprocessing
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import numpy as np
+from unittest.mock import AsyncMock, MagicMock, patch, call
 import pytest
+import numpy as np
 
 from stt_v2.transcription.dto import (
     AudioSegment,
     ProcessedAudio,
     RawTranscription,
+    TimingMetrics,
+    TranscriptionResult,
 )
 
 
@@ -67,14 +68,21 @@ class TestBatchMinioOrdering:
         )
         raw = RawTranscription(text="test", segments=[])
 
-        with patch.object(svc, "_load_models", new_callable=AsyncMock, return_value={"asr": MagicMock(), "vad": None, "denoise": None}), \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(svc, "_run_inference", new_callable=AsyncMock, return_value=raw), \
-             patch.object(svc, "_postprocess", side_effect=tracked_postprocess):
+        with (
+            patch.object(
+                svc,
+                "_load_models",
+                new_callable=AsyncMock,
+                return_value={"asr": MagicMock(), "vad": None, "denoise": None},
+            ),
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(svc, "_run_inference", new_callable=AsyncMock, return_value=raw),
+            patch.object(svc, "_postprocess", side_effect=tracked_postprocess),
+        ):
 
             mock_preproc.return_value.process = AsyncMock(return_value=processed)
 
-            await svc.transcribe(
+            result = await svc.transcribe(
                 job_id="test-job",
                 audio_bytes=b"\x00" * 1000,
                 pipeline_config=pipeline_config,
@@ -113,9 +121,16 @@ class TestBatchMinioOrdering:
         )
         raw = RawTranscription(text="test", segments=[])
 
-        with patch.object(svc, "_load_models", new_callable=AsyncMock, return_value={"asr": MagicMock(), "vad": None, "denoise": None}), \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(svc, "_run_inference", new_callable=AsyncMock, return_value=raw):
+        with (
+            patch.object(
+                svc,
+                "_load_models",
+                new_callable=AsyncMock,
+                return_value={"asr": MagicMock(), "vad": None, "denoise": None},
+            ),
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(svc, "_run_inference", new_callable=AsyncMock, return_value=raw),
+        ):
 
             mock_preproc.return_value.process = AsyncMock(return_value=processed)
 

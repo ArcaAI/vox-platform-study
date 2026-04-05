@@ -288,10 +288,11 @@ class PipelineYamlParser:
         vad_data = data.get("vad", {})
         vad = VadConfig(
             enabled=vad_data.get("enabled", True),
-            threshold=float(vad_data.get("threshold", 0.5)),
-            min_speech_duration_ms=int(vad_data.get("min_speech_duration_ms", 250)),
+            threshold=float(vad_data.get("threshold", 0.6)),
+            min_speech_duration_ms=int(vad_data.get("min_speech_duration_ms", 350)),
             min_silence_duration_ms=int(vad_data.get("min_silence_duration_ms", 100)),
             padding_ms=int(vad_data.get("padding_ms", 30)),
+            pre_speech_context_ms=int(vad_data.get("pre_speech_context_ms", 500)),
         )
 
         denoise_data = data.get("denoise", {})

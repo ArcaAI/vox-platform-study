@@ -1,6 +1,8 @@
 """Tests for snapshot and finalize preferring processed audio when available."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 class TestSnapshotProcessedAudio:
