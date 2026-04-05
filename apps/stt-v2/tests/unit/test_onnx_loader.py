@@ -41,6 +41,27 @@ def _stub_onnxruntime():
     finally:
         sys.modules.pop("onnxruntime", None)
 
+@pytest.fixture(autouse=True)
+def _stub_huggingface_hub():
+    """Ensure ``huggingface_hub`` is importable for every test.
+
+    The production code lazy-imports ``huggingface_hub`` inside a
+    try/except, but ``patch("huggingface_hub.snapshot_download", ...)``
+    requires the module to exist in ``sys.modules``.  In CI
+    ``huggingface_hub`` is not installed, so we inject a lightweight
+    stub when needed.
+    """
+    if "huggingface_hub" in sys.modules:
+        yield
+        return
+
+    stub = types.ModuleType("huggingface_hub")
+    stub.snapshot_download = lambda *a, **kw: ""
+    sys.modules["huggingface_hub"] = stub
+    try:
+        yield
+    finally:
+        sys.modules.pop("huggingface_hub", None)
 
 # =============================================================================
 # Standard ONNX Loader — _get_providers()
