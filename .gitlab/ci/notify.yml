@@ -18,20 +18,10 @@ github-backup:
       GITHUB_AUTH_URL="https://${GITHUB_BACKUP_USER}:${GITHUB_BACKUP_TOKEN}@github.com/4bits-vn/project-hope-v2.git"
       git remote add github $GITHUB_AUTH_URL
 
-      git fetch github
+      echo "Force-pushing $CI_COMMIT_REF_NAME to GitHub branch: $GITHUB_BACKUP_BRANCH ..."
+      git push github "HEAD:refs/heads/$GITHUB_BACKUP_BRANCH" --force
 
-      if git show-ref --verify --quiet refs/remotes/github/$GITHUB_BACKUP_BRANCH; then
-        echo "Branch $GITHUB_BACKUP_BRANCH exists on GitHub, checking out..."
-        git checkout -b $GITHUB_BACKUP_BRANCH github/$GITHUB_BACKUP_BRANCH
-        git merge $CI_COMMIT_SHA --no-ff --allow-unrelated-histories -m "Merge $CI_COMMIT_REF_NAME into $GITHUB_BACKUP_BRANCH"
-      else
-        echo "Branch $GITHUB_BACKUP_BRANCH does not exist on GitHub, creating it..."
-        git checkout -b $GITHUB_BACKUP_BRANCH
-      fi
-
-      git push github $GITHUB_BACKUP_BRANCH --force
-
-      echo "Successfully pushed changes to GitHub branch: $GITHUB_BACKUP_BRANCH"
+      echo "Successfully pushed $CI_COMMIT_SHA to GitHub branch: $GITHUB_BACKUP_BRANCH"
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+/
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "dev"
