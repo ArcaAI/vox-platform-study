@@ -7,6 +7,15 @@
 .node-base:
   image: node:22-alpine
   tags: [fast]
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - node_modules/
+        - apps/*/node_modules/
+        - packages/*/node_modules/
+      policy: pull
   before_script:
     - corepack enable
     - corepack prepare pnpm@latest --activate
@@ -35,6 +44,15 @@
 .test-node-base:
   image: node:22-alpine
   tags: [test]
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - node_modules/
+        - apps/*/node_modules/
+        - packages/*/node_modules/
+      policy: pull
   before_script:
     - corepack enable
     - corepack prepare pnpm@latest --activate
