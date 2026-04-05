@@ -19,12 +19,26 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Constants
 // ---------------------------------------------------------------------------
 
-const WER_THRESHOLD = 0.2;
 const AUDIO_DURATION_SECONDS = 36; // wait time: audio_1.wav is ~35.3s (5s silence lead-in + 27.3s speech + 3s silence)
+const SPEECH_START_SECONDS = 5; // silence lead-in before speech begins
 const SPEECH_END_SECONDS = 32.3; // ground truth speech boundary for hallucination detection (27.3 + 5s offset)
 const DRAIN_IDLE_TIMEOUT_MS = 5_000;
 const DRAIN_POLL_INTERVAL_MS = 500;
 const DRAIN_MAX_WAIT_MS = 30_000;
+
+// Production expected thresholds
+const EXPECTED = {
+  wer: 20, // %
+  cer: 10, // %
+  ser: 60, // %
+  finalLatencyP50: 500, // ms
+  finalLatencyP95: 1000, // ms
+  finalLatencyMean: 750, // ms
+  firstPartial: 2000, // ms (from speech start, not stream start)
+  rtf: 1.0,
+  hallucination: 1, // %
+  taskSuccess: 80, // %
+};
 
 const GROUND_TRUTH_PATH = path.resolve(__dirname, 'fixtures', 'audio_1.txt');
 
@@ -320,7 +334,7 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
 
   // --- B. Compute all metrics (before assertions so report always prints) ---
   const werResult = computeWer(referenceText, hypothesisText);
-  const report = formatWerReport(werResult, 'basic', WER_THRESHOLD, referenceText, hypothesisText);
+  const report = formatWerReport(werResult, 'basic', EXPECTED.wer/100, referenceText, hypothesisText);
 
   // B1. Character Error Rate (CER)
   const cerResult = computeCer(referenceText, hypothesisText);
@@ -355,13 +369,14 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
   }));
   const finalLatency = computeFinalTranscriptLatency(timestampedFinals, streamStartedAt);
 
-  // B6. First Partial Latency
+  // B6. First Partial Latency (measured from speech start, not stream start)
   const partials = capture.transcripts.filter((t) => !t.isFinal);
   const timestampedPartials: TimestampedPartial[] = partials.map((t) => ({
     text: t.text,
     receivedAt: t.receivedAt,
   }));
-  const firstPartial = computeFirstPartialLatency(timestampedPartials, streamStartedAt);
+  const speechStartedAt = streamStartedAt + SPEECH_START_SECONDS * 1000;
+  const firstPartial = computeFirstPartialLatency(timestampedPartials, speechStartedAt);
 
   // B7. Real-Time Factor (RTF)
   const rtfResult = computeRtf(timestampedFinals, AUDIO_DURATION_SECONDS, streamStartedAt);
@@ -419,30 +434,131 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
   };
 
   // --- Console report (always prints, even on WER failure) ---
-  const lines = [
-    '='.repeat(72),
-    '  TRANSCRIPTION QUALITY METRICS REPORT',
-    '='.repeat(72),
-    '',
-    '  ACCURACY',
-    `    Word Error Rate (WER):      ${(werResult.wer * 100).toFixed(1)}%  (threshold: ${(WER_THRESHOLD * 100).toFixed(0)}%)     [lower is better]`,
-    `    Character Error Rate (CER):  ${(cerResult.cer * 100).toFixed(1)}%                        [lower is better]`,
-    `    Sentence Error Rate (SER):   ${(serResult.ser * 100).toFixed(1)}%  (${serResult.errorSegments}/${serResult.totalSegments} segments)     [lower is better]`,
-    '',
-    '  LATENCY',
-    `    Final Transcript Latency:    (n=${finalLatency.latencies.count})               [lower is better]`,
-    `      P50: ${finalLatency.latencies.p50.toFixed(0)} ms  P95: ${finalLatency.latencies.p95.toFixed(0)} ms  P99: ${finalLatency.latencies.p99.toFixed(0)} ms`,
-    `      Min: ${finalLatency.latencies.min.toFixed(0)} ms  Max: ${finalLatency.latencies.max.toFixed(0)} ms  Mean: ${finalLatency.latencies.mean.toFixed(0)} ms`,
-    `    First Partial Latency:       ${firstPartial.latencyMs != null ? `${firstPartial.latencyMs.toFixed(0)} ms` : 'N/A (no partials)'}     [lower is better]`,
-    `    Real-Time Factor (RTF):      ${rtfResult.rtf.toFixed(3)}  (${rtfResult.wallClockMs.toFixed(0)} ms / ${rtfResult.audioDurationSec}s audio)     [lower is better, <1.0 = faster than realtime]`,
-    '',
-    '  RELIABILITY',
-    `    Silence Hallucination Rate:  ${(hallucination.rate * 100).toFixed(1)}%  (${hallucination.hallucinatedFinals}/${hallucination.totalFinals} finals)     [lower is better]`,
-    `    Task Success Rate:           ${(taskSuccess.rate * 100).toFixed(1)}%  (${taskSuccess.coveredSegments}/${taskSuccess.totalSegments} segments covered)     [higher is better]`,
-    '',
-    '='.repeat(72),
+  const badge = (actual: number, expected: number, lower: boolean) => {
+    const ok = lower ? actual <= expected : actual >= expected;
+    return ok ? ' PASS ' : ' FAIL ';
+  };
+
+  const W = 78; // report width
+  const hr = '-'.repeat(W);
+  const dhr = '='.repeat(W);
+
+  // Count pass/fail
+  const results = [
+    badge(werResult.wer * 100, EXPECTED.wer, true),
+    badge(cerResult.cer * 100, EXPECTED.cer, true),
+    badge(serResult.ser * 100, EXPECTED.ser, true),
+    badge(finalLatency.latencies.p50, EXPECTED.finalLatencyP50, true),
+    badge(finalLatency.latencies.p95, EXPECTED.finalLatencyP95, true),
+    badge(finalLatency.latencies.mean, EXPECTED.finalLatencyMean, true),
+    firstPartial.latencyMs != null ? badge(firstPartial.latencyMs, EXPECTED.firstPartial, true) : ' N/A  ',
+    badge(rtfResult.rtf, EXPECTED.rtf, true),
+    badge(hallucination.rate * 100, EXPECTED.hallucination, true),
+    badge(taskSuccess.rate * 100, EXPECTED.taskSuccess, false),
   ];
-  console.log('\n' + lines.join('\n') + '\n');
+  const passCount = results.filter((r) => r.includes('PASS')).length;
+  const failCount = results.filter((r) => r.includes('FAIL')).length;
+
+  const row = (label: string, actual: string, op: string, expected: string, status: string, note = '') => {
+    const left = `  ${label}`;
+    const mid = `${actual.padStart(10)}  ${op} ${expected.padEnd(10)}`;
+    const right = `[${status.trim()}]${note ? '  ' + note : ''}`;
+    return `${left.padEnd(36)}${mid}  ${right}`;
+  };
+
+  const lines = [
+    '',
+    dhr,
+    `  TRANSCRIPTION QUALITY METRICS REPORT`,
+    `  ${new Date().toISOString()}`,
+    dhr,
+    '',
+    `  ACCURACY`,
+    hr,
+    row('Word Error Rate (WER)', `${(werResult.wer * 100).toFixed(1)}%`, '<=', `${EXPECTED.wer}%`, badge(werResult.wer * 100, EXPECTED.wer, true)),
+    row(
+      'Character Error Rate (CER)',
+      `${(cerResult.cer * 100).toFixed(1)}%`,
+      '<=',
+      `${EXPECTED.cer}%`,
+      badge(cerResult.cer * 100, EXPECTED.cer, true),
+    ),
+    row(
+      'Sentence Error Rate (SER)',
+      `${(serResult.ser * 100).toFixed(1)}%`,
+      '<=',
+      `${EXPECTED.ser}%`,
+      badge(serResult.ser * 100, EXPECTED.ser, true),
+      `(${serResult.errorSegments}/${serResult.totalSegments} segments)`,
+    ),
+    '',
+    `  LATENCY`,
+    hr,
+    `  Final Transcript Latency (n=${finalLatency.latencies.count}):`,
+    row(
+      '  P50',
+      `${finalLatency.latencies.p50.toFixed(0)} ms`,
+      '<=',
+      `${EXPECTED.finalLatencyP50} ms`,
+      badge(finalLatency.latencies.p50, EXPECTED.finalLatencyP50, true),
+    ),
+    row(
+      '  P95',
+      `${finalLatency.latencies.p95.toFixed(0)} ms`,
+      '<=',
+      `${EXPECTED.finalLatencyP95} ms`,
+      badge(finalLatency.latencies.p95, EXPECTED.finalLatencyP95, true),
+    ),
+    row(
+      '  Mean',
+      `${finalLatency.latencies.mean.toFixed(0)} ms`,
+      '<=',
+      `${EXPECTED.finalLatencyMean} ms`,
+      badge(finalLatency.latencies.mean, EXPECTED.finalLatencyMean, true),
+    ),
+    `    P99: ${finalLatency.latencies.p99.toFixed(0)} ms  |  Min: ${finalLatency.latencies.min.toFixed(0)} ms  |  Max: ${finalLatency.latencies.max.toFixed(0)} ms`,
+    row(
+      'First Partial Latency',
+      firstPartial.latencyMs != null ? `${firstPartial.latencyMs.toFixed(0)} ms` : 'N/A',
+      '<=',
+      `${EXPECTED.firstPartial} ms`,
+      firstPartial.latencyMs != null ? badge(firstPartial.latencyMs, EXPECTED.firstPartial, true) : ' N/A  ',
+      '(from speech start)',
+    ),
+    row(
+      'Real-Time Factor (RTF)',
+      rtfResult.rtf.toFixed(3),
+      '<',
+      ` ${EXPECTED.rtf.toFixed(1)} `,
+      badge(rtfResult.rtf, EXPECTED.rtf, true),
+      `(${rtfResult.wallClockMs.toFixed(0)} ms / ${rtfResult.audioDurationSec}s audio)`,
+    ),
+    '',
+    `  RELIABILITY`,
+    hr,
+    row(
+      'Silence Hallucination',
+      `${(hallucination.rate * 100).toFixed(1)}%`,
+      '<=',
+      `${EXPECTED.hallucination}%`,
+      badge(hallucination.rate * 100, EXPECTED.hallucination, true),
+      `(${hallucination.hallucinatedFinals}/${hallucination.totalFinals} finals)`,
+    ),
+    row(
+      'Task Success Rate',
+      `${(taskSuccess.rate * 100).toFixed(1)}%`,
+      '>=',
+      `${EXPECTED.taskSuccess}%`,
+      badge(taskSuccess.rate * 100, EXPECTED.taskSuccess, false),
+      `(${taskSuccess.coveredSegments}/${taskSuccess.totalSegments} segments)`,
+    ),
+    '',
+    hr,
+    `  Summary:  ${passCount} passed  |  ${failCount} failed  |  ${results.length} total`,
+    dhr,
+    '',
+  ];
+  console.log(lines.join('\n'));
 
   // --- Attach structured report as artifact (before assertions so it survives failures) ---
   await test.info().attach('metrics-report.json', {
@@ -453,10 +569,9 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
   // --- C. WER threshold assertion ---
   console.log('\n' + report + '\n');
 
-  expect(
-    werResult.wer,
-    `WER ${(werResult.wer * 100).toFixed(1)}% exceeds threshold ${(WER_THRESHOLD * 100).toFixed(0)}%.\n${report}`,
-  ).toBeLessThanOrEqual(WER_THRESHOLD);
+  expect(werResult.wer, `WER ${(werResult.wer * 100).toFixed(1)}% exceeds threshold ${EXPECTED.wer.toFixed(0)}%.\n${report}`).toBeLessThanOrEqual(
+    EXPECTED.wer / 100,
+  );
 
   // --- D. UI display matches WebSocket output ---
   expect(domTranscriptText.length, 'DOM should display transcript text').toBeGreaterThan(0);

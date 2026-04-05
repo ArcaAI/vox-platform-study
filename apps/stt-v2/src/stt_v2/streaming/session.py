@@ -84,9 +84,7 @@ class StreamSession:
             result_stream_expire_s if result_stream_expire_s is not None else _default_stream_ttl
         )
         self._session_metadata_expire_s = (
-            session_metadata_expire_s
-            if session_metadata_expire_s is not None
-            else _default_meta_ttl
+            session_metadata_expire_s if session_metadata_expire_s is not None else _default_meta_ttl
         )
         self._max_audio_buffer_bytes: int = _default_max_audio
         self._audio_buffer_warned: bool = False
@@ -261,11 +259,7 @@ class StreamSession:
         self._overflow_acc_events = 0
 
     def add_result(self, result: SegmentResult) -> None:
-        """Append a completed transcription segment.
-
-        Only final results are persisted; partial (non-final) results are
-        discarded since they will be superseded by a final result.
-        """
+        """Append a completed transcription segment (finals only)."""
         if not result.is_final:
             return
         self.results.append(result)
