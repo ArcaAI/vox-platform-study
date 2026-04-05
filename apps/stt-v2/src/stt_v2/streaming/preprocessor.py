@@ -20,6 +20,7 @@ from typing import Any
 
 import numpy as np
 import structlog
+from numpy.typing import NDArray
 
 from stt_v2.vad.dto import VADSessionState
 
@@ -103,17 +104,31 @@ class StreamingPreprocessor:
         threshold: float = 0.5,
         min_speech_duration_ms: int = 250,
         min_silence_duration_ms: int = 700,
+        target_sample_rate: int | None = None,
+        denoiser: Any = None,
+        normalize: bool = False,
     ) -> None:
         self.session_id = session_id
         self.sample_rate = sample_rate
+        self._target_sample_rate = target_sample_rate or sample_rate
         self._vad_service = vad_service
         self._threshold = threshold
         self._min_speech_duration_ms = min_speech_duration_ms
         self._min_silence_duration_ms = min_silence_duration_ms
+        self._denoiser = denoiser
+        self._normalize_enabled = normalize
+        self._peak_tracker = 1.0
+        self._processed_samples: list[np.ndarray] = []
 
-        # Frame size depends on sample rate
-        self._frame_size = _FRAME_SIZE_16K if sample_rate >= 16000 else _FRAME_SIZE_8K
-        self._frame_duration_ms = (self._frame_size / sample_rate) * 1000
+        if self._target_sample_rate == 16000:
+            target_frame_size = _FRAME_SIZE_16K
+        elif self._target_sample_rate == 8000:
+            target_frame_size = _FRAME_SIZE_8K
+        else:
+            target_frame_size = max(1, int(round(_FRAME_SIZE_16K * self._target_sample_rate / 16000)))
+
+        self._frame_size = max(1, int(round(target_frame_size * sample_rate / self._target_sample_rate)))
+        self._frame_duration_ms = (target_frame_size / self._target_sample_rate) * 1000
 
         # Pre-speech context: how many frames to keep
         self._pre_speech_frames = max(
@@ -136,7 +151,7 @@ class StreamingPreprocessor:
         # VAD session state (LSTM hidden state)
         self._vad_state = VADSessionState(
             session_id=session_id,
-            sample_rate=sample_rate,
+            sample_rate=self._target_sample_rate,
         )
         self._vad_state.reset()
         self._fallback_noise_floor = 0.002
@@ -153,6 +168,10 @@ class StreamingPreprocessor:
     def in_speech(self) -> bool:
         """Whether VAD currently detects active speech."""
         return self._state.in_speech
+
+    @property
+    def has_denoiser(self) -> bool:
+        return self._denoiser is not None
 
     async def feed(self, pcm_data: bytes) -> list[AudioUtterance]:
         """Feed raw PCM bytes (16-bit signed LE). Returns 0+ complete utterances.
@@ -191,10 +210,12 @@ class StreamingPreprocessor:
             frame_int16 = np.frombuffer(frame_bytes, dtype=np.int16)
             frame_f32 = frame_int16.astype(np.float32) / 32768.0
 
-            state.total_samples_fed += len(frame_f32)
+            processed_frame = self._process_frame(frame_f32)
+
+            state.total_samples_fed += len(processed_frame)
 
             # Run VAD on this frame
-            prob = self._run_vad(frame_f32)
+            prob = self._run_vad(processed_frame)
 
             # State machine: speech detection
             is_speech = prob >= self._threshold
@@ -208,12 +229,14 @@ class StreamingPreprocessor:
                         state.in_speech = True
                         state.silence_frames = 0
                         state.utterance_start_time = (
-                            state.total_samples_fed - self._frame_size * state.speech_onset_frames
-                        ) / self.sample_rate
+                            state.total_samples_fed - len(processed_frame) * state.speech_onset_frames
+                        ) / self._target_sample_rate
 
                         # Include pre-speech context
                         state.utterance_buffer = list(state.pre_speech_ring)
                         state.pre_speech_ring.clear()
+                        state.utterance_buffer.append(processed_frame.copy())
+                        self._processed_samples.extend(frame.copy() for frame in state.utterance_buffer)
 
                         logger.debug(
                             "Speech onset",
@@ -224,12 +247,13 @@ class StreamingPreprocessor:
                     state.speech_onset_frames = 0
 
                 # Maintain pre-speech ring buffer
-                state.pre_speech_ring.append(frame_f32.copy())
+                state.pre_speech_ring.append(processed_frame.copy())
                 if len(state.pre_speech_ring) > self._pre_speech_frames:
                     state.pre_speech_ring.pop(0)
             else:
                 # In speech — track offset
-                state.utterance_buffer.append(frame_f32.copy())
+                state.utterance_buffer.append(processed_frame.copy())
+                self._processed_samples.append(processed_frame.copy())
 
                 if not is_speech:
                     state.silence_frames += 1
@@ -258,10 +282,12 @@ class StreamingPreprocessor:
             padded = remainder_bytes + b"\x00" * (self._frame_size * 2 - len(remainder_bytes))
             frame_int16 = np.frombuffer(padded[: self._frame_size * 2], dtype=np.int16)
             frame_f32 = frame_int16.astype(np.float32) / 32768.0
+            processed_frame = self._process_frame(frame_f32)
             state.pcm_remainder.clear()
 
             if state.in_speech:
-                state.utterance_buffer.append(frame_f32)
+                state.utterance_buffer.append(processed_frame)
+                self._processed_samples.append(processed_frame.copy())
 
         # Emit whatever is in the utterance buffer
         if state.in_speech and state.utterance_buffer:
@@ -327,6 +353,43 @@ class StreamingPreprocessor:
         probability = rms / (adaptive_threshold * 2.0)
         return float(np.clip(probability, 0.0, 1.0))
 
+    def _normalize_frame(self, frame: NDArray[np.float32]) -> NDArray[np.float32]:
+        if frame.size == 0:
+            return frame
+        peak = float(np.max(np.abs(frame)))
+        if peak <= 0.0 or not np.isfinite(peak):
+            return np.zeros_like(frame)
+        self._peak_tracker = max(peak, self._peak_tracker * 0.95)
+        if self._peak_tracker <= 0.0:
+            return frame
+        normalized = frame / self._peak_tracker
+        return np.clip(normalized, -1.0, 1.0).astype(np.float32)
+
+    def _resample_frame(self, frame: NDArray[np.float32]) -> NDArray[np.float32]:
+        if self.sample_rate == self._target_sample_rate or frame.size == 0:
+            return frame
+        target_len = max(1, int(round(len(frame) * self._target_sample_rate / self.sample_rate)))
+        source_idx = np.linspace(0, len(frame) - 1, num=len(frame), dtype=np.float32)
+        target_idx = np.linspace(0, len(frame) - 1, num=target_len, dtype=np.float32)
+        return np.interp(target_idx, source_idx, frame).astype(np.float32)
+
+    def _process_frame(self, frame: NDArray[np.float32]) -> NDArray[np.float32]:
+        processed = frame
+        if self._normalize_enabled:
+            processed = self._normalize_frame(processed)
+        processed = self._resample_frame(processed)
+        if self._denoiser is not None:
+            processed = np.asarray(self._denoiser.process(processed), dtype=np.float32)
+        return processed
+
+    def drain_processed_samples(self) -> bytes:
+        if not self._processed_samples:
+            return b""
+        samples = np.concatenate(self._processed_samples)
+        self._processed_samples.clear()
+        pcm = np.clip(samples, -1.0, 1.0)
+        return (pcm * 32768.0).clip(-32768, 32767).astype(np.int16).tobytes()
+
     def _emit_utterance(self, is_final: bool) -> AudioUtterance | None:
         """Concatenate buffered frames into an AudioUtterance and reset state."""
         state = self._state
@@ -337,12 +400,12 @@ class StreamingPreprocessor:
         # Concatenate all buffered frames
         samples = np.concatenate(state.utterance_buffer)
 
-        end_time = state.total_samples_fed / self.sample_rate
+        end_time = state.total_samples_fed / self._target_sample_rate
         utt_index = state.utterance_count
 
         utterance = AudioUtterance(
             samples=samples,
-            sample_rate=self.sample_rate,
+            sample_rate=self._target_sample_rate,
             start_time=state.utterance_start_time,
             end_time=end_time,
             utterance_index=utt_index,
