@@ -776,7 +776,7 @@ class TestStreamSession:
         from stt_v2.streaming.schemas import SegmentResult
 
         session = self._make_session()
-        result = SegmentResult(text="Hello", start_time=0.0, end_time=1.0)
+        result = SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
         session.add_result(result)
         assert len(session.results) == 1
         assert session.results[0].text == "Hello"

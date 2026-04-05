@@ -182,15 +182,21 @@ class TestProcessUtterance:
         )
         utt = _make_utterance(duration_s=1.2)
 
+        mock_embedding = MagicMock()
         mock_identifier = MagicMock()
-        mock_identifier.identify_speaker = AsyncMock(
+        mock_identifier.identify_with_embedding = AsyncMock(
             return_value=MagicMock(speaker_id="speaker-abc", confidence=0.93)
         )
 
         with patch(
+            "stt_v2.diarization.embedding_service.get_embedding_service",
+        ) as mock_emb_svc, patch(
             "stt_v2.diarization.speaker_identifier.get_speaker_identifier",
             return_value=mock_identifier,
         ):
+            mock_emb_svc.return_value.extract_from_samples = AsyncMock(
+                return_value=mock_embedding
+            )
             result = await worker.process_utterance("sess-1", utt)
 
         assert result.speaker_id == "speaker-abc"
