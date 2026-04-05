@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import importlib
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -614,7 +615,13 @@ class SessionManager:
         streaming and batch share the same ASR code path, reducing
         maintenance burden and ensuring consistency.
         """
-        batch_svc = BatchTranscriptionService()
+        batch_service_module = importlib.import_module("stt_v2.transcription.batch_service")
+        batch_service_cls = getattr(
+            batch_service_module,
+            "BatchTranscriptionService",
+            BatchTranscriptionService,
+        )
+        batch_svc = batch_service_cls()
 
         async def run_inference(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
             result = await batch_svc._run_inference(
