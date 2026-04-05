@@ -34,7 +34,7 @@ class TestSessionManagerAsrCallable:
         )
 
         with patch(
-            "stt_v2.streaming.session_manager.BatchTranscriptionService"
+            "stt_v2.transcription.batch_service.BatchTranscriptionService"
         ) as mock_batch_service_cls:
             mock_batch_service = mock_batch_service_cls.return_value
             mock_batch_service._run_inference = AsyncMock(return_value=mock_raw)
