@@ -28,6 +28,7 @@ import structlog
 from stt_v2.core.config.settings import get_settings
 from stt_v2.storage.blob_service import BlobService
 from stt_v2.streaming.capacity_guard import CapacityGuard
+from stt_v2.streaming.denoiser import StreamingDenoiser
 from stt_v2.streaming.execution_profile import ExecutionProfile
 from stt_v2.streaming.inference import StreamingInferenceWorker
 from stt_v2.streaming.preprocessor import AudioUtterance, StreamingPreprocessor
@@ -45,6 +46,7 @@ from stt_v2.streaming.schemas import (
     SessionStatus,
 )
 from stt_v2.streaming.session import StreamSession
+from stt_v2.transcription.batch_service import BatchTranscriptionService
 
 logger = structlog.get_logger(__name__)
 
@@ -270,16 +272,33 @@ class SessionManager:
 
             # Create streaming preprocessor (VAD + utterance extraction)
             vad_kwargs: dict[str, Any] = {}
+            denoiser = None
             if pipeline_config and pipeline_config.preprocessing.vad.enabled:
                 vad_cfg = pipeline_config.preprocessing.vad
                 vad_kwargs["threshold"] = vad_cfg.threshold
                 vad_kwargs["min_speech_duration_ms"] = vad_cfg.min_speech_duration_ms
                 vad_kwargs["min_silence_duration_ms"] = vad_cfg.min_silence_duration_ms
 
+            if pipeline_config:
+                preprocessing_cfg = pipeline_config.preprocessing
+                vad_kwargs["normalize"] = bool(getattr(preprocessing_cfg, "normalize", False))
+                target_sample_rate = getattr(preprocessing_cfg, "target_sample_rate", None)
+                if target_sample_rate:
+                    vad_kwargs["target_sample_rate"] = target_sample_rate
+
+                denoise_cfg = getattr(preprocessing_cfg, "denoise", None)
+                if denoise_cfg and getattr(denoise_cfg, "enabled", False):
+                    denoiser = StreamingDenoiser(
+                        input_sr=sample_rate,
+                        strength=float(getattr(denoise_cfg, "strength", 1.0)),
+                    )
+                    denoiser.initialize()
+
             preprocessor = StreamingPreprocessor(
                 session_id=session_id,
                 sample_rate=sample_rate,
                 vad_service=vad_service,
+                denoiser=denoiser,
                 **vad_kwargs,
             )
 
@@ -591,8 +610,6 @@ class SessionManager:
         streaming and batch share the same ASR code path, reducing
         maintenance burden and ensuring consistency.
         """
-        from stt_v2.transcription.batch_service import BatchTranscriptionService
-
         batch_svc = BatchTranscriptionService()
 
         async def run_inference(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
@@ -626,10 +643,11 @@ class SessionManager:
                         if matched_segment is not None
                         else translated_segments[-1].get("english_text")
                     )
+            language = getattr(result, "language", None)
             return {
                 "text": result.text,
                 **({"english_text": english_text} if english_text else {}),
-                **({"language": result.language} if getattr(result, "language", None) else {}),
+                **({"language": language} if isinstance(language, str) and language else {}),
                 "word_timestamps": result.word_timestamps or [],
             }
 
