@@ -193,14 +193,6 @@ class StreamingPreprocessor:
     def target_sample_rate(self) -> int:
         return self._target_sr
 
-    def drain_processed_samples(self) -> bytes:
-        """Drain accumulated processed samples as int16 PCM bytes."""
-        if not self._processed_samples:
-            return b""
-        samples = np.concatenate(self._processed_samples)
-        self._processed_samples.clear()
-        return (samples * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
-
     def _normalize_frame(self, frame: np.ndarray) -> np.ndarray:
         """Peak-tracking normalization with exponential decay (causal)."""
         frame_peak = float(np.abs(frame).max()) if len(frame) > 0 else 0.0
@@ -304,8 +296,6 @@ class StreamingPreprocessor:
                         self._processed_samples.extend(state.pre_speech_ring)
                         self._processed_samples.append(frame_f32.copy())
                         state.pre_speech_ring.clear()
-                        state.utterance_buffer.append(processed_frame.copy())
-                        self._processed_samples.extend(frame.copy() for frame in state.utterance_buffer)
 
                         logger.debug(
                             "Speech onset detected",
@@ -371,7 +361,6 @@ class StreamingPreprocessor:
             padded = remainder_bytes + b"\x00" * (self._frame_size * 2 - len(remainder_bytes))
             frame_int16 = np.frombuffer(padded[: self._frame_size * 2], dtype=np.int16)
             frame_f32 = frame_int16.astype(np.float32) / 32768.0
-            processed_frame = self._process_frame(frame_f32)
             state.pcm_remainder.clear()
 
             if self._normalize:
