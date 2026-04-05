@@ -3368,8 +3368,6 @@ class TestBatchPostprocessPunctuation:
         config = self._make_config(punctuation_enabled=True, sentence_timestamps=False)
         # Override so the punctuation block sees sentence_timestamps=True
         # but the timestamp extraction block sees False
-        call_count = [0]
-        original_val = [True, False]  # first call: punctuation check, second: extraction
 
         # Simpler approach: set True and mock the SentenceTimestamp constructor
         config.timestamps.sentence_timestamps = True
