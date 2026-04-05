@@ -3293,3 +3293,106 @@ class TestCodeSwitchingInference:
 
         call_kwargs = loaded_model.model.generate.call_args[1]
         assert "language" not in call_kwargs
+
+
+# =============================================================================
+# Batch Postprocess Punctuation Tests
+# =============================================================================
+
+
+class TestBatchPostprocessPunctuation:
+    """Tests for punctuation restoration in batch _postprocess()."""
+
+    @pytest.fixture
+    def service(self):
+        return BatchTranscriptionService()
+
+    def _make_config(self, *, punctuation_enabled=True, lowercase=False, sentence_timestamps=False):
+        config = MagicMock()
+        config.lowercase = lowercase
+        config.timestamps = MagicMock()
+        config.timestamps.word_timestamps = False
+        config.timestamps.sentence_timestamps = sentence_timestamps
+        config.punctuation = MagicMock()
+        config.punctuation.enabled = punctuation_enabled
+        return config
+
+    @patch("stt_v2.punctuation.service.punctuate_sync")
+    def test_postprocess_with_punctuation_enabled(self, mock_sync, service):
+        mock_sync.return_value = ["Hello world, how are you?"]
+        raw = RawTranscription(text="hello world how are you")
+        config = self._make_config(punctuation_enabled=True)
+
+        result = service._postprocess(raw, config, 1.0)
+
+        assert result.text == "Hello world, how are you?"
+        mock_sync.assert_called_once_with(
+            ["hello world how are you"],
+            batch_size=8,
+            model_name=config.punctuation.model,
+        )
+
+    def test_postprocess_with_punctuation_disabled(self, service):
+        raw = RawTranscription(text="hello world")
+        config = self._make_config(punctuation_enabled=False)
+
+        result = service._postprocess(raw, config, 1.0)
+
+        assert result.text == "hello world"
+
+    @patch("stt_v2.punctuation.service.punctuate_sync", side_effect=RuntimeError("model error"))
+    def test_postprocess_punctuation_failure_graceful(self, mock_sync, service):
+        raw = RawTranscription(text="hello world")
+        config = self._make_config(punctuation_enabled=True)
+
+        result = service._postprocess(raw, config, 1.0)
+
+        assert result.text == "hello world"
+
+    @patch("stt_v2.punctuation.service.punctuate_sync")
+    def test_postprocess_segments_punctuated(self, mock_sync, service):
+        mock_sync.return_value = ["Hello world.", "Hello.", "World."]
+        raw = RawTranscription(
+            text="hello world",
+            segments=[
+                {"text": "hello", "start": 0.0, "end": 0.5},
+                {"text": "world", "start": 0.5, "end": 1.0},
+            ],
+        )
+        # sentence_timestamps=True is needed so punctuate_sync receives segment texts,
+        # but sentence timestamp extraction has a pre-existing issue with english_text.
+        # We disable sentence_timestamps in config so _postprocess skips extraction,
+        # but the punctuation block still reads config.timestamps.sentence_timestamps.
+        # Instead, set sentence_timestamps=True only in the punctuation config path
+        # by using a MagicMock that returns True for the punctuation check.
+        config = self._make_config(punctuation_enabled=True, sentence_timestamps=False)
+        # Override so the punctuation block sees sentence_timestamps=True
+        # but the timestamp extraction block sees False
+
+        # Simpler approach: set True and mock the SentenceTimestamp constructor
+        config.timestamps.sentence_timestamps = True
+
+        with patch("stt_v2.transcription.batch_service.SentenceTimestamp") as MockST:
+            MockST.side_effect = lambda **kw: MagicMock(**kw)
+            result = service._postprocess(raw, config, 1.0)
+
+        assert result.text == "Hello world."
+        # Verify segments were mutated by punctuation
+        assert raw.segments[0]["text"] == "Hello."
+        assert raw.segments[1]["text"] == "World."
+        mock_sync.assert_called_once_with(
+            ["hello world", "hello", "world"],
+            batch_size=8,
+            model_name=config.punctuation.model,
+        )
+
+    @patch("stt_v2.punctuation.service.punctuate_sync")
+    def test_postprocess_punctuation_then_lowercase(self, mock_sync, service):
+        """Lowercase is applied AFTER punctuation."""
+        mock_sync.return_value = ["Hello World."]
+        raw = RawTranscription(text="hello world")
+        config = self._make_config(punctuation_enabled=True, lowercase=True)
+
+        result = service._postprocess(raw, config, 1.0)
+
+        assert result.text == "hello world."
