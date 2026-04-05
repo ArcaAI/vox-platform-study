@@ -117,7 +117,7 @@ class StreamingPreprocessor:
         self._min_silence_duration_ms = min_silence_duration_ms
         self._denoiser = denoiser
         self._normalize_enabled = normalize
-        self._peak_tracker = 1.0
+        self._peak_tracker = 0.0
         self._processed_samples: list[np.ndarray] = []
 
         if self._target_sample_rate == 16000:
