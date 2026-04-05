@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+
 class TestSessionManagerDenoiserWiring:
 
     @pytest.mark.asyncio
