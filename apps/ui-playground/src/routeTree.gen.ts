@@ -31,6 +31,7 @@ import { Route as AuthenticatedAudioLiveTranscriptionRouteImport } from './route
 import { Route as AuthenticatedAudioJobTranscriptionRouteImport } from './routes/_authenticated/audio/job-transcription'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminTenantsRouteImport } from './routes/_authenticated/admin/tenants'
+import { Route as AuthenticatedAdminStudioRouteImport } from './routes/_authenticated/admin/studio'
 import { Route as AuthenticatedAdminStorageRouteImport } from './routes/_authenticated/admin/storage'
 import { Route as AuthenticatedAdminPromptsRouteImport } from './routes/_authenticated/admin/prompts'
 import { Route as AuthenticatedAdminOverviewRouteImport } from './routes/_authenticated/admin/overview'
@@ -163,6 +164,12 @@ const AuthenticatedAdminTenantsRoute =
     path: '/admin/tenants',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminStudioRoute =
+  AuthenticatedAdminStudioRouteImport.update({
+    id: '/admin/studio',
+    path: '/admin/studio',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminStorageRoute =
   AuthenticatedAdminStorageRouteImport.update({
     id: '/admin/storage',
@@ -227,6 +234,7 @@ export interface FileRoutesByFullPath {
   '/admin/overview': typeof AuthenticatedAdminOverviewRoute
   '/admin/prompts': typeof AuthenticatedAdminPromptsRoute
   '/admin/storage': typeof AuthenticatedAdminStorageRoute
+  '/admin/studio': typeof AuthenticatedAdminStudioRoute
   '/admin/tenants': typeof AuthenticatedAdminTenantsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/audio/job-transcription': typeof AuthenticatedAudioJobTranscriptionRoute
@@ -258,6 +266,7 @@ export interface FileRoutesByTo {
   '/admin/overview': typeof AuthenticatedAdminOverviewRoute
   '/admin/prompts': typeof AuthenticatedAdminPromptsRoute
   '/admin/storage': typeof AuthenticatedAdminStorageRoute
+  '/admin/studio': typeof AuthenticatedAdminStudioRoute
   '/admin/tenants': typeof AuthenticatedAdminTenantsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/audio/job-transcription': typeof AuthenticatedAudioJobTranscriptionRoute
@@ -291,6 +300,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/overview': typeof AuthenticatedAdminOverviewRoute
   '/_authenticated/admin/prompts': typeof AuthenticatedAdminPromptsRoute
   '/_authenticated/admin/storage': typeof AuthenticatedAdminStorageRoute
+  '/_authenticated/admin/studio': typeof AuthenticatedAdminStudioRoute
   '/_authenticated/admin/tenants': typeof AuthenticatedAdminTenantsRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/audio/job-transcription': typeof AuthenticatedAudioJobTranscriptionRoute
@@ -324,6 +334,7 @@ export interface FileRouteTypes {
     | '/admin/overview'
     | '/admin/prompts'
     | '/admin/storage'
+    | '/admin/studio'
     | '/admin/tenants'
     | '/admin/users'
     | '/audio/job-transcription'
@@ -355,6 +366,7 @@ export interface FileRouteTypes {
     | '/admin/overview'
     | '/admin/prompts'
     | '/admin/storage'
+    | '/admin/studio'
     | '/admin/tenants'
     | '/admin/users'
     | '/audio/job-transcription'
@@ -387,6 +399,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/overview'
     | '/_authenticated/admin/prompts'
     | '/_authenticated/admin/storage'
+    | '/_authenticated/admin/studio'
     | '/_authenticated/admin/tenants'
     | '/_authenticated/admin/users'
     | '/_authenticated/audio/job-transcription'
@@ -569,6 +582,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminTenantsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/studio': {
+      id: '/_authenticated/admin/studio'
+      path: '/admin/studio'
+      fullPath: '/admin/studio'
+      preLoaderRoute: typeof AuthenticatedAdminStudioRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/storage': {
       id: '/_authenticated/admin/storage'
       path: '/admin/storage'
@@ -638,6 +658,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminOverviewRoute: typeof AuthenticatedAdminOverviewRoute
   AuthenticatedAdminPromptsRoute: typeof AuthenticatedAdminPromptsRoute
   AuthenticatedAdminStorageRoute: typeof AuthenticatedAdminStorageRoute
+  AuthenticatedAdminStudioRoute: typeof AuthenticatedAdminStudioRoute
   AuthenticatedAdminTenantsRoute: typeof AuthenticatedAdminTenantsRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedAudioJobTranscriptionRoute: typeof AuthenticatedAudioJobTranscriptionRoute
@@ -665,6 +686,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminOverviewRoute: AuthenticatedAdminOverviewRoute,
   AuthenticatedAdminPromptsRoute: AuthenticatedAdminPromptsRoute,
   AuthenticatedAdminStorageRoute: AuthenticatedAdminStorageRoute,
+  AuthenticatedAdminStudioRoute: AuthenticatedAdminStudioRoute,
   AuthenticatedAdminTenantsRoute: AuthenticatedAdminTenantsRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
   AuthenticatedAudioJobTranscriptionRoute:

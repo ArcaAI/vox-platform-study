@@ -1,0 +1,227 @@
+/*
+ * Prisma Studio v0.15.0 theme overrides.
+ *
+ * Problem: Studio's Tailwind v4 build inlines oklch color values at compile
+ * time instead of using var() references.  The `theme` / `CustomTheme` prop
+ * sets CSS variables on :root but nothing in Studio's compiled CSS reads them,
+ * so the theme has NO visual effect.
+ *
+ * Solution: Define a parallel set of "--ps-*" custom properties that mirror the
+ * app's theme tokens.  Studio's CSS never touches these, so they survive
+ * inheritance into the .ps scope.  Then override every semantic utility class
+ * inside .ps to reference them.
+ *
+ * Must be imported AFTER @prisma/studio-core/ui/index.css so equal-specificity
+ * selectors win by source order.
+ */
+
+/* ------------------------------------------------------------------ */
+/* Token bridge — app theme → Studio-safe namespace                   */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --ps-bg: oklch(1 0 0);
+  --ps-fg: oklch(0.145 0 0);
+  --ps-card: oklch(1 0 0);
+  --ps-card-fg: oklch(0.145 0 0);
+  --ps-popover: oklch(1 0 0);
+  --ps-popover-fg: oklch(0.145 0 0);
+  --ps-primary: oklch(0.205 0 0);
+  --ps-primary-fg: oklch(0.985 0 0);
+  --ps-secondary: oklch(0.97 0 0);
+  --ps-secondary-fg: oklch(0.205 0 0);
+  --ps-muted: oklch(0.97 0 0);
+  --ps-muted-fg: oklch(0.556 0 0);
+  --ps-accent: oklch(0.97 0 0);
+  --ps-accent-fg: oklch(0.205 0 0);
+  --ps-destructive: oklch(0.577 0.245 27.325);
+  --ps-destructive-fg: oklch(1 0 0);
+  --ps-border: oklch(0.922 0 0);
+  --ps-input: oklch(0.922 0 0);
+  --ps-ring: oklch(0.708 0 0);
+  --ps-row-odd: oklch(1 0 0);
+  --ps-row-even: oklch(0.97 0 0);
+  --ps-row-hover: oklch(0.95 0 0);
+}
+
+.dark {
+  --ps-bg: oklch(0.145 0 0);
+  --ps-fg: oklch(0.985 0 0);
+  --ps-card: oklch(0.205 0 0);
+  --ps-card-fg: oklch(0.985 0 0);
+  --ps-popover: oklch(0.269 0 0);
+  --ps-popover-fg: oklch(0.985 0 0);
+  --ps-primary: oklch(0.922 0 0);
+  --ps-primary-fg: oklch(0.205 0 0);
+  --ps-secondary: oklch(0.269 0 0);
+  --ps-secondary-fg: oklch(0.985 0 0);
+  --ps-muted: oklch(0.269 0 0);
+  --ps-muted-fg: oklch(0.708 0 0);
+  --ps-accent: oklch(0.371 0 0);
+  --ps-accent-fg: oklch(0.985 0 0);
+  --ps-destructive: oklch(0.704 0.191 22.216);
+  --ps-destructive-fg: oklch(0.985 0 0);
+  --ps-border: oklch(0.275 0 0);
+  --ps-input: oklch(0.325 0 0);
+  --ps-ring: oklch(0.556 0 0);
+  --ps-row-odd: oklch(0.175 0 0);
+  --ps-row-even: oklch(0.205 0 0);
+  --ps-row-hover: oklch(0.245 0 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* Background overrides                                                */
+/* ------------------------------------------------------------------ */
+
+.ps .bg-background                         { background-color: var(--ps-bg) }
+.ps .bg-background\/50                     { background-color: color-mix(in oklab, var(--ps-bg) 50%, transparent) }
+.ps .bg-background\/90                     { background-color: color-mix(in oklab, var(--ps-bg) 90%, transparent) }
+.ps .bg-card                               { background-color: var(--ps-card) }
+.ps .bg-popover                            { background-color: var(--ps-popover) }
+.ps .bg-primary                            { background-color: var(--ps-primary) }
+.ps .bg-secondary                          { background-color: var(--ps-secondary) }
+.ps .bg-secondary\/50                      { background-color: color-mix(in oklab, var(--ps-secondary) 50%, transparent) }
+.ps .bg-secondary\/70                      { background-color: color-mix(in oklab, var(--ps-secondary) 70%, transparent) }
+.ps .bg-muted                              { background-color: var(--ps-muted) }
+.ps .bg-muted\/50                          { background-color: color-mix(in oklab, var(--ps-muted) 50%, transparent) }
+.ps .bg-muted\/70                          { background-color: color-mix(in oklab, var(--ps-muted) 70%, transparent) }
+.ps .bg-accent                             { background-color: var(--ps-accent) }
+.ps .bg-destructive                        { background-color: var(--ps-destructive) }
+.ps .bg-border                             { background-color: var(--ps-border) }
+.ps .bg-foreground\/10                     { background-color: color-mix(in oklab, var(--ps-fg) 10%, transparent) }
+.ps .bg-table-border                       { background-color: var(--ps-border) }
+.ps .bg-table-head                         { background-color: var(--ps-bg) }
+
+/* ------------------------------------------------------------------ */
+/* Text color overrides                                                */
+/* ------------------------------------------------------------------ */
+
+.ps .text-foreground                       { color: var(--ps-fg) }
+.ps .text-foreground\!                     { color: var(--ps-fg) !important }
+.ps .text-foreground\/60                   { color: color-mix(in oklab, var(--ps-fg) 60%, transparent) }
+.ps .text-foreground\/90                   { color: color-mix(in oklab, var(--ps-fg) 90%, transparent) }
+.ps .text-card-foreground                  { color: var(--ps-card-fg) }
+.ps .text-popover-foreground               { color: var(--ps-popover-fg) }
+.ps .text-primary                          { color: var(--ps-primary) }
+.ps .text-primary-foreground               { color: var(--ps-primary-fg) }
+.ps .text-secondary-foreground             { color: var(--ps-secondary-fg) }
+.ps .text-muted-foreground                 { color: var(--ps-muted-fg) }
+.ps .text-muted-foreground\/60             { color: color-mix(in oklab, var(--ps-muted-fg) 60%, transparent) }
+.ps .text-muted-foreground\/70             { color: color-mix(in oklab, var(--ps-muted-fg) 70%, transparent) }
+.ps .text-accent-foreground                { color: var(--ps-accent-fg) }
+.ps .text-destructive                      { color: var(--ps-destructive) }
+
+/* ------------------------------------------------------------------ */
+/* Border color overrides                                              */
+/* ------------------------------------------------------------------ */
+
+.ps .border-border                         { border-color: var(--ps-border) }
+.ps .border-input                          { border-color: var(--ps-input) }
+.ps .border-primary                        { border-color: var(--ps-primary) }
+.ps .border-ring\/20                       { border-color: color-mix(in oklab, var(--ps-ring) 20%, transparent) }
+.ps .border-table-border                   { border-color: var(--ps-border) }
+.ps .border-muted-foreground\/50           { border-color: color-mix(in oklab, var(--ps-muted-fg) 50%, transparent) }
+
+/* ------------------------------------------------------------------ */
+/* Ring / outline / offset                                             */
+/* ------------------------------------------------------------------ */
+
+.ps .ring-ring                                       { --tw-ring-color: var(--ps-ring) }
+.ps .ring-offset-background                          { --tw-ring-offset-color: var(--ps-bg) }
+.ps .focus\:ring-ring:focus                          { --tw-ring-color: var(--ps-ring) }
+.ps .focus\:ring-accent-foreground:focus             { --tw-ring-color: var(--ps-accent-fg) }
+.ps .focus\:ring-offset-background:focus             { --tw-ring-offset-color: var(--ps-bg) }
+.ps .focus-visible\:ring-ring:focus-visible          { --tw-ring-color: var(--ps-ring) }
+.ps .focus-visible\:ring-offset-background:focus-visible { --tw-ring-offset-color: var(--ps-bg) }
+
+/* ------------------------------------------------------------------ */
+/* Hover states                                                        */
+/* ------------------------------------------------------------------ */
+
+.ps .hover\:bg-accent:hover                          { background-color: var(--ps-accent) }
+.ps .hover\:bg-destructive\/90:hover                 { background-color: color-mix(in oklab, var(--ps-destructive) 90%, transparent) }
+.ps .hover\:bg-muted\/50:hover                       { background-color: color-mix(in oklab, var(--ps-muted) 50%, transparent) }
+.ps .hover\:bg-primary\/80:hover                     { background-color: color-mix(in oklab, var(--ps-primary) 80%, transparent) }
+.ps .hover\:bg-primary\/90:hover                     { background-color: color-mix(in oklab, var(--ps-primary) 90%, transparent) }
+.ps .hover\:bg-secondary\/80:hover                   { background-color: color-mix(in oklab, var(--ps-secondary) 80%, transparent) }
+.ps .hover\:text-foreground:hover                    { color: var(--ps-fg) }
+.ps .hover\:text-accent-foreground:hover             { color: var(--ps-accent-fg) }
+.ps .hover\:text-primary:hover                       { color: var(--ps-primary) }
+.ps .hover\:border-table-border:hover                { border-color: var(--ps-border) }
+.ps .hover\:\[\&_button\]\:bg-accent:hover button    { background-color: var(--ps-accent) }
+.ps .hover\:\[\&_button\]\:text-accent-foreground:hover button { color: var(--ps-accent-fg) }
+
+/* ------------------------------------------------------------------ */
+/* Focus states                                                        */
+/* ------------------------------------------------------------------ */
+
+.ps .focus\:bg-accent:focus                          { background-color: var(--ps-accent) }
+.ps .focus\:text-accent-foreground:focus             { color: var(--ps-accent-fg) }
+
+/* ------------------------------------------------------------------ */
+/* Data-attribute / aria states                                        */
+/* ------------------------------------------------------------------ */
+
+.ps .data-placeholder\:text-muted-foreground[data-placeholder]       { color: var(--ps-muted-fg) }
+.ps .data-\[active\=true\]\:bg-accent[data-active="true"]           { background-color: var(--ps-accent) }
+.ps .data-\[active\=true\]\:text-foreground[data-active="true"]     { color: var(--ps-fg) }
+.ps .data-\[state\=checked\]\:bg-primary[data-state="checked"]      { background-color: var(--ps-primary) }
+.ps .data-\[state\=checked\]\:text-primary-foreground[data-state="checked"] { color: var(--ps-primary-fg) }
+.ps .data-\[state\=open\]\:bg-accent[data-state="open"]             { background-color: var(--ps-accent) }
+.ps .data-\[state\=open\]\:bg-secondary[data-state="open"]          { background-color: var(--ps-secondary) }
+.ps .data-\[state\=open\]\:border-primary[data-state="open"]        { border-color: var(--ps-primary) }
+.ps .data-\[state\=open\]\:text-accent-foreground[data-state="open"] { color: var(--ps-accent-fg) }
+.ps .data-\[state\=open\]\:text-muted-foreground[data-state="open"] { color: var(--ps-muted-fg) }
+.ps .data-\[state\=selected\]\:bg-muted[data-state="selected"]      { background-color: var(--ps-muted) }
+.ps .data-\[state\=unchecked\]\:bg-input[data-state="unchecked"]    { background-color: var(--ps-input) }
+.ps .aria-selected\:text-muted-foreground[aria-selected="true"]     { color: var(--ps-muted-fg) }
+
+/* ------------------------------------------------------------------ */
+/* Pseudo-elements                                                     */
+/* ------------------------------------------------------------------ */
+
+.ps .file\:text-foreground::file-selector-button     { color: var(--ps-fg) }
+.ps .placeholder\:text-muted-foreground::placeholder { color: var(--ps-muted-fg) }
+
+/* ------------------------------------------------------------------ */
+/* Arbitrary selectors with semantic colors                            */
+/* ------------------------------------------------------------------ */
+
+.ps .\[\&\>button\]\:bg-primary>button                              { background-color: var(--ps-primary) }
+.ps .\[\&\>button\]\:text-accent-foreground>button                  { color: var(--ps-accent-fg) }
+.ps .\[\&\>button\]\:text-foreground\!>button                      { color: var(--ps-fg) !important }
+.ps .\[\&\>button\]\:text-primary-foreground>button                 { color: var(--ps-primary-fg) }
+.ps .\[\&\>button\]\:hover\:bg-primary>button:hover                { background-color: var(--ps-primary) }
+.ps .\[\&\>button\]\:hover\:text-foreground\!>button:hover         { color: var(--ps-fg) !important }
+.ps .\[\&\>button\]\:hover\:text-primary-foreground>button:hover   { color: var(--ps-primary-fg) }
+.ps .\[\&\[aria-selected\]\>button\]\:bg-primary[aria-selected]>button { background-color: var(--ps-primary) }
+.ps .\[\&\[aria-selected\]\>button\]\:text-primary-foreground[aria-selected]>button { color: var(--ps-primary-fg) }
+.ps .\[\&_button\]\:bg-background button                            { background-color: var(--ps-bg) }
+.ps .\[\&_button\]\:border-input button                             { border-color: var(--ps-input) }
+.ps .\[\&_button_\>_svg\]\:fill-foreground button > svg             { fill: var(--ps-fg) }
+.ps .\[\&_svg_\>_path\]\:fill-background svg > path                 { fill: var(--ps-bg) }
+.ps .\[\&_svg_\>_rect\]\:fill-muted-foreground\/80 svg > rect       { fill: color-mix(in oklab, var(--ps-muted-fg) 80%, transparent) }
+
+/* ------------------------------------------------------------------ */
+/* Group / toast selectors                                             */
+/* ------------------------------------------------------------------ */
+
+.ps .group-hover\:bg-muted:is(:where(.group):hover *)                       { background-color: var(--ps-muted) }
+.ps .group-\[\.toast\]\:bg-muted:is(:where(.group):is(.toast) *)            { background-color: var(--ps-muted) }
+.ps .group-\[\.toast\]\:bg-primary:is(:where(.group):is(.toast) *)          { background-color: var(--ps-primary) }
+.ps .group-\[\.toast\]\:text-muted-foreground:is(:where(.group):is(.toast) *) { color: var(--ps-muted-fg) }
+.ps .group-\[\.toast\]\:text-primary-foreground:is(:where(.group):is(.toast) *) { color: var(--ps-primary-fg) }
+.ps .group-\[\.toaster\]\:bg-background:is(:where(.group):is(.toaster) *)   { background-color: var(--ps-bg) }
+.ps .group-\[\.toaster\]\:border-border:is(:where(.group):is(.toaster) *)   { border-color: var(--ps-border) }
+.ps .group-\[\.toaster\]\:text-foreground:is(:where(.group):is(.toaster) *) { color: var(--ps-fg) }
+
+/* ------------------------------------------------------------------ */
+/* Table row striping — Studio-specific semantic colors                */
+/* odd rows, even rows, group-based variants, and hover               */
+/* ------------------------------------------------------------------ */
+
+.ps .odd\:bg-table-cell-odd:nth-child(odd)                                  { background-color: var(--ps-row-odd) }
+.ps .even\:bg-table-cell-even\/50:nth-child(even)                           { background-color: color-mix(in oklab, var(--ps-row-even) 50%, transparent) }
+.ps .group-odd\:bg-table-cell-odd:is(:where(.group):nth-child(odd) *)      { background-color: var(--ps-row-odd) }
+.ps .group-even\:bg-table-cell-even:is(:where(.group):nth-child(even) *)   { background-color: var(--ps-row-even) }
+.ps .group-hover\:bg-muted:is(:where(.group):hover *)                      { background-color: var(--ps-row-hover) }
