@@ -85,6 +85,7 @@ class SessionManager:
         self._inference_queues: dict[str, asyncio.Queue[AudioUtterance | None]] = {}
         self._inference_tasks: dict[str, asyncio.Task[None]] = {}
         self._partial_tasks: dict[str, asyncio.Task[None]] = {}
+        self._final_published_gates: dict[str, asyncio.Event] = {}
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._reaper_task: asyncio.Task[None] | None = None
         self._snapshot_task: asyncio.Task[None] | None = None
@@ -347,11 +348,9 @@ class SessionManager:
             await session.force_persist()
 
             # Create inference worker (per-utterance ASR)
-            punctuation_config = None
-            if pipeline_config and hasattr(pipeline_config, "postprocessing"):
-                pp_cfg = getattr(pipeline_config.postprocessing, "punctuation", None)
-                if pp_cfg and getattr(pp_cfg, "enabled", False):
-                    punctuation_config = pp_cfg
+            postprocessing_config = (
+                pipeline_config.postprocessing if pipeline_config else None
+            )
 
             inference_worker = StreamingInferenceWorker(
                 result_publisher=publisher,
@@ -359,7 +358,7 @@ class SessionManager:
                 tenant_id=tenant_id,
                 consultation_id=consultation_id,
                 diarization_config=diarization_config,
-                punctuation_config=punctuation_config,
+                postprocessing_config=postprocessing_config,
             )
 
             self._register_inference_runtime(session, inference_worker)
@@ -486,6 +485,7 @@ class SessionManager:
         self._inference_tasks.pop(session_id, None)
         self._cancel_partial(session_id)
         self._partial_tasks.pop(session_id, None)
+        self._final_published_gates.pop(session_id, None)
         self._sessions.pop(session_id, None)
         self._last_snapshot_at.pop(session_id, None)
         self._chunk_indices.pop(session_id, None)
@@ -743,12 +743,14 @@ class SessionManager:
 
             with torch.no_grad():
                 if hasattr(model, "generate"):
-                    outputs = model.generate(**inputs, **generate_kwargs)
+                    outputs = model.generate(
+                        **inputs,
+                        **generate_kwargs,
+                    )
                     text = processor.batch_decode(
                         outputs, skip_special_tokens=True,
                     )[0].strip()
 
-                    # Extract word timestamps from Whisper offsets
                     word_timestamps: list[dict[str, Any]] = []
                     try:
                         decoded = processor.decode(
@@ -759,24 +761,19 @@ class SessionManager:
                         for entry in decoded.get("offsets", []):
                             ts = entry.get("timestamp", (0.0, 0.0))
                             if isinstance(ts, (list, tuple)) and len(ts) == 2:
-                                start, end = ts
+                                s, e = ts
                             else:
-                                start, end = 0.0, 0.0
-                            start = start if start is not None else 0.0
-                            end = end if end is not None else start
-                            word_timestamps.append({
-                                "word": entry.get("text", ""),
-                                "start": start,
-                                "end": end,
-                                "start_time": start,
-                                "end_time": end,
-                                "confidence": 1.0,
-                            })
+                                s, e = 0.0, 0.0
+                            s = s if s is not None else 0.0
+                            e = e if e is not None else s
+                            w = (entry.get("text", "") or "").strip()
+                            if w:
+                                word_timestamps.append({
+                                    "word": w, "start": s,
+                                    "end": e, "confidence": 1.0,
+                                })
                     except Exception:
-                        logger.debug(
-                            "Failed to extract word timestamps from Whisper offsets",
-                            exc_info=True,
-                        )
+                        pass
 
                 else:
                     # CTC model fallback (Wav2Vec2)
@@ -803,6 +800,9 @@ class SessionManager:
             maxsize=self._inference_queue_maxsize
         )
         self._inference_queues[session.session_id] = inference_queue
+        gate = asyncio.Event()
+        gate.set()  # no final in-flight initially
+        self._final_published_gates[session.session_id] = gate
         inference_task = self._start_inference_loop(
             session, inference_worker, inference_queue
         )
@@ -841,6 +841,10 @@ class SessionManager:
                         error=str(exc),
                     )
                 finally:
+                    # Unblock partials for the next utterance
+                    gate = self._final_published_gates.get(session.session_id)
+                    if gate is not None:
+                        gate.set()
                     queue.task_done()
 
         return asyncio.create_task(
@@ -930,6 +934,16 @@ class SessionManager:
 
         async def _run_partial() -> None:
             try:
+                # Wait for any in-flight final to be published before emitting
+                # partials for the next utterance. Timeout ensures we don't
+                # block forever if the final pipeline is extremely slow.
+                gate = self._final_published_gates.get(session_id)
+                if gate is not None:
+                    try:
+                        await asyncio.wait_for(gate.wait(), timeout=2.0)
+                    except TimeoutError:
+                        pass  # publish anyway after timeout
+
                 result = await worker.process_partial(session_id, utterance)
                 if result.text.strip() and publisher is not None:
                     await publisher.publish(result)
@@ -983,6 +997,10 @@ class SessionManager:
                 for utt in utterances:
                     if utt.is_final:
                         self._cancel_partial(session.session_id)
+                        # Block partials for next utterance until this final publishes
+                        gate = self._final_published_gates.get(session.session_id)
+                        if gate is not None:
+                            gate.clear()
                         if inference_queue is not None:
                             await inference_queue.put(utt)
                     else:
@@ -1443,11 +1461,9 @@ class SessionManager:
                         redis=self._redis, session_id=meta.session_id
                     )
 
-                    recovery_punct_config = None
-                    if pipeline_config and hasattr(pipeline_config, "postprocessing"):
-                        pp_cfg = getattr(pipeline_config.postprocessing, "punctuation", None)
-                        if pp_cfg and getattr(pp_cfg, "enabled", False):
-                            recovery_punct_config = pp_cfg
+                    recovery_postprocessing_config = (
+                        pipeline_config.postprocessing if pipeline_config else None
+                    )
 
                     inference_worker = StreamingInferenceWorker(
                         result_publisher=publisher,
@@ -1457,7 +1473,7 @@ class SessionManager:
                         diarization_config=(
                             pipeline_config.diarization if pipeline_config else None
                         ),
-                        punctuation_config=recovery_punct_config,
+                        postprocessing_config=recovery_postprocessing_config,
                     )
 
                     # TODO: Replay last ~2 s of audio from Redis Stream to

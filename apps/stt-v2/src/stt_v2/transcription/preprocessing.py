@@ -165,7 +165,10 @@ class AudioPreprocessor:
         if pipeline_model is not None:
             try:
                 segments = await self._apply_vad(
-                    samples, sample_rate, pipeline_model, vad_config.threshold
+                    samples, sample_rate, pipeline_model, vad_config.threshold,
+                    min_speech_duration_ms=vad_config.min_speech_duration_ms,
+                    min_silence_duration_ms=vad_config.min_silence_duration_ms,
+                    padding_ms=vad_config.padding_ms,
                 )
                 logger.debug(
                     "Pipeline VAD model: %d speech segments detected",
@@ -261,6 +264,9 @@ class AudioPreprocessor:
         sample_rate: int,
         vad_model: LoadedModel,
         threshold: float,
+        min_speech_duration_ms: int = 350,
+        min_silence_duration_ms: int = 100,
+        padding_ms: int = 30,
     ) -> list[AudioSegment]:
         """
         Apply Voice Activity Detection.
@@ -270,6 +276,9 @@ class AudioPreprocessor:
             sample_rate: Sample rate
             vad_model: VAD model
             threshold: Speech detection threshold
+            min_speech_duration_ms: Minimum speech segment duration (ms)
+            min_silence_duration_ms: Minimum silence duration to split (ms)
+            padding_ms: Padding around speech boundaries (ms)
 
         Returns:
             List of audio segments
@@ -283,6 +292,9 @@ class AudioPreprocessor:
                     sample_rate=sample_rate,
                     session=model,
                     threshold=threshold,
+                    min_speech_ms=min_speech_duration_ms,
+                    min_silence_ms=min_silence_duration_ms,
+                    pad_ms=padding_ms,
                 )
 
             import torch
@@ -298,6 +310,9 @@ class AudioPreprocessor:
                     model,
                     sampling_rate=sample_rate,
                     threshold=threshold,
+                    min_speech_duration_ms=min_speech_duration_ms,
+                    min_silence_duration_ms=min_silence_duration_ms,
+                    speech_pad_ms=padding_ms,
                 )
 
                 segments = []
@@ -371,6 +386,9 @@ class AudioPreprocessor:
         sample_rate: int,
         session: Any,
         threshold: float,
+        min_speech_ms: int = 250,
+        min_silence_ms: int = 100,
+        pad_ms: int = 30,
     ) -> list[AudioSegment]:
         """Run Silero-style VAD directly on an ONNX Runtime session."""
         from ..vad.silero_service import SileroVADService
@@ -398,9 +416,9 @@ class AudioPreprocessor:
             frame_size=frame_size,
             sample_rate=sample_rate,
             threshold=threshold,
-            min_speech_ms=250,
-            min_silence_ms=100,
-            pad_ms=30,
+            min_speech_ms=min_speech_ms,
+            min_silence_ms=min_silence_ms,
+            pad_ms=pad_ms,
             total_samples=len(samples),
         )
 

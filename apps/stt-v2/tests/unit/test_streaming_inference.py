@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
+from stt_v2.pipeline.dto import PostprocessingConfig, PunctuationConfig, TimestampConfig
 from stt_v2.streaming.inference import StreamingInferenceWorker
 from stt_v2.streaming.preprocessor import AudioUtterance
 from stt_v2.streaming.schemas import SegmentResult
@@ -631,3 +632,129 @@ class TestProcessPartial:
 
         assert result.is_final is True
         assert "hello world" in worker._previous_text
+
+
+# =========================================================================
+# Tests: PostprocessingConfig wiring (Step 2)
+# =========================================================================
+
+
+class TestPostprocessingConfigWiring:
+
+    def test_worker_derives_punctuation_from_postprocessing_config(self):
+        pp_config = PostprocessingConfig(
+            punctuation=PunctuationConfig(enabled=True, model="test-model"),
+        )
+        worker = StreamingInferenceWorker(postprocessing_config=pp_config)
+        assert worker._punctuation_config is not None
+        assert worker._punctuation_config.enabled is True
+        assert worker._punctuation_config.model == "test-model"
+
+    def test_worker_none_config_has_none_punctuation(self):
+        worker = StreamingInferenceWorker(postprocessing_config=None)
+        assert worker._punctuation_config is None
+
+    def test_worker_stores_full_postprocessing_config(self):
+        pp_config = PostprocessingConfig(lowercase=True, remove_disfluencies=True)
+        worker = StreamingInferenceWorker(postprocessing_config=pp_config)
+        assert worker._postprocessing_config is pp_config
+        assert worker._postprocessing_config.lowercase is True
+        assert worker._postprocessing_config.remove_disfluencies is True
+
+
+# =========================================================================
+# Tests: Lowercase in streaming (Step 3)
+# =========================================================================
+
+
+class TestStreamingLowercase:
+
+    @pytest.mark.asyncio
+    async def test_lowercase_applied_when_enabled(self):
+        pp_config = PostprocessingConfig(lowercase=True)
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: "Hello World",
+            postprocessing_config=pp_config,
+        )
+        utt = _make_utterance()
+        result = await worker.process_utterance("sess-1", utt)
+        assert result.text == "hello world"
+
+    @pytest.mark.asyncio
+    async def test_lowercase_not_applied_when_disabled(self):
+        pp_config = PostprocessingConfig(lowercase=False)
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: "Hello World",
+            postprocessing_config=pp_config,
+        )
+        utt = _make_utterance()
+        result = await worker.process_utterance("sess-1", utt)
+        assert result.text == "Hello World"
+
+    @pytest.mark.asyncio
+    async def test_lowercase_not_applied_when_no_config(self):
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: "Hello World",
+        )
+        utt = _make_utterance()
+        result = await worker.process_utterance("sess-1", utt)
+        assert result.text == "Hello World"
+
+
+# =========================================================================
+# Tests: Word timestamps gating (Step 5)
+# =========================================================================
+
+
+class TestWordTimestampsGating:
+
+    @pytest.mark.asyncio
+    async def test_word_timestamps_cleared_when_disabled(self):
+        pp_config = PostprocessingConfig(
+            timestamps=TimestampConfig(word_timestamps=False),
+        )
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: {
+                "text": "hello world",
+                "word_timestamps": [
+                    {"word": "hello", "start": 0.0, "end": 0.5},
+                    {"word": "world", "start": 0.5, "end": 1.0},
+                ],
+            },
+            postprocessing_config=pp_config,
+        )
+        utt = _make_utterance()
+        result = await worker.process_utterance("sess-1", utt)
+        assert result.word_timestamps == []
+
+    @pytest.mark.asyncio
+    async def test_word_timestamps_preserved_when_enabled(self):
+        pp_config = PostprocessingConfig(
+            timestamps=TimestampConfig(word_timestamps=True),
+        )
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: {
+                "text": "hello",
+                "word_timestamps": [
+                    {"word": "hello", "start": 0.0, "end": 0.5},
+                ],
+            },
+            postprocessing_config=pp_config,
+        )
+        utt = _make_utterance()
+        result = await worker.process_utterance("sess-1", utt)
+        assert len(result.word_timestamps) >= 1
+
+    @pytest.mark.asyncio
+    async def test_word_timestamps_preserved_when_no_config(self):
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: {
+                "text": "hello",
+                "word_timestamps": [
+                    {"word": "hello", "start": 0.0, "end": 0.5},
+                ],
+            },
+        )
+        utt = _make_utterance()
+        result = await worker.process_utterance("sess-1", utt)
+        assert len(result.word_timestamps) >= 1

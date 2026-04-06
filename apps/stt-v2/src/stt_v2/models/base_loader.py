@@ -104,6 +104,37 @@ class BaseModelLoader(ABC):
             from stt_v2.core.platform import get_device_string
 
             return get_device_string()
+
+        # Validate requested device is available
+        if requested == "cuda":
+            try:
+                import torch
+
+                if not torch.cuda.is_available():
+                    logger.warning(
+                        "Requested device 'cuda' unavailable, falling back to auto-detect"
+                    )
+                    from stt_v2.core.platform import get_device_string
+
+                    return get_device_string()
+            except ImportError:
+                pass
+        elif requested == "mps":
+            try:
+                import torch
+
+                if not (
+                    hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+                ):
+                    logger.warning(
+                        "Requested device 'mps' unavailable, falling back to auto-detect"
+                    )
+                    from stt_v2.core.platform import get_device_string
+
+                    return get_device_string()
+            except ImportError:
+                pass
+
         return requested
 
     def _get_torch_dtype(self, compute_type: str) -> Any:

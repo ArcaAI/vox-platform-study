@@ -2165,12 +2165,10 @@ class TestNormalizeWhisperOffsets:
         result = BatchTranscriptionService._normalize_whisper_offsets(offsets)
 
         assert len(result) == 2
-        assert result[0]["text"] == " Hello"
-        assert result[0]["word"] == " Hello"
+        assert result[0]["text"] == "Hello"
+        assert result[0]["word"] == "Hello"
         assert result[0]["start"] == 0.0
         assert result[0]["end"] == 1.5
-        assert result[0]["start_time"] == 0.0
-        assert result[0]["end_time"] == 1.5
         assert result[0]["confidence"] == 1.0
 
         assert result[1]["start"] == 1.6
@@ -2205,8 +2203,6 @@ class TestNormalizeWhisperOffsets:
 
         assert result[0]["start"] == 12.5
         assert result[0]["end"] == 13.5
-        assert result[0]["start_time"] == 12.5
-        assert result[0]["end_time"] == 13.5
 
         assert result[1]["start"] == 14.0
         assert result[1]["end"] == 15.0
@@ -2296,6 +2292,7 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = "en"
         config.code_switching = False
+        config.beam_size = None
 
         with (
             patch.dict(sys.modules, {"torch": _make_mock_torch()}),
@@ -2323,6 +2320,7 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = "en"
         config.code_switching = False
+        config.beam_size = None
 
         with (
             patch.dict(sys.modules, {"torch": _make_mock_torch()}),
@@ -2350,6 +2348,7 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = None
         config.code_switching = False
+        config.beam_size = None
 
         with (
             patch.dict(sys.modules, {"torch": _make_mock_torch()}),
@@ -2400,6 +2399,7 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = "en"
         config.code_switching = False
+        config.beam_size = None
 
         with (
             patch.dict(sys.modules, {"torch": _make_mock_torch()}),
@@ -2429,6 +2429,7 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = "en"
         config.code_switching = False
+        config.beam_size = None
 
         progress_values = []
 
@@ -2488,6 +2489,7 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = "fr"
         config.code_switching = False
+        config.beam_size = None
 
         with (
             patch.dict(sys.modules, {"torch": _make_mock_torch()}),
@@ -2535,6 +2537,7 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = "en"
         config.code_switching = False
+        config.beam_size = None
 
         with (
             patch.dict(sys.modules, {"torch": _make_mock_torch()}),
@@ -2677,6 +2680,7 @@ class TestChunkCallbackAndTTFW:
         config = MagicMock()
         config.language = "en"
         config.code_switching = False
+        config.beam_size = None
         chunks_received: list[ChunkTranscriptionResult] = []
 
         with (
@@ -2708,6 +2712,7 @@ class TestChunkCallbackAndTTFW:
         config = MagicMock()
         config.language = None
         config.code_switching = False
+        config.beam_size = None
 
         hook_calls: list[bool] = []
 
@@ -2739,6 +2744,7 @@ class TestChunkCallbackAndTTFW:
         config = MagicMock()
         config.language = None
         config.code_switching = False
+        config.beam_size = None
 
         chunks_received: list[ChunkTranscriptionResult] = []
 

@@ -722,3 +722,83 @@ class TestDiarizationConfigSilencePadding:
         assert config.max_speakers == 0
         assert config.auto_register_speakers is True
         assert config.min_segment_duration_s == 1.0
+
+
+# =============================================================================
+# PIPELINE SPEC __post_init__ COMPUTE TYPE INHERITANCE (Step 8)
+# =============================================================================
+
+
+class TestPipelineSpecComputeTypeInheritance:
+    """Tests for PipelineSpec.__post_init__ compute_type propagation."""
+
+    def test_inherits_compute_type_to_inline_models(self):
+        spec = PipelineSpec(
+            version="1.0",
+            models=ModelRefs(
+                asr=ModelRef(
+                    inline=InlineModelDef(
+                        hf_model_id="openai/whisper-large-v3",
+                        engine=AiModelFormat.SAFETENSOR,
+                        compute_type=None,
+                    )
+                ),
+            ),
+            preprocessing=PreprocessingConfig(),
+            inference=InferenceConfig(compute_type="float16"),
+            postprocessing=PostprocessingConfig(),
+        )
+        inline_models = spec.models.get_inline_models()
+        assert len(inline_models) == 1
+        assert inline_models[0][1].compute_type == "float16"
+
+    def test_does_not_override_explicit_compute_type(self):
+        spec = PipelineSpec(
+            version="1.0",
+            models=ModelRefs(
+                asr=ModelRef(
+                    inline=InlineModelDef(
+                        hf_model_id="openai/whisper-large-v3",
+                        engine=AiModelFormat.SAFETENSOR,
+                        compute_type="float32",
+                    )
+                ),
+            ),
+            preprocessing=PreprocessingConfig(),
+            inference=InferenceConfig(compute_type="float16"),
+            postprocessing=PostprocessingConfig(),
+        )
+        inline_models = spec.models.get_inline_models()
+        assert inline_models[0][1].compute_type == "float32"
+
+    def test_auto_does_not_propagate(self):
+        spec = PipelineSpec(
+            version="1.0",
+            models=ModelRefs(
+                asr=ModelRef(
+                    inline=InlineModelDef(
+                        hf_model_id="openai/whisper-large-v3",
+                        engine=AiModelFormat.SAFETENSOR,
+                        compute_type=None,
+                    )
+                ),
+            ),
+            preprocessing=PreprocessingConfig(),
+            inference=InferenceConfig(compute_type="auto"),
+            postprocessing=PostprocessingConfig(),
+        )
+        inline_models = spec.models.get_inline_models()
+        assert inline_models[0][1].compute_type is None
+
+    def test_slug_models_not_affected(self):
+        spec = PipelineSpec(
+            version="1.0",
+            models=ModelRefs(
+                asr=ModelRef(slug="whisper-large"),
+            ),
+            preprocessing=PreprocessingConfig(),
+            inference=InferenceConfig(compute_type="float16"),
+            postprocessing=PostprocessingConfig(),
+        )
+        inline_models = spec.models.get_inline_models()
+        assert len(inline_models) == 0

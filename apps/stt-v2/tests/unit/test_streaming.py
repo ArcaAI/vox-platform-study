@@ -189,7 +189,8 @@ class TestSegmentResult:
 
         result = SegmentResult(text="No speaker info")
         d = result.to_redis_dict()
-        assert d["speaker_id"] == ""
+        # speaker_id is omitted when not set (conditional field)
+        assert "speaker_id" not in d
         restored = SegmentResult.from_redis_dict(d)
         assert restored.speaker_id is None
 

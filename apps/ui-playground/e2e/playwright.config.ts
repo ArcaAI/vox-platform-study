@@ -19,7 +19,30 @@ import { fileURLToPath } from 'node:url';
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const audioFixturePath = path.resolve(__dirname, 'fixtures/audio_1.wav');
+
+const SHARED_CHROME_ARGS = [
+  '--use-fake-ui-for-media-stream',
+  '--use-fake-device-for-media-stream',
+  '--autoplay-policy=no-user-gesture-required',
+];
+
+function chromeProjectWithAudio(name: string, specFile: string, audioFixture: string) {
+  return {
+    name,
+    testMatch: specFile,
+    use: {
+      ...devices['Desktop Chrome'],
+      channel: 'chrome' as const,
+      permissions: ['microphone'] as string[],
+      launchOptions: {
+        args: [
+          ...SHARED_CHROME_ARGS,
+          `--use-file-for-fake-audio-capture=${path.resolve(__dirname, audioFixture)}`,
+        ],
+      },
+    },
+  };
+}
 
 export default defineConfig({
   testDir: './',
@@ -47,21 +70,8 @@ export default defineConfig({
     video: 'on',
   },
   projects: [
-    {
-      name: 'chromium-fake-audio',
-      use: {
-        ...devices['Desktop Chrome'],
-        channel: 'chrome',
-        permissions: ['microphone'],
-        launchOptions: {
-          args: [
-            '--use-fake-ui-for-media-stream',
-            '--use-fake-device-for-media-stream',
-            `--use-file-for-fake-audio-capture=${audioFixturePath}`,
-            '--autoplay-policy=no-user-gesture-required',
-          ],
-        },
-      },
-    },
+    chromeProjectWithAudio('asr-en', 'asr-en.e2e.spec.ts', 'fixtures/asr_en.wav'),
+    chromeProjectWithAudio('asr-ml', 'asr-ml.e2e.spec.ts', 'fixtures/asr_ml.wav'),
+    chromeProjectWithAudio('code-switching-en-vi', 'code-switching-en-vi.e2e.spec.ts', 'fixtures/code-switching-en-vi.wav'),
   ],
 });

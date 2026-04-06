@@ -32,6 +32,8 @@ def transcribe_file(
     audio_uri: str,
     consultation_id: str | None = None,
     media_id: str | None = None,
+    language: str | None = None,
+    code_switching: bool | None = None,
 ) -> None:
     """
     Dramatiq actor for batch file transcription.
@@ -57,6 +59,8 @@ def transcribe_file(
         audio_uri: MinIO URI for audio file
         consultation_id: Optional consultation ID
         media_id: Optional media ID
+        language: Optional language hint for ASR
+        code_switching: Optional flag to enable code-switching mode
     """
     # Run async code in event loop
     asyncio.run(
@@ -67,6 +71,8 @@ def transcribe_file(
             audio_uri=audio_uri,
             consultation_id=consultation_id,
             media_id=media_id,
+            language=language,
+            code_switching=code_switching,
         )
     )
 
@@ -78,6 +84,8 @@ async def _transcribe_file_async(
     audio_uri: str,
     consultation_id: str | None = None,
     media_id: str | None = None,
+    language: str | None = None,
+    code_switching: bool | None = None,
 ) -> None:
     """Async implementation of file transcription.
 

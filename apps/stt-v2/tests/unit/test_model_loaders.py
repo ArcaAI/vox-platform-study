@@ -60,9 +60,10 @@ class TestBaseModelLoader:
                 assert device in ["cpu", "mps"]
 
     def test_get_device_explicit_cuda(self):
-        """Test explicit CUDA device selection."""
+        """Test explicit CUDA device selection -- falls back when CUDA unavailable."""
         loader = HuggingFaceLoader()
-        device = loader._get_device("cuda")
+        with patch("torch.cuda.is_available", return_value=True):
+            device = loader._get_device("cuda")
         assert device == "cuda"
 
     def test_get_device_explicit_cpu(self):

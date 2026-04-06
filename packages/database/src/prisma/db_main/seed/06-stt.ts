@@ -1345,12 +1345,13 @@ resources:
 `,
 
     // =========================================================================
-    // E2E TEST PIPELINES
+    // CODE-SWITCHING & LANGUAGE-SPECIFIC PIPELINES
     // =========================================================================
 
-    e2e_test: `version: "1.1"
+    code_switching_en_vi: `version: "1.1"
 
-# E2E test
+# Code-switching EN-VI pipeline:
+# Auto-detects and switches between English and Vietnamese
 models:
   asr:
     hf_model_id: "openai/whisper-tiny"
@@ -1362,29 +1363,113 @@ models:
 preprocessing:
   target_sample_rate: 16000
   normalize: true
-  denoise:
-    enabled: true
-    strength: 0.8
   vad:
     enabled: true
     threshold: 0.5
     min_speech_duration_ms: 250
     min_silence_duration_ms: 500
+  denoise:
+    enabled: true
+    strength: 0.7
 
 inference:
   batch_size: 1
-  compute_type: float32
-  device: cpu
-  beam_size: 5
-  temperature: 0.0
-  language: "en"
+  compute_type: auto
+  device: auto
+  language: null
+  code_switching: true
 
 postprocessing:
   timestamps:
-    word_timestamps: false
-    sentence_timestamps: false
+    word_timestamps: true
+    sentence_timestamps: true
   punctuation:
-    enabled: false
+    enabled: true
+  remove_disfluencies: true
+  lowercase: false
+
+diarization:
+  enabled: false
+`,
+
+    asr_en: `version: "1.1"
+models:
+  asr:
+    hf_model_id: openai/whisper-tiny
+    engine: safetensor
+  vad:
+    hf_model_id: onnx-community/silero-vad
+    engine: onnx
+preprocessing:
+  target_sample_rate: 16000
+  normalize: true
+  vad:
+    enabled: true
+    threshold: 0.6
+    min_speech_duration_ms: 250
+    min_silence_duration_ms: 500
+    padding_ms: 100
+  denoise:
+    enabled: true
+    strength: 0.3
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: en
+  beam_size: 1
+  temperature: 0
+postprocessing:
+  timestamps:
+    word_timestamps: true
+    sentence_timestamps: true
+  punctuation:
+    enabled: true
+  remove_disfluencies: true
+  lowercase: false
+diarization:
+  enabled: false
+
+`,
+
+    asr_ml: `version: "1.1"
+
+# ASR Malayalam pipeline:
+# Malayalam-only transcription with VAD and denoise
+models:
+  asr:
+    hf_model_id: "openai/whisper-tiny"
+    engine: "safetensor"
+  vad:
+    hf_model_id: "onnx-community/silero-vad"
+    engine: "onnx"
+
+preprocessing:
+  target_sample_rate: 16000
+  normalize: true
+  vad:
+    enabled: true
+    threshold: 0.5
+    min_speech_duration_ms: 250
+    min_silence_duration_ms: 500
+  denoise:
+    enabled: true
+    strength: 0.3
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: "ml"
+
+postprocessing:
+  timestamps:
+    word_timestamps: true
+    sentence_timestamps: true
+  punctuation:
+    enabled: true
+  remove_disfluencies: true
+  lowercase: false
 
 diarization:
   enabled: false
@@ -1459,17 +1544,35 @@ export const DEFAULT_ASR_PIPELINES = [
         tags: ['best-practice', 'batch', 'high-quality', 'v1.1'],
     },
     // =========================================================================
-    // E2E TEST PIPELINES (Whisper Tiny, float32, CPU — fast & deterministic)
+    // CODE-SWITCHING & LANGUAGE-SPECIFIC PIPELINES
     // =========================================================================
     {
         id: '81000000-0000-0000-0001-000000000010',
         tenantId: DEFAULT_TENANT_ID,
-        name: 'E2E Test',
-        slug: 'e2e-test-basic',
-        description: 'E2E test pipeline: Whisper Tiny, no VAD, no denoise. Fast CPU inference for automated testing.',
-        configYaml: PIPELINE_CONFIGS.e2e_test,
-        tags: ['e2e', 'test', 'basic', 'whisper-tiny'],
-    }
+        name: 'Code-Switching EN-VI',
+        slug: 'code-switching-en-vi',
+        description: 'Code-switching pipeline for English-Vietnamese.',
+        configYaml: PIPELINE_CONFIGS.code_switching_en_vi,
+        tags: ['code-switching', 'en', 'vi'],
+    },
+    {
+        id: '81000000-0000-0000-0001-000000000011',
+        tenantId: DEFAULT_TENANT_ID,
+        name: 'ASR English',
+        slug: 'asr-en',
+        description: 'English-only ASR pipeline.',
+        configYaml: PIPELINE_CONFIGS.asr_en,
+        tags: ['asr', 'english'],
+    },
+    {
+        id: '81000000-0000-0000-0001-000000000012',
+        tenantId: DEFAULT_TENANT_ID,
+        name: 'ASR Malayalam',
+        slug: 'asr-ml',
+        description: 'Malayalam-only ASR pipeline.',
+        configYaml: PIPELINE_CONFIGS.asr_ml,
+        tags: ['asr', 'malayalam'],
+    },
 ];
 
 // =============================================================================
