@@ -183,6 +183,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down STT Service V2...")
+    await shutdown_streaming()
     try:
         from stt_v2.punctuation import service as punctuation_service
         punctuation_service.shutdown()
@@ -194,7 +195,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await get_embedding_service().shutdown()
     except Exception:
         pass
-    await shutdown_streaming()
     await close_minio()
     await close_redis()
     await close_database()

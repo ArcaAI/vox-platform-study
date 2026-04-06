@@ -249,6 +249,7 @@ class InlineModelDef:
             tags=[],
             quantization=self.quantization,
             subfolder=self.subfolder,
+            device=self.device,
         )
 
 
@@ -374,11 +375,11 @@ class VadConfig:
     """Voice Activity Detection configuration."""
 
     enabled: bool = True
-    threshold: float = 0.6
-    min_speech_duration_ms: int = 350
-    min_silence_duration_ms: int = 100
-    padding_ms: int = 30
-    pre_speech_context_ms: int = 500
+    threshold: float = 0.6  # Speech probability threshold (0.0-1.0)
+    min_speech_duration_ms: int = 350  # Minimum duration to keep a speech segment (ms)
+    min_silence_duration_ms: int = 100  # Minimum silence duration to split segments (ms)
+    padding_ms: int = 30  # Padding around detected speech boundaries in batch VAD (ms)
+    pre_speech_context_ms: int = 500  # Audio context before speech onset in streaming VAD (ms)
 
 
 @dataclass
@@ -469,6 +470,15 @@ class PipelineSpec:
     postprocessing: PostprocessingConfig
     diarization: DiarizationConfig = field(default_factory=DiarizationConfig)
 
+    def __post_init__(self) -> None:
+        """Inherit inference-level defaults into inline models that lack them."""
+        fallback_ct = self.inference.compute_type
+        if not fallback_ct or fallback_ct == "auto":
+            return
+        for _role, inline_def in self.models.get_inline_models():
+            if inline_def.compute_type is None:
+                inline_def.compute_type = fallback_ct
+
 
 @dataclass
 class PipelineConfig:
@@ -514,6 +524,7 @@ class AiModelConfig:
     # ONNX-specific: quantization variant and subfolder within the HF repo
     quantization: str | None = None  # e.g., "q4", "fp16", "int8", "q4f16"
     subfolder: str | None = None  # e.g., "onnx" for onnx-community models
+    device: str | None = None  # Override device (auto, cuda, cpu, mps)
 
     @property
     def is_downloaded(self) -> bool:
