@@ -112,7 +112,7 @@ async def initialize_streaming() -> None:
     _execution_profile = detect_execution_profile()
     logger.info(
         "Execution profile detected",
-        platform=_execution_profile.platform,
+        platform=_execution_profile.platform.value,
         asr_device=_execution_profile.asr_device,
         max_concurrent=_execution_profile.max_concurrent_streams,
     )

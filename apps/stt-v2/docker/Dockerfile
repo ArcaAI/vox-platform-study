@@ -131,7 +131,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         -o -name "*.mo" -o -name "*.ipynb" \
     \) -type f -delete 2>/dev/null || true \
     && rm -rf /opt/venv/lib/python3.11/site-packages/torch/test \
-              /opt/venv/lib/python3.11/site-packages/torch/_inductor \
               /opt/venv/lib/python3.11/site-packages/torch/utils/benchmark \
               /opt/venv/lib/python3.11/site-packages/caffe2 \
        2>/dev/null || true
