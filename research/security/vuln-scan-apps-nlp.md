@@ -1,6 +1,7 @@
 # Vulnerability Scan Report: `apps/nlp/` — Medical NLP Service
 
 **Date**: 2026-03-24
+**Last Updated**: 2026-04-06
 **Scope**: `apps/nlp/` — Python/FastAPI Medical NLP microservice
 **Context**: HOPE healthcare AI monorepo processing medical text (PHI)
 **Scanner**: Manual deep scan — code review + dependency CVE analysis

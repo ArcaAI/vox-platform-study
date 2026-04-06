@@ -1,15 +1,23 @@
 # Security Audit Report — HOPE API Gateway (`apps/api/`)
 
 **Audit Date**: 2026-03-24
+**Last Updated**: 2026-04-06
 **Auditor**: Automated Security Auditor Agent
-**Scope**: `apps/api/src/` — NestJS 11 API Gateway
+**Scope**: `apps/api/src/` — NestJS 11 API Gateway, `packages/applications/src/authorization/`
 **Risk Score**: **6.8 / 10 (Medium-High)**
+
+> **Update (2026-04-06)**: Re-scan confirmed all original Critical/High findings remain open. New findings added:
+> - **Tenant context override via `X-Tenant-Id` header** (HIGH) — Any authenticated user can override tenant context
+> - **Impersonation endpoint lacks tenant isolation** (HIGH) — Tenant admins can impersonate users across tenants
+> - **Revoke-impersonation endpoint is a no-op** (MEDIUM) — Only logs, doesn't actually revoke tokens
+> - **Live Azure OpenAI API key in `.env.dev`** confirmed still committed to git
+> - **Session cookie `httpOnly: !isProduction`** confirmed — `false` in production
 
 ---
 
 ## Executive Summary
 
-The HOPE API Gateway is a NestJS 11 application serving as the central entry point for a healthcare AI monorepo. It proxies requests to Python microservices (STT, TTS, SMR, NLP), manages authentication (JWT, OIDC, API Key), and enforces RBAC policies via a CASL-based policy engine.
+The HOPE API Gateway is a NestJS 11 application serving as the central entry point for a healthcare AI monorepo. It proxies requests to Python microservices (STT-v2, SMR, NLP), manages authentication (JWT, OIDC, API Key), and enforces RBAC policies via a CASL-based policy engine.
 
 Overall, the codebase demonstrates **good security architecture** with multi-layered authentication, policy-based authorization, structured logging, and Prisma ORM (preventing raw SQL injection). However, several **critical and high-severity findings** require immediate attention:
 
