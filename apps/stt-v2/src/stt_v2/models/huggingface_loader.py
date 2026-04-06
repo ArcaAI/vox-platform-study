@@ -37,8 +37,9 @@ class HuggingFaceLoader(BaseModelLoader):
             )
 
             # Determine device and dtype
-            # Device is always auto-detected from hardware; compute_type only affects dtype
-            device = self._get_device("auto")
+            # Device can be specified in model config; falls back to auto-detect
+            requested_device = model_config.device or "auto"
+            device = self._get_device(requested_device)
             torch_dtype = self._get_torch_dtype(model_config.compute_type or "auto")
 
             # Model source (HuggingFace model ID or local path)

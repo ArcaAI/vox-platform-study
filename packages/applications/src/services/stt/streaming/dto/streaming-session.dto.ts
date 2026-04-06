@@ -108,6 +108,8 @@ export interface StreamingTranscriptMessage {
   speakerId?: string;
   /** Speaker identification confidence (0-1) */
   speakerConfidence?: number;
+  /** Per-word timestamps, if enabled in pipeline config */
+  wordTimestamps?: Array<{ word: string; start: number; end: number; confidence: number | null }>;
 }
 
 export interface StreamingStatusMessage {

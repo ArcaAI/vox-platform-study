@@ -8,11 +8,22 @@ from stt_v2.streaming.inference import StreamingInferenceWorker
 from stt_v2.streaming.preprocessor import AudioUtterance
 
 
+def _make_postprocessing_config(punctuation_config):
+    """Build a PostprocessingConfig-like object wrapping a punctuation config."""
+    if punctuation_config is None:
+        return None
+    cfg = MagicMock()
+    cfg.punctuation = punctuation_config
+    cfg.remove_disfluencies = False
+    cfg.lowercase = False
+    return cfg
+
+
 def _make_worker(punctuation_config=None, **kwargs):
     return StreamingInferenceWorker(
         result_publisher=None,
         asr_pipeline=lambda samples, sr: {"text": "hello world", "word_timestamps": []},
-        punctuation_config=punctuation_config,
+        postprocessing_config=_make_postprocessing_config(punctuation_config),
         **kwargs,
     )
 
@@ -202,7 +213,7 @@ class TestProcessUtteranceWithPunctuation:
         worker = StreamingInferenceWorker(
             result_publisher=publisher,
             asr_pipeline=lambda s, sr: {"text": "hello world", "word_timestamps": []},
-            punctuation_config=cfg,
+            postprocessing_config=_make_postprocessing_config(cfg),
         )
 
         utt = AudioUtterance(

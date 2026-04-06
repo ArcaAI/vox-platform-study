@@ -608,7 +608,12 @@ class TestApplyVadSmartPriority:
 
         assert applied is True
         assert segments == expected_segments
-        mock_vad.assert_called_once_with(audio_samples, 16000, pipeline_model, vad_config.threshold)
+        mock_vad.assert_called_once_with(
+            audio_samples, 16000, pipeline_model, vad_config.threshold,
+            min_speech_duration_ms=vad_config.min_speech_duration_ms,
+            min_silence_duration_ms=vad_config.min_silence_duration_ms,
+            padding_ms=vad_config.padding_ms,
+        )
 
     @pytest.mark.asyncio
     async def test_silero_fallback_when_no_pipeline_model(
