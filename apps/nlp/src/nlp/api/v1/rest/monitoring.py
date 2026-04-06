@@ -7,19 +7,19 @@ Follows the HOPE standardized health contract:
 """
 
 import time
-from datetime import datetime, timezone
-from typing import Dict, Any
+from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from nlp.core.logging import get_logger
 from nlp.core.config import settings
+from nlp.core.logging import get_logger
 from nlp.dependencies import (
-    get_text_classifier,
-    get_token_classifier,
-    get_text_corrector,
     get_medical_suggester,
+    get_text_classifier,
+    get_text_corrector,
+    get_token_classifier,
 )
 
 logger = get_logger(__name__)
@@ -39,9 +39,9 @@ _MODELS = {
 
 
 @router.get("/health")
-async def health_check() -> Dict[str, Any]:
+async def health_check() -> dict[str, Any]:
     """Detailed health check with per-model component status."""
-    checks: Dict[str, Dict[str, Any]] = {}
+    checks: dict[str, dict[str, Any]] = {}
     overall = "healthy"
 
     for name, get_svc in _MODELS.items():
@@ -63,13 +63,13 @@ async def health_check() -> Dict[str, Any]:
         "service": _SERVICE_NAME,
         "version": _SERVICE_VERSION,
         "uptime_seconds": round(time.monotonic() - _startup_time, 1),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "checks": checks,
     }
 
 
 @router.get("/health/live")
-async def liveness() -> Dict[str, str]:
+async def liveness() -> dict[str, str]:
     """Kubernetes liveness probe — always returns 200 if the process is running."""
     return {"status": "healthy"}
 
@@ -77,7 +77,7 @@ async def liveness() -> Dict[str, str]:
 @router.get("/health/ready")
 async def readiness() -> Any:
     """Kubernetes readiness probe — returns 200 only if at least one model is loaded."""
-    for name, get_svc in _MODELS.items():
+    for _name, get_svc in _MODELS.items():
         try:
             svc = get_svc()
             if getattr(svc, "is_initialized", False):

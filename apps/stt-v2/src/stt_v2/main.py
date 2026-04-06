@@ -166,21 +166,48 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Preload ML models (after DB is ready, since pipeline configs are in DB)
     await _preload_pipeline_models()
 
+    # Punctuation model (Cadence)
+    try:
+        import asyncio as _aio
+
+        from stt_v2.punctuation import service as punctuation_service
+
+        await _aio.to_thread(punctuation_service.initialize)
+        logger.info("Punctuation service initialized")
+    except Exception as exc:
+        logger.warning("Punctuation service initialization failed (non-fatal)", error=str(exc))
+
     logger.info("STT Service V2 started successfully")
 
     yield
 
     # Shutdown
     logger.info("Shutting down STT Service V2...")
+    await shutdown_streaming()
+    try:
+        from stt_v2.punctuation import service as punctuation_service
+        punctuation_service.shutdown()
+    except Exception:
+        pass
     try:
         from stt_v2.diarization.embedding_service import get_embedding_service
+
         await get_embedding_service().shutdown()
     except Exception:
         pass
-    await shutdown_streaming()
     await close_minio()
     await close_redis()
     await close_database()
+
+    telemetry = getattr(app.state, "telemetry", None)
+    if telemetry is not None:
+        if telemetry.logger_provider:
+            telemetry.logger_provider.force_flush()
+            telemetry.logger_provider.shutdown()
+        if telemetry.tracer_provider:
+            telemetry.tracer_provider.force_flush()
+            telemetry.tracer_provider.shutdown()
+
     logger.info("STT Service V2 shutdown complete")
 
 
@@ -223,11 +250,12 @@ def create_app() -> FastAPI:
     if settings.otel_enabled:
         from stt_v2.core.telemetry import setup_telemetry
 
-        setup_telemetry(
+        _telemetry_result = setup_telemetry(
             app,
             endpoint=settings.otel_exporter_endpoint,
             service_name=settings.otel_service_name,
         )
+        app.state.telemetry = _telemetry_result
 
     # Prometheus metrics
     if settings.metrics_enabled:
@@ -261,6 +289,7 @@ def main() -> None:
         port=settings.port,
         reload=settings.debug,
         log_level=settings.log_level.lower(),
+        log_config=None,
     )
 
 

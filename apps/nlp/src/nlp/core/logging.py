@@ -1,9 +1,9 @@
-import os
 import json
 import logging
 import logging.handlers
+import os
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
 
 
 class JsonFormatter(logging.Formatter):
@@ -12,7 +12,7 @@ class JsonFormatter(logging.Formatter):
     def format(self, record):
         """Format log record as JSON with traceId/spanId from OTel LoggingInstrumentor."""
         log_data = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -128,7 +128,7 @@ class LoggingConfig:
         simple_formatter = logging.Formatter(cls.SIMPLE_FORMAT)
         json_formatter = JsonFormatter()
 
-        handlers = []
+        handlers: list[logging.Handler] = []
 
         console_json_format = cls._get_env_bool("LOG_CONSOLE_JSON_FORMAT", False)
 
@@ -149,6 +149,7 @@ class LoggingConfig:
             # Main log file (all levels)
             main_log_file = log_dir / f"{service_name}.log"
 
+            main_file_handler: logging.handlers.TimedRotatingFileHandler | logging.handlers.RotatingFileHandler
             if use_daily_rotation:
                 main_file_handler = logging.handlers.TimedRotatingFileHandler(
                     filename=str(main_log_file),
@@ -159,7 +160,6 @@ class LoggingConfig:
                     utc=True,
                 )
             else:
-                # Use RotatingFileHandler for size-based rotation
                 main_file_handler = logging.handlers.RotatingFileHandler(
                     filename=str(main_log_file), maxBytes=max_bytes, backupCount=log_file_max_files, encoding="utf-8"
                 )
@@ -172,6 +172,7 @@ class LoggingConfig:
             if log_file_separate_error:
                 error_log_file = log_dir / f"{service_name}_errors.log"
 
+                error_file_handler: logging.handlers.TimedRotatingFileHandler | logging.handlers.RotatingFileHandler
                 if use_daily_rotation:
                     error_file_handler = logging.handlers.TimedRotatingFileHandler(
                         filename=str(error_log_file),
@@ -182,7 +183,6 @@ class LoggingConfig:
                         utc=True,
                     )
                 else:
-                    # Use RotatingFileHandler for size-based rotation
                     error_file_handler = logging.handlers.RotatingFileHandler(
                         filename=str(error_log_file), maxBytes=max_bytes, backupCount=log_file_max_files, encoding="utf-8"
                     )

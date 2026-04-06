@@ -115,7 +115,7 @@ postprocessing:
         # Check preprocessing defaults
         assert spec.preprocessing.target_sample_rate == 16000
         assert spec.preprocessing.vad.enabled is True
-        assert spec.preprocessing.vad.threshold == 0.5
+        assert spec.preprocessing.vad.threshold == 0.6
 
         # Check inference defaults
         assert spec.inference.batch_size == 16
@@ -579,7 +579,7 @@ class TestBestPracticePipeline:
     @pytest.fixture
     def best_practice_yaml(self):
         """Best practice YAML for real-time transcription."""
-        return '''
+        return """
 version: "1.1"
 
 models:
@@ -625,7 +625,7 @@ postprocessing:
     enabled: true
   remove_disfluencies: false
   lowercase: false
-'''
+"""
 
     def test_parse_best_practice_pipeline(self, parser, best_practice_yaml):
         """Test parsing a best practice pipeline configuration."""
@@ -1537,7 +1537,8 @@ inference:
         assert result.valid is True
         # No warning should be logged when language is null (code_switching + language combo warning)
         code_switching_warnings = [
-            rec for rec in caplog.records
+            rec
+            for rec in caplog.records
             if "code_switching" in rec.message and "language" in rec.message
         ]
         assert len(code_switching_warnings) == 0

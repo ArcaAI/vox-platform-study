@@ -20,53 +20,80 @@ class Base(DeclarativeBase):
 # PostgreSQL ENUM types (must match Prisma schema)
 # These are defined in the 'core' schema
 ResourceStatusType = ENUM(
-    "ENABLED", "DISABLED", "DELETED", "PENDING", "ARCHIVED",
+    "ENABLED",
+    "DISABLED",
+    "DELETED",
+    "PENDING",
+    "ARCHIVED",
     name="ResourceStatusType",
     schema="core",
     create_type=False,  # Don't create - already exists from Prisma
 )
 
 AiModelSourceType = ENUM(
-    "HUGGINGFACE", "GITHUB", "MLFLOW", "LOCAL",
+    "HUGGINGFACE",
+    "GITHUB",
+    "MLFLOW",
+    "LOCAL",
     name="AiModelSource",
     schema="core",
     create_type=False,
 )
 
 AiModelFormatType = ENUM(
-    "SAFETENSOR", "ONNX", "NEMO", "PYTORCH",
+    "SAFETENSOR",
+    "ONNX",
+    "NEMO",
+    "PYTORCH",
     name="AiModelFormat",
     schema="core",
     create_type=False,
 )
 
 AiModelDownloadStatusType = ENUM(
-    "NOT_DOWNLOADED", "DOWNLOADING", "DOWNLOADED", "DOWNLOAD_FAILED",
+    "NOT_DOWNLOADED",
+    "DOWNLOADING",
+    "DOWNLOADED",
+    "DOWNLOAD_FAILED",
     name="AiModelDownloadStatus",
     schema="core",
     create_type=False,
 )
 
 ModelCategoryType = ENUM(
-    "AUDIO", "TEXT", "VISION", "MULTIMODAL",
+    "AUDIO",
+    "TEXT",
+    "VISION",
+    "MULTIMODAL",
     name="ModelCategory",
     schema="core",
     create_type=False,
 )
 
 ModelTaskTypeEnum = ENUM(
-    "AUTOMATIC_SPEECH_RECOGNITION", "VOICE_ACTIVITY_DETECTION",
-    "AUDIO_DENOISING", "AUDIO_TO_AUDIO", "SPEAKER_DIARIZATION", "TEXT_TO_SPEECH",
-    "LANGUAGE_MODEL", "TRANSLATION", "SUMMARIZATION",
-    "TEXT_CLASSIFICATION", "NAMED_ENTITY_RECOGNITION",
-    "IMAGE_CLASSIFICATION", "OBJECT_DETECTION",
+    "AUTOMATIC_SPEECH_RECOGNITION",
+    "VOICE_ACTIVITY_DETECTION",
+    "AUDIO_DENOISING",
+    "AUDIO_TO_AUDIO",
+    "SPEAKER_DIARIZATION",
+    "TEXT_TO_SPEECH",
+    "LANGUAGE_MODEL",
+    "TRANSLATION",
+    "SUMMARIZATION",
+    "TEXT_CLASSIFICATION",
+    "NAMED_ENTITY_RECOGNITION",
+    "IMAGE_CLASSIFICATION",
+    "OBJECT_DETECTION",
     name="ModelTaskType",
     schema="core",
     create_type=False,
 )
 
 ModelTypeEnum = ENUM(
-    "BASE_MODEL", "FINETUNED_MODEL", "QUANTIZED_MODEL", "UNKNOWN",
+    "BASE_MODEL",
+    "FINETUNED_MODEL",
+    "QUANTIZED_MODEL",
+    "UNKNOWN",
     name="ModelType",
     schema="core",
     create_type=False,

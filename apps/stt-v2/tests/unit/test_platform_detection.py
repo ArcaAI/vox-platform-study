@@ -18,18 +18,21 @@ class TestPlatformType:
     def test_platform_type_has_cpu(self):
         """PlatformType should have CPU variant."""
         from stt_v2.core.platform import PlatformType
+
         assert hasattr(PlatformType, "CPU")
         assert PlatformType.CPU.value == "cpu"
 
     def test_platform_type_has_cuda(self):
         """PlatformType should have CUDA variant."""
         from stt_v2.core.platform import PlatformType
+
         assert hasattr(PlatformType, "CUDA")
         assert PlatformType.CUDA.value == "cuda"
 
     def test_platform_type_has_mps(self):
         """PlatformType should have MPS variant (Apple Silicon)."""
         from stt_v2.core.platform import PlatformType
+
         assert hasattr(PlatformType, "MPS")
         assert PlatformType.MPS.value == "mps"
 
@@ -40,6 +43,7 @@ class TestDetectPlatform:
     def test_detect_platform_returns_platform_type(self):
         """detect_platform should return a PlatformType."""
         from stt_v2.core.platform import PlatformType, detect_platform
+
         result = detect_platform()
         assert isinstance(result, PlatformType)
 
@@ -183,12 +187,14 @@ class TestGetPlatformInfo:
     def test_get_platform_info_returns_platform_info(self):
         """get_platform_info should return PlatformInfo instance."""
         from stt_v2.core.platform import PlatformInfo, get_platform_info
+
         result = get_platform_info()
         assert isinstance(result, PlatformInfo)
 
     def test_get_platform_info_includes_system_info(self):
         """get_platform_info should include system information."""
         from stt_v2.core.platform import get_platform_info
+
         result = get_platform_info()
 
         assert result.system == platform.system()

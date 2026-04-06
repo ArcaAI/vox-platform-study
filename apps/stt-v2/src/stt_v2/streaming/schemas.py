@@ -87,6 +87,7 @@ class AudioFrame:
         Redis returns field names and values as ``bytes`` when using
         ``redis.asyncio``; this method handles both ``str`` and ``bytes`` keys.
         """
+
         def _get(key: str) -> str | bytes:
             # Try str key first, then bytes key.
             # Use `is None` instead of truthiness to handle b"" correctly.
@@ -156,18 +157,20 @@ class SegmentResult:
         d: dict[str, str] = {
             "type": "segment",
             "text": self.text,
-            "speaker_id": self.speaker_id or "",
-            "speaker_confidence": str(round(self.speaker_confidence, 4)),
             "start_time": str(round(self.start_time, 4)),
             "end_time": str(round(self.end_time, 4)),
             "is_final": "1" if self.is_final else "0",
             "inference_ms": str(round(self.inference_ms, 1)),
         }
+        if self.speaker_id:
+            d["speaker_id"] = self.speaker_id
+            d["speaker_confidence"] = str(round(self.speaker_confidence, 4))
         if self.english_text:
             d["english_text"] = self.english_text
         if self.word_timestamps:
             d["word_timestamps_json"] = json.dumps(
-                self.word_timestamps, ensure_ascii=False,
+                self.word_timestamps,
+                ensure_ascii=False,
             )
         return d
 

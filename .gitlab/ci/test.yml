@@ -127,6 +127,7 @@ test-packages:
         paths:
           - packages/**/*
         compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "dev"
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - packages/**/*
@@ -167,6 +168,8 @@ test-sdk:
           - packages/med-ner/**/*
           - packages/utils/**/*
         compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground"
+    - if: $PIPELINE_TYPE == "dev"
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - packages/ui/**/*
@@ -285,7 +288,7 @@ test-nlp:
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - cd apps/nlp
-    - pip install --quiet ".[dev]"
+    - pip install --quiet ".[test]"
     - python -m pytest tests/ -v --tb=short --junitxml=../../junit-nlp.xml -x
   artifacts:
     when: always

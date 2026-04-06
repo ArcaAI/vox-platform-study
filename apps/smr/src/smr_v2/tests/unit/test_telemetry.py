@@ -169,12 +169,12 @@ class TestOtelEnabledFlag:
         assert not isinstance(provider, TracerProvider)
 
     def test_telemetry_setup_when_enabled(self):
-        """When otel_enabled=True, create_app must call setup_telemetry."""
+        """When otel_enabled=True, create_app must call setup_opentelemetry."""
         settings = Settings(
             host="127.0.0.1", port=5099, debug=True,
             otel_enabled=True, metrics_enabled=False,
         )
-        with patch("smr_v2.core.telemetry.setup_telemetry") as mock_setup:
+        with patch("smr_v2.core.observability.setup_opentelemetry") as mock_setup:
             from smr_v2.main import create_app
             create_app(settings_override=settings)
             mock_setup.assert_called_once()

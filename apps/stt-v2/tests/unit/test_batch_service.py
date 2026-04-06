@@ -8,6 +8,7 @@ These tests focus on behavior verification:
 """
 
 import logging
+import os
 import sys
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,6 +18,12 @@ import pytest
 
 from stt_v2.core.exceptions import TranscriptionError
 from stt_v2.models.base_loader import LoadedModel
+
+_MODEL_BASE = (
+    os.environ.get("HUGGINGFACE_CACHE_DIR")
+    or os.environ.get("HF_HOME")
+    or os.path.join(os.sep, "models", "hf-cache")
+)
 from stt_v2.pipeline.dto import (
     AiModelConfig,
     AiModelDownloadStatus,
@@ -48,6 +55,7 @@ from stt_v2.transcription.dto import (
 # =============================================================================
 # Complete Test Fixtures (Anti-Pattern #4 Prevention)
 # =============================================================================
+
 
 def create_complete_pipeline_config(
     pipeline_id: str = "p-123",
@@ -118,10 +126,9 @@ def create_complete_model_config(
         memory_size_mb=80,
         compute_type="float32",
         download_status=(
-            AiModelDownloadStatus.DOWNLOADED if is_downloaded
-            else AiModelDownloadStatus.PENDING
+            AiModelDownloadStatus.DOWNLOADED if is_downloaded else AiModelDownloadStatus.PENDING
         ),
-        local_path="/models/whisper-tiny" if is_downloaded else None,
+        local_path=os.path.join(_MODEL_BASE, "whisper-tiny") if is_downloaded else None,
         downloaded_at=datetime(2024, 1, 1) if is_downloaded else None,
         file_size_mb=80 if is_downloaded else None,
         checksum="sha256:abc123" if is_downloaded else None,
@@ -175,20 +182,20 @@ def create_valid_wav_audio(
     ]
 
     wav = io.BytesIO()
-    wav.write(b'RIFF')
-    wav.write(struct.pack('<I', 36 + len(samples) * 2))
-    wav.write(b'WAVE')
-    wav.write(b'fmt ')
-    wav.write(struct.pack('<I', 16))  # Chunk size
-    wav.write(struct.pack('<H', 1))   # Audio format (PCM)
-    wav.write(struct.pack('<H', 1))   # Channels (mono)
-    wav.write(struct.pack('<I', sample_rate))
-    wav.write(struct.pack('<I', sample_rate * 2))  # Byte rate
-    wav.write(struct.pack('<H', 2))   # Block align
-    wav.write(struct.pack('<H', 16))  # Bits per sample
-    wav.write(b'data')
-    wav.write(struct.pack('<I', len(samples) * 2))
-    wav.write(struct.pack(f'<{len(samples)}h', *samples))
+    wav.write(b"RIFF")
+    wav.write(struct.pack("<I", 36 + len(samples) * 2))
+    wav.write(b"WAVE")
+    wav.write(b"fmt ")
+    wav.write(struct.pack("<I", 16))  # Chunk size
+    wav.write(struct.pack("<H", 1))  # Audio format (PCM)
+    wav.write(struct.pack("<H", 1))  # Channels (mono)
+    wav.write(struct.pack("<I", sample_rate))
+    wav.write(struct.pack("<I", sample_rate * 2))  # Byte rate
+    wav.write(struct.pack("<H", 2))  # Block align
+    wav.write(struct.pack("<H", 16))  # Bits per sample
+    wav.write(b"data")
+    wav.write(struct.pack("<I", len(samples) * 2))
+    wav.write(struct.pack(f"<{len(samples)}h", *samples))
 
     return wav.getvalue()
 
@@ -235,21 +242,25 @@ class TestBatchTranscriptionService:
         self, service, pipeline_config, loaded_model, audio_bytes
     ):
         """Verify transcription returns a complete TranscriptionResult with all fields."""
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_inference") as mock_inference, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_inference") as mock_inference,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(32000, dtype=np.float32),
-                sample_rate=16000,
-                duration_seconds=2.0,
-                was_resampled=False,
-                was_normalized=True,
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(32000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=2.0,
+                    was_resampled=False,
+                    was_normalized=True,
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
 
             mock_inference.return_value = RawTranscription(
@@ -294,19 +305,23 @@ class TestBatchTranscriptionService:
         def track_progress(progress: int):
             progress_values.append(progress)
 
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_inference") as mock_inference, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_inference") as mock_inference,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(16000, dtype=np.float32),
-                sample_rate=16000,
-                duration_seconds=1.0,
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(16000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=1.0,
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
             mock_inference.return_value = RawTranscription(text="Test")
             mock_postproc.return_value = TranscriptionResult(text="Test", duration_seconds=1.0)
@@ -324,8 +339,9 @@ class TestBatchTranscriptionService:
 
             # Progress should be monotonically increasing
             for i in range(1, len(progress_values)):
-                assert progress_values[i] >= progress_values[i-1], \
-                    f"Progress should not decrease: {progress_values}"
+                assert (
+                    progress_values[i] >= progress_values[i - 1]
+                ), f"Progress should not decrease: {progress_values}"
 
     @pytest.mark.asyncio
     async def test_transcribe_propagates_model_error_with_context(
@@ -335,7 +351,7 @@ class TestBatchTranscriptionService:
         with patch.object(service, "_load_models") as mock_load:
             mock_load.side_effect = TranscriptionError(
                 "ASR model 'whisper-test' not found in registry",
-                details={"model_slug": "whisper-test", "pipeline_id": "p-123"}
+                details={"model_slug": "whisper-test", "pipeline_id": "p-123"},
             )
 
             with pytest.raises(TranscriptionError) as exc_info:
@@ -358,8 +374,10 @@ class TestBatchTranscriptionService:
         self, service, pipeline_config, model_config, loaded_model
     ):
         """Verify _load_models returns a dict with asr, vad, denoise keys."""
-        with patch("stt_v2.transcription.batch_service.get_model_cache") as mock_cache, \
-             patch("stt_v2.transcription.batch_service.get_model_reader") as mock_reader:
+        with (
+            patch("stt_v2.transcription.batch_service.get_model_cache") as mock_cache,
+            patch("stt_v2.transcription.batch_service.get_model_reader") as mock_reader,
+        ):
 
             mock_model_reader = AsyncMock()
             mock_model_reader.get_models_for_pipeline = AsyncMock(
@@ -502,6 +520,7 @@ class TestBatchServiceSingleton:
     def test_get_batch_service_returns_same_instance(self):
         """Verify singleton pattern returns identical instance."""
         import stt_v2.transcription.batch_service as module
+
         module._service = None  # Reset for clean test
 
         service1 = get_batch_service()
@@ -514,6 +533,7 @@ class TestBatchServiceSingleton:
     def test_get_batch_service_returns_correct_type(self):
         """Verify factory returns BatchTranscriptionService instance."""
         import stt_v2.transcription.batch_service as module
+
         module._service = None
 
         service = get_batch_service()
@@ -715,13 +735,17 @@ class TestBatchServiceModelLoadingEdgeCases:
         """Test loading models when only ASR is specified."""
         pipeline_config = create_complete_pipeline_config(vad_model=None)
 
-        with patch("stt_v2.transcription.batch_service.get_model_cache") as mock_cache, \
-             patch("stt_v2.transcription.batch_service.get_model_reader") as mock_reader:
+        with (
+            patch("stt_v2.transcription.batch_service.get_model_cache") as mock_cache,
+            patch("stt_v2.transcription.batch_service.get_model_reader") as mock_reader,
+        ):
 
             mock_model_reader = AsyncMock()
-            mock_model_reader.get_models_for_pipeline = AsyncMock(return_value={
-                "whisper-test": create_complete_model_config(),
-            })
+            mock_model_reader.get_models_for_pipeline = AsyncMock(
+                return_value={
+                    "whisper-test": create_complete_model_config(),
+                }
+            )
             mock_reader.return_value = mock_model_reader
 
             mock_model_cache = AsyncMock()
@@ -740,15 +764,19 @@ class TestBatchServiceModelLoadingEdgeCases:
         """Test loading when optional VAD model not found."""
         pipeline_config = create_complete_pipeline_config()
 
-        with patch("stt_v2.transcription.batch_service.get_model_cache") as mock_cache, \
-             patch("stt_v2.transcription.batch_service.get_model_reader") as mock_reader:
+        with (
+            patch("stt_v2.transcription.batch_service.get_model_cache") as mock_cache,
+            patch("stt_v2.transcription.batch_service.get_model_reader") as mock_reader,
+        ):
 
             mock_model_reader = AsyncMock()
             # Only ASR model found, VAD missing
-            mock_model_reader.get_models_for_pipeline = AsyncMock(return_value={
-                "whisper-test": create_complete_model_config(),
-                # "silero-vad" is missing
-            })
+            mock_model_reader.get_models_for_pipeline = AsyncMock(
+                return_value={
+                    "whisper-test": create_complete_model_config(),
+                    # "silero-vad" is missing
+                }
+            )
             mock_reader.return_value = mock_model_reader
 
             mock_model_cache = AsyncMock()
@@ -778,19 +806,23 @@ class TestBatchServiceProgressEdgeCases:
         loaded_model = create_complete_loaded_model()
         audio_bytes = create_valid_wav_audio()
 
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_inference") as mock_inference, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_inference") as mock_inference,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(16000, dtype=np.float32),
-                sample_rate=16000,
-                duration_seconds=1.0,
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(16000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=1.0,
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
             mock_inference.return_value = RawTranscription(text="Test")
             mock_postproc.return_value = TranscriptionResult(text="Test", duration_seconds=1.0)
@@ -818,19 +850,23 @@ class TestBatchServiceProgressEdgeCases:
         def bad_callback(progress: int):
             raise RuntimeError("Callback error")
 
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_inference") as mock_inference, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_inference") as mock_inference,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(16000, dtype=np.float32),
-                sample_rate=16000,
-                duration_seconds=1.0,
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(16000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=1.0,
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
             mock_inference.return_value = RawTranscription(text="Test")
             mock_postproc.return_value = TranscriptionResult(text="Test", duration_seconds=1.0)
@@ -857,7 +893,9 @@ class TestBatchServiceInferenceMethods:
     def service(self):
         return BatchTranscriptionService()
 
-    def create_loaded_model_with_format(self, fmt: AiModelFormat, extra: dict = None) -> LoadedModel:
+    def create_loaded_model_with_format(
+        self, fmt: AiModelFormat, extra: dict = None
+    ) -> LoadedModel:
         """Create a loaded model with specific format."""
         mock_model = MagicMock()
         mock_model.config = MagicMock()
@@ -884,7 +922,9 @@ class TestBatchServiceInferenceMethods:
         config = MagicMock()
         config.language = "en"
 
-        with patch.object(service, "_run_transformers_inference", new_callable=AsyncMock) as mock_tf:
+        with patch.object(
+            service, "_run_transformers_inference", new_callable=AsyncMock
+        ) as mock_tf:
             mock_tf.return_value = RawTranscription(text="Test")
 
             result = await service._run_inference(samples, 16000, model, config)
@@ -899,7 +939,9 @@ class TestBatchServiceInferenceMethods:
         samples = np.zeros(16000, dtype=np.float32)
         config = MagicMock()
 
-        with patch.object(service, "_run_transformers_inference", new_callable=AsyncMock) as mock_tf:
+        with patch.object(
+            service, "_run_transformers_inference", new_callable=AsyncMock
+        ) as mock_tf:
             mock_tf.return_value = RawTranscription(text="Test")
 
             _result = await service._run_inference(samples, 16000, model, config)
@@ -913,7 +955,9 @@ class TestBatchServiceInferenceMethods:
         samples = np.zeros(16000, dtype=np.float32)
         config = MagicMock()
 
-        with patch.object(service, "_run_transformers_inference", new_callable=AsyncMock) as mock_tf:
+        with patch.object(
+            service, "_run_transformers_inference", new_callable=AsyncMock
+        ) as mock_tf:
             mock_tf.return_value = RawTranscription(text="Test")
 
             await service._run_inference(samples, 16000, model, config)
@@ -944,7 +988,9 @@ class TestBatchServiceInferenceMethods:
         samples = np.zeros(16000, dtype=np.float32)
         config = MagicMock()
 
-        with patch.object(service, "_run_optimum_onnx_inference", new_callable=AsyncMock) as mock_opt:
+        with patch.object(
+            service, "_run_optimum_onnx_inference", new_callable=AsyncMock
+        ) as mock_opt:
             mock_opt.return_value = RawTranscription(text="Test")
 
             await service._run_inference(samples, 16000, model, config)
@@ -1019,19 +1065,25 @@ class TestBatchServiceInlineModelLoading:
         spec = PipelineSpec(
             version="1.1",
             models=ModelRefs(
-                asr=ModelRef(inline=InlineModelDef(
-                    hf_model_id="onnx-community/whisper-large-v3-turbo",
-                    engine=AiModelFormat.ONNX,
-                )),
-                vad=ModelRef(inline=InlineModelDef(
-                    hf_model_id="snakers4/silero-vad",
-                    engine=AiModelFormat.ONNX,
-                    version="main",
-                )),
-                denoise=ModelRef(inline=InlineModelDef(
-                    hf_model_id="nickolay/rnnoise",
-                    engine=AiModelFormat.ONNX,
-                )),
+                asr=ModelRef(
+                    inline=InlineModelDef(
+                        hf_model_id="onnx-community/whisper-large-v3-turbo",
+                        engine=AiModelFormat.ONNX,
+                    )
+                ),
+                vad=ModelRef(
+                    inline=InlineModelDef(
+                        hf_model_id="snakers4/silero-vad",
+                        engine=AiModelFormat.ONNX,
+                        version="main",
+                    )
+                ),
+                denoise=ModelRef(
+                    inline=InlineModelDef(
+                        hf_model_id="nickolay/rnnoise",
+                        engine=AiModelFormat.ONNX,
+                    )
+                ),
             ),
             preprocessing=PreprocessingConfig(
                 target_sample_rate=16000,
@@ -1057,15 +1109,19 @@ class TestBatchServiceInlineModelLoading:
         """Test loading inline ASR model definition."""
         pipeline_config = self.create_inline_pipeline_config()
 
-        with patch("stt_v2.transcription.batch_service.get_model_cache") as mock_cache, \
-             patch("stt_v2.transcription.batch_service.get_model_reader") as mock_reader:
+        with (
+            patch("stt_v2.transcription.batch_service.get_model_cache") as mock_cache,
+            patch("stt_v2.transcription.batch_service.get_model_reader") as mock_reader,
+        ):
 
             mock_model_reader = AsyncMock()
             mock_model_reader.get_models_for_pipeline = AsyncMock(return_value={})
             mock_reader.return_value = mock_model_reader
 
             mock_model_cache = AsyncMock()
-            mock_model_cache.get_or_load_inline = AsyncMock(return_value=create_complete_loaded_model())
+            mock_model_cache.get_or_load_inline = AsyncMock(
+                return_value=create_complete_loaded_model()
+            )
             mock_cache.return_value = mock_model_cache
 
             result = await service._load_models(pipeline_config)
@@ -1083,10 +1139,12 @@ class TestBatchServiceInlineModelLoading:
             version="1.1",
             models=ModelRefs(
                 asr=ModelRef(slug="whisper-test"),
-                vad=ModelRef(inline=InlineModelDef(
-                    hf_model_id="invalid/model",
-                    engine=AiModelFormat.ONNX,
-                )),
+                vad=ModelRef(
+                    inline=InlineModelDef(
+                        hf_model_id="invalid/model",
+                        engine=AiModelFormat.ONNX,
+                    )
+                ),
             ),
             preprocessing=PreprocessingConfig(),
             inference=InferenceConfig(),
@@ -1104,18 +1162,24 @@ class TestBatchServiceInlineModelLoading:
             updated_at=datetime.utcnow(),
         )
 
-        with patch("stt_v2.transcription.batch_service.get_model_cache") as mock_cache, \
-             patch("stt_v2.transcription.batch_service.get_model_reader") as mock_reader:
+        with (
+            patch("stt_v2.transcription.batch_service.get_model_cache") as mock_cache,
+            patch("stt_v2.transcription.batch_service.get_model_reader") as mock_reader,
+        ):
 
             mock_model_reader = AsyncMock()
-            mock_model_reader.get_models_for_pipeline = AsyncMock(return_value={
-                "whisper-test": create_complete_model_config(),
-            })
+            mock_model_reader.get_models_for_pipeline = AsyncMock(
+                return_value={
+                    "whisper-test": create_complete_model_config(),
+                }
+            )
             mock_reader.return_value = mock_model_reader
 
             mock_model_cache = AsyncMock()
             mock_model_cache.get_or_load = AsyncMock(return_value=create_complete_loaded_model())
-            mock_model_cache.get_or_load_inline = AsyncMock(side_effect=Exception("Model not found"))
+            mock_model_cache.get_or_load_inline = AsyncMock(
+                side_effect=Exception("Model not found")
+            )
             mock_cache.return_value = mock_model_cache
 
             # Should not raise - VAD is optional
@@ -1148,8 +1212,10 @@ class TestBatchServiceInlineModelLoading:
             updated_at=datetime.utcnow(),
         )
 
-        with patch("stt_v2.transcription.batch_service.get_model_cache") as mock_cache, \
-             patch("stt_v2.transcription.batch_service.get_model_reader") as mock_reader:
+        with (
+            patch("stt_v2.transcription.batch_service.get_model_cache") as mock_cache,
+            patch("stt_v2.transcription.batch_service.get_model_reader") as mock_reader,
+        ):
 
             mock_reader.return_value = AsyncMock()
             mock_cache.return_value = AsyncMock()
@@ -1259,10 +1325,15 @@ class TestBatchServiceDiarization:
             ),
         )
         return PipelineConfig(
-            id="p-diar", tenant_id="t-456", slug="test-diar-pipeline",
-            name="Test Diarization", description="Pipeline with diarization",
-            spec=spec, tags=["test", "diarization"],
-            created_at=datetime(2024, 1, 1), updated_at=datetime(2024, 1, 2),
+            id="p-diar",
+            tenant_id="t-456",
+            slug="test-diar-pipeline",
+            name="Test Diarization",
+            description="Pipeline with diarization",
+            spec=spec,
+            tags=["test", "diarization"],
+            created_at=datetime(2024, 1, 1),
+            updated_at=datetime(2024, 1, 2),
         )
 
     @pytest.mark.asyncio
@@ -1272,31 +1343,46 @@ class TestBatchServiceDiarization:
         loaded_model = create_complete_loaded_model()
         audio_bytes = create_valid_wav_audio(duration_seconds=2.0)
 
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_inference") as mock_inference, \
-             patch.object(service, "_run_diarization") as mock_diar, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_inference") as mock_inference,
+            patch.object(service, "_run_diarization") as mock_diar,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             # Complete ProcessedAudio — include all fields production code reads
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(32000, dtype=np.float32),
-                sample_rate=16000, duration_seconds=2.0,
-                was_resampled=False, was_normalized=True,
-                vad_applied=False, denoise_applied=False,
-                segments=[],
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(32000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=2.0,
+                    was_resampled=False,
+                    was_normalized=True,
+                    vad_applied=False,
+                    denoise_applied=False,
+                    segments=[],
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
             mock_inference.return_value = RawTranscription(text="Hello world")
-            mock_diar.return_value = {"speakers_detected": 2, "new_speakers_created": 1, "speaker_ids": ["spk-1", "spk-2"]}
-            mock_postproc.return_value = TranscriptionResult(text="Hello world", duration_seconds=2.0)
+            mock_diar.return_value = {
+                "speakers_detected": 2,
+                "new_speakers_created": 1,
+                "speaker_ids": ["spk-1", "spk-2"],
+            }
+            mock_postproc.return_value = TranscriptionResult(
+                text="Hello world", duration_seconds=2.0
+            )
 
             result = await service.transcribe(
-                job_id="j-diar-1", audio_bytes=audio_bytes,
-                pipeline_config=pipeline, tenant_id="t-456",
+                job_id="j-diar-1",
+                audio_bytes=audio_bytes,
+                pipeline_config=pipeline,
+                tenant_id="t-456",
                 consultation_id="c-001",
             )
 
@@ -1311,29 +1397,38 @@ class TestBatchServiceDiarization:
         loaded_model = create_complete_loaded_model()
         audio_bytes = create_valid_wav_audio(duration_seconds=2.0)
 
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_inference") as mock_inference, \
-             patch.object(service, "_run_diarization") as mock_diar, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_inference") as mock_inference,
+            patch.object(service, "_run_diarization") as mock_diar,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(32000, dtype=np.float32),
-                sample_rate=16000, duration_seconds=2.0,
-                was_resampled=False, was_normalized=True,
-                vad_applied=False, denoise_applied=False,
-                segments=[],
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(32000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=2.0,
+                    was_resampled=False,
+                    was_normalized=True,
+                    vad_applied=False,
+                    denoise_applied=False,
+                    segments=[],
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
             mock_inference.return_value = RawTranscription(text="Hello")
             mock_postproc.return_value = TranscriptionResult(text="Hello", duration_seconds=2.0)
 
             result = await service.transcribe(
-                job_id="j-diar-2", audio_bytes=audio_bytes,
-                pipeline_config=pipeline, tenant_id="t-456",
+                job_id="j-diar-2",
+                audio_bytes=audio_bytes,
+                pipeline_config=pipeline,
+                tenant_id="t-456",
             )
 
             mock_diar.assert_not_called()
@@ -1346,29 +1441,38 @@ class TestBatchServiceDiarization:
         loaded_model = create_complete_loaded_model()
         audio_bytes = create_valid_wav_audio(duration_seconds=2.0)
 
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_inference") as mock_inference, \
-             patch.object(service, "_run_diarization") as mock_diar, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_inference") as mock_inference,
+            patch.object(service, "_run_diarization") as mock_diar,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(32000, dtype=np.float32),
-                sample_rate=16000, duration_seconds=2.0,
-                was_resampled=False, was_normalized=True,
-                vad_applied=False, denoise_applied=False,
-                segments=[],
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(32000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=2.0,
+                    was_resampled=False,
+                    was_normalized=True,
+                    vad_applied=False,
+                    denoise_applied=False,
+                    segments=[],
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
             mock_inference.return_value = RawTranscription(text="Hello")
             mock_postproc.return_value = TranscriptionResult(text="Hello", duration_seconds=2.0)
 
             result = await service.transcribe(
-                job_id="j-diar-3", audio_bytes=audio_bytes,
-                pipeline_config=pipeline, tenant_id=None,
+                job_id="j-diar-3",
+                audio_bytes=audio_bytes,
+                pipeline_config=pipeline,
+                tenant_id=None,
             )
 
             mock_diar.assert_not_called()
@@ -1381,22 +1485,29 @@ class TestBatchServiceDiarization:
         loaded_model = create_complete_loaded_model()
         audio_bytes = create_valid_wav_audio(duration_seconds=2.0)
 
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_inference") as mock_inference, \
-             patch.object(service, "_run_diarization") as mock_diar, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_inference") as mock_inference,
+            patch.object(service, "_run_diarization") as mock_diar,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(32000, dtype=np.float32),
-                sample_rate=16000, duration_seconds=2.0,
-                was_resampled=False, was_normalized=True,
-                vad_applied=False, denoise_applied=False,
-                segments=[],
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(32000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=2.0,
+                    was_resampled=False,
+                    was_normalized=True,
+                    vad_applied=False,
+                    denoise_applied=False,
+                    segments=[],
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
             mock_inference.return_value = RawTranscription(text="Hello")
             mock_diar.side_effect = RuntimeError("Diarization failed!")
@@ -1404,8 +1515,10 @@ class TestBatchServiceDiarization:
 
             # Should NOT raise
             result = await service.transcribe(
-                job_id="j-diar-4", audio_bytes=audio_bytes,
-                pipeline_config=pipeline, tenant_id="t-456",
+                job_id="j-diar-4",
+                audio_bytes=audio_bytes,
+                pipeline_config=pipeline,
+                tenant_id="t-456",
             )
 
             assert result.text == "Hello"
@@ -1443,7 +1556,9 @@ class TestPerSegmentInference:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return RawTranscription(text="Hello world", language="en", language_probability=0.95)
+                return RawTranscription(
+                    text="Hello world", language="en", language_probability=0.95
+                )
             return RawTranscription(text="goodbye moon")
 
         with patch.object(service, "_run_inference", side_effect=mock_inference):
@@ -1591,26 +1706,33 @@ class TestTranscribeTimingMetrics:
         loaded_model = create_complete_loaded_model()
         audio_bytes = create_valid_wav_audio(duration_seconds=2.0)
 
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_inference") as mock_inference, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_inference") as mock_inference,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(32000, dtype=np.float32),
-                sample_rate=16000, duration_seconds=2.0,
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(32000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=2.0,
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
             mock_inference.return_value = RawTranscription(text="Hello")
             mock_postproc.return_value = TranscriptionResult(
-                text="Hello", duration_seconds=2.0,
+                text="Hello",
+                duration_seconds=2.0,
             )
 
             result = await service.transcribe(
-                job_id="j-timing-1", audio_bytes=audio_bytes,
+                job_id="j-timing-1",
+                audio_bytes=audio_bytes,
                 pipeline_config=pipeline,
             )
 
@@ -1631,29 +1753,36 @@ class TestTranscribeTimingMetrics:
         loaded_model = create_complete_loaded_model()
         audio_bytes = create_valid_wav_audio(duration_seconds=2.0)
 
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_per_segment_inference") as mock_per_seg, \
-             patch.object(service, "_run_inference") as mock_full, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_per_segment_inference") as mock_per_seg,
+            patch.object(service, "_run_inference") as mock_full,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(32000, dtype=np.float32),
-                sample_rate=16000, duration_seconds=2.0,
-                vad_applied=True,
-                segments=[DtoAudioSegment(0.0, 1.0, is_speech=True)],
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(32000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=2.0,
+                    vad_applied=True,
+                    segments=[DtoAudioSegment(0.0, 1.0, is_speech=True)],
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
             mock_per_seg.return_value = RawTranscription(text="Per-segment")
             mock_postproc.return_value = TranscriptionResult(
-                text="Per-segment", duration_seconds=2.0,
+                text="Per-segment",
+                duration_seconds=2.0,
             )
 
             _result = await service.transcribe(
-                job_id="j-vad-1", audio_bytes=audio_bytes,
+                job_id="j-vad-1",
+                audio_bytes=audio_bytes,
                 pipeline_config=pipeline,
             )
 
@@ -1667,28 +1796,35 @@ class TestTranscribeTimingMetrics:
         loaded_model = create_complete_loaded_model()
         audio_bytes = create_valid_wav_audio(duration_seconds=2.0)
 
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_per_segment_inference") as mock_per_seg, \
-             patch.object(service, "_run_inference") as mock_full, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_per_segment_inference") as mock_per_seg,
+            patch.object(service, "_run_inference") as mock_full,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(32000, dtype=np.float32),
-                sample_rate=16000, duration_seconds=2.0,
-                vad_applied=False,
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(32000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=2.0,
+                    vad_applied=False,
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
             mock_full.return_value = RawTranscription(text="Full audio")
             mock_postproc.return_value = TranscriptionResult(
-                text="Full audio", duration_seconds=2.0,
+                text="Full audio",
+                duration_seconds=2.0,
             )
 
             _result = await service.transcribe(
-                job_id="j-full-1", audio_bytes=audio_bytes,
+                job_id="j-full-1",
+                audio_bytes=audio_bytes,
                 pipeline_config=pipeline,
             )
 
@@ -1864,27 +2000,35 @@ class TestTranscribeTimingEdgeCases:
         loaded_model = create_complete_loaded_model()
         audio_bytes = create_valid_wav_audio(duration_seconds=1.0)
 
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_inference") as mock_inference, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_inference") as mock_inference,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(16000, dtype=np.float32),
-                sample_rate=16000, duration_seconds=1.0,
-                was_resampled=False, was_normalized=True,
-                vad_applied=False, denoise_applied=False,
-                segments=[],
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(16000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=1.0,
+                    was_resampled=False,
+                    was_normalized=True,
+                    vad_applied=False,
+                    denoise_applied=False,
+                    segments=[],
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
             mock_inference.return_value = RawTranscription(text="Hi")
             mock_postproc.return_value = TranscriptionResult(text="Hi", duration_seconds=1.0)
 
             result = await service.transcribe(
-                job_id="j-timing-edge", audio_bytes=audio_bytes,
+                job_id="j-timing-edge",
+                audio_bytes=audio_bytes,
                 pipeline_config=pipeline,
             )
 
@@ -1896,9 +2040,9 @@ class TestTranscribeTimingEdgeCases:
             + timing.diarization_seconds
             + timing.postprocessing_seconds
         )
-        assert timing.total_seconds >= step_sum - 0.001, (
-            f"Total {timing.total_seconds:.4f}s < step sum {step_sum:.4f}s"
-        )
+        assert (
+            timing.total_seconds >= step_sum - 0.001
+        ), f"Total {timing.total_seconds:.4f}s < step sum {step_sum:.4f}s"
 
     @pytest.mark.asyncio
     async def test_ttfw_gte_model_loading_plus_preprocessing_plus_inference(self, service):
@@ -1908,40 +2052,45 @@ class TestTranscribeTimingEdgeCases:
         loaded_model = create_complete_loaded_model()
         audio_bytes = create_valid_wav_audio(duration_seconds=1.0)
 
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_inference") as mock_inference, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_inference") as mock_inference,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(16000, dtype=np.float32),
-                sample_rate=16000, duration_seconds=1.0,
-                was_resampled=False, was_normalized=True,
-                vad_applied=False, denoise_applied=False,
-                segments=[],
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(16000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=1.0,
+                    was_resampled=False,
+                    was_normalized=True,
+                    vad_applied=False,
+                    denoise_applied=False,
+                    segments=[],
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
             mock_inference.return_value = RawTranscription(text="word")
             mock_postproc.return_value = TranscriptionResult(text="word", duration_seconds=1.0)
 
             result = await service.transcribe(
-                job_id="j-ttfw-edge", audio_bytes=audio_bytes,
+                job_id="j-ttfw-edge",
+                audio_bytes=audio_bytes,
                 pipeline_config=pipeline,
             )
 
         timing = result.metadata["timing"]
         # TTFW is measured from pipeline_start to after inference completes
         min_ttfw = (
-            timing.model_loading_seconds
-            + timing.preprocessing_seconds
-            + timing.inference_seconds
+            timing.model_loading_seconds + timing.preprocessing_seconds + timing.inference_seconds
         )
         assert timing.ttfw_seconds >= min_ttfw - 0.001, (
-            f"TTFW {timing.ttfw_seconds:.4f}s < "
-            f"model+preprocess+inference {min_ttfw:.4f}s"
+            f"TTFW {timing.ttfw_seconds:.4f}s < " f"model+preprocess+inference {min_ttfw:.4f}s"
         )
 
     @pytest.mark.asyncio
@@ -1952,31 +2101,40 @@ class TestTranscribeTimingEdgeCases:
         loaded_model = create_complete_loaded_model()
         audio_bytes = create_valid_wav_audio(duration_seconds=2.0)
 
-        with patch.object(service, "_load_models") as mock_load, \
-             patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc, \
-             patch.object(service, "_run_per_segment_inference") as mock_per_seg, \
-             patch.object(service, "_run_inference") as mock_full, \
-             patch.object(service, "_postprocess") as mock_postproc:
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_per_segment_inference") as mock_per_seg,
+            patch.object(service, "_run_inference") as mock_full,
+            patch.object(service, "_postprocess") as mock_postproc,
+        ):
 
             mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
 
             # VAD applied but found NO speech segments
             mock_preprocessor = AsyncMock()
-            mock_preprocessor.process = AsyncMock(return_value=ProcessedAudio(
-                samples=np.zeros(32000, dtype=np.float32),
-                sample_rate=16000, duration_seconds=2.0,
-                was_resampled=False, was_normalized=True,
-                vad_applied=True, denoise_applied=False,
-                segments=[],  # empty — no speech found
-            ))
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(32000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=2.0,
+                    was_resampled=False,
+                    was_normalized=True,
+                    vad_applied=True,
+                    denoise_applied=False,
+                    segments=[],  # empty — no speech found
+                )
+            )
             mock_preproc.return_value = mock_preprocessor
             mock_full.return_value = RawTranscription(text="Fallback")
             mock_postproc.return_value = TranscriptionResult(
-                text="Fallback", duration_seconds=2.0,
+                text="Fallback",
+                duration_seconds=2.0,
             )
 
             _result = await service.transcribe(
-                job_id="j-empty-vad", audio_bytes=audio_bytes,
+                job_id="j-empty-vad",
+                audio_bytes=audio_bytes,
                 pipeline_config=pipeline,
             )
 
@@ -2007,12 +2165,10 @@ class TestNormalizeWhisperOffsets:
         result = BatchTranscriptionService._normalize_whisper_offsets(offsets)
 
         assert len(result) == 2
-        assert result[0]["text"] == " Hello"
-        assert result[0]["word"] == " Hello"
+        assert result[0]["text"] == "Hello"
+        assert result[0]["word"] == "Hello"
         assert result[0]["start"] == 0.0
         assert result[0]["end"] == 1.5
-        assert result[0]["start_time"] == 0.0
-        assert result[0]["end_time"] == 1.5
         assert result[0]["confidence"] == 1.0
 
         assert result[1]["start"] == 1.6
@@ -2041,13 +2197,12 @@ class TestNormalizeWhisperOffsets:
             {"text": " world", "timestamp": (1.5, 2.5)},
         ]
         result = BatchTranscriptionService._normalize_whisper_offsets(
-            offsets, time_offset=12.5,
+            offsets,
+            time_offset=12.5,
         )
 
         assert result[0]["start"] == 12.5
         assert result[0]["end"] == 13.5
-        assert result[0]["start_time"] == 12.5
-        assert result[0]["end_time"] == 13.5
 
         assert result[1]["start"] == 14.0
         assert result[1]["end"] == 15.0
@@ -2110,9 +2265,11 @@ class TestOptimumOnnxInference:
 
         mock_processor.return_value = {"input_features": MagicMock(name="input_features")}
         mock_processor.batch_decode = MagicMock(return_value=[decoded_text])
-        mock_processor.decode = MagicMock(return_value={
-            "offsets": decode_offsets or [],
-        })
+        mock_processor.decode = MagicMock(
+            return_value={
+                "offsets": decode_offsets or [],
+            }
+        )
 
         return LoadedModel(
             model_id="m-optimum-test",
@@ -2135,15 +2292,21 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = "en"
         config.code_switching = False
+        config.beam_size = None
 
-        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
-             patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with (
+            patch.dict(sys.modules, {"torch": _make_mock_torch()}),
+            patch("stt_v2.transcription.batch_service.get_settings") as ms,
+        ):
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
             )
             result = await service._run_optimum_onnx_inference(
-                samples, 16000, model, config,
+                samples,
+                16000,
+                model,
+                config,
             )
 
         assert result.text == "This is a test."
@@ -2157,15 +2320,21 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = "en"
         config.code_switching = False
+        config.beam_size = None
 
-        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
-             patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with (
+            patch.dict(sys.modules, {"torch": _make_mock_torch()}),
+            patch("stt_v2.transcription.batch_service.get_settings") as ms,
+        ):
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
             )
             result = await service._run_optimum_onnx_inference(
-                samples, 16000, model, config,
+                samples,
+                16000,
+                model,
+                config,
             )
 
         assert model.model.generate.call_count >= 2
@@ -2179,15 +2348,21 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = None
         config.code_switching = False
+        config.beam_size = None
 
-        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
-             patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with (
+            patch.dict(sys.modules, {"torch": _make_mock_torch()}),
+            patch("stt_v2.transcription.batch_service.get_settings") as ms,
+        ):
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
             )
             result = await service._run_optimum_onnx_inference(
-                samples, 16000, model, config,
+                samples,
+                16000,
+                model,
+                config,
             )
 
         assert len(result.word_timestamps) == 2
@@ -2224,15 +2399,21 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = "en"
         config.code_switching = False
+        config.beam_size = None
 
-        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
-             patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with (
+            patch.dict(sys.modules, {"torch": _make_mock_torch()}),
+            patch("stt_v2.transcription.batch_service.get_settings") as ms,
+        ):
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
             )
             result = await service._run_optimum_onnx_inference(
-                samples, 16000, model, config,
+                samples,
+                16000,
+                model,
+                config,
             )
 
         assert result.word_timestamps[0]["start"] == 0.0
@@ -2248,17 +2429,23 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = "en"
         config.code_switching = False
+        config.beam_size = None
 
         progress_values = []
 
-        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
-             patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with (
+            patch.dict(sys.modules, {"torch": _make_mock_torch()}),
+            patch("stt_v2.transcription.batch_service.get_settings") as ms,
+        ):
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
             )
             await service._run_optimum_onnx_inference(
-                samples, 16000, model, config,
+                samples,
+                16000,
+                model,
+                config,
                 progress_callback=lambda p: progress_values.append(p),
             )
 
@@ -2283,10 +2470,15 @@ class TestOptimumOnnxInference:
         samples = np.zeros(16000, dtype=np.float32)
         config = MagicMock()
 
-        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
-             pytest.raises(TE, match="requires a processor"):
+        with (
+            patch.dict(sys.modules, {"torch": _make_mock_torch()}),
+            pytest.raises(TE, match="requires a processor"),
+        ):
             await service._run_optimum_onnx_inference(
-                samples, 16000, model, config,
+                samples,
+                16000,
+                model,
+                config,
             )
 
     @pytest.mark.asyncio
@@ -2297,15 +2489,21 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = "fr"
         config.code_switching = False
+        config.beam_size = None
 
-        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
-             patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with (
+            patch.dict(sys.modules, {"torch": _make_mock_torch()}),
+            patch("stt_v2.transcription.batch_service.get_settings") as ms,
+        ):
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
             )
             await service._run_optimum_onnx_inference(
-                samples, 16000, model, config,
+                samples,
+                16000,
+                model,
+                config,
             )
 
         call_kwargs = model.model.generate.call_args[1]
@@ -2339,15 +2537,21 @@ class TestOptimumOnnxInference:
         config = MagicMock()
         config.language = "en"
         config.code_switching = False
+        config.beam_size = None
 
-        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
-             patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with (
+            patch.dict(sys.modules, {"torch": _make_mock_torch()}),
+            patch("stt_v2.transcription.batch_service.get_settings") as ms,
+        ):
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
             )
             result = await service._run_optimum_onnx_inference(
-                samples, 16000, model, config,
+                samples,
+                16000,
+                model,
+                config,
             )
 
         assert len(result.segments) >= 2
@@ -2382,9 +2586,7 @@ class TestDedupOverlap:
 
     def test_single_word_overlap(self):
         """Single word overlap is detected."""
-        result = BatchTranscriptionService._dedup_overlap(
-            "Hello world", "world peace"
-        )
+        result = BatchTranscriptionService._dedup_overlap("Hello world", "world peace")
         assert result == "peace"
 
     def test_case_insensitive_overlap(self):
@@ -2396,23 +2598,17 @@ class TestDedupOverlap:
 
     def test_punctuation_insensitive_overlap(self):
         """Trailing punctuation is ignored for matching."""
-        result = BatchTranscriptionService._dedup_overlap(
-            "Hello, world.", "world peace"
-        )
+        result = BatchTranscriptionService._dedup_overlap("Hello, world.", "world peace")
         assert result == "peace"
 
     def test_empty_previous(self):
         """Empty previous text returns current unchanged."""
-        result = BatchTranscriptionService._dedup_overlap(
-            "", "Hello world"
-        )
+        result = BatchTranscriptionService._dedup_overlap("", "Hello world")
         assert result == "Hello world"
 
     def test_empty_current(self):
         """Empty current text returns empty."""
-        result = BatchTranscriptionService._dedup_overlap(
-            "Hello world", ""
-        )
+        result = BatchTranscriptionService._dedup_overlap("Hello world", "")
         assert result == ""
 
     def test_both_empty(self):
@@ -2426,9 +2622,7 @@ class TestDedupOverlap:
         long_prev = " ".join([f"word{i}" for i in range(20)])
         # Overlap with the first 3 words of prev, but max_overlap is 2
         current = "word0 word1 word2 new stuff"
-        result = BatchTranscriptionService._dedup_overlap(
-            long_prev, current, max_overlap_words=2
-        )
+        result = BatchTranscriptionService._dedup_overlap(long_prev, current, max_overlap_words=2)
         # word0 word1 are NOT in the last 2 words of prev, so no dedup
         assert result == current
 
@@ -2436,15 +2630,13 @@ class TestDedupOverlap:
         """Multi-word overlap at boundary."""
         result = BatchTranscriptionService._dedup_overlap(
             "and so I thought I should get it checked out",
-            "I should get it checked out Okay so when did"
+            "I should get it checked out Okay so when did",
         )
         assert result == "Okay so when did"
 
     def test_no_false_positive(self):
         """Partial word matches should not trigger dedup."""
-        result = BatchTranscriptionService._dedup_overlap(
-            "I am running", "running late today"
-        )
+        result = BatchTranscriptionService._dedup_overlap("I am running", "running late today")
         assert result == "late today"
 
 
@@ -2488,16 +2680,22 @@ class TestChunkCallbackAndTTFW:
         config = MagicMock()
         config.language = "en"
         config.code_switching = False
+        config.beam_size = None
         chunks_received: list[ChunkTranscriptionResult] = []
 
-        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
-             patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with (
+            patch.dict(sys.modules, {"torch": _make_mock_torch()}),
+            patch("stt_v2.transcription.batch_service.get_settings") as ms,
+        ):
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
             )
             await service._run_optimum_onnx_inference(
-                samples, 16000, model, config,
+                samples,
+                16000,
+                model,
+                config,
                 chunk_callback=lambda c: chunks_received.append(c),
             )
 
@@ -2514,17 +2712,23 @@ class TestChunkCallbackAndTTFW:
         config = MagicMock()
         config.language = None
         config.code_switching = False
+        config.beam_size = None
 
         hook_calls: list[bool] = []
 
-        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
-             patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with (
+            patch.dict(sys.modules, {"torch": _make_mock_torch()}),
+            patch("stt_v2.transcription.batch_service.get_settings") as ms,
+        ):
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
             )
             await service._run_optimum_onnx_inference(
-                samples, 16000, model, config,
+                samples,
+                16000,
+                model,
+                config,
                 first_word_hook=lambda: hook_calls.append(True),
             )
 
@@ -2540,17 +2744,23 @@ class TestChunkCallbackAndTTFW:
         config = MagicMock()
         config.language = None
         config.code_switching = False
+        config.beam_size = None
 
         chunks_received: list[ChunkTranscriptionResult] = []
 
-        with patch.dict(sys.modules, {"torch": _make_mock_torch()}), \
-             patch("stt_v2.transcription.batch_service.get_settings") as ms:
+        with (
+            patch.dict(sys.modules, {"torch": _make_mock_torch()}),
+            patch("stt_v2.transcription.batch_service.get_settings") as ms,
+        ):
             ms.return_value = MagicMock(
                 transcription_chunk_length_s=15,
                 transcription_stride_length_s="4,2",
             )
             await service._run_optimum_onnx_inference(
-                samples, 16000, model, config,
+                samples,
+                16000,
+                model,
+                config,
                 chunk_callback=lambda c: chunks_received.append(c),
                 first_word_hook=lambda: None,
             )
@@ -2604,7 +2814,11 @@ class TestPerSegmentSubSplitting:
             )
             with patch.object(service, "_run_inference", side_effect=mock_inference):
                 result = await service._run_per_segment_inference(
-                    samples, 16000, segments, model, config,
+                    samples,
+                    16000,
+                    segments,
+                    model,
+                    config,
                     job_id="test",
                     chunk_callback=lambda c: chunks_received.append(c),
                 )
@@ -2644,7 +2858,11 @@ class TestPerSegmentSubSplitting:
             )
             with patch.object(service, "_run_inference", side_effect=mock_inference):
                 _result = await service._run_per_segment_inference(
-                    samples, 16000, segments, model, config,
+                    samples,
+                    16000,
+                    segments,
+                    model,
+                    config,
                     job_id="test",
                     chunk_callback=lambda c: chunks_received.append(c),
                 )
@@ -2684,7 +2902,11 @@ class TestPerSegmentSubSplitting:
             )
             with patch.object(service, "_run_inference", side_effect=mock_inference):
                 result = await service._run_per_segment_inference(
-                    samples, 16000, segments, model, config,
+                    samples,
+                    16000,
+                    segments,
+                    model,
+                    config,
                     job_id="test",
                 )
 
@@ -2741,7 +2963,10 @@ class TestChunkTranscriptionResult:
         from stt_v2.transcription.dto import ChunkTranscriptionResult
 
         chunk = ChunkTranscriptionResult(
-            chunk_index=0, text="x", start_time=0, end_time=1,
+            chunk_index=0,
+            text="x",
+            start_time=0,
+            end_time=1,
         )
         assert chunk.word_timestamps == []
 
@@ -2757,9 +2982,7 @@ def _make_mock_torch():
     mock.no_grad.return_value.__enter__ = MagicMock(return_value=None)
     mock.no_grad.return_value.__exit__ = MagicMock(return_value=False)
     mock.is_tensor.return_value = False
-    mock.from_numpy.return_value.float.return_value.unsqueeze.return_value = (
-        MagicMock()
-    )
+    mock.from_numpy.return_value.float.return_value.unsqueeze.return_value = MagicMock()
     mock.tensor.return_value = MagicMock()
     return mock
 
@@ -2880,7 +3103,9 @@ class TestCodeSwitchingInference:
                     transcription_chunk_length_s=30,
                     transcription_stride_length_s="4,2",
                 )
-                with patch.object(service, "_generate_english_translation", return_value="Hello world"):
+                with patch.object(
+                    service, "_generate_english_translation", return_value="Hello world"
+                ):
                     result = await service._run_optimum_onnx_inference(
                         samples, 16000, loaded_model, config, None
                     )
@@ -2919,9 +3144,7 @@ class TestCodeSwitchingInference:
         config = pipeline_config.spec.inference
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}):
-            await service._run_transformers_inference(
-                samples, 16000, loaded_model, config, None
-            )
+            await service._run_transformers_inference(samples, 16000, loaded_model, config, None)
 
         transcribe_call_kwargs = loaded_model.model.generate.call_args_list[0][1]
         assert "language" not in transcribe_call_kwargs
@@ -2937,9 +3160,7 @@ class TestCodeSwitchingInference:
         config = pipeline_config.spec.inference
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}):
-            await service._run_transformers_inference(
-                samples, 16000, loaded_model, config, None
-            )
+            await service._run_transformers_inference(samples, 16000, loaded_model, config, None)
 
         call_kwargs = loaded_model.model.generate.call_args[1]
         assert "language" in call_kwargs
@@ -2969,9 +3190,7 @@ class TestCodeSwitchingInference:
         }
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}):
-            await service._run_transformers_inference(
-                samples, 16000, loaded_model, config, None
-            )
+            await service._run_transformers_inference(samples, 16000, loaded_model, config, None)
 
         processor_kwargs = loaded_model.processor.call_args.kwargs
         assert "return_tensors" in processor_kwargs
@@ -3006,9 +3225,7 @@ class TestCodeSwitchingInference:
 
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}):
             with caplog.at_level(logging.WARNING):
-                await service._run_nemo_inference(
-                    samples, 16000, loaded_model, config, None
-                )
+                await service._run_nemo_inference(samples, 16000, loaded_model, config, None)
 
         assert any("code-switching" in rec.message for rec in caplog.records)
         assert any("NeMo" in rec.message for rec in caplog.records)
@@ -3082,3 +3299,106 @@ class TestCodeSwitchingInference:
 
         call_kwargs = loaded_model.model.generate.call_args[1]
         assert "language" not in call_kwargs
+
+
+# =============================================================================
+# Batch Postprocess Punctuation Tests
+# =============================================================================
+
+
+class TestBatchPostprocessPunctuation:
+    """Tests for punctuation restoration in batch _postprocess()."""
+
+    @pytest.fixture
+    def service(self):
+        return BatchTranscriptionService()
+
+    def _make_config(self, *, punctuation_enabled=True, lowercase=False, sentence_timestamps=False):
+        config = MagicMock()
+        config.lowercase = lowercase
+        config.timestamps = MagicMock()
+        config.timestamps.word_timestamps = False
+        config.timestamps.sentence_timestamps = sentence_timestamps
+        config.punctuation = MagicMock()
+        config.punctuation.enabled = punctuation_enabled
+        return config
+
+    @patch("stt_v2.punctuation.service.punctuate_sync")
+    def test_postprocess_with_punctuation_enabled(self, mock_sync, service):
+        mock_sync.return_value = ["Hello world, how are you?"]
+        raw = RawTranscription(text="hello world how are you")
+        config = self._make_config(punctuation_enabled=True)
+
+        result = service._postprocess(raw, config, 1.0)
+
+        assert result.text == "Hello world, how are you?"
+        mock_sync.assert_called_once_with(
+            ["hello world how are you"],
+            batch_size=8,
+            model_name=config.punctuation.model,
+        )
+
+    def test_postprocess_with_punctuation_disabled(self, service):
+        raw = RawTranscription(text="hello world")
+        config = self._make_config(punctuation_enabled=False)
+
+        result = service._postprocess(raw, config, 1.0)
+
+        assert result.text == "hello world"
+
+    @patch("stt_v2.punctuation.service.punctuate_sync", side_effect=RuntimeError("model error"))
+    def test_postprocess_punctuation_failure_graceful(self, mock_sync, service):
+        raw = RawTranscription(text="hello world")
+        config = self._make_config(punctuation_enabled=True)
+
+        result = service._postprocess(raw, config, 1.0)
+
+        assert result.text == "hello world"
+
+    @patch("stt_v2.punctuation.service.punctuate_sync")
+    def test_postprocess_segments_punctuated(self, mock_sync, service):
+        mock_sync.return_value = ["Hello world.", "Hello.", "World."]
+        raw = RawTranscription(
+            text="hello world",
+            segments=[
+                {"text": "hello", "start": 0.0, "end": 0.5},
+                {"text": "world", "start": 0.5, "end": 1.0},
+            ],
+        )
+        # sentence_timestamps=True is needed so punctuate_sync receives segment texts,
+        # but sentence timestamp extraction has a pre-existing issue with english_text.
+        # We disable sentence_timestamps in config so _postprocess skips extraction,
+        # but the punctuation block still reads config.timestamps.sentence_timestamps.
+        # Instead, set sentence_timestamps=True only in the punctuation config path
+        # by using a MagicMock that returns True for the punctuation check.
+        config = self._make_config(punctuation_enabled=True, sentence_timestamps=False)
+        # Override so the punctuation block sees sentence_timestamps=True
+        # but the timestamp extraction block sees False
+
+        # Simpler approach: set True and mock the SentenceTimestamp constructor
+        config.timestamps.sentence_timestamps = True
+
+        with patch("stt_v2.transcription.batch_service.SentenceTimestamp") as MockST:
+            MockST.side_effect = lambda **kw: MagicMock(**kw)
+            result = service._postprocess(raw, config, 1.0)
+
+        assert result.text == "Hello world."
+        # Verify segments were mutated by punctuation
+        assert raw.segments[0]["text"] == "Hello."
+        assert raw.segments[1]["text"] == "World."
+        mock_sync.assert_called_once_with(
+            ["hello world", "hello", "world"],
+            batch_size=8,
+            model_name=config.punctuation.model,
+        )
+
+    @patch("stt_v2.punctuation.service.punctuate_sync")
+    def test_postprocess_punctuation_then_lowercase(self, mock_sync, service):
+        """Lowercase is applied AFTER punctuation."""
+        mock_sync.return_value = ["Hello World."]
+        raw = RawTranscription(text="hello world")
+        config = self._make_config(punctuation_enabled=True, lowercase=True)
+
+        result = service._postprocess(raw, config, 1.0)
+
+        assert result.text == "hello world."

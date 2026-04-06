@@ -1,10 +1,11 @@
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
+
 from pydantic import BaseModel, Field
-from typing import Any, Optional
-from datetime import datetime, timezone
 
 
-class ModelType(str, Enum):
+class ModelType(StrEnum):
     TEXT_CLASSIFICATION = "text_classification"
     TOKEN_CLASSIFICATION = "token_classification"
 
@@ -23,11 +24,11 @@ class Entity(BaseModel):
     position: TextPosition = Field(..., description="Position in source text")
 
     # Metadata
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    model_version: Optional[str] = Field(None, description="Model version used")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    model_version: str | None = Field(None, description="Model version used")
 
 
-class WebSocketMessageType(str, Enum):
+class WebSocketMessageType(StrEnum):
     CONNECT = "connect"
     DISCONNECT = "disconnect"
     MESSAGE = "message"
@@ -36,7 +37,7 @@ class WebSocketMessageType(str, Enum):
     STATUS = "status"
 
 
-class SupportedLanguage(str, Enum):
+class SupportedLanguage(StrEnum):
     ENGLISH = "en"
     MALAYALAM = "ml"
 
@@ -44,4 +45,4 @@ class SupportedLanguage(str, Enum):
 class WebSocketMessage(BaseModel):
     type: WebSocketMessageType = Field(..., description="Type of message")
     session_id: str = Field(..., description="Session ID")
-    data: Optional[Any] = Field(None, description="data")
+    data: Any | None = Field(None, description="data")

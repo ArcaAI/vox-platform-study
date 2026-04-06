@@ -53,6 +53,22 @@ scrape_configs:
           service: "nlp"
           vm: "200"
 
+  # ── Node Exporter (VM-level CPU, memory, disk, network) ──
+
+  - job_name: "node-exporter"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["10.10.1.10:9100"]
+        labels:
+          service: "node-exporter"
+          vm: "200"
+          role: "application"
+      - targets: ["10.10.1.100:9100"]
+        labels:
+          service: "node-exporter"
+          vm: "400"
+          role: "observability"
+
   # ── Database Cluster (VMs 500-502) ──
 
   - job_name: "postgres-exporter"

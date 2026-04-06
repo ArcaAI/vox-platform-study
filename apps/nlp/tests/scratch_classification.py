@@ -1,6 +1,6 @@
 
 def token_classification():
-    from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
+    from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
     bert_tokenizer = AutoTokenizer.from_pretrained("blaze999/Medical-NER")
     bert_model = AutoModelForTokenClassification.from_pretrained("blaze999/Medical-NER")
     pipe_bert_base_ner = pipeline("token-classification", model=bert_model, tokenizer=bert_tokenizer)
@@ -9,10 +9,10 @@ def token_classification():
 
 
 def text_classification():
-    from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
     # model_name = 'DATEXIS/CORe-clinical-diagnosis-prediction'
     model_name = 'shanover/symps_disease_bert_v3_c41'
-    
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSequenceClassification.from_pretrained(model_name)
 
@@ -23,7 +23,7 @@ def text_classification():
 
 def fill_mask():
     # Use a pipeline as a high-level helper
-    from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
 
     tokenizer = AutoTokenizer.from_pretrained('microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext')
     model = AutoModelForSequenceClassification.from_pretrained('microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext')
