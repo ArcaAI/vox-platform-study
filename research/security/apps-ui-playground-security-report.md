@@ -1,10 +1,13 @@
 # Security Audit Report — `apps/ui-playground`
 
-**Application**: ArcaVox Playground (UI Playground)  
-**Framework**: React 19 / Vite 7 / TanStack Router  
-**Audit Date**: 2026-03-24  
-**Auditor**: Security Auditor Agent  
-**Status**: Complete  
+**Application**: ArcaVox Playground (UI Playground)
+**Framework**: React 19 / Vite 7 / TanStack Router
+**Audit Date**: 2026-03-24
+**Last Updated**: 2026-04-06
+**Auditor**: Security Auditor Agent
+**Status**: Complete
+
+> **Update (2026-04-06)**: Re-scan confirmed localStorage token storage is still the primary pattern (19 file references). No migration to httpOnly cookies has occurred.
 
 ---
 
@@ -57,8 +60,8 @@ No `dangerouslySetInnerHTML`, `innerHTML`, `eval()`, or `document.write()` usage
 
 ### VULN-001: Auth Tokens Stored in localStorage (Critical)
 
-**Severity**: Critical  
-**Location**: `src/store/auth-store.ts:131–148`  
+**Severity**: Critical
+**Location**: `src/store/auth-store.ts:131–148`
 **OWASP**: A02 (Cryptographic Failures), A07 (Identification and Authentication Failures)
 
 **Description**:
@@ -100,8 +103,8 @@ persist(
 
 ### VULN-002: Client-side JWT Decoding Without Signature Verification (High)
 
-**Severity**: High  
-**Location**: `src/lib/auth-refresh.ts:21–33`, `src/hooks/use-auto-refresh.ts:73`  
+**Severity**: High
+**Location**: `src/lib/auth-refresh.ts:21–33`, `src/hooks/use-auto-refresh.ts:73`
 **OWASP**: A02 (Cryptographic Failures), A07 (Identification and Authentication Failures)
 
 **Description**:
@@ -137,8 +140,8 @@ if (payload.tenantId) tenantId = payload.tenantId;
 
 ### VULN-003: Refresh Token Sent in JSON Body (High)
 
-**Severity**: High  
-**Location**: `src/lib/auth-refresh.ts:84–91`  
+**Severity**: High
+**Location**: `src/lib/auth-refresh.ts:84–91`
 **OWASP**: A02 (Cryptographic Failures), A07 (Identification and Authentication Failures)
 
 **Description**:
@@ -168,8 +171,8 @@ const res = await fetch(`${baseUrl}/auth/refresh`, {
 
 ### VULN-004: User-Editable WebSocket URL (High)
 
-**Severity**: High  
-**Location**: `src/features/summarization/components/ws-audio-transcript-demo.tsx:361–366`  
+**Severity**: High
+**Location**: `src/features/summarization/components/ws-audio-transcript-demo.tsx:361–366`
 **OWASP**: A10 (Server-Side Request Forgery), A05 (Security Misconfiguration)
 
 **Description**:
@@ -211,8 +214,8 @@ ws.send(authMsg);
 
 ### VULN-005: Auth Token in WebSocket URL Query Parameter (High)
 
-**Severity**: High  
-**Location**: `src/hooks/use-realtime-transcription.ts:174–175`  
+**Severity**: High
+**Location**: `src/hooks/use-realtime-transcription.ts:174–175`
 **OWASP**: A02 (Cryptographic Failures), A09 (Security Logging and Monitoring Failures)
 
 **Description**:
@@ -240,8 +243,8 @@ const wsUrl = sessionManager.getWebSocketUrl(token);
 
 ### VULN-006: No Content Security Policy (Medium)
 
-**Severity**: Medium  
-**Location**: `Dockerfile:72`, `vite.config.ts`  
+**Severity**: Medium
+**Location**: `Dockerfile:72`, `vite.config.ts`
 **OWASP**: A05 (Security Misconfiguration)
 
 **Description**:
@@ -273,8 +276,8 @@ The production deployment uses `serve -s dist` without any CSP headers. No `<met
 
 ### VULN-007: Medical Summarization History in localStorage Unencrypted (Medium)
 
-**Severity**: Medium  
-**Location**: `src/features/summarization/history/index.tsx:66–79`  
+**Severity**: Medium
+**Location**: `src/features/summarization/history/index.tsx:66–79`
 **OWASP**: A02 (Cryptographic Failures), A04 (Insecure Design)
 
 **Description**:
@@ -315,8 +318,8 @@ The `StoredResult` type includes `content: string` which holds the full medical 
 
 ### VULN-008: User-Modifiable API Base URL in localStorage (Medium)
 
-**Severity**: Medium  
-**Location**: `src/store/playground-store.ts:26`  
+**Severity**: Medium
+**Location**: `src/store/playground-store.ts:26`
 **OWASP**: A05 (Security Misconfiguration), A10 (SSRF)
 
 **Description**:
@@ -345,8 +348,8 @@ This value is persisted and used by `adminClient`, `smrClient`, and the SDK prov
 
 ### VULN-009: API Key Auth Skips Server Validation (Medium)
 
-**Severity**: Medium  
-**Location**: `src/features/auth/login/components/api-key-form.tsx:33–41`  
+**Severity**: Medium
+**Location**: `src/features/auth/login/components/api-key-form.tsx:33–41`
 **OWASP**: A07 (Identification and Authentication Failures)
 
 **Description**:
@@ -380,8 +383,8 @@ const onSubmit = async (data: ApiKeyFormValues) => {
 
 ### VULN-010: No Client-Side Rate Limiting on Login (Medium)
 
-**Severity**: Medium  
-**Location**: `src/features/auth/login/components/credentials-form.tsx:37–63`  
+**Severity**: Medium
+**Location**: `src/features/auth/login/components/credentials-form.tsx:37–63`
 **OWASP**: A07 (Identification and Authentication Failures)
 
 **Description**:
@@ -400,8 +403,8 @@ The credentials login form has no client-side throttling, lockout, or exponentia
 
 ### VULN-011: AdminUser Type Includes Secret Fields (Low)
 
-**Severity**: Low  
-**Location**: `src/features/admin/api/users.ts:44–47`  
+**Severity**: Low
+**Location**: `src/features/admin/api/users.ts:44–47`
 **OWASP**: A02 (Cryptographic Failures), A01 (Broken Access Control)
 
 **Description**:
@@ -434,8 +437,8 @@ export interface AdminUser {
 
 ### VULN-012: Vite Environment Variable Embedded in Bundle (Low)
 
-**Severity**: Low  
-**Location**: `Dockerfile:34–35`, `vite.config.ts`, `src/store/playground-store.ts:26`  
+**Severity**: Low
+**Location**: `Dockerfile:34–35`, `vite.config.ts`, `src/store/playground-store.ts:26`
 **OWASP**: A05 (Security Misconfiguration)
 
 **Description**:
@@ -462,8 +465,8 @@ ENV VITE_API_URL=${VITE_API_URL}
 
 ### VULN-013: Error Boundary Logs to console.error in Production (Low)
 
-**Severity**: Low  
-**Location**: `src/components/error-boundary.tsx:23–24`  
+**Severity**: Low
+**Location**: `src/components/error-boundary.tsx:23–24`
 **OWASP**: A09 (Security Logging and Monitoring Failures)
 
 **Description**:
@@ -491,8 +494,8 @@ componentDidCatch(error: Error, errorInfo: ErrorInfo) {
 
 ### VULN-014: Unpinned `serve` Version in Dockerfile (Low)
 
-**Severity**: Low  
-**Location**: `Dockerfile:57`  
+**Severity**: Low
+**Location**: `Dockerfile:57`
 **OWASP**: A06 (Vulnerable and Outdated Components)
 
 **Description**:
@@ -516,7 +519,7 @@ RUN npm install -g serve@14
 
 ### VULN-015: Production Source Maps Correctly Disabled (Info — Positive)
 
-**Severity**: Info (Positive Finding)  
+**Severity**: Info (Positive Finding)
 **Location**: `vite.config.ts:86`
 
 **Description**:
@@ -532,7 +535,7 @@ This prevents exposing original source code in production deployments.
 
 ### VULN-016: React-Markdown Uses skipHtml and Safe Link Filtering (Info — Positive)
 
-**Severity**: Info (Positive Finding)  
+**Severity**: Info (Positive Finding)
 **Location**: `src/features/doc-panel/components/doc-content.tsx:106–112, 160–163`
 
 **Description**:

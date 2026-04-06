@@ -1,6 +1,7 @@
 # Vulnerability Scan Report: Shared Utility Packages
 
 **Scan Date:** 2026-03-24
+**Last Updated:** 2026-04-06
 **Scanner:** Deep manual code analysis + pattern matching
 **Scope:** `packages/ui/`, `packages/utils/`, `packages/logger/`, `packages/med-ner/`, `packages/pipeline/`, `packages/tools/`
 

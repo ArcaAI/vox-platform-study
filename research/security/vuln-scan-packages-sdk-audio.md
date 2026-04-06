@@ -1,7 +1,8 @@
 # Vulnerability Scan Report: SDK & Audio Packages
 
 **Date**: 2026-03-24
-**Scope**: `@arcaai/vox`, `@arcaai/room`, `@arcaai/stt`, `@arcaai/vad`, `@arcaai/noise-filter`
+**Last Updated**: 2026-04-06
+**Scope**: `@arcaai/vox`, `@arcaai/room`, `@arcaai/stt`, `@arcaai/vad`, `@arcaai/noise-filter`, `@arcaai/pipeline`, `@arcaai/med-ner`, `@arcaai/utils`
 **Scan Type**: Deep manual analysis — code-level review with CVE cross-reference
 **Severity Rating**: CVSS 3.1 scale
 

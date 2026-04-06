@@ -159,4 +159,7 @@ curl -I https://taphuynh.dev
 
 ---
 
-**Status**: ✅ **SECURE** - The system now implements enterprise-grade security measures and is ready for production deployment with proper monitoring and incident response procedures.
+> **Note (2026-04-06)**: This document covers infrastructure-level security hardening from the PostgreSQL exposure incident. For the comprehensive application-level security audit (covering authentication, authorization, injection, CORS, secrets, dependencies, and HIPAA compliance), see [`research/security/SECURITY-AUDIT-SUMMARY.md`](./research/security/SECURITY-AUDIT-SUMMARY.md). The application-level audit identified **39 Critical** and **110 High** severity findings that require attention before production deployment.
+
+**Infrastructure Status**: The infrastructure security measures described above are implemented and operational.
+**Application Status**: Application-level security findings remain open — see the detailed audit for the remediation roadmap.

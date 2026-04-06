@@ -1,6 +1,7 @@
 # Vulnerability Scan Report — `apps/ui-playground`
 
 **Date**: 2026-03-24
+**Last Updated**: 2026-04-06
 **Scope**: Deep vulnerability scan — dependencies, code patterns, infrastructure
 **Tools**: pnpm audit, npm registry probe, manual static analysis (241 source files)
 **Application**: ArcaVox Playground — React 19 / Vite 7 / TanStack Router

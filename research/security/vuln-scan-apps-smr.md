@@ -4,6 +4,7 @@
 |---|---|
 | **Service** | SMR V2 — Multi-Provider Text Generation |
 | **Scan Date** | 2026-03-24 |
+| **Last Updated** | 2026-04-06 |
 | **Scanner** | Manual deep-audit + CVE database cross-reference |
 | **Scope** | All source files in `apps/smr/src/`, Dockerfile, docker-compose.yml, .env.example, monitoring configs |
 | **Python** | 3.11+ |
@@ -338,7 +339,7 @@ import asyncio
 class CircuitBreaker:
     def __init__(self, ...):
         self._lock = asyncio.Lock()
-    
+
     async def record_failure(self) -> None:
         async with self._lock:
             self._failure_count += 1
