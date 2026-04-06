@@ -28,17 +28,16 @@ class MinIOClient:
         secure: bool = False,
         cert_check: bool = True,
     ) -> None:
-        http_client = None
+        client_kwargs = {
+            "endpoint": endpoint,
+            "access_key": access_key,
+            "secret_key": secret_key,
+            "secure": secure,
+        }
         if secure and not cert_check:
-            http_client = urllib3.PoolManager(cert_reqs="CERT_NONE")
+            client_kwargs["http_client"] = urllib3.PoolManager(cert_reqs="CERT_NONE")
 
-        self._client = Minio(
-            endpoint=endpoint,
-            access_key=access_key,
-            secret_key=secret_key,
-            secure=secure,
-            http_client=http_client,
-        )
+        self._client = Minio(**client_kwargs)
 
     @property
     def client(self) -> Minio:
