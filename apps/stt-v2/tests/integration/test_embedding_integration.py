@@ -140,9 +140,7 @@ class TestUpsertThenGetStatus:
     """POST upsert -> GET status -> verify exists=True."""
 
     @pytest.mark.asyncio
-    async def test_get_returns_exists_true_after_upsert(
-        self, client, mock_speaker_store
-    ):
+    async def test_get_returns_exists_true_after_upsert(self, client, mock_speaker_store):
         wav = _make_wav_bytes(duration_s=5.0)
 
         upsert_resp = await client.post(
@@ -174,9 +172,7 @@ class TestUpsertDeleteThenGet:
     """POST -> DELETE -> GET -> verify exists=False."""
 
     @pytest.mark.asyncio
-    async def test_get_returns_exists_false_after_delete(
-        self, client, mock_speaker_store
-    ):
+    async def test_get_returns_exists_false_after_delete(self, client, mock_speaker_store):
         wav = _make_wav_bytes(duration_s=5.0)
 
         upsert_resp = await client.post(
@@ -210,9 +206,7 @@ class TestGetNonExistentSpeaker:
     """GET for a speaker that was never upserted -> exists=False."""
 
     @pytest.mark.asyncio
-    async def test_get_non_existent_returns_exists_false(
-        self, client, mock_speaker_store
-    ):
+    async def test_get_non_existent_returns_exists_false(self, client, mock_speaker_store):
         mock_speaker_store.get_speakers_for_tenant.return_value = []
 
         resp = await client.get(
@@ -250,10 +244,8 @@ class TestConcurrentUpsertsForDifferentTenants:
         assert resp_a.status_code == 201
         assert resp_b.status_code == 201
 
-        mock_speaker_store.get_speakers_for_tenant.side_effect = (
-            lambda tid: [{"speaker_id": "spk-iso", "embedding_count": 1}]
-            if tid == "tenant-A"
-            else []
+        mock_speaker_store.get_speakers_for_tenant.side_effect = lambda tid: (
+            [{"speaker_id": "spk-iso", "embedding_count": 1}] if tid == "tenant-A" else []
         )
 
         get_a = await client.get(
@@ -270,8 +262,7 @@ class TestConcurrentUpsertsForDifferentTenants:
 
         assert mock_speaker_store.upsert_embedding.call_count == 2
         tenant_ids = [
-            c.kwargs["tenant_id"]
-            for c in mock_speaker_store.upsert_embedding.call_args_list
+            c.kwargs["tenant_id"] for c in mock_speaker_store.upsert_embedding.call_args_list
         ]
         assert set(tenant_ids) == {"tenant-A", "tenant-B"}
 
@@ -281,9 +272,7 @@ class TestDeleteIdempotency:
     """DELETE the same speaker twice; both return 200."""
 
     @pytest.mark.asyncio
-    async def test_double_delete_returns_200_both_times(
-        self, client, mock_speaker_store
-    ):
+    async def test_double_delete_returns_200_both_times(self, client, mock_speaker_store):
         resp1 = await client.delete(
             "/internal/embeddings/spk-idem",
             params={"tenant_id": "tenant-001"},

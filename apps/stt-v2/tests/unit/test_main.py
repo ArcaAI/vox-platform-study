@@ -122,22 +122,27 @@ class TestLifespan:
 
         mock_app = FastAPI()
 
-        with patch("stt_v2.main.initialize_database", new_callable=AsyncMock) as mock_db, \
-             patch("stt_v2.main.initialize_redis", new_callable=AsyncMock) as mock_redis, \
-             patch("stt_v2.main.initialize_minio", new_callable=AsyncMock) as mock_minio, \
-             patch("stt_v2.main.initialize_streaming", new_callable=AsyncMock), \
-             patch("stt_v2.main.shutdown_streaming", new_callable=AsyncMock), \
-             patch("stt_v2.main._configure_torch_threading"), \
-             patch("stt_v2.main._preload_pipeline_models", new_callable=AsyncMock), \
-             patch("stt_v2.main.close_database", new_callable=AsyncMock) as mock_close_db, \
-             patch("stt_v2.main.close_redis", new_callable=AsyncMock) as mock_close_redis, \
-             patch("stt_v2.main.close_minio", new_callable=AsyncMock) as mock_close_minio, \
-             patch("stt_v2.main.settings") as mock_settings, \
-             patch.dict("sys.modules", {
-                 "stt_v2.diarization.embedding_service": MagicMock(
-                     get_embedding_service=MagicMock(return_value=AsyncMock())
-                 ),
-             }):
+        with (
+            patch("stt_v2.main.initialize_database", new_callable=AsyncMock) as mock_db,
+            patch("stt_v2.main.initialize_redis", new_callable=AsyncMock) as mock_redis,
+            patch("stt_v2.main.initialize_minio", new_callable=AsyncMock) as mock_minio,
+            patch("stt_v2.main.initialize_streaming", new_callable=AsyncMock),
+            patch("stt_v2.main.shutdown_streaming", new_callable=AsyncMock),
+            patch("stt_v2.main._configure_torch_threading"),
+            patch("stt_v2.main._preload_pipeline_models", new_callable=AsyncMock),
+            patch("stt_v2.main.close_database", new_callable=AsyncMock) as mock_close_db,
+            patch("stt_v2.main.close_redis", new_callable=AsyncMock) as mock_close_redis,
+            patch("stt_v2.main.close_minio", new_callable=AsyncMock) as mock_close_minio,
+            patch("stt_v2.main.settings") as mock_settings,
+            patch.dict(
+                "sys.modules",
+                {
+                    "stt_v2.diarization.embedding_service": MagicMock(
+                        get_embedding_service=MagicMock(return_value=AsyncMock())
+                    ),
+                },
+            ),
+        ):
 
             mock_settings.app_version = "2.0.0"
             mock_settings.torch_num_threads = 0

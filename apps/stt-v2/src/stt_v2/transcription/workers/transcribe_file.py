@@ -32,6 +32,8 @@ def transcribe_file(
     audio_uri: str,
     consultation_id: str | None = None,
     media_id: str | None = None,
+    language: str | None = None,
+    code_switching: bool | None = None,
 ) -> None:
     """
     Dramatiq actor for batch file transcription.
@@ -57,6 +59,8 @@ def transcribe_file(
         audio_uri: MinIO URI for audio file
         consultation_id: Optional consultation ID
         media_id: Optional media ID
+        language: Optional language hint for ASR
+        code_switching: Optional flag to enable code-switching mode
     """
     # Run async code in event loop
     asyncio.run(
@@ -67,6 +71,8 @@ def transcribe_file(
             audio_uri=audio_uri,
             consultation_id=consultation_id,
             media_id=media_id,
+            language=language,
+            code_switching=code_switching,
         )
     )
 
@@ -78,6 +84,8 @@ async def _transcribe_file_async(
     audio_uri: str,
     consultation_id: str | None = None,
     media_id: str | None = None,
+    language: str | None = None,
+    code_switching: bool | None = None,
 ) -> None:
     """Async implementation of file transcription.
 
@@ -158,9 +166,7 @@ async def _transcribe_file_async(
                             stage="inference",
                         )
                     except Exception as e:
-                        logger.warning(
-                            f"[{job_id}] Failed to publish progress event: {e}"
-                        )
+                        logger.warning(f"[{job_id}] Failed to publish progress event: {e}")
 
         async def on_chunk(chunk: object) -> None:
             """Publish each partial transcript chunk for real-time SSE."""
@@ -184,8 +190,10 @@ async def _transcribe_file_async(
             value = int(progress)
             if value <= _last_progress_scheduled:
                 return
-            if value < 100 and (_last_progress_scheduled >= 0) and (
-                value - _last_progress_scheduled < 2
+            if (
+                value < 100
+                and (_last_progress_scheduled >= 0)
+                and (value - _last_progress_scheduled < 2)
             ):
                 return
 
@@ -207,6 +215,7 @@ async def _transcribe_file_async(
             chunk_callback=lambda c: _schedule_task(on_chunk(c)),
             tenant_id=tenant_id,
             consultation_id=consultation_id,
+            blob_service=blob_service,
         )
 
         # Await all pending chunk/progress tasks to ensure correct event ordering
@@ -224,43 +233,6 @@ async def _transcribe_file_async(
             format="json",
         )
         result.transcript_uri = transcript_uri
-
-        # Step 5b: Upload processed audio when VAD/diarization produced it
-        # Re-run lightweight preprocessing to access ProcessedAudio for
-        # the VAD-merged WAV.  The preprocessor is cached/fast.
-        processed_audio_uri = None
-        spec = pipeline_config.spec
-        if spec.preprocessing.vad.enabled or spec.diarization.enabled:
-            try:
-                from ..preprocessing import get_preprocessor
-
-                preprocessor = get_preprocessor()
-                processed = await preprocessor.process(
-                    audio_bytes=audio_bytes,
-                    config=spec.preprocessing,
-                )
-                silence_ms = (
-                    spec.diarization.segment_silence_padding_ms
-                    if spec.diarization.enabled
-                    else 0
-                )
-                vad_wav = processed.get_vad_merged_wav_bytes(
-                    silence_padding_ms=silence_ms,
-                )
-                if vad_wav:
-                    processed_audio_uri = await blob_service.upload_processed_audio(
-                        audio_bytes=vad_wav,
-                        tenant_id=tenant_id,
-                        job_id=job_id,
-                        consultation_id=consultation_id,
-                    )
-                    result.processed_audio_uri = processed_audio_uri
-                    logger.info(
-                        f"[{job_id}] Uploaded processed audio "
-                        f"({len(vad_wav)} bytes, padding={silence_ms}ms)"
-                    )
-            except Exception as e:
-                logger.warning(f"[{job_id}] Failed to upload processed audio: {e}")
 
         # Step 6: Create transcript context item (if consultation provided)
         context_item_id = None

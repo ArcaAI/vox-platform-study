@@ -389,7 +389,9 @@ class TestSileroVADServiceStreaming:
 
         # The input to onnx session.run should still be (1, 512)
         call_args = mock_session.run.call_args
-        input_data = call_args[1]["input"] if "input" in (call_args[1] or {}) else call_args[0][1]["input"]
+        input_data = (
+            call_args[1]["input"] if "input" in (call_args[1] or {}) else call_args[0][1]["input"]
+        )
         assert input_data.shape == (1, 512)
 
     def test_process_chunk_not_loaded_raises(self):
@@ -432,6 +434,7 @@ class TestVADSessionStateDatetimeAware:
         """After reset, last_activity should still be timezone-aware."""
         state = VADSessionState(session_id="tz-reset")
         import numpy as _np
+
         state.h_state = _np.zeros((2, 1, 128), dtype=_np.float32)
 
         old_activity = state.last_activity

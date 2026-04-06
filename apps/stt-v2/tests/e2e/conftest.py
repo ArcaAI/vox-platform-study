@@ -96,15 +96,19 @@ async def configured_app(postgres_container, redis_container, minio_container):
 
     _saved_env = {
         k: os.environ.get(k)
-        for k in ("DATABASE_URL", "REDIS_URL", "MINIO_ENDPOINT",
-                   "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY", "DEBUG")
+        for k in (
+            "DATABASE_URL",
+            "REDIS_URL",
+            "MINIO_ENDPOINT",
+            "MINIO_ACCESS_KEY",
+            "MINIO_SECRET_KEY",
+            "DEBUG",
+        )
     }
     _saved_db_settings = db_conn.settings
     _saved_health_settings = health_routes.settings
     _saved_main_settings = main_mod.settings
     _saved_minio_settings = minio_mod.settings
-    _saved_engines = dict(db_conn._engines)
-    _saved_factories = dict(db_conn._session_factories)
 
     # ------------------------------------------------------------------
     # Configure environment for testcontainers
@@ -127,6 +131,7 @@ async def configured_app(postgres_container, redis_container, minio_container):
 
     # Clear cached settings so get_settings() picks up new env vars
     from stt_v2.core.config.settings import get_settings
+
     get_settings.cache_clear()
 
     # Force-update module-level `settings` objects that were resolved at import
@@ -158,26 +163,18 @@ async def configured_app(postgres_container, redis_container, minio_container):
 
     _tmp_engine = _create_engine(async_url)
     async with _tmp_engine.begin() as conn:
-        await conn.execute(_text('CREATE SCHEMA IF NOT EXISTS core'))
+        await conn.execute(_text("CREATE SCHEMA IF NOT EXISTS core"))
         # Create all PostgreSQL ENUM types that the models reference.
         # Production DB creates these via Prisma migrations; for
         # testcontainers we must create them ourselves.
         _enums = {
-            "ResourceStatusType": (
-                "'ENABLED','DISABLED','DELETED','PENDING','ARCHIVED'"
-            ),
-            "AiModelSource": (
-                "'HUGGINGFACE','GITHUB','MLFLOW','LOCAL'"
-            ),
-            "AiModelFormat": (
-                "'SAFETENSOR','ONNX','NEMO','PYTORCH'"
-            ),
+            "ResourceStatusType": ("'ENABLED','DISABLED','DELETED','PENDING','ARCHIVED'"),
+            "AiModelSource": ("'HUGGINGFACE','GITHUB','MLFLOW','LOCAL'"),
+            "AiModelFormat": ("'SAFETENSOR','ONNX','NEMO','PYTORCH'"),
             "AiModelDownloadStatus": (
                 "'NOT_DOWNLOADED','DOWNLOADING','DOWNLOADED','DOWNLOAD_FAILED'"
             ),
-            "ModelCategory": (
-                "'AUDIO','TEXT','VISION','MULTIMODAL'"
-            ),
+            "ModelCategory": ("'AUDIO','TEXT','VISION','MULTIMODAL'"),
             "ModelTaskType": (
                 "'AUTOMATIC_SPEECH_RECOGNITION','VOICE_ACTIVITY_DETECTION',"
                 "'AUDIO_DENOISING','SPEAKER_DIARIZATION','TEXT_TO_SPEECH',"
@@ -185,22 +182,23 @@ async def configured_app(postgres_container, redis_container, minio_container):
                 "'TEXT_CLASSIFICATION','NAMED_ENTITY_RECOGNITION',"
                 "'IMAGE_CLASSIFICATION','OBJECT_DETECTION'"
             ),
-            "ModelType": (
-                "'BASE_MODEL','FINETUNED_MODEL','QUANTIZED_MODEL','UNKNOWN'"
-            ),
+            "ModelType": ("'BASE_MODEL','FINETUNED_MODEL','QUANTIZED_MODEL','UNKNOWN'"),
         }
         for enum_name, enum_values in _enums.items():
-            await conn.execute(_text(
-                f"DO $$ BEGIN "
-                f"  CREATE TYPE core.\"{enum_name}\" AS ENUM ({enum_values}); "
-                f"EXCEPTION WHEN duplicate_object THEN NULL; "
-                f"END $$"
-            ))
+            await conn.execute(
+                _text(
+                    f"DO $$ BEGIN "
+                    f'  CREATE TYPE core."{enum_name}" AS ENUM ({enum_values}); '
+                    f"EXCEPTION WHEN duplicate_object THEN NULL; "
+                    f"END $$"
+                )
+            )
         await conn.run_sync(Base.metadata.create_all)
     await _tmp_engine.dispose()
 
     # Import and create app
     from stt_v2.main import create_app
+
     app = create_app()
 
     async with AsyncClient(
@@ -212,6 +210,12 @@ async def configured_app(postgres_container, redis_container, minio_container):
     # ------------------------------------------------------------------
     # Restore global state so session-scoped fixtures (real_audio_client)
     # continue to work correctly after this function-scoped test.
+    #
+    # We dispose testcontainer engines and clear the cache entirely so
+    # that _get_or_create_engine() lazily creates fresh engines with
+    # the restored (real DB) settings on next use.  Restoring the old
+    # engine objects is unsafe because they were disposed during setup
+    # and their pools may reconnect to stale addresses.
     # ------------------------------------------------------------------
     for engine in list(db_conn._engines.values()):
         try:
@@ -221,21 +225,18 @@ async def configured_app(postgres_container, redis_container, minio_container):
     db_conn._engines.clear()
     db_conn._session_factories.clear()
 
-    # Restore saved engines / factories
-    db_conn._engines.update(_saved_engines)
-    db_conn._session_factories.update(_saved_factories)
-
-    db_conn.settings = _saved_db_settings
-    health_routes.settings = _saved_health_settings
-    main_mod.settings = _saved_main_settings
-    minio_mod.settings = _saved_minio_settings
-
-    # Restore env vars
+    # Restore env vars BEFORE restoring settings so get_settings()
+    # picks up the original values.
     for k, v in _saved_env.items():
         if v is None:
             os.environ.pop(k, None)
         else:
             os.environ[k] = v
+
+    db_conn.settings = _saved_db_settings
+    health_routes.settings = _saved_health_settings
+    main_mod.settings = _saved_main_settings
+    minio_mod.settings = _saved_minio_settings
 
     get_settings.cache_clear()
 
@@ -272,15 +273,18 @@ async def real_audio_client():
         "TEST_DATABASE_URL",
         "postgresql+asyncpg://test:test@localhost:5433/hope_test",
     )
-    os.environ["REDIS_URL"] = os.environ.get(
-        "TEST_REDIS_URL", "redis://localhost:6380/0"
-    )
-    os.environ["MINIO_ENDPOINT"] = os.environ.get(
-        "TEST_MINIO_ENDPOINT", "localhost:9002"
-    )
+    os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL", "redis://localhost:6380/0")
+    os.environ["MINIO_ENDPOINT"] = os.environ.get("TEST_MINIO_ENDPOINT", "localhost:9002")
     os.environ["MINIO_ACCESS_KEY"] = os.environ.get("MINIO_ACCESS_KEY", "test")
     os.environ["MINIO_SECRET_KEY"] = os.environ.get("MINIO_SECRET_KEY", "testpassword")
     os.environ["DEBUG"] = "true"
+    # Use HF_HOME when the production default /models/hf-cache doesn't exist
+    # (only present inside Docker containers).
+    if not Path(os.environ.get("HUGGINGFACE_CACHE_DIR", "/models/hf-cache")).is_dir():
+        _hf_default = os.environ.get("HF_HOME") or str(
+            Path.home() / ".cache" / "huggingface" / "hub"
+        )
+        os.environ.setdefault("HUGGINGFACE_CACHE_DIR", _hf_default)
     # Limit DB pool to avoid TooManyConnectionsError on test PostgreSQL
     # (max_connections=20).  Each event-loop creates its own engine, so
     # keep the per-engine pool small.
@@ -294,6 +298,7 @@ async def real_audio_client():
     # Force-update module-level settings and dispose stale DB engines
     # (same as configured_app — prevents cross-contamination)
     import stt_v2.core.database.connection as db_conn
+
     db_conn.settings = new_settings
     for engine in list(db_conn._engines.values()):
         try:
@@ -304,12 +309,15 @@ async def real_audio_client():
     db_conn._session_factories.clear()
 
     import stt_v2.health.api.routes as health_routes
+
     health_routes.settings = new_settings
 
     import stt_v2.main as main_mod
+
     main_mod.settings = new_settings
 
     import stt_v2.core.storage.minio_client as minio_mod
+
     minio_mod.settings = new_settings
 
     # Verify the monorepo test infra is reachable before proceeding.
@@ -325,8 +333,7 @@ async def real_audio_client():
     except Exception as exc:
         await _probe_engine.dispose()
         pytest.skip(
-            f"Monorepo test infrastructure not available "
-            f"(pnpm docker:test:up required): {exc}"
+            f"Monorepo test infrastructure not available " f"(pnpm docker:test:up required): {exc}"
         )
     await _probe_engine.dispose()
 
@@ -383,24 +390,28 @@ async def valid_pipeline_id(real_audio_client) -> str:
         return override
 
     slug = "turbo-whisper-large-v3"
+    tenant_id = os.environ.get("TEST_TENANT_ID", "50000000-0000-0000-0000-000000000000")
 
-    # Verify the pipeline exists in the test DB (seeded by pnpm test:db:seed)
     from sqlalchemy import text
 
     from stt_v2.core.database.connection import get_session
 
     async with get_session() as session:
         result = await session.execute(
-            text('SELECT slug FROM core."AsrPipeline" WHERE slug = :slug'),
-            {"slug": slug},
+            text(
+                'SELECT slug FROM core."AsrPipeline"'
+                ' WHERE slug = :slug'
+                " AND \"resourceStatus\" = 'ENABLED'"
+                ' AND "tenantId" = :tenant_id'
+            ),
+            {"slug": slug, "tenant_id": tenant_id},
         )
         existing = result.scalar_one_or_none()
 
         if existing is None:
-            import pytest
-
             pytest.fail(
-                f"Pipeline '{slug}' not found in test DB. "
+                f"Pipeline '{slug}' not found in test DB "
+                f"(resourceStatus=ENABLED, tenantId={tenant_id}). "
                 f"Run 'pnpm test:db:seed' to seed the test database."
             )
 
@@ -435,23 +446,23 @@ def sample_wav_audio() -> bytes:
     wav_buffer = io.BytesIO()
 
     # RIFF header
-    wav_buffer.write(b'RIFF')
-    wav_buffer.write(struct.pack('<I', 36 + len(samples) * 2))
-    wav_buffer.write(b'WAVE')
+    wav_buffer.write(b"RIFF")
+    wav_buffer.write(struct.pack("<I", 36 + len(samples) * 2))
+    wav_buffer.write(b"WAVE")
 
     # fmt chunk
-    wav_buffer.write(b'fmt ')
-    wav_buffer.write(struct.pack('<I', 16))  # Chunk size
-    wav_buffer.write(struct.pack('<H', 1))   # Audio format (PCM)
-    wav_buffer.write(struct.pack('<H', 1))   # Channels (mono)
-    wav_buffer.write(struct.pack('<I', sample_rate))  # Sample rate
-    wav_buffer.write(struct.pack('<I', sample_rate * 2))  # Byte rate
-    wav_buffer.write(struct.pack('<H', 2))   # Block align
-    wav_buffer.write(struct.pack('<H', 16))  # Bits per sample
+    wav_buffer.write(b"fmt ")
+    wav_buffer.write(struct.pack("<I", 16))  # Chunk size
+    wav_buffer.write(struct.pack("<H", 1))  # Audio format (PCM)
+    wav_buffer.write(struct.pack("<H", 1))  # Channels (mono)
+    wav_buffer.write(struct.pack("<I", sample_rate))  # Sample rate
+    wav_buffer.write(struct.pack("<I", sample_rate * 2))  # Byte rate
+    wav_buffer.write(struct.pack("<H", 2))  # Block align
+    wav_buffer.write(struct.pack("<H", 16))  # Bits per sample
 
     # data chunk
-    wav_buffer.write(b'data')
-    wav_buffer.write(struct.pack('<I', len(samples) * 2))
+    wav_buffer.write(b"data")
+    wav_buffer.write(struct.pack("<I", len(samples) * 2))
     wav_buffer.write(samples.tobytes())
 
     return wav_buffer.getvalue()

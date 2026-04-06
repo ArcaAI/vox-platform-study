@@ -24,12 +24,14 @@ import {
   type HighlightTransportConfig,
   type LokiTransportConfig,
   type OTelTransportConfig,
+  type OTelLogBridgeTransportConfig,
   LOG_LEVEL_VALUES,
   ConsoleTransport,
   FileTransport,
   HighlightTransport,
   LokiTransport,
   OTelTransport,
+  OTelLogBridgeTransport,
 } from './transports';
 import { getEnvBoolean, getEnvString, getEnvNumber, isDevelopment } from './env.utils';
 
@@ -142,23 +144,36 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
       this.transports.push(new LokiTransport(lokiConfig));
     }
 
-    // OpenTelemetry transport
+    // OpenTelemetry log transport
     const otelEnabled = getEnvBoolean('OTEL_LOGS_ENABLED', false);
-    const otelEndpoint = getEnvString('OTEL_EXPORTER_OTLP_ENDPOINT') || getEnvString('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT');
-    if (otelEnabled && otelEndpoint) {
-      const otelConfig: OTelTransportConfig = {
-        name: 'otel',
+    const useOtelBridge = getEnvBoolean('OTEL_LOG_BRIDGE', false);
+
+    if (otelEnabled && useOtelBridge) {
+      const bridgeConfig: OTelLogBridgeTransportConfig = {
+        name: 'otel-bridge',
         enabled: true,
         level: this.level,
-        endpoint: otelEndpoint,
         serviceName: this.serviceName,
         serviceVersion: this.serviceVersion,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        protocol: (getEnvString('OTEL_EXPORTER_OTLP_PROTOCOL', 'http/json') as any) || 'http/json',
-        injectTraceContext: getEnvBoolean('OTEL_INJECT_TRACE_CONTEXT', true),
-        resourceAttributes: this.parseLabels(getEnvString('OTEL_RESOURCE_ATTRIBUTES', '')),
       };
-      this.transports.push(new OTelTransport(otelConfig));
+      this.transports.push(new OTelLogBridgeTransport(bridgeConfig));
+    } else if (otelEnabled) {
+      const otelEndpoint = getEnvString('OTEL_EXPORTER_OTLP_ENDPOINT') || getEnvString('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT');
+      if (otelEndpoint) {
+        const otelConfig: OTelTransportConfig = {
+          name: 'otel',
+          enabled: true,
+          level: this.level,
+          endpoint: otelEndpoint,
+          serviceName: this.serviceName,
+          serviceVersion: this.serviceVersion,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          protocol: (getEnvString('OTEL_EXPORTER_OTLP_PROTOCOL', 'http/json') as any) || 'http/json',
+          injectTraceContext: getEnvBoolean('OTEL_INJECT_TRACE_CONTEXT', true),
+          resourceAttributes: this.parseLabels(getEnvString('OTEL_RESOURCE_ATTRIBUTES', '')),
+        };
+        this.transports.push(new OTelTransport(otelConfig));
+      }
     }
   }
 

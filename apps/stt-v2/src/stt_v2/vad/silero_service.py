@@ -125,7 +125,7 @@ class SileroVADService:
         # Collect per-frame probabilities
         probs: list[float] = []
         for offset in range(0, len(samples), frame_size):
-            chunk = samples[offset: offset + frame_size]
+            chunk = samples[offset : offset + frame_size]
             if len(chunk) < frame_size:
                 chunk = np.pad(chunk, (0, frame_size - len(chunk)))
 
@@ -186,9 +186,7 @@ class SileroVADService:
             raise RuntimeError("SileroVADService not initialised — call initialize() first")
 
         frame_size = (
-            _SILERO_FRAME_SIZE_16K
-            if session_state.sample_rate == 16000
-            else _SILERO_FRAME_SIZE_8K
+            _SILERO_FRAME_SIZE_16K if session_state.sample_rate == 16000 else _SILERO_FRAME_SIZE_8K
         )
 
         # Pad if too short
@@ -296,10 +294,12 @@ class SileroVADService:
                         # End of speech
                         if speech_frame_count >= min_speech_frames:
                             start_sample = max(0, speech_start * frame_size - pad_samples)
-                            end_sample = min(total_samples, (i - silence_count + 1) * frame_size + pad_samples)
+                            end_sample = min(
+                                total_samples, (i - silence_count + 1) * frame_size + pad_samples
+                            )
 
                             avg_prob = (
-                                sum(probs[speech_start: i - silence_count + 1])
+                                sum(probs[speech_start : i - silence_count + 1])
                                 / (i - silence_count + 1 - speech_start)
                                 if (i - silence_count + 1 - speech_start) > 0
                                 else 0.0
@@ -332,6 +332,29 @@ class SileroVADService:
             )
 
         return segments
+
+    @staticmethod
+    def probs_to_segments(
+        probs: list[float],
+        frame_size: int,
+        sample_rate: int,
+        threshold: float,
+        min_speech_ms: int,
+        min_silence_ms: int,
+        pad_ms: int,
+        total_samples: int,
+    ) -> list[SpeechSegment]:
+        """Public wrapper for converting VAD frame probabilities to segments."""
+        return SileroVADService._probs_to_segments(
+            probs=probs,
+            frame_size=frame_size,
+            sample_rate=sample_rate,
+            threshold=threshold,
+            min_speech_ms=min_speech_ms,
+            min_silence_ms=min_silence_ms,
+            pad_ms=pad_ms,
+            total_samples=total_samples,
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -4,12 +4,20 @@ and MPS memory cleanup on unload.
 
 import sys
 import types
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from stt_v2.models.base_loader import LoadedModel
 from stt_v2.models.onnx_loader import ONNXLoader
+from stt_v2.pipeline.dto import (
+    AiModelConfig,
+    AiModelDownloadStatus,
+    AiModelFormat,
+    AiModelSource,
+    ModelTaskType,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -33,6 +41,27 @@ def _stub_onnxruntime():
     finally:
         sys.modules.pop("onnxruntime", None)
 
+@pytest.fixture(autouse=True)
+def _stub_huggingface_hub():
+    """Ensure ``huggingface_hub`` is importable for every test.
+
+    The production code lazy-imports ``huggingface_hub`` inside a
+    try/except, but ``patch("huggingface_hub.snapshot_download", ...)``
+    requires the module to exist in ``sys.modules``.  In CI
+    ``huggingface_hub`` is not installed, so we inject a lightweight
+    stub when needed.
+    """
+    if "huggingface_hub" in sys.modules:
+        yield
+        return
+
+    stub = types.ModuleType("huggingface_hub")
+    stub.snapshot_download = lambda *a, **kw: ""
+    sys.modules["huggingface_hub"] = stub
+    try:
+        yield
+    finally:
+        sys.modules.pop("huggingface_hub", None)
 
 # =============================================================================
 # Standard ONNX Loader — _get_providers()
@@ -46,9 +75,13 @@ class TestGetProviders:
         """CUDA provider should be returned as a plain string."""
         loader = ONNXLoader()
 
-        with patch("onnxruntime.get_available_providers", return_value=[
-            "CUDAExecutionProvider", "CPUExecutionProvider",
-        ]):
+        with patch(
+            "onnxruntime.get_available_providers",
+            return_value=[
+                "CUDAExecutionProvider",
+                "CPUExecutionProvider",
+            ],
+        ):
             providers = loader._get_providers()
 
         assert providers[0] == "CUDAExecutionProvider"
@@ -58,9 +91,12 @@ class TestGetProviders:
         """When only CPU is available, return simple string list."""
         loader = ONNXLoader()
 
-        with patch("onnxruntime.get_available_providers", return_value=[
-            "CPUExecutionProvider",
-        ]):
+        with patch(
+            "onnxruntime.get_available_providers",
+            return_value=[
+                "CPUExecutionProvider",
+            ],
+        ):
             providers = loader._get_providers()
 
         assert providers == ["CPUExecutionProvider"]
@@ -109,9 +145,83 @@ class TestONNXUnload:
         mock_model.model = MagicMock()
         mock_model.model_slug = "test-onnx"
 
-        with patch(
-            "stt_v2.models.base_loader.cleanup_accelerator_memory"
-        ) as mock_cleanup:
+        with patch("stt_v2.models.base_loader.cleanup_accelerator_memory") as mock_cleanup:
             await loader.unload(mock_model)
 
             mock_cleanup.assert_called_once()
+
+
+# =============================================================================
+# ONNX Snapshot Directory Resolution
+# =============================================================================
+
+
+class TestResolveOnnxModelFile:
+    """Tests for resolving concrete .onnx files from snapshot directories."""
+
+    def test_prefers_onnx_subfolder_model_file(self, tmp_path):
+        """Should resolve to onnx/model.onnx when directory path is provided."""
+        snapshot_dir = tmp_path / "snapshot"
+        model_file = snapshot_dir / "onnx" / "model.onnx"
+        model_file.parent.mkdir(parents=True)
+        model_file.write_bytes(b"dummy")
+
+        resolved = ONNXLoader._resolve_onnx_model_file(snapshot_dir)
+
+        assert resolved == model_file
+
+    def test_returns_none_when_no_onnx_file_found(self, tmp_path):
+        """Should return None if snapshot directory has no usable ONNX file."""
+        snapshot_dir = tmp_path / "snapshot"
+        snapshot_dir.mkdir(parents=True)
+
+        resolved = ONNXLoader._resolve_onnx_model_file(snapshot_dir)
+
+        assert resolved is None
+
+
+class TestDownloadOnnxModelAllowPatterns:
+    """Tests for ONNX download allow-pattern selection."""
+
+    @pytest.mark.asyncio
+    async def test_includes_single_file_onnx_patterns_for_onnx_community_models(self):
+        """onnx-community VAD repos should include onnx/model.onnx patterns."""
+        loader = ONNXLoader()
+        model_config = AiModelConfig(
+            id="m-vad",
+            tenant_id="t-1",
+            slug="onnx-community--silero-vad",
+            name="Silero VAD",
+            description="VAD model",
+            task_type=ModelTaskType.VOICE_ACTIVITY_DETECTION,
+            source=AiModelSource.HUGGINGFACE,
+            source_uri="onnx-community/silero-vad",
+            source_revision="main",
+            format=AiModelFormat.ONNX,
+            memory_size_mb=None,
+            compute_type="float32",
+            download_status=AiModelDownloadStatus.NOT_DOWNLOADED,
+            local_path=None,
+            downloaded_at=datetime.utcnow(),
+            file_size_mb=None,
+            checksum=None,
+            tags=[],
+        )
+
+        with (
+            patch("stt_v2.models.onnx_loader.get_settings") as mock_settings,
+            patch(
+                "huggingface_hub.snapshot_download",
+                return_value="/tmp/model-cache",
+            ) as mock_snapshot,
+            patch("os.makedirs"),
+        ):
+            settings = MagicMock()
+            settings.huggingface_cache_dir = "/tmp/hf-cache"
+            mock_settings.return_value = settings
+
+            _ = await loader._download_onnx_model(model_config)
+
+        allow_patterns = mock_snapshot.call_args.kwargs["allow_patterns"]
+        assert "onnx/model.onnx" in allow_patterns
+        assert "onnx/model.onnx_data" in allow_patterns

@@ -1,0 +1,493 @@
+###############################################################################
+# Grafana Alert Rules — HOPE Observability Stack
+#
+# Provisioned automatically on Grafana startup.
+# Contact points and notification policies must be configured in the UI
+# (or via additional provisioning files).
+#
+# Severity routing:
+#   critical -> Slack #hope-alerts-critical (group wait 30s, repeat 5m)
+#   warning  -> Slack #hope-alerts-warning  (group wait 1m, repeat 30m)
+#   info     -> Slack #hope-alerts-info     (group wait 5m, repeat 2h)
+###############################################################################
+
+apiVersion: 1
+
+groups:
+  # ── Critical Alerts ──────────────────────────────────────────────────────
+
+  - orgId: 1
+    name: HOPE Critical
+    folder: HOPE Critical
+    interval: 1m
+    rules:
+      - uid: hope-service-down
+        title: ServiceDown
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: up{job=~"api-gateway|stt-v2|smr|nlp"}
+              instant: true
+          - refId: B
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+                  operator: { type: and }
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is DOWN on {{ $labels.instance }}"
+
+      - uid: hope-api-error-rate-high
+        title: APIErrorRateHigh
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: >-
+                rate(http_requests_total{status=~"5..",job="api-gateway"}[5m])
+                / rate(http_requests_total{job="api-gateway"}[5m])
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.05] }
+                  operator: { type: and }
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API Gateway 5xx error rate exceeds 5%"
+
+      - uid: hope-db-replication-lag-critical
+        title: DBReplicationLagCritical
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: pg_replication_lag_seconds
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [30] }
+                  operator: { type: and }
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database replication lag exceeds 30 seconds on {{ $labels.instance }}"
+
+      - uid: hope-db-primary-failover
+        title: DBPrimaryFailover
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: changes(patroni_master[5m])
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+                  operator: { type: and }
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database primary failover detected — Patroni leader changed"
+
+      - uid: hope-redis-oom
+        title: RedisOOM
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: redis_memory_used_bytes / redis_memory_max_bytes
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.95] }
+                  operator: { type: and }
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis memory usage exceeds 95% on {{ $labels.instance }}"
+
+  # ── Warning Alerts ──────────────────────────────────────────────────────
+
+  - orgId: 1
+    name: HOPE Warning
+    folder: HOPE Warning
+    interval: 1m
+    rules:
+      - uid: hope-high-api-latency
+        title: HighAPILatency
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: >-
+                histogram_quantile(0.95,
+                  rate(http_request_duration_seconds_bucket{job="api-gateway"}[5m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [2] }
+                  operator: { type: and }
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API Gateway P95 latency exceeds 2 seconds"
+
+      - uid: hope-smr-generation-errors
+        title: SMRGenerationErrors
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: rate(smr_v2_generation_errors_total[5m])
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.1] }
+                  operator: { type: and }
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SMR generation error rate exceeds 0.1/s"
+
+      - uid: hope-db-connection-saturation
+        title: DBConnectionSaturation
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: pg_stat_activity_count / pg_settings_max_connections
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.8] }
+                  operator: { type: and }
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection usage exceeds 80% on {{ $labels.instance }}"
+
+      - uid: hope-disk-usage-high
+        title: DiskUsageHigh
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: >-
+                (1 - node_filesystem_avail_bytes{mountpoint="/"}
+                  / node_filesystem_size_bytes{mountpoint="/"})
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.8] }
+                  operator: { type: and }
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk usage exceeds 80% on {{ $labels.instance }}"
+
+      - uid: hope-otel-collector-drops
+        title: OTelCollectorDrops
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: rate(otelcol_exporter_send_failed_spans_total[5m])
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+                  operator: { type: and }
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTel Collector is dropping spans — check Tempo connectivity"
+
+      - uid: hope-loki-ingestion-errors
+        title: LokiIngestionErrors
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: rate(loki_distributor_lines_received_total{status="error"}[5m])
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+                  operator: { type: and }
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Loki is receiving error log lines — check log pipeline"
+
+  # ── Info Alerts ─────────────────────────────────────────────────────────
+
+  - orgId: 1
+    name: HOPE Info
+    folder: HOPE Info
+    interval: 5m
+    rules:
+      - uid: hope-db-replication-lag-rising
+        title: DBReplicationLagRising
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: pg_replication_lag_seconds
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [5] }
+                  operator: { type: and }
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "Database replication lag exceeds 5 seconds on {{ $labels.instance }}"
+
+      - uid: hope-redis-memory-high
+        title: RedisMemoryHigh
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: redis_memory_used_bytes / redis_memory_max_bytes
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.8] }
+                  operator: { type: and }
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Redis memory usage exceeds 80% on {{ $labels.instance }}"
+
+      - uid: hope-cpu-sustained-high
+        title: CPUSustainedHigh
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: Prometheus
+            model:
+              expr: rate(process_cpu_seconds_total[5m])
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.8] }
+                  operator: { type: and }
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Process CPU usage sustained above 80% for {{ $labels.job }} on {{ $labels.instance }}"
+
+      - uid: hope-client-sdk-error-spike
+        title: ClientSDKErrorSpike
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: Loki
+            model:
+              expr: 'count_over_time({app="arcaai-vox", level="error"}[5m])'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [10] }
+                  operator: { type: and }
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "Client SDK error spike — more than 10 errors in 5 minutes"

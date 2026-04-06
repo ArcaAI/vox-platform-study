@@ -154,5 +154,3 @@ def get_device_string() -> str:
         str: Device string ('cpu', 'cuda', or 'mps').
     """
     return detect_platform().value
-
-

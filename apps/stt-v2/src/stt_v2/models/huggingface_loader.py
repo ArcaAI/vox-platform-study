@@ -37,8 +37,9 @@ class HuggingFaceLoader(BaseModelLoader):
             )
 
             # Determine device and dtype
-            # Device is always auto-detected from hardware; compute_type only affects dtype
-            device = self._get_device("auto")
+            # Device can be specified in model config; falls back to auto-detect
+            requested_device = model_config.device or "auto"
+            device = self._get_device(requested_device)
             torch_dtype = self._get_torch_dtype(model_config.compute_type or "auto")
 
             # Model source (HuggingFace model ID or local path)
@@ -69,8 +70,7 @@ class HuggingFaceLoader(BaseModelLoader):
             memory_mb = self._estimate_model_memory(model)
 
             logger.info(
-                f"Loaded model {model_config.slug} successfully "
-                f"(memory: ~{memory_mb}MB)"
+                f"Loaded model {model_config.slug} successfully " f"(memory: ~{memory_mb}MB)"
             )
 
             return LoadedModel(
@@ -90,9 +90,7 @@ class HuggingFaceLoader(BaseModelLoader):
             )
 
         except ImportError as e:
-            raise ModelLoadError(
-                f"Missing required package for HuggingFace loader: {e}"
-            ) from e
+            raise ModelLoadError(f"Missing required package for HuggingFace loader: {e}") from e
         except Exception as e:
             raise ModelLoadError(
                 f"Failed to load HuggingFace model {model_config.slug}: {e}"
@@ -141,13 +139,9 @@ class HuggingFaceLoader(BaseModelLoader):
                     low_cpu_mem_usage=True,
                     **common_kwargs,
                 )
-                generation_config = GenerationConfig.from_pretrained(
-                    model_source, **common_kwargs
-                )
+                generation_config = GenerationConfig.from_pretrained(model_source, **common_kwargs)
                 model.generation_config = generation_config
-                processor = WhisperProcessor.from_pretrained(
-                    model_source, **common_kwargs
-                )
+                processor = WhisperProcessor.from_pretrained(model_source, **common_kwargs)
             except Exception:
                 # Fall back to generic ASR model
                 try:
@@ -169,13 +163,9 @@ class HuggingFaceLoader(BaseModelLoader):
             # Load processor/tokenizer
             if processor is None:
                 try:
-                    processor = AutoProcessor.from_pretrained(
-                        model_source, **common_kwargs
-                    )
+                    processor = AutoProcessor.from_pretrained(model_source, **common_kwargs)
                 except Exception as err:
-                    tokenizer = AutoTokenizer.from_pretrained(
-                        model_source, **common_kwargs
-                    )
+                    tokenizer = AutoTokenizer.from_pretrained(model_source, **common_kwargs)
                     if AutoFeatureExtractor is None:
                         raise ImportError(
                             "AutoFeatureExtractor is unavailable in the installed "
@@ -196,9 +186,7 @@ class HuggingFaceLoader(BaseModelLoader):
                 raise ImportError(
                     "AutoFeatureExtractor is unavailable in the installed transformers package"
                 )
-            feature_extractor = AutoFeatureExtractor.from_pretrained(
-                model_source, **common_kwargs
-            )
+            feature_extractor = AutoFeatureExtractor.from_pretrained(model_source, **common_kwargs)
 
         else:
             # Generic loading
@@ -208,9 +196,7 @@ class HuggingFaceLoader(BaseModelLoader):
                 low_cpu_mem_usage=True,
                 **common_kwargs,
             )
-            processor = AutoProcessor.from_pretrained(
-                model_source, **common_kwargs
-            )
+            processor = AutoProcessor.from_pretrained(model_source, **common_kwargs)
 
         # Move model to device
         if model is not None:

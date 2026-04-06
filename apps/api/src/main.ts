@@ -184,6 +184,10 @@ async function bootstrap() {
   const loggingService = app.get(ILoggingService);
   app.useLogger(loggingService);
 
+  // Register crash handlers so uncaught exceptions/rejections are logged and flushed
+  const { registerCrashHandlers } = await import('./crash-handlers');
+  registerCrashHandlers(loggingService);
+
   // Use native WebSocket adapter for WebSocket support
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   app.useWebSocketAdapter(new WsAdapter(app) as any);

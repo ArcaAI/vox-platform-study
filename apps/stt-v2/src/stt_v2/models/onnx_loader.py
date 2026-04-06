@@ -78,10 +78,16 @@ class ONNXLoader(BaseModelLoader):
                         "ONNX models must be downloaded first."
                     )
 
-            if not Path(model_path).exists():
-                raise ModelLoadError(
-                    f"ONNX model file not found: {model_path}"
-                )
+            model_path_obj = Path(model_path)
+            if model_path_obj.is_dir():
+                resolved_model_file = self._resolve_onnx_model_file(model_path_obj)
+                if resolved_model_file is None:
+                    raise ModelLoadError(f"No ONNX model file found in directory: {model_path}")
+                model_path = str(resolved_model_file)
+                model_path_obj = resolved_model_file
+
+            if not model_path_obj.exists():
+                raise ModelLoadError(f"ONNX model file not found: {model_path}")
 
             logger.info(f"Loading ONNX model from: {model_path}")
 
@@ -92,9 +98,7 @@ class ONNXLoader(BaseModelLoader):
             num_threads = self._resolve_num_threads()
 
             session_options = ort.SessionOptions()
-            session_options.graph_optimization_level = (
-                ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            )
+            session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
             session_options.intra_op_num_threads = num_threads
             # inter_op_num_threads only matters with ORT_PARALLEL execution mode.
             # Whisper is sequential, so leave at default (1).
@@ -146,9 +150,7 @@ class ONNXLoader(BaseModelLoader):
                 "onnxruntime not installed. Install with: pip install onnxruntime-gpu"
             ) from e
         except Exception as e:
-            raise ModelLoadError(
-                f"Failed to load ONNX model {model_config.slug}: {e}"
-            ) from e
+            raise ModelLoadError(f"Failed to load ONNX model {model_config.slug}: {e}") from e
 
     async def unload(self, loaded_model: LoadedModel) -> None:
         """Unload ONNX model from memory."""
@@ -231,20 +233,32 @@ class ONNXLoader(BaseModelLoader):
 
         Returns True for:
         - Models with ONNX_OPTIMUM format
-        - ONNX-community whisper models
-        - Models ending with .onnx format that are on HuggingFace
+        - ASR ONNX models from onnx-community
+        - ASR ONNX models whose source contains "whisper"
+
+        Non-ASR ONNX models (for example VAD) should stay on plain
+        ONNX Runtime because Optimum's speech-seq2seq loader only supports
+        transformer-style speech generation models.
         """
         if model_config.format == AiModelFormat.ONNX_OPTIMUM:
             return True
 
+        # Auto-detection only applies to standard ONNX models.
+        if model_config.format != AiModelFormat.ONNX:
+            return False
+
+        # Restrict Optimum routing to ASR models.
+        if not model_config.is_asr:
+            return False
+
         source_uri = model_config.source_uri.lower()
 
-        # ONNX-community models should use Optimum for better support
+        # ONNX-community ASR models are expected to follow Optimum layout.
         if "onnx-community" in source_uri:
             return True
 
-        # Check for Whisper ONNX models
-        if "whisper" in source_uri and model_config.format == AiModelFormat.ONNX:
+        # Whisper ONNX models should use Optimum.
+        if "whisper" in source_uri:
             return True
 
         return False
@@ -294,22 +308,28 @@ class ONNXLoader(BaseModelLoader):
             onnx_prefix = f"{subfolder}/" if subfolder else ""
             if quantization:
                 suffix = f"_{quantization}"
-                allow_patterns.extend([
-                    f"{onnx_prefix}encoder_model{suffix}.onnx",
-                    f"{onnx_prefix}encoder_model{suffix}.onnx_data",
-                    f"{onnx_prefix}decoder_model_merged{suffix}.onnx",
-                    f"{onnx_prefix}decoder_model_merged{suffix}.onnx_data",
-                ])
+                allow_patterns.extend(
+                    [
+                        f"{onnx_prefix}encoder_model{suffix}.onnx",
+                        f"{onnx_prefix}encoder_model{suffix}.onnx_data",
+                        f"{onnx_prefix}decoder_model_merged{suffix}.onnx",
+                        f"{onnx_prefix}decoder_model_merged{suffix}.onnx_data",
+                    ]
+                )
             else:
                 # Default: download base ONNX files (not quantized variants)
-                allow_patterns.extend([
-                    f"{onnx_prefix}encoder_model.onnx",
-                    f"{onnx_prefix}encoder_model.onnx_data",
-                    f"{onnx_prefix}decoder_model_merged.onnx",
-                    f"{onnx_prefix}decoder_model_merged.onnx_data",
-                    f"{onnx_prefix}decoder_model.onnx",
-                    f"{onnx_prefix}decoder_with_past_model.onnx",
-                ])
+                allow_patterns.extend(
+                    [
+                        f"{onnx_prefix}encoder_model.onnx",
+                        f"{onnx_prefix}encoder_model.onnx_data",
+                        f"{onnx_prefix}decoder_model_merged.onnx",
+                        f"{onnx_prefix}decoder_model_merged.onnx_data",
+                        f"{onnx_prefix}decoder_model.onnx",
+                        f"{onnx_prefix}decoder_with_past_model.onnx",
+                        f"{onnx_prefix}model.onnx",
+                        f"{onnx_prefix}model.onnx_data",
+                    ]
+                )
 
             local_path = snapshot_download(
                 repo_id=model_id,
@@ -349,6 +369,27 @@ class ONNXLoader(BaseModelLoader):
             return "onnx"
 
         return ""
+
+    @staticmethod
+    def _resolve_onnx_model_file(model_path: Path) -> Path | None:
+        """Resolve a concrete ONNX file when the given path is a directory."""
+        preferred_candidates = [
+            model_path / "onnx" / "model.onnx",
+            model_path / "model.onnx",
+        ]
+        for candidate in preferred_candidates:
+            if candidate.is_file():
+                return candidate
+
+        top_level_onnx = sorted(model_path.glob("*.onnx"))
+        if len(top_level_onnx) == 1:
+            return top_level_onnx[0]
+
+        nested_model_files = sorted(model_path.rglob("model.onnx"))
+        if len(nested_model_files) == 1:
+            return nested_model_files[0]
+
+        return None
 
     @staticmethod
     def _resolve_quantized_file_names(
@@ -447,9 +488,7 @@ class ONNXLoader(BaseModelLoader):
                     ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
                 )
             else:
-                session_options.graph_optimization_level = (
-                    ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-                )
+                session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
             # Pre-load generation config from repo root.
             # When a subfolder is specified (e.g. "onnx"), Optimum looks for
@@ -465,13 +504,9 @@ class ONNXLoader(BaseModelLoader):
                         revision=revision,
                         cache_dir=cache_dir,
                     )
-                    logger.debug(
-                        f"Loaded generation_config from repo root for {model_id}"
-                    )
+                    logger.debug(f"Loaded generation_config from repo root for {model_id}")
                 except Exception as gc_err:
-                    logger.debug(
-                        f"Could not load generation_config from root: {gc_err}"
-                    )
+                    logger.debug(f"Could not load generation_config from root: {gc_err}")
 
             # Load the model with Optimum
             from_pretrained_kwargs: dict[str, Any] = {
@@ -538,6 +573,4 @@ class ONNXLoader(BaseModelLoader):
             logger.warning(f"Optimum not available, falling back to ONNX Runtime: {e}")
             return await self._load_with_onnxruntime(model_config)
         except Exception as e:
-            raise ModelLoadError(
-                f"Failed to load ONNX model with Optimum: {e}"
-            ) from e
+            raise ModelLoadError(f"Failed to load ONNX model with Optimum: {e}") from e

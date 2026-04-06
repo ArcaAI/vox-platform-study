@@ -1,35 +1,25 @@
 # syntax=docker/dockerfile:1
 # ── NLP Service ──────────────────────────────────────────────────────────────
-# Multi-stage build: deps → builder → debug | production
+# Multi-stage build: builder → debug | production
+#
+# Requires hope-python-base image to be built first:
+#   docker build -t hope-python-base infrastructure/docker/python-base/
 #
 # Build targets:
 #   docker build --target production -t nlp .
 #   docker build --target debug -t nlp:debug .
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Stage 1: deps — system libraries needed to compile native wheels ────────
-FROM python:3.11-slim-trixie AS deps
+# ── Stage 1: Builder — install Python packages into a portable venv ─────────
+FROM hope-python-base:latest AS builder
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
     libasound2-dev
 
-# ── Stage 2: builder — install Python packages into a portable venv ─────────
-FROM deps AS builder
-
-COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /bin/
-
-ENV UV_LINK_MODE=copy \
-    UV_COMPILE_BYTECODE=1 \
-    UV_PYTHON_DOWNLOADS=never
-
-WORKDIR /app
-
 # Layer 1: Install torch CPU-only from PyTorch index.
-# Separated so this ~200MB layer is cached independently and only rebuilds
-# when the torch version constraint changes.
+# Separated so this ~200MB layer is cached independently.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv /app/.venv && \
     uv pip install --python /app/.venv \
@@ -37,28 +27,31 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         "torch>=2.1.0"
 
 # Layer 2: Install remaining deps from lockfile.
-# editdistpy's setuptools requirement is handled by
-# [tool.uv.extra-build-dependencies] in pyproject.toml.
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --locked --no-dev --no-install-project --no-editable \
+    uv sync --frozen --no-dev --no-install-project --no-editable \
         --python /app/.venv/bin/python
 
 COPY pyproject.toml uv.lock ./
 COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable
+    uv sync --frozen --no-dev --no-editable
 
 RUN find /app/.venv/lib -type d \( \
         -name "__pycache__" -o -name "*.egg-info" \
         -o -name "tests" -o -name "test" \
-    \) -exec rm -rf {} + 2>/dev/null; \
-    find /app/.venv/lib -name "*.so" \
-        -exec strip --strip-unneeded {} + 2>/dev/null; true
+        -o -name "docs" -o -name "doc" -o -name "examples" -o -name "benchmarks" \
+    \) -exec rm -rf {} + 2>/dev/null || true \
+    && find /app/.venv/lib \( \
+        -name "*.pyc" -o -name "*.pyo" \
+        -o -name "*.pyi" -o -name "py.typed" \
+    \) -type f -delete 2>/dev/null || true \
+    && find /app/.venv/lib -name "*.so" \
+        -exec strip --strip-unneeded {} + 2>/dev/null || true
 
 # ── Debug stage ─────────────────────────────────────────────────────────────
-FROM python:3.11-slim-trixie AS debug
+FROM hope-python-base:latest AS debug
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -68,43 +61,30 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 COPY --from=builder /app/.venv /app/.venv
 
 WORKDIR /app
-COPY src/nlp/ /app/src/
+COPY src/ /app/src/
 
 ENV PATH="/app/.venv/bin:$PATH" \
-    VIRTUAL_ENV=/app/.venv \
-    PYTHONPATH="/app" \
-    PYTHONUNBUFFERED=1
+    PYTHONPATH="/app/src"
 
-RUN groupadd --gid 1001 nlpuser && \
-    useradd --uid 1001 --gid nlpuser --shell /bin/bash --create-home nlpuser && \
-    chown -R nlpuser:nlpuser /app
-
-USER nlpuser
+USER hope
 EXPOSE 8864
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8864/api/v1/health')"]
 
-ENTRYPOINT ["python", "-m", "nlp.main"]
+ENTRYPOINT ["python", "-m", "uvicorn", "--factory", "nlp.app:get_app", "--host", "0.0.0.0", "--port", "8864"]
 
 # ── Production stage ────────────────────────────────────────────────────────
-FROM python:3.11-slim-trixie AS production
+FROM hope-python-base:latest AS production
 
 LABEL maintainer="HOPE Team" \
     service="nlp" \
     description="HOPE NLP Service" \
     org.opencontainers.image.title="HOPE NLP Service" \
-    org.opencontainers.image.description="Real-time NLP service with Azure Cognitive Services" \
-    org.opencontainers.image.vendor="HOPE Team" \
-    org.opencontainers.image.licenses="MIT"
+    org.opencontainers.image.description="Medical entity recognition and NLP service"
 
-ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app" \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONHASHSEED=random \
-    PATH="/app/.venv/bin:$PATH"
-
-ENV OTEL_SERVICE_NAME=hope-nlp \
+ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app/src" \
+    OTEL_SERVICE_NAME=hope-nlp \
     OTEL_RESOURCE_ATTRIBUTES="service.name=hope-nlp,service.namespace=hope,deployment.environment=production" \
     OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 \
     OTEL_TRACES_ENABLED=true \
@@ -112,18 +92,13 @@ ENV OTEL_SERVICE_NAME=hope-nlp \
     LOG_LEVEL=info \
     LOG_CONSOLE_JSON_FORMAT=true
 
-WORKDIR /app
+COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
+COPY --chown=hope:hope src/ /app/src/
 
-RUN groupadd --gid 1001 nlpuser && \
-    useradd --uid 1001 --gid nlpuser --shell /usr/sbin/nologin --no-create-home nlpuser
-
-COPY --from=builder --chown=nlpuser:nlpuser /app/.venv /app/.venv
-COPY --chown=nlpuser:nlpuser src/ /app/src/
-
-USER nlpuser
+USER hope
 EXPOSE 8864
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8864/api/v1/health')"]
 
-ENTRYPOINT ["python", "-m", "nlp.main"]
+ENTRYPOINT ["python", "-m", "uvicorn", "--factory", "nlp.app:get_app", "--host", "0.0.0.0", "--port", "8864"]

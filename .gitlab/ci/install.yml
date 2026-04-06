@@ -1,18 +1,33 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# Install stage — dependency installation with persistent pnpm store
+# Install stage — dependency installation with persistent pnpm store + cache
 # ══════════════════════════════════════════════════════════════════════════════
 #
-# The pnpm content-addressable store is mounted as a Docker volume at
-# /pnpm-store (configured in config.toml for fast-runner-01 and test-runner-01).
-# This persists across containers — subsequent pnpm installs resolve from the
-# warm store and only link into node_modules (~10-15s vs ~2 min cold).
+# Two-layer caching strategy:
 #
-# Host path: /srv/gitlab-runner/pnpm-store
-# Container path: /pnpm-store
+#   Layer 1 — pnpm content-addressable store (Docker volume):
+#     Mounted at /pnpm-store (configured in runner config.toml).
+#     Persists package tarballs across containers on the SAME runner.
+#     Host path: /srv/gitlab-runner/pnpm-store
+#
+#   Layer 2 — GitLab CI cache (node_modules):
+#     Keyed by pnpm-lock.yaml hash. Shared across pipelines.
+#     Eliminates the pnpm link/install step (~10-30s) when lockfile unchanged.
+#
+# install-node writes the cache (pull-push). Downstream jobs read it (pull).
+# If the cache is warm and lockfile unchanged, pnpm install is a no-op.
 
 install-node:
   stage: install
   extends: .node-base
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - node_modules/
+        - apps/*/node_modules/
+        - packages/*/node_modules/
+      policy: pull-push
   script:
     - echo "Node $(node --version), pnpm $(pnpm --version)"
     - echo "Packages installed — $(ls node_modules | wc -l) top-level deps"

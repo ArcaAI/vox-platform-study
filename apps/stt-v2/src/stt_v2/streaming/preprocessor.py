@@ -15,6 +15,7 @@ Key design:
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,6 +34,12 @@ _ENERGY_FLOOR = 1e-4  # Lower bound for energy-based fallback VAD
 _ENERGY_MULTIPLIER = 2.5  # Speech threshold multiplier above learned noise floor
 _FALLBACK_NOISE_FLOOR_MAX = 0.015  # Hard cap to prevent runaway adaptation
 _NOISE_FLOOR_COOLDOWN_FRAMES = 15  # ~480ms cooldown after utterance emission
+_DEFAULT_MAX_UTTERANCE_DURATION_MS = 25000  # Force-emit after 25s to avoid Whisper degradation
+
+# Partial emission constants
+_PARTIAL_INTERVAL_S = 1.0        # emit partial every 1000ms wall-clock
+_PARTIAL_MIN_AUDIO_S = 0.5       # minimum buffered audio before first partial
+_PARTIAL_TAIL_WINDOW_S = 10.0    # cap Whisper input for partials to last 10s
 
 
 @dataclass
@@ -71,6 +78,9 @@ class _PreprocessorState:
     # Pre-speech context ring (keeps last N ms of audio before onset)
     pre_speech_ring: list[np.ndarray] = field(default_factory=list)
 
+    # Partial emission timer
+    last_partial_emitted_at: float = 0.0
+
     # Counters
     total_samples_fed: int = 0
     utterance_count: int = 0
@@ -100,9 +110,14 @@ class StreamingPreprocessor:
         session_id: str,
         sample_rate: int = 16000,
         vad_service: Any = None,  # SileroVADService
-        threshold: float = 0.5,
-        min_speech_duration_ms: int = 250,
+        threshold: float = 0.6,
+        min_speech_duration_ms: int = 350,
         min_silence_duration_ms: int = 700,
+        target_sample_rate: int | None = None,
+        normalize: bool = False,
+        denoiser: Any | None = None,
+        max_utterance_duration_ms: int = _DEFAULT_MAX_UTTERANCE_DURATION_MS,
+        pre_speech_context_ms: int = _PRE_SPEECH_CONTEXT_MS,
     ) -> None:
         self.session_id = session_id
         self.sample_rate = sample_rate
@@ -110,15 +125,22 @@ class StreamingPreprocessor:
         self._threshold = threshold
         self._min_speech_duration_ms = min_speech_duration_ms
         self._min_silence_duration_ms = min_silence_duration_ms
-
-        # Frame size depends on sample rate
-        self._frame_size = _FRAME_SIZE_16K if sample_rate >= 16000 else _FRAME_SIZE_8K
+        self._target_sr = target_sample_rate if target_sample_rate else sample_rate
+        self._normalize = normalize
+        self._denoiser = denoiser
+        self._peak_tracker = 0.0001
+        self._peak_decay = 0.9997
+        vad_frame_size = _FRAME_SIZE_16K if self._target_sr >= 16000 else _FRAME_SIZE_8K
+        if sample_rate != self._target_sr:
+            self._frame_size = int(vad_frame_size * (sample_rate / self._target_sr))
+        else:
+            self._frame_size = vad_frame_size
         self._frame_duration_ms = (self._frame_size / sample_rate) * 1000
 
         # Pre-speech context: how many frames to keep
         self._pre_speech_frames = max(
             1,
-            int(_PRE_SPEECH_CONTEXT_MS / self._frame_duration_ms),
+            int(pre_speech_context_ms / self._frame_duration_ms),
         )
 
         # Minimum speech frames for onset confirmation
@@ -133,16 +155,32 @@ class StreamingPreprocessor:
             int(min_silence_duration_ms / self._frame_duration_ms),
         )
 
+        # Maximum utterance duration frames — force-emit to prevent WebSocket termination
+        self._max_utterance_frames = max(
+            1,
+            int(max_utterance_duration_ms / self._frame_duration_ms),
+        )
+
         # VAD session state (LSTM hidden state)
         self._vad_state = VADSessionState(
             session_id=session_id,
-            sample_rate=sample_rate,
+            sample_rate=self._target_sr,
         )
         self._vad_state.reset()
         self._fallback_noise_floor = 0.002
 
         # Internal state
         self._state = _PreprocessorState()
+
+        self._processed_samples: list[np.ndarray] = []
+
+    def reset(self) -> None:
+        """Reset all accumulated state."""
+        self._state = _PreprocessorState()
+        self._processed_samples.clear()
+        self._peak_tracker = 0.0001
+        self._fallback_noise_floor = 0.002
+        self._vad_state.reset()
 
     @property
     def utterance_count(self) -> int:
@@ -153,6 +191,42 @@ class StreamingPreprocessor:
     def in_speech(self) -> bool:
         """Whether VAD currently detects active speech."""
         return self._state.in_speech
+
+    @property
+    def has_denoiser(self) -> bool:
+        return self._denoiser is not None
+
+    @property
+    def target_sample_rate(self) -> int:
+        return self._target_sr
+
+    def drain_processed_samples(self) -> bytes:
+        """Drain accumulated processed samples as int16 PCM bytes."""
+        if not self._processed_samples:
+            return b""
+        samples = np.concatenate(self._processed_samples)
+        self._processed_samples.clear()
+        return (samples * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
+
+    def _normalize_frame(self, frame: np.ndarray) -> np.ndarray:
+        """Peak-tracking normalization with exponential decay (causal)."""
+        frame_peak = float(np.abs(frame).max()) if len(frame) > 0 else 0.0
+        if frame_peak > self._peak_tracker:
+            self._peak_tracker = frame_peak  # fast attack
+        else:
+            self._peak_tracker *= self._peak_decay  # slow decay
+        if self._peak_tracker > 1e-6:
+            return frame / self._peak_tracker
+        return frame
+
+    def _resample_frame(self, frame: np.ndarray) -> np.ndarray:
+        """Resample single frame from sample_rate to target_sample_rate."""
+        if self.sample_rate == self._target_sr:
+            return frame
+        ratio = self._target_sr / self.sample_rate
+        n_out = int(len(frame) * ratio)
+        indices = np.linspace(0, len(frame) - 1, n_out)
+        return np.interp(indices, np.arange(len(frame)), frame).astype(np.float32)
 
     async def feed(self, pcm_data: bytes) -> list[AudioUtterance]:
         """Feed raw PCM bytes (16-bit signed LE). Returns 0+ complete utterances.
@@ -191,10 +265,28 @@ class StreamingPreprocessor:
             frame_int16 = np.frombuffer(frame_bytes, dtype=np.int16)
             frame_f32 = frame_int16.astype(np.float32) / 32768.0
 
+            # ---- Stage 1: Preprocessor (normalize + resample) ----
+            if self._normalize:
+                frame_f32 = self._normalize_frame(frame_f32)
+            frame_f32 = self._resample_frame(frame_f32)
+
+            # ---- Stage 2: Denoise ----
+            if self._denoiser is not None:
+                frame_f32 = self._denoiser.process(frame_f32)
+
+            # NOTE: Processed audio collection is deferred to the VAD
+            # state machine below so that only speech frames (plus
+            # pre-speech context) end up in the processed output.
+
+            # ---- Stage 3: VAD ----
             state.total_samples_fed += len(frame_f32)
 
-            # Run VAD on this frame
-            prob = self._run_vad(frame_f32)
+            # Suppress VAD during denoiser fade-in to prevent onset
+            # detection on near-silence audio (causes Whisper hallucination).
+            if self._denoiser is not None and getattr(self._denoiser, "in_fade_in", False):
+                prob = 0.0
+            else:
+                prob = self._run_vad(frame_f32)
 
             # State machine: speech detection
             is_speech = prob >= self._threshold
@@ -208,30 +300,59 @@ class StreamingPreprocessor:
                         state.in_speech = True
                         state.silence_frames = 0
                         state.utterance_start_time = (
-                            state.total_samples_fed - self._frame_size * state.speech_onset_frames
-                        ) / self.sample_rate
+                            state.total_samples_fed - len(frame_f32) * state.speech_onset_frames
+                        ) / self._target_sr
 
-                        # Include pre-speech context
+                        # Include pre-speech context + current onset frame
                         state.utterance_buffer = list(state.pre_speech_ring)
+                        state.utterance_buffer.append(frame_f32.copy())
+
+                        # Collect pre-speech context + onset frame for processed audio
+                        self._processed_samples.extend(state.pre_speech_ring)
+                        self._processed_samples.append(frame_f32.copy())
                         state.pre_speech_ring.clear()
 
+                        # Initialize partial timer (no immediate partial)
+                        state.last_partial_emitted_at = time.monotonic()
+
                         logger.debug(
-                            "Speech onset",
+                            "Speech onset detected",
                             session_id=self.session_id,
+                            component="VAD",
                             time_s=round(state.utterance_start_time, 3),
                         )
+                    else:
+                        # Still tracking onset — keep frame in pre-speech ring
+                        state.pre_speech_ring.append(frame_f32.copy())
+                        if len(state.pre_speech_ring) > self._pre_speech_frames:
+                            state.pre_speech_ring.pop(0)
                 else:
                     state.speech_onset_frames = 0
 
-                # Maintain pre-speech ring buffer
-                state.pre_speech_ring.append(frame_f32.copy())
-                if len(state.pre_speech_ring) > self._pre_speech_frames:
-                    state.pre_speech_ring.pop(0)
+                    # Maintain pre-speech ring buffer (only during non-speech)
+                    state.pre_speech_ring.append(frame_f32.copy())
+                    if len(state.pre_speech_ring) > self._pre_speech_frames:
+                        state.pre_speech_ring.pop(0)
             else:
                 # In speech — track offset
-                state.utterance_buffer.append(frame_f32.copy())
+                frame_copy = frame_f32.copy()
+                state.utterance_buffer.append(frame_copy)
+                self._processed_samples.append(frame_copy)
 
-                if not is_speech:
+                # Force-emit if utterance exceeds max duration to prevent websocket
+                # Whisper accuracy degradation on oversized segments.
+                if len(state.utterance_buffer) >= self._max_utterance_frames:
+                    logger.debug(
+                        "Max utterance duration reached, force-emitting",
+                        session_id=self.session_id,
+                        component="VAD",
+                        frames=len(state.utterance_buffer),
+                        max_frames=self._max_utterance_frames,
+                    )
+                    utt = self._emit_utterance(is_final=True)
+                    if utt is not None:
+                        utterances.append(utt)
+                elif not is_speech:
                     state.silence_frames += 1
                     if state.silence_frames >= self._min_silence_frames:
                         # Speech ended — emit confirmed utterance
@@ -240,6 +361,10 @@ class StreamingPreprocessor:
                             utterances.append(utt)
                 else:
                     state.silence_frames = 0
+                    # Check for partial emission
+                    partial = self._maybe_emit_partial()
+                    if partial is not None:
+                        utterances.append(partial)
 
         return utterances
 
@@ -260,8 +385,17 @@ class StreamingPreprocessor:
             frame_f32 = frame_int16.astype(np.float32) / 32768.0
             state.pcm_remainder.clear()
 
+            if self._normalize:
+                frame_f32 = self._normalize_frame(frame_f32)
+            frame_f32 = self._resample_frame(frame_f32)
+            if self._denoiser is not None:
+                frame_f32 = self._denoiser.process(frame_f32)
+
+            state.total_samples_fed += len(frame_f32)
+
             if state.in_speech:
                 state.utterance_buffer.append(frame_f32)
+                self._processed_samples.append(frame_f32.copy())
 
         # Emit whatever is in the utterance buffer
         if state.in_speech and state.utterance_buffer:
@@ -329,6 +463,46 @@ class StreamingPreprocessor:
         probability = rms / (adaptive_threshold * 2.0)
         return float(np.clip(probability, 0.0, 1.0))
 
+    def _maybe_emit_partial(self) -> AudioUtterance | None:
+        """Emit a non-final partial utterance if the timer interval has elapsed.
+
+        Returns an ``AudioUtterance(is_final=False)`` containing a
+        tail-window snapshot of the current buffer, or ``None`` if
+        conditions are not yet met.  The buffer is *not* cleared.
+        """
+        state = self._state
+
+        if not state.in_speech or not state.utterance_buffer:
+            return None
+
+        now = time.monotonic()
+        if now - state.last_partial_emitted_at < _PARTIAL_INTERVAL_S:
+            return None
+
+        # Check minimum audio duration
+        buffer_duration_s = len(state.utterance_buffer) * self._frame_size / self._target_sr
+        if buffer_duration_s < _PARTIAL_MIN_AUDIO_S:
+            return None
+
+        # Tail window cap: only send last N seconds to bound Whisper cost
+        max_frames = int(_PARTIAL_TAIL_WINDOW_S * self._target_sr / self._frame_size)
+        tail = state.utterance_buffer[-max_frames:]
+        samples = np.concatenate(tail)
+
+        end_time = state.total_samples_fed / self._target_sr
+
+        partial = AudioUtterance(
+            samples=samples,
+            sample_rate=self._target_sr,
+            start_time=state.utterance_start_time,
+            end_time=end_time,
+            utterance_index=state.utterance_count,
+            is_final=False,
+        )
+
+        state.last_partial_emitted_at = now
+        return partial
+
     def _emit_utterance(self, is_final: bool) -> AudioUtterance | None:
         """Concatenate buffered frames into an AudioUtterance and reset state."""
         state = self._state
@@ -339,21 +513,30 @@ class StreamingPreprocessor:
         # Concatenate all buffered frames
         samples = np.concatenate(state.utterance_buffer)
 
-        end_time = state.total_samples_fed / self.sample_rate
+        end_time = state.total_samples_fed / self._target_sr
         utt_index = state.utterance_count
 
         utterance = AudioUtterance(
             samples=samples,
-            sample_rate=self.sample_rate,
+            sample_rate=self._target_sr,
             start_time=state.utterance_start_time,
             end_time=end_time,
             utterance_index=utt_index,
             is_final=is_final,
         )
 
-        logger.info(
+        if self._denoiser is not None:
+            logger.debug(
+                "Applied RNNoise denoising to utterance",
+                session_id=self.session_id,
+                component="NOISE_SUPPRESSION",
+                index=utt_index,
+            )
+
+        logger.debug(
             "Utterance emitted",
             session_id=self.session_id,
+            component="VAD",
             index=utt_index,
             start_s=round(state.utterance_start_time, 3),
             end_s=round(end_time, 3),
@@ -368,6 +551,7 @@ class StreamingPreprocessor:
         state.speech_onset_frames = 0
         state.silence_frames = 0
         state.noise_floor_cooldown = _NOISE_FLOOR_COOLDOWN_FRAMES
+        state.last_partial_emitted_at = 0.0
         state.utterance_count += 1
 
         return utterance
