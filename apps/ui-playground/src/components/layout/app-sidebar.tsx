@@ -4,6 +4,7 @@ import {
   BookOpen,
   Brain,
   Building2,
+  Database,
   Dna,
   Download,
   FileText,
@@ -135,6 +136,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           url: '/admin/audio-pipelines',
           icon: Workflow,
           badge: 'NEW',
+        },
+        {
+          title: 'Prisma Studio',
+          url: '/admin/studio',
+          icon: Database,
         },
       );
     }
