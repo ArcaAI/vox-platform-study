@@ -3,6 +3,7 @@
 from io import BytesIO
 
 import structlog
+import urllib3
 from minio import Minio
 from minio.error import S3Error
 
@@ -25,12 +26,18 @@ class MinIOClient:
         access_key: str,
         secret_key: str,
         secure: bool = False,
+        cert_check: bool = True,
     ) -> None:
+        http_client = None
+        if secure and not cert_check:
+            http_client = urllib3.PoolManager(cert_reqs="CERT_NONE")
+
         self._client = Minio(
             endpoint=endpoint,
             access_key=access_key,
             secret_key=secret_key,
             secure=secure,
+            http_client=http_client,
         )
 
     @property
@@ -166,6 +173,7 @@ async def initialize_minio() -> None:
         access_key=settings.minio_access_key,
         secret_key=settings.minio_secret_key,
         secure=settings.minio_secure,
+        cert_check=settings.minio_cert_check,
     )
 
     # Ensure buckets exist
