@@ -692,14 +692,13 @@ class BatchTranscriptionService:
             # Whisper may return None for the last chunk boundary
             start = (start if start is not None else 0.0) + time_offset
             end = (end if end is not None else start) + time_offset
+            word_text = (entry.get("text", "") or "").strip()
             normalized.append(
                 {
-                    "text": entry.get("text", ""),
-                    "word": entry.get("text", ""),
+                    "text": word_text,
+                    "word": word_text,
                     "start": start,
                     "end": end,
-                    "start_time": start,
-                    "end_time": end,
                     "confidence": 1.0,
                 }
             )
@@ -1441,6 +1440,19 @@ class BatchTranscriptionService:
                 if not code_switching and lang is not None:
                     generate_kwargs["language"] = lang
 
+                # Beam search configuration
+                beam_size = getattr(config, "beam_size", None)
+                if beam_size and beam_size > 1:
+                    generate_kwargs["num_beams"] = beam_size
+
+                # Temperature / sampling configuration
+                temperature = getattr(config, "temperature", None)
+                if temperature is not None and temperature == 0.0:
+                    generate_kwargs["do_sample"] = False
+                elif temperature is not None:
+                    generate_kwargs["do_sample"] = True
+                    generate_kwargs["temperature"] = temperature
+
                 # Remove None values
                 generate_kwargs = {k: v for k, v in generate_kwargs.items() if v is not None}
 
@@ -1460,17 +1472,19 @@ class BatchTranscriptionService:
                         generate_kwargs,
                     )
 
-                # Try to get timestamps — normalise Whisper offset format
+                # Extract word timestamps
+                word_timestamps: list[dict[str, Any]] = []
                 try:
                     decoded = processor.decode(
                         outputs[0],
                         skip_special_tokens=False,
                         output_offsets=True,
                     )
-                    raw_offsets = decoded.get("offsets", [])
-                    word_timestamps = self._normalize_whisper_offsets(raw_offsets)
+                    word_timestamps = self._normalize_whisper_offsets(
+                        decoded.get("offsets", []),
+                    )
                 except Exception:
-                    word_timestamps = []
+                    pass
 
                 duration_seconds = len(samples) / sample_rate
                 segments = self._build_single_segment(
@@ -1608,6 +1622,19 @@ class BatchTranscriptionService:
             logger.info("Code-switching enabled — language will be auto-detected per chunk")
         elif lang is not None:
             generate_kwargs["language"] = lang
+
+        # Beam search configuration
+        beam_size = getattr(config, "beam_size", None)
+        if beam_size and beam_size > 1:
+            generate_kwargs["num_beams"] = beam_size
+
+        # Temperature / sampling configuration
+        temperature = getattr(config, "temperature", None)
+        if temperature is not None and temperature == 0.0:
+            generate_kwargs["do_sample"] = False
+        elif temperature is not None:
+            generate_kwargs["do_sample"] = True
+            generate_kwargs["temperature"] = temperature
 
         device = model.device
 
@@ -1975,6 +2002,12 @@ class BatchTranscriptionService:
                             seg["text"] = results[i + 1]
             except Exception:
                 logger.warning("Batch punctuation failed, using original text", exc_info=True)
+
+        # Remove disfluencies
+        if getattr(config, "remove_disfluencies", False):
+            from stt_v2.postprocessing.disfluency import remove_disfluencies
+
+            text = remove_disfluencies(text)
 
         # Apply lowercase if configured
         if config.lowercase:

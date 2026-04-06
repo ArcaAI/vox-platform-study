@@ -13,6 +13,7 @@ Design:
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from typing import Any
 import numpy as np
 import structlog
 
+from stt_v2.pipeline.dto import PostprocessingConfig
 from stt_v2.streaming.preprocessor import AudioUtterance
 from stt_v2.streaming.redis_streams import ResultPublisher
 from stt_v2.streaming.schemas import SegmentResult
@@ -29,8 +31,9 @@ logger = structlog.get_logger(__name__)
 _MAX_SEGMENT_TEXT_CHARS = 1200
 
 # Hallucination filter constants
-_HALLUCINATION_RMS_THRESHOLD = 0.01  # ~-40 dBFS — below this is near-silence
+_HALLUCINATION_RMS_THRESHOLD = 0.01  # ~-40 dBFS -- below this is near-silence
 _HALLUCINATION_SHORT_WORD_COUNT = 3  # texts with <= N words on low energy are suspect
+_HALLUCINATION_MAX_WPS = 8.0  # max plausible words-per-second (normal speech ~2-4 wps)
 _CONTEXT_CARRY_MAX_WORDS = 20  # max words from previous utterance as prompt context
 _PARTIAL_TAIL_WINDOW_S = 10.0  # cap Whisper input for partials to last 10s
 _FILLER_PATTERN = re.compile(
@@ -71,14 +74,19 @@ class StreamingInferenceWorker:
         tenant_id: str | None = None,
         consultation_id: str | None = None,
         diarization_config: Any = None,
-        punctuation_config: Any = None,
+        postprocessing_config: PostprocessingConfig | None = None,
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
         self._tenant_id = tenant_id
         self._consultation_id = consultation_id
         self._diarization_config = diarization_config
-        self._punctuation_config = punctuation_config
+        self._postprocessing_config = postprocessing_config
+        self._punctuation_config = (
+            postprocessing_config.punctuation
+            if postprocessing_config
+            else None
+        )
         self._punctuation_model: Any = None
         self._previous_text: str = ""
 
@@ -109,32 +117,27 @@ class StreamingInferenceWorker:
         start_ts = time.monotonic()
         utt_duration = round(utterance.end_time - utterance.start_time, 1)
 
-        # Step 1: Speaker Embedding extraction (before ASR)
+        # Step 1+2: Speaker Embedding + ASR in parallel (no data dependency)
         logger.debug(
-            "Extracting speaker embedding for utterance",
+            "Running embedding + ASR in parallel",
             session_id=session_id,
-            component="SPEAKER_EMBEDDING",
-            utterance_index=utterance.utterance_index,
-        )
-        embedding = await self._extract_embedding(utterance)
-
-        # Step 2: ASR inference
-        logger.debug(
-            "Running ASR inference on utterance",
-            session_id=session_id,
-            component="ASR",
+            component="INFERENCE",
             duration_s=utt_duration,
             utterance_index=utterance.utterance_index,
         )
         try:
-            inference_out = await self._run_inference(utterance)
+            embedding, inference_out = await asyncio.gather(
+                self._extract_embedding(utterance),
+                self._run_inference(utterance),
+            )
         except Exception as exc:
             logger.error(
-                "ASR inference failed",
+                "Parallel embedding+ASR failed",
                 session_id=session_id,
                 utterance_index=utterance.utterance_index,
                 error=str(exc),
             )
+            embedding = None
             inference_out = _InferenceResult()
 
         text = self._sanitize_text(inference_out.text)
@@ -164,6 +167,16 @@ class StreamingInferenceWorker:
             )
             text = await self._apply_punctuation(text)
 
+        # Remove disfluencies
+        if self._postprocessing_config and self._postprocessing_config.remove_disfluencies:
+            from stt_v2.postprocessing.disfluency import remove_disfluencies
+
+            text = remove_disfluencies(text)
+
+        # Lowercase postprocessing
+        if self._postprocessing_config and self._postprocessing_config.lowercase:
+            text = text.lower()
+
         split_timestamps = self._split_phrase_timestamps(
             inference_out.word_timestamps,
         )
@@ -172,6 +185,13 @@ class StreamingInferenceWorker:
             split_timestamps,
             utterance.start_time,
         )
+
+        # Respect word_timestamps config
+        if (
+            self._postprocessing_config
+            and not self._postprocessing_config.timestamps.word_timestamps
+        ):
+            word_timestamps = []
 
         elapsed = time.monotonic() - start_ts
 
@@ -279,12 +299,10 @@ class StreamingInferenceWorker:
         adjusted: list[dict[str, Any]] = []
         for wt in word_timestamps:
             entry = dict(wt)  # shallow copy — immutability
-            for key in ("start", "start_time"):
-                if key in entry and isinstance(entry[key], (int, float)):
-                    entry[key] = round(entry[key] + time_offset, 4)
-            for key in ("end", "end_time"):
-                if key in entry and isinstance(entry[key], (int, float)):
-                    entry[key] = round(entry[key] + time_offset, 4)
+            if "start" in entry and isinstance(entry["start"], (int, float)):
+                entry["start"] = round(entry["start"] + time_offset, 4)
+            if "end" in entry and isinstance(entry["end"], (int, float)):
+                entry["end"] = round(entry["end"] + time_offset, 4)
             adjusted.append(entry)
         return adjusted
 
@@ -301,15 +319,15 @@ class StreamingInferenceWorker:
             text = (wt.get("word") or wt.get("text") or "").strip()
             words = text.split()
             if len(words) <= 1:
-                # Already a single word — pass through as-is
+                # Already a single word -- pass through as-is
                 entry = dict(wt)
                 entry["word"] = text
                 result.append(entry)
                 continue
 
-            # Multi-word phrase — split proportionally
-            start = float(wt.get("start", wt.get("start_time", 0.0)))
-            end = float(wt.get("end", wt.get("end_time", start)))
+            # Multi-word phrase -- split proportionally
+            start = float(wt.get("start", 0.0))
+            end = float(wt.get("end", start))
             confidence = wt.get("confidence")
             span = end - start
             word_dur = span / len(words) if words else 0.0
@@ -321,8 +339,6 @@ class StreamingInferenceWorker:
                     "word": word,
                     "start": round(w_start, 4),
                     "end": round(w_end, 4),
-                    "start_time": round(w_start, 4),
-                    "end_time": round(w_end, 4),
                     "confidence": confidence,
                 })
         return result
@@ -479,6 +495,13 @@ class StreamingInferenceWorker:
         if word_count <= _HALLUCINATION_SHORT_WORD_COUNT:
             rms = float(np.sqrt(np.mean(utterance.samples ** 2)))
             if rms < _HALLUCINATION_RMS_THRESHOLD:
+                return True
+
+        # Condition 3: implausible word density (e.g. 50 words from 1.2s audio)
+        audio_duration_s = len(utterance.samples) / utterance.sample_rate
+        if audio_duration_s > 0:
+            words_per_sec = word_count / audio_duration_s
+            if words_per_sec > _HALLUCINATION_MAX_WPS:
                 return True
 
         return False

@@ -261,6 +261,19 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
             const speakerConfidence = data.speaker_confidence ? parseFloat(data.speaker_confidence) : undefined;
             const englishText = data.english_text || data.englishText || undefined;
 
+            // Parse word-level timestamps from Redis JSON field
+            let wordTimestamps: StreamingTranscriptMessage['wordTimestamps'] | undefined;
+            if (data.word_timestamps_json) {
+              try {
+                const parsed = JSON.parse(data.word_timestamps_json);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  wordTimestamps = parsed;
+                }
+              } catch {
+                // Malformed JSON -- skip wordTimestamps
+              }
+            }
+
             subject.next({
               type: 'transcript',
               text: data.text || '',
@@ -270,6 +283,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
               ...(englishText ? { englishText } : {}),
               ...(speakerId ? { speakerId } : {}),
               ...(speakerConfidence != null && !isNaN(speakerConfidence) ? { speakerConfidence } : {}),
+              ...(wordTimestamps ? { wordTimestamps } : {}),
             });
           }
         }

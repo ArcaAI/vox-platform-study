@@ -1,33 +1,26 @@
 import { expect, test, type Page, type WebSocket as PwWebSocket } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
-  computeFinalTranscriptLatency,
-  computeFirstPartialLatency,
-  computeRtf,
-  type TimestampedFinal,
-  type TimestampedPartial,
+    computeFinalTranscriptLatency,
+    computeFirstPartialLatency,
+    computeRtf,
+    type TimestampedFinal,
+    type TimestampedPartial,
 } from './helpers/latency-metrics.js';
 import { computeHallucinationRate, computeSer, computeTaskSuccess, type TranscriptFinal } from './helpers/segment-metrics.js';
 import { concatenateSegmentTexts, parseGroundTruth } from './helpers/transcript-parser.js';
 import { computeCer, computeWer, formatWerReport } from './helpers/wer.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const AUDIO_DURATION_SECONDS = 36; // wait time: audio_1.wav is ~35.3s (5s silence lead-in + 27.3s speech + 3s silence)
-const SPEECH_START_SECONDS = 5; // silence lead-in before speech begins
-const SPEECH_END_SECONDS = 32.3; // ground truth speech boundary for hallucination detection (27.3 + 5s offset)
-const DRAIN_IDLE_TIMEOUT_MS = 5_000;
-const DRAIN_POLL_INTERVAL_MS = 500;
-const DRAIN_MAX_WAIT_MS = 30_000;
+export const DRAIN_IDLE_TIMEOUT_MS = 5_000;
+export const DRAIN_POLL_INTERVAL_MS = 500;
+export const DRAIN_MAX_WAIT_MS = 30_000;
 
-// Production expected thresholds
-const EXPECTED = {
+/** Shared quality thresholds (same for all test cases initially). */
+export const EXPECTED = {
   wer: 20, // %
   cer: 10, // %
   ser: 60, // %
@@ -40,23 +33,18 @@ const EXPECTED = {
   taskSuccess: 80, // %
 };
 
-const GROUND_TRUTH_PATH = path.resolve(__dirname, 'fixtures', 'audio_1.txt');
-
-/** Pipeline name as seeded in the DB (see packages/database seed 06-stt.ts) */
-const E2E_PIPELINE_NAME = 'E2E Test';
-
 // ---------------------------------------------------------------------------
 // Types matching WS transcript messages from stt-v2
 // ---------------------------------------------------------------------------
 
-interface WsWordTimestamp {
+export interface WsWordTimestamp {
   word: string;
   start: number;
   end: number;
   confidence: number;
 }
 
-interface WsTranscriptMessage {
+export interface WsTranscriptMessage {
   type: 'transcript';
   text: string;
   isFinal: boolean;
@@ -68,19 +56,61 @@ interface WsTranscriptMessage {
   [key: string]: unknown;
 }
 
-interface WsStatusMessage {
+export interface WsStatusMessage {
   type: 'status';
   status: string;
   message: string;
 }
 
-type WsMessage = WsTranscriptMessage | WsStatusMessage | { type: string; [key: string]: unknown };
+export type WsMessage = WsTranscriptMessage | WsStatusMessage | { type: string; [key: string]: unknown };
 
 // ---------------------------------------------------------------------------
-// Auth injection helper
+// WebSocket capture
 // ---------------------------------------------------------------------------
 
-async function injectAuth(page: Page): Promise<void> {
+export interface WsCapture {
+  transcripts: Array<WsTranscriptMessage & { receivedAt: number }>;
+  statuses: Array<WsStatusMessage & { receivedAt: number }>;
+  all: Array<WsMessage & { receivedAt: number }>;
+  streamStartedAt: number | null;
+}
+
+export function setupWsCapture(page: Page): WsCapture {
+  const capture: WsCapture = { transcripts: [], statuses: [], all: [], streamStartedAt: null };
+
+  page.on('websocket', (ws: PwWebSocket) => {
+    if (!ws.url().includes('/ws/stt')) return;
+
+    if (capture.streamStartedAt === null) {
+      capture.streamStartedAt = Date.now();
+    }
+
+    ws.on('framereceived', (frame) => {
+      if (typeof frame.payload !== 'string') return;
+      try {
+        const receivedAt = Date.now();
+        const msg = JSON.parse(frame.payload) as WsMessage;
+        const stamped = { ...msg, receivedAt };
+        capture.all.push(stamped);
+        if (msg.type === 'transcript') {
+          capture.transcripts.push(stamped as WsTranscriptMessage & { receivedAt: number });
+        } else if (msg.type === 'status') {
+          capture.statuses.push(stamped as WsStatusMessage & { receivedAt: number });
+        }
+      } catch {
+        // Binary or non-JSON frame, ignore
+      }
+    });
+  });
+
+  return capture;
+}
+
+// ---------------------------------------------------------------------------
+// Auth injection
+// ---------------------------------------------------------------------------
+
+export async function injectAuth(page: Page): Promise<void> {
   const apiKey = process.env.PLAYGROUND_API_KEY;
   const tenantId = process.env.PLAYGROUND_TENANT_ID;
 
@@ -115,54 +145,10 @@ async function injectAuth(page: Page): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// WebSocket capture helper
+// Drain helper
 // ---------------------------------------------------------------------------
 
-interface WsCapture {
-  transcripts: Array<WsTranscriptMessage & { receivedAt: number }>;
-  statuses: Array<WsStatusMessage & { receivedAt: number }>;
-  all: Array<WsMessage & { receivedAt: number }>;
-  streamStartedAt: number | null;
-}
-
-function setupWsCapture(page: Page): WsCapture {
-  const capture: WsCapture = { transcripts: [], statuses: [], all: [], streamStartedAt: null };
-
-  page.on('websocket', (ws: PwWebSocket) => {
-    if (!ws.url().includes('/ws/stt')) return;
-
-    // Record stream start when the STT WebSocket opens (server never sends a
-    // "streaming" status message -- the frontend sets that state locally).
-    if (capture.streamStartedAt === null) {
-      capture.streamStartedAt = Date.now();
-    }
-
-    ws.on('framereceived', (frame) => {
-      if (typeof frame.payload !== 'string') return;
-      try {
-        const receivedAt = Date.now();
-        const msg = JSON.parse(frame.payload) as WsMessage;
-        const stamped = { ...msg, receivedAt };
-        capture.all.push(stamped);
-        if (msg.type === 'transcript') {
-          capture.transcripts.push(stamped as WsTranscriptMessage & { receivedAt: number });
-        } else if (msg.type === 'status') {
-          capture.statuses.push(stamped as WsStatusMessage & { receivedAt: number });
-        }
-      } catch {
-        // Binary or non-JSON frame, ignore
-      }
-    });
-  });
-
-  return capture;
-}
-
-// ---------------------------------------------------------------------------
-// Drain helper: wait for all finals to arrive after audio playback
-// ---------------------------------------------------------------------------
-
-async function drainTranscripts(capture: WsCapture): Promise<void> {
+export async function drainTranscripts(capture: WsCapture): Promise<void> {
   const startDrain = Date.now();
   let lastFinalCount = capture.transcripts.filter((t) => t.isFinal).length;
   let lastChangeTime = Date.now();
@@ -183,16 +169,10 @@ async function drainTranscripts(capture: WsCapture): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Audio track capture: intercept getUserMedia to mute after playback
+// Audio track capture / mute
 // ---------------------------------------------------------------------------
 
-/**
- * Monkey-patch getUserMedia so we can disable audio tracks later.
- * Chrome's --use-file-for-fake-audio-capture loops the WAV file infinitely;
- * disabling the tracks after the original audio plays sends silence to the
- * STT pipeline, preventing duplicate transcripts from the looped audio.
- */
-async function setupAudioTrackCapture(page: Page): Promise<void> {
+export async function setupAudioTrackCapture(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     (window as any).__e2eMediaStreams = [] as MediaStream[];
@@ -204,7 +184,7 @@ async function setupAudioTrackCapture(page: Page): Promise<void> {
   });
 }
 
-async function muteAudioTracks(page: Page): Promise<void> {
+export async function muteAudioTracks(page: Page): Promise<void> {
   await page.evaluate(() => {
     const streams: MediaStream[] = (window as any).__e2eMediaStreams || [];
     for (const stream of streams) {
@@ -216,12 +196,28 @@ async function muteAudioTracks(page: Page): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Test
+// Core test runner
 // ---------------------------------------------------------------------------
 
-test('realtime transcription accuracy meets WER threshold', async ({ page }) => {
+export interface TranscriptionTestParams {
+  page: Page;
+  pipelineName: string;
+  groundTruthPath: string;
+  audioDurationSeconds: number;
+  speechStartSeconds: number;
+  speechEndSeconds: number;
+}
+
+export async function runTranscriptionTest({
+  page,
+  pipelineName,
+  groundTruthPath,
+  audioDurationSeconds,
+  speechStartSeconds,
+  speechEndSeconds,
+}: TranscriptionTestParams): Promise<void> {
   // Load ground truth
-  const groundTruth = readFileSync(GROUND_TRUTH_PATH, 'utf-8');
+  const groundTruth = readFileSync(groundTruthPath, 'utf-8');
   const expectedSegments = parseGroundTruth(groundTruth, {
     expectTimestamps: true,
     expectSpeakers: false,
@@ -249,14 +245,14 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
   await expect(pipelineSelect).toBeVisible({ timeout: 15_000 });
   await expect(pipelineSelect).not.toHaveText('Select a pipeline...', { timeout: 15_000 });
 
-  // 5. Select the E2E basic pipeline
+  // 5. Select the pipeline by name
   await pipelineSelect.click();
-  const pipelineOption = page.getByRole('option', { name: E2E_PIPELINE_NAME });
+  const pipelineOption = page.getByRole('option', { name: pipelineName });
   if (await pipelineOption.isVisible({ timeout: 3_000 }).catch(() => false)) {
     await pipelineOption.click();
   } else {
     await page.keyboard.press('Escape');
-    console.warn(`E2E pipeline "${E2E_PIPELINE_NAME}" not found, using default`);
+    console.warn(`E2E pipeline "${pipelineName}" not found, using default`);
   }
 
   // 6. Start streaming
@@ -272,10 +268,10 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
   await expect(page.getByText('streaming', { exact: true }), 'Streaming status lost -- backend may have errored or disconnected.').toBeVisible();
 
   // 8. Wait for audio playback, then mute tracks to prevent Chrome loop
-  await page.waitForTimeout(AUDIO_DURATION_SECONDS * 1000);
+  await page.waitForTimeout(audioDurationSeconds * 1000);
   await muteAudioTracks(page);
 
-  // 9. Drain: wait for backend to flush remaining finals (silence triggers VAD end-of-speech)
+  // 9. Drain: wait for backend to flush remaining finals
   await drainTranscripts(capture);
 
   // 10. Stop streaming
@@ -295,23 +291,24 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
     maxStartTime,
     `Looped audio detected: transcript at ${maxStartTime.toFixed(1)}s exceeds audio duration. ` +
       `Audio track muting may not have prevented Chrome's fake audio loop.`,
-  ).toBeLessThan(AUDIO_DURATION_SECONDS);
+  ).toBeLessThan(audioDurationSeconds);
 
   // 12. DOM transcript for cross-validation
   const domTexts = await page.locator('.group p').allInnerTexts();
   const domTranscriptText = domTexts.join(' ').trim();
 
   // --- Always attach WebSocket data (before assertions so they survive failures) ---
+  const stripMeta = <T extends { receivedAt: number }>({ receivedAt, ...raw }: T): Omit<T, 'receivedAt'> => raw;
   await test.info().attach('ws-messages-all.json', {
-    body: JSON.stringify(capture.all, null, 2),
+    body: JSON.stringify(capture.all.map(stripMeta), null, 2),
     contentType: 'application/json',
   });
   await test.info().attach('ws-transcripts-final.json', {
-    body: JSON.stringify(finalTranscripts, null, 2),
+    body: JSON.stringify(finalTranscripts.map(stripMeta), null, 2),
     contentType: 'application/json',
   });
   await test.info().attach('ws-statuses.json', {
-    body: JSON.stringify(capture.statuses, null, 2),
+    body: JSON.stringify(capture.statuses.map(stripMeta), null, 2),
     contentType: 'application/json',
   });
 
@@ -332,14 +329,12 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
     expect(msg.endTime).toBeGreaterThanOrEqual(msg.startTime);
   }
 
-  // --- B. Compute all metrics (before assertions so report always prints) ---
+  // --- B. Compute all metrics ---
   const werResult = computeWer(referenceText, hypothesisText);
-  const report = formatWerReport(werResult, 'basic', EXPECTED.wer/100, referenceText, hypothesisText);
+  const report = formatWerReport(werResult, 'basic', EXPECTED.wer / 100, referenceText, hypothesisText);
 
-  // B1. Character Error Rate (CER)
   const cerResult = computeCer(referenceText, hypothesisText);
 
-  // B2. Sentence Error Rate (SER) -- uses time-overlap segment matching
   const transcriptFinals: TranscriptFinal[] = finalTranscripts.map((t) => ({
     text: t.text,
     startTime: t.startTime,
@@ -347,19 +342,16 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
   }));
   const serResult = computeSer(expectedSegments, transcriptFinals);
 
-  // B3. Task Success Rate
   const taskSuccess = computeTaskSuccess(expectedSegments, transcriptFinals);
 
-  // B4. Silence Hallucination Rate (uses ALL finals, not filtered)
   const allFinals = capture.transcripts.filter((t) => t.isFinal);
   const allTranscriptFinals: TranscriptFinal[] = allFinals.map((t) => ({
     text: t.text,
     startTime: t.startTime,
     endTime: t.endTime,
   }));
-  const hallucination = computeHallucinationRate(allTranscriptFinals, SPEECH_END_SECONDS);
+  const hallucination = computeHallucinationRate(allTranscriptFinals, speechEndSeconds);
 
-  // B5. Final Transcript Latency (P50/P95/P99)
   const streamStartedAt = capture.streamStartedAt ?? Date.now();
   const timestampedFinals: TimestampedFinal[] = finalTranscripts.map((t) => ({
     text: t.text,
@@ -369,24 +361,22 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
   }));
   const finalLatency = computeFinalTranscriptLatency(timestampedFinals, streamStartedAt);
 
-  // B6. First Partial Latency (measured from speech start, not stream start)
   const partials = capture.transcripts.filter((t) => !t.isFinal);
   const timestampedPartials: TimestampedPartial[] = partials.map((t) => ({
     text: t.text,
     receivedAt: t.receivedAt,
   }));
-  const speechStartedAt = streamStartedAt + SPEECH_START_SECONDS * 1000;
+  const speechStartedAt = streamStartedAt + speechStartSeconds * 1000;
   const firstPartial = computeFirstPartialLatency(timestampedPartials, speechStartedAt);
 
-  // B7. Real-Time Factor (RTF)
-  const rtfResult = computeRtf(timestampedFinals, AUDIO_DURATION_SECONDS, streamStartedAt);
+  const rtfResult = computeRtf(timestampedFinals, audioDurationSeconds, streamStartedAt);
 
   // --- Build structured metrics report ---
   const metricsReport = {
     timestamp: new Date().toISOString(),
-    pipeline: E2E_PIPELINE_NAME,
-    audioDurationSec: AUDIO_DURATION_SECONDS,
-    speechEndSec: SPEECH_END_SECONDS,
+    pipeline: pipelineName,
+    audioDurationSec: audioDurationSeconds,
+    speechEndSec: speechEndSeconds,
     accuracy: {
       wer: {
         value: werResult.wer,
@@ -433,17 +423,16 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
     },
   };
 
-  // --- Console report (always prints, even on WER failure) ---
+  // --- Console report ---
   const badge = (actual: number, expected: number, lower: boolean) => {
     const ok = lower ? actual <= expected : actual >= expected;
     return ok ? ' PASS ' : ' FAIL ';
   };
 
-  const W = 78; // report width
+  const W = 78;
   const hr = '-'.repeat(W);
   const dhr = '='.repeat(W);
 
-  // Count pass/fail
   const results = [
     badge(werResult.wer * 100, EXPECTED.wer, true),
     badge(cerResult.cer * 100, EXPECTED.cer, true),
@@ -560,7 +549,7 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
   ];
   console.log(lines.join('\n'));
 
-  // --- Attach structured report as artifact (before assertions so it survives failures) ---
+  // --- Attach structured report as artifact ---
   await test.info().attach('metrics-report.json', {
     body: JSON.stringify(metricsReport, null, 2),
     contentType: 'application/json',
@@ -582,4 +571,4 @@ test('realtime transcription accuracy meets WER threshold', async ({ page }) => 
   const wsWords = new Set(normalizedWs.split(' '));
   const overlap = domWords.filter((w) => wsWords.has(w)).length;
   expect(overlap / domWords.length, `DOM-WS overlap too low: ${overlap}/${domWords.length} words match`).toBeGreaterThan(0.5);
-});
+}
