@@ -98,6 +98,15 @@ async def initialize_services() -> None:
     except Exception as e:
         logger.warning(f"Diarization service initialization failed (non-fatal): {e}")
 
+    # --- Punctuation: cadence model (needed for batch postprocessing) ---
+    try:
+        from stt_v2.punctuation import service as punctuation_service
+
+        await asyncio.to_thread(punctuation_service.initialize)
+        logger.info("Punctuation service initialized")
+    except Exception as e:
+        logger.warning(f"Punctuation service initialization failed (non-fatal): {e}")
+
     logger.info("All worker services initialized successfully")
 
 
@@ -141,6 +150,14 @@ async def cleanup_services() -> None:
         await get_embedding_service().shutdown()
     except Exception as e:
         logger.warning(f"Error shutting down diarization service: {e}")
+
+    # Shutdown punctuation service
+    try:
+        from stt_v2.punctuation import service as punctuation_service
+
+        punctuation_service.shutdown()
+    except Exception as e:
+        logger.warning(f"Error shutting down punctuation service: {e}")
 
     logger.info("Worker services cleanup complete")
 
