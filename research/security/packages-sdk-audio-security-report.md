@@ -1,9 +1,12 @@
 # Security Audit Report — HOPE SDK & Audio Packages
 
 **Audit Date**: March 24, 2026
+**Last Updated**: April 6, 2026
 **Auditor**: Security Auditor Agent
-**Scope**: 5 frontend packages in the HOPE healthcare AI monorepo
+**Scope**: 8 frontend packages in the HOPE healthcare AI monorepo (`agentic-sdk-v2`, `room`, `stt`, `vad`, `noise-filter`, `pipeline`, `med-ner`, `utils`)
 **Standards**: OWASP Top 10 (2021), HIPAA Security Rule considerations
+
+> **Update (2026-04-06)**: Re-scan confirmed all findings remain open. Package count updated from 5 to 8 to include `pipeline`, `med-ner`, and `utils`.
 
 ---
 

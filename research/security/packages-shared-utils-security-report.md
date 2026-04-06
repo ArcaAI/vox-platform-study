@@ -10,7 +10,9 @@
 
 ## Executive Summary
 
-This report covers a comprehensive security audit of seven shared/utility packages in the HOPE healthcare AI monorepo. These packages form the foundational layer consumed by all applications (`apps/api`, `apps/smr`, `apps/stt-v2`, `apps/nlp`, `apps/tts`, `apps/admin`, `apps/ui-playground`).
+This report covers a comprehensive security audit of seven shared/utility packages in the HOPE healthcare AI monorepo. These packages form the foundational layer consumed by all applications (`apps/api`, `apps/smr`, `apps/stt-v2`, `apps/nlp`, `apps/ui-playground`, `apps/example`).
+
+> **Note (2026-04-06)**: `apps/tts` and `apps/admin` referenced in the original audit no longer exist in the monorepo and have been removed from this report's scope.
 
 ### Overall Risk Assessment
 
@@ -532,7 +534,7 @@ The most pervasive concern across the codebase is the lack of systematic PHI/PII
 | ui | Unvalidated `href` props in 6+ components | Medium |
 | ui | CodeComparison error fallback unescaped | Medium |
 
-**Recommendation**: 
+**Recommendation**:
 - Standardize on `sanitizeHref()` from `tool-ui/shared/media/` for all link rendering
 - Replace custom HTML sanitizer in PostDetail with DOMPurify
 - Add an ESLint rule to flag `innerHTML` assignments

@@ -1,10 +1,13 @@
 # Security Audit Report: STT-V2 Service
 
-**Service**: `apps/stt-v2/` — Speech-to-Text Python/FastAPI  
-**Audit Date**: 2026-03-24  
-**Auditor**: Security Auditor Agent  
-**Scope**: Full source code review of 73 Python source files, configuration, Docker, dependencies  
+**Service**: `apps/stt-v2/` — Speech-to-Text Python/FastAPI
+**Audit Date**: 2026-03-24
+**Last Updated**: 2026-04-06
+**Auditor**: Security Auditor Agent
+**Scope**: Full source code review of 73 Python source files, configuration, Docker, dependencies
 **Classification**: Healthcare AI service processing medical audio (PHI)
+
+> **Update (2026-04-06)**: Re-scan confirmed all original Critical/High findings remain open. CORS still defaults to `["*"]` via `settings.cors_origins`. No authentication middleware has been added. A `.env` file with default credentials remains committed at `apps/stt-v2/.env`.
 
 ---
 
@@ -45,11 +48,11 @@ The service processes healthcare audio containing patient conversations. Under H
 
 #### VULN-001: No Authentication on Any Endpoint
 
-**Severity**: Critical  
-**Location**: `src/stt_v2/main.py:186-216`  
-**OWASP**: A01 — Broken Access Control  
+**Severity**: Critical
+**Location**: `src/stt_v2/main.py:186-216`
+**OWASP**: A01 — Broken Access Control
 
-**Description**:  
+**Description**:
 No authentication middleware, API key validation, JWT verification, or any form of access control exists on any endpoint. All routes — including internal administrative endpoints (`/internal/cache/clear`, `/internal/sessions/cleanup`, `/internal/streaming/sessions`) — are completely open. The only protection is network-level (being behind the API Gateway), which is a single point of failure.
 
 **Evidence**:
@@ -63,7 +66,7 @@ def create_app() -> FastAPI:
     )
     # No auth middleware added
     app.add_middleware(CORSMiddleware, ...)
-    
+
     # All routers registered without any dependency guards
     app.include_router(health_router, prefix="/api/v1", tags=["Health"])
     app.include_router(internal_router, tags=["Internal"])
@@ -74,7 +77,7 @@ def create_app() -> FastAPI:
 
 While the API Gateway (`gateway.py:39`) sends `X-Internal-Service-Key` when making outbound calls, no endpoint on the STT service validates this key on inbound requests.
 
-**Impact**:  
+**Impact**:
 Any client with network access can transcribe audio, manage streaming sessions, clear model caches, and access speaker embeddings. In a zero-trust architecture, internal services must still authenticate peer services.
 
 **Remediation**:
@@ -90,8 +93,8 @@ async def verify_internal_key(
 
 # Apply to all internal routers
 app.include_router(
-    internal_router, 
-    tags=["Internal"], 
+    internal_router,
+    tags=["Internal"],
     dependencies=[Depends(verify_internal_key)]
 )
 ```
@@ -100,11 +103,11 @@ app.include_router(
 
 #### VULN-002: Default Credentials Hardcoded in Settings with No Production Guard
 
-**Severity**: Critical  
-**Location**: `src/stt_v2/core/config/settings.py:40-85`, `.env.example:43-68`  
-**OWASP**: A07 — Identification and Authentication Failures  
+**Severity**: Critical
+**Location**: `src/stt_v2/core/config/settings.py:40-85`, `.env.example:43-68`
+**OWASP**: A07 — Identification and Authentication Failures
 
-**Description**:  
+**Description**:
 Multiple service credentials have insecure defaults that would be used if environment variables are not explicitly set:
 
 | Setting | Default Value | Risk |
@@ -131,7 +134,7 @@ class Settings(BaseSettings):
 
 There is no validation that production deployments override these defaults. The application starts successfully with all defaults.
 
-**Impact**:  
+**Impact**:
 If deployed to production without overriding every default, the service runs with publicly known credentials. The empty API Gateway key means internal API calls are effectively unauthenticated.
 
 **Remediation**:
@@ -157,11 +160,11 @@ class Settings(BaseSettings):
 
 #### VULN-003: Wildcard CORS Allows Cross-Origin Attacks
 
-**Severity**: Critical  
-**Location**: `src/stt_v2/main.py:198-204`, `src/stt_v2/core/config/settings.py:37`  
-**OWASP**: A05 — Security Misconfiguration  
+**Severity**: Critical
+**Location**: `src/stt_v2/main.py:198-204`, `src/stt_v2/core/config/settings.py:37`
+**OWASP**: A05 — Security Misconfiguration
 
-**Description**:  
+**Description**:
 CORS is configured with `allow_origins=["*"]` by default, combined with `allow_credentials=True`. This is a dangerous combination — it enables any website to make credentialed cross-origin requests to the STT service.
 
 **Evidence**:
@@ -180,7 +183,7 @@ app.add_middleware(
 )
 ```
 
-**Impact**:  
+**Impact**:
 An attacker can craft a malicious webpage that sends authenticated requests to the STT service from a victim's browser, enabling CSRF-like attacks on any endpoint.
 
 **Remediation**:
@@ -206,11 +209,11 @@ if settings.cors_origins:
 
 #### VULN-004: Database Connection String Logged at Startup
 
-**Severity**: Critical  
-**Location**: `src/stt_v2/core/database/connection.py:70`  
-**OWASP**: A09 — Security Logging and Monitoring Failures  
+**Severity**: Critical
+**Location**: `src/stt_v2/core/database/connection.py:70`
+**OWASP**: A09 — Security Logging and Monitoring Failures
 
-**Description**:  
+**Description**:
 The database URL (which contains credentials) is logged at startup with only a 50-character truncation. For typical connection strings, this exposes the username and often the password.
 
 **Evidence**:
@@ -220,10 +223,10 @@ async def initialize_database() -> None:
     logger.info("Initializing database connection", url=settings.database_url[:50] + "...")
 ```
 
-A typical URL like `postgresql+asyncpg://stt_reader:S3cretP@ss@db.internal:5432/hope` would log:  
+A typical URL like `postgresql+asyncpg://stt_reader:S3cretP@ss@db.internal:5432/hope` would log:
 `url=postgresql+asyncpg://stt_reader:S3cretP@ss@db.` — exposing the full password.
 
-**Impact**:  
+**Impact**:
 Database credentials exposed in application logs. Log aggregation systems (ELK, CloudWatch, Datadog) store these permanently, expanding the attack surface.
 
 **Remediation**:
@@ -246,11 +249,11 @@ logger.info("Initializing database connection", url=_safe_db_url(settings.databa
 
 #### VULN-005: No MIME Type or Magic Byte Validation on Audio Uploads
 
-**Severity**: High  
-**Location**: `src/stt_v2/transcription/api/routes.py:69-117`, `src/stt_v2/embedding/api/routes.py:74-100`  
-**OWASP**: A03 — Injection  
+**Severity**: High
+**Location**: `src/stt_v2/transcription/api/routes.py:69-117`, `src/stt_v2/embedding/api/routes.py:74-100`
+**OWASP**: A03 — Injection
 
-**Description**:  
+**Description**:
 The transcription endpoint reads the entire uploaded file into memory and checks only for emptiness and size. There is no validation of:
 - MIME type / Content-Type header
 - File extension
@@ -275,7 +278,7 @@ async def transcribe_audio(
     # No format validation — bytes go directly to batch_service
 ```
 
-**Impact**:  
+**Impact**:
 Attackers can upload arbitrary files (executables, archives, polyglots) that get stored in MinIO and processed by ML models, potentially triggering crashes, memory corruption in native audio decoders (librosa, soundfile), or resource exhaustion.
 
 **Remediation**:
@@ -303,11 +306,11 @@ def validate_audio_file(file: UploadFile, audio_bytes: bytes) -> None:
 
 #### VULN-006: File Upload Read Into Memory Without Streaming Protection
 
-**Severity**: High  
-**Location**: `src/stt_v2/transcription/api/routes.py:99`  
-**OWASP**: A05 — Security Misconfiguration  
+**Severity**: High
+**Location**: `src/stt_v2/transcription/api/routes.py:99`
+**OWASP**: A05 — Security Misconfiguration
 
-**Description**:  
+**Description**:
 The entire file is read into memory with `await file.read()` before checking the size limit. This means a 100 MB file (or potentially larger if the reverse proxy doesn't enforce limits) is fully loaded into RAM before being rejected. Multiple concurrent uploads can exhaust available memory.
 
 **Evidence**:
@@ -318,7 +321,7 @@ if len(audio_bytes) > _MAX_UPLOAD_BYTES:  # Size check AFTER read
     raise HTTPException(status_code=413, ...)
 ```
 
-**Impact**:  
+**Impact**:
 Denial of Service via memory exhaustion. An attacker sending multiple large files concurrently can crash the service before size validation occurs.
 
 **Remediation**:
@@ -344,11 +347,11 @@ Additionally, configure uvicorn/nginx with `client_max_body_size` / `--limit-req
 
 #### VULN-007: Internal Error Details Exposed to Clients
 
-**Severity**: High  
-**Location**: `src/stt_v2/embedding/api/routes.py:99-111`, `src/stt_v2/health/api/routes.py:282`, multiple endpoints  
-**OWASP**: A05 — Security Misconfiguration  
+**Severity**: High
+**Location**: `src/stt_v2/embedding/api/routes.py:99-111`, `src/stt_v2/health/api/routes.py:282`, multiple endpoints
+**OWASP**: A05 — Security Misconfiguration
 
-**Description**:  
+**Description**:
 Multiple endpoints return raw Python exception messages to the client in HTTP responses, potentially exposing internal implementation details, file paths, library versions, and stack trace fragments.
 
 **Evidence**:
@@ -369,10 +372,10 @@ except Exception as e:
     raise HTTPException(status_code=500, detail=str(e))
 ```
 
-**Impact**:  
+**Impact**:
 Information disclosure. Internal error messages can reveal database schemas, file system paths, library versions, and system configuration to attackers, aiding further exploitation.
 
-**Remediation**:  
+**Remediation**:
 Log the full error internally, return generic messages to clients:
 
 ```python
@@ -388,11 +391,11 @@ except Exception as e:
 
 #### VULN-008: MinIO Operates Without TLS by Default
 
-**Severity**: High  
-**Location**: `src/stt_v2/core/config/settings.py:83`, `src/stt_v2/core/storage/minio_client.py:30-35`  
-**OWASP**: A02 — Cryptographic Failures  
+**Severity**: High
+**Location**: `src/stt_v2/core/config/settings.py:83`, `src/stt_v2/core/storage/minio_client.py:30-35`
+**OWASP**: A02 — Cryptographic Failures
 
-**Description**:  
+**Description**:
 MinIO client is configured with `secure=False` by default, meaning all object storage communication (including audio files containing PHI) is transmitted in plaintext over HTTP.
 
 **Evidence**:
@@ -410,10 +413,10 @@ self._client = Minio(
 )
 ```
 
-**Impact**:  
+**Impact**:
 Network-level attackers can intercept audio files containing patient health information, MinIO credentials in HTTP headers, and transcription results. This violates HIPAA technical safeguards requiring encryption in transit.
 
-**Remediation**:  
+**Remediation**:
 Set `minio_secure: bool = True` as default. Add startup validation:
 
 ```python
@@ -426,11 +429,11 @@ if not settings.minio_secure and not settings.debug:
 
 #### VULN-009: ML Models Loaded from HuggingFace Without Integrity Verification
 
-**Severity**: High  
-**Location**: `src/stt_v2/models/huggingface_loader.py:23-99`, `src/stt_v2/models/onnx_loader.py:252-329`  
-**OWASP**: A08 — Software and Data Integrity Failures  
+**Severity**: High
+**Location**: `src/stt_v2/models/huggingface_loader.py:23-99`, `src/stt_v2/models/onnx_loader.py:252-329`
+**OWASP**: A08 — Software and Data Integrity Failures
 
-**Description**:  
+**Description**:
 Models are downloaded from HuggingFace Hub via `from_pretrained()` and `snapshot_download()` without verifying checksums, signatures, or pinning to specific commit hashes. The `model_config.source_uri` comes from the database (pipeline configuration), meaning a compromised pipeline record could point to a malicious model.
 
 **Evidence**:
@@ -454,7 +457,7 @@ local_path = snapshot_download(
 )
 ```
 
-**Impact**:  
+**Impact**:
 Supply chain attack via model poisoning. A compromised HuggingFace model could execute arbitrary code during deserialization (especially PyTorch models using `pickle`). SafeTensors mitigates pickle risks but does not prevent adversarial model weights.
 
 **Remediation**:
@@ -478,11 +481,11 @@ if model_id not in APPROVED_MODEL_REPOS:
 
 #### VULN-010: NeMo Checkpoint Loading Uses Pickle Deserialization
 
-**Severity**: High  
-**Location**: `src/stt_v2/models/nemo_loader.py:90-115`  
-**OWASP**: A08 — Software and Data Integrity Failures  
+**Severity**: High
+**Location**: `src/stt_v2/models/nemo_loader.py:90-115`
+**OWASP**: A08 — Software and Data Integrity Failures
 
-**Description**:  
+**Description**:
 NeMo's `restore_from()` loads `.nemo` checkpoint files which internally use pickle deserialization. An attacker who can place a malicious `.nemo` file in the model cache directory or compromise the HuggingFace download can achieve remote code execution.
 
 **Evidence**:
@@ -499,7 +502,7 @@ async def _load_from_checkpoint(self, checkpoint_path: str, device: str) -> Any:
             model = model_class.restore_from(checkpoint_path)  # pickle deserialization
 ```
 
-**Impact**:  
+**Impact**:
 Remote Code Execution via deserialization of untrusted data. A crafted `.nemo` file triggers arbitrary Python code execution during model loading.
 
 **Remediation**:
@@ -512,11 +515,11 @@ Remote Code Execution via deserialization of untrusted data. A crafted `.nemo` f
 
 #### VULN-011: Pre-signed URL Generation Without Expiry Limits
 
-**Severity**: High  
-**Location**: `src/stt_v2/storage/blob_service.py:243-266`  
-**OWASP**: A01 — Broken Access Control  
+**Severity**: High
+**Location**: `src/stt_v2/storage/blob_service.py:243-266`
+**OWASP**: A01 — Broken Access Control
 
-**Description**:  
+**Description**:
 The `get_presigned_url()` method accepts a caller-controlled `expires_in` parameter with a default of 3600 seconds (1 hour). There is no maximum expiry enforcement, allowing URLs with very long validity periods.
 
 **Evidence**:
@@ -532,7 +535,7 @@ async def get_presigned_url(self, uri: str, expires_in: int = 3600) -> str:
     return url
 ```
 
-**Impact**:  
+**Impact**:
 Pre-signed URLs for audio files containing PHI can be generated with indefinite validity, creating persistent access tokens that cannot be revoked.
 
 **Remediation**:
@@ -549,11 +552,11 @@ async def get_presigned_url(self, uri: str, expires_in: int = 900) -> str:
 
 #### VULN-012: Swagger/ReDoc Docs Enabled in Debug Mode Without Auth
 
-**Severity**: High  
-**Location**: `src/stt_v2/main.py:191-194`  
-**OWASP**: A05 — Security Misconfiguration  
+**Severity**: High
+**Location**: `src/stt_v2/main.py:191-194`
+**OWASP**: A05 — Security Misconfiguration
 
-**Description**:  
+**Description**:
 OpenAPI documentation endpoints (`/api/v1/docs` and `/api/v1/redoc`) are enabled when `debug=True`. If debug mode is accidentally enabled in production, the full API schema is exposed.
 
 **Evidence**:
@@ -565,10 +568,10 @@ app = FastAPI(
 )
 ```
 
-**Impact**:  
+**Impact**:
 Full API surface discovery for attackers, including all endpoints, request/response schemas, and parameter names.
 
-**Remediation**:  
+**Remediation**:
 Add environment-based guard:
 
 ```python
@@ -583,17 +586,17 @@ _enable_docs = settings.debug and os.getenv("ENVIRONMENT", "production") != "pro
 
 #### VULN-013: No Rate Limiting on Any Endpoint
 
-**Severity**: Medium  
-**Location**: `src/stt_v2/main.py` (service-wide)  
-**OWASP**: A05 — Security Misconfiguration  
+**Severity**: Medium
+**Location**: `src/stt_v2/main.py` (service-wide)
+**OWASP**: A05 — Security Misconfiguration
 
-**Description**:  
+**Description**:
 No rate limiting is implemented on any endpoint. The `/api/v1/transcribe` endpoint is particularly expensive (CPU/GPU inference), and the embedding endpoints write to the vector store.
 
-**Impact**:  
+**Impact**:
 DoS via resource exhaustion. An attacker can flood the transcription endpoint, consuming all CPU/GPU resources and blocking legitimate requests.
 
-**Remediation**:  
+**Remediation**:
 Use `slowapi` or a custom middleware:
 
 ```python
@@ -613,11 +616,11 @@ async def transcribe_audio(request: Request, ...):
 
 #### VULN-014: Redis Connection Without TLS or Authentication
 
-**Severity**: Medium  
-**Location**: `src/stt_v2/core/config/settings.py:74-77`, `src/stt_v2/core/messaging/broker.py:55`  
-**OWASP**: A02 — Cryptographic Failures  
+**Severity**: Medium
+**Location**: `src/stt_v2/core/config/settings.py:74-77`, `src/stt_v2/core/messaging/broker.py:55`
+**OWASP**: A02 — Cryptographic Failures
 
-**Description**:  
+**Description**:
 Redis is configured with `redis://localhost:6379/0` (no TLS, no password). The Dramatiq broker and all Pub/Sub connections use this unencrypted, unauthenticated connection.
 
 **Evidence**:
@@ -630,10 +633,10 @@ _broker = RedisBroker(url=redis_url, middleware=[])
 result_backend = RedisBackend(url=redis_url)
 ```
 
-**Impact**:  
+**Impact**:
 Network-level attackers can read all Pub/Sub messages (containing transcription text), inject malicious Dramatiq jobs, and manipulate streaming session state.
 
-**Remediation**:  
+**Remediation**:
 Support Redis TLS and require authentication:
 
 ```
@@ -644,11 +647,11 @@ REDIS_URL=rediss://user:password@redis.internal:6380/0
 
 #### VULN-015: Streaming Session ID Not Validated
 
-**Severity**: Medium  
-**Location**: `src/stt_v2/streaming/api/routes.py:54-84`  
-**OWASP**: A03 — Injection  
+**Severity**: Medium
+**Location**: `src/stt_v2/streaming/api/routes.py:54-84`
+**OWASP**: A03 — Injection
 
-**Description**:  
+**Description**:
 The `session_id` in `CreateStreamingSessionRequest` is client-provided but not validated for format, length, or uniqueness before being used as a Redis key component (`stt:session:{session_id}`).
 
 **Evidence**:
@@ -667,7 +670,7 @@ def audio_stream_key(session_id: str) -> str:
     return f"stt:audio:{session_id}"
 ```
 
-**Impact**:  
+**Impact**:
 A malicious session_id could inject Redis key separators or create excessively long keys causing Redis memory issues. Values like `../../` or extremely long strings could cause unexpected behavior.
 
 **Remediation**:
@@ -688,11 +691,11 @@ def _validate_session_id(cls, v: str) -> str:
 
 #### VULN-016: Speaker Embedding Metadata Accepts Arbitrary JSON
 
-**Severity**: Medium  
-**Location**: `src/stt_v2/embedding/api/routes.py:55-65`, `src/stt_v2/core/vectorstore/speaker_store.py:162`  
-**OWASP**: A03 — Injection  
+**Severity**: Medium
+**Location**: `src/stt_v2/embedding/api/routes.py:55-65`, `src/stt_v2/core/vectorstore/speaker_store.py:162`
+**OWASP**: A03 — Injection
 
-**Description**:  
+**Description**:
 The embedding upsert endpoint accepts arbitrary JSON metadata from the client which is parsed and directly merged into the Qdrant payload without schema validation or field allowlisting.
 
 **Evidence**:
@@ -709,7 +712,7 @@ if metadata:
     payload.update(metadata)  # Direct merge into Qdrant payload
 ```
 
-**Impact**:  
+**Impact**:
 An attacker can overwrite reserved payload fields (`tenant_id`, `speaker_id`, `created_at`) in the Qdrant point, potentially bypassing tenant isolation or injecting misleading data.
 
 **Remediation**:
@@ -726,11 +729,11 @@ if metadata:
 
 #### VULN-017: Prometheus /metrics Endpoint Publicly Accessible
 
-**Severity**: Medium  
-**Location**: `src/stt_v2/main.py:207`  
-**OWASP**: A05 — Security Misconfiguration  
+**Severity**: Medium
+**Location**: `src/stt_v2/main.py:207`
+**OWASP**: A05 — Security Misconfiguration
 
-**Description**:  
+**Description**:
 Prometheus metrics are exposed at `/metrics` without authentication, revealing operational data including request rates, error counts, latency distributions, and active session counts.
 
 **Evidence**:
@@ -739,21 +742,21 @@ Prometheus metrics are exposed at `/metrics` without authentication, revealing o
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 ```
 
-**Impact**:  
+**Impact**:
 Information disclosure. Metrics reveal system capacity, usage patterns, and error rates that aid in planning DoS attacks or understanding system behavior.
 
-**Remediation**:  
+**Remediation**:
 Serve metrics on a separate internal port or add authentication.
 
 ---
 
 #### VULN-018: Qdrant Vector Store Without API Key by Default
 
-**Severity**: Medium  
-**Location**: `src/stt_v2/core/config/settings.py:133-136`, `src/stt_v2/core/vectorstore/client.py:48-53`  
-**OWASP**: A07 — Identification and Authentication Failures  
+**Severity**: Medium
+**Location**: `src/stt_v2/core/config/settings.py:133-136`, `src/stt_v2/core/vectorstore/client.py:48-53`
+**OWASP**: A07 — Identification and Authentication Failures
 
-**Description**:  
+**Description**:
 The Qdrant client defaults to no API key (`qdrant_api_key: str | None = None`). Without authentication, anyone with network access to the Qdrant instance can read, modify, or delete speaker embeddings.
 
 **Evidence**:
@@ -766,10 +769,10 @@ self._client = AsyncQdrantClient(
 )
 ```
 
-**Impact**:  
+**Impact**:
 Unauthorized access to biometric speaker embeddings, which are sensitive personal data subject to GDPR/HIPAA protections.
 
-**Remediation**:  
+**Remediation**:
 Require API key in production:
 
 ```python
@@ -781,17 +784,17 @@ if not settings.qdrant_api_key and not settings.debug:
 
 #### VULN-019: No Request Body Size Limit at Server Level
 
-**Severity**: Medium  
-**Location**: `src/stt_v2/main.py:232-242`  
-**OWASP**: A05 — Security Misconfiguration  
+**Severity**: Medium
+**Location**: `src/stt_v2/main.py:232-242`
+**OWASP**: A05 — Security Misconfiguration
 
-**Description**:  
+**Description**:
 While the transcription endpoint has an application-level 100MB limit, there is no server-level body size limit configured for uvicorn. Other endpoints (embedding upsert, streaming sessions) have no size limits at all.
 
-**Impact**:  
+**Impact**:
 Memory exhaustion via oversized request bodies on endpoints without application-level limits.
 
-**Remediation**:  
+**Remediation**:
 Configure uvicorn with `--limit-max-request-size` and add a global middleware:
 
 ```python
@@ -807,17 +810,17 @@ async def limit_request_size(request: Request, call_next):
 
 #### VULN-020: Redis Pub/Sub Messages Not Validated or Signed
 
-**Severity**: Medium  
-**Location**: `src/stt_v2/core/messaging/pubsub.py:115-138`  
-**OWASP**: A08 — Software and Data Integrity Failures  
+**Severity**: Medium
+**Location**: `src/stt_v2/core/messaging/pubsub.py:115-138`
+**OWASP**: A08 — Software and Data Integrity Failures
 
-**Description**:  
+**Description**:
 Redis Pub/Sub messages are published as JSON without any integrity verification (HMAC, signing). Any entity with Redis access can publish fake transcription events to job channels.
 
-**Impact**:  
+**Impact**:
 An attacker with Redis access can inject fake transcription results, progress updates, or error events that get relayed to clients via SSE.
 
-**Remediation**:  
+**Remediation**:
 Add HMAC signing to published messages:
 
 ```python
@@ -834,11 +837,11 @@ def _sign_event(event: dict, secret: str) -> dict:
 
 #### VULN-021: Dramatiq Broker Logs Partial Redis URL
 
-**Severity**: Medium  
-**Location**: `src/stt_v2/core/messaging/broker.py:50`  
-**OWASP**: A09 — Security Logging and Monitoring Failures  
+**Severity**: Medium
+**Location**: `src/stt_v2/core/messaging/broker.py:50`
+**OWASP**: A09 — Security Logging and Monitoring Failures
 
-**Description**:  
+**Description**:
 The Dramatiq broker logs the first 30 characters of the Redis URL, which may include credentials.
 
 **Evidence**:
@@ -849,18 +852,18 @@ logger.info("Configuring Dramatiq broker", redis_url=redis_url[:30] + "...")
 
 For a URL like `redis://user:password@redis.internal:6379/0`, 30 characters exposes the full credentials.
 
-**Remediation**:  
+**Remediation**:
 Log only the hostname:port.
 
 ---
 
 #### VULN-022: Path Traversal Partially Mitigated in Filename Sanitization
 
-**Severity**: Medium  
-**Location**: `src/stt_v2/storage/path_resolver.py:248-285`  
-**OWASP**: A01 — Broken Access Control  
+**Severity**: Medium
+**Location**: `src/stt_v2/storage/path_resolver.py:248-285`
+**OWASP**: A01 — Broken Access Control
 
-**Description**:  
+**Description**:
 The `_sanitize_filename()` method handles basic path components but does not account for URL-encoded path separators (`%2F`, `%5C`), null bytes (`%00`), or Unicode normalization attacks.
 
 **Evidence**:
@@ -871,7 +874,7 @@ def _sanitize_filename(self, filename: str) -> str:
     # Does not handle: %2F, %5C, %00, Unicode tricks
 ```
 
-**Impact**:  
+**Impact**:
 While the current implementation strips directory separators, encoded variants could bypass the sanitization in certain configurations.
 
 **Remediation**:
@@ -895,14 +898,14 @@ def _sanitize_filename(self, filename: str) -> str:
 
 #### VULN-023: Streaming Session Reaper Uses Wall Clock Comparison
 
-**Severity**: Medium  
-**Location**: `src/stt_v2/streaming/session_manager.py:1125-1167`  
-**OWASP**: N/A — Reliability/Security  
+**Severity**: Medium
+**Location**: `src/stt_v2/streaming/session_manager.py:1125-1167`
+**OWASP**: N/A — Reliability/Security
 
-**Description**:  
+**Description**:
 The reaper uses `datetime.utcnow()` and string-based ISO timestamp comparison, which can fail on clock skew between containers or if the session's `last_activity` is in a different timezone format.
 
-**Impact**:  
+**Impact**:
 Sessions may not be reaped correctly, leading to resource leaks or premature session termination.
 
 ---
@@ -913,11 +916,11 @@ Sessions may not be reaped correctly, leading to resource leaks or premature ses
 
 #### VULN-024: Health Check Exposes Component Error Messages
 
-**Severity**: Low  
-**Location**: `src/stt_v2/health/api/routes.py:149`  
-**OWASP**: A05 — Security Misconfiguration  
+**Severity**: Low
+**Location**: `src/stt_v2/health/api/routes.py:149`
+**OWASP**: A05 — Security Misconfiguration
 
-**Description**:  
+**Description**:
 Health check responses include truncated error messages from failed components (up to 200 characters). While limited, these can reveal internal hostnames, port numbers, and connection details.
 
 **Evidence**:
@@ -935,11 +938,11 @@ return ComponentHealth(
 
 #### VULN-025: No Content Security Policy or Security Headers
 
-**Severity**: Low  
-**Location**: `src/stt_v2/main.py`  
-**OWASP**: A05 — Security Misconfiguration  
+**Severity**: Low
+**Location**: `src/stt_v2/main.py`
+**OWASP**: A05 — Security Misconfiguration
 
-**Description**:  
+**Description**:
 No security headers are set: `X-Content-Type-Options`, `X-Frame-Options`, `Strict-Transport-Security`, `Content-Security-Policy`.
 
 **Remediation**:
@@ -961,22 +964,22 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 #### VULN-026: No Audit Logging for Administrative Actions
 
-**Severity**: Low  
-**Location**: `src/stt_v2/health/api/routes.py:285-307`  
-**OWASP**: A09 — Security Logging and Monitoring Failures  
+**Severity**: Low
+**Location**: `src/stt_v2/health/api/routes.py:285-307`
+**OWASP**: A09 — Security Logging and Monitoring Failures
 
-**Description**:  
+**Description**:
 Administrative endpoints like `/internal/cache/clear` and `/internal/sessions/cleanup` do not log the requesting identity or produce audit trail entries.
 
 ---
 
 #### VULN-027: Dockerfile Runs as Root in Builder Stages
 
-**Severity**: Low  
-**Location**: `docker/Dockerfile`  
-**OWASP**: A05 — Security Misconfiguration  
+**Severity**: Low
+**Location**: `docker/Dockerfile`
+**OWASP**: A05 — Security Misconfiguration
 
-**Description**:  
+**Description**:
 While the production stages should run as non-root (per infrastructure rules), the current multi-stage build does not explicitly create or use a non-root user in the runtime stages. Verification of the full Dockerfile (lines 60+) is recommended.
 
 ---
@@ -987,11 +990,11 @@ While the production stages should run as non-root (per infrastructure rules), t
 
 #### VULN-028: No Encryption at Rest for Audio Data (HIPAA)
 
-**Severity**: Info (Architecture)  
-**Location**: Service-wide  
-**OWASP**: A02 — Cryptographic Failures  
+**Severity**: Info (Architecture)
+**Location**: Service-wide
+**OWASP**: A02 — Cryptographic Failures
 
-**Description**:  
+**Description**:
 Audio files containing medical conversations (ePHI) are stored in MinIO without application-level encryption at rest. While MinIO supports server-side encryption (SSE), it is not configured or enforced by the application.
 
 **HIPAA Considerations**:
@@ -1010,10 +1013,10 @@ Audio files containing medical conversations (ePHI) are stored in MinIO without 
 
 #### VULN-029: No Data Retention or Right-to-Delete Implementation
 
-**Severity**: Info (Compliance)  
-**Location**: Service-wide  
+**Severity**: Info (Compliance)
+**Location**: Service-wide
 
-**Description**:  
+**Description**:
 No mechanism exists to:
 - Delete all data for a specific patient/speaker
 - Enforce data retention policies
