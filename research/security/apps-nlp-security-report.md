@@ -1,11 +1,14 @@
 # Security Audit Report: Medical NLP Service (`apps/nlp/`)
 
 **Audit Date:** 2026-03-24
+**Last Updated:** 2026-04-06
 **Auditor:** Automated Security Auditor Agent
 **Service:** Medical Entity Recognition & NLP Service
 **Version:** 1.0.0
 **Framework:** FastAPI (Python 3.11+)
 **Scope:** Full source code review of `apps/nlp/` — 26 Python source files, 1 Dockerfile, 1 pyproject.toml
+
+> **Update (2026-04-06)**: Re-scan confirmed all original Critical/High findings remain open. CORS still defaults to `["*"]` with `allow_credentials=True`. No authentication middleware has been added. `python-jose` (CVE-2024-33663) remains in dependencies.
 
 ---
 

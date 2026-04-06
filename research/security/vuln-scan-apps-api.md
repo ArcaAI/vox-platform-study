@@ -1,9 +1,10 @@
 # Vulnerability Scan Report — `apps/api/` (NestJS API Gateway)
 
-**Scan Date:** 2026-03-24  
-**Scope:** `apps/api/` — NestJS 11 API Gateway + transitive workspace dependencies  
-**Classification:** Healthcare AI (HOPE) — handles PHI/ePHI  
-**Risk Context:** HIPAA, SOC 2, HITRUST applicable  
+**Scan Date:** 2026-03-24
+**Last Updated:** 2026-04-06
+**Scope:** `apps/api/` — NestJS 11 API Gateway + transitive workspace dependencies
+**Classification:** Healthcare AI (HOPE) — handles PHI/ePHI
+**Risk Context:** HIPAA, SOC 2, HITRUST applicable
 
 ---
 
@@ -30,9 +31,9 @@
 
 ## 1. CRITICAL: Hardcoded Secret in Git-Tracked `.env.dev`
 
-**File:** `.env.dev` (line 166–167), tracked by Git  
-**Severity:** CRITICAL (CVSS 9.8)  
-**HIPAA Impact:** Potential unauthorized access to PHI via Azure OpenAI  
+**File:** `.env.dev` (line 166–167), tracked by Git
+**Severity:** CRITICAL (CVSS 9.8)
+**HIPAA Impact:** Potential unauthorized access to PHI via Azure OpenAI
 
 ```166:167:.env.dev
 AZURE_OPENAI_API_KEY: F5Kvc2iVDdZVkGHsVSssaZs342f0qUURXUWIFn5VaJiodtqNV2McJQQJ99BAACYeBjFXJ3w3AAABACOGP15b
@@ -65,9 +66,9 @@ Additional hardcoded secrets found in Git-tracked env files:
 
 ## 2. CRITICAL: Refresh Token Forgery — No Server-Side Storage
 
-**File:** `apps/api/src/modules/auth/auth.controller.ts` (lines 387–432, 491–493)  
-**Severity:** CRITICAL (CVSS 9.1)  
-**HIPAA Impact:** Any user who knows another user's ID can forge a refresh token and gain full access  
+**File:** `apps/api/src/modules/auth/auth.controller.ts` (lines 387–432, 491–493)
+**Severity:** CRITICAL (CVSS 9.1)
+**HIPAA Impact:** Any user who knows another user's ID can forge a refresh token and gain full access
 
 The refresh token is constructed as a predictable string:
 
@@ -100,9 +101,9 @@ The refresh endpoint (line 392–397) validates by **parsing the token string** 
 
 ## 3. CRITICAL: ValidationPipe Missing `whitelist` and `forbidNonWhitelisted`
 
-**File:** `apps/api/src/main.ts` (line 272)  
-**Severity:** CRITICAL (CVSS 8.6)  
-**HIPAA Impact:** Mass assignment can modify protected fields; prototype pollution via `__proto__`  
+**File:** `apps/api/src/main.ts` (line 272)
+**Severity:** CRITICAL (CVSS 8.6)
+**HIPAA Impact:** Mass assignment can modify protected fields; prototype pollution via `__proto__`
 
 ```272:272:apps/api/src/main.ts
     app.useGlobalPipes(new ValidationPipe({ transform: true }));
@@ -127,9 +128,9 @@ app.useGlobalPipes(new ValidationPipe({
 
 ## 4. HIGH: Prisma Studio Exposed with `@Public()` Decorator
 
-**File:** `apps/api/src/modules/pstudio/pstudio.controller.ts` (lines 18–40)  
-**Severity:** HIGH (CVSS 8.1)  
-**HIPAA Impact:** Direct database access to PHI tables  
+**File:** `apps/api/src/modules/pstudio/pstudio.controller.ts` (lines 18–40)
+**Severity:** HIGH (CVSS 8.1)
+**HIPAA Impact:** Direct database access to PHI tables
 
 ```18:20:apps/api/src/modules/pstudio/pstudio.controller.ts
     @Get()
@@ -153,8 +154,8 @@ Additionally, the Studio is enabled by default in non-production (`ENABLE_PRISMA
 
 ## 5. HIGH: Session Cookie `httpOnly: false` in Non-Production
 
-**File:** `apps/api/src/main.ts` (lines 259–270)  
-**Severity:** HIGH (CVSS 7.5)  
+**File:** `apps/api/src/main.ts` (lines 259–270)
+**Severity:** HIGH (CVSS 7.5)
 
 ```259:270:apps/api/src/main.ts
     app.use(
@@ -192,8 +193,8 @@ Remove the fallback secret — fail fast if `SESSION_SECRET_KEY` is not configur
 
 ## 6. HIGH: Overly Permissive CORS in Production
 
-**File:** `apps/api/src/main.ts` (lines 74–91)  
-**Severity:** HIGH (CVSS 7.4)  
+**File:** `apps/api/src/main.ts` (lines 74–91)
+**Severity:** HIGH (CVSS 7.4)
 
 ```74:91:apps/api/src/main.ts
         // For SDK usage: Allow any HTTPS origin
@@ -222,8 +223,8 @@ Additionally, ngrok/localtunnel/Vercel/Netlify domains are explicitly allowed in
 
 ## 7. HIGH: `Math.random()` for Request ID Generation
 
-**File:** `apps/api/src/shared/base-proxy.controller.ts` (line 121)  
-**Severity:** HIGH (CVSS 6.5)  
+**File:** `apps/api/src/shared/base-proxy.controller.ts` (line 121)
+**Severity:** HIGH (CVSS 6.5)
 
 ```118:121:apps/api/src/shared/base-proxy.controller.ts
         const requestId =
@@ -240,8 +241,8 @@ Additionally, ngrok/localtunnel/Vercel/Netlify domains are explicitly allowed in
 
 ## 8. HIGH: Template Injection via Prisma Studio HTML
 
-**File:** `apps/api/src/modules/pstudio/pstudio.html.ts` (lines 91–92)  
-**Severity:** HIGH (CVSS 7.3)  
+**File:** `apps/api/src/modules/pstudio/pstudio.html.ts` (lines 91–92)
+**Severity:** HIGH (CVSS 7.3)
 
 ```91:92:apps/api/src/modules/pstudio/pstudio.html.ts
                     url: '${studioEndpointUrl}',
@@ -260,9 +261,9 @@ For example, a token like `'; alert(document.cookie); '` would execute arbitrary
 
 ## 9. HIGH: Tenant ID Override via Unauthenticated Header
 
-**File:** `apps/api/src/interceptors/context.interceptor.ts` (lines 47–49)  
-**Severity:** HIGH (CVSS 8.0)  
-**HIPAA Impact:** Cross-tenant data access — PHI leakage  
+**File:** `apps/api/src/interceptors/context.interceptor.ts` (lines 47–49)
+**Severity:** HIGH (CVSS 8.0)
+**HIPAA Impact:** Cross-tenant data access — PHI leakage
 
 ```47:49:apps/api/src/interceptors/context.interceptor.ts
         const tenantIdHeader = request.headers['x-tenant-id'];
@@ -282,8 +283,8 @@ Any request can override the tenant context by setting the `X-Tenant-Id` header.
 
 ## 10. HIGH: Request Body Controls Request ID (Client-Controlled Correlation)
 
-**File:** `apps/api/src/interceptors/context.interceptor.ts` (line 37)  
-**Severity:** MEDIUM (CVSS 5.3)  
+**File:** `apps/api/src/interceptors/context.interceptor.ts` (line 37)
+**Severity:** MEDIUM (CVSS 5.3)
 
 ```36:38:apps/api/src/interceptors/context.interceptor.ts
         if (!request.requestId) {
@@ -328,10 +329,10 @@ The request body's `requestId` field is used as the correlation ID. An attacker 
 
 ## 12. SSRF Analysis
 
-**File:** `apps/api/src/shared/base-proxy.controller.ts`  
-**File:** `apps/api/src/modules/streaming/smr-proxy.controller.ts`  
-**File:** `apps/api/src/modules/health/health.controller.ts`  
-**Severity:** LOW (mitigated)  
+**File:** `apps/api/src/shared/base-proxy.controller.ts`
+**File:** `apps/api/src/modules/streaming/smr-proxy.controller.ts`
+**File:** `apps/api/src/modules/health/health.controller.ts`
+**Severity:** LOW (mitigated)
 
 The proxy and HTTP client calls use environment-configured URLs (`SMR_URL`, `TTS_URL`, etc.), not user-controlled input. The `BaseProxyController` target is set from `config.serviceUrl` which comes from environment variables.
 
@@ -348,8 +349,8 @@ While `taskId` comes from a route parameter, it could theoretically be used for 
 
 ## 13. Path Traversal Analysis
 
-**File:** `apps/api/src/modules/storage/storage.controller.ts`  
-**Severity:** LOW (mitigated)  
+**File:** `apps/api/src/modules/storage/storage.controller.ts`
+**Severity:** LOW (mitigated)
 
 The storage controller has proper path traversal checks:
 ```typescript
@@ -368,7 +369,7 @@ This check is applied consistently across bucket names (lines 63, 76, 92, 104) a
 
 ## 14. ReDoS (Regular Expression DoS) Analysis
 
-**Severity:** LOW  
+**Severity:** LOW
 
 All regex patterns found in `apps/api/src/` are simple patterns without nested quantifiers:
 - `/[.]{2}|[/\\]/` — Storage traversal check (safe: no backtracking)
@@ -383,8 +384,8 @@ All regex patterns found in `apps/api/src/` are simple patterns without nested q
 
 ## 15. Race Condition / TOCTOU Analysis
 
-**File:** `apps/api/src/modules/auth/auth.controller.ts`  
-**Severity:** MEDIUM  
+**File:** `apps/api/src/modules/auth/auth.controller.ts`
+**Severity:** MEDIUM
 
 In the login flow (lines 80–116), the sequence is:
 1. Find user by username
@@ -401,9 +402,9 @@ Between steps 1–5, the user's status or roles could change (e.g., user disable
 
 ## 16. Unsafe Deserialization
 
-**File:** `apps/api/src/modules/streaming/stt-ws.gateway.ts` (line 154)  
-**File:** `apps/api/src/modules/streaming/smr-proxy.controller.ts` (lines 208, 281)  
-**Severity:** MEDIUM  
+**File:** `apps/api/src/modules/streaming/stt-ws.gateway.ts` (line 154)
+**File:** `apps/api/src/modules/streaming/smr-proxy.controller.ts` (lines 208, 281)
+**Severity:** MEDIUM
 
 `JSON.parse()` is used on WebSocket messages and tenant configuration values:
 
@@ -425,8 +426,8 @@ While the parse is wrapped in try-catch, the parsed object is used with dynamic 
 
 ## 17. Memory Leak / DoS Vectors
 
-**File:** `apps/api/src/modules/streaming/stt-ws.gateway.ts` (line 30)  
-**Severity:** MEDIUM  
+**File:** `apps/api/src/modules/streaming/stt-ws.gateway.ts` (line 30)
+**Severity:** MEDIUM
 
 ```30:30:apps/api/src/modules/streaming/stt-ws.gateway.ts
     private readonly sessions = new Map<WebSocket, SessionInfo>();
@@ -448,8 +449,8 @@ The WebSocket sessions map grows with each connection and is cleaned on disconne
 
 ## 18. Dockerfile Security Analysis
 
-**File:** `apps/api/Dockerfile`  
-**Severity:** LOW (mostly good practices)  
+**File:** `apps/api/Dockerfile`
+**Severity:** LOW (mostly good practices)
 
 **Good:**
 - Multi-stage build (dependencies → builder → production)
@@ -480,7 +481,7 @@ USER api
 
 ## 19. HTTP Response Splitting / CRLF Injection
 
-**Severity:** LOW  
+**Severity:** LOW
 
 Headers set via `res.setHeader()` in `main.ts` use hardcoded values. The `X-Forwarded-Proto` header in `pstudio.controller.ts` is used to construct the Studio URL, but is rendered into HTML (not headers), so CRLF injection doesn't apply.
 
@@ -490,7 +491,7 @@ No header values are constructed from user input. **No vulnerabilities found.**
 
 ## 20. Open Redirects
 
-**Severity:** NONE  
+**Severity:** NONE
 
 No `res.redirect()` calls found in the codebase. No redirect endpoints exist. **No vulnerabilities found.**
 
@@ -498,9 +499,9 @@ No `res.redirect()` calls found in the codebase. No redirect endpoints exist. **
 
 ## 21. Hardcoded Internal URLs / Infrastructure Details
 
-**File:** `apps/api/src/main.ts` (lines 51–58)  
-**File:** Various `.env` files  
-**Severity:** INFO  
+**File:** `apps/api/src/main.ts` (lines 51–58)
+**File:** Various `.env` files
+**Severity:** INFO
 
 Production domain names are hardcoded:
 - `https://app.arcaai.com`
@@ -524,8 +525,8 @@ Azure endpoint: `https://alaas-openai.openai.azure.com/` (in committed `.env.dev
 
 ## 22. `speakeasy` Package — Abandoned and Vulnerable
 
-**File:** `apps/api/package.json` (line 75)  
-**Severity:** HIGH  
+**File:** `apps/api/package.json` (line 75)
+**Severity:** HIGH
 
 The `speakeasy` package (v2.0.0) was last updated in **2017** and is unmaintained. Known issues:
 - Timing attack vulnerability in TOTP verification (no CVE assigned)
@@ -539,8 +540,8 @@ The `speakeasy` package (v2.0.0) was last updated in **2017** and is unmaintaine
 
 ## 23. JWT Default Secret Key
 
-**File:** `apps/api/src/modules/auth/auth.controller.ts` (lines 120, 341, 414)  
-**Severity:** HIGH  
+**File:** `apps/api/src/modules/auth/auth.controller.ts` (lines 120, 341, 414)
+**Severity:** HIGH
 
 ```120:120:apps/api/src/modules/auth/auth.controller.ts
             const jwtSecretKey = this.appSettingsService.getValueWithDefault('JWT_SECRET_KEY', 'default-jwt-secret-key-change-in-production');
