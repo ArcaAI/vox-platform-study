@@ -86,6 +86,7 @@ class Settings(BaseSettings):
     minio_access_key: str = "minio_admin"
     minio_secret_key: str = "minio_admin"
     minio_secure: bool = False
+    minio_cert_check: bool = True
     minio_audio_bucket: str = "hope-audio"
     minio_chunk_bucket: str = "hope-audio-chunks"
 
