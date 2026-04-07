@@ -1,6 +1,7 @@
 import type { CorePrismaClient } from '../../../client';
 import { ValueType } from '../../../generated/core-prisma-client/client.js';
 import { SEED_TENANT_ID } from './00-constants';
+import { TEMPLATE_IDS } from './07-prompt-template';
 
 /**
  * STT (Speech-to-Text) Seed Data
@@ -1378,6 +1379,7 @@ inference:
   device: auto
   language: null
   code_switching: true
+  initial_prompt: "${TEMPLATE_IDS.WHISPER_INITIAL_PROMPT_EN_VI}"
 
 postprocessing:
   timestamps:

@@ -37,6 +37,7 @@ from ..core.exceptions import (
     CloudASRTranscriptionError,
     TranscriptionError,
 )
+from ..core.initial_prompt import compose_prompt, get_initial_prompt
 from ..models.azure_speech_loader import normalize_language_for_azure
 from ..models.base_loader import LoadedModel
 from ..models.cache import get_model_cache
@@ -54,6 +55,8 @@ from .dto import (
 from .preprocessing import get_preprocessor
 
 logger = logging.getLogger(__name__)
+
+_CONTEXT_CARRY_MAX_WORDS = 20  # max words from previous segment as prompt context
 
 
 class BatchTranscriptionService:
@@ -258,6 +261,19 @@ class BatchTranscriptionService:
             logger.info(f"[{job_id}] Running ASR inference...")
             inference_start = time.time()
 
+            # Resolve initial prompt from DB if configured
+            initial_prompt: str | None = None
+            initial_prompt_id = getattr(spec.inference, "initial_prompt", None)
+            if initial_prompt_id:
+                initial_prompt = await get_initial_prompt(initial_prompt_id)
+                if initial_prompt:
+                    logger.info(
+                        "[%s] Resolved initial_prompt (template=%s, %d chars)",
+                        job_id,
+                        initial_prompt_id,
+                        len(initial_prompt),
+                    )
+
             # TTFW tracker: records wall-clock time when the first
             # transcribed word becomes available (set inside inference).
             first_word_time: list[float] = []  # mutable container for closure
@@ -280,6 +296,7 @@ class BatchTranscriptionService:
                     progress_callback=lambda p: update_progress(35 + int(p * 0.4)),
                     chunk_callback=chunk_callback,
                     first_word_hook=_on_first_word,
+                    initial_prompt=initial_prompt,
                 )
             else:
                 # Full-audio ASR (no VAD or no segments detected)
@@ -291,6 +308,7 @@ class BatchTranscriptionService:
                     progress_callback=lambda p: update_progress(35 + int(p * 0.4)),
                     chunk_callback=chunk_callback,
                     first_word_hook=_on_first_word,
+                    prompt=compose_prompt(initial_prompt, None),
                 )
 
             timing.inference_seconds = time.time() - inference_start
@@ -765,6 +783,7 @@ class BatchTranscriptionService:
         progress_callback: Callable[[float], None] | None = None,
         chunk_callback: Callable[[ChunkTranscriptionResult], None] | None = None,
         first_word_hook: Callable[[], None] | None = None,
+        initial_prompt: str | None = None,
     ) -> RawTranscription:
         """Run ASR inference on each VAD speech segment independently.
 
@@ -809,6 +828,7 @@ class BatchTranscriptionService:
         detected_lang_prob: float | None = None
         global_chunk_idx = 0
         first_word_fired = False
+        previous_segment_text: str = ""  # carry-forward across segments
 
         speech_segments = [s for s in segments if s.is_speech]
         original_count = len(speech_segments)
@@ -854,6 +874,9 @@ class BatchTranscriptionService:
             seg_segments: list[dict[str, Any]] = []
             previous_chunk_text = ""
 
+            # Compose prompt for this segment (predefined + carry-forward)
+            segment_prompt = compose_prompt(initial_prompt, previous_segment_text or None)
+
             # ---- Sub-split long segments using sliding window ----
             seg_duration_s = seg.duration
             if seg_duration_s > chunk_length_s:
@@ -886,7 +909,8 @@ class BatchTranscriptionService:
 
                     try:
                         sub_result = await self._run_inference(
-                            sub_audio, sample_rate, model, config
+                            sub_audio, sample_rate, model, config,
+                            prompt=segment_prompt,
                         )
                     except Exception as e:
                         logger.warning(
@@ -924,6 +948,10 @@ class BatchTranscriptionService:
                         previous_chunk_text = (
                             sub_result.text.strip()
                         )  # use original for dedup matching
+                        # Update prompt for next sub-chunk with latest text
+                        words = sub_result.text.strip().split()
+                        carry = " ".join(words[-_CONTEXT_CARRY_MAX_WORDS:])
+                        segment_prompt = compose_prompt(initial_prompt, carry)
                         sub_seg: dict[str, Any] = {
                             "text": chunk_text,
                             "start": sub_start_global,
@@ -969,7 +997,8 @@ class BatchTranscriptionService:
                 # ---- Short segment: single inference call ----
                 try:
                     seg_result = await self._run_inference(
-                        segment_audio, sample_rate, model, config
+                        segment_audio, sample_rate, model, config,
+                        prompt=segment_prompt,
                     )
                 except Exception as e:
                     logger.warning(
@@ -1058,6 +1087,9 @@ class BatchTranscriptionService:
 
             if seg_merged_text:
                 all_text_parts.append(seg_merged_text)
+                # Carry forward last N words for next segment's prompt
+                words = seg_merged_text.strip().split()
+                previous_segment_text = " ".join(words[-_CONTEXT_CARRY_MAX_WORDS:])
             all_segments.extend(seg_segments)
             all_word_timestamps.extend(seg_word_ts)
 
@@ -1103,6 +1135,7 @@ class BatchTranscriptionService:
         progress_callback: Callable[[float], None] | None = None,
         chunk_callback: Callable[[ChunkTranscriptionResult], None] | None = None,
         first_word_hook: Callable[[], None] | None = None,
+        prompt: str | None = None,
     ) -> RawTranscription:
         """Run ASR model inference.
 
@@ -1121,7 +1154,8 @@ class BatchTranscriptionService:
             AiModelFormat.CTRANSLATE2,
         ]:
             return await self._run_transformers_inference(
-                samples, sample_rate, model, config, progress_callback
+                samples, sample_rate, model, config, progress_callback,
+                prompt=prompt,
             )
         elif model.format in [AiModelFormat.ONNX, AiModelFormat.ONNX_OPTIMUM]:
             # Check if loaded with Optimum (has proper processor)
@@ -1134,6 +1168,7 @@ class BatchTranscriptionService:
                     progress_callback,
                     chunk_callback=chunk_callback,
                     first_word_hook=first_word_hook,
+                    prompt=prompt,
                 )
             return await self._run_onnx_inference(
                 samples, sample_rate, model, config, progress_callback
@@ -1372,6 +1407,7 @@ class BatchTranscriptionService:
         model: LoadedModel,
         config: Any,
         progress_callback: Callable[[float], None] | None = None,
+        prompt: str | None = None,
     ) -> RawTranscription:
         """Run inference using Transformers/HuggingFace model."""
         import torch
@@ -1455,6 +1491,17 @@ class BatchTranscriptionService:
 
                 # Remove None values
                 generate_kwargs = {k: v for k, v in generate_kwargs.items() if v is not None}
+
+                # Inject prompt_ids for Whisper conditioning
+                if prompt and hasattr(processor, "get_prompt_ids"):
+                    try:
+                        prompt_ids = processor.get_prompt_ids(prompt, return_tensors="pt")
+                        generate_kwargs["prompt_ids"] = prompt_ids.to(device)
+                    except Exception:
+                        logger.debug(
+                            "Failed to encode prompt_ids for transformers inference",
+                            exc_info=True,
+                        )
 
                 outputs = asr_model.generate(
                     **inputs,
@@ -1555,6 +1602,7 @@ class BatchTranscriptionService:
         progress_callback: Callable[[float], None] | None = None,
         chunk_callback: Callable[[ChunkTranscriptionResult], None] | None = None,
         first_word_hook: Callable[[], None] | None = None,
+        prompt: str | None = None,
     ) -> RawTranscription:
         """Run inference using Optimum ONNX with manual sliding-window chunking.
 
@@ -1635,6 +1683,15 @@ class BatchTranscriptionService:
         elif temperature is not None:
             generate_kwargs["do_sample"] = True
             generate_kwargs["temperature"] = temperature
+
+        # Whisper initial_prompt conditioning (prompt_ids)
+        if prompt:
+            try:
+                prompt_ids = processor.get_prompt_ids(prompt, return_tensors="pt")
+                generate_kwargs["prompt_ids"] = prompt_ids
+                logger.debug("Optimum ONNX: injected prompt_ids (%d tokens)", len(prompt_ids))
+            except Exception:
+                logger.warning("Optimum ONNX: failed to encode prompt_ids, skipping", exc_info=True)
 
         device = model.device
 

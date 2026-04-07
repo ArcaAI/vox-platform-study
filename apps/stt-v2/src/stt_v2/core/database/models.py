@@ -174,3 +174,32 @@ class AiModelRead(Base):
     version: Mapped[int] = mapped_column("_version", Integer, default=1)
     created_at: Mapped[datetime] = mapped_column("createdAt", DateTime)
     updated_at: Mapped[datetime] = mapped_column("updatedAt", DateTime)
+
+
+PromptTemplateCategoryType = ENUM(
+    "SYSTEM",
+    "SUMMARY",
+    "DNA_ANALYSIS",
+    "CUSTOM",
+    name="PromptTemplateCategory",
+    schema="core",
+    create_type=False,
+)
+
+
+class PromptTemplateRead(Base):
+    """Read-only model for PromptTemplate table."""
+
+    __tablename__ = "PromptTemplate"
+    __table_args__ = {"schema": "core"}
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column("tenantId", String)
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(String)
+    content: Mapped[str] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(PromptTemplateCategoryType)
+    current_version_number: Mapped[int] = mapped_column("currentVersionNumber", Integer)
+    resource_status: Mapped[str] = mapped_column("resourceStatus", ResourceStatusType)
+    created_at: Mapped[datetime] = mapped_column("createdAt", DateTime)
+    updated_at: Mapped[datetime] = mapped_column("updatedAt", DateTime)

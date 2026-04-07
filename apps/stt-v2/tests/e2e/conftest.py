@@ -183,6 +183,7 @@ async def configured_app(postgres_container, redis_container, minio_container):
                 "'IMAGE_CLASSIFICATION','OBJECT_DETECTION'"
             ),
             "ModelType": ("'BASE_MODEL','FINETUNED_MODEL','QUANTIZED_MODEL','UNKNOWN'"),
+            "PromptTemplateCategory": ("'SYSTEM','SUMMARY','DNA_ANALYSIS','CUSTOM'"),
         }
         for enum_name, enum_values in _enums.items():
             await conn.execute(
