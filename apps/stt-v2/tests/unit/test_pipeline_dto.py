@@ -371,6 +371,16 @@ class TestInferenceConfig:
         config = InferenceConfig(language="en")
         assert config.language == "en"
 
+    def test_initial_prompt_default_none(self):
+        """Test initial_prompt defaults to None."""
+        config = InferenceConfig()
+        assert config.initial_prompt is None
+
+    def test_initial_prompt_set(self):
+        """Test initial_prompt can be set to a UUID string."""
+        config = InferenceConfig(initial_prompt="71000000-0000-0000-0000-000000000041")
+        assert config.initial_prompt == "71000000-0000-0000-0000-000000000041"
+
 
 class TestPostprocessingConfig:
     """Tests for PostprocessingConfig dataclass."""

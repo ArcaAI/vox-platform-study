@@ -44,6 +44,7 @@ export const TEMPLATE_IDS = {
     SONC_REVISIT: '71000000-0000-0000-0000-000000000035',
     CATCHALL_SOAP: '71000000-0000-0000-0000-000000000036',
     PRE_SUMMARY_DEFAULT: '71000000-0000-0000-0000-000000000040',
+    WHISPER_INITIAL_PROMPT_EN_VI: '71000000-0000-0000-0000-000000000041',
 } as const;
 
 // Version IDs
@@ -2082,6 +2083,26 @@ When no department-specific template matches the current encounter's department,
         currentVersionNumber: 1,
         departmentId: null,
         tags: ['department', 'catchall', 'soap', 'smr-v1'],
+    },
+    // ──────────────────────────────────────────────────────────────────
+    // ID 41: Whisper Initial Prompt - Bilingual EN-VI Medical Vocabulary
+    // ──────────────────────────────────────────────────────────────────
+    {
+        id: TEMPLATE_IDS.WHISPER_INITIAL_PROMPT_EN_VI,
+        tenantId: DEFAULT_TENANT_ID,
+        name: 'Whisper Initial Prompt - EN/VI',
+        description:
+            'Bilingual English-Vietnamese',
+        content:
+            'Okay, để tôi check lại cái report này. ' +
+            'Vâng, cái feature đó đã được deploy rồi. ' +
+            'Uhm, bây giờ mình confirm lại schedule nhé. ' +
+            'Dạ, em update xong rồi.',
+        category: 'SYSTEM',
+        variables: {},
+        currentVersionNumber: 1,
+        departmentId: null,
+        tags: ['whisper', 'stt', 'initial-prompt', 'en-vi', 'bilingual'],
     },
 ];
 

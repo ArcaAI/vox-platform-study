@@ -61,6 +61,14 @@ class TestInferenceWorkerInit:
         worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "hello")
         assert worker.has_pipeline is True
 
+    def test_initial_prompt_stored(self):
+        worker = StreamingInferenceWorker(initial_prompt="medical terms")
+        assert worker._initial_prompt == "medical terms"
+
+    def test_initial_prompt_default_none(self):
+        worker = StreamingInferenceWorker()
+        assert worker._initial_prompt is None
+
 
 # =========================================================================
 # Tests: process_utterance

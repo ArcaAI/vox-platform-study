@@ -26,6 +26,7 @@ from stt_v2.pipeline.dto import PostprocessingConfig
 from stt_v2.streaming.preprocessor import AudioUtterance
 from stt_v2.streaming.redis_streams import ResultPublisher
 from stt_v2.streaming.schemas import SegmentResult
+from stt_v2.core.initial_prompt import compose_prompt
 
 logger = structlog.get_logger(__name__)
 _MAX_SEGMENT_TEXT_CHARS = 1200
@@ -75,6 +76,7 @@ class StreamingInferenceWorker:
         consultation_id: str | None = None,
         diarization_config: Any = None,
         postprocessing_config: PostprocessingConfig | None = None,
+        initial_prompt: str | None = None,
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
@@ -89,6 +91,7 @@ class StreamingInferenceWorker:
         )
         self._punctuation_model: Any = None
         self._previous_text: str = ""
+        self._initial_prompt: str | None = initial_prompt
 
     @property
     def has_pipeline(self) -> bool:
@@ -261,7 +264,7 @@ class StreamingInferenceWorker:
 
         # The ASR pipeline can be sync or async. If it's a coroutine,
         # we await it; otherwise we call it directly.
-        prompt = self._previous_text or None
+        prompt = compose_prompt(self._initial_prompt, self._previous_text or None)
         try:
             result = self._asr_pipeline(
                 utterance.samples,
