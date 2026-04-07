@@ -18,7 +18,7 @@ import tempfile
 import threading
 import time
 import wave
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import numpy as np
@@ -157,7 +157,7 @@ class BatchTranscriptionService:
         progress_callback: Callable[[int], None] | None = None,
         tenant_id: str | None = None,
         consultation_id: str | None = None,
-        chunk_callback: Callable[[ChunkTranscriptionResult], None] | None = None,
+        chunk_callback: Callable[[ChunkTranscriptionResult], Awaitable[None]] | None = None,
         blob_service: Any = None,
     ) -> TranscriptionResult:
         """
@@ -781,7 +781,7 @@ class BatchTranscriptionService:
         config: Any,
         job_id: str = "",
         progress_callback: Callable[[float], None] | None = None,
-        chunk_callback: Callable[[ChunkTranscriptionResult], None] | None = None,
+        chunk_callback: Callable[[ChunkTranscriptionResult], Awaitable[None]] | None = None,
         first_word_hook: Callable[[], None] | None = None,
         initial_prompt: str | None = None,
     ) -> RawTranscription:
@@ -978,7 +978,7 @@ class BatchTranscriptionService:
                     # Emit chunk callback
                     is_last_sub = (sub_offset + step_samples) >= len(segment_audio)
                     if chunk_callback:
-                        chunk_callback(
+                        await chunk_callback(
                             ChunkTranscriptionResult(
                                 chunk_index=global_chunk_idx,
                                 text=chunk_text,
@@ -1044,7 +1044,7 @@ class BatchTranscriptionService:
 
                 # Emit chunk callback
                 if chunk_callback:
-                    chunk_callback(
+                    await chunk_callback(
                         ChunkTranscriptionResult(
                             chunk_index=global_chunk_idx,
                             text=chunk_text,
@@ -1133,7 +1133,7 @@ class BatchTranscriptionService:
         model: LoadedModel,
         config: Any,
         progress_callback: Callable[[float], None] | None = None,
-        chunk_callback: Callable[[ChunkTranscriptionResult], None] | None = None,
+        chunk_callback: Callable[[ChunkTranscriptionResult], Awaitable[None]] | None = None,
         first_word_hook: Callable[[], None] | None = None,
         prompt: str | None = None,
     ) -> RawTranscription:
@@ -1600,7 +1600,7 @@ class BatchTranscriptionService:
         model: LoadedModel,
         config: Any,
         progress_callback: Callable[[float], None] | None = None,
-        chunk_callback: Callable[[ChunkTranscriptionResult], None] | None = None,
+        chunk_callback: Callable[[ChunkTranscriptionResult], Awaitable[None]] | None = None,
         first_word_hook: Callable[[], None] | None = None,
         prompt: str | None = None,
     ) -> RawTranscription:
@@ -1719,7 +1719,7 @@ class BatchTranscriptionService:
                 if first_word_hook:
                     first_word_hook()
                 if chunk_callback:
-                    chunk_callback(
+                    await chunk_callback(
                         ChunkTranscriptionResult(
                             chunk_index=0,
                             text=result.text.strip(),
@@ -1858,7 +1858,7 @@ class BatchTranscriptionService:
 
             # Emit chunk callback for near-real-time output
             if chunk_callback:
-                chunk_callback(
+                await chunk_callback(
                     ChunkTranscriptionResult(
                         chunk_index=chunk_idx,
                         text=chunk_text,
