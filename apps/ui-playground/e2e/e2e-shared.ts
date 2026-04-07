@@ -285,13 +285,14 @@ export async function runTranscriptionTest({
   const finalTranscripts = capture.transcripts.filter((t) => t.isFinal);
   const hypothesisText = finalTranscripts.map((t) => t.text).join(' ');
 
-  // Verify no looped audio leaked through
+  // Verify no looped audio leaked through (allow small tolerance for STT processing latency)
+  const loopDetectionToleranceSec = 5;
   const maxStartTime = Math.max(...finalTranscripts.map((t) => t.startTime), 0);
   expect(
     maxStartTime,
     `Looped audio detected: transcript at ${maxStartTime.toFixed(1)}s exceeds audio duration. ` +
       `Audio track muting may not have prevented Chrome's fake audio loop.`,
-  ).toBeLessThan(audioDurationSeconds);
+  ).toBeLessThan(audioDurationSeconds + loopDetectionToleranceSec);
 
   // 12. DOM transcript for cross-validation
   const domTexts = await page.locator('.group p').allInnerTexts();

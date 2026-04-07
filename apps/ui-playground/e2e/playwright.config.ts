@@ -72,6 +72,6 @@ export default defineConfig({
   projects: [
     chromeProjectWithAudio('asr-en', 'asr-en.e2e.spec.ts', 'fixtures/asr_en.wav'),
     chromeProjectWithAudio('asr-ml', 'asr-ml.e2e.spec.ts', 'fixtures/asr_ml.wav'),
-    chromeProjectWithAudio('code-switching-en-vi', 'code-switching-en-vi.e2e.spec.ts', 'fixtures/code-switching-en-vi.wav'),
+    chromeProjectWithAudio('asr-en-vi', 'asr-en-vi.e2e.spec.ts', 'fixtures/asr-en-vi-fr.wav'),
   ],
 });
