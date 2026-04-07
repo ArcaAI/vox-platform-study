@@ -37,12 +37,12 @@ from ..core.exceptions import (
     CloudASRTranscriptionError,
     TranscriptionError,
 )
+from ..core.initial_prompt import compose_prompt, get_initial_prompt
 from ..models.azure_speech_loader import normalize_language_for_azure
 from ..models.base_loader import LoadedModel
 from ..models.cache import get_model_cache
 from ..pipeline.config_reader import get_model_reader
 from ..pipeline.dto import AiModelFormat, ModelTaskType, PipelineConfig
-from ..core.initial_prompt import compose_prompt, get_initial_prompt
 from .dto import (
     AudioSegment,
     ChunkTranscriptionResult,
