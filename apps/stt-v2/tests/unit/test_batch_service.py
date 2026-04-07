@@ -57,6 +57,13 @@ from stt_v2.transcription.dto import (
 # =============================================================================
 
 
+def async_collector(target: list):
+    """Return an async callback that appends to *target*."""
+    async def _cb(chunk):
+        target.append(chunk)
+    return _cb
+
+
 def create_complete_pipeline_config(
     pipeline_id: str = "p-123",
     asr_model: str = "whisper-test",
@@ -2696,7 +2703,7 @@ class TestChunkCallbackAndTTFW:
                 16000,
                 model,
                 config,
-                chunk_callback=lambda c: chunks_received.append(c),
+                chunk_callback=async_collector(chunks_received),
             )
 
         assert len(chunks_received) >= 2
@@ -2761,7 +2768,7 @@ class TestChunkCallbackAndTTFW:
                 16000,
                 model,
                 config,
-                chunk_callback=lambda c: chunks_received.append(c),
+                chunk_callback=async_collector(chunks_received),
                 first_word_hook=lambda: None,
             )
 
@@ -2820,7 +2827,7 @@ class TestPerSegmentSubSplitting:
                     model,
                     config,
                     job_id="test",
-                    chunk_callback=lambda c: chunks_received.append(c),
+                    chunk_callback=async_collector(chunks_received),
                 )
 
         # 45s with 15s chunks and 9s step → should produce multiple chunks
@@ -2864,7 +2871,7 @@ class TestPerSegmentSubSplitting:
                     model,
                     config,
                     job_id="test",
-                    chunk_callback=lambda c: chunks_received.append(c),
+                    chunk_callback=async_collector(chunks_received),
                 )
 
         # Single call — no sub-splitting

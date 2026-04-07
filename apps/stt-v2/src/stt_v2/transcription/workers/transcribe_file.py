@@ -126,9 +126,7 @@ async def _transcribe_file_async(
         logger.info(f"[{job_id}] Downloaded {len(audio_bytes)} bytes")
 
         # Step 4: Run transcription with progress + chunk callbacks
-        # Tasks are collected and awaited before publishing final events
-        # to ensure correct ordering (all chunks/progress before transcript).
-        _pending_tasks: list[asyncio.Task] = []
+        _pending_progress_tasks: list[asyncio.Task] = []
         _progress_publish_lock = asyncio.Lock()
         _last_progress_scheduled = -1
         _progress_state: dict[str, int | bool | None] = {
@@ -172,10 +170,10 @@ async def _transcribe_file_async(
             """Publish each partial transcript chunk for real-time SSE."""
             await publisher.publish_chunk(job_id, chunk)
 
-        def _schedule_task(coro: object) -> None:
-            """Schedule an async task and track it for later awaiting."""
+        def _schedule_progress_task(coro: object) -> None:
+            """Schedule an async progress task and track it for later awaiting."""
             task = asyncio.create_task(coro)
-            _pending_tasks.append(task)
+            _pending_progress_tasks.append(task)
 
         def schedule_progress(progress: int) -> None:
             """
@@ -205,23 +203,23 @@ async def _transcribe_file_async(
 
             if not bool(_progress_state["in_flight"]):
                 _progress_state["in_flight"] = True
-                _schedule_task(_flush_progress_updates())
+                _schedule_progress_task(_flush_progress_updates())
 
         result = await batch_service.transcribe(
             job_id=job_id,
             audio_bytes=audio_bytes,
             pipeline_config=pipeline_config,
             progress_callback=schedule_progress,
-            chunk_callback=lambda c: _schedule_task(on_chunk(c)),
+            chunk_callback=on_chunk,
             tenant_id=tenant_id,
             consultation_id=consultation_id,
             blob_service=blob_service,
         )
 
-        # Await all pending chunk/progress tasks to ensure correct event ordering
-        if _pending_tasks:
-            await asyncio.gather(*_pending_tasks, return_exceptions=True)
-            _pending_tasks.clear()
+        # Await pending progress tasks before publishing final events
+        if _pending_progress_tasks:
+            await asyncio.gather(*_pending_progress_tasks, return_exceptions=True)
+            _pending_progress_tasks.clear()
 
         # Step 5: Upload transcript to storage
         logger.info(f"[{job_id}] Uploading transcript")
