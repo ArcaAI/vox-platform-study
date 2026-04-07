@@ -352,6 +352,17 @@ class SessionManager:
                 pipeline_config.postprocessing if pipeline_config else None
             )
 
+            initial_prompt: str | None = None
+            initial_prompt_id = (
+                pipeline_config.inference.initial_prompt
+                if pipeline_config
+                else None
+            )
+            if initial_prompt_id:
+                from stt_v2.core.initial_prompt import get_initial_prompt
+
+                initial_prompt = await get_initial_prompt(initial_prompt_id)
+
             inference_worker = StreamingInferenceWorker(
                 result_publisher=publisher,
                 asr_pipeline=asr_pipeline,
@@ -359,6 +370,7 @@ class SessionManager:
                 consultation_id=consultation_id,
                 diarization_config=diarization_config,
                 postprocessing_config=postprocessing_config,
+                initial_prompt=initial_prompt,
             )
 
             self._register_inference_runtime(session, inference_worker)
@@ -1465,6 +1477,20 @@ class SessionManager:
                         pipeline_config.postprocessing if pipeline_config else None
                     )
 
+                    # Resolve initial prompt from DB if configured
+                    recovery_initial_prompt: str | None = None
+                    recovery_prompt_id = (
+                        pipeline_config.inference.initial_prompt
+                        if pipeline_config
+                        else None
+                    )
+                    if recovery_prompt_id:
+                        from stt_v2.core.initial_prompt import get_initial_prompt
+
+                        recovery_initial_prompt = await get_initial_prompt(
+                            recovery_prompt_id
+                        )
+
                     inference_worker = StreamingInferenceWorker(
                         result_publisher=publisher,
                         asr_pipeline=asr_pipeline,
@@ -1474,6 +1500,7 @@ class SessionManager:
                             pipeline_config.diarization if pipeline_config else None
                         ),
                         postprocessing_config=recovery_postprocessing_config,
+                        initial_prompt=recovery_initial_prompt,
                     )
 
                     # TODO: Replay last ~2 s of audio from Redis Stream to

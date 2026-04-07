@@ -1,6 +1,7 @@
 """YAML parser for pipeline configurations."""
 
 import logging
+import uuid as _uuid_mod
 from typing import Any
 
 import yaml
@@ -216,6 +217,16 @@ class PipelineYamlParser:
                 spec.inference.language,
             )
 
+        # initial_prompt must be a valid UUID if present
+        if spec.inference.initial_prompt is not None:
+            try:
+                _uuid_mod.UUID(spec.inference.initial_prompt)
+            except (ValueError, AttributeError):
+                result.add_error(
+                    "inference.initial_prompt",
+                    f"initial_prompt must be a valid UUID, got '{spec.inference.initial_prompt}'",
+                )
+
         # Diarization validation
         if spec.diarization.similarity_threshold < 0 or spec.diarization.similarity_threshold > 1:
             result.add_error(
@@ -310,6 +321,9 @@ class PipelineYamlParser:
 
     def _parse_inference(self, data: dict[str, Any]) -> InferenceConfig:
         """Parse inference section."""
+        initial_prompt = data.get("initial_prompt")
+        if initial_prompt is not None:
+            initial_prompt = str(initial_prompt)
         return InferenceConfig(
             batch_size=int(data.get("batch_size", 16)),
             compute_type=str(data.get("compute_type", "auto")),
@@ -319,6 +333,7 @@ class PipelineYamlParser:
             temperature=float(data.get("temperature", 0.0)),
             language=data.get("language"),
             code_switching=bool(data.get("code_switching", False)),
+            initial_prompt=initial_prompt,
         )
 
     def _parse_postprocessing(self, data: dict[str, Any]) -> PostprocessingConfig:

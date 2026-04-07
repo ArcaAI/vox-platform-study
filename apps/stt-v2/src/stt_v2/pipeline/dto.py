@@ -431,6 +431,7 @@ class InferenceConfig:
     temperature: float = 0.0
     language: str | None = None  # None = auto-detect
     code_switching: bool = False  # Enable multilingual code-switching
+    initial_prompt: str | None = None  # PromptTemplate UUID for Whisper conditioning
 
 
 @dataclass

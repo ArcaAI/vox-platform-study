@@ -1542,3 +1542,79 @@ inference:
             if "code_switching" in rec.message and "language" in rec.message
         ]
         assert len(code_switching_warnings) == 0
+
+
+# =============================================================================
+# INITIAL PROMPT TESTS
+# =============================================================================
+
+
+class TestInitialPromptParsing:
+    """Tests for initial_prompt field in inference section."""
+
+    @pytest.fixture
+    def parser(self):
+        return PipelineYamlParser()
+
+    def test_parse_initial_prompt(self, parser):
+        """Parse YAML with initial_prompt UUID in inference section."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  initial_prompt: "71000000-0000-0000-0000-000000000041"
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.inference.initial_prompt == "71000000-0000-0000-0000-000000000041"
+
+    def test_parse_no_initial_prompt(self, parser):
+        """Parse YAML without initial_prompt, assert default None."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.inference.initial_prompt is None
+
+    def test_parse_initial_prompt_with_code_switching(self, parser):
+        """Parse YAML with both initial_prompt and code_switching."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  code_switching: true
+  initial_prompt: "71000000-0000-0000-0000-000000000041"
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.inference.code_switching is True
+        assert spec.inference.initial_prompt == "71000000-0000-0000-0000-000000000041"
+
+    def test_validate_invalid_initial_prompt(self, parser):
+        """Validate YAML with non-UUID initial_prompt, assert error."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  initial_prompt: "not-a-uuid"
+"""
+        spec = parser.parse(yaml_content)
+        result = parser.validate(spec)
+        assert result.valid is False
+        assert any(e.field == "inference.initial_prompt" for e in result.errors)
+
+    def test_validate_valid_initial_prompt(self, parser):
+        """Validate YAML with valid UUID initial_prompt, assert no error."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  initial_prompt: "71000000-0000-0000-0000-000000000041"
+"""
+        spec = parser.parse(yaml_content)
+        result = parser.validate(spec)
+        assert result.valid is True
