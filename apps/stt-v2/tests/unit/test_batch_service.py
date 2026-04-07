@@ -1552,7 +1552,7 @@ class TestPerSegmentInference:
 
         call_count = 0
 
-        async def mock_inference(samples, sr, model, config, progress_callback=None):
+        async def mock_inference(samples, sr, model, config, progress_callback=None, prompt=None):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -1669,7 +1669,7 @@ class TestPerSegmentInference:
 
         call_count = 0
 
-        async def mock_inference(samples, sr, model, config, progress_callback=None):
+        async def mock_inference(samples, sr, model, config, progress_callback=None, prompt=None):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -1927,7 +1927,7 @@ class TestPerSegmentInferenceEdgeCases:
         call_idx = 0
         texts = ["Alpha", "Beta", "Gamma"]
 
-        async def ordered_inference(samples, sr, model, config, progress_callback=None):
+        async def ordered_inference(samples, sr, model, config, progress_callback=None, prompt=None):
             nonlocal call_idx
             text = texts[call_idx]
             call_idx += 1
