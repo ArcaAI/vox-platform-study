@@ -693,9 +693,8 @@ class TestWorkerChunkCallback:
                     ],
                     "vad_segment_index": 1,
                 }
-                chunk_cb(mock_chunk_1)
-                chunk_cb(mock_chunk_2)
-                await asyncio.sleep(0.05)
+                await chunk_cb(mock_chunk_1)
+                await chunk_cb(mock_chunk_2)
             return _make_result(text="First part. Second part.")
 
         batch.transcribe = AsyncMock(side_effect=fake_transcribe)
