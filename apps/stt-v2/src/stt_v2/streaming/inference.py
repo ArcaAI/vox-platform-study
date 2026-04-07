@@ -22,11 +22,11 @@ from typing import Any
 import numpy as np
 import structlog
 
+from stt_v2.core.initial_prompt import compose_prompt
 from stt_v2.pipeline.dto import PostprocessingConfig
 from stt_v2.streaming.preprocessor import AudioUtterance
 from stt_v2.streaming.redis_streams import ResultPublisher
 from stt_v2.streaming.schemas import SegmentResult
-from stt_v2.core.initial_prompt import compose_prompt
 
 logger = structlog.get_logger(__name__)
 _MAX_SEGMENT_TEXT_CHARS = 1200
