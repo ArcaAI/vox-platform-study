@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 
 class OllamaProvider:
     """Ollama provider for guardrail content analysis."""
-    
+
     def __init__(self, settings: OllamaConfig, http_client: httpx.AsyncClient) -> None:
         self.settings = settings
         self.http_client = http_client
@@ -26,8 +26,8 @@ class OllamaProvider:
             "pii_detection": settings.pii_detection_model,
             "prompt_injection": settings.prompt_injection_model,
             "comprehensive": settings.comprehensive_model,
-        }
-        
+        )
+
         # Guardrail system prompts
         self.system_prompts = {
             "content_safety": (
@@ -58,12 +58,12 @@ class OllamaProvider:
         }
     
     async def analyze_content(
-        self, 
-        text: str, 
-        guardrail_type: str = "comprehensive"
+        self,
+        text: str,
+        guardrail_type: str = "comprehensive",
     ) -> dict[str, Any]:
         """Analyze content using Ollama for guardrail checks."""
-        
+
         if not self.settings.enabled:
             return {
                 "safe": True,
@@ -71,11 +71,11 @@ class OllamaProvider:
                 "confidence": 1.0,
                 "error": "Ollama provider disabled",
             }
-        
+
         try:
             system_prompt = self.system_prompts.get(guardrail_type, self.system_prompts["comprehensive"])
             model = self.model_by_type.get(guardrail_type, self.default_model)
-            
+
             payload = {
                 "model": model,
                 "system": system_prompt,
@@ -84,25 +84,25 @@ class OllamaProvider:
                 "options": {
                     "temperature": self.settings.temperature,
                     "num_predict": self.settings.max_tokens,
-                }
-            }
-            
+                },
+            )
+
             response = await self.http_client.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
                 timeout=self.settings.timeout_s,
             )
             response.raise_for_status()
-            
+
             result = response.json()
             content = result.get("response", "").strip()
-            
+
             # Parse response based on guardrail type
             if guardrail_type == "comprehensive":
                 return self._parse_json_response(content)
             else:
                 return self._parse_binary_response(content, guardrail_type)
-                
+
         except httpx.TimeoutException:
             logger.error("ollama.timeout", model=model, guardrail_type=guardrail_type)
             return {
@@ -124,6 +124,7 @@ class OllamaProvider:
         """Parse JSON response from comprehensive analysis."""
         try:
             import json
+
             result = json.loads(content)
             return {
                 "safe": result.get("safe", True),
@@ -141,7 +142,7 @@ class OllamaProvider:
     def _parse_binary_response(self, content: str, guardrail_type: str) -> dict[str, Any]:
         """Parse binary response (SAFE/UNSAFE, PII/NONE, etc.)."""
         content_upper = content.upper()
-        
+
         if guardrail_type == "content_safety":
             safe = content_upper == "SAFE"
             issues = ["harmful_content"] if not safe else []
@@ -154,22 +155,22 @@ class OllamaProvider:
         else:
             safe = True
             issues = []
-        
+
         return {
             "safe": safe,
             "issues": issues,
             "confidence": 0.9 if content_upper in ["SAFE", "NONE", "CLEAN"] else 0.0,
         }
-    
+
     async def batch_analyze(
-        self, 
-        texts: list[str], 
-        guardrail_type: str = "comprehensive"
+        self,
+        texts: list[str],
+        guardrail_type: str = "comprehensive",
     ) -> list[dict[str, Any]]:
         """Analyze multiple texts concurrently."""
         tasks = [self.analyze_content(text, guardrail_type) for text in texts]
         return await asyncio.gather(*tasks, return_exceptions=True)
-    
+
     async def health_check(self) -> dict[str, Any]:
         """Check Ollama service health."""
         try:
@@ -178,12 +179,12 @@ class OllamaProvider:
                 timeout=10.0,
             )
             response.raise_for_status()
-            
+
             models = response.json().get("models", [])
             configured_models = {self.default_model, *self.model_by_type.values()}
             available_model_names = {model.get("name") for model in models}
             missing_models = sorted(configured_models - available_model_names)
-            
+
             return {
                 "healthy": True,
                 "model_available": not missing_models,

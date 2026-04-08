@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-from typing import Any
 
 import httpx
 import redis.asyncio as aioredis
@@ -28,9 +27,9 @@ async def lifespan(app: FastAPI):
     setup_logging(settings.log_level)
 
     logger.info(
-        "guardrail.starting", 
-        host=settings.host, 
-        port=settings.port, 
+        "guardrail.starting",
+        host=settings.host,
+        port=settings.port,
         debug=settings.debug
     )
 
@@ -93,7 +92,7 @@ async def lifespan(app: FastAPI):
             gliner_provider=app.state.gliner_provider,
             max_concurrent=settings.ollama.max_concurrent,
         )
-        
+
         # Start background job processing
         app.state.job_processor_task = asyncio.create_task(app.state.job_processor.start_processing())
         logger.info("guardrail.job_processor_started")
@@ -144,10 +143,10 @@ def create_app() -> FastAPI:
     app.state.settings = settings
 
     # Include routers
-    from guardrail.api.endpoints.health import router as health_router
-    from guardrail.api.endpoints.medical import router as medical_router
     from guardrail.api.endpoints.guardrails import router as guardrails_router
+    from guardrail.api.endpoints.health import router as health_router
     from guardrail.api.endpoints.jobs import router as jobs_router
+    from guardrail.api.endpoints.medical import router as medical_router
 
     app.include_router(health_router, prefix="/api", tags=["health"])
     app.include_router(medical_router, prefix="/api", tags=["medical"])  # Primary endpoint
