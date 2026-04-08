@@ -53,7 +53,7 @@ async def provider():
 
 @pytest.fixture
 async def processor(redis_client, provider):
-    return JobProcessor(redis=redis_client, ollama_provider=provider, max_concurrent=2)
+    return JobProcessor(redis=redis_client, gliner_provider=provider, max_concurrent=2)
 
 
 @pytest.mark.asyncio
