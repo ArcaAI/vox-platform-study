@@ -30,7 +30,7 @@ import type { PromptTemplate } from '@/features/admin/api/prompts';
 import { usePromptTemplates } from '@/features/admin/api/prompts';
 import type { DnaReport } from '@/features/dna-writing-style/api/dna-writing-styles';
 import { useMyDnaStyle, useDnaStyleByDoctor } from '@/features/dna-writing-style/api/dna-writing-styles';
-import { CONTEXT_ENDPOINTS, useAgenticStore, useArca, type ContextItem } from '@arcaai/vox';
+import { useArca, type ContextItem } from '@arcaai/vox';
 import { buildAssembledPayload } from '../utils/build-assembled-payload';
 import { filterContextItems, type ContextRecency } from '../utils/filter-context-items';
 
@@ -60,7 +60,7 @@ Neurological: CN II-XII intact, strength 5/5 all extremities`,
 
 export default function PreSummaryPage() {
   const ctx = useDoctorContext();
-  const { session } = useArca();
+  const { context } = useArca();
   const debugMode = usePlaygroundStore((s) => s.debugMode);
   const tenantId = useAuthStore((s) => s.tenantId);
 
@@ -244,32 +244,8 @@ export default function PreSummaryPage() {
     setContextSuggestionsError(null);
 
     try {
-      const consultations = await session.listConsultations({
-        doctorId: ctx.effectiveUserId,
-        page: 1,
-        limit: 6,
-      });
-
-      const merged: ContextItem[] = [];
-      for (const consultation of consultations.data ?? []) {
-        await session.load(consultation.id);
-        const freshState = useAgenticStore.getState();
-        const { apiClient: freshClient, consultation: freshConsultation } = freshState;
-        if (!freshClient || !freshConsultation) continue;
-
-        const [caseNotes, transcriptions] = await Promise.all([
-          freshClient.get<ContextItem[]>(CONTEXT_ENDPOINTS.CASE_NOTES(freshConsultation.id)),
-          freshClient.get<ContextItem[]>(CONTEXT_ENDPOINTS.TRANSCRIPTIONS(freshConsultation.id)),
-        ]);
-        merged.push(...(caseNotes ?? []), ...(transcriptions ?? []));
-      }
-
-      const deduped = merged
-        .filter((item, index, arr) => arr.findIndex((it) => it.id === item.id) === index)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 40);
-
-      setContextSuggestions(deduped);
+      const items = await context.getItems();
+      setContextSuggestions(items ?? []);
       setContextSuggestionsLoaded(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load context items';
@@ -278,28 +254,25 @@ export default function PreSummaryPage() {
     } finally {
       setContextSuggestionsLoading(false);
     }
-  }, [contextSuggestionsLoading, ctx.effectiveUserId, ctx.requiresImpersonation, session]);
+  }, [context, contextSuggestionsLoading, ctx.effectiveUserId, ctx.requiresImpersonation]);
 
-  const toggleContextSelection = useCallback(
-    async (item: ContextItem) => {
-      const currentlySelected = selectedContextItems.some((selected) => selected.id === item.id);
-      if (currentlySelected) {
-        setSelectedContextItems((prev) => prev.filter((selected) => selected.id !== item.id));
-        return;
+  const toggleContextSelection = useCallback(async (item: ContextItem) => {
+    const currentlySelected = selectedContextItems.some((selected) => selected.id === item.id);
+    if (currentlySelected) {
+      setSelectedContextItems((prev) => prev.filter((selected) => selected.id !== item.id));
+      return;
+    }
+
+    const resolved = await loadContextItemContent(item);
+    if (!resolved) return;
+
+    setSelectedContextItems((prev) => {
+      if (prev.some((selected) => selected.id === resolved.id)) {
+        return prev;
       }
-
-      const resolved = await loadContextItemContent(item);
-      if (!resolved) return;
-
-      setSelectedContextItems((prev) => {
-        if (prev.some((selected) => selected.id === resolved.id)) {
-          return prev;
-        }
-        return [...prev, resolved];
-      });
-    },
-    [loadContextItemContent, selectedContextItems],
-  );
+      return [...prev, resolved];
+    });
+  }, [loadContextItemContent, selectedContextItems]);
 
   const removeSelectedContextItem = useCallback((itemId: string) => {
     setSelectedContextItems((prev) => prev.filter((item) => item.id !== itemId));
