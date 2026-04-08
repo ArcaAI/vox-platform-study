@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Any
 
 import structlog
 from structlog.stdlib import LoggerFactory
@@ -12,7 +11,7 @@ from structlog.stdlib import LoggerFactory
 
 def setup_logging(log_level: str) -> None:
     """Configure structlog for the application."""
-    
+
     # Configure standard logging
     logging.basicConfig(
         format="%(message)s",

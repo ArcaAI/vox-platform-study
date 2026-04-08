@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,14 +13,14 @@ class OllamaConfig(BaseSettings):
 
     enabled: bool = True
     base_url: str = "http://localhost:11434"
-    
+
     # Default fallback model for generic guardrail analysis.
     guardrail_model: str = "gemma3:latest"
     content_safety_model: str = "gemma3:latest"
     pii_detection_model: str = "gemma3:latest"
     prompt_injection_model: str = "gemma3:latest"
     comprehensive_model: str = "gemma3:latest"
-    
+
     # Dedicated guardian model for medical context validation
     guardian_model: str = "gemma3:latest"
     guardian_enabled: bool = True
@@ -30,11 +28,11 @@ class OllamaConfig(BaseSettings):
     timeout_s: int = 60
     max_concurrent: int = 4
     queue_backoff_s: float = 2.0
-    
+
     # Guardrail-specific settings
     temperature: float = 0.1  # Low temperature for consistent guardrail results
     max_tokens: int = 500    # Reasonable limit for guardrail responses
-    
+
     # Guardian-specific settings
     guardian_temperature: float = 0.05  # Even lower for medical validation
     guardian_max_tokens: int = 300
