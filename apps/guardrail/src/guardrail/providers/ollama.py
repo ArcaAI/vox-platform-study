@@ -26,7 +26,7 @@ class OllamaProvider:
             "pii_detection": settings.pii_detection_model,
             "prompt_injection": settings.prompt_injection_model,
             "comprehensive": settings.comprehensive_model,
-        )
+        }
 
         # Guardrail system prompts
         self.system_prompts = {
@@ -56,7 +56,7 @@ class OllamaProvider:
                 "\"confidence\": 0.0-1.0}. Keep the response concise."
             ),
         }
-    
+
     async def analyze_content(
         self,
         text: str,
@@ -85,7 +85,7 @@ class OllamaProvider:
                     "temperature": self.settings.temperature,
                     "num_predict": self.settings.max_tokens,
                 },
-            )
+            }
 
             response = await self.http_client.post(
                 f"{self.base_url}/api/generate",
@@ -119,7 +119,7 @@ class OllamaProvider:
                 "confidence": 0.0,
                 "error": str(e),
             }
-    
+
     def _parse_json_response(self, content: str) -> dict[str, Any]:
         """Parse JSON response from comprehensive analysis."""
         try:
@@ -138,7 +138,7 @@ class OllamaProvider:
                 "issues": ["invalid_response"],
                 "confidence": 0.0,
             }
-    
+
     def _parse_binary_response(self, content: str, guardrail_type: str) -> dict[str, Any]:
         """Parse binary response (SAFE/UNSAFE, PII/NONE, etc.)."""
         content_upper = content.upper()

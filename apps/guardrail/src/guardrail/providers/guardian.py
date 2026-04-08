@@ -41,9 +41,9 @@ class GuardianProvider:
         )
 
     async def validate_medical_context(
-        self, 
+        self,
         text: str,
-        include_reasoning: bool = False
+        include_reasoning: bool = False,
     ) -> dict[str, Any]:
         """Validate if text contains medical context using the guardian model."""
 
@@ -69,7 +69,7 @@ class GuardianProvider:
                     "num_predict": self.guardian_max_tokens,
                 },
                 "format": "json",  # Request JSON format from Ollama
-            )
+            }
 
             response = await self.http_client.post(
                 f"{self.base_url}/api/generate",
@@ -133,14 +133,14 @@ class GuardianProvider:
                 "confidence": confidence,
                 "context_type": context_type,
                 "reasoning": reasoning,
-            )
+            }
 
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             logger.warning("guardian.invalid_response", content=content[:200], error=str(e))
 
             # Fallback: use keyword-based heuristic
             return self._keyword_based_validation(content)
-    
+
     def _keyword_based_validation(self, text: str) -> dict[str, Any]:
         """Fallback keyword-based medical context validation."""
 
@@ -154,7 +154,7 @@ class GuardianProvider:
             'lab', 'imaging', 'radiology', 'pathology', 'biopsy',
             'discharge', 'admission', 'consultation', 'follow-up'
         ]
-        
+
         text_lower = text.lower()
         matched_keywords = [kw for kw in medical_keywords if kw in text_lower]
 
@@ -170,7 +170,7 @@ class GuardianProvider:
             "context_type": "clinical" if is_medical else "general",
             "reasoning": f"Keyword-based validation: {match_count} medical terms found",
             "matched_keywords": matched_keywords[:5],  # Top 5 matches
-        )
+        }
 
     async def batch_validate(
         self,
