@@ -1,9 +1,9 @@
-import { S3ServiceModule } from '@arcaai/applications';
+import { MediaServiceModule, S3ServiceModule, TenantBucketServiceModule } from '@arcaai/applications';
 import { Module } from '@nestjs/common';
 import { StorageController } from './storage.controller';
 
 @Module({
-  imports: [S3ServiceModule],
+  imports: [S3ServiceModule, MediaServiceModule, TenantBucketServiceModule],
   controllers: [StorageController],
 })
 export class StorageModule {}

@@ -1,13 +1,13 @@
-import { Inject, Injectable, BadRequestException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
-import { ClsService } from 'nestjs-cls';
+import { ResourceType, SysEventType, TenantBucketFactory, TenantBucketRepository, TenantRepository } from '@arcaai/domains';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { TenantBucketRepository, TenantRepository, TenantBucketFactory, ResourceType, SysEventType } from '@arcaai/domains';
-import { ITenantBucketService } from './ITenantBucketService';
-import { TenantBucketResponse, CreateTenantBucketRequest, TenantBucketTreeResponse, TenantBucketTreeNodeResponse } from './dto';
-import { TenantBucketDtoMapper } from './tenant-bucket.dto.mapper';
+import { ClsService } from 'nestjs-cls';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { IS3Service } from '../baseServices/storage/s3/IS3Service';
+import { ITenantBucketService } from './ITenantBucketService';
+import { CreateTenantBucketRequest, TenantBucketResponse, TenantBucketTreeNodeResponse, TenantBucketTreeResponse } from './dto';
+import { TenantBucketDtoMapper } from './tenant-bucket.dto.mapper';
 
 interface TreeNodeAccumulator {
   node: TenantBucketTreeNodeResponse;
@@ -102,6 +102,18 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     return TenantBucketDtoMapper.toResponse(bucket);
   }
 
+  async getBucketByName(name: string): Promise<TenantBucketResponse | null> {
+    const bucket = await this.tenantBucketRepository.findByName(name);
+    if (!bucket) return null;
+
+    const tenantId = this.tenantId;
+    if (tenantId && bucket.tenantId !== tenantId) {
+      return null;
+    }
+
+    return TenantBucketDtoMapper.toResponse(bucket);
+  }
+
   async provisionSystemBuckets(tenantId: string): Promise<TenantBucketResponse[]> {
     const tenant = await this.tenantRepository.findById(tenantId);
     if (!tenant) {
@@ -130,6 +142,27 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
       } catch (error) {
         this.logger.warn({
           message: 'S3 bucket may already exist, continuing with DB record',
+          bucketName: bucket.name,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      try {
+        await this.s3Service.setBucketPolicy(bucket.name, {
+          Version: '2012-10-17',
+          Statement: [
+            {
+              Effect: 'Allow',
+              Principal: { AWS: ['*'] },
+              Action: ['s3:GetObject', 's3:PutObject', 's3:ListBucket'],
+              Resource: [`arn:aws:s3:::${bucket.name}`, `arn:aws:s3:::${bucket.name}/*`],
+              Condition: { StringEquals: { 'aws:PrincipalTag/tenantId': tenantId } },
+            },
+          ],
+        });
+      } catch (error) {
+        this.logger.warn({
+          message: 'Failed to set bucket policy, continuing',
           bucketName: bucket.name,
           error: error instanceof Error ? error.message : String(error),
         });
@@ -207,6 +240,31 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     });
 
     return TenantBucketDtoMapper.toResponse(deleted);
+  }
+
+  async getPresignedUrl(bucketId: string, fileKey: string): Promise<{ url: string }> {
+    const bucket = await this.tenantBucketRepository.findById(bucketId);
+    if (!bucket) {
+      throw new NotFoundException(`Bucket ${bucketId} not found`);
+    }
+
+    const tenantId = this.tenantId;
+    if (tenantId && bucket.tenantId !== tenantId) {
+      throw new ForbiddenException('You do not have access to this bucket');
+    }
+
+    if (/[.]{2}/.test(fileKey)) {
+      throw new BadRequestException('Invalid file key: path traversal not allowed');
+    }
+
+    const url = await this.s3Service.signUrl(bucket.name, fileKey, 'get');
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      resourceId: bucket.id,
+      data: { fileKey },
+    });
+
+    return { url };
   }
 
   private normalizePrefix(prefix?: string): string {

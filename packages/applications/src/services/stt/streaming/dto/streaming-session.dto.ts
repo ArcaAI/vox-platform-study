@@ -28,6 +28,8 @@ export interface CreateStreamingSessionRequest {
   codeSwitching?: boolean;
   /** Enable speaker diarization. Overrides the pipeline default. */
   diarization?: boolean;
+  /** Tenant-scoped audio bucket name override */
+  audioBucketName?: string;
 }
 
 // ---------------------------------------------------------------------------

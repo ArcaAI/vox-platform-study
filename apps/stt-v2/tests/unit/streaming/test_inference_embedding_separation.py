@@ -2,7 +2,7 @@
 
 Tests:
 - _extract_embedding: guards for disabled/short/no-tenant
-- _identify_with_embedding: known speaker, no embedding
+- _identify_speaker: known speaker, no embedding
 - process_utterance full pipeline order: embed -> asr -> diarize -> punctuate
 """
 
@@ -119,7 +119,7 @@ class TestIdentifyWithEmbedding:
             "stt_v2.diarization.speaker_identifier.get_speaker_identifier",
             return_value=mock_identifier,
         ):
-            sid, conf = await worker._identify_with_embedding(embedding, "hello world")
+            sid, conf = await worker._identify_speaker(embedding, "hello world")
 
         assert sid == "spk-123"
         assert conf == 0.95
@@ -133,7 +133,7 @@ class TestIdentifyWithEmbedding:
             tenant_id="t1",
             diarization_config=MagicMock(enabled=True),
         )
-        sid, conf = await worker._identify_with_embedding(None, "hello")
+        sid, conf = await worker._identify_speaker(None, "hello")
         assert sid is None
         assert conf is None
 
@@ -155,7 +155,7 @@ class TestProcessUtterancePipelineOrder:
 
             return _InferenceResult(text="hello world")
 
-        async def mock_identify_with_embedding(emb, text):
+        async def mock_identify_speaker(emb, text):
             call_order.append("diarize")
             return "spk-1", 0.9
 
@@ -169,7 +169,7 @@ class TestProcessUtterancePipelineOrder:
         )
         worker._extract_embedding = mock_extract_embedding
         worker._run_inference = mock_run_inference
-        worker._identify_with_embedding = mock_identify_with_embedding
+        worker._identify_speaker = mock_identify_speaker
 
         utt = _make_utterance()
         result = await worker.process_utterance("session-1", utt)

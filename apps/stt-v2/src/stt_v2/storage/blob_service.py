@@ -30,6 +30,29 @@ class BlobService:
         self._resolver = path_resolver or get_path_resolver()
         self._settings = get_settings()
 
+    def _resolve_bucket(self, tenant_id: str | None, bucket_type: str) -> str:
+        """Resolve the bucket to use for a given tenant.
+
+        If *tenant_id* is provided the resolver's tenant-specific lookup
+        is tried first; otherwise (or on miss) the default bucket for
+        *bucket_type* is returned.
+
+        Args:
+            tenant_id: Optional tenant ID.
+            bucket_type: One of ``"audio"``, ``"chunk"``, ``"model"``.
+
+        Returns:
+            Bucket name string.
+        """
+        if tenant_id:
+            return self._resolver.resolve_tenant_bucket(tenant_id, bucket_type)
+        defaults = {
+            "audio": self._resolver.audio_bucket,
+            "chunk": self._resolver.chunk_bucket,
+            "model": self._resolver.model_bucket,
+        }
+        return defaults.get(bucket_type, self._resolver.audio_bucket)
+
     async def upload_audio(
         self,
         audio_bytes: bytes,
@@ -38,6 +61,7 @@ class BlobService:
         filename: str,
         consultation_id: str | None = None,
         content_type: str = "audio/wav",
+        tenant_bucket_name: str | None = None,
     ) -> str:
         """
         Upload audio file to storage.
@@ -49,6 +73,7 @@ class BlobService:
             filename: Original filename
             consultation_id: Optional consultation ID
             content_type: MIME type
+            tenant_bucket_name: Optional explicit bucket name override
 
         Returns:
             Full storage URI
@@ -60,14 +85,15 @@ class BlobService:
             filename=filename,
         )
 
+        bucket = tenant_bucket_name or self._resolve_bucket(tenant_id, "audio")
         await self._upload_bytes(
-            bucket=self._resolver.audio_bucket,
+            bucket=bucket,
             path=path,
             data=audio_bytes,
             content_type=content_type,
         )
 
-        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        uri = self._resolver.get_full_uri(bucket, path)
         logger.info(f"Uploaded audio to: {uri} ({len(audio_bytes)} bytes)")
         return uri
 
@@ -79,6 +105,7 @@ class BlobService:
         filename: str = "processed.wav",
         consultation_id: str | None = None,
         content_type: str = "audio/wav",
+        tenant_bucket_name: str | None = None,
     ) -> str:
         """
         Upload processed (denoised / VAD-merged) audio to storage.
@@ -95,6 +122,7 @@ class BlobService:
             filename: Descriptive filename (default ``processed.wav``)
             consultation_id: Optional consultation ID
             content_type: MIME type
+            tenant_bucket_name: Optional explicit bucket name override
 
         Returns:
             Full storage URI
@@ -106,14 +134,15 @@ class BlobService:
             filename=filename,
         )
 
+        bucket = tenant_bucket_name or self._resolve_bucket(tenant_id, "audio")
         await self._upload_bytes(
-            bucket=self._resolver.audio_bucket,
+            bucket=bucket,
             path=path,
             data=audio_bytes,
             content_type=content_type,
         )
 
-        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        uri = self._resolver.get_full_uri(bucket, path)
         logger.info(f"Uploaded processed audio to: {uri} ({len(audio_bytes)} bytes)")
         return uri
 
@@ -176,14 +205,15 @@ class BlobService:
             chunk_index=chunk_index,
         )
 
+        bucket = self._resolve_bucket(tenant_id, "audio")
         await self._upload_bytes(
-            bucket=self._resolver.audio_bucket,
+            bucket=bucket,
             path=path,
             data=chunk_bytes,
             content_type="application/octet-stream",
         )
 
-        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        uri = self._resolver.get_full_uri(bucket, path)
         logger.info(f"Uploaded streaming raw chunk to: {uri} ({len(chunk_bytes)} bytes)")
         return uri
 
@@ -213,14 +243,15 @@ class BlobService:
             chunk_index=chunk_index,
         )
 
+        bucket = self._resolve_bucket(tenant_id, "audio")
         await self._upload_bytes(
-            bucket=self._resolver.audio_bucket,
+            bucket=bucket,
             path=path,
             data=chunk_bytes,
             content_type="application/octet-stream",
         )
 
-        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        uri = self._resolver.get_full_uri(bucket, path)
         logger.info(f"Uploaded streaming processed chunk to: {uri} ({len(chunk_bytes)} bytes)")
         return uri
 
@@ -247,14 +278,15 @@ class BlobService:
             session_id=session_id,
         )
 
+        bucket = self._resolve_bucket(tenant_id, "audio")
         await self._upload_bytes(
-            bucket=self._resolver.audio_bucket,
+            bucket=bucket,
             path=path,
             data=wav_bytes,
             content_type="audio/wav",
         )
 
-        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        uri = self._resolver.get_full_uri(bucket, path)
         logger.info(f"Uploaded streaming complete WAV to: {uri} ({len(wav_bytes)} bytes)")
         return uri
 
@@ -281,14 +313,15 @@ class BlobService:
             session_id=session_id,
         )
 
+        bucket = self._resolve_bucket(tenant_id, "audio")
         await self._upload_bytes(
-            bucket=self._resolver.audio_bucket,
+            bucket=bucket,
             path=path,
             data=wav_bytes,
             content_type="audio/wav",
         )
 
-        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        uri = self._resolver.get_full_uri(bucket, path)
         logger.info(f"Uploaded streaming processed WAV to: {uri} ({len(wav_bytes)} bytes)")
         return uri
 
@@ -315,14 +348,15 @@ class BlobService:
             session_id=session_id,
         )
 
+        bucket = self._resolve_bucket(tenant_id, "audio")
         await self._upload_bytes(
-            bucket=self._resolver.audio_bucket,
+            bucket=bucket,
             path=path,
             data=transcript_bytes,
             content_type="application/json",
         )
 
-        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        uri = self._resolver.get_full_uri(bucket, path)
         logger.info(f"Uploaded streaming transcript to: {uri} ({len(transcript_bytes)} bytes)")
         return uri
 
@@ -349,14 +383,15 @@ class BlobService:
             session_id=session_id,
         )
 
+        bucket = self._resolve_bucket(tenant_id, "audio")
         await self._upload_bytes(
-            bucket=self._resolver.audio_bucket,
+            bucket=bucket,
             path=path,
             data=metadata_bytes,
             content_type="application/json",
         )
 
-        uri = self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        uri = self._resolver.get_full_uri(bucket, path)
         logger.info(f"Uploaded streaming metadata to: {uri} ({len(metadata_bytes)} bytes)")
         return uri
 
@@ -398,14 +433,54 @@ class BlobService:
         if isinstance(transcript_data, str):
             transcript_data = transcript_data.encode("utf-8")
 
+        bucket = self._resolve_bucket(tenant_id, "audio")
         await self._upload_bytes(
-            bucket=self._resolver.audio_bucket,
+            bucket=bucket,
             path=path,
             data=transcript_data,
             content_type=content_types.get(format, "application/octet-stream"),
         )
 
-        return self._resolver.get_full_uri(self._resolver.audio_bucket, path)
+        return self._resolver.get_full_uri(bucket, path)
+
+    async def upload_batch_metadata(
+        self,
+        metadata_data: str | bytes,
+        tenant_id: str,
+        job_id: str,
+        consultation_id: str | None = None,
+    ) -> str:
+        """Upload batch job metadata JSON to storage.
+
+        Args:
+            metadata_data: JSON-encoded metadata.
+            tenant_id: Tenant ID.
+            job_id: Job ID.
+            consultation_id: Optional consultation ID.
+
+        Returns:
+            Full storage URI.
+        """
+        path = self._resolver.batch_metadata_path(
+            tenant_id=tenant_id,
+            consultation_id=consultation_id,
+            job_id=job_id,
+        )
+
+        if isinstance(metadata_data, str):
+            metadata_data = metadata_data.encode("utf-8")
+
+        bucket = self._resolve_bucket(tenant_id, "audio")
+        await self._upload_bytes(
+            bucket=bucket,
+            path=path,
+            data=metadata_data,
+            content_type="application/json",
+        )
+
+        uri = self._resolver.get_full_uri(bucket, path)
+        logger.info(f"Uploaded batch metadata to: {uri} ({len(metadata_data)} bytes)")
+        return uri
 
     async def download_audio(self, uri: str) -> bytes:
         """

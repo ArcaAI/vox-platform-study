@@ -77,6 +77,9 @@ export class FileUploadResponse {
 
   @ApiProperty({ description: 'File content type' })
   contentType!: string;
+
+  @ApiPropertyOptional({ description: 'ID of the created Media record' })
+  mediaId?: string;
 }
 
 export class FileInfoResponse {

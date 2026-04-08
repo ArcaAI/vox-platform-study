@@ -510,6 +510,7 @@ class TestHuggingFaceLoaderLoad:
         mock_processor = MagicMock()
 
         with (
+            patch.dict("sys.modules", {"transformers": MagicMock()}),
             patch("stt_v2.models.huggingface_loader.get_settings") as mock_settings,
             patch("stt_v2.models.huggingface_loader.os.makedirs"),
             patch.object(loader, "_load_by_task") as mock_load_task,

@@ -1,5 +1,13 @@
 import type { IActiveUserContext, IS3Service as IS3ServiceType } from '@arcaai/applications';
-import { IS3Service, StreamingSessionService, TranscriptionJobService, TranscriptionRealtimeService } from '@arcaai/applications';
+import {
+  Authorize,
+  IS3Service,
+  ITenantBucketService,
+  StreamingSessionService,
+  TranscriptionJobService,
+  TranscriptionRealtimeService,
+} from '@arcaai/applications';
+import { SYSTEM_BUCKET_SLUGS } from '@arcaai/domains';
 import type { MessageEvent } from '@nestjs/common';
 import {
   BadRequestException,
@@ -35,6 +43,7 @@ import {
 } from './dto';
 
 @ApiBearerAuth()
+@Authorize()
 @ApiTags('transcription-jobs')
 @Controller('audio/transcription-jobs')
 export class TranscriptionJobController {
@@ -46,15 +55,15 @@ export class TranscriptionJobController {
     private readonly sessionService: StreamingSessionService,
     private readonly cls: ClsService<IActiveUserContext>,
     @Inject(IS3Service) private readonly s3Service: IS3ServiceType,
+    @Inject(ITenantBucketService) private readonly tenantBucketService: ITenantBucketService,
   ) {}
 
   private getTenantId(): string {
-    try {
-      const user = this.cls.get('user');
-      return user?.tenantId ?? 'unknown';
-    } catch {
-      return 'unknown';
+    const user = this.cls.get('user');
+    if (!user?.tenantId) {
+      throw new BadRequestException('Tenant context is required. Ensure you are authenticated with a tenant-scoped user.');
     }
+    return user.tenantId;
   }
 
   @Post()
@@ -123,25 +132,36 @@ export class TranscriptionJobController {
       consultationId: body.consultationId,
     });
 
-    // 3. Build MinIO path (must match STT-v2 StoragePathResolver.audio_path)
+    // 3. Resolve tenant bucket (prefer tenant-scoped, fallback to global)
+    let uploadBucket = AUDIO_BUCKET;
+    try {
+      const tenantBucket = await this.tenantBucketService.getBucketBySlug(SYSTEM_BUCKET_SLUGS.AUDIO);
+      if (tenantBucket) {
+        uploadBucket = tenantBucket.name;
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to resolve tenant bucket, using default: ${err}`);
+    }
+
+    // 4. Build MinIO path (must match STT-v2 StoragePathResolver.audio_path)
     const now = new Date();
     const year = now.getUTCFullYear().toString();
     const month = (now.getUTCMonth() + 1).toString().padStart(2, '0');
     const safeName = this.sanitizeFilename(file.originalname);
 
     const pathSegment = body.consultationId
-      ? `${tenantId}/${year}/${month}/consultations/${body.consultationId}/${job.id}_${safeName}`
-      : `${tenantId}/${year}/${month}/jobs/${job.id}_${safeName}`;
+      ? `${year}/${month}/consultations/${body.consultationId}/${job.id}/raw/${safeName}`
+      : `${year}/${month}/jobs/${job.id}/raw/${safeName}`;
 
-    const audioUri = `s3://${AUDIO_BUCKET}/${pathSegment}`;
+    const audioUri = `s3://${uploadBucket}/${pathSegment}`;
 
     try {
-      // 4. Upload audio to MinIO
-      await this.s3Service.putFile(AUDIO_BUCKET, pathSegment, file.buffer, file.mimetype);
+      // 5. Upload audio to MinIO (tenant bucket)
+      await this.s3Service.putFile(uploadBucket, pathSegment, file.buffer, file.mimetype);
 
       this.logger.log(`Uploaded audio to ${audioUri} for job ${job.id}`);
 
-      // 5. Dispatch Dramatiq message to stt_batch queue
+      // 6. Dispatch Dramatiq message to stt_batch queue
       await this.realtimeService.dispatchDramatiqJob({
         jobId: job.id,
         tenantId,
@@ -149,6 +169,7 @@ export class TranscriptionJobController {
         audioUri,
         consultationId: body.consultationId,
         mediaId,
+        audioBucketName: uploadBucket,
       });
     } catch (error) {
       // If upload or dispatch fails, mark the job as failed
@@ -205,12 +226,23 @@ export class TranscriptionJobController {
     const sessionId = uuidv7();
     const tenantId = this.getTenantId();
 
+    let uploadBucket = AUDIO_BUCKET;
+    try {
+      const tenantBucket = await this.tenantBucketService.getBucketBySlug(SYSTEM_BUCKET_SLUGS.AUDIO);
+      if (tenantBucket) {
+        uploadBucket = tenantBucket.name;
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to resolve tenant bucket for streaming, using default: ${err}`);
+    }
+
     const result = await this.sessionService.createSession({
       sessionId,
       tenantId,
       pipelineId: body.pipelineId,
       consultationId: body.consultationId,
       sampleRate: body.sampleRate ?? 16000,
+      audioBucketName: uploadBucket,
     });
 
     if (!result) {

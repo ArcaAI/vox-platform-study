@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 describe('TenantBucket Domain Layer', () => {
     describe('TenantBucketEntity', () => {
@@ -9,22 +9,22 @@ describe('TenantBucket Domain Layer', () => {
             const entity = new TenantBucketEntity({
                 id: 'bucket-1',
                 tenantId: 'tenant-1',
-                name: 'arcaai-audio-recordings',
-                slug: 'audio_recordings',
-                description: 'Live streaming recordings',
+                name: 'hope-audio-arcaai',
+                slug: 'audio',
+                description: 'Tenant audio storage',
                 bucketType: TenantBucketType.SYSTEM,
-                pathPattern: '{yyyy}/{MM}/{dd}/{user_name}',
+                pathPattern: '{yyyy}/{MM}',
                 createdAt: new Date('2026-03-08'),
                 updatedAt: new Date('2026-03-08'),
             });
 
             expect(entity.id).toBe('bucket-1');
             expect(entity.tenantId).toBe('tenant-1');
-            expect(entity.name).toBe('arcaai-audio-recordings');
-            expect(entity.slug).toBe('audio_recordings');
-            expect(entity.description).toBe('Live streaming recordings');
+            expect(entity.name).toBe('hope-audio-arcaai');
+            expect(entity.slug).toBe('audio');
+            expect(entity.description).toBe('Tenant audio storage');
             expect(entity.bucketType).toBe(TenantBucketType.SYSTEM);
-            expect(entity.pathPattern).toBe('{yyyy}/{MM}/{dd}/{user_name}');
+            expect(entity.pathPattern).toBe('{yyyy}/{MM}');
         });
 
         it('should track changes via setProperty', async () => {
@@ -34,10 +34,10 @@ describe('TenantBucket Domain Layer', () => {
             const entity = new TenantBucketEntity({
                 id: 'bucket-1',
                 tenantId: 'tenant-1',
-                name: 'arcaai-audio-recordings',
-                slug: 'audio_recordings',
+                name: 'hope-audio-arcaai',
+                slug: 'audio',
                 bucketType: TenantBucketType.SYSTEM,
-                pathPattern: '{yyyy}/{MM}/{dd}/{user_name}',
+                pathPattern: '{yyyy}/{MM}',
                 createdAt: new Date(),
                 updatedAt: new Date(),
             });
@@ -54,10 +54,10 @@ describe('TenantBucket Domain Layer', () => {
             const systemBucket = new TenantBucketEntity({
                 id: 'bucket-1',
                 tenantId: 'tenant-1',
-                name: 'arcaai-audio-recordings',
-                slug: 'audio_recordings',
+                name: 'hope-audio-arcaai',
+                slug: 'audio',
                 bucketType: TenantBucketType.SYSTEM,
-                pathPattern: '{yyyy}/{MM}/{dd}/{user_name}',
+                pathPattern: '{yyyy}/{MM}',
                 createdAt: new Date(),
                 updatedAt: new Date(),
             });
@@ -86,17 +86,17 @@ describe('TenantBucket Domain Layer', () => {
             const entity = TenantBucketFactory.CreateSystemBucket(
                 'tenant-1',
                 'arcaai',
-                'audio_recordings',
-                'Live streaming audio recordings',
+                'audio',
+                'Tenant audio storage',
             );
 
             expect(entity.id).toBeDefined();
             expect(entity.id.length).toBeGreaterThan(0);
             expect(entity.tenantId).toBe('tenant-1');
-            expect(entity.name).toBe('arcaai-audio-recordings');
-            expect(entity.slug).toBe('audio_recordings');
+            expect(entity.name).toBe('hope-audio-arcaai');
+            expect(entity.slug).toBe('audio');
             expect(entity.bucketType).toBe(TenantBucketType.SYSTEM);
-            expect(entity.pathPattern).toBe('{yyyy}/{MM}/{dd}/{user_name}');
+            expect(entity.pathPattern).toBe('{yyyy}/{MM}');
         });
 
         it('should create a custom bucket with generated id', async () => {
@@ -113,28 +113,23 @@ describe('TenantBucket Domain Layer', () => {
 
             expect(entity.id).toBeDefined();
             expect(entity.tenantId).toBe('tenant-1');
-            expect(entity.name).toBe('arcaai-reports');
+            expect(entity.name).toBe('hope-audio-arcaai');
             expect(entity.slug).toBe('reports');
             expect(entity.bucketType).toBe(TenantBucketType.CUSTOM);
         });
 
-        it('should create both default system buckets for a tenant', async () => {
+        it('should create default system bucket for a tenant', async () => {
             const { TenantBucketFactory } = await import('../factories/generated/core/TenantBucketFactory');
             const { TenantBucketType } = await import('../enums');
 
             const buckets = TenantBucketFactory.CreateDefaultSystemBuckets('tenant-1', 'arcaai');
 
-            expect(buckets).toHaveLength(2);
+            expect(buckets).toHaveLength(1);
 
-            const audioRecordings = buckets.find(b => b.slug === 'audio_recordings');
-            expect(audioRecordings).toBeDefined();
-            expect(audioRecordings!.name).toBe('arcaai-audio-recordings');
-            expect(audioRecordings!.bucketType).toBe(TenantBucketType.SYSTEM);
-
-            const uploadedRecordings = buckets.find(b => b.slug === 'uploaded_recordings');
-            expect(uploadedRecordings).toBeDefined();
-            expect(uploadedRecordings!.name).toBe('arcaai-uploaded-recordings');
-            expect(uploadedRecordings!.bucketType).toBe(TenantBucketType.SYSTEM);
+            const audioBucket = buckets[0];
+            expect(audioBucket.slug).toBe('audio');
+            expect(audioBucket.name).toBe('hope-audio-arcaai');
+            expect(audioBucket.bucketType).toBe(TenantBucketType.SYSTEM);
         });
 
         it('should sanitize tenant key in bucket name', async () => {
@@ -146,7 +141,7 @@ describe('TenantBucket Domain Layer', () => {
                 'documents',
             );
 
-            expect(entity.name).toBe('my-hospital-name-documents');
+            expect(entity.name).toBe('hope-audio-my-hospital-name');
         });
     });
 
@@ -158,8 +153,8 @@ describe('TenantBucket Domain Layer', () => {
             const model = new TenantBucket({
                 id: 'bucket-1',
                 tenantId: 'tenant-1',
-                name: 'arcaai-audio-recordings',
-                slug: 'audio_recordings',
+                name: 'hope-audio-arcaai',
+                slug: 'audio',
                 description: 'Audio recordings',
                 bucketType: TenantBucketType.SYSTEM,
                 pathPattern: '{yyyy}/{MM}/{dd}/{user_name}',
@@ -175,8 +170,8 @@ describe('TenantBucket Domain Layer', () => {
                 tags: [],
             } as any);
 
-            expect(model.name).toBe('arcaai-audio-recordings');
-            expect(model.slug).toBe('audio_recordings');
+            expect(model.name).toBe('hope-audio-arcaai');
+            expect(model.slug).toBe('audio');
             expect(model.bucketType).toBe(TenantBucketType.SYSTEM);
         });
     });
