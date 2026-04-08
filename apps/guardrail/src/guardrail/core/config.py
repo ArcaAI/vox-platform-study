@@ -41,6 +41,22 @@ class OllamaConfig(BaseSettings):
     guardian_min_confidence: float = 0.75  # Minimum confidence for medical context
 
 
+class GlinerConfig(BaseSettings):
+    """GLiNER ONNX provider configuration for content safety/adversarial/PII."""
+
+    model_config = SettingsConfigDict(env_prefix="GUARDRAIL_GLINER_")
+
+    enabled: bool = True
+    model_id: str = "hivetrace/gliner-guard-uniencoder-onnx"
+    precision: str = "fp32"
+    providers: list[str] = Field(
+        default_factory=lambda: ["CPUExecutionProvider"],
+    )
+    classification_threshold: float = 0.4
+    pii_threshold: float = 0.5
+    max_workers: int = 2  # Thread-pool size for CPU-bound inference
+
+
 class RedisConfig(BaseSettings):
     """Redis configuration for job queue and caching."""
 
@@ -91,6 +107,7 @@ class Settings(BaseSettings):
 
     # Sub-configs
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
+    gliner: GlinerConfig = Field(default_factory=GlinerConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     queue: QueueConfig = Field(default_factory=QueueConfig)
 
