@@ -25,8 +25,8 @@ def settings():
 
 @pytest.fixture
 def mock_provider_registry():
-    from smr_v2.providers.base import ProviderRegistry
     from smr_v2.models.stream import StreamChunk
+    from smr_v2.providers.base import ProviderRegistry
 
     registry = ProviderRegistry()
     mock_provider = AsyncMock()
