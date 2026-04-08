@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from guardrail.core.dependencies import get_settings, get_ollama_provider, get_job_processor
+from guardrail.core.dependencies import get_settings, get_gliner_provider, get_job_processor
 from guardrail.core.config import Settings
 
 router = APIRouter()
@@ -56,15 +56,15 @@ class BatchGuardrailRequest(BaseModel):
 async def analyze_content(
     request: GuardrailRequest,
     settings: Settings = Depends(get_settings),
-    ollama_provider = Depends(get_ollama_provider),
+    gliner_provider = Depends(get_gliner_provider),
 ) -> GuardrailResponse:
     """Analyze content for safety issues in real-time."""
-    
+
     import time
     start_time = time.monotonic()
-    
+
     try:
-        result = await ollama_provider.analyze_content(
+        result = await gliner_provider.analyze_content(
             text=request.text,
             guardrail_type=request.guardrail_type,
         )
@@ -99,15 +99,15 @@ async def analyze_content(
 async def analyze_batch(
     request: BatchGuardrailRequest,
     settings: Settings = Depends(get_settings),
-    ollama_provider = Depends(get_ollama_provider),
+    gliner_provider = Depends(get_gliner_provider),
 ) -> list[GuardrailResponse]:
     """Analyze multiple texts for safety issues."""
-    
+
     import time
     start_time = time.monotonic()
-    
+
     try:
-        results = await ollama_provider.batch_analyze(
+        results = await gliner_provider.batch_analyze(
             texts=request.texts,
             guardrail_type=request.guardrail_type,
         )

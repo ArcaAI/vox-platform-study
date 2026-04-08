@@ -263,6 +263,45 @@ test-smr:
       when: never
     - !reference [.rules-smr, rules]
 
+# ── Guardrail tests (pytest) ─────────────────────────────────────────────────
+
+test-guardrail:
+  stage: test
+  image: python:3.11-slim
+  tags: [test]
+  needs:
+    - job: lint-python
+      optional: true
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+    # Disable model loading — no HuggingFace downloads during CI
+    GUARDRAIL_GLINER_ENABLED: "false"
+    GUARDRAIL_OLLAMA_ENABLED: "false"
+    GUARDRAIL_REDIS_URL: $CI_REDIS_URL
+  cache:
+    - key: pip-guardrail
+      paths:
+        - .pip-cache/
+      policy: pull-push
+      fallback_keys:
+        - pip-$CI_DEFAULT_BRANCH
+  script:
+    - echo "── Test infra → Redis=${CI_REDIS_URL:+set} GLiNER=disabled Ollama=disabled ──"
+    - cd apps/guardrail
+    - pip install --quiet ".[test]"
+    - python -m pytest src/guardrail/tests/ -v --tb=short --junitxml=../../junit-guardrail.xml -x
+  artifacts:
+    when: always
+    reports:
+      junit: junit-guardrail.xml
+    expire_in: 30 days
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_PY == "true"
+      when: never
+    - !reference [.rules-guardrail, rules]
+
 # ── NLP tests (pytest) ──────────────────────────────────────────────────────
 
 test-nlp:

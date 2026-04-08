@@ -12,22 +12,22 @@ from uuid import uuid4
 import redis.asyncio as aioredis
 
 from guardrail.core.logging import get_logger
-from guardrail.providers.ollama import OllamaProvider
+from guardrail.providers.gliner import GlinerProvider
 
 logger = get_logger(__name__)
 
 
 class JobProcessor:
     """Processes guardrail analysis jobs using Redis-backed priority queues."""
-    
+
     def __init__(
         self,
         redis: aioredis.Redis,
-        ollama_provider: OllamaProvider,
+        gliner_provider: GlinerProvider,
         max_concurrent: int = 4,
     ) -> None:
         self.redis = redis
-        self.ollama_provider = ollama_provider
+        self.gliner_provider = gliner_provider
         self.max_concurrent = max_concurrent
         self.processing = False
         self.semaphore = asyncio.Semaphore(max_concurrent)
@@ -317,7 +317,7 @@ class JobProcessor:
                 logger.info("job_processor.job_started", job_id=job_id)
                 
                 start_time = time.monotonic()
-                result = await self.ollama_provider.analyze_content(
+                result = await self.gliner_provider.analyze_content(
                     text=text,
                     guardrail_type=guardrail_type,
                 )

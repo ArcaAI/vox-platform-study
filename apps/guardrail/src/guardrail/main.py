@@ -75,12 +75,22 @@ async def lifespan(app: FastAPI):
             enabled=settings.ollama.guardian_enabled,
         )
 
+    # Initialize GLiNER provider for content safety / adversarial / PII
+    if not hasattr(app.state, "gliner_provider") or app.state.gliner_provider is None:
+        from guardrail.providers.gliner import GlinerProvider
+        app.state.gliner_provider = GlinerProvider(config=settings.gliner)
+        logger.info(
+            "guardrail.gliner_provider_initialized",
+            model_id=settings.gliner.model_id,
+            enabled=settings.gliner.enabled,
+        )
+
     # Initialize job queue processor
     if not hasattr(app.state, "job_processor") or app.state.job_processor is None:
         from guardrail.services.job_processor import JobProcessor
         app.state.job_processor = JobProcessor(
             redis=redis_client,
-            ollama_provider=app.state.ollama_provider,
+            gliner_provider=app.state.gliner_provider,
             max_concurrent=settings.ollama.max_concurrent,
         )
         
@@ -92,16 +102,19 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     logger.info("guardrail.shutting_down")
-    
+
     if hasattr(app.state, "job_processor") and app.state.job_processor:
         await app.state.job_processor.stop()
-    
+
     if hasattr(app.state, "job_processor_task") and app.state.job_processor_task:
         await app.state.job_processor_task
-    
+
+    if hasattr(app.state, "gliner_provider") and app.state.gliner_provider:
+        app.state.gliner_provider.shutdown()
+
     if hasattr(app.state, "http_client") and app.state.http_client:
         await app.state.http_client.aclose()
-    
+
     if hasattr(app.state, "redis") and app.state.redis:
         await app.state.redis.close()
 

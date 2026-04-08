@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from guardrail.core.dependencies import get_settings, get_ollama_provider, get_redis
+from guardrail.core.dependencies import get_settings, get_ollama_provider, get_gliner_provider, get_redis
 from guardrail.core.config import Settings
 
 router = APIRouter()
@@ -17,6 +17,7 @@ router = APIRouter()
 async def health_check(
     settings: Settings = Depends(get_settings),
     ollama_provider = Depends(get_ollama_provider),
+    gliner_provider = Depends(get_gliner_provider),
     redis = Depends(get_redis),
 ) -> dict[str, Any]:
     """Comprehensive health check for all services."""
@@ -40,7 +41,7 @@ async def health_check(
         }
         health_status["status"] = "degraded"
     
-    # Check Ollama
+    # Check Ollama (medical validation)
     if settings.ollama.enabled:
         ollama_health = await ollama_provider.health_check()
         health_status["checks"]["ollama"] = ollama_health
@@ -48,35 +49,39 @@ async def health_check(
             health_status["status"] = "degraded"
     else:
         health_status["checks"]["ollama"] = {"status": "disabled"}
-    
+
+    # Check GLiNER (content safety)
+    gliner_health = gliner_provider.health_check()
+    health_status["checks"]["gliner"] = gliner_health
+    if not gliner_health.get("healthy", False):
+        health_status["status"] = "degraded"
+
     return health_status
 
 
 @router.get("/health/ready", response_model=dict[str, Any])
 async def readiness_check(
-    ollama_provider = Depends(get_ollama_provider),
+    gliner_provider = Depends(get_gliner_provider),
     redis = Depends(get_redis),
 ) -> dict[str, Any]:
     """Readiness check - service is ready to accept traffic."""
-    
+
     try:
-        # Check Redis connectivity
         await redis.ping()
-        
-        # Check Ollama if enabled
-        ollama_health = await ollama_provider.health_check()
-        if not ollama_health.get("healthy", False):
+
+        gliner_health = gliner_provider.health_check()
+        if not gliner_health.get("healthy", False):
             return {
                 "ready": False,
-                "reason": "Ollama not healthy",
+                "reason": "GLiNER provider not healthy",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
-        
+
         return {
             "ready": True,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        
+
     except Exception as e:
         return {
             "ready": False,

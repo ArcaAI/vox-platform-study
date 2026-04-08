@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from guardrail.core.config import Settings
     from guardrail.providers.ollama import OllamaProvider
     from guardrail.providers.guardian import GuardianProvider
+    from guardrail.providers.gliner import GlinerProvider
     from guardrail.services.job_processor import JobProcessor
 
 
@@ -39,6 +40,11 @@ def get_ollama_provider(request: Request) -> "OllamaProvider":
 def get_guardian_provider(request: Request) -> "GuardianProvider":
     """Retrieve Guardian provider from app.state."""
     return request.app.state.guardian_provider
+
+
+def get_gliner_provider(request: Request) -> "GlinerProvider":
+    """Retrieve GLiNER provider from app.state."""
+    return request.app.state.gliner_provider
 
 
 def get_job_processor(request: Request) -> "JobProcessor":
