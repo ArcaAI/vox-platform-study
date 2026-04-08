@@ -1,8 +1,7 @@
 import uvicorn
 
-from nlp.core.logging import get_logger, setup_logging
 from nlp.core.config import settings
-
+from nlp.core.logging import get_logger, setup_logging
 
 setup_logging()
 

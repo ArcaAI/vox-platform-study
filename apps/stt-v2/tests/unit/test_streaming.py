@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from stt_v2.streaming.session import StreamSession
     from stt_v2.streaming.session_manager import SessionManager
+
 import json
 import time
 from datetime import datetime, timedelta
@@ -99,8 +100,13 @@ class TestAudioFrame:
         from stt_v2.streaming.schemas import AudioEncoding, AudioFrame
 
         original = AudioFrame(
-            seq=99, sr=16000, enc=AudioEncoding.PCM_S16LE,
-            ch=1, data=b"\xab\xcd" * 480, final=True, ts=time.time(),
+            seq=99,
+            sr=16000,
+            enc=AudioEncoding.PCM_S16LE,
+            ch=1,
+            data=b"\xab\xcd" * 480,
+            final=True,
+            ts=time.time(),
         )
         d = original.to_redis_dict()
         restored = AudioFrame.from_redis_dict(d)
@@ -125,6 +131,7 @@ class TestSegmentResult:
 
         result = SegmentResult(
             text="Hello world",
+            english_text="Hello world",
             speaker_id="spk_123",
             speaker_confidence=0.95,
             start_time=1.5,
@@ -134,6 +141,7 @@ class TestSegmentResult:
         d = result.to_redis_dict()
         assert d["type"] == "segment"
         assert d["text"] == "Hello world"
+        assert d["english_text"] == "Hello world"
         assert d["speaker_id"] == "spk_123"
         assert d["is_final"] == "1"
 
@@ -143,6 +151,7 @@ class TestSegmentResult:
         d = {
             "type": "segment",
             "text": "Test text",
+            "english_text": "Translated text",
             "speaker_id": "spk_abc",
             "speaker_confidence": "0.85",
             "start_time": "2.0",
@@ -151,6 +160,7 @@ class TestSegmentResult:
         }
         result = SegmentResult.from_redis_dict(d)
         assert result.text == "Test text"
+        assert result.english_text == "Translated text"
         assert result.speaker_id == "spk_abc"
         assert result.speaker_confidence == pytest.approx(0.85)
         assert result.is_final is False
@@ -160,6 +170,7 @@ class TestSegmentResult:
 
         original = SegmentResult(
             text="Patient reports headache",
+            english_text="Patient reports headache",
             speaker_id="spk_dr_smith",
             speaker_confidence=0.92,
             start_time=12.5,
@@ -169,6 +180,7 @@ class TestSegmentResult:
         d = original.to_redis_dict()
         restored = SegmentResult.from_redis_dict(d)
         assert restored.text == original.text
+        assert restored.english_text == original.english_text
         assert restored.speaker_id == original.speaker_id
         assert restored.is_final == original.is_final
 
@@ -177,7 +189,8 @@ class TestSegmentResult:
 
         result = SegmentResult(text="No speaker info")
         d = result.to_redis_dict()
-        assert d["speaker_id"] == ""
+        # speaker_id is omitted when not set (conditional field)
+        assert "speaker_id" not in d
         restored = SegmentResult.from_redis_dict(d)
         assert restored.speaker_id is None
 
@@ -218,10 +231,12 @@ class TestSegmentResult:
     def test_invalid_word_timestamps_json_is_ignored(self):
         from stt_v2.streaming.schemas import SegmentResult
 
-        restored = SegmentResult.from_redis_dict({
-            "text": "hello",
-            "word_timestamps_json": "{not-json",
-        })
+        restored = SegmentResult.from_redis_dict(
+            {
+                "text": "hello",
+                "word_timestamps_json": "{not-json",
+            }
+        )
         assert restored.word_timestamps == []
 
 
@@ -279,7 +294,7 @@ class TestStreamingInferenceWorker:
         )
 
         utterance = AudioUtterance(
-            samples=np.zeros(16000, dtype=np.float32),
+            samples=np.random.randn(16000).astype(np.float32) * 0.1,
             sample_rate=16000,
             start_time=1.0,
             end_time=2.0,
@@ -315,7 +330,7 @@ class TestStreamingInferenceWorker:
 
         worker = StreamingInferenceWorker(asr_pipeline=fake_pipeline)
         utterance = AudioUtterance(
-            samples=np.zeros(8000, dtype=np.float32),
+            samples=np.random.randn(8000).astype(np.float32) * 0.1,
             sample_rate=16000,
             start_time=0.0,
             end_time=0.5,
@@ -413,18 +428,14 @@ class TestSessionMetadata:
     def test_auto_timestamps(self):
         from stt_v2.streaming.schemas import SessionMetadata
 
-        meta = SessionMetadata(
-            session_id="s1", tenant_id="t1", pipeline_id="p1"
-        )
+        meta = SessionMetadata(session_id="s1", tenant_id="t1", pipeline_id="p1")
         assert meta.created_at != ""
         assert meta.last_activity != ""
 
     def test_optional_fields_absent(self):
         from stt_v2.streaming.schemas import SessionMetadata
 
-        meta = SessionMetadata(
-            session_id="s1", tenant_id="t1", pipeline_id="p1"
-        )
+        meta = SessionMetadata(session_id="s1", tenant_id="t1", pipeline_id="p1")
         d = meta.to_redis_dict()
         # Optional fields should NOT be in the dict when None
         assert "closed_at" not in d
@@ -571,9 +582,7 @@ class TestExecutionProfile:
     @patch("stt_v2.streaming.execution_profile.detect_platform")
     @patch("stt_v2.streaming.execution_profile._get_mps_unified_memory_gb")
     @patch("stt_v2.streaming.execution_profile.get_settings")
-    def test_detect_execution_profile_mps(
-        self, mock_settings, mock_mem, mock_detect
-    ):
+    def test_detect_execution_profile_mps(self, mock_settings, mock_mem, mock_detect):
         from stt_v2.core.platform import PlatformType
         from stt_v2.streaming.execution_profile import detect_execution_profile
 
@@ -768,7 +777,7 @@ class TestStreamSession:
         from stt_v2.streaming.schemas import SegmentResult
 
         session = self._make_session()
-        result = SegmentResult(text="Hello", start_time=0.0, end_time=1.0)
+        result = SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
         session.add_result(result)
         assert len(session.results) == 1
         assert session.results[0].text == "Hello"
@@ -985,9 +994,7 @@ class TestControlListener:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return [
-                    [b"stt:control:s1", [(b"1-0", {b"action": b"finalize"})]]
-                ]
+                return [[b"stt:control:s1", [(b"1-0", {b"action": b"finalize"})]]]
             await asyncio.sleep(0.05)  # yield control for subsequent calls
             return []
 
@@ -1020,8 +1027,13 @@ class TestXaddAudioFrame:
         redis_mock.xadd.return_value = b"1-0"
 
         frame = AudioFrame(
-            seq=1, sr=16000, enc=AudioEncoding.PCM_S16LE,
-            ch=1, data=b"\x00" * 960, final=False, ts=1000.0,
+            seq=1,
+            sr=16000,
+            enc=AudioEncoding.PCM_S16LE,
+            ch=1,
+            data=b"\x00" * 960,
+            final=False,
+            ts=1000.0,
         )
 
         entry_id = await xadd_audio_frame(redis_mock, "s1", frame, maxlen=2000)
@@ -1127,9 +1139,7 @@ class TestSessionManager:
 
         redis_mock.xread.side_effect = _slow_xread
 
-        return SessionManager(
-            redis=redis_mock, profile=profile, worker_id="test-worker-1"
-        )
+        return SessionManager(redis=redis_mock, profile=profile, worker_id="test-worker-1")
 
     async def test_create_session(self):
         mgr = self._make_manager()

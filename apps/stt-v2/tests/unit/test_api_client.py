@@ -17,6 +17,7 @@ from stt_v2.core.exceptions import APIGatewayError
 # Complete Response Fixtures (Anti-Pattern #4 Prevention)
 # =============================================================================
 
+
 def create_complete_api_response(data: dict, status_code: int = 200) -> MagicMock:
     """Create a complete mock response matching real httpx.Response structure.
 
@@ -181,8 +182,7 @@ class TestAPIGatewayClient:
     async def test_request_transforms_http_error_to_domain_error(self, client):
         """Verify HTTP errors are transformed to APIGatewayError with details."""
         mock_response = create_complete_api_response(
-            {"error": "Internal Server Error"},
-            status_code=500
+            {"error": "Internal Server Error"}, status_code=500
         )
         mock_http_client = AsyncMock()
         mock_http_client.request = AsyncMock(return_value=mock_response)
@@ -432,8 +432,7 @@ class TestAPIGatewayClientMethods:
         """Verify health_check correctly handles API failures."""
         with patch.object(client, "_request", new_callable=AsyncMock) as mock_request:
             mock_request.side_effect = APIGatewayError(
-                "Connection failed",
-                details={"status_code": 503}
+                "Connection failed", details={"status_code": 503}
             )
 
             result = await client.health_check()

@@ -1,31 +1,56 @@
+import logging
+
 from fastapi import FastAPI
-from prometheus_fastapi_instrumentator import Instrumentator, metrics as prometheus_metrics
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION, DEPLOYMENT_ENVIRONMENT, TELEMETRY_SDK_LANGUAGE
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry import metrics, trace
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
-from opentelemetry import trace, metrics
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.resources import (
+    DEPLOYMENT_ENVIRONMENT,
+    SERVICE_NAME,
+    SERVICE_VERSION,
+    TELEMETRY_SDK_LANGUAGE,
+    Resource,
+)
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_fastapi_instrumentator import metrics as prometheus_metrics
 
-from nlp.core.logging import get_logger
 from nlp.core.config import settings
+from nlp.core.logging import get_logger
 
 logger = get_logger("observability")
 
 
+def _phi_sanitization_hook(span, scope):
+    """Strip attributes that could contain PHI from OTel spans."""
+    if span and span.is_recording():
+        for attr in ("http.request.body", "http.response.body"):
+            span.set_attribute(attr, "[REDACTED]")
+
+
 def setup_opentelemetry(app: FastAPI) -> None:
-    if not settings.service.opentelemetry_endpoint:
+    if not settings.service.otlp_endpoint:
+        logger.warning("OTEL_EXPORTER_OTLP_ENDPOINT not set — OpenTelemetry disabled")
         return
+
+    otlp_endpoint = settings.service.otlp_endpoint
 
     resource = Resource(
         attributes={
             SERVICE_NAME: settings.service.name,
             SERVICE_VERSION: settings.service.version,
             TELEMETRY_SDK_LANGUAGE: "python",
-            DEPLOYMENT_ENVIRONMENT: settings.service.environment,
-            **(settings.service.resource_attributes or {}),
+            DEPLOYMENT_ENVIRONMENT: settings.service.environment.value,
+            **settings.service.resource_attributes,
         },
     )
 
@@ -36,56 +61,85 @@ def setup_opentelemetry(app: FastAPI) -> None:
         trace.set_tracer_provider(tracer_provider)
         app.state.tracer_provider = tracer_provider
 
-        otlp_endpoint = settings.service.otlp_endpoint or settings.service.opentelemetry_endpoint
-        if otlp_endpoint:
-            tracer_provider.add_span_processor(
-                BatchSpanProcessor(
-                    OTLPSpanExporter(endpoint=otlp_endpoint),
-                    max_export_batch_size=512,
-                    export_timeout_millis=2000,
-                    schedule_delay_millis=500,
-                ),
-            )
+        tracer_provider.add_span_processor(
+            BatchSpanProcessor(
+                OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True),
+                max_export_batch_size=512,
+                export_timeout_millis=2000,
+                schedule_delay_millis=500,
+            ),
+        )
 
     if settings.service.metrics_enabled:
-        meter_provider = MeterProvider(resource=resource)
+        metric_readers = [
+            PeriodicExportingMetricReader(
+                OTLPMetricExporter(endpoint=otlp_endpoint, insecure=True),
+                export_interval_millis=15000,
+            )
+        ]
+        meter_provider = MeterProvider(resource=resource, metric_readers=metric_readers)
         metrics.set_meter_provider(meter_provider)
         app.state.meter_provider = meter_provider
+
+    log_exporter = OTLPLogExporter(endpoint=otlp_endpoint, insecure=True)
+    logger_provider = LoggerProvider(resource=resource)
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
+    set_logger_provider(logger_provider)
+    app.state.logger_provider = logger_provider
+
+    otel_log_handler = LoggingHandler(level=logging.DEBUG, logger_provider=logger_provider)
+    logging.getLogger().addHandler(otel_log_handler)
 
     excluded_endpoints = [
         "/docs",
         "/redoc",
         "/openapi.json",
         "/metrics",
+        "/api/v1/health",
+        "/api/v1/health/live",
+        "/api/v1/health/ready",
     ]
 
-    instrument_kwargs = dict(
-        excluded_urls=",".join(excluded_endpoints),
-        server_request_hook=None,
-        client_request_hook=None,
-        client_response_hook=None,
+    excluded_urls = ",".join(excluded_endpoints)
+
+    if tracer_provider is not None:
+        FastAPIInstrumentor().instrument_app(
+            app,
+            excluded_urls=excluded_urls,
+            tracer_provider=tracer_provider,
+        )
+        LoggingInstrumentor().instrument(
+            set_logging_format=False,
+            tracer_provider=tracer_provider,
+        )
+    else:
+        FastAPIInstrumentor().instrument_app(
+            app,
+            excluded_urls=excluded_urls,
+        )
+        LoggingInstrumentor().instrument(set_logging_format=False)
+
+    logger.info(
+        "OpenTelemetry initialized",
+        extra={"otlp_endpoint": otlp_endpoint, "traces": settings.service.traces_enabled, "metrics": settings.service.metrics_enabled},
     )
-    if tracer_provider is not None:
-        instrument_kwargs["tracer_provider"] = tracer_provider
-
-    FastAPIInstrumentor().instrument_app(app, **instrument_kwargs)
-
-    logging_kwargs = dict(set_logging_format=False)
-    if tracer_provider is not None:
-        logging_kwargs["tracer_provider"] = tracer_provider
-
-    LoggingInstrumentor().instrument(**logging_kwargs)
 
 
 def shutdown_opentelemetry(app: FastAPI) -> None:
-    if not settings.service.opentelemetry_endpoint:
+    if not settings.service.otlp_endpoint:
         return
 
     if hasattr(app.state, "tracer_provider") and app.state.tracer_provider:
         app.state.tracer_provider.shutdown()
     if hasattr(app.state, "meter_provider") and app.state.meter_provider:
         app.state.meter_provider.shutdown()
+    if hasattr(app.state, "logger_provider") and app.state.logger_provider:
+        app.state.logger_provider.shutdown()
 
+    try:
+        LoggingInstrumentor().uninstrument()
+    except Exception:
+        pass
     FastAPIInstrumentor().uninstrument_app(app)
 
 

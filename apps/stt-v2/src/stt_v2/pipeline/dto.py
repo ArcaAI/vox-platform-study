@@ -53,12 +53,12 @@ class AiModelDownloadStatus(StrEnum):
 # None means default (fp32). These correspond to file name suffixes, e.g.,
 # encoder_model_{variant}.onnx / decoder_model_merged_{variant}.onnx
 VALID_ONNX_QUANTIZATIONS: list[str] = [
-    "fp16",       # Float16 — ~50% size of fp32, minimal quality loss
-    "int8",       # INT8 dynamic quantization
-    "uint8",      # UINT8 dynamic quantization (same size as int8)
-    "q4",         # 4-bit quantization — ~25% size of fp32
-    "q4f16",      # 4-bit weights + float16 activations — smallest
-    "bnb4",       # bitsandbytes 4-bit
+    "fp16",  # Float16 — ~50% size of fp32, minimal quality loss
+    "int8",  # INT8 dynamic quantization
+    "uint8",  # UINT8 dynamic quantization (same size as int8)
+    "q4",  # 4-bit quantization — ~25% size of fp32
+    "q4f16",  # 4-bit weights + float16 activations — smallest
+    "bnb4",  # bitsandbytes 4-bit
     "quantized",  # Default quantized (typically int8)
 ]
 
@@ -66,15 +66,106 @@ VALID_ONNX_QUANTIZATIONS: list[str] = [
 # Whisper-supported language codes (ISO 639-1 / 639-3).
 # Used for validation when a language hint is provided.
 VALID_WHISPER_LANGUAGES: set[str] = {
-    "af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs",
-    "ca", "cs", "cy", "da", "de", "el", "en", "es", "et", "eu", "fa", "fi",
-    "fo", "fr", "gl", "gu", "ha", "haw", "he", "hi", "hr", "ht", "hu", "hy",
-    "id", "is", "it", "ja", "jw", "ka", "kk", "km", "kn", "ko", "la", "lb",
-    "ln", "lo", "lt", "lv", "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt",
-    "my", "ne", "nl", "nn", "no", "oc", "pa", "pl", "ps", "pt", "ro", "ru",
-    "sa", "sd", "si", "sk", "sl", "sn", "so", "sq", "sr", "su", "sv", "sw",
-    "ta", "te", "tg", "th", "tk", "tl", "tr", "tt", "uk", "ur", "uz", "vi",
-    "yi", "yo", "yue", "zh",
+    "af",
+    "am",
+    "ar",
+    "as",
+    "az",
+    "ba",
+    "be",
+    "bg",
+    "bn",
+    "bo",
+    "br",
+    "bs",
+    "ca",
+    "cs",
+    "cy",
+    "da",
+    "de",
+    "el",
+    "en",
+    "es",
+    "et",
+    "eu",
+    "fa",
+    "fi",
+    "fo",
+    "fr",
+    "gl",
+    "gu",
+    "ha",
+    "haw",
+    "he",
+    "hi",
+    "hr",
+    "ht",
+    "hu",
+    "hy",
+    "id",
+    "is",
+    "it",
+    "ja",
+    "jw",
+    "ka",
+    "kk",
+    "km",
+    "kn",
+    "ko",
+    "la",
+    "lb",
+    "ln",
+    "lo",
+    "lt",
+    "lv",
+    "mg",
+    "mi",
+    "mk",
+    "ml",
+    "mn",
+    "mr",
+    "ms",
+    "mt",
+    "my",
+    "ne",
+    "nl",
+    "nn",
+    "no",
+    "oc",
+    "pa",
+    "pl",
+    "ps",
+    "pt",
+    "ro",
+    "ru",
+    "sa",
+    "sd",
+    "si",
+    "sk",
+    "sl",
+    "sn",
+    "so",
+    "sq",
+    "sr",
+    "su",
+    "sv",
+    "sw",
+    "ta",
+    "te",
+    "tg",
+    "th",
+    "tk",
+    "tl",
+    "tr",
+    "tt",
+    "uk",
+    "ur",
+    "uz",
+    "vi",
+    "yi",
+    "yo",
+    "yue",
+    "zh",
 }
 
 
@@ -158,6 +249,7 @@ class InlineModelDef:
             tags=[],
             quantization=self.quantization,
             subfolder=self.subfolder,
+            device=self.device,
         )
 
 
@@ -283,10 +375,11 @@ class VadConfig:
     """Voice Activity Detection configuration."""
 
     enabled: bool = True
-    threshold: float = 0.5
-    min_speech_duration_ms: int = 250
-    min_silence_duration_ms: int = 100
-    padding_ms: int = 30
+    threshold: float = 0.6  # Speech probability threshold (0.0-1.0)
+    min_speech_duration_ms: int = 350  # Minimum duration to keep a speech segment (ms)
+    min_silence_duration_ms: int = 100  # Minimum silence duration to split segments (ms)
+    padding_ms: int = 30  # Padding around detected speech boundaries in batch VAD (ms)
+    pre_speech_context_ms: int = 500  # Audio context before speech onset in streaming VAD (ms)
 
 
 @dataclass
@@ -338,6 +431,7 @@ class InferenceConfig:
     temperature: float = 0.0
     language: str | None = None  # None = auto-detect
     code_switching: bool = False  # Enable multilingual code-switching
+    initial_prompt: str | None = None  # PromptTemplate UUID for Whisper conditioning
 
 
 @dataclass
@@ -376,6 +470,15 @@ class PipelineSpec:
     inference: InferenceConfig
     postprocessing: PostprocessingConfig
     diarization: DiarizationConfig = field(default_factory=DiarizationConfig)
+
+    def __post_init__(self) -> None:
+        """Inherit inference-level defaults into inline models that lack them."""
+        fallback_ct = self.inference.compute_type
+        if not fallback_ct or fallback_ct == "auto":
+            return
+        for _role, inline_def in self.models.get_inline_models():
+            if inline_def.compute_type is None:
+                inline_def.compute_type = fallback_ct
 
 
 @dataclass
@@ -422,6 +525,7 @@ class AiModelConfig:
     # ONNX-specific: quantization variant and subfolder within the HF repo
     quantization: str | None = None  # e.g., "q4", "fp16", "int8", "q4f16"
     subfolder: str | None = None  # e.g., "onnx" for onnx-community models
+    device: str | None = None  # Override device (auto, cuda, cpu, mps)
 
     @property
     def is_downloaded(self) -> bool:

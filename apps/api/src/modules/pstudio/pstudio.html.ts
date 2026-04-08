@@ -1,4 +1,4 @@
-const STUDIO_VERSION = '0.14.0';
+const STUDIO_VERSION = '0.15.0';
 
 export function getStudioHtml(studioEndpointUrl: string, token: string): string {
   return `<!DOCTYPE html>

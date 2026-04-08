@@ -45,6 +45,7 @@ from stt_v2.vad.dto import SpeechSegment, VADResult
 # Test Fixtures
 # =============================================================================
 
+
 def create_pipeline_config_with_diarization(enabled: bool = True) -> PipelineConfig:
     """Create a PipelineConfig with diarization enabled/disabled."""
     spec = PipelineSpec(
@@ -150,6 +151,7 @@ def create_mock_diarization_result(
 # TestVADPreprocessingIntegration
 # =============================================================================
 
+
 class TestVADPreprocessingIntegration:
     """Test AudioPreprocessor._apply_vad_smart() integration with Silero VAD service."""
 
@@ -226,7 +228,9 @@ class TestVADPreprocessingIntegration:
         ]
 
         with patch("stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad_service):
-            with patch.object(preprocessor, "_apply_vad", return_value=pipeline_segments) as mock_pipeline:
+            with patch.object(
+                preprocessor, "_apply_vad", return_value=pipeline_segments
+            ) as mock_pipeline:
                 segments, vad_applied = await preprocessor._apply_vad_smart(
                     samples, sample_rate, vad_config, pipeline_model=_mock_pipeline_model
                 )
@@ -253,9 +257,7 @@ class TestVADPreprocessingIntegration:
 
         # Mock pipeline model
         _mock_pipeline_model = MagicMock(spec=LoadedModel)
-        pipeline_segments = [
-            AudioSegment(start_time=0.0, end_time=1.0, is_speech=True)
-        ]
+        pipeline_segments = [AudioSegment(start_time=0.0, end_time=1.0, is_speech=True)]
 
         with patch("stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad_service):
             with patch.object(preprocessor, "_apply_vad", return_value=pipeline_segments):
@@ -292,6 +294,7 @@ class TestVADPreprocessingIntegration:
 # =============================================================================
 # TestBatchServiceDiarizationIntegration
 # =============================================================================
+
 
 class TestBatchServiceDiarizationIntegration:
     """Test BatchTranscriptionService._run_diarization() integration."""
@@ -332,7 +335,10 @@ class TestBatchServiceDiarizationIntegration:
         mock_identifier = AsyncMock()
         mock_identifier.diarize_segments.return_value = diarization_result
 
-        with patch("stt_v2.diarization.speaker_identifier.get_speaker_identifier", return_value=mock_identifier):
+        with patch(
+            "stt_v2.diarization.speaker_identifier.get_speaker_identifier",
+            return_value=mock_identifier,
+        ):
             metadata = await service._run_diarization(
                 samples, sample_rate, raw_result, tenant_id, consultation_id, config
             )
@@ -381,7 +387,10 @@ class TestBatchServiceDiarizationIntegration:
         mock_identifier = AsyncMock()
         mock_identifier.diarize_segments.return_value = diarization_result
 
-        with patch("stt_v2.diarization.speaker_identifier.get_speaker_identifier", return_value=mock_identifier):
+        with patch(
+            "stt_v2.diarization.speaker_identifier.get_speaker_identifier",
+            return_value=mock_identifier,
+        ):
             metadata = await service._run_diarization(
                 samples, sample_rate, raw_result, "t-test", None, DiarizationConfig(enabled=True)
             )
@@ -412,11 +421,19 @@ class TestBatchServiceDiarizationIntegration:
         mock_identifier = AsyncMock()
         mock_identifier.diarize_segments.side_effect = RuntimeError("Diarization error")
 
-        with patch("stt_v2.diarization.speaker_identifier.get_speaker_identifier", return_value=mock_identifier):
+        with patch(
+            "stt_v2.diarization.speaker_identifier.get_speaker_identifier",
+            return_value=mock_identifier,
+        ):
             # _run_diarization should let the exception propagate
             with pytest.raises(RuntimeError, match="Diarization error"):
                 await service._run_diarization(
-                    samples, sample_rate, raw_result, "t-test", None, DiarizationConfig(enabled=True)
+                    samples,
+                    sample_rate,
+                    raw_result,
+                    "t-test",
+                    None,
+                    DiarizationConfig(enabled=True),
                 )
 
         mock_identifier.diarize_segments.assert_called_once()
@@ -453,7 +470,10 @@ class TestBatchServiceDiarizationIntegration:
         mock_identifier = AsyncMock()
         mock_identifier.diarize_segments.return_value = diarization_result
 
-        with patch("stt_v2.diarization.speaker_identifier.get_speaker_identifier", return_value=mock_identifier):
+        with patch(
+            "stt_v2.diarization.speaker_identifier.get_speaker_identifier",
+            return_value=mock_identifier,
+        ):
             _metadata = await service._run_diarization(
                 samples, sample_rate, raw_result, "t-test", None, DiarizationConfig(enabled=True)
             )
@@ -468,6 +488,7 @@ class TestBatchServiceDiarizationIntegration:
 # =============================================================================
 # TestBatchServiceTranscribeWithDiarization
 # =============================================================================
+
 
 class TestBatchServiceTranscribeWithDiarization:
     """Test full transcribe() method with diarization enabled."""
@@ -509,18 +530,28 @@ class TestBatchServiceTranscribeWithDiarization:
             new_speakers_created=1,
         )
 
-        with patch.object(service, "_load_models", return_value={"asr": mock_asr_model, "vad": None, "denoise": None}):
-            with patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_get_preprocessor:
+        with patch.object(
+            service,
+            "_load_models",
+            return_value={"asr": mock_asr_model, "vad": None, "denoise": None},
+        ):
+            with patch(
+                "stt_v2.transcription.batch_service.get_preprocessor"
+            ) as mock_get_preprocessor:
                 mock_preprocessor = AsyncMock()
                 mock_preprocessor.process.return_value = processed_audio
                 mock_get_preprocessor.return_value = mock_preprocessor
 
                 with patch.object(service, "_run_inference", return_value=raw_transcription):
-                    with patch.object(service, "_run_diarization", return_value={
-                        "speakers_detected": 2,
-                        "new_speakers_created": 1,
-                        "speaker_ids": ["speaker-1", "speaker-2"],
-                    }):
+                    with patch.object(
+                        service,
+                        "_run_diarization",
+                        return_value={
+                            "speakers_detected": 2,
+                            "new_speakers_created": 1,
+                            "speaker_ids": ["speaker-1", "speaker-2"],
+                        },
+                    ):
                         with patch.object(service, "_postprocess") as mock_postprocess:
                             mock_postprocess.return_value = TranscriptionResult(
                                 text="Hello world. How are you?",
@@ -561,19 +592,29 @@ class TestBatchServiceTranscribeWithDiarization:
 
         raw_transcription = RawTranscription(text="Hello world", language="en")
 
-        with patch.object(service, "_load_models", return_value={"asr": mock_asr_model, "vad": None, "denoise": None}):
-            with patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_get_preprocessor:
+        with patch.object(
+            service,
+            "_load_models",
+            return_value={"asr": mock_asr_model, "vad": None, "denoise": None},
+        ):
+            with patch(
+                "stt_v2.transcription.batch_service.get_preprocessor"
+            ) as mock_get_preprocessor:
                 mock_preprocessor = AsyncMock()
                 mock_preprocessor.process.return_value = processed_audio
                 mock_get_preprocessor.return_value = mock_preprocessor
 
                 with patch.object(service, "_run_inference", return_value=raw_transcription):
-                    with patch.object(service, "_postprocess", return_value=TranscriptionResult(
-                        text="Hello world",
-                        language="en",
-                        duration_seconds=1.0,
-                        metadata={},
-                    )):
+                    with patch.object(
+                        service,
+                        "_postprocess",
+                        return_value=TranscriptionResult(
+                            text="Hello world",
+                            language="en",
+                            duration_seconds=1.0,
+                            metadata={},
+                        ),
+                    ):
                         result = await service.transcribe(
                             job_id="job-123",
                             audio_bytes=audio_bytes,
@@ -603,19 +644,29 @@ class TestBatchServiceTranscribeWithDiarization:
 
         raw_transcription = RawTranscription(text="Hello world", language="en")
 
-        with patch.object(service, "_load_models", return_value={"asr": mock_asr_model, "vad": None, "denoise": None}):
-            with patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_get_preprocessor:
+        with patch.object(
+            service,
+            "_load_models",
+            return_value={"asr": mock_asr_model, "vad": None, "denoise": None},
+        ):
+            with patch(
+                "stt_v2.transcription.batch_service.get_preprocessor"
+            ) as mock_get_preprocessor:
                 mock_preprocessor = AsyncMock()
                 mock_preprocessor.process.return_value = processed_audio
                 mock_get_preprocessor.return_value = mock_preprocessor
 
                 with patch.object(service, "_run_inference", return_value=raw_transcription):
-                    with patch.object(service, "_postprocess", return_value=TranscriptionResult(
-                        text="Hello world",
-                        language="en",
-                        duration_seconds=1.0,
-                        metadata={},
-                    )):
+                    with patch.object(
+                        service,
+                        "_postprocess",
+                        return_value=TranscriptionResult(
+                            text="Hello world",
+                            language="en",
+                            duration_seconds=1.0,
+                            metadata={},
+                        ),
+                    ):
                         result = await service.transcribe(
                             job_id="job-123",
                             audio_bytes=audio_bytes,
@@ -645,20 +696,32 @@ class TestBatchServiceTranscribeWithDiarization:
 
         raw_transcription = RawTranscription(text="Hello world", language="en")
 
-        with patch.object(service, "_load_models", return_value={"asr": mock_asr_model, "vad": None, "denoise": None}):
-            with patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_get_preprocessor:
+        with patch.object(
+            service,
+            "_load_models",
+            return_value={"asr": mock_asr_model, "vad": None, "denoise": None},
+        ):
+            with patch(
+                "stt_v2.transcription.batch_service.get_preprocessor"
+            ) as mock_get_preprocessor:
                 mock_preprocessor = AsyncMock()
                 mock_preprocessor.process.return_value = processed_audio
                 mock_get_preprocessor.return_value = mock_preprocessor
 
                 with patch.object(service, "_run_inference", return_value=raw_transcription):
-                    with patch.object(service, "_run_diarization", side_effect=RuntimeError("Diarization failed")):
-                        with patch.object(service, "_postprocess", return_value=TranscriptionResult(
-                            text="Hello world",
-                            language="en",
-                            duration_seconds=1.0,
-                            metadata={},
-                        )):
+                    with patch.object(
+                        service, "_run_diarization", side_effect=RuntimeError("Diarization failed")
+                    ):
+                        with patch.object(
+                            service,
+                            "_postprocess",
+                            return_value=TranscriptionResult(
+                                text="Hello world",
+                                language="en",
+                                duration_seconds=1.0,
+                                metadata={},
+                            ),
+                        ):
                             # Should not raise, diarization failure is non-fatal
                             result = await service.transcribe(
                                 job_id="job-123",
@@ -676,6 +739,7 @@ class TestBatchServiceTranscribeWithDiarization:
 # =============================================================================
 # TestWorkerInitializationIntegration
 # =============================================================================
+
 
 class TestWorkerInitializationIntegration:
     """Test worker initialization and cleanup of new services."""
@@ -697,9 +761,17 @@ class TestWorkerInitializationIntegration:
 
         with patch("stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock):
             with patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock):
-                with patch("stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad_service):
-                    with patch("stt_v2.core.vectorstore.speaker_store.get_speaker_store", return_value=mock_speaker_store):
-                        with patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=mock_embedding_service):
+                with patch(
+                    "stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad_service
+                ):
+                    with patch(
+                        "stt_v2.core.vectorstore.speaker_store.get_speaker_store",
+                        return_value=mock_speaker_store,
+                    ):
+                        with patch(
+                            "stt_v2.diarization.embedding_service.get_embedding_service",
+                            return_value=mock_embedding_service,
+                        ):
                             await initialize_services()
 
         # Verify all services were initialized
@@ -717,9 +789,17 @@ class TestWorkerInitializationIntegration:
 
         with patch("stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock):
             with patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock):
-                with patch("stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad_service):
-                    with patch("stt_v2.core.vectorstore.speaker_store.get_speaker_store", return_value=AsyncMock()):
-                        with patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=AsyncMock()):
+                with patch(
+                    "stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad_service
+                ):
+                    with patch(
+                        "stt_v2.core.vectorstore.speaker_store.get_speaker_store",
+                        return_value=AsyncMock(),
+                    ):
+                        with patch(
+                            "stt_v2.diarization.embedding_service.get_embedding_service",
+                            return_value=AsyncMock(),
+                        ):
                             # Should not raise, VAD failure is non-fatal
                             await initialize_services()
 
@@ -737,8 +817,14 @@ class TestWorkerInitializationIntegration:
         with patch("stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock):
             with patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock):
                 with patch("stt_v2.vad.silero_service.get_vad_service", return_value=AsyncMock()):
-                    with patch("stt_v2.core.vectorstore.speaker_store.get_speaker_store", return_value=mock_speaker_store):
-                        with patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=AsyncMock()):
+                    with patch(
+                        "stt_v2.core.vectorstore.speaker_store.get_speaker_store",
+                        return_value=mock_speaker_store,
+                    ):
+                        with patch(
+                            "stt_v2.diarization.embedding_service.get_embedding_service",
+                            return_value=AsyncMock(),
+                        ):
                             # Should not raise, Qdrant failure is non-fatal
                             await initialize_services()
 
@@ -756,8 +842,14 @@ class TestWorkerInitializationIntegration:
         with patch("stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock):
             with patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock):
                 with patch("stt_v2.vad.silero_service.get_vad_service", return_value=AsyncMock()):
-                    with patch("stt_v2.core.vectorstore.speaker_store.get_speaker_store", return_value=AsyncMock()):
-                        with patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=mock_embedding_service):
+                    with patch(
+                        "stt_v2.core.vectorstore.speaker_store.get_speaker_store",
+                        return_value=AsyncMock(),
+                    ):
+                        with patch(
+                            "stt_v2.diarization.embedding_service.get_embedding_service",
+                            return_value=mock_embedding_service,
+                        ):
                             # Should not raise, diarization failure is non-fatal
                             await initialize_services()
 
@@ -780,9 +872,17 @@ class TestWorkerInitializationIntegration:
 
         with patch("stt_v2.core.database.connection.close_database", new_callable=AsyncMock):
             with patch("stt_v2.core.storage.minio_client.close_minio", new_callable=AsyncMock):
-                with patch("stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad_service):
-                    with patch("stt_v2.core.vectorstore.client.get_qdrant_client", return_value=mock_qdrant_client):
-                        with patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=mock_embedding_service):
+                with patch(
+                    "stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad_service
+                ):
+                    with patch(
+                        "stt_v2.core.vectorstore.client.get_qdrant_client",
+                        return_value=mock_qdrant_client,
+                    ):
+                        with patch(
+                            "stt_v2.diarization.embedding_service.get_embedding_service",
+                            return_value=mock_embedding_service,
+                        ):
                             await cleanup_services()
 
         # Verify all services were cleaned up
@@ -806,9 +906,17 @@ class TestWorkerInitializationIntegration:
 
         with patch("stt_v2.core.database.connection.close_database", new_callable=AsyncMock):
             with patch("stt_v2.core.storage.minio_client.close_minio", new_callable=AsyncMock):
-                with patch("stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad_service):
-                    with patch("stt_v2.core.vectorstore.client.get_qdrant_client", return_value=mock_qdrant_client):
-                        with patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=mock_embedding_service):
+                with patch(
+                    "stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad_service
+                ):
+                    with patch(
+                        "stt_v2.core.vectorstore.client.get_qdrant_client",
+                        return_value=mock_qdrant_client,
+                    ):
+                        with patch(
+                            "stt_v2.diarization.embedding_service.get_embedding_service",
+                            return_value=mock_embedding_service,
+                        ):
                             # Should not raise, cleanup failures are handled gracefully
                             await cleanup_services()
 

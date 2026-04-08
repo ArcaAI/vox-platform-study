@@ -77,9 +77,7 @@ def azure_model_config():
 @pytest.fixture
 def mock_azure_settings():
     """Patch settings to return test Azure credentials."""
-    with patch(
-        "stt_v2.models.azure_speech_loader.get_settings"
-    ) as mock_settings:
+    with patch("stt_v2.models.azure_speech_loader.get_settings") as mock_settings:
         mock_settings.return_value = MagicMock(
             azure_speech_key="integration-test-key-12345",
             azure_speech_region="westus2",
@@ -222,7 +220,8 @@ class TestLoaderBatchServiceIntegration:
 
         # Patch only the sync Azure transcription boundary (not the dispatch logic)
         with patch.object(
-            service, "_azure_transcribe_sync",
+            service,
+            "_azure_transcribe_sync",
             return_value=RawTranscription(
                 text="Integration test transcription",
                 language="en-US",
@@ -230,9 +229,7 @@ class TestLoaderBatchServiceIntegration:
                 segments=[{"text": "Integration test transcription", "start": 0.0, "end": 2.0}],
             ),
         ) as mock_sync:
-            result = await service._run_inference(
-                samples, 16000, loaded_model, config
-            )
+            result = await service._run_inference(samples, 16000, loaded_model, config)
 
             # Verify the sync method received the real SpeechConfig from the loader
             assert mock_sync.call_args[0][0] is mock_config
@@ -259,11 +256,11 @@ class TestLoaderBatchServiceIntegration:
 
         # Test various language inputs
         test_cases = [
-            ("ml", "ml-IN"),      # Malayalam short code
-            ("en", "en-US"),      # English short code
-            ("zh", "zh-CN"),      # Chinese short code
-            ("fr-FR", "fr-FR"),   # Already BCP-47
-            (None, "en-US"),      # None defaults to en-US
+            ("ml", "ml-IN"),  # Malayalam short code
+            ("en", "en-US"),  # English short code
+            ("zh", "zh-CN"),  # Chinese short code
+            ("fr-FR", "fr-FR"),  # Already BCP-47
+            (None, "en-US"),  # None defaults to en-US
         ]
 
         for input_lang, expected_lang in test_cases:
@@ -271,12 +268,11 @@ class TestLoaderBatchServiceIntegration:
             config.language = input_lang
 
             with patch.object(
-                service, "_azure_transcribe_sync",
+                service,
+                "_azure_transcribe_sync",
                 return_value=RawTranscription(text="Test", language=expected_lang),
             ) as mock_sync:
-                await service._run_inference(
-                    samples, 16000, loaded_model, config
-                )
+                await service._run_inference(samples, 16000, loaded_model, config)
 
                 actual_lang = mock_sync.call_args[0][3]
                 assert actual_lang == expected_lang, (
@@ -287,9 +283,7 @@ class TestLoaderBatchServiceIntegration:
     @pytest.mark.asyncio
     async def test_auth_error_propagates_from_loader_to_caller(self):
         """Test that missing credentials raise CloudASRAuthError at load time."""
-        with patch(
-            "stt_v2.models.azure_speech_loader.get_settings"
-        ) as mock_settings:
+        with patch("stt_v2.models.azure_speech_loader.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(
                 azure_speech_key=None,
                 azure_speech_region=None,
@@ -341,13 +335,12 @@ class TestLoaderBatchServiceIntegration:
         config.language = "en"
 
         with patch.object(
-            service, "_azure_transcribe_sync",
+            service,
+            "_azure_transcribe_sync",
             side_effect=CloudASRQuotaError("Rate limited by Azure"),
         ):
             with pytest.raises(CloudASRQuotaError, match="Rate limited"):
-                await service._run_inference(
-                    samples, 16000, loaded_model, config
-                )
+                await service._run_inference(samples, 16000, loaded_model, config)
 
 
 # =============================================================================
@@ -387,14 +380,13 @@ class TestFullAzurePipelineFlow:
         assert cached_model.format == AiModelFormat.AZURE_SPEECH
 
         # Step 3: Run inference with the cached model
-        samples = np.sin(
-            2 * np.pi * 440 * np.linspace(0, 2.0, 32000)
-        ).astype(np.float32) * 0.8
+        samples = np.sin(2 * np.pi * 440 * np.linspace(0, 2.0, 32000)).astype(np.float32) * 0.8
         config = MagicMock()
         config.language = "ml"  # Malayalam short code
 
         with patch.object(
-            service, "_azure_transcribe_sync",
+            service,
+            "_azure_transcribe_sync",
             return_value=RawTranscription(
                 text="Test transcription result",
                 language="ml-IN",
@@ -410,14 +402,24 @@ class TestFullAzurePipelineFlow:
                 ],
                 word_timestamps=[
                     {"text": "Test", "word": "Test", "start": 0.0, "end": 0.3, "confidence": 0.9},
-                    {"text": "transcription", "word": "transcription", "start": 0.35, "end": 0.9, "confidence": 0.85},
-                    {"text": "result", "word": "result", "start": 0.95, "end": 1.3, "confidence": 0.88},
+                    {
+                        "text": "transcription",
+                        "word": "transcription",
+                        "start": 0.35,
+                        "end": 0.9,
+                        "confidence": 0.85,
+                    },
+                    {
+                        "text": "result",
+                        "word": "result",
+                        "start": 0.95,
+                        "end": 1.3,
+                        "confidence": 0.88,
+                    },
                 ],
             ),
         ) as mock_sync:
-            result = await service._run_inference(
-                samples, 16000, cached_model, config
-            )
+            result = await service._run_inference(samples, 16000, cached_model, config)
 
             # Verify the SpeechConfig from cache was used
             assert mock_sync.call_args[0][0] is mock_config

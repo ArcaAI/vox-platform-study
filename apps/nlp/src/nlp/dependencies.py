@@ -1,8 +1,9 @@
-from nlp.services.text_classifier import TextClassifier, TransformerTextClassifier
-from nlp.services.text_corrector import TextCorrector, SymSpellCorrector
-from nlp.services.token_classifier import TokenClassifier, TransformerTokenClassifier
-from nlp.services.medical_suggester import MedicalSuggester
 from nlp.core.websocket_manager import WebSocketManager
+from nlp.services.medical_suggester import MedicalSuggester
+from nlp.services.text_classifier import TextClassifier, TransformerTextClassifier
+from nlp.services.text_corrector import SymSpellCorrector, TextCorrector
+from nlp.services.token_classifier import TokenClassifier, TransformerTokenClassifier
+
 
 def get_text_classifier() -> TextClassifier:
     if globals().get("_text_classifier_instance") is None:

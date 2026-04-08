@@ -34,6 +34,8 @@ vi.mock('../../store', () => {
     useAgenticStore: vi.fn(() => mockStore),
     selectTranscriptions: vi.fn((s: any) => s.contextItems.filter((i: any) => i.type === 'transcription')),
     selectCaseNotes: vi.fn((s: any) => s.contextItems.filter((i: any) => i.type === 'case_note')),
+    selectWorknotes: vi.fn((s: any) => s.contextItems.filter((i: any) => i.type === 'WORKNOTE')),
+    selectAttachments: vi.fn((s: any) => s.contextItems.filter((i: any) => i.type === 'ATTACHMENT')),
     selectIsAudioSource: vi.fn(() => false),
     selectTranscriptionPipelineState: vi.fn(() => null),
     selectKnowledgePipelineState: vi.fn(() => null),

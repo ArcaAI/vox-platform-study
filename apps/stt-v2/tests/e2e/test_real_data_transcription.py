@@ -63,6 +63,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from stt_v2.pipeline.dto import PipelineConfig
     from stt_v2.transcription.dto import TranscriptionResult
+
 import contextlib
 import json
 import logging
@@ -80,30 +81,20 @@ logger = logging.getLogger(__name__)
 
 # Maximum wall-clock time (seconds) for a single transcription run.
 # Prevents Whisper repetition-loop hangs from blocking CI forever.
-_TRANSCRIPTION_TIMEOUT_SECONDS = int(
-    os.environ.get("E2E_TRANSCRIPTION_TIMEOUT", "120")
-)
+_TRANSCRIPTION_TIMEOUT_SECONDS = int(os.environ.get("E2E_TRANSCRIPTION_TIMEOUT", "120"))
 # Hard upper bound for one transcription run in E2E tests.
 # Even adaptive sizing must stay below this cap.
-_TRANSCRIPTION_TIMEOUT_MAX_SECONDS = int(
-    os.environ.get("E2E_TRANSCRIPTION_TIMEOUT_MAX", "700")
-)
+_TRANSCRIPTION_TIMEOUT_MAX_SECONDS = int(os.environ.get("E2E_TRANSCRIPTION_TIMEOUT_MAX", "700"))
 # Adaptive timeout sizing controls.
-_E2E_TIMEOUT_DURATION_MULTIPLIER = float(
-    os.environ.get("E2E_TIMEOUT_DURATION_MULTIPLIER", "1.3")
-)
+_E2E_TIMEOUT_DURATION_MULTIPLIER = float(os.environ.get("E2E_TIMEOUT_DURATION_MULTIPLIER", "1.3"))
 _E2E_TIMEOUT_DURATION_BUFFER_SECONDS = int(
     os.environ.get("E2E_TIMEOUT_DURATION_BUFFER_SECONDS", "45")
 )
 # Runtime controls for large fixtures.
 # English fixture is long (~10+ minutes). Trim by default for faster feedback.
-_E2E_EN_AUDIO_MAX_SECONDS = int(
-    os.environ.get("E2E_EN_AUDIO_MAX_SECONDS", "0")
-)
+_E2E_EN_AUDIO_MAX_SECONDS = int(os.environ.get("E2E_EN_AUDIO_MAX_SECONDS", "0"))
 # Keep ML fixture full length by default.
-_E2E_ML_AUDIO_MAX_SECONDS = int(
-    os.environ.get("E2E_ML_AUDIO_MAX_SECONDS", "0")
-)
+_E2E_ML_AUDIO_MAX_SECONDS = int(os.environ.get("E2E_ML_AUDIO_MAX_SECONDS", "0"))
 
 # =============================================================================
 # CONSTANTS
@@ -317,10 +308,7 @@ def _clip_wav_audio_bytes(
             out_wf.writeframes(clipped_frames)
 
         logger.warning(
-            (
-                "Clipped fixture %s from %.2fs to %.2fs "
-                "(max=%ss) for E2E runtime control"
-            ),
+            ("Clipped fixture %s from %.2fs to %.2fs " "(max=%ss) for E2E runtime control"),
             label,
             original_duration_s,
             clipped_duration_s,
@@ -472,30 +460,34 @@ def _write_markdown_report(
     timing_raw = result.metadata.get("timing") if result.metadata else None
     if timing_raw:
         td = timing_raw.to_dict() if hasattr(timing_raw, "to_dict") else timing_raw
-        lines.extend([
-            "## Timing Breakdown",
-            "",
-            "| Step | Duration (s) |",
-            "|---|---|",
-            f"| **Model Loading** | {td.get('model_loading_seconds', 0):.4f} |",
-            f"| **Preprocessing** | {td.get('preprocessing_seconds', 0):.4f} |",
-            f"| **ASR Inference** | {td.get('inference_seconds', 0):.4f} |",
-            f"| **Diarization** | {td.get('diarization_seconds', 0):.4f} |",
-            f"| **Postprocessing** | {td.get('postprocessing_seconds', 0):.4f} |",
-            f"| **Total** | {td.get('total_seconds', 0):.4f} |",
-            f"| **TTFW** | {td.get('ttfw_seconds', 0):.4f} |",
-            "",
-        ])
+        lines.extend(
+            [
+                "## Timing Breakdown",
+                "",
+                "| Step | Duration (s) |",
+                "|---|---|",
+                f"| **Model Loading** | {td.get('model_loading_seconds', 0):.4f} |",
+                f"| **Preprocessing** | {td.get('preprocessing_seconds', 0):.4f} |",
+                f"| **ASR Inference** | {td.get('inference_seconds', 0):.4f} |",
+                f"| **Diarization** | {td.get('diarization_seconds', 0):.4f} |",
+                f"| **Postprocessing** | {td.get('postprocessing_seconds', 0):.4f} |",
+                f"| **Total** | {td.get('total_seconds', 0):.4f} |",
+                f"| **TTFW** | {td.get('ttfw_seconds', 0):.4f} |",
+                "",
+            ]
+        )
 
         # Per-segment latency table
         seg_lats = td.get("segment_latencies", [])
         if seg_lats:
-            lines.extend([
-                "### Per-Segment ASR Latency",
-                "",
-                "| Segment | Start (s) | End (s) | Duration (s) | Inference (s) |",
-                "|---|---|---|---|---|",
-            ])
+            lines.extend(
+                [
+                    "### Per-Segment ASR Latency",
+                    "",
+                    "| Segment | Start (s) | End (s) | Duration (s) | Inference (s) |",
+                    "|---|---|---|---|---|",
+                ]
+            )
             for sl in seg_lats:
                 lines.append(
                     f"| {sl['segment_index']} | {sl['start_time']:.3f} | "
@@ -516,32 +508,38 @@ def _write_markdown_report(
         storage_rows.append(f"| **Transcript URI** | `{transcript_uri}` |")
 
     if storage_rows:
-        lines.extend([
-            "## Storage",
-            "",
-            "| Property | Value |",
-            "|---|---|",
-            *storage_rows,
-            "",
-        ])
+        lines.extend(
+            [
+                "## Storage",
+                "",
+                "| Property | Value |",
+                "|---|---|",
+                *storage_rows,
+                "",
+            ]
+        )
 
-    lines.extend([
-        "## Transcription Result",
-        "",
-        "### Full Text",
-        "",
-        result.text if result.text else "_No transcription output_",
-        "",
-    ])
+    lines.extend(
+        [
+            "## Transcription Result",
+            "",
+            "### Full Text",
+            "",
+            result.text if result.text else "_No transcription output_",
+            "",
+        ]
+    )
 
     # Word timestamps
     if result.word_timestamps:
-        lines.extend([
-            "### Word Timestamps",
-            "",
-            "| Word | Start (s) | End (s) | Confidence |",
-            "|---|---|---|---|",
-        ])
+        lines.extend(
+            [
+                "### Word Timestamps",
+                "",
+                "| Word | Start (s) | End (s) | Confidence |",
+                "|---|---|---|---|",
+            ]
+        )
         for wt in result.word_timestamps:
             lines.append(
                 f"| {wt.word} | {wt.start_time:.3f} | {wt.end_time:.3f} | {wt.confidence:.3f} |"
@@ -550,28 +548,30 @@ def _write_markdown_report(
 
     # Sentence timestamps
     if result.sentence_timestamps:
-        lines.extend([
-            "### Sentence Timestamps",
-            "",
-            "| Sentence | Start (s) | End (s) |",
-            "|---|---|---|",
-        ])
+        lines.extend(
+            [
+                "### Sentence Timestamps",
+                "",
+                "| Sentence | Start (s) | End (s) |",
+                "|---|---|---|",
+            ]
+        )
         for st in result.sentence_timestamps:
-            lines.append(
-                f"| {st.text} | {st.start_time:.3f} | {st.end_time:.3f} |"
-            )
+            lines.append(f"| {st.text} | {st.start_time:.3f} | {st.end_time:.3f} |")
         lines.append("")
 
     # VAD segments (if applicable)
     if result.segments:
-        lines.extend([
-            "### VAD Segments",
-            "",
-            f"**Total speech segments detected**: {len(result.segments)}",
-            "",
-            "| Segment | Start (s) | End (s) | Duration (s) | Is Speech | Confidence |",
-            "|---|---|---|---|---|---|",
-        ])
+        lines.extend(
+            [
+                "### VAD Segments",
+                "",
+                f"**Total speech segments detected**: {len(result.segments)}",
+                "",
+                "| Segment | Start (s) | End (s) | Duration (s) | Is Speech | Confidence |",
+                "|---|---|---|---|---|---|",
+            ]
+        )
         for i, seg in enumerate(result.segments):
             lines.append(
                 f"| {i + 1} | {seg.start_time:.3f} | {seg.end_time:.3f} | "
@@ -582,15 +582,19 @@ def _write_markdown_report(
     # Diarization metadata (if applicable)
     diarization_metadata = result.metadata.get("diarization", {}) if result.metadata else {}
     if diarization_enabled and diarization_metadata:
-        lines.extend([
-            "### Speaker Diarization",
-            "",
-        ])
+        lines.extend(
+            [
+                "### Speaker Diarization",
+                "",
+            ]
+        )
         if isinstance(diarization_metadata, dict):
-            lines.extend([
-                "| Property | Value |",
-                "|---|---|",
-            ])
+            lines.extend(
+                [
+                    "| Property | Value |",
+                    "|---|---|",
+                ]
+            )
             for key, value in diarization_metadata.items():
                 lines.append(f"| **{key}** | {value} |")
         else:
@@ -599,14 +603,16 @@ def _write_markdown_report(
 
     # Metadata
     if result.metadata:
-        lines.extend([
-            "### Metadata",
-            "",
-            "```json",
-            json.dumps(result.metadata, indent=2, default=str),
-            "```",
-            "",
-        ])
+        lines.extend(
+            [
+                "### Metadata",
+                "",
+                "```json",
+                json.dumps(result.metadata, indent=2, default=str),
+                "```",
+                "",
+            ]
+        )
 
     content = "\n".join(lines)
     output_path.write_text(content, encoding="utf-8")
@@ -652,6 +658,7 @@ async def _run_transcription(
     Raises:
         asyncio.TimeoutError: When transcription exceeds *timeout*.
     """
+
     def _estimate_audio_duration_seconds(raw_audio: bytes) -> float:
         """Best-effort WAV duration estimation for adaptive timeout sizing."""
         import io
@@ -667,9 +674,7 @@ async def _run_transcription(
         except Exception:
             return 0.0
 
-    configured_timeout_raw = (
-        timeout if timeout is not None else _TRANSCRIPTION_TIMEOUT_SECONDS
-    )
+    configured_timeout_raw = timeout if timeout is not None else _TRANSCRIPTION_TIMEOUT_SECONDS
     configured_timeout = min(
         configured_timeout_raw,
         _TRANSCRIPTION_TIMEOUT_MAX_SECONDS,
@@ -816,6 +821,9 @@ async def _run_transcription(
             _ = transcript_text, metadata, consultation_id
             return {"contextItemId": f"ctx-{job_id}"}
 
+        async def close(self) -> None:
+            pass
+
     class _PipelineReaderStub:
         def __init__(self, config: "PipelineConfig") -> None:
             self._config = config
@@ -943,9 +951,7 @@ async def _run_transcription(
             language=result_metadata.get("language"),
             language_probability=result_metadata.get("language_probability"),
             duration_seconds=float(result_metadata.get("duration_seconds", 0.0)),
-            processing_time_seconds=float(
-                result_metadata.get("processing_time_seconds", 0.0)
-            ),
+            processing_time_seconds=float(result_metadata.get("processing_time_seconds", 0.0)),
             word_timestamps=words,
             sentence_timestamps=sentences,
             segments=segments,
@@ -988,12 +994,15 @@ async def _run_transcription(
     await asyncio.sleep(0.1)
 
     try:
-        with patch(
-            "stt_v2.transcription.workers.transcribe_file.get_api_client",
-            return_value=gateway_client,
-        ), patch(
-            "stt_v2.transcription.workers.transcribe_file.get_pipeline_reader",
-            return_value=pipeline_reader,
+        with (
+            patch(
+                "stt_v2.transcription.workers.transcribe_file.get_api_client",
+                return_value=gateway_client,
+            ),
+            patch(
+                "stt_v2.transcription.workers.transcribe_file.get_pipeline_reader",
+                return_value=pipeline_reader,
+            ),
         ):
             await asyncio.wait_for(
                 _transcribe_file_async(
@@ -1054,8 +1063,7 @@ async def _run_transcription(
     progress_log = [
         int(evt.get("data", {}).get("progress"))
         for evt in sse_events
-        if evt.get("type") == "progress"
-        and isinstance(evt.get("data", {}).get("progress"), int)
+        if evt.get("type") == "progress" and isinstance(evt.get("data", {}).get("progress"), int)
     ]
     if not progress_log:
         progress_log = list(gateway_client.progress_updates)
@@ -1079,14 +1087,16 @@ async def _run_transcription(
         if evt.get("type") != "chunk":
             continue
         data = evt.get("data", {})
-        chunk_results.append({
-            "chunk_index": data.get("chunkIndex"),
-            "text": data.get("text", ""),
-            "start_time": data.get("startTime", 0.0),
-            "end_time": data.get("endTime", 0.0),
-            "is_final": data.get("isFinal", False),
-            "word_timestamps": data.get("wordTimestamps", []),
-        })
+        chunk_results.append(
+            {
+                "chunk_index": data.get("chunkIndex"),
+                "text": data.get("text", ""),
+                "start_time": data.get("startTime", 0.0),
+                "end_time": data.get("endTime", 0.0),
+                "is_final": data.get("isFinal", False),
+                "word_timestamps": data.get("wordTimestamps", []),
+            }
+        )
 
     result.metadata["progress_log"] = progress_log
     result.metadata["chunk_results"] = chunk_results
@@ -1124,10 +1134,12 @@ async def _ensure_test_redis_configured() -> None:
         db = os.environ.get("TEST_REDIS_DB", "0")
         test_redis_url = f"redis://{host}:{port}/{db}"
 
-    test_pubsub_enabled = (
-        os.environ.get("TEST_PUBSUB_ENABLED", "true").strip().lower()
-        not in {"0", "false", "no", "off"}
-    )
+    test_pubsub_enabled = os.environ.get("TEST_PUBSUB_ENABLED", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
     test_channel_prefix = os.environ.get("TEST_PUBSUB_CHANNEL_PREFIX")
 
     # Patch cached settings object used across runtime codepaths.
@@ -1198,11 +1210,26 @@ async def _ensure_minio_initialized() -> None:
     settings.minio_secret_key = test_secret_key
     settings.minio_secure = False
 
+    # Probe MinIO reachability before attempting to initialize.
+    import socket
+
+    host, _, port_str = test_endpoint.partition(":")
+    port = int(port_str) if port_str else 9002
+    _sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    _sock.settimeout(2)
+    try:
+        _sock.connect((host, port))
+    except OSError as exc:
+        pytest.skip(
+            f"MinIO test infrastructure not available at {test_endpoint} "
+            f"(pnpm docker:test:up required): {exc}"
+        )
+    finally:
+        _sock.close()
+
     await initialize_minio()
     _minio_initialized = True
-    logger.info(
-        f"MinIO initialized for tests (endpoint={test_endpoint})"
-    )
+    logger.info(f"MinIO initialized for tests (endpoint={test_endpoint})")
 
 
 async def _upload_raw_audio_to_minio(
@@ -1375,9 +1402,14 @@ def _assert_timing_metrics(
 
     # ---- Required keys ----
     required_keys = {
-        "ttfw_seconds", "model_loading_seconds", "preprocessing_seconds",
-        "inference_seconds", "diarization_seconds", "postprocessing_seconds",
-        "total_seconds", "segment_latencies",
+        "ttfw_seconds",
+        "model_loading_seconds",
+        "preprocessing_seconds",
+        "inference_seconds",
+        "diarization_seconds",
+        "postprocessing_seconds",
+        "total_seconds",
+        "segment_latencies",
     }
     missing = required_keys - set(td.keys())
     assert not missing, f"Timing dict missing keys: {missing}"
@@ -1390,9 +1422,7 @@ def _assert_timing_metrics(
     assert td["postprocessing_seconds"] >= 0, "Postprocessing time should be non-negative"
 
     # ---- TTFW must be positive and bounded ----
-    assert td["ttfw_seconds"] > 0, (
-        f"TTFW should be positive, got {td['ttfw_seconds']}"
-    )
+    assert td["ttfw_seconds"] > 0, f"TTFW should be positive, got {td['ttfw_seconds']}"
     assert td["ttfw_seconds"] <= td["total_seconds"] * 1.01, (
         f"TTFW ({td['ttfw_seconds']:.4f}s) should not exceed "
         f"total time ({td['total_seconds']:.4f}s)"
@@ -1407,8 +1437,7 @@ def _assert_timing_metrics(
         + td["postprocessing_seconds"]
     )
     assert td["total_seconds"] >= step_sum - 0.01, (
-        f"Total ({td['total_seconds']:.4f}s) should be >= "
-        f"sum of steps ({step_sum:.4f}s)"
+        f"Total ({td['total_seconds']:.4f}s) should be >= " f"sum of steps ({step_sum:.4f}s)"
     )
 
     # ---- TTFW >= model_loading + preprocessing ----
@@ -1417,13 +1446,9 @@ def _assert_timing_metrics(
     # chunk's inference time — NOT total inference.  So the lower bound
     # is model_loading + preprocessing (the first chunk adds more, but
     # its duration varies).
-    min_ttfw = (
-        td["model_loading_seconds"]
-        + td["preprocessing_seconds"]
-    )
+    min_ttfw = td["model_loading_seconds"] + td["preprocessing_seconds"]
     assert td["ttfw_seconds"] >= min_ttfw - 0.01, (
-        f"TTFW ({td['ttfw_seconds']:.4f}s) should be >= "
-        f"model+preprocess ({min_ttfw:.4f}s)"
+        f"TTFW ({td['ttfw_seconds']:.4f}s) should be >= " f"model+preprocess ({min_ttfw:.4f}s)"
     )
     # TTFW should be significantly less than total for multi-chunk audio
     if td["inference_seconds"] > 30:
@@ -1442,30 +1467,32 @@ def _assert_timing_metrics(
                 assert "end_time" in sl, "segment_latency must have end_time"
                 assert "duration_s" in sl, "segment_latency must have duration_s"
                 assert "inference_time_s" in sl, "segment_latency must have inference_time_s"
-                assert sl["inference_time_s"] > 0, (
-                    f"Segment inference time should be positive (segment {sl['segment_index']})"
-                )
-                assert sl["duration_s"] > 0, (
-                    f"Segment duration should be positive (segment {sl['segment_index']})"
-                )
+                assert (
+                    sl["inference_time_s"] > 0
+                ), f"Segment inference time should be positive (segment {sl['segment_index']})"
+                assert (
+                    sl["duration_s"] > 0
+                ), f"Segment duration should be positive (segment {sl['segment_index']})"
             avg_inf = sum(s["inference_time_s"] for s in seg_lats) / len(seg_lats)
             logger.info(
                 "Timing: %d segment latencies, avg inference %.3fs",
-                len(seg_lats), avg_inf,
+                len(seg_lats),
+                avg_inf,
             )
 
     # ---- Diarization timing ----
     if diarization_enabled:
-        assert td["diarization_seconds"] >= 0, (
-            "Diarization time should be non-negative"
-        )
+        assert td["diarization_seconds"] >= 0, "Diarization time should be non-negative"
 
     logger.info(
         "Timing: total=%.2fs, TTFW=%.2fs, preprocess=%.2fs, "
         "inference=%.2fs, diarize=%.2fs, postprocess=%.2fs, models=%.2fs",
-        td["total_seconds"], td["ttfw_seconds"],
-        td["preprocessing_seconds"], td["inference_seconds"],
-        td["diarization_seconds"], td["postprocessing_seconds"],
+        td["total_seconds"],
+        td["ttfw_seconds"],
+        td["preprocessing_seconds"],
+        td["inference_seconds"],
+        td["diarization_seconds"],
+        td["postprocessing_seconds"],
         td["model_loading_seconds"],
     )
 
@@ -1533,18 +1560,19 @@ def _assert_common_result(
     # the soft checks below should become hard assertions.
     if expect_language:
         if result.language is not None:
-            assert isinstance(result.language, str) and len(result.language) >= 2, (
-                f"Language should be a 2+ char code, got: {result.language!r}"
-            )
-            assert result.language_probability is not None, (
-                "Language probability should be present when language is set"
-            )
-            assert result.language_probability > 0.0, (
-                f"Language probability should be positive, got: {result.language_probability}"
-            )
+            assert (
+                isinstance(result.language, str) and len(result.language) >= 2
+            ), f"Language should be a 2+ char code, got: {result.language!r}"
+            assert (
+                result.language_probability is not None
+            ), "Language probability should be present when language is set"
+            assert (
+                result.language_probability > 0.0
+            ), f"Language probability should be positive, got: {result.language_probability}"
             logger.info(
                 "Language detected: %s (prob=%.4f)",
-                result.language, result.language_probability,
+                result.language,
+                result.language_probability,
             )
         else:
             logger.warning(
@@ -1560,15 +1588,13 @@ def _assert_common_result(
         for wt in result.word_timestamps:
             assert wt.word, "Word timestamp should have a word"
             assert wt.start_time >= 0, "Word start_time should be non-negative"
-            assert wt.end_time >= wt.start_time, (
-                f"Word end_time ({wt.end_time}) should be >= start_time ({wt.start_time})"
-            )
+            assert (
+                wt.end_time >= wt.start_time
+            ), f"Word end_time ({wt.end_time}) should be >= start_time ({wt.start_time})"
 
     # ---- Sentence timestamps ----
     if expect_sentence_timestamps:
-        assert result.sentence_timestamps is not None, (
-            "Sentence timestamps should not be None"
-        )
+        assert result.sentence_timestamps is not None, "Sentence timestamps should not be None"
         # Sentence timestamps come from ASR segment output; they may be
         # empty if the model only produced word-level output.  When present,
         # validate structure.
@@ -1581,7 +1607,8 @@ def _assert_common_result(
                     f"start_time ({st.start_time})"
                 )
             logger.info(
-                "Sentence timestamps: %d sentences", len(result.sentence_timestamps),
+                "Sentence timestamps: %d sentences",
+                len(result.sentence_timestamps),
             )
 
     # ---- Progress callback ----
@@ -1593,20 +1620,18 @@ def _assert_common_result(
             f"Progress should be monotonically non-decreasing, "
             f"but {progress_log[i]} < {progress_log[i - 1]} at index {i}"
         )
-    assert progress_log[-1] == 100, (
-        f"Final progress should be 100, got {progress_log[-1]}"
-    )
+    assert progress_log[-1] == 100, f"Final progress should be 100, got {progress_log[-1]}"
 
     # ---- Realtime/API lifecycle evidence ----
     realtime_events = result.metadata.get("realtime_events", [])
     gateway_status_history = result.metadata.get("gateway_status_history", [])
-    assert realtime_events or gateway_status_history, (
-        "Expected realtime SSE events or gateway status history"
-    )
+    assert (
+        realtime_events or gateway_status_history
+    ), "Expected realtime SSE events or gateway status history"
     if gateway_status_history:
-        assert "COMPLETED" in gateway_status_history, (
-            f"Gateway status history should include COMPLETED, got {gateway_status_history}"
-        )
+        assert (
+            "COMPLETED" in gateway_status_history
+        ), f"Gateway status history should include COMPLETED, got {gateway_status_history}"
 
     # ---- VAD evidence ----
     # NOTE: TranscriptionResult.segments is not populated by the batch
@@ -1616,7 +1641,9 @@ def _assert_common_result(
         # When VAD is active, _assert_timing_metrics already validates
         # segment_latencies structure, so here we just log confirmation.
         timing_raw_inner = result.metadata.get("timing")
-        td_inner = timing_raw_inner.to_dict() if hasattr(timing_raw_inner, "to_dict") else timing_raw_inner
+        td_inner = (
+            timing_raw_inner.to_dict() if hasattr(timing_raw_inner, "to_dict") else timing_raw_inner
+        )
         seg_lats = td_inner.get("segment_latencies", []) if td_inner else []
         logger.info(
             "VAD evidence: %d segment latencies in timing metadata",
@@ -1625,9 +1652,9 @@ def _assert_common_result(
     else:
         # Basic pipeline — no VAD applied, so TranscriptionResult.segments
         # should be the default empty list.
-        assert len(result.segments) == 0, (
-            f"Basic pipeline should have no segments on result, got {len(result.segments)}"
-        )
+        assert (
+            len(result.segments) == 0
+        ), f"Basic pipeline should have no segments on result, got {len(result.segments)}"
 
     # ---- Metadata: pipeline and job_id ----
     assert "job_id" in result.metadata, "metadata should contain job_id"
@@ -1736,7 +1763,8 @@ async def warm_asr_model():
         cache = get_model_cache()
         logger.info("Pre-warming ASR model into cache...")
         await cache.get_or_load_inline(
-            asr_inline, ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+            asr_inline,
+            ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
         )
         logger.info("ASR model warm — ready for tests")
 
@@ -1862,17 +1890,17 @@ class TestRealDataTranscription:
 
             assert minio_uri, "MinIO URI should not be empty"
             assert minio_uri.startswith("s3://"), f"URI should start with s3://, got: {minio_uri}"
-            assert f"/consultations/{consultation_id}/" in minio_uri, (
-                f"Raw audio URI should contain consultation path, got: {minio_uri}"
-            )
+            assert (
+                f"/consultations/{consultation_id}/" in minio_uri
+            ), f"Raw audio URI should contain consultation path, got: {minio_uri}"
 
             audio_exists = await _verify_minio_audio_exists(minio_uri)
             assert audio_exists, f"Raw audio should exist in MinIO at {minio_uri}"
 
             stored_size = await _get_minio_audio_size(minio_uri)
-            assert stored_size == ml_audio_file_info["size_bytes"], (
-                f"Stored audio size ({stored_size}) should match original ({ml_audio_file_info['size_bytes']})"
-            )
+            assert (
+                stored_size == ml_audio_file_info["size_bytes"]
+            ), f"Stored audio size ({stored_size}) should match original ({ml_audio_file_info['size_bytes']})"
 
             result.raw_audio_uri = minio_uri
             logger.info(f"MinIO: raw audio stored at {minio_uri} ({stored_size} bytes)")
@@ -1896,9 +1924,9 @@ class TestRealDataTranscription:
 
             assert transcript_uri, "Transcript URI should not be empty"
             assert transcript_uri.startswith("s3://"), "Transcript URI should start with s3://"
-            assert f"/consultations/{consultation_id}/transcripts/" in transcript_uri, (
-                f"Transcript URI should contain consultation transcript path, got: {transcript_uri}"
-            )
+            assert (
+                f"/consultations/{consultation_id}/transcripts/" in transcript_uri
+            ), f"Transcript URI should contain consultation transcript path, got: {transcript_uri}"
 
             transcript_exists = await _verify_minio_audio_exists(transcript_uri)
             assert transcript_exists, f"Transcript should exist in MinIO at {transcript_uri}"
@@ -1981,7 +2009,17 @@ class TestRealDataTranscription:
                 "denoise + VAD + diarization (ML audio)"
             ),
             config_yaml=yaml_config,
-            tags=["test", "real-data", "safetensor", "full", "denoise", "vad", "diarization", "ml", "whisper-small"],
+            tags=[
+                "test",
+                "real-data",
+                "safetensor",
+                "full",
+                "denoise",
+                "vad",
+                "diarization",
+                "ml",
+                "whisper-small",
+            ],
         )
 
         # --- Run transcription ---
@@ -2007,13 +2045,13 @@ class TestRealDataTranscription:
         if diarization_metadata:
             logger.info(f"Diarization metadata: {diarization_metadata}")
             if "speakers_detected" in diarization_metadata:
-                assert diarization_metadata["speakers_detected"] >= 0, (
-                    "speakers_detected should be non-negative"
-                )
+                assert (
+                    diarization_metadata["speakers_detected"] >= 0
+                ), "speakers_detected should be non-negative"
             if "speaker_ids" in diarization_metadata:
-                assert isinstance(diarization_metadata["speaker_ids"], list), (
-                    "speaker_ids should be a list"
-                )
+                assert isinstance(
+                    diarization_metadata["speaker_ids"], list
+                ), "speaker_ids should be a list"
 
         # --- Assertions: timing metrics ---
         _assert_timing_metrics(result, vad_enabled=True, diarization_enabled=True)
@@ -2031,17 +2069,17 @@ class TestRealDataTranscription:
 
             assert minio_uri, "MinIO URI should not be empty"
             assert minio_uri.startswith("s3://"), "URI should start with s3://"
-            assert f"/consultations/{consultation_id}/" in minio_uri, (
-                f"Raw audio URI should contain consultation path, got: {minio_uri}"
-            )
+            assert (
+                f"/consultations/{consultation_id}/" in minio_uri
+            ), f"Raw audio URI should contain consultation path, got: {minio_uri}"
 
             audio_exists = await _verify_minio_audio_exists(minio_uri)
             assert audio_exists, f"Raw audio should exist in MinIO at {minio_uri}"
 
             stored_size = await _get_minio_audio_size(minio_uri)
-            assert stored_size == ml_audio_file_info["size_bytes"], (
-                f"Stored audio size ({stored_size}) should match original ({ml_audio_file_info['size_bytes']})"
-            )
+            assert (
+                stored_size == ml_audio_file_info["size_bytes"]
+            ), f"Stored audio size ({stored_size}) should match original ({ml_audio_file_info['size_bytes']})"
 
             result.raw_audio_uri = minio_uri
             logger.info(f"MinIO: raw audio stored at {minio_uri} ({stored_size} bytes)")
@@ -2053,13 +2091,13 @@ class TestRealDataTranscription:
         # preprocessing here adds a long duplicate pass for large fixtures.
         processed_audio_uri: str | None = result.processed_audio_uri
         processed_audio_size: int = 0
-        assert processed_audio_uri, (
-            "Worker should provide processed_audio_uri for full pipeline tests"
-        )
+        assert (
+            processed_audio_uri
+        ), "Worker should provide processed_audio_uri for full pipeline tests"
         assert processed_audio_uri.startswith("s3://")
-        assert f"/consultations/{consultation_id}/processed/" in processed_audio_uri, (
-            "Processed audio URI should contain consultation/processed path"
-        )
+        assert (
+            f"/consultations/{consultation_id}/processed/" in processed_audio_uri
+        ), "Processed audio URI should contain consultation/processed path"
 
         try:
             pa_exists = await _verify_minio_audio_exists(processed_audio_uri)
@@ -2209,17 +2247,17 @@ class TestRealDataTranscription:
 
             assert minio_uri, "MinIO URI should not be empty"
             assert minio_uri.startswith("s3://")
-            assert f"/consultations/{consultation_id}/" in minio_uri, (
-                f"Raw audio URI should contain consultation path, got: {minio_uri}"
-            )
+            assert (
+                f"/consultations/{consultation_id}/" in minio_uri
+            ), f"Raw audio URI should contain consultation path, got: {minio_uri}"
 
             audio_exists = await _verify_minio_audio_exists(minio_uri)
             assert audio_exists, f"Raw audio should exist in MinIO at {minio_uri}"
 
             stored_size = await _get_minio_audio_size(minio_uri)
-            assert stored_size == en_audio_file_info["size_bytes"], (
-                f"Stored audio size ({stored_size}) should match original ({en_audio_file_info['size_bytes']})"
-            )
+            assert (
+                stored_size == en_audio_file_info["size_bytes"]
+            ), f"Stored audio size ({stored_size}) should match original ({en_audio_file_info['size_bytes']})"
 
             result.raw_audio_uri = minio_uri
             logger.info(f"MinIO: raw audio stored at {minio_uri} ({stored_size} bytes)")
@@ -2325,7 +2363,17 @@ class TestRealDataTranscription:
                 "denoise + VAD + diarization (EN audio)"
             ),
             config_yaml=yaml_config,
-            tags=["test", "real-data", "safetensor", "full", "denoise", "vad", "diarization", "en", "whisper-small"],
+            tags=[
+                "test",
+                "real-data",
+                "safetensor",
+                "full",
+                "denoise",
+                "vad",
+                "diarization",
+                "en",
+                "whisper-small",
+            ],
         )
 
         # --- Run transcription ---
@@ -2352,13 +2400,13 @@ class TestRealDataTranscription:
         if diarization_metadata:
             logger.info(f"Diarization metadata: {diarization_metadata}")
             if "speakers_detected" in diarization_metadata:
-                assert diarization_metadata["speakers_detected"] >= 0, (
-                    "speakers_detected should be non-negative"
-                )
+                assert (
+                    diarization_metadata["speakers_detected"] >= 0
+                ), "speakers_detected should be non-negative"
             if "speaker_ids" in diarization_metadata:
-                assert isinstance(diarization_metadata["speaker_ids"], list), (
-                    "speaker_ids should be a list"
-                )
+                assert isinstance(
+                    diarization_metadata["speaker_ids"], list
+                ), "speaker_ids should be a list"
 
         # --- Assertions: timing metrics ---
         _assert_timing_metrics(result, vad_enabled=True, diarization_enabled=True)
@@ -2376,17 +2424,17 @@ class TestRealDataTranscription:
 
             assert minio_uri, "MinIO URI should not be empty"
             assert minio_uri.startswith("s3://")
-            assert f"/consultations/{consultation_id}/" in minio_uri, (
-                f"Raw audio URI should contain consultation path, got: {minio_uri}"
-            )
+            assert (
+                f"/consultations/{consultation_id}/" in minio_uri
+            ), f"Raw audio URI should contain consultation path, got: {minio_uri}"
 
             audio_exists = await _verify_minio_audio_exists(minio_uri)
             assert audio_exists, f"Raw audio should exist in MinIO at {minio_uri}"
 
             stored_size = await _get_minio_audio_size(minio_uri)
-            assert stored_size == en_audio_file_info["size_bytes"], (
-                f"Stored audio size ({stored_size}) should match original ({en_audio_file_info['size_bytes']})"
-            )
+            assert (
+                stored_size == en_audio_file_info["size_bytes"]
+            ), f"Stored audio size ({stored_size}) should match original ({en_audio_file_info['size_bytes']})"
 
             result.raw_audio_uri = minio_uri
             logger.info(f"MinIO: raw audio stored at {minio_uri} ({stored_size} bytes)")
@@ -2398,9 +2446,9 @@ class TestRealDataTranscription:
         # preprocessing here adds a long duplicate pass for large fixtures.
         processed_audio_uri: str | None = result.processed_audio_uri
         processed_audio_size: int = 0
-        assert processed_audio_uri, (
-            "Worker should provide processed_audio_uri for full pipeline tests"
-        )
+        assert (
+            processed_audio_uri
+        ), "Worker should provide processed_audio_uri for full pipeline tests"
         assert processed_audio_uri.startswith("s3://")
         assert f"/consultations/{consultation_id}/processed/" in processed_audio_uri
 

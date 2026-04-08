@@ -62,6 +62,7 @@ def _make_pipeline_mock(language: str | None = "en", slug: str = "test-pipeline"
     """
     inference = MagicMock()
     inference.language = language
+    inference.code_switching = False
 
     pipeline_spec = MagicMock()
     pipeline_spec.inference = inference
@@ -143,13 +144,23 @@ class TestSchemaModels:
 
     def test_sentence_timestamp_response(self):
         """SentenceTimestampResponse fields."""
-        s = SentenceTimestampResponse(text="Hello world", start_time=0.0, end_time=1.0)
+        s = SentenceTimestampResponse(
+            text="Hello world",
+            start_time=0.0,
+            end_time=1.0,
+            english_text="Hello world",
+        )
         assert s.text == "Hello world"
+        assert s.english_text == "Hello world"
 
     def test_segment_response(self):
         """SegmentResponse fields."""
         seg = SegmentResponse(
-            start_time=0.0, end_time=1.0, duration=1.0, is_speech=True, confidence=0.9,
+            start_time=0.0,
+            end_time=1.0,
+            duration=1.0,
+            is_speech=True,
+            confidence=0.9,
         )
         assert seg.is_speech is True
 
@@ -164,7 +175,16 @@ class TestBuildResponse:
 
     def test_basic_conversion(self):
         """TranscriptionResult → TranscriptionResponse round-trip."""
-        result = _make_transcription_result()
+        result = _make_transcription_result(
+            sentence_timestamps=[
+                SentenceTimestamp(
+                    text="ഹലോ വേൾഡ്",
+                    start_time=0.0,
+                    end_time=1.0,
+                    english_text="Hello world",
+                ),
+            ]
+        )
         resp = _build_response(result)
 
         assert isinstance(resp, TranscriptionResponse)
@@ -175,6 +195,7 @@ class TestBuildResponse:
         assert len(resp.word_timestamps) == 2
         assert resp.word_timestamps[0].word == "Hello"
         assert len(resp.sentence_timestamps) == 1
+        assert resp.sentence_timestamps[0].english_text == "Hello world"
 
     def test_timing_extracted(self):
         """Timing metrics are extracted from metadata to top-level."""
@@ -325,7 +346,8 @@ class TestTranscribeAudioEndpoint:
             )
 
             mock_reader.get_pipeline_by_slug.assert_called_once_with(
-                "my-slug", tenant_id="t-456",
+                "my-slug",
+                tenant_id="t-456",
             )
             assert isinstance(resp, TranscriptionResponse)
 
@@ -512,3 +534,35 @@ class TestTranscribeAudioEndpoint:
             call_kwargs = mock_service.transcribe.call_args
             assert call_kwargs.kwargs["tenant_id"] == "t-456"
             assert call_kwargs.kwargs["consultation_id"] == "c-789"
+
+    @pytest.mark.asyncio
+    async def test_code_switching_override_applied_to_pipeline(self):
+        """Explicit code_switching form field should override pipeline inference config."""
+        upload = _make_upload_file()
+        result = _make_transcription_result()
+
+        pipeline_mock = _make_pipeline_mock(language="en")
+        mock_reader = AsyncMock()
+        mock_reader.get_pipeline_by_slug = AsyncMock(return_value=pipeline_mock)
+
+        mock_service = AsyncMock()
+        mock_service.transcribe = AsyncMock(return_value=result)
+
+        with (
+            patch(
+                "stt_v2.transcription.api.routes.get_pipeline_reader",
+                return_value=mock_reader,
+            ),
+            patch(
+                "stt_v2.transcription.api.routes.get_batch_service",
+                return_value=mock_service,
+            ),
+        ):
+            await transcribe_audio(
+                file=upload,
+                pipeline_id="test-pipeline",
+                tenant_id="t-456",
+                code_switching=True,
+            )
+
+        assert pipeline_mock.spec.inference.code_switching is True

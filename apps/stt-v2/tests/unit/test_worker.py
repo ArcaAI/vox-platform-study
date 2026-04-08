@@ -19,8 +19,14 @@ class TestWorkerServiceInitialization:
             mock_configure.return_value = MagicMock()
 
             # Now set up the function patches
-            with patch("stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock) as mock_db, \
-                 patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock) as mock_minio:
+            with (
+                patch(
+                    "stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock
+                ) as mock_db,
+                patch(
+                    "stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock
+                ) as mock_minio,
+            ):
 
                 # Import the function after patches
                 from stt_v2.worker import initialize_services
@@ -40,8 +46,14 @@ class TestWorkerServiceCleanup:
         with patch("stt_v2.worker.configure_broker") as mock_configure:
             mock_configure.return_value = MagicMock()
 
-            with patch("stt_v2.core.database.connection.close_database", new_callable=AsyncMock) as mock_close_db, \
-                 patch("stt_v2.core.storage.minio_client.close_minio", new_callable=AsyncMock) as mock_close_minio:
+            with (
+                patch(
+                    "stt_v2.core.database.connection.close_database", new_callable=AsyncMock
+                ) as mock_close_db,
+                patch(
+                    "stt_v2.core.storage.minio_client.close_minio", new_callable=AsyncMock
+                ) as mock_close_minio,
+            ):
 
                 from stt_v2.worker import cleanup_services
 
@@ -56,8 +68,14 @@ class TestWorkerServiceCleanup:
         with patch("stt_v2.worker.configure_broker") as mock_configure:
             mock_configure.return_value = MagicMock()
 
-            with patch("stt_v2.core.database.connection.close_database", new_callable=AsyncMock) as mock_close_db, \
-                 patch("stt_v2.core.storage.minio_client.close_minio", new_callable=AsyncMock) as mock_close_minio:
+            with (
+                patch(
+                    "stt_v2.core.database.connection.close_database", new_callable=AsyncMock
+                ) as mock_close_db,
+                patch(
+                    "stt_v2.core.storage.minio_client.close_minio", new_callable=AsyncMock
+                ) as mock_close_minio,
+            ):
 
                 mock_close_db.side_effect = Exception("DB close error")
 
@@ -74,8 +92,14 @@ class TestWorkerServiceCleanup:
         with patch("stt_v2.worker.configure_broker") as mock_configure:
             mock_configure.return_value = MagicMock()
 
-            with patch("stt_v2.core.database.connection.close_database", new_callable=AsyncMock) as mock_close_db, \
-                 patch("stt_v2.core.storage.minio_client.close_minio", new_callable=AsyncMock) as mock_close_minio:
+            with (
+                patch(
+                    "stt_v2.core.database.connection.close_database", new_callable=AsyncMock
+                ) as mock_close_db,
+                patch(
+                    "stt_v2.core.storage.minio_client.close_minio", new_callable=AsyncMock
+                ) as mock_close_minio,
+            ):
 
                 mock_close_minio.side_effect = Exception("MinIO close error")
 
@@ -99,11 +123,16 @@ class TestWorkerNewServiceInitialization:
             mock_vad = MagicMock()
             mock_vad.initialize = AsyncMock()
 
-            with patch("stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock), \
-                 patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock), \
-                 patch("stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad):
+            with (
+                patch(
+                    "stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock
+                ),
+                patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock),
+                patch("stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad),
+            ):
 
                 from stt_v2.worker import initialize_services
+
                 await initialize_services()
 
                 mock_vad.initialize.assert_called_once()
@@ -117,12 +146,23 @@ class TestWorkerNewServiceInitialization:
             mock_store = MagicMock()
             mock_store.ensure_collection = AsyncMock()
 
-            with patch("stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock), \
-                 patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock), \
-                 patch("stt_v2.vad.silero_service.get_vad_service", side_effect=Exception("VAD not available")), \
-                 patch("stt_v2.core.vectorstore.speaker_store.get_speaker_store", return_value=mock_store):
+            with (
+                patch(
+                    "stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock
+                ),
+                patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock),
+                patch(
+                    "stt_v2.vad.silero_service.get_vad_service",
+                    side_effect=Exception("VAD not available"),
+                ),
+                patch(
+                    "stt_v2.core.vectorstore.speaker_store.get_speaker_store",
+                    return_value=mock_store,
+                ),
+            ):
 
                 from stt_v2.worker import initialize_services
+
                 await initialize_services()
 
                 mock_store.ensure_collection.assert_called_once()
@@ -136,13 +176,24 @@ class TestWorkerNewServiceInitialization:
             mock_embedding = MagicMock()
             mock_embedding.initialize = AsyncMock()
 
-            with patch("stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock), \
-                 patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock), \
-                 patch("stt_v2.vad.silero_service.get_vad_service", side_effect=Exception("skip")), \
-                 patch("stt_v2.core.vectorstore.speaker_store.get_speaker_store", side_effect=Exception("skip")), \
-                 patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=mock_embedding):
+            with (
+                patch(
+                    "stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock
+                ),
+                patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock),
+                patch("stt_v2.vad.silero_service.get_vad_service", side_effect=Exception("skip")),
+                patch(
+                    "stt_v2.core.vectorstore.speaker_store.get_speaker_store",
+                    side_effect=Exception("skip"),
+                ),
+                patch(
+                    "stt_v2.diarization.embedding_service.get_embedding_service",
+                    return_value=mock_embedding,
+                ),
+            ):
 
                 from stt_v2.worker import initialize_services
+
                 await initialize_services()
 
                 mock_embedding.initialize.assert_called_once()
@@ -156,13 +207,27 @@ class TestWorkerNewServiceInitialization:
             mock_store = MagicMock()
             mock_store.ensure_collection = AsyncMock()
 
-            with patch("stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock), \
-                 patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock), \
-                 patch("stt_v2.vad.silero_service.get_vad_service", side_effect=RuntimeError("VAD init failed")), \
-                 patch("stt_v2.core.vectorstore.speaker_store.get_speaker_store", return_value=mock_store), \
-                 patch("stt_v2.diarization.embedding_service.get_embedding_service", side_effect=Exception("skip")):
+            with (
+                patch(
+                    "stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock
+                ),
+                patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock),
+                patch(
+                    "stt_v2.vad.silero_service.get_vad_service",
+                    side_effect=RuntimeError("VAD init failed"),
+                ),
+                patch(
+                    "stt_v2.core.vectorstore.speaker_store.get_speaker_store",
+                    return_value=mock_store,
+                ),
+                patch(
+                    "stt_v2.diarization.embedding_service.get_embedding_service",
+                    side_effect=Exception("skip"),
+                ),
+            ):
 
                 from stt_v2.worker import initialize_services
+
                 # Should NOT raise
                 await initialize_services()
                 # Qdrant should still have been called
@@ -181,11 +246,13 @@ class TestWorkerNewServiceCleanup:
             mock_vad = MagicMock()
             mock_vad.shutdown = AsyncMock()
 
-            with patch("stt_v2.core.database.connection.close_database", new_callable=AsyncMock), \
-                 patch("stt_v2.core.storage.minio_client.close_minio", new_callable=AsyncMock), \
-                 patch("stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad), \
-                 patch("stt_v2.core.vectorstore.client.get_qdrant_client") as mock_qdrant, \
-                 patch("stt_v2.diarization.embedding_service.get_embedding_service") as mock_emb:
+            with (
+                patch("stt_v2.core.database.connection.close_database", new_callable=AsyncMock),
+                patch("stt_v2.core.storage.minio_client.close_minio", new_callable=AsyncMock),
+                patch("stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad),
+                patch("stt_v2.core.vectorstore.client.get_qdrant_client") as mock_qdrant,
+                patch("stt_v2.diarization.embedding_service.get_embedding_service") as mock_emb,
+            ):
 
                 mock_qdrant_instance = MagicMock()
                 mock_qdrant_instance.close = AsyncMock()
@@ -196,6 +263,7 @@ class TestWorkerNewServiceCleanup:
                 mock_emb.return_value = mock_emb_instance
 
                 from stt_v2.worker import cleanup_services
+
                 await cleanup_services()
 
                 mock_vad.shutdown.assert_called_once()
@@ -206,11 +274,16 @@ class TestWorkerNewServiceCleanup:
         with patch("stt_v2.worker.configure_broker") as mock_configure:
             mock_configure.return_value = MagicMock()
 
-            with patch("stt_v2.core.database.connection.close_database", new_callable=AsyncMock), \
-                 patch("stt_v2.core.storage.minio_client.close_minio", new_callable=AsyncMock), \
-                 patch("stt_v2.vad.silero_service.get_vad_service", side_effect=RuntimeError("VAD error")), \
-                 patch("stt_v2.core.vectorstore.client.get_qdrant_client") as mock_qdrant, \
-                 patch("stt_v2.diarization.embedding_service.get_embedding_service") as mock_emb:
+            with (
+                patch("stt_v2.core.database.connection.close_database", new_callable=AsyncMock),
+                patch("stt_v2.core.storage.minio_client.close_minio", new_callable=AsyncMock),
+                patch(
+                    "stt_v2.vad.silero_service.get_vad_service",
+                    side_effect=RuntimeError("VAD error"),
+                ),
+                patch("stt_v2.core.vectorstore.client.get_qdrant_client") as mock_qdrant,
+                patch("stt_v2.diarization.embedding_service.get_embedding_service") as mock_emb,
+            ):
 
                 mock_qdrant_instance = MagicMock()
                 mock_qdrant_instance.close = AsyncMock()
@@ -221,6 +294,7 @@ class TestWorkerNewServiceCleanup:
                 mock_emb.return_value = mock_emb_instance
 
                 from stt_v2.worker import cleanup_services
+
                 # Should NOT raise
                 await cleanup_services()
                 # Other cleanups should still have been called

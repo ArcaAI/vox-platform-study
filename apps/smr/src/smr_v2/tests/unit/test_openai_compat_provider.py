@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -48,14 +49,33 @@ async def _async_stream_chunks(chunks):
         yield c
 
 
+def _clear_smr_env(monkeypatch):
+    for key in list(os.environ):
+        if key.startswith("SMR_V2_"):
+            monkeypatch.delenv(key, raising=False)
+
+
 # ---------------------------------------------------------------------------
 # 1. Config tests
 # ---------------------------------------------------------------------------
 
+def _clear_smr_env(monkeypatch):
+    """Remove all SMR_V2_* env vars so pydantic-settings reads only code defaults."""
+    import os
+    for key in list(os.environ):
+        if key.startswith("SMR_V2_"):
+            monkeypatch.delenv(key, raising=False)
+
+
 class TestOpenAICompatConfig:
-    def test_openai_compat_config_defaults(self):
+    def test_openai_compat_config_defaults(self, monkeypatch):
+        for key in list(os.environ):
+            if key.startswith("SMR_V2_"):
+                monkeypatch.delenv(key, raising=False)
+
         from smr_v2.core.config import OpenAICompatConfig
 
+        _clear_smr_env(monkeypatch)
         cfg = OpenAICompatConfig()
         assert cfg.enabled is False
         assert cfg.base_url == "http://localhost:1234/v1"
@@ -64,9 +84,11 @@ class TestOpenAICompatConfig:
         assert cfg.max_concurrent == 4
         assert cfg.organization is None
 
-    def test_openai_compat_config_api_key_is_secret(self):
+    def test_openai_compat_config_api_key_is_secret(self, monkeypatch):
+        _clear_smr_env(monkeypatch)
         from smr_v2.core.config import OpenAICompatConfig
 
+        _clear_smr_env(monkeypatch)
         cfg = OpenAICompatConfig()
         assert isinstance(cfg.api_key, SecretStr)
         assert cfg.api_key.get_secret_value() == "not-needed"

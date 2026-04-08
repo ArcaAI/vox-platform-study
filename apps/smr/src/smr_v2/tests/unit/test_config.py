@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from smr_v2.core.config import (
     AzureOpenAIConfig,
     BedrockConfig,
@@ -23,13 +25,18 @@ def _clear_smr_env(monkeypatch):
             monkeypatch.delenv(key, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_smr_env(monkeypatch):
+    _clear_smr_env(monkeypatch)
+
+
 class TestOllamaConfig:
     def test_defaults(self, monkeypatch):
         _clear_smr_env(monkeypatch)
         cfg = OllamaConfig()
         assert cfg.enabled is False
         assert cfg.base_url == "http://localhost:11434"
-        assert cfg.default_model == "llama3.2:latest"
+        assert cfg.default_model == "qwen3.5:2b"
         assert cfg.timeout_s == 300
         assert cfg.max_concurrent == 4
 

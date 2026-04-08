@@ -26,6 +26,7 @@ class SentenceTimestamp:
     text: str
     start_time: float
     end_time: float
+    english_text: str | None = None
     words: list[WordTimestamp] = field(default_factory=list)
 
 
@@ -77,9 +78,7 @@ class ProcessedAudio:
             wf.writeframes(pcm_int16.tobytes())
         return buf.getvalue()
 
-    def get_vad_merged_wav_bytes(
-        self, silence_padding_ms: int = 0
-    ) -> bytes | None:
+    def get_vad_merged_wav_bytes(self, silence_padding_ms: int = 0) -> bytes | None:
         """Extract and concatenate only the VAD speech segments as WAV.
 
         If VAD was not applied or no speech segments exist, returns
@@ -167,6 +166,7 @@ class TimingMetrics:
     # Per-pipeline-step breakdown (seconds)
     model_loading_seconds: float = 0.0
     preprocessing_seconds: float = 0.0
+    embedding_seconds: float = 0.0
     inference_seconds: float = 0.0
     diarization_seconds: float = 0.0
     postprocessing_seconds: float = 0.0
@@ -189,6 +189,7 @@ class TimingMetrics:
             "ttfw_seconds": round(float(self.ttfw_seconds), 4),
             "model_loading_seconds": round(float(self.model_loading_seconds), 4),
             "preprocessing_seconds": round(float(self.preprocessing_seconds), 4),
+            "embedding_seconds": round(float(self.embedding_seconds), 4),
             "inference_seconds": round(float(self.inference_seconds), 4),
             "diarization_seconds": round(float(self.diarization_seconds), 4),
             "postprocessing_seconds": round(float(self.postprocessing_seconds), 4),
@@ -246,6 +247,7 @@ class TranscriptionResult:
                     "text": s.text,
                     "start_time": s.start_time,
                     "end_time": s.end_time,
+                    "english_text": s.english_text,
                 }
                 for s in self.sentence_timestamps
             ],

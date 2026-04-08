@@ -109,12 +109,14 @@ postprocessing:
 
 
 @pytest.mark.e2e
+@pytest.mark.ml
 class TestPreprocessingFlow:
     """E2E tests for audio preprocessing flow."""
 
     @pytest.mark.asyncio
     async def test_audio_preprocessing(self, sample_wav_audio):
         """Test audio preprocessing pipeline."""
+        pytest.importorskip("soundfile", reason="soundfile not installed (requires [ml] extra)")
         from stt_v2.pipeline.dto import DenoiseConfig, PreprocessingConfig, VadConfig
         from stt_v2.transcription.preprocessing import get_preprocessor
 
@@ -223,6 +225,7 @@ class TestTranscriptionResultFlow:
 
         # Should be JSON serializable
         import json
+
         json_str = json.dumps(result_dict)
         assert json_str is not None
 
@@ -289,7 +292,7 @@ models:
   vad:
     hf_model_id: "snakers4/silero-vad"
     engine: "onnx"
-    version: "main"
+    version: "v6.0"
   denoise:
     hf_model_id: "nickolay/rnnoise"
     engine: "onnx"

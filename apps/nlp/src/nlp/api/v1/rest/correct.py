@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from nlp.core.logging import get_logger
+from nlp.dependencies import get_text_corrector
 from nlp.schemas.correction import TextCorrectionRequest, TextCorrectionResponse
 from nlp.services.text_corrector import TextCorrector
-from nlp.dependencies import get_text_corrector
 
 logger = get_logger(__name__)
 
@@ -29,4 +29,4 @@ async def correct_text(
         raise
     except Exception as e:
         logger.error(f"Correction failed: {str(e)}")
-        raise HTTPException(status_code=500, detail="Correction failed")
+        raise HTTPException(status_code=500, detail="Correction failed") from e

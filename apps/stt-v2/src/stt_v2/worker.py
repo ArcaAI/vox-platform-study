@@ -25,13 +25,23 @@ Usage:
 import asyncio
 import signal
 
-import structlog
-
 from stt_v2.core.config.settings import get_settings
+from stt_v2.core.logging import get_logger, setup_logging
 from stt_v2.core.messaging.broker import configure_broker
 
-logger = structlog.get_logger(__name__)
 settings = get_settings()
+setup_logging(settings.log_level)
+logger = get_logger(__name__)
+
+_worker_logger_provider = None
+if settings.otel_enabled:
+    from stt_v2.core.telemetry import setup_telemetry_logs
+
+    _worker_logger_provider = setup_telemetry_logs(
+        enabled=True,
+        endpoint=settings.otel_exporter_endpoint,
+        service_name=f"{settings.otel_service_name}-worker",
+    )
 
 # Configure the Dramatiq broker FIRST (before importing actors)
 broker = configure_broker(settings.redis_url)
@@ -88,6 +98,15 @@ async def initialize_services() -> None:
     except Exception as e:
         logger.warning(f"Diarization service initialization failed (non-fatal): {e}")
 
+    # --- Punctuation: cadence model (needed for batch postprocessing) ---
+    try:
+        from stt_v2.punctuation import service as punctuation_service
+
+        await asyncio.to_thread(punctuation_service.initialize)
+        logger.info("Punctuation service initialized")
+    except Exception as e:
+        logger.warning(f"Punctuation service initialization failed (non-fatal): {e}")
+
     logger.info("All worker services initialized successfully")
 
 
@@ -131,6 +150,14 @@ async def cleanup_services() -> None:
         await get_embedding_service().shutdown()
     except Exception as e:
         logger.warning(f"Error shutting down diarization service: {e}")
+
+    # Shutdown punctuation service
+    try:
+        from stt_v2.punctuation import service as punctuation_service
+
+        punctuation_service.shutdown()
+    except Exception as e:
+        logger.warning(f"Error shutting down punctuation service: {e}")
 
     logger.info("Worker services cleanup complete")
 
@@ -182,7 +209,9 @@ def main() -> None:
         signame = signal.Signals(signum).name
 
         if interrupt_count == 1:
-            logger.info(f"Received {signame}, initiating graceful shutdown... (press Ctrl+C again to force)")
+            logger.info(
+                f"Received {signame}, initiating graceful shutdown... (press Ctrl+C again to force)"
+            )
             shutdown_event.set()
         elif interrupt_count >= 2:
             logger.warning("Forcing immediate shutdown...")
@@ -207,9 +236,10 @@ def main() -> None:
     worker.join()
     logger.info("Worker threads stopped")
 
-    # Note: We skip async cleanup here because the event loop from initialize_services()
-    # is already closed. The database connections will be cleaned up by the OS on exit.
-    # For a cleaner solution, we'd need to restructure to use a single persistent event loop.
+    if _worker_logger_provider is not None:
+        _worker_logger_provider.force_flush()
+        _worker_logger_provider.shutdown()
+
     logger.info("Worker shutdown complete")
 
 

@@ -1,16 +1,14 @@
-"""OpenTelemetry setup for SMR V2."""
+"""Compatibility shim — re-exports from observability.py.
 
-from __future__ import annotations
+All OTel setup logic has moved to ``smr_v2.core.observability``.
+This file preserves backward-compatible imports for existing code
+that does ``from smr_v2.core.telemetry import get_tracer`` or
+``from smr_v2.core.telemetry import setup_telemetry``.
+"""
 
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from smr_v2.core.observability import get_tracer, setup_opentelemetry
 
-_TRACER_VERSION = "2.0.0"
+__all__ = ["get_tracer", "setup_telemetry", "setup_opentelemetry"]
 
 
 def setup_telemetry(
@@ -18,26 +16,21 @@ def setup_telemetry(
     *,
     endpoint: str = "http://localhost:4317",
     service_name: str = "smr-v2",
-) -> None:
-    """Configure OpenTelemetry tracing with OTLP gRPC exporter."""
-    resource = Resource.create({
-        "service.name": service_name,
-        "service.version": _TRACER_VERSION,
-    })
+    service_namespace: str = "hope",
+    deployment_environment: str = "production",
+    insecure: bool = True,
+):
+    """Legacy wrapper — delegates to setup_opentelemetry.
 
-    provider = TracerProvider(resource=resource)
-    exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
-    provider.add_span_processor(BatchSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
-
-    FastAPIInstrumentor.instrument_app(app)
-    HTTPXClientInstrumentor().instrument()
-
-
-def get_tracer(name: str = "smr_v2") -> trace.Tracer:
-    """Get a tracer instance for creating spans.
-
-    Returns a proxy that always resolves against the current global
-    TracerProvider, so tests can swap providers without stale references.
+    Returns the TracerProvider for backward compatibility.
     """
-    return trace.get_tracer(name, _TRACER_VERSION)
+    setup_opentelemetry(
+        app,
+        endpoint=endpoint,
+        service_name=service_name,
+        service_namespace=service_namespace,
+        deployment_environment=deployment_environment,
+        insecure=insecure,
+        logs_enabled=False,
+    )
+    return app.state.tracer_provider

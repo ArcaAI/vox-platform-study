@@ -299,11 +299,11 @@ lint-fix:
 
 format:
 	$(CONDA_RUN) black src/ tests/
-	$(CONDA_RUN) isort src/ tests/
+	$(CONDA_RUN) ruff check --fix --select I src/ tests/
 
 format-check:
 	$(CONDA_RUN) black --check src/ tests/
-	$(CONDA_RUN) isort --check-only src/ tests/
+	$(CONDA_RUN) ruff check --select I src/ tests/
 
 type-check:
 	$(CONDA_RUN) mypy src/

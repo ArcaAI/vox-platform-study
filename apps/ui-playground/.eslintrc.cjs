@@ -6,5 +6,5 @@ module.exports = {
     parserOptions: {
         project: true,
     },
-    ignorePatterns: ["**/__tests__/", "vite.config.ts", "vitest.config.ts"],
+    ignorePatterns: ["**/__tests__/", "vite.config.ts", "vitest.config.ts", "e2e/"],
 };

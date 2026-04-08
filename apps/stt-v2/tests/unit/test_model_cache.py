@@ -354,7 +354,7 @@ class TestModelCacheInlineModels:
             device="cpu",
         )
 
-        with patch.object(cache, 'get_or_load', new_callable=AsyncMock) as mock_get_or_load:
+        with patch.object(cache, "get_or_load", new_callable=AsyncMock) as mock_get_or_load:
             mock_get_or_load.return_value = mock_loaded_model
 
             result = await cache.get_or_load_inline(
@@ -387,7 +387,7 @@ class TestModelCacheInlineModels:
 
         slug_ref = ModelRef(slug="whisper-test")
 
-        with patch.object(cache, 'get_or_load', new_callable=AsyncMock) as mock_get_or_load:
+        with patch.object(cache, "get_or_load", new_callable=AsyncMock) as mock_get_or_load:
             mock_get_or_load.return_value = mock_loaded_model
 
             result = await cache.get_or_load_from_ref(
@@ -414,7 +414,7 @@ class TestModelCacheInlineModels:
 
         inline_ref = ModelRef(inline=sample_inline_def)
 
-        with patch.object(cache, 'get_or_load', new_callable=AsyncMock) as mock_get_or_load:
+        with patch.object(cache, "get_or_load", new_callable=AsyncMock) as mock_get_or_load:
             mock_get_or_load.return_value = mock_loaded_model
 
             result = await cache.get_or_load_from_ref(
@@ -573,6 +573,7 @@ class TestModelCacheEdgeCases:
 
         # Wait a tiny bit
         import asyncio
+
         await asyncio.sleep(0.01)
 
         # Access the model

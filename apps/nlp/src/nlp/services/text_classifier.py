@@ -1,10 +1,11 @@
-import torch
 from abc import ABC, abstractmethod
-from typing import Any, Optional
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+from typing import Any
 
-from nlp.core.logging import get_logger
+import torch
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
+
 from nlp.core.config import TextClassificationConfig
+from nlp.core.logging import get_logger
 from nlp.schemas.classification import TextClassificationRequest, TextClassificationResponse
 
 logger = get_logger(__name__)
@@ -24,7 +25,7 @@ class TextClassifier(ABC):
         pass
 
     @abstractmethod
-    async def process(self, text: str, **kwargs) -> Any | None:
+    async def process(self, request: TextClassificationRequest) -> TextClassificationResponse:
         """Classify medical text into categories"""
         pass
 
@@ -37,16 +38,16 @@ class TextClassifier(ABC):
 class TransformerTextClassifier(TextClassifier):
     """Transformer-based text classification for medical documents"""
 
-    def __init__(self, config: Optional[TextClassificationConfig] = None):
+    def __init__(self, config: TextClassificationConfig | None = None):
         if config is None:
             config = TextClassificationConfig()
 
         super().__init__(config.model_name, config.model_version)
 
         self.config = config
-        self.tokenizer = None
-        self.model = None
-        self.pipeline = None
+        self.tokenizer: Any = None
+        self.model: Any = None
+        self.pipeline: Any = None
 
     async def initialize(self) -> None:
         """Load transformer text classification model"""
@@ -70,7 +71,7 @@ class TransformerTextClassifier(TextClassifier):
             logger.info("TextClassifier initialized successfully")
 
         except Exception as e:
-            raise RuntimeError(f"Failed to load TextClassifier: {str(e)}")
+            raise RuntimeError(f"Failed to load TextClassifier: {str(e)}") from e
 
     async def process(self, request: TextClassificationRequest) -> TextClassificationResponse:
         """Classify medical text into document categories"""
@@ -78,7 +79,7 @@ class TransformerTextClassifier(TextClassifier):
             await self.initialize()
 
         try:
-            pipeline_results = self.pipeline(request["text"])
+            pipeline_results = self.pipeline(request.text)
             top_prediction = max(pipeline_results, key=lambda x: x["score"])
             probabilities = {score_item["label"]: float(score_item["score"]) for score_item in pipeline_results}
 
@@ -97,7 +98,7 @@ class TransformerTextClassifier(TextClassifier):
                 model_version=self.version,
             )
 
-    def shutdown(self) -> None:
+    async def shutdown(self) -> None:
         """Shutdown the text classification model"""
         self.tokenizer = None
         self.model = None

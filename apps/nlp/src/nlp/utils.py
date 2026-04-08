@@ -1,7 +1,8 @@
-import dotenv
 import os
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import dotenv
 
 dotenv.load_dotenv()
 
@@ -15,4 +16,4 @@ def get_project_root() -> Path:
 
 
 def get_current_time() -> datetime:
-    return datetime.now().isoformat()
+    return datetime.now()

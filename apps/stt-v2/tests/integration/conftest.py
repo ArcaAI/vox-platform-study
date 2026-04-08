@@ -63,19 +63,32 @@ async def db_engine(database_url):
         async with engine.begin() as conn:
             await conn.execute(text("CREATE SCHEMA IF NOT EXISTS core"))
             enum_defs = [
-                ('ResourceStatusType', ['ENABLED', 'DISABLED', 'DELETED', 'PENDING', 'ARCHIVED']),
-                ('AiModelSource', ['HUGGINGFACE', 'GITHUB', 'MLFLOW', 'LOCAL']),
-                ('AiModelFormat', ['SAFETENSOR', 'ONNX', 'NEMO', 'PYTORCH']),
-                ('AiModelDownloadStatus', ['NOT_DOWNLOADED', 'DOWNLOADING', 'DOWNLOADED', 'DOWNLOAD_FAILED']),
-                ('ModelCategory', ['AUDIO', 'TEXT', 'VISION', 'MULTIMODAL']),
-                ('ModelTaskType', [
-                    'AUTOMATIC_SPEECH_RECOGNITION', 'VOICE_ACTIVITY_DETECTION',
-                    'AUDIO_DENOISING', 'SPEAKER_DIARIZATION', 'TEXT_TO_SPEECH',
-                    'LANGUAGE_MODEL', 'TRANSLATION', 'SUMMARIZATION',
-                    'TEXT_CLASSIFICATION', 'NAMED_ENTITY_RECOGNITION',
-                    'IMAGE_CLASSIFICATION', 'OBJECT_DETECTION',
-                ]),
-                ('ModelType', ['BASE_MODEL', 'FINETUNED_MODEL', 'QUANTIZED_MODEL', 'UNKNOWN']),
+                ("ResourceStatusType", ["ENABLED", "DISABLED", "DELETED", "PENDING", "ARCHIVED"]),
+                ("AiModelSource", ["HUGGINGFACE", "GITHUB", "MLFLOW", "LOCAL"]),
+                ("AiModelFormat", ["SAFETENSOR", "ONNX", "NEMO", "PYTORCH"]),
+                (
+                    "AiModelDownloadStatus",
+                    ["NOT_DOWNLOADED", "DOWNLOADING", "DOWNLOADED", "DOWNLOAD_FAILED"],
+                ),
+                ("ModelCategory", ["AUDIO", "TEXT", "VISION", "MULTIMODAL"]),
+                (
+                    "ModelTaskType",
+                    [
+                        "AUTOMATIC_SPEECH_RECOGNITION",
+                        "VOICE_ACTIVITY_DETECTION",
+                        "AUDIO_DENOISING",
+                        "SPEAKER_DIARIZATION",
+                        "TEXT_TO_SPEECH",
+                        "LANGUAGE_MODEL",
+                        "TRANSLATION",
+                        "SUMMARIZATION",
+                        "TEXT_CLASSIFICATION",
+                        "NAMED_ENTITY_RECOGNITION",
+                        "IMAGE_CLASSIFICATION",
+                        "OBJECT_DETECTION",
+                    ],
+                ),
+                ("ModelType", ["BASE_MODEL", "FINETUNED_MODEL", "QUANTIZED_MODEL", "UNKNOWN"]),
             ]
             for enum_name, values in enum_defs:
                 values_str = ", ".join(f"'{v}'" for v in values)
@@ -90,8 +103,9 @@ async def db_engine(database_url):
 
         yield engine
 
-        async with engine.begin() as conn:
-            await conn.execute(text("DROP SCHEMA IF EXISTS core CASCADE"))
+        # No teardown needed: db_session rolls back each test's transaction,
+        # so seed data from Prisma (pnpm test:db:seed) stays intact for
+        # other test suites (e2e ML tests, etc.) that share port 5433.
     finally:
         await engine.dispose()
 
