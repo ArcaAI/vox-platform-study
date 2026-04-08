@@ -8,7 +8,12 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from guardrail.core.config import Settings
-from guardrail.core.dependencies import get_gliner_provider, get_ollama_provider, get_redis, get_settings
+from guardrail.core.dependencies import (
+    get_gliner_provider,
+    get_ollama_provider,
+    get_redis,
+    get_settings,
+)
 
 router = APIRouter()
 

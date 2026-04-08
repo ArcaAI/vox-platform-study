@@ -173,3 +173,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # unused imports
 "tests/**/*" = ["B011"]  # assert false
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.8",
+]
