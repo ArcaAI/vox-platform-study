@@ -488,6 +488,34 @@ describe('StreamingAudioBridgeService', () => {
             });
         });
 
+        it('should map english_text when code-switch translation is present', async () => {
+            mockXread
+                .mockResolvedValueOnce([
+                    ['stt:result:s-1', [
+                        ['1-0', [
+                            'text', 'வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்',
+                            'english_text', 'Will not call ...',
+                            'start_time', '74.784',
+                            'end_time', '82.88',
+                            'is_final', '1',
+                        ]],
+                    ]],
+                ])
+                .mockResolvedValue(null);
+
+            const obs = service.subscribeToResults('s-1');
+            const result = await firstValueFrom(obs.pipe(take(1)));
+
+            expect(result).toEqual({
+                type: 'transcript',
+                text: 'வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்',
+                englishText: 'Will not call ...',
+                startTime: 74.784,
+                endTime: 82.88,
+                isFinal: true,
+            });
+        });
+
         it('should handle isFinal=0 as false', async () => {
             mockXread
                 .mockResolvedValueOnce([

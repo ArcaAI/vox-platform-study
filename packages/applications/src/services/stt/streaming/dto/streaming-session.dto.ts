@@ -102,10 +102,14 @@ export interface StreamingTranscriptMessage {
   endTime: number;
   /** Whether this is a finalized segment */
   isFinal: boolean;
+  /** English translation for code-switching output, if available */
+  englishText?: string;
   /** Speaker identifier from diarization, if available */
   speakerId?: string;
   /** Speaker identification confidence (0-1) */
   speakerConfidence?: number;
+  /** Per-word timestamps, if enabled in pipeline config */
+  wordTimestamps?: Array<{ word: string; start: number; end: number; confidence: number | null }>;
 }
 
 export interface StreamingStatusMessage {

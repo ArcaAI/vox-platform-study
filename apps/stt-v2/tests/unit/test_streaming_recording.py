@@ -193,23 +193,27 @@ class TestBuildTranscriptJson:
         from stt_v2.streaming.schemas import SegmentResult
 
         session = _make_session()
-        session.add_result(SegmentResult(
-            text="Hello",
-            start_time=0.0,
-            end_time=1.5,
-            is_final=True,
-            speaker_id="spk_1",
-            speaker_confidence=0.95,
-        ))
-        session.add_result(SegmentResult(
-            text="World",
-            start_time=1.5,
-            end_time=3.0,
-            is_final=True,
-            word_timestamps=[
-                {"word": "World", "start_time": 1.5, "end_time": 3.0, "confidence": None}
-            ],
-        ))
+        session.add_result(
+            SegmentResult(
+                text="Hello",
+                start_time=0.0,
+                end_time=1.5,
+                is_final=True,
+                speaker_id="spk_1",
+                speaker_confidence=0.95,
+            )
+        )
+        session.add_result(
+            SegmentResult(
+                text="World",
+                start_time=1.5,
+                end_time=3.0,
+                is_final=True,
+                word_timestamps=[
+                    {"word": "World", "start_time": 1.5, "end_time": 3.0, "confidence": None}
+                ],
+            )
+        )
 
         data = session.build_transcript_json()
         transcript = json.loads(data)
@@ -275,7 +279,9 @@ class TestStreamingPaths:
 
         resolver = StoragePathResolver()
         path = resolver.streaming_raw_chunk_path(
-            tenant_id="t1", session_id="sess-abc", chunk_index=0,
+            tenant_id="t1",
+            session_id="sess-abc",
+            chunk_index=0,
             timestamp=self._TS,
         )
         assert path == "t1/2026/03/streaming/sess-abc/raw/chunk_0000.pcm"
@@ -285,7 +291,9 @@ class TestStreamingPaths:
 
         resolver = StoragePathResolver()
         path = resolver.streaming_raw_chunk_path(
-            tenant_id="t1", session_id="sess-abc", chunk_index=42,
+            tenant_id="t1",
+            session_id="sess-abc",
+            chunk_index=42,
             timestamp=self._TS,
         )
         assert path == "t1/2026/03/streaming/sess-abc/raw/chunk_0042.pcm"
@@ -295,7 +303,9 @@ class TestStreamingPaths:
 
         resolver = StoragePathResolver()
         path = resolver.streaming_processed_chunk_path(
-            tenant_id="t1", session_id="sess-abc", chunk_index=0,
+            tenant_id="t1",
+            session_id="sess-abc",
+            chunk_index=0,
             timestamp=self._TS,
         )
         assert path == "t1/2026/03/streaming/sess-abc/processed/chunk_0000.pcm"
@@ -305,7 +315,8 @@ class TestStreamingPaths:
 
         resolver = StoragePathResolver()
         path = resolver.streaming_raw_complete_path(
-            tenant_id="tenant-123", session_id="sess-xyz",
+            tenant_id="tenant-123",
+            session_id="sess-xyz",
             timestamp=self._TS,
         )
         assert path == "tenant-123/2026/03/streaming/sess-xyz/raw/complete.wav"
@@ -315,7 +326,8 @@ class TestStreamingPaths:
 
         resolver = StoragePathResolver()
         path = resolver.streaming_transcript_path(
-            tenant_id="t1", session_id="sess-abc",
+            tenant_id="t1",
+            session_id="sess-abc",
             timestamp=self._TS,
         )
         assert path == "t1/2026/03/streaming/sess-abc/transcript.json"
@@ -325,7 +337,8 @@ class TestStreamingPaths:
 
         resolver = StoragePathResolver()
         path = resolver.streaming_metadata_path(
-            tenant_id="t1", session_id="sess-abc",
+            tenant_id="t1",
+            session_id="sess-abc",
             timestamp=self._TS,
         )
         assert path == "t1/2026/03/streaming/sess-abc/metadata.json"
@@ -335,7 +348,9 @@ class TestStreamingPaths:
 
         resolver = StoragePathResolver()
         path = resolver.streaming_raw_chunk_path(
-            tenant_id="t1", session_id="s1", chunk_index=0,
+            tenant_id="t1",
+            session_id="s1",
+            chunk_index=0,
         )
         now = datetime.utcnow()
         expected_prefix = f"t1/{now.strftime('%Y')}/{now.strftime('%m')}/streaming/s1/"
@@ -354,10 +369,18 @@ class TestBlobServiceStreamingUpload:
     def service(self):
         mock_resolver = MagicMock()
         mock_resolver.audio_bucket = "hope-audio"
-        mock_resolver.streaming_raw_chunk_path.return_value = "t1/2026/03/streaming/s1/raw/chunk_0000.pcm"
-        mock_resolver.streaming_processed_chunk_path.return_value = "t1/2026/03/streaming/s1/processed/chunk_0000.pcm"
-        mock_resolver.streaming_raw_complete_path.return_value = "t1/2026/03/streaming/s1/raw/complete.wav"
-        mock_resolver.streaming_transcript_path.return_value = "t1/2026/03/streaming/s1/transcript.json"
+        mock_resolver.streaming_raw_chunk_path.return_value = (
+            "t1/2026/03/streaming/s1/raw/chunk_0000.pcm"
+        )
+        mock_resolver.streaming_processed_chunk_path.return_value = (
+            "t1/2026/03/streaming/s1/processed/chunk_0000.pcm"
+        )
+        mock_resolver.streaming_raw_complete_path.return_value = (
+            "t1/2026/03/streaming/s1/raw/complete.wav"
+        )
+        mock_resolver.streaming_transcript_path.return_value = (
+            "t1/2026/03/streaming/s1/transcript.json"
+        )
         mock_resolver.streaming_metadata_path.return_value = "t1/2026/03/streaming/s1/metadata.json"
         mock_resolver.get_full_uri.side_effect = lambda bucket, path: f"s3://{bucket}/{path}"
 
@@ -469,7 +492,9 @@ class TestFinalizeSessionRecording:
         mock_blob = MagicMock()
         mock_blob.upload_streaming_raw_chunk = AsyncMock(return_value="s3://bucket/chunk")
         mock_blob.upload_streaming_raw_complete = AsyncMock(return_value="s3://bucket/complete.wav")
-        mock_blob.upload_streaming_transcript = AsyncMock(return_value="s3://bucket/transcript.json")
+        mock_blob.upload_streaming_transcript = AsyncMock(
+            return_value="s3://bucket/transcript.json"
+        )
         mock_blob.upload_streaming_metadata = AsyncMock(return_value="s3://bucket/metadata.json")
         mgr._blob_service = mock_blob
         mgr.remove_session = AsyncMock()
@@ -499,7 +524,9 @@ class TestFinalizeSessionRecording:
         mock_blob = MagicMock()
         mock_blob.upload_streaming_raw_chunk = AsyncMock()
         mock_blob.upload_streaming_raw_complete = AsyncMock(return_value="s3://bucket/complete.wav")
-        mock_blob.upload_streaming_transcript = AsyncMock(return_value="s3://bucket/transcript.json")
+        mock_blob.upload_streaming_transcript = AsyncMock(
+            return_value="s3://bucket/transcript.json"
+        )
         mock_blob.upload_streaming_metadata = AsyncMock(return_value="s3://bucket/metadata.json")
         mgr._blob_service = mock_blob
         mgr.remove_session = AsyncMock()
@@ -525,7 +552,9 @@ class TestFinalizeSessionRecording:
         mock_blob = MagicMock()
         mock_blob.upload_streaming_raw_chunk = AsyncMock(side_effect=Exception("S3 down"))
         mock_blob.upload_streaming_raw_complete = AsyncMock(return_value="s3://bucket/complete.wav")
-        mock_blob.upload_streaming_transcript = AsyncMock(return_value="s3://bucket/transcript.json")
+        mock_blob.upload_streaming_transcript = AsyncMock(
+            return_value="s3://bucket/transcript.json"
+        )
         mock_blob.upload_streaming_metadata = AsyncMock(return_value="s3://bucket/metadata.json")
         mgr._blob_service = mock_blob
         mgr.remove_session = AsyncMock()
@@ -753,7 +782,10 @@ class TestPathSegmentSanitization:
         # slashes, spaces, special chars get replaced with _
         assert "/" not in resolver._sanitize_path_segment("a/b")
         assert " " not in resolver._sanitize_path_segment("a b")
-        assert ".." not in resolver._sanitize_path_segment("..") or resolver._sanitize_path_segment("..") == ".."
+        assert (
+            ".." not in resolver._sanitize_path_segment("..")
+            or resolver._sanitize_path_segment("..") == ".."
+        )
         # dots are allowed
         assert resolver._sanitize_path_segment("v1.2") == "v1.2"
 
@@ -823,7 +855,9 @@ class TestEndSession:
         mock_blob = MagicMock()
         mock_blob.upload_streaming_raw_chunk = AsyncMock(return_value="s3://bucket/chunk")
         mock_blob.upload_streaming_raw_complete = AsyncMock(return_value="s3://bucket/complete.wav")
-        mock_blob.upload_streaming_transcript = AsyncMock(return_value="s3://bucket/transcript.json")
+        mock_blob.upload_streaming_transcript = AsyncMock(
+            return_value="s3://bucket/transcript.json"
+        )
         mock_blob.upload_streaming_metadata = AsyncMock(return_value="s3://bucket/metadata.json")
         mgr._blob_service = mock_blob
         mgr.remove_session = AsyncMock()

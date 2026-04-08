@@ -20,53 +20,80 @@ class Base(DeclarativeBase):
 # PostgreSQL ENUM types (must match Prisma schema)
 # These are defined in the 'core' schema
 ResourceStatusType = ENUM(
-    "ENABLED", "DISABLED", "DELETED", "PENDING", "ARCHIVED",
+    "ENABLED",
+    "DISABLED",
+    "DELETED",
+    "PENDING",
+    "ARCHIVED",
     name="ResourceStatusType",
     schema="core",
     create_type=False,  # Don't create - already exists from Prisma
 )
 
 AiModelSourceType = ENUM(
-    "HUGGINGFACE", "GITHUB", "MLFLOW", "LOCAL",
+    "HUGGINGFACE",
+    "GITHUB",
+    "MLFLOW",
+    "LOCAL",
     name="AiModelSource",
     schema="core",
     create_type=False,
 )
 
 AiModelFormatType = ENUM(
-    "SAFETENSOR", "ONNX", "NEMO", "PYTORCH",
+    "SAFETENSOR",
+    "ONNX",
+    "NEMO",
+    "PYTORCH",
     name="AiModelFormat",
     schema="core",
     create_type=False,
 )
 
 AiModelDownloadStatusType = ENUM(
-    "NOT_DOWNLOADED", "DOWNLOADING", "DOWNLOADED", "DOWNLOAD_FAILED",
+    "NOT_DOWNLOADED",
+    "DOWNLOADING",
+    "DOWNLOADED",
+    "DOWNLOAD_FAILED",
     name="AiModelDownloadStatus",
     schema="core",
     create_type=False,
 )
 
 ModelCategoryType = ENUM(
-    "AUDIO", "TEXT", "VISION", "MULTIMODAL",
+    "AUDIO",
+    "TEXT",
+    "VISION",
+    "MULTIMODAL",
     name="ModelCategory",
     schema="core",
     create_type=False,
 )
 
 ModelTaskTypeEnum = ENUM(
-    "AUTOMATIC_SPEECH_RECOGNITION", "VOICE_ACTIVITY_DETECTION",
-    "AUDIO_DENOISING", "AUDIO_TO_AUDIO", "SPEAKER_DIARIZATION", "TEXT_TO_SPEECH",
-    "LANGUAGE_MODEL", "TRANSLATION", "SUMMARIZATION",
-    "TEXT_CLASSIFICATION", "NAMED_ENTITY_RECOGNITION",
-    "IMAGE_CLASSIFICATION", "OBJECT_DETECTION",
+    "AUTOMATIC_SPEECH_RECOGNITION",
+    "VOICE_ACTIVITY_DETECTION",
+    "AUDIO_DENOISING",
+    "AUDIO_TO_AUDIO",
+    "SPEAKER_DIARIZATION",
+    "TEXT_TO_SPEECH",
+    "LANGUAGE_MODEL",
+    "TRANSLATION",
+    "SUMMARIZATION",
+    "TEXT_CLASSIFICATION",
+    "NAMED_ENTITY_RECOGNITION",
+    "IMAGE_CLASSIFICATION",
+    "OBJECT_DETECTION",
     name="ModelTaskType",
     schema="core",
     create_type=False,
 )
 
 ModelTypeEnum = ENUM(
-    "BASE_MODEL", "FINETUNED_MODEL", "QUANTIZED_MODEL", "UNKNOWN",
+    "BASE_MODEL",
+    "FINETUNED_MODEL",
+    "QUANTIZED_MODEL",
+    "UNKNOWN",
     name="ModelType",
     schema="core",
     create_type=False,
@@ -145,5 +172,34 @@ class AiModelRead(Base):
     # Note: 'metadata' is reserved by SQLAlchemy DeclarativeBase, use 'extra_metadata' instead
     extra_metadata: Mapped[dict | None] = mapped_column("_metadata", JSONB)
     version: Mapped[int] = mapped_column("_version", Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column("createdAt", DateTime)
+    updated_at: Mapped[datetime] = mapped_column("updatedAt", DateTime)
+
+
+PromptTemplateCategoryType = ENUM(
+    "SYSTEM",
+    "SUMMARY",
+    "DNA_ANALYSIS",
+    "CUSTOM",
+    name="PromptTemplateCategory",
+    schema="core",
+    create_type=False,
+)
+
+
+class PromptTemplateRead(Base):
+    """Read-only model for PromptTemplate table."""
+
+    __tablename__ = "PromptTemplate"
+    __table_args__ = {"schema": "core"}
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column("tenantId", String)
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(String)
+    content: Mapped[str] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(PromptTemplateCategoryType)
+    current_version_number: Mapped[int] = mapped_column("currentVersionNumber", Integer)
+    resource_status: Mapped[str] = mapped_column("resourceStatus", ResourceStatusType)
     created_at: Mapped[datetime] = mapped_column("createdAt", DateTime)
     updated_at: Mapped[datetime] = mapped_column("updatedAt", DateTime)

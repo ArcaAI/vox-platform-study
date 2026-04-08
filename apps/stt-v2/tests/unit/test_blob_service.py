@@ -24,8 +24,10 @@ class TestBlobServiceInit:
 
     def test_init_with_default_resolver(self):
         """Test initialization with default path resolver."""
-        with patch("stt_v2.storage.blob_service.get_path_resolver") as mock_get_resolver, \
-             patch("stt_v2.storage.blob_service.get_settings") as mock_settings:
+        with (
+            patch("stt_v2.storage.blob_service.get_path_resolver") as mock_get_resolver,
+            patch("stt_v2.storage.blob_service.get_settings") as mock_settings,
+        ):
 
             mock_resolver = MagicMock()
             mock_get_resolver.return_value = mock_resolver
@@ -401,10 +403,13 @@ class TestBlobServiceSingleton:
     def test_get_blob_service_returns_singleton(self):
         """Test that get_blob_service returns the same instance."""
         import stt_v2.storage.blob_service as module
+
         module._service = None  # Reset
 
-        with patch("stt_v2.storage.blob_service.get_path_resolver") as mock_resolver, \
-             patch("stt_v2.storage.blob_service.get_settings") as mock_settings:
+        with (
+            patch("stt_v2.storage.blob_service.get_path_resolver") as mock_resolver,
+            patch("stt_v2.storage.blob_service.get_settings") as mock_settings,
+        ):
 
             mock_resolver.return_value = MagicMock()
             mock_settings.return_value = MagicMock()
@@ -417,10 +422,13 @@ class TestBlobServiceSingleton:
     def test_get_blob_service_creates_instance(self):
         """Test that get_blob_service creates BlobService instance."""
         import stt_v2.storage.blob_service as module
+
         module._service = None  # Reset
 
-        with patch("stt_v2.storage.blob_service.get_path_resolver") as mock_resolver, \
-             patch("stt_v2.storage.blob_service.get_settings") as mock_settings:
+        with (
+            patch("stt_v2.storage.blob_service.get_path_resolver") as mock_resolver,
+            patch("stt_v2.storage.blob_service.get_settings") as mock_settings,
+        ):
 
             mock_resolver.return_value = MagicMock()
             mock_settings.return_value = MagicMock()

@@ -72,10 +72,12 @@ class TestBrokerConfiguration:
         mock_backend = MagicMock()
 
         try:
-            with patch("stt_v2.core.messaging.broker.RedisBroker", return_value=mock_broker), \
-                 patch("stt_v2.core.messaging.broker.RedisBackend", return_value=mock_backend), \
-                 patch("stt_v2.core.messaging.broker.dramatiq") as mock_dramatiq, \
-                 patch("stt_v2.core.messaging.broker.settings") as mock_settings:
+            with (
+                patch("stt_v2.core.messaging.broker.RedisBroker", return_value=mock_broker),
+                patch("stt_v2.core.messaging.broker.RedisBackend", return_value=mock_backend),
+                patch("stt_v2.core.messaging.broker.dramatiq") as mock_dramatiq,
+                patch("stt_v2.core.messaging.broker.settings") as mock_settings,
+            ):
 
                 mock_settings.transcription_timeout_seconds = 300
                 mock_settings.worker_max_retries = 3
@@ -150,8 +152,12 @@ class TestBrokerLifecycle:
         mock_broker = MagicMock()
 
         try:
-            with patch.object(broker_module, "configure_broker", return_value=mock_broker) as mock_configure, \
-                 patch("stt_v2.core.messaging.broker.settings") as mock_settings:
+            with (
+                patch.object(
+                    broker_module, "configure_broker", return_value=mock_broker
+                ) as mock_configure,
+                patch("stt_v2.core.messaging.broker.settings") as mock_settings,
+            ):
 
                 mock_settings.redis_url = "redis://localhost:6379"
 

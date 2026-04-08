@@ -1,11 +1,12 @@
 import uuid
-import torch
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional
-from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
+from typing import Any
 
-from nlp.core.logging import get_logger
+import torch
+from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
+
 from nlp.core.config import TokenClassificationConfig
+from nlp.core.logging import get_logger
 from nlp.schemas.classification import TokenClassificationRequest, TokenClassificationResponse
 from nlp.schemas.common import Entity, TextPosition
 
@@ -31,7 +32,7 @@ class TokenClassifier(ABC):
         pass
 
     @abstractmethod
-    def shutdown(self) -> None:
+    async def shutdown(self) -> None:
         """Shutdown the token classification model"""
         pass
 
@@ -39,16 +40,16 @@ class TokenClassifier(ABC):
 class TransformerTokenClassifier(TokenClassifier):
     """Transformer-based token classification for medical entity extraction"""
 
-    def __init__(self, configs: Optional[TokenClassificationConfig] = None):
+    def __init__(self, configs: TokenClassificationConfig | None = None):
         if configs is None:
             configs = TokenClassificationConfig()
 
         super().__init__(configs.model_name, configs.model_version)
 
         self.configs = configs
-        self.tokenizer = None
-        self.model = None
-        self.pipeline = None
+        self.tokenizer: Any = None
+        self.model: Any = None
+        self.pipeline: Any = None
 
     async def initialize(self) -> None:
         """Load transformer token classification model"""
@@ -72,7 +73,7 @@ class TransformerTokenClassifier(TokenClassifier):
             logger.info("TokenClassifier initialized successfully")
 
         except Exception as e:
-            raise RuntimeError(f"Failed to load token classification model: {str(e)}")
+            raise RuntimeError(f"Failed to load token classification model: {str(e)}") from e
 
     async def process(self, request: TokenClassificationRequest) -> TokenClassificationResponse:
         """Classify tokens and extract medical entities"""
@@ -80,7 +81,7 @@ class TransformerTokenClassifier(TokenClassifier):
             await self.initialize()
 
         try:
-            pipeline_results = self.pipeline(request["text"])
+            pipeline_results = self.pipeline(request.text)
 
             # tokenized = self.tokenizer(text, return_tensors="pt", add_special_tokens=True)
             # tokens = self.tokenizer.convert_ids_to_tokens(tokenized["input_ids"][0])
@@ -124,7 +125,7 @@ class TransformerTokenClassifier(TokenClassifier):
                 model_version=self.version,
             )
 
-    def _to_entities(self, pipeline_results: List[Dict]) -> List[Entity]:
+    def _to_entities(self, pipeline_results: list[dict]) -> list[Entity]:
         """Convert pipeline results to MedicalEntity objects"""
         entities = []
 
@@ -149,6 +150,6 @@ class TransformerTokenClassifier(TokenClassifier):
 
         return entities
 
-    def shutdown(self) -> None:
+    async def shutdown(self) -> None:
         """Shutdown the token classification model"""
         pass

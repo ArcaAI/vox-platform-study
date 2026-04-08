@@ -11,10 +11,11 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from smr_v2.core.dependencies import get_provider_registry
+from smr_v2.core.dependencies import get_provider_registry, get_redis
 from smr_v2.core.metrics import HEALTH_CHECK_LATENCY, PROVIDER_HEALTH
 from smr_v2.providers.base import ProviderRegistry
 
@@ -25,12 +26,36 @@ _SERVICE_VERSION = "2.0.0"
 _startup_time = time.monotonic()
 
 
+async def _check_redis(redis_client: aioredis.Redis | None) -> dict:
+    """Ping Redis and return a health check result."""
+    start = time.monotonic()
+    try:
+        if redis_client is None:
+            return {"status": "unhealthy", "duration_ms": 0.0, "error": "no client"}
+        await redis_client.ping()
+        return {
+            "status": "healthy",
+            "duration_ms": round((time.monotonic() - start) * 1000, 2),
+        }
+    except Exception as exc:
+        return {
+            "status": "unhealthy",
+            "duration_ms": round((time.monotonic() - start) * 1000, 2),
+            "error": str(exc),
+        }
+
+
 @router.get("/health")
 async def health_check(
     registry: ProviderRegistry = Depends(get_provider_registry),
+    redis_client: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     """Detailed health check with per-provider component status."""
     checks: dict[str, dict] = {}
+
+    redis_result = await _check_redis(redis_client)
+    checks["redis"] = redis_result
+
     for name in registry.list_providers():
         start = time.monotonic()
         try:
@@ -73,8 +98,16 @@ async def liveness() -> dict:
 @router.get("/health/ready", response_model=None)
 async def readiness(
     registry: ProviderRegistry = Depends(get_provider_registry),
+    redis_client: aioredis.Redis = Depends(get_redis),
 ) -> dict:
-    """Kubernetes readiness probe — returns 200 only if at least one provider is healthy."""
+    """Kubernetes readiness probe — requires Redis + at least one healthy provider."""
+    redis_result = await _check_redis(redis_client)
+    if redis_result["status"] != "healthy":
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "message": "Redis is not available"},
+        )
+
     for name in registry.list_providers():
         try:
             provider = registry.get(name)

@@ -106,6 +106,7 @@ prepare-test-db:
           - packages/domains/**/*
           - packages/applications/**/*
         compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "dev"
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/api/**/*

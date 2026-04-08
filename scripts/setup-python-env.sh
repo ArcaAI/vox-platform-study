@@ -420,10 +420,53 @@ install_dependencies() {
     local nlp_dir="$PROJECT_ROOT/apps/nlp"
     if [[ -f "$nlp_dir/pyproject.toml" ]]; then
         print_step "Installing nlp dependencies..."
-        "${CR[@]}" pip install -e "${nlp_dir}"
+        "${CR[@]}" pip install -e "${nlp_dir}[dev,test]"
         print_ok "nlp installed"
     else
         print_warn "nlp pyproject.toml not found at $nlp_dir — skipping"
+    fi
+
+    # -----------------------------------------------------------------------
+    # Deduplicate OpenMP (libomp) — CRITICAL for macOS
+    # -----------------------------------------------------------------------
+    # pip-installed packages (torch, scikit-learn) bundle their own libomp.dylib.
+    # When loaded alongside conda's libomp (used by numpy/scipy), the OpenMP
+    # runtime aborts with "Error #15: found libomp.dylib already initialized".
+    #
+    # Fix: replace bundled copies with symlinks to conda's single libomp.
+    # This must run AFTER all pip installs since pip may overwrite symlinks.
+    # -----------------------------------------------------------------------
+    print_header "  Deduplicating OpenMP runtime (libomp)"
+
+    local env_path
+    env_path="$(conda info --envs | grep "$CONDA_ENV_NAME" | awk '{print $NF}')"
+    local conda_libomp="$env_path/lib/libomp.dylib"
+
+    if [[ -f "$conda_libomp" ]]; then
+        local site_pkgs="$env_path/lib/python${PYTHON_VERSION}/site-packages"
+        local deduped=0
+
+        for bundled in \
+            "$site_pkgs/torch/lib/libomp.dylib" \
+            "$site_pkgs/sklearn/.dylibs/libomp.dylib" \
+        ; do
+            if [[ -f "$bundled" && ! -L "$bundled" ]]; then
+                print_step "Replacing $(basename "$(dirname "$(dirname "$bundled")")")/…/libomp.dylib → conda libomp"
+                mv "$bundled" "${bundled}.bak"
+                ln -sf "$conda_libomp" "$bundled"
+                deduped=$((deduped + 1))
+            elif [[ -L "$bundled" ]]; then
+                print_info "Already a symlink: $bundled"
+            fi
+        done
+
+        if [[ $deduped -gt 0 ]]; then
+            print_ok "Replaced $deduped bundled libomp copies with symlinks to conda's libomp"
+        else
+            print_ok "No duplicate libomp copies found — nothing to fix"
+        fi
+    else
+        print_warn "Conda libomp not found at $conda_libomp — skipping dedup"
     fi
 
     # --- Post-install verification ---
@@ -494,6 +537,12 @@ print(f'  MPS available: {mps}')
         else
             print_warn "PyTorch import failed — ML features may not work"
         fi
+    fi
+
+    if "${CR[@]}" python -c "import structlog; print(f'  structlog {structlog.__version__}')" 2>/dev/null; then
+        print_ok "structlog OK"
+    else
+        print_fail "structlog import failed"
     fi
 
     if "${CR[@]}" python -c "import spacy; print(f'  spacy {spacy.__version__}')" 2>/dev/null; then

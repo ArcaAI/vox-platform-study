@@ -142,9 +142,7 @@ class ModelCache:
             logger.debug(f"Cache hit for model {model_slug}")
             return entry.model
 
-    async def get_or_load(
-        self, model_config: AiModelConfig
-    ) -> LoadedModel:
+    async def get_or_load(self, model_config: AiModelConfig) -> LoadedModel:
         """
         Get model from cache or load it.
 
@@ -162,9 +160,7 @@ class ModelCache:
         # Load model
         loader = self._get_loader(model_config.format)
         if loader is None:
-            raise ModelLoadError(
-                f"No loader available for format: {model_config.format}"
-            )
+            raise ModelLoadError(f"No loader available for format: {model_config.format}")
 
         logger.info(f"Loading model {model_config.slug} (format={model_config.format})")
         model = await loader.load(model_config)
@@ -331,9 +327,7 @@ class ModelCache:
 
         # Evict expired entries
         expired = [
-            slug
-            for slug, entry in self._cache.items()
-            if entry.age_seconds > self._ttl_seconds
+            slug for slug, entry in self._cache.items() if entry.age_seconds > self._ttl_seconds
         ]
         for slug in expired:
             await self._evict_entry(slug)

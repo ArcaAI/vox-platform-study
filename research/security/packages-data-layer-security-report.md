@@ -1,9 +1,12 @@
 # Security Audit Report: Data Layer Packages
 
 **Audit Date**: 2026-03-24
+**Last Updated**: 2026-04-06
 **Scope**: `packages/database/`, `packages/domains/`, `packages/applications/`
 **Auditor**: Security Auditor Agent
 **HOPE Monorepo Version**: Current working branch
+
+> **Update (2026-04-06)**: Re-scan confirmed all Critical/High findings remain open. `$queryRawUnsafe` still exposed in repository interface. `findUnique` still bypasses soft-delete filter. CryptoService still uses AES-256-CBC. Token revocation still returns `false` (TODO stub).
 
 ---
 

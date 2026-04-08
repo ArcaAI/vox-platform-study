@@ -1,6 +1,7 @@
 import type { CorePrismaClient } from '../../../client';
 import { ValueType } from '../../../generated/core-prisma-client/client.js';
 import { SEED_TENANT_ID } from './00-constants';
+import { TEMPLATE_IDS } from './07-prompt-template';
 
 /**
  * STT (Speech-to-Text) Seed Data
@@ -1343,6 +1344,138 @@ resources:
   max_memory_mb: 8192
   timeout_seconds: 300
 `,
+
+    // =========================================================================
+    // CODE-SWITCHING & LANGUAGE-SPECIFIC PIPELINES
+    // =========================================================================
+
+    code_switching_en_vi: `version: "1.1"
+
+# Code-switching EN-VI pipeline:
+# Auto-detects and switches between English and Vietnamese
+models:
+  asr:
+    hf_model_id: "openai/whisper-tiny"
+    engine: "safetensor"
+  vad:
+    hf_model_id: "onnx-community/silero-vad"
+    engine: "onnx"
+
+preprocessing:
+  target_sample_rate: 16000
+  normalize: true
+  vad:
+    enabled: true
+    threshold: 0.5
+    min_speech_duration_ms: 250
+    min_silence_duration_ms: 500
+  denoise:
+    enabled: true
+    strength: 0.7
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+  code_switching: true
+  initial_prompt: "${TEMPLATE_IDS.WHISPER_INITIAL_PROMPT_EN_VI}"
+
+postprocessing:
+  timestamps:
+    word_timestamps: true
+    sentence_timestamps: true
+  punctuation:
+    enabled: true
+  remove_disfluencies: true
+  lowercase: false
+
+diarization:
+  enabled: false
+`,
+
+    asr_en: `version: "1.1"
+models:
+  asr:
+    hf_model_id: openai/whisper-tiny
+    engine: safetensor
+  vad:
+    hf_model_id: onnx-community/silero-vad
+    engine: onnx
+preprocessing:
+  target_sample_rate: 16000
+  normalize: true
+  vad:
+    enabled: true
+    threshold: 0.6
+    min_speech_duration_ms: 250
+    min_silence_duration_ms: 500
+    padding_ms: 100
+  denoise:
+    enabled: true
+    strength: 0.3
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: en
+  beam_size: 1
+  temperature: 0
+postprocessing:
+  timestamps:
+    word_timestamps: true
+    sentence_timestamps: true
+  punctuation:
+    enabled: true
+  remove_disfluencies: true
+  lowercase: false
+diarization:
+  enabled: false
+
+`,
+
+    asr_ml: `version: "1.1"
+
+# ASR Malayalam pipeline:
+# Malayalam-only transcription with VAD and denoise
+models:
+  asr:
+    hf_model_id: "openai/whisper-tiny"
+    engine: "safetensor"
+  vad:
+    hf_model_id: "onnx-community/silero-vad"
+    engine: "onnx"
+
+preprocessing:
+  target_sample_rate: 16000
+  normalize: true
+  vad:
+    enabled: true
+    threshold: 0.5
+    min_speech_duration_ms: 250
+    min_silence_duration_ms: 500
+  denoise:
+    enabled: true
+    strength: 0.3
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: "ml"
+
+postprocessing:
+  timestamps:
+    word_timestamps: true
+    sentence_timestamps: true
+  punctuation:
+    enabled: true
+  remove_disfluencies: true
+  lowercase: false
+
+diarization:
+  enabled: false
+`,
 };
 
 export const DEFAULT_ASR_PIPELINES = [
@@ -1411,6 +1544,36 @@ export const DEFAULT_ASR_PIPELINES = [
         description: 'Best practice pipeline for high-quality batch transcription. Uses Silero VAD v6, DeepFilterNet for superior noise removal, and Whisper Large V3 (safetensor) for maximum accuracy with hardware acceleration.',
         configYaml: PIPELINE_CONFIGS.best_practice_batch,
         tags: ['best-practice', 'batch', 'high-quality', 'v1.1'],
+    },
+    // =========================================================================
+    // CODE-SWITCHING & LANGUAGE-SPECIFIC PIPELINES
+    // =========================================================================
+    {
+        id: '81000000-0000-0000-0001-000000000010',
+        tenantId: DEFAULT_TENANT_ID,
+        name: 'Code-Switching EN-VI',
+        slug: 'code-switching-en-vi',
+        description: 'Code-switching pipeline for English-Vietnamese.',
+        configYaml: PIPELINE_CONFIGS.code_switching_en_vi,
+        tags: ['code-switching', 'en', 'vi'],
+    },
+    {
+        id: '81000000-0000-0000-0001-000000000011',
+        tenantId: DEFAULT_TENANT_ID,
+        name: 'ASR English',
+        slug: 'asr-en',
+        description: 'English-only ASR pipeline.',
+        configYaml: PIPELINE_CONFIGS.asr_en,
+        tags: ['asr', 'english'],
+    },
+    {
+        id: '81000000-0000-0000-0001-000000000012',
+        tenantId: DEFAULT_TENANT_ID,
+        name: 'ASR Malayalam',
+        slug: 'asr-ml',
+        description: 'Malayalam-only ASR pipeline.',
+        configYaml: PIPELINE_CONFIGS.asr_ml,
+        tags: ['asr', 'malayalam'],
     },
 ];
 

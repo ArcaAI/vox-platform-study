@@ -2,6 +2,7 @@
 
 **Service**: Speech-to-Text V2 (Python/FastAPI)
 **Scan Date**: 2026-03-24
+**Last Updated**: 2026-04-06
 **Scope**: Full source tree (`apps/stt-v2/src/`), Dockerfile, config files, pyproject.toml
 **Context**: Healthcare AI (HOPE monorepo) — processes medical audio containing PHI/ePHI
 **Compliance**: HIPAA Security Rule §164.312 (Access Controls, Audit Controls, Transmission Security, Integrity Controls)

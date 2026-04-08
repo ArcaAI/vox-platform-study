@@ -7,6 +7,15 @@
 .node-base:
   image: node:22-alpine
   tags: [fast]
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - node_modules/
+        - apps/*/node_modules/
+        - packages/*/node_modules/
+      policy: pull
   before_script:
     - corepack enable
     - corepack prepare pnpm@latest --activate
@@ -35,6 +44,15 @@
 .test-node-base:
   image: node:22-alpine
   tags: [test]
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - node_modules/
+        - apps/*/node_modules/
+        - packages/*/node_modules/
+      policy: pull
   before_script:
     - corepack enable
     - corepack prepare pnpm@latest --activate
@@ -60,6 +78,7 @@
 # Tag strategy:
 #   semver tag (v1.2.3) → 1.2.3, 1.2, 1, sha-<sha8>
 #   staging branch      → staging-<sha8>, sha-<sha8>
+#   dev branch          → dev-<sha8>, sha-<sha8>
 #   cicd branch         → cicd-<sha8>, sha-<sha8>
 #   other branches      → <branch>-<sha8>, sha-<sha8>
 
@@ -104,10 +123,12 @@
         TAGS="$SEMVER_TAG $MINOR $MAJOR sha-${short_sha}"
       elif [ "$CI_COMMIT_BRANCH" = "staging" ]; then
         TAGS="staging-${short_sha} sha-${short_sha}"
+      elif [ "$CI_COMMIT_BRANCH" = "dev" ]; then
+        TAGS="dev-${short_sha} sha-${short_sha}"
       elif [ "$CI_COMMIT_BRANCH" = "cicd" ]; then
         TAGS="cicd-${short_sha} sha-${short_sha}"
-      elif [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
-        TAGS="main-${short_sha} sha-${short_sha}"
+      elif [ "$CI_COMMIT_BRANCH" = "release-playground" ]; then
+        TAGS="playground-${short_sha} sha-${short_sha}"
       else
         BRANCH_SLUG=$(echo "$CI_COMMIT_BRANCH" | sed 's/[^a-zA-Z0-9]/-/g')
         TAGS="${BRANCH_SLUG}-${short_sha} sha-${short_sha}"
