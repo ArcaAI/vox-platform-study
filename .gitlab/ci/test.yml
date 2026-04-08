@@ -205,7 +205,7 @@ test-stt-v2:
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - cd apps/stt-v2
-    - pip install --quiet ".[test]"
+    - pip install --quiet --retries 5 --timeout 120 ".[test]"
     - python -m pytest tests/unit/ -v --tb=short --junitxml=../../junit-stt-v2.xml || true
     - python -m pytest tests/ -v --tb=short --junitxml=../../junit-stt-v2.xml --ignore=tests/e2e/ --ignore=tests/integration/ -x
   artifacts:
@@ -249,8 +249,8 @@ test-smr:
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - cd apps/smr
-    - pip install --quiet ".[test]"
-    - python -m pytest src/smr_v2/tests/ -v --tb=short --junitxml=../../junit-smr.xml -x
+    - pip install --quiet --retries 5 --timeout 120 ".[test]"
+    - PYTHONPATH=src python -m pytest src/smr_v2/tests/ -v --tb=short --junitxml=../../junit-smr.xml -x
   artifacts:
     when: always
     reports:
@@ -262,6 +262,45 @@ test-smr:
     - if: $SKIP_TESTS_PY == "true"
       when: never
     - !reference [.rules-smr, rules]
+
+# ── Guardrail tests (pytest) ─────────────────────────────────────────────────
+
+test-guardrail:
+  stage: test
+  image: python:3.11-slim
+  tags: [test]
+  needs:
+    - job: lint-python
+      optional: true
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+    # Disable model loading — no HuggingFace downloads during CI
+    GUARDRAIL_GLINER_ENABLED: "false"
+    GUARDRAIL_OLLAMA_ENABLED: "false"
+    GUARDRAIL_REDIS_URL: $CI_REDIS_URL
+  cache:
+    - key: pip-guardrail
+      paths:
+        - .pip-cache/
+      policy: pull-push
+      fallback_keys:
+        - pip-$CI_DEFAULT_BRANCH
+  script:
+    - echo "── Test infra → Redis=${CI_REDIS_URL:+set} GLiNER=disabled Ollama=disabled ──"
+    - cd apps/guardrail
+    - pip install --quiet --retries 5 --timeout 120 ".[test]"
+    - PYTHONPATH=src python -m pytest src/guardrail/tests/ -v --tb=short --junitxml=../../junit-guardrail.xml -x
+  artifacts:
+    when: always
+    reports:
+      junit: junit-guardrail.xml
+    expire_in: 30 days
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_PY == "true"
+      when: never
+    - !reference [.rules-guardrail, rules]
 
 # ── NLP tests (pytest) ──────────────────────────────────────────────────────
 
@@ -288,7 +327,7 @@ test-nlp:
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - cd apps/nlp
-    - pip install --quiet ".[test]"
+    - pip install --quiet --retries 5 --timeout 120 ".[test]"
     - python -m pytest tests/ -v --tb=short --junitxml=../../junit-nlp.xml -x
   artifacts:
     when: always

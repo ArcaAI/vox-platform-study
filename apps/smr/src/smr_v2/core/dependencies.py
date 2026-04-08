@@ -13,10 +13,8 @@ if TYPE_CHECKING:
 
     from smr_v2.core.config import Settings
     from smr_v2.providers.base import ProviderRegistry
-    from smr_v2.services.audit import GuardrailAuditLogger
     from smr_v2.services.circuit_breaker import CircuitBreaker
     from smr_v2.services.generation_audit import GenerationAuditLogger
-    from smr_v2.services.guardrails import PromptInjectionScanner
     from smr_v2.services.provider_queue import ProviderQueue
     from smr_v2.services.rate_limiter import RateLimitTracker
     from smr_v2.services.shutdown_manager import ShutdownManager
@@ -46,24 +44,6 @@ def get_provider_registry(request: Request) -> ProviderRegistry:
 def get_task_manager(request: Request) -> TaskManager:
     """Retrieve task manager from app.state."""
     return request.app.state.task_manager
-
-
-def get_guardrail_scanner(request: Request) -> PromptInjectionScanner:
-    """Create a PromptInjectionScanner from current settings."""
-    from smr_v2.services.guardrails import PromptInjectionScanner as Scanner
-
-    settings = request.app.state.settings
-    return Scanner(
-        enabled=settings.guardrail_enabled,
-        mode=settings.guardrail_mode,
-    )
-
-
-def get_audit_logger(request: Request) -> GuardrailAuditLogger:
-    """Retrieve a GuardrailAuditLogger instance."""
-    from smr_v2.services.audit import GuardrailAuditLogger
-
-    return GuardrailAuditLogger()
 
 
 def get_generation_audit_logger(request: Request) -> GenerationAuditLogger:

@@ -16,12 +16,25 @@ from httpx import ASGITransport, AsyncClient
 @pytest.fixture
 def mock_provider():
     """Create a mock provider that returns (content, usage) tuple."""
+    from smr_v2.models.stream import StreamChunk
+
     provider = AsyncMock()
     provider.generate = AsyncMock(return_value=("Generated summary", {
         "prompt_tokens": 50,
         "completion_tokens": 100,
         "total_tokens": 150,
     }))
+
+    async def _generate_stream(_request):
+        yield StreamChunk(type="chunk", content="Generated summary")
+        yield StreamChunk(type="usage", data={
+            "prompt_tokens": 50,
+            "completion_tokens": 100,
+            "total_tokens": 150,
+        })
+        yield StreamChunk(type="done", data={})
+
+    provider.generate_stream = _generate_stream
     return provider
 
 
