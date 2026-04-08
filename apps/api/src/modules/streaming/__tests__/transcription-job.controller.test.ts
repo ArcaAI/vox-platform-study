@@ -34,6 +34,11 @@ const createMockS3Service = () => ({
     putFile: vi.fn(),
 });
 
+const createMockTenantBucketService = () => ({
+    getBucketBySlug: vi.fn(),
+    getBucketByName: vi.fn(),
+});
+
 describe('TranscriptionJobController', () => {
     let controller: TranscriptionJobController;
     let mockJobService: ReturnType<typeof createMockJobService>;
@@ -41,6 +46,7 @@ describe('TranscriptionJobController', () => {
     let mockSessionService: ReturnType<typeof createMockSessionService>;
     let mockCls: ReturnType<typeof createMockCls>;
     let mockS3Service: ReturnType<typeof createMockS3Service>;
+    let mockTenantBucketService: ReturnType<typeof createMockTenantBucketService>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -49,12 +55,14 @@ describe('TranscriptionJobController', () => {
         mockSessionService = createMockSessionService();
         mockCls = createMockCls();
         mockS3Service = createMockS3Service();
+        mockTenantBucketService = createMockTenantBucketService();
         controller = new TranscriptionJobController(
             mockJobService as any,
             mockRealtimeService as any,
             mockSessionService as any,
             mockCls as any,
             mockS3Service as any,
+            mockTenantBucketService as any,
         );
     });
 

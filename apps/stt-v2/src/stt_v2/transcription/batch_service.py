@@ -159,6 +159,7 @@ class BatchTranscriptionService:
         consultation_id: str | None = None,
         chunk_callback: Callable[[ChunkTranscriptionResult], Awaitable[None]] | None = None,
         blob_service: Any = None,
+        audio_filename: str | None = None,
     ) -> TranscriptionResult:
         """
         Transcribe audio file with optional speaker diarization.
@@ -410,10 +411,15 @@ class BatchTranscriptionService:
             # ----------------------------------------------------------
             if blob_service is not None:
                 try:
+                    processed_filename = audio_filename or "complete.wav"
+                    processed_bytes = processed.get_vad_merged_wav_bytes()
+                    if processed_bytes is None:
+                        processed_bytes = processed.to_wav_bytes()
                     await blob_service.upload_processed_audio(
-                        audio_bytes=processed.to_bytes() if hasattr(processed, "to_bytes") else audio_bytes,
+                        audio_bytes=processed_bytes,
                         tenant_id=tenant_id,
                         job_id=job_id,
+                        filename=processed_filename,
                     )
                 except Exception as e:
                     logger.warning(f"[{job_id}] Processed audio upload failed (non-fatal): {e}")

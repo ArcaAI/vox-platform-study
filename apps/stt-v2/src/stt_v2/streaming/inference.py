@@ -218,7 +218,7 @@ class StreamingInferenceWorker:
         diarization_enabled = bool(
             self._diarization_config and getattr(self._diarization_config, "enabled", False)
         )
-        speaker_id, speaker_confidence = await self._identify_with_embedding(embedding, result.text)
+        speaker_id, speaker_confidence = await self._identify_speaker(embedding, result.text)
         if diarization_enabled and result.text.strip() and not speaker_id:
             speaker_id = "unknown"
         if speaker_id:
@@ -390,18 +390,6 @@ class StreamingInferenceWorker:
 
         return cleaned
 
-    async def _identify_speaker(
-        self,
-        utterance: AudioUtterance,
-        text: str,
-    ) -> tuple[str | None, float | None]:
-        """Identify speaker for this utterance when diarization is enabled.
-
-        Legacy method -- delegates to _extract_embedding + _identify_with_embedding.
-        """
-        embedding = await self._extract_embedding(utterance)
-        return await self._identify_with_embedding(embedding, text)
-
     async def _extract_embedding(
         self,
         utterance: AudioUtterance,
@@ -439,7 +427,7 @@ class StreamingInferenceWorker:
             )
             return None
 
-    async def _identify_with_embedding(
+    async def _identify_speaker(
         self,
         embedding: Any,
         text: str,

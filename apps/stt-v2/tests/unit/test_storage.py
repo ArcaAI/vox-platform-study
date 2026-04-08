@@ -32,7 +32,7 @@ class TestStoragePathResolver:
             timestamp=ts,
         )
 
-        assert path == "tenant-123/2024/03/consultations/consult-456/job-789_recording.wav"
+        assert path == "2024/03/consultations/consult-456/job-789/raw/recording.wav"
 
     def test_audio_path_without_consultation(self, resolver):
         """Test audio path generation without consultation."""
@@ -46,7 +46,7 @@ class TestStoragePathResolver:
             timestamp=ts,
         )
 
-        assert path == "tenant-123/2024/06/jobs/job-789_audio.mp3"
+        assert path == "2024/06/jobs/job-789/raw/audio.mp3"
 
     def test_audio_path_sanitizes_filename(self, resolver):
         """Test that filenames are sanitized."""
@@ -94,8 +94,7 @@ class TestStoragePathResolver:
             timestamp=ts,
         )
 
-        assert "j-1_transcript.json" in path
-        assert "transcripts" in path
+        assert path == "2024/01/consultations/c-1/j-1/transcript.json"
 
     def test_transcript_path_vtt(self, resolver):
         """Test transcript path for VTT format."""
@@ -106,7 +105,7 @@ class TestStoragePathResolver:
             format="vtt",
         )
 
-        assert path.endswith("_transcript.vtt")
+        assert path.endswith("/transcript.vtt")
 
     def test_model_cache_path(self, resolver):
         """Test model cache path generation."""
@@ -242,7 +241,7 @@ class TestBlobService:
                 format="json",
             )
 
-            assert uri.endswith("_transcript.json")
+            assert uri.endswith("/transcript.json")
 
     @pytest.mark.asyncio
     async def test_download_audio(self, blob_service, mock_minio_client):
