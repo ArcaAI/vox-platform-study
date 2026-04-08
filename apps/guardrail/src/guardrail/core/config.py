@@ -24,7 +24,7 @@ class OllamaConfig(BaseSettings):
     # Dedicated guardian model for medical context validation
     guardian_model: str = "gemma3:latest"
     guardian_enabled: bool = True
-    
+
     timeout_s: int = 60
     max_concurrent: int = 4
     queue_backoff_s: float = 2.0

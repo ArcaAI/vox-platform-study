@@ -155,8 +155,8 @@ def create_app() -> FastAPI:
 
     # Metrics endpoint
     if settings.metrics_enabled:
-        from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
         from fastapi import Response
+        from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
         @app.get("/metrics")
         async def metrics():
