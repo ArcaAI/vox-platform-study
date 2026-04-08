@@ -93,7 +93,7 @@ class GuardianProvider:
                 )
 
             return validation_result
-                
+
         except httpx.TimeoutException:
             logger.error("guardian.timeout", model=self.model)
             return {
