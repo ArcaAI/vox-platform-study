@@ -13,11 +13,8 @@ from fastapi.responses import JSONResponse
 
 from smr_v2.core.config import Settings
 from smr_v2.core.dependencies import (
-    get_audit_logger,
     get_circuit_breakers,
-    get_external_guardrail_client,
     get_generation_audit_logger,
-    get_guardrail_scanner,
     get_provider_queues,
     get_provider_registry,
     get_provider_semaphores,
@@ -31,7 +28,6 @@ from smr_v2.core.dependencies import (
 from smr_v2.core.exceptions import (
     CircuitOpenError,
     ConcurrencyLimitError,
-    ContentBlockedError,
     QueueTimeoutError,
     RateLimitError,
     ShutdownError,
@@ -53,7 +49,6 @@ from smr_v2.core.metrics import (
     GENERATION_ERRORS,
     GENERATION_LATENCY,
     GENERATION_TOTAL,
-    GUARDRAIL_SCANS,
     QUEUE_SIZE,
     QUEUE_WAIT_TIME,
     RATE_LIMIT_REJECTIONS,
@@ -69,11 +64,8 @@ from smr_v2.models.responses import (
 from smr_v2.models.stream import StreamChunk
 from smr_v2.models.task import TaskStatus
 from smr_v2.providers.base import ProviderNotFoundError, ProviderRegistry
-from smr_v2.services.audit import GuardrailAuditEvent, GuardrailAuditLogger
 from smr_v2.services.circuit_breaker import CircuitBreaker, CircuitState
-from smr_v2.services.external_guardrail import ExternalGuardrailClient
 from smr_v2.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
-from smr_v2.services.guardrails import PromptInjectionScanner
 from smr_v2.services.provider_queue import ProviderQueue, QueueFullError
 from smr_v2.services.rate_limiter import RateLimitTracker, estimate_tokens
 from smr_v2.services.retry_handler import calculate_backoff, should_retry
@@ -119,9 +111,6 @@ async def generate(
     background_tasks: BackgroundTasks,
     registry: ProviderRegistry = Depends(get_provider_registry),
     task_manager: TaskManager = Depends(get_task_manager),
-    scanner: PromptInjectionScanner = Depends(get_guardrail_scanner),
-    external_guardrail: ExternalGuardrailClient = Depends(get_external_guardrail_client),
-    audit_logger: GuardrailAuditLogger = Depends(get_audit_logger),
     generation_audit: GenerationAuditLogger = Depends(get_generation_audit_logger),
     rate_limiters: dict[str, RateLimitTracker] = Depends(get_rate_limiters),
     circuit_breakers: dict[str, CircuitBreaker] = Depends(get_circuit_breakers),
@@ -133,75 +122,8 @@ async def generate(
     if shutdown_manager and shutdown_manager.is_shutting_down:
         raise ShutdownError("Service is shutting down — not accepting new requests.")
 
-    scan_start = time.monotonic()
-    scan_result = scanner.scan(request_body.prompt)
-    if request_body.system_prompt:
-        system_scan = scanner.scan(request_body.system_prompt)
-        scan_result = scan_result.merge(system_scan)
-    scan_duration_ms = (time.monotonic() - scan_start) * 1000
-
-    blocked = (
-        scan_result.is_suspicious
-        and scanner.mode == "block"
-        and scan_result.risk_level in ("medium", "high")
-    )
-
-    if blocked:
-        action = "blocked"
-    elif scan_result.is_suspicious:
-        action = "logged"
-    else:
-        action = "allowed"
-
-    GUARDRAIL_SCANS.labels(result=action, risk_level=scan_result.risk_level).inc()
-
     ctx = structlog.contextvars.get_contextvars()
     model = request_body.model or "default"
-
-    audit_logger.log_scan(
-        GuardrailAuditEvent(
-            request_id=ctx.get("request_id", "unknown"),
-            timestamp=datetime.now(UTC).isoformat(),
-            guardrail_type="prompt_injection_scan",
-            action=action,
-            is_suspicious=scan_result.is_suspicious,
-            risk_level=scan_result.risk_level,
-            matched_patterns=scan_result.matched_patterns,
-            provider=request_body.provider,
-            model=model,
-            scan_duration_ms=round(scan_duration_ms, 3),
-        )
-    )
-
-    if scan_result.is_suspicious:
-        logger.warning(
-            "guardrail.prompt_injection_detected",
-            matched_patterns=scan_result.matched_patterns,
-            risk_level=scan_result.risk_level,
-            mode=scanner.mode,
-        )
-        if blocked:
-            GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="blocked").inc()
-            raise ContentBlockedError("Request blocked by content safety filter.")
-
-    external_result = await external_guardrail.validate(
-        prompt=request_body.prompt,
-        system_prompt=request_body.system_prompt,
-    )
-
-    if not external_result.get("allowed", True):
-        logger.warning(
-            "guardrail.external_blocked",
-            provider=request_body.provider,
-            model=model,
-            reason=external_result.get("reason", "external_guardrail_blocked"),
-            confidence=external_result.get("confidence", 0.0),
-            is_medical=external_result.get("is_medical", False),
-        )
-        GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="blocked").inc()
-        raise ContentBlockedError(
-            "Request blocked by external medical validation guardrail."
-        )
 
     rate_limiter = rate_limiters.get(request_body.provider)
     queue = provider_queues.get(request_body.provider)
