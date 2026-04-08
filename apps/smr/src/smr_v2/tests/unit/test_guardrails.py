@@ -10,6 +10,7 @@ RED: Written before implementation.
 from __future__ import annotations
 
 import pytest
+
 from smr_v2.services.guardrails import PromptInjectionScanner, ScanResult
 
 # ── Fixtures ──
