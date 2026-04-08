@@ -99,17 +99,6 @@ def integration_settings() -> Settings:
     )
 
 
-@pytest.fixture
-def guardrail_settings() -> Settings:
-    """Settings with guardrails in block mode."""
-    return Settings(
-        guardrail_enabled=True,
-        guardrail_mode="block",
-        metrics_enabled=False,
-        otel_enabled=False,
-    )
-
-
 @pytest_asyncio.fixture
 async def redis_client() -> AsyncGenerator:
     """Standalone fakeredis client shared across fixtures for direct assertions."""
@@ -167,17 +156,4 @@ async def integration_app_with_failing_provider(
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client, app, redis
-    await redis.aclose()
-
-
-@pytest_asyncio.fixture
-async def integration_client_with_guardrails(
-    guardrail_settings: Settings,
-) -> AsyncGenerator:
-    """Yield (AsyncClient, app) with guardrails in block mode."""
-    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
-    app, _ = _wire_app(guardrail_settings, redis)
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client, app
     await redis.aclose()
