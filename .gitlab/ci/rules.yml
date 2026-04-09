@@ -156,6 +156,22 @@
       changes:
         - apps/nlp/**/*
 
+# ── Guardrail ────────────────────────────────────────────────────────────────
+
+.rules-guardrail:
+  rules:
+    - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/guardrail/**/*
+        compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+      changes:
+        - apps/guardrail/**/*
+
 # ── Database (Prisma migrations) ────────────────────────────────────────────
 
 .rules-database:
@@ -206,12 +222,14 @@
           - "apps/stt-v2/**/*.py"
           - "apps/smr/**/*.py"
           - "apps/nlp/**/*.py"
+          - "apps/guardrail/**/*.py"
           - "apps/stt-v2/**/requirements*.txt"
           - "apps/smr/**/requirements*.txt"
           - "apps/nlp/**/requirements*.txt"
           - "apps/stt-v2/**/pyproject.toml"
           - "apps/smr/**/pyproject.toml"
           - "apps/nlp/**/pyproject.toml"
+          - "apps/guardrail/**/pyproject.toml"
         compare_to: refs/heads/main
     - if: $PIPELINE_TYPE == "dev"
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
@@ -219,6 +237,7 @@
         - "apps/stt-v2/**/*.py"
         - "apps/smr/**/*.py"
         - "apps/nlp/**/*.py"
+        - "apps/guardrail/**/*.py"
 
 # ── SDK packages (for publish stage) ────────────────────────────────────────
 
