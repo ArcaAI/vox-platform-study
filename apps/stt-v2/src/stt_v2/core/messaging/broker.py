@@ -9,6 +9,7 @@ from dramatiq.results.backends import RedisBackend
 
 from stt_v2.core.config.settings import get_settings
 from stt_v2.core.exceptions import NON_RETRYABLE_EXCEPTIONS
+from stt_v2.core.messaging.worker_init_middleware import WorkerInitMiddleware
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -71,6 +72,8 @@ def configure_broker(redis_url: str) -> RedisBroker:
     _broker.add_middleware(CurrentMessage())
     # Results middleware to store return values from actors (needed for streaming)
     _broker.add_middleware(Results(backend=result_backend))
+
+    _broker.add_middleware(WorkerInitMiddleware())
 
     # Set as the global broker
     dramatiq.set_broker(_broker)
