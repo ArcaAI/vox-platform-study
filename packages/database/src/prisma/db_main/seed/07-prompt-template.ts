@@ -2127,7 +2127,7 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
             ...(variables != null ? { variables: variables as Prisma.InputJsonValue } : {}),
         };
         await client.promptTemplate.upsert({
-            where: { id: template.id },
+            where: { tenantId_name: { tenantId: template.tenantId, name: template.name } },
             update: data,
             create: data,
         });
