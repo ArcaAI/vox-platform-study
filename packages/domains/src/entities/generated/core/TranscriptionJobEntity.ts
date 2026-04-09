@@ -3,9 +3,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
-import { JsonValue } from '../../../interfaces';
-import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
+import * as Enums from '../../../enums';
+import { JsonValue } from '../../../interfaces';
 
 export interface ITranscriptionJobEntity extends IBaseTenantEntity {
   jobType: Enums.TranscriptionJobType;

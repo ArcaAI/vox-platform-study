@@ -244,6 +244,12 @@ class JobTimeoutError(JobError):
     error_code = "JOB_TIMEOUT"
 
 
+class JobTerminalError(JobError):
+    """Job is already in a terminal state (COMPLETED/FAILED/CANCELLED/DEAD)."""
+
+    error_code = "JOB_TERMINAL"
+
+
 # =============================================================================
 # Transcription Errors
 # =============================================================================
@@ -287,6 +293,7 @@ NON_RETRYABLE_EXCEPTIONS = (
     AudioProcessingError,
     ValidationError,
     JobCancelledError,
+    JobTerminalError,
     CloudASRAuthError,
 )
 

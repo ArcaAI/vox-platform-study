@@ -11,11 +11,11 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
-import { PolicyEngine, AppAbility } from './policy.engine';
-import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY, PERMISSION_MODE_KEY, RequiredPermission, PermissionMode } from './authorization.guard';
 import { IActiveUserContext } from '../interfaces';
 import { IApiKeyService } from '../services/apiKey/IApiKeyService';
 import { IApiKeyRateLimiter, RateLimitResult } from '../services/apiKey/apikey-rate-limiter.service';
+import { PERMISSION_MODE_KEY, PermissionMode, REQUIRED_PERMISSIONS_KEY, RequiredPermission, SKIP_AUTH_KEY } from './authorization.guard';
+import { AppAbility, PolicyEngine } from './policy.engine';
 
 export const API_KEY_REQUIRED_SCOPES = 'apiKeyRequiredScopes';
 
@@ -83,6 +83,12 @@ export class UnifiedAuthGuard implements CanActivate {
         });
         throw new UnauthorizedException('Invalid API key');
       }
+    }
+
+    // SSE set token in query param
+    if (!request.headers?.authorization && request.query?.token) {
+      request.headers = request.headers || {};
+      request.headers.authorization = `Bearer ${request.query.token}`;
     }
 
     if (this.jwtAuthGuard) {

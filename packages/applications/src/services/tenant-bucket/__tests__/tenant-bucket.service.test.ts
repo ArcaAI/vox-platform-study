@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TenantBucketService } from '../tenant-bucket.service';
 
 const BUCKET_TYPE_SYSTEM = 'SYSTEM';
@@ -35,6 +35,8 @@ const mockS3Service = {
     deleteBucket: vi.fn(),
     listAllBuckets: vi.fn(),
     listFiles: vi.fn(),
+    setBucketPolicy: vi.fn(),
+    signUrl: vi.fn(),
 };
 
 const createMockBucketEntity = (overrides: Partial<{
@@ -52,8 +54,8 @@ const createMockBucketEntity = (overrides: Partial<{
 }> = {}) => ({
     id: overrides.id ?? 'bucket-1',
     tenantId: overrides.tenantId ?? 'tenant-1',
-    name: overrides.name ?? 'arcaai-audio-recordings',
-    slug: overrides.slug ?? 'audio_recordings',
+    name: overrides.name ?? 'hope-audio-arcaai',
+    slug: overrides.slug ?? 'audio',
     description: overrides.description ?? 'Audio recordings',
     bucketType: overrides.bucketType ?? BUCKET_TYPE_SYSTEM,
     pathPattern: overrides.pathPattern ?? '{yyyy}/{MM}/{dd}/{user_name}',
@@ -94,20 +96,10 @@ vi.mock('@arcaai/domains', async (importOriginal) => {
             })),
             CreateDefaultSystemBuckets: vi.fn((tenantId, tenantKey) => [
                 {
-                    id: 'new-system-audio-recordings',
+                    id: 'new-system-audio',
                     tenantId,
-                    name: `${tenantKey}-audio-recordings`,
-                    slug: 'audio_recordings',
-                    bucketType: BUCKET_TYPE_SYSTEM,
-                    isSystemBucket: true,
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                },
-                {
-                    id: 'new-system-uploaded-recordings',
-                    tenantId,
-                    name: `${tenantKey}-uploaded-recordings`,
-                    slug: 'uploaded_recordings',
+                    name: `hope-audio-${tenantKey}`,
+                    slug: 'audio',
                     bucketType: BUCKET_TYPE_SYSTEM,
                     isSystemBucket: true,
                     createdAt: new Date(),
@@ -156,15 +148,14 @@ describe('TenantBucketService', () => {
 
         it('should return all buckets for tenant', async () => {
             const buckets = [
-                createMockBucketEntity({ id: 'b1', slug: 'audio_recordings' }),
-                createMockBucketEntity({ id: 'b2', slug: 'uploaded_recordings' }),
+                createMockBucketEntity({ id: 'b1', slug: 'audio' }),
             ];
             mockTenantBucketRepository.findAllByTenant.mockResolvedValue(buckets);
 
             const result = await service.listBuckets();
 
-            expect(result).toHaveLength(2);
-            expect(result[0].slug).toBe('audio_recordings');
+            expect(result).toHaveLength(1);
+            expect(result[0].slug).toBe('audio');
             expect(mockTenantBucketRepository.findAllByTenant).toHaveBeenCalledWith('tenant-1', undefined);
         });
 
@@ -178,7 +169,7 @@ describe('TenantBucketService', () => {
     });
 
     describe('provisionSystemBuckets', () => {
-        it('should create both system buckets for a new tenant', async () => {
+        it('should create system bucket for a new tenant', async () => {
             const mockTenant = { id: 'tenant-1', key: 'arcaai', name: 'ArcaAI' };
             mockTenantRepository.findById.mockResolvedValue(mockTenant);
             mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([]);
@@ -187,17 +178,16 @@ describe('TenantBucketService', () => {
 
             const result = await service.provisionSystemBuckets('tenant-1');
 
-            expect(result).toHaveLength(2);
-            expect(mockTenantBucketRepository.create).toHaveBeenCalledTimes(2);
-            expect(mockS3Service.createBucket).toHaveBeenCalledTimes(2);
+            expect(result).toHaveLength(1);
+            expect(mockTenantBucketRepository.create).toHaveBeenCalledTimes(1);
+            expect(mockS3Service.createBucket).toHaveBeenCalledTimes(1);
         });
 
         it('should skip provisioning if system buckets already exist', async () => {
             const mockTenant = { id: 'tenant-1', key: 'arcaai', name: 'ArcaAI' };
             mockTenantRepository.findById.mockResolvedValue(mockTenant);
             mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([
-                createMockBucketEntity({ slug: 'audio_recordings' }),
-                createMockBucketEntity({ slug: 'uploaded_recordings' }),
+                createMockBucketEntity({ slug: 'audio' }),
             ]);
 
             const result = await service.provisionSystemBuckets('tenant-1');
@@ -308,13 +298,13 @@ describe('TenantBucketService', () => {
 
     describe('getBucketBySlug', () => {
         it('should return bucket when found', async () => {
-            const bucket = createMockBucketEntity({ slug: 'audio_recordings' });
+            const bucket = createMockBucketEntity({ slug: 'audio' });
             mockTenantBucketRepository.findBySlug.mockResolvedValue(bucket);
 
-            const result = await service.getBucketBySlug('audio_recordings');
+            const result = await service.getBucketBySlug('audio');
 
             expect(result).not.toBeNull();
-            expect(result!.slug).toBe('audio_recordings');
+            expect(result!.slug).toBe('audio');
         });
 
         it('should return null when bucket not found', async () => {
@@ -339,7 +329,7 @@ describe('TenantBucketService', () => {
             mockTenantBucketRepository.findById.mockResolvedValue(
                 createMockBucketEntity({
                     id: 'bucket-1',
-                    name: 'arcaai-audio-recordings',
+                    name: 'hope-audio-arcaai',
                 }),
             );
             mockS3Service.listFiles.mockResolvedValue([
@@ -352,7 +342,7 @@ describe('TenantBucketService', () => {
             const result = await service.getBucketTree('bucket-1', '');
 
             expect(result.bucketId).toBe('bucket-1');
-            expect(result.bucketName).toBe('arcaai-audio-recordings');
+            expect(result.bucketName).toBe('hope-audio-arcaai');
             expect(result.rootPath).toBe('');
 
             const patientsFolder = result.nodes.find(
@@ -366,6 +356,114 @@ describe('TenantBucketService', () => {
             );
             expect(rootFile).toBeDefined();
             expect(rootFile?.size).toBe(512);
+        });
+    });
+
+    describe('getBucketByName', () => {
+        it('should return bucket when found and tenant matches', async () => {
+            const bucket = createMockBucketEntity({ name: 'hope-audio-arcaai' });
+            mockTenantBucketRepository.findByName.mockResolvedValue(bucket);
+
+            const result = await service.getBucketByName('hope-audio-arcaai');
+
+            expect(result).not.toBeNull();
+            expect(result!.name).toBe('hope-audio-arcaai');
+        });
+
+        it('should return null when bucket not found', async () => {
+            mockTenantBucketRepository.findByName.mockResolvedValue(null);
+
+            const result = await service.getBucketByName('non-existent');
+
+            expect(result).toBeNull();
+        });
+
+        it('should return null when bucket belongs to different tenant', async () => {
+            const bucket = createMockBucketEntity({ tenantId: 'other-tenant' });
+            mockTenantBucketRepository.findByName.mockResolvedValue(bucket);
+
+            const result = await service.getBucketByName('hope-audio-arcaai');
+
+            expect(result).toBeNull();
+        });
+    });
+
+    describe('getPresignedUrl', () => {
+        it('should return presigned URL for a valid bucket and file', async () => {
+            const bucket = createMockBucketEntity({
+                id: 'bucket-1',
+                name: 'hope-audio-arcaai',
+            });
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+            mockS3Service.signUrl.mockResolvedValue('https://minio.local/presigned-url');
+
+            const result = await service.getPresignedUrl('bucket-1', '2026/04/08/test.wav');
+
+            expect(result.url).toBe('https://minio.local/presigned-url');
+            expect(mockS3Service.signUrl).toHaveBeenCalledWith(
+                'hope-audio-arcaai',
+                '2026/04/08/test.wav',
+                'get',
+            );
+        });
+
+        it('should throw NotFoundException when bucket not found', async () => {
+            mockTenantBucketRepository.findById.mockResolvedValue(null);
+
+            await expect(service.getPresignedUrl('missing', 'file.wav'))
+                .rejects.toThrow(NotFoundException);
+        });
+
+        it('should throw ForbiddenException when bucket belongs to different tenant', async () => {
+            const bucket = createMockBucketEntity({ tenantId: 'other-tenant' });
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+
+            await expect(service.getPresignedUrl('bucket-1', 'file.wav'))
+                .rejects.toThrow(ForbiddenException);
+        });
+
+        it('should throw BadRequestException for path traversal', async () => {
+            const bucket = createMockBucketEntity();
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+
+            await expect(service.getPresignedUrl('bucket-1', '../../../etc/passwd'))
+                .rejects.toThrow(BadRequestException);
+        });
+    });
+
+    describe('provisionSystemBuckets - bucket policy', () => {
+        it('should call setBucketPolicy after creating each bucket', async () => {
+            const mockTenant = { id: 'tenant-1', key: 'arcaai', name: 'ArcaAI' };
+            mockTenantRepository.findById.mockResolvedValue(mockTenant);
+            mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([]);
+            mockTenantBucketRepository.create.mockImplementation((entity: any) => entity);
+            mockS3Service.createBucket.mockResolvedValue(undefined);
+            mockS3Service.setBucketPolicy.mockResolvedValue(undefined);
+
+            await service.provisionSystemBuckets('tenant-1');
+
+            expect(mockS3Service.setBucketPolicy).toHaveBeenCalledTimes(1);
+            expect(mockS3Service.setBucketPolicy).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    Version: '2012-10-17',
+                    Statement: expect.any(Array),
+                }),
+            );
+        });
+
+        it('should continue provisioning even if setBucketPolicy fails', async () => {
+            const mockTenant = { id: 'tenant-1', key: 'arcaai', name: 'ArcaAI' };
+            mockTenantRepository.findById.mockResolvedValue(mockTenant);
+            mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([]);
+            mockTenantBucketRepository.create.mockImplementation((entity: any) => entity);
+            mockS3Service.createBucket.mockResolvedValue(undefined);
+            mockS3Service.setBucketPolicy.mockRejectedValue(new Error('Policy error'));
+
+            const result = await service.provisionSystemBuckets('tenant-1');
+
+            expect(result).toHaveLength(1);
+            expect(mockTenantBucketRepository.create).toHaveBeenCalledTimes(1);
         });
     });
 });

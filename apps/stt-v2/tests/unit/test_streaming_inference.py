@@ -578,7 +578,7 @@ class TestProcessPartial:
         )
         utt = _make_utterance(is_final=False)
 
-        with patch.object(worker, "_identify_with_embedding") as mock_diar:
+        with patch.object(worker, "_identify_speaker") as mock_diar:
             await worker.process_partial("sess-1", utt)
             mock_diar.assert_not_called()
 

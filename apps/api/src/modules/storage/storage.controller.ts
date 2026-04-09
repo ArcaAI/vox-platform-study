@@ -1,35 +1,35 @@
-import { IS3Service, S3HealthService } from '@arcaai/applications';
+import { IMediaService, IS3Service, ITenantBucketService, S3HealthService } from '@arcaai/applications';
 import {
   BadRequestException,
   Body,
   Controller,
   Delete,
+  FileTypeValidator,
   Get,
   Inject,
+  MaxFileSizeValidator,
   Param,
+  ParseFilePipe,
   Patch,
   Post,
   Query,
   UploadedFile,
   UseInterceptors,
-  ParseFilePipe,
-  MaxFileSizeValidator,
-  FileTypeValidator,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanRead, CanCreate, CanUpdate, CanDelete } from '../../decorators';
+import { CanCreate, CanDelete, CanRead, CanUpdate } from '../../decorators';
 import {
+  BucketInfoResponse,
+  BucketWithFilesResponse,
   CreateBucketRequest,
   CreateBucketResponse,
+  DeleteBucketResponse,
+  DeleteFileResponse,
+  FileInfoResponse,
+  FileUploadResponse,
   UpdateBucketRequest,
   UpdateBucketResponse,
-  BucketInfoResponse,
-  DeleteBucketResponse,
-  BucketWithFilesResponse,
-  FileUploadResponse,
-  FileInfoResponse,
-  DeleteFileResponse,
 } from './dto';
 
 @ApiBearerAuth()
@@ -39,6 +39,8 @@ export class StorageController {
   constructor(
     @Inject(IS3Service)
     private readonly s3Service: IS3Service,
+    @Inject(IMediaService) private readonly mediaService: IMediaService,
+    @Inject(ITenantBucketService) private readonly tenantBucketService: ITenantBucketService,
     private readonly s3HealthService: S3HealthService,
   ) {}
 
@@ -138,11 +140,32 @@ export class StorageController {
       throw new BadRequestException('Invalid file key: path traversal not allowed');
     }
     await this.s3Service.putFile(bucketName, fileKey, file.buffer, file.mimetype);
-    return {
+
+    const response: FileUploadResponse = {
       key: fileKey,
       size: file.size,
       contentType: file.mimetype,
     };
+
+    try {
+      const bucket = await this.tenantBucketService.getBucketByName(bucketName);
+      if (bucket) {
+        const ext = fileKey.includes('.') ? fileKey.split('.').pop()! : '';
+        const media = await this.mediaService.create({
+          name: fileKey,
+          uri: `s3://${bucketName}/${fileKey}`,
+          extension: ext,
+          mimeType: file.mimetype,
+          size: file.size,
+          hash: '',
+        });
+        response.mediaId = media.id;
+      }
+    } catch {
+      // Media record creation is best-effort; do not fail the upload
+    }
+
+    return response;
   }
 
   @Get('buckets/:name/files/:key')

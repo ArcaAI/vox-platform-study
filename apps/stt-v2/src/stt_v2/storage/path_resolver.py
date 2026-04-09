@@ -28,6 +28,7 @@ class StoragePathResolver:
         self.audio_bucket = audio_bucket
         self.chunk_bucket = chunk_bucket
         self.model_bucket = model_bucket
+        self._tenant_bucket_cache: dict[str, str] = {}
 
     def audio_path(
         self,
@@ -38,13 +39,15 @@ class StoragePathResolver:
         timestamp: datetime | None = None,
     ) -> str:
         """
-        Generate path for audio files.
+        Generate path for raw audio files.
 
-        Format: {tenant_id}/{year}/{month}/consultations/{consultation_id}/{job_id}_{filename}
-        Or: {tenant_id}/{year}/{month}/jobs/{job_id}_{filename} (no consultation)
+        Format:
+            {year}/{month}/consultations/{consultation_id}/{job_id}/raw/{filename}
+        Or:
+            {year}/{month}/jobs/{job_id}/raw/{filename}
 
         Args:
-            tenant_id: Tenant ID
+            tenant_id: Tenant ID (used for bucket resolution, not in path)
             consultation_id: Optional consultation ID
             job_id: Transcription job ID
             filename: Original filename
@@ -61,31 +64,31 @@ class StoragePathResolver:
         safe_filename = self._sanitize_filename(filename)
 
         if consultation_id:
-            return f"{tenant_id}/{year}/{month}/consultations/{consultation_id}/{job_id}_{safe_filename}"
+            return f"{year}/{month}/consultations/{consultation_id}/{job_id}/raw/{safe_filename}"
         else:
-            return f"{tenant_id}/{year}/{month}/jobs/{job_id}_{safe_filename}"
+            return f"{year}/{month}/jobs/{job_id}/raw/{safe_filename}"
 
     def processed_audio_path(
         self,
         tenant_id: str,
         consultation_id: str | None,
         job_id: str,
-        filename: str,
+        filename: str = "complete.wav",
         timestamp: datetime | None = None,
     ) -> str:
         """
         Generate path for processed (e.g. denoised / VAD-merged) audio files.
 
         Format:
-            {tenant_id}/{year}/{month}/consultations/{consultation_id}/processed/{job_id}_{filename}
+            {year}/{month}/consultations/{consultation_id}/{job_id}/processed/{filename}
         Or (no consultation):
-            {tenant_id}/{year}/{month}/jobs/processed/{job_id}_{filename}
+            {year}/{month}/jobs/{job_id}/processed/{filename}
 
         Args:
-            tenant_id: Tenant ID
+            tenant_id: Tenant ID (used for bucket resolution, not in path)
             consultation_id: Optional consultation ID
             job_id: Transcription job ID
-            filename: Descriptive filename (e.g. ``processed.wav``)
+            filename: Descriptive filename (default ``complete.wav``)
             timestamp: Optional timestamp (defaults to now)
 
         Returns:
@@ -99,11 +102,11 @@ class StoragePathResolver:
 
         if consultation_id:
             return (
-                f"{tenant_id}/{year}/{month}/consultations/"
-                f"{consultation_id}/processed/{job_id}_{safe_filename}"
+                f"{year}/{month}/consultations/"
+                f"{consultation_id}/{job_id}/processed/{safe_filename}"
             )
         else:
-            return f"{tenant_id}/{year}/{month}/jobs/processed/{job_id}_{safe_filename}"
+            return f"{year}/{month}/jobs/{job_id}/processed/{safe_filename}"
 
     def chunk_path(
         self,
@@ -137,6 +140,11 @@ class StoragePathResolver:
         """
         Generate path for transcript files.
 
+        Format:
+            {year}/{month}/consultations/{consultation_id}/{job_id}/transcript.{format}
+        Or:
+            {year}/{month}/jobs/{job_id}/transcript.{format}
+
         Args:
             tenant_id: Tenant ID
             consultation_id: Optional consultation ID
@@ -151,14 +159,46 @@ class StoragePathResolver:
         year = ts.strftime("%Y")
         month = ts.strftime("%m")
 
-        filename = f"{job_id}_transcript.{format}"
+        filename = f"transcript.{format}"
 
         if consultation_id:
             return (
-                f"{tenant_id}/{year}/{month}/consultations/{consultation_id}/transcripts/{filename}"
+                f"{year}/{month}/consultations/{consultation_id}/{job_id}/{filename}"
             )
         else:
-            return f"{tenant_id}/{year}/{month}/jobs/transcripts/{filename}"
+            return f"{year}/{month}/jobs/{job_id}/{filename}"
+
+    def batch_metadata_path(
+        self,
+        tenant_id: str,
+        consultation_id: str | None,
+        job_id: str,
+        timestamp: datetime | None = None,
+    ) -> str:
+        """Generate path for batch job metadata.
+
+        Format:
+            {year}/{month}/consultations/{consultation_id}/{job_id}/metadata.json
+        Or:
+            {year}/{month}/jobs/{job_id}/metadata.json
+
+        Args:
+            tenant_id: Tenant ID.
+            consultation_id: Optional consultation ID.
+            job_id: Job ID.
+            timestamp: Optional timestamp.
+
+        Returns:
+            Storage path (without bucket prefix).
+        """
+        ts = timestamp or datetime.utcnow()
+        year = ts.strftime("%Y")
+        month = ts.strftime("%m")
+
+        if consultation_id:
+            return f"{year}/{month}/consultations/{consultation_id}/{job_id}/metadata.json"
+        else:
+            return f"{year}/{month}/jobs/{job_id}/metadata.json"
 
     def _streaming_base(
         self,
@@ -168,14 +208,13 @@ class StoragePathResolver:
     ) -> str:
         """Return the common prefix for all streaming paths.
 
-        Format: ``{tenant_id}/{year}/{month}/streaming/{session_id}``
+        Format: ``{year}/{month}/streams/{session_id}``
         """
-        safe_tenant = self._sanitize_path_segment(tenant_id)
         safe_session = self._sanitize_path_segment(session_id)
         ts = timestamp or datetime.utcnow()
         year = ts.strftime("%Y")
         month = ts.strftime("%m")
-        return f"{safe_tenant}/{year}/{month}/streaming/{safe_session}"
+        return f"{year}/{month}/streams/{safe_session}"
 
     def streaming_raw_chunk_path(
         self,
@@ -373,6 +412,48 @@ class StoragePathResolver:
             Full URI (s3://{bucket}/{path})
         """
         return f"s3://{bucket}/{path}"
+
+    def resolve_tenant_bucket(self, tenant_id: str, bucket_type: str) -> str:
+        """Resolve the bucket name for a given tenant and bucket type.
+
+        Checks an in-memory cache first, then falls back to the default
+        bucket for the requested type.
+
+        Args:
+            tenant_id: Tenant ID.
+            bucket_type: One of ``"audio"``, ``"chunk"``, ``"model"``.
+
+        Returns:
+            Bucket name string.
+        """
+        cache_key = f"{tenant_id}:{bucket_type}"
+        if cache_key in self._tenant_bucket_cache:
+            return self._tenant_bucket_cache[cache_key]
+
+        defaults = {
+            "audio": self.audio_bucket,
+            "chunk": self.chunk_bucket,
+            "model": self.model_bucket,
+        }
+        bucket = defaults.get(bucket_type, self.audio_bucket)
+        logger.debug(
+            "resolve_tenant_bucket fallback tenant=%s type=%s -> %s",
+            tenant_id,
+            bucket_type,
+            bucket,
+        )
+        return bucket
+
+    def set_tenant_bucket(self, tenant_id: str, bucket_type: str, bucket_name: str) -> None:
+        """Cache a tenant-specific bucket name.
+
+        Args:
+            tenant_id: Tenant ID.
+            bucket_type: One of ``"audio"``, ``"chunk"``, ``"model"``.
+            bucket_name: The resolved bucket name.
+        """
+        cache_key = f"{tenant_id}:{bucket_type}"
+        self._tenant_bucket_cache[cache_key] = bucket_name
 
     def parse_uri(self, uri: str) -> tuple[str, str]:
         """

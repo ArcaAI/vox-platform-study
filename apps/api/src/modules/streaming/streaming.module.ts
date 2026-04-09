@@ -1,6 +1,7 @@
 import {
   S3ServiceModule,
   StreamingSessionServiceModule,
+  TenantBucketServiceModule,
   TenantServiceModule,
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
@@ -22,6 +23,7 @@ import { TranscriptionJobController } from './transcription-job.controller';
     TranscriptionRealtimeServiceModule,
     StreamingSessionServiceModule,
     TenantServiceModule,
+    TenantBucketServiceModule,
     S3ServiceModule,
     CoreDatabaseModule,
   ],
