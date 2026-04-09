@@ -13,7 +13,7 @@ if [ "$NODE_ENV" = "production" ] || [ "$NODE_ENV" = "staging" ]; then
   ./packages/database/node_modules/.bin/prisma migrate deploy --schema=packages/database/src/prisma/db_main
 else
   echo "Pushing schema (dev mode)..."
-  ./packages/database/node_modules/.bin/prisma db push --schema=packages/database/src/prisma/db_main --skip-generate
+  ./packages/database/node_modules/.bin/prisma db push --schema=packages/database/src/prisma/db_main
 fi
 
 echo "Running database seed..."
