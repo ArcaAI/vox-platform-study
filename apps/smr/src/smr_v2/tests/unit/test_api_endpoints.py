@@ -25,10 +25,18 @@ def settings():
 
 @pytest.fixture
 def mock_provider_registry():
+    from smr_v2.models.stream import StreamChunk
     from smr_v2.providers.base import ProviderRegistry
+
     registry = ProviderRegistry()
     mock_provider = AsyncMock()
     mock_provider.generate = AsyncMock(return_value=("Generated text!", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}))
+
+    async def _generate_stream(_request):
+        yield StreamChunk(type="chunk", content="Generated text!")
+        yield StreamChunk(type="done", data={})
+
+    mock_provider.generate_stream = _generate_stream
     mock_provider.get_info = AsyncMock(return_value=ProviderInfo(
         name="ollama", display_name="Ollama", status="available",
         default_model="llama3.2:latest",
