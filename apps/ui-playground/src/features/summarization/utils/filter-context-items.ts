@@ -29,7 +29,6 @@ function isFuzzyMatch(value: string, query: string): boolean {
 }
 
 function isWithinRecency(createdAt: string | undefined, recency: ContextRecency, now: Date): boolean {
-  console.log('Checking recency:', { createdAt, recency, now });
   if (recency === 'ALL') return true;
   if (!createdAt) return false;
 

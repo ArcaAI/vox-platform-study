@@ -246,11 +246,8 @@ export default function SummaryPage() {
         const { apiClient: freshClient, consultation: freshConsultation } = freshState;
         if (!freshClient || !freshConsultation) continue;
 
-        const [caseNotes, transcriptions] = await Promise.all([
-          freshClient.get<ContextItem[]>(CONTEXT_ENDPOINTS.CASE_NOTES(freshConsultation.id)),
-          freshClient.get<ContextItem[]>(CONTEXT_ENDPOINTS.TRANSCRIPTIONS(freshConsultation.id)),
-        ]);
-        merged.push(...(caseNotes ?? []), ...(transcriptions ?? []));
+        const items = await freshClient.get<ContextItem[]>(CONTEXT_ENDPOINTS.GET(freshConsultation.id));
+        merged.push(...(items ?? []));
       }
 
       const deduped = merged
