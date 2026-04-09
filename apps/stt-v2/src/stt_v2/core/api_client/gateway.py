@@ -8,7 +8,7 @@ import httpx
 import structlog
 
 from stt_v2.core.config.settings import get_settings
-from stt_v2.core.exceptions import APIGatewayError
+from stt_v2.core.exceptions import APIGatewayError, JobTerminalError
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -103,12 +103,38 @@ class APIGatewayClient:
 
         Calls NestJS ``PATCH /internal/stt/jobs/{id}/start`` which expects
         an ``InternalStartJobRequest`` body with ``workerId``.
+
+        Raises ``JobTerminalError`` if the job is already in a
+        terminal state (COMPLETED/FAILED/CANCELLED/DEAD) so callers can
+        skip processing instead of retrying.
         """
-        return await self._request(
-            "PATCH",
-            f"/internal/stt/jobs/{job_id}/start",
-            json={"workerId": worker_id},
-        )
+        try:
+            return await self._request(
+                "PATCH",
+                f"/internal/stt/jobs/{job_id}/start",
+                json={"workerId": worker_id},
+            )
+        except APIGatewayError as e:
+            status_code = (e.details or {}).get("status_code")
+            if status_code == 500 and self._is_terminal_state_error(e):
+                raise JobTerminalError(
+                    f"Job {job_id} is already in a terminal state",
+                    details=e.details,
+                ) from e
+            raise
+
+    @staticmethod
+    def _is_terminal_state_error(error: APIGatewayError) -> bool:
+        """Check if an API error indicates the job is already terminal."""
+        cause = error.__cause__
+        if isinstance(cause, httpx.HTTPStatusError):
+            try:
+                body = cause.response.json()
+                msg = body.get("message", "")
+                return "Cannot start job in" in msg or "Cannot fail job in" in msg
+            except Exception:
+                pass
+        return False
 
     async def update_job_progress(
         self,

@@ -89,6 +89,8 @@ export const DEFAULT_POLICIES = [
             // Settings & Configuration
             { action: 'manage', subject: 'GlobalSetting', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'manage', subject: 'Tag', conditions: { tenantId: '${context.tenantId}' } },
+            // Storage management
+            { action: 'manage', subject: 'Storage', conditions: { tenantId: '${context.tenantId}' } },
             // Notifications & Subscriptions
             { action: 'manage', subject: 'Notification', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'manage', subject: 'ResourceSubscription', conditions: { tenantId: '${context.tenantId}' } },

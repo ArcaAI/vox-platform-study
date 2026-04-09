@@ -1,7 +1,7 @@
-import { ITenantBucketService, TenantBucketResponse, CreateTenantBucketRequest, TenantBucketTreeResponse } from '@arcaai/applications';
-import { Controller, Body, Param, Inject, Delete, Get, Post, Query } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiParam, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
-import { Authorize, CanRead, CanCreate, CanDelete, CanManage } from '../../decorators';
+import { CreateTenantBucketRequest, ITenantBucketService, TenantBucketResponse, TenantBucketTreeResponse } from '@arcaai/applications';
+import { Body, Controller, Delete, Get, Inject, Param, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Authorize, CanCreate, CanDelete, CanManage, CanRead } from '../../decorators';
 
 @ApiBearerAuth()
 @ApiTags('tenant-storage')
@@ -68,5 +68,15 @@ export class TenantBucketController {
   @CanManage('Tenant')
   async provisionSystemBuckets(@Param('tenantId') tenantId: string): Promise<TenantBucketResponse[]> {
     return this.tenantBucketService.provisionSystemBuckets(tenantId);
+  }
+
+  @Get(':id/presigned-url')
+  @ApiOperation({ summary: 'Get presigned download URL for a file in a tenant bucket' })
+  @ApiParam({ name: 'id', description: 'Bucket ID' })
+  @ApiQuery({ name: 'key', description: 'File key/path (e.g. 2026/04/08/streaming/file.wav)', required: true })
+  @ApiResponse({ status: 200, description: 'Presigned download URL' })
+  @CanRead('Storage')
+  async getPresignedUrl(@Param('id') id: string, @Query('key') key: string): Promise<{ url: string }> {
+    return this.tenantBucketService.getPresignedUrl(id, key);
   }
 }

@@ -244,6 +244,7 @@ class SessionManager:
         pipeline_id: str,
         consultation_id: str | None = None,
         sample_rate: int = 16000,
+        audio_bucket_name: str | None = None,
     ) -> StreamSession | None:
         """Create a new streaming session.
 
@@ -256,11 +257,17 @@ class SessionManager:
             pipeline_id: Pipeline UUID or slug.
             consultation_id: Optional consultation context.
             sample_rate: Audio sample rate in Hz.
+            audio_bucket_name: Optional tenant-scoped audio bucket override.
         """
         # Check capacity
         if not await self._capacity_guard.try_acquire(session_id):
             return None
         try:
+            # Register tenant bucket override (mirrors batch transcription)
+            if audio_bucket_name and tenant_id:
+                blob = self._get_blob_service()
+                blob._resolver.set_tenant_bucket(tenant_id, "audio", audio_bucket_name)
+
             # Build metadata
             metadata = SessionMetadata(
                 session_id=session_id,

@@ -77,7 +77,7 @@ def _patch_worker_deps(
 ):
     """Return a tuple of context managers + mocks for worker dependencies.
 
-    Returns (p1, p2, p3, p4, api, blob, reader, batch) where p1-p4 are
+    Returns (p1, p2, p3, p4, p5, api, blob, reader, batch) where p1-p5 are
     patch context managers and api/blob/reader/batch are the mock instances.
     """
     # --- API Client ---
@@ -95,6 +95,7 @@ def _patch_worker_deps(
         _blob.download_audio = AsyncMock(return_value=b"fake audio")
         _blob.upload_transcript = AsyncMock(return_value="s3://t/transcript.json")
         _blob.upload_processed_audio = AsyncMock(return_value="s3://t/processed.wav")
+        _blob.upload_batch_metadata = AsyncMock(return_value="s3://t/metadata.json")
 
     # --- Pipeline Reader ---
     _reader = pipeline_reader if pipeline_reader is not None else AsyncMock()
@@ -107,6 +108,11 @@ def _patch_worker_deps(
     if batch_service is None:
         _batch.transcribe = AsyncMock(return_value=result or _make_result())
 
+    _mock_settings = MagicMock()
+    _mock_settings.pubsub_enabled = True
+    _mock_settings.pubsub_channel_prefix = "stt:transcription:"
+    _mock_settings.redis_url = "redis://localhost:6379/0"
+
     return (
         patch("stt_v2.transcription.workers.transcribe_file.get_api_client", return_value=_api),
         patch("stt_v2.transcription.workers.transcribe_file.get_blob_service", return_value=_blob),
@@ -115,6 +121,9 @@ def _patch_worker_deps(
         ),
         patch(
             "stt_v2.transcription.workers.transcribe_file.get_batch_service", return_value=_batch
+        ),
+        patch(
+            "stt_v2.transcription.workers.transcribe_file.get_settings", return_value=_mock_settings
         ),
         _api,
         _blob,
@@ -216,9 +225,9 @@ class TestWorkerPubSubHappyPath:
     @pytest.mark.asyncio
     async def test_successful_job_publishes_full_event_sequence(self, pubsub_capture):
         """Verify: PROCESSING -> transcript -> COMPLETED events in order."""
-        p1, p2, p3, p4, api, blob, reader, batch = _patch_worker_deps()
+        p1, p2, p3, p4, p5, api, blob, reader, batch = _patch_worker_deps()
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             await _transcribe_file_async(
                 job_id="j-100",
                 tenant_id="t-1",
@@ -246,9 +255,9 @@ class TestWorkerPubSubHappyPath:
     @pytest.mark.asyncio
     async def test_processing_status_includes_worker_id(self, pubsub_capture):
         """Verify the PROCESSING status event includes the worker ID."""
-        p1, p2, p3, p4, *_ = _patch_worker_deps()
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps()
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             await _transcribe_file_async(
                 job_id="j-101",
                 tenant_id="t-1",
@@ -264,9 +273,9 @@ class TestWorkerPubSubHappyPath:
     @pytest.mark.asyncio
     async def test_all_events_published_to_correct_channel(self, pubsub_capture):
         """Verify all events go to stt:transcription:{jobId} channel."""
-        p1, p2, p3, p4, *_ = _patch_worker_deps()
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps()
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             await _transcribe_file_async(
                 job_id="j-102",
                 tenant_id="t-1",
@@ -286,9 +295,9 @@ class TestWorkerPubSubHappyPath:
             duration=10.0,
             processing_time=2.5,
         )
-        p1, p2, p3, p4, *_ = _patch_worker_deps(result=result)
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(result=result)
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             await _transcribe_file_async(
                 job_id="j-103",
                 tenant_id="t-1",
@@ -308,9 +317,9 @@ class TestWorkerPubSubHappyPath:
     async def test_publisher_closed_in_finally_block(self, pubsub_capture):
         """Verify publisher.close() is called even on success."""
         _mock_redis = pubsub_capture.mock_redis()
-        p1, p2, p3, p4, api, *_ = _patch_worker_deps()
+        p1, p2, p3, p4, p5, api, *_ = _patch_worker_deps()
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             await _transcribe_file_async(
                 job_id="j-104",
                 tenant_id="t-1",
@@ -344,9 +353,9 @@ class TestWorkerWithConsultation:
         api.complete_job = AsyncMock()
         api.create_transcript = AsyncMock(return_value={"contextItemId": "ctx-55"})
 
-        p1, p2, p3, p4, *_ = _patch_worker_deps(api_client=api)
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(api_client=api)
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             await _transcribe_file_async(
                 job_id="j-200",
                 tenant_id="t-1",
@@ -374,9 +383,9 @@ class TestWorkerWithConsultation:
         api.complete_job = AsyncMock()
         api.create_transcript = AsyncMock()
 
-        p1, p2, p3, p4, *_ = _patch_worker_deps(api_client=api)
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(api_client=api)
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             await _transcribe_file_async(
                 job_id="j-201",
                 tenant_id="t-1",
@@ -401,9 +410,9 @@ class TestWorkerWithConsultation:
         api.complete_job = AsyncMock()
         api.create_transcript = AsyncMock(side_effect=Exception("Gateway down"))
 
-        p1, p2, p3, p4, *_ = _patch_worker_deps(api_client=api)
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(api_client=api)
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             await _transcribe_file_async(
                 job_id="j-202",
                 tenant_id="t-1",
@@ -435,12 +444,12 @@ class TestWorkerErrorPaths:
         reader = AsyncMock()
         reader.get_pipeline = AsyncMock(side_effect=NotFoundError("Pipeline gone"))
 
-        p1, p2, p3, p4, *_ = _patch_worker_deps(
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(
             api_client=api,
             pipeline_reader=reader,
         )
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             with pytest.raises(dramatiq.middleware.SkipMessage):
                 await _transcribe_file_async(
                     job_id="j-300",
@@ -472,13 +481,13 @@ class TestWorkerErrorPaths:
         blob = AsyncMock()
         blob.download_audio = AsyncMock(return_value=b"audio")
 
-        p1, p2, p3, p4, *_ = _patch_worker_deps(
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(
             api_client=api,
             batch_service=batch,
             blob_service=blob,
         )
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             with pytest.raises(TranscriptionError):
                 await _transcribe_file_async(
                     job_id="j-301",
@@ -503,12 +512,12 @@ class TestWorkerErrorPaths:
         blob = AsyncMock()
         blob.download_audio = AsyncMock(side_effect=RuntimeError("disk full"))
 
-        p1, p2, p3, p4, *_ = _patch_worker_deps(
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(
             api_client=api,
             blob_service=blob,
         )
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             with pytest.raises(RuntimeError, match="disk full"):
                 await _transcribe_file_async(
                     job_id="j-302",
@@ -530,12 +539,12 @@ class TestWorkerErrorPaths:
         blob = AsyncMock()
         blob.download_audio = AsyncMock(side_effect=RuntimeError("boom"))
 
-        p1, p2, p3, p4, *_ = _patch_worker_deps(
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(
             api_client=api,
             blob_service=blob,
         )
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             with pytest.raises(RuntimeError):
                 await _transcribe_file_async(
                     job_id="j-303",
@@ -587,13 +596,13 @@ class TestWorkerProgressCallback:
         blob.download_audio = AsyncMock(return_value=b"audio")
         blob.upload_transcript = AsyncMock(return_value="s3://t.json")
 
-        p1, p2, p3, p4, *_ = _patch_worker_deps(
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(
             api_client=api,
             batch_service=batch,
             blob_service=blob,
         )
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             await _transcribe_file_async(
                 job_id="j-400",
                 tenant_id="t-1",
@@ -633,13 +642,13 @@ class TestWorkerProgressCallback:
         blob.download_audio = AsyncMock(return_value=b"audio")
         blob.upload_transcript = AsyncMock(return_value="s3://t.json")
 
-        p1, p2, p3, p4, *_ = _patch_worker_deps(
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(
             api_client=api,
             batch_service=batch,
             blob_service=blob,
         )
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             # Should complete despite API progress failure
             await _transcribe_file_async(
                 job_id="j-401",
@@ -703,12 +712,12 @@ class TestWorkerChunkCallback:
         blob.download_audio = AsyncMock(return_value=b"audio")
         blob.upload_transcript = AsyncMock(return_value="s3://t.json")
 
-        p1, p2, p3, p4, *_ = _patch_worker_deps(
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(
             batch_service=batch,
             blob_service=blob,
         )
 
-        with p1, p2, p3, p4, _patch_publisher(pubsub_capture):
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
             await _transcribe_file_async(
                 job_id="j-500",
                 tenant_id="t-1",
@@ -825,7 +834,7 @@ class TestWorkerWithPublisherDisabled:
         blob.upload_transcript = AsyncMock(return_value="s3://t.json")
         blob.upload_processed_audio = AsyncMock(return_value="s3://p.wav")
 
-        p1, p2, p3, p4, *_ = _patch_worker_deps(
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(
             api_client=api,
             blob_service=blob,
         )
@@ -879,7 +888,7 @@ class TestWorkerWithPublisherDisabled:
                 self_pub._redis = None
                 self_pub._connected = False
 
-        p1, p2, p3, p4, *_ = _patch_worker_deps(
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(
             api_client=api,
             blob_service=blob,
         )

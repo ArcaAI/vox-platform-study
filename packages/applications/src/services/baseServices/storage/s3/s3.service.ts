@@ -1,22 +1,23 @@
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
-  S3Client,
-  PutObjectCommand,
-  DeleteObjectCommand,
-  GetObjectCommand,
-  ListObjectsV2Command,
   CopyObjectCommand,
-  ListBucketsCommand,
   CreateBucketCommand,
   DeleteBucketCommand,
-  PutBucketTaggingCommand,
+  DeleteObjectCommand,
   GetBucketTaggingCommand,
+  GetObjectCommand,
+  ListBucketsCommand,
+  ListObjectsV2Command,
+  PutBucketPolicyCommand,
+  PutBucketTaggingCommand,
+  PutObjectCommand,
+  S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 
+import { NotFoundException } from '@arcaai/exceptions';
 import { IAppSettingsService } from '../../_meta/';
 import { IS3Service } from './IS3Service';
-import { NotFoundException } from '@arcaai/exceptions';
 
 const DEFAULT_PRESIGNED_URL_EXPIRY = 3600;
 
@@ -844,6 +845,34 @@ export class S3Service implements IS3Service, OnModuleInit {
       this.logger.warn({
         message: 'S3 configuration still not available after refresh',
       });
+    }
+  }
+
+  public async setBucketPolicy(bucketName: string, policy: Record<string, unknown>): Promise<void> {
+    if (!bucketName || /[.]{2}|[/\\]/.test(bucketName)) {
+      throw new Error(`Invalid bucket name: ${bucketName}`);
+    }
+    const s3 = await this.ensureInitialized();
+
+    try {
+      await s3.send(
+        new PutBucketPolicyCommand({
+          Bucket: bucketName,
+          Policy: JSON.stringify(policy),
+        }),
+      );
+
+      this.logger.log({
+        message: 'Bucket policy set successfully',
+        bucket: bucketName,
+      });
+    } catch (error) {
+      this.logger.error({
+        message: 'Error setting S3 bucket policy',
+        bucket: bucketName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   }
 

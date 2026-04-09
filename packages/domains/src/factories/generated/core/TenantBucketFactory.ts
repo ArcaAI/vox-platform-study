@@ -1,15 +1,17 @@
-import { generateId } from '../../../utils';
-import { TenantBucketEntity, ITenantBucketEntity } from '../../../entities/generated/core/TenantBucketEntity';
+import { TenantBucketEntity } from '../../../entities/generated/core/TenantBucketEntity';
 import { TenantBucketType } from '../../../enums';
+import { generateId } from '../../../utils';
 
 export const SYSTEM_BUCKET_SLUGS = {
-  AUDIO_RECORDINGS: 'audio_recordings',
-  UPLOADED_RECORDINGS: 'uploaded_recordings',
+  AUDIO: 'audio',
 } as const;
 
 const SYSTEM_BUCKET_DESCRIPTIONS: Record<string, string> = {
-  [SYSTEM_BUCKET_SLUGS.AUDIO_RECORDINGS]: 'Live streaming audio recordings',
-  [SYSTEM_BUCKET_SLUGS.UPLOADED_RECORDINGS]: 'Uploaded files for batch transcription',
+  [SYSTEM_BUCKET_SLUGS.AUDIO]: 'Tenant audio storage (streaming and batch jobs)',
+};
+
+const SYSTEM_BUCKET_PATH_PATTERNS: Record<string, string> = {
+  [SYSTEM_BUCKET_SLUGS.AUDIO]: '{yyyy}/{MM}',
 };
 
 function sanitizeBucketName(input: string): string {
@@ -22,8 +24,7 @@ function sanitizeBucketName(input: string): string {
 
 function buildBucketName(tenantKey: string, slug: string): string {
   const sanitizedKey = sanitizeBucketName(tenantKey);
-  const sanitizedSlug = sanitizeBucketName(slug.replace(/_/g, '-'));
-  return `${sanitizedKey}-${sanitizedSlug}`;
+  return `hope-audio-${sanitizedKey}`;
 }
 
 export class TenantBucketFactory {
@@ -35,7 +36,7 @@ export class TenantBucketFactory {
       slug,
       description: description ?? SYSTEM_BUCKET_DESCRIPTIONS[slug] ?? null,
       bucketType: TenantBucketType.SYSTEM,
-      pathPattern: '{yyyy}/{MM}/{dd}/{user_name}',
+      pathPattern: SYSTEM_BUCKET_PATH_PATTERNS[slug] ?? '{yyyy}/{MM}/{dd}/{user_name}',
       createdAt: new Date(),
       updatedAt: new Date(),
       createdBy: createdBy ?? null,
@@ -68,8 +69,7 @@ export class TenantBucketFactory {
 
   static CreateDefaultSystemBuckets(tenantId: string, tenantKey: string, createdBy?: string): TenantBucketEntity[] {
     return [
-      this.CreateSystemBucket(tenantId, tenantKey, SYSTEM_BUCKET_SLUGS.AUDIO_RECORDINGS, undefined, createdBy),
-      this.CreateSystemBucket(tenantId, tenantKey, SYSTEM_BUCKET_SLUGS.UPLOADED_RECORDINGS, undefined, createdBy),
+      this.CreateSystemBucket(tenantId, tenantKey, SYSTEM_BUCKET_SLUGS.AUDIO, undefined, createdBy),
     ];
   }
 }

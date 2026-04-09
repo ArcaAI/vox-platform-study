@@ -9,7 +9,7 @@ import dramatiq
 
 from ...core.api_client.gateway import get_api_client
 from ...core.config.settings import get_settings
-from ...core.exceptions import NotFoundError, TranscriptionError
+from ...core.exceptions import JobTerminalError, NotFoundError, TranscriptionError
 from ...core.messaging.pubsub import TranscriptionEventPublisher
 from ...pipeline.config_reader import get_pipeline_reader
 from ...storage.blob_service import get_blob_service
@@ -34,6 +34,7 @@ def transcribe_file(
     media_id: str | None = None,
     language: str | None = None,
     code_switching: bool | None = None,
+    audio_bucket_name: str | None = None,
 ) -> None:
     """
     Dramatiq actor for batch file transcription.
@@ -61,6 +62,7 @@ def transcribe_file(
         media_id: Optional media ID
         language: Optional language hint for ASR
         code_switching: Optional flag to enable code-switching mode
+        audio_bucket_name: Optional tenant-scoped bucket name
     """
     # Run async code in event loop
     asyncio.run(
@@ -73,6 +75,7 @@ def transcribe_file(
             media_id=media_id,
             language=language,
             code_switching=code_switching,
+            audio_bucket_name=audio_bucket_name,
         )
     )
 
@@ -86,6 +89,7 @@ async def _transcribe_file_async(
     media_id: str | None = None,
     language: str | None = None,
     code_switching: bool | None = None,
+    audio_bucket_name: str | None = None,
 ) -> None:
     """Async implementation of file transcription.
 
@@ -98,6 +102,9 @@ async def _transcribe_file_async(
     blob_service = get_blob_service()
     pipeline_reader = get_pipeline_reader()
     batch_service = get_batch_service()
+
+    if audio_bucket_name and tenant_id:
+        blob_service._resolver.set_tenant_bucket(tenant_id, "audio", audio_bucket_name)
 
     worker_id = f"worker-{os.getpid()}"
     logger.info(f"[{job_id}] Starting batch transcription (worker={worker_id})")
@@ -205,6 +212,8 @@ async def _transcribe_file_async(
                 _progress_state["in_flight"] = True
                 _schedule_progress_task(_flush_progress_updates())
 
+        audio_filename = audio_uri.rsplit("/", 1)[-1] if audio_uri else None
+
         result = await batch_service.transcribe(
             job_id=job_id,
             audio_bytes=audio_bytes,
@@ -214,6 +223,7 @@ async def _transcribe_file_async(
             tenant_id=tenant_id,
             consultation_id=consultation_id,
             blob_service=blob_service,
+            audio_filename=audio_filename,
         )
 
         # Await pending progress tasks before publishing final events
@@ -231,6 +241,18 @@ async def _transcribe_file_async(
             format="json",
         )
         result.transcript_uri = transcript_uri
+
+        # Step 5b: Upload job metadata
+        try:
+            metadata_uri = await blob_service.upload_batch_metadata(
+                metadata_data=json.dumps(result.to_dict(), indent=2),
+                tenant_id=tenant_id,
+                job_id=job_id,
+                consultation_id=consultation_id,
+            )
+            logger.info(f"[{job_id}] Uploaded metadata to {metadata_uri}")
+        except Exception as e:
+            logger.warning(f"[{job_id}] Metadata upload failed (non-fatal): {e}")
 
         # Step 6: Create transcript context item (if consultation provided)
         context_item_id = None
@@ -277,6 +299,11 @@ async def _transcribe_file_async(
         await publisher.publish_error(job_id, "NOT_FOUND", str(e))
         await _fail_job(api_client, publisher, job_id, str(e), "NOT_FOUND")
         raise dramatiq.middleware.SkipMessage() from e
+
+    except JobTerminalError:
+        # Job was already completed/failed by a previous attempt -- skip silently
+        logger.warning(f"[{job_id}] Job already in terminal state, skipping duplicate delivery")
+        return
 
     except TranscriptionError as e:
         # Transcription-specific error (may be retryable)

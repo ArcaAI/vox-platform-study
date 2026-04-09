@@ -125,6 +125,13 @@ export interface IS3Service {
    * @returns MinIO configuration information
    */
   getMinIOInfo(): { isMinIO: boolean; endpoint?: string; version?: string };
+
+  /**
+   * Set a bucket policy (IAM-style JSON policy document)
+   * @param bucketName - Name of the S3 bucket
+   * @param policy - Policy document as a JSON-serializable object
+   */
+  setBucketPolicy(bucketName: string, policy: Record<string, unknown>): Promise<void>;
 }
 
 export const IS3Service = Symbol('IS3Service');

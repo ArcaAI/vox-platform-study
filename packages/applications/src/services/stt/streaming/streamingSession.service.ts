@@ -1,9 +1,9 @@
-import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { firstValueFrom } from 'rxjs';
-import { IStreamingSessionService } from './IStreamingSessionService';
-import { CreateStreamingSessionRequest, StreamingSessionStatus, StreamingAvailability } from './dto';
 import { IConfigService } from '../../baseServices/_meta/config';
+import { IStreamingSessionService } from './IStreamingSessionService';
+import { CreateStreamingSessionRequest, StreamingAvailability, StreamingSessionStatus } from './dto';
 
 /**
  * StreamingSessionService
@@ -78,6 +78,7 @@ export class StreamingSessionService implements IStreamingSessionService {
             language: dto.language ?? null,
             code_switching: dto.codeSwitching ?? null,
             diarization: dto.diarization ?? null,
+            audio_bucket_name: dto.audioBucketName ?? null,
           },
           { timeout: 15000 },
         ),
@@ -153,7 +154,7 @@ export class StreamingSessionService implements IStreamingSessionService {
    */
   async removeSession(sessionId: string): Promise<void> {
     try {
-      await firstValueFrom(this.httpService.delete(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}`, { timeout: 10000 }));
+      await firstValueFrom(this.httpService.delete(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}`, { timeout: 30000 }));
 
       this.logger.log({
         message: 'Streaming session removed',
