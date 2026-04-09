@@ -8,8 +8,8 @@ from dramatiq.results import Results
 from dramatiq.results.backends import RedisBackend
 
 from stt_v2.core.config.settings import get_settings
-from stt_v2.core.messaging.worker_init_middleware import WorkerInitMiddleware
 from stt_v2.core.exceptions import NON_RETRYABLE_EXCEPTIONS
+from stt_v2.core.messaging.worker_init_middleware import WorkerInitMiddleware
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
