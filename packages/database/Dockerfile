@@ -6,9 +6,6 @@ RUN apk add --no-cache dumb-init && \
 
 WORKDIR /app
 
-ARG DATABASE_URL
-ENV DATABASE_URL=${DATABASE_URL}
-
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/config-ts/package.json ./packages/config-ts/
 COPY packages/database/package.json ./packages/database/
@@ -19,7 +16,8 @@ COPY packages/config-ts/ ./packages/config-ts/
 COPY packages/database/ ./packages/database/
 COPY prisma.config.ts ./
 
-RUN pnpm db:generate && pnpm --filter @arcaai/database build
+RUN DATABASE_URL="postgresql://build:build@localhost/build" \
+    pnpm db:generate && pnpm --filter @arcaai/database build
 
 FROM node:22-alpine AS runtime
 
