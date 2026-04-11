@@ -105,7 +105,10 @@ class StreamingInferenceWorker:
         session_id: str,
         utterance: AudioUtterance,
     ) -> SegmentResult:
-        """Run the per-utterance pipeline: embed -> ASR -> diarize -> publish.
+        """Run the per-utterance pipeline.
+
+        Final utterances:   embed + ASR in parallel -> diarize -> publish
+        Partial utterances: ASR only -> publish
 
         Parameters
         ----------
@@ -122,22 +125,33 @@ class StreamingInferenceWorker:
         start_ts = time.monotonic()
         utt_duration = round(utterance.end_time - utterance.start_time, 1)
 
-        # Step 1+2: Speaker Embedding + ASR in parallel (no data dependency)
-        logger.debug(
-            "Running embedding + ASR in parallel",
-            session_id=session_id,
-            component="INFERENCE",
-            duration_s=utt_duration,
-            utterance_index=utterance.utterance_index,
-        )
+        # Step 1+2: Speaker Embedding + ASR
         try:
-            embedding, inference_out = await asyncio.gather(
-                self._extract_embedding(utterance),
-                self._run_inference(utterance),
-            )
+            if utterance.is_final:
+                logger.debug(
+                    "Running embedding + ASR in parallel",
+                    session_id=session_id,
+                    component="INFERENCE",
+                    duration_s=utt_duration,
+                    utterance_index=utterance.utterance_index,
+                )
+                embedding, inference_out = await asyncio.gather(
+                    self._extract_embedding(utterance),
+                    self._run_inference(utterance),
+                )
+            else:
+                logger.debug(
+                    "Running ASR only (partial utterance)",
+                    session_id=session_id,
+                    component="INFERENCE",
+                    duration_s=utt_duration,
+                    utterance_index=utterance.utterance_index,
+                )
+                embedding = None
+                inference_out = await self._run_inference(utterance)
         except Exception as exc:
             logger.error(
-                "Parallel embedding+ASR failed",
+                "Inference failed",
                 session_id=session_id,
                 utterance_index=utterance.utterance_index,
                 error=str(exc),
@@ -211,25 +225,26 @@ class StreamingInferenceWorker:
         )
 
         # Step 3: Speaker Diarization
-        logger.debug(
-            "Identifying speaker from embedding",
-            session_id=session_id,
-            component="SPEAKER_DIARIZATION",
-            utterance_index=utterance.utterance_index,
-        )
-        diarization_enabled = bool(
-            self._diarization_config and getattr(self._diarization_config, "enabled", False)
-        )
-        speaker_id, speaker_confidence = await self._identify_speaker(
-            embedding, result.text,
-            samples=utterance.samples, sample_rate=utterance.sample_rate,
-        )
-        if diarization_enabled and result.text.strip() and not speaker_id:
-            speaker_id = "unknown"
-        if speaker_id:
-            result.speaker_id = speaker_id
-            if speaker_confidence is not None:
-                result.speaker_confidence = float(speaker_confidence)
+        if utterance.is_final:
+            logger.debug(
+                "Identifying speaker from embedding",
+                session_id=session_id,
+                component="SPEAKER_DIARIZATION",
+                utterance_index=utterance.utterance_index,
+            )
+            diarization_enabled = bool(
+                self._diarization_config and getattr(self._diarization_config, "enabled", False)
+            )
+            speaker_id, speaker_confidence = await self._identify_speaker(
+                embedding, result.text,
+                samples=utterance.samples, sample_rate=utterance.sample_rate,
+            )
+            if diarization_enabled and result.text.strip() and not speaker_id:
+                speaker_id = "unknown"
+            if speaker_id:
+                result.speaker_id = speaker_id
+                if speaker_confidence is not None:
+                    result.speaker_confidence = float(speaker_confidence)
 
         logger.info(
             "Utterance transcribed",

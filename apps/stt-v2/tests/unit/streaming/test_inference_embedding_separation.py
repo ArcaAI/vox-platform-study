@@ -177,3 +177,51 @@ class TestProcessUtterancePipelineOrder:
         assert call_order == ["embed", "asr", "diarize"]
         assert result.text == "hello world"
         assert result.speaker_id == "spk-1"
+
+    @pytest.mark.asyncio
+    async def test_partial_utterance_skips_embedding_and_diarization(self):
+        """Partial utterances should run ASR only -- no embedding or diarization."""
+        call_order = []
+
+        async def mock_extract_embedding(utt):
+            call_order.append("embed")
+            return MagicMock(embedding=[0.1] * 512)
+
+        async def mock_run_inference(utt):
+            call_order.append("asr")
+            from stt_v2.streaming.inference import _InferenceResult
+
+            return _InferenceResult(text="partial text")
+
+        async def mock_identify_speaker(emb, text, samples=None, sample_rate=16000):
+            call_order.append("diarize")
+            return "spk-1", 0.9
+
+        mock_publisher = AsyncMock()
+
+        worker = StreamingInferenceWorker(
+            result_publisher=mock_publisher,
+            asr_pipeline=MagicMock(),
+            tenant_id="t1",
+            diarization_config=MagicMock(enabled=True),
+        )
+        worker._extract_embedding = mock_extract_embedding
+        worker._run_inference = mock_run_inference
+        worker._identify_speaker = mock_identify_speaker
+
+        utt = AudioUtterance(
+            samples=np.random.randn(32000).astype(np.float32) * 0.1,
+            sample_rate=16000,
+            start_time=0.0,
+            end_time=2.0,
+            utterance_index=0,
+            is_final=False,
+        )
+        result = await worker.process_utterance("session-1", utt)
+
+        assert call_order == ["asr"]
+        assert "embed" not in call_order
+        assert "diarize" not in call_order
+        assert result.text == "partial text"
+        assert result.is_final is False
+        assert result.speaker_id is None

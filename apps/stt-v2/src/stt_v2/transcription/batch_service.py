@@ -292,25 +292,7 @@ class BatchTranscriptionService:
             # ----------------------------------------------------------
             # Step 3: Run ASR inference
             # ----------------------------------------------------------
-            _deferred_final_chunks: list[ChunkTranscriptionResult] = []
-            _diarization_buffering = (
-                spec.diarization.enabled and tenant_id and chunk_callback is not None
-            )
-            _diarized_speaker_segments: list[dict[str, Any]] = []
-
-            async def _buffered_chunk_callback(
-                chunk: ChunkTranscriptionResult,
-            ) -> None:
-                """Intercept is_final=True chunks for speaker enrichment."""
-                if chunk.is_final:
-                    _deferred_final_chunks.append(chunk)
-                else:
-                    if chunk_callback:
-                        await chunk_callback(chunk)
-
-            effective_chunk_cb = (
-                _buffered_chunk_callback if _diarization_buffering else chunk_callback
-            )
+            effective_chunk_cb = chunk_callback
 
             logger.info(f"[{job_id}] Running ASR inference...")
             inference_start = time.time()
@@ -470,38 +452,10 @@ class BatchTranscriptionService:
                         self._attach_speaker_metadata_to_segments(
                             raw_result.segments, diarization_raw.segments
                         )
-                    _diarized_speaker_segments = diarization_raw.segments
                 except Exception as e:
                     logger.warning(f"[{job_id}] Diarization failed (non-fatal): {e}")
 
             timing.diarization_seconds = time.time() - diarization_start
-
-            if _diarization_buffering and _deferred_final_chunks and chunk_callback is not None:
-                for _chunk in _deferred_final_chunks:
-                    if _diarized_speaker_segments and _chunk.speaker_id is None:
-                        _best_speaker: str | None = None
-                        _best_conf = 0.0
-                        _best_overlap = 0.0
-                        for _seg in _diarized_speaker_segments:
-                            _sid = _seg.get("speaker_id")
-                            if not _sid:
-                                continue
-                            _seg_start = float(_seg.get("start", 0.0))
-                            _seg_end = float(_seg.get("end", 0.0))
-                            _overlap = (
-                                min(_chunk.end_time, _seg_end)
-                                - max(_chunk.start_time, _seg_start)
-                            )
-                            if _overlap > _best_overlap:
-                                _best_overlap = _overlap
-                                _best_speaker = _sid
-                                _best_conf = float(
-                                    _seg.get("speaker_confidence") or 1.0
-                                )
-                        if _best_speaker:
-                            _chunk.speaker_id = _best_speaker
-                            _chunk.speaker_confidence = _best_conf
-                    await chunk_callback(_chunk)
 
             update_progress(85)
 
@@ -1230,7 +1184,8 @@ class BatchTranscriptionService:
                             word_timestamps=sub_result.word_timestamps,
                             vad_segment_index=idx,
                         )
-                        await _inline_diarize_chunk(chunk_result, sub_audio)
+                        if chunk_result.is_final:
+                            await _inline_diarize_chunk(chunk_result, sub_audio)
                         await chunk_callback(chunk_result)
                         if chunk_text:
                             _last_sub_chunk = chunk_result
@@ -1242,6 +1197,7 @@ class BatchTranscriptionService:
 
                 if chunk_callback and not _final_non_empty_emitted and _last_sub_chunk is not None:
                     _last_sub_chunk.is_final = True
+                    await _inline_diarize_chunk(_last_sub_chunk, segment_audio)
                     await chunk_callback(_last_sub_chunk)
 
             else:

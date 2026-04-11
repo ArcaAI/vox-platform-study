@@ -190,7 +190,7 @@ class TestProcessUtterance:
 
     @pytest.mark.asyncio
     async def test_applies_speaker_identification_when_enabled(self):
-        """When diarization is enabled, result should include speaker metadata."""
+        """When diarization is enabled, final results should include speaker metadata."""
         diarization_cfg = MagicMock()
         diarization_cfg.enabled = True
         diarization_cfg.min_segment_duration_s = 0.1
@@ -208,7 +208,7 @@ class TestProcessUtterance:
             diarization_config=diarization_cfg,
             speaker_identifier=mock_identifier,
         )
-        utt = _make_utterance(duration_s=1.2)
+        utt = _make_utterance(duration_s=1.2, is_final=True)
 
         with patch(
             "stt_v2.diarization.embedding_service.get_embedding_service",
