@@ -138,36 +138,6 @@ class TestWorkerNewServiceInitialization:
                 mock_vad.initialize.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_initialize_services_calls_qdrant_init(self):
-        """Test that initialize_services initializes Qdrant speaker store."""
-        with patch("stt_v2.worker.configure_broker") as mock_configure:
-            mock_configure.return_value = MagicMock()
-
-            mock_store = MagicMock()
-            mock_store.ensure_collection = AsyncMock()
-
-            with (
-                patch(
-                    "stt_v2.core.database.connection.initialize_database", new_callable=AsyncMock
-                ),
-                patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock),
-                patch(
-                    "stt_v2.vad.silero_service.get_vad_service",
-                    side_effect=Exception("VAD not available"),
-                ),
-                patch(
-                    "stt_v2.core.vectorstore.speaker_store.get_speaker_store",
-                    return_value=mock_store,
-                ),
-            ):
-
-                from stt_v2.worker import initialize_services
-
-                await initialize_services()
-
-                mock_store.ensure_collection.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_initialize_services_calls_diarization_init(self):
         """Test that initialize_services initializes diarization service."""
         with patch("stt_v2.worker.configure_broker") as mock_configure:
@@ -182,10 +152,6 @@ class TestWorkerNewServiceInitialization:
                 ),
                 patch("stt_v2.core.storage.minio_client.initialize_minio", new_callable=AsyncMock),
                 patch("stt_v2.vad.silero_service.get_vad_service", side_effect=Exception("skip")),
-                patch(
-                    "stt_v2.core.vectorstore.speaker_store.get_speaker_store",
-                    side_effect=Exception("skip"),
-                ),
                 patch(
                     "stt_v2.diarization.embedding_service.get_embedding_service",
                     return_value=mock_embedding,
@@ -204,8 +170,8 @@ class TestWorkerNewServiceInitialization:
         with patch("stt_v2.worker.configure_broker") as mock_configure:
             mock_configure.return_value = MagicMock()
 
-            mock_store = MagicMock()
-            mock_store.ensure_collection = AsyncMock()
+            mock_embedding = MagicMock()
+            mock_embedding.initialize = AsyncMock()
 
             with (
                 patch(
@@ -217,12 +183,8 @@ class TestWorkerNewServiceInitialization:
                     side_effect=RuntimeError("VAD init failed"),
                 ),
                 patch(
-                    "stt_v2.core.vectorstore.speaker_store.get_speaker_store",
-                    return_value=mock_store,
-                ),
-                patch(
                     "stt_v2.diarization.embedding_service.get_embedding_service",
-                    side_effect=Exception("skip"),
+                    return_value=mock_embedding,
                 ),
             ):
 
@@ -230,12 +192,12 @@ class TestWorkerNewServiceInitialization:
 
                 # Should NOT raise
                 await initialize_services()
-                # Qdrant should still have been called
-                mock_store.ensure_collection.assert_called_once()
+                # Diarization should still have been called
+                mock_embedding.initialize.assert_called_once()
 
 
 class TestWorkerNewServiceCleanup:
-    """Tests for worker cleanup of new services (VAD, Qdrant, Diarization)."""
+    """Tests for worker cleanup of new services (VAD, Diarization)."""
 
     @pytest.mark.asyncio
     async def test_cleanup_services_shuts_down_vad(self):
@@ -250,13 +212,8 @@ class TestWorkerNewServiceCleanup:
                 patch("stt_v2.core.database.connection.close_database", new_callable=AsyncMock),
                 patch("stt_v2.core.storage.minio_client.close_minio", new_callable=AsyncMock),
                 patch("stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad),
-                patch("stt_v2.core.vectorstore.client.get_qdrant_client") as mock_qdrant,
                 patch("stt_v2.diarization.embedding_service.get_embedding_service") as mock_emb,
             ):
-
-                mock_qdrant_instance = MagicMock()
-                mock_qdrant_instance.close = AsyncMock()
-                mock_qdrant.return_value = mock_qdrant_instance
 
                 mock_emb_instance = MagicMock()
                 mock_emb_instance.shutdown = AsyncMock()
@@ -281,13 +238,8 @@ class TestWorkerNewServiceCleanup:
                     "stt_v2.vad.silero_service.get_vad_service",
                     side_effect=RuntimeError("VAD error"),
                 ),
-                patch("stt_v2.core.vectorstore.client.get_qdrant_client") as mock_qdrant,
                 patch("stt_v2.diarization.embedding_service.get_embedding_service") as mock_emb,
             ):
-
-                mock_qdrant_instance = MagicMock()
-                mock_qdrant_instance.close = AsyncMock()
-                mock_qdrant.return_value = mock_qdrant_instance
 
                 mock_emb_instance = MagicMock()
                 mock_emb_instance.shutdown = AsyncMock()
@@ -298,4 +250,4 @@ class TestWorkerNewServiceCleanup:
                 # Should NOT raise
                 await cleanup_services()
                 # Other cleanups should still have been called
-                mock_qdrant_instance.close.assert_called_once()
+                mock_emb_instance.shutdown.assert_called_once()

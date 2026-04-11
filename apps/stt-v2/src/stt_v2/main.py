@@ -12,7 +12,6 @@ from stt_v2.core.database.connection import close_database, initialize_database
 from stt_v2.core.logging import get_logger, setup_logging
 from stt_v2.core.messaging.broker import close_redis, initialize_redis
 from stt_v2.core.storage.minio_client import close_minio, initialize_minio
-from stt_v2.embedding.api.routes import router as embedding_router
 from stt_v2.health.api.routes import internal_router
 from stt_v2.health.api.routes import router as health_router
 from stt_v2.streaming._runtime import initialize_streaming, shutdown_streaming
@@ -244,7 +243,6 @@ def create_app() -> FastAPI:
     app.include_router(internal_router, tags=["Internal"])
     app.include_router(transcription_router, tags=["Transcription"])
     app.include_router(streaming_router, tags=["Streaming"])
-    app.include_router(embedding_router, tags=["Embedding"])
 
     # OpenTelemetry (must be after routers for FastAPIInstrumentor)
     if settings.otel_enabled:

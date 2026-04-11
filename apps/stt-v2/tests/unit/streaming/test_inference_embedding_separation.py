@@ -104,22 +104,22 @@ class TestIdentifyWithEmbedding:
         mock_match.confidence = 0.95
 
         mock_identifier = MagicMock()
-        mock_identifier.identify_with_embedding = AsyncMock(return_value=mock_match)
+        mock_identifier.identify = AsyncMock(return_value=mock_match)
 
         worker = StreamingInferenceWorker(
             result_publisher=None,
             asr_pipeline=None,
             tenant_id="t1",
             diarization_config=MagicMock(enabled=True),
+            speaker_identifier=mock_identifier,
         )
         embedding = MagicMock()
         embedding.embedding = [0.1] * 512
+        samples = np.random.randn(32000).astype(np.float32)
 
-        with patch(
-            "stt_v2.diarization.speaker_identifier.get_speaker_identifier",
-            return_value=mock_identifier,
-        ):
-            sid, conf = await worker._identify_speaker(embedding, "hello world")
+        sid, conf = await worker._identify_speaker(
+            embedding, "hello world", samples=samples, sample_rate=16000,
+        )
 
         assert sid == "spk-123"
         assert conf == 0.95
@@ -155,7 +155,7 @@ class TestProcessUtterancePipelineOrder:
 
             return _InferenceResult(text="hello world")
 
-        async def mock_identify_speaker(emb, text):
+        async def mock_identify_speaker(emb, text, samples=None, sample_rate=16000):
             call_order.append("diarize")
             return "spk-1", 0.9
 

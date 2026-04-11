@@ -78,15 +78,6 @@ async def initialize_services() -> None:
     except Exception as e:
         logger.warning(f"VAD service initialization failed (non-fatal): {e}")
 
-    # --- Qdrant: speaker embedding store ---
-    try:
-        from stt_v2.core.vectorstore.speaker_store import get_speaker_store
-
-        speaker_store = get_speaker_store()
-        await speaker_store.ensure_collection()
-        logger.info("Qdrant speaker store initialized")
-    except Exception as e:
-        logger.warning(f"Qdrant speaker store initialization failed (non-fatal): {e}")
 
     # --- Diarization: pyannote embedding model (heavier, optional) ---
     try:
@@ -134,14 +125,6 @@ async def cleanup_services() -> None:
         await get_vad_service().shutdown()
     except Exception as e:
         logger.warning(f"Error shutting down VAD service: {e}")
-
-    # Shutdown Qdrant client
-    try:
-        from stt_v2.core.vectorstore.client import get_qdrant_client
-
-        await get_qdrant_client().close()
-    except Exception as e:
-        logger.warning(f"Error closing Qdrant client: {e}")
 
     # Shutdown diarization service
     try:

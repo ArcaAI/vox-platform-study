@@ -1,1 +1,0 @@
-"""Embedding API routes."""

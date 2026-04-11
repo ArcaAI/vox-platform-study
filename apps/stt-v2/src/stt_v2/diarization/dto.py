@@ -22,9 +22,8 @@ class SpeakerIdentification:
     """Result of identifying a speaker from an embedding."""
 
     speaker_id: str
-    confidence: float | None = None  # Cosine similarity (0–1)
+    confidence: float | None = None  # Cosine similarity (0-1)
     is_new_speaker: bool = False
-    point_id: str | None = None  # Qdrant point ID
 
     @property
     def is_known(self) -> bool:

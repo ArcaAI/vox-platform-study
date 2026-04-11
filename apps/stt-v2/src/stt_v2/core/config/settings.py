@@ -131,28 +131,6 @@ class Settings(BaseSettings):
         description="Azure Speech service region (e.g., eastus, westeurope)",
     )
 
-    # Qdrant (vector store for speaker embeddings)
-    qdrant_url: str = Field(
-        default="http://localhost:6333",
-        description="Qdrant server URL (HTTP API)",
-    )
-    qdrant_api_key: str | None = Field(
-        default=None,
-        description="Qdrant API key (optional for dev)",
-    )
-    qdrant_collection_speakers: str = Field(
-        default="stt_speaker_embeddings",
-        description="Qdrant collection for speaker embeddings",
-    )
-    qdrant_pool_size: int = Field(
-        default=20,
-        description="Qdrant client connection pool size",
-    )
-    qdrant_timeout: int = Field(
-        default=30,
-        description="Qdrant client timeout in seconds",
-    )
-
     # VAD — Silero v5 ONNX
     vad_model_path: str | None = Field(
         default=None,
