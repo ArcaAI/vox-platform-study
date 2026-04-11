@@ -3,7 +3,7 @@
 import sys
 import threading
 import warnings
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -15,7 +15,6 @@ from stt_v2.diarization.dto import (
     SpeakerEmbedding,
     SpeakerIdentification,
 )
-from stt_v2.diarization.embedding_service import EmbeddingService
 from stt_v2.diarization.pyannote_embedding import PyannoteEmbeddingService
 
 try:

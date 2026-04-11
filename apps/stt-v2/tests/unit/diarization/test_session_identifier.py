@@ -26,16 +26,16 @@ def _make_embedding(values: list[float] | None = None) -> SpeakerEmbedding:
 
 
 def _make_config(**overrides) -> DiarizationConfig:
-    defaults = dict(
-        enabled=True,
-        high_threshold=0.7,
-        low_threshold=0.4,
-        max_speakers=5,
-        min_segment_duration_s=1.0,
-        ema_alpha=0.1,
-        ema_min_confidence=0.8,
-        enable_segmentation_refinement=True,
-    )
+    defaults = {
+        "enabled": True,
+        "high_threshold": 0.7,
+        "low_threshold": 0.4,
+        "max_speakers": 5,
+        "min_segment_duration_s": 1.0,
+        "ema_alpha": 0.1,
+        "ema_min_confidence": 0.8,
+        "enable_segmentation_refinement": True,
+    }
     defaults.update(overrides)
     return DiarizationConfig(**defaults)
 

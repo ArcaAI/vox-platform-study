@@ -2,7 +2,7 @@
 
 import pytest
 
-from stt_v2.pipeline.dto import DiarizationConfig, ModelRefs, ModelRef
+from stt_v2.pipeline.dto import DiarizationConfig, ModelRef, ModelRefs
 from stt_v2.pipeline.yaml_parser import PipelineYamlParser
 
 
@@ -46,7 +46,7 @@ class TestModelRefsSegmentation:
         assert "segmentation-3.0" in refs.get_all_slugs()
 
     def test_segmentation_in_get_inline_models(self):
-        from stt_v2.pipeline.dto import InlineModelDef, AiModelFormat
+        from stt_v2.pipeline.dto import AiModelFormat, InlineModelDef
 
         inline = InlineModelDef(
             hf_model_id="pyannote/segmentation-3.0",

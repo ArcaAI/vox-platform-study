@@ -10,7 +10,7 @@ Tests are designed to work with TEST_PLATFORM=cpu (no ML libraries imported).
 """
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -18,7 +18,6 @@ import pytest
 from stt_v2.diarization.dto import DiarizationResult, DiarizedSegment
 from stt_v2.models.base_loader import LoadedModel
 from stt_v2.pipeline.dto import (
-    AiModelFormat,
     DiarizationConfig,
     InferenceConfig,
     ModelRef,
@@ -31,12 +30,8 @@ from stt_v2.pipeline.dto import (
     TimestampConfig,
     VadConfig,
 )
-from stt_v2.transcription.batch_service import BatchTranscriptionService
 from stt_v2.transcription.dto import (
     AudioSegment,
-    ProcessedAudio,
-    RawTranscription,
-    TranscriptionResult,
 )
 from stt_v2.transcription.preprocessing import AudioPreprocessor
 from stt_v2.vad.dto import SpeechSegment, VADResult

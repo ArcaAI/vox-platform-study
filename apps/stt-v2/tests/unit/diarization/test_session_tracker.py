@@ -4,7 +4,6 @@ Pure-logic tests -- no mocks, no I/O, no async.
 """
 
 import numpy as np
-import pytest
 
 from stt_v2.diarization.speaker_tracker import SpeakerTracker
 
