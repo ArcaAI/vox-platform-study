@@ -1,11 +1,11 @@
 import { expect, test, type Page, type WebSocket as PwWebSocket } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import {
-    computeFinalTranscriptLatency,
-    computeFirstPartialLatency,
-    computeRtf,
-    type TimestampedFinal,
-    type TimestampedPartial,
+  computeFinalTranscriptLatency,
+  computeFirstPartialLatency,
+  computeRtf,
+  type TimestampedFinal,
+  type TimestampedPartial,
 } from './helpers/latency-metrics.js';
 import { computeHallucinationRate, computeSer, computeTaskSuccess, type TranscriptFinal } from './helpers/segment-metrics.js';
 import { concatenateSegmentTexts, parseGroundTruth } from './helpers/transcript-parser.js';
@@ -247,7 +247,8 @@ export async function runTranscriptionTest({
 
   // 5. Select the pipeline by name
   await pipelineSelect.click();
-  const pipelineOption = page.getByRole('option', { name: pipelineName });
+  await expect(page.getByRole('listbox')).toBeVisible({ timeout: 5_000 });
+  const pipelineOption = page.getByRole('option', { name: pipelineName, exact: true });
   if (await pipelineOption.isVisible({ timeout: 3_000 }).catch(() => false)) {
     await pipelineOption.click();
   } else {
