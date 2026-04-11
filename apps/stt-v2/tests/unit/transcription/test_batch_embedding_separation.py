@@ -6,13 +6,10 @@ Tests:
 - Diarization skipped => embedding step skipped
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
 
-import numpy as np
-import pytest
 
 from stt_v2.transcription.batch_service import BatchTranscriptionService
-from stt_v2.transcription.dto import AudioSegment, ProcessedAudio
+from stt_v2.transcription.dto import AudioSegment
 
 
 class TestSplitVadSegmentsForEmbedding:

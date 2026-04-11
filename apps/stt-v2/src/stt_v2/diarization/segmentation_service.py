@@ -71,7 +71,6 @@ class SegmentationService:
         of each frame in seconds.
         """
         import torch
-        from pyannote.core import SlidingWindow
 
         waveform = torch.from_numpy(samples).unsqueeze(0).float()
         if sample_rate != self._sample_rate:

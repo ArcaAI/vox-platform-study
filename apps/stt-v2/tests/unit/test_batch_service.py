@@ -1363,7 +1363,7 @@ class TestRunDiarization:
             mock_identifier._embedding_service = mock_emb_service
             MockIdentifier.return_value = mock_identifier
 
-            result = await service._run_diarization(
+            await service._run_diarization(
                 samples=samples,
                 sample_rate=sample_rate,
                 raw_result=raw,
@@ -1420,7 +1420,7 @@ class TestRunDiarization:
             mock_identifier._embedding_service = mock_emb_service
             MockIdentifier.return_value = mock_identifier
 
-            result = await service._run_diarization(
+            await service._run_diarization(
                 samples=samples,
                 sample_rate=sample_rate,
                 raw_result=raw,
@@ -1536,7 +1536,7 @@ class TestRunDiarization:
             mock_identifier._embedding_service = mock_emb_service
             MockIdentifier.return_value = mock_identifier
 
-            result = await service._run_diarization(
+            await service._run_diarization(
                 samples=samples,
                 sample_rate=sample_rate,
                 raw_result=raw,
