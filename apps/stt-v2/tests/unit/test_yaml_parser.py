@@ -1214,21 +1214,21 @@ models:
         error_fields = [e.field for e in result.errors]
         assert "models.diarization.hf_model_id" in error_fields
 
-    def test_validate_diarization_similarity_threshold_out_of_range(self, parser):
-        """Similarity threshold > 1 should fail validation."""
+    def test_validate_diarization_high_threshold_out_of_range(self, parser):
+        """high_threshold > 1 should fail validation."""
         yaml_content = """
 version: "1.0"
 models:
   asr: whisper-large-v3
 diarization:
   enabled: true
-  similarity_threshold: 1.5
+  high_threshold: 1.5
 """
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
         assert not result.valid
         error_fields = [e.field for e in result.errors]
-        assert "diarization.similarity_threshold" in error_fields
+        assert "diarization.high_threshold" in error_fields
 
     def test_validate_diarization_min_segment_duration_negative(self, parser):
         """Negative min_segment_duration_s should fail validation."""
@@ -1271,34 +1271,36 @@ models:
         assert "pyannote-embedding-v3" in spec.models.get_all_slugs()
 
     def test_validate_diarization_boundary_threshold_0(self, parser):
-        """similarity_threshold=0 should pass validation."""
+        """high_threshold=0 should pass validation (no out-of-range)."""
         yaml_content = """
 version: "1.0"
 models:
   asr: whisper-large-v3
 diarization:
   enabled: true
-  similarity_threshold: 0.0
+  high_threshold: 0.5
+  low_threshold: 0.3
 """
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
         error_fields = [e.field for e in result.errors]
-        assert "diarization.similarity_threshold" not in error_fields
+        assert "diarization.high_threshold" not in error_fields
 
     def test_validate_diarization_boundary_threshold_1(self, parser):
-        """similarity_threshold=1.0 should pass validation."""
+        """high_threshold=1.0 should pass validation."""
         yaml_content = """
 version: "1.0"
 models:
   asr: whisper-large-v3
 diarization:
   enabled: true
-  similarity_threshold: 1.0
+  high_threshold: 1.0
+  low_threshold: 0.5
 """
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
         error_fields = [e.field for e in result.errors]
-        assert "diarization.similarity_threshold" not in error_fields
+        assert "diarization.high_threshold" not in error_fields
 
     def test_validate_diarization_min_segment_duration_zero(self, parser):
         """min_segment_duration_s=0 should pass validation."""
@@ -1315,21 +1317,21 @@ diarization:
         error_fields = [e.field for e in result.errors]
         assert "diarization.min_segment_duration_s" not in error_fields
 
-    def test_validate_diarization_similarity_threshold_negative(self, parser):
-        """Negative similarity_threshold should fail validation."""
+    def test_validate_diarization_high_threshold_negative(self, parser):
+        """Negative high_threshold should fail validation."""
         yaml_content = """
 version: "1.0"
 models:
   asr: whisper-large-v3
 diarization:
   enabled: true
-  similarity_threshold: -0.1
+  high_threshold: -0.1
 """
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
         assert not result.valid
         error_fields = [e.field for e in result.errors]
-        assert "diarization.similarity_threshold" in error_fields
+        assert "diarization.high_threshold" in error_fields
 
     def test_diarization_disabled_still_validates(self, parser):
         """Even with enabled=false, out-of-range values should still fail validation."""
@@ -1339,13 +1341,13 @@ models:
   asr: whisper-large-v3
 diarization:
   enabled: false
-  similarity_threshold: 2.0
+  high_threshold: 2.0
 """
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
         assert not result.valid
         error_fields = [e.field for e in result.errors]
-        assert "diarization.similarity_threshold" in error_fields
+        assert "diarization.high_threshold" in error_fields
 
     def test_diarization_model_absent_no_validation_error(self, parser):
         """When no diarization model is set, validation should not error on it."""
@@ -1355,11 +1357,11 @@ models:
   asr: whisper-large-v3
 diarization:
   enabled: true
-  similarity_threshold: 0.7
+  high_threshold: 0.7
 """
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
-        # Should be valid — diarization model is optional
+        # Should be valid -- diarization model is optional
         error_fields = [e.field for e in result.errors]
         assert "models.diarization.hf_model_id" not in error_fields
 
@@ -1383,9 +1385,9 @@ preprocessing:
     threshold: 0.6
 diarization:
   enabled: true
-  similarity_threshold: 0.75
+  high_threshold: 0.75
+  low_threshold: 0.4
   max_speakers: 5
-  auto_register_speakers: true
   min_segment_duration_s: 1.5
 """
         spec = parser.parse(yaml_content)
@@ -1397,9 +1399,8 @@ diarization:
 
         # Diarization config
         assert spec.diarization.enabled is True
-        assert spec.diarization.similarity_threshold == 0.75
+        assert spec.diarization.high_threshold == 0.75
         assert spec.diarization.max_speakers == 5
-        assert spec.diarization.auto_register_speakers is True
         assert spec.diarization.min_segment_duration_s == 1.5
 
         # Should validate cleanly

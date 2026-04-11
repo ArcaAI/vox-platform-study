@@ -1310,6 +1310,246 @@ class TestBatchServicePostprocessingSentenceTimestamps:
         assert result.sentence_timestamps == []
 
 
+class TestRunDiarization:
+    """Tests for _run_diarization direct-call behavior (TASK-303).
+
+    After TASK-303, _run_diarization calls identify() directly
+    per segment instead of delegating to diarize_segments().
+    """
+
+    @pytest.fixture
+    def service(self):
+        return BatchTranscriptionService()
+
+    @pytest.mark.asyncio
+    async def test_run_diarization_caps_audio_at_5s(self, service):
+        """Segment audio passed to extract_from_samples must be capped at 5s."""
+        sample_rate = 16000
+        max_emb_samples = int(5.0 * sample_rate)  # 80000
+        # 10s of audio total
+        samples = np.random.randn(10 * sample_rate).astype(np.float32)
+        raw = RawTranscription(text="Hello")
+        raw.segments = [{"start": 0.0, "end": 8.0, "text": "Hello"}]
+
+        mock_emb_service = AsyncMock()
+        mock_emb_service.extract_from_samples = AsyncMock(
+            return_value=MagicMock(embedding=np.zeros(512).tolist())
+        )
+
+        mock_tracker = MagicMock()
+        mock_tracker.compare = MagicMock(return_value=(None, 0.0))
+        mock_tracker.register = MagicMock(return_value="Speaker 1")
+
+        config = DiarizationConfig(
+            enabled=True,
+            min_segment_duration_s=0.5,
+            max_speakers=5,
+            ema_alpha=0.1,
+        )
+
+        with (
+            patch("stt_v2.diarization.embedding_service.EmbeddingService"),
+            patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=mock_emb_service),
+            patch("stt_v2.diarization.speaker_tracker.SpeakerTracker", return_value=mock_tracker),
+            patch("stt_v2.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
+        ):
+            mock_identifier = AsyncMock()
+            from stt_v2.diarization.dto import SpeakerIdentification
+            mock_identifier.identify = AsyncMock(
+                return_value=SpeakerIdentification(
+                    speaker_id="Speaker 1", confidence=None, is_new_speaker=True,
+                )
+            )
+            mock_identifier._embedding_service = mock_emb_service
+            MockIdentifier.return_value = mock_identifier
+
+            result = await service._run_diarization(
+                samples=samples,
+                sample_rate=sample_rate,
+                raw_result=raw,
+                tenant_id="t-1",
+                consultation_id=None,
+                config=config,
+            )
+
+            # Verify audio was capped at 5s (80000 samples)
+            call_args = mock_emb_service.extract_from_samples.call_args
+            actual_audio = call_args[0][0]
+            assert len(actual_audio) == max_emb_samples
+
+    @pytest.mark.asyncio
+    async def test_run_diarization_skips_short_segments(self, service):
+        """Segments shorter than min_segment_duration_s get no speaker annotation."""
+        sample_rate = 16000
+        samples = np.random.randn(5 * sample_rate).astype(np.float32)
+        raw = RawTranscription(text="Hi Ok")
+        raw.segments = [
+            {"start": 0.0, "end": 0.3, "text": "Hi"},   # too short
+            {"start": 0.5, "end": 2.5, "text": "Ok"},    # long enough
+        ]
+
+        mock_emb_service = AsyncMock()
+        mock_emb_service.extract_from_samples = AsyncMock(
+            return_value=MagicMock(embedding=np.zeros(512).tolist())
+        )
+
+        mock_tracker = MagicMock()
+        mock_tracker.compare = MagicMock(return_value=(None, 0.0))
+        mock_tracker.register = MagicMock(return_value="Speaker 1")
+
+        config = DiarizationConfig(
+            enabled=True,
+            min_segment_duration_s=1.0,
+            max_speakers=5,
+            ema_alpha=0.1,
+        )
+
+        with (
+            patch("stt_v2.diarization.embedding_service.EmbeddingService"),
+            patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=mock_emb_service),
+            patch("stt_v2.diarization.speaker_tracker.SpeakerTracker", return_value=mock_tracker),
+            patch("stt_v2.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
+        ):
+            mock_identifier = AsyncMock()
+            from stt_v2.diarization.dto import SpeakerIdentification
+            mock_identifier.identify = AsyncMock(
+                return_value=SpeakerIdentification(
+                    speaker_id="Speaker 1", confidence=None, is_new_speaker=True,
+                )
+            )
+            mock_identifier._embedding_service = mock_emb_service
+            MockIdentifier.return_value = mock_identifier
+
+            result = await service._run_diarization(
+                samples=samples,
+                sample_rate=sample_rate,
+                raw_result=raw,
+                tenant_id="t-1",
+                consultation_id=None,
+                config=config,
+            )
+
+            # Short segment should NOT have speaker_id
+            assert "speaker_id" not in raw.segments[0]
+            # Long segment should have speaker_id
+            assert raw.segments[1]["speaker_id"] == "Speaker 1"
+
+    @pytest.mark.asyncio
+    async def test_run_diarization_returns_speaker_metadata(self, service):
+        """_run_diarization returns dict with speakers_detected, new_speakers_created, speaker_ids."""
+        sample_rate = 16000
+        samples = np.random.randn(5 * sample_rate).astype(np.float32)
+        raw = RawTranscription(text="Hello world")
+        raw.segments = [
+            {"start": 0.0, "end": 2.0, "text": "Hello"},
+            {"start": 2.0, "end": 4.0, "text": "World"},
+        ]
+
+        mock_emb_service = AsyncMock()
+        mock_emb_service.extract_from_samples = AsyncMock(
+            return_value=MagicMock(embedding=np.zeros(512).tolist())
+        )
+
+        mock_tracker = MagicMock()
+        mock_tracker.compare = MagicMock(return_value=(None, 0.0))
+        call_count = 0
+
+        def register_side_effect(emb):
+            nonlocal call_count
+            call_count += 1
+            return f"Speaker {call_count}"
+
+        mock_tracker.register = MagicMock(side_effect=register_side_effect)
+
+        config = DiarizationConfig(
+            enabled=True,
+            min_segment_duration_s=0.5,
+            max_speakers=5,
+            ema_alpha=0.1,
+        )
+
+        with (
+            patch("stt_v2.diarization.embedding_service.EmbeddingService"),
+            patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=mock_emb_service),
+            patch("stt_v2.diarization.speaker_tracker.SpeakerTracker", return_value=mock_tracker),
+            patch("stt_v2.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
+        ):
+            from stt_v2.diarization.dto import SpeakerIdentification
+            mock_identifier = AsyncMock()
+            mock_identifier.identify = AsyncMock(
+                side_effect=[
+                    SpeakerIdentification(speaker_id="Speaker 1", confidence=None, is_new_speaker=True),
+                    SpeakerIdentification(speaker_id="Speaker 2", confidence=None, is_new_speaker=True),
+                ]
+            )
+            mock_identifier._embedding_service = mock_emb_service
+            MockIdentifier.return_value = mock_identifier
+
+            result = await service._run_diarization(
+                samples=samples,
+                sample_rate=sample_rate,
+                raw_result=raw,
+                tenant_id="t-1",
+                consultation_id=None,
+                config=config,
+            )
+
+            assert result["speakers_detected"] == 2
+            assert result["new_speakers_created"] == 2
+            assert set(result["speaker_ids"]) == {"Speaker 1", "Speaker 2"}
+
+    @pytest.mark.asyncio
+    async def test_run_diarization_collapses_ambiguous_list_to_first(self, service):
+        """When identify returns list (ambiguous), use first entry's speaker."""
+        sample_rate = 16000
+        samples = np.random.randn(5 * sample_rate).astype(np.float32)
+        raw = RawTranscription(text="Hello")
+        raw.segments = [{"start": 0.0, "end": 3.0, "text": "Hello"}]
+
+        mock_emb_service = AsyncMock()
+        mock_emb_service.extract_from_samples = AsyncMock(
+            return_value=MagicMock(embedding=np.zeros(512).tolist())
+        )
+        mock_tracker = MagicMock()
+
+        config = DiarizationConfig(
+            enabled=True,
+            min_segment_duration_s=0.5,
+            max_speakers=5,
+            ema_alpha=0.1,
+        )
+
+        with (
+            patch("stt_v2.diarization.embedding_service.EmbeddingService"),
+            patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=mock_emb_service),
+            patch("stt_v2.diarization.speaker_tracker.SpeakerTracker", return_value=mock_tracker),
+            patch("stt_v2.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
+        ):
+            from stt_v2.diarization.dto import DiarizedSegment
+            mock_identifier = AsyncMock()
+            mock_identifier.identify = AsyncMock(
+                return_value=[
+                    DiarizedSegment(text="", start_time=0.0, end_time=1.5, speaker_id="Speaker 1", speaker_confidence=0.9),
+                    DiarizedSegment(text="", start_time=1.5, end_time=3.0, speaker_id="Speaker 2", speaker_confidence=0.8),
+                ]
+            )
+            mock_identifier._embedding_service = mock_emb_service
+            MockIdentifier.return_value = mock_identifier
+
+            result = await service._run_diarization(
+                samples=samples,
+                sample_rate=sample_rate,
+                raw_result=raw,
+                tenant_id="t-1",
+                consultation_id=None,
+                config=config,
+            )
+
+            # First entry's speaker should be used (collapse)
+            assert raw.segments[0]["speaker_id"] == "Speaker 1"
+            assert raw.segments[0]["speaker_confidence"] == 0.9
+
+
 class TestBatchServiceDiarization:
     """Tests for diarization integration in batch service."""
 
@@ -1327,8 +1567,6 @@ class TestBatchServiceDiarization:
             postprocessing=PostprocessingConfig(),
             diarization=DiarizationConfig(
                 enabled=enabled,
-                similarity_threshold=0.7,
-                auto_register_speakers=True,
             ),
         )
         return PipelineConfig(

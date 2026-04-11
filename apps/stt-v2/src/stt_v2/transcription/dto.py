@@ -38,6 +38,8 @@ class AudioSegment:
     end_time: float
     is_speech: bool = True
     confidence: float = 1.0
+    speaker_id: str | None = None
+    speaker_confidence: float | None = None
 
     @property
     def duration(self) -> float:
@@ -258,6 +260,8 @@ class TranscriptionResult:
                     "duration": seg.duration,
                     "is_speech": seg.is_speech,
                     "confidence": seg.confidence,
+                    "speaker_id": seg.speaker_id,
+                    "speaker_confidence": seg.speaker_confidence,
                 }
                 for seg in self.segments
             ],
@@ -290,10 +294,12 @@ class ChunkTranscriptionResult:
     word_timestamps: list[dict[str, Any]] = field(default_factory=list)
     # Optional: which VAD segment this chunk belongs to (-1 = full-audio)
     vad_segment_index: int = -1
+    speaker_id: str | None = None
+    speaker_confidence: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-friendly dictionary."""
-        return {
+        d: dict[str, Any] = {
             "chunk_index": self.chunk_index,
             "text": self.text,
             "start_time": round(self.start_time, 4),
@@ -302,6 +308,11 @@ class ChunkTranscriptionResult:
             "word_timestamps": self.word_timestamps,
             "vad_segment_index": self.vad_segment_index,
         }
+        if self.speaker_id is not None:
+            d["speaker_id"] = self.speaker_id
+        if self.speaker_confidence is not None:
+            d["speaker_confidence"] = self.speaker_confidence
+        return d
 
 
 @dataclass

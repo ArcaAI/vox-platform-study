@@ -227,33 +227,6 @@ class TestSettings:
             assert settings.azure_speech_key == "key-only"
             assert settings.azure_speech_region is None
 
-    def test_qdrant_defaults(self):
-        """Test Qdrant default configuration."""
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings(_env_file=None)
-            assert settings.qdrant_url == "http://localhost:6333"
-            assert settings.qdrant_api_key is None
-            assert settings.qdrant_collection_speakers == "stt_speaker_embeddings"
-            assert settings.qdrant_pool_size == 20
-            assert settings.qdrant_timeout == 30
-
-    def test_qdrant_env_override(self):
-        """Test Qdrant environment variable overrides."""
-        env_vars = {
-            "QDRANT_URL": "http://qdrant.prod:6333",
-            "QDRANT_API_KEY": "qdrant-key-123",
-            "QDRANT_COLLECTION_SPEAKERS": "custom_speakers",
-            "QDRANT_POOL_SIZE": "50",
-            "QDRANT_TIMEOUT": "60",
-        }
-        with patch.dict(os.environ, env_vars, clear=True):
-            settings = Settings()
-            assert settings.qdrant_url == "http://qdrant.prod:6333"
-            assert settings.qdrant_api_key == "qdrant-key-123"
-            assert settings.qdrant_collection_speakers == "custom_speakers"
-            assert settings.qdrant_pool_size == 50
-            assert settings.qdrant_timeout == 60
-
     def test_vad_defaults(self):
         """Test Silero VAD default configuration."""
         with patch.dict(os.environ, {}, clear=True):

@@ -27,24 +27,26 @@ class TestDiarizationConfig:
         """Test default diarization configuration values."""
         config = DiarizationConfig()
         assert config.enabled is False
-        assert config.similarity_threshold == 0.7
-        assert config.max_speakers == 0
-        assert config.auto_register_speakers is True
+        assert config.high_threshold == 0.7
+        assert config.low_threshold == 0.4
+        assert config.max_speakers == 2
+        assert config.ema_alpha == 0.1
         assert config.min_segment_duration_s == 1.0
 
     def test_custom_values(self):
         """Test custom diarization configuration values."""
         config = DiarizationConfig(
             enabled=True,
-            similarity_threshold=0.85,
+            high_threshold=0.85,
+            low_threshold=0.5,
             max_speakers=5,
-            auto_register_speakers=False,
+            ema_alpha=0.2,
             min_segment_duration_s=2.5,
         )
         assert config.enabled is True
-        assert config.similarity_threshold == 0.85
+        assert config.high_threshold == 0.85
         assert config.max_speakers == 5
-        assert config.auto_register_speakers is False
+        assert config.ema_alpha == 0.2
         assert config.min_segment_duration_s == 2.5
 
     def test_partial_custom_values(self):
@@ -56,8 +58,8 @@ class TestDiarizationConfig:
         assert config.enabled is True
         assert config.max_speakers == 3
         # Other values should remain at defaults
-        assert config.similarity_threshold == 0.7
-        assert config.auto_register_speakers is True
+        assert config.high_threshold == 0.7
+        assert config.low_threshold == 0.4
         assert config.min_segment_duration_s == 1.0
 
 
@@ -264,18 +266,18 @@ class TestPipelineSpecWithDiarization:
         assert hasattr(spec, "diarization")
         assert isinstance(spec.diarization, DiarizationConfig)
         assert spec.diarization.enabled is False
-        assert spec.diarization.similarity_threshold == 0.7
-        assert spec.diarization.max_speakers == 0
-        assert spec.diarization.auto_register_speakers is True
+        assert spec.diarization.high_threshold == 0.7
+        assert spec.diarization.max_speakers == 2
+        assert spec.diarization.low_threshold == 0.4
         assert spec.diarization.min_segment_duration_s == 1.0
 
     def test_custom_diarization_config(self):
         """Test custom diarization config."""
         custom_diarization = DiarizationConfig(
             enabled=True,
-            similarity_threshold=0.85,
+            high_threshold=0.85,
             max_speakers=5,
-            auto_register_speakers=False,
+            low_threshold=0.5,
             min_segment_duration_s=2.5,
         )
         spec = PipelineSpec(
@@ -287,9 +289,9 @@ class TestPipelineSpecWithDiarization:
             diarization=custom_diarization,
         )
         assert spec.diarization.enabled is True
-        assert spec.diarization.similarity_threshold == 0.85
+        assert spec.diarization.high_threshold == 0.85
         assert spec.diarization.max_speakers == 5
-        assert spec.diarization.auto_register_speakers is False
+        assert spec.diarization.low_threshold == 0.5
         assert spec.diarization.min_segment_duration_s == 2.5
 
     def test_pipeline_spec_with_diarization_model_and_config(self):
@@ -305,7 +307,7 @@ class TestPipelineSpecWithDiarization:
             postprocessing=PostprocessingConfig(),
             diarization=DiarizationConfig(
                 enabled=True,
-                similarity_threshold=0.8,
+                high_threshold=0.8,
                 max_speakers=3,
             ),
         )
@@ -313,7 +315,7 @@ class TestPipelineSpecWithDiarization:
         assert spec.models.diarization is not None
         assert spec.models.diarization.slug == "pyannote-diarization"
         assert spec.diarization.enabled is True
-        assert spec.diarization.similarity_threshold == 0.8
+        assert spec.diarization.high_threshold == 0.8
         assert spec.diarization.max_speakers == 3
 
 
@@ -718,9 +720,9 @@ class TestDiarizationConfigSilencePadding:
 
         config = DiarizationConfig()
         assert config.enabled is False
-        assert config.similarity_threshold == 0.7
-        assert config.max_speakers == 0
-        assert config.auto_register_speakers is True
+        assert config.high_threshold == 0.7
+        assert config.max_speakers == 2
+        assert config.low_threshold == 0.4
         assert config.min_segment_duration_s == 1.0
 
 

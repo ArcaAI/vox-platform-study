@@ -228,10 +228,30 @@ class PipelineYamlParser:
                 )
 
         # Diarization validation
-        if spec.diarization.similarity_threshold < 0 or spec.diarization.similarity_threshold > 1:
+        if spec.diarization.low_threshold >= spec.diarization.high_threshold:
             result.add_error(
-                "diarization.similarity_threshold",
-                "Similarity threshold must be between 0 and 1",
+                "diarization.low_threshold",
+                "low_threshold must be less than high_threshold",
+            )
+        if spec.diarization.high_threshold < 0 or spec.diarization.high_threshold > 1:
+            result.add_error(
+                "diarization.high_threshold",
+                "high_threshold must be between 0 and 1",
+            )
+        if spec.diarization.low_threshold < 0 or spec.diarization.low_threshold > 1:
+            result.add_error(
+                "diarization.low_threshold",
+                "low_threshold must be between 0 and 1",
+            )
+        if spec.diarization.ema_alpha <= 0 or spec.diarization.ema_alpha > 1:
+            result.add_error(
+                "diarization.ema_alpha",
+                "ema_alpha must be in (0, 1]",
+            )
+        if spec.diarization.max_speakers < 0:
+            result.add_error(
+                "diarization.max_speakers",
+                "max_speakers must be non-negative",
             )
         if spec.diarization.min_segment_duration_s < 0:
             result.add_error(
@@ -268,6 +288,7 @@ class PipelineYamlParser:
         vad_value = data.get("vad")
         denoise_value = data.get("denoise")
         diarization_value = data.get("diarization")
+        segmentation_value = data.get("segmentation")
 
         # Parse ASR model (required)
         asr_ref = ModelRef.from_value(asr_value) if asr_value else ModelRef(slug="")
@@ -287,11 +308,17 @@ class PipelineYamlParser:
         if diarization_value:
             diarization_ref = ModelRef.from_value(diarization_value)
 
+        # Parse segmentation model (optional)
+        segmentation_ref = None
+        if segmentation_value:
+            segmentation_ref = ModelRef.from_value(segmentation_value)
+
         return ModelRefs(
             asr=asr_ref,
             vad=vad_ref,
             denoise=denoise_ref,
             diarization=diarization_ref,
+            segmentation=segmentation_ref,
         )
 
     def _parse_preprocessing(self, data: dict[str, Any]) -> PreprocessingConfig:
@@ -364,10 +391,14 @@ class PipelineYamlParser:
         """Parse diarization section."""
         return DiarizationConfig(
             enabled=data.get("enabled", False),
-            similarity_threshold=float(data.get("similarity_threshold", 0.7)),
-            max_speakers=int(data.get("max_speakers", 0)),
-            auto_register_speakers=data.get("auto_register_speakers", True),
+            high_threshold=float(data.get("high_threshold", 0.7)),
+            low_threshold=float(data.get("low_threshold", 0.4)),
+            max_speakers=int(data.get("max_speakers", 2)),
             min_segment_duration_s=float(data.get("min_segment_duration_s", 1.0)),
+            segment_silence_padding_ms=int(data.get("segment_silence_padding_ms", 100)),
+            ema_alpha=float(data.get("ema_alpha", 0.1)),
+            ema_min_confidence=float(data.get("ema_min_confidence", 0.8)),
+            enable_segmentation_refinement=data.get("enable_segmentation_refinement", True),
         )
 
 
