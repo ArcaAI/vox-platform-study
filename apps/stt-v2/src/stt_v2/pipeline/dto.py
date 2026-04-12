@@ -330,7 +330,8 @@ class ModelRefs:
     asr: ModelRef  # ASR model (required)
     vad: ModelRef | None = None  # VAD model (optional)
     denoise: ModelRef | None = None  # Denoise/noise suppression model (optional)
-    diarization: ModelRef | None = None  # Speaker diarization model (optional)
+    embedding: ModelRef | None = None  # Speaker embedding model (optional)
+    segmentation: ModelRef | None = None  # Speaker segmentation model (optional)
 
     def get_all_refs(self) -> list[tuple[str, ModelRef]]:
         """Get all non-None model references with their role."""
@@ -339,8 +340,10 @@ class ModelRefs:
             refs.append(("vad", self.vad))
         if self.denoise:
             refs.append(("denoise", self.denoise))
-        if self.diarization:
-            refs.append(("diarization", self.diarization))
+        if self.embedding:
+            refs.append(("embedding", self.embedding))
+        if self.segmentation:
+            refs.append(("segmentation", self.segmentation))
         return refs
 
     def get_all_slugs(self) -> list[str]:
@@ -352,8 +355,10 @@ class ModelRefs:
             slugs.append(self.vad.slug)
         if self.denoise and self.denoise.slug:
             slugs.append(self.denoise.slug)
-        if self.diarization and self.diarization.slug:
-            slugs.append(self.diarization.slug)
+        if self.embedding and self.embedding.slug:
+            slugs.append(self.embedding.slug)
+        if self.segmentation and self.segmentation.slug:
+            slugs.append(self.segmentation.slug)
         return slugs
 
     def get_inline_models(self) -> list[tuple[str, InlineModelDef]]:
@@ -365,8 +370,10 @@ class ModelRefs:
             inline_models.append(("vad", self.vad.inline))
         if self.denoise and self.denoise.is_inline and self.denoise.inline:
             inline_models.append(("denoise", self.denoise.inline))
-        if self.diarization and self.diarization.is_inline and self.diarization.inline:
-            inline_models.append(("diarization", self.diarization.inline))
+        if self.embedding and self.embedding.is_inline and self.embedding.inline:
+            inline_models.append(("embedding", self.embedding.inline))
+        if self.segmentation and self.segmentation.is_inline and self.segmentation.inline:
+            inline_models.append(("segmentation", self.segmentation.inline))
         return inline_models
 
 
@@ -395,18 +402,22 @@ class DiarizationConfig:
     """Speaker diarization configuration."""
 
     enabled: bool = False
-    # Cosine similarity threshold for speaker matching (0.0–1.0)
-    similarity_threshold: float = 0.7
+    # Above this threshold = confident match
+    high_threshold: float = 0.7
+    # Below this threshold = confident new speaker
+    low_threshold: float = 0.4
     # Maximum number of speakers (0 = unlimited)
-    max_speakers: int = 0
-    # Whether to create new speaker profiles when unknown speakers are detected
-    auto_register_speakers: bool = True
-    # Minimum segment duration (seconds) to attempt diarization on
+    max_speakers: int = 2
+    # Minimum segment duration (seconds) to register a new speaker
     min_segment_duration_s: float = 1.0
-    # Silence padding (ms) added before and after each VAD speech segment
-    # when merging segments into the processed audio for storage.
-    # Provides natural gaps between speaker turns for better playback quality.
+    # Silence padding (ms) added before/after each VAD speech segment
     segment_silence_padding_ms: int = 100
+    # Minimum confidence to trigger reference update
+    min_update_confidence: float = 0.8
+    # On-demand segmentation for ambiguous zone
+    enable_segmentation_refinement: bool = True
+    # Rolling window size per speaker (number of recent embeddings to keep)
+    max_embeddings_per_speaker: int = 8
 
 
 @dataclass

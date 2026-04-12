@@ -147,15 +147,15 @@ class PipelineYamlParser:
                     "HuggingFace model ID is required for inline definition",
                 )
 
-        # Validate diarization inline model if present
+        # Validate embedding inline model if present
         if (
-            spec.models.diarization
-            and spec.models.diarization.is_inline
-            and spec.models.diarization.inline
+            spec.models.embedding
+            and spec.models.embedding.is_inline
+            and spec.models.embedding.inline
         ):
-            if not spec.models.diarization.inline.hf_model_id:
+            if not spec.models.embedding.inline.hf_model_id:
                 result.add_error(
-                    "models.diarization.hf_model_id",
+                    "models.embedding.hf_model_id",
                     "HuggingFace model ID is required for inline definition",
                 )
 
@@ -228,10 +228,25 @@ class PipelineYamlParser:
                 )
 
         # Diarization validation
-        if spec.diarization.similarity_threshold < 0 or spec.diarization.similarity_threshold > 1:
+        if spec.diarization.low_threshold >= spec.diarization.high_threshold:
             result.add_error(
-                "diarization.similarity_threshold",
-                "Similarity threshold must be between 0 and 1",
+                "diarization.low_threshold",
+                "low_threshold must be less than high_threshold",
+            )
+        if spec.diarization.high_threshold < 0 or spec.diarization.high_threshold > 1:
+            result.add_error(
+                "diarization.high_threshold",
+                "high_threshold must be between 0 and 1",
+            )
+        if spec.diarization.low_threshold < 0 or spec.diarization.low_threshold > 1:
+            result.add_error(
+                "diarization.low_threshold",
+                "low_threshold must be between 0 and 1",
+            )
+        if spec.diarization.max_speakers < 0:
+            result.add_error(
+                "diarization.max_speakers",
+                "max_speakers must be non-negative",
             )
         if spec.diarization.min_segment_duration_s < 0:
             result.add_error(
@@ -267,7 +282,8 @@ class PipelineYamlParser:
         asr_value = data.get("asr", "")
         vad_value = data.get("vad")
         denoise_value = data.get("denoise")
-        diarization_value = data.get("diarization")
+        embedding_value = data.get("embedding")
+        segmentation_value = data.get("segmentation")
 
         # Parse ASR model (required)
         asr_ref = ModelRef.from_value(asr_value) if asr_value else ModelRef(slug="")
@@ -282,16 +298,22 @@ class PipelineYamlParser:
         if denoise_value:
             denoise_ref = ModelRef.from_value(denoise_value)
 
-        # Parse diarization model (optional)
-        diarization_ref = None
-        if diarization_value:
-            diarization_ref = ModelRef.from_value(diarization_value)
+        # Parse embedding model (optional)
+        embedding_ref = None
+        if embedding_value:
+            embedding_ref = ModelRef.from_value(embedding_value)
+
+        # Parse segmentation model (optional)
+        segmentation_ref = None
+        if segmentation_value:
+            segmentation_ref = ModelRef.from_value(segmentation_value)
 
         return ModelRefs(
             asr=asr_ref,
             vad=vad_ref,
             denoise=denoise_ref,
-            diarization=diarization_ref,
+            embedding=embedding_ref,
+            segmentation=segmentation_ref,
         )
 
     def _parse_preprocessing(self, data: dict[str, Any]) -> PreprocessingConfig:
@@ -364,10 +386,13 @@ class PipelineYamlParser:
         """Parse diarization section."""
         return DiarizationConfig(
             enabled=data.get("enabled", False),
-            similarity_threshold=float(data.get("similarity_threshold", 0.7)),
-            max_speakers=int(data.get("max_speakers", 0)),
-            auto_register_speakers=data.get("auto_register_speakers", True),
+            high_threshold=float(data.get("high_threshold", 0.7)),
+            low_threshold=float(data.get("low_threshold", 0.4)),
+            max_speakers=int(data.get("max_speakers", 2)),
             min_segment_duration_s=float(data.get("min_segment_duration_s", 1.0)),
+            segment_silence_padding_ms=int(data.get("segment_silence_padding_ms", 100)),
+            min_update_confidence=float(data.get("min_update_confidence", data.get("ema_min_confidence", 0.8))),
+            enable_segmentation_refinement=data.get("enable_segmentation_refinement", True),
         )
 
 

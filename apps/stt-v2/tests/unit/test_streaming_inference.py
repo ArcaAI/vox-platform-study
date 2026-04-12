@@ -190,31 +190,29 @@ class TestProcessUtterance:
 
     @pytest.mark.asyncio
     async def test_applies_speaker_identification_when_enabled(self):
-        """When diarization is enabled, result should include speaker metadata."""
+        """When diarization is enabled, final results should include speaker metadata."""
         diarization_cfg = MagicMock()
         diarization_cfg.enabled = True
         diarization_cfg.min_segment_duration_s = 0.1
+
+        mock_embedding = MagicMock()
+        mock_identifier = MagicMock()
+        mock_identifier.identify = AsyncMock(
+            return_value=MagicMock(speaker_id="speaker-abc", confidence=0.93)
+        )
 
         worker = StreamingInferenceWorker(
             asr_pipeline=lambda s, sr: "hello diarization",
             tenant_id="tenant-1",
             consultation_id="consult-1",
             diarization_config=diarization_cfg,
+            speaker_identifier=mock_identifier,
         )
-        utt = _make_utterance(duration_s=1.2)
-
-        mock_embedding = MagicMock()
-        mock_identifier = MagicMock()
-        mock_identifier.identify_with_embedding = AsyncMock(
-            return_value=MagicMock(speaker_id="speaker-abc", confidence=0.93)
-        )
+        utt = _make_utterance(duration_s=1.2, is_final=True)
 
         with patch(
             "stt_v2.diarization.embedding_service.get_embedding_service",
-        ) as mock_emb_svc, patch(
-            "stt_v2.diarization.speaker_identifier.get_speaker_identifier",
-            return_value=mock_identifier,
-        ):
+        ) as mock_emb_svc:
             mock_emb_svc.return_value.extract_from_samples = AsyncMock(
                 return_value=mock_embedding
             )

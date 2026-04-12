@@ -207,6 +207,13 @@ class TranscriptionEventPublisher:
             "endTime": chunk_dict.get("end_time", 0.0),
             "isFinal": chunk_dict.get("is_final", False),
         }
+        # Include speaker diarization fields when available
+        speaker_id = chunk_dict.get("speaker_id")
+        if speaker_id is not None:
+            data["speakerId"] = speaker_id
+        speaker_confidence = chunk_dict.get("speaker_confidence")
+        if speaker_confidence is not None:
+            data["speakerConfidence"] = speaker_confidence
         # Include word timestamps when available
         word_ts = chunk_dict.get("word_timestamps")
         if word_ts:

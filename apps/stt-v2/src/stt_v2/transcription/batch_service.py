@@ -232,33 +232,68 @@ class BatchTranscriptionService:
             update_progress(35)
 
             # ----------------------------------------------------------
-            # Step 2b: Pre-extract speaker embeddings (if diarization enabled)
+            # Step 2b: Prepare diarization
             # ----------------------------------------------------------
-            if spec.diarization.enabled and tenant_id and processed.vad_applied and processed.segments:
+            inline_identifier: Any = None
+            inline_diarization_config: Any = None
+            if spec.diarization.enabled and tenant_id:
                 try:
-                    from ..diarization.embedding_service import EmbeddingService
+                    from ..diarization.embedding_service import create_embedding_service
+                    from ..diarization.speaker_identifier import SpeakerIdentifier
+                    from ..diarization.speaker_tracker import SpeakerTracker
 
-                    embedding_windows = self._split_vad_segments_for_embedding(
-                        processed.segments, max_window_s=5.0,
-                    )
-                    if embedding_windows:
-                        emb_svc = EmbeddingService()
-                        batch_audio = []
-                        batch_times = []
-                        for w_start, w_end in embedding_windows:
-                            s_idx = int(w_start * processed.sample_rate)
-                            e_idx = int(w_end * processed.sample_rate)
-                            batch_audio.append(processed.samples[s_idx:e_idx])
-                            batch_times.append((w_start, w_end))
-                        await emb_svc.extract_batch(
-                            batch_audio, processed.sample_rate, batch_times,
+                    hf_model_id: str | None = None
+                    if pipeline_config.spec.models.embedding:
+                        diar_ref = pipeline_config.spec.models.embedding
+                        if diar_ref.is_inline and diar_ref.inline:
+                            hf_model_id = diar_ref.inline.hf_model_id
+
+                    if hf_model_id:
+                        logger.info("[%s] Using pipeline diarization model: %s", job_id, hf_model_id)
+                        emb_service = create_embedding_service(
+                            hf_model_id=hf_model_id,
                         )
+                        await emb_service.initialize()
+                    else:
+                        from ..diarization.embedding_service import get_embedding_service
+                        emb_service = get_embedding_service()
+
+                    seg_service = None
+                    if spec.diarization.enable_segmentation_refinement:
+                        try:
+                            seg_model_id = None
+                            if pipeline_config.spec.models.segmentation:
+                                seg_ref = pipeline_config.spec.models.segmentation
+                                if seg_ref.is_inline and seg_ref.inline:
+                                    seg_model_id = seg_ref.inline.hf_model_id
+                            if seg_model_id:
+                                from ..diarization.segmentation_service import SegmentationService
+                                seg_service = SegmentationService(hf_model_id=seg_model_id)
+                                await seg_service.initialize()
+                        except Exception:
+                            logger.warning("[%s] Failed to load segmentation model", job_id, exc_info=True)
+
+                    tracker = SpeakerTracker(
+                        max_speakers=spec.diarization.max_speakers,
+                        max_embeddings_per_speaker=spec.diarization.max_embeddings_per_speaker,
+                    )
+                    inline_identifier = SpeakerIdentifier(
+                        tracker=tracker,
+                        embedding_service=emb_service,
+                        segmentation_service=seg_service,
+                        config=spec.diarization,
+                    )
+                    inline_diarization_config = spec.diarization
+                    logger.info("[%s] Inline diarization ready", job_id)
                 except Exception as e:
-                    logger.warning(f"[{job_id}] Pre-extraction of embeddings failed (non-fatal): {e}")
+                    logger.warning(f"[{job_id}] Failed to set up inline diarization (non-fatal): {e}")
+                    inline_identifier = None
 
             # ----------------------------------------------------------
             # Step 3: Run ASR inference
             # ----------------------------------------------------------
+            effective_chunk_cb = chunk_callback
+
             logger.info(f"[{job_id}] Running ASR inference...")
             inference_start = time.time()
 
@@ -295,9 +330,11 @@ class BatchTranscriptionService:
                     spec.inference,
                     job_id=job_id,
                     progress_callback=lambda p: update_progress(35 + int(p * 0.4)),
-                    chunk_callback=chunk_callback,
+                    chunk_callback=effective_chunk_cb,
                     first_word_hook=_on_first_word,
                     initial_prompt=initial_prompt,
+                    inline_identifier=inline_identifier,
+                    inline_diarization_config=inline_diarization_config,
                 )
             else:
                 # Full-audio ASR (no VAD or no segments detected)
@@ -307,7 +344,7 @@ class BatchTranscriptionService:
                     asr_model,
                     spec.inference,
                     progress_callback=lambda p: update_progress(35 + int(p * 0.4)),
-                    chunk_callback=chunk_callback,
+                    chunk_callback=effective_chunk_cb,
                     first_word_hook=_on_first_word,
                     prompt=compose_prompt(initial_prompt, None),
                 )
@@ -328,18 +365,40 @@ class BatchTranscriptionService:
             update_progress(75)
 
             # ----------------------------------------------------------
-            # Step 4: Speaker diarization (if enabled)
+            # Step 4: Collect diarization
             # ----------------------------------------------------------
             diarization_meta: dict[str, Any] = {}
             diarization_start = time.time()
 
-            if spec.diarization.enabled and tenant_id:
-                # Build segments list for diarization:
-                # Prefer VAD segments, then fallback Silero, then ASR segments
-                diarization_segments = raw_result.segments  # default: ASR segments
+            _inline_ran = (
+                inline_identifier is not None
+                and isinstance(raw_result.model_output, dict)
+                and raw_result.model_output.get("inline_diarized_segments")
+            )
 
+            if _inline_ran:
+                tracker = inline_identifier._tracker
+                speaker_ids = list(getattr(tracker, "speaker_ids", []))
+                inline_diar_segments = raw_result.model_output.get("inline_diarized_segments", [])
+                new_count = raw_result.model_output.get("inline_new_speakers", 0)
+
+                if speaker_ids:
+                    diarization_meta = {
+                        "speakers_detected": len(speaker_ids),
+                        "new_speakers_created": new_count,
+                        "speaker_ids": speaker_ids,
+                    }
+                    if inline_diar_segments:
+                        self._attach_speaker_metadata_to_segments(
+                            raw_result.segments, inline_diar_segments
+                        )
+                    logger.info(
+                        "[%s] Inline diarization: %d speakers detected",
+                        job_id, len(speaker_ids),
+                    )
+            elif spec.diarization.enabled and tenant_id:
+                diarization_segments = raw_result.segments
                 if processed.vad_applied and processed.segments:
-                    # Use VAD speech segments (more accurate boundaries)
                     diarization_segments = [
                         {
                             "start": seg.start_time,
@@ -351,7 +410,6 @@ class BatchTranscriptionService:
                         if seg.is_speech
                     ]
                 elif not processed.vad_applied:
-                    # VAD was not applied — run Silero fallback for diarization
                     logger.warning(
                         f"[{job_id}] Diarization requires VAD but VAD was not applied. "
                         f"Running Silero VAD fallback..."
@@ -366,7 +424,6 @@ class BatchTranscriptionService:
                             processed.samples,
                             processed.sample_rate,
                         )
-                        # USE the fallback segments (not discarded)
                         diarization_segments = [
                             {
                                 "start": s.start_time,
@@ -376,10 +433,6 @@ class BatchTranscriptionService:
                             }
                             for s in vad_result.segments
                         ]
-                        logger.info(
-                            f"[{job_id}] Silero VAD fallback: "
-                            f"{len(diarization_segments)} segments for diarization"
-                        )
                     except Exception as e:
                         logger.warning(f"[{job_id}] VAD fallback failed: {e}")
 
@@ -494,48 +547,106 @@ class BatchTranscriptionService:
 
         Returns metadata dict with speaker info.
         """
-        from ..diarization.embedding_service import EmbeddingService
-        from ..diarization.speaker_identifier import SpeakerIdentifier, get_speaker_identifier
+        from ..diarization.embedding_service import create_embedding_service
+        from ..diarization.speaker_identifier import SpeakerIdentifier
+        from ..diarization.speaker_tracker import SpeakerTracker
 
-        # Resolve diarization model — pipeline inline takes precedence
         hf_model_id: str | None = None
-        if pipeline_config and pipeline_config.spec.models.diarization:
-            diar_ref = pipeline_config.spec.models.diarization
+        if pipeline_config and pipeline_config.spec.models.embedding:
+            diar_ref = pipeline_config.spec.models.embedding
             if diar_ref.is_inline and diar_ref.inline:
                 hf_model_id = diar_ref.inline.hf_model_id
 
         if hf_model_id:
             # Pipeline-specific embedding service
             logger.info("Using pipeline diarization model: %s", hf_model_id)
-            emb_service = EmbeddingService(hf_model_id=hf_model_id)
+            emb_service = create_embedding_service(
+                hf_model_id=hf_model_id,
+            )
             await emb_service.initialize()
-            identifier = SpeakerIdentifier(embedding_service=emb_service)
         else:
-            identifier = get_speaker_identifier()
+            from ..diarization.embedding_service import get_embedding_service
+            emb_service = get_embedding_service()
 
-        result = await identifier.diarize_segments(
-            samples=samples,
-            sample_rate=sample_rate,
-            segments=raw_result.segments,
-            tenant_id=tenant_id,
-            consultation_id=consultation_id,
+        seg_service = None
+        if config.enable_segmentation_refinement:
+            try:
+                seg_model_id = None
+                if pipeline_config and pipeline_config.spec.models.segmentation:
+                    seg_ref = pipeline_config.spec.models.segmentation
+                    if seg_ref.is_inline and seg_ref.inline:
+                        seg_model_id = seg_ref.inline.hf_model_id
+                if seg_model_id:
+                    from ..diarization.segmentation_service import SegmentationService
+                    seg_service = SegmentationService(hf_model_id=seg_model_id)
+                    await seg_service.initialize()
+            except Exception:
+                logger.warning("Failed to load segmentation model for batch diarization", exc_info=True)
+
+        # Create per-job tracker + identifier
+        tracker = SpeakerTracker(
+            max_speakers=config.max_speakers,
+            max_embeddings_per_speaker=config.max_embeddings_per_speaker,
+        )
+        identifier = SpeakerIdentifier(
+            tracker=tracker,
+            embedding_service=emb_service,
+            segmentation_service=seg_service,
             config=config,
         )
 
-        if result.applied:
-            # Annotate raw_result segments with speaker IDs
-            for i, seg in enumerate(result.segments):
-                if i < len(raw_result.segments) and seg.speaker_id:
-                    raw_result.segments[i]["speaker_id"] = seg.speaker_id
-                    raw_result.segments[i]["speaker_confidence"] = seg.speaker_confidence
+        new_count = 0
+        speaker_ids_set: set[str] = set()
+        max_emb_samples = int(5.0 * sample_rate)
 
-            return {
-                "speakers_detected": result.speakers_detected,
-                "new_speakers_created": result.new_speakers_created,
-                "speaker_ids": result.get_speaker_ids(),
-            }
+        for i, seg in enumerate(raw_result.segments):
+            seg_start = float(seg.get("start", 0.0))
+            seg_end = float(seg.get("end", seg_start))
+            duration = seg_end - seg_start
 
-        return {}
+            if duration < config.min_segment_duration_s:
+                continue
+
+            start_idx = int(seg_start * sample_rate)
+            end_idx = int(seg_end * sample_rate)
+            seg_samples = samples[start_idx:end_idx][:max_emb_samples]
+
+            if len(seg_samples) == 0:
+                continue
+
+            try:
+                emb = await emb_service.extract_from_samples(seg_samples, sample_rate)
+                result = await identifier.identify(
+                    emb, samples=seg_samples, sample_rate=sample_rate, config=config,
+                )
+
+                if isinstance(result, list):
+                    if result:
+                        raw_result.segments[i]["speaker_id"] = result[0].speaker_id
+                        raw_result.segments[i]["speaker_confidence"] = result[0].speaker_confidence
+                        if result[0].speaker_id:
+                            speaker_ids_set.add(result[0].speaker_id)
+                        if result[0].speaker_confidence is None:
+                            new_count += 1
+                else:
+                    raw_result.segments[i]["speaker_id"] = result.speaker_id
+                    raw_result.segments[i]["speaker_confidence"] = result.confidence
+                    if result.speaker_id:
+                        speaker_ids_set.add(result.speaker_id)
+                    if result.is_new_speaker:
+                        new_count += 1
+            except Exception:
+                logger.warning(
+                    "Segment diarization failed for [%.2f-%.2f]",
+                    seg_start, seg_end, exc_info=True,
+                )
+                continue
+
+        return {
+            "speakers_detected": len(speaker_ids_set),
+            "new_speakers_created": new_count,
+            "speaker_ids": list(speaker_ids_set),
+        }
 
     @staticmethod
     def _segment_overlap(
@@ -790,6 +901,8 @@ class BatchTranscriptionService:
         chunk_callback: Callable[[ChunkTranscriptionResult], Awaitable[None]] | None = None,
         first_word_hook: Callable[[], None] | None = None,
         initial_prompt: str | None = None,
+        inline_identifier: Any | None = None,
+        inline_diarization_config: Any | None = None,
     ) -> RawTranscription:
         """Run ASR inference on each VAD speech segment independently.
 
@@ -835,6 +948,8 @@ class BatchTranscriptionService:
         global_chunk_idx = 0
         first_word_fired = False
         previous_segment_text: str = ""  # carry-forward across segments
+        inline_diar_segments: list[dict[str, Any]] = []
+        inline_new_speakers = 0
 
         speech_segments = [s for s in segments if s.is_speech]
         original_count = len(speech_segments)
@@ -865,6 +980,78 @@ class BatchTranscriptionService:
 
         total = max(len(speech_segments), 1)
 
+        async def _inline_diarize_chunk(
+            chunk: ChunkTranscriptionResult,
+            seg_audio: np.ndarray,
+        ) -> None:
+            """Diarize a single chunk inline and attach speaker metadata.
+
+            Modifies *chunk* in-place with speaker_id/speaker_confidence.
+            Also appends to *inline_diar_segments* for metadata collection.
+            """
+            nonlocal inline_new_speakers
+            if inline_identifier is None or inline_diarization_config is None:
+                return
+
+            duration = chunk.end_time - chunk.start_time
+            if duration < inline_diarization_config.min_segment_duration_s:
+                return
+
+            if len(seg_audio) == 0:
+                return
+
+            try:
+                emb_svc = inline_identifier._embedding_service
+                if emb_svc is None:
+                    return
+
+                max_emb_samples = int(5.0 * sample_rate)
+                capped_audio = seg_audio[:max_emb_samples]
+
+                emb = await emb_svc.extract_from_samples(
+                    capped_audio, sample_rate,
+                    start_time=chunk.start_time,
+                    end_time=chunk.end_time,
+                )
+                result = await inline_identifier.identify(
+                    emb,
+                    samples=capped_audio,
+                    sample_rate=sample_rate,
+                    config=inline_diarization_config,
+                )
+
+                from ..diarization.dto import SpeakerIdentification
+                if isinstance(result, list):
+                    # Ambiguous split - use first sub-segment's speaker
+                    if result:
+                        chunk.speaker_id = result[0].speaker_id
+                        chunk.speaker_confidence = result[0].speaker_confidence
+                        for sub in result:
+                            if sub.speaker_confidence is None:
+                                inline_new_speakers += 1
+                            inline_diar_segments.append({
+                                "start": sub.start_time,
+                                "end": sub.end_time,
+                                "speaker_id": sub.speaker_id,
+                                "speaker_confidence": sub.speaker_confidence,
+                            })
+                elif isinstance(result, SpeakerIdentification):
+                    chunk.speaker_id = result.speaker_id
+                    chunk.speaker_confidence = result.confidence
+                    if result.is_new_speaker:
+                        inline_new_speakers += 1
+                    inline_diar_segments.append({
+                        "start": chunk.start_time,
+                        "end": chunk.end_time,
+                        "speaker_id": result.speaker_id,
+                        "speaker_confidence": result.confidence,
+                    })
+            except Exception as e:
+                logger.warning(
+                    "[%s] Inline diarization failed for chunk [%.1f-%.1f]: %s",
+                    job_id, chunk.start_time, chunk.end_time, e,
+                )
+
         for idx, seg in enumerate(speech_segments):
             start_sample = int(seg.start_time * sample_rate)
             end_sample = int(seg.end_time * sample_rate)
@@ -892,6 +1079,8 @@ class BatchTranscriptionService:
                 chunk_samples = int(chunk_length_s * sample_rate)
                 step_samples = int(step_s * sample_rate)
                 sub_offset = 0
+                _last_sub_chunk: ChunkTranscriptionResult | None = None
+                _final_non_empty_emitted = False
 
                 logger.info(
                     "[%s] VAD segment %d (%.1f–%.1fs, %.1fs) exceeds "
@@ -982,22 +1171,34 @@ class BatchTranscriptionService:
                             seg_word_ts.append(wt)
 
                     # Emit chunk callback
-                    is_last_sub = (sub_offset + step_samples) >= len(segment_audio)
+                    next_offset = sub_offset + step_samples
+                    next_end = min(next_offset + chunk_samples, len(segment_audio))
+                    is_last_sub = next_offset >= len(segment_audio) or (next_end - next_offset) < sample_rate // 2
                     if chunk_callback:
-                        await chunk_callback(
-                            ChunkTranscriptionResult(
-                                chunk_index=global_chunk_idx,
-                                text=chunk_text,
-                                start_time=sub_start_global,
-                                end_time=sub_end_global,
-                                is_final=is_last_sub,
-                                word_timestamps=sub_result.word_timestamps,
-                                vad_segment_index=idx,
-                            )
+                        chunk_result = ChunkTranscriptionResult(
+                            chunk_index=global_chunk_idx,
+                            text=chunk_text,
+                            start_time=sub_start_global,
+                            end_time=sub_end_global,
+                            is_final=is_last_sub,
+                            word_timestamps=sub_result.word_timestamps,
+                            vad_segment_index=idx,
                         )
+                        if chunk_result.is_final:
+                            await _inline_diarize_chunk(chunk_result, sub_audio)
+                        await chunk_callback(chunk_result)
+                        if chunk_text:
+                            _last_sub_chunk = chunk_result
+                        if is_last_sub and chunk_text:
+                            _final_non_empty_emitted = True
 
                     global_chunk_idx += 1
                     sub_offset += step_samples
+
+                if chunk_callback and not _final_non_empty_emitted and _last_sub_chunk is not None:
+                    _last_sub_chunk.is_final = True
+                    await _inline_diarize_chunk(_last_sub_chunk, segment_audio)
+                    await chunk_callback(_last_sub_chunk)
 
             else:
                 # ---- Short segment: single inference call ----
@@ -1050,17 +1251,17 @@ class BatchTranscriptionService:
 
                 # Emit chunk callback
                 if chunk_callback:
-                    await chunk_callback(
-                        ChunkTranscriptionResult(
-                            chunk_index=global_chunk_idx,
-                            text=chunk_text,
-                            start_time=seg.start_time,
-                            end_time=seg.end_time,
-                            is_final=True,
-                            word_timestamps=seg_result.word_timestamps,
-                            vad_segment_index=idx,
-                        )
+                    chunk_result = ChunkTranscriptionResult(
+                        chunk_index=global_chunk_idx,
+                        text=chunk_text,
+                        start_time=seg.start_time,
+                        end_time=seg.end_time,
+                        is_final=True,
+                        word_timestamps=seg_result.word_timestamps,
+                        vad_segment_index=idx,
                     )
+                    await _inline_diarize_chunk(chunk_result, segment_audio)
+                    await chunk_callback(chunk_result)
                 global_chunk_idx += 1
 
             # ---- Merge per-segment results ----
@@ -1119,6 +1320,8 @@ class BatchTranscriptionService:
         result.model_output = {
             "segment_latencies": segment_latencies,
             "per_segment_results": per_segment_results,
+            "inline_diarized_segments": inline_diar_segments,
+            "inline_new_speakers": inline_new_speakers,
         }
 
         logger.info(
@@ -1860,7 +2063,9 @@ class BatchTranscriptionService:
                                 }
                             )
 
-            is_last_chunk = (offset + step_samples) >= len(samples)
+            next_offset = offset + step_samples
+            next_end = min(next_offset + chunk_samples, len(samples))
+            is_last_chunk = next_offset >= len(samples) or (next_end - next_offset) < sample_rate // 2
 
             # Emit chunk callback for near-real-time output
             if chunk_callback:
