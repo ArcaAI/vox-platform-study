@@ -12,9 +12,9 @@ import { ApiEndpoint, Authorize } from '../../decorators';
 import { ValidateYamlRequest, ValidateYamlResponse } from './dto';
 
 @ApiBearerAuth()
-@ApiTags('audio-pipelines')
-@Controller('audio/pipelines')
-@Authorize()
+@ApiTags('admin-audio-pipelines')
+@Controller('admin/audio/pipelines')
+@Authorize(['manage', 'AsrPipeline'])
 export class AudioPipelineController {
   constructor(private readonly pipelineService: PipelineService) {}
 

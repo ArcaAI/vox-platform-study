@@ -54,7 +54,7 @@ export interface YamlValidationResult {
 // ---------------------------------------------------------------------------
 
 export const audioPipelineKeys = {
-  all: (tenantId?: string) => ['admin', 'audio-pipelines', tenantId ?? ''] as const,
+  all: (tenantId?: string) => ['admin', 'audio/pipelines', tenantId ?? ''] as const,
   list: (tenantId?: string) => [...audioPipelineKeys.all(tenantId), 'list'] as const,
   detail: (tenantId: string | undefined, id: string) => [...audioPipelineKeys.all(tenantId), 'detail', id] as const,
   slug: (tenantId: string | undefined, slug: string) => [...audioPipelineKeys.all(tenantId), 'slug', slug] as const,
@@ -67,7 +67,7 @@ export const audioPipelineKeys = {
 export function useAudioPipelines(tenantId: string, options?: Omit<UseQueryOptions<AudioPipeline[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: audioPipelineKeys.list(tenantId),
-    queryFn: () => adminClient.get<AudioPipeline[]>('/audio/pipelines', { tenantId }),
+    queryFn: () => adminClient.get<AudioPipeline[]>('/admin/audio/pipelines', { tenantId }),
     enabled: !!tenantId,
     ...options,
   });
@@ -77,7 +77,7 @@ export function useAudioPipeline(tenantId: string, id: string, options?: Omit<Us
   return useQuery({
     queryKey: audioPipelineKeys.detail(tenantId, id),
     queryFn: () =>
-      adminClient.get<AudioPipeline | null>(`/audio/pipelines/${id}`, {
+      adminClient.get<AudioPipeline | null>(`/admin/audio/pipelines/${id}`, {
         tenantId,
       }),
     enabled: !!id && !!tenantId,
@@ -92,7 +92,7 @@ export function useAudioPipeline(tenantId: string, id: string, options?: Omit<Us
 export function useCreateAudioPipeline(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateAudioPipelineInput) => adminClient.post<AudioPipeline>('/audio/pipelines', input, { tenantId }),
+    mutationFn: (input: CreateAudioPipelineInput) => adminClient.post<AudioPipeline>('/admin/audio/pipelines', input, { tenantId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: audioPipelineKeys.all(tenantId) });
     },
@@ -103,7 +103,7 @@ export function useUpdateAudioPipeline(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...input }: UpdateAudioPipelineInput & { id: string }) =>
-      adminClient.patch<AudioPipeline>(`/audio/pipelines/${id}`, input, {
+      adminClient.patch<AudioPipeline>(`/admin/audio/pipelines/${id}`, input, {
         tenantId,
       }),
     onSuccess: (_data, variables) => {
@@ -118,7 +118,7 @@ export function useUpdateAudioPipeline(tenantId: string) {
 export function useDeleteAudioPipeline(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => adminClient.delete<void>(`/audio/pipelines/${id}`, { tenantId }),
+    mutationFn: (id: string) => adminClient.delete<void>(`/admin/audio/pipelines/${id}`, { tenantId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: audioPipelineKeys.all(tenantId) });
     },
@@ -127,6 +127,6 @@ export function useDeleteAudioPipeline(tenantId: string) {
 
 export function useValidateAudioPipelineYaml(tenantId: string) {
   return useMutation({
-    mutationFn: (yaml: string) => adminClient.post<YamlValidationResult>('/audio/pipelines/validate-yaml', { yaml }, { tenantId }),
+    mutationFn: (yaml: string) => adminClient.post<YamlValidationResult>('/admin/audio/pipelines/validate-yaml', { yaml }, { tenantId }),
   });
 }
