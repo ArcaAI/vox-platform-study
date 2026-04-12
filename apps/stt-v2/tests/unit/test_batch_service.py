@@ -1344,7 +1344,6 @@ class TestRunDiarization:
             enabled=True,
             min_segment_duration_s=0.5,
             max_speakers=5,
-            ema_alpha=0.1,
         )
 
         with (
@@ -1401,7 +1400,6 @@ class TestRunDiarization:
             enabled=True,
             min_segment_duration_s=1.0,
             max_speakers=5,
-            ema_alpha=0.1,
         )
 
         with (
@@ -1465,7 +1463,6 @@ class TestRunDiarization:
             enabled=True,
             min_segment_duration_s=0.5,
             max_speakers=5,
-            ema_alpha=0.1,
         )
 
         with (
@@ -1516,7 +1513,6 @@ class TestRunDiarization:
             enabled=True,
             min_segment_duration_s=0.5,
             max_speakers=5,
-            ema_alpha=0.1,
         )
 
         with (
@@ -2033,6 +2029,81 @@ class TestTranscribeTimingMetrics:
 
         mock_per_seg.assert_called_once()
         mock_full.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_transcribe_inline_diarization_uses_tracker_speaker_ids(self, service):
+        """Inline diarization should read speaker ids from tracker public API."""
+        from stt_v2.transcription.dto import AudioSegment as DtoAudioSegment
+
+        pipeline = create_complete_pipeline_config()
+        pipeline.spec.diarization = DiarizationConfig(enabled=True)
+        loaded_model = create_complete_loaded_model()
+        audio_bytes = create_valid_wav_audio(duration_seconds=2.0)
+
+        class _TrackerWithoutEmbeddings:
+            speaker_ids = ["Speaker 1"]
+
+        tracker = _TrackerWithoutEmbeddings()
+        identifier = MagicMock()
+        identifier._tracker = tracker
+
+        raw_result = RawTranscription(
+            text="Per-segment",
+            segments=[{"start": 0.0, "end": 1.0, "text": "Per-segment"}],
+        )
+        raw_result.model_output = {
+            "inline_diarized_segments": [
+                {
+                    "start": 0.0,
+                    "end": 1.0,
+                    "speaker_id": "Speaker 1",
+                    "speaker_confidence": None,
+                }
+            ],
+            "inline_new_speakers": 1,
+        }
+
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_per_segment_inference", new_callable=AsyncMock) as mock_per_seg,
+            patch.object(service, "_run_inference") as mock_full,
+            patch.object(service, "_postprocess") as mock_postproc,
+            patch("stt_v2.diarization.embedding_service.get_embedding_service") as mock_get_emb,
+            patch("stt_v2.diarization.speaker_tracker.SpeakerTracker", return_value=tracker),
+            patch("stt_v2.diarization.speaker_identifier.SpeakerIdentifier", return_value=identifier),
+        ):
+            mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
+
+            mock_preprocessor = AsyncMock()
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(32000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=2.0,
+                    vad_applied=True,
+                    segments=[DtoAudioSegment(0.0, 1.0, is_speech=True)],
+                )
+            )
+            mock_preproc.return_value = mock_preprocessor
+            mock_get_emb.return_value = MagicMock()
+            mock_per_seg.return_value = raw_result
+            mock_postproc.return_value = TranscriptionResult(
+                text="Per-segment",
+                duration_seconds=2.0,
+            )
+
+            result = await service.transcribe(
+                job_id="j-inline-diar-1",
+                audio_bytes=audio_bytes,
+                pipeline_config=pipeline,
+                tenant_id="t-456",
+            )
+
+        mock_per_seg.assert_called_once()
+        mock_full.assert_not_called()
+        assert result.metadata["diarization"]["speakers_detected"] == 1
+        assert result.metadata["diarization"]["speaker_ids"] == ["Speaker 1"]
 
     @pytest.mark.asyncio
     async def test_transcribe_uses_full_audio_when_no_vad(self, service):

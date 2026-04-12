@@ -32,8 +32,7 @@ def _make_config(**overrides) -> DiarizationConfig:
         "low_threshold": 0.4,
         "max_speakers": 5,
         "min_segment_duration_s": 1.0,
-        "ema_alpha": 0.1,
-        "ema_min_confidence": 0.8,
+        "min_update_confidence": 0.8,
         "enable_segmentation_refinement": True,
     }
     defaults.update(overrides)
@@ -46,7 +45,7 @@ class TestHighConfidenceMatch:
     @pytest.mark.asyncio
     async def test_high_confidence_returns_existing_speaker(self):
         """Score >= high_threshold should return the matched speaker."""
-        tracker = SpeakerTracker(max_speakers=5, ema_alpha=0.1)
+        tracker = SpeakerTracker(max_speakers=5)
         base_emb = np.random.randn(512).astype(np.float32)
         base_emb = base_emb / np.linalg.norm(base_emb)
         tracker.register(base_emb)
@@ -65,38 +64,35 @@ class TestHighConfidenceMatch:
         assert result.confidence >= 0.7
 
     @pytest.mark.asyncio
-    async def test_high_confidence_triggers_ema_when_above_min(self):
-        """Score >= ema_min_confidence should trigger EMA update."""
-        tracker = SpeakerTracker(max_speakers=5, ema_alpha=0.5)
+    async def test_high_confidence_triggers_update_when_above_min(self):
+        """Score >= min_update_confidence should trigger embedding window update."""
+        tracker = SpeakerTracker(max_speakers=5)
         base_emb = np.random.randn(512).astype(np.float32)
         base_emb = base_emb / np.linalg.norm(base_emb)
         tracker.register(base_emb)
-        old_ref = tracker._embeddings["Speaker 1"].copy()
+        assert len(tracker._embedding_windows["Speaker 1"]) == 1
 
-        config = _make_config(ema_min_confidence=0.8)
+        config = _make_config(min_update_confidence=0.8)
         identifier = SpeakerIdentifier(tracker=tracker, config=config)
 
         # Use same embedding -> confidence ~1.0 which is >= 0.8
         query = _make_embedding(base_emb.tolist())
         await identifier.identify(query)
 
-        # Reference should have been updated
-        new_ref = tracker._embeddings["Speaker 1"]
-        # With alpha=0.5 and same vector, it should still be very close
-        # but the update should have been called
-        assert np.allclose(old_ref, new_ref, atol=0.01)
+        # Window should have grown (embedding appended)
+        assert len(tracker._embedding_windows["Speaker 1"]) == 2
 
     @pytest.mark.asyncio
     async def test_high_confidence_below_ema_min_no_update(self):
-        """Score >= high_threshold but < ema_min_confidence should NOT trigger EMA."""
-        tracker = SpeakerTracker(max_speakers=5, ema_alpha=0.5)
+        """Score >= high_threshold but < min_update_confidence should NOT trigger update."""
+        tracker = SpeakerTracker(max_speakers=5)
         base_emb = np.random.randn(512).astype(np.float32)
         base_emb = base_emb / np.linalg.norm(base_emb)
         tracker.register(base_emb)
-        old_ref = tracker._embeddings["Speaker 1"].copy()
+        initial_window_size = len(tracker._embedding_windows["Speaker 1"])
 
-        # Set ema_min_confidence very high so it won't trigger
-        config = _make_config(high_threshold=0.3, ema_min_confidence=0.99)
+        # Set min_update_confidence very high so it won't trigger
+        config = _make_config(high_threshold=0.3, min_update_confidence=0.99)
         identifier = SpeakerIdentifier(tracker=tracker, config=config)
 
         # Create a query with moderate similarity (between 0.3 and 0.99)
@@ -107,12 +103,10 @@ class TestHighConfidenceMatch:
 
         result = await identifier.identify(query)
 
-        # Should match but NOT trigger EMA (confidence < 0.99)
+        # Should match but NOT trigger update (confidence < 0.99)
         if result.confidence is not None and result.confidence < 0.99:
-            # Reference should be unchanged
-            np.testing.assert_array_almost_equal(
-                old_ref, tracker._embeddings["Speaker 1"], decimal=5,
-            )
+            # Window size should be unchanged
+            assert len(tracker._embedding_windows["Speaker 1"]) == initial_window_size
 
 
 class TestLowConfidenceNewSpeaker:
@@ -121,7 +115,7 @@ class TestLowConfidenceNewSpeaker:
     @pytest.mark.asyncio
     async def test_low_confidence_registers_new_speaker(self):
         """Score < low_threshold should register a new speaker."""
-        tracker = SpeakerTracker(max_speakers=5, ema_alpha=0.1)
+        tracker = SpeakerTracker(max_speakers=5)
         # Register speaker 1 with a known direction
         e1 = np.zeros(512, dtype=np.float32)
         e1[0] = 1.0
@@ -143,7 +137,7 @@ class TestLowConfidenceNewSpeaker:
     @pytest.mark.asyncio
     async def test_at_capacity_falls_back_to_best_match(self):
         """At max_speakers capacity, low-confidence should fallback to best match."""
-        tracker = SpeakerTracker(max_speakers=1, ema_alpha=0.1)
+        tracker = SpeakerTracker(max_speakers=1)
         e1 = np.zeros(512, dtype=np.float32)
         e1[0] = 1.0
         tracker.register(e1)
@@ -182,7 +176,7 @@ class TestAmbiguousZone:
     @pytest.mark.asyncio
     async def test_ambiguous_with_segmentation_splits(self):
         """Ambiguous zone with segmentation should re-split and re-identify."""
-        tracker = SpeakerTracker(max_speakers=5, ema_alpha=0.1)
+        tracker = SpeakerTracker(max_speakers=5)
         # Register a speaker so compare returns non-None
         base = np.random.randn(512).astype(np.float32)
         base = base / np.linalg.norm(base)
