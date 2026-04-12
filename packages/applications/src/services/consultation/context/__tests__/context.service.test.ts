@@ -977,6 +977,40 @@ describe('ContextService', () => {
             expect(mockAudioRecordingRepository.create).toHaveBeenCalled();
         });
 
+        it('should emit ResourceCreated event after creating audio recording', async () => {
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockContextItemRepository.findAudioRecordings.mockResolvedValue([]);
+            const newContainer = createMockContextItemEntity({
+                id: 'new-audio-container-id',
+                type: ContextItemType.AUDIO_RECORDING,
+            });
+            mockContextItemRepository.create.mockResolvedValue(newContainer);
+            mockAudioRecordingRepository.getNextSequenceNumber.mockResolvedValue(1);
+            mockAudioRecordingRepository.create.mockResolvedValue({ id: 'audio-rec-id', createdAt: new Date('2026-01-29T10:00:00Z') });
+            mockContextItemRepository.findWithAudioRecordings.mockResolvedValue({
+                ...newContainer,
+                AudioRecordings: [createMockAudioRecordingEntity()],
+            });
+
+            await service.addAudioRecording('consultation-1', {
+                mediaId: 'media-uuid-123',
+                duration: 180000,
+                format: 'mp3',
+            });
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceCreated,
+                expect.objectContaining({
+                    resourceId: 'audio-rec-id',
+                    data: expect.objectContaining({
+                        consultationId: 'consultation-1',
+                        type: 'AUDIO_RECORDING',
+                        mediaId: 'media-uuid-123',
+                    }),
+                })
+            );
+        });
+
         it('should use existing audio container if present', async () => {
             mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
             const existingContainer = createMockContextItemEntity({
@@ -1304,6 +1338,41 @@ describe('ContextService', () => {
 
             expect(result).toHaveLength(4);
             expect(mockNamedEntityRepository.create).toHaveBeenCalledTimes(4);
+        });
+
+        it('should emit ResourceCreated event after creating named entities', async () => {
+            mockContextItemRepository.findById.mockResolvedValue(createMockContextItemEntity());
+            mockNamedEntityRepository.create.mockResolvedValue(createMockNamedEntityEntity());
+
+            await service.addNamedEntities('context-item-id-1', {
+                entities: [
+                    { text: 'Aspirin', className: 'MEDICATION', confidence: 0.95 },
+                    { text: 'Headache', className: 'CONDITION', confidence: 0.88 },
+                ],
+                aiModelId: 'ner-model-1',
+            });
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceCreated,
+                expect.objectContaining({
+                    resourceId: 'context-item-id-1',
+                    data: expect.objectContaining({
+                        contextItemId: 'context-item-id-1',
+                        entityCount: 2,
+                        type: 'NAMED_ENTITY',
+                    }),
+                })
+            );
+        });
+
+        it('should not emit event when entities array is empty', async () => {
+            mockContextItemRepository.findById.mockResolvedValue(createMockContextItemEntity());
+
+            await service.addNamedEntities('context-item-id-1', {
+                entities: [],
+            });
+
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
         });
     });
 
