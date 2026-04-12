@@ -1,8 +1,27 @@
-import { memo } from 'react';
+import type { TranscriptEntry } from '@/store/audio-store';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
-import type { TranscriptEntry } from '@/store/audio-store';
 import { Clock, Play, Square, User } from 'lucide-react';
+import { memo } from 'react';
+
+const SPEAKER_COLORS = [
+  'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-700',
+  'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700',
+  'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700',
+  'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-700',
+  'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-700',
+  'bg-cyan-100 text-cyan-800 border-cyan-300 dark:bg-cyan-900/40 dark:text-cyan-300 dark:border-cyan-700',
+  'bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-700',
+  'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-700',
+] as const;
+
+function getSpeakerColor(speakerId: string): string {
+  let hash = 0;
+  for (let i = 0; i < speakerId.length; i++) {
+    hash = (hash * 31 + speakerId.charCodeAt(i)) | 0;
+  }
+  return SPEAKER_COLORS[Math.abs(hash) % SPEAKER_COLORS.length];
+}
 
 export function formatTranscriptTimestamp(ts: number): string {
   const date = new Date(ts);
@@ -38,7 +57,7 @@ function AudioTranscriptItemInner({
           </Badge>
         )}
         {speakerDisplay && (
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" className={`text-[10px] ${entry.speaker ? getSpeakerColor(entry.speaker) : ''}`}>
             <User className="mr-0.5 size-2.5" />
             {speakerDisplay}
           </Badge>

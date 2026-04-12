@@ -354,6 +354,45 @@ class SessionManager:
             metadata.diarization = effective_diarization
             await session.force_persist()
 
+            speaker_identifier = None
+            if effective_diarization and diarization_config:
+                from stt_v2.diarization.embedding_service import get_embedding_service
+                from stt_v2.diarization.speaker_identifier import SpeakerIdentifier
+                from stt_v2.diarization.speaker_tracker import SpeakerTracker
+
+                speaker_tracker = SpeakerTracker(
+                    max_speakers=diarization_config.max_speakers,
+                    max_embeddings_per_speaker=diarization_config.max_embeddings_per_speaker,
+                )
+
+                seg_service = None
+                if diarization_config.enable_segmentation_refinement:
+                    try:
+                        seg_model_id = None
+                        if pipeline_config and pipeline_config.spec.models.segmentation:
+                            seg_ref = pipeline_config.spec.models.segmentation
+                            if seg_ref.is_inline and seg_ref.inline:
+                                seg_model_id = seg_ref.inline.hf_model_id
+                        if seg_model_id:
+                            from stt_v2.diarization.segmentation_service import SegmentationService
+                            seg_service = SegmentationService(hf_model_id=seg_model_id)
+                            await seg_service.initialize()
+                    except Exception:
+                        logger.warning("Failed to load segmentation model for session %s", session_id, exc_info=True)
+
+                emb_service = None
+                try:
+                    emb_service = get_embedding_service()
+                except Exception:
+                    logger.warning("Failed to get embedding service for session %s", session_id, exc_info=True)
+
+                speaker_identifier = SpeakerIdentifier(
+                    tracker=speaker_tracker,
+                    embedding_service=emb_service,
+                    segmentation_service=seg_service,
+                    config=diarization_config,
+                )
+
             # Create inference worker (per-utterance ASR)
             postprocessing_config = (
                 pipeline_config.postprocessing if pipeline_config else None
@@ -378,6 +417,7 @@ class SessionManager:
                 diarization_config=diarization_config,
                 postprocessing_config=postprocessing_config,
                 initial_prompt=initial_prompt,
+                speaker_identifier=speaker_identifier,
             )
 
             self._register_inference_runtime(session, inference_worker)
@@ -1508,6 +1548,7 @@ class SessionManager:
                         ),
                         postprocessing_config=recovery_postprocessing_config,
                         initial_prompt=recovery_initial_prompt,
+                        speaker_identifier=None,  # Recovery loses session state
                     )
 
                     # TODO: Replay last ~2 s of audio from Redis Stream to

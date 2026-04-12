@@ -27,24 +27,23 @@ class TestDiarizationConfig:
         """Test default diarization configuration values."""
         config = DiarizationConfig()
         assert config.enabled is False
-        assert config.similarity_threshold == 0.7
-        assert config.max_speakers == 0
-        assert config.auto_register_speakers is True
+        assert config.high_threshold == 0.7
+        assert config.low_threshold == 0.4
+        assert config.max_speakers == 2
         assert config.min_segment_duration_s == 1.0
 
     def test_custom_values(self):
         """Test custom diarization configuration values."""
         config = DiarizationConfig(
             enabled=True,
-            similarity_threshold=0.85,
+            high_threshold=0.85,
+            low_threshold=0.5,
             max_speakers=5,
-            auto_register_speakers=False,
             min_segment_duration_s=2.5,
         )
         assert config.enabled is True
-        assert config.similarity_threshold == 0.85
+        assert config.high_threshold == 0.85
         assert config.max_speakers == 5
-        assert config.auto_register_speakers is False
         assert config.min_segment_duration_s == 2.5
 
     def test_partial_custom_values(self):
@@ -56,8 +55,8 @@ class TestDiarizationConfig:
         assert config.enabled is True
         assert config.max_speakers == 3
         # Other values should remain at defaults
-        assert config.similarity_threshold == 0.7
-        assert config.auto_register_speakers is True
+        assert config.high_threshold == 0.7
+        assert config.low_threshold == 0.4
         assert config.min_segment_duration_s == 1.0
 
 
@@ -67,15 +66,15 @@ class TestDiarizationConfig:
 
 
 class TestModelRefsWithDiarization:
-    """Tests for ModelRefs with diarization field."""
+    """Tests for ModelRefs with embedding field (legacy: diarization)."""
 
     def test_get_all_refs_with_all_models_including_diarization(self):
-        """Test get_all_refs() returns 4 refs when all models set (asr, vad, denoise, diarization)."""
+        """Test get_all_refs() returns 4 refs when all models set (asr, vad, denoise, embedding)."""
         refs = ModelRefs(
             asr=ModelRef(slug="whisper-large-v3"),
             vad=ModelRef(slug="silero-vad"),
             denoise=ModelRef(slug="deepfilternet-v3"),
-            diarization=ModelRef(slug="pyannote-diarization"),
+            embedding=ModelRef(slug="pyannote-embedding"),
         )
         all_refs = refs.get_all_refs()
 
@@ -83,7 +82,7 @@ class TestModelRefsWithDiarization:
         assert ("asr", refs.asr) in all_refs
         assert ("vad", refs.vad) in all_refs
         assert ("denoise", refs.denoise) in all_refs
-        assert ("diarization", refs.diarization) in all_refs
+        assert ("embedding", refs.embedding) in all_refs
 
     def test_get_all_refs_with_only_asr(self):
         """Test get_all_refs() returns 1 ref when only asr set."""
@@ -91,7 +90,7 @@ class TestModelRefsWithDiarization:
             asr=ModelRef(slug="whisper-large-v3"),
             vad=None,
             denoise=None,
-            diarization=None,
+            embedding=None,
         )
         all_refs = refs.get_all_refs()
 
@@ -99,28 +98,28 @@ class TestModelRefsWithDiarization:
         assert all_refs[0][0] == "asr"
         assert all_refs[0][1] == refs.asr
 
-    def test_get_all_refs_with_asr_and_diarization(self):
-        """Test get_all_refs() includes diarization when set."""
+    def test_get_all_refs_with_asr_and_embedding(self):
+        """Test get_all_refs() includes embedding when set."""
         refs = ModelRefs(
             asr=ModelRef(slug="whisper-large-v3"),
             vad=None,
             denoise=None,
-            diarization=ModelRef(slug="pyannote-diarization"),
+            embedding=ModelRef(slug="pyannote-embedding"),
         )
         all_refs = refs.get_all_refs()
 
         assert len(all_refs) == 2
         roles = [role for role, _ in all_refs]
         assert "asr" in roles
-        assert "diarization" in roles
+        assert "embedding" in roles
 
-    def test_get_all_slugs_includes_diarization_slug(self):
-        """Test get_all_slugs() includes diarization slug."""
+    def test_get_all_slugs_includes_embedding_slug(self):
+        """Test get_all_slugs() includes embedding slug."""
         refs = ModelRefs(
             asr=ModelRef(slug="whisper-large-v3"),
             vad=ModelRef(slug="silero-vad"),
             denoise=ModelRef(slug="deepfilternet-v3"),
-            diarization=ModelRef(slug="pyannote-diarization"),
+            embedding=ModelRef(slug="pyannote-embedding"),
         )
         slugs = refs.get_all_slugs()
 
@@ -128,15 +127,15 @@ class TestModelRefsWithDiarization:
         assert "whisper-large-v3" in slugs
         assert "silero-vad" in slugs
         assert "deepfilternet-v3" in slugs
-        assert "pyannote-diarization" in slugs
+        assert "pyannote-embedding" in slugs
 
-    def test_get_all_slugs_excludes_diarization_when_none(self):
-        """Test get_all_slugs() excludes diarization when None."""
+    def test_get_all_slugs_excludes_embedding_when_none(self):
+        """Test get_all_slugs() excludes embedding when None."""
         refs = ModelRefs(
             asr=ModelRef(slug="whisper-large-v3"),
             vad=ModelRef(slug="silero-vad"),
             denoise=ModelRef(slug="deepfilternet-v3"),
-            diarization=None,
+            embedding=None,
         )
         slugs = refs.get_all_slugs()
 
@@ -144,19 +143,18 @@ class TestModelRefsWithDiarization:
         assert "whisper-large-v3" in slugs
         assert "silero-vad" in slugs
         assert "deepfilternet-v3" in slugs
-        assert "pyannote-diarization" not in slugs
 
-    def test_get_all_slugs_excludes_diarization_inline(self):
-        """Test get_all_slugs() excludes diarization when it's inline (not slug)."""
-        inline_diarization = InlineModelDef(
-            hf_model_id="pyannote/speaker-diarization",
+    def test_get_all_slugs_excludes_embedding_inline(self):
+        """Test get_all_slugs() excludes embedding when it's inline (not slug)."""
+        inline_embedding = InlineModelDef(
+            hf_model_id="pyannote/wespeaker-voxceleb-resnet34-LM",
             engine=AiModelFormat.SAFETENSOR,
         )
         refs = ModelRefs(
             asr=ModelRef(slug="whisper-large-v3"),
             vad=ModelRef(slug="silero-vad"),
             denoise=None,
-            diarization=ModelRef(inline=inline_diarization),
+            embedding=ModelRef(inline=inline_embedding),
         )
         slugs = refs.get_all_slugs()
 
@@ -164,12 +162,11 @@ class TestModelRefsWithDiarization:
         assert len(slugs) == 2
         assert "whisper-large-v3" in slugs
         assert "silero-vad" in slugs
-        assert "pyannote-diarization" not in slugs
 
-    def test_get_inline_models_includes_diarization_inline(self):
-        """Test get_inline_models() includes diarization inline definition."""
-        inline_diarization = InlineModelDef(
-            hf_model_id="pyannote/speaker-diarization",
+    def test_get_inline_models_includes_embedding_inline(self):
+        """Test get_inline_models() includes embedding inline definition."""
+        inline_embedding = InlineModelDef(
+            hf_model_id="pyannote/wespeaker-voxceleb-resnet34-LM",
             engine=AiModelFormat.SAFETENSOR,
         )
         inline_asr = InlineModelDef(
@@ -180,36 +177,36 @@ class TestModelRefsWithDiarization:
             asr=ModelRef(inline=inline_asr),
             vad=ModelRef(slug="silero-vad"),  # Slug, not inline
             denoise=None,
-            diarization=ModelRef(inline=inline_diarization),
+            embedding=ModelRef(inline=inline_embedding),
         )
         inline_models = refs.get_inline_models()
 
         assert len(inline_models) == 2
         roles = [role for role, _ in inline_models]
         assert "asr" in roles
-        assert "diarization" in roles
+        assert "embedding" in roles
 
-        # Verify the diarization inline model
-        diarization_entry = next(
-            (role, model) for role, model in inline_models if role == "diarization"
+        # Verify the embedding inline model
+        embedding_entry = next(
+            (role, model) for role, model in inline_models if role == "embedding"
         )
-        assert diarization_entry[1].hf_model_id == "pyannote/speaker-diarization"
-        assert diarization_entry[1].engine == AiModelFormat.SAFETENSOR
+        assert embedding_entry[1].hf_model_id == "pyannote/wespeaker-voxceleb-resnet34-LM"
+        assert embedding_entry[1].engine == AiModelFormat.SAFETENSOR
 
-    def test_get_inline_models_excludes_diarization_when_slug(self):
-        """Test get_inline_models() excludes diarization when it's a slug reference."""
+    def test_get_inline_models_excludes_embedding_when_slug(self):
+        """Test get_inline_models() excludes embedding when it's a slug reference."""
         refs = ModelRefs(
             asr=ModelRef(slug="whisper-large-v3"),
             vad=None,
             denoise=None,
-            diarization=ModelRef(slug="pyannote-diarization"),
+            embedding=ModelRef(slug="pyannote-embedding"),
         )
         inline_models = refs.get_inline_models()
 
         assert len(inline_models) == 0
 
-    def test_get_inline_models_excludes_diarization_when_none(self):
-        """Test get_inline_models() excludes diarization when None."""
+    def test_get_inline_models_excludes_embedding_when_none(self):
+        """Test get_inline_models() excludes embedding when None."""
         inline_asr = InlineModelDef(
             hf_model_id="onnx-community/whisper-large-v3-turbo",
             engine=AiModelFormat.ONNX,
@@ -218,30 +215,30 @@ class TestModelRefsWithDiarization:
             asr=ModelRef(inline=inline_asr),
             vad=None,
             denoise=None,
-            diarization=None,
+            embedding=None,
         )
         inline_models = refs.get_inline_models()
 
         assert len(inline_models) == 1
         assert inline_models[0][0] == "asr"
 
-    def test_diarization_field_exists(self):
-        """Test that diarization field exists on ModelRefs."""
+    def test_embedding_field_exists(self):
+        """Test that embedding field exists on ModelRefs."""
         refs = ModelRefs(
             asr=ModelRef(slug="whisper-large-v3"),
-            diarization=ModelRef(slug="pyannote-diarization"),
+            embedding=ModelRef(slug="pyannote-embedding"),
         )
-        assert hasattr(refs, "diarization")
-        assert refs.diarization is not None
-        assert refs.diarization.slug == "pyannote-diarization"
+        assert hasattr(refs, "embedding")
+        assert refs.embedding is not None
+        assert refs.embedding.slug == "pyannote-embedding"
 
-    def test_diarization_field_is_optional(self):
-        """Test that diarization field is optional (can be None)."""
+    def test_embedding_field_is_optional(self):
+        """Test that embedding field is optional (can be None)."""
         refs = ModelRefs(
             asr=ModelRef(slug="whisper-large-v3"),
-            diarization=None,
+            embedding=None,
         )
-        assert refs.diarization is None
+        assert refs.embedding is None
 
 
 # =============================================================================
@@ -264,18 +261,18 @@ class TestPipelineSpecWithDiarization:
         assert hasattr(spec, "diarization")
         assert isinstance(spec.diarization, DiarizationConfig)
         assert spec.diarization.enabled is False
-        assert spec.diarization.similarity_threshold == 0.7
-        assert spec.diarization.max_speakers == 0
-        assert spec.diarization.auto_register_speakers is True
+        assert spec.diarization.high_threshold == 0.7
+        assert spec.diarization.max_speakers == 2
+        assert spec.diarization.low_threshold == 0.4
         assert spec.diarization.min_segment_duration_s == 1.0
 
     def test_custom_diarization_config(self):
         """Test custom diarization config."""
         custom_diarization = DiarizationConfig(
             enabled=True,
-            similarity_threshold=0.85,
+            high_threshold=0.85,
             max_speakers=5,
-            auto_register_speakers=False,
+            low_threshold=0.5,
             min_segment_duration_s=2.5,
         )
         spec = PipelineSpec(
@@ -287,33 +284,33 @@ class TestPipelineSpecWithDiarization:
             diarization=custom_diarization,
         )
         assert spec.diarization.enabled is True
-        assert spec.diarization.similarity_threshold == 0.85
+        assert spec.diarization.high_threshold == 0.85
         assert spec.diarization.max_speakers == 5
-        assert spec.diarization.auto_register_speakers is False
+        assert spec.diarization.low_threshold == 0.5
         assert spec.diarization.min_segment_duration_s == 2.5
 
     def test_pipeline_spec_with_diarization_model_and_config(self):
-        """Test PipelineSpec with both diarization model and config."""
+        """Test PipelineSpec with both embedding model and diarization config."""
         spec = PipelineSpec(
             version="1.0",
             models=ModelRefs(
                 asr=ModelRef(slug="whisper-large-v3"),
-                diarization=ModelRef(slug="pyannote-diarization"),
+                embedding=ModelRef(slug="pyannote-embedding"),
             ),
             preprocessing=PreprocessingConfig(),
             inference=InferenceConfig(),
             postprocessing=PostprocessingConfig(),
             diarization=DiarizationConfig(
                 enabled=True,
-                similarity_threshold=0.8,
+                high_threshold=0.8,
                 max_speakers=3,
             ),
         )
         # Both model and config should be set
-        assert spec.models.diarization is not None
-        assert spec.models.diarization.slug == "pyannote-diarization"
+        assert spec.models.embedding is not None
+        assert spec.models.embedding.slug == "pyannote-embedding"
         assert spec.diarization.enabled is True
-        assert spec.diarization.similarity_threshold == 0.8
+        assert spec.diarization.high_threshold == 0.8
         assert spec.diarization.max_speakers == 3
 
 
@@ -718,9 +715,9 @@ class TestDiarizationConfigSilencePadding:
 
         config = DiarizationConfig()
         assert config.enabled is False
-        assert config.similarity_threshold == 0.7
-        assert config.max_speakers == 0
-        assert config.auto_register_speakers is True
+        assert config.high_threshold == 0.7
+        assert config.max_speakers == 2
+        assert config.low_threshold == 0.4
         assert config.min_segment_duration_s == 1.0
 
 

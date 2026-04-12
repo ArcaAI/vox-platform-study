@@ -119,6 +119,8 @@ ml = [
     # Speaker diarization — pyannote embedding extraction
     # NOTE: pyannote.audio 4.x pins torch==2.8.0 and torchaudio==2.8.0 internally
     "pyannote.audio>=3.3.0",
+    # SpeechBrain
+    "speechbrain>=1.0.0",
     # omegaconf — required by pyannote.audio for model config loading
     "omegaconf>=2.3.0",
     # torchcodec — pulled in by pyannote.audio; must match torch version.

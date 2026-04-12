@@ -77,6 +77,7 @@ class StreamingInferenceWorker:
         diarization_config: Any = None,
         postprocessing_config: PostprocessingConfig | None = None,
         initial_prompt: str | None = None,
+        speaker_identifier: Any = None,
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
@@ -92,6 +93,7 @@ class StreamingInferenceWorker:
         self._punctuation_model: Any = None
         self._previous_text: str = ""
         self._initial_prompt: str | None = initial_prompt
+        self._speaker_identifier = speaker_identifier
 
     @property
     def has_pipeline(self) -> bool:
@@ -103,7 +105,10 @@ class StreamingInferenceWorker:
         session_id: str,
         utterance: AudioUtterance,
     ) -> SegmentResult:
-        """Run the per-utterance pipeline: embed -> ASR -> diarize -> publish.
+        """Run the per-utterance pipeline.
+
+        Final utterances:   embed + ASR in parallel -> diarize -> publish
+        Partial utterances: ASR only -> publish
 
         Parameters
         ----------
@@ -120,22 +125,33 @@ class StreamingInferenceWorker:
         start_ts = time.monotonic()
         utt_duration = round(utterance.end_time - utterance.start_time, 1)
 
-        # Step 1+2: Speaker Embedding + ASR in parallel (no data dependency)
-        logger.debug(
-            "Running embedding + ASR in parallel",
-            session_id=session_id,
-            component="INFERENCE",
-            duration_s=utt_duration,
-            utterance_index=utterance.utterance_index,
-        )
+        # Step 1+2: Speaker Embedding + ASR
         try:
-            embedding, inference_out = await asyncio.gather(
-                self._extract_embedding(utterance),
-                self._run_inference(utterance),
-            )
+            if utterance.is_final:
+                logger.debug(
+                    "Running embedding + ASR in parallel",
+                    session_id=session_id,
+                    component="INFERENCE",
+                    duration_s=utt_duration,
+                    utterance_index=utterance.utterance_index,
+                )
+                embedding, inference_out = await asyncio.gather(
+                    self._extract_embedding(utterance),
+                    self._run_inference(utterance),
+                )
+            else:
+                logger.debug(
+                    "Running ASR only (partial utterance)",
+                    session_id=session_id,
+                    component="INFERENCE",
+                    duration_s=utt_duration,
+                    utterance_index=utterance.utterance_index,
+                )
+                embedding = None
+                inference_out = await self._run_inference(utterance)
         except Exception as exc:
             logger.error(
-                "Parallel embedding+ASR failed",
+                "Inference failed",
                 session_id=session_id,
                 utterance_index=utterance.utterance_index,
                 error=str(exc),
@@ -208,23 +224,27 @@ class StreamingInferenceWorker:
             inference_ms=round(elapsed * 1000, 1),
         )
 
-        # Step 3: Speaker Diarization (Qdrant lookup with precomputed embedding)
-        logger.debug(
-            "Identifying speaker from embedding",
-            session_id=session_id,
-            component="SPEAKER_DIARIZATION",
-            utterance_index=utterance.utterance_index,
-        )
-        diarization_enabled = bool(
-            self._diarization_config and getattr(self._diarization_config, "enabled", False)
-        )
-        speaker_id, speaker_confidence = await self._identify_speaker(embedding, result.text)
-        if diarization_enabled and result.text.strip() and not speaker_id:
-            speaker_id = "unknown"
-        if speaker_id:
-            result.speaker_id = speaker_id
-            if speaker_confidence is not None:
-                result.speaker_confidence = float(speaker_confidence)
+        # Step 3: Speaker Diarization
+        if utterance.is_final:
+            logger.debug(
+                "Identifying speaker from embedding",
+                session_id=session_id,
+                component="SPEAKER_DIARIZATION",
+                utterance_index=utterance.utterance_index,
+            )
+            diarization_enabled = bool(
+                self._diarization_config and getattr(self._diarization_config, "enabled", False)
+            )
+            speaker_id, speaker_confidence = await self._identify_speaker(
+                embedding, result.text,
+                samples=utterance.samples, sample_rate=utterance.sample_rate,
+            )
+            if diarization_enabled and result.text.strip() and not speaker_id:
+                speaker_id = "unknown"
+            if speaker_id:
+                result.speaker_id = speaker_id
+                if speaker_confidence is not None:
+                    result.speaker_confidence = float(speaker_confidence)
 
         logger.info(
             "Utterance transcribed",
@@ -431,27 +451,27 @@ class StreamingInferenceWorker:
         self,
         embedding: Any,
         text: str,
+        samples: np.ndarray | None = None,
+        sample_rate: int = 16000,
     ) -> tuple[str | None, float | None]:
         """Identify speaker using a precomputed embedding."""
         if embedding is None:
             return None, None
         if not text.strip():
             return None, None
-        if not self._tenant_id:
-            return None, None
-        if self._diarization_config is None:
+        if self._speaker_identifier is None:
             return None, None
 
         try:
-            from stt_v2.diarization.speaker_identifier import get_speaker_identifier
-
-            identifier = get_speaker_identifier()
-            match = await identifier.identify_with_embedding(
+            match = await self._speaker_identifier.identify(
                 embedding=embedding,
-                tenant_id=self._tenant_id,
-                consultation_id=self._consultation_id,
-                config=self._diarization_config,
+                samples=samples,
+                sample_rate=sample_rate,
             )
+            if isinstance(match, list):
+                if match:
+                    return match[0].speaker_id, match[0].speaker_confidence
+                return None, None
             return match.speaker_id, match.confidence
         except Exception as exc:
             logger.warning(

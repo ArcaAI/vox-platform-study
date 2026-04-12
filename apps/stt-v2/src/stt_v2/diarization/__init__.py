@@ -1,14 +1,22 @@
-"""Speaker diarization — pyannote embedding extraction + Qdrant identification."""
+"""Speaker diarization -- embedding extraction + session-scoped identification."""
 
 from .dto import SpeakerEmbedding, SpeakerIdentification
-from .embedding_service import EmbeddingService, get_embedding_service
-from .speaker_identifier import SpeakerIdentifier, get_speaker_identifier
+from .embedding_service import (
+    EmbeddingService,
+    create_embedding_service,
+    get_embedding_service,
+)
+from .pyannote_embedding import PyannoteEmbeddingService
+from .speaker_tracker import SpeakerTracker
+from .speechbrain_embedding import SpeechBrainEmbeddingService
 
 __all__ = [
     "EmbeddingService",
+    "PyannoteEmbeddingService",
+    "SpeechBrainEmbeddingService",
+    "create_embedding_service",
     "get_embedding_service",
-    "SpeakerIdentifier",
-    "get_speaker_identifier",
+    "SpeakerTracker",
     "SpeakerEmbedding",
     "SpeakerIdentification",
 ]

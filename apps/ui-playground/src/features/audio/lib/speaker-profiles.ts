@@ -47,8 +47,8 @@ const MAX_PROFILES = 64;
 
 function formatSpeakerLabel(speakerId: string): string {
   const trimmed = speakerId.trim();
-  if (!trimmed) return 'Unknown speaker';
-  if (trimmed.toLowerCase() === 'unknown') return 'Unknown speaker';
+  if (!trimmed) return 'Unknown';
+  if (trimmed.toLowerCase() === 'unknown') return 'Unknown';
 
   const match = trimmed.match(/^speaker[-_\s]?(\d+)$/i);
   if (match?.[1]) {
