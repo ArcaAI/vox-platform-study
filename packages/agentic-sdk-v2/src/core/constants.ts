@@ -284,28 +284,28 @@ export const STT_V2_ENDPOINTS = {
 /**
  * ASR Pipeline endpoints
  *
- * Matches backend PipelineController at `/audio/pipelines`.
+ * Matches backend PipelineController at `/admin/audio/pipelines`.
  * Used for discovering and selecting ASR pipeline configurations.
  */
 export const PIPELINE_ENDPOINTS = {
   /** List ASR pipelines (paginated) */
-  LIST: '/audio/pipelines',
+  LIST: '/admin/audio/pipelines',
   /** Get pipeline by ID */
-  GET: (pipelineId: string) => `/audio/pipelines/${encodeURIComponent(pipelineId)}`,
+  GET: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}`,
   /** Get pipeline by slug */
-  GET_BY_SLUG: (slug: string) => `/audio/pipelines/slug/${encodeURIComponent(slug)}`,
+  GET_BY_SLUG: (slug: string) => `/admin/audio/pipelines/slug/${encodeURIComponent(slug)}`,
   /** Create a new ASR pipeline (TASK-218) */
-  CREATE: '/audio/pipelines',
+  CREATE: '/admin/audio/pipelines',
   /** Update an ASR pipeline (TASK-218) */
-  UPDATE: (pipelineId: string) => `/audio/pipelines/${encodeURIComponent(pipelineId)}`,
+  UPDATE: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}`,
   /** Delete an ASR pipeline (soft-delete) (TASK-218) */
-  DELETE: (pipelineId: string) => `/audio/pipelines/${encodeURIComponent(pipelineId)}`,
+  DELETE: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}`,
   /** Validate pipeline YAML configuration */
-  VALIDATE: '/audio/pipelines/validate',
+  VALIDATE: '/admin/audio/pipelines/validate',
   /** Assign a pipeline to a tenant */
-  ASSIGN_TENANT: (pipelineId: string) => `/audio/pipelines/${encodeURIComponent(pipelineId)}/assign-tenant`,
+  ASSIGN_TENANT: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/assign-tenant`,
   /** Assign a pipeline to a user */
-  ASSIGN_USER: (pipelineId: string) => `/audio/pipelines/${encodeURIComponent(pipelineId)}/assign-user`,
+  ASSIGN_USER: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/assign-user`,
 } as const;
 
 // =============================================================================
