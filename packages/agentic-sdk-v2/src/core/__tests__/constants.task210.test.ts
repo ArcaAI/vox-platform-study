@@ -7,33 +7,33 @@
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
-  PERSONALIZATION_ENDPOINTS,
-  STT_V2_ENDPOINTS,
-  PIPELINE_ENDPOINTS,
-  GLOBAL_SETTINGS_ENDPOINTS,
-  USER_SETTINGS_ENDPOINTS,
   API_KEY_ENDPOINTS,
-  ROLE_ENDPOINTS,
-  TENANT_ENDPOINTS,
-  NLP_ENDPOINTS,
+  AUTH_ENDPOINTS,
   CONSULTATION_ENDPOINTS,
+  CONSULTATION_JOB_ENDPOINTS,
   CONTEXT_ENDPOINTS,
-  SUMMARY_ENDPOINTS,
-  ENTITY_ENDPOINTS,
-  DNA_STYLE_ENDPOINTS,
-  PROMPT_TEMPLATE_ENDPOINTS,
   DEPARTMENT_ENDPOINTS,
+  DNA_STYLE_ENDPOINTS,
+  ENTITY_ENDPOINTS,
+  GLOBAL_SETTINGS_ENDPOINTS,
   HEALTH_ENDPOINTS,
   MONITORING_ENDPOINTS,
-  AUTH_ENDPOINTS,
-  SERVICE_HEALTH_ENDPOINTS,
-  CONSULTATION_JOB_ENDPOINTS,
-  USER_ENDPOINTS,
-  STORAGE_ENDPOINTS,
-  VOICE_EMBEDDING_ENDPOINTS,
   MY_TENANT_ENDPOINTS,
+  NLP_ENDPOINTS,
+  PERSONALIZATION_ENDPOINTS,
+  PIPELINE_ENDPOINTS,
+  PROMPT_TEMPLATE_ENDPOINTS,
+  ROLE_ENDPOINTS,
+  SERVICE_HEALTH_ENDPOINTS,
+  STORAGE_ENDPOINTS,
+  STT_V2_ENDPOINTS,
+  SUMMARY_ENDPOINTS,
+  TENANT_ENDPOINTS,
+  USER_ENDPOINTS,
+  USER_SETTINGS_ENDPOINTS,
+  VOICE_EMBEDDING_ENDPOINTS,
 } from '../constants';
 
 // =============================================================================
@@ -144,24 +144,24 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
   });
 
   // ===========================================================================
-  // PIPELINE_ENDPOINTS: /api/v1/pipelines -> /audio/pipelines
+  // PIPELINE_ENDPOINTS: /api/v1/pipelines -> /admin/audio/pipelines
   // ===========================================================================
 
-  describe('PIPELINE_ENDPOINTS (/api/v1/pipelines -> /audio/pipelines)', () => {
-    it('should use /audio/pipelines for LIST', () => {
-      expect(PIPELINE_ENDPOINTS.LIST).toBe('/audio/pipelines');
+  describe('PIPELINE_ENDPOINTS (/api/v1/pipelines -> /admin/audio/pipelines)', () => {
+    it('should use /admin/audio/pipelines for LIST', () => {
+      expect(PIPELINE_ENDPOINTS.LIST).toBe('/admin/audio/pipelines');
     });
 
-    it('should use /audio/pipelines/:id for GET', () => {
-      expect(PIPELINE_ENDPOINTS.GET('pipe-1')).toBe('/audio/pipelines/pipe-1');
+    it('should use /admin/audio/pipelines/:id for GET', () => {
+      expect(PIPELINE_ENDPOINTS.GET('pipe-1')).toBe('/admin/audio/pipelines/pipe-1');
     });
 
-    it('should use /audio/pipelines/slug/:slug for GET_BY_SLUG', () => {
-      expect(PIPELINE_ENDPOINTS.GET_BY_SLUG('whisper-streaming')).toBe('/audio/pipelines/slug/whisper-streaming');
+    it('should use /admin/audio/pipelines/slug/:slug for GET_BY_SLUG', () => {
+      expect(PIPELINE_ENDPOINTS.GET_BY_SLUG('whisper-streaming')).toBe('/admin/audio/pipelines/slug/whisper-streaming');
     });
 
-    it('should use /audio/pipelines/validate for VALIDATE', () => {
-      expect(PIPELINE_ENDPOINTS.VALIDATE).toBe('/audio/pipelines/validate');
+    it('should use /admin/audio/pipelines/validate for VALIDATE', () => {
+      expect(PIPELINE_ENDPOINTS.VALIDATE).toBe('/admin/audio/pipelines/validate');
     });
 
     it('should NOT contain /api/v1/ prefix', () => {
@@ -590,7 +590,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
     });
 
     it('PIPELINE_ENDPOINTS should handle UUID IDs', () => {
-      expect(PIPELINE_ENDPOINTS.GET(uuid)).toBe(`/audio/pipelines/${uuid}`);
+      expect(PIPELINE_ENDPOINTS.GET(uuid)).toBe(`/admin/audio/pipelines/${uuid}`);
     });
 
     it('admin endpoints should handle UUID IDs', () => {
@@ -894,7 +894,6 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
   describe('backend route alignment', () => {
     it('audio domain endpoints should use /audio/ prefix (matching audio/* controllers)', () => {
       expect(STT_V2_ENDPOINTS.CREATE_JOB).toMatch(/^\/audio\//);
-      expect(PIPELINE_ENDPOINTS.LIST).toMatch(/^\/audio\//);
     });
 
     it('admin endpoints should use /admin/ prefix (matching admin/* controllers)', () => {
@@ -902,6 +901,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(API_KEY_ENDPOINTS.LIST).toMatch(/^\/admin\//);
       expect(ROLE_ENDPOINTS.LIST).toMatch(/^\/admin\//);
       expect(TENANT_ENDPOINTS.GET_CONFIGS('x')).toMatch(/^\/admin\//);
+      expect(PIPELINE_ENDPOINTS.LIST).toMatch(/^\/admin\//);
     });
 
     it('user self-service endpoints should use /user/me/ prefix', () => {
