@@ -34,6 +34,6 @@ describe('Legacy STT v1 Cleanup (ASR-R-11)', () => {
 
   it('PIPELINE_ENDPOINTS should exist for ASR pipeline discovery', () => {
     expect(constants.PIPELINE_ENDPOINTS).toBeDefined();
-    expect(constants.PIPELINE_ENDPOINTS.LIST).toBe('/audio/pipelines');
+    expect(constants.PIPELINE_ENDPOINTS.LIST).toBe('/admin/audio/pipelines');
   });
 });

@@ -3,24 +3,24 @@
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   CONSULTATION_ENDPOINTS,
   CONTEXT_ENDPOINTS,
-  SUMMARY_ENDPOINTS,
-  ENTITY_ENDPOINTS,
-  PERSONALIZATION_ENDPOINTS,
-  STT_V2_ENDPOINTS,
-  PIPELINE_ENDPOINTS,
-  NLP_ENDPOINTS,
-  MY_TENANT_ENDPOINTS,
-  DEFAULT_TIMEOUT,
-  DEFAULT_SYNC_INTERVAL,
-  STORAGE_KEYS,
-  DEFAULT_NOISE_FILTER_CONFIG,
-  DEFAULT_VAD_CONFIG,
-  DEFAULT_STT_CONFIG,
   DEFAULT_NER_CONFIG,
+  DEFAULT_NOISE_FILTER_CONFIG,
+  DEFAULT_STT_CONFIG,
+  DEFAULT_SYNC_INTERVAL,
+  DEFAULT_TIMEOUT,
+  DEFAULT_VAD_CONFIG,
+  ENTITY_ENDPOINTS,
+  MY_TENANT_ENDPOINTS,
+  NLP_ENDPOINTS,
+  PERSONALIZATION_ENDPOINTS,
+  PIPELINE_ENDPOINTS,
+  STORAGE_KEYS,
+  STT_V2_ENDPOINTS,
+  SUMMARY_ENDPOINTS,
 } from '../constants';
 
 describe('constants', () => {
@@ -332,26 +332,26 @@ describe('constants', () => {
 
   describe('PIPELINE_ENDPOINTS', () => {
     it('should have LIST endpoint', () => {
-      expect(PIPELINE_ENDPOINTS.LIST).toBe('/audio/pipelines');
+      expect(PIPELINE_ENDPOINTS.LIST).toBe('/admin/audio/pipelines');
     });
 
     it('should generate GET endpoint by ID', () => {
-      expect(PIPELINE_ENDPOINTS.GET('pipe-1')).toBe('/audio/pipelines/pipe-1');
+      expect(PIPELINE_ENDPOINTS.GET('pipe-1')).toBe('/admin/audio/pipelines/pipe-1');
     });
 
     it('should generate GET_BY_SLUG endpoint', () => {
       expect(PIPELINE_ENDPOINTS.GET_BY_SLUG('whisper-streaming')).toBe(
-        '/audio/pipelines/slug/whisper-streaming'
+        '/admin/audio/pipelines/slug/whisper-streaming'
       );
     });
 
     it('should have VALIDATE endpoint', () => {
-      expect(PIPELINE_ENDPOINTS.VALIDATE).toBe('/audio/pipelines/validate');
+      expect(PIPELINE_ENDPOINTS.VALIDATE).toBe('/admin/audio/pipelines/validate');
     });
 
     it('should handle UUID pipeline ID', () => {
       const uuid = '019503c0-d93f-7f41-b782-af9e1a3b5c0d';
-      expect(PIPELINE_ENDPOINTS.GET(uuid)).toBe(`/audio/pipelines/${uuid}`);
+      expect(PIPELINE_ENDPOINTS.GET(uuid)).toBe(`/admin/audio/pipelines/${uuid}`);
     });
   });
 
