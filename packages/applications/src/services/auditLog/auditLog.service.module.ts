@@ -1,16 +1,23 @@
+import { CoreDatabaseModule, JobQueue } from '@arcaai/domains';
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
-import { IAuditLogService } from './IAuditLogService';
-import { AuditLogService } from './auditLog.service';
 import { CommonServiceModule } from '../baseServices';
-import { CoreDatabaseModule } from '@arcaai/domains';
+import { IAuditLogService } from './IAuditLogService';
+import { AuditLogProcessor } from './auditLog.processor';
+import { AuditLogService } from './auditLog.service';
 
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule],
+  imports: [
+    CommonServiceModule,
+    CoreDatabaseModule,
+    BullModule.registerQueue({ name: JobQueue.AuditLog }),
+  ],
   providers: [
     {
       provide: IAuditLogService,
       useClass: AuditLogService,
     },
+    AuditLogProcessor,
   ],
   exports: [IAuditLogService],
 })

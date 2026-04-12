@@ -213,7 +213,14 @@ export class ContextService extends BaseService implements IContextService {
       request.recordedAt,
     );
 
-    await this.audioRecordingRepository.create(audioRecording);
+    const savedRecording = await this.audioRecordingRepository.create(audioRecording);
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: savedRecording.id,
+      responsibleEntityId: userId ?? undefined,
+      createdAt: savedRecording.createdAt,
+      data: { consultationId, type: 'AUDIO_RECORDING', mediaId: request.mediaId },
+    });
 
     // Return container with recordings
     const result = await this.contextItemRepository.findWithAudioRecordings(audioContainer.id);
@@ -353,6 +360,18 @@ export class ContextService extends BaseService implements IContextService {
 
       const saved = await this.namedEntityRepository.create(namedEntity);
       results.push(ContextDtoMapper.toNamedEntityResponse(saved));
+    }
+
+    if (results.length > 0) {
+      this.broadcastSysEvent(SysEventType.ResourceCreated, {
+        resourceId: contextItemId,
+        responsibleEntityId: this.requestUserId ?? undefined,
+        data: {
+          contextItemId,
+          entityCount: results.length,
+          type: 'NAMED_ENTITY',
+        },
+      });
     }
 
     return results;
