@@ -1349,7 +1349,7 @@ resources:
     // CODE-SWITCHING & LANGUAGE-SPECIFIC PIPELINES
     // =========================================================================
 
-    code_switching_en_vi: `version: "1.1"
+    code_switching_en_vi_template: `version: "1.1"
 
 # Code-switching EN-VI pipeline:
 # Auto-detects and switches between English and Vietnamese
@@ -1394,7 +1394,7 @@ diarization:
   enabled: false
 `,
 
-    asr_en: `version: "1.1"
+    asr_en_template: `version: "1.1"
 models:
   asr:
     hf_model_id: openai/whisper-tiny
@@ -1434,7 +1434,7 @@ diarization:
 
 `,
 
-    asr_ml: `version: "1.1"
+    asr_ml_template: `version: "1.1"
 
 # ASR Malayalam pipeline:
 # Malayalam-only transcription with VAD and denoise
@@ -1551,28 +1551,28 @@ export const DEFAULT_ASR_PIPELINES = [
     {
         id: '81000000-0000-0000-0001-000000000010',
         tenantId: DEFAULT_TENANT_ID,
-        name: 'Code-Switching EN-VI',
-        slug: 'code-switching-en-vi',
-        description: 'Code-switching pipeline for English-Vietnamese.',
-        configYaml: PIPELINE_CONFIGS.code_switching_en_vi,
+        name: 'Code-Switching EN-VI Template',
+        slug: 'code-switching-en-vi-template',
+        description: 'Code-switching pipeline template for English-Vietnamese.',
+        configYaml: PIPELINE_CONFIGS.code_switching_en_vi_template,
         tags: ['code-switching', 'en', 'vi'],
     },
     {
         id: '81000000-0000-0000-0001-000000000011',
         tenantId: DEFAULT_TENANT_ID,
-        name: 'ASR English',
-        slug: 'asr-en',
-        description: 'English-only ASR pipeline.',
-        configYaml: PIPELINE_CONFIGS.asr_en,
+        name: 'ASR English Template',
+        slug: 'asr-en-template',
+        description: 'English-only ASR pipeline template.',
+        configYaml: PIPELINE_CONFIGS.asr_en_template,
         tags: ['asr', 'english'],
     },
     {
         id: '81000000-0000-0000-0001-000000000012',
         tenantId: DEFAULT_TENANT_ID,
-        name: 'ASR Malayalam',
-        slug: 'asr-ml',
-        description: 'Malayalam-only ASR pipeline.',
-        configYaml: PIPELINE_CONFIGS.asr_ml,
+        name: 'ASR Malayalam Template',
+        slug: 'asr-ml-template',
+        description: 'Malayalam-only ASR pipeline template.',
+        configYaml: PIPELINE_CONFIGS.asr_ml_template,
         tags: ['asr', 'malayalam'],
     },
 ];
