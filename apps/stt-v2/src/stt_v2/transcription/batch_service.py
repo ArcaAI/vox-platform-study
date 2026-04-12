@@ -243,8 +243,8 @@ class BatchTranscriptionService:
                     from ..diarization.speaker_tracker import SpeakerTracker
 
                     hf_model_id: str | None = None
-                    if pipeline_config.spec.models.diarization:
-                        diar_ref = pipeline_config.spec.models.diarization
+                    if pipeline_config.spec.models.embedding:
+                        diar_ref = pipeline_config.spec.models.embedding
                         if diar_ref.is_inline and diar_ref.inline:
                             hf_model_id = diar_ref.inline.hf_model_id
 
@@ -275,7 +275,7 @@ class BatchTranscriptionService:
 
                     tracker = SpeakerTracker(
                         max_speakers=spec.diarization.max_speakers,
-                        ema_alpha=spec.diarization.ema_alpha,
+                        max_embeddings_per_speaker=spec.diarization.max_embeddings_per_speaker,
                     )
                     inline_identifier = SpeakerIdentifier(
                         tracker=tracker,
@@ -378,7 +378,7 @@ class BatchTranscriptionService:
 
             if _inline_ran:
                 tracker = inline_identifier._tracker
-                speaker_ids = list(tracker._embeddings.keys())
+                speaker_ids = list(getattr(tracker, "speaker_ids", []))
                 inline_diar_segments = raw_result.model_output.get("inline_diarized_segments", [])
                 new_count = raw_result.model_output.get("inline_new_speakers", 0)
 
@@ -552,8 +552,8 @@ class BatchTranscriptionService:
         from ..diarization.speaker_tracker import SpeakerTracker
 
         hf_model_id: str | None = None
-        if pipeline_config and pipeline_config.spec.models.diarization:
-            diar_ref = pipeline_config.spec.models.diarization
+        if pipeline_config and pipeline_config.spec.models.embedding:
+            diar_ref = pipeline_config.spec.models.embedding
             if diar_ref.is_inline and diar_ref.inline:
                 hf_model_id = diar_ref.inline.hf_model_id
 
@@ -586,7 +586,7 @@ class BatchTranscriptionService:
         # Create per-job tracker + identifier
         tracker = SpeakerTracker(
             max_speakers=config.max_speakers,
-            ema_alpha=config.ema_alpha,
+            max_embeddings_per_speaker=config.max_embeddings_per_speaker,
         )
         identifier = SpeakerIdentifier(
             tracker=tracker,

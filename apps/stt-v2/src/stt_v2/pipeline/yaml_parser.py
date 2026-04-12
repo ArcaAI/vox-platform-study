@@ -147,15 +147,15 @@ class PipelineYamlParser:
                     "HuggingFace model ID is required for inline definition",
                 )
 
-        # Validate diarization inline model if present
+        # Validate embedding inline model if present
         if (
-            spec.models.diarization
-            and spec.models.diarization.is_inline
-            and spec.models.diarization.inline
+            spec.models.embedding
+            and spec.models.embedding.is_inline
+            and spec.models.embedding.inline
         ):
-            if not spec.models.diarization.inline.hf_model_id:
+            if not spec.models.embedding.inline.hf_model_id:
                 result.add_error(
-                    "models.diarization.hf_model_id",
+                    "models.embedding.hf_model_id",
                     "HuggingFace model ID is required for inline definition",
                 )
 
@@ -243,11 +243,6 @@ class PipelineYamlParser:
                 "diarization.low_threshold",
                 "low_threshold must be between 0 and 1",
             )
-        if spec.diarization.ema_alpha <= 0 or spec.diarization.ema_alpha > 1:
-            result.add_error(
-                "diarization.ema_alpha",
-                "ema_alpha must be in (0, 1]",
-            )
         if spec.diarization.max_speakers < 0:
             result.add_error(
                 "diarization.max_speakers",
@@ -287,7 +282,7 @@ class PipelineYamlParser:
         asr_value = data.get("asr", "")
         vad_value = data.get("vad")
         denoise_value = data.get("denoise")
-        diarization_value = data.get("diarization")
+        embedding_value = data.get("embedding")
         segmentation_value = data.get("segmentation")
 
         # Parse ASR model (required)
@@ -303,10 +298,10 @@ class PipelineYamlParser:
         if denoise_value:
             denoise_ref = ModelRef.from_value(denoise_value)
 
-        # Parse diarization model (optional)
-        diarization_ref = None
-        if diarization_value:
-            diarization_ref = ModelRef.from_value(diarization_value)
+        # Parse embedding model (optional)
+        embedding_ref = None
+        if embedding_value:
+            embedding_ref = ModelRef.from_value(embedding_value)
 
         # Parse segmentation model (optional)
         segmentation_ref = None
@@ -317,7 +312,7 @@ class PipelineYamlParser:
             asr=asr_ref,
             vad=vad_ref,
             denoise=denoise_ref,
-            diarization=diarization_ref,
+            embedding=embedding_ref,
             segmentation=segmentation_ref,
         )
 
@@ -396,8 +391,7 @@ class PipelineYamlParser:
             max_speakers=int(data.get("max_speakers", 2)),
             min_segment_duration_s=float(data.get("min_segment_duration_s", 1.0)),
             segment_silence_padding_ms=int(data.get("segment_silence_padding_ms", 100)),
-            ema_alpha=float(data.get("ema_alpha", 0.1)),
-            ema_min_confidence=float(data.get("ema_min_confidence", 0.8)),
+            min_update_confidence=float(data.get("min_update_confidence", data.get("ema_min_confidence", 0.8))),
             enable_segmentation_refinement=data.get("enable_segmentation_refinement", True),
         )
 

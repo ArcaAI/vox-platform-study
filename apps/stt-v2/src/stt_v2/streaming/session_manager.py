@@ -362,7 +362,7 @@ class SessionManager:
 
                 speaker_tracker = SpeakerTracker(
                     max_speakers=diarization_config.max_speakers,
-                    ema_alpha=diarization_config.ema_alpha,
+                    max_embeddings_per_speaker=diarization_config.max_embeddings_per_speaker,
                 )
 
                 seg_service = None

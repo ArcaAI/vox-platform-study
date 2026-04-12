@@ -64,7 +64,7 @@ class SpeakerIdentifier:
 
         # Case 2: Confident match
         if confidence >= cfg.high_threshold:
-            if confidence >= cfg.ema_min_confidence:
+            if confidence >= cfg.min_update_confidence:
                 self._tracker.update_reference(best_id, embed)
             return SpeakerIdentification(
                 speaker_id=best_id, confidence=confidence, is_new_speaker=False,

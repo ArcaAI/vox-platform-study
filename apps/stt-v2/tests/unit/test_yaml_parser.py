@@ -1149,62 +1149,62 @@ models:
         assert inline.device == "cpu"
 
 
-class TestDiarizationModelParsing:
-    """Tests for parsing models.diarization in YAML config (TASK-008)."""
+class TestEmbeddingModelParsing:
+    """Tests for parsing models.embedding in YAML config."""
 
     @pytest.fixture
     def parser(self):
         return PipelineYamlParser()
 
-    def test_parse_diarization_inline_model(self, parser):
-        """Diarization model defined as inline HF model ref."""
+    def test_parse_embedding_inline_model(self, parser):
+        """Embedding model defined as inline HF model ref."""
         yaml_content = """
 version: "1.1"
 models:
   asr:
     hf_model_id: "onnx-community/whisper-large-v3-turbo"
     engine: onnx
-  diarization:
+  embedding:
     hf_model_id: "pyannote/embedding"
     engine: pytorch
 """
         spec = parser.parse(yaml_content)
-        assert spec.models.diarization is not None
-        assert spec.models.diarization.is_inline
-        assert spec.models.diarization.inline.hf_model_id == "pyannote/embedding"
+        assert spec.models.embedding is not None
+        assert spec.models.embedding.is_inline
+        assert spec.models.embedding.inline.hf_model_id == "pyannote/embedding"
 
-    def test_parse_diarization_slug_ref(self, parser):
-        """Diarization model defined as slug reference."""
+    def test_parse_embedding_slug_ref(self, parser):
+        """Embedding model defined as slug reference."""
         yaml_content = """
 version: "1.0"
 models:
   asr: whisper-large-v3
-  diarization: pyannote-embedding-v3
+  embedding: pyannote-embedding-v3
 """
         spec = parser.parse(yaml_content)
-        assert spec.models.diarization is not None
-        assert spec.models.diarization.slug == "pyannote-embedding-v3"
-        assert not spec.models.diarization.is_inline
+        assert spec.models.embedding is not None
+        assert spec.models.embedding.slug == "pyannote-embedding-v3"
+        assert not spec.models.embedding.is_inline
 
-    def test_parse_no_diarization_model(self, parser):
-        """No diarization model key → diarization ref is None."""
+    def test_parse_no_embedding_model(self, parser):
+        """No embedding model key -> embedding ref is None."""
         yaml_content = """
 version: "1.0"
 models:
   asr: whisper-large-v3
 """
         spec = parser.parse(yaml_content)
-        assert spec.models.diarization is None
+        assert spec.models.embedding is None
 
-    def test_validate_diarization_inline_missing_hf_model_id(self, parser):
-        """Inline diarization model with empty hf_model_id should fail validation."""
+    def test_validate_embedding_inline_missing_hf_model_id(self, parser):
+        """Inline embedding model with empty hf_model_id should fail validation."""
         yaml_content = """
 version: "1.1"
 models:
   asr:
     hf_model_id: "onnx-community/whisper-large-v3-turbo"
     engine: onnx
-  diarization:
+  embedding:
     hf_model_id: ""
     engine: pytorch
 """
@@ -1212,7 +1212,7 @@ models:
         result = parser.validate(spec)
         assert not result.valid
         error_fields = [e.field for e in result.errors]
-        assert "models.diarization.hf_model_id" in error_fields
+        assert "models.embedding.hf_model_id" in error_fields
 
     def test_validate_diarization_high_threshold_out_of_range(self, parser):
         """high_threshold > 1 should fail validation."""
@@ -1246,26 +1246,26 @@ diarization:
         error_fields = [e.field for e in result.errors]
         assert "diarization.min_segment_duration_s" in error_fields
 
-    def test_diarization_model_included_in_get_all_refs(self, parser):
-        """Diarization model ref should appear in get_all_refs()."""
+    def test_embedding_model_included_in_get_all_refs(self, parser):
+        """Embedding model ref should appear in get_all_refs()."""
         yaml_content = """
 version: "1.0"
 models:
   asr: whisper-large-v3
-  diarization: pyannote-embedding-v3
+  embedding: pyannote-embedding-v3
 """
         spec = parser.parse(yaml_content)
         all_refs = spec.models.get_all_refs()
         roles = [role for role, _ in all_refs]
-        assert "diarization" in roles
+        assert "embedding" in roles
 
-    def test_diarization_model_included_in_get_all_slugs(self, parser):
-        """Diarization slug should appear in get_all_slugs()."""
+    def test_embedding_model_included_in_get_all_slugs(self, parser):
+        """Embedding slug should appear in get_all_slugs()."""
         yaml_content = """
 version: "1.0"
 models:
   asr: whisper-large-v3
-  diarization: pyannote-embedding-v3
+  embedding: pyannote-embedding-v3
 """
         spec = parser.parse(yaml_content)
         assert "pyannote-embedding-v3" in spec.models.get_all_slugs()
@@ -1349,8 +1349,8 @@ diarization:
         error_fields = [e.field for e in result.errors]
         assert "diarization.high_threshold" in error_fields
 
-    def test_diarization_model_absent_no_validation_error(self, parser):
-        """When no diarization model is set, validation should not error on it."""
+    def test_embedding_model_absent_no_validation_error(self, parser):
+        """When no embedding model is set, validation should not error on it."""
         yaml_content = """
 version: "1.0"
 models:
@@ -1361,12 +1361,12 @@ diarization:
 """
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
-        # Should be valid -- diarization model is optional
+        # Should be valid -- embedding model is optional
         error_fields = [e.field for e in result.errors]
-        assert "models.diarization.hf_model_id" not in error_fields
+        assert "models.embedding.hf_model_id" not in error_fields
 
-    def test_parse_full_pipeline_with_diarization(self, parser):
-        """Full pipeline YAML with all sections including diarization model + config."""
+    def test_parse_full_pipeline_with_embedding(self, parser):
+        """Full pipeline YAML with all sections including embedding model + config."""
         yaml_content = """
 version: "1.1"
 models:
@@ -1376,7 +1376,7 @@ models:
   vad:
     hf_model_id: "snakers4/silero-vad"
     engine: onnx
-  diarization:
+  embedding:
     hf_model_id: "pyannote/embedding"
     engine: pytorch
 preprocessing:
@@ -1393,8 +1393,8 @@ diarization:
         spec = parser.parse(yaml_content)
 
         # Models
-        assert spec.models.diarization is not None
-        assert spec.models.diarization.inline.hf_model_id == "pyannote/embedding"
+        assert spec.models.embedding is not None
+        assert spec.models.embedding.inline.hf_model_id == "pyannote/embedding"
         assert spec.models.vad is not None
 
         # Diarization config
