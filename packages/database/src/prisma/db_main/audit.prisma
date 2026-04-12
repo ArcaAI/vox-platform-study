@@ -94,6 +94,7 @@ enum ResourceType {
     // CORE
 
     ApiKey
+    Department
     GlobalSetting
     IntegrationPackage
     IntegrationItem
@@ -124,6 +125,22 @@ enum ResourceType {
     AudioRecording
     SummaryMeta
     NamedEntity
+
+    // STT / AI
+
+    AsrPipeline
+    AiModel
+    TranscriptionJob
+
+    // PROMPT / DNA
+
+    PromptTemplate
+    DnaWritingStyleReport
+
+    // STORAGE
+
+    TenantBucket
+    StorageAccessKey
 
     @@schema("core")
 }
