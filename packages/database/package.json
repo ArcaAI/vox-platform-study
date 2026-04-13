@@ -21,7 +21,10 @@
   "scripts": {
     "db:generate": "prisma generate && pnpm --filter @arcaai/tools generate-prisma-index",
     "db:migrate": "prisma migrate dev --skip-generate",
+    "db:migrate:create": "prisma migrate dev --create-only",
     "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
+    "db:migrate:reset": "prisma migrate reset",
     "db:push": "prisma db push",
     "db:push:force": "prisma db push --force-reset --accept-data-loss",
     "db:studio": "prisma studio",
