@@ -44,7 +44,7 @@ export const TEMPLATE_IDS = {
     SONC_REVISIT: '71000000-0000-0000-0000-000000000035',
     CATCHALL_SOAP: '71000000-0000-0000-0000-000000000036',
     PRE_SUMMARY_DEFAULT: '71000000-0000-0000-0000-000000000040',
-    WHISPER_INITIAL_PROMPT_EN_VI: '71000000-0000-0000-0000-000000000041',
+    WHISPER_INITIAL_PROMPT_EN_VI: '71000000-0000-0000-0000-000000000050',
 } as const;
 
 // Version IDs
@@ -2090,7 +2090,7 @@ When no department-specific template matches the current encounter's department,
     {
         id: TEMPLATE_IDS.WHISPER_INITIAL_PROMPT_EN_VI,
         tenantId: DEFAULT_TENANT_ID,
-        name: 'Whisper Initial Prompt - EN/VI',
+        name: 'Whisper Initial Prompt - EN/VI - Template',
         description:
             'Bilingual English-Vietnamese',
         content:
