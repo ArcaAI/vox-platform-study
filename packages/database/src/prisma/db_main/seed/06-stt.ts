@@ -1549,7 +1549,7 @@ export const DEFAULT_ASR_PIPELINES = [
     // CODE-SWITCHING & LANGUAGE-SPECIFIC PIPELINES
     // =========================================================================
     {
-        id: '81000000-0000-0000-0001-000000000010',
+        id: '81000000-0000-0000-0001-000000000050',
         tenantId: DEFAULT_TENANT_ID,
         name: 'Code-Switching EN-VI Template',
         slug: 'code-switching-en-vi-template',
@@ -1558,7 +1558,7 @@ export const DEFAULT_ASR_PIPELINES = [
         tags: ['code-switching', 'en', 'vi'],
     },
     {
-        id: '81000000-0000-0000-0001-000000000011',
+        id: '81000000-0000-0000-0001-000000000051',
         tenantId: DEFAULT_TENANT_ID,
         name: 'ASR English Template',
         slug: 'asr-en-template',
@@ -1567,7 +1567,7 @@ export const DEFAULT_ASR_PIPELINES = [
         tags: ['asr', 'english'],
     },
     {
-        id: '81000000-0000-0000-0001-000000000012',
+        id: '81000000-0000-0000-0001-000000000052',
         tenantId: DEFAULT_TENANT_ID,
         name: 'ASR Malayalam Template',
         slug: 'asr-ml-template',
