@@ -8,16 +8,16 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize } from '../../decorators';
+import { ApiEndpoint, Authorize, CanCreate, CanDelete, CanUpdate } from '../../decorators';
 import { ValidateYamlRequest, ValidateYamlResponse } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('admin-audio-pipelines')
 @Controller('admin/audio/pipelines')
-@Authorize(['manage', 'AsrPipeline'])
 export class AudioPipelineController {
   constructor(private readonly pipelineService: PipelineService) {}
 
+  @CanCreate('AsrPipeline')
   @ApiEndpoint({
     returnedModel: PipelineResponse,
     method: HttpMethod.POST,
@@ -27,6 +27,7 @@ export class AudioPipelineController {
     return this.pipelineService.create(request);
   }
 
+  @Authorize()
   @ApiEndpoint({
     returnedModel: PipelineResponse,
     multi: true,
@@ -35,6 +36,7 @@ export class AudioPipelineController {
     return this.pipelineService.getAll();
   }
 
+  @Authorize()
   @ApiEndpoint({
     returnedModel: PaginatedPipelineResponse,
     path: 'list',
@@ -45,6 +47,7 @@ export class AudioPipelineController {
     return this.pipelineService.list(page ? parseInt(page, 10) : 1, limit ? parseInt(limit, 10) : 20);
   }
 
+  @Authorize()
   @ApiEndpoint({
     returnedModel: PipelineResponse,
     path: ':id',
@@ -56,6 +59,7 @@ export class AudioPipelineController {
     return this.pipelineService.getById(id);
   }
 
+  @Authorize()
   @ApiEndpoint({
     returnedModel: PipelineResponse,
     path: 'slug/:slug',
@@ -67,6 +71,7 @@ export class AudioPipelineController {
     return this.pipelineService.getBySlug(slug);
   }
 
+  @CanUpdate('AsrPipeline')
   @ApiEndpoint({
     returnedModel: PipelineResponse,
     method: HttpMethod.PATCH,
@@ -80,6 +85,7 @@ export class AudioPipelineController {
     return this.pipelineService.update(id, request);
   }
 
+  @CanDelete('AsrPipeline')
   @ApiEndpoint({
     returnedModel: PipelineResponse,
     method: HttpMethod.DELETE,
@@ -92,6 +98,7 @@ export class AudioPipelineController {
     return this.pipelineService.delete(id);
   }
 
+  @Authorize()
   @ApiEndpoint({
     returnedModel: PipelineResponse,
     method: HttpMethod.POST,
