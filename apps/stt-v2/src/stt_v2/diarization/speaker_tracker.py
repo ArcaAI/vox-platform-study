@@ -56,21 +56,26 @@ class SpeakerTracker:
 
             return best_id, max(best_score, 0.0)
 
-    def register(self, embedding: np.ndarray) -> str | None:
-        """Register new speaker. Returns speaker_id or None if at capacity."""
+    def register(self, embedding: np.ndarray, speaker_id: str | None = None) -> str | None:
+        """Register new speaker. Returns speaker_id or None if at capacity.
+
+        Args:
+            embedding: Speaker embedding vector (will be L2-normalized).
+            speaker_id: Optional custom ID. If None, a generic "Speaker N" label is assigned.
+        """
         normalized = self._normalize(embedding)
         with self._lock:
             if self._max_speakers > 0 and len(self._embedding_windows) >= self._max_speakers:
                 return None
 
-            speaker_id = f"Speaker {self._next_speaker_num}"
+            sid = speaker_id if speaker_id and speaker_id.strip() else f"Speaker {self._next_speaker_num}"
             window: collections.deque[np.ndarray] = collections.deque(
                 maxlen=self._max_embeddings,
             )
             window.append(normalized)
-            self._embedding_windows[speaker_id] = window
+            self._embedding_windows[sid] = window
             self._next_speaker_num += 1
-            return speaker_id
+            return sid
 
     def update_reference(self, speaker_id: str, embedding: np.ndarray) -> None:
         """Append embedding to speaker's rolling window."""

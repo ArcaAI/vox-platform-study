@@ -53,8 +53,8 @@ def _make_mock_torch():
 
 class TestSpeakerEmbeddingDTO:
     def test_dimension(self):
-        emb = SpeakerEmbedding(embedding=[0.1] * 512)
-        assert emb.dimension == 512
+        emb = SpeakerEmbedding(embedding=[0.1] * 256)
+        assert emb.dimension == 256
 
     def test_segment_times(self):
         emb = SpeakerEmbedding(embedding=[0.0], segment_start=1.5, segment_end=3.0)
@@ -108,10 +108,10 @@ class TestDiarizationResultDTO:
 
 class TestEmbeddingService:
     async def test_extract_from_samples(self):
-        """Verify extraction returns a 512-dim embedding."""
+        """Verify extraction returns a 256-dim embedding."""
         service = PyannoteEmbeddingService()
         mock_inference = MagicMock()
-        mock_inference.return_value = np.array([[0.1] * 512], dtype=np.float32)
+        mock_inference.return_value = np.array([[0.1] * 256], dtype=np.float32)
 
         service._inference = mock_inference
         service._loaded = True
@@ -121,7 +121,7 @@ class TestEmbeddingService:
         with patch.dict(sys.modules, {"torch": _make_mock_torch()}):
             embedding = await service.extract_from_samples(samples, sample_rate=16000)
 
-        assert embedding.dimension == 512
+        assert embedding.dimension == 256
         assert embedding.segment_start == 0.0
         assert embedding.segment_end == pytest.approx(1.0, rel=0.01)
 
@@ -134,7 +134,7 @@ class TestEmbeddingService:
         """Segments shorter than 1 second should be skipped."""
         service = PyannoteEmbeddingService()
         mock_inference = MagicMock()
-        mock_inference.return_value = np.array([[0.1] * 512], dtype=np.float32)
+        mock_inference.return_value = np.array([[0.1] * 256], dtype=np.float32)
 
         service._inference = mock_inference
         service._loaded = True
@@ -211,7 +211,7 @@ class TestEmbeddingServiceBatch:
         """Batch extraction should return one embedding per segment."""
         svc = PyannoteEmbeddingService()
         mock_inference = MagicMock()
-        mock_inference.return_value = np.array([[0.5] * 512], dtype=np.float32)
+        mock_inference.return_value = np.array([[0.5] * 256], dtype=np.float32)
         svc._inference = mock_inference
         svc._loaded = True
         svc._lock = threading.Lock()
@@ -226,7 +226,7 @@ class TestEmbeddingServiceBatch:
 
         assert len(results) == 2
         assert results[0] is not None
-        assert results[0].dimension == 512
+        assert results[0].dimension == 256
         assert results[0].segment_start == 0.0
         assert results[0].segment_end == 1.0
         assert results[1].segment_start == 1.0
@@ -248,7 +248,7 @@ class TestEmbeddingServiceBatch:
             call_count += 1
             if call_count == 2:
                 raise RuntimeError("inference failed")
-            return np.array([[0.1] * 512], dtype=np.float32)
+            return np.array([[0.1] * 256], dtype=np.float32)
 
         mock_inference = MagicMock(side_effect=side_effect_fn)
         svc._inference = mock_inference
@@ -287,7 +287,7 @@ class TestEmbeddingServiceBatch:
 
         def capture_inference(input_dict):
             captured_inputs.append(input_dict)
-            return np.array([[0.1] * 512], dtype=np.float32)
+            return np.array([[0.1] * 256], dtype=np.float32)
 
         svc._inference = MagicMock(side_effect=capture_inference)
         svc._loaded = True

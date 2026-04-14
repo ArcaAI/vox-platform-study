@@ -164,6 +164,7 @@ test = [
     # Test utilities
     "testcontainers>=4.14.0",
     "freezegun>=1.5.0",
+    "soundfile>=0.13.1",
 ]
 
 [project.urls]

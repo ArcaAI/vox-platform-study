@@ -157,9 +157,9 @@ class Settings(BaseSettings):
         description="VAD input sample rate (16000 or 8000)",
     )
 
-    # Diarization — Pyannote embeddings
+    # Diarization -- Pyannote embeddings
     diarization_hf_model_id: str = Field(
-        default="pyannote/embedding",
+        default="pyannote/wespeaker-voxceleb-resnet34-LM",
         description="HuggingFace model ID for speaker embedding extraction",
     )
     diarization_similarity_threshold: float = Field(

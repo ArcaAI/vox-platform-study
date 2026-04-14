@@ -35,7 +35,7 @@ services:
     # Note: Switch to timescale/timescaledb-ha:pg18-all if TimescaleDB/pgvector needed
     postgres:
         container_name: hope-postgres
-        image: postgres:18-alpine
+        image: timescale/timescaledb-ha:pg18-all
         networks:
             - hope-network
         restart: unless-stopped

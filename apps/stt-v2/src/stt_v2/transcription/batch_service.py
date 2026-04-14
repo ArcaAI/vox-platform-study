@@ -160,6 +160,7 @@ class BatchTranscriptionService:
         chunk_callback: Callable[[ChunkTranscriptionResult], Awaitable[None]] | None = None,
         blob_service: Any = None,
         audio_filename: str | None = None,
+        user_id: str | None = None,
     ) -> TranscriptionResult:
         """
         Transcribe audio file with optional speaker diarization.
@@ -277,6 +278,13 @@ class BatchTranscriptionService:
                         max_speakers=spec.diarization.max_speakers,
                         max_embeddings_per_speaker=spec.diarization.max_embeddings_per_speaker,
                     )
+                    if consultation_id or user_id:
+                        await self._preseed_speaker(
+                            tracker,
+                            consultation_id,
+                            tenant_id,
+                            user_id=user_id,
+                        )
                     inline_identifier = SpeakerIdentifier(
                         tracker=tracker,
                         embedding_service=emb_service,
@@ -447,6 +455,7 @@ class BatchTranscriptionService:
                         consultation_id,
                         spec.diarization,
                         pipeline_config,
+                        user_id=user_id,
                     )
                     if diarization_segments is not raw_result.segments:
                         self._attach_speaker_metadata_to_segments(
@@ -530,6 +539,23 @@ class BatchTranscriptionService:
             logger.error(f"[{job_id}] Transcription failed: {e}")
             raise TranscriptionError(f"Transcription failed: {e}") from e
 
+    async def _preseed_speaker(
+        self,
+        tracker: Any,
+        consultation_id: str | None,
+        tenant_id: str | None = None,
+        *,
+        user_id: str | None = None,
+    ) -> None:
+        from ..diarization.preseed import preseed_speaker
+        await preseed_speaker(
+            tracker,
+            consultation_id,
+            tenant_id=tenant_id,
+            log_context=consultation_id,
+            user_id=user_id,
+        )
+
     async def _run_diarization(
         self,
         samples: np.ndarray,
@@ -539,6 +565,7 @@ class BatchTranscriptionService:
         consultation_id: str | None,
         config: Any,
         pipeline_config: PipelineConfig | None = None,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         """Run speaker diarization on transcription segments.
 
@@ -588,6 +615,13 @@ class BatchTranscriptionService:
             max_speakers=config.max_speakers,
             max_embeddings_per_speaker=config.max_embeddings_per_speaker,
         )
+        if consultation_id or user_id:
+            await self._preseed_speaker(
+                tracker,
+                consultation_id,
+                tenant_id,
+                user_id=user_id,
+            )
         identifier = SpeakerIdentifier(
             tracker=tracker,
             embedding_service=emb_service,

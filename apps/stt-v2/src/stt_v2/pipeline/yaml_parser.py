@@ -391,7 +391,7 @@ class PipelineYamlParser:
             max_speakers=int(data.get("max_speakers", 2)),
             min_segment_duration_s=float(data.get("min_segment_duration_s", 1.0)),
             segment_silence_padding_ms=int(data.get("segment_silence_padding_ms", 100)),
-            min_update_confidence=float(data.get("min_update_confidence", data.get("ema_min_confidence", 0.8))),
+            min_update_confidence=float(data.get("min_update_confidence", 0.8)),
             enable_segmentation_refinement=data.get("enable_segmentation_refinement", True),
         )
 

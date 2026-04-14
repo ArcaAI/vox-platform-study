@@ -35,6 +35,7 @@ def transcribe_file(
     language: str | None = None,
     code_switching: bool | None = None,
     audio_bucket_name: str | None = None,
+    user_id: str | None = None,
 ) -> None:
     """
     Dramatiq actor for batch file transcription.
@@ -76,6 +77,7 @@ def transcribe_file(
             language=language,
             code_switching=code_switching,
             audio_bucket_name=audio_bucket_name,
+            user_id=user_id,
         )
     )
 
@@ -90,6 +92,7 @@ async def _transcribe_file_async(
     language: str | None = None,
     code_switching: bool | None = None,
     audio_bucket_name: str | None = None,
+    user_id: str | None = None,
 ) -> None:
     """Async implementation of file transcription.
 
@@ -224,6 +227,7 @@ async def _transcribe_file_async(
             consultation_id=consultation_id,
             blob_service=blob_service,
             audio_filename=audio_filename,
+            user_id=user_id,
         )
 
         # Await pending progress tasks before publishing final events
