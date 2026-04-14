@@ -46,6 +46,7 @@ from stt_v2.transcription.batch_service import (
     get_batch_service,
 )
 from stt_v2.transcription.dto import (
+    AudioSegment,
     ProcessedAudio,
     RawTranscription,
     TranscriptionResult,
@@ -1333,7 +1334,7 @@ class TestRunDiarization:
 
         mock_emb_service = AsyncMock()
         mock_emb_service.extract_from_samples = AsyncMock(
-            return_value=MagicMock(embedding=np.zeros(512).tolist())
+            return_value=MagicMock(embedding=np.zeros(256).tolist())
         )
 
         mock_tracker = MagicMock()
@@ -1389,7 +1390,7 @@ class TestRunDiarization:
 
         mock_emb_service = AsyncMock()
         mock_emb_service.extract_from_samples = AsyncMock(
-            return_value=MagicMock(embedding=np.zeros(512).tolist())
+            return_value=MagicMock(embedding=np.zeros(256).tolist())
         )
 
         mock_tracker = MagicMock()
@@ -1445,7 +1446,7 @@ class TestRunDiarization:
 
         mock_emb_service = AsyncMock()
         mock_emb_service.extract_from_samples = AsyncMock(
-            return_value=MagicMock(embedding=np.zeros(512).tolist())
+            return_value=MagicMock(embedding=np.zeros(256).tolist())
         )
 
         mock_tracker = MagicMock()
@@ -1505,7 +1506,7 @@ class TestRunDiarization:
 
         mock_emb_service = AsyncMock()
         mock_emb_service.extract_from_samples = AsyncMock(
-            return_value=MagicMock(embedding=np.zeros(512).tolist())
+            return_value=MagicMock(embedding=np.zeros(256).tolist())
         )
         mock_tracker = MagicMock()
 
@@ -1544,6 +1545,213 @@ class TestRunDiarization:
             # First entry's speaker should be used (collapse)
             assert raw.segments[0]["speaker_id"] == "Speaker 1"
             assert raw.segments[0]["speaker_confidence"] == 0.9
+
+    @pytest.mark.asyncio
+    async def test_run_diarization_preseeds_when_consultation_present(self, service):
+        """_run_diarization should preseed tracker when consultation_id is provided."""
+        sample_rate = 16000
+        samples = np.random.randn(5 * sample_rate).astype(np.float32)
+        raw = RawTranscription(text="Hello")
+        raw.segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
+
+        mock_emb_service = AsyncMock()
+        mock_emb_service.extract_from_samples = AsyncMock(
+            return_value=MagicMock(embedding=np.zeros(256).tolist())
+        )
+
+        config = DiarizationConfig(
+            enabled=True,
+            min_segment_duration_s=0.5,
+            max_speakers=5,
+        )
+
+        with (
+            patch("stt_v2.diarization.embedding_service.EmbeddingService"),
+            patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=mock_emb_service),
+            patch("stt_v2.diarization.speaker_tracker.SpeakerTracker") as MockTracker,
+            patch("stt_v2.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
+            patch.object(service, "_preseed_speaker", new=AsyncMock()) as mock_preseed,
+        ):
+            mock_tracker = MagicMock()
+            MockTracker.return_value = mock_tracker
+
+            from stt_v2.diarization.dto import SpeakerIdentification
+
+            mock_identifier = AsyncMock()
+            mock_identifier.identify = AsyncMock(
+                return_value=SpeakerIdentification(
+                    speaker_id="Speaker 1", confidence=0.95, is_new_speaker=False,
+                )
+            )
+            MockIdentifier.return_value = mock_identifier
+
+            await service._run_diarization(
+                samples=samples,
+                sample_rate=sample_rate,
+                raw_result=raw,
+                tenant_id="t-1",
+                consultation_id="consult-123",
+                config=config,
+            )
+
+            mock_preseed.assert_awaited_once_with(mock_tracker, "consult-123", "t-1", user_id=None)
+
+    @pytest.mark.asyncio
+    async def test_run_diarization_preseeds_when_only_user_id_present(self, service):
+        """_run_diarization should preseed tracker when consultation_id is missing but user_id exists."""
+        sample_rate = 16000
+        samples = np.random.randn(5 * sample_rate).astype(np.float32)
+        raw = RawTranscription(text="Hello")
+        raw.segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
+
+        mock_emb_service = AsyncMock()
+        mock_emb_service.extract_from_samples = AsyncMock(
+            return_value=MagicMock(embedding=np.zeros(256).tolist())
+        )
+
+        config = DiarizationConfig(
+            enabled=True,
+            min_segment_duration_s=0.5,
+            max_speakers=5,
+        )
+
+        with (
+            patch("stt_v2.diarization.embedding_service.EmbeddingService"),
+            patch("stt_v2.diarization.embedding_service.get_embedding_service", return_value=mock_emb_service),
+            patch("stt_v2.diarization.speaker_tracker.SpeakerTracker") as MockTracker,
+            patch("stt_v2.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
+            patch.object(service, "_preseed_speaker", new=AsyncMock()) as mock_preseed,
+        ):
+            mock_tracker = MagicMock()
+            MockTracker.return_value = mock_tracker
+
+            from stt_v2.diarization.dto import SpeakerIdentification
+
+            mock_identifier = AsyncMock()
+            mock_identifier.identify = AsyncMock(
+                return_value=SpeakerIdentification(
+                    speaker_id="Speaker 1", confidence=0.95, is_new_speaker=False,
+                )
+            )
+            MockIdentifier.return_value = mock_identifier
+
+            await service._run_diarization(
+                samples=samples,
+                sample_rate=sample_rate,
+                raw_result=raw,
+                tenant_id="t-1",
+                consultation_id=None,
+                config=config,
+                user_id="user-1",
+            )
+
+            mock_preseed.assert_awaited_once_with(mock_tracker, None, "t-1", user_id="user-1")
+
+    @pytest.mark.asyncio
+    async def test_preseed_speaker_registers_doctor_embedding(self, service):
+        """Preseed should register doctor embedding with display name when profile exists."""
+        tracker = MagicMock()
+        tracker.register = MagicMock(return_value="Dr Jane")
+
+        with (
+            patch(
+                "stt_v2.core.database.voice_profile_model.get_user_identity",
+                new=AsyncMock(return_value=("user-1", "Dr Jane")),
+            ),
+            patch(
+                "stt_v2.core.database.voice_profile_model.get_voice_embedding",
+                new=AsyncMock(return_value=np.zeros(256).tolist()),
+            ),
+            patch(
+                "stt_v2.core.database.voice_profile_model.get_user_display_name",
+                new=AsyncMock(return_value="Dr Jane"),
+            ),
+        ):
+            await service._preseed_speaker(
+                tracker,
+                "consult-123",
+                "t-1",
+            )
+
+        tracker.register.assert_called_once()
+        args, kwargs = tracker.register.call_args
+        assert isinstance(args[0], np.ndarray)
+        assert args[0].dtype == np.float32
+        assert kwargs["speaker_id"] == "Dr Jane"
+
+    @pytest.mark.asyncio
+    async def test_preseed_speaker_skips_when_profile_missing(self, service):
+        """Preseed should not register speaker when no active voice profile exists."""
+        tracker = MagicMock()
+        tracker.register = MagicMock()
+
+        with (
+            patch(
+                "stt_v2.core.database.voice_profile_model.get_user_identity",
+                new=AsyncMock(return_value=("user-1", "Dr Jane")),
+            ),
+            patch(
+                "stt_v2.core.database.voice_profile_model.get_voice_embedding",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "stt_v2.core.database.voice_profile_model.get_user_display_name",
+                new=AsyncMock(return_value="Dr Jane"),
+            ),
+        ):
+            await service._preseed_speaker(
+                tracker,
+                "consult-123",
+                "t-1",
+            )
+
+        tracker.register.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_preseed_speaker_nonfatal_when_identity_lookup_fails(self, service):
+        """Preseed should stay non-fatal when consultation identity lookup raises."""
+        tracker = MagicMock()
+        tracker.register = MagicMock()
+
+        with patch(
+            "stt_v2.core.database.voice_profile_model.get_user_identity",
+            new=AsyncMock(side_effect=RuntimeError("db down")),
+        ):
+            await service._preseed_speaker(
+                tracker,
+                "consult-123",
+                "t-1",
+            )
+
+        tracker.register.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_preseed_speaker_nonfatal_when_tracker_at_capacity(self, service):
+        """Preseed should stay non-fatal when tracker rejects registration."""
+        tracker = MagicMock()
+        tracker.register = MagicMock(return_value=None)
+
+        with (
+            patch(
+                "stt_v2.core.database.voice_profile_model.get_user_identity",
+                new=AsyncMock(return_value=("user-1", "Dr Jane")),
+            ),
+            patch(
+                "stt_v2.core.database.voice_profile_model.get_voice_embedding",
+                new=AsyncMock(return_value=np.zeros(256).tolist()),
+            ),
+            patch(
+                "stt_v2.core.database.voice_profile_model.get_user_display_name",
+                new=AsyncMock(return_value="Dr Jane"),
+            ),
+        ):
+            await service._preseed_speaker(
+                tracker,
+                "consult-123",
+                "t-1",
+            )
+
+        tracker.register.assert_called_once()
 
 
 class TestBatchServiceDiarization:
@@ -1630,6 +1838,99 @@ class TestBatchServiceDiarization:
             mock_diar.assert_called_once()
             assert "diarization" in result.metadata
             assert result.metadata["diarization"]["speakers_detected"] == 2
+
+    @pytest.mark.asyncio
+    async def test_transcribe_inline_path_preseeds_when_consultation_present(self, service):
+        """Inline diarization setup should preseed tracker when consultation_id is set."""
+        pipeline = self.create_diarization_pipeline(enabled=True)
+        loaded_model = create_complete_loaded_model()
+        audio_bytes = create_valid_wav_audio(duration_seconds=2.0)
+
+        with (
+            patch.object(service, "_load_models") as mock_load,
+            patch("stt_v2.transcription.batch_service.get_preprocessor") as mock_preproc,
+            patch.object(service, "_run_per_segment_inference") as mock_per_segment,
+            patch.object(service, "_run_diarization") as mock_diar,
+            patch.object(service, "_postprocess") as mock_postproc,
+            patch("stt_v2.diarization.embedding_service.get_embedding_service") as mock_get_emb,
+            patch("stt_v2.diarization.speaker_tracker.SpeakerTracker") as MockTracker,
+            patch("stt_v2.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
+            patch.object(
+                service,
+                "_preseed_speaker",
+                new=AsyncMock(),
+            ) as mock_preseed,
+        ):
+            mock_load.return_value = {"asr": loaded_model, "vad": None, "denoise": None}
+
+            mock_preprocessor = AsyncMock()
+            mock_preprocessor.process = AsyncMock(
+                return_value=ProcessedAudio(
+                    samples=np.zeros(32000, dtype=np.float32),
+                    sample_rate=16000,
+                    duration_seconds=2.0,
+                    was_resampled=False,
+                    was_normalized=True,
+                    vad_applied=True,
+                    denoise_applied=False,
+                    segments=[
+                        AudioSegment(
+                            start_time=0.0,
+                            end_time=2.0,
+                            is_speech=True,
+                        )
+                    ],
+                )
+            )
+            mock_preproc.return_value = mock_preprocessor
+
+            mock_tracker = MagicMock()
+            mock_tracker.speaker_ids = ["Dr Jane"]
+            MockTracker.return_value = mock_tracker
+
+            mock_identifier = MagicMock()
+            mock_identifier._tracker = mock_tracker
+            MockIdentifier.return_value = mock_identifier
+
+            mock_emb_service = MagicMock()
+            mock_get_emb.return_value = mock_emb_service
+
+            raw = RawTranscription(
+                text="Hello",
+                segments=[{"start": 0.0, "end": 2.0, "text": "Hello"}],
+                model_output={
+                    "inline_diarized_segments": [
+                        {
+                            "start": 0.0,
+                            "end": 2.0,
+                            "speaker_id": "Dr Jane",
+                            "speaker_confidence": 0.92,
+                        }
+                    ],
+                    "inline_new_speakers": 0,
+                },
+            )
+            mock_per_segment.return_value = raw
+            mock_postproc.return_value = TranscriptionResult(
+                text="Hello",
+                duration_seconds=2.0,
+            )
+
+            await service.transcribe(
+                job_id="j-diar-inline-1",
+                audio_bytes=audio_bytes,
+                pipeline_config=pipeline,
+                tenant_id="t-456",
+                consultation_id="c-001",
+            )
+
+            mock_preseed.assert_awaited_once_with(
+                mock_tracker,
+                "c-001",
+                "t-456",
+                user_id=None,
+            )
+            mock_diar.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_transcribe_skips_diarization_when_disabled(self, service):

@@ -6,6 +6,7 @@ from .embedding_service import (
     create_embedding_service,
     get_embedding_service,
 )
+from .preseed import preseed_speaker
 from .pyannote_embedding import PyannoteEmbeddingService
 from .speaker_tracker import SpeakerTracker
 from .speechbrain_embedding import SpeechBrainEmbeddingService
@@ -16,6 +17,7 @@ __all__ = [
     "SpeechBrainEmbeddingService",
     "create_embedding_service",
     "get_embedding_service",
+    "preseed_speaker",
     "SpeakerTracker",
     "SpeakerEmbedding",
     "SpeakerIdentification",

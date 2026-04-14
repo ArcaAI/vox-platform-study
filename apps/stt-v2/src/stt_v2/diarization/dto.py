@@ -8,7 +8,7 @@ from typing import Any
 class SpeakerEmbedding:
     """A speaker embedding extracted from an audio segment."""
 
-    embedding: list[float]  # 512-dimensional vector
+    embedding: list[float]  # 256-dimensional vector
     segment_start: float = 0.0  # seconds
     segment_end: float = 0.0  # seconds
 

@@ -162,6 +162,7 @@ export class TranscriptionJobController {
       this.logger.log(`Uploaded audio to ${audioUri} for job ${job.id}`);
 
       // 6. Dispatch Dramatiq message to stt_batch queue
+      const user = this.cls.get('user');
       await this.realtimeService.dispatchDramatiqJob({
         jobId: job.id,
         tenantId,
@@ -169,7 +170,7 @@ export class TranscriptionJobController {
         audioUri,
         consultationId: body.consultationId,
         mediaId,
-        audioBucketName: uploadBucket,
+        userId: user?.id,
       });
     } catch (error) {
       // If upload or dispatch fails, mark the job as failed
@@ -225,16 +226,7 @@ export class TranscriptionJobController {
   async createStreamSession(@Body() body: CreateStreamSessionRequest) {
     const sessionId = uuidv7();
     const tenantId = this.getTenantId();
-
-    let uploadBucket = AUDIO_BUCKET;
-    try {
-      const tenantBucket = await this.tenantBucketService.getBucketBySlug(SYSTEM_BUCKET_SLUGS.AUDIO);
-      if (tenantBucket) {
-        uploadBucket = tenantBucket.name;
-      }
-    } catch (err) {
-      this.logger.warn(`Failed to resolve tenant bucket for streaming, using default: ${err}`);
-    }
+    const user = this.cls.get('user');
 
     const result = await this.sessionService.createSession({
       sessionId,
@@ -242,7 +234,7 @@ export class TranscriptionJobController {
       pipelineId: body.pipelineId,
       consultationId: body.consultationId,
       sampleRate: body.sampleRate ?? 16000,
-      audioBucketName: uploadBucket,
+      userId: user?.id,
     });
 
     if (!result) {

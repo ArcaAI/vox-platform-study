@@ -22,14 +22,8 @@ export interface CreateStreamingSessionRequest {
   sampleRate?: number;
   /** Identifier for the microphone device */
   microphoneId?: string;
-  /** Language hint (ISO 639-1 code, e.g. "en", "ml"). Overrides the pipeline default. */
-  language?: string;
-  /** Enable multilingual code-switching. Overrides the pipeline default. */
-  codeSwitching?: boolean;
-  /** Enable speaker diarization. Overrides the pipeline default. */
-  diarization?: boolean;
-  /** Tenant-scoped audio bucket name override */
-  audioBucketName?: string;
+  /** Authenticated user ID for speaker pre-seeding */
+  userId?: string;
 }
 
 // ---------------------------------------------------------------------------

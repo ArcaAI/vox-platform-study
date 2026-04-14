@@ -263,6 +263,7 @@ class SessionMetadata:
     pipeline_id: str
     consultation_id: str | None = None
     microphone_id: str | None = None
+    user_id: str | None = None
     status: SessionStatus = SessionStatus.ACTIVE
     created_at: str = ""  # ISO-8601
     last_activity: str = ""  # ISO-8601
@@ -293,6 +294,7 @@ class SessionMetadata:
             "pipeline_id": self.pipeline_id,
             "consultation_id": self.consultation_id or "",
             "microphone_id": self.microphone_id or "",
+            "user_id": self.user_id or "",
             "status": self.status.value,
             "created_at": self.created_at,
             "last_activity": self.last_activity,
@@ -333,6 +335,7 @@ class SessionMetadata:
 
         consultation_id = _get("consultation_id") or None
         microphone_id = _get("microphone_id") or None
+        user_id = _get("user_id") or None
         closed_at = _get("closed_at") or None
         raw_audio_uri = _get("raw_audio_uri") or None
         processed_audio_uri = _get("processed_audio_uri") or None
@@ -346,6 +349,7 @@ class SessionMetadata:
             pipeline_id=_get("pipeline_id"),
             consultation_id=consultation_id,
             microphone_id=microphone_id,
+            user_id=user_id,
             status=SessionStatus(_get("status") or "active"),
             created_at=_get("created_at"),
             last_activity=_get("last_activity"),

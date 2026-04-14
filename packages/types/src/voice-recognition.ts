@@ -275,8 +275,8 @@ export const AUDIO_QUALITY_THRESHOLDS = {
  * Embedding configuration
  */
 export const EMBEDDING_CONFIG = {
-  /** Expected embedding dimension for Pyannote Embedding model */
-  DIMENSION: 512,
+  /** Expected embedding dimension */
+  DIMENSION: 256,
   /** Minimum quality score to accept embedding - lowered for easier enrollment */
   MIN_QUALITY: 0.5, // Lowered from 0.6 for easier enrollment
   /** Required number of samples for enrollment */

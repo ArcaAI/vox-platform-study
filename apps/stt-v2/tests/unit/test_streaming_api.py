@@ -678,6 +678,7 @@ class TestApiSchemas:
         assert req.sample_rate == 16000
         assert req.consultation_id is None
         assert req.microphone_id is None
+        assert req.user_id is None
 
     def test_create_request_all_fields(self):
         from stt_v2.streaming.api.schemas import CreateStreamingSessionRequest
@@ -689,9 +690,11 @@ class TestApiSchemas:
             consultation_id="c1",
             sample_rate=48000,
             microphone_id="mic-1",
+            user_id="u1",
         )
         assert req.sample_rate == 48000
         assert req.microphone_id == "mic-1"
+        assert req.user_id == "u1"
 
     def test_availability_response_defaults(self):
         from stt_v2.streaming.api.schemas import StreamingAvailabilityResponse

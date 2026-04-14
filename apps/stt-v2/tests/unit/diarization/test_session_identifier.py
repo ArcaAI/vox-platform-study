@@ -19,7 +19,7 @@ from stt_v2.pipeline.dto import DiarizationConfig
 
 def _make_embedding(values: list[float] | None = None) -> SpeakerEmbedding:
     if values is None:
-        vec = np.random.randn(512).astype(np.float32)
+        vec = np.random.randn(256).astype(np.float32)
         vec = vec / np.linalg.norm(vec)
         values = vec.tolist()
     return SpeakerEmbedding(embedding=values, segment_start=0.0, segment_end=2.0)
@@ -46,7 +46,7 @@ class TestHighConfidenceMatch:
     async def test_high_confidence_returns_existing_speaker(self):
         """Score >= high_threshold should return the matched speaker."""
         tracker = SpeakerTracker(max_speakers=5)
-        base_emb = np.random.randn(512).astype(np.float32)
+        base_emb = np.random.randn(256).astype(np.float32)
         base_emb = base_emb / np.linalg.norm(base_emb)
         tracker.register(base_emb)
 
@@ -67,7 +67,7 @@ class TestHighConfidenceMatch:
     async def test_high_confidence_triggers_update_when_above_min(self):
         """Score >= min_update_confidence should trigger embedding window update."""
         tracker = SpeakerTracker(max_speakers=5)
-        base_emb = np.random.randn(512).astype(np.float32)
+        base_emb = np.random.randn(256).astype(np.float32)
         base_emb = base_emb / np.linalg.norm(base_emb)
         tracker.register(base_emb)
         assert len(tracker._embedding_windows["Speaker 1"]) == 1
@@ -86,7 +86,7 @@ class TestHighConfidenceMatch:
     async def test_high_confidence_below_ema_min_no_update(self):
         """Score >= high_threshold but < min_update_confidence should NOT trigger update."""
         tracker = SpeakerTracker(max_speakers=5)
-        base_emb = np.random.randn(512).astype(np.float32)
+        base_emb = np.random.randn(256).astype(np.float32)
         base_emb = base_emb / np.linalg.norm(base_emb)
         tracker.register(base_emb)
         initial_window_size = len(tracker._embedding_windows["Speaker 1"])
@@ -96,7 +96,7 @@ class TestHighConfidenceMatch:
         identifier = SpeakerIdentifier(tracker=tracker, config=config)
 
         # Create a query with moderate similarity (between 0.3 and 0.99)
-        noise = np.random.randn(512).astype(np.float32) * 0.5
+        noise = np.random.randn(256).astype(np.float32) * 0.5
         noisy = base_emb + noise
         noisy = noisy / np.linalg.norm(noisy)
         query = _make_embedding(noisy.tolist())
@@ -117,7 +117,7 @@ class TestLowConfidenceNewSpeaker:
         """Score < low_threshold should register a new speaker."""
         tracker = SpeakerTracker(max_speakers=5)
         # Register speaker 1 with a known direction
-        e1 = np.zeros(512, dtype=np.float32)
+        e1 = np.zeros(256, dtype=np.float32)
         e1[0] = 1.0
         tracker.register(e1)
 
@@ -125,7 +125,7 @@ class TestLowConfidenceNewSpeaker:
         identifier = SpeakerIdentifier(tracker=tracker, config=config)
 
         # Query with orthogonal embedding -> cosine ~0
-        e2 = np.zeros(512, dtype=np.float32)
+        e2 = np.zeros(256, dtype=np.float32)
         e2[1] = 1.0
         query = _make_embedding(e2.tolist())
         result = await identifier.identify(query)
@@ -138,7 +138,7 @@ class TestLowConfidenceNewSpeaker:
     async def test_at_capacity_falls_back_to_best_match(self):
         """At max_speakers capacity, low-confidence should fallback to best match."""
         tracker = SpeakerTracker(max_speakers=1)
-        e1 = np.zeros(512, dtype=np.float32)
+        e1 = np.zeros(256, dtype=np.float32)
         e1[0] = 1.0
         tracker.register(e1)
 
@@ -146,7 +146,7 @@ class TestLowConfidenceNewSpeaker:
         identifier = SpeakerIdentifier(tracker=tracker, config=config)
 
         # Orthogonal query but at capacity
-        e2 = np.zeros(512, dtype=np.float32)
+        e2 = np.zeros(256, dtype=np.float32)
         e2[1] = 1.0
         query = _make_embedding(e2.tolist())
         result = await identifier.identify(query)
@@ -178,7 +178,7 @@ class TestAmbiguousZone:
         """Ambiguous zone with segmentation should re-split and re-identify."""
         tracker = SpeakerTracker(max_speakers=5)
         # Register a speaker so compare returns non-None
-        base = np.random.randn(512).astype(np.float32)
+        base = np.random.randn(256).astype(np.float32)
         base = base / np.linalg.norm(base)
         tracker.register(base)
 
@@ -190,7 +190,7 @@ class TestAmbiguousZone:
 
         # Make embedding service return distinct embeddings for sub-segments
         sub_emb1 = SpeakerEmbedding(embedding=base.tolist(), segment_start=0.0, segment_end=1.0)
-        sub_emb2_vec = np.random.randn(512).astype(np.float32)
+        sub_emb2_vec = np.random.randn(256).astype(np.float32)
         sub_emb2_vec = sub_emb2_vec / np.linalg.norm(sub_emb2_vec)
         sub_emb2 = SpeakerEmbedding(embedding=sub_emb2_vec.tolist(), segment_start=1.0, segment_end=2.0)
         mock_emb_service.extract_from_samples = AsyncMock(side_effect=[sub_emb1, sub_emb2])
@@ -204,7 +204,7 @@ class TestAmbiguousZone:
         )
 
         # Create a query that falls in ambiguous zone
-        noisy = base + np.random.randn(512).astype(np.float32) * 0.3
+        noisy = base + np.random.randn(256).astype(np.float32) * 0.3
         noisy = noisy / np.linalg.norm(noisy)
         query = _make_embedding(noisy.tolist())
 
@@ -223,7 +223,7 @@ class TestAmbiguousZone:
     async def test_ambiguous_depth_1_no_segmentation(self):
         """At _depth=1, ambiguous zone should NOT trigger segmentation."""
         tracker = SpeakerTracker(max_speakers=5)
-        base = np.random.randn(512).astype(np.float32)
+        base = np.random.randn(256).astype(np.float32)
         base = base / np.linalg.norm(base)
         tracker.register(base)
 
@@ -235,7 +235,7 @@ class TestAmbiguousZone:
             config=config,
         )
 
-        noisy = base + np.random.randn(512).astype(np.float32) * 0.3
+        noisy = base + np.random.randn(256).astype(np.float32) * 0.3
         noisy = noisy / np.linalg.norm(noisy)
         query = _make_embedding(noisy.tolist())
 
@@ -252,7 +252,7 @@ class TestAmbiguousZone:
     async def test_ambiguous_without_segmentation_service_fallback(self):
         """Without segmentation service, ambiguous zone should fallback to best match."""
         tracker = SpeakerTracker(max_speakers=5)
-        base = np.random.randn(512).astype(np.float32)
+        base = np.random.randn(256).astype(np.float32)
         base = base / np.linalg.norm(base)
         tracker.register(base)
 
@@ -263,7 +263,7 @@ class TestAmbiguousZone:
             config=config,
         )
 
-        noisy = base + np.random.randn(512).astype(np.float32) * 0.3
+        noisy = base + np.random.randn(256).astype(np.float32) * 0.3
         noisy = noisy / np.linalg.norm(noisy)
         query = _make_embedding(noisy.tolist())
 

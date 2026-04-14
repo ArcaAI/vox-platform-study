@@ -261,7 +261,7 @@ class TestSettings:
         """Test Pyannote diarization default configuration."""
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings()
-            assert settings.diarization_hf_model_id == "pyannote/embedding"
+            assert settings.diarization_hf_model_id == "pyannote/wespeaker-voxceleb-resnet34-LM"
             assert settings.diarization_similarity_threshold == 0.7
             assert settings.diarization_device == "auto"
 
