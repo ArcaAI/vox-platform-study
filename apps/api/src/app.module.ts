@@ -41,6 +41,7 @@ import { StreamingModule } from './modules/streaming/streaming.module';
 import { TenantBucketModule } from './modules/tenant-bucket/tenant-bucket.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { UserModule } from './modules/user/user.module';
+import { VoiceProfileModule } from './modules/voice-profile/voice-profile.module';
 
 const interceptors = [
   {
@@ -128,6 +129,7 @@ const featureModules: any[] = [
   TenantModule,
   TenantBucketModule,
   UserModule,
+  VoiceProfileModule,
 ];
 
 // Dev-only: Embedded Prisma Studio database browser at /api/pstudio

@@ -17,6 +17,7 @@ from stt_v2.health.api.routes import router as health_router
 from stt_v2.streaming._runtime import initialize_streaming, shutdown_streaming
 from stt_v2.streaming.api.routes import router as streaming_router
 from stt_v2.transcription.api.routes import router as transcription_router
+from stt_v2.voice_profile.api.routes import router as voice_profile_router
 
 settings = get_settings()
 setup_logging(settings.log_level)
@@ -152,7 +153,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await initialize_minio()
     await initialize_streaming()
 
-    # Embedding model (required by /internal/embeddings/upsert)
+    # Embedding model
     try:
         from stt_v2.diarization.embedding_service import get_embedding_service
 
@@ -161,6 +162,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Pyannote embedding service initialized")
     except Exception as exc:
         logger.warning("Embedding service initialization failed (non-fatal)", error=str(exc))
+
+    # VAD model
+    try:
+        from stt_v2.vad.silero_service import get_vad_service
+
+        vad_service = get_vad_service()
+        await vad_service.initialize()
+        logger.info("Silero VAD service initialized")
+    except Exception as exc:
+        logger.warning("VAD service initialization failed (non-fatal)", error=str(exc))
 
     # Preload ML models (after DB is ready, since pipeline configs are in DB)
     await _preload_pipeline_models()
@@ -243,6 +254,7 @@ def create_app() -> FastAPI:
     app.include_router(internal_router, tags=["Internal"])
     app.include_router(transcription_router, tags=["Transcription"])
     app.include_router(streaming_router, tags=["Streaming"])
+    app.include_router(voice_profile_router, tags=["Voice Profile"])
 
     # OpenTelemetry (must be after routers for FastAPIInstrumentor)
     if settings.otel_enabled:

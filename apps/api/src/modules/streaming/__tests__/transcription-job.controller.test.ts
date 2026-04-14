@@ -191,6 +191,7 @@ describe('TranscriptionJobController', () => {
                 expect.objectContaining({
                     pipelineId: 'pipe-1',
                     tenantId: 'tenant-1',
+                    userId: 'user-1',
                 }),
             );
             expect(result).toMatchObject({

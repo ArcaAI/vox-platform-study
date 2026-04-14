@@ -156,7 +156,7 @@ describe('TranscriptionRealtimeService', () => {
             expect(message).toEqual(expect.objectContaining({
                 queue_name: 'stt_batch',
                 actor_name: 'transcribe_file',
-                args: ['job-001', 'tenant-1', 'pipeline-1', 'minio://audio/test.wav', 'consult-1', 'media-1', null, null],
+                args: ['job-001', 'tenant-1', 'pipeline-1', 'minio://audio/test.wav', 'consult-1', 'media-1', null, null, 'hope-audio', null],
                 kwargs: {},
                 message_id: 'test-uuid-1234',
             }));
@@ -185,6 +185,7 @@ describe('TranscriptionRealtimeService', () => {
 
             expect(message.args[4]).toBeNull(); // consultationId
             expect(message.args[5]).toBeNull(); // mediaId
+            expect(message.args[9]).toBeNull(); // userId
         });
 
         it('should return an Observable that emits SSE events', async () => {
