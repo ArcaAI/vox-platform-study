@@ -45,7 +45,7 @@ describe('VoiceProfileController', () => {
   });
 
   describe('enroll', () => {
-    it('should call service.enroll with userId and audio buffer', async () => {
+    it('should call service.enroll with userId and audio buffers', async () => {
       const mockProfile = createMockProfile();
       mockVoiceProfileService.enroll.mockResolvedValue(mockProfile);
 
@@ -56,11 +56,11 @@ describe('VoiceProfileController', () => {
         size: 1024,
       } as Express.Multer.File;
 
-      const result = await controller.enroll(file, { label: 'My Voice' });
+      const result = await controller.enroll([file], { label: 'My Voice' });
 
       expect(mockVoiceProfileService.enroll).toHaveBeenCalledWith({
         userId: 'user-1',
-        audioBuffer: file.buffer,
+        audioBuffers: [file.buffer],
         label: 'My Voice',
       });
       expect(result).toHaveProperty('id', 'vp-1');
