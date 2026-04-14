@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedVoiceProfileRouteImport } from './routes/_authenticated/voice-profile'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors403RouteImport } from './routes/(errors)/403'
@@ -50,6 +51,12 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedVoiceProfileRoute =
+  AuthenticatedVoiceProfileRouteImport.update({
+    id: '/voice-profile',
+    path: '/voice-profile',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const errors500Route = errors500RouteImport.update({
   id: '/(errors)/500',
   path: '/500',
@@ -226,6 +233,7 @@ export interface FileRoutesByFullPath {
   '/403': typeof errors403Route
   '/404': typeof errors404Route
   '/500': typeof errors500Route
+  '/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
   '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
   '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
@@ -257,6 +265,7 @@ export interface FileRoutesByTo {
   '/403': typeof errors403Route
   '/404': typeof errors404Route
   '/500': typeof errors500Route
+  '/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/': typeof AuthenticatedIndexRoute
   '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
   '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
@@ -291,6 +300,7 @@ export interface FileRoutesById {
   '/(errors)/403': typeof errors403Route
   '/(errors)/404': typeof errors404Route
   '/(errors)/500': typeof errors500Route
+  '/_authenticated/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
   '/_authenticated/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
@@ -326,6 +336,7 @@ export interface FileRouteTypes {
     | '/403'
     | '/404'
     | '/500'
+    | '/voice-profile'
     | '/admin/audio-pipelines'
     | '/admin/audit-logs'
     | '/admin/configurations'
@@ -357,6 +368,7 @@ export interface FileRouteTypes {
     | '/403'
     | '/404'
     | '/500'
+    | '/voice-profile'
     | '/'
     | '/admin/audio-pipelines'
     | '/admin/audit-logs'
@@ -390,6 +402,7 @@ export interface FileRouteTypes {
     | '/(errors)/403'
     | '/(errors)/404'
     | '/(errors)/500'
+    | '/_authenticated/voice-profile'
     | '/_authenticated/'
     | '/_authenticated/admin/audio-pipelines'
     | '/_authenticated/admin/audit-logs'
@@ -440,6 +453,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/voice-profile': {
+      id: '/_authenticated/voice-profile'
+      path: '/voice-profile'
+      fullPath: '/voice-profile'
+      preLoaderRoute: typeof AuthenticatedVoiceProfileRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/(errors)/500': {
@@ -649,6 +669,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedVoiceProfileRoute: typeof AuthenticatedVoiceProfileRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedAdminAudioPipelinesRoute: typeof AuthenticatedAdminAudioPipelinesRoute
   AuthenticatedAdminAuditLogsRoute: typeof AuthenticatedAdminAuditLogsRoute
@@ -677,6 +698,7 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedVoiceProfileRoute: AuthenticatedVoiceProfileRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedAdminAudioPipelinesRoute: AuthenticatedAdminAudioPipelinesRoute,
   AuthenticatedAdminAuditLogsRoute: AuthenticatedAdminAuditLogsRoute,

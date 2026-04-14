@@ -16,9 +16,7 @@ class CreateStreamingSessionRequest(BaseModel):
     microphone_id: str | None = Field(
         default=None, description="Identifier for the microphone device"
     )
-    audio_bucket_name: str | None = Field(
-        default=None, description="Tenant-scoped audio bucket name override"
-    )
+    user_id: str | None = Field(default=None, description="Authenticated user ID for speaker pre-seeding")
 
 
 class StreamingSessionResponse(BaseModel):

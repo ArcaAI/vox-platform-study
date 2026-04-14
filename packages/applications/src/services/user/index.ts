@@ -4,3 +4,5 @@ export * from './userPreferences';
 export * from './userProfile';
 export * from './userRoleAssignment';
 export * from './userSettings';
+export * from './voiceProfile';
+

@@ -247,10 +247,9 @@ _service: EmbeddingService | None = None
 
 
 def get_embedding_service() -> EmbeddingService:
-    """Get singleton embedding service (default pyannote)."""
+    """Get singleton embedding service (uses settings-based model)."""
     global _service
     if _service is None:
-        from .pyannote_embedding import PyannoteEmbeddingService
-
-        _service = PyannoteEmbeddingService()
+        settings = get_settings()
+        _service = create_embedding_service(hf_model_id=settings.diarization_hf_model_id)
     return _service

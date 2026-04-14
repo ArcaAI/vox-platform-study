@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { of, throwError } from 'rxjs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StreamingSessionService } from '../streamingSession.service';
 
 describe('StreamingSessionService', () => {
@@ -86,6 +86,7 @@ describe('StreamingSessionService', () => {
             tenantId: 'tenant-1',
             pipelineId: 'pipeline-1',
             sampleRate: 16000,
+            userId: 'user-1',
         });
 
         expect(result).toBeNull();
@@ -96,6 +97,7 @@ describe('StreamingSessionService', () => {
                 tenant_id: 'tenant-1',
                 pipeline_id: 'pipeline-1',
                 sample_rate: 16000,
+                user_id: 'user-1',
             }),
             { timeout: 15000 },
         );

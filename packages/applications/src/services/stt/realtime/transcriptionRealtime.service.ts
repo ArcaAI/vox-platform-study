@@ -83,8 +83,6 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
       audioUri: params.audioUri,
       consultationId: params.consultationId,
       mediaId: params.mediaId,
-      language: params.language,
-      codeSwitching: params.codeSwitching,
     });
 
     // 4. Assemble SSE Observable
@@ -351,9 +349,7 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
     audioUri: string;
     consultationId?: string;
     mediaId?: string;
-    language?: string;
-    codeSwitching?: boolean;
-    audioBucketName?: string;
+    userId?: string;
   }): Promise<void> {
     const messageId = uuidv7();
     const redisMessageId = uuidv7(); // Required by Dramatiq protocol
@@ -367,9 +363,10 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
         params.audioUri,
         params.consultationId ?? null,
         params.mediaId ?? null,
-        params.language ?? null,
-        params.codeSwitching ?? null,
-        params.audioBucketName ?? null,
+        null,
+        null,
+        'hope-audio',
+        params.userId ?? null,
       ],
       kwargs: {},
       options: {

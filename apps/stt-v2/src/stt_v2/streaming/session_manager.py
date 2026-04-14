@@ -245,6 +245,7 @@ class SessionManager:
         consultation_id: str | None = None,
         sample_rate: int = 16000,
         audio_bucket_name: str | None = None,
+        user_id: str | None = None,
     ) -> StreamSession | None:
         """Create a new streaming session.
 
@@ -277,6 +278,7 @@ class SessionManager:
                 status=SessionStatus.ACTIVE,
                 sample_rate=sample_rate,
                 worker_id=self._worker_id,
+                user_id=user_id,
             )
 
             # Create session object
@@ -393,6 +395,14 @@ class SessionManager:
                     config=diarization_config,
                 )
 
+                if consultation_id or user_id:
+                    await self._preseed_speaker(
+                        speaker_tracker,
+                        consultation_id,
+                        session_id,
+                        user_id=user_id,
+                    )
+
             # Create inference worker (per-utterance ASR)
             postprocessing_config = (
                 pipeline_config.postprocessing if pipeline_config else None
@@ -475,6 +485,22 @@ class SessionManager:
     def get_publisher(self, session_id: str) -> ResultPublisher | None:
         """Retrieve the result publisher for a session."""
         return self._publishers.get(session_id)
+
+    async def _preseed_speaker(
+        self,
+        tracker: Any,
+        consultation_id: str | None,
+        session_id: str,
+        *,
+        user_id: str | None = None,
+    ) -> None:
+        from stt_v2.diarization.preseed import preseed_speaker
+        await preseed_speaker(
+            tracker,
+            consultation_id,
+            log_context=session_id,
+            user_id=user_id,
+        )
 
     async def end_session(self, session_id: str) -> None:
         """Gracefully end a session — finalize (upload artifacts) then remove.

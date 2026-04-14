@@ -10,7 +10,7 @@ import numpy as np
 from stt_v2.diarization.speaker_tracker import SpeakerTracker
 
 
-def _random_embedding(dim: int = 512) -> np.ndarray:
+def _random_embedding(dim: int = 256) -> np.ndarray:
     """Generate a random L2-normalized embedding."""
     vec = np.random.randn(dim).astype(np.float32)
     return vec / np.linalg.norm(vec)
@@ -52,7 +52,7 @@ class TestRegister:
 
     def test_register_stores_l2_normalized(self):
         tracker = SpeakerTracker(max_speakers=5)
-        raw = np.random.randn(512).astype(np.float32) * 5.0  # not normalized
+        raw = np.random.randn(256).astype(np.float32) * 5.0  # not normalized
         tracker.register(raw)
         # Internal reference should be L2-normalized (last entry in deque)
         ref = tracker._embedding_windows["Speaker 1"][-1]
@@ -108,9 +108,9 @@ class TestCompare:
 
     def test_compare_orthogonal_gives_near_zero(self):
         tracker = SpeakerTracker(max_speakers=2)
-        e1 = np.zeros(512, dtype=np.float32)
+        e1 = np.zeros(256, dtype=np.float32)
         e1[0] = 1.0
-        e2 = np.zeros(512, dtype=np.float32)
+        e2 = np.zeros(256, dtype=np.float32)
         e2[1] = 1.0
         tracker.register(e1)
 

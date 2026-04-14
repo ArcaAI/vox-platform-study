@@ -59,6 +59,7 @@ def _build_create_payload(
     sample_rate: int = 16000,
     consultation_id: str | None = None,
     microphone_id: str | None = None,
+    user_id: str | None = None,
 ) -> dict:
     """Build a JSON body for ``POST /internal/streaming/sessions``.
 
@@ -75,6 +76,8 @@ def _build_create_payload(
         payload["consultation_id"] = consultation_id
     if microphone_id is not None:
         payload["microphone_id"] = microphone_id
+    if user_id is not None:
+        payload["user_id"] = user_id
     return payload
 
 
@@ -129,6 +132,7 @@ def _make_mock_session_manager(
         consultation_id: str | None = None,
         sample_rate: int = 16000,
         audio_bucket_name: str | None = None,
+        user_id: str | None = None,
     ) -> _FakeStreamSession | None:
         acquired = await guard.try_acquire(session_id)
         if not acquired:

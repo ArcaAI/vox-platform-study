@@ -93,6 +93,7 @@ model User {
     DoctorConsultations   Consultation[]         @relation("DoctorConsultations")
     DoctorDnaReports      DnaWritingStyleReport[] @relation("DoctorDnaReports")
     ApiKeys               ApiKey[]                @relation("_User_ApiKeys")
+    VoiceProfiles         UserVoiceProfile[]      @relation("_User_VoiceProfiles")
 
     // indexing
     @@index([username], name: "User_username_idx")
@@ -209,5 +210,43 @@ model UserMedia {
     // indexing
     @@unique([userId, mediaId], name: "UserMedia_userId_mediaId_unique")
     @@index([userId], name: "UserMedia_userId_index")
+    @@schema("core")
+}
+
+// ==========================================================================
+// USER VOICE PROFILE MODEL
+// ==========================================================================
+
+model UserVoiceProfile {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // core fields
+    userId       String
+    embedding    Unsupported("vector(256)")
+    qualityScore Float
+    isActive     Boolean  @default(false)
+    label        String?  @db.VarChar(100)
+    modelId      String?
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // relations
+    User User @relation("_User_VoiceProfiles", fields: [userId], references: [id], onDelete: Cascade)
+
+    // indexing
+    @@index([userId, isActive], name: "UserVoiceProfile_userId_isActive_idx")
+    @@index([resourceStatus], name: "UserVoiceProfile_status_idx")
     @@schema("core")
 }
