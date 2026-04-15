@@ -1,13 +1,12 @@
 /* eslint-disable unused-imports/no-unused-imports */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { generateId } from '../../../utils';
 import { BaseEntityFactoryCreateProps } from '../../../common';
-import { UserVoiceProfileEntity, IUserVoiceProfileEntity } from '../../../entities';
+import { IUserVoiceProfileEntity, UserVoiceProfileEntity } from '../../../entities';
+import { generateId } from '../../../utils';
 
 export interface CreateUserVoiceProfileProps extends BaseEntityFactoryCreateProps {
   userId: IUserVoiceProfileEntity['userId'];
-  qualityScore: IUserVoiceProfileEntity['qualityScore'];
   isActive?: IUserVoiceProfileEntity['isActive'];
   label?: IUserVoiceProfileEntity['label'];
   modelId?: IUserVoiceProfileEntity['modelId'];
@@ -32,7 +31,6 @@ export class UserVoiceProfileFactory {
       updatedBy: props.updatedBy || null,
 
       userId: props.userId,
-      qualityScore: props.qualityScore,
       isActive: props.isActive ?? false,
       label: props.label ?? null,
       modelId: props.modelId ?? null,

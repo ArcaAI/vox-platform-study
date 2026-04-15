@@ -1,12 +1,12 @@
 import {
-    EntityId,
-    ResourceType,
-    SysEventType,
-    UserVoiceProfileEntity,
-    UserVoiceProfileFactory,
-    UserVoiceProfileRepository,
+  EntityId,
+  ResourceType,
+  SysEventType,
+  UserVoiceProfileEntity,
+  UserVoiceProfileFactory,
+  UserVoiceProfileRepository,
 } from '@arcaai/domains';
-import { BusinessException, InternalServerErrorException } from '@arcaai/exceptions';
+import { InternalServerErrorException } from '@arcaai/exceptions';
 import { HttpService } from '@nestjs/axios';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -18,11 +18,8 @@ import { IConfigService } from '../../baseServices/_meta/config';
 import { IVoiceProfileService } from './IVoiceProfileService';
 import { EnrollVoiceProfileRequest } from './dto';
 
-const MIN_QUALITY_SCORE = 0.4;
-
 interface ExtractionResponse {
   embedding: number[];
-  quality_score: number;
   model_id: string;
 }
 
@@ -45,15 +42,8 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
   async enroll(request: EnrollVoiceProfileRequest): Promise<UserVoiceProfileEntity> {
     const extraction = await this.extractEmbeddings(request.audioBuffers);
 
-    if (extraction.quality_score < MIN_QUALITY_SCORE) {
-      throw new BusinessException(
-        `Voice quality score ${extraction.quality_score.toFixed(2)} is below minimum threshold ${MIN_QUALITY_SCORE}`,
-      );
-    }
-
     const entity = UserVoiceProfileFactory.CreateUserVoiceProfile({
       userId: request.userId,
-      qualityScore: extraction.quality_score,
       isActive: false,
       label: request.label,
       modelId: extraction.model_id,

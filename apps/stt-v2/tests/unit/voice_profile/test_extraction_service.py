@@ -99,7 +99,7 @@ class TestExtractionServiceOutput:
     async def test_accepts_audio_with_single_sample(self, extraction_service):
         audio = _make_audio_samples(15.0)
         result = await extraction_service.extract([audio], sample_rate=16000)
-        assert result.quality_score >= 0.0
+        assert isinstance(result, ExtractionResult)
 
     @pytest.mark.asyncio
     async def test_returns_256d_embedding(self, extraction_service):
@@ -115,10 +115,10 @@ class TestExtractionServiceOutput:
         assert abs(norm - 1.0) < 1e-5
 
     @pytest.mark.asyncio
-    async def test_result_contains_quality_score(self, extraction_service):
+    async def test_result_does_not_expose_quality_score(self, extraction_service):
         audio = _make_audio_samples(15.0)
         result = await extraction_service.extract([audio], sample_rate=16000)
-        assert 0.0 <= result.quality_score <= 1.0
+        assert not hasattr(result, "quality_score")
 
     @pytest.mark.asyncio
     async def test_result_contains_model_id(self, extraction_service):

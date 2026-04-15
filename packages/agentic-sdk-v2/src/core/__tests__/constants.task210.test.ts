@@ -147,17 +147,17 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
   // PIPELINE_ENDPOINTS: /api/v1/pipelines -> /admin/audio/pipelines
   // ===========================================================================
 
-  describe('PIPELINE_ENDPOINTS (/api/v1/pipelines -> /admin/audio/pipelines)', () => {
-    it('should use /admin/audio/pipelines for LIST', () => {
-      expect(PIPELINE_ENDPOINTS.LIST).toBe('/admin/audio/pipelines');
+  describe('PIPELINE_ENDPOINTS (read: /audio/pipelines, write: /admin/audio/pipelines)', () => {
+    it('should use /audio/pipelines for LIST', () => {
+      expect(PIPELINE_ENDPOINTS.LIST).toBe('/audio/pipelines');
     });
 
-    it('should use /admin/audio/pipelines/:id for GET', () => {
-      expect(PIPELINE_ENDPOINTS.GET('pipe-1')).toBe('/admin/audio/pipelines/pipe-1');
+    it('should use /audio/pipelines/:id for GET', () => {
+      expect(PIPELINE_ENDPOINTS.GET('pipe-1')).toBe('/audio/pipelines/pipe-1');
     });
 
-    it('should use /admin/audio/pipelines/slug/:slug for GET_BY_SLUG', () => {
-      expect(PIPELINE_ENDPOINTS.GET_BY_SLUG('whisper-streaming')).toBe('/admin/audio/pipelines/slug/whisper-streaming');
+    it('should use /audio/pipelines/slug/:slug for GET_BY_SLUG', () => {
+      expect(PIPELINE_ENDPOINTS.GET_BY_SLUG('whisper-streaming')).toBe('/audio/pipelines/slug/whisper-streaming');
     });
 
     it('should use /admin/audio/pipelines/validate for VALIDATE', () => {
@@ -590,7 +590,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
     });
 
     it('PIPELINE_ENDPOINTS should handle UUID IDs', () => {
-      expect(PIPELINE_ENDPOINTS.GET(uuid)).toBe(`/admin/audio/pipelines/${uuid}`);
+      expect(PIPELINE_ENDPOINTS.GET(uuid)).toBe(`/audio/pipelines/${uuid}`);
     });
 
     it('admin endpoints should handle UUID IDs', () => {
@@ -901,7 +901,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(API_KEY_ENDPOINTS.LIST).toMatch(/^\/admin\//);
       expect(ROLE_ENDPOINTS.LIST).toMatch(/^\/admin\//);
       expect(TENANT_ENDPOINTS.GET_CONFIGS('x')).toMatch(/^\/admin\//);
-      expect(PIPELINE_ENDPOINTS.LIST).toMatch(/^\/admin\//);
+      expect(PIPELINE_ENDPOINTS.CREATE).toMatch(/^\/admin\//);
     });
 
     it('user self-service endpoints should use /user/me/ prefix', () => {
