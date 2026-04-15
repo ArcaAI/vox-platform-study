@@ -17,7 +17,6 @@ const mockClsService = {
 const createMockProfile = (overrides: Record<string, unknown> = {}) => ({
   id: overrides.id ?? 'vp-1',
   userId: overrides.userId ?? 'user-1',
-  qualityScore: overrides.qualityScore ?? 0.85,
   isActive: overrides.isActive ?? false,
   label: overrides.label ?? null,
   modelId: overrides.modelId ?? 'pyannote/wespeaker-voxceleb-resnet34-LM',
@@ -64,7 +63,7 @@ describe('VoiceProfileController', () => {
         label: 'My Voice',
       });
       expect(result).toHaveProperty('id', 'vp-1');
-      expect(result).toHaveProperty('qualityScore', 0.85);
+      expect(result).not.toHaveProperty('qualityScore');
     });
 
     it('should throw when no audio file provided', async () => {

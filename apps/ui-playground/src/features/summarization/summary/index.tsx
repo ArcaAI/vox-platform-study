@@ -80,7 +80,7 @@ export default function SummaryPage() {
   const [contextSuggestions, setContextSuggestions] = useState<ContextItem[]>([]);
   const [contextSuggestionsLoading, setContextSuggestionsLoading] = useState(false);
   const [contextSuggestionsLoaded, setContextSuggestionsLoaded] = useState(false);
-  const [contextSuggestionsOpen, setContextSuggestionsOpen] = useState(false);
+  const [contextSuggestionsOpen, setContextSuggestionsOpen] = useState(true);
   const [contextSuggestionsError, setContextSuggestionsError] = useState<string | null>(null);
 
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
@@ -172,10 +172,20 @@ export default function SummaryPage() {
     }
   }, [doctorDnaStyle?.id, selectedDnaStyleId]);
 
-  const availableContextTypes = useMemo(() => {
-    const typeSet = new Set(contextSuggestions.map((item) => item.type).filter((itemType): itemType is string => Boolean(itemType)));
-    return ['ALL', ...Array.from(typeSet).sort()];
-  }, [contextSuggestions]);
+  const STATIC_CONTEXT_TYPES: Record<string, string> = {
+    ALL: 'All types',
+    CASE_NOTE: 'Case Note',
+    TRANSCRIPT: 'Transcript',
+    AUDIO_RECORDING: 'Audio',
+    RAW_SUMMARY: 'Summary',
+    MODIFIED_SUMMARY: 'Edited Summary',
+    PRE_SUMMARY: 'Pre-Summary',
+    WORKNOTE: 'Work Note',
+    NAMED_ENTITY: 'Named Entity',
+    ATTACHMENT: 'Attachment',
+  };
+
+  const availableContextTypes = Object.keys(STATIC_CONTEXT_TYPES);
 
   const filteredContextSuggestions = useMemo(
     () =>
@@ -294,13 +304,19 @@ export default function SummaryPage() {
   useEffect(() => {
     setContextSuggestions([]);
     setContextSuggestionsLoaded(false);
-    setContextSuggestionsOpen(false);
+    setContextSuggestionsOpen(true);
     setContextSuggestionsError(null);
     setSelectedContextItems([]);
     setContextSearchQuery('');
     setContextTypeFilter('ALL');
     setContextRecencyFilter('ALL');
   }, [ctx.effectiveUserId]);
+
+  useEffect(() => {
+    if (ctx.effectiveUserId && !ctx.requiresImpersonation && !contextSuggestionsLoaded && !contextSuggestionsLoading) {
+      void loadContextSuggestions();
+    }
+  }, [ctx.effectiveUserId, ctx.requiresImpersonation, contextSuggestionsLoaded, contextSuggestionsLoading, loadContextSuggestions]);
 
   const buildPromptAndSystem = useCallback(
     (contextMessage: string) => {
@@ -817,12 +833,6 @@ export default function SummaryPage() {
                                   value={contextSearchQuery}
                                   onChange={(e: ChangeEvent<HTMLInputElement>) => setContextSearchQuery(e.target.value)}
                                   className="pl-8 font-mono text-sm"
-                                  onFocus={() => {
-                                    setContextSuggestionsOpen(true);
-                                    if (!contextSuggestionsLoaded) {
-                                      void loadContextSuggestions();
-                                    }
-                                  }}
                                 />
                               </div>
                             </div>
@@ -835,7 +845,7 @@ export default function SummaryPage() {
                                 <SelectContent>
                                   {availableContextTypes.map((itemType) => (
                                     <SelectItem key={itemType} value={itemType}>
-                                      {itemType}
+                                      {STATIC_CONTEXT_TYPES[itemType] ?? itemType}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -1013,12 +1023,6 @@ export default function SummaryPage() {
                                 value={contextSearchQuery}
                                 onChange={(e: ChangeEvent<HTMLInputElement>) => setContextSearchQuery(e.target.value)}
                                 className="pl-8 font-mono text-sm"
-                                onFocus={() => {
-                                  setContextSuggestionsOpen(true);
-                                  if (!contextSuggestionsLoaded) {
-                                    void loadContextSuggestions();
-                                  }
-                                }}
                               />
                             </div>
                           </div>
@@ -1031,7 +1035,7 @@ export default function SummaryPage() {
                               <SelectContent>
                                 {availableContextTypes.map((itemType) => (
                                   <SelectItem key={itemType} value={itemType}>
-                                    {itemType}
+                                    {STATIC_CONTEXT_TYPES[itemType] ?? itemType}
                                   </SelectItem>
                                 ))}
                               </SelectContent>

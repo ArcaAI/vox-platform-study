@@ -8,7 +8,6 @@ import { adminClient } from '../../admin/api/admin-client';
 export interface VoiceProfile {
   id: string;
   userId: string;
-  qualityScore: number;
   isActive: boolean;
   label: string | null;
   modelId: string | null;

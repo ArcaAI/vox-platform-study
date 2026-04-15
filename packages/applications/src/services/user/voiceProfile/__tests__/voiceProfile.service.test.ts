@@ -20,12 +20,11 @@ const mockVoiceProfileRepository = {
   findAll: vi.fn(),
   findAllByUserId: vi.fn(),
   findActiveByUserId: vi.fn(),
-  create: vi.fn(),
+  createWithEmbedding: vi.fn(),
   update: vi.fn(),
   softDelete: vi.fn(),
   deactivateAllForUser: vi.fn(),
   activateById: vi.fn(),
-  updateEmbeddingRaw: vi.fn(),
 };
 
 const mockHttpService = {
@@ -43,7 +42,6 @@ const createMockVoiceProfileEntity = (overrides: Record<string, unknown> = {}) =
   const entity = {
     id: overrides.id ?? 'vp-id-1',
     userId: overrides.userId ?? 'user-id-1',
-    qualityScore: overrides.qualityScore ?? 0.85,
     isActive: overrides.isActive ?? false,
     label: overrides.label ?? null,
     modelId: overrides.modelId ?? 'pyannote/wespeaker-voxceleb-resnet34-LM',
@@ -100,7 +98,6 @@ describe('VoiceProfileService', () => {
       const mockExtractionResponse = {
         data: {
           embedding: Array(256).fill(0.1),
-          quality_score: 0.85,
           model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM',
         },
       };
@@ -121,13 +118,12 @@ describe('VoiceProfileService', () => {
       const { of } = await import('rxjs');
       mockHttpService.post.mockReturnValue(of(mockExtractionResponse));
 
-      mockVoiceProfileRepository.create.mockResolvedValue(mockCreatedEntity);
-      mockVoiceProfileRepository.updateEmbeddingRaw.mockResolvedValue(undefined);
+      mockVoiceProfileRepository.createWithEmbedding.mockResolvedValue(mockCreatedEntity);
 
       const audioBuffer = Buffer.from('fake-audio-data');
       const result = await service.enroll({
         userId: 'user-id-1',
-        audioBuffer,
+        audioBuffers: [audioBuffer],
         label: 'My Voice',
       });
 
@@ -136,12 +132,9 @@ describe('VoiceProfileService', () => {
       const [url] = mockHttpService.post.mock.calls[0];
       expect(url).toBe('http://localhost:8861/internal/voice-profile/extract');
 
-      // Verify entity creation
-      expect(mockVoiceProfileRepository.create).toHaveBeenCalledTimes(1);
-
-      // Verify embedding stored via raw SQL
-      expect(mockVoiceProfileRepository.updateEmbeddingRaw).toHaveBeenCalledWith(
-        mockCreatedEntity.id,
+      // Verify entity creation and embedding persistence
+      expect(mockVoiceProfileRepository.createWithEmbedding).toHaveBeenCalledWith(
+        expect.any(Object),
         mockExtractionResponse.data.embedding,
       );
 
@@ -156,24 +149,6 @@ describe('VoiceProfileService', () => {
       expect(result).toBe(mockCreatedEntity);
     });
 
-    it('should throw when extraction returns low quality score', async () => {
-      const { of } = await import('rxjs');
-      mockHttpService.post.mockReturnValue(
-        of({
-          data: {
-            embedding: Array(256).fill(0.1),
-            quality_score: 0.2,
-            model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM',
-          },
-        }),
-      );
-
-      const audioBuffer = Buffer.from('fake-audio-data');
-      await expect(
-        service.enroll({ userId: 'user-id-1', audioBuffer }),
-      ).rejects.toThrow();
-    });
-
     it('should throw when STT-v2 service is unreachable', async () => {
       const { throwError } = await import('rxjs');
       const error = new Error('Connection refused');
@@ -182,7 +157,7 @@ describe('VoiceProfileService', () => {
 
       const audioBuffer = Buffer.from('fake-audio-data');
       await expect(
-        service.enroll({ userId: 'user-id-1', audioBuffer }),
+        service.enroll({ userId: 'user-id-1', audioBuffers: [audioBuffer] }),
       ).rejects.toThrow();
     });
   });
