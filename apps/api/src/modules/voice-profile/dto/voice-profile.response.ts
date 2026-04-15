@@ -3,7 +3,6 @@ import { ApiProperty } from '@nestjs/swagger';
 type VoiceProfileEntityLike = {
   id: string;
   userId: string;
-  qualityScore: number;
   isActive: boolean;
   label: string | null;
   modelId: string | null;
@@ -14,7 +13,6 @@ type VoiceProfileEntityLike = {
 export class VoiceProfileResponse {
   @ApiProperty() id!: string;
   @ApiProperty() userId!: string;
-  @ApiProperty() qualityScore!: number;
   @ApiProperty() isActive!: boolean;
   @ApiProperty({ nullable: true }) label!: string | null;
   @ApiProperty({ nullable: true }) modelId!: string | null;
@@ -25,7 +23,6 @@ export class VoiceProfileResponse {
     const r = new VoiceProfileResponse();
     r.id = entity.id;
     r.userId = entity.userId;
-    r.qualityScore = entity.qualityScore;
     r.isActive = entity.isActive;
     r.label = entity.label ?? null;
     r.modelId = entity.modelId ?? null;

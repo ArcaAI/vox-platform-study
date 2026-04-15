@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import Boolean, DateTime, Float, String, text
+from sqlalchemy import Boolean, DateTime, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from stt_v2.core.database.connection import get_session
@@ -25,7 +25,6 @@ class UserVoiceProfileRead(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     userId: Mapped[str] = mapped_column("userId", String)
-    qualityScore: Mapped[float] = mapped_column("qualityScore", Float)
     isActive: Mapped[bool] = mapped_column("isActive", Boolean)
     label: Mapped[str | None] = mapped_column(String)
     modelId: Mapped[str | None] = mapped_column("modelId", String)

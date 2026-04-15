@@ -87,6 +87,5 @@ async def extract_voice_embedding(files: list[UploadFile]) -> ExtractionResponse
 
     return ExtractionResponse(
         embedding=result.embedding,
-        quality_score=result.quality_score,
         model_id=result.model_id,
     )

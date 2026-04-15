@@ -21,7 +21,6 @@ MAX_SAMPLES = 3
 @dataclass
 class ExtractionResult:
     embedding: list[float]
-    quality_score: float
     model_id: str
 
 
@@ -59,8 +58,6 @@ class ExtractionService:
         if not embeddings:
             raise ValueError("No valid embeddings extracted from samples")
 
-        quality_score = self._compute_quality(embeddings)
-
         centroid = np.mean(np.stack(embeddings), axis=0)
         norm = np.linalg.norm(centroid)
         if norm > 1e-10:
@@ -75,17 +72,5 @@ class ExtractionService:
 
         return ExtractionResult(
             embedding=centroid.tolist(),
-            quality_score=float(quality_score),
             model_id=model_id,
         )
-
-    def _compute_quality(self, embeddings: list[np.ndarray]) -> float:
-        if len(embeddings) < 2:
-            return 0.5
-        norms = [e / np.linalg.norm(e) if np.linalg.norm(e) > 1e-10 else e for e in embeddings]
-        similarities = []
-        for i in range(len(norms)):
-            for j in range(i + 1, len(norms)):
-                sim = float(np.dot(norms[i], norms[j]))
-                similarities.append(max(sim, 0.0))
-        return float(np.clip(np.mean(similarities), 0.0, 1.0)) if similarities else 0.5

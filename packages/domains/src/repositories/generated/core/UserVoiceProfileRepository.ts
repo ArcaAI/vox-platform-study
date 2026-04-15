@@ -67,13 +67,12 @@ export class UserVoiceProfileRepository extends Repository<UserVoiceProfileEntit
     const now = new Date();
     await (client as any).$executeRawUnsafe(
       `INSERT INTO "core"."UserVoiceProfile"
-         ("id", "userId", "embedding", "qualityScore", "isActive", "label", "modelId",
-          "resourceStatus", "createdBy", "updatedBy", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3::vector, $4, $5, $6, $7, $8::"core"."ResourceStatusType", $9, $10, $11, $12)`,
+        ("id", "userId", "embedding", "isActive", "label", "modelId",
+         "resourceStatus", "createdBy", "updatedBy", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3::vector, $4, $5, $6, $7::"core"."ResourceStatusType", $8, $9, $10, $11)`,
       entity.id,
       entity.userId,
       vectorStr,
-      entity.qualityScore,
       entity.isActive,
       entity.label ?? null,
       entity.modelId ?? null,
