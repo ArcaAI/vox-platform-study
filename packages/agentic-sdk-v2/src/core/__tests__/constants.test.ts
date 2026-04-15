@@ -332,16 +332,16 @@ describe('constants', () => {
 
   describe('PIPELINE_ENDPOINTS', () => {
     it('should have LIST endpoint', () => {
-      expect(PIPELINE_ENDPOINTS.LIST).toBe('/admin/audio/pipelines');
+      expect(PIPELINE_ENDPOINTS.LIST).toBe('/audio/pipelines');
     });
 
     it('should generate GET endpoint by ID', () => {
-      expect(PIPELINE_ENDPOINTS.GET('pipe-1')).toBe('/admin/audio/pipelines/pipe-1');
+      expect(PIPELINE_ENDPOINTS.GET('pipe-1')).toBe('/audio/pipelines/pipe-1');
     });
 
     it('should generate GET_BY_SLUG endpoint', () => {
       expect(PIPELINE_ENDPOINTS.GET_BY_SLUG('whisper-streaming')).toBe(
-        '/admin/audio/pipelines/slug/whisper-streaming'
+        '/audio/pipelines/slug/whisper-streaming'
       );
     });
 
@@ -351,7 +351,7 @@ describe('constants', () => {
 
     it('should handle UUID pipeline ID', () => {
       const uuid = '019503c0-d93f-7f41-b782-af9e1a3b5c0d';
-      expect(PIPELINE_ENDPOINTS.GET(uuid)).toBe(`/admin/audio/pipelines/${uuid}`);
+      expect(PIPELINE_ENDPOINTS.GET(uuid)).toBe(`/audio/pipelines/${uuid}`);
     });
   });
 
