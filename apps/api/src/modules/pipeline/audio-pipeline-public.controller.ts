@@ -1,6 +1,6 @@
-import { HttpMethod, PipelineResponse, PipelineService } from '@arcaai/applications';
-import { Controller, Param } from '@nestjs/common';
-import { ApiBearerAuth, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { PipelineResponse, PipelineService } from '@arcaai/applications';
+import { Controller } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize } from '../../decorators';
 
 @ApiBearerAuth()

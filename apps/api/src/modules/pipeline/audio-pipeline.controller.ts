@@ -8,7 +8,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize, CanCreate, CanDelete, CanUpdate } from '../../decorators';
+import { ApiEndpoint, Authorize } from '../../decorators';
 import { ValidateYamlRequest, ValidateYamlResponse } from './dto';
 
 @ApiBearerAuth()
