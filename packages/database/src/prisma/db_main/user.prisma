@@ -226,7 +226,6 @@ model UserVoiceProfile {
     // core fields
     userId       String
     embedding    Unsupported("vector(256)")
-    qualityScore Float
     isActive     Boolean  @default(false)
     label        String?  @db.VarChar(100)
     modelId      String?

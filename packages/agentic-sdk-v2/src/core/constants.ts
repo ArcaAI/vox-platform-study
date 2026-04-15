@@ -284,16 +284,16 @@ export const STT_V2_ENDPOINTS = {
 /**
  * ASR Pipeline endpoints
  *
- * Matches backend PipelineController at `/admin/audio/pipelines`.
- * Used for discovering and selecting ASR pipeline configurations.
+ * Read operations use `/audio/pipelines` (any authenticated user).
+ * Write operations use `/admin/audio/pipelines` (admin only).
  */
 export const PIPELINE_ENDPOINTS = {
   /** List ASR pipelines (paginated) */
-  LIST: '/admin/audio/pipelines',
+  LIST: '/audio/pipelines',
   /** Get pipeline by ID */
-  GET: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}`,
+  GET: (pipelineId: string) => `/audio/pipelines/${encodeURIComponent(pipelineId)}`,
   /** Get pipeline by slug */
-  GET_BY_SLUG: (slug: string) => `/admin/audio/pipelines/slug/${encodeURIComponent(slug)}`,
+  GET_BY_SLUG: (slug: string) => `/audio/pipelines/slug/${encodeURIComponent(slug)}`,
   /** Create a new ASR pipeline (TASK-218) */
   CREATE: '/admin/audio/pipelines',
   /** Update an ASR pipeline (TASK-218) */

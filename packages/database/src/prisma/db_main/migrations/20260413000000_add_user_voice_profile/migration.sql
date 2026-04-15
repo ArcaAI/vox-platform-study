@@ -9,7 +9,6 @@ CREATE TABLE "core"."UserVoiceProfile" (
     "id"                       TEXT NOT NULL,
     "userId"                   TEXT NOT NULL,
     "embedding"                vector(256) NOT NULL,
-    "qualityScore"             DOUBLE PRECISION NOT NULL,
     "isActive"                 BOOLEAN NOT NULL DEFAULT false,
     "label"                    VARCHAR(100),
     "modelId"                  TEXT,

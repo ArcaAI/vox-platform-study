@@ -4,7 +4,7 @@
  * TDD tests for F4: ASR-R-11 — Verify no active v1 STT references remain
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import * as constants from '../constants';
 
 describe('Legacy STT v1 Cleanup (ASR-R-11)', () => {
@@ -34,6 +34,6 @@ describe('Legacy STT v1 Cleanup (ASR-R-11)', () => {
 
   it('PIPELINE_ENDPOINTS should exist for ASR pipeline discovery', () => {
     expect(constants.PIPELINE_ENDPOINTS).toBeDefined();
-    expect(constants.PIPELINE_ENDPOINTS.LIST).toBe('/admin/audio/pipelines');
+    expect(constants.PIPELINE_ENDPOINTS.LIST).toBe('/audio/pipelines');
   });
 });
