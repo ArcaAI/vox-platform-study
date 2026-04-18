@@ -170,6 +170,7 @@ export class TranscriptionJobController {
         audioUri,
         consultationId: body.consultationId,
         mediaId,
+        language: body.language,
         userId: user?.id,
       });
     } catch (error) {
@@ -234,6 +235,7 @@ export class TranscriptionJobController {
       pipelineId: body.pipelineId,
       consultationId: body.consultationId,
       sampleRate: body.sampleRate ?? 16000,
+      language: body.language,
       userId: user?.id,
     });
 

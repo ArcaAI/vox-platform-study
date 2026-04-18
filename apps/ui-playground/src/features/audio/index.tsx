@@ -1,16 +1,20 @@
 import { PlaygroundLayout } from '@/components/layout/playground-layout';
-import { AudioWorkspace } from './components/audio-workspace';
-import { useAuth, useArcaConfig } from '@arcaai/vox';
-import { useAuthStore } from '@/store/auth-store';
+import { ImpersonationGuard } from '@/features/summarization/components/impersonation-guard';
+import { useDoctorContext } from '@/features/summarization/hooks/use-doctor-context';
 import { useAudioStore } from '@/store/audio-store';
+import { useAuthStore } from '@/store/auth-store';
+import { useArcaConfig, useAuth } from '@arcaai/vox';
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { AudioImpersonationBanner, AudioPageHeaderAction } from './components/audio-page-chrome';
+import { AudioWorkspace } from './components/audio-workspace';
 
 export default function AudioPage() {
   const { isImpersonating, impersonatedUser } = useAuth();
   const localUser = useAuthStore((s: { user: { username?: string } | null }) => s.user);
   const { reset, applyTenantDefaults, applyResolvedConfig, setConfigReady } = useAudioStore();
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const { requiresImpersonation, roles } = useDoctorContext();
 
   const tenantConfigSignatureRef = useRef<string | null>(null);
   const sdkReadyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,6 +90,7 @@ export default function AudioPage() {
     <PlaygroundLayout
       title="Live Transcription"
       description="Select microphone sources, configure local or remote processing, and view real-time transcription."
+      showServiceStatus={false}
       headerAction={
         <AudioPageHeaderAction
           isImpersonating={isImpersonating}
@@ -101,7 +106,20 @@ export default function AudioPage() {
         description="Audio settings and recordings will be associated with the impersonated user."
       />
 
-      <AudioWorkspace />
+      {!tenantId ? (
+        <div className="flex h-60 flex-col items-center justify-center text-center">
+          <p className="text-muted-foreground text-sm">Tenant configuration required</p>
+          <p className="text-muted-foreground mt-1 text-xs">Please log in with a valid tenant to access live transcription.</p>
+        </div>
+      ) : requiresImpersonation ? (
+        <ImpersonationGuard
+          roles={roles}
+          featureName="live transcription"
+          featureDescription="Live transcription requires pipeline access. As an admin, you need to impersonate a doctor user to load pipelines and start transcription sessions."
+        />
+      ) : (
+        <AudioWorkspace />
+      )}
     </PlaygroundLayout>
   );
 }

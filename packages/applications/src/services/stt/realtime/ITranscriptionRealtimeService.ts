@@ -73,6 +73,7 @@ export interface ITranscriptionRealtimeService {
     audioUri: string;
     consultationId?: string;
     mediaId?: string;
+    language?: string;
     userId?: string;
   }): Promise<void>;
 }

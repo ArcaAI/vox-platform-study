@@ -24,6 +24,8 @@ export interface CreateStreamingSessionRequest {
   microphoneId?: string;
   /** Authenticated user ID for speaker pre-seeding */
   userId?: string;
+  /** Override pipeline language (ISO 639-1 code) */
+  language?: string;
 }
 
 // ---------------------------------------------------------------------------

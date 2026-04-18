@@ -77,6 +77,7 @@ async def create_streaming_session(
         sample_rate=request.sample_rate,
         audio_bucket_name="hope-audio",
         user_id=request.user_id,
+        language=request.language,
     )
 
     guard = mgr.capacity_guard

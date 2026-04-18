@@ -413,6 +413,7 @@ class TestTranscribeAudioEndpoint:
                 file=upload,
                 pipeline_id="slug",
                 tenant_id="t-456",
+                language=None,
             )
 
             # Pipeline config language remains unchanged
@@ -536,8 +537,8 @@ class TestTranscribeAudioEndpoint:
             assert call_kwargs.kwargs["consultation_id"] == "c-789"
 
     @pytest.mark.asyncio
-    async def test_code_switching_override_applied_to_pipeline(self):
-        """Explicit code_switching form field should override pipeline inference config."""
+    async def test_language_override_applied_to_pipeline(self):
+        """Explicit language form field should override pipeline inference config."""
         upload = _make_upload_file()
         result = _make_transcription_result()
 
@@ -562,7 +563,7 @@ class TestTranscribeAudioEndpoint:
                 file=upload,
                 pipeline_id="test-pipeline",
                 tenant_id="t-456",
-                code_switching=True,
+                language="vi",
             )
 
-        assert pipeline_mock.spec.inference.code_switching is True
+        assert pipeline_mock.spec.inference.language == "vi"

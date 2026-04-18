@@ -47,6 +47,7 @@ export interface RealtimeStartOptions {
   consultationId?: string;
   microphoneId?: string;
   sampleRate?: number;
+  language?: string;
   deviceId?: string;
   /** Pre-mixed MediaStream to use instead of calling getUserMedia */
   stream?: MediaStream;
@@ -150,6 +151,7 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
           pipelineId: options.pipelineId,
           consultationId: options.consultationId,
           microphoneId: options.microphoneId,
+          language: options.language,
         });
 
         setSessionId(sessionResponse.sessionId);

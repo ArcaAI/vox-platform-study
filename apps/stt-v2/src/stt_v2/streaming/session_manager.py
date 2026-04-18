@@ -246,6 +246,7 @@ class SessionManager:
         sample_rate: int = 16000,
         audio_bucket_name: str | None = None,
         user_id: str | None = None,
+        language: str | None = None,
     ) -> StreamSession | None:
         """Create a new streaming session.
 
@@ -287,6 +288,9 @@ class SessionManager:
 
             # Load pipeline config for VAD and ASR model wiring
             pipeline_config = await self._load_pipeline_config(pipeline_id)
+
+            if language is not None and pipeline_config:
+                pipeline_config.inference.language = language
 
             # Create result publisher (needed by inference worker)
             publisher = ResultPublisher(redis=self._redis, session_id=session_id)
