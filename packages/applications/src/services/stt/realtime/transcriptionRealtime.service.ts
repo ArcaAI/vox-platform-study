@@ -349,6 +349,7 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
     audioUri: string;
     consultationId?: string;
     mediaId?: string;
+    language?: string;
     userId?: string;
   }): Promise<void> {
     const messageId = uuidv7();
@@ -363,7 +364,7 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
         params.audioUri,
         params.consultationId ?? null,
         params.mediaId ?? null,
-        null,
+        params.language ?? null,
         null,
         'hope-audio',
         params.userId ?? null,

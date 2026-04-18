@@ -1,7 +1,10 @@
 import { PlaygroundLayout } from '@/components/layout/playground-layout';
+import { ImpersonationGuard } from '@/features/summarization/components/impersonation-guard';
+import { useDoctorContext } from '@/features/summarization/hooks/use-doctor-context';
 import { useFileTranscription } from '@/hooks/use-file-transcription';
 import { useAudioStore } from '@/store/audio-store';
 import { useAuthStore } from '@/store/auth-store';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
@@ -10,12 +13,12 @@ import { Progress } from '@arcaai/ui/progress';
 import { ScrollArea } from '@arcaai/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
 import { useAuth, usePipelines } from '@arcaai/vox';
-import { AlertCircle, CloudUpload, FileAudio, Languages, RefreshCw, Server, Trash2, Upload } from 'lucide-react';
+import { AlertCircle, CloudUpload, FileAudio, Info, Languages, RefreshCw, Server, Trash2, Upload } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AudioImpersonationBanner, AudioPageHeaderAction } from './components/audio-page-chrome';
 import { AudioTranscriptItem } from './components/audio-transcript-item';
-import { DEFAULT_TRANSCRIPTION_PIPELINE_ID } from './constants';
+import { DEFAULT_TRANSCRIPTION_PIPELINE_ID, SUPPORTED_LANGUAGES } from './constants';
 
 function FileUploadPanel({
   file,
@@ -101,6 +104,7 @@ function BatchTranscriptPanel() {
   const { selectedPipelineId, setSelectedPipelineId } = useAudioStore();
   const { pipelines, isLoading: pipelinesLoading, error: pipelinesError, list: listPipelines } = usePipelines();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [language, setLanguage] = useState<string>('');
 
   useEffect(() => {
     listPipelines();
@@ -141,12 +145,13 @@ function BatchTranscriptPanel() {
     try {
       await fileTranscription.upload(selectedFile, {
         pipelineId: selectedPipelineId || DEFAULT_TRANSCRIPTION_PIPELINE_ID,
+        ...(language ? { language } : {}),
       });
       toast.success(`Upload complete. Job: ${fileTranscription.jobId?.slice(0, 12) ?? ''}...`);
     } catch (err) {
       toast.error(`Upload failed: ${err instanceof Error ? err.message : 'Unknown'}`);
     }
-  }, [selectedFile, fileTranscription, selectedPipelineId]);
+  }, [selectedFile, fileTranscription, selectedPipelineId, language]);
 
   const handleReset = useCallback(() => {
     fileTranscription.reset();
@@ -190,6 +195,45 @@ function BatchTranscriptPanel() {
                   ))}
                 </SelectContent>
               </Select>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card data-doc="batch-language">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Languages className="size-4" />
+              <CardTitle className="text-sm">Language</CardTitle>
+              {language && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="size-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">Overrides the pipeline's default language setting</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Select value={language || '__none__'} onValueChange={(v: string) => setLanguage(v === '__none__' ? '' : v)} disabled={isProcessing}>
+              <SelectTrigger className="h-8 w-full min-w-0 text-xs">
+                <SelectValue className="truncate" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None (use pipeline config)</SelectItem>
+                {SUPPORTED_LANGUAGES.map((lang) => (
+                  <SelectItem key={lang.value} value={lang.value}>
+                    {lang.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!language && (
+              <p className="text-muted-foreground text-[10px]">Uses language configured in the pipeline YAML</p>
             )}
           </CardContent>
         </Card>
@@ -326,6 +370,8 @@ export default function BatchTranscriptionPage() {
   const { isImpersonating, impersonatedUser } = useAuth();
   const localUser = useAuthStore((s: { user: { username?: string } | null }) => s.user);
   const { reset } = useAudioStore();
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const { requiresImpersonation, roles } = useDoctorContext();
 
   const activeUser = isImpersonating ? impersonatedUser : localUser;
 
@@ -338,6 +384,7 @@ export default function BatchTranscriptionPage() {
     <PlaygroundLayout
       title="Batch Transcription"
       description="Upload audio files for backend-based transcription via SSE streaming."
+      showServiceStatus={false}
       headerAction={
         <AudioPageHeaderAction
           isImpersonating={isImpersonating}
@@ -353,7 +400,20 @@ export default function BatchTranscriptionPage() {
         description="Audio settings and recordings will be associated with the impersonated user."
       />
 
-      <BatchTranscriptPanel />
+      {!tenantId ? (
+        <div className="flex h-60 flex-col items-center justify-center text-center">
+          <p className="text-muted-foreground text-sm">Tenant configuration required</p>
+          <p className="text-muted-foreground mt-1 text-xs">Please log in with a valid tenant to access batch transcription.</p>
+        </div>
+      ) : requiresImpersonation ? (
+        <ImpersonationGuard
+          roles={roles}
+          featureName="batch transcription"
+          featureDescription="Batch transcription requires pipeline access. As an admin, you need to impersonate a doctor user to load pipelines and start transcription jobs."
+        />
+      ) : (
+        <BatchTranscriptPanel />
+      )}
     </PlaygroundLayout>
   );
 }

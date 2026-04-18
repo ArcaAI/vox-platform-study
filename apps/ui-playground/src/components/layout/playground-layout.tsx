@@ -9,6 +9,7 @@ interface PlaygroundLayoutProps {
   description?: string;
   columns?: ColumnLayout;
   headerAction?: React.ReactNode;
+  showServiceStatus?: boolean;
   children: React.ReactNode;
 }
 
@@ -18,7 +19,7 @@ const columnClasses: Record<ColumnLayout, string> = {
   three: 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3',
 };
 
-export function PlaygroundLayout({ title, description, columns = 'one', headerAction, children }: PlaygroundLayoutProps) {
+export function PlaygroundLayout({ title, description, columns = 'one', headerAction, showServiceStatus = true, children }: PlaygroundLayoutProps) {
   return (
     <Main>
       <div className="flex min-h-0 flex-1 flex-col">
@@ -32,7 +33,7 @@ export function PlaygroundLayout({ title, description, columns = 'one', headerAc
           </div>
 
           <div className="space-y-6 pb-4">
-            <ServiceStatusBar />
+            {showServiceStatus && <ServiceStatusBar />}
 
             <div className={cn('grid gap-6 *:min-w-0', columnClasses[columns])}>{children}</div>
           </div>

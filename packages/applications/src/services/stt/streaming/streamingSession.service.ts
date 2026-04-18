@@ -76,6 +76,7 @@ export class StreamingSessionService implements IStreamingSessionService {
             sample_rate: dto.sampleRate ?? 16000,
             microphone_id: dto.microphoneId,
             user_id: dto.userId,
+            language: dto.language ?? null,
           },
           { timeout: 15000 },
         ),

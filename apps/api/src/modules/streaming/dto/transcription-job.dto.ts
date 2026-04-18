@@ -29,6 +29,11 @@ export class TranscribeFileRequest {
   @IsUUID()
   @IsOptional()
   consultationId?: string;
+
+  @ApiPropertyOptional({ description: 'Override pipeline language (ISO 639-1 code, e.g. en, vi, auto)' })
+  @IsString()
+  @IsOptional()
+  language?: string;
 }
 
 export class CreateStreamSessionRequest {
@@ -46,6 +51,11 @@ export class CreateStreamSessionRequest {
   @IsNumber()
   @IsOptional()
   sampleRate?: number;
+
+  @ApiPropertyOptional({ description: 'Override pipeline language (ISO 639-1 code, e.g. en, vi, auto)' })
+  @IsString()
+  @IsOptional()
+  language?: string;
 }
 
 export class StreamSessionResponse {
