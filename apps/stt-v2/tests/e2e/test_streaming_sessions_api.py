@@ -133,6 +133,7 @@ def _make_mock_session_manager(
         sample_rate: int = 16000,
         audio_bucket_name: str | None = None,
         user_id: str | None = None,
+        language: str | None = None,
     ) -> _FakeStreamSession | None:
         acquired = await guard.try_acquire(session_id)
         if not acquired:

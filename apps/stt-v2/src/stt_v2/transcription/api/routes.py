@@ -67,8 +67,8 @@ async def transcribe_audio(
     pipeline_id: str = Form(..., description="Pipeline UUID or slug"),
     tenant_id: str = Form(..., description="Tenant identifier"),
     consultation_id: str | None = Form(None, description="Optional consultation ID"),
-    code_switching: bool | None = Form(
-        None, description="Enable multilingual code-switching for supported ASR engines"
+    language: str | None = Form(
+        None, description="Override pipeline language (ISO 639-1/639-3 code, e.g. 'en', 'vi', 'auto')"
     ),
 ) -> TranscriptionResponse:
     """Transcribe an uploaded audio file through the batch pipeline."""
@@ -129,8 +129,8 @@ async def transcribe_audio(
     # ------------------------------------------------------------------
     try:
         batch_service = get_batch_service()
-        if code_switching is not None:
-            pipeline_config.spec.inference.code_switching = code_switching
+        if language is not None:
+            pipeline_config.spec.inference.language = language
 
         result = await batch_service.transcribe(
             job_id=job_id,

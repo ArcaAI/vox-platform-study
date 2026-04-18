@@ -1,11 +1,13 @@
+import { cn } from '@/lib/utils';
 import { useAudioStore, type MicrophoneSource } from '@/store/audio-store';
 import { useBrowserCapabilities } from '@arcaai/room';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
 import { Separator } from '@arcaai/ui/separator';
-import { Mic, Plus, Trash2, X } from 'lucide-react';
+import { Mic, Plus, ShieldCheck, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -19,6 +21,20 @@ export function AudioSourcePanel() {
   const { supportsMultipleMics } = useBrowserCapabilities();
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [permissionGranted, setPermissionGranted] = useState(false);
+  const [requestingPermission, setRequestingPermission] = useState(false);
+
+  const refreshDevices = useCallback(async () => {
+    try {
+      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = allDevices.filter((d) => d.kind === 'audioinput');
+      setDevices(audioInputs);
+      if (hasPermissionGrantedDevices(allDevices)) {
+        setPermissionGranted(true);
+      }
+    } catch {
+      setDevices([]);
+    }
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -31,6 +47,19 @@ export function AudioSourcePanel() {
         setDevices(audioInputs);
         if (hasPermissionGrantedDevices(allDevices)) {
           setPermissionGranted(true);
+        } else {
+          // Auto-request mic permission on first load
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach((t) => t.stop());
+            if (disposed) return;
+            setPermissionGranted(true);
+            const refreshed = await navigator.mediaDevices.enumerateDevices();
+            if (disposed) return;
+            setDevices(refreshed.filter((d) => d.kind === 'audioinput'));
+          } catch {
+            // Permission denied or dismissed - user can retry via button
+          }
         }
       } catch {
         if (!disposed) setDevices([]);
@@ -53,6 +82,21 @@ export function AudioSourcePanel() {
       navigator.mediaDevices.removeEventListener('devicechange', handler);
     };
   }, [isCapturing]);
+
+  const requestMicPermission = useCallback(async () => {
+    setRequestingPermission(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop());
+      setPermissionGranted(true);
+      await refreshDevices();
+      toast.success('Microphone permission granted');
+    } catch {
+      toast.error('Microphone permission denied. Check browser settings.');
+    } finally {
+      setRequestingPermission(false);
+    }
+  }, [refreshDevices]);
 
   const micSources = sources.filter((s): s is MicrophoneSource => s.type === 'microphone');
 
@@ -98,9 +142,23 @@ export function AudioSourcePanel() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground text-xs font-medium">Microphones</span>
-            <Badge variant="outline" className="text-[10px]">
+            <div className="flex items-center gap-1">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="sm" className="cursor-pointer size-6 p-0" onClick={requestMicPermission} disabled={requestingPermission}>
+                      <ShieldCheck className={cn('size-3.5', requestingPermission ? 'animate-pulse' : permissionGranted ? 'text-emerald-500' : 'text-muted-foreground')} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">{permissionGranted ? 'Microphone access granted. Click to refresh devices.' : 'Microphone unavailable. Click to allow access.'}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <Badge variant="outline" className="text-[10px]">
               {micSources.length} selected
             </Badge>
+            </div>
           </div>
           {availableDevices.length > 0 && (
             <Select onValueChange={handleAddMic} disabled={isCapturing || (!supportsMultipleMics && micSources.length >= 1)}>

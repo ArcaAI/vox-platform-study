@@ -130,6 +130,9 @@ async def _transcribe_file_async(
         logger.info(f"[{job_id}] Loading pipeline {pipeline_id}")
         pipeline_config = await pipeline_reader.get_pipeline(pipeline_id)
 
+        if language is not None:
+            pipeline_config.spec.inference.language = language
+
         # Step 3: Download audio from storage
         logger.info(f"[{job_id}] Downloading audio from {audio_uri}")
         audio_bytes = await blob_service.download_audio(audio_uri)
