@@ -6,13 +6,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@arcaai/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@arcaai/ui/dropdown-menu';
 import { Input } from '@arcaai/ui/input';
 import { Label } from '@arcaai/ui/label';
 import { Link } from '@tanstack/react-router';
@@ -42,14 +36,7 @@ import {
   useEnrollVoiceProfile,
   useVoiceProfiles,
 } from './api/voice-profiles';
-import {
-  type AudioSample,
-  MAX_SAMPLES,
-  MAX_SAMPLE_DURATION,
-  formatDuration,
-  getAudioDuration,
-  toWavFile,
-} from './audio-utils';
+import { type AudioSample, MAX_SAMPLES, MAX_SAMPLE_DURATION, formatDuration, getAudioDuration, toWavFile } from './audio-utils';
 
 // ---------------------------------------------------------------------------
 // Enroll Card
@@ -98,10 +85,7 @@ function EnrollCard() {
         toast.warning(`File exceeds ${MAX_SAMPLE_DURATION}s limit (${formatDuration(duration)})`);
         return;
       }
-      setSamples((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), name: selected.name, blob: selected, duration },
-      ]);
+      setSamples((prev) => [...prev, { id: crypto.randomUUID(), name: selected.name, blob: selected, duration }]);
       toast.success(`Sample added (${formatDuration(duration)})`);
     } catch {
       toast.error('Could not read audio file');
@@ -130,10 +114,7 @@ function EnrollCard() {
             return;
           }
           recordingCountRef.current += 1;
-          setSamples((prev) => [
-            ...prev,
-            { id: crypto.randomUUID(), name: `Recording ${recordingCountRef.current}`, blob, duration },
-          ]);
+          setSamples((prev) => [...prev, { id: crypto.randomUUID(), name: `Recording ${recordingCountRef.current}`, blob, duration }]);
           toast.success(`Recording added (${formatDuration(duration)})`);
         } catch {
           toast.error('Failed to process recording');
@@ -172,9 +153,7 @@ function EnrollCard() {
       return;
     }
     try {
-      const wavFiles = await Promise.all(
-        samples.map((s, i) => toWavFile(s.blob, `sample-${i + 1}.wav`)),
-      );
+      const wavFiles = await Promise.all(samples.map((s, i) => toWavFile(s.blob, `sample-${i + 1}.wav`)));
       enroll.mutate(
         { files: wavFiles, label: label.trim() || undefined },
         {
@@ -218,9 +197,7 @@ function EnrollCard() {
           {/* Left Column: Form & Actions */}
           <div className="space-y-6">
             <div className="space-y-3">
-              <Label className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-                1. Add Audio Samples
-              </Label>
+              <Label className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">1. Add Audio Samples</Label>
 
               {/* Recording indicator or action buttons */}
               {isRecording ? (
@@ -230,9 +207,7 @@ function EnrollCard() {
                       <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-400 opacity-75" />
                       <span className="relative inline-flex size-3 rounded-full bg-red-500" />
                     </span>
-                    <span className="text-sm font-medium text-red-700 dark:text-red-300">
-                      Recording... {formatDuration(recordingElapsed)}
-                    </span>
+                    <span className="text-sm font-medium text-red-700 dark:text-red-300">Recording... {formatDuration(recordingElapsed)}</span>
                   </div>
                   <div className="ml-auto flex flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-3">
                     <span className="text-[10px] text-red-500">auto-stop at {MAX_SAMPLE_DURATION}s</span>
@@ -244,23 +219,11 @@ function EnrollCard() {
                 </div>
               ) : !isFull ? (
                 <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 gap-1.5"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isBusy}
-                  >
+                  <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={isBusy}>
                     <Upload className="size-3.5" />
                     Upload File
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 gap-1.5"
-                    onClick={startRecording}
-                    disabled={isBusy}
-                  >
+                  <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={startRecording} disabled={isBusy}>
                     <Mic className="size-3.5" />
                     Record Voice
                   </Button>
@@ -285,12 +248,7 @@ function EnrollCard() {
               />
             </div>
 
-            <Button
-              onClick={handleEnroll}
-              disabled={!canEnroll || isBusy}
-              className="w-full gap-2 sm:w-auto"
-              size="default"
-            >
+            <Button onClick={handleEnroll} disabled={!canEnroll || isBusy} className="w-full gap-2 sm:w-auto" size="default">
               {enroll.isPending ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
@@ -308,9 +266,7 @@ function EnrollCard() {
           {/* Right Column: Audio Sample Slots */}
           <div className="rounded-lg border bg-muted/20 p-4">
             <div className="mb-3 flex items-center justify-between">
-              <Label className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-                Audio Samples
-              </Label>
+              <Label className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">Audio Samples</Label>
               <span className="text-muted-foreground text-xs">
                 {samples.length} / {MAX_SAMPLES} filled
               </span>
@@ -320,7 +276,10 @@ function EnrollCard() {
               {Array.from({ length: MAX_SAMPLES }).map((_, i) => {
                 const sample = samples[i];
                 return sample ? (
-                  <div key={sample.id} className="bg-background flex items-center justify-between rounded-md border px-3 py-2 shadow-sm transition-all hover:shadow-md">
+                  <div
+                    key={sample.id}
+                    className="bg-background flex items-center justify-between rounded-md border px-3 py-2 shadow-sm transition-all hover:shadow-md"
+                  >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <FileAudio className="text-primary size-4 shrink-0" />
                       <div className="min-w-0 flex-1">
@@ -420,9 +379,7 @@ function ProfileTable() {
     {
       accessorKey: 'createdAt',
       header: 'Created',
-      cell: ({ row }) => (
-        <span className="text-muted-foreground text-sm">{new Date(row.original.createdAt).toLocaleDateString()}</span>
-      ),
+      cell: ({ row }) => <span className="text-muted-foreground text-sm">{new Date(row.original.createdAt).toLocaleDateString()}</span>,
     },
     {
       id: 'actions',
@@ -468,9 +425,7 @@ function ProfileTable() {
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <CardTitle className="text-base">Your Voice Profiles</CardTitle>
-            <CardDescription className="text-xs">
-              The active profile is used for speaker identification in live transcription
-            </CardDescription>
+            <CardDescription className="text-xs">The active profile is used for speaker identification in live transcription</CardDescription>
           </div>
           {(profiles?.length ?? 0) > 0 && (
             <Badge variant="outline" className="text-[10px]">
@@ -483,17 +438,10 @@ function ProfileTable() {
         {error ? (
           <div className="flex flex-col items-center justify-center gap-2 rounded-md border py-8">
             <p className="text-destructive text-sm">Failed to load voice profiles</p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              {error instanceof Error ? error.message : 'Unknown error'}
-            </p>
+            <p className="text-muted-foreground mt-1 text-xs">{error instanceof Error ? error.message : 'Unknown error'}</p>
           </div>
         ) : (
-          <AdminDataTable
-            data={profiles ?? []}
-            columns={columns}
-            isLoading={isLoading}
-            emptyMessage="No voice profiles yet"
-          />
+          <AdminDataTable data={profiles ?? []} columns={columns} isLoading={isLoading} emptyMessage="No voice profiles yet" />
         )}
       </CardContent>
     </Card>

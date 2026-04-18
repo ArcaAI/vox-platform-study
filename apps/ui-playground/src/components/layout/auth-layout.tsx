@@ -12,7 +12,7 @@ export function AuthLayout({ children }: { children?: React.ReactNode }) {
   return (
     <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="min-w-0 overflow-hidden">
         <Header fixed />
         {children ?? <Outlet />}
       </SidebarInset>

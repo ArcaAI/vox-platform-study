@@ -1,3 +1,4 @@
+import { useAuthStore } from '@/store/auth-store';
 import { QueryCache, QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -44,7 +45,10 @@ export function createAppQueryClient(navigate: (opts: { to: string; search?: Rec
       onError: (error) => {
         const status = extractHttpStatus(error);
         if (status === 401) {
-          toast.error('Session expired');
+          if (useAuthStore.getState().isAuthenticated) {
+            useAuthStore.getState().logout();
+            toast.error('Session expired');
+          }
           navigate({ to: '/login' });
         } else if (status === 403) {
           navigate({ to: '/403' });

@@ -1,9 +1,9 @@
-import { useHealthCheck } from '@arcaai/vox';
-import { Card, CardContent } from '@arcaai/ui/card';
-import { Badge } from '@arcaai/ui/badge';
-import { Skeleton } from '@arcaai/ui/skeleton';
-import { Server, Mic, Brain, FileText, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Badge } from '@arcaai/ui/badge';
+import { Card, CardContent } from '@arcaai/ui/card';
+import { Skeleton } from '@arcaai/ui/skeleton';
+import { useHealthCheck } from '@arcaai/vox';
+import { Activity, Brain, FileText, Mic, Server } from 'lucide-react';
 import { useEffect } from 'react';
 
 const serviceIcons: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -34,7 +34,7 @@ export function ServiceStatusBar() {
   const serviceEntries = Object.entries(services).filter(([name]) => name !== 'apiLive');
 
   return (
-    <div className="grid grid-cols-5 gap-3">
+    <div className="grid gap-3 auto-cols-auto xs:grid-cols-2 lg:grid-cols-5">
       {isLoading && serviceEntries.length === 0
         ? Array.from({ length: 5 }).map((_, i) => (
             <Card key={i} className="py-3">
