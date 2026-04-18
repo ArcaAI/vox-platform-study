@@ -744,6 +744,10 @@ class SessionManager:
         if processor is None:
             raise RuntimeError("ASR model has no processor/feature_extractor")
 
+        extra = getattr(loaded_model, "extra", None)
+        if isinstance(extra, dict) and extra.get("multimodal_lm") is True:
+            return self._make_multimodal_lm_callable(loaded_model, inference_config)
+
         # One-time dtype safety: fp16/bf16 on CPU/MPS causes Whisper hallucinations
         # Cast to float32 once at pipeline creation time.
         model_dtype = getattr(model, "dtype", torch.float32)
@@ -868,6 +872,67 @@ class SessionManager:
                     word_timestamps = []
 
             return {"text": text, "word_timestamps": word_timestamps}
+
+        return run_inference
+
+    def _make_multimodal_lm_callable(
+        self,
+        loaded_model: Any,
+        inference_config: Any,
+    ) -> StreamingAsrCallable:
+        """Create streaming callable for multimodal LLM models (Gemma 4)."""
+        import torch
+
+        from ..models.multimodal import (
+            build_system_prompt,
+            compute_max_new_tokens,
+            prepare_chat_inputs,
+        )
+
+        model = loaded_model.model
+        processor = loaded_model.processor
+        if processor is None:
+            raise RuntimeError(
+                f"Multimodal LM {loaded_model.model_slug} requires a processor "
+                "with apply_chat_template support, but processor is None."
+            )
+        device = loaded_model.device
+        dtype = getattr(model, "dtype", None)
+        lang = getattr(inference_config, "language", None)
+
+        async def run_inference(
+            samples: np.ndarray,
+            sample_rate: int,
+            *,
+            prompt: str | None = None,
+        ) -> dict[str, Any]:
+            def _sync() -> dict[str, Any]:
+                base_prompt = build_system_prompt(prompt, lang)
+
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": base_prompt},
+                            {"type": "audio", "audio": samples, "sample_rate": sample_rate},
+                        ],
+                    }
+                ]
+
+                inputs = prepare_chat_inputs(processor, messages, device, dtype=dtype)
+                input_len = inputs["input_ids"].shape[-1]
+
+                duration_s = len(samples) / sample_rate
+                max_new = compute_max_new_tokens(duration_s)
+
+                with torch.no_grad():
+                    output = model.generate(**inputs, max_new_tokens=max_new)
+
+                text = processor.decode(output[0][input_len:], skip_special_tokens=True)
+
+                return {"text": text, "word_timestamps": []}
+
+            return await asyncio.to_thread(_sync)
 
         return run_inference
 
