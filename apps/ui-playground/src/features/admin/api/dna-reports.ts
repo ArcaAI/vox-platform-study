@@ -1,7 +1,7 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
-import type { DnaReport, DnaStyleVersion } from '@/features/dna-writing-style/api/dna-writing-styles';
+import type { DnaReport, DnaReportData, DnaStyleVersion } from '@/features/dna-writing-style/api/dna-writing-styles';
 
 import { adminClient } from './admin-client';
 import type { AdminUser } from './users';
@@ -96,4 +96,29 @@ export function useRefreshDnaReportVersions() {
     },
     [queryClient],
   );
+}
+
+export interface AdminDnaUpdateInput {
+  reportId: string;
+  tenantId: string;
+  reportData?: Partial<DnaReportData>;
+  styleText?: string;
+  changeReason?: string;
+}
+
+export function useAdminUpdateDnaReport() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ reportId, tenantId, ...body }: AdminDnaUpdateInput) =>
+      adminClient.patch<DnaReport>(`/admin/dna-writing-styles/${reportId}`, body, { tenantId }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: dnaReportsAdminKeys.tenantData(variables.tenantId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: dnaReportsAdminKeys.versions(variables.tenantId, variables.reportId),
+      });
+    },
+  });
 }

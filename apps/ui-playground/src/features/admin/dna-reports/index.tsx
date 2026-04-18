@@ -1,13 +1,24 @@
 import { Badge } from '@arcaai/ui/badge';
+import { Button } from '@arcaai/ui/button';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@arcaai/ui/form';
+import { Input } from '@arcaai/ui/input';
 import { type MultiColumnConfig, type MultiColumnContentConfig, MultiColumnLayout, type MultiColumnState } from '@arcaai/ui/multi-column-layout';
-import { Building2, GitCompare, History, User as UserIcon } from 'lucide-react';
+import { ScrollArea } from '@arcaai/ui/scroll-area';
+import { Separator } from '@arcaai/ui/separator';
+import { Textarea } from '@arcaai/ui/textarea';
+import { Building2, GitCompare, History, Loader2, Pencil, User as UserIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+import { z } from 'zod';
 
 import { Main } from '@/components/layout/main';
 import { VersionDiffPanel } from '@/components/version-diff-panel';
-import type { DnaStyleVersion } from '@/features/dna-writing-style/api/dna-writing-styles';
+import type { DnaReport, DnaReportData, DnaStyleVersion } from '@/features/dna-writing-style/api/dna-writing-styles';
+import { zodResolver } from '@/lib/zod-resolver';
 import { useAuthStore } from '@/store/auth-store';
-import { useDnaReportVersions, useRefreshDnaReportVersions, useRefreshTenantDnaReportData, useTenantDnaReportData } from '../api/dna-reports';
+import { useAdminUpdateDnaReport, useDnaReportVersions, useRefreshDnaReportVersions, useRefreshTenantDnaReportData, useTenantDnaReportData } from '../api/dna-reports';
 import { type Tenant, useTenant, useTenantsInfinite } from '../api/tenants';
 import { type AdminUser } from '../api/users';
 
@@ -58,6 +69,187 @@ function displayUserName(user: AdminUser): string {
   return user.username;
 }
 
+// ---------------------------------------------------------------------------
+// Edit Dialog
+// ---------------------------------------------------------------------------
+
+const updateSchema = z.object({
+  styleText: z.string().optional(),
+  changeReason: z.string().min(1, 'Change reason is required'),
+  formality: z.string().optional(),
+  sentenceLength: z.string().optional(),
+  medicalTermUsage: z.string().optional(),
+  abbreviationStyle: z.string().optional(),
+  tone: z.string().optional(),
+  vocabulary: z.string().optional(),
+  structure: z.string().optional(),
+});
+
+type UpdateFormValues = z.infer<typeof updateSchema>;
+
+function AdminEditDialog({
+  open,
+  onOpenChange,
+  report,
+  tenantId,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  report: DnaReport | null;
+  tenantId: string;
+}) {
+  const updateMutation = useAdminUpdateDnaReport();
+
+  const form = useForm<UpdateFormValues>({
+    resolver: zodResolver(updateSchema),
+    defaultValues: {
+      styleText: '',
+      changeReason: '',
+      formality: '',
+      sentenceLength: '',
+      medicalTermUsage: '',
+      abbreviationStyle: '',
+      tone: '',
+      vocabulary: '',
+      structure: '',
+    },
+  });
+
+  useEffect(() => {
+    if (open && report) {
+      form.reset({
+        styleText: report.styleText ?? '',
+        changeReason: '',
+        formality: report.reportData?.formality ?? '',
+        sentenceLength: report.reportData?.sentenceLength ?? '',
+        medicalTermUsage: report.reportData?.medicalTermUsage ?? '',
+        abbreviationStyle: report.reportData?.abbreviationStyle ?? '',
+        tone: report.reportData?.tone ?? '',
+        vocabulary: report.reportData?.vocabulary ?? '',
+        structure: report.reportData?.structure ?? '',
+      });
+    }
+  }, [open, report, form]);
+
+  const handleSubmit = useCallback(
+    (values: UpdateFormValues) => {
+      if (!report || !tenantId) return;
+      const reportData: Partial<DnaReportData> = {};
+      if (values.formality) reportData.formality = values.formality;
+      if (values.sentenceLength) reportData.sentenceLength = values.sentenceLength;
+      if (values.medicalTermUsage) reportData.medicalTermUsage = values.medicalTermUsage;
+      if (values.abbreviationStyle) reportData.abbreviationStyle = values.abbreviationStyle;
+      if (values.tone) reportData.tone = values.tone;
+      if (values.vocabulary) reportData.vocabulary = values.vocabulary;
+      if (values.structure) reportData.structure = values.structure;
+
+      updateMutation.mutate(
+        {
+          reportId: report.id,
+          tenantId,
+          styleText: values.styleText || undefined,
+          reportData: Object.keys(reportData).length > 0 ? reportData : undefined,
+          changeReason: values.changeReason,
+        },
+        {
+          onSuccess: () => {
+            toast.success('DNA report updated successfully');
+            onOpenChange(false);
+          },
+          onError: (err) => toast.error(`Failed to update report: ${err.message}`),
+        },
+      );
+    },
+    [report, tenantId, updateMutation, onOpenChange],
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Pencil className="size-5" />
+            Edit DNA Writing Style
+          </DialogTitle>
+          <DialogDescription>Update the writing style attributes and provide a reason for the change.</DialogDescription>
+        </DialogHeader>
+
+        <ScrollArea className="flex-1 pr-4">
+          <Form {...form}>
+            <form id="admin-edit-dna-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="styleText"
+                render={({ field }: { field: any }) => (
+                  <FormItem>
+                    <FormLabel>Style Text</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Descriptive text about the writing style..." className="min-h-25" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <Separator />
+              <p className="text-sm font-medium">Style Attributes</p>
+
+              <div className="grid grid-cols-2 gap-4">
+                {(['tone', 'vocabulary', 'structure', 'formality', 'sentenceLength', 'medicalTermUsage', 'abbreviationStyle'] as const).map(
+                  (fieldName) => (
+                    <FormField
+                      key={fieldName}
+                      control={form.control}
+                      name={fieldName}
+                      render={({ field }: { field: any }) => (
+                        <FormItem>
+                          <FormLabel className="capitalize">{fieldName.replace(/([A-Z])/g, ' $1').trim()}</FormLabel>
+                          <FormControl>
+                            <Input placeholder={`e.g., ${fieldName}`} {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ),
+                )}
+              </div>
+
+              <Separator />
+
+              <FormField
+                control={form.control}
+                name="changeReason"
+                render={({ field }: { field: any }) => (
+                  <FormItem>
+                    <FormLabel>Change Reason</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Why are you making this change?" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </form>
+          </Form>
+        </ScrollArea>
+
+        <DialogFooter className="pt-4 border-t">
+          <DialogClose asChild>
+            <Button type="button" variant="outline" disabled={updateMutation.isPending}>
+              Cancel
+            </Button>
+          </DialogClose>
+          <Button type="submit" form="admin-edit-dna-form" disabled={updateMutation.isPending}>
+            {updateMutation.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+            Save Changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function DnaReportsAdminPage() {
   const roles = useAuthStore((s: { user?: { roles?: string[] } | null }) => s.user?.roles ?? []);
   const tenantId = useAuthStore((s: { tenantId: string }) => s.tenantId);
@@ -68,6 +260,7 @@ export default function DnaReportsAdminPage() {
   const [selectedTenantId, setSelectedTenantId] = useState(tenantId || '');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedVersionIds, setSelectedVersionIds] = useState<string[]>([]);
+  const [editOpen, setEditOpen] = useState(false);
   const refreshTenantData = useRefreshTenantDnaReportData();
   const refreshVersions = useRefreshDnaReportVersions();
 
@@ -373,7 +566,15 @@ export default function DnaReportsAdminPage() {
               <h3 className="text-base font-semibold">Version {version.versionNumber}</h3>
               <p className="text-muted-foreground text-xs">{fmtDate(version.createdAt)}</p>
             </div>
-            <Badge variant="outline">{selectedReport?.isLatest ? 'Latest report' : 'Historical'}</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{selectedReport?.isLatest ? 'Latest report' : 'Historical'}</Badge>
+              {selectedReport && (
+                <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+                  <Pencil className="mr-1.5 size-3.5" />
+                  Edit
+                </Button>
+              )}
+            </div>
           </div>
           {version.styleText && (
             <div className="rounded-lg border p-3">
@@ -421,6 +622,13 @@ export default function DnaReportsAdminPage() {
         columns={[tenantColumn, usersColumn, versionsColumn, detailColumn]}
         columnStates={[tenantState, usersState, versionsState, detailState]}
         height="calc(100vh - 12rem)"
+      />
+
+      <AdminEditDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        report={selectedReport}
+        tenantId={effectiveTenantId}
       />
     </Main>
   );
