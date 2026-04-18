@@ -218,6 +218,7 @@ class InlineModelDef:
     device: str | None = None  # Override device (auto, cuda, cpu, mps)
     quantization: str | None = None  # ONNX quantization variant (fp16, int8, q4, q4f16, bnb4, etc.)
     subfolder: str | None = None  # Subfolder within the HF repo (e.g., "onnx")
+    attn_implementation: str | None = None  # "flash_attention_2", "sdpa", or None
 
     def to_ai_model_config(self, task_type: ModelTaskType) -> "AiModelConfig":
         """Convert inline definition to AiModelConfig for loader compatibility."""
@@ -250,6 +251,7 @@ class InlineModelDef:
             quantization=self.quantization,
             subfolder=self.subfolder,
             device=self.device,
+            attn_implementation=self.attn_implementation,
         )
 
 
@@ -537,6 +539,7 @@ class AiModelConfig:
     quantization: str | None = None  # e.g., "q4", "fp16", "int8", "q4f16"
     subfolder: str | None = None  # e.g., "onnx" for onnx-community models
     device: str | None = None  # Override device (auto, cuda, cpu, mps)
+    attn_implementation: str | None = None  # "flash_attention_2", "sdpa", or None (default)
 
     @property
     def is_downloaded(self) -> bool:

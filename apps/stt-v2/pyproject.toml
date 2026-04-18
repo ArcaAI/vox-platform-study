@@ -75,7 +75,6 @@ dependencies = [
     # --- Qdrant (speaker embedding vector store, used by diarization) ---
     "qdrant-client>=1.13.0",
     # --- Cadence punctuation runtime compatibility (Gemma3 bidirectional mask path) ---
-    "transformers>=4.57.6,<4.58.0",
     "cadence-punctuation>=1.1.0",
 ]
 
@@ -106,7 +105,6 @@ ml = [
     # HuggingFace Optimum — ONNX model loading for multi-file models (Whisper ONNX)
     # Required: onnx-community/whisper-large-v3-turbo uses separate encoder/decoder ONNX
     # files and needs ORTModelForSpeechSeq2Seq from optimum to orchestrate them.
-    "optimum[onnxruntime]>=2.1.0",
     # Audio I/O (lazy-imported in preprocessing & embedding_service)
     "soundfile>=0.13.1",
     "librosa>=0.11.0",
@@ -127,6 +125,9 @@ ml = [
     # torch 2.8.x requires torchcodec 0.6.x or 0.7.x (0.10+ needs torch 2.10).
     # Requires FFmpeg 6.x installed via conda (torchcodec links libavutil.58).
     "torchcodec>=0.6.0,<0.8.0",
+    "optimum==2.1.0",
+    "transformers==5.5.4",
+    "torchvision>=0.23.0,<0.24.0",
 ]
 
 # GPU variant — identical to ml but swaps onnxruntime for onnxruntime-gpu.
@@ -135,11 +136,12 @@ ml-gpu = [
     "stt-v2[ml]",
     # Override: GPU-accelerated ONNX Runtime (replaces CPU onnxruntime)
     "onnxruntime-gpu>=1.23.0",
+    # Flash Attention 2 — faster attention for Whisper on CUDA GPUs (Ampere+)
+    "flash-attn>=2.8.3",
 ]
 
 nemo = [
     # NVIDIA NeMo Parakeet family (requires separate CUDA setup)
-    "nemo_toolkit[asr]>=2.6.0",
 ]
 
 # ---------------------------------------------------------------------------
