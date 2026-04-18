@@ -34,7 +34,7 @@ export function PlaygroundLayout({ title, description, columns = 'one', headerAc
           <div className="space-y-6 pb-4">
             <ServiceStatusBar />
 
-            <div className={cn('grid gap-6', columnClasses[columns])}>{children}</div>
+            <div className={cn('grid gap-6 *:min-w-0', columnClasses[columns])}>{children}</div>
           </div>
         </div>
       </div>

@@ -59,8 +59,7 @@ export function useEnrollVoiceProfile() {
 export function useActivateVoiceProfile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      adminClient.patch<{ success: boolean }>(`/voice-profile/${id}/activate`),
+    mutationFn: (id: string) => adminClient.patch<{ success: boolean }>(`/voice-profile/${id}/activate`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },
@@ -70,8 +69,7 @@ export function useActivateVoiceProfile() {
 export function useDeactivateVoiceProfile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      adminClient.patch<{ success: boolean }>(`/voice-profile/${id}/deactivate`),
+    mutationFn: (id: string) => adminClient.patch<{ success: boolean }>(`/voice-profile/${id}/deactivate`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },
@@ -81,8 +79,7 @@ export function useDeactivateVoiceProfile() {
 export function useDeleteVoiceProfile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      adminClient.delete<void>(`/voice-profile/${id}`),
+    mutationFn: (id: string) => adminClient.delete<void>(`/voice-profile/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },

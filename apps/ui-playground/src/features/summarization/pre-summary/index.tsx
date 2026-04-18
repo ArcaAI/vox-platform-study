@@ -287,23 +287,26 @@ export default function PreSummaryPage() {
     }
   }, [contextSuggestionsLoading, ctx.effectiveUserId, ctx.requiresImpersonation, session]);
 
-  const toggleContextSelection = useCallback(async (item: ContextItem) => {
-    const currentlySelected = selectedContextItems.some((selected) => selected.id === item.id);
-    if (currentlySelected) {
-      setSelectedContextItems((prev) => prev.filter((selected) => selected.id !== item.id));
-      return;
-    }
-
-    const resolved = await loadContextItemContent(item);
-    if (!resolved) return;
-
-    setSelectedContextItems((prev) => {
-      if (prev.some((selected) => selected.id === resolved.id)) {
-        return prev;
+  const toggleContextSelection = useCallback(
+    async (item: ContextItem) => {
+      const currentlySelected = selectedContextItems.some((selected) => selected.id === item.id);
+      if (currentlySelected) {
+        setSelectedContextItems((prev) => prev.filter((selected) => selected.id !== item.id));
+        return;
       }
-      return [...prev, resolved];
-    });
-  }, [loadContextItemContent, selectedContextItems]);
+
+      const resolved = await loadContextItemContent(item);
+      if (!resolved) return;
+
+      setSelectedContextItems((prev) => {
+        if (prev.some((selected) => selected.id === resolved.id)) {
+          return prev;
+        }
+        return [...prev, resolved];
+      });
+    },
+    [loadContextItemContent, selectedContextItems],
+  );
 
   const removeSelectedContextItem = useCallback((itemId: string) => {
     setSelectedContextItems((prev) => prev.filter((item) => item.id !== itemId));
