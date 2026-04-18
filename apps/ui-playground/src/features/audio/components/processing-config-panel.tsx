@@ -10,20 +10,10 @@ import { Separator } from '@arcaai/ui/separator';
 import { Slider } from '@arcaai/ui/slider';
 import { Switch } from '@arcaai/ui/switch';
 import { useArcaConfig, usePipelines } from '@arcaai/vox';
-import { AlertCircle, Brain, Languages, Lock, Repeat, Server, Settings, Volume2 } from 'lucide-react';
+import { AlertCircle, Brain, Info, Languages, Lock, Repeat, Server, Settings, Volume2 } from 'lucide-react';
 import type React from 'react';
 import { useEffect } from 'react';
-
-const SUPPORTED_LANGUAGES = [
-  { value: 'en', label: 'English' },
-  { value: 'hi', label: 'Hindi' },
-  { value: 'ta', label: 'Tamil' },
-  { value: 'ml', label: 'Malayalam' },
-  { value: 'es', label: 'Spanish' },
-  { value: 'fr', label: 'French' },
-  { value: 'de', label: 'German' },
-  { value: 'th', label: 'Thai' },
-] as const;
+import { SUPPORTED_LANGUAGES } from '../constants';
 
 const FALLBACK_ASR_MODELS = [
   { id: 'whisper-tiny', name: 'Whisper Tiny', size: '~75 MB' },
@@ -265,32 +255,52 @@ export function ProcessingConfigPanel() {
           </Card>
         )}
 
+        <Card data-doc="language">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Languages className="size-4" />
+              <CardTitle className="text-sm">Language</CardTitle>
+              {locked.language && <LockedIndicator />}
+              {language && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="size-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">Overrides the pipeline's default language setting</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Select
+              value={language || '__none__'}
+              onValueChange={(v: string) => handleLanguageChange(v === '__none__' ? '' : v)}
+              disabled={controlsDisabled || locked.language}
+            >
+              <SelectTrigger className="h-8 w-full min-w-0 text-xs">
+                <SelectValue className="truncate" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None (use pipeline config)</SelectItem>
+                {SUPPORTED_LANGUAGES.map((lang) => (
+                  <SelectItem key={lang.value} value={lang.value}>
+                    {lang.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!language && (
+              <p className="text-muted-foreground text-[10px]">Uses language configured in the pipeline YAML</p>
+            )}
+          </CardContent>
+        </Card>
+
         {processingMethod === 'local_ai' && (
           <>
-            <Card data-doc="language">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <Languages className="size-4" />
-                  <CardTitle className="text-sm">Language</CardTitle>
-                  {locked.language && <LockedIndicator />}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Select value={language} onValueChange={handleLanguageChange} disabled={controlsDisabled || locked.language}>
-                  <SelectTrigger className="h-8 w-full min-w-0 text-xs">
-                    <SelectValue className="truncate" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SUPPORTED_LANGUAGES.map((lang) => (
-                      <SelectItem key={lang.value} value={lang.value}>
-                        {lang.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </CardContent>
-            </Card>
-
             <Card>
               <CardHeader className="pb-3">
                 <div data-doc="audio-processing" className="flex items-center gap-2">

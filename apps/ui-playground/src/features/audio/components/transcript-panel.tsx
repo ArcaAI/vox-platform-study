@@ -411,7 +411,7 @@ async function prepareMixedMicrophoneStream(micSources: MicrophoneSource[]): Pro
 }
 
 function BackendSocketTranscript() {
-  const { sources, isMixing, noiseFilterEnabled, selectedPipelineId } = useAudioStore();
+  const { sources, isMixing, noiseFilterEnabled, selectedPipelineId, language } = useAudioStore();
   const realtime = useRealtimeTranscription();
   const segmentPlayback = useTranscriptSegmentPlayback();
   const micSources = sources.filter((s): s is MicrophoneSource => s.type === 'microphone');
@@ -437,6 +437,7 @@ function BackendSocketTranscript() {
       await realtime.start({
         pipelineId: selectedPipelineId || DEFAULT_TRANSCRIPTION_PIPELINE_ID,
         sampleRate: 16000,
+        language: language || undefined,
         deviceId: preparedMixedInput ? undefined : micSources[0]?.deviceId,
         stream: preparedMixedInput?.stream,
         echoCancellation: true,
@@ -450,7 +451,7 @@ function BackendSocketTranscript() {
       useAudioStore.getState().setMixedStream(null);
       toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-  }, [micSources, realtime, shouldUseMixedInput, noiseFilterEnabled, selectedPipelineId]);
+  }, [micSources, realtime, shouldUseMixedInput, noiseFilterEnabled, selectedPipelineId, language]);
 
   const stopStream = useCallback(async () => {
     await realtime.stop();
@@ -508,7 +509,7 @@ function BackendSocketTranscript() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={handleClear} disabled={realtime.transcripts.length === 0}>
+          <Button variant="ghost" size="sm" onClick={handleClear} disabled={realtime.transcripts.length === 0 || realtime.isStreaming}>
             <Trash2 className="mr-1 size-3" /> Clear
           </Button>
           {!realtime.isStreaming && !['creating_session', 'connecting'].includes(realtime.status) ? (
@@ -1000,7 +1001,7 @@ function LocalAITranscriptInner({ onRetry }: { onRetry?: () => void }) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={handleClear} disabled={transcriptEntries.length === 0}>
+          <Button variant="ghost" size="sm" onClick={handleClear} disabled={transcriptEntries.length === 0 || isCapturing}>
             <Trash2 className="mr-1 size-3" /> Clear
           </Button>
           <Button size="sm" variant={isCapturing ? 'destructive' : 'default'} onClick={handleToggleCapture} className="gap-1.5">
