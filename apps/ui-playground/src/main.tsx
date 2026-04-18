@@ -2,7 +2,7 @@ import { Skeleton } from '@arcaai/ui/skeleton';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { createRouter, RouterProvider } from '@tanstack/react-router';
-import { StrictMode, Suspense, useSyncExternalStore } from 'react';
+import { StrictMode, Suspense, useEffect, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ErrorBoundary } from './components/error-boundary';
 import './index.css';
@@ -38,6 +38,14 @@ function InnerApp() {
     () => false,
   );
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  useEffect(() => {
+    return useAuthStore.subscribe((state, prev) => {
+      if (prev.isAuthenticated && !state.isAuthenticated) {
+        router.invalidate();
+      }
+    });
+  }, []);
 
   if (!hasHydrated) return <AppSkeleton />;
 

@@ -1,6 +1,6 @@
+import { tryRefreshToken } from '@/lib/auth-refresh';
 import { useAuthStore } from '@/store/auth-store';
 import { usePlaygroundStore } from '@/store/playground-store';
-import { tryRefreshToken } from '@/lib/auth-refresh';
 
 export class AdminApiError extends Error {
   constructor(
@@ -64,6 +64,10 @@ async function request<T>(method: string, path: string, body?: unknown, options?
 
   if (!res.ok) {
     if (res.status === 401 && !isRetry) {
+      const { isImpersonating } = useAuthStore.getState();
+      if (isImpersonating) {
+        useAuthStore.getState().endImpersonation();
+      }
       const refreshed = await tryRefreshToken();
       if (refreshed) {
         return request<T>(method, path, body, options, true);
@@ -111,6 +115,10 @@ async function requestMultipart<T>(method: string, path: string, formData: FormD
 
   if (!res.ok) {
     if (res.status === 401 && !isRetry) {
+      const { isImpersonating } = useAuthStore.getState();
+      if (isImpersonating) {
+        useAuthStore.getState().endImpersonation();
+      }
       const refreshed = await tryRefreshToken();
       if (refreshed) {
         return requestMultipart<T>(method, path, formData, options, true);

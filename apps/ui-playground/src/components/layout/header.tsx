@@ -157,8 +157,8 @@ export function Header({ className, fixed, ...props }: HeaderProps) {
         <SidebarTrigger variant="outline" className="max-md:scale-125" />
         <Separator orientation="vertical" className="h-6" />
 
-        <Breadcrumb>
-          <BreadcrumbList>
+        <Breadcrumb className="min-w-0">
+          <BreadcrumbList className="flex-nowrap">
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
                 <Link to="/">Home</Link>
@@ -178,14 +178,14 @@ export function Header({ className, fixed, ...props }: HeaderProps) {
               <>
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
-                  <BreadcrumbPage>{meta.label}</BreadcrumbPage>
+                  <BreadcrumbPage className="truncate max-w-[200px]">{meta.label}</BreadcrumbPage>
                 </BreadcrumbItem>
               </>
             )}
           </BreadcrumbList>
         </Breadcrumb>
 
-        <div className="ms-auto flex items-center gap-3">
+        <div className="ms-auto flex shrink-0 items-center gap-3">
           {tenantId &&
             (() => {
               const displayName = tenantName || tenantKey || tenantData?.key || tenantId.slice(0, 8) + '\u2026';
