@@ -50,12 +50,12 @@ class HuggingFaceLoader(BaseModelLoader):
             os.makedirs(cache_dir, exist_ok=True)
 
             logger.info(
-                f"Loading HuggingFace model: {model_source} "
-                f"(device={device}, dtype={torch_dtype})"
+                "Loading HuggingFace model: %s (device=%s, dtype=%s, attn_implementation=%s)",
+                model_source, device, torch_dtype, model_config.attn_implementation,
             )
 
             # Load model in a thread pool to avoid blocking the event loop.
-            model, tokenizer, processor, feature_extractor = await asyncio.to_thread(
+            model, tokenizer, processor, feature_extractor, is_multimodal_lm = await asyncio.to_thread(
                 self._load_by_task,
                 model_source=model_source,
                 task_type=model_config.task_type,
@@ -64,14 +64,24 @@ class HuggingFaceLoader(BaseModelLoader):
                 cache_dir=cache_dir,
                 revision=model_config.source_revision,
                 token=settings.huggingface_token,
+                attn_implementation=model_config.attn_implementation,
             )
 
             # Estimate memory usage
             memory_mb = self._estimate_model_memory(model)
 
             logger.info(
-                f"Loaded model {model_config.slug} successfully " f"(memory: ~{memory_mb}MB)"
+                "Loaded model %s successfully (memory: ~%dMB)",
+                model_config.slug, memory_mb,
             )
+
+            extra = {
+                "source_uri": model_config.source_uri,
+                "revision": model_config.source_revision,
+            }
+            if is_multimodal_lm:
+                extra["multimodal_lm"] = True
+                extra["max_audio_seconds"] = 30
 
             return LoadedModel(
                 model_id=model_config.id,
@@ -83,10 +93,7 @@ class HuggingFaceLoader(BaseModelLoader):
                 format=model_config.format,
                 memory_mb=memory_mb,
                 device=device,
-                extra={
-                    "source_uri": model_config.source_uri,
-                    "revision": model_config.source_revision,
-                },
+                extra=extra,
             )
 
         except ImportError as e:
@@ -105,8 +112,17 @@ class HuggingFaceLoader(BaseModelLoader):
         cache_dir: str,
         revision: str | None,
         token: str | None,
-    ) -> tuple[Any, Any, Any, Any]:
-        """Load model components based on task type."""
+        attn_implementation: str | None = None,
+    ) -> tuple[Any, Any, Any, Any, bool]:
+        """Load model components based on task type.
+
+        For ASR models, peeks at ``config.json`` via ``AutoConfig`` to
+        auto-detect multimodal LLMs (e.g. Gemma 4) vs traditional
+        Whisper / Seq2Seq / CTC models.  No manual tags needed.
+
+        Returns:
+            (model, tokenizer, processor, feature_extractor, is_multimodal_lm)
+        """
         import transformers
 
         AutoFeatureExtractor = getattr(transformers, "AutoFeatureExtractor", None)
@@ -123,6 +139,7 @@ class HuggingFaceLoader(BaseModelLoader):
         tokenizer = None
         processor = None
         feature_extractor = None
+        is_multimodal_lm = False
 
         common_kwargs = {
             "cache_dir": cache_dir,
@@ -130,41 +147,91 @@ class HuggingFaceLoader(BaseModelLoader):
             "token": token,
         }
 
+        resolved_attn = self._resolve_attn_implementation(attn_implementation, device)
+
         if task_type == ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION:
-            # Try loading as Whisper first
-            try:
-                model = WhisperForConditionalGeneration.from_pretrained(
-                    model_source,
-                    torch_dtype=torch_dtype,
-                    low_cpu_mem_usage=True,
-                    **common_kwargs,
+            is_multimodal_lm = self._is_multimodal_lm(transformers, model_source, common_kwargs)
+
+            logger.info(
+                "ASR branch selection: model_source=%s, is_multimodal_lm=%s",
+                model_source, is_multimodal_lm,
+            )
+
+            if is_multimodal_lm:
+                AutoModelForMultimodalLM = getattr(
+                    transformers, "AutoModelForMultimodalLM", None,
                 )
-                generation_config = GenerationConfig.from_pretrained(model_source, **common_kwargs)
-                model.generation_config = generation_config
-                processor = WhisperProcessor.from_pretrained(model_source, **common_kwargs)
-            except Exception:
-                # Fall back to generic ASR model
+                if AutoModelForMultimodalLM is None:
+                    raise ModelLoadError(
+                        f"Cannot load multimodal LLM '{model_source}': "
+                        "AutoModelForMultimodalLM not available in transformers"
+                    )
                 try:
-                    model = AutoModelForSpeechSeq2Seq.from_pretrained(
+                    import torch as _torch
+                    _use_device_map = _torch.cuda.is_available()
+                    _multimodal_kwargs: dict[str, Any] = {"low_cpu_mem_usage": True}
+                    if _use_device_map:
+                        _multimodal_kwargs["device_map"] = "auto"
+                    model = AutoModelForMultimodalLM.from_pretrained(
+                        model_source,
+                        torch_dtype=torch_dtype,
+                        **_multimodal_kwargs,
+                        **common_kwargs,
+                    )
+                except Exception as err:
+                    raise ModelLoadError(
+                        f"Cannot load multimodal LLM '{model_source}'"
+                    ) from err
+            else:
+                attn_kwargs: dict[str, Any] = {}
+                if resolved_attn is not None:
+                    attn_kwargs["attn_implementation"] = resolved_attn
+
+                # Whisper -> Seq2Seq -> CTC chain
+                try:
+                    model = WhisperForConditionalGeneration.from_pretrained(
                         model_source,
                         torch_dtype=torch_dtype,
                         low_cpu_mem_usage=True,
+                        **attn_kwargs,
                         **common_kwargs,
                     )
+                    generation_config = GenerationConfig.from_pretrained(model_source, **common_kwargs)
+                    model.generation_config = generation_config
+                    processor = WhisperProcessor.from_pretrained(model_source, **common_kwargs)
                 except Exception:
-                    # Try CTC model (Wav2Vec2, HuBERT)
-                    model = AutoModelForCTC.from_pretrained(
-                        model_source,
-                        torch_dtype=torch_dtype,
-                        low_cpu_mem_usage=True,
-                        **common_kwargs,
-                    )
+                    try:
+                        model = AutoModelForSpeechSeq2Seq.from_pretrained(
+                            model_source,
+                            torch_dtype=torch_dtype,
+                            low_cpu_mem_usage=True,
+                            **attn_kwargs,
+                            **common_kwargs,
+                        )
+                    except Exception:
+                        try:
+                            model = AutoModelForCTC.from_pretrained(
+                                model_source,
+                                torch_dtype=torch_dtype,
+                                low_cpu_mem_usage=True,
+                                **common_kwargs,
+                            )
+                        except Exception as err:
+                            raise ModelLoadError(
+                                f"Cannot load ASR model '{model_source}': "
+                                "not a Whisper, Seq2Seq, or CTC model"
+                            ) from err
 
             # Load processor/tokenizer
             if processor is None:
                 try:
                     processor = AutoProcessor.from_pretrained(model_source, **common_kwargs)
                 except Exception as err:
+                    if is_multimodal_lm:
+                        raise ModelLoadError(
+                            f"Multimodal LM '{model_source}' requires AutoProcessor "
+                            f"but loading failed: {err}"
+                        ) from err
                     tokenizer = AutoTokenizer.from_pretrained(model_source, **common_kwargs)
                     if AutoFeatureExtractor is None:
                         raise ImportError(
@@ -198,11 +265,100 @@ class HuggingFaceLoader(BaseModelLoader):
             )
             processor = AutoProcessor.from_pretrained(model_source, **common_kwargs)
 
-        # Move model to device
-        if model is not None:
+        if model is not None and not is_multimodal_lm:
             model = model.to(device)
 
-        return model, tokenizer, processor, feature_extractor
+        return model, tokenizer, processor, feature_extractor, is_multimodal_lm
+
+    @staticmethod
+    def _resolve_attn_implementation(
+        requested: str | None,
+        device: str,
+    ) -> str | None:
+        """Resolve attention implementation, validating hardware compatibility.
+
+        Flash Attention 2 requires CUDA and the ``flash-attn`` package.
+        Falls back to ``sdpa`` when flash-attn is unavailable.
+        Returns None (let transformers decide) when no override is specified.
+        """
+        if requested is None:
+            return None
+
+        valid = {"flash_attention_2", "sdpa", "eager"}
+        if requested not in valid:
+            logger.warning(
+                "Unknown attn_implementation '%s', ignoring. Valid: %s",
+                requested,
+                valid,
+            )
+            return None
+
+        if requested == "flash_attention_2":
+            if not device.startswith("cuda"):
+                logger.warning(
+                    "flash_attention_2 requires CUDA but device is '%s' "
+                    "-- falling back to sdpa",
+                    device,
+                )
+                return "sdpa"
+
+            try:
+                import flash_attn  # noqa: F401
+
+                logger.info(
+                    "Flash Attention 2 available (flash-attn %s)",
+                    getattr(flash_attn, "__version__", "unknown"),
+                )
+                return "flash_attention_2"
+            except ImportError:
+                logger.warning(
+                    "flash_attention_2 requested but flash-attn package is not installed "
+                    "-- falling back to sdpa. Install with: pip install flash-attn --no-build-isolation"
+                )
+                return "sdpa"
+
+        return requested
+
+    @staticmethod
+    def _is_multimodal_lm(
+        transformers_module: Any,
+        model_source: str,
+        common_kwargs: dict[str, Any],
+    ) -> bool:
+        """Auto-detect whether *model_source* is a multimodal LLM.
+
+        Reads ``config.json`` via ``AutoConfig`` and checks whether any
+        entry in the ``architectures`` list contains ``MultimodalLM``.
+        """
+        AutoConfig = getattr(transformers_module, "AutoConfig", None)
+        if AutoConfig is None:
+            return False
+        try:
+            config = AutoConfig.from_pretrained(model_source, **common_kwargs)
+            model_type = getattr(config, "model_type", None)
+            architectures: list[str] = getattr(config, "architectures", None) or []
+            has_multimodal_arch = any("MultimodalLM" in arch for arch in architectures)
+            has_gemma4_conditional_arch = any(
+                arch == "Gemma4ForConditionalGeneration" for arch in architectures
+            )
+            has_audio_config = getattr(config, "audio_config", None) is not None
+            result = has_multimodal_arch or (
+                model_type == "gemma4"
+                and has_gemma4_conditional_arch
+                and has_audio_config
+            )
+            logger.info(
+                "_is_multimodal_lm detection: model_source=%s, model_type=%s, "
+                "architectures=%s, has_audio_config=%s, result=%s",
+                model_source, model_type, architectures, has_audio_config, result,
+            )
+            return result
+        except Exception as exc:
+            logger.warning(
+                "Failed to auto-detect multimodal LLM: model_source=%s, error=%s",
+                model_source, exc,
+            )
+            return False
 
     async def unload(self, loaded_model: LoadedModel) -> None:
         """Unload model from memory."""

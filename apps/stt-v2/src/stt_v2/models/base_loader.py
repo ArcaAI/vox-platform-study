@@ -3,7 +3,7 @@
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from ..pipeline.dto import AiModelConfig, AiModelFormat
@@ -22,7 +22,7 @@ class LoadedModel:
     processor: Any | None = None  # Associated processor (if applicable)
     feature_extractor: Any | None = None  # Feature extractor (for audio)
     format: AiModelFormat = AiModelFormat.SAFETENSOR
-    loaded_at: datetime = field(default_factory=datetime.utcnow)
+    loaded_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     memory_mb: int = 0
     device: str = "auto"
     extra: dict[str, Any] = field(default_factory=dict)
