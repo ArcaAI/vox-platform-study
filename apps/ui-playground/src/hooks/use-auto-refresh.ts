@@ -1,7 +1,7 @@
-import { useEffect, useCallback, useRef } from 'react';
-import { useAuth, useAgenticStore } from '@arcaai/vox';
+import { getTokenExpiryMs, isTokenExpired, registerOnTokenRefreshed, tryRefreshToken, unregisterOnTokenRefreshed } from '@/lib/auth-refresh';
 import { useAuthStore } from '@/store/auth-store';
-import { tryRefreshToken, getTokenExpiryMs, isTokenExpired, registerOnTokenRefreshed, unregisterOnTokenRefreshed } from '@/lib/auth-refresh';
+import { useAgenticStore, useAuth } from '@arcaai/vox';
+import { useCallback, useEffect, useRef } from 'react';
 
 const REFRESH_THRESHOLD = 0.8;
 const MIN_REFRESH_MS = 30_000;
@@ -76,7 +76,7 @@ export function useAutoRefresh(): void {
     } catch {
       useAuthStore.getState().endImpersonation();
       client.updateAccessToken(freshAdminToken);
-      return true;
+      return false;
     }
   }, []);
 
