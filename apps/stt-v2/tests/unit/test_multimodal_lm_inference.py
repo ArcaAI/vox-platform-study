@@ -225,7 +225,7 @@ class TestMultimodalLMInference:
 
     @pytest.mark.asyncio
     async def test_with_language(self, service):
-        """Language is prepended to system prompt."""
+        """Language alone does not inject a text prompt into multimodal content."""
         model = _make_multimodal_loaded_model()
         config = MagicMock()
         config.language = "vi"
@@ -237,8 +237,9 @@ class TestMultimodalLMInference:
 
         call_args = model.processor.apply_chat_template.call_args
         messages = call_args[0][0]
-        text_content = messages[0]["content"][0]["text"]
-        assert "Transcribe in vi" in text_content
+        content = messages[0]["content"]
+        assert len(content) == 1
+        assert content[0]["type"] == "audio"
 
     @pytest.mark.asyncio
     async def test_with_custom_prompt(self, service):
@@ -256,6 +257,10 @@ class TestMultimodalLMInference:
 
         call_args = model.processor.apply_chat_template.call_args
         messages = call_args[0][0]
-        text_content = messages[0]["content"][0]["text"]
+        text_content = next(
+            item["text"]
+            for item in messages[0]["content"]
+            if item.get("type") == "text"
+        )
         assert custom_prompt in text_content
 

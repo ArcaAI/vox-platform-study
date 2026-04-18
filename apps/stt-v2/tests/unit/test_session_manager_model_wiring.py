@@ -90,6 +90,7 @@ def _make_pipeline_config(vad_enabled: bool = True, asr_slug: str = "whisper-tes
     inference = MagicMock()
     inference.language = "en"
     inference.code_switching = False
+    inference.initial_prompt = None
 
     config = MagicMock()
     config.preprocessing = preprocessing
@@ -251,7 +252,7 @@ class TestLoadAsrPipeline:
     async def test_returns_none_when_config_is_none(self):
         mgr = _make_manager()
         result = await mgr._load_asr_pipeline(None, "s-1")
-        assert result is None
+        assert result == (None, None)
 
     @pytest.mark.asyncio
     async def test_returns_callable_on_success(self):
@@ -265,7 +266,9 @@ class TestLoadAsrPipeline:
         mock_cache = AsyncMock()
         mock_cache.get_or_load_from_ref = AsyncMock(return_value=mock_model)
 
-        mgr._make_asr_callable = lambda asr_model, inference_config: AsyncMock(return_value="ok")
+        mgr._make_asr_callable = (
+            lambda asr_model, inference_config, initial_prompt=None: AsyncMock(return_value="ok")
+        )
 
         with patch.dict(
             "sys.modules",
@@ -278,7 +281,8 @@ class TestLoadAsrPipeline:
         ):
             result = await mgr._load_asr_pipeline(config, "s-1")
 
-        assert callable(result)
+        assert callable(result[0])
+        assert result[1] is None
 
     @pytest.mark.asyncio
     async def test_uses_pipeline_inference_config_directly(self):
@@ -296,7 +300,7 @@ class TestLoadAsrPipeline:
         # Capture the inference_config that _make_asr_callable receives
         captured = {}
 
-        def spy_make_asr(asr_model, inference_config):
+        def spy_make_asr(asr_model, inference_config, initial_prompt=None):
             captured["model"] = asr_model
             captured["config"] = inference_config
             return AsyncMock(return_value="text")
@@ -321,7 +325,7 @@ class TestLoadAsrPipeline:
         ):
             result = await mgr._load_asr_pipeline(config, "s-1")
 
-        assert result is not None
+        assert result[0] is not None
         # Pipeline config values should be used directly
         assert captured["config"].language == "ml"
         assert captured["config"].code_switching is True
@@ -345,7 +349,7 @@ class TestLoadAsrPipeline:
         ):
             result = await mgr._load_asr_pipeline(config, "s-1")
 
-        assert result is None
+        assert result == (None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -452,7 +456,7 @@ class TestCreateSessionModelWiring:
 
         mgr._load_pipeline_config = AsyncMock(return_value=_make_pipeline_config())
         mgr._load_vad_service = AsyncMock(return_value=mock_vad)
-        mgr._load_asr_pipeline = AsyncMock(return_value=mock_asr_fn)
+        mgr._load_asr_pipeline = AsyncMock(return_value=(mock_asr_fn, None))
 
         # Mock the consumers/listeners to avoid real Redis operations
         with (
@@ -493,7 +497,7 @@ class TestCreateSessionModelWiring:
 
         mgr._load_pipeline_config = AsyncMock(return_value=config)
         mgr._load_vad_service = AsyncMock(return_value=MagicMock())
-        mgr._load_asr_pipeline = AsyncMock(return_value=None)
+        mgr._load_asr_pipeline = AsyncMock(return_value=(None, None))
 
         with (
             patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
@@ -546,7 +550,7 @@ class TestCreateSessionModelWiring:
 
         # Use a spy to capture args while still returning a value
         captured_args = {}
-        original_load = AsyncMock(return_value=None)
+        original_load = AsyncMock(return_value=(None, None))
 
         async def spy_load_asr(pipeline_config, session_id):
             captured_args["pipeline_config"] = pipeline_config
@@ -585,7 +589,7 @@ class TestCreateSessionModelWiring:
 
         mgr._load_pipeline_config = AsyncMock(return_value=_make_pipeline_config())
         mgr._load_vad_service = AsyncMock(return_value=mock_vad)
-        mgr._load_asr_pipeline = AsyncMock(return_value=mock_asr_fn)
+        mgr._load_asr_pipeline = AsyncMock(return_value=(mock_asr_fn, None))
 
         with (
             patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
@@ -645,7 +649,7 @@ class TestRecoverSessionsModelWiring:
 
         mgr._load_pipeline_config = AsyncMock(return_value=_make_pipeline_config())
         mgr._load_vad_service = AsyncMock(return_value=mock_vad)
-        mgr._load_asr_pipeline = AsyncMock(return_value=mock_asr_fn)
+        mgr._load_asr_pipeline = AsyncMock(return_value=(mock_asr_fn, None))
 
         with (
             patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
@@ -708,7 +712,7 @@ class TestRecoverSessionsModelWiring:
 
         mgr._load_pipeline_config = AsyncMock(return_value=pipeline_cfg)
         mgr._load_vad_service = AsyncMock(return_value=MagicMock())
-        mgr._load_asr_pipeline = AsyncMock(return_value=AsyncMock())
+        mgr._load_asr_pipeline = AsyncMock(return_value=(AsyncMock(), None))
 
         with (
             patch("stt_v2.streaming.session_manager.StreamingDenoiser") as MockDenoiser,
@@ -1636,7 +1640,7 @@ class TestRecoverSessionsEdgeCases:
 
         mgr._load_pipeline_config = AsyncMock(return_value=_make_pipeline_config())
         mgr._load_vad_service = AsyncMock(return_value=None)
-        mgr._load_asr_pipeline = AsyncMock(return_value=None)
+        mgr._load_asr_pipeline = AsyncMock(return_value=(None, None))
 
         with (
             patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
@@ -1715,7 +1719,7 @@ class TestSessionLeakPrevention:
 
         mgr._load_pipeline_config = AsyncMock(return_value=_make_pipeline_config())
         mgr._load_vad_service = AsyncMock(return_value=None)
-        mgr._load_asr_pipeline = AsyncMock(return_value=None)
+        mgr._load_asr_pipeline = AsyncMock(return_value=(None, None))
 
         broken_consumer = AsyncMock()
         broken_consumer.start = AsyncMock(side_effect=RuntimeError("consumer start failed"))
@@ -1756,7 +1760,7 @@ class TestSessionLeakPrevention:
 
         mgr._load_pipeline_config = AsyncMock(return_value=_make_pipeline_config())
         mgr._load_vad_service = AsyncMock(return_value=None)
-        mgr._load_asr_pipeline = AsyncMock(return_value=None)
+        mgr._load_asr_pipeline = AsyncMock(return_value=(None, None))
 
         broken_consumer = AsyncMock()
         broken_consumer.start = AsyncMock(side_effect=RuntimeError("recover consumer start failed"))

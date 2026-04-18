@@ -126,17 +126,22 @@ class TestMakeAsrCallableMultimodalLLM:
 
     @pytest.mark.asyncio
     async def test_multimodal_passes_prompt(self):
-        """Prompt is included in the chat message text content."""
+        """Initial prompt is included in the chat message text content."""
         mgr = _make_manager()
         loaded = _mock_multimodal_model()
-        fn = mgr._make_asr_callable(loaded, _mock_inference_config())
-
         custom_prompt = "Transcribe medical speech verbatim."
-        await fn(np.zeros(16000, dtype=np.float32), 16000, prompt=custom_prompt)
+        fn = mgr._make_asr_callable(
+            loaded, _mock_inference_config(), initial_prompt=custom_prompt
+        )
+        await fn(np.zeros(16000, dtype=np.float32), 16000)
 
         call_args = loaded.processor.apply_chat_template.call_args
         messages = call_args[0][0]
-        text_content = messages[0]["content"][0]["text"]
+        text_content = next(
+            item["text"]
+            for item in messages[0]["content"]
+            if item.get("type") == "text"
+        )
         assert custom_prompt in text_content
 
     @pytest.mark.asyncio
