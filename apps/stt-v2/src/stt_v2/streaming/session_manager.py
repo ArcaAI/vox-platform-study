@@ -346,7 +346,7 @@ class SessionManager:
             session._vad_active = vad_enabled
 
             # Load ASR pipeline from pipeline config (B2: Wire ASR)
-            asr_pipeline = await self._load_asr_pipeline(
+            asr_pipeline, initial_prompt = await self._load_asr_pipeline(
                 pipeline_config, session_id,
             )
 
@@ -408,16 +408,6 @@ class SessionManager:
                 pipeline_config.postprocessing if pipeline_config else None
             )
 
-            initial_prompt: str | None = None
-            initial_prompt_id = (
-                pipeline_config.inference.initial_prompt
-                if pipeline_config
-                else None
-            )
-            if initial_prompt_id:
-                from stt_v2.core.initial_prompt import get_initial_prompt
-
-                initial_prompt = await get_initial_prompt(initial_prompt_id)
 
             inference_worker = StreamingInferenceWorker(
                 result_publisher=publisher,
@@ -679,17 +669,18 @@ class SessionManager:
         self,
         pipeline_config: Any,
         session_id: str,
-    ) -> StreamingAsrCallable | None:
+    ) -> tuple[StreamingAsrCallable | None, str | None]:
         """Load ASR model and create a callable pipeline for streaming inference.
 
-        Returns a callable ``(samples: np.ndarray, sample_rate: int) -> dict[str, Any]``
+        Returns a tuple of (callable, resolved_initial_prompt).
+        The callable is ``(samples: np.ndarray, sample_rate: int) -> dict[str, Any]``
         that runs inference on a single utterance, or ``None`` on failure.
 
         The callable reuses ``BatchTranscriptionService._run_inference()``
         to ensure streaming and batch use the same ASR code path.
         """
         if pipeline_config is None:
-            return None
+            return None, None
 
         try:
             from stt_v2.models import get_model_cache
@@ -707,8 +698,17 @@ class SessionManager:
             # Use pipeline inference config directly
             inference_config = pipeline_config.inference
 
+            initial_prompt: str | None = None
+            initial_prompt_id = getattr(inference_config, "initial_prompt", None)
+            if initial_prompt_id:
+                from stt_v2.core.initial_prompt import get_initial_prompt
+
+                initial_prompt = await get_initial_prompt(initial_prompt_id)
+
             # Create the callable ASR pipeline
-            asr_pipeline = self._make_asr_callable(asr_model, inference_config)
+            asr_pipeline = self._make_asr_callable(
+                asr_model, inference_config, initial_prompt=initial_prompt,
+            )
 
             logger.info(
                 "ASR pipeline loaded for streaming session",
@@ -717,19 +717,20 @@ class SessionManager:
                 model_format=asr_model.format.value,
                 language=inference_config.language,
             )
-            return asr_pipeline
+            return asr_pipeline, initial_prompt
         except Exception as exc:
             logger.warning(
                 "Failed to load ASR for streaming, inference will return empty text",
                 session_id=session_id,
                 error=str(exc),
             )
-            return None
+            return None, None
 
     def _make_asr_callable(
         self,
         asr_model: Any,
         inference_config: Any,
+        initial_prompt: str | None = None,
     ) -> StreamingAsrCallable:
         """Create a standalone callable ASR pipeline for streaming inference"""
         import torch
@@ -743,6 +744,12 @@ class SessionManager:
 
         if processor is None:
             raise RuntimeError("ASR model has no processor/feature_extractor")
+
+        extra = getattr(loaded_model, "extra", None)
+        if isinstance(extra, dict) and extra.get("multimodal_lm") is True:
+            return self._make_multimodal_lm_callable(
+                loaded_model, inference_config, initial_prompt=initial_prompt,
+            )
 
         # One-time dtype safety: fp16/bf16 on CPU/MPS causes Whisper hallucinations
         # Cast to float32 once at pipeline creation time.
@@ -868,6 +875,67 @@ class SessionManager:
                     word_timestamps = []
 
             return {"text": text, "word_timestamps": word_timestamps}
+
+        return run_inference
+
+    def _make_multimodal_lm_callable(
+        self,
+        loaded_model: Any,
+        inference_config: Any,
+        initial_prompt: str | None = None,
+    ) -> StreamingAsrCallable:
+        """Create streaming callable for multimodal LLM models (Gemma 4)."""
+        import torch
+
+        from ..models.multimodal import (
+            compute_max_new_tokens,
+            prepare_chat_inputs,
+        )
+
+        model = loaded_model.model
+        processor = loaded_model.processor
+        if processor is None:
+            raise RuntimeError(
+                f"Multimodal LM {loaded_model.model_slug} requires a processor "
+                "with apply_chat_template support, but processor is None."
+            )
+        device = loaded_model.device
+        dtype = getattr(model, "dtype", None)
+        captured_initial_prompt = initial_prompt
+
+        async def run_inference(
+            samples: np.ndarray,
+            sample_rate: int,
+            *,
+            prompt: str | None = None,
+        ) -> dict[str, Any]:
+            def _sync() -> dict[str, Any]:
+                content: list[dict] = []
+                if captured_initial_prompt:
+                    content.append({"type": "text", "text": captured_initial_prompt})
+                content.append({"type": "audio", "audio": samples, "sample_rate": sample_rate})
+
+                messages = [
+                    {
+                        "role": "user",
+                        "content": content,
+                    }
+                ]
+
+                inputs = prepare_chat_inputs(processor, messages, device, dtype=dtype)
+                input_len = inputs["input_ids"].shape[-1]
+
+                duration_s = len(samples) / sample_rate
+                max_new = compute_max_new_tokens(duration_s)
+
+                with torch.no_grad():
+                    output = model.generate(**inputs, max_new_tokens=max_new)
+
+                text = processor.decode(output[0][input_len:], skip_special_tokens=True)
+
+                return {"text": text, "word_timestamps": []}
+
+            return await asyncio.to_thread(_sync)
 
         return run_inference
 
@@ -1537,7 +1605,7 @@ class SessionManager:
                     session._vad_active = vad_enabled
 
                     # Load ASR pipeline
-                    asr_pipeline = await self._load_asr_pipeline(
+                    asr_pipeline, recovery_initial_prompt = await self._load_asr_pipeline(
                         pipeline_config,
                         meta.session_id,
                     )
@@ -1550,19 +1618,6 @@ class SessionManager:
                         pipeline_config.postprocessing if pipeline_config else None
                     )
 
-                    # Resolve initial prompt from DB if configured
-                    recovery_initial_prompt: str | None = None
-                    recovery_prompt_id = (
-                        pipeline_config.inference.initial_prompt
-                        if pipeline_config
-                        else None
-                    )
-                    if recovery_prompt_id:
-                        from stt_v2.core.initial_prompt import get_initial_prompt
-
-                        recovery_initial_prompt = await get_initial_prompt(
-                            recovery_prompt_id
-                        )
 
                     inference_worker = StreamingInferenceWorker(
                         result_publisher=publisher,

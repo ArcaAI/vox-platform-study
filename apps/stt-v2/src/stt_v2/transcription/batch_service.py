@@ -355,6 +355,7 @@ class BatchTranscriptionService:
                     chunk_callback=effective_chunk_cb,
                     first_word_hook=_on_first_word,
                     prompt=compose_prompt(initial_prompt, None),
+                    initial_prompt=initial_prompt,
                 )
 
             timing.inference_seconds = time.time() - inference_start
@@ -1140,6 +1141,7 @@ class BatchTranscriptionService:
                         sub_result = await self._run_inference(
                             sub_audio, sample_rate, model, config,
                             prompt=segment_prompt,
+                            initial_prompt=initial_prompt,
                         )
                     except Exception as e:
                         logger.warning(
@@ -1240,6 +1242,7 @@ class BatchTranscriptionService:
                     seg_result = await self._run_inference(
                         segment_audio, sample_rate, model, config,
                         prompt=segment_prompt,
+                        initial_prompt=initial_prompt,
                     )
                 except Exception as e:
                     logger.warning(
@@ -1379,6 +1382,7 @@ class BatchTranscriptionService:
         chunk_callback: Callable[[ChunkTranscriptionResult], Awaitable[None]] | None = None,
         first_word_hook: Callable[[], None] | None = None,
         prompt: str | None = None,
+        initial_prompt: str | None = None,
     ) -> RawTranscription:
         """Run ASR model inference.
 
@@ -1399,6 +1403,7 @@ class BatchTranscriptionService:
             return await self._run_transformers_inference(
                 samples, sample_rate, model, config, progress_callback,
                 prompt=prompt,
+                initial_prompt=initial_prompt,
             )
         elif model.format in [AiModelFormat.ONNX, AiModelFormat.ONNX_OPTIMUM]:
             # Check if loaded with Optimum (has proper processor)
@@ -1651,9 +1656,16 @@ class BatchTranscriptionService:
         config: Any,
         progress_callback: Callable[[float], None] | None = None,
         prompt: str | None = None,
+        initial_prompt: str | None = None,
     ) -> RawTranscription:
         """Run inference using Transformers/HuggingFace model."""
         import torch
+
+        if isinstance(model.extra, dict) and model.extra.get("multimodal_lm") is True:
+            return await self._run_multimodal_lm_inference(
+                samples, sample_rate, model, config,
+                progress_callback, prompt=initial_prompt,
+            )
 
         asr_model = model.model
         processor = model.processor or model.feature_extractor
@@ -1804,6 +1816,99 @@ class BatchTranscriptionService:
             segments=segments,
             word_timestamps=word_timestamps,
             model_output=outputs if torch.is_tensor(outputs) else None,
+        )
+
+    async def _run_multimodal_lm_inference(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        model: LoadedModel,
+        config: Any,
+        progress_callback: Callable[[float], None] | None = None,
+        prompt: str | None = None,
+    ) -> RawTranscription:
+        """Run inference using a multimodal LLM with audio understanding (Gemma 4, etc.)"""
+        import torch
+
+        from ..models.multimodal import (
+            CONTEXT_WORDS,
+            MAX_AUDIO_S,
+            compute_max_new_tokens,
+            prepare_chat_inputs,
+        )
+
+        if len(samples) == 0:
+            return RawTranscription(text="", segments=[], word_timestamps=[])
+
+        lm_model = model.model
+        processor = model.processor
+        if processor is None:
+            raise RuntimeError(
+                f"Multimodal LM {model.model_slug} requires a processor "
+                "with apply_chat_template support, but processor is None."
+            )
+
+        system_text = prompt
+
+        chunk_size = MAX_AUDIO_S * sample_rate
+        chunks = [samples[i:i + chunk_size] for i in range(0, len(samples), chunk_size)]
+        total_chunks = len(chunks)
+
+        all_texts: list[str] = []
+        carry_text = ""
+
+        for chunk_idx, chunk_array in enumerate(chunks):
+            if system_text:
+                combined = system_text + (f"\nPrevious context: {carry_text}" if carry_text else "")
+            elif carry_text:
+                combined = f"Previous context: {carry_text}"
+            else:
+                combined = None
+
+            content: list[dict] = []
+            if combined:
+                content.append({"type": "text", "text": combined})
+            content.append({"type": "audio", "audio": chunk_array, "sample_rate": sample_rate})
+
+            messages = [{"role": "user", "content": content}]
+
+            def _sync_generate(msgs=messages, chunk=chunk_array):
+                inputs = prepare_chat_inputs(
+                    processor, msgs, lm_model.device, dtype=lm_model.dtype,
+                )
+
+                duration_s = len(chunk) / sample_rate
+                max_new_tokens = compute_max_new_tokens(duration_s)
+
+                with torch.no_grad():
+                    outputs = lm_model.generate(**inputs, max_new_tokens=max_new_tokens)
+
+                generated = outputs[0, inputs["input_ids"].shape[-1]:]
+                text = processor.decode(generated, skip_special_tokens=True).strip()
+                return text
+
+            text = await asyncio.to_thread(_sync_generate)
+
+            all_texts.append(text)
+            carry_text = " ".join(text.split()[-CONTEXT_WORDS:])
+
+            if progress_callback:
+                progress_callback((chunk_idx + 1) / total_chunks)
+
+        merged = " ".join(t for t in all_texts if t)
+        merged = " ".join(merged.split())  # collapse whitespace
+
+        duration_seconds = len(samples) / sample_rate
+        segments = (
+            [{"start": 0.0, "end": duration_seconds, "text": merged}]
+            if merged
+            else []
+        )
+
+        return RawTranscription(
+            text=merged,
+            segments=segments,
+            word_timestamps=[],
         )
 
     async def _run_onnx_inference(
