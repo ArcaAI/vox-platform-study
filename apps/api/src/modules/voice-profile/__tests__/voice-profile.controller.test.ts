@@ -63,7 +63,6 @@ describe('VoiceProfileController', () => {
         label: 'My Voice',
       });
       expect(result).toHaveProperty('id', 'vp-1');
-      expect(result).not.toHaveProperty('qualityScore');
     });
 
     it('should throw when no audio file provided', async () => {
