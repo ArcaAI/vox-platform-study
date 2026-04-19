@@ -32,7 +32,7 @@ class TestStoragePathResolver:
             timestamp=ts,
         )
 
-        assert path == "2024/03/consultations/consult-456/job-789/raw/recording.wav"
+        assert path == "2024/03/15/consultations/consult-456/job-789/raw/recording.wav"
 
     def test_audio_path_without_consultation(self, resolver):
         """Test audio path generation without consultation."""
@@ -46,7 +46,7 @@ class TestStoragePathResolver:
             timestamp=ts,
         )
 
-        assert path == "2024/06/jobs/job-789/raw/audio.mp3"
+        assert path == "2024/06/20/jobs/job-789/raw/audio.mp3"
 
     def test_audio_path_sanitizes_filename(self, resolver):
         """Test that filenames are sanitized."""
@@ -94,7 +94,7 @@ class TestStoragePathResolver:
             timestamp=ts,
         )
 
-        assert path == "2024/01/consultations/c-1/j-1/transcript.json"
+        assert path == "2024/01/10/consultations/c-1/j-1/transcript.json"
 
     def test_transcript_path_vtt(self, resolver):
         """Test transcript path for VTT format."""

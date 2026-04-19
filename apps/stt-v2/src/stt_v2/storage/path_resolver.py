@@ -42,9 +42,9 @@ class StoragePathResolver:
         Generate path for raw audio files.
 
         Format:
-            {year}/{month}/consultations/{consultation_id}/{job_id}/raw/{filename}
+            {year}/{month}/{day}/consultations/{consultation_id}/{job_id}/raw/{filename}
         Or:
-            {year}/{month}/jobs/{job_id}/raw/{filename}
+            {year}/{month}/{day}/jobs/{job_id}/raw/{filename}
 
         Args:
             tenant_id: Tenant ID (used for bucket resolution, not in path)
@@ -59,14 +59,15 @@ class StoragePathResolver:
         ts = timestamp or datetime.utcnow()
         year = ts.strftime("%Y")
         month = ts.strftime("%m")
+        day = ts.strftime("%d")
 
         # Sanitize filename
         safe_filename = self._sanitize_filename(filename)
 
         if consultation_id:
-            return f"{year}/{month}/consultations/{consultation_id}/{job_id}/raw/{safe_filename}"
+            return f"{year}/{month}/{day}/consultations/{consultation_id}/{job_id}/raw/{safe_filename}"
         else:
-            return f"{year}/{month}/jobs/{job_id}/raw/{safe_filename}"
+            return f"{year}/{month}/{day}/jobs/{job_id}/raw/{safe_filename}"
 
     def processed_audio_path(
         self,
@@ -80,9 +81,9 @@ class StoragePathResolver:
         Generate path for processed (e.g. denoised / VAD-merged) audio files.
 
         Format:
-            {year}/{month}/consultations/{consultation_id}/{job_id}/processed/{filename}
+            {year}/{month}/{day}/consultations/{consultation_id}/{job_id}/processed/{filename}
         Or (no consultation):
-            {year}/{month}/jobs/{job_id}/processed/{filename}
+            {year}/{month}/{day}/jobs/{job_id}/processed/{filename}
 
         Args:
             tenant_id: Tenant ID (used for bucket resolution, not in path)
@@ -97,16 +98,17 @@ class StoragePathResolver:
         ts = timestamp or datetime.utcnow()
         year = ts.strftime("%Y")
         month = ts.strftime("%m")
+        day = ts.strftime("%d")
 
         safe_filename = self._sanitize_filename(filename)
 
         if consultation_id:
             return (
-                f"{year}/{month}/consultations/"
+                f"{year}/{month}/{day}/consultations/"
                 f"{consultation_id}/{job_id}/processed/{safe_filename}"
             )
         else:
-            return f"{year}/{month}/jobs/{job_id}/processed/{safe_filename}"
+            return f"{year}/{month}/{day}/jobs/{job_id}/processed/{safe_filename}"
 
     def chunk_path(
         self,
@@ -141,9 +143,9 @@ class StoragePathResolver:
         Generate path for transcript files.
 
         Format:
-            {year}/{month}/consultations/{consultation_id}/{job_id}/transcript.{format}
+            {year}/{month}/{day}/consultations/{consultation_id}/{job_id}/transcript.{format}
         Or:
-            {year}/{month}/jobs/{job_id}/transcript.{format}
+            {year}/{month}/{day}/jobs/{job_id}/transcript.{format}
 
         Args:
             tenant_id: Tenant ID
@@ -158,15 +160,16 @@ class StoragePathResolver:
         ts = timestamp or datetime.utcnow()
         year = ts.strftime("%Y")
         month = ts.strftime("%m")
+        day = ts.strftime("%d")
 
         filename = f"transcript.{format}"
 
         if consultation_id:
             return (
-                f"{year}/{month}/consultations/{consultation_id}/{job_id}/{filename}"
+                f"{year}/{month}/{day}/consultations/{consultation_id}/{job_id}/{filename}"
             )
         else:
-            return f"{year}/{month}/jobs/{job_id}/{filename}"
+            return f"{year}/{month}/{day}/jobs/{job_id}/{filename}"
 
     def batch_metadata_path(
         self,
@@ -178,9 +181,9 @@ class StoragePathResolver:
         """Generate path for batch job metadata.
 
         Format:
-            {year}/{month}/consultations/{consultation_id}/{job_id}/metadata.json
+            {year}/{month}/{day}/consultations/{consultation_id}/{job_id}/metadata.json
         Or:
-            {year}/{month}/jobs/{job_id}/metadata.json
+            {year}/{month}/{day}/jobs/{job_id}/metadata.json
 
         Args:
             tenant_id: Tenant ID.
@@ -194,11 +197,12 @@ class StoragePathResolver:
         ts = timestamp or datetime.utcnow()
         year = ts.strftime("%Y")
         month = ts.strftime("%m")
+        day = ts.strftime("%d")
 
         if consultation_id:
-            return f"{year}/{month}/consultations/{consultation_id}/{job_id}/metadata.json"
+            return f"{year}/{month}/{day}/consultations/{consultation_id}/{job_id}/metadata.json"
         else:
-            return f"{year}/{month}/jobs/{job_id}/metadata.json"
+            return f"{year}/{month}/{day}/jobs/{job_id}/metadata.json"
 
     def _streaming_base(
         self,
@@ -208,13 +212,14 @@ class StoragePathResolver:
     ) -> str:
         """Return the common prefix for all streaming paths.
 
-        Format: ``{year}/{month}/streams/{session_id}``
+        Format: ``{year}/{month}/{day}/streams/{session_id}``
         """
         safe_session = self._sanitize_path_segment(session_id)
         ts = timestamp or datetime.utcnow()
         year = ts.strftime("%Y")
         month = ts.strftime("%m")
-        return f"{year}/{month}/streams/{safe_session}"
+        day = ts.strftime("%d")
+        return f"{year}/{month}/{day}/streams/{safe_session}"
 
     def streaming_raw_chunk_path(
         self,
