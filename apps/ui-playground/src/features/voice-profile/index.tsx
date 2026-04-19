@@ -1,5 +1,5 @@
 import { Main } from '@/components/layout/main';
-import { AdminDataTable } from '@/features/admin/components';
+import { AdminDataTable, ConfirmDialog } from '@/features/admin/components';
 import { ImpersonationGuard } from '@/features/summarization/components/impersonation-guard';
 import { useDoctorContext } from '@/features/summarization/hooks/use-doctor-context';
 import { useAuthStore } from '@/store/auth-store';
@@ -327,26 +327,40 @@ function ProfileTable() {
   const deactivate = useDeactivateVoiceProfile();
   const remove = useDeleteVoiceProfile();
 
+  const [mutatingId, setMutatingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const isPending = activate.isPending || deactivate.isPending || remove.isPending;
 
+  const settle = () => setMutatingId(null);
+
   const handleActivate = (id: string) => {
+    setMutatingId(id);
     activate.mutate(id, {
       onSuccess: () => toast.success('Profile activated'),
       onError: (err) => toast.error(`Activate failed: ${err instanceof Error ? err.message : 'Unknown'}`),
+      onSettled: settle,
     });
   };
 
   const handleDeactivate = (id: string) => {
+    setMutatingId(id);
     deactivate.mutate(id, {
       onSuccess: () => toast.success('Profile deactivated'),
       onError: (err) => toast.error(`Deactivate failed: ${err instanceof Error ? err.message : 'Unknown'}`),
+      onSettled: settle,
     });
   };
 
-  const handleDelete = (id: string) => {
-    remove.mutate(id, {
-      onSuccess: () => toast.success('Profile deleted'),
+  const handleDeleteConfirm = () => {
+    if (!deleteTarget) return;
+    setMutatingId(deleteTarget);
+    remove.mutate(deleteTarget, {
+      onSuccess: () => {
+        toast.success('Profile deleted');
+        setDeleteTarget(null);
+      },
       onError: (err) => toast.error(`Delete failed: ${err instanceof Error ? err.message : 'Unknown'}`),
+      onSettled: settle,
     });
   };
 
@@ -379,7 +393,7 @@ function ProfileTable() {
     {
       accessorKey: 'createdAt',
       header: 'Created',
-      cell: ({ row }) => <span className="text-muted-foreground text-sm">{new Date(row.original.createdAt).toLocaleDateString()}</span>,
+      cell: ({ row }) => <span className="text-muted-foreground text-sm">{new Date(row.original.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>,
     },
     {
       id: 'actions',
@@ -388,11 +402,12 @@ function ProfileTable() {
       enableSorting: false,
       cell: ({ row }) => {
         const p = row.original;
+        const rowPending = mutatingId === p.id && isPending;
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-7" disabled={isPending}>
-                {isPending ? <Loader2 className="size-3.5 animate-spin" /> : <MoreHorizontal className="size-3.5" />}
+              <Button variant="ghost" size="icon" className="size-7" disabled={rowPending}>
+                {rowPending ? <Loader2 className="size-3.5 animate-spin" /> : <MoreHorizontal className="size-3.5" />}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -408,7 +423,7 @@ function ProfileTable() {
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => handleDelete(p.id)} className="text-destructive focus:text-destructive">
+              <DropdownMenuItem onClick={() => setDeleteTarget(p.id)} className="text-destructive focus:text-destructive">
                 <Trash2 className="mr-2 size-3.5" />
                 Delete
               </DropdownMenuItem>
@@ -419,7 +434,7 @@ function ProfileTable() {
     },
   ];
 
-  return (
+  return (<>
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
@@ -445,7 +460,18 @@ function ProfileTable() {
         )}
       </CardContent>
     </Card>
-  );
+
+    <ConfirmDialog
+      open={!!deleteTarget}
+      onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+      title="Delete Voice Profile"
+      description="This will permanently delete the voice profile. This action cannot be undone."
+      confirmLabel="Delete"
+      variant="destructive"
+      onConfirm={handleDeleteConfirm}
+      isLoading={remove.isPending}
+    />
+  </>);
 }
 
 // ---------------------------------------------------------------------------
