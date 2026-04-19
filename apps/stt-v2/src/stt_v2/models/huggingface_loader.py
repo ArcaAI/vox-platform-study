@@ -135,6 +135,9 @@ class HuggingFaceLoader(BaseModelLoader):
         WhisperForConditionalGeneration = transformers.WhisperForConditionalGeneration
         WhisperProcessor = transformers.WhisperProcessor
 
+        _has_accelerate = self._has_accelerate()
+        _device_map_kwargs: dict[str, Any] = {"device_map": "auto"} if _has_accelerate else {}
+
         model = None
         tokenizer = None
         processor = None
@@ -168,13 +171,13 @@ class HuggingFaceLoader(BaseModelLoader):
                     )
                 try:
                     import torch as _torch
-                    _use_device_map = _torch.cuda.is_available()
+                    _use_device_map = _torch.cuda.is_available() and _has_accelerate
                     _multimodal_kwargs: dict[str, Any] = {"low_cpu_mem_usage": True}
                     if _use_device_map:
                         _multimodal_kwargs["device_map"] = "auto"
                     model = AutoModelForMultimodalLM.from_pretrained(
                         model_source,
-                        torch_dtype=torch_dtype,
+                        dtype=torch_dtype,
                         **_multimodal_kwargs,
                         **common_kwargs,
                     )
@@ -191,29 +194,31 @@ class HuggingFaceLoader(BaseModelLoader):
                 try:
                     model = WhisperForConditionalGeneration.from_pretrained(
                         model_source,
-                        torch_dtype=torch_dtype,
-                        low_cpu_mem_usage=True,
+                        dtype=torch_dtype,
+                        **_device_map_kwargs,
                         **attn_kwargs,
                         **common_kwargs,
                     )
                     generation_config = GenerationConfig.from_pretrained(model_source, **common_kwargs)
                     model.generation_config = generation_config
                     processor = WhisperProcessor.from_pretrained(model_source, **common_kwargs)
-                except Exception:
+                except Exception as whisper_err:
+                    logger.debug("Whisper load failed: %s", whisper_err)
                     try:
                         model = AutoModelForSpeechSeq2Seq.from_pretrained(
                             model_source,
-                            torch_dtype=torch_dtype,
-                            low_cpu_mem_usage=True,
+                            dtype=torch_dtype,
+                            **_device_map_kwargs,
                             **attn_kwargs,
                             **common_kwargs,
                         )
-                    except Exception:
+                    except Exception as seq2seq_err:
+                        logger.debug("Seq2Seq load failed: %s", seq2seq_err)
                         try:
                             model = AutoModelForCTC.from_pretrained(
                                 model_source,
-                                torch_dtype=torch_dtype,
-                                low_cpu_mem_usage=True,
+                                dtype=torch_dtype,
+                                **_device_map_kwargs,
                                 **common_kwargs,
                             )
                         except Exception as err:
@@ -246,7 +251,7 @@ class HuggingFaceLoader(BaseModelLoader):
             # VAD models (e.g., Silero VAD, pyannote)
             model = AutoModelForAudioClassification.from_pretrained(
                 model_source,
-                torch_dtype=torch_dtype,
+                dtype=torch_dtype,
                 **common_kwargs,
             )
             if AutoFeatureExtractor is None:
@@ -259,16 +264,26 @@ class HuggingFaceLoader(BaseModelLoader):
             # Generic loading
             model = AutoModelForSpeechSeq2Seq.from_pretrained(
                 model_source,
-                torch_dtype=torch_dtype,
-                low_cpu_mem_usage=True,
+                dtype=torch_dtype,
+                **_device_map_kwargs,
                 **common_kwargs,
             )
             processor = AutoProcessor.from_pretrained(model_source, **common_kwargs)
 
         if model is not None and not is_multimodal_lm:
-            model = model.to(device)
+            if task_type == ModelTaskType.VOICE_ACTIVITY_DETECTION or not _has_accelerate:
+                model = model.to(device)
 
         return model, tokenizer, processor, feature_extractor, is_multimodal_lm
+
+    @staticmethod
+    def _has_accelerate() -> bool:
+        """Check if the ``accelerate`` package is available."""
+        try:
+            import accelerate  # noqa: F401
+            return True
+        except ImportError:
+            return False
 
     @staticmethod
     def _resolve_attn_implementation(
