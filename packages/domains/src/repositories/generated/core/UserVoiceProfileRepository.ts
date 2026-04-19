@@ -62,6 +62,9 @@ export class UserVoiceProfileRepository extends Repository<UserVoiceProfileEntit
   }
 
   async createWithEmbedding(entity: UserVoiceProfileEntity, embedding: number[]): Promise<UserVoiceProfileEntity> {
+    if (!embedding.every(n => typeof n === 'number' && Number.isFinite(n))) {
+      throw new Error('Invalid embedding: all values must be finite numbers');
+    }
     const vectorStr = `[${embedding.join(',')}]`;
     const client = this.unitOfWorkService.getDatabaseService();
     const now = new Date();
@@ -83,15 +86,5 @@ export class UserVoiceProfileRepository extends Repository<UserVoiceProfileEntit
       entity.updatedAt ?? now,
     );
     return entity;
-  }
-
-  async updateEmbeddingRaw(id: string, embedding: number[]): Promise<void> {
-    const vectorStr = `[${embedding.join(',')}]`;
-    const client = this.unitOfWorkService.getDatabaseService();
-    await (client as any).$executeRawUnsafe(
-      `UPDATE "core"."UserVoiceProfile" SET "embedding" = $1::vector, "updatedAt" = NOW() WHERE "id" = $2`,
-      vectorStr,
-      id,
-    );
   }
 }

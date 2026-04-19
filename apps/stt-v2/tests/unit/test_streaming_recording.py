@@ -284,7 +284,7 @@ class TestStreamingPaths:
             chunk_index=0,
             timestamp=self._TS,
         )
-        assert path == "2026/03/streams/sess-abc/raw/chunk_0000.pcm"
+        assert path == "2026/03/15/streams/sess-abc/raw/chunk_0000.pcm"
 
     def test_streaming_raw_chunk_path_index_padding(self):
         from stt_v2.storage.path_resolver import StoragePathResolver
@@ -296,7 +296,7 @@ class TestStreamingPaths:
             chunk_index=42,
             timestamp=self._TS,
         )
-        assert path == "2026/03/streams/sess-abc/raw/chunk_0042.pcm"
+        assert path == "2026/03/15/streams/sess-abc/raw/chunk_0042.pcm"
 
     def test_streaming_processed_chunk_path(self):
         from stt_v2.storage.path_resolver import StoragePathResolver
@@ -308,7 +308,7 @@ class TestStreamingPaths:
             chunk_index=0,
             timestamp=self._TS,
         )
-        assert path == "2026/03/streams/sess-abc/processed/chunk_0000.pcm"
+        assert path == "2026/03/15/streams/sess-abc/processed/chunk_0000.pcm"
 
     def test_streaming_raw_complete_path(self):
         from stt_v2.storage.path_resolver import StoragePathResolver
@@ -319,7 +319,7 @@ class TestStreamingPaths:
             session_id="sess-xyz",
             timestamp=self._TS,
         )
-        assert path == "2026/03/streams/sess-xyz/raw/complete.wav"
+        assert path == "2026/03/15/streams/sess-xyz/raw/complete.wav"
 
     def test_streaming_transcript_path(self):
         from stt_v2.storage.path_resolver import StoragePathResolver
@@ -330,7 +330,7 @@ class TestStreamingPaths:
             session_id="sess-abc",
             timestamp=self._TS,
         )
-        assert path == "2026/03/streams/sess-abc/transcript.json"
+        assert path == "2026/03/15/streams/sess-abc/transcript.json"
 
     def test_streaming_metadata_path(self):
         from stt_v2.storage.path_resolver import StoragePathResolver
@@ -341,7 +341,7 @@ class TestStreamingPaths:
             session_id="sess-abc",
             timestamp=self._TS,
         )
-        assert path == "2026/03/streams/sess-abc/metadata.json"
+        assert path == "2026/03/15/streams/sess-abc/metadata.json"
 
     def test_streaming_path_defaults_to_utcnow(self):
         from stt_v2.storage.path_resolver import StoragePathResolver
@@ -353,7 +353,7 @@ class TestStreamingPaths:
             chunk_index=0,
         )
         now = datetime.utcnow()
-        expected_prefix = f"{now.strftime('%Y')}/{now.strftime('%m')}/streams/s1/"
+        expected_prefix = f"{now.strftime('%Y')}/{now.strftime('%m')}/{now.strftime('%d')}/streams/s1/"
         assert path.startswith(expected_prefix)
 
 
@@ -371,18 +371,18 @@ class TestBlobServiceStreamingUpload:
         mock_resolver.audio_bucket = "hope-audio"
         mock_resolver.resolve_tenant_bucket.return_value = "hope-audio"
         mock_resolver.streaming_raw_chunk_path.return_value = (
-            "2026/03/streams/s1/raw/chunk_0000.pcm"
+            "2026/03/15/streams/s1/raw/chunk_0000.pcm"
         )
         mock_resolver.streaming_processed_chunk_path.return_value = (
-            "2026/03/streams/s1/processed/chunk_0000.pcm"
+            "2026/03/15/streams/s1/processed/chunk_0000.pcm"
         )
         mock_resolver.streaming_raw_complete_path.return_value = (
-            "2026/03/streams/s1/raw/complete.wav"
+            "2026/03/15/streams/s1/raw/complete.wav"
         )
         mock_resolver.streaming_transcript_path.return_value = (
-            "2026/03/streams/s1/transcript.json"
+            "2026/03/15/streams/s1/transcript.json"
         )
-        mock_resolver.streaming_metadata_path.return_value = "2026/03/streams/s1/metadata.json"
+        mock_resolver.streaming_metadata_path.return_value = "2026/03/15/streams/s1/metadata.json"
         mock_resolver.get_full_uri.side_effect = lambda bucket, path: f"s3://{bucket}/{path}"
 
         with patch("stt_v2.storage.blob_service.get_settings") as mock_settings:
@@ -400,7 +400,7 @@ class TestBlobServiceStreamingUpload:
             )
             mock_upload.assert_called_once_with(
                 bucket="hope-audio",
-                path="2026/03/streams/s1/raw/chunk_0000.pcm",
+                path="2026/03/15/streams/s1/raw/chunk_0000.pcm",
                 data=b"\x00" * 100,
                 content_type="application/octet-stream",
             )
@@ -417,7 +417,7 @@ class TestBlobServiceStreamingUpload:
             )
             mock_upload.assert_called_once_with(
                 bucket="hope-audio",
-                path="2026/03/streams/s1/processed/chunk_0000.pcm",
+                path="2026/03/15/streams/s1/processed/chunk_0000.pcm",
                 data=b"\x00" * 100,
                 content_type="application/octet-stream",
             )
@@ -433,7 +433,7 @@ class TestBlobServiceStreamingUpload:
             )
             mock_upload.assert_called_once_with(
                 bucket="hope-audio",
-                path="2026/03/streams/s1/raw/complete.wav",
+                path="2026/03/15/streams/s1/raw/complete.wav",
                 data=b"wav-data",
                 content_type="audio/wav",
             )
@@ -449,7 +449,7 @@ class TestBlobServiceStreamingUpload:
             )
             mock_upload.assert_called_once_with(
                 bucket="hope-audio",
-                path="2026/03/streams/s1/transcript.json",
+                path="2026/03/15/streams/s1/transcript.json",
                 data=b'{"segments":[]}',
                 content_type="application/json",
             )
@@ -465,7 +465,7 @@ class TestBlobServiceStreamingUpload:
             )
             mock_upload.assert_called_once_with(
                 bucket="hope-audio",
-                path="2026/03/streams/s1/metadata.json",
+                path="2026/03/15/streams/s1/metadata.json",
                 data=b'{"session_id":"s1"}',
                 content_type="application/json",
             )
