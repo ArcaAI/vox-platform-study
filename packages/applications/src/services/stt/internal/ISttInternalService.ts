@@ -1,13 +1,13 @@
+import { TranscriptionJobResponse } from '../job/dto';
 import {
+  AudioRecordResponse,
+  CreateAudioRecordRequest,
   CreateTranscriptRequest,
-  InternalUpdateProgressRequest,
-  InternalStartJobRequest,
   InternalCompleteJobRequest,
   InternalFailJobRequest,
-  CreateAudioRecordRequest,
-  AudioRecordResponse,
+  InternalStartJobRequest,
+  InternalUpdateProgressRequest,
 } from './dto';
-import { TranscriptionJobResponse } from '../job/dto';
 
 /**
  * Internal service interface for STT-v2 to call
@@ -42,6 +42,12 @@ export interface ISttInternalService {
    * Called by STT-v2 when transcription fails
    */
   failJob(jobId: string, dto: InternalFailJobRequest): Promise<TranscriptionJobResponse>;
+
+  /**
+   * Get job status (lightweight check for worker cancellation polling)
+   * Called by STT-v2 worker during processing
+   */
+  getJobStatus(jobId: string): Promise<{ status: string }>;
 
   /**
    * Create an audio recording record

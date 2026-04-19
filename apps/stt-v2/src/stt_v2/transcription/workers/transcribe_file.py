@@ -9,7 +9,12 @@ import dramatiq
 
 from ...core.api_client.gateway import get_api_client
 from ...core.config.settings import get_settings
-from ...core.exceptions import JobTerminalError, NotFoundError, TranscriptionError
+from ...core.exceptions import (
+    JobCancelledError,
+    JobTerminalError,
+    NotFoundError,
+    TranscriptionError,
+)
 from ...core.messaging.pubsub import TranscriptionEventPublisher
 from ...pipeline.config_reader import get_pipeline_reader
 from ...storage.blob_service import get_blob_service
@@ -112,6 +117,18 @@ async def _transcribe_file_async(
     worker_id = f"worker-{os.getpid()}"
     logger.info(f"[{job_id}] Starting batch transcription (worker={worker_id})")
 
+    # Cancellation check helper — polls API for job status
+    async def _check_cancelled() -> None:
+        try:
+            status = await api_client.get_job_status(job_id)
+            if status == "CANCELLED":
+                raise JobCancelledError(f"Job {job_id} was cancelled")
+        except JobCancelledError:
+            raise
+        except Exception as e:
+            # Best-effort: log and continue if status check fails
+            logger.warning(f"[{job_id}] Cancellation check failed: {e}")
+
     # Create the event publisher for real-time SSE relay
     publisher = TranscriptionEventPublisher()
 
@@ -133,15 +150,22 @@ async def _transcribe_file_async(
         if language is not None:
             pipeline_config.spec.inference.language = language
 
+        # Check for cancellation before downloading audio
+        await _check_cancelled()
+
         # Step 3: Download audio from storage
         logger.info(f"[{job_id}] Downloading audio from {audio_uri}")
         audio_bytes = await blob_service.download_audio(audio_uri)
         logger.info(f"[{job_id}] Downloaded {len(audio_bytes)} bytes")
 
+        # Check for cancellation before starting transcription
+        await _check_cancelled()
+
         # Step 4: Run transcription with progress + chunk callbacks
         _pending_progress_tasks: list[asyncio.Task] = []
         _progress_publish_lock = asyncio.Lock()
         _last_progress_scheduled = -1
+        _last_cancel_check_progress = -1
         _progress_state: dict[str, int | bool | None] = {
             "latest": None,
             "in_flight": False,
@@ -156,6 +180,7 @@ async def _transcribe_file_async(
             Redis connection lock.  Coalescing to the latest value keeps realtime
             semantics while preventing task pile-ups.
             """
+            nonlocal _last_cancel_check_progress
             while True:
                 queued = _progress_state["latest"]
                 _progress_state["latest"] = None
@@ -165,6 +190,12 @@ async def _transcribe_file_async(
                     return
 
                 progress = int(queued)
+
+                # Check for cancellation every ~10% progress
+                if progress - _last_cancel_check_progress >= 10:
+                    _last_cancel_check_progress = progress
+                    await _check_cancelled()
+
                 async with _progress_publish_lock:
                     try:
                         await api_client.update_job_progress(job_id, progress)
@@ -238,6 +269,9 @@ async def _transcribe_file_async(
             await asyncio.gather(*_pending_progress_tasks, return_exceptions=True)
             _pending_progress_tasks.clear()
 
+        # Check for cancellation before uploading results
+        await _check_cancelled()
+
         # Step 5: Upload transcript to storage
         logger.info(f"[{job_id}] Uploading transcript")
         transcript_uri = await blob_service.upload_transcript(
@@ -305,6 +339,12 @@ async def _transcribe_file_async(
         logger.error(f"[{job_id}] Resource not found: {e}")
         await publisher.publish_error(job_id, "NOT_FOUND", str(e))
         await _fail_job(api_client, publisher, job_id, str(e), "NOT_FOUND")
+        raise dramatiq.middleware.SkipMessage() from e
+
+    except JobCancelledError as e:
+        # Job was cancelled by user — stop processing, skip retries
+        logger.info(f"[{job_id}] Job cancelled, stopping worker")
+        await publisher.publish_status(job_id, "CANCELLED")
         raise dramatiq.middleware.SkipMessage() from e
 
     except JobTerminalError:

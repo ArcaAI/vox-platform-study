@@ -1,34 +1,34 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { ClsService } from 'nestjs-cls';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
-  TranscriptionJobRepository,
-  ContextItemRepository,
-  ContextItemFactory,
-  MediaRepository,
-  MediaFactory,
-  AudioRecordingRepository,
-  AudioRecordingFactory,
-  ResourceType,
-  SysEventType,
-  ContextItemType,
-  ContextItemSource,
+    AudioRecordingFactory,
+    AudioRecordingRepository,
+    ContextItemFactory,
+    ContextItemRepository,
+    ContextItemSource,
+    ContextItemType,
+    MediaFactory,
+    MediaRepository,
+    ResourceType,
+    SysEventType,
+    TranscriptionJobRepository,
 } from '@arcaai/domains';
-import { ConsultationPipelineEvent, TranscriptionCreatedPayload } from '../../consultation/events';
-import { ISttInternalService } from './ISttInternalService';
-import {
-  CreateTranscriptRequest,
-  InternalUpdateProgressRequest,
-  InternalStartJobRequest,
-  InternalCompleteJobRequest,
-  InternalFailJobRequest,
-  CreateAudioRecordRequest,
-  AudioRecordResponse,
-} from './dto';
-import { TranscriptionJobResponse } from '../job/dto';
-import { TranscriptionJobDtoMapper } from '../job/transcriptionJob.dto.mapper';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ClsService } from 'nestjs-cls';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { ConsultationPipelineEvent, TranscriptionCreatedPayload } from '../../consultation/events';
+import { TranscriptionJobResponse } from '../job/dto';
+import { TranscriptionJobDtoMapper } from '../job/transcriptionJob.dto.mapper';
+import { ISttInternalService } from './ISttInternalService';
+import {
+    AudioRecordResponse,
+    CreateAudioRecordRequest,
+    CreateTranscriptRequest,
+    InternalCompleteJobRequest,
+    InternalFailJobRequest,
+    InternalStartJobRequest,
+    InternalUpdateProgressRequest,
+} from './dto';
 
 @Injectable()
 export class SttInternalService extends BaseService implements ISttInternalService {
@@ -176,6 +176,17 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     });
 
     return TranscriptionJobDtoMapper.toResponse(updated);
+  }
+
+  /**
+   * Get job status (lightweight check for worker cancellation polling)
+   */
+  async getJobStatus(jobId: string): Promise<{ status: string }> {
+    const job = await this.jobRepository.findById(jobId);
+    if (!job) {
+      throw new NotFoundException(`Job ${jobId} not found`);
+    }
+    return { status: job.status };
   }
 
   /**
