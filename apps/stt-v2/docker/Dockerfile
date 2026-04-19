@@ -116,6 +116,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         "torchaudio>=2.8.0,<2.9.0"
 
 RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /opt/venv/bin/python --no-build-isolation \
+        "flash-attn>=2.8.3"
+
+RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /opt/venv/bin/python \
         --override /tmp/cuda-overrides.txt \
         ".[ml-gpu]"
