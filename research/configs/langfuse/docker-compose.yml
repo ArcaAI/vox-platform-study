@@ -1,0 +1,216 @@
+###############################################################################
+# Langfuse Self-Hosted — Docker Compose
+#
+# Location on VM 400: /opt/langfuse/docker-compose.yml
+#
+# Usage:
+#   docker compose up -d                           # Start
+#   docker compose pull && docker compose up -d    # Upgrade
+#   docker compose down                            # Stop
+#   docker compose logs -f                         # Logs
+#
+# Web UI:  http://10.10.1.100:3001 (langfuse.taphuynh.dev via tunnel)
+# Worker:  http://10.10.1.100:3030 (internal only)
+#
+# External dependencies (NOT in this compose):
+#   PostgreSQL: 10.10.1.250:5000  (HA TimescaleDB VIP, VMs 500-502)
+#   Redis:      10.10.1.120:6379  (VM 420)
+#   MinIO:      10.10.1.102:9000  (VM 402, HTTPS-only, self-signed CA)
+#
+# TLS Note:
+#   MinIO on VM 402 serves HTTPS only (self-signed ECDSA cert).
+#   The CA cert must be copied to /opt/langfuse/certs/minio-ca.crt
+#   on VM 400 before starting. See deployment doc §2.5.
+#   NODE_EXTRA_CA_CERTS is set on both web and worker containers.
+###############################################################################
+
+name: langfuse
+
+services:
+  # ── Langfuse Worker ───────────────────────────────────────────────────────
+  # Background job processor: ingestion pipeline, batch exports, evals.
+  # Must start before langfuse-web so migrations run once.
+  langfuse-worker:
+    image: docker.io/langfuse/langfuse-worker:3
+    container_name: langfuse-worker
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3030:3030"
+    volumes:
+      - ./certs/minio-ca.crt:/etc/ssl/certs/minio-ca.crt:ro
+    environment: &langfuse-env
+      # ── TLS — MinIO CA cert for Node.js AWS SDK ─────────────────────────
+      NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/minio-ca.crt"
+      # ── Core ──────────────────────────────────────────────────────────────
+      NEXTAUTH_URL: "https://langfuse.taphuynh.dev"
+      NEXTAUTH_SECRET: "${NEXTAUTH_SECRET}"
+      SALT: "${LANGFUSE_SALT}"
+      ENCRYPTION_KEY: "${LANGFUSE_ENCRYPTION_KEY}"
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+
+      # ── PostgreSQL (HA TimescaleDB on VMs 500-502 via VIP) ────────────
+      DATABASE_URL: "postgresql://${PG_USER}:${PG_PASSWORD}@10.10.1.250:5000/langfuse?sslmode=prefer"
+
+      # ── Redis (VM 420) ────────────────────────────────────────────────
+      REDIS_HOST: "10.10.1.120"
+      REDIS_PORT: "6379"
+      REDIS_AUTH: "${REDIS_AUTH}"
+      REDIS_TLS_ENABLED: "false"
+
+      # ── ClickHouse (local container) ──────────────────────────────────
+      CLICKHOUSE_MIGRATION_URL: "clickhouse://clickhouse:9000"
+      CLICKHOUSE_URL: "http://clickhouse:8123"
+      CLICKHOUSE_USER: "${CLICKHOUSE_USER}"
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD}"
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+
+      # ── MinIO / S3 — Event Upload (VM 402) ───────────────────────────
+      # HTTPS with self-signed CA. NODE_EXTRA_CA_CERTS above tells the
+      # AWS SDK to trust the MinIO CA cert mounted into the container.
+      LANGFUSE_USE_AZURE_BLOB: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: "langfuse"
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: "auto"
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: "${MINIO_ACCESS_KEY}"
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: "${MINIO_SECRET_KEY}"
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: "https://10.10.1.102:9000"
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: "events/"
+
+      # ── MinIO / S3 — Media Upload (VM 402) ───────────────────────────
+      # Media endpoint uses the public Cloudflare Tunnel URL so that
+      # pre-signed download URLs are resolvable by browsers.
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: "langfuse"
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: "auto"
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: "${MINIO_ACCESS_KEY}"
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: "${MINIO_SECRET_KEY}"
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: "https://s3.taphuynh.dev"
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: "media/"
+
+      # ── MinIO / S3 — Batch Export (VM 402) ────────────────────────────
+      LANGFUSE_S3_BATCH_EXPORT_ENABLED: "${LANGFUSE_S3_BATCH_EXPORT_ENABLED:-false}"
+      LANGFUSE_S3_BATCH_EXPORT_BUCKET: "langfuse"
+      LANGFUSE_S3_BATCH_EXPORT_PREFIX: "exports/"
+      LANGFUSE_S3_BATCH_EXPORT_REGION: "auto"
+      LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: "https://10.10.1.102:9000"
+      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: "https://s3.taphuynh.dev"
+      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: "${MINIO_ACCESS_KEY}"
+      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: "${MINIO_SECRET_KEY}"
+      LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: "true"
+
+      # ── Init (first-run seeding — remove after first deploy) ──────────
+      LANGFUSE_INIT_ORG_ID: "${LANGFUSE_INIT_ORG_ID:-}"
+      LANGFUSE_INIT_ORG_NAME: "${LANGFUSE_INIT_ORG_NAME:-}"
+      LANGFUSE_INIT_PROJECT_ID: "${LANGFUSE_INIT_PROJECT_ID:-}"
+      LANGFUSE_INIT_PROJECT_NAME: "${LANGFUSE_INIT_PROJECT_NAME:-}"
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: "${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}"
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: "${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}"
+      LANGFUSE_INIT_USER_EMAIL: "${LANGFUSE_INIT_USER_EMAIL:-}"
+      LANGFUSE_INIT_USER_NAME: "${LANGFUSE_INIT_USER_NAME:-}"
+      LANGFUSE_INIT_USER_PASSWORD: "${LANGFUSE_INIT_USER_PASSWORD:-}"
+
+      # ── Email (optional) ──────────────────────────────────────────────
+      EMAIL_FROM_ADDRESS: "${EMAIL_FROM_ADDRESS:-}"
+      SMTP_CONNECTION_URL: "${SMTP_CONNECTION_URL:-}"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3030/api/public/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ── Langfuse Web ──────────────────────────────────────────────────────────
+  # Next.js web application. Serves the UI and API routes.
+  # Mapped to port 3001 to avoid conflict with Grafana on port 3000.
+  langfuse-web:
+    image: docker.io/langfuse/langfuse:3
+    container_name: langfuse-web
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./certs/minio-ca.crt:/etc/ssl/certs/minio-ca.crt:ro
+    environment:
+      <<: *langfuse-env
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/public/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ── ClickHouse ────────────────────────────────────────────────────────────
+  # Columnar analytics database. Langfuse-specific — no shared usage.
+  # Bound to localhost only; accessed by langfuse containers via Docker DNS.
+  clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:25.3
+    container_name: langfuse-clickhouse
+    restart: unless-stopped
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: "default"
+      CLICKHOUSE_USER: "${CLICKHOUSE_USER}"
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD}"
+    ports:
+      - "127.0.0.1:18123:8123"
+      - "127.0.0.1:19000:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+volumes:
+  clickhouse-data:
+    driver: local
+  clickhouse-logs:
+    driver: local
+
+networks:
+  default:
+    name: langfuse
+    driver: bridge
