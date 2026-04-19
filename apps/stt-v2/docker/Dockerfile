@@ -203,11 +203,11 @@ EXPOSE 8861
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
     CMD ["python3.11", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8861/api/v1/health')"]
 
-CMD ["uvicorn", "stt_v2.main:app", "--host", "0.0.0.0", "--port", "8861"]
+CMD ["python3.11", "-m", "uvicorn", "stt_v2.main:app", "--host", "0.0.0.0", "--port", "8861"]
 
 # =============================================================================
 # Stage 5: Worker — Dramatiq worker extending ml-runtime
 # =============================================================================
 FROM ml-runtime AS worker
 
-CMD ["dramatiq", "stt_v2.worker", "--processes", "2", "--threads", "4"]
+CMD ["python3.11", "-m", "dramatiq", "stt_v2.worker", "--processes", "2", "--threads", "4"]
