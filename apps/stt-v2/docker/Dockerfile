@@ -105,6 +105,7 @@ RUN printf '%s\n' \
         'nvidia-cufile-cu12 ; sys_platform == "never"' \
         'nvidia-nvtx-cu12 ; sys_platform == "never"' \
         'triton ; sys_platform == "never"' \
+        'flash-attn ; sys_platform == "never"' \
     > /tmp/cuda-overrides.txt
 
 # Install torch + torchaudio first (--no-deps) to avoid pulling their
@@ -116,8 +117,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         "torchaudio>=2.8.0,<2.9.0"
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --python /opt/venv/bin/python --no-build-isolation \
-        "flash-attn>=2.8.3"
+    uv pip install --python /opt/venv/bin/python --only-binary flash-attn \
+        "flash-attn>=2.8.3" \
+    || echo "WARNING: flash-attn prebuilt wheel not available, skipping (attention will use default PyTorch SDPA path)"
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /opt/venv/bin/python \
