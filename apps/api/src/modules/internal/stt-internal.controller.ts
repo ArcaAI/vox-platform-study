@@ -1,13 +1,13 @@
 import {
-  CreateAudioRecordRequest,
-  CreateTranscriptRequest,
-  InternalCompleteJobRequest,
-  InternalFailJobRequest,
-  InternalStartJobRequest,
-  InternalUpdateProgressRequest,
-  SttInternalService,
+    CreateAudioRecordRequest,
+    CreateTranscriptRequest,
+    InternalCompleteJobRequest,
+    InternalFailJobRequest,
+    InternalStartJobRequest,
+    InternalUpdateProgressRequest,
+    SttInternalService,
 } from '@arcaai/applications';
-import { Body, Controller, Param, Patch, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { ApiExcludeController, ApiOperation, ApiParam, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { Authorize } from '../../decorators';
@@ -63,6 +63,14 @@ export class SttInternalController {
   async failJob(@Req() request: Request, @Param('id') id: string, @Body() dto: InternalFailJobRequest) {
     this.ensureInternalApiKey(request);
     return this.sttInternalService.failJob(id, dto);
+  }
+
+  @Get('jobs/:id/status')
+  @ApiOperation({ summary: 'Get job status (lightweight, for worker polling)' })
+  @ApiParam({ name: 'id', description: 'Transcription job ID' })
+  async getJobStatus(@Req() request: Request, @Param('id') id: string) {
+    this.ensureInternalApiKey(request);
+    return this.sttInternalService.getJobStatus(id);
   }
 
   @Post('audio-records')

@@ -197,6 +197,22 @@ class APIGatewayClient:
         )
 
     # =========================================================================
+    # Job Status Query (for cancellation polling)
+    # =========================================================================
+
+    async def get_job_status(self, job_id: str) -> str:
+        """Get job status from API Gateway.
+
+        Returns the status string (e.g. QUEUED, PROCESSING, CANCELLED).
+        Used by workers to check for cancellation during processing.
+        """
+        result = await self._request(
+            "GET",
+            f"/internal/stt/jobs/{job_id}/status",
+        )
+        return result.get("status", "UNKNOWN")
+
+    # =========================================================================
     # Legacy Status Update (kept for backward compatibility)
     # =========================================================================
 
