@@ -12,6 +12,7 @@
  * @see SDK-206 Gap Analysis — ASR-R-10
  */
 
+import type { PaginatedResponse } from '../types/common';
 import { TranscriptionJobStatus, TranscriptionJobType, type TranscriptionJobResponse } from '../types/stt-v2';
 import type { AgenticClient } from './AgenticClient';
 import { STT_V2_ENDPOINTS } from './constants';
@@ -61,7 +62,7 @@ export class FileTranscriptionService {
    * Sends a multipart/form-data POST to the transcribe endpoint.
    * Returns the job response with the job ID for SSE subscription.
    */
-  async uploadAndTranscribe(file: File, options: FileTranscribeOptions): Promise<TranscriptionJobResponse> {
+  async uploadAndTranscribe(file: File, options: FileTranscribeOptions & { signal?: AbortSignal }): Promise<TranscriptionJobResponse> {
     this.logger?.debug('Uploading file for transcription', {
       operation: 'uploadAndTranscribe',
       component: 'FileTranscriptionService',
@@ -94,7 +95,7 @@ export class FileTranscriptionService {
       formData.append('diarization', String(options.diarization));
     }
 
-    const response = await this.apiClient.postFormData<TranscriptionJobResponse | BatchTranscribeResponse>(STT_V2_ENDPOINTS.TRANSCRIBE, formData);
+    const response = await this.apiClient.postFormData<TranscriptionJobResponse | BatchTranscribeResponse>(STT_V2_ENDPOINTS.TRANSCRIBE, formData, { signal: options.signal });
 
     const job = this.normalizeJobResponse(response, options.pipelineId);
     this.activeJobId = job.id;
@@ -111,6 +112,88 @@ export class FileTranscriptionService {
     });
 
     return job;
+  }
+
+  async uploadAndTranscribeWithProgress(
+    file: File,
+    options: FileTranscribeOptions & {
+      signal?: AbortSignal;
+      onProgress?: (progress: number) => void;
+    },
+  ): Promise<TranscriptionJobResponse> {
+    this.logger?.debug('Uploading file for transcription (with progress)', {
+      operation: 'uploadAndTranscribeWithProgress',
+      component: 'FileTranscriptionService',
+      attributes: {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        pipelineId: options.pipelineId,
+        consultationId: options.consultationId,
+      },
+    });
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('pipelineId', options.pipelineId);
+
+    if (options.consultationId) {
+      formData.append('consultationId', options.consultationId);
+    }
+    if (options.language) {
+      formData.append('language', options.language);
+    }
+    if (options.sampleRate !== undefined) {
+      formData.append('sampleRate', String(options.sampleRate));
+    }
+    if (options.codeSwitching !== undefined) {
+      formData.append('codeSwitching', String(options.codeSwitching));
+    }
+    if (options.diarization !== undefined) {
+      formData.append('diarization', String(options.diarization));
+    }
+
+    const response = await this.apiClient.uploadFormData<TranscriptionJobResponse | BatchTranscribeResponse>(
+      STT_V2_ENDPOINTS.TRANSCRIBE,
+      formData,
+      { signal: options.signal, onProgress: options.onProgress },
+    );
+
+    const job = this.normalizeJobResponse(response, options.pipelineId);
+    this.activeJobId = job.id;
+
+    this.logger?.info('File uploaded for transcription (with progress)', {
+      operation: 'uploadAndTranscribeWithProgress',
+      component: 'FileTranscriptionService',
+      success: true,
+      attributes: {
+        jobId: job.id,
+        status: job.status,
+        pipelineId: job.pipelineId,
+      },
+    });
+
+    return job;
+  }
+
+  async cancelJob(jobId: string): Promise<void> {
+    await this.apiClient.post(STT_V2_ENDPOINTS.CANCEL_JOB(jobId));
+    if (this.activeJobId === jobId) {
+      this.activeJobId = null;
+    }
+  }
+
+  async getJob(jobId: string): Promise<TranscriptionJobResponse> {
+    return this.apiClient.get<TranscriptionJobResponse>(STT_V2_ENDPOINTS.GET_JOB(jobId));
+  }
+
+  async listJobs(params?: { page?: number; limit?: number }): Promise<PaginatedResponse<TranscriptionJobResponse>> {
+    const query = new URLSearchParams();
+    if (params?.page !== undefined) query.set('page', String(params.page));
+    if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    const qs = query.toString();
+    const endpoint = qs ? `${STT_V2_ENDPOINTS.LIST_JOBS}?${qs}` : STT_V2_ENDPOINTS.LIST_JOBS;
+    return this.apiClient.get<PaginatedResponse<TranscriptionJobResponse>>(endpoint);
   }
 
   private normalizeJobResponse(response: TranscriptionJobResponse | BatchTranscribeResponse, pipelineId: string): TranscriptionJobResponse {

@@ -8,7 +8,7 @@ import type { ApiConfig } from '../types';
 import { AgenticError } from '../types';
 import { DEFAULT_TIMEOUT } from './constants';
 import type { ISDKLogger } from './logger';
-import { generateSpanId, createTraceparent } from './logger';
+import { createTraceparent, generateSpanId } from './logger';
 
 /**
  * HTTP client for ARCAAI API communication.
@@ -378,7 +378,7 @@ export class AgenticClient {
    * Omits Content-Type header so the browser sets the multipart boundary.
    * Auth headers (X-API-Key, X-Tenant-ID, correlation) are included.
    */
-  async postFormData<T>(endpoint: string, formData: FormData): Promise<T> {
+  async postFormData<T>(endpoint: string, formData: FormData, options?: { signal?: AbortSignal }): Promise<T> {
     const requestId = `req_${++this.requestCount}_${Date.now()}`;
     const spanId = generateSpanId();
     const startTime = performance.now();
@@ -386,6 +386,14 @@ export class AgenticClient {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
+    }
 
     const headers: Record<string, string> = {
       'X-Request-ID': requestId,
@@ -485,6 +493,144 @@ export class AgenticClient {
         context: { endpoint, requestId },
       });
     }
+  }
+
+  /**
+   * Upload FormData using XMLHttpRequest for upload progress reporting.
+   * Supports AbortSignal for cancellation and reports progress via onProgress callback.
+   */
+  uploadFormData<T>(
+    endpoint: string,
+    formData: FormData,
+    options?: {
+      signal?: AbortSignal;
+      onProgress?: (progress: number) => void;
+    },
+  ): Promise<T> {
+    this.checkRateLimit();
+
+    const requestId = `req_${++this.requestCount}_${Date.now()}`;
+    const spanId = generateSpanId();
+    const startTime = performance.now();
+    const url = `${this.baseUrl}${endpoint}`;
+
+    const headers: Record<string, string> = {
+      'X-Request-ID': requestId,
+    };
+
+    if (this.accessToken) {
+      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    }
+    if (this.apiKey) {
+      headers['X-API-Key'] = this.apiKey;
+    }
+    if (this.tenantId) {
+      headers['X-Tenant-ID'] = this.tenantId;
+    }
+
+    const correlationId = this.logger?.getCorrelationId();
+    if (correlationId) {
+      headers['X-Correlation-ID'] = correlationId;
+      const traceId = correlationId.replace(/-/g, '').slice(0, 32).padStart(32, '0');
+      headers['traceparent'] = createTraceparent(traceId, spanId);
+    }
+
+    this.logger?.debug(`HTTP POST (FormData/XHR) ${endpoint}`, {
+      operation: 'httpRequest',
+      component: 'AgenticClient',
+      requestId,
+      http: { method: 'POST', url: endpoint },
+      attributes: { fullUrl: url, spanId },
+    });
+
+    return new Promise<T>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url);
+
+      for (const [key, value] of Object.entries(headers)) {
+        xhr.setRequestHeader(key, value);
+      }
+
+      xhr.timeout = this.timeout;
+
+      if (options?.signal) {
+        if (options.signal.aborted) {
+          reject(new AgenticError('NETWORK_ERROR', 'Request aborted', {
+            context: { endpoint, requestId },
+          }));
+          return;
+        }
+        options.signal.addEventListener('abort', () => xhr.abort(), { once: true });
+      }
+
+      xhr.upload.onprogress = (event: ProgressEvent) => {
+        if (event.lengthComputable && options?.onProgress) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          options.onProgress(progress);
+        }
+      };
+
+      xhr.onload = () => {
+        const durationMs = Math.round(performance.now() - startTime);
+
+        this.logger?.http(`HTTP POST ${endpoint} ${xhr.status}`, {
+          operation: 'httpResponse',
+          component: 'AgenticClient',
+          requestId,
+          durationMs,
+          success: xhr.status >= 200 && xhr.status < 300,
+          http: { method: 'POST', url: endpoint, statusCode: xhr.status, responseTimeMs: durationMs },
+          attributes: { spanId },
+        });
+
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText) as T);
+          } catch {
+            resolve(undefined as T);
+          }
+        } else {
+          let errorData: Record<string, unknown> = {};
+          try {
+            errorData = JSON.parse(xhr.responseText);
+          } catch {
+            // ignore parse errors
+          }
+          const errorCode =
+            xhr.status === 401
+              ? 'AUTHENTICATION_ERROR'
+              : xhr.status === 404
+                ? 'NOT_FOUND'
+                : xhr.status >= 400 && xhr.status < 500
+                  ? 'VALIDATION_ERROR'
+                  : 'API_ERROR';
+          const errorMessage = (errorData.message as string) || `HTTP ${xhr.status}: ${xhr.statusText}`;
+          reject(new AgenticError(errorCode, errorMessage, {
+            context: { status: xhr.status, endpoint, requestId },
+          }));
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new AgenticError('NETWORK_ERROR', 'Network error - check your connection', {
+          context: { endpoint, requestId },
+        }));
+      };
+
+      xhr.ontimeout = () => {
+        reject(new AgenticError('NETWORK_ERROR', 'Request timeout', {
+          context: { timeout: this.timeout, endpoint, requestId },
+        }));
+      };
+
+      xhr.onabort = () => {
+        reject(new AgenticError('NETWORK_ERROR', 'Request aborted', {
+          context: { endpoint, requestId },
+        }));
+      };
+
+      xhr.send(formData);
+    });
   }
 
   /**
