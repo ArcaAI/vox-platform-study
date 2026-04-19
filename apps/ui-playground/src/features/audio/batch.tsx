@@ -13,7 +13,7 @@ import { Progress } from '@arcaai/ui/progress';
 import { ScrollArea } from '@arcaai/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
 import { useAuth, usePipelines } from '@arcaai/vox';
-import { AlertCircle, CloudUpload, FileAudio, Info, Languages, RefreshCw, Server, Trash2, Upload } from 'lucide-react';
+import { AlertCircle, CloudUpload, FileAudio, Info, Languages, RefreshCw, Server, Trash2, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AudioImpersonationBanner, AudioPageHeaderAction } from './components/audio-page-chrome';
@@ -299,9 +299,15 @@ function BatchTranscriptPanel() {
                   Upload Another
                 </Button>
               ) : (
-                <Button variant="outline" size="sm" disabled className="gap-1.5">
-                  {fileTranscription.isUploading ? 'Uploading...' : 'Streaming...'}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled className="gap-1.5">
+                    {fileTranscription.isUploading ? 'Uploading...' : 'Processing...'}
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={fileTranscription.cancel} className="gap-1.5">
+                    <X className="size-3.5" aria-hidden="true" />
+                    Cancel
+                  </Button>
+                </div>
               )}
             </div>
           </div>
@@ -316,6 +322,14 @@ function BatchTranscriptPanel() {
                 <Progress value={fileTranscription.uploadProgress} className="h-2" />
                 <span className="text-[10px] font-medium tabular-nums">{fileTranscription.uploadProgress}%</span>
               </div>
+            </div>
+          )}
+
+          {!selectedFile && fileTranscription.fileName && fileTranscription.isStreaming && (
+            <div className="flex items-center gap-2 rounded-lg border px-3 py-1.5">
+              <FileAudio className="text-muted-foreground size-3.5" />
+              <span className="text-xs">{fileTranscription.fileName}</span>
+              <Badge variant="secondary" className="text-[10px]">Resumed</Badge>
             </div>
           )}
 
@@ -337,6 +351,12 @@ function BatchTranscriptPanel() {
           {fileTranscription.error && (
             <div className="rounded-md border border-destructive/50 bg-destructive/10 p-2">
               <p className="text-destructive text-[11px]">{fileTranscription.error}</p>
+            </div>
+          )}
+
+          {fileTranscription.isReconnecting && (
+            <div role="status" aria-live="polite" className="rounded-md border border-blue-200 bg-blue-50 p-2 dark:border-blue-800 dark:bg-blue-950">
+              <p className="text-blue-700 dark:text-blue-300 text-xs">Reconnecting to previous job...</p>
             </div>
           )}
 
