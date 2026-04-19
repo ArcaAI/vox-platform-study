@@ -118,8 +118,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /opt/venv/bin/python \
         --override /tmp/cuda-overrides.txt \
-        ".[ml-gpu]" \
-    && find /opt/venv \( \
+        ".[ml-gpu]"
+
+RUN find /opt/venv \( \
         -name "__pycache__" \
         -o -name "*.egg-info" \
         -o -name "tests" -o -name "test" \
