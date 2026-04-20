@@ -29,6 +29,8 @@ function buildContextItemMessage(selectedContextItems: ContextItemInputLike[]): 
     .map((item) => {
       const content = item.content?.trim() ?? '';
       if (!content) return '';
+      // Custom inline items embed their own header in the content, so don't prepend a generic label.
+      if (item.type === 'CUSTOM') return content;
       const label = TYPE_LABEL_MAP[item.type ?? ''] ?? 'Context';
       return `${label}:\n${content}`;
     })
