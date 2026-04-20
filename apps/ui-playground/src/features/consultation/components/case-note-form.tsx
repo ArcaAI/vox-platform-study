@@ -3,19 +3,42 @@ import { Label } from '@arcaai/ui/label';
 import { Textarea } from '@arcaai/ui/textarea';
 import { Input } from '@arcaai/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/tabs';
-import { useArca, useStorage } from '@arcaai/vox';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
+import { useArca, useStorage, useAgenticStore, CONTEXT_ENDPOINTS, type ContextItem, type AddContextInput } from '@arcaai/vox';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { useState, useRef } from 'react';
-import { FileText, Upload, Mic, ClipboardList, Loader2, X, FileAudio, Paperclip, StickyNote, MessageSquareText } from 'lucide-react';
+import {
+  FileText,
+  Upload,
+  Mic,
+  ClipboardList,
+  Loader2,
+  X,
+  FileAudio,
+  Paperclip,
+  StickyNote,
+  MessageSquareText,
+  LayoutTemplate,
+  Boxes,
+} from 'lucide-react';
+
+const SUMMARY_TYPE_OPTIONS = [
+  { value: 'RAW_SUMMARY', label: 'Summary (standard)' },
+  { value: 'MODIFIED_SUMMARY', label: 'Edited Summary' },
+  { value: 'PRE_SUMMARY', label: 'Pre-Summary' },
+] as const;
+
+type SummaryContextType = (typeof SUMMARY_TYPE_OPTIONS)[number]['value'];
 
 const caseNoteSchema = z.object({
   content: z.string().min(1, 'Content is required'),
 });
 
 const summarySchema = z.object({
+  summaryType: z.enum(['RAW_SUMMARY', 'MODIFIED_SUMMARY', 'PRE_SUMMARY']),
   content: z.string().min(1, 'Summary content is required'),
 });
 
@@ -25,10 +48,22 @@ const transcriptSchema = z.object({
   content: z.string().min(1, 'Transcript content is required'),
 });
 
+const templateSchema = z.object({
+  name: z.string().min(1, 'Template name is required'),
+  content: z.string().min(1, 'Template content is required'),
+});
+
+const customSchema = z.object({
+  header: z.string().min(1, 'Header is required'),
+  content: z.string().min(1, 'Content is required'),
+});
+
 type CaseNoteValues = z.infer<typeof caseNoteSchema>;
 type SummaryValues = z.infer<typeof summarySchema>;
 type WorknoteValues = z.infer<typeof worknoteSchema>;
 type TranscriptValues = z.infer<typeof transcriptSchema>;
+type TemplateValues = z.infer<typeof templateSchema>;
+type CustomValues = z.infer<typeof customSchema>;
 
 interface CaseNoteFormProps {
   consultationId: string;
@@ -38,6 +73,21 @@ interface CaseNoteFormProps {
 export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
   const { context } = useArca();
   const storage = useStorage();
+
+  const addContextItem = async (input: AddContextInput): Promise<ContextItem> => {
+    const state = useAgenticStore.getState();
+    const apiClient = state.apiClient;
+    const consultation = state.consultation;
+    if (!apiClient) throw new Error('SDK not initialized');
+    if (!consultation) throw new Error('No active consultation');
+    const item = await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), {
+      source: 'USER',
+      ...input,
+    });
+    state.addContextItem(item);
+    return item;
+  };
+
   const [isLoading, setIsLoading] = useState(false);
   const [caseNoteFile, setCaseNoteFile] = useState<File | null>(null);
   const [summaryFile, setSummaryFile] = useState<File | null>(null);
@@ -55,7 +105,19 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
 
   const summaryForm = useForm<SummaryValues>({
     resolver: zodResolver(summarySchema),
-    defaultValues: { content: '' },
+    defaultValues: { summaryType: 'RAW_SUMMARY', content: '' },
+  });
+
+  const selectedSummaryType = summaryForm.watch('summaryType') as SummaryContextType;
+
+  const templateForm = useForm<TemplateValues>({
+    resolver: zodResolver(templateSchema),
+    defaultValues: { name: '', content: '' },
+  });
+
+  const customForm = useForm<CustomValues>({
+    resolver: zodResolver(customSchema),
+    defaultValues: { header: '', content: '' },
   });
 
   const worknoteForm = useForm<WorknoteValues>({
@@ -110,18 +172,60 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
       if (summaryFile) {
         attachmentUrl = await uploadAttachment(summaryFile);
       }
-      await context.addCaseNote(data.content, {
-        consultationId,
-        type: 'RAW_SUMMARY',
-        ...(attachmentUrl && { attachmentUrl }),
+      await addContextItem({
+        type: data.summaryType,
+        content: data.content,
+        source: 'USER',
+        ...(attachmentUrl && { structuredData: { attachmentUrl } }),
       });
-      toast.success('Summary context added successfully');
-      summaryForm.reset();
+      const typeLabel = SUMMARY_TYPE_OPTIONS.find((o) => o.value === data.summaryType)?.label ?? 'Summary';
+      toast.success(`${typeLabel} added successfully`);
+      summaryForm.reset({ summaryType: data.summaryType, content: '' });
       setSummaryFile(null);
       if (summaryFileRef.current) summaryFileRef.current.value = '';
       onSuccess?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to add summary';
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleTemplate = async (data: TemplateValues) => {
+    setIsLoading(true);
+    try {
+      await addContextItem({
+        type: 'WORKNOTE',
+        content: data.content,
+        source: 'USER',
+        structuredData: { kind: 'TEMPLATE', name: data.name },
+      });
+      toast.success('Template added successfully');
+      templateForm.reset();
+      onSuccess?.();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to add template';
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCustom = async (data: CustomValues) => {
+    setIsLoading(true);
+    try {
+      await addContextItem({
+        type: 'WORKNOTE',
+        content: `${data.header}\n\n${data.content}`,
+        source: 'USER',
+        structuredData: { kind: 'CUSTOM', header: data.header },
+      });
+      toast.success(`Custom item "${data.header}" added successfully`);
+      customForm.reset();
+      onSuccess?.();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to add custom item';
       toast.error(message);
     } finally {
       setIsLoading(false);
@@ -158,7 +262,7 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
   const handleWorknote = async (data: WorknoteValues) => {
     setIsLoading(true);
     try {
-      await context.addContext({ type: 'WORKNOTE', content: data.content, source: 'USER' });
+      await addContextItem({ type: 'WORKNOTE', content: data.content, source: 'USER' });
       toast.success('Work note added successfully');
       worknoteForm.reset();
       onSuccess?.();
@@ -194,11 +298,11 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
     try {
       const key = await uploadAttachment(attachmentFile);
       if (key) {
-        await context.addContext({
+        await addContextItem({
           type: 'ATTACHMENT',
           content: `Attachment: ${attachmentFile.name}`,
           source: 'USER',
-          metadata: { attachmentKey: key },
+          structuredData: { attachmentKey: key },
         });
         toast.success('Attachment uploaded successfully');
         setAttachmentFile(null);
@@ -216,7 +320,7 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
   return (
     <div className="flex h-full flex-col">
       <Tabs defaultValue="case-note" className="flex min-h-0 flex-1 flex-col">
-        <TabsList className="grid w-full shrink-0 grid-cols-6">
+        <TabsList className="grid w-full shrink-0 grid-cols-4 gap-1 lg:grid-cols-8">
           <TabsTrigger value="case-note" className="gap-1.5">
             <FileText className="size-3.5" />
             Case Note
@@ -228,6 +332,14 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
           <TabsTrigger value="summary" className="gap-1.5">
             <ClipboardList className="size-3.5" />
             Summary
+          </TabsTrigger>
+          <TabsTrigger value="template" className="gap-1.5">
+            <LayoutTemplate className="size-3.5" />
+            Template
+          </TabsTrigger>
+          <TabsTrigger value="custom" className="gap-1.5">
+            <Boxes className="size-3.5" />
+            Custom
           </TabsTrigger>
           <TabsTrigger value="worknote" className="gap-1.5">
             <StickyNote className="size-3.5" />
@@ -323,6 +435,28 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
 
         <TabsContent value="summary" className="mt-4 flex min-h-0 flex-1 flex-col">
           <form onSubmit={summaryForm.handleSubmit(handleSummary)} className="flex min-h-0 flex-1 flex-col gap-4">
+            <div className="shrink-0 space-y-2">
+              <Label htmlFor="sum-type">
+                Summary Type <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={selectedSummaryType}
+                onValueChange={(value: string) => summaryForm.setValue('summaryType', value as SummaryContextType, { shouldDirty: true })}
+              >
+                <SelectTrigger id="sum-type" className="w-full">
+                  <SelectValue placeholder="Select summary type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {SUMMARY_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex min-h-0 flex-1 flex-col gap-2">
               <Label htmlFor="sum-content">
                 Summary Content <span className="text-destructive">*</span>
@@ -368,7 +502,93 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
             </div>
             <Button type="submit" className="shrink-0 self-start" disabled={isLoading}>
               {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
-              {isLoading ? 'Adding...' : 'Add Summary'}
+              {isLoading
+                ? 'Adding...'
+                : `Add ${SUMMARY_TYPE_OPTIONS.find((o) => o.value === selectedSummaryType)?.label ?? 'Summary'}`}
+            </Button>
+          </form>
+        </TabsContent>
+
+        <TabsContent value="template" className="mt-4 flex min-h-0 flex-1 flex-col">
+          <form onSubmit={templateForm.handleSubmit(handleTemplate)} className="flex min-h-0 flex-1 flex-col gap-4">
+            <div className="shrink-0 space-y-2">
+              <Label htmlFor="tpl-name">
+                Template Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="tpl-name"
+                placeholder="e.g. Cardiology Consultation Template"
+                aria-invalid={!!templateForm.formState.errors.name}
+                {...templateForm.register('name')}
+              />
+              {templateForm.formState.errors.name && (
+                <p className="text-destructive text-sm" role="alert">
+                  {templateForm.formState.errors.name.message}
+                </p>
+              )}
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col gap-2">
+              <Label htmlFor="tpl-content">
+                Template Content <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="tpl-content"
+                className="min-h-0 flex-1 resize-none"
+                placeholder="Paste the template used to steer the AI output..."
+                aria-invalid={!!templateForm.formState.errors.content}
+                {...templateForm.register('content')}
+              />
+              {templateForm.formState.errors.content && (
+                <p className="text-destructive text-sm" role="alert">
+                  {templateForm.formState.errors.content.message}
+                </p>
+              )}
+            </div>
+            <Button type="submit" className="shrink-0 self-start" disabled={isLoading}>
+              {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {isLoading ? 'Adding...' : 'Add Template'}
+            </Button>
+          </form>
+        </TabsContent>
+
+        <TabsContent value="custom" className="mt-4 flex min-h-0 flex-1 flex-col">
+          <form onSubmit={customForm.handleSubmit(handleCustom)} className="flex min-h-0 flex-1 flex-col gap-4">
+            <div className="shrink-0 space-y-2">
+              <Label htmlFor="cus-header">
+                Header <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="cus-header"
+                placeholder='e.g. "Lab Results"'
+                aria-invalid={!!customForm.formState.errors.header}
+                {...customForm.register('header')}
+              />
+              {customForm.formState.errors.header && (
+                <p className="text-destructive text-sm" role="alert">
+                  {customForm.formState.errors.header.message}
+                </p>
+              )}
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col gap-2">
+              <Label htmlFor="cus-content">
+                Content <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="cus-content"
+                className="min-h-0 flex-1 resize-none"
+                placeholder='e.g. "Hemoglobin 12.5, WBC 7.2, Platelets 245..."'
+                aria-invalid={!!customForm.formState.errors.content}
+                {...customForm.register('content')}
+              />
+              {customForm.formState.errors.content && (
+                <p className="text-destructive text-sm" role="alert">
+                  {customForm.formState.errors.content.message}
+                </p>
+              )}
+            </div>
+            <Button type="submit" className="shrink-0 self-start" disabled={isLoading}>
+              {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {isLoading ? 'Adding...' : 'Add Custom Item'}
             </Button>
           </form>
         </TabsContent>

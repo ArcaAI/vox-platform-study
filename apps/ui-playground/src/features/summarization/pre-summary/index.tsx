@@ -15,7 +15,23 @@ import { Switch } from '@arcaai/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/tabs';
 import { Textarea } from '@arcaai/ui/textarea';
 import { Link } from '@tanstack/react-router';
-import { AlertCircle, ArrowRight, ChevronDown, Dna, FileText, Loader2, Radio, Search, Settings2, Sparkles, X } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowRight,
+  Calendar,
+  ChevronDown,
+  Dna,
+  FileText,
+  Loader2,
+  Mic,
+  Plus,
+  Radio,
+  Search,
+  Settings2,
+  Sparkles,
+  User,
+  X,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { AssembledGenerateRequest, SmrGenerateResponse } from '../api';
@@ -68,7 +84,15 @@ export default function PreSummaryPage() {
   const [contextSearchQuery, setContextSearchQuery] = useState('');
   const [contextTypeFilter, setContextTypeFilter] = useState('ALL');
   const [contextRecencyFilter, setContextRecencyFilter] = useState<ContextRecency>('ALL');
+  const [patientFilter, setPatientFilter] = useState<string>('ALL');
+  const [consultationMeta, setConsultationMeta] = useState<Record<string, { patientId?: string; appointmentDate?: string }>>({});
   const [selectedContextItems, setSelectedContextItems] = useState<ContextItem[]>([]);
+  // Custom context items (Vitals, Labs, arbitrary header+content) added inline for this generation.
+  type CustomItem = { id: string; header: string; content: string; category: 'VITALS' | 'LABS' | 'OTHER' };
+  const [customItems, setCustomItems] = useState<CustomItem[]>([]);
+  const [customHeader, setCustomHeader] = useState('');
+  const [customContent, setCustomContent] = useState('');
+  const [customCategory, setCustomCategory] = useState<CustomItem['category']>('OTHER');
   const [contextLoadingIds, setContextLoadingIds] = useState<string[]>([]);
   const [contextSuggestions, setContextSuggestions] = useState<ContextItem[]>([]);
   const [contextSuggestionsLoading, setContextSuggestionsLoading] = useState(false);
@@ -177,19 +201,127 @@ export default function PreSummaryPage() {
 
   const availableContextTypes = Object.keys(STATIC_CONTEXT_TYPES);
 
+  const consultationPatientMap = useMemo(() => {
+    const map: Record<string, string | undefined> = {};
+    for (const [cId, meta] of Object.entries(consultationMeta)) {
+      map[cId] = meta.patientId;
+    }
+    return map;
+  }, [consultationMeta]);
+
+  const availablePatientIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of contextSuggestions) {
+      const pid = consultationPatientMap[item.consultationId];
+      if (pid) set.add(pid);
+    }
+    return Array.from(set).sort();
+  }, [contextSuggestions, consultationPatientMap]);
+
   const filteredContextSuggestions = useMemo(
     () =>
       filterContextItems(contextSuggestions, {
         query: contextSearchQuery,
         type: contextTypeFilter,
         recency: contextRecencyFilter,
+        patientId: patientFilter,
+        consultationPatientMap,
       }) as ContextItem[],
-    [contextSuggestions, contextSearchQuery, contextTypeFilter, contextRecencyFilter],
+    [contextSuggestions, contextSearchQuery, contextTypeFilter, contextRecencyFilter, patientFilter, consultationPatientMap],
+  );
+
+  const formatSourceLabel = useCallback((item: ContextItem): string => {
+    if (item.source === 'TRANSCRIPTION') return 'Live Transcription';
+    if (item.source === 'AI') return 'AI-generated';
+    if (item.source === 'SYSTEM') return 'System';
+    return 'Manual Entry';
+  }, []);
+
+  const formatItemDate = useCallback((value?: string): string => {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  }, []);
+
+  const renderItemMetaRow = useCallback(
+    (item: ContextItem, compact = false) => {
+      const meta = consultationMeta[item.consultationId];
+      const patientId = meta?.patientId;
+      const appointmentDate = meta?.appointmentDate;
+      const sourceLabel = formatSourceLabel(item);
+      const textSize = compact ? 'text-[10px]' : 'text-[11px]';
+      return (
+        <div className={`text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 ${textSize}`}>
+          <span className="flex items-center gap-1">
+            <User className="size-3" />
+            {patientId ?? 'Unknown patient'}
+          </span>
+          {appointmentDate && (
+            <span className="flex items-center gap-1">
+              <Calendar className="size-3" />
+              {appointmentDate}
+            </span>
+          )}
+          <span className="flex items-center gap-1">
+            <Mic className="size-3" />
+            {sourceLabel}
+          </span>
+          <span>{formatItemDate(item.createdAt)}</span>
+        </div>
+      );
+    },
+    [consultationMeta, formatSourceLabel, formatItemDate],
   );
 
   const hasManualText = Boolean(debugMode && contextText.trim());
-  const hasSelectedContextItems = selectedContextItems.length > 0;
+  const hasCustomItems = customItems.length > 0;
+  const hasSelectedContextItems = selectedContextItems.length > 0 || hasCustomItems;
   const selectedContextItemIds = selectedContextItems.map((item) => item.id);
+
+  const categoryLabel = useCallback((c: CustomItem['category']) => (c === 'VITALS' ? 'Vitals' : c === 'LABS' ? 'Lab Results' : 'Custom'), []);
+
+  // Combine real context items with custom items into a single list suitable for `buildAssembledPayload`.
+  const combinedItemsForPayload = useMemo(
+    () => [
+      ...selectedContextItems,
+      ...customItems.map((c) => ({
+        type: 'CUSTOM',
+        content: `${c.header}:\n${c.content}`,
+      })),
+    ],
+    [selectedContextItems, customItems],
+  );
+
+  const handleAddCustomItem = useCallback(() => {
+    const header = customHeader.trim();
+    const content = customContent.trim();
+    if (!header || !content) {
+      toast.error('Header and content are required');
+      return;
+    }
+    const id = `custom-${crypto.randomUUID?.() ?? Date.now().toString(36)}`;
+    setCustomItems((prev) => [...prev, { id, header, content, category: customCategory }]);
+    setCustomHeader('');
+    setCustomContent('');
+    setCustomCategory('OTHER');
+    toast.success(`${categoryLabel(customCategory)} item added`);
+  }, [customHeader, customContent, customCategory, categoryLabel]);
+
+  const handleRemoveCustomItem = useCallback((id: string) => {
+    setCustomItems((prev) => prev.filter((c) => c.id !== id));
+  }, []);
+
+  const applyCustomPreset = useCallback((preset: 'VITALS' | 'LABS') => {
+    setCustomCategory(preset);
+    if (preset === 'VITALS') {
+      setCustomHeader((h) => h || 'Latest Vitals');
+      setCustomContent((c) => c || 'BP: 120/80 mmHg\nHR: 72 bpm\nTemp: 37.0°C\nSpO2: 98%\nRR: 16/min');
+    } else {
+      setCustomHeader((h) => h || 'Lab Results');
+      setCustomContent((c) => c || 'Hb: 12.5 g/dL\nWBC: 8000\nPlatelets: 245k\nGlucose (fasting): 95 mg/dL');
+    }
+  }, []);
 
   const currentPromptText = selectedTemplate?.content ?? '';
   const currentDnaText = activeDnaStyle?.styleText ?? '';
@@ -261,7 +393,12 @@ export default function PreSummaryPage() {
       });
 
       const merged: ContextItem[] = [];
+      const metaMap: Record<string, { patientId?: string; appointmentDate?: string }> = {};
       for (const consultation of consultations.data ?? []) {
+        metaMap[consultation.id] = {
+          patientId: consultation.patientId,
+          appointmentDate: consultation.appointmentDate,
+        };
         await session.load(consultation.id);
         const freshState = useAgenticStore.getState();
         const { apiClient: freshClient, consultation: freshConsultation } = freshState;
@@ -277,6 +414,7 @@ export default function PreSummaryPage() {
         .slice(0, 40);
 
       setContextSuggestions(deduped);
+      setConsultationMeta(metaMap);
       setContextSuggestionsLoaded(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load context items';
@@ -321,6 +459,12 @@ export default function PreSummaryPage() {
     setContextSearchQuery('');
     setContextTypeFilter('ALL');
     setContextRecencyFilter('ALL');
+    setPatientFilter('ALL');
+    setConsultationMeta({});
+    setCustomItems([]);
+    setCustomHeader('');
+    setCustomContent('');
+    setCustomCategory('OTHER');
   }, [ctx.effectiveUserId]);
 
   useEffect(() => {
@@ -357,14 +501,29 @@ export default function PreSummaryPage() {
           max_tokens: maxTokens,
         };
 
-        Object.assign(
-          body,
-          buildAssembledPayload({
-            inputMode,
-            selectedContextItemIds,
-            contextText,
-          }),
-        );
+        // In debug + context-item mode, if inline custom items are present, switch to message mode
+        // (context_item_ids alone can't represent inline custom headers like Vitals/Labs).
+        if (inputMode === 'context_item' && hasCustomItems) {
+          Object.assign(
+            body,
+            buildAssembledPayload({
+              inputMode: 'context_item',
+              selectedContextItemIds,
+              contextText,
+              selectedContextItems: combinedItemsForPayload,
+              includeMessageForContextItems: true,
+            }),
+          );
+        } else {
+          Object.assign(
+            body,
+            buildAssembledPayload({
+              inputMode,
+              selectedContextItemIds,
+              contextText,
+            }),
+          );
+        }
 
         if (selectedTemplateId) body.prompt_template_id = selectedTemplateId;
         if (selectedDnaStyleId) body.dna_writing_style_id = selectedDnaStyleId;
@@ -491,13 +650,13 @@ export default function PreSummaryPage() {
           inputMode: 'context_item',
           selectedContextItemIds,
           contextText,
-          selectedContextItems,
+          selectedContextItems: combinedItemsForPayload,
           includeMessageForContextItems: true,
         });
 
         const contextMessage = nonDebugInputPayload.message ?? '';
         if (!contextMessage.trim()) {
-          toast.error('None of the selected context items have content');
+          toast.error('No usable context — please select items or add a custom entry');
           return;
         }
 
@@ -549,6 +708,8 @@ export default function PreSummaryPage() {
     currentDnaText,
     generateMutation,
     selectedContextItems,
+    combinedItemsForPayload,
+    hasCustomItems,
   ]);
 
   const loadSample = (key: keyof typeof SAMPLE_CONTEXTS) => {
@@ -646,8 +807,8 @@ export default function PreSummaryPage() {
 
                         <TabsContent value="context_item" className="flex flex-col gap-3 mt-3">
                           {/* Search & filter controls */}
-                          <div className="grid gap-2 sm:grid-cols-5">
-                            <div className="sm:col-span-3">
+                          <div className="grid gap-2 sm:grid-cols-6">
+                            <div className="sm:col-span-2">
                               <Label htmlFor="context-item-search" className="text-xs">
                                 Search Context Items
                               </Label>
@@ -655,12 +816,28 @@ export default function PreSummaryPage() {
                                 <Search className="text-muted-foreground absolute left-2 top-2.5 size-4" />
                                 <Input
                                   id="context-item-search"
-                                  placeholder="Search by context item ID (fuzzy match)..."
+                                  placeholder="Search by id or content..."
                                   value={contextSearchQuery}
                                   onChange={(e) => setContextSearchQuery(e.target.value)}
                                   className="pl-8 font-mono text-sm"
                                 />
                               </div>
+                            </div>
+                            <div className="sm:col-span-2">
+                              <Label className="text-xs">Patient</Label>
+                              <Select value={patientFilter} onValueChange={setPatientFilter}>
+                                <SelectTrigger className="mt-1 w-full">
+                                  <SelectValue placeholder="All patients" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="ALL">All patients</SelectItem>
+                                  {availablePatientIds.map((pid) => (
+                                    <SelectItem key={pid} value={pid}>
+                                      {pid}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             </div>
                             <div className="sm:col-span-1">
                               <Label className="text-xs">Item Type</Label>
@@ -759,6 +936,7 @@ export default function PreSummaryPage() {
                                                 ? `${preview.slice(0, 120)}...`
                                                 : preview || 'No preview available'}
                                           </p>
+                                          <div className="mt-1">{renderItemMetaRow(item, true)}</div>
                                         </button>
                                       );
                                     })}
@@ -774,7 +952,7 @@ export default function PreSummaryPage() {
                               <Label className="text-xs font-medium">Selected Context Items</Label>
                               {selectedContextItems.map((item) => (
                                 <div key={item.id} className="rounded-lg border bg-muted/30 p-3">
-                                  <div className="mb-2 flex items-center justify-between gap-2">
+                                  <div className="mb-1 flex items-center justify-between gap-2">
                                     <div className="flex min-w-0 items-center gap-2">
                                       <span className="truncate font-mono text-[11px]">{item.id}</span>
                                       <Badge variant="outline" className="text-[10px]">
@@ -797,6 +975,7 @@ export default function PreSummaryPage() {
                                       </Button>
                                     </div>
                                   </div>
+                                  <div className="mb-2">{renderItemMetaRow(item, true)}</div>
                                   <ScrollArea className="h-40 rounded border bg-background p-2">
                                     <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
                                       {item.content?.trim() || 'No content available'}
@@ -840,8 +1019,8 @@ export default function PreSummaryPage() {
                     ) : (
                       /* Production mode: context item selection only (no tabs) */
                       <div className="flex flex-col gap-3">
-                        <div className="grid gap-2 sm:grid-cols-5">
-                          <div className="sm:col-span-3">
+                        <div className="grid gap-2 sm:grid-cols-6">
+                          <div className="sm:col-span-2">
                             <Label htmlFor="context-item-search-prod" className="text-xs">
                               Search Context Items
                             </Label>
@@ -849,12 +1028,28 @@ export default function PreSummaryPage() {
                               <Search className="text-muted-foreground absolute left-2 top-2.5 size-4" />
                               <Input
                                 id="context-item-search-prod"
-                                placeholder="Search by context item ID (fuzzy match)..."
+                                placeholder="Search by id or content..."
                                 value={contextSearchQuery}
                                 onChange={(e) => setContextSearchQuery(e.target.value)}
                                 className="pl-8 font-mono text-sm"
                               />
                             </div>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <Label className="text-xs">Patient</Label>
+                            <Select value={patientFilter} onValueChange={setPatientFilter}>
+                              <SelectTrigger className="mt-1 w-full">
+                                <SelectValue placeholder="All patients" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ALL">All patients</SelectItem>
+                                {availablePatientIds.map((pid) => (
+                                  <SelectItem key={pid} value={pid}>
+                                    {pid}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </div>
                           <div className="sm:col-span-1">
                             <Label className="text-xs">Item Type</Label>
@@ -952,6 +1147,7 @@ export default function PreSummaryPage() {
                                               ? `${preview.slice(0, 120)}...`
                                               : preview || 'No preview available'}
                                         </p>
+                                        <div className="mt-1">{renderItemMetaRow(item, true)}</div>
                                       </button>
                                     );
                                   })}
@@ -966,7 +1162,7 @@ export default function PreSummaryPage() {
                             <Label className="text-xs font-medium">Selected Context Items</Label>
                             {selectedContextItems.map((item) => (
                               <div key={item.id} className="rounded-lg border bg-muted/30 p-3">
-                                <div className="mb-2 flex items-center justify-between gap-2">
+                                <div className="mb-1 flex items-center justify-between gap-2">
                                   <div className="flex min-w-0 items-center gap-2">
                                     <span className="truncate font-mono text-[11px]">{item.id}</span>
                                     <Badge variant="outline" className="text-[10px]">
@@ -989,6 +1185,7 @@ export default function PreSummaryPage() {
                                     </Button>
                                   </div>
                                 </div>
+                                <div className="mb-2">{renderItemMetaRow(item, true)}</div>
                                 <ScrollArea className="h-40 rounded border bg-background p-2">
                                   <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
                                     {item.content?.trim() || 'No content available'}
@@ -998,6 +1195,132 @@ export default function PreSummaryPage() {
                             ))}
                           </div>
                         )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Custom / Structured Clinical Inputs (Vitals, Labs, Custom headers) */}
+                <Card data-doc="smr-custom-items">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Plus className="size-4 text-purple-500" />
+                        <CardTitle className="text-sm">Custom Clinical Inputs</CardTitle>
+                      </div>
+                      {customItems.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          {customItems.length} added
+                        </Badge>
+                      )}
+                    </div>
+                    <CardDescription className="text-xs">
+                      Inject structured clinical data (Vitals, Lab Results, etc.) alongside the selected context items. Appears in the prompt under
+                      the provided header.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => applyCustomPreset('VITALS')}>
+                        + Vitals preset
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => applyCustomPreset('LABS')}>
+                        + Lab Results preset
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setCustomCategory('OTHER');
+                          setCustomHeader('');
+                          setCustomContent('');
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <div className="sm:col-span-1">
+                        <Label htmlFor="custom-category" className="text-xs">
+                          Category
+                        </Label>
+                        <Select value={customCategory} onValueChange={(v: string) => setCustomCategory(v as CustomItem['category'])}>
+                          <SelectTrigger id="custom-category" className="mt-1 w-full">
+                            <SelectValue placeholder="Category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="VITALS">Vitals</SelectItem>
+                            <SelectItem value="LABS">Lab Results</SelectItem>
+                            <SelectItem value="OTHER">Other / Custom</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Label htmlFor="custom-header" className="text-xs">
+                          Header
+                        </Label>
+                        <Input
+                          id="custom-header"
+                          placeholder='e.g. "Latest Vitals" or "Radiology Report"'
+                          value={customHeader}
+                          onChange={(e) => setCustomHeader(e.target.value)}
+                          className="mt-1 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="custom-content" className="text-xs">
+                        Content
+                      </Label>
+                      <Textarea
+                        id="custom-content"
+                        rows={4}
+                        placeholder='e.g. "BP: 138/85, HR: 72, Temp: 37.1°C, SpO2: 96%"'
+                        value={customContent}
+                        onChange={(e) => setCustomContent(e.target.value)}
+                        className="mt-1 font-mono text-xs resize-y"
+                      />
+                    </div>
+                    <div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleAddCustomItem}
+                        disabled={!customHeader.trim() || !customContent.trim()}
+                      >
+                        <Plus className="mr-1 size-3.5" />
+                        Add to Prompt
+                      </Button>
+                    </div>
+
+                    {customItems.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        <Label className="text-xs font-medium">Added Custom Items</Label>
+                        {customItems.map((c) => (
+                          <div key={c.id} className="rounded-lg border bg-muted/30 p-3">
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <Badge variant="outline" className="text-[10px]">
+                                  {categoryLabel(c.category)}
+                                </Badge>
+                                <span className="truncate text-xs font-medium">{c.header}</span>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-6"
+                                onClick={() => handleRemoveCustomItem(c.id)}
+                                aria-label={`Remove ${c.header}`}
+                              >
+                                <X className="size-3.5" />
+                              </Button>
+                            </div>
+                            <p className="text-muted-foreground whitespace-pre-wrap text-xs leading-relaxed">{c.content}</p>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </CardContent>

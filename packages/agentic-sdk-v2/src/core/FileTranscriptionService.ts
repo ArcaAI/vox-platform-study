@@ -119,6 +119,12 @@ export class FileTranscriptionService {
     options: FileTranscribeOptions & {
       signal?: AbortSignal;
       onProgress?: (progress: number) => void;
+      /**
+       * Per-upload XHR timeout in milliseconds. Defaults to `0` (no timeout) since medical audio
+       * files of 20+ minutes routinely exceed short client-wide defaults. Cancellation should be
+       * driven by `signal` (user-initiated abort) and network errors are reported via `onerror`.
+       */
+      timeout?: number;
     },
   ): Promise<TranscriptionJobResponse> {
     this.logger?.debug('Uploading file for transcription (with progress)', {
@@ -156,7 +162,14 @@ export class FileTranscriptionService {
     const response = await this.apiClient.uploadFormData<TranscriptionJobResponse | BatchTranscribeResponse>(
       STT_V2_ENDPOINTS.TRANSCRIBE,
       formData,
-      { signal: options.signal, onProgress: options.onProgress },
+      {
+        signal: options.signal,
+        onProgress: options.onProgress,
+        // Default: disable the XHR timeout for batch audio uploads. Arbitrary-length medical
+        // recordings must not be cut off by a 30-second client-wide default. Cancellation is
+        // handled explicitly via `signal`.
+        timeout: options.timeout ?? 0,
+      },
     );
 
     const job = this.normalizeJobResponse(response, options.pipelineId);
