@@ -3,6 +3,7 @@ export interface ContextItemLike {
   type?: string;
   content?: string;
   createdAt?: string;
+  consultationId?: string;
 }
 
 export type ContextRecency = 'ALL' | '24H' | '7D' | '30D';
@@ -11,6 +12,10 @@ export interface ContextItemFilter {
   query: string;
   type: string;
   recency: ContextRecency;
+  /** Optional patient filter — compares against the patientId resolved from an item's consultationId. 'ALL' disables filtering. */
+  patientId?: string;
+  /** Lookup: consultationId -> patientId, used with `patientId` filter. */
+  consultationPatientMap?: Record<string, string | undefined>;
 }
 
 function isFuzzyMatch(value: string, query: string): boolean {
@@ -45,13 +50,16 @@ function isWithinRecency(createdAt: string | undefined, recency: ContextRecency,
 
 export function filterContextItems(items: ContextItemLike[], filter: ContextItemFilter, now = new Date()): ContextItemLike[] {
   const query = filter.query.trim();
+  const patientFilter = filter.patientId && filter.patientId !== 'ALL' ? filter.patientId : undefined;
+  const patientMap = filter.consultationPatientMap ?? {};
 
   return items.filter((item) => {
     const itemType = item.type ?? 'UNKNOWN';
-    const idMatch = isFuzzyMatch(item.id, query);
+    const idMatch = isFuzzyMatch(item.id, query) || isFuzzyMatch(item.content ?? '', query);
     const typeMatch = filter.type === 'ALL' || itemType === filter.type;
     const recencyMatch = isWithinRecency(item.createdAt, filter.recency, now);
+    const patientMatch = !patientFilter || (item.consultationId ? patientMap[item.consultationId] === patientFilter : false);
 
-    return idMatch && typeMatch && recencyMatch;
+    return idMatch && typeMatch && recencyMatch && patientMatch;
   });
 }

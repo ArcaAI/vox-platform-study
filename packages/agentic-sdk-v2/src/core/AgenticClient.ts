@@ -505,6 +505,12 @@ export class AgenticClient {
     options?: {
       signal?: AbortSignal;
       onProgress?: (progress: number) => void;
+      /**
+       * Request timeout in milliseconds. Pass `0` to disable the timeout entirely (recommended
+       * for long-running uploads like large audio files, where `signal` + progress events
+       * are used instead). Defaults to the client-wide timeout.
+       */
+      timeout?: number;
     },
   ): Promise<T> {
     this.checkRateLimit();
@@ -551,7 +557,9 @@ export class AgenticClient {
         xhr.setRequestHeader(key, value);
       }
 
-      xhr.timeout = this.timeout;
+      const effectiveTimeout = options?.timeout ?? this.timeout;
+      // XHR treats `timeout === 0` as "no timeout", which we want for arbitrary-size uploads.
+      xhr.timeout = effectiveTimeout;
 
       if (options?.signal) {
         if (options.signal.aborted) {
@@ -619,7 +627,7 @@ export class AgenticClient {
 
       xhr.ontimeout = () => {
         reject(new AgenticError('NETWORK_ERROR', 'Request timeout', {
-          context: { timeout: this.timeout, endpoint, requestId },
+          context: { timeout: effectiveTimeout, endpoint, requestId },
         }));
       };
 
