@@ -317,11 +317,24 @@ function BatchTranscriptPanel() {
               <div className="flex items-center gap-2 rounded-lg border px-3 py-1.5">
                 <FileAudio className="text-muted-foreground size-3.5" />
                 <span className="text-xs">{selectedFile.name}</span>
+                <Badge variant="secondary" className="shrink-0 text-[10px]">
+                  {(selectedFile.size / (1024 * 1024)).toFixed(1)} MB
+                </Badge>
               </div>
               <div className="flex flex-1 items-center gap-2">
                 <Progress value={fileTranscription.uploadProgress} className="h-2" />
                 <span className="text-[10px] font-medium tabular-nums">{fileTranscription.uploadProgress}%</span>
               </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={fileTranscription.cancel}
+                className="h-7 gap-1 text-xs text-destructive hover:text-destructive"
+                aria-label="Cancel upload"
+              >
+                <X className="size-3.5" />
+                Cancel
+              </Button>
             </div>
           )}
 
