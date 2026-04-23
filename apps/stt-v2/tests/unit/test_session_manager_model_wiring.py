@@ -16,6 +16,7 @@ Also covers the ``_check_streaming()`` health helper added to
 
 import asyncio
 from dataclasses import dataclass
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -386,7 +387,15 @@ class TestMakeAsrCallable:
 
     @staticmethod
     def _mock_inference_config(**overrides):
-        defaults = {"beam_size": 1, "code_switching": False, "language": "en", "temperature": None}
+        defaults = {
+            "beam_size": 1,
+            "code_switching": False,
+            "language": "en",
+            "temperature": None,
+            # Explicitly False so getattr doesn't return a truthy MagicMock
+            # and accidentally flip condition_on_prev_tokens on.
+            "condition_on_prev_tokens": False,
+        }
         defaults.update(overrides)
         return MagicMock(**defaults)
 
@@ -437,6 +446,123 @@ class TestMakeAsrCallable:
         call_args = loaded.processor.call_args
         np.testing.assert_array_equal(call_args[0][0], samples)
         assert call_args[1]["sampling_rate"] == 8000
+
+    @pytest.mark.asyncio
+    async def test_passes_language_to_processor_that_requires_it(self):
+        mgr = _make_manager()
+
+        mock_model = MagicMock()
+        mock_model.dtype = torch.float32
+        mock_model.generate.return_value = torch.tensor([[1, 2, 3]])
+
+        class _LanguageRequiredProcessor:
+            def __init__(self) -> None:
+                self.called_language: str | None = None
+                self.batch_decode = MagicMock(return_value=["transcribed text"])
+                self.decode = MagicMock(return_value={"offsets": []})
+
+            def __call__(
+                self,
+                audio: np.ndarray,
+                language: str,
+                sampling_rate: int | None = None,
+                return_tensors: str | None = None,
+                return_attention_mask: bool | None = None,
+            ) -> dict[str, Any]:
+                self.called_language = language
+
+                input_features = MagicMock()
+                input_features.is_floating_point.return_value = True
+                input_features.to.return_value = input_features
+
+                attention_mask = MagicMock()
+                attention_mask.is_floating_point.return_value = False
+                attention_mask.to.return_value = attention_mask
+
+                return {
+                    "input_features": input_features,
+                    "attention_mask": attention_mask,
+                }
+
+        processor = _LanguageRequiredProcessor()
+
+        loaded = MagicMock()
+        loaded.model = mock_model
+        loaded.processor = processor
+        loaded.feature_extractor = None
+        loaded.device = torch.device("cpu")
+
+        fn = mgr._make_asr_callable(
+            loaded,
+            self._mock_inference_config(language="fr", code_switching=False),
+        )
+
+        await fn(np.zeros(16000, dtype=np.float32), 16000)
+        assert processor.called_language == "fr"
+
+    @pytest.mark.asyncio
+    async def test_raises_when_required_processor_language_missing(self):
+        mgr = _make_manager()
+
+        mock_model = MagicMock()
+        mock_model.dtype = torch.float32
+        mock_model.generate.return_value = torch.tensor([[1, 2, 3]])
+
+        class _LanguageRequiredProcessor:
+            def __init__(self) -> None:
+                self.batch_decode = MagicMock(return_value=["transcribed text"])
+                self.decode = MagicMock(return_value={"offsets": []})
+
+            def __call__(
+                self,
+                audio: np.ndarray,
+                language: str,
+                sampling_rate: int | None = None,
+                return_tensors: str | None = None,
+                return_attention_mask: bool | None = None,
+            ) -> dict[str, Any]:
+                del audio, language, sampling_rate, return_tensors, return_attention_mask
+                return {"input_features": MagicMock()}
+
+        loaded = MagicMock()
+        loaded.model = mock_model
+        loaded.processor = _LanguageRequiredProcessor()
+        loaded.feature_extractor = None
+        loaded.device = torch.device("cpu")
+
+        fn = mgr._make_asr_callable(
+            loaded,
+            self._mock_inference_config(language=None, code_switching=False),
+        )
+
+        with pytest.raises(RuntimeError, match="requires inference language"):
+            await fn(np.zeros(16000, dtype=np.float32), 16000)
+
+    @pytest.mark.asyncio
+    async def test_forwards_condition_on_prev_tokens_when_enabled(self):
+        """condition_on_prev_tokens=True on inference config must reach model.generate."""
+        mgr = _make_manager()
+        loaded = self._mock_asr_model(text="ok")
+        config = self._mock_inference_config(condition_on_prev_tokens=True)
+
+        fn = mgr._make_asr_callable(loaded, config)
+        await fn(np.zeros(16000, dtype=np.float32), 16000)
+
+        call_kwargs = loaded.model.generate.call_args[1]
+        assert call_kwargs.get("condition_on_prev_tokens") is True
+
+    @pytest.mark.asyncio
+    async def test_omits_condition_on_prev_tokens_when_disabled(self):
+        """Explicit condition_on_prev_tokens=False must not appear in generate kwargs."""
+        mgr = _make_manager()
+        loaded = self._mock_asr_model(text="ok")
+        config = self._mock_inference_config(condition_on_prev_tokens=False)
+
+        fn = mgr._make_asr_callable(loaded, config)
+        await fn(np.zeros(16000, dtype=np.float32), 16000)
+
+        call_kwargs = loaded.model.generate.call_args[1]
+        assert "condition_on_prev_tokens" not in call_kwargs
 
 
 # ---------------------------------------------------------------------------

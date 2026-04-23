@@ -23,7 +23,7 @@ import numpy as np
 import structlog
 
 from stt_v2.core.initial_prompt import compose_prompt
-from stt_v2.pipeline.dto import PostprocessingConfig
+from stt_v2.pipeline.dto import InferenceConfig, PostprocessingConfig
 from stt_v2.streaming.preprocessor import AudioUtterance
 from stt_v2.streaming.redis_streams import ResultPublisher
 from stt_v2.streaming.schemas import SegmentResult
@@ -35,7 +35,6 @@ _MAX_SEGMENT_TEXT_CHARS = 1200
 _HALLUCINATION_RMS_THRESHOLD = 0.01  # ~-40 dBFS -- below this is near-silence
 _HALLUCINATION_SHORT_WORD_COUNT = 3  # texts with <= N words on low energy are suspect
 _HALLUCINATION_MAX_WPS = 8.0  # max plausible words-per-second (normal speech ~2-4 wps)
-_CONTEXT_CARRY_MAX_WORDS = 20  # max words from previous utterance as prompt context
 _PARTIAL_TAIL_WINDOW_S = 10.0  # cap Whisper input for partials to last 10s
 _FILLER_PATTERN = re.compile(
     r"^\s*(?:uh|um|ah|oh|hmm|huh|mhm|mm|oh\s*,?\s*man|\.\..+|,|\s)*\.?\s*$",
@@ -78,6 +77,7 @@ class StreamingInferenceWorker:
         postprocessing_config: PostprocessingConfig | None = None,
         initial_prompt: str | None = None,
         speaker_identifier: Any = None,
+        prev_text_context_words: int | None = None,
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
@@ -94,6 +94,12 @@ class StreamingInferenceWorker:
         self._previous_text: str = ""
         self._initial_prompt: str | None = initial_prompt
         self._speaker_identifier = speaker_identifier
+        if isinstance(prev_text_context_words, int) and not isinstance(
+            prev_text_context_words, bool
+        ):
+            self._prev_text_context_words = max(0, prev_text_context_words)
+        else:
+            self._prev_text_context_words = InferenceConfig().prev_text_context_words
 
     @property
     def has_pipeline(self) -> bool:
@@ -173,8 +179,13 @@ class StreamingInferenceWorker:
             text = ""
 
         if text.strip():
-            words = text.strip().split()
-            self._previous_text = " ".join(words[-_CONTEXT_CARRY_MAX_WORDS:])
+            if self._prev_text_context_words > 0:
+                words = text.strip().split()
+                self._previous_text = " ".join(
+                    words[-self._prev_text_context_words:]
+                )
+            else:
+                self._previous_text = ""
 
         # Step 2b: Punctuation restoration (postprocessor)
         if self._punctuation_config and self._punctuation_config.enabled:

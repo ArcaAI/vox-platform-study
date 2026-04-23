@@ -639,6 +639,42 @@ class TestProcessPartial:
         assert result.is_final is True
         assert "hello world" in worker._previous_text
 
+    @pytest.mark.asyncio
+    async def test_prev_text_context_words_zero_disables_carry(self):
+        """Setting prev_text_context_words=0 must produce empty _previous_text.
+
+        Regression test for a `words[-0:]` bug that previously sliced the full
+        list and propagated the entire utterance as prompt context.
+        """
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: "one two three four five",
+            prev_text_context_words=0,
+        )
+        utt = _make_utterance(is_final=True)
+
+        with patch.object(
+            worker, "_extract_embedding", new_callable=AsyncMock, return_value=None
+        ):
+            await worker.process_utterance("sess-1", utt)
+
+        assert worker._previous_text == ""
+
+    @pytest.mark.asyncio
+    async def test_prev_text_context_words_caps_carry(self):
+        """Only the tail N words should carry forward when configured."""
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: "one two three four five",
+            prev_text_context_words=2,
+        )
+        utt = _make_utterance(is_final=True)
+
+        with patch.object(
+            worker, "_extract_embedding", new_callable=AsyncMock, return_value=None
+        ):
+            await worker.process_utterance("sess-1", utt)
+
+        assert worker._previous_text == "four five"
+
 
 # =========================================================================
 # Tests: PostprocessingConfig wiring (Step 2)

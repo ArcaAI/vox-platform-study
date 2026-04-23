@@ -4,7 +4,6 @@ import { useDoctorContext } from '@/features/summarization/hooks/use-doctor-cont
 import { useFileTranscription } from '@/hooks/use-file-transcription';
 import { useAudioStore } from '@/store/audio-store';
 import { useAuthStore } from '@/store/auth-store';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
@@ -13,7 +12,7 @@ import { Progress } from '@arcaai/ui/progress';
 import { ScrollArea } from '@arcaai/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
 import { useAuth, usePipelines } from '@arcaai/vox';
-import { AlertCircle, CloudUpload, FileAudio, Info, Languages, RefreshCw, Server, Trash2, Upload, X } from 'lucide-react';
+import { AlertCircle, CloudUpload, FileAudio, Languages, RefreshCw, Server, Trash2, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AudioImpersonationBanner, AudioPageHeaderAction } from './components/audio-page-chrome';
@@ -204,18 +203,6 @@ function BatchTranscriptPanel() {
             <div className="flex items-center gap-2">
               <Languages className="size-4" />
               <CardTitle className="text-sm">Language</CardTitle>
-              {language && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="size-3.5 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-xs">Overrides the pipeline's default language setting</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -232,7 +219,9 @@ function BatchTranscriptPanel() {
                 ))}
               </SelectContent>
             </Select>
-            {!language && (
+            {language ? (
+              <p className="text-amber-500 text-[10px]">Not recommended: overrides the pipeline's default language setting</p>
+            ) : (
               <p className="text-muted-foreground text-[10px]">Uses language configured in the pipeline YAML</p>
             )}
           </CardContent>

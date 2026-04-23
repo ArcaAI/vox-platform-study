@@ -363,8 +363,12 @@ class TestInferenceConfig:
         assert config.compute_type == "auto"
         assert config.device == "auto"
         assert config.beam_size == 5
-        assert config.temperature == 0.0
+        assert config.temperature == [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
         assert config.language is None
+        assert config.compression_ratio_threshold == 2.4
+        assert config.logprob_threshold == -1.0
+        assert config.no_speech_threshold == 0.6
+        assert config.no_repeat_ngram_size == 3
 
     def test_language_override(self):
         """Test language specification."""
@@ -965,14 +969,35 @@ class TestInferenceConfigEdgeCases:
         assert config.batch_size == 64
 
     def test_temperature_zero(self):
-        """Test zero temperature (deterministic)."""
-        config = InferenceConfig(temperature=0.0)
-        assert config.temperature == 0.0
+        """Test zero temperature list (deterministic greedy decoding)."""
+        config = InferenceConfig(temperature=[0.0])
+        assert config.temperature == [0.0]
 
     def test_high_temperature(self):
-        """Test high temperature."""
-        config = InferenceConfig(temperature=2.0)
-        assert config.temperature == 2.0
+        """Test high temperature list."""
+        config = InferenceConfig(temperature=[2.0])
+        assert config.temperature == [2.0]
+
+    def test_temperature_fallback_list(self):
+        """Temperature can be a list to drive Whisper's fallback loop."""
+        config = InferenceConfig(temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+        assert config.temperature == [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+
+    def test_threshold_triad_can_be_set(self):
+        """compression_ratio/logprob/no_speech thresholds are configurable."""
+        config = InferenceConfig(
+            compression_ratio_threshold=2.4,
+            logprob_threshold=-1.0,
+            no_speech_threshold=0.6,
+        )
+        assert config.compression_ratio_threshold == 2.4
+        assert config.logprob_threshold == -1.0
+        assert config.no_speech_threshold == 0.6
+
+    def test_no_repeat_ngram_size_configurable(self):
+        """no_repeat_ngram_size is an exposed knob for Whisper decoding."""
+        config = InferenceConfig(no_repeat_ngram_size=5)
+        assert config.no_repeat_ngram_size == 5
 
     def test_beam_size_one(self):
         """Test beam size of 1 (greedy decoding)."""
