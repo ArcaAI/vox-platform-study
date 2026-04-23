@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from stt_v2.pipeline.dto import AiModelFormat
+from stt_v2.pipeline.dto import AiModelFormat, InferenceConfig
 from stt_v2.pipeline.yaml_parser import PipelineYamlParser, get_yaml_parser
 
 
@@ -1619,3 +1619,261 @@ inference:
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
         assert result.valid is True
+
+
+# =========================================================================
+# Whisper decoding knobs (num_beams, temperature, threshold triad,
+# no_repeat_ngram_size) exposed via YAML — parsing + backward compatibility.
+# =========================================================================
+
+
+class TestYamlParserInferenceKeys:
+    """Parsing behaviour for the Whisper decoding knobs."""
+
+    @pytest.fixture
+    def parser(self):
+        return PipelineYamlParser()
+
+    def test_scalar_temperature_legacy_coerced_to_list(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  temperature: 0.0
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.inference.temperature == [0.0]
+
+    def test_list_temperature_preserved(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  temperature: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.inference.temperature == [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+
+    def test_missing_temperature_uses_dataclass_default(self, parser):
+        """Omitting temperature keeps the dataclass default fallback list."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.inference.temperature == InferenceConfig().temperature
+
+    def test_missing_threshold_triad_uses_dataclass_defaults(self, parser):
+        """Omitting the threshold triad keeps the dataclass defaults."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+"""
+        spec = parser.parse(yaml_content)
+        defaults = InferenceConfig()
+        assert (
+            spec.inference.compression_ratio_threshold
+            == defaults.compression_ratio_threshold
+        )
+        assert spec.inference.logprob_threshold == defaults.logprob_threshold
+        assert spec.inference.no_speech_threshold == defaults.no_speech_threshold
+
+    def test_explicit_null_threshold_triad_disables_each(self, parser):
+        """Explicit ``null`` in YAML overrides dataclass defaults to None."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  compression_ratio_threshold: null
+  logprob_threshold: null
+  no_speech_threshold: null
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.inference.compression_ratio_threshold is None
+        assert spec.inference.logprob_threshold is None
+        assert spec.inference.no_speech_threshold is None
+
+    def test_threshold_triad_parsed_when_present(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  compression_ratio_threshold: 2.4
+  logprob_threshold: -1.0
+  no_speech_threshold: 0.6
+  no_repeat_ngram_size: 3
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.inference.compression_ratio_threshold == 2.4
+        assert spec.inference.logprob_threshold == -1.0
+        assert spec.inference.no_speech_threshold == 0.6
+        assert spec.inference.no_repeat_ngram_size == 3
+
+    def test_no_repeat_ngram_size_zero_parsed(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  no_repeat_ngram_size: 0
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.inference.no_repeat_ngram_size == 0
+
+    def test_beam_size_parsed(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  beam_size: 2
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.inference.beam_size == 2
+
+
+class TestYamlParserInferenceValidation:
+    """Validation behaviour for the Whisper decoding knobs."""
+
+    @pytest.fixture
+    def parser(self):
+        return PipelineYamlParser()
+
+    def test_valid_anti_hallucination_config(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  beam_size: 2
+  temperature: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+  compression_ratio_threshold: 2.4
+  logprob_threshold: -1.0
+  no_speech_threshold: 0.6
+  no_repeat_ngram_size: 3
+"""
+        spec = parser.parse(yaml_content)
+        result = parser.validate(spec)
+        assert result.valid, f"Errors: {[str(e) for e in result.errors]}"
+
+    def test_temperature_list_with_value_out_of_range_fails(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  temperature: [0.0, 3.0]
+"""
+        spec = parser.parse(yaml_content)
+        result = parser.validate(spec)
+        assert not result.valid
+        assert any(
+            "temperature" in e.field for e in result.errors
+        ), f"Errors were: {[str(e) for e in result.errors]}"
+
+    def test_empty_temperature_list_fails(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  temperature: []
+"""
+        spec = parser.parse(yaml_content)
+        result = parser.validate(spec)
+        assert not result.valid
+        assert any("temperature" in e.field for e in result.errors)
+
+    def test_negative_compression_ratio_fails(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  compression_ratio_threshold: -1.0
+"""
+        spec = parser.parse(yaml_content)
+        result = parser.validate(spec)
+        assert not result.valid
+        assert any(
+            "compression_ratio_threshold" in e.field for e in result.errors
+        )
+
+    def test_positive_logprob_threshold_fails(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  logprob_threshold: 0.5
+"""
+        spec = parser.parse(yaml_content)
+        result = parser.validate(spec)
+        assert not result.valid
+        assert any("logprob_threshold" in e.field for e in result.errors)
+
+    def test_no_speech_threshold_out_of_range_fails(self, parser):
+        for bad_value in (-0.1, 1.5):
+            yaml_content = f"""
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  no_speech_threshold: {bad_value}
+"""
+            spec = parser.parse(yaml_content)
+            result = parser.validate(spec)
+            assert not result.valid, f"{bad_value} should be rejected"
+            assert any(
+                "no_speech_threshold" in e.field for e in result.errors
+            ), f"{bad_value} should raise the right error"
+
+    def test_no_repeat_ngram_size_out_of_range_fails(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  no_repeat_ngram_size: 20
+"""
+        spec = parser.parse(yaml_content)
+        result = parser.validate(spec)
+        assert not result.valid
+        assert any(
+            "no_repeat_ngram_size" in e.field for e in result.errors
+        )
+
+    def test_negative_no_repeat_ngram_size_fails(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  no_repeat_ngram_size: -1
+"""
+        spec = parser.parse(yaml_content)
+        result = parser.validate(spec)
+        assert not result.valid
+        assert any(
+            "no_repeat_ngram_size" in e.field for e in result.errors
+        )
+
+    def test_scalar_temperature_out_of_range_still_fails(self, parser):
+        """Legacy scalar temperature still respects the [0, 2] range."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  temperature: 3.0
+"""
+        spec = parser.parse(yaml_content)
+        result = parser.validate(spec)
+        assert not result.valid
+        assert any("temperature" in e.field for e in result.errors)

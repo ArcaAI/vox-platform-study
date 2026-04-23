@@ -10,6 +10,7 @@ ASR engines supported:
 """
 
 import asyncio
+import inspect
 import io
 import json
 import logging
@@ -42,7 +43,7 @@ from ..models.azure_speech_loader import normalize_language_for_azure
 from ..models.base_loader import LoadedModel
 from ..models.cache import get_model_cache
 from ..pipeline.config_reader import get_model_reader
-from ..pipeline.dto import AiModelFormat, ModelTaskType, PipelineConfig
+from ..pipeline.dto import AiModelFormat, InferenceConfig, ModelTaskType, PipelineConfig
 from .dto import (
     AudioSegment,
     ChunkTranscriptionResult,
@@ -55,8 +56,6 @@ from .dto import (
 from .preprocessing import get_preprocessor
 
 logger = logging.getLogger(__name__)
-
-_CONTEXT_CARRY_MAX_WORDS = 20  # max words from previous segment as prompt context
 
 
 class BatchTranscriptionService:
@@ -900,6 +899,78 @@ class BatchTranscriptionService:
         """Decode generated token IDs into plain text."""
         return processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
 
+    @staticmethod
+    def _inspect_processor_language_support(processor: Any) -> tuple[bool, bool]:
+        """Return ``(supports_language, requires_language)`` for a processor."""
+        try:
+            signature = inspect.signature(processor.__call__)
+        except (TypeError, ValueError):
+            return False, False
+
+        language_param = signature.parameters.get("language")
+        if language_param is None:
+            return False, False
+
+        requires_language = language_param.default is inspect.Signature.empty
+        return True, requires_language
+
+    @staticmethod
+    def _processor_accepts_kwarg(processor: Any, kwarg: str) -> bool:
+        """Return True if ``processor.__call__`` accepts ``kwarg``.
+
+        Conservatively returns True when the signature cannot be introspected
+        or when the callable exposes ``**kwargs``, so callers don't drop valid
+        arguments for unusual processor wrappers.
+        """
+        try:
+            signature = inspect.signature(processor.__call__)
+        except (TypeError, ValueError):
+            return True
+
+        parameters = signature.parameters
+        if kwarg in parameters:
+            return True
+        return any(
+            p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()
+        )
+
+    def _prepare_asr_inputs(
+        self,
+        processor: Any,
+        samples: np.ndarray,
+        sample_rate: int,
+        *,
+        language: str | None,
+        code_switching: bool,
+        return_attention_mask: bool = False,
+    ) -> dict[str, Any]:
+        """Build processor inputs while handling processor-specific language args."""
+        supports_language, requires_language = self._inspect_processor_language_support(
+            processor
+        )
+
+        if requires_language and language is None:
+            raise TranscriptionError(
+                "ASR processor requires inference language, but inference.language is not set."
+            )
+
+        processor_kwargs: dict[str, Any] = {
+            "sampling_rate": sample_rate,
+            "return_tensors": "pt",
+        }
+        if return_attention_mask and self._processor_accepts_kwarg(
+            processor, "return_attention_mask"
+        ):
+            processor_kwargs["return_attention_mask"] = True
+        if (
+            supports_language
+            and language is not None
+            and (requires_language or not code_switching)
+        ):
+            processor_kwargs["language"] = language
+
+        return processor(samples, **processor_kwargs)
+
     def _generate_english_translation(
         self,
         model: Any,
@@ -969,9 +1040,16 @@ class BatchTranscriptionService:
         """
         settings = get_settings()
         chunk_length_s = float(settings.transcription_chunk_length_s)
-        stride_parts = [int(s.strip()) for s in settings.transcription_stride_length_s.split(",")]
+        stride_parts = [
+            int(s.strip()) for s in settings.transcription_stride_length_s.split(",")
+        ]
         stride_left = stride_parts[0] if len(stride_parts) >= 1 else 4
         stride_right = stride_parts[1] if len(stride_parts) >= 2 else 2
+        raw_carry = getattr(config, "prev_text_context_words", None)
+        if isinstance(raw_carry, int) and not isinstance(raw_carry, bool):
+            carry_max_words = max(0, raw_carry)
+        else:
+            carry_max_words = InferenceConfig().prev_text_context_words
 
         all_segments: list[dict[str, Any]] = []
         all_word_timestamps: list[dict[str, Any]] = []
@@ -1181,7 +1259,11 @@ class BatchTranscriptionService:
                         )  # use original for dedup matching
                         # Update prompt for next sub-chunk with latest text
                         words = sub_result.text.strip().split()
-                        carry = " ".join(words[-_CONTEXT_CARRY_MAX_WORDS:])
+                        carry = (
+                            " ".join(words[-carry_max_words:])
+                            if carry_max_words > 0
+                            else ""
+                        )
                         segment_prompt = compose_prompt(initial_prompt, carry)
                         sub_seg: dict[str, Any] = {
                             "text": chunk_text,
@@ -1333,7 +1415,11 @@ class BatchTranscriptionService:
                 all_text_parts.append(seg_merged_text)
                 # Carry forward last N words for next segment's prompt
                 words = seg_merged_text.strip().split()
-                previous_segment_text = " ".join(words[-_CONTEXT_CARRY_MAX_WORDS:])
+                previous_segment_text = (
+                    " ".join(words[-carry_max_words:])
+                    if carry_max_words > 0
+                    else ""
+                )
             all_segments.extend(seg_segments)
             all_word_timestamps.extend(seg_word_ts)
 
@@ -1673,11 +1759,17 @@ class BatchTranscriptionService:
         if processor is None:
             raise TranscriptionError("Model processor not available")
 
+        code_switching = getattr(config, "code_switching", False)
+        lang = getattr(config, "language", None)
+
         # Prepare input
-        inputs = processor(
+        inputs = self._prepare_asr_inputs(
+            processor,
             samples,
-            sampling_rate=sample_rate,
-            return_tensors="pt",
+            sample_rate,
+            language=lang,
+            code_switching=code_switching,
+            return_attention_mask=True,
         )
 
         # Move to device
@@ -1718,9 +1810,6 @@ class BatchTranscriptionService:
         with torch.no_grad():
             # Check if model supports generate (Whisper, Seq2Seq)
             if hasattr(asr_model, "generate"):
-                code_switching = getattr(config, "code_switching", False)
-                lang = getattr(config, "language", None)
-
                 generate_kwargs: dict[str, Any] = {
                     "task": "transcribe",
                     "return_timestamps": True,
@@ -1731,20 +1820,47 @@ class BatchTranscriptionService:
                 if not code_switching and lang is not None:
                     generate_kwargs["language"] = lang
 
-                # Beam search configuration
+                no_repeat_ngram_size = getattr(config, "no_repeat_ngram_size", None)
+                if isinstance(no_repeat_ngram_size, int) and no_repeat_ngram_size > 0:
+                    generate_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
+
                 beam_size = getattr(config, "beam_size", None)
-                if beam_size and beam_size > 1:
+                if isinstance(beam_size, int) and beam_size > 1:
                     generate_kwargs["num_beams"] = beam_size
 
-                # Temperature / sampling configuration
                 temperature = getattr(config, "temperature", None)
-                if temperature is not None and temperature == 0.0:
-                    generate_kwargs["do_sample"] = False
-                elif temperature is not None:
-                    generate_kwargs["do_sample"] = True
-                    generate_kwargs["temperature"] = temperature
+                if isinstance(temperature, (int, float)) and not isinstance(
+                    temperature, bool
+                ):
+                    temperature = [float(temperature)]
+                if isinstance(temperature, (list, tuple)) and len(temperature) > 0:
+                    temp_list = [float(x) for x in temperature]
+                    if len(temp_list) == 1:
+                        generate_kwargs["temperature"] = temp_list[0]
+                        generate_kwargs["do_sample"] = temp_list[0] > 0.0
+                    else:
+                        generate_kwargs["temperature"] = tuple(temp_list)
 
-                # Remove None values
+                compression_ratio_threshold = getattr(
+                    config, "compression_ratio_threshold", None
+                )
+                if isinstance(compression_ratio_threshold, (int, float)):
+                    generate_kwargs["compression_ratio_threshold"] = float(
+                        compression_ratio_threshold
+                    )
+
+                logprob_threshold = getattr(config, "logprob_threshold", None)
+                if isinstance(logprob_threshold, (int, float)):
+                    generate_kwargs["logprob_threshold"] = float(logprob_threshold)
+
+                no_speech_threshold = getattr(config, "no_speech_threshold", None)
+                if isinstance(no_speech_threshold, (int, float)):
+                    generate_kwargs["no_speech_threshold"] = float(no_speech_threshold)
+
+                raw_condition = getattr(config, "condition_on_prev_tokens", False)
+                if isinstance(raw_condition, (bool, int)) and bool(raw_condition):
+                    generate_kwargs["condition_on_prev_tokens"] = True
+
                 generate_kwargs = {k: v for k, v in generate_kwargs.items() if v is not None}
 
                 # Inject prompt_ids for Whisper conditioning
@@ -1993,24 +2109,27 @@ class BatchTranscriptionService:
         chunk_length_s = float(settings.transcription_chunk_length_s)
 
         # Parse stride from settings (e.g. "4,2" -> left=4, right=2)
-        stride_parts = [int(s.strip()) for s in settings.transcription_stride_length_s.split(",")]
+        stride_parts = [
+            int(s.strip()) for s in settings.transcription_stride_length_s.split(",")
+        ]
         stride_left = stride_parts[0] if len(stride_parts) >= 1 else 4
         stride_right = stride_parts[1] if len(stride_parts) >= 2 else 2
         stride_s = stride_left + stride_right
         step_s = chunk_length_s - stride_s  # non-overlapping advance
 
         # Build generate kwargs (reused per chunk).
-        # IMPORTANT: We use return_timestamps=False for the generate() call.
+        # IMPORTANT: We pass return_timestamps=False to the generate() call.
         # Setting return_timestamps=True triggers Whisper's internal
         # sequential long-form decoding which is extremely slow (~20x).
         # Instead, timestamps are extracted via processor.decode(output_offsets=True)
         # which reads the timestamp tokens from the generated sequence.
+        code_switching = getattr(config, "code_switching", False)
+        lang = getattr(config, "language", None)
+
         generate_kwargs: dict[str, Any] = {
             "task": "transcribe",
             "return_timestamps": False,
         }
-        code_switching = getattr(config, "code_switching", False)
-        lang = getattr(config, "language", None)
 
         if code_switching:
             # Code-switching mode: omit language to let Whisper auto-detect
@@ -2019,18 +2138,40 @@ class BatchTranscriptionService:
         elif lang is not None:
             generate_kwargs["language"] = lang
 
-        # Beam search configuration
+        no_repeat_ngram_size = getattr(config, "no_repeat_ngram_size", None)
+        if isinstance(no_repeat_ngram_size, int) and no_repeat_ngram_size > 0:
+            generate_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
+
         beam_size = getattr(config, "beam_size", None)
-        if beam_size and beam_size > 1:
+        if isinstance(beam_size, int) and beam_size > 1:
             generate_kwargs["num_beams"] = beam_size
 
-        # Temperature / sampling configuration
         temperature = getattr(config, "temperature", None)
-        if temperature is not None and temperature == 0.0:
-            generate_kwargs["do_sample"] = False
-        elif temperature is not None:
-            generate_kwargs["do_sample"] = True
-            generate_kwargs["temperature"] = temperature
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
+            temperature = [float(temperature)]
+        if isinstance(temperature, (list, tuple)) and len(temperature) > 0:
+            temp_list = [float(x) for x in temperature]
+            if len(temp_list) == 1:
+                generate_kwargs["temperature"] = temp_list[0]
+                generate_kwargs["do_sample"] = temp_list[0] > 0.0
+            else:
+                generate_kwargs["temperature"] = tuple(temp_list)
+
+        compression_ratio_threshold = getattr(config, "compression_ratio_threshold", None)
+        if isinstance(compression_ratio_threshold, (int, float)):
+            generate_kwargs["compression_ratio_threshold"] = float(compression_ratio_threshold)
+
+        logprob_threshold = getattr(config, "logprob_threshold", None)
+        if isinstance(logprob_threshold, (int, float)):
+            generate_kwargs["logprob_threshold"] = float(logprob_threshold)
+
+        no_speech_threshold = getattr(config, "no_speech_threshold", None)
+        if isinstance(no_speech_threshold, (int, float)):
+            generate_kwargs["no_speech_threshold"] = float(no_speech_threshold)
+
+        raw_condition = getattr(config, "condition_on_prev_tokens", False)
+        if isinstance(raw_condition, (bool, int)) and bool(raw_condition):
+            generate_kwargs["condition_on_prev_tokens"] = True
 
         # Whisper initial_prompt conditioning (prompt_ids)
         if prompt:
@@ -2061,6 +2202,7 @@ class BatchTranscriptionService:
                 generate_kwargs,
                 progress_callback,
                 code_switching=code_switching,
+                language=lang,
             )
             # Fire TTFW and chunk callback for single-pass
             if result.text.strip():
@@ -2113,10 +2255,12 @@ class BatchTranscriptionService:
                 break
 
             # Process this chunk
-            inputs = processor(
+            inputs = self._prepare_asr_inputs(
+                processor,
                 chunk_audio,
-                sampling_rate=sample_rate,
-                return_tensors="pt",
+                sample_rate,
+                language=lang,
+                code_switching=code_switching,
             )
             if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
@@ -2257,14 +2401,17 @@ class BatchTranscriptionService:
         generate_kwargs: dict[str, Any],
         progress_callback: Callable[[float], None] | None = None,
         code_switching: bool = False,
+        language: str | None = None,
     ) -> RawTranscription:
         """Single-pass Optimum inference for short audio (<= chunk_length_s)."""
         import torch
 
-        inputs = processor(
+        inputs = self._prepare_asr_inputs(
+            processor,
             samples,
-            sampling_rate=sample_rate,
-            return_tensors="pt",
+            sample_rate,
+            language=language,
+            code_switching=code_switching,
         )
         if device != "cpu":
             inputs = {k: v.to(device) for k, v in inputs.items()}

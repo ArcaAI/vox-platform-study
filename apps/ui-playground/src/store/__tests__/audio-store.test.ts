@@ -97,8 +97,8 @@ describe('useAudioStore', () => {
             expect(getState().processingMethod).toBe('backend_socket');
         });
 
-        it('should start with language as en', () => {
-            expect(getState().language).toBe('en');
+        it('should start with no language override (empty string)', () => {
+            expect(getState().language).toBe('');
         });
 
         it('should start with empty transcripts', () => {
@@ -798,7 +798,7 @@ describe('useAudioStore', () => {
             expect(state.codeSwitchingEnabled).toBe(false);
             expect(state.isCapturing).toBe(false);
             expect(state.processingMethod).toBe('backend_socket');
-            expect(state.language).toBe('en');
+            expect(state.language).toBe('');
             expect(state.transcripts).toEqual([]);
             expect(state.isMixing).toBe(false);
             expect(state.audioLevel).toBe(0);
