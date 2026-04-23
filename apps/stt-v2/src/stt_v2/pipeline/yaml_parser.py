@@ -196,8 +196,57 @@ class PipelineYamlParser:
         if spec.inference.beam_size < 1 or spec.inference.beam_size > 10:
             result.add_error("inference.beam_size", "Beam size must be between 1 and 10")
 
-        if spec.inference.temperature < 0 or spec.inference.temperature > 2:
-            result.add_error("inference.temperature", "Temperature must be between 0 and 2")
+        temps = spec.inference.temperature
+        if not isinstance(temps, (list, tuple)) or len(temps) == 0:
+            result.add_error(
+                "inference.temperature",
+                "Temperature must be a non-empty list of floats (or a scalar).",
+            )
+        else:
+            for idx, t in enumerate(temps):
+                try:
+                    t_val = float(t)
+                except (TypeError, ValueError):
+                    result.add_error(
+                        f"inference.temperature[{idx}]",
+                        f"Temperature value must be numeric, got {t!r}",
+                    )
+                    continue
+                if t_val < 0 or t_val > 2:
+                    result.add_error(
+                        f"inference.temperature[{idx}]",
+                        "Temperature must be between 0 and 2",
+                    )
+
+        if spec.inference.compression_ratio_threshold is not None:
+            if spec.inference.compression_ratio_threshold <= 0:
+                result.add_error(
+                    "inference.compression_ratio_threshold",
+                    "compression_ratio_threshold must be > 0 when set",
+                )
+
+        if spec.inference.logprob_threshold is not None:
+            if spec.inference.logprob_threshold > 0:
+                result.add_error(
+                    "inference.logprob_threshold",
+                    "logprob_threshold must be <= 0 when set (log-probabilities are non-positive)",
+                )
+
+        if spec.inference.no_speech_threshold is not None:
+            if (
+                spec.inference.no_speech_threshold < 0
+                or spec.inference.no_speech_threshold > 1
+            ):
+                result.add_error(
+                    "inference.no_speech_threshold",
+                    "no_speech_threshold must be between 0 and 1 when set",
+                )
+
+        if spec.inference.no_repeat_ngram_size < 0 or spec.inference.no_repeat_ngram_size > 10:
+            result.add_error(
+                "inference.no_repeat_ngram_size",
+                "no_repeat_ngram_size must be between 0 and 10 (0 disables)",
+            )
 
         # Language code validation
         if spec.inference.language is not None:
@@ -346,16 +395,64 @@ class PipelineYamlParser:
         initial_prompt = data.get("initial_prompt")
         if initial_prompt is not None:
             initial_prompt = str(initial_prompt)
-        return InferenceConfig(
-            batch_size=int(data.get("batch_size", 16)),
-            compute_type=str(data.get("compute_type", "auto")),
-            device=str(data.get("device", "auto")),
-            num_workers=int(data.get("num_workers", 4)),
-            beam_size=int(data.get("beam_size", 5)),
-            temperature=float(data.get("temperature", 0.0)),
-            language=data.get("language"),
-            code_switching=bool(data.get("code_switching", False)),
-            initial_prompt=initial_prompt,
+
+        temperature = self._parse_temperature(data.get("temperature"))
+
+        kwargs: dict[str, Any] = {
+            "batch_size": int(data.get("batch_size", 16)),
+            "compute_type": str(data.get("compute_type", "auto")),
+            "device": str(data.get("device", "auto")),
+            "num_workers": int(data.get("num_workers", 4)),
+            "beam_size": int(data.get("beam_size", 5)),
+            "language": data.get("language"),
+            "code_switching": bool(data.get("code_switching", False)),
+            "initial_prompt": initial_prompt,
+        }
+
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+
+        if "no_repeat_ngram_size" in data and data["no_repeat_ngram_size"] is not None:
+            kwargs["no_repeat_ngram_size"] = int(data["no_repeat_ngram_size"])
+
+        if "compression_ratio_threshold" in data:
+            value = data["compression_ratio_threshold"]
+            kwargs["compression_ratio_threshold"] = (
+                None if value is None else float(value)
+            )
+
+        if "logprob_threshold" in data:
+            value = data["logprob_threshold"]
+            kwargs["logprob_threshold"] = None if value is None else float(value)
+
+        if "no_speech_threshold" in data:
+            value = data["no_speech_threshold"]
+            kwargs["no_speech_threshold"] = None if value is None else float(value)
+
+        if "condition_on_prev_tokens" in data:
+            kwargs["condition_on_prev_tokens"] = bool(data["condition_on_prev_tokens"])
+
+        if "prev_text_context_words" in data and data["prev_text_context_words"] is not None:
+            kwargs["prev_text_context_words"] = int(data["prev_text_context_words"])
+
+        return InferenceConfig(**kwargs)
+
+    @staticmethod
+    def _parse_temperature(value: Any) -> list[float] | None:
+        """Normalise YAML ``temperature`` (scalar, list, null, or missing).
+
+        Returns ``None`` when the key is omitted so the dataclass default is
+        used; returns ``list[float]`` otherwise (scalar → one-element list).
+        Invalid entries raise ``ValueError`` so validation can surface them.
+        """
+        if value is None:
+            return None
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return [float(value)]
+        if isinstance(value, (list, tuple)):
+            return [float(v) for v in value]
+        raise ValueError(
+            f"inference.temperature must be a number or list of numbers, got {type(value).__name__}"
         )
 
     def _parse_postprocessing(self, data: dict[str, Any]) -> PostprocessingConfig:

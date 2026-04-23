@@ -2583,6 +2583,96 @@ class TestPerSegmentInferenceEdgeCases:
         assert result.text == "Alpha Beta Gamma"
 
     @pytest.mark.asyncio
+    async def test_uses_inference_config_default_when_context_words_not_int(self, service):
+        """Fallback for context carry uses InferenceConfig default, not MagicMock int()."""
+        samples = np.zeros(160000, dtype=np.float32)  # 10s at 16kHz
+        segments = [
+            AudioSegment(start_time=0.0, end_time=2.0, is_speech=True),
+            AudioSegment(start_time=8.0, end_time=10.0, is_speech=True),
+        ]
+        model = create_complete_loaded_model()
+        config = MagicMock()
+
+        first_text = " ".join(f"w{i}" for i in range(60))
+        prompts: list[str | None] = []
+
+        async def fake_inference(
+            _samples,
+            _sr,
+            _model,
+            _config,
+            progress_callback=None,
+            prompt=None,
+            initial_prompt=None,
+        ):
+            del progress_callback, initial_prompt
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                return RawTranscription(text=first_text)
+            return RawTranscription(text="done")
+
+        with patch.object(service, "_run_inference", side_effect=fake_inference):
+            await service._run_per_segment_inference(
+                samples,
+                16000,
+                segments,
+                model,
+                config,
+                job_id="carry-default",
+            )
+
+        expected = " ".join(
+            first_text.split()[-InferenceConfig().prev_text_context_words :]
+        )
+        assert prompts[0] is None
+        assert prompts[1] == expected
+
+    @pytest.mark.asyncio
+    async def test_context_carry_disabled_when_prev_text_context_words_zero(self, service):
+        """Setting prev_text_context_words=0 must disable context carry entirely."""
+        samples = np.zeros(160000, dtype=np.float32)  # 10s at 16kHz
+        segments = [
+            AudioSegment(start_time=0.0, end_time=2.0, is_speech=True),
+            AudioSegment(start_time=8.0, end_time=10.0, is_speech=True),
+        ]
+        model = create_complete_loaded_model()
+        config = InferenceConfig(prev_text_context_words=0)
+
+        first_text = " ".join(f"w{i}" for i in range(60))
+        prompts: list[str | None] = []
+
+        async def fake_inference(
+            _samples,
+            _sr,
+            _model,
+            _config,
+            progress_callback=None,
+            prompt=None,
+            initial_prompt=None,
+        ):
+            del progress_callback, initial_prompt
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                return RawTranscription(text=first_text)
+            return RawTranscription(text="done")
+
+        with patch.object(service, "_run_inference", side_effect=fake_inference):
+            await service._run_per_segment_inference(
+                samples,
+                16000,
+                segments,
+                model,
+                config,
+                job_id="carry-zero",
+            )
+
+        # First segment has no prior context. Second segment must also see
+        # prompt=None because carry is disabled and no initial_prompt is set:
+        # compose_prompt(None, None) -> None.
+        assert prompts[0] is None
+        assert prompts[1] is None
+
+    @pytest.mark.asyncio
     async def test_per_segment_latency_structure_complete(self, service):
         """Each latency entry must have all required fields (Anti-Pattern #4 check)."""
         from stt_v2.transcription.dto import AudioSegment
@@ -3153,6 +3243,65 @@ class TestOptimumOnnxInference:
         assert call_kwargs["return_timestamps"] is False
 
     @pytest.mark.asyncio
+    async def test_forwards_condition_on_prev_tokens_when_enabled(self, service):
+        """`condition_on_prev_tokens=True` should be forwarded to model.generate."""
+        model = self._create_optimum_model()
+        samples = np.zeros(16000, dtype=np.float32)
+        config = InferenceConfig(
+            language="en",
+            code_switching=False,
+            beam_size=1,
+            condition_on_prev_tokens=True,
+        )
+
+        with (
+            patch.dict(sys.modules, {"torch": _make_mock_torch()}),
+            patch("stt_v2.transcription.batch_service.get_settings") as ms,
+        ):
+            ms.return_value = MagicMock(
+                transcription_chunk_length_s=15,
+                transcription_stride_length_s="4,2",
+            )
+            await service._run_optimum_onnx_inference(
+                samples,
+                16000,
+                model,
+                config,
+            )
+
+        call_kwargs = model.model.generate.call_args[1]
+        assert call_kwargs.get("condition_on_prev_tokens") is True
+
+    @pytest.mark.asyncio
+    async def test_omits_condition_on_prev_tokens_when_disabled(self, service):
+        """Default `condition_on_prev_tokens=False` must not appear in generate kwargs."""
+        model = self._create_optimum_model()
+        samples = np.zeros(16000, dtype=np.float32)
+        config = InferenceConfig(
+            language="en",
+            code_switching=False,
+            beam_size=1,
+        )
+
+        with (
+            patch.dict(sys.modules, {"torch": _make_mock_torch()}),
+            patch("stt_v2.transcription.batch_service.get_settings") as ms,
+        ):
+            ms.return_value = MagicMock(
+                transcription_chunk_length_s=15,
+                transcription_stride_length_s="4,2",
+            )
+            await service._run_optimum_onnx_inference(
+                samples,
+                16000,
+                model,
+                config,
+            )
+
+        call_kwargs = model.model.generate.call_args[1]
+        assert "condition_on_prev_tokens" not in call_kwargs
+
+    @pytest.mark.asyncio
     async def test_chunked_produces_segments(self, service):
         """Each chunk should produce a segment with text, start, end."""
         model = MagicMock(spec=LoadedModel)
@@ -3642,6 +3791,24 @@ class TestCodeSwitchingInference:
     def service(self):
         return BatchTranscriptionService()
 
+    def test_prepare_asr_inputs_raises_when_required_language_missing(self, service):
+        class _LanguageRequiredProcessor:
+            def __call__(self, audio, language, sampling_rate=None, return_tensors=None):
+                del audio, language, sampling_rate, return_tensors
+                return {"input_features": MagicMock()}
+
+        processor = _LanguageRequiredProcessor()
+        samples = np.zeros(16000, dtype=np.float32)
+
+        with pytest.raises(TranscriptionError, match="requires inference language"):
+            service._prepare_asr_inputs(
+                processor,
+                samples,
+                16000,
+                language=None,
+                code_switching=False,
+            )
+
     def _create_optimum_loaded_model(self) -> LoadedModel:
         """Create a mock LoadedModel for Optimum ONNX tests."""
         loaded_model = LoadedModel(
@@ -3808,6 +3975,53 @@ class TestCodeSwitchingInference:
         assert call_kwargs["language"] == "fr"
 
     @pytest.mark.asyncio
+    async def test_transformers_processor_receives_language_when_required(self, service):
+        """Processors with a required ``language`` arg should receive it."""
+        pipeline_config = create_complete_pipeline_config(language="fr")
+        pipeline_config.spec.inference.code_switching = False
+
+        loaded_model = self._create_transformers_loaded_model()
+        samples = np.zeros(16000, dtype=np.float32)
+        config = pipeline_config.spec.inference
+
+        class _LanguageRequiredProcessor:
+            def __init__(self):
+                self.called_language = None
+                self.batch_decode = MagicMock(return_value=["transcribed"])
+                self.decode = MagicMock(return_value={"offsets": []})
+
+            def __call__(
+                self,
+                audio,
+                language,
+                sampling_rate=None,
+                return_tensors=None,
+                return_attention_mask=None,
+            ):
+                self.called_language = language
+
+                input_features = MagicMock()
+                input_features.is_floating_point.return_value = True
+                input_features.to.return_value = input_features
+
+                attention_mask = MagicMock()
+                attention_mask.is_floating_point.return_value = False
+                attention_mask.to.return_value = attention_mask
+
+                return {
+                    "input_features": input_features,
+                    "attention_mask": attention_mask,
+                }
+
+        processor = _LanguageRequiredProcessor()
+        loaded_model.processor = processor
+
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}):
+            await service._run_transformers_inference(samples, 16000, loaded_model, config, None)
+
+        assert processor.called_language == "fr"
+
+    @pytest.mark.asyncio
     async def test_transformers_requests_and_forwards_attention_mask(self, service):
         """Transformers path uses return_tensors='pt' and forwards processor outputs to generate()."""
         pipeline_config = create_complete_pipeline_config(language="en")
@@ -3894,6 +4108,41 @@ class TestCodeSwitchingInference:
         call_kwargs = loaded_model.model.generate.call_args[1]
         assert "language" in call_kwargs
         assert call_kwargs["language"] == "de"
+
+    @pytest.mark.asyncio
+    async def test_optimum_processor_receives_language_when_required(self, service):
+        """Optimum path should pass language to processors that require it."""
+        pipeline_config = create_complete_pipeline_config(language="de")
+        pipeline_config.spec.inference.code_switching = False
+
+        loaded_model = self._create_optimum_loaded_model()
+        samples = np.zeros(16000, dtype=np.float32)
+        config = pipeline_config.spec.inference
+
+        class _LanguageRequiredProcessor:
+            def __init__(self):
+                self.called_language = None
+                self.batch_decode = MagicMock(return_value=["transcribed"])
+                self.decode = MagicMock(return_value={"offsets": []})
+
+            def __call__(self, audio, language, sampling_rate=None, return_tensors=None):
+                self.called_language = language
+                return {"input_features": MagicMock()}
+
+        processor = _LanguageRequiredProcessor()
+        loaded_model.processor = processor
+
+        with patch.dict(sys.modules, {"torch": _make_mock_torch()}):
+            with patch("stt_v2.transcription.batch_service.get_settings") as ms:
+                ms.return_value = MagicMock(
+                    transcription_chunk_length_s=30,
+                    transcription_stride_length_s="4,2",
+                )
+                await service._run_optimum_onnx_inference(
+                    samples, 16000, loaded_model, config, None
+                )
+
+        assert processor.called_language == "de"
 
     @pytest.mark.asyncio
     async def test_code_switching_true_language_none_omits_language(self, service):

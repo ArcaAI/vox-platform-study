@@ -10,7 +10,7 @@ import { Separator } from '@arcaai/ui/separator';
 import { Slider } from '@arcaai/ui/slider';
 import { Switch } from '@arcaai/ui/switch';
 import { useArcaConfig, usePipelines } from '@arcaai/vox';
-import { AlertCircle, Brain, Info, Languages, Lock, Repeat, Server, Settings, Volume2 } from 'lucide-react';
+import { AlertCircle, Brain, Languages, Lock, Repeat, Server, Settings, Volume2 } from 'lucide-react';
 import type React from 'react';
 import { useEffect } from 'react';
 import { SUPPORTED_LANGUAGES } from '../constants';
@@ -261,18 +261,6 @@ export function ProcessingConfigPanel() {
               <Languages className="size-4" />
               <CardTitle className="text-sm">Language</CardTitle>
               {locked.language && <LockedIndicator />}
-              {language && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="size-3.5 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-xs">Overrides the pipeline's default language setting</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -293,7 +281,9 @@ export function ProcessingConfigPanel() {
                 ))}
               </SelectContent>
             </Select>
-            {!language && (
+            {language ? (
+              <p className="text-amber-500 text-[10px]">Not recommended: overrides the pipeline's default language setting</p>
+            ) : (
               <p className="text-muted-foreground text-[10px]">Uses language configured in the pipeline YAML</p>
             )}
           </CardContent>

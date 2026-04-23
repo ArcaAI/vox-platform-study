@@ -441,10 +441,16 @@ class InferenceConfig:
     device: str = "auto"  # auto, cuda, cpu
     num_workers: int = 4
     beam_size: int = 5
-    temperature: float = 0.0
+    temperature: list[float] = field(default_factory=lambda: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    compression_ratio_threshold: float | None = 2.4
+    logprob_threshold: float | None = -1.0
+    no_speech_threshold: float | None = 0.6
+    no_repeat_ngram_size: int = 3
     language: str | None = None  # None = auto-detect
     code_switching: bool = False  # Enable multilingual code-switching
     initial_prompt: str | None = None  # PromptTemplate UUID for Whisper conditioning
+    prev_text_context_words: int = 50
+    condition_on_prev_tokens: bool = False
 
 
 @dataclass

@@ -15,6 +15,7 @@ Responsibilities:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import os
 import time
 import uuid
@@ -412,6 +413,10 @@ class SessionManager:
                 pipeline_config.postprocessing if pipeline_config else None
             )
 
+            inference_cfg = pipeline_config.inference if pipeline_config else None
+            prev_text_context_words = getattr(
+                inference_cfg, "prev_text_context_words", None
+            )
 
             inference_worker = StreamingInferenceWorker(
                 result_publisher=publisher,
@@ -422,6 +427,7 @@ class SessionManager:
                 postprocessing_config=postprocessing_config,
                 initial_prompt=initial_prompt,
                 speaker_identifier=speaker_identifier,
+                prev_text_context_words=prev_text_context_words,
             )
 
             self._register_inference_runtime(session, inference_worker)
@@ -772,26 +778,77 @@ class SessionManager:
         # Pre-build static generate kwargs from pipeline config
         code_switching = getattr(inference_config, "code_switching", False)
         lang = getattr(inference_config, "language", None)
+        processor_signature: inspect.Signature | None
+        try:
+            processor_signature = inspect.signature(processor.__call__)
+        except (TypeError, ValueError):
+            processor_signature = None
+        processor_language_param = (
+            processor_signature.parameters.get("language")
+            if processor_signature is not None
+            else None
+        )
+        processor_supports_language = processor_language_param is not None
+        processor_requires_language = (
+            processor_language_param is not None
+            and processor_language_param.default is inspect.Signature.empty
+        )
+        if processor_signature is None:
+            processor_supports_attention_mask = True
+        else:
+            params = processor_signature.parameters
+            processor_supports_attention_mask = (
+                "return_attention_mask" in params
+                or any(
+                    p.kind is inspect.Parameter.VAR_KEYWORD
+                    for p in params.values()
+                )
+            )
 
         static_kwargs: dict[str, Any] = {
             "task": "transcribe",
             "return_timestamps": True,
-            "no_repeat_ngram_size": 3,
         }
 
         if not code_switching and lang is not None:
             static_kwargs["language"] = lang
 
+        no_repeat_ngram_size = getattr(inference_config, "no_repeat_ngram_size", None)
+        if isinstance(no_repeat_ngram_size, int) and no_repeat_ngram_size > 0:
+            static_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
+
         beam_size = getattr(inference_config, "beam_size", None)
-        if beam_size and beam_size > 1:
+        if isinstance(beam_size, int) and beam_size > 1:
             static_kwargs["num_beams"] = beam_size
 
         temperature = getattr(inference_config, "temperature", None)
-        if temperature is not None and temperature == 0.0:
-            static_kwargs["do_sample"] = False
-        elif temperature is not None:
-            static_kwargs["do_sample"] = True
-            static_kwargs["temperature"] = temperature
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
+            temperature = [float(temperature)]
+        if isinstance(temperature, (list, tuple)) and len(temperature) > 0:
+            temp_list = [float(x) for x in temperature]
+            if len(temp_list) == 1:
+                static_kwargs["temperature"] = temp_list[0]
+                static_kwargs["do_sample"] = temp_list[0] > 0.0
+            else:
+                static_kwargs["temperature"] = tuple(temp_list)
+
+        compression_ratio_threshold = getattr(
+            inference_config, "compression_ratio_threshold", None
+        )
+        if isinstance(compression_ratio_threshold, (int, float)):
+            static_kwargs["compression_ratio_threshold"] = float(compression_ratio_threshold)
+
+        logprob_threshold = getattr(inference_config, "logprob_threshold", None)
+        if isinstance(logprob_threshold, (int, float)):
+            static_kwargs["logprob_threshold"] = float(logprob_threshold)
+
+        no_speech_threshold = getattr(inference_config, "no_speech_threshold", None)
+        if isinstance(no_speech_threshold, (int, float)):
+            static_kwargs["no_speech_threshold"] = float(no_speech_threshold)
+
+        raw_condition = getattr(inference_config, "condition_on_prev_tokens", False)
+        if isinstance(raw_condition, (bool, int)) and bool(raw_condition):
+            static_kwargs["condition_on_prev_tokens"] = True
 
         async def run_inference(
             samples: np.ndarray,
@@ -810,12 +867,27 @@ class SessionManager:
             *,
             prompt: str | None = None,
         ) -> dict[str, Any]:
-            inputs = processor(
-                samples,
-                sampling_rate=sample_rate,
-                return_tensors="pt",
-                return_attention_mask=True,
-            )
+            processor_language: str | None = None
+            if processor_supports_language:
+                if processor_requires_language and lang is None:
+                    raise RuntimeError(
+                        "ASR processor requires inference language, but "
+                        "inference_config.language is not set."
+                    )
+                if processor_requires_language or not code_switching:
+                    processor_language = lang
+
+            processor_kwargs: dict[str, Any] = {
+                "sampling_rate": sample_rate,
+                "return_tensors": "pt",
+            }
+            if processor_supports_attention_mask:
+                processor_kwargs["return_attention_mask"] = True
+            if processor_language is not None:
+                processor_kwargs["language"] = processor_language
+
+            inputs = processor(samples, **processor_kwargs)
+
             inputs = {
                 k: (
                     v.to(device=device, dtype=model_dtype)
@@ -1622,6 +1694,12 @@ class SessionManager:
                         pipeline_config.postprocessing if pipeline_config else None
                     )
 
+                    recovery_inference_cfg = (
+                        pipeline_config.inference if pipeline_config else None
+                    )
+                    prev_text_context_words = getattr(
+                        recovery_inference_cfg, "prev_text_context_words", None
+                    )
 
                     inference_worker = StreamingInferenceWorker(
                         result_publisher=publisher,
@@ -1634,6 +1712,7 @@ class SessionManager:
                         postprocessing_config=recovery_postprocessing_config,
                         initial_prompt=recovery_initial_prompt,
                         speaker_identifier=None,  # Recovery loses session state
+                        prev_text_context_words=prev_text_context_words,
                     )
 
                     # TODO: Replay last ~2 s of audio from Redis Stream to
