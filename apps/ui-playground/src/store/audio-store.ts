@@ -184,7 +184,7 @@ const initialState: AudioState = {
     { id: 'whisper-base', name: 'Whisper Base', size: '~150 MB' },
     { id: 'whisper-small', name: 'Whisper Small', size: '~500 MB' },
   ],
-  language: 'en',
+  language: '',
   selectedPipelineId: null,
   configReady: false,
 
