@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
-
 from stt_v2.pipeline.dto import (
     AiModelFormat,
     engine_supports_initial_prompt,
     is_valid_language_for_engine,
 )
 from stt_v2.pipeline.yaml_parser import PipelineYamlParser
-
 
 PARAKEET_YAML = """
 version: "1.1"
