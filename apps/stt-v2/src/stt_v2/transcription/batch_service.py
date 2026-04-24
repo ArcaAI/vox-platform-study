@@ -1795,14 +1795,16 @@ class BatchTranscriptionService:
             model.model = asr_model  # persist in LoadedModel so cache is updated
             model_dtype = torch.float32
 
-        inputs = {
-            k: (
-                v.to(device=device, dtype=model_dtype)
-                if v.is_floating_point()
-                else v.to(device=device)
-            )
-            for k, v in inputs.items()
-        }
+        moved_inputs: dict[str, Any] = {}
+        for k, v in inputs.items():
+            if not isinstance(v, torch.Tensor):
+                moved_inputs[k] = v
+                continue
+            if v.is_floating_point():
+                moved_inputs[k] = v.to(device=device, dtype=model_dtype)
+            else:
+                moved_inputs[k] = v.to(device=device)
+        inputs = moved_inputs
 
         outputs = None
 
@@ -2263,7 +2265,10 @@ class BatchTranscriptionService:
                 code_switching=code_switching,
             )
             if device != "cpu":
-                inputs = {k: v.to(device) for k, v in inputs.items()}
+                inputs = {
+                    k: v.to(device) if isinstance(v, torch.Tensor) else v
+                    for k, v in inputs.items()
+                }
 
             with torch.no_grad():
                 generated_ids = onnx_model.generate(
@@ -2414,7 +2419,10 @@ class BatchTranscriptionService:
             code_switching=code_switching,
         )
         if device != "cpu":
-            inputs = {k: v.to(device) for k, v in inputs.items()}
+            inputs = {
+                k: v.to(device) if isinstance(v, torch.Tensor) else v
+                for k, v in inputs.items()
+            }
 
         with torch.no_grad():
             generated_ids = onnx_model.generate(**inputs, **generate_kwargs)
@@ -2492,8 +2500,10 @@ class BatchTranscriptionService:
         config: Any,
         progress_callback: Callable[[float], None] | None = None,
     ) -> RawTranscription:
-        """Run inference using NeMo model."""
-        import torch
+        """Run inference using a NeMo ASR model"""
+        import asyncio
+
+        from stt_v2.models.nemo_adapter import NemoAsrAdapter
 
         if getattr(config, "code_switching", False):
             logger.warning(
@@ -2502,24 +2512,27 @@ class BatchTranscriptionService:
                 "be ignored for this inference."
             )
 
-        nemo_model = model.model
+        if getattr(config, "initial_prompt", None):
+            logger.warning(
+                "initial_prompt was set on a NeMo (Parakeet) pipeline; "
+                "Parakeet does not accept text conditioning. Ignoring."
+            )
 
-        # Convert to tensor
-        audio_tensor = torch.from_numpy(samples).float().unsqueeze(0)
-        audio_length = torch.tensor([len(samples)])
+        adapter = NemoAsrAdapter(model, config)
 
-        # Run transcription
-        with torch.no_grad():
-            transcription = nemo_model.transcribe(
-                paths2audio_files=None,
-                audio_signal=audio_tensor,
-                audio_signal_len=audio_length,
-            )[0]
+        result = await asyncio.to_thread(
+            adapter, samples, sample_rate, prompt=None
+        )
 
         if progress_callback:
             progress_callback(1.0)
 
-        return RawTranscription(text=transcription)
+        return RawTranscription(
+            text=result.get("text", ""),
+            language=result.get("language"),
+            word_timestamps=result.get("word_timestamps", []),
+            segments=result.get("segments", []),
+        )
 
     def _postprocess(
         self,
