@@ -3774,6 +3774,7 @@ def _make_mock_torch():
     mock.is_tensor.return_value = False
     mock.from_numpy.return_value.float.return_value.unsqueeze.return_value = MagicMock()
     mock.tensor.return_value = MagicMock()
+    mock.Tensor = type("_MockTensor", (), {})
     return mock
 
 

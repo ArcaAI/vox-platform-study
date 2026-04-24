@@ -182,6 +182,38 @@ def is_valid_language_code(code: str) -> bool:
     return primary in VALID_WHISPER_LANGUAGES
 
 
+VALID_PARAKEET_V3_LANGUAGES: set[str] = {
+    "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de",
+    "el", "hu", "it", "lv", "lt", "mt", "pl", "pt", "ro", "sk",
+    "sl", "es", "sv", "ru", "uk",
+}
+
+
+_INITIAL_PROMPT_CAPABLE_ENGINES: set[AiModelFormat] = {
+    AiModelFormat.SAFETENSOR,
+    AiModelFormat.PYTORCH,
+    AiModelFormat.ONNX,
+    AiModelFormat.ONNX_OPTIMUM,
+    AiModelFormat.CTRANSLATE2,
+}
+
+
+def engine_supports_initial_prompt(engine: AiModelFormat) -> bool:
+    return engine in _INITIAL_PROMPT_CAPABLE_ENGINES
+
+
+def is_valid_language_for_engine(code: str, engine: AiModelFormat) -> bool:
+    if not code:
+        return False
+    primary = code.split("-")[0].lower()
+    if engine == AiModelFormat.NEMO:
+        return (
+            primary in VALID_PARAKEET_V3_LANGUAGES
+            or primary in VALID_WHISPER_LANGUAGES
+        )
+    return primary in VALID_WHISPER_LANGUAGES
+
+
 # =============================================================================
 # INLINE MODEL DEFINITION
 # Allows administrators to specify models directly in pipeline YAML
@@ -451,6 +483,7 @@ class InferenceConfig:
     initial_prompt: str | None = None  # PromptTemplate UUID for Whisper conditioning
     prev_text_context_words: int = 50
     condition_on_prev_tokens: bool = False
+    max_words_per_second: float = 1000.0 # 1000.0 to effectively disable the gate
 
 
 @dataclass

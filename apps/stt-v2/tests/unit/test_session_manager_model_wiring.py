@@ -564,6 +564,62 @@ class TestMakeAsrCallable:
         call_kwargs = loaded.model.generate.call_args[1]
         assert "condition_on_prev_tokens" not in call_kwargs
 
+    @pytest.mark.asyncio
+    async def test_ignores_non_tensor_processor_output(self):
+        """Processor outputs can include metadata fields that are not tensors.
+
+        The streaming callable should move/cast only tensor values and must not
+        forward non-tensor metadata fields to ``model.generate``.
+        """
+        mgr = _make_manager()
+
+        mock_model = MagicMock()
+        mock_model.dtype = torch.float32
+        mock_model.generate.return_value = torch.tensor([[1, 2, 3]])
+
+        input_features = torch.zeros((1, 80, 3000), dtype=torch.float32)
+        attention_mask = torch.ones((1, 3000), dtype=torch.long)
+        audio_chunk_index = [[0]]
+
+        class _ProcessorWithMetadata:
+            def __init__(self) -> None:
+                self.called_kwargs: dict[str, Any] = {}
+                self.batch_decode = MagicMock(return_value=["hello world"])
+                self.decode = MagicMock(return_value={"offsets": []})
+
+            def __call__(
+                self,
+                audio: np.ndarray,
+                sampling_rate: int | None = None,
+                return_tensors: str | None = None,
+                return_attention_mask: bool | None = None,
+                language: str | None = None,
+            ) -> dict[str, Any]:
+                del audio, sampling_rate, return_tensors, return_attention_mask, language
+                return {
+                    "input_features": input_features,
+                    "attention_mask": attention_mask,
+                    "audio_chunk_index": audio_chunk_index,
+                }
+
+        processor = _ProcessorWithMetadata()
+
+        loaded = MagicMock()
+        loaded.model = mock_model
+        loaded.processor = processor
+        loaded.feature_extractor = None
+        loaded.device = torch.device("cpu")
+
+        fn = mgr._make_asr_callable(loaded, self._mock_inference_config())
+        result = await fn(np.zeros(16000, dtype=np.float32), 16000)
+
+        assert result["text"] == "hello world"
+
+        call_kwargs = mock_model.generate.call_args.kwargs
+        assert "audio_chunk_index" not in call_kwargs
+        assert torch.equal(call_kwargs["input_features"], input_features)
+        assert torch.equal(call_kwargs["attention_mask"], attention_mask)
+
 
 # ---------------------------------------------------------------------------
 # create_session Integration with Model Loading

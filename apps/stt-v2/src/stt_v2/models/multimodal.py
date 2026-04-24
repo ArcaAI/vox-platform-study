@@ -2,6 +2,8 @@
 
 from typing import Any
 
+import torch
+
 # Audio chunking
 MAX_AUDIO_S = 28
 TOKENS_PER_S = 25
@@ -29,7 +31,9 @@ def prepare_chat_inputs(
         dtype: Optional dtype cast (used in batch path).
 
     Returns:
-        Dict of input tensors on the target device.
+        Dict of input tensors on the target device. Non-tensor fields
+        (e.g. processor metadata lists) pass through unchanged so they
+        can still be consumed by downstream ``generate``/``decode`` calls.
     """
     inputs = processor.apply_chat_template(
         messages,
@@ -38,11 +42,13 @@ def prepare_chat_inputs(
         return_dict=True,
         return_tensors="pt",
     )
-    if dtype is not None:
-        inputs = {
-            k: v.to(device, dtype=dtype) if v.is_floating_point() else v.to(device)
-            for k, v in inputs.items()
-        }
-    else:
-        inputs = {k: v.to(device) for k, v in inputs.items()}
-    return inputs
+    moved: dict[str, Any] = {}
+    for k, v in inputs.items():
+        if not isinstance(v, torch.Tensor):
+            moved[k] = v
+            continue
+        if dtype is not None and v.is_floating_point():
+            moved[k] = v.to(device, dtype=dtype)
+        else:
+            moved[k] = v.to(device)
+    return moved

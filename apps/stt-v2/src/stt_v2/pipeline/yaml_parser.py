@@ -435,6 +435,9 @@ class PipelineYamlParser:
         if "prev_text_context_words" in data and data["prev_text_context_words"] is not None:
             kwargs["prev_text_context_words"] = int(data["prev_text_context_words"])
 
+        if "max_words_per_second" in data and data["max_words_per_second"] is not None:
+            kwargs["max_words_per_second"] = float(data["max_words_per_second"])
+
         return InferenceConfig(**kwargs)
 
     @staticmethod
