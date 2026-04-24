@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import numpy as np
-import pytest
 
 from stt_v2.models.base_loader import LoadedModel
 from stt_v2.models.nemo_adapter import NemoAsrAdapter
