@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
-from stt_v2.pipeline.dto import PostprocessingConfig, PunctuationConfig, TimestampConfig
+from stt_v2.pipeline.dto import (
+    PostprocessingConfig,
+    PunctuationConfig,
+    TimestampConfig,
+)
 from stt_v2.streaming.inference import StreamingInferenceWorker
 from stt_v2.streaming.preprocessor import AudioUtterance
 from stt_v2.streaming.schemas import SegmentResult
@@ -528,6 +532,49 @@ class TestHallucinationFilter:
 
         assert result.text == ""
         publisher.publish.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_high_wps_kept_by_default(self):
+        """12 wps (e.g. 3x-sped audio) should NOT be filtered by default.
+
+        The words-per-second gate is opt-in; with no config, legitimate
+        dense transcripts must pass through unchanged.
+        """
+        dense_text = " ".join(["word"] * 12)  # 12 words in 1s => 12 wps
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: dense_text)
+        utt = _make_utterance(duration_s=1.0, rms_level=0.1)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == dense_text
+
+    @pytest.mark.asyncio
+    async def test_high_wps_filtered_when_configured(self):
+        """With max_words_per_second set, too-dense text is rejected."""
+        dense_text = " ".join(["word"] * 12)
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: dense_text,
+            max_words_per_second=8.0,
+        )
+        utt = _make_utterance(duration_s=1.0, rms_level=0.1)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == ""
+
+    @pytest.mark.asyncio
+    async def test_wps_gate_respects_boundary(self):
+        """Density at or below the configured ceiling should be kept."""
+        text_at_limit = " ".join(["word"] * 6)  # 6 wps
+        worker = StreamingInferenceWorker(
+            asr_pipeline=lambda s, sr: text_at_limit,
+            max_words_per_second=8.0,
+        )
+        utt = _make_utterance(duration_s=1.0, rms_level=0.1)
+
+        result = await worker.process_utterance("sess-1", utt)
+
+        assert result.text == text_at_limit
 
 
 # =========================================================================

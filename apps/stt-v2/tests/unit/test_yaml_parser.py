@@ -1877,3 +1877,45 @@ inference:
         result = parser.validate(spec)
         assert not result.valid
         assert any("temperature" in e.field for e in result.errors)
+
+
+class TestYamlParserMaxWordsPerSecond:
+    """Parsing for ``inference.max_words_per_second`` — the WPS hallucination gate."""
+
+    @pytest.fixture
+    def parser(self):
+        return PipelineYamlParser()
+
+    def test_default_when_absent(self, parser):
+        """Omitting the key leaves the gate effectively off (large default)."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.inference.max_words_per_second == 1000.0
+
+    def test_parses_explicit_value(self, parser):
+        """Setting the key opts in to the WPS gate."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  max_words_per_second: 15
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.inference.max_words_per_second == 15.0
+
+    def test_null_value_falls_back_to_default(self, parser):
+        """Explicit ``null`` is treated the same as the key being absent."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+inference:
+  max_words_per_second: null
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.inference.max_words_per_second == 1000.0
