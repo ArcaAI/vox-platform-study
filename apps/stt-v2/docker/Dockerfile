@@ -126,6 +126,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --override /tmp/cuda-overrides.txt \
         ".[ml-gpu]"
 
+RUN --mount=type=cache,target=/root/.cache/uv \
+    printf '%s\n' \
+        'transformers==5.5.4' \
+    >> /tmp/cuda-overrides.txt \
+    && uv pip install --python /opt/venv/bin/python \
+        --override /tmp/cuda-overrides.txt \
+        ".[nemo]"
+
 RUN find /opt/venv \( \
         -name "__pycache__" \
         -o -name "*.egg-info" \
