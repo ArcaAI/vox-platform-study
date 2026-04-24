@@ -128,6 +128,7 @@ ml = [
     "optimum==2.1.0",
     "transformers==5.5.4",
     "torchvision>=0.23.0,<0.24.0",
+    "nemo_toolkit[asr]>=2.7.2,<3.0.0",
 ]
 
 # GPU variant — identical to ml but swaps onnxruntime for onnxruntime-gpu.
@@ -138,10 +139,6 @@ ml-gpu = [
     "onnxruntime-gpu>=1.23.0",
     # Flash Attention 2 — faster attention for Whisper on CUDA GPUs (Ampere+)
     "flash-attn>=2.8.3",
-]
-
-nemo = [
-    # NVIDIA NeMo Parakeet family (requires separate CUDA setup)
 ]
 
 # ---------------------------------------------------------------------------

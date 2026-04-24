@@ -31,10 +31,8 @@ from stt_v2.streaming.schemas import SegmentResult
 logger = structlog.get_logger(__name__)
 _MAX_SEGMENT_TEXT_CHARS = 1200
 
-# Hallucination filter constants
 _HALLUCINATION_RMS_THRESHOLD = 0.01  # ~-40 dBFS -- below this is near-silence
 _HALLUCINATION_SHORT_WORD_COUNT = 3  # texts with <= N words on low energy are suspect
-_HALLUCINATION_MAX_WPS = 8.0  # max plausible words-per-second (normal speech ~2-4 wps)
 _PARTIAL_TAIL_WINDOW_S = 10.0  # cap Whisper input for partials to last 10s
 _FILLER_PATTERN = re.compile(
     r"^\s*(?:uh|um|ah|oh|hmm|huh|mhm|mm|oh\s*,?\s*man|\.\..+|,|\s)*\.?\s*$",
@@ -78,6 +76,7 @@ class StreamingInferenceWorker:
         initial_prompt: str | None = None,
         speaker_identifier: Any = None,
         prev_text_context_words: int | None = None,
+        max_words_per_second: float | None = None,
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
@@ -89,6 +88,12 @@ class StreamingInferenceWorker:
             postprocessing_config.punctuation
             if postprocessing_config
             else None
+        )
+        self._hallucination_max_wps: float = (
+            float(max_words_per_second)
+            if isinstance(max_words_per_second, (int, float))
+            and not isinstance(max_words_per_second, bool)
+            else InferenceConfig().max_words_per_second
         )
         self._punctuation_model: Any = None
         self._previous_text: str = ""
@@ -492,38 +497,41 @@ class StreamingInferenceWorker:
             )
             return None, None
 
-    @staticmethod
-    def _is_hallucination(text: str, utterance: AudioUtterance) -> bool:
+    def _is_hallucination(self, text: str, utterance: AudioUtterance) -> bool:
         """Detect likely hallucinated output from silence or near-silence audio.
 
         Returns True when the text appears to be a Whisper hallucination
-        rather than genuine speech.  Two conditions trigger rejection:
+        rather than genuine speech. Three independent gates run; any one
+        trip rejects the text:
 
         1. Text is *only* filler words / disfluencies ("uh", "um", "...", etc.)
-           regardless of energy level.
+           regardless of energy level. Always on.
         2. Text is very short (<= 3 real words) AND utterance audio energy
-           (RMS) is below the silence threshold.
+           (RMS) is below the silence threshold. Always on.
+        3. Words-per-second above ``inference.max_words_per_second``.
+           The default (``1000.0``) is large enough that the gate is
+           effectively off; set a realistic value (e.g. ``15.0``) to
+           opt in. This avoids silently dropping legitimate fast-playback
+           audio (e.g. 3x sped-up dictation) which can exceed any static
+           ceiling.
         """
         stripped = text.strip()
         if not stripped:
             return False  # already empty, nothing to filter
 
-        # Condition 1: pure filler pattern
         if _FILLER_PATTERN.match(stripped):
             return True
 
-        # Condition 2: short text on near-silence audio
         word_count = len(stripped.split())
         if word_count <= _HALLUCINATION_SHORT_WORD_COUNT:
             rms = float(np.sqrt(np.mean(utterance.samples ** 2)))
             if rms < _HALLUCINATION_RMS_THRESHOLD:
                 return True
 
-        # Condition 3: implausible word density (e.g. 50 words from 1.2s audio)
         audio_duration_s = len(utterance.samples) / utterance.sample_rate
         if audio_duration_s > 0:
             words_per_sec = word_count / audio_duration_s
-            if words_per_sec > _HALLUCINATION_MAX_WPS:
+            if words_per_sec > self._hallucination_max_wps:
                 return True
 
         return False

@@ -417,6 +417,9 @@ class SessionManager:
             prev_text_context_words = getattr(
                 inference_cfg, "prev_text_context_words", None
             )
+            max_words_per_second = getattr(
+                inference_cfg, "max_words_per_second", None
+            )
 
             inference_worker = StreamingInferenceWorker(
                 result_publisher=publisher,
@@ -428,6 +431,7 @@ class SessionManager:
                 initial_prompt=initial_prompt,
                 speaker_identifier=speaker_identifier,
                 prev_text_context_words=prev_text_context_words,
+                max_words_per_second=max_words_per_second,
             )
 
             self._register_inference_runtime(session, inference_worker)
@@ -746,8 +750,40 @@ class SessionManager:
         import torch
 
         from stt_v2.models.base_loader import LoadedModel
+        from stt_v2.pipeline.dto import AiModelFormat
 
         loaded_model: LoadedModel = asr_model
+
+        if loaded_model.format == AiModelFormat.NEMO:
+            from stt_v2.models.nemo_adapter import NemoAsrAdapter
+
+            if initial_prompt:
+                logger.warning(
+                    "initial_prompt was supplied for a NeMo (Parakeet) "
+                    "streaming pipeline; Parakeet does not support text "
+                    "conditioning. Ignoring.",
+                )
+            if getattr(inference_config, "code_switching", False):
+                logger.warning(
+                    "code_switching was requested for a NeMo (Parakeet) "
+                    "streaming pipeline; ignoring (multilingual variants "
+                    "must be selected at the model level).",
+                )
+
+            nemo_adapter = NemoAsrAdapter(loaded_model, inference_config)
+
+            async def run_nemo_inference(
+                samples: np.ndarray,
+                sample_rate: int,
+                *,
+                prompt: str | None = None,  # noqa: ARG001 — ignored
+            ) -> dict[str, Any]:
+                return await asyncio.to_thread(
+                    nemo_adapter, samples, sample_rate
+                )
+
+            return run_nemo_inference
+
         model = loaded_model.model
         processor = loaded_model.processor or loaded_model.feature_extractor
         device = loaded_model.device
@@ -888,14 +924,15 @@ class SessionManager:
 
             inputs = processor(samples, **processor_kwargs)
 
-            inputs = {
-                k: (
-                    v.to(device=device, dtype=model_dtype)
-                    if v.is_floating_point()
-                    else v.to(device=device)
-                )
-                for k, v in inputs.items()
-            }
+            moved_inputs: dict[str, Any] = {}
+            for k, v in inputs.items():
+                if not isinstance(v, torch.Tensor):
+                    continue
+                if v.is_floating_point():
+                    moved_inputs[k] = v.to(device=device, dtype=model_dtype)
+                else:
+                    moved_inputs[k] = v.to(device=device)
+            inputs = moved_inputs
 
             generate_kwargs = dict(static_kwargs)
 
@@ -1700,6 +1737,9 @@ class SessionManager:
                     prev_text_context_words = getattr(
                         recovery_inference_cfg, "prev_text_context_words", None
                     )
+                    max_words_per_second = getattr(
+                        recovery_inference_cfg, "max_words_per_second", None
+                    )
 
                     inference_worker = StreamingInferenceWorker(
                         result_publisher=publisher,
@@ -1713,6 +1753,7 @@ class SessionManager:
                         initial_prompt=recovery_initial_prompt,
                         speaker_identifier=None,  # Recovery loses session state
                         prev_text_context_words=prev_text_context_words,
+                        max_words_per_second=max_words_per_second,
                     )
 
                     # TODO: Replay last ~2 s of audio from Redis Stream to
