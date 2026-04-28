@@ -89,7 +89,9 @@ def azure_recognize_utterance(
 
     # ---- Handle result -----------------------------------------------
     if result.reason == speechsdk.ResultReason.RecognizedSpeech:
+        logger.info("[azure]: %s", result)
         word_timestamps = _extract_word_timestamps(result)
+        logger.info("[azure]: %s", word_timestamps)
         return {"text": result.text, "word_timestamps": word_timestamps}
 
     if result.reason == speechsdk.ResultReason.NoMatch:
@@ -108,11 +110,7 @@ def azure_recognize_utterance(
 def _extract_word_timestamps(result: Any) -> list[dict[str, Any]]:
     """Parse word-level timestamps from the Azure result JSON payload."""
     try:
-        json_str = result.properties.get(
-            # PropertyId.SpeechServiceResponse_JsonResult = 7
-            7,
-            "",
-        )
+        json_str = getattr(result, "json", None) or ""
         if not json_str:
             return []
         parsed = json.loads(json_str)
