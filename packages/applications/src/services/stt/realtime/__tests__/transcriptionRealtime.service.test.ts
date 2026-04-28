@@ -224,6 +224,39 @@ describe('TranscriptionRealtimeService', () => {
     });
 
     // -----------------------------------------------------------------------
+    // dispatchDramatiqJob — audioBucketName forwarding
+    // -----------------------------------------------------------------------
+
+    describe('dispatchDramatiqJob audioBucketName', () => {
+        it('uses provided audioBucketName as 9th positional arg', async () => {
+            await service.dispatchDramatiqJob({
+                jobId: 'job-99',
+                tenantId: 'tenant-1',
+                pipelineId: 'pipeline-1',
+                audioUri: 's3://hope-audio-arcaai/x.wav',
+                audioBucketName: 'hope-audio-arcaai',
+            });
+
+            const messageJson = (mockCacheService.hset as any).mock.calls[0][2];
+            const message = JSON.parse(messageJson);
+            expect(message.args[8]).toBe('hope-audio-arcaai');
+        });
+
+        it('falls back to "hope-audio" when audioBucketName is omitted', async () => {
+            await service.dispatchDramatiqJob({
+                jobId: 'job-99',
+                tenantId: 'tenant-1',
+                pipelineId: 'pipeline-1',
+                audioUri: 's3://hope-audio/x.wav',
+            });
+
+            const messageJson = (mockCacheService.hset as any).mock.calls[0][2];
+            const message = JSON.parse(messageJson);
+            expect(message.args[8]).toBe('hope-audio');
+        });
+    });
+
+    // -----------------------------------------------------------------------
     // subscribeToJob
     // -----------------------------------------------------------------------
 

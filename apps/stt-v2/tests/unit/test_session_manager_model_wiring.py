@@ -138,7 +138,7 @@ class TestLoadPipelineConfig:
         mock_reader.get_pipeline.assert_awaited_once_with("pipe-1")
 
     @pytest.mark.asyncio
-    async def test_returns_none_when_pipeline_not_found(self):
+    async def test_raises_when_pipeline_not_found(self):
         mgr = _make_manager()
         mock_reader = AsyncMock()
         mock_reader.get_pipeline = AsyncMock(return_value=None)
@@ -147,12 +147,11 @@ class TestLoadPipelineConfig:
             "sys.modules",
             {"stt_v2.pipeline.config_reader": MagicMock(get_pipeline_reader=lambda: mock_reader)},
         ):
-            result = await mgr._load_pipeline_config("nonexistent")
-
-        assert result is None
+            with pytest.raises(RuntimeError, match="not found"):
+                await mgr._load_pipeline_config("nonexistent")
 
     @pytest.mark.asyncio
-    async def test_returns_none_on_exception(self):
+    async def test_raises_on_exception(self):
         mgr = _make_manager()
         mock_reader = AsyncMock()
         mock_reader.get_pipeline = AsyncMock(side_effect=RuntimeError("DB down"))
@@ -161,9 +160,8 @@ class TestLoadPipelineConfig:
             "sys.modules",
             {"stt_v2.pipeline.config_reader": MagicMock(get_pipeline_reader=lambda: mock_reader)},
         ):
-            result = await mgr._load_pipeline_config("pipe-err")
-
-        assert result is None
+            with pytest.raises(RuntimeError, match="DB down"):
+                await mgr._load_pipeline_config("pipe-err")
 
 
 # ---------------------------------------------------------------------------
@@ -250,10 +248,10 @@ class TestLoadAsrPipeline:
     """Tests for SessionManager._load_asr_pipeline()."""
 
     @pytest.mark.asyncio
-    async def test_returns_none_when_config_is_none(self):
+    async def test_raises_when_config_is_none(self):
         mgr = _make_manager()
-        result = await mgr._load_asr_pipeline(None, "s-1")
-        assert result == (None, None)
+        with pytest.raises(RuntimeError, match="pipeline config is None"):
+            await mgr._load_asr_pipeline(None, "s-1")
 
     @pytest.mark.asyncio
     async def test_returns_callable_on_success(self):
@@ -332,7 +330,7 @@ class TestLoadAsrPipeline:
         assert captured["config"].code_switching is True
 
     @pytest.mark.asyncio
-    async def test_returns_none_on_model_load_failure(self):
+    async def test_raises_on_model_load_failure(self):
         mgr = _make_manager()
         config = _make_pipeline_config()
 
@@ -348,9 +346,8 @@ class TestLoadAsrPipeline:
                 ),
             },
         ):
-            result = await mgr._load_asr_pipeline(config, "s-1")
-
-        assert result == (None, None)
+            with pytest.raises(RuntimeError, match="OOM"):
+                await mgr._load_asr_pipeline(config, "s-1")
 
 
 # ---------------------------------------------------------------------------
@@ -701,10 +698,12 @@ class TestCreateSessionModelWiring:
         assert preprocessor._min_silence_duration_ms == 800
 
     @pytest.mark.asyncio
-    async def test_create_session_graceful_when_pipeline_not_found(self):
+    async def test_create_session_raises_when_pipeline_not_found(self):
         mgr = _make_manager()
 
-        mgr._load_pipeline_config = AsyncMock(return_value=None)
+        mgr._load_pipeline_config = AsyncMock(
+            side_effect=RuntimeError("Pipeline 'nonexistent' not found")
+        )
 
         with (
             patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
@@ -714,16 +713,12 @@ class TestCreateSessionModelWiring:
             MockConsumer.return_value = AsyncMock()
             MockListener.return_value = AsyncMock()
 
-            session = await mgr.create_session(
-                session_id="s-3",
-                tenant_id="t-1",
-                pipeline_id="nonexistent",
-            )
-
-        assert session is not None
-        # No VAD or ASR — preprocessor and worker should have None
-        assert mgr._preprocessors["s-3"]._vad_service is None
-        assert mgr._inference_workers["s-3"]._asr_pipeline is None
+            with pytest.raises(RuntimeError, match="not found"):
+                await mgr.create_session(
+                    session_id="s-3",
+                    tenant_id="t-1",
+                    pipeline_id="nonexistent",
+                )
 
     @pytest.mark.asyncio
     async def test_create_session_calls_asr_loader_with_pipeline_config(self):

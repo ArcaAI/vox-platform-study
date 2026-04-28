@@ -351,6 +351,7 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
     mediaId?: string;
     language?: string;
     userId?: string;
+    audioBucketName?: string;
   }): Promise<void> {
     const messageId = uuidv7();
     const redisMessageId = uuidv7(); // Required by Dramatiq protocol
@@ -366,7 +367,7 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
         params.mediaId ?? null,
         params.language ?? null,
         null,
-        'hope-audio',
+        params.audioBucketName ?? 'hope-audio',
         params.userId ?? null,
       ],
       kwargs: {},

@@ -172,6 +172,7 @@ export class TranscriptionJobController {
         mediaId,
         language: body.language,
         userId: user?.id,
+        audioBucketName: uploadBucket,
       });
     } catch (error) {
       // If upload or dispatch fails, mark the job as failed
@@ -229,6 +230,16 @@ export class TranscriptionJobController {
     const tenantId = this.getTenantId();
     const user = this.cls.get('user');
 
+    // Resolve tenant-scoped audio bucket so STT-v2 writes audio to the
+    // tenant's bucket instead of falling back to the global 'hope-audio'.
+    let audioBucketName: string | undefined;
+    try {
+      const tenantBucket = await this.tenantBucketService.getBucketBySlug(SYSTEM_BUCKET_SLUGS.AUDIO);
+      audioBucketName = tenantBucket?.name;
+    } catch (err) {
+      this.logger.warn(`Failed to resolve tenant audio bucket for streaming: ${err}`);
+    }
+
     const result = await this.sessionService.createSession({
       sessionId,
       tenantId,
@@ -237,6 +248,7 @@ export class TranscriptionJobController {
       sampleRate: body.sampleRate ?? 16000,
       language: body.language,
       userId: user?.id,
+      audioBucketName,
     });
 
     if (!result) {

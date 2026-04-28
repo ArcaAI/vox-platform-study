@@ -18,6 +18,10 @@ class CreateStreamingSessionRequest(BaseModel):
     )
     user_id: str | None = Field(default=None, description="Authenticated user ID for speaker pre-seeding")
     language: str | None = Field(default=None, description="Override pipeline language (ISO 639-1/639-3 code)")
+    audio_bucket_name: str | None = Field(
+        default=None,
+        description="Tenant-scoped audio bucket name. Defaults to 'hope-audio' if not provided.",
+    )
 
 
 class StreamingSessionResponse(BaseModel):
