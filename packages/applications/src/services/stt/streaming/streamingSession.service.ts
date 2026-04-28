@@ -77,6 +77,7 @@ export class StreamingSessionService implements IStreamingSessionService {
             microphone_id: dto.microphoneId,
             user_id: dto.userId,
             language: dto.language ?? null,
+            audio_bucket_name: dto.audioBucketName,
           },
           { timeout: 15000 },
         ),

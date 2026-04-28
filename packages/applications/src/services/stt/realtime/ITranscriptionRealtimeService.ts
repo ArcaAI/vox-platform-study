@@ -75,6 +75,7 @@ export interface ITranscriptionRealtimeService {
     mediaId?: string;
     language?: string;
     userId?: string;
+    audioBucketName?: string;
   }): Promise<void>;
 }
 

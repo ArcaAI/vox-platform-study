@@ -18,6 +18,7 @@ const createMockJobService = () => ({
 const createMockRealtimeService = () => ({
     createAndStream: vi.fn(),
     subscribeToJob: vi.fn(),
+    dispatchDramatiqJob: vi.fn(),
 });
 
 const createMockSessionService = () => ({
@@ -200,6 +201,44 @@ describe('TranscriptionJobController', () => {
                 maxConcurrent: 5,
                 currentActive: 1,
             });
+        });
+
+        it('should resolve and forward tenant audioBucketName when available', async () => {
+            mockTenantBucketService.getBucketBySlug.mockResolvedValue({
+                id: 'b-1',
+                name: 'hope-audio-arcaai',
+                slug: 'audio',
+            });
+            mockSessionService.createSession.mockResolvedValue({
+                sessionId: 'sess-1',
+                status: 'active',
+                maxConcurrent: 5,
+                currentActive: 1,
+            });
+
+            await controller.createStreamSession({ pipelineId: 'pipe-1' });
+
+            expect(mockTenantBucketService.getBucketBySlug).toHaveBeenCalledWith('audio');
+            expect(mockSessionService.createSession).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    audioBucketName: 'hope-audio-arcaai',
+                }),
+            );
+        });
+
+        it('omits audioBucketName when tenant bucket lookup throws', async () => {
+            mockTenantBucketService.getBucketBySlug.mockRejectedValue(new Error('boom'));
+            mockSessionService.createSession.mockResolvedValue({
+                sessionId: 'sess-1',
+                status: 'active',
+                maxConcurrent: 5,
+                currentActive: 1,
+            });
+
+            await controller.createStreamSession({ pipelineId: 'pipe-1' });
+
+            const arg = mockSessionService.createSession.mock.calls[0][0];
+            expect(arg.audioBucketName).toBeUndefined();
         });
 
         it('should throw ServiceUnavailableException when STT at capacity', async () => {
