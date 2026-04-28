@@ -69,16 +69,28 @@ async def create_streaming_session(
         sample_rate=request.sample_rate,
     )
 
-    session = await mgr.create_session(
-        session_id=request.session_id,
-        tenant_id=request.tenant_id,
-        pipeline_id=request.pipeline_id,
-        consultation_id=request.consultation_id,
-        sample_rate=request.sample_rate,
-        audio_bucket_name="hope-audio",
-        user_id=request.user_id,
-        language=request.language,
-    )
+    try:
+        session = await mgr.create_session(
+            session_id=request.session_id,
+            tenant_id=request.tenant_id,
+            pipeline_id=request.pipeline_id,
+            consultation_id=request.consultation_id,
+            sample_rate=request.sample_rate,
+            audio_bucket_name=request.audio_bucket_name or "hope-audio",
+            user_id=request.user_id,
+            language=request.language,
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to create streaming session",
+            session_id=request.session_id,
+            pipeline_id=request.pipeline_id,
+            error=str(exc),
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create streaming session: {exc}",
+        ) from exc
 
     guard = mgr.capacity_guard
 

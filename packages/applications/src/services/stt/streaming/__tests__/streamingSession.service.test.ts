@@ -132,4 +132,35 @@ describe('StreamingSessionService', () => {
             currentActive: 2,
         });
     });
+
+    it('forwards audio_bucket_name in createSession POST body when provided', async () => {
+        httpService.post.mockReturnValue(of({
+            data: {
+                session_id: 's-3',
+                status: 'active',
+                max_concurrent: 4,
+                current_active: 1,
+            },
+        }));
+
+        const service = new StreamingSessionService(
+            httpService,
+            configWithSttV2Url('http://stt-v2.internal:9000'),
+        );
+
+        await service.createSession({
+            sessionId: 's-3',
+            tenantId: 'tenant-1',
+            pipelineId: 'pipeline-1',
+            audioBucketName: 'hope-audio-arcaai',
+        });
+
+        expect(httpService.post).toHaveBeenCalledWith(
+            'http://stt-v2.internal:9000/internal/streaming/sessions',
+            expect.objectContaining({
+                audio_bucket_name: 'hope-audio-arcaai',
+            }),
+            { timeout: 15000 },
+        );
+    });
 });
