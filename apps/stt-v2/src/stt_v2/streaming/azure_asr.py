@@ -89,9 +89,7 @@ def azure_recognize_utterance(
 
     # ---- Handle result -----------------------------------------------
     if result.reason == speechsdk.ResultReason.RecognizedSpeech:
-        logger.info("[azure]: %s", result)
         word_timestamps = _extract_word_timestamps(result)
-        logger.info("[azure]: %s", word_timestamps)
         return {"text": result.text, "word_timestamps": word_timestamps}
 
     if result.reason == speechsdk.ResultReason.NoMatch:
