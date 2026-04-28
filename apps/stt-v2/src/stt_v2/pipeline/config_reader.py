@@ -52,7 +52,7 @@ class PipelineConfigReader:
             result = await session.execute(
                 select(AsrPipelineRead).where(
                     AsrPipelineRead.id == pipeline_id,
-                    AsrPipelineRead.resource_status == "ENABLED",
+                    AsrPipelineRead.resource_status.in_(["ENABLED", "ARCHIVED"]),
                 )
             )
             pipeline = result.scalar_one_or_none()
