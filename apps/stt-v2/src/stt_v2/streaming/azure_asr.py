@@ -12,9 +12,8 @@ import json
 import logging
 from typing import Any
 
-import numpy as np
-
 import azure.cognitiveservices.speech as speechsdk
+import numpy as np
 
 from stt_v2.core.exceptions import (
     CloudASRAuthError,
