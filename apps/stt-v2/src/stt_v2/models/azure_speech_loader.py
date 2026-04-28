@@ -11,7 +11,7 @@ The actual transcription is performed by the inference path in
 
 import logging
 
-from azure.cognitiveservices.speech import SpeechConfig
+from azure.cognitiveservices.speech import OutputFormat, SpeechConfig
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import CloudASRAuthError
@@ -113,6 +113,7 @@ class AzureSpeechLoader(BaseModelLoader):
         speech_config = SpeechConfig(subscription=speech_key, region=speech_region)
 
         # Enable detailed results by default (word-level timestamps, NBest)
+        speech_config.output_format = OutputFormat.Detailed
         speech_config.request_word_level_timestamps()
 
         logger.info(

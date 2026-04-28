@@ -66,7 +66,7 @@ class TestAzureRecognizeUtterance:
         result = MagicMock()
         result.reason = mock_sdk.ResultReason.RecognizedSpeech
         result.text = "hello world"
-        result.properties.get.return_value = _nbest_json()
+        result.json = _nbest_json()
 
         recognizer = MagicMock()
         recognizer.recognize_once_async.return_value.get.return_value = result
@@ -160,7 +160,7 @@ class TestAzureRecognizeUtterance:
         result = MagicMock()
         result.reason = mock_sdk.ResultReason.RecognizedSpeech
         result.text = "test"
-        result.properties.get.return_value = _nbest_json(words=[])
+        result.json = _nbest_json(words=[])
 
         recognizer = MagicMock()
         recognizer.recognize_once_async.return_value.get.return_value = result
@@ -187,7 +187,7 @@ class TestAzureRecognizeUtterance:
         result = MagicMock()
         result.reason = mock_sdk.ResultReason.RecognizedSpeech
         result.text = "test"
-        result.properties.get.return_value = _nbest_json(words=[])
+        result.json = _nbest_json(words=[])
 
         recognizer = MagicMock()
         recognizer.recognize_once_async.return_value.get.return_value = result
@@ -210,7 +210,7 @@ class TestAzureRecognizeUtterance:
         result = MagicMock()
         result.reason = mock_sdk.ResultReason.RecognizedSpeech
         result.text = "test"
-        result.properties.get.return_value = _nbest_json(words=[])
+        result.json = _nbest_json(words=[])
 
         recognizer = MagicMock()
         recognizer.recognize_once_async.return_value.get.return_value = result
@@ -235,7 +235,7 @@ class TestExtractWordTimestamps:
     def test_parses_valid_nbest_json(self) -> None:
         """Correctly parses word timestamps from NBest JSON."""
         result = MagicMock()
-        result.properties.get.return_value = _nbest_json()
+        result.json = _nbest_json()
 
         timestamps = _extract_word_timestamps(result)
 
@@ -248,21 +248,21 @@ class TestExtractWordTimestamps:
     def test_empty_json_returns_empty_list(self) -> None:
         """Empty JSON string returns empty list."""
         result = MagicMock()
-        result.properties.get.return_value = ""
+        result.json = ""
 
         assert _extract_word_timestamps(result) == []
 
     def test_no_nbest_returns_empty_list(self) -> None:
         """JSON without NBest key returns empty list."""
         result = MagicMock()
-        result.properties.get.return_value = json.dumps({"other": "data"})
+        result.json = json.dumps({"other": "data"})
 
         assert _extract_word_timestamps(result) == []
 
     def test_malformed_json_returns_empty_list(self) -> None:
         """Malformed JSON returns empty list without raising."""
         result = MagicMock()
-        result.properties.get.return_value = "not json"
+        result.json = "not json"
 
         assert _extract_word_timestamps(result) == []
 
