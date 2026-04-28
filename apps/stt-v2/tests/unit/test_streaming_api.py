@@ -241,6 +241,41 @@ class TestCreateSession:
 
         assert resp.status_code == 422  # Validation error
 
+    def test_create_session_forwards_audio_bucket_name(self, client, mock_session_manager, mock_session):
+        """Posting audio_bucket_name should be forwarded verbatim to SessionManager.create_session."""
+        mock_session_manager.create_session = AsyncMock(return_value=mock_session)
+
+        resp = client.post(
+            "/internal/streaming/sessions",
+            json={
+                "session_id": "sess-bk-1",
+                "tenant_id": "t-001",
+                "pipeline_id": "pipe-001",
+                "audio_bucket_name": "hope-audio-arcaai",
+            },
+        )
+
+        assert resp.status_code == 201
+        kwargs = mock_session_manager.create_session.call_args.kwargs
+        assert kwargs["audio_bucket_name"] == "hope-audio-arcaai"
+
+    def test_create_session_defaults_audio_bucket_name(self, client, mock_session_manager, mock_session):
+        """Omitting audio_bucket_name should default to the legacy 'hope-audio' fallback."""
+        mock_session_manager.create_session = AsyncMock(return_value=mock_session)
+
+        resp = client.post(
+            "/internal/streaming/sessions",
+            json={
+                "session_id": "sess-bk-2",
+                "tenant_id": "t-001",
+                "pipeline_id": "pipe-001",
+            },
+        )
+
+        assert resp.status_code == 201
+        kwargs = mock_session_manager.create_session.call_args.kwargs
+        assert kwargs["audio_bucket_name"] == "hope-audio"
+
 
 # =========================================================================
 # Tests: GET /internal/streaming/sessions/{session_id}

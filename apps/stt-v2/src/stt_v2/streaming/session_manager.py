@@ -618,21 +618,22 @@ class SessionManager:
     ) -> Any:
         """Load pipeline spec from the pipeline reader.
 
-        Returns the ``PipelineSpec`` if found, or ``None`` on failure.
-        """
-        try:
-            from stt_v2.pipeline.config_reader import get_pipeline_reader
+        Returns the ``PipelineSpec`` if found.
 
-            reader = get_pipeline_reader()
-            pipeline = await reader.get_pipeline(pipeline_id)
-            return pipeline.spec if pipeline else None
-        except Exception as exc:
-            logger.warning(
-                "Failed to load pipeline config for streaming session",
-                pipeline_id=pipeline_id,
-                error=str(exc),
+        Raises
+        ------
+        RuntimeError
+            If the pipeline cannot be loaded (missing config, DB error, etc.).
+        """
+        from stt_v2.pipeline.config_reader import get_pipeline_reader
+
+        reader = get_pipeline_reader()
+        pipeline = await reader.get_pipeline(pipeline_id)
+        if pipeline is None:
+            raise RuntimeError(
+                f"Pipeline '{pipeline_id}' not found — cannot create streaming session"
             )
-            return None
+        return pipeline.spec
 
     async def _load_vad_service(
         self,
@@ -688,57 +689,53 @@ class SessionManager:
 
         Returns a tuple of (callable, resolved_initial_prompt).
         The callable is ``(samples: np.ndarray, sample_rate: int) -> dict[str, Any]``
-        that runs inference on a single utterance, or ``None`` on failure.
+        that runs inference on a single utterance.
 
-        The callable reuses ``BatchTranscriptionService._run_inference()``
-        to ensure streaming and batch use the same ASR code path.
+        Raises
+        ------
+        RuntimeError
+            If the ASR model cannot be loaded (missing DB config, bad credentials, etc.).
         """
         if pipeline_config is None:
-            return None, None
-
-        try:
-            from stt_v2.models import get_model_cache
-            from stt_v2.pipeline.dto import ModelTaskType
-
-            model_cache = get_model_cache()
-            asr_ref = pipeline_config.models.asr
-
-            # Load ASR model via the model cache
-            asr_model = await model_cache.get_or_load_from_ref(
-                model_ref=asr_ref,
-                task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+            raise RuntimeError(
+                "Cannot load ASR pipeline: pipeline config is None"
             )
 
-            # Use pipeline inference config directly
-            inference_config = pipeline_config.inference
+        from stt_v2.models import get_model_cache
+        from stt_v2.pipeline.dto import ModelTaskType
 
-            initial_prompt: str | None = None
-            initial_prompt_id = getattr(inference_config, "initial_prompt", None)
-            if initial_prompt_id:
-                from stt_v2.core.initial_prompt import get_initial_prompt
+        model_cache = get_model_cache()
+        asr_ref = pipeline_config.models.asr
 
-                initial_prompt = await get_initial_prompt(initial_prompt_id)
+        # Load ASR model via the model cache
+        asr_model = await model_cache.get_or_load_from_ref(
+            model_ref=asr_ref,
+            task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+        )
 
-            # Create the callable ASR pipeline
-            asr_pipeline = self._make_asr_callable(
-                asr_model, inference_config, initial_prompt=initial_prompt,
-            )
+        # Use pipeline inference config directly
+        inference_config = pipeline_config.inference
 
-            logger.info(
-                "ASR pipeline loaded for streaming session",
-                session_id=session_id,
-                model_slug=asr_model.model_slug,
-                model_format=asr_model.format.value,
-                language=inference_config.language,
-            )
-            return asr_pipeline, initial_prompt
-        except Exception as exc:
-            logger.warning(
-                "Failed to load ASR for streaming, inference will return empty text",
-                session_id=session_id,
-                error=str(exc),
-            )
-            return None, None
+        initial_prompt: str | None = None
+        initial_prompt_id = getattr(inference_config, "initial_prompt", None)
+        if initial_prompt_id:
+            from stt_v2.core.initial_prompt import get_initial_prompt
+
+            initial_prompt = await get_initial_prompt(initial_prompt_id)
+
+        # Create the callable ASR pipeline
+        asr_pipeline = self._make_asr_callable(
+            asr_model, inference_config, initial_prompt=initial_prompt,
+        )
+
+        logger.info(
+            "ASR pipeline loaded for streaming session",
+            session_id=session_id,
+            model_slug=asr_model.model_slug,
+            model_format=asr_model.format.value,
+            language=inference_config.language,
+        )
+        return asr_pipeline, initial_prompt
 
     def _make_asr_callable(
         self,
@@ -783,6 +780,46 @@ class SessionManager:
                 )
 
             return run_nemo_inference
+
+        if loaded_model.format == AiModelFormat.AZURE_SPEECH:
+            from stt_v2.models.azure_speech_loader import normalize_language_for_azure
+            from stt_v2.streaming.azure_asr import azure_recognize_utterance
+
+            speech_config = loaded_model.model  # SpeechConfig instance
+            language = normalize_language_for_azure(
+                getattr(inference_config, "language", None),
+            )
+            code_switching = getattr(inference_config, "code_switching", False)
+
+            # Warn about Whisper-specific params that don't apply
+            for param in (
+                "beam_size", "temperature", "compression_ratio_threshold",
+                "logprob_threshold", "no_speech_threshold",
+                "condition_on_prev_tokens",
+            ):
+                if getattr(inference_config, param, None) is not None:
+                    logger.warning(
+                        "Azure Speech streaming: ignoring Whisper-specific "
+                        "param %s",
+                        param,
+                    )
+
+            async def run_azure_inference(
+                samples: np.ndarray,
+                sample_rate: int,
+                *,
+                prompt: str | None = None,  # noqa: ARG001 — not used by Azure
+            ) -> dict[str, Any]:
+                return await asyncio.to_thread(
+                    azure_recognize_utterance,
+                    speech_config,
+                    samples,
+                    sample_rate,
+                    language,
+                    code_switching,
+                )
+
+            return run_azure_inference
 
         model = loaded_model.model
         processor = loaded_model.processor or loaded_model.feature_extractor

@@ -323,6 +323,10 @@ class ModelRef:
         if isinstance(value, str):
             return cls(slug=value)
         elif isinstance(value, dict):
+            # If the dict carries a slug (and no hf_model_id), treat as slug reference
+            if "slug" in value and "hf_model_id" not in value and "model_id" not in value:
+                return cls(slug=value["slug"])
+
             # Parse inline definition
             engine_str = value.get("engine", "safetensor").upper()
             # Normalize engine names

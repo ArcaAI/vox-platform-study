@@ -26,6 +26,8 @@ export interface CreateStreamingSessionRequest {
   userId?: string;
   /** Override pipeline language (ISO 639-1 code) */
   language?: string;
+  /** Tenant-scoped audio bucket name forwarded to STT-v2 for storage isolation */
+  audioBucketName?: string;
 }
 
 // ---------------------------------------------------------------------------

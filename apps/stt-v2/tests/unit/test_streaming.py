@@ -1139,7 +1139,13 @@ class TestSessionManager:
 
         redis_mock.xread.side_effect = _slow_xread
 
-        return SessionManager(redis=redis_mock, profile=profile, worker_id="test-worker-1")
+        mgr = SessionManager(redis=redis_mock, profile=profile, worker_id="test-worker-1")
+
+        # Stub pipeline/model loading so tests don't hit real DB/reader
+        mgr._load_pipeline_config = AsyncMock(return_value=None)
+        mgr._load_asr_pipeline = AsyncMock(return_value=(None, None))
+
+        return mgr
 
     async def test_create_session(self):
         mgr = self._make_manager()

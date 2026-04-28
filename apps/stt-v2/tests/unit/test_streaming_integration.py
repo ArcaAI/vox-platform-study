@@ -411,6 +411,8 @@ class TestCreateSessionIntegration:
         redis = _make_mock_redis()
         profile = _make_mock_profile()
         mgr = SessionManager(redis=redis, profile=profile, worker_id="test")
+        mgr._load_pipeline_config = AsyncMock(return_value=None)
+        mgr._load_asr_pipeline = AsyncMock(return_value=(None, None))
 
         session = await mgr.create_session(
             session_id="s1",
@@ -431,6 +433,8 @@ class TestCreateSessionIntegration:
         redis = _make_mock_redis()
         profile = _make_mock_profile()
         mgr = SessionManager(redis=redis, profile=profile, worker_id="test")
+        mgr._load_pipeline_config = AsyncMock(return_value=None)
+        mgr._load_asr_pipeline = AsyncMock(return_value=(None, None))
 
         session = await mgr.create_session(
             session_id="s2",
@@ -451,6 +455,8 @@ class TestCreateSessionIntegration:
         redis = _make_mock_redis()
         profile = _make_mock_profile()
         mgr = SessionManager(redis=redis, profile=profile, worker_id="test")
+        mgr._load_pipeline_config = AsyncMock(return_value=None)
+        mgr._load_asr_pipeline = AsyncMock(return_value=(None, None))
 
         await mgr.create_session(
             session_id="s3",
@@ -473,6 +479,8 @@ class TestCreateSessionIntegration:
         redis = _make_mock_redis()
         profile = _make_mock_profile()
         mgr = SessionManager(redis=redis, profile=profile, worker_id="test")
+        mgr._load_pipeline_config = AsyncMock(return_value=None)
+        mgr._load_asr_pipeline = AsyncMock(return_value=(None, None))
         mgr._running = True
 
         await mgr.create_session("s4", "t1", "p1")
