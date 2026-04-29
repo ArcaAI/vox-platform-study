@@ -1,8 +1,8 @@
 import { APP_NAME, APP_VERSION, STORAGE_KEYS } from '../constants';
 
 describe('constants', () => {
-    it("APP_NAME should be 'ArcaVox Playground'", () => {
-        expect(APP_NAME).toBe('ArcaVox Playground');
+    it("APP_NAME should be 'ArcaVox Admin Console'", () => {
+        expect(APP_NAME).toBe('ArcaVox Admin Console');
     });
 
     it("APP_VERSION should be '0.1.0'", () => {

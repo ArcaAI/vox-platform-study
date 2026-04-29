@@ -184,14 +184,14 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           </div>
           <div className="grid text-left text-sm leading-tight">
             <span className="truncate font-semibold">ArcaVox</span>
-            <span className="text-muted-foreground truncate text-xs">Playground</span>
+            <span className="text-muted-foreground truncate text-xs">Admin Console</span>
           </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <NavGroup label="Getting Started" items={gettingStartedItems} />
-        <NavGroup label="Playground" items={playgroundItems} />
         <NavGroup label="Administration" items={adminItems} />
+        <NavGroup label="Playground" items={playgroundItems} />
+        <NavGroup label="Getting Started" items={gettingStartedItems} />
       </SidebarContent>
       <SidebarFooter>
         <NavUser />
