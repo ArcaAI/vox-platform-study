@@ -25,7 +25,7 @@ import { useMemo } from 'react';
 import { NavGroup, type NavItem } from './nav-group';
 import { NavUser } from './nav-user';
 
-const gettingStartedItems: NavItem[] = [
+const documentItems: NavItem[] = [
   {
     title: 'Introduction',
     url: '/',
@@ -184,14 +184,14 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           </div>
           <div className="grid text-left text-sm leading-tight">
             <span className="truncate font-semibold">ArcaVox</span>
-            <span className="text-muted-foreground truncate text-xs">Playground</span>
+            <span className="text-muted-foreground truncate text-xs">Admin Console</span>
           </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <NavGroup label="Getting Started" items={gettingStartedItems} />
-        <NavGroup label="Playground" items={playgroundItems} />
         <NavGroup label="Administration" items={adminItems} />
+        <NavGroup label="Playground" items={playgroundItems} />
+        <NavGroup label="Documents" items={documentItems} />
       </SidebarContent>
       <SidebarFooter>
         <NavUser />
