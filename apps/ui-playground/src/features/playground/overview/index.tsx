@@ -16,7 +16,7 @@ export default function OverviewPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Zap className="size-5" />
-              <CardTitle>ArcaVox Playground</CardTitle>
+              <CardTitle>ArcaVox Admin Console</CardTitle>
             </div>
             <div className="flex items-center gap-2">
               <Building2 className="text-muted-foreground size-4" />

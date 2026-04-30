@@ -1,16 +1,16 @@
-import { Separator } from '@arcaai/ui/separator';
-import { Badge } from '@arcaai/ui/badge';
-import { Skeleton } from '@arcaai/ui/skeleton';
-import { Link } from '@tanstack/react-router';
-import { Building2, Check, X, Settings2, Shield } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
 import { Callout } from '@/components/callout';
 import { DocsLayout, type TocSection } from '@/components/layout/docs-layout';
+import { useMyTenantConfigs, useUpdateMyTenantConfigs, type UpdateTenantConfigItem } from '@/features/admin/api/tenants';
+import { useAuthStore } from '@/store/auth-store';
+import { Badge } from '@arcaai/ui/badge';
+import { Separator } from '@arcaai/ui/separator';
+import { Skeleton } from '@arcaai/ui/skeleton';
+import { useArcaConfig } from '@arcaai/vox';
+import { Link } from '@tanstack/react-router';
+import { Building2, Check, Settings2, Shield, X } from 'lucide-react';
+import { useCallback, useMemo } from 'react';
 import { ServiceStatusGrid } from './components/service-status-grid';
 import { TenantSettingsPanel } from './components/tenant-settings-panel';
-import { useAuthStore } from '@/store/auth-store';
-import { useArcaConfig } from '@arcaai/vox';
-import { useMyTenantConfigs, useUpdateMyTenantConfigs, type UpdateTenantConfigItem } from '@/features/admin/api/tenants';
 
 const TENANT_ADMIN_ROLES = ['GLOBAL_ADMIN', 'TENANT_ADMIN'] as const;
 
@@ -74,7 +74,7 @@ export default function Introduction() {
     >
       <Callout className="border-blue-600/30 bg-blue-50 dark:border-blue-400/30 dark:bg-blue-950/40">
         <p>
-          <strong>Welcome to the ArcaVox Playground.</strong> Explore the SDK interactively. Head to{' '}
+          <strong>Welcome to the ArcaVox Admin Console.</strong> Explore the SDK interactively. Head to{' '}
           <Link to="/installation" className="font-medium underline underline-offset-4">
             Installation
           </Link>{' '}
