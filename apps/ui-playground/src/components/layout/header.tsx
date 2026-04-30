@@ -15,7 +15,7 @@ import { Building2, UserCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 const routeMeta: Record<string, { label: string; parent?: { label: string; path: string } }> = {
-  '/_authenticated/': { label: 'Home' },
+  '/_authenticated/': { label: 'Introduction' },
   '/_authenticated/installation/': {
     label: 'Installation',
   },
@@ -68,8 +68,7 @@ const routeMeta: Record<string, { label: string; parent?: { label: string; path:
     parent: { label: 'Audio & Transcription', path: '/audio/live-transcription' },
   },
   '/_authenticated/admin/overview': {
-    label: 'Overview',
-    parent: { label: 'Administration', path: '/admin/overview' },
+    label: 'Home',
   },
   '/_authenticated/admin/tenants': {
     label: 'Tenants',
