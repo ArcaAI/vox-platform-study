@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "ArcaVox Playground React - Interactive SDK playground for ArcaVox",
+  "description": "ArcaVox Admin Console React - Interactive SDK playground for ArcaVox",
   "scripts": {
     "generate-routes": "tsr generate",
     "watch-routes": "tsr watch",
