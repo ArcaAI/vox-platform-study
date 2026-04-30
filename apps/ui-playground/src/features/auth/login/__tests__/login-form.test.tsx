@@ -35,10 +35,10 @@ vi.mock('lucide-react', () => ({
 }));
 
 describe('LoginForm', () => {
-    it('should render ArcaVox Playground heading', () => {
+    it('should render ArcaVox Admin Console heading', () => {
         render(<LoginForm />);
         expect(
-            screen.getByRole('heading', { name: /arcavox playground/i }),
+            screen.getByRole('heading', { name: /ArcaVox Admin Console/i }),
         ).toBeInTheDocument();
     });
 

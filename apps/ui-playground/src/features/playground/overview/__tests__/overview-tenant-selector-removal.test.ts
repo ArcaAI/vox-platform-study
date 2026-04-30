@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 /**
  * Tests that the overview page no longer renders the TenantSelector
@@ -20,7 +20,7 @@ describe('Overview page — TenantSelector removal', () => {
     expect(overviewRendersUserList).toBe(true);
   });
 
-  it('should still render ArcaVox Playground info card', () => {
+  it('should still render ArcaVox Admin Console info card', () => {
     const overviewRendersInfoCard = true;
     expect(overviewRendersInfoCard).toBe(true);
   });
