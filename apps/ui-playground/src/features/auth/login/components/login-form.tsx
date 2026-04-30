@@ -1,8 +1,8 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/tabs';
+import { Zap } from 'lucide-react';
 import { ApiKeyForm } from './api-key-form';
 import { CredentialsForm } from './credentials-form';
-import { Zap } from 'lucide-react';
 
 export function LoginForm() {
   return (
@@ -11,7 +11,7 @@ export function LoginForm() {
         <div className="bg-primary text-primary-foreground flex size-12 items-center justify-center rounded-xl">
           <Zap className="size-6" />
         </div>
-        <h1 className="text-2xl font-bold">ArcaVox Playground</h1>
+        <h1 className="text-2xl font-bold">ArcaVox Admin Console</h1>
         <p className="text-muted-foreground text-sm">Sign in to access the interactive SDK playground</p>
       </div>
       <Card>
