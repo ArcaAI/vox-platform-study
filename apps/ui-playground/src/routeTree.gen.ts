@@ -17,6 +17,7 @@ import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors403RouteImport } from './routes/(errors)/403'
 import { Route as errors401RouteImport } from './routes/(errors)/401'
 import { Route as authLoginRouteImport } from './routes/(auth)/login'
+import { Route as AuthenticatedIntroductionIndexRouteImport } from './routes/_authenticated/introduction/index'
 import { Route as AuthenticatedInstallationIndexRouteImport } from './routes/_authenticated/installation/index'
 import { Route as AuthenticatedDnaWritingStyleIndexRouteImport } from './routes/_authenticated/dna-writing-style/index'
 import { Route as AuthenticatedConsultationIndexRouteImport } from './routes/_authenticated/consultation/index'
@@ -35,7 +36,6 @@ import { Route as AuthenticatedAdminTenantsRouteImport } from './routes/_authent
 import { Route as AuthenticatedAdminStudioRouteImport } from './routes/_authenticated/admin/studio'
 import { Route as AuthenticatedAdminStorageRouteImport } from './routes/_authenticated/admin/storage'
 import { Route as AuthenticatedAdminPromptsRouteImport } from './routes/_authenticated/admin/prompts'
-import { Route as AuthenticatedAdminOverviewRouteImport } from './routes/_authenticated/admin/overview'
 import { Route as AuthenticatedAdminDnaReportsRouteImport } from './routes/_authenticated/admin/dna-reports'
 import { Route as AuthenticatedAdminDepartmentsRouteImport } from './routes/_authenticated/admin/departments'
 import { Route as AuthenticatedAdminConfigurationsRouteImport } from './routes/_authenticated/admin/configurations'
@@ -82,6 +82,12 @@ const authLoginRoute = authLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedIntroductionIndexRoute =
+  AuthenticatedIntroductionIndexRouteImport.update({
+    id: '/introduction/',
+    path: '/introduction/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedInstallationIndexRoute =
   AuthenticatedInstallationIndexRouteImport.update({
     id: '/installation/',
@@ -189,12 +195,6 @@ const AuthenticatedAdminPromptsRoute =
     path: '/admin/prompts',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedAdminOverviewRoute =
-  AuthenticatedAdminOverviewRouteImport.update({
-    id: '/admin/overview',
-    path: '/admin/overview',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
 const AuthenticatedAdminDnaReportsRoute =
   AuthenticatedAdminDnaReportsRouteImport.update({
     id: '/admin/dna-reports',
@@ -239,7 +239,6 @@ export interface FileRoutesByFullPath {
   '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
   '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
   '/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute
-  '/admin/overview': typeof AuthenticatedAdminOverviewRoute
   '/admin/prompts': typeof AuthenticatedAdminPromptsRoute
   '/admin/storage': typeof AuthenticatedAdminStorageRoute
   '/admin/studio': typeof AuthenticatedAdminStudioRoute
@@ -258,6 +257,7 @@ export interface FileRoutesByFullPath {
   '/consultation/': typeof AuthenticatedConsultationIndexRoute
   '/dna-writing-style/': typeof AuthenticatedDnaWritingStyleIndexRoute
   '/installation/': typeof AuthenticatedInstallationIndexRoute
+  '/introduction/': typeof AuthenticatedIntroductionIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof authLoginRoute
@@ -272,7 +272,6 @@ export interface FileRoutesByTo {
   '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
   '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
   '/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute
-  '/admin/overview': typeof AuthenticatedAdminOverviewRoute
   '/admin/prompts': typeof AuthenticatedAdminPromptsRoute
   '/admin/storage': typeof AuthenticatedAdminStorageRoute
   '/admin/studio': typeof AuthenticatedAdminStudioRoute
@@ -291,6 +290,7 @@ export interface FileRoutesByTo {
   '/consultation': typeof AuthenticatedConsultationIndexRoute
   '/dna-writing-style': typeof AuthenticatedDnaWritingStyleIndexRoute
   '/installation': typeof AuthenticatedInstallationIndexRoute
+  '/introduction': typeof AuthenticatedIntroductionIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -307,7 +307,6 @@ export interface FileRoutesById {
   '/_authenticated/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
   '/_authenticated/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
   '/_authenticated/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute
-  '/_authenticated/admin/overview': typeof AuthenticatedAdminOverviewRoute
   '/_authenticated/admin/prompts': typeof AuthenticatedAdminPromptsRoute
   '/_authenticated/admin/storage': typeof AuthenticatedAdminStorageRoute
   '/_authenticated/admin/studio': typeof AuthenticatedAdminStudioRoute
@@ -326,6 +325,7 @@ export interface FileRoutesById {
   '/_authenticated/consultation/': typeof AuthenticatedConsultationIndexRoute
   '/_authenticated/dna-writing-style/': typeof AuthenticatedDnaWritingStyleIndexRoute
   '/_authenticated/installation/': typeof AuthenticatedInstallationIndexRoute
+  '/_authenticated/introduction/': typeof AuthenticatedIntroductionIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -342,7 +342,6 @@ export interface FileRouteTypes {
     | '/admin/configurations'
     | '/admin/departments'
     | '/admin/dna-reports'
-    | '/admin/overview'
     | '/admin/prompts'
     | '/admin/storage'
     | '/admin/studio'
@@ -361,6 +360,7 @@ export interface FileRouteTypes {
     | '/consultation/'
     | '/dna-writing-style/'
     | '/installation/'
+    | '/introduction/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -375,7 +375,6 @@ export interface FileRouteTypes {
     | '/admin/configurations'
     | '/admin/departments'
     | '/admin/dna-reports'
-    | '/admin/overview'
     | '/admin/prompts'
     | '/admin/storage'
     | '/admin/studio'
@@ -394,6 +393,7 @@ export interface FileRouteTypes {
     | '/consultation'
     | '/dna-writing-style'
     | '/installation'
+    | '/introduction'
   id:
     | '__root__'
     | '/_authenticated'
@@ -409,7 +409,6 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/configurations'
     | '/_authenticated/admin/departments'
     | '/_authenticated/admin/dna-reports'
-    | '/_authenticated/admin/overview'
     | '/_authenticated/admin/prompts'
     | '/_authenticated/admin/storage'
     | '/_authenticated/admin/studio'
@@ -428,6 +427,7 @@ export interface FileRouteTypes {
     | '/_authenticated/consultation/'
     | '/_authenticated/dna-writing-style/'
     | '/_authenticated/installation/'
+    | '/_authenticated/introduction/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -496,6 +496,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/login'
       preLoaderRoute: typeof authLoginRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/introduction/': {
+      id: '/_authenticated/introduction/'
+      path: '/introduction'
+      fullPath: '/introduction/'
+      preLoaderRoute: typeof AuthenticatedIntroductionIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/installation/': {
       id: '/_authenticated/installation/'
@@ -623,13 +630,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminPromptsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/admin/overview': {
-      id: '/_authenticated/admin/overview'
-      path: '/admin/overview'
-      fullPath: '/admin/overview'
-      preLoaderRoute: typeof AuthenticatedAdminOverviewRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/admin/dna-reports': {
       id: '/_authenticated/admin/dna-reports'
       path: '/admin/dna-reports'
@@ -676,7 +676,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminConfigurationsRoute: typeof AuthenticatedAdminConfigurationsRoute
   AuthenticatedAdminDepartmentsRoute: typeof AuthenticatedAdminDepartmentsRoute
   AuthenticatedAdminDnaReportsRoute: typeof AuthenticatedAdminDnaReportsRoute
-  AuthenticatedAdminOverviewRoute: typeof AuthenticatedAdminOverviewRoute
   AuthenticatedAdminPromptsRoute: typeof AuthenticatedAdminPromptsRoute
   AuthenticatedAdminStorageRoute: typeof AuthenticatedAdminStorageRoute
   AuthenticatedAdminStudioRoute: typeof AuthenticatedAdminStudioRoute
@@ -695,6 +694,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedConsultationIndexRoute: typeof AuthenticatedConsultationIndexRoute
   AuthenticatedDnaWritingStyleIndexRoute: typeof AuthenticatedDnaWritingStyleIndexRoute
   AuthenticatedInstallationIndexRoute: typeof AuthenticatedInstallationIndexRoute
+  AuthenticatedIntroductionIndexRoute: typeof AuthenticatedIntroductionIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -705,7 +705,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminConfigurationsRoute: AuthenticatedAdminConfigurationsRoute,
   AuthenticatedAdminDepartmentsRoute: AuthenticatedAdminDepartmentsRoute,
   AuthenticatedAdminDnaReportsRoute: AuthenticatedAdminDnaReportsRoute,
-  AuthenticatedAdminOverviewRoute: AuthenticatedAdminOverviewRoute,
   AuthenticatedAdminPromptsRoute: AuthenticatedAdminPromptsRoute,
   AuthenticatedAdminStorageRoute: AuthenticatedAdminStorageRoute,
   AuthenticatedAdminStudioRoute: AuthenticatedAdminStudioRoute,
@@ -730,6 +729,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDnaWritingStyleIndexRoute:
     AuthenticatedDnaWritingStyleIndexRoute,
   AuthenticatedInstallationIndexRoute: AuthenticatedInstallationIndexRoute,
+  AuthenticatedIntroductionIndexRoute: AuthenticatedIntroductionIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

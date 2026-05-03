@@ -28,7 +28,7 @@ import { NavUser } from './nav-user';
 const documentItems: NavItem[] = [
   {
     title: 'Introduction',
-    url: '/',
+    url: '/introduction',
     icon: BookOpen,
   },
   {
@@ -100,7 +100,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     const items: NavItem[] = [
       {
         title: 'Overview',
-        url: '/admin/overview',
+        url: '/',
         icon: Settings,
       },
     ];
