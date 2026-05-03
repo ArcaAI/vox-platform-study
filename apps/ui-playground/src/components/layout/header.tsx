@@ -67,28 +67,32 @@ const routeMeta: Record<string, { label: string; parent?: { label: string; path:
     label: 'Job Transcription',
     parent: { label: 'Audio & Transcription', path: '/audio/live-transcription' },
   },
-  '/_authenticated/admin/overview': {
+  '/_authenticated/introduction/': {
+    label: 'Introduction',
+    parent: { label: 'Home', path: '/' },
+  },
+  '/_authenticated/': {
     label: 'Home',
   },
   '/_authenticated/admin/tenants': {
     label: 'Tenants',
-    parent: { label: 'Administration', path: '/admin/overview' },
+    parent: { label: 'Administration', path: '/' },
   },
   '/_authenticated/admin/users': {
     label: 'Users',
-    parent: { label: 'Administration', path: '/admin/overview' },
+    parent: { label: 'Administration', path: '/' },
   },
   '/_authenticated/admin/prompts': {
     label: 'Prompts',
-    parent: { label: 'Administration', path: '/admin/overview' },
+    parent: { label: 'Administration', path: '/' },
   },
   '/_authenticated/admin/departments': {
     label: 'Departments',
-    parent: { label: 'Administration', path: '/admin/overview' },
+    parent: { label: 'Administration', path: '/' },
   },
   '/_authenticated/admin/dna-reports': {
     label: 'DNA Reports',
-    parent: { label: 'Administration', path: '/admin/overview' },
+    parent: { label: 'Administration', path: '/' },
   },
 };
 
