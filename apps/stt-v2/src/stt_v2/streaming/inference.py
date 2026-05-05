@@ -31,9 +31,8 @@ from stt_v2.streaming.schemas import SegmentResult
 logger = structlog.get_logger(__name__)
 _MAX_SEGMENT_TEXT_CHARS = 1200
 
-_HALLUCINATION_RMS_THRESHOLD = 0.01  # ~-40 dBFS -- below this is near-silence
-_HALLUCINATION_SHORT_WORD_COUNT = 3  # texts with <= N words on low energy are suspect
-_PARTIAL_TAIL_WINDOW_S = 10.0  # cap Whisper input for partials to last 10s
+_HALLUCINATION_RMS_THRESHOLD = 0.01
+_HALLUCINATION_SHORT_WORD_COUNT = 3
 _FILLER_PATTERN = re.compile(
     r"^\s*(?:uh|um|ah|oh|hmm|huh|mhm|mm|oh\s*,?\s*man|\.\..+|,|\s)*\.?\s*$",
     re.IGNORECASE,
@@ -77,6 +76,9 @@ class StreamingInferenceWorker:
         speaker_identifier: Any = None,
         prev_text_context_words: int | None = None,
         max_words_per_second: float | None = None,
+        max_segment_text_chars: int | None = None,
+        hallucination_rms_threshold: float | None = None,
+        hallucination_short_word_count: int | None = None,
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
@@ -94,6 +96,24 @@ class StreamingInferenceWorker:
             if isinstance(max_words_per_second, (int, float))
             and not isinstance(max_words_per_second, bool)
             else InferenceConfig().max_words_per_second
+        )
+        self._max_segment_text_chars: int = (
+            int(max_segment_text_chars)
+            if isinstance(max_segment_text_chars, (int, float))
+            and not isinstance(max_segment_text_chars, bool)
+            else _MAX_SEGMENT_TEXT_CHARS
+        )
+        self._hallucination_rms_threshold: float = (
+            float(hallucination_rms_threshold)
+            if isinstance(hallucination_rms_threshold, (int, float))
+            and not isinstance(hallucination_rms_threshold, bool)
+            else _HALLUCINATION_RMS_THRESHOLD
+        )
+        self._hallucination_short_word_count: int = (
+            int(hallucination_short_word_count)
+            if isinstance(hallucination_short_word_count, (int, float))
+            and not isinstance(hallucination_short_word_count, bool)
+            else _HALLUCINATION_SHORT_WORD_COUNT
         )
         self._punctuation_model: Any = None
         self._previous_text: str = ""
@@ -416,13 +436,13 @@ class StreamingInferenceWorker:
         # Final cleanup: collapse any remaining multiple spaces
         cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
 
-        if len(cleaned) > _MAX_SEGMENT_TEXT_CHARS:
+        if len(cleaned) > self._max_segment_text_chars:
             logger.warning(
                 "Streaming segment text exceeded max length, truncating",
                 original_length=len(cleaned),
-                max_length=_MAX_SEGMENT_TEXT_CHARS,
+                max_length=self._max_segment_text_chars,
             )
-            cleaned = cleaned[:_MAX_SEGMENT_TEXT_CHARS].rstrip()
+            cleaned = cleaned[:self._max_segment_text_chars].rstrip()
 
         return cleaned
 
@@ -523,9 +543,9 @@ class StreamingInferenceWorker:
             return True
 
         word_count = len(stripped.split())
-        if word_count <= _HALLUCINATION_SHORT_WORD_COUNT:
+        if word_count <= self._hallucination_short_word_count:
             rms = float(np.sqrt(np.mean(utterance.samples ** 2)))
-            if rms < _HALLUCINATION_RMS_THRESHOLD:
+            if rms < self._hallucination_rms_threshold:
                 return True
 
         audio_duration_s = len(utterance.samples) / utterance.sample_rate
@@ -595,19 +615,6 @@ class StreamingInferenceWorker:
         context carry-forward.  Returns ``SegmentResult(is_final=False)``.
         """
         start_ts = time.monotonic()
-
-        # Defense-in-depth: crop to tail window
-        max_samples = int(_PARTIAL_TAIL_WINDOW_S * utterance.sample_rate)
-        if len(utterance.samples) > max_samples:
-            cropped_samples = utterance.samples[-max_samples:]
-            utterance = AudioUtterance(
-                samples=cropped_samples,
-                sample_rate=utterance.sample_rate,
-                start_time=utterance.start_time,
-                end_time=utterance.end_time,
-                utterance_index=utterance.utterance_index,
-                is_final=False,
-            )
 
         try:
             inference_out = await self._run_inference(utterance)

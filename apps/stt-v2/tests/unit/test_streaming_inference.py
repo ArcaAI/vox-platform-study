@@ -641,23 +641,6 @@ class TestProcessPartial:
         assert worker._previous_text == "original context"
 
     @pytest.mark.asyncio
-    async def test_process_partial_crops_to_tail_window(self):
-        """15s utterance should have ASR receive <= 10s of samples."""
-        received_samples = []
-
-        def capturing_pipeline(samples, sr, **kwargs):
-            received_samples.append(len(samples))
-            return "text"
-
-        worker = StreamingInferenceWorker(asr_pipeline=capturing_pipeline)
-        utt = _make_utterance(duration_s=15.0, is_final=False)
-
-        await worker.process_partial("sess-1", utt)
-
-        max_samples = int(10.0 * 16000)
-        assert received_samples[0] <= max_samples
-
-    @pytest.mark.asyncio
     async def test_process_partial_hallucination_filtered(self):
         """Near-silence input should produce empty text."""
         worker = StreamingInferenceWorker(

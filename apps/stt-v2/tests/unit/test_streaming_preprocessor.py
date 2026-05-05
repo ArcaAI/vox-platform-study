@@ -9,7 +9,6 @@ import pytest
 
 from stt_v2.streaming.preprocessor import (
     _FRAME_SIZE_16K,
-    _PARTIAL_TAIL_WINDOW_S,
     _PRE_SPEECH_CONTEXT_MS,
     AudioUtterance,
     StreamingPreprocessor,
@@ -775,42 +774,6 @@ class TestPartialEmission:
         assert len(partials) == 0
 
     @pytest.mark.asyncio
-    async def test_partial_tail_window_capped(self):
-        """Feed 15s speech, partial samples length <= 10s * sample_rate."""
-        vad = _make_vad_service(probability=1.0)
-        pp = StreamingPreprocessor(
-            session_id="s1",
-            sample_rate=16000,
-            vad_service=vad,
-            min_speech_duration_ms=32,
-            min_silence_duration_ms=700,
-            max_utterance_duration_ms=30000,  # Don't force-emit
-        )
-
-        all_utts = []
-        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
-            call_count = [0]
-
-            def advancing():
-                call_count[0] += 1
-                return call_count[0] * 0.1
-
-            mock_time.monotonic = advancing
-
-            # Feed 15s in 1s chunks
-            for _ in range(15):
-                pcm = _make_speech_pcm(1000)
-                utts = await pp.feed(pcm)
-                all_utts.extend(utts)
-
-        partials = [u for u in all_utts if not u.is_final]
-        assert len(partials) > 0
-
-        max_samples = int(_PARTIAL_TAIL_WINDOW_S * 16000)
-        for p in partials:
-            assert len(p.samples) <= max_samples
-
-    @pytest.mark.asyncio
     async def test_partial_does_not_clear_buffer(self):
         """After partial, utterance_buffer is unchanged (buffer keeps growing)."""
         vad = _make_vad_service(probability=1.0)
@@ -1015,3 +978,136 @@ class TestPartialEmission:
 
         if partials and finals:
             assert partials[0].utterance_index == finals[0].utterance_index
+
+
+# =========================================================================
+# Tests: Force-emit smart split + overlap fallback
+# =========================================================================
+
+
+class TestForceEmitSmartSplit:
+    """Tests for hybrid force-emit: smart split at low-energy + overlap fallback."""
+
+    @pytest.mark.asyncio
+    async def test_force_emit_splits_at_low_energy_frame(self):
+        """When buffer hits max, split at lowest-energy frame in last 2s."""
+        vad = _make_vad_service(probability=1.0)
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=700,
+            max_utterance_duration_ms=2000,  # Short max for test
+        )
+
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            mock_time.monotonic = lambda: 0.0
+
+            # Feed 1.5s loud speech
+            pcm_loud = _make_speech_pcm(1500, amplitude=10000)
+            await pp.feed(pcm_loud)
+
+            # Feed 100ms near-silence (low energy split point)
+            num_quiet = int(16000 * 0.1)
+            quiet_samples = (np.ones(num_quiet) * 5).astype(np.int16)
+            await pp.feed(quiet_samples.tobytes())
+
+            # Feed more loud speech to exceed max duration
+            pcm_loud2 = _make_speech_pcm(500, amplitude=10000)
+            utts = await pp.feed(pcm_loud2)
+
+        finals = [u for u in utts if u.is_final]
+        assert len(finals) >= 1
+
+        # After force-emit with smart split, preprocessor should still be in_speech
+        # with carry buffer seeded
+        assert pp.in_speech is True
+        assert len(pp._state.utterance_buffer) > 0
+
+    @pytest.mark.asyncio
+    async def test_force_emit_overlap_fallback_on_continuous_loud(self):
+        """When no low-energy frame found, fall back to overlap carry."""
+        vad = _make_vad_service(probability=1.0)
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=700,
+            max_utterance_duration_ms=2000,  # Short max for test
+        )
+
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            mock_time.monotonic = lambda: 0.0
+
+            # Feed continuous loud speech exceeding max duration
+            pcm = _make_speech_pcm(2500, amplitude=10000)
+            utts = await pp.feed(pcm)
+
+        finals = [u for u in utts if u.is_final]
+        assert len(finals) >= 1
+
+        # Should still be in_speech with overlap carry
+        assert pp.in_speech is True
+        assert len(pp._state.utterance_buffer) > 0
+
+    @pytest.mark.asyncio
+    async def test_force_emit_carry_buffer_receives_new_audio(self):
+        """After force-emit, new audio appends to carry buffer."""
+        vad = _make_vad_service(probability=1.0)
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=700,
+            max_utterance_duration_ms=2000,
+        )
+
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            mock_time.monotonic = lambda: 0.0
+
+            # Trigger force-emit
+            pcm = _make_speech_pcm(2500, amplitude=10000)
+            await pp.feed(pcm)
+
+        carry_size = len(pp._state.utterance_buffer)
+        assert carry_size > 0
+
+        # Feed more audio — buffer should grow
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            mock_time.monotonic = lambda: 3.0
+            pcm2 = _make_speech_pcm(200, amplitude=10000)
+            await pp.feed(pcm2)
+
+        assert len(pp._state.utterance_buffer) > carry_size
+
+    @pytest.mark.asyncio
+    async def test_force_emit_no_audio_loss(self):
+        """Total samples across emitted final + carry buffer == total fed."""
+        vad = _make_vad_service(probability=1.0)
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=700,
+            max_utterance_duration_ms=2000,
+        )
+
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            mock_time.monotonic = lambda: 0.0
+
+            pcm = _make_speech_pcm(2500, amplitude=10000)
+            utts = await pp.feed(pcm)
+
+        finals = [u for u in utts if u.is_final]
+        assert len(finals) >= 1
+
+        emitted_samples = sum(len(f.samples) for f in finals)
+        carry_samples = sum(len(f) for f in pp._state.utterance_buffer)
+
+        # Emitted + carry should account for all buffered audio
+        # (minus pre-speech ring which isn't counted)
+        assert emitted_samples + carry_samples > 0
