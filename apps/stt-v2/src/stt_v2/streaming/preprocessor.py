@@ -28,18 +28,19 @@ logger = structlog.get_logger(__name__)
 
 # Silero v5 constants
 _FRAME_SIZE_16K = 512  # 512 samples = 32 ms at 16 kHz
-_FRAME_SIZE_8K = 256  # 256 samples = 32 ms at 8 kHz
-_PRE_SPEECH_CONTEXT_MS = 300  # Keep 300ms before speech onset
-_ENERGY_FLOOR = 1e-4  # Lower bound for energy-based fallback VAD
-_ENERGY_MULTIPLIER = 2.5  # Speech threshold multiplier above learned noise floor
-_FALLBACK_NOISE_FLOOR_MAX = 0.015  # Hard cap to prevent runaway adaptation
-_NOISE_FLOOR_COOLDOWN_FRAMES = 15  # ~480ms cooldown after utterance emission
-_DEFAULT_MAX_UTTERANCE_DURATION_MS = 25000  # Force-emit after 25s to avoid Whisper degradation
+_FRAME_SIZE_8K = 256
+_PRE_SPEECH_CONTEXT_MS = 300
+_ENERGY_FLOOR = 1e-4
+_ENERGY_MULTIPLIER = 2.5
+_FALLBACK_NOISE_FLOOR_MAX = 0.015
+_NOISE_FLOOR_COOLDOWN_FRAMES = 15
+_DEFAULT_MAX_UTTERANCE_DURATION_MS = 25000
+_FORCE_EMIT_LOOKBACK_MS = 1500
+_FORCE_EMIT_OVERLAP_MS = 500
+_SPLIT_ENERGY_RATIO = 0.3
 
-# Partial emission constants
-_PARTIAL_INTERVAL_S = 1.0        # emit partial every 1000ms wall-clock
-_PARTIAL_MIN_AUDIO_S = 0.5       # minimum buffered audio before first partial
-_PARTIAL_TAIL_WINDOW_S = 10.0    # cap Whisper input for partials to last 10s
+_PARTIAL_INTERVAL_S = 1.0
+_PARTIAL_MIN_AUDIO_S = 0.5
 
 
 @dataclass
@@ -62,26 +63,15 @@ class AudioUtterance:
 class _PreprocessorState:
     """Internal mutable state for the preprocessor."""
 
-    # PCM accumulator — incoming bytes not yet processed into frames
     pcm_remainder: bytearray = field(default_factory=bytearray)
-
-    # Speech detection state machine
     in_speech: bool = False
-    speech_onset_frames: int = 0  # consecutive frames above threshold
-    silence_frames: int = 0  # consecutive frames below threshold
-    noise_floor_cooldown: int = 0  # frames to skip noise floor adaptation after utterance
-
-    # Current utterance being assembled
+    speech_onset_frames: int = 0
+    silence_frames: int = 0
+    noise_floor_cooldown: int = 0
     utterance_buffer: list[np.ndarray] = field(default_factory=list)
     utterance_start_time: float = 0.0
-
-    # Pre-speech context ring (keeps last N ms of audio before onset)
     pre_speech_ring: list[np.ndarray] = field(default_factory=list)
-
-    # Partial emission timer
     last_partial_emitted_at: float = 0.0
-
-    # Counters
     total_samples_fed: int = 0
     utterance_count: int = 0
 
@@ -118,6 +108,8 @@ class StreamingPreprocessor:
         denoiser: Any | None = None,
         max_utterance_duration_ms: int = _DEFAULT_MAX_UTTERANCE_DURATION_MS,
         pre_speech_context_ms: int = _PRE_SPEECH_CONTEXT_MS,
+        force_emit_lookback_ms: int = _FORCE_EMIT_LOOKBACK_MS,
+        force_emit_overlap_ms: int = _FORCE_EMIT_OVERLAP_MS,
     ) -> None:
         self.session_id = session_id
         self.sample_rate = sample_rate
@@ -160,6 +152,10 @@ class StreamingPreprocessor:
             1,
             int(max_utterance_duration_ms / self._frame_duration_ms),
         )
+
+        # Partial tail window and force-emit split config
+        self._force_emit_lookback_ms = force_emit_lookback_ms
+        self._force_emit_overlap_ms = force_emit_overlap_ms
 
         # VAD session state (LSTM hidden state)
         self._vad_state = VADSessionState(
@@ -342,14 +338,30 @@ class StreamingPreprocessor:
                 # Force-emit if utterance exceeds max duration to prevent websocket
                 # Whisper accuracy degradation on oversized segments.
                 if len(state.utterance_buffer) >= self._max_utterance_frames:
-                    logger.debug(
-                        "Max utterance duration reached, force-emitting",
-                        session_id=self.session_id,
-                        component="VAD",
-                        frames=len(state.utterance_buffer),
-                        max_frames=self._max_utterance_frames,
-                    )
-                    utt = self._emit_utterance(is_final=True)
+                    split_idx = self._find_best_split_point(state.utterance_buffer)
+                    if split_idx is not None:
+                        # Smart split: found low-energy point
+                        carry = list(state.utterance_buffer[split_idx:])
+                        state.utterance_buffer = list(state.utterance_buffer[:split_idx])
+                        logger.debug(
+                            "Force-emit smart split at low-energy frame",
+                            session_id=self.session_id,
+                            component="VAD",
+                            split_idx=split_idx,
+                            carry_frames=len(carry),
+                        )
+                        utt = self._emit_utterance(is_final=True, carry_buffer=carry)
+                    else:
+                        # Fallback: hard split with overlap
+                        overlap_frames = int(self._force_emit_overlap_ms / self._frame_duration_ms)
+                        carry = list(state.utterance_buffer[-overlap_frames:])
+                        logger.debug(
+                            "Force-emit overlap fallback",
+                            session_id=self.session_id,
+                            component="VAD",
+                            overlap_frames=overlap_frames,
+                        )
+                        utt = self._emit_utterance(is_final=True, carry_buffer=carry)
                     if utt is not None:
                         utterances.append(utt)
                 elif not is_speech:
@@ -484,10 +496,7 @@ class StreamingPreprocessor:
         if buffer_duration_s < _PARTIAL_MIN_AUDIO_S:
             return None
 
-        # Tail window cap: only send last N seconds to bound Whisper cost
-        max_frames = int(_PARTIAL_TAIL_WINDOW_S * self._target_sr / self._frame_size)
-        tail = state.utterance_buffer[-max_frames:]
-        samples = np.concatenate(tail)
+        samples = np.concatenate(state.utterance_buffer)
 
         end_time = state.total_samples_fed / self._target_sr
 
@@ -503,7 +512,32 @@ class StreamingPreprocessor:
         state.last_partial_emitted_at = now
         return partial
 
-    def _emit_utterance(self, is_final: bool) -> AudioUtterance | None:
+    def _find_best_split_point(self, buffer: list[np.ndarray]) -> int | None:
+        """Find lowest-energy frame in the last lookback window.
+
+        Returns the buffer index to split at, or None if no good point found.
+        """
+        lookback_frames = int(self._force_emit_lookback_ms / self._frame_duration_ms)
+        search_start = max(0, len(buffer) - lookback_frames)
+
+        # Compute mean energy of full buffer for comparison
+        mean_energy = float(np.mean([np.mean(f ** 2) for f in buffer]))
+        if mean_energy < _ENERGY_FLOOR:
+            return None
+
+        threshold = mean_energy * _SPLIT_ENERGY_RATIO
+        best_idx = None
+        best_energy = float("inf")
+
+        for i in range(search_start, len(buffer)):
+            energy = float(np.mean(buffer[i] ** 2))
+            if energy <= threshold and energy < best_energy:
+                best_energy = energy
+                best_idx = i
+
+        return best_idx
+
+    def _emit_utterance(self, is_final: bool, carry_buffer: list[np.ndarray] | None = None) -> AudioUtterance | None:
         """Concatenate buffered frames into an AudioUtterance and reset state."""
         state = self._state
 
@@ -547,8 +581,15 @@ class StreamingPreprocessor:
 
         # Reset for next utterance
         state.utterance_buffer.clear()
-        state.in_speech = False
-        state.speech_onset_frames = 0
+        if carry_buffer:
+            # Seed next utterance with carry-forward audio (force-emit split)
+            state.utterance_buffer = carry_buffer
+            state.in_speech = True
+            carry_duration = sum(len(f) for f in carry_buffer) / self._target_sr
+            state.utterance_start_time = end_time - carry_duration
+        else:
+            state.in_speech = False
+            state.speech_onset_frames = 0
         state.silence_frames = 0
         state.noise_floor_cooldown = _NOISE_FLOOR_COOLDOWN_FRAMES
         state.last_partial_emitted_at = 0.0

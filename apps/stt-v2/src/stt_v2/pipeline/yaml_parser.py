@@ -375,6 +375,9 @@ class PipelineYamlParser:
             min_silence_duration_ms=int(vad_data.get("min_silence_duration_ms", 100)),
             padding_ms=int(vad_data.get("padding_ms", 30)),
             pre_speech_context_ms=int(vad_data.get("pre_speech_context_ms", 500)),
+            force_emit_after_ms=int(vad_data.get("force_emit_after_ms", 25000)),
+            force_emit_lookback_ms=int(vad_data.get("force_emit_lookback_ms", 1500)),
+            force_emit_overlap_ms=int(vad_data.get("force_emit_overlap_ms", 500)),
         )
 
         denoise_data = data.get("denoise", {})
@@ -435,8 +438,20 @@ class PipelineYamlParser:
         if "prev_text_context_words" in data and data["prev_text_context_words"] is not None:
             kwargs["prev_text_context_words"] = int(data["prev_text_context_words"])
 
+        if "enable_prev_text_context" in data:
+            kwargs["enable_prev_text_context"] = bool(data["enable_prev_text_context"])
+
         if "max_words_per_second" in data and data["max_words_per_second"] is not None:
             kwargs["max_words_per_second"] = float(data["max_words_per_second"])
+
+        if "max_segment_text_chars" in data and data["max_segment_text_chars"] is not None:
+            kwargs["max_segment_text_chars"] = int(data["max_segment_text_chars"])
+
+        if "hallucination_rms_threshold" in data and data["hallucination_rms_threshold"] is not None:
+            kwargs["hallucination_rms_threshold"] = float(data["hallucination_rms_threshold"])
+
+        if "hallucination_short_word_count" in data and data["hallucination_short_word_count"] is not None:
+            kwargs["hallucination_short_word_count"] = int(data["hallucination_short_word_count"])
 
         return InferenceConfig(**kwargs)
 

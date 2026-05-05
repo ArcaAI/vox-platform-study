@@ -309,6 +309,12 @@ class SessionManager:
                 vad_kwargs["min_silence_duration_ms"] = vad_cfg.min_silence_duration_ms
                 if hasattr(vad_cfg, "pre_speech_context_ms"):
                     vad_kwargs["pre_speech_context_ms"] = vad_cfg.pre_speech_context_ms
+                if hasattr(vad_cfg, "force_emit_after_ms"):
+                    vad_kwargs["max_utterance_duration_ms"] = vad_cfg.force_emit_after_ms
+                if hasattr(vad_cfg, "force_emit_lookback_ms"):
+                    vad_kwargs["force_emit_lookback_ms"] = vad_cfg.force_emit_lookback_ms
+                if hasattr(vad_cfg, "force_emit_overlap_ms"):
+                    vad_kwargs["force_emit_overlap_ms"] = vad_cfg.force_emit_overlap_ms
 
             target_sr = (
                 pipeline_config.preprocessing.target_sample_rate
@@ -417,8 +423,19 @@ class SessionManager:
             prev_text_context_words = getattr(
                 inference_cfg, "prev_text_context_words", None
             )
+            if inference_cfg and not getattr(inference_cfg, "enable_prev_text_context", True):
+                prev_text_context_words = 0
             max_words_per_second = getattr(
                 inference_cfg, "max_words_per_second", None
+            )
+            max_segment_text_chars = getattr(
+                inference_cfg, "max_segment_text_chars", None
+            )
+            hallucination_rms_threshold = getattr(
+                inference_cfg, "hallucination_rms_threshold", None
+            )
+            hallucination_short_word_count = getattr(
+                inference_cfg, "hallucination_short_word_count", None
             )
 
             inference_worker = StreamingInferenceWorker(
@@ -432,6 +449,9 @@ class SessionManager:
                 speaker_identifier=speaker_identifier,
                 prev_text_context_words=prev_text_context_words,
                 max_words_per_second=max_words_per_second,
+                max_segment_text_chars=max_segment_text_chars,
+                hallucination_rms_threshold=hallucination_rms_threshold,
+                hallucination_short_word_count=hallucination_short_word_count,
             )
 
             self._register_inference_runtime(session, inference_worker)
