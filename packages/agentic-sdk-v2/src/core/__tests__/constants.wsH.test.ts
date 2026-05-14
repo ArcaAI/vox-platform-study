@@ -52,9 +52,9 @@ describe('WS-H Constants', () => {
             const keys = Object.keys(DNA_STYLE_ENDPOINTS);
             expect(keys).toEqual(
                 expect.arrayContaining([
-                    'GENERATE', 'GENERATE_FOR_DOCTOR', 'MY_STYLE',
+                    'GENERATE', 'GENERATE_FOR_DOCTOR', 'JOB_STREAM', 'MY_STYLE',
                     'UPDATE', 'VERSIONS', 'ADMIN_LIST',
-                    'ADMIN_JOB_STATUS', 'BY_DOCTOR',
+                    'ADMIN_JOB_STATUS', 'ADMIN_JOB_STREAM', 'BY_DOCTOR',
                 ])
             );
         });
