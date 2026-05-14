@@ -1,7 +1,5 @@
 import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { AdminApiError, adminClient } from '../../admin/api/admin-client';
-import { useAuthStore } from '@/store/auth-store';
-import { usePlaygroundStore } from '@/store/playground-store';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,11 +54,25 @@ export interface DnaUpdateInput {
   changeReason?: string;
 }
 
+export interface DnaJobResult {
+  reportId: string;
+  reportData?: Record<string, unknown>;
+  styleText?: string;
+}
+
 export interface DnaJobStatus {
   status: 'queued' | 'processing' | 'completed' | 'failed';
   jobId: string;
-  result?: DnaReport;
+  progress?: number;
+  result?: DnaJobResult;
   error?: string;
+}
+
+export interface DnaStreamCallbacks {
+  onStatus?: (status: DnaJobStatus) => void;
+  onProgress?: (progress: number) => void;
+  onResult?: (result: DnaJobResult | null) => void;
+  onError?: (error: Error) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +159,57 @@ export function useGenerateDnaReport() {
   });
 }
 
+export function streamDnaJob(jobId: string, callbacks: DnaStreamCallbacks): AbortController {
+  const abort = new AbortController();
+
+  void (async () => {
+    try {
+      const response = await adminClient.stream(`/dna-writing-styles/jobs/${jobId}/stream`, abort.signal);
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('SSE response body is not readable');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (!abort.signal.aborted) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const events = buffer.split('\n\n');
+        buffer = events.pop() ?? '';
+
+        for (const eventBlock of events) {
+          const lines = eventBlock.split('\n');
+          const eventName = lines.find((line) => line.startsWith('event:'))?.slice(6).trim() ?? 'message';
+          const data = lines
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trimStart())
+            .join('\n');
+
+          if (!data) continue;
+
+          if (eventName === 'status') {
+            callbacks.onStatus?.(JSON.parse(data) as DnaJobStatus);
+          } else if (eventName === 'progress') {
+            const parsed = JSON.parse(data) as { progress?: number };
+            callbacks.onProgress?.(parsed.progress ?? 0);
+          } else if (eventName === 'result') {
+            callbacks.onResult?.(JSON.parse(data) as DnaJobResult | null);
+          } else if (eventName === 'error') {
+            const parsed = JSON.parse(data) as { error?: string };
+            throw new Error(parsed.error ?? 'DNA stream failed');
+          }
+        }
+      }
+    } catch (error) {
+      if (!abort.signal.aborted) callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));
+    }
+  })();
+
+  return abort;
+}
+
 export function useUpdateDnaReport() {
   const qc = useQueryClient();
   return useMutation({
@@ -157,139 +220,6 @@ export function useUpdateDnaReport() {
       qc.invalidateQueries({ queryKey: keys.detail(variables.reportId) });
     },
   });
-}
-
-// ---------------------------------------------------------------------------
-// SSE Streaming (user-scoped only)
-// ---------------------------------------------------------------------------
-
-export interface DnaStreamChunk {
-  type: 'chunk' | 'meta' | 'done' | 'error' | 'status';
-  content?: string;
-  data?: Record<string, unknown>;
-}
-
-export interface DnaStreamCallbacks {
-  onChunk: (chunk: DnaStreamChunk) => void;
-  onDone?: (finalReport?: DnaReport) => void;
-  onError?: (error: Error) => void;
-}
-
-function getStreamHeaders(): Record<string, string> {
-  const { accessToken, apiKey, authMethod, tenantId, isImpersonating, impersonationToken } = useAuthStore.getState();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Accept: 'text/event-stream',
-  };
-
-  if (authMethod === 'credentials') {
-    const token = isImpersonating && impersonationToken ? impersonationToken : accessToken;
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-  } else if (authMethod === 'apiKey' && apiKey) {
-    headers['X-API-Key'] = apiKey;
-  }
-
-  if (tenantId) {
-    headers['X-Tenant-Id'] = tenantId;
-  }
-
-  return headers;
-}
-
-/**
- * Initiates a DNA report generation via SSE stream for the current user.
- * POST /dna-writing-styles/generate with `stream: true`, then reads the
- * response body as a ReadableStream, parsing SSE `data:` lines.
- *
- * Returns an AbortController so the caller can cancel the stream.
- */
-export function streamDnaGenerate(input: DnaGenerateInput, callbacks: DnaStreamCallbacks): AbortController {
-  const abort = new AbortController();
-  const baseUrl = usePlaygroundStore.getState().apiBaseUrl;
-  const url = `${baseUrl}/dna-writing-styles/generate`;
-
-  (async () => {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: getStreamHeaders(),
-        body: JSON.stringify({ ...input, stream: true }),
-        signal: abort.signal,
-      });
-
-      if (!res.ok) {
-        let errorBody: unknown;
-        try {
-          errorBody = await res.json();
-        } catch {
-          /* empty */
-        }
-        const msg = (errorBody as { message?: string })?.message ?? `Stream request failed (${res.status})`;
-        callbacks.onError?.(new Error(msg));
-        return;
-      }
-
-      if (!res.body) {
-        callbacks.onError?.(new Error('Response body is empty — streaming not supported'));
-        return;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith(':')) continue;
-
-            if (trimmed.startsWith('data: ')) {
-              const payload = trimmed.slice(6).trim();
-              if (payload === '[DONE]') {
-                callbacks.onDone?.();
-                return;
-              }
-              try {
-                const chunk = JSON.parse(payload) as DnaStreamChunk;
-                callbacks.onChunk(chunk);
-
-                if (chunk.type === 'done') {
-                  const report = chunk.data as unknown as DnaReport | undefined;
-                  callbacks.onDone?.(report);
-                  return;
-                }
-                if (chunk.type === 'error') {
-                  callbacks.onError?.(new Error(chunk.content ?? 'Stream error'));
-                  return;
-                }
-              } catch {
-                callbacks.onChunk({ type: 'chunk', content: payload });
-              }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-
-      callbacks.onDone?.();
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') return;
-      callbacks.onError?.(err as Error);
-    }
-  })();
-
-  return abort;
 }
 
 export { keys as dnaWritingStyleKeys };

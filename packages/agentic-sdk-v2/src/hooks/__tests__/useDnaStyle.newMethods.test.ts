@@ -104,16 +104,18 @@ describe('useDnaStyle — new methods', () => {
             expect(resp).toEqual(jobStatus);
         });
 
-        it('should update style when result is present in response', async () => {
-            const jobStatus = { status: 'completed', result: mockReport };
+        it('should return job result without updating style', async () => {
+            const jobStatus = { status: 'completed', result: { reportId: mockReport.id } };
             mockGet.mockResolvedValue(jobStatus);
             const { result } = renderHook(() => useDnaStyle());
 
+            let resp: unknown;
             await act(async () => {
-                await result.current.getJobStatus('job-1');
+                resp = await result.current.getJobStatus('job-1');
             });
 
-            expect(result.current.style).toEqual(mockReport);
+            expect(resp).toEqual(jobStatus);
+            expect(result.current.style).toBeNull();
         });
 
         it('should NOT update style when result is absent', async () => {
@@ -154,7 +156,9 @@ describe('useDnaStyle — new methods', () => {
 
     describe('pollJobStatus', () => {
         it('should resolve immediately when first poll returns completed', async () => {
-            mockGet.mockResolvedValueOnce({ status: 'completed', result: mockReport });
+            mockGet
+                .mockResolvedValueOnce({ status: 'completed', result: { reportId: mockReport.id } })
+                .mockResolvedValueOnce(mockReport);
             const { result } = renderHook(() => useDnaStyle());
 
             let resolved: unknown;
@@ -164,7 +168,9 @@ describe('useDnaStyle — new methods', () => {
 
             expect(resolved).toEqual(mockReport);
             expect(result.current.style).toEqual(mockReport);
-            expect(mockGet).toHaveBeenCalledTimes(1);
+            expect(mockGet).toHaveBeenCalledTimes(2);
+            expect(mockGet).toHaveBeenNthCalledWith(1, DNA_STYLE_ENDPOINTS.JOB_STATUS('job-1'));
+            expect(mockGet).toHaveBeenNthCalledWith(2, DNA_STYLE_ENDPOINTS.MY_STYLE);
         });
 
         it('should reject when status becomes failed', async () => {
@@ -311,9 +317,9 @@ describe('useDnaStyle — new methods', () => {
             (useAgenticStore as any).mockReturnValue(mockStore);
             const { result } = renderHook(() => useDnaStyle());
 
-            mockGet.mockResolvedValueOnce({ status: 'completed', result: mockReport });
+            mockGet.mockResolvedValueOnce({ status: 'completed', result: { reportId: mockReport.id } });
             await act(async () => { await result.current.getJobStatus('job-1'); });
-            expect(result.current.style).toEqual(mockReport);
+            expect(result.current.style).toBeNull();
 
             mockGet.mockResolvedValueOnce(mockReport);
             await act(async () => { await result.current.getByDoctor('doc-1'); });
@@ -338,16 +344,17 @@ describe('useDnaStyle — new methods', () => {
             expect(style.departmentId).toBe('dept-1');
         });
 
-        it('should preserve all DnaReportData fields through getJobStatus', async () => {
-            mockGet.mockResolvedValue({ status: 'completed', result: mockReport });
+        it('should preserve job result payload through getJobStatus', async () => {
+            const jobStatus = { status: 'completed', result: { reportId: mockReport.id, styleText: mockReport.styleText } };
+            mockGet.mockResolvedValue(jobStatus);
             const { result } = renderHook(() => useDnaStyle());
 
-            await act(async () => { await result.current.getJobStatus('job-1'); });
+            let resp: any;
+            await act(async () => { resp = await result.current.getJobStatus('job-1'); });
 
-            const style = result.current.style!;
-            expect(style.reportData.vocabularyComplexity).toBe(0.72);
-            expect(style.reportData.abbreviations).toEqual(['Hx', 'Dx']);
-            expect(style.reportData.sectionOrder).toEqual(['HPI', 'Assessment', 'Plan']);
+            expect(resp.result.reportId).toBe(mockReport.id);
+            expect(resp.result.styleText).toBe(mockReport.styleText);
+            expect(result.current.style).toBeNull();
         });
     });
 
@@ -362,36 +369,27 @@ describe('useDnaStyle — new methods', () => {
             vi.useRealTimers();
         });
 
-        it('should not resolve when completed but result is undefined, eventually fail', async () => {
-            let callCount = 0;
-            mockGet.mockImplementation(async () => {
-                callCount++;
-                if (callCount >= 3) return { status: 'failed' };
-                return { status: 'completed' };
-            });
+        it('should refetch style when completed without requiring job result', async () => {
+            mockGet
+                .mockResolvedValueOnce({ status: 'completed' })
+                .mockResolvedValueOnce(mockReport);
             const { result } = renderHook(() => useDnaStyle());
 
-            let caughtError: Error | null = null;
-            const pollPromise = act(async () => {
-                try {
-                    await result.current.pollJobStatus('job-no-result', { intervalMs: 50, maxAttempts: 5 });
-                } catch (err) {
-                    caughtError = err as Error;
-                }
+            const resolved = await act(async () => {
+                return await result.current.pollJobStatus('job-no-result', { intervalMs: 50, maxAttempts: 5 });
             });
 
-            await vi.advanceTimersByTimeAsync(500);
-            await pollPromise;
-            expect(caughtError).not.toBeNull();
-            expect(caughtError!.message).toBe('DNA report generation failed');
-            expect(callCount).toBe(3);
+            expect(resolved).toEqual(mockReport);
+            expect(mockGet).toHaveBeenNthCalledWith(1, DNA_STYLE_ENDPOINTS.JOB_STATUS('job-no-result'));
+            expect(mockGet).toHaveBeenNthCalledWith(2, DNA_STYLE_ENDPOINTS.MY_STYLE);
         });
 
         it('should poll through processing states then resolve on completed', async () => {
             mockGet
                 .mockResolvedValueOnce({ status: 'processing' })
                 .mockResolvedValueOnce({ status: 'processing' })
-                .mockResolvedValueOnce({ status: 'completed', result: mockReport });
+                .mockResolvedValueOnce({ status: 'completed', result: { reportId: mockReport.id } })
+                .mockResolvedValueOnce(mockReport);
             const { result } = renderHook(() => useDnaStyle());
 
             const pollPromise = act(async () => {
@@ -401,7 +399,7 @@ describe('useDnaStyle — new methods', () => {
             await vi.advanceTimersByTimeAsync(500);
             const resolved = await pollPromise;
             expect(resolved).toEqual(mockReport);
-            expect(mockGet).toHaveBeenCalledTimes(3);
+            expect(mockGet).toHaveBeenCalledTimes(4);
         });
     });
 });

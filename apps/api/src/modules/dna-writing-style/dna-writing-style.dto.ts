@@ -16,7 +16,10 @@ export class DnaJobStatusResponseDto {
     description: 'Current job status',
     enum: ['queued', 'processing', 'completed', 'failed'],
   })
-  status: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+
+  @ApiProperty({ description: 'Job progress percentage', example: 40 })
+  progress: number;
 
   @ApiPropertyOptional({ description: 'Job result when completed' })
   result?: unknown;

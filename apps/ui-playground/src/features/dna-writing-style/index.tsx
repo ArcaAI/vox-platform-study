@@ -22,34 +22,26 @@ import {
   FileText,
   Loader2,
   Pencil,
-  Radio,
   RotateCw,
   Sparkles,
-  StopCircle,
   Timer,
   User as UserIcon,
   Wand2,
-  Wifi,
 } from 'lucide-react';
 
 import { Main } from '@/components/layout/main';
-import { cn } from '@/lib/utils';
 import { zodResolver } from '@/lib/zod-resolver';
 import {
-  streamDnaGenerate,
+  streamDnaJob,
   useDnaJobStatus,
   useDnaVersions,
   useGenerateDnaReport,
   useMyDnaStyle,
   useUpdateDnaReport,
-  type DnaGenerateInput,
   type DnaReport,
   type DnaReportData,
-  type DnaStreamChunk,
 } from './api/dna-writing-styles';
 import { VersionsPanel } from './components/versions-panel';
-
-type DeliveryMethod = 'sse' | 'polling';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -73,6 +65,14 @@ const updateSchema = z.object({
 
 type GenerateFormValues = z.infer<typeof generateSchema>;
 type UpdateFormValues = z.infer<typeof updateSchema>;
+type DeliveryMethod = 'sse' | 'polling';
+
+interface StreamingState {
+  status: 'idle' | 'connecting' | 'streaming' | 'done' | 'error';
+  jobId?: string;
+  progress: number;
+  error?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -130,6 +130,47 @@ function StyleAttributeCard({ label, value, icon }: { label: string; value?: str
 // ---------------------------------------------------------------------------
 // JobPollingBanner — HTTP polling progress display
 // ---------------------------------------------------------------------------
+
+
+function StreamingJobBanner({ state, onCancel, onDismiss }: { state: StreamingState; onCancel: () => void; onDismiss: () => void }) {
+  if (state.status === 'idle') return null;
+
+  const isTerminal = state.status === 'done' || state.status === 'error';
+  const isError = state.status === 'error';
+
+  return (
+    <div className={`rounded-lg border px-4 py-3 space-y-2 ${isError ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800' : 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800'}`}>
+      <div className="flex items-center gap-3">
+        <span className={isError ? 'text-red-600' : 'text-blue-600'}>
+          {isTerminal ? isError ? <AlertCircle className="size-4" /> : <CheckCircle2 className="size-4" /> : <Loader2 className="size-4 animate-spin" />}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between">
+            <p className={`text-sm font-medium ${isError ? 'text-red-600' : 'text-blue-600'}`}>SSE Stream: {isError ? 'Failed' : state.status === 'done' ? 'Completed' : state.status === 'connecting' ? 'Connecting' : 'Streaming'}</p>
+            {isTerminal ? (
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onDismiss}>
+                Dismiss
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onCancel}>
+                Cancel
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+            {state.jobId && (
+              <span>
+                Job: <code className="font-mono">{state.jobId.slice(0, 12)}…</code>
+              </span>
+            )}
+            {state.error && <span>{state.error}</span>}
+          </div>
+        </div>
+      </div>
+      <Progress value={state.progress} className="h-1.5" />
+    </div>
+  );
+}
 
 function JobPollingBanner({ jobId, onComplete, onDismiss }: { jobId: string; onComplete: () => void; onDismiss: () => void }) {
   const { data: jobStatus } = useDnaJobStatus(jobId);
@@ -221,118 +262,8 @@ function JobPollingBanner({ jobId, onComplete, onDismiss }: { jobId: string; onC
 }
 
 // ---------------------------------------------------------------------------
-// StreamingReportView — SSE real-time token display
-// ---------------------------------------------------------------------------
-
-interface StreamingState {
-  status: 'idle' | 'connecting' | 'streaming' | 'done' | 'error';
-  chunks: DnaStreamChunk[];
-  streamedText: string;
-  error?: string;
-  startedAt?: number;
-  endedAt?: number;
-}
-
-function StreamingReportView({ state, onCancel, onDismiss }: { state: StreamingState; onCancel: () => void; onDismiss: () => void }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [state.streamedText]);
-
-  const elapsed = state.startedAt ? Math.round(((state.endedAt ?? Date.now()) - state.startedAt) / 1000) : 0;
-  const charCount = state.streamedText.length;
-  const chunkCount = state.chunks.length;
-  const isActive = state.status === 'connecting' || state.status === 'streaming';
-
-  const statusConfig = {
-    idle: { icon: <Radio className="size-4" />, color: 'text-muted-foreground', bg: 'border', label: 'Ready' },
-    connecting: {
-      icon: <Wifi className="size-4 animate-pulse" />,
-      color: 'text-yellow-600',
-      bg: 'bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800',
-      label: 'Connecting',
-    },
-    streaming: {
-      icon: <Radio className="size-4 animate-pulse" />,
-      color: 'text-blue-600',
-      bg: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800',
-      label: 'Streaming',
-    },
-    done: {
-      icon: <CheckCircle2 className="size-4" />,
-      color: 'text-green-600',
-      bg: 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800',
-      label: 'Complete',
-    },
-    error: {
-      icon: <AlertCircle className="size-4" />,
-      color: 'text-red-600',
-      bg: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800',
-      label: 'Error',
-    },
-  };
-
-  const config = statusConfig[state.status];
-
-  return (
-    <div className={`rounded-lg border space-y-0 overflow-hidden ${config.bg}`}>
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3">
-        <span className={config.color}>{config.icon}</span>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between">
-            <p className={`text-sm font-medium ${config.color}`}>SSE Stream: {config.label}</p>
-            <div className="flex items-center gap-1.5">
-              {isActive && (
-                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-destructive" onClick={onCancel}>
-                  <StopCircle className="size-3 mr-1" />
-                  Stop
-                </Button>
-              )}
-              {!isActive && state.status !== 'idle' && (
-                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onDismiss}>
-                  Dismiss
-                </Button>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-            <span>Chunks: {chunkCount}</span>
-            <span>Chars: {charCount.toLocaleString()}</span>
-            <span>Elapsed: {elapsed}s</span>
-            <Badge variant="outline" className="text-[10px] gap-1">
-              <Wifi className="size-2.5" />
-              SSE
-            </Badge>
-          </div>
-        </div>
-      </div>
-
-      {/* Streamed content */}
-      {state.streamedText && (
-        <div ref={scrollRef} className="max-h-64 overflow-y-auto border-t bg-background/50 px-4 py-3">
-          <pre className="text-sm whitespace-pre-wrap font-mono leading-relaxed text-foreground/90">
-            {state.streamedText}
-            {isActive && <span className="inline-block w-2 h-4 bg-primary/70 animate-pulse ml-0.5 align-text-bottom" />}
-          </pre>
-        </div>
-      )}
-
-      {/* Error message */}
-      {state.error && (
-        <div className="border-t bg-red-50 dark:bg-red-950/20 px-4 py-2">
-          <p className="text-xs text-red-600">{state.error}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// GenerateDialog — supports SSE streaming and HTTP job polling
+// GenerateDialog — submits an async DNA generation job and returns a jobId
+// the parent polls via GET /dna-writing-styles/jobs/:jobId.
 // ---------------------------------------------------------------------------
 
 function GenerateDialog({
@@ -344,10 +275,10 @@ function GenerateDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onJobStarted: (jobId: string) => void;
-  onStreamStarted: (input: DnaGenerateInput) => void;
+  onStreamStarted: (jobId: string) => void;
 }) {
   const generateMutation = useGenerateDnaReport();
-  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('sse');
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('polling');
 
   const form = useForm<GenerateFormValues>({
     resolver: zodResolver(generateSchema),
@@ -365,27 +296,24 @@ function GenerateDialog({
         .map((s) => s.trim())
         .filter(Boolean);
 
-      const input: DnaGenerateInput = { textSamples: samples };
-
-      if (deliveryMethod === 'sse') {
-        onStreamStarted(input);
-        onOpenChange(false);
-        return;
-      }
-
       generateMutation.mutate(
         { textSamples: samples },
         {
           onSuccess: (data) => {
-            toast.success('DNA report generation started — polling for status');
-            onJobStarted(data.jobId);
+            if (deliveryMethod === 'sse') {
+              toast.success('DNA report generation started — streaming status');
+              onStreamStarted(data.jobId);
+            } else {
+              toast.success('DNA report generation started — polling for status');
+              onJobStarted(data.jobId);
+            }
             onOpenChange(false);
           },
           onError: (err) => toast.error(`Failed to start generation: ${err.message}`),
         },
       );
     },
-    [deliveryMethod, generateMutation, onJobStarted, onStreamStarted, onOpenChange],
+    [deliveryMethod, generateMutation, onJobStarted, onOpenChange, onStreamStarted],
   );
 
   return (
@@ -401,75 +329,15 @@ function GenerateDialog({
             samples with
             <code className="mx-1 rounded bg-muted px-1.5 py-0.5 font-mono text-xs">---</code>
             on its own line.
+            <span className="mt-2 block text-xs">
+              <strong>Note:</strong> Generating creates a brand-new style profile (starting at version 1). Your previous profile is kept in history
+              but no longer marked as latest. Manual edits create new versions <em>within</em> the current profile.
+            </span>
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-            {/* Delivery method selector */}
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Delivery Method</legend>
-              <div className="grid grid-cols-2 gap-3">
-                <label
-                  className={cn(
-                    'relative flex flex-col items-start gap-1.5 rounded-lg border p-3 text-left transition-all',
-                    deliveryMethod === 'sse' ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'hover:border-muted-foreground/30',
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="delivery-method"
-                    className="sr-only"
-                    value="sse"
-                    checked={deliveryMethod === 'sse'}
-                    onChange={() => setDeliveryMethod('sse')}
-                  />
-                  <div className="flex items-center gap-2">
-                    <Wifi className={cn('size-4', deliveryMethod === 'sse' ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
-                    <span className="text-sm font-medium">SSE Stream</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Real-time token-by-token streaming via Server-Sent Events. See the report as it's generated.
-                  </p>
-                  {deliveryMethod === 'sse' && (
-                    <div className="absolute right-2 top-2">
-                      <CheckCircle2 className="size-4 text-primary" />
-                    </div>
-                  )}
-                </label>
-
-                <label
-                  className={cn(
-                    'relative flex flex-col items-start gap-1.5 rounded-lg border p-3 text-left transition-all',
-                    deliveryMethod === 'polling' ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'hover:border-muted-foreground/30',
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="delivery-method"
-                    className="sr-only"
-                    value="polling"
-                    checked={deliveryMethod === 'polling'}
-                    onChange={() => setDeliveryMethod('polling')}
-                  />
-                  <div className="flex items-center gap-2">
-                    <RotateCw className={cn('size-4', deliveryMethod === 'polling' ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
-                    <span className="text-sm font-medium">HTTP Polling</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Submit a background job and poll for status every 2 seconds until complete.
-                  </p>
-                  {deliveryMethod === 'polling' && (
-                    <div className="absolute right-2 top-2">
-                      <CheckCircle2 className="size-4 text-primary" />
-                    </div>
-                  )}
-                </label>
-              </div>
-            </fieldset>
-
-            <Separator />
-
             <FormField
               control={form.control}
               name="textSamples"
@@ -486,12 +354,22 @@ function GenerateDialog({
                     />
                   </FormControl>
                   <FormDescription>
-                    More samples yield a more accurate writing style profile. Recommended: 3-5 samples of 200+ words each.
+                    More samples yield a more accurate writing style profile. Recommended: 3-5 samples of 200+ words each. The job typically
+                    completes in 5–10 seconds.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant={deliveryMethod === 'polling' ? 'default' : 'outline'} onClick={() => setDeliveryMethod('polling')}>
+                HTTP Polling
+              </Button>
+              <Button type="button" variant={deliveryMethod === 'sse' ? 'default' : 'outline'} onClick={() => setDeliveryMethod('sse')}>
+                SSE Stream
+              </Button>
+            </div>
 
             <DialogFooter>
               <DialogClose asChild>
@@ -500,18 +378,8 @@ function GenerateDialog({
                 </Button>
               </DialogClose>
               <Button type="submit" disabled={generateMutation.isPending}>
-                {generateMutation.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
-                {deliveryMethod === 'sse' ? (
-                  <>
-                    <Wifi className="mr-2 size-4" />
-                    Generate (Stream)
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className="mr-2 size-4" />
-                    Generate (Poll)
-                  </>
-                )}
+                {generateMutation.isPending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Wand2 className="mr-2 size-4" />}
+                Generate
               </Button>
             </DialogFooter>
           </form>
@@ -763,13 +631,7 @@ export default function DnaWritingStylePage() {
 
   // Polling state
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-
-  // SSE streaming state
-  const [streamState, setStreamState] = useState<StreamingState>({
-    status: 'idle',
-    chunks: [],
-    streamedText: '',
-  });
+  const [streamState, setStreamState] = useState<StreamingState>({ status: 'idle', progress: 0 });
   const abortRef = useRef<AbortController | null>(null);
 
   // ---- Data (user-scoped only) --------------------------------------------
@@ -807,50 +669,33 @@ export default function DnaWritingStylePage() {
     setActiveJobId(null);
   }, []);
 
-  // ---- SSE streaming handlers ---------------------------------------------
-
   const handleStreamStarted = useCallback(
-    (input: DnaGenerateInput) => {
-      if (abortRef.current) abortRef.current.abort();
-
-      setStreamState({
-        status: 'connecting',
-        chunks: [],
-        streamedText: '',
-        startedAt: Date.now(),
-      });
-
-      const abort = streamDnaGenerate(input, {
-        onChunk: (chunk) => {
+    (jobId: string) => {
+      abortRef.current?.abort();
+      setStreamState({ status: 'connecting', jobId, progress: 0 });
+      abortRef.current = streamDnaJob(jobId, {
+        onStatus: (status) => {
           setStreamState((prev) => ({
             ...prev,
-            status: 'streaming',
-            chunks: [...prev.chunks, chunk],
-            streamedText: chunk.content ? prev.streamedText + chunk.content : prev.streamedText,
+            status: status.status === 'completed' ? 'done' : status.status === 'failed' ? 'error' : 'streaming',
+            progress: status.progress ?? prev.progress,
+            error: status.error,
           }));
+          if (status.status === 'completed') {
+            toast.success('DNA writing style report generated successfully');
+            refetchMyStyle();
+            refetchVersions();
+          }
+          if (status.status === 'failed') {
+            toast.error(`Generation failed: ${status.error ?? 'Unknown error'}`);
+          }
         },
-        onDone: () => {
-          setStreamState((prev) => ({
-            ...prev,
-            status: 'done',
-            endedAt: Date.now(),
-          }));
-          toast.success('DNA report streamed successfully');
-          refetchMyStyle();
-          refetchVersions();
-        },
-        onError: (err) => {
-          setStreamState((prev) => ({
-            ...prev,
-            status: 'error',
-            error: err.message,
-            endedAt: Date.now(),
-          }));
-          toast.error(`Stream error: ${err.message}`);
+        onProgress: (progress) => setStreamState((prev) => ({ ...prev, status: prev.status === 'connecting' ? 'streaming' : prev.status, progress })),
+        onError: (error) => {
+          setStreamState((prev) => ({ ...prev, status: 'error', error: error.message }));
+          toast.error(`Stream error: ${error.message}`);
         },
       });
-
-      abortRef.current = abort;
     },
     [refetchMyStyle, refetchVersions],
   );
@@ -858,16 +703,11 @@ export default function DnaWritingStylePage() {
   const handleStreamCancel = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
-    setStreamState((prev) => ({
-      ...prev,
-      status: 'error',
-      error: 'Cancelled by user',
-      endedAt: Date.now(),
-    }));
+    setStreamState((prev) => ({ ...prev, status: 'error', error: 'Cancelled by user' }));
   }, []);
 
   const handleStreamDismiss = useCallback(() => {
-    setStreamState({ status: 'idle', chunks: [], streamedText: '' });
+    setStreamState({ status: 'idle', progress: 0 });
   }, []);
 
   useEffect(() => {
@@ -897,13 +737,11 @@ export default function DnaWritingStylePage() {
             </Button>
           </div>
 
-          {/* Active generation banners */}
+          {/* Active generation banner */}
           {(activeJobId || streamState.status !== 'idle') && (
             <div className="mb-4 space-y-3">
               {activeJobId && <JobPollingBanner jobId={activeJobId} onComplete={handleJobComplete} onDismiss={handleJobDismiss} />}
-              {streamState.status !== 'idle' && (
-                <StreamingReportView state={streamState} onCancel={handleStreamCancel} onDismiss={handleStreamDismiss} />
-              )}
+              {streamState.status !== 'idle' && <StreamingJobBanner state={streamState} onCancel={handleStreamCancel} onDismiss={handleStreamDismiss} />}
             </div>
           )}
 

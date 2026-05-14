@@ -90,7 +90,9 @@ describe('useDnaStyle — WS-H enhancements', () => {
         it('should poll until completed and return updated style', async () => {
             const report = { id: 'dna-1', doctorId: 'd-1', reportData: {}, isLatest: true, currentVersionNumber: 1, createdAt: '', updatedAt: '' };
 
-            mockGet.mockResolvedValueOnce({ status: 'completed', result: report });
+            mockGet
+                .mockResolvedValueOnce({ status: 'completed', result: { reportId: report.id } })
+                .mockResolvedValueOnce(report);
 
             const { result } = renderHook(() => useDnaStyle());
 
@@ -101,6 +103,8 @@ describe('useDnaStyle — WS-H enhancements', () => {
 
             expect(resp).toEqual(report);
             expect(result.current.style).toEqual(report);
+            expect(mockGet).toHaveBeenNthCalledWith(1, DNA_STYLE_ENDPOINTS.JOB_STATUS('job-1'));
+            expect(mockGet).toHaveBeenNthCalledWith(2, DNA_STYLE_ENDPOINTS.MY_STYLE);
         });
 
         it('should throw when job fails', async () => {
