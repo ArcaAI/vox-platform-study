@@ -47,7 +47,11 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   async generateDnaReport(doctorId: string, dto: GenerateDnaReportRequest): Promise<DnaJobResponse> {
-    const tenantId = this.tenantId ?? '';
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
     const userId = this.requestUserId ?? '';
     const jobId = uuidv7();
 
@@ -84,10 +88,18 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     const hasContentChanges = dto.reportData !== undefined || dto.styleText !== undefined;
 
     if (hasContentChanges) {
+      const existingVersions = await this.dnaVersionRepository.findAll({
+        filters: { dnaReportId: reportId },
+        sort: [{ versionNumber: 'desc' }],
+        limit: 1,
+      });
+      const highestExistingVersion = existingVersions[0]?.versionNumber ?? 0;
+      const nextVersionNumber = Math.max(highestExistingVersion, report.currentVersionNumber ?? 0) + 1;
+
       const version = DnaWritingStyleVersionFactory.CreateDnaWritingStyleVersion({
         tenantId: report.tenantId,
         dnaReportId: reportId,
-        versionNumber: (report.currentVersionNumber ?? 0) + 1,
+        versionNumber: nextVersionNumber,
         reportData: dto.reportData ?? report.reportData,
         styleText: dto.styleText ?? report.styleText,
         changeReason: dto.changeReason ?? null,
@@ -98,7 +110,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
 
       if (dto.reportData !== undefined) report.reportData = dto.reportData;
       if (dto.styleText !== undefined) report.styleText = dto.styleText;
-      report.incrementVersion();
+      report.currentVersionNumber = nextVersionNumber;
     }
 
     if (dto.resourceStatus !== undefined) {

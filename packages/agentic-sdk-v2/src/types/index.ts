@@ -151,7 +151,7 @@ export type { SummaryApprovalResponse, SummaryApprovalStatus } from './summary';
 export { DEFAULT_SUMMARY_STATE } from './summary';
 
 // DNA Writing Style types (SDK-207 WS-4)
-export type { DnaGenerateInput, DnaReport, DnaReportData, DnaReportWithFallback, DnaStyleVersion, DnaUpdateInput } from './dna';
+export type { DnaGenerateInput, DnaJobResult, DnaJobStatus, DnaReport, DnaReportData, DnaReportWithFallback, DnaStyleVersion, DnaUpdateInput } from './dna';
 
 // Prompt Template types (SDK-207 WS-4)
 export type {
