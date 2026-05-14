@@ -71,6 +71,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     this.jobMetrics.recordWaitingDuration(JobQueue.GenerateDnaReport, waitMs / 1000);
 
     try {
+      await job.updateProgress(10);
       this.jobService.notifyProgress(job.data.jobId, 10, 'Gathering text samples');
       let samples: string;
 
@@ -100,14 +101,17 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         samples = samples.substring(0, maxContextChars);
       }
 
+      await job.updateProgress(20);
       this.jobService.notifyProgress(job.data.jobId, 20, 'Loading DNA analysis prompt');
       const templates = await this.promptManagementService.listPromptTemplates({ category: 'DNA_ANALYSIS' });
       const resolvedTemplate = templates[0] ?? null;
       const systemPrompt = resolvedTemplate?.content ?? 'Analyze the following text samples and extract the writing style patterns.';
 
+      await job.updateProgress(40);
       this.jobService.notifyProgress(job.data.jobId, 40, 'Generating DNA analysis');
       const smrResponse = await this.callSmrV2(samples, systemPrompt);
 
+      await job.updateProgress(80);
       this.jobService.notifyProgress(job.data.jobId, 80, 'Storing results');
 
       let reportData: Record<string, unknown> = {};
@@ -173,6 +177,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       const duration = endTimer();
       this.jobMetrics.recordJobComplete(JobQueue.GenerateDnaReport, 'DnaWritingStyleProcessor', duration);
 
+      await job.updateProgress(100);
       this.jobService.notifyProgress(job.data.jobId, 100, 'Complete');
       this.jobService.notifyComplete(job.data.jobId, { reportId: saved.id });
 

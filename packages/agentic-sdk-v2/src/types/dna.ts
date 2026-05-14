@@ -83,6 +83,25 @@ export interface DnaUpdateInput {
   changeReason?: string;
 }
 
+
+// =============================================================================
+// Job Types
+// =============================================================================
+
+export interface DnaJobResult {
+  reportId: string;
+  reportData?: Record<string, unknown>;
+  styleText?: string;
+}
+
+export interface DnaJobStatus {
+  jobId: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  progress?: number;
+  result?: DnaJobResult;
+  error?: string;
+}
+
 // =============================================================================
 // Response Variants
 // =============================================================================
