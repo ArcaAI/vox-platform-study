@@ -222,7 +222,7 @@ export type {
 // Types - DNA Writing Style (SDK-207 WS-4)
 // =============================================================================
 
-export type { DnaGenerateInput, DnaReport, DnaReportData, DnaReportWithFallback, DnaStyleVersion, DnaUpdateInput } from './types';
+export type { DnaGenerateInput, DnaJobResult, DnaJobStatus, DnaReport, DnaReportData, DnaReportWithFallback, DnaStyleVersion, DnaUpdateInput } from './types';
 
 // =============================================================================
 // Types - Prompt Template (SDK-207 WS-4)

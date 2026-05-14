@@ -9,28 +9,15 @@ import {
 } from '@arcaai/applications';
 import { DnaJobResponseDto, DnaJobStatusResponseDto } from './dna-writing-style.dto';
 import { JobQueue } from '@arcaai/domains';
-import { Controller, Body, Param, Inject, ForbiddenException, NotFoundException, UnauthorizedException, Get } from '@nestjs/common';
+import { Controller, Body, Param, Inject, ForbiddenException, NotFoundException, UnauthorizedException, Get, Sse, type MessageEvent } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
 import type { IActiveUserContext } from '@arcaai/applications';
+import { Observable } from 'rxjs';
 import { ApiEndpoint, Authorize } from '../../decorators';
-
-type BullMQJobState = 'completed' | 'failed' | 'active' | 'delayed' | 'waiting' | 'waiting-children' | 'prioritized' | 'unknown';
-
-function mapBullStateToStatus(state: BullMQJobState): 'queued' | 'processing' | 'completed' | 'failed' {
-  switch (state) {
-    case 'completed':
-      return 'completed';
-    case 'failed':
-      return 'failed';
-    case 'active':
-      return 'processing';
-    default:
-      return 'queued';
-  }
-}
+import { getDnaJobStatus, streamDnaJobStatus } from './dna-writing-style-job-stream';
 
 @ApiBearerAuth()
 @ApiTags('dna-writing-styles')
@@ -127,19 +114,15 @@ export class DnaWritingStyleController {
   @ApiResponse({ status: 200, description: 'Job status', type: DnaJobStatusResponseDto })
   @ApiResponse({ status: 404, description: 'Job not found' })
   async getJobStatus(@Param('jobId') jobId: string): Promise<DnaJobStatusResponseDto> {
-    const job = await this.dnaQueue.getJob(jobId);
-    if (!job) {
-      throw new NotFoundException(`Job ${jobId} not found`);
-    }
+    return getDnaJobStatus(this.dnaQueue, jobId);
+  }
 
-    const state = (await job.getState()) as BullMQJobState;
-    const status = mapBullStateToStatus(state);
-
-    return {
-      jobId: job.id!,
-      status,
-      result: status === 'completed' ? job.returnvalue : undefined,
-      error: status === 'failed' ? job.failedReason : undefined,
-    };
+  @Get('jobs/:jobId/stream')
+  @Sse()
+  @ApiOperation({ summary: 'Stream current user DNA generation job status via SSE' })
+  @ApiParam({ name: 'jobId', description: 'BullMQ job ID', type: String })
+  @ApiResponse({ status: 200, description: 'SSE job status stream' })
+  streamJobStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return streamDnaJobStatus(this.dnaQueue, jobId);
   }
 }

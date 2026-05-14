@@ -139,6 +139,27 @@ async function requestMultipart<T>(method: string, path: string, formData: FormD
   return res.json() as Promise<T>;
 }
 
+async function stream(path: string, signal?: AbortSignal, options?: RequestOptions): Promise<Response> {
+  const res = await fetch(`${getBaseUrl()}${path}`, {
+    method: 'GET',
+    headers: getHeaders(options),
+    signal,
+  });
+
+  if (!res.ok) {
+    let errorBody: unknown;
+    try {
+      errorBody = await res.json();
+    } catch {
+      /* empty */
+    }
+    const message = (errorBody as { message?: string })?.message ?? `Request failed: GET ${path} (${res.status})`;
+    throw new AdminApiError(message, res.status, errorBody);
+  }
+
+  return res;
+}
+
 export const adminClient = {
   get: <T>(path: string, options?: RequestOptions) => request<T>('GET', path, undefined, options),
   post: <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>('POST', path, body, options),
@@ -146,4 +167,5 @@ export const adminClient = {
   delete: <T>(path: string, options?: RequestOptions) => request<T>('DELETE', path, undefined, options),
   deleteWithBody: <T>(path: string, body: unknown, options?: RequestOptions) => request<T>('DELETE', path, body, options),
   upload: <T>(path: string, formData: FormData, options?: RequestOptions) => requestMultipart<T>('POST', path, formData, options),
+  stream,
 };

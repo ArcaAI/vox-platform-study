@@ -8,7 +8,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useApiOperation } from './useApiOperation';
 import { extractArray } from '../utils/responseUtils';
 import { DNA_STYLE_ENDPOINTS } from '../core/constants';
-import type { DnaReport, DnaStyleVersion, DnaGenerateInput, DnaUpdateInput } from '../types';
+import type { DnaReport, DnaStyleVersion, DnaGenerateInput, DnaUpdateInput, DnaJobStatus } from '../types';
 
 export interface UseDnaStyleReturn {
   style: DnaReport | null;
@@ -19,7 +19,7 @@ export interface UseDnaStyleReturn {
   generate: (input?: DnaGenerateInput) => Promise<{ jobId: string }>;
   update: (reportId: string, input: DnaUpdateInput) => Promise<DnaReport>;
   getVersions: (reportId: string) => Promise<DnaStyleVersion[]>;
-  getJobStatus: (jobId: string) => Promise<{ status: string; result?: DnaReport }>;
+  getJobStatus: (jobId: string) => Promise<DnaJobStatus>;
   pollJobStatus: (jobId: string, options?: { intervalMs?: number; maxAttempts?: number }) => Promise<DnaReport>;
   getByDoctor: (doctorId: string) => Promise<DnaReport>;
 }
@@ -69,12 +69,8 @@ export function useDnaStyle(): UseDnaStyleReturn {
   );
 
   const getJobStatus = useCallback(
-    (jobId: string): Promise<{ status: string; result?: DnaReport }> =>
-      execute<{ status: string; result?: DnaReport }>('getJobStatus', async (client) => {
-        const data = await client.get<{ status: string; result?: DnaReport }>(DNA_STYLE_ENDPOINTS.JOB_STATUS(jobId));
-        if (data.result) setStyle(data.result);
-        return data;
-      }),
+    (jobId: string): Promise<DnaJobStatus> =>
+      execute<DnaJobStatus>('getJobStatus', (client) => client.get<DnaJobStatus>(DNA_STYLE_ENDPOINTS.JOB_STATUS(jobId))),
     [execute],
   );
 
@@ -90,12 +86,13 @@ export function useDnaStyle(): UseDnaStyleReturn {
         const poll = async () => {
           attempts++;
           try {
-            const data = await apiClient.get<{ status: string; result?: DnaReport }>(DNA_STYLE_ENDPOINTS.JOB_STATUS(jobId));
+            const data = await apiClient.get<DnaJobStatus>(DNA_STYLE_ENDPOINTS.JOB_STATUS(jobId));
 
-            if (data.status === 'completed' && data.result) {
-              setStyle(data.result);
+            if (data.status === 'completed') {
+              const styleData = await apiClient.get<DnaReport>(DNA_STYLE_ENDPOINTS.MY_STYLE);
+              setStyle(styleData);
               timer?.end(true);
-              resolve(data.result);
+              resolve(styleData);
               return;
             }
             if (data.status === 'failed') {

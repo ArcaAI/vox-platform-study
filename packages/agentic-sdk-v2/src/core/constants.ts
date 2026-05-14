@@ -134,11 +134,13 @@ export const DNA_STYLE_ENDPOINTS = {
   GENERATE: '/dna-writing-styles/generate',
   GENERATE_FOR_DOCTOR: (doctorId: string) => `/admin/dna-writing-styles/generate/${encodeURIComponent(doctorId)}`,
   JOB_STATUS: (jobId: string) => `/dna-writing-styles/jobs/${encodeURIComponent(jobId)}`,
+  JOB_STREAM: (jobId: string) => `/dna-writing-styles/jobs/${encodeURIComponent(jobId)}/stream`,
   MY_STYLE: '/dna-writing-styles/my-style',
   UPDATE: (reportId: string) => `/dna-writing-styles/${encodeURIComponent(reportId)}`,
   VERSIONS: (reportId: string) => `/dna-writing-styles/${encodeURIComponent(reportId)}/versions`,
   ADMIN_LIST: '/admin/dna-writing-styles',
   ADMIN_JOB_STATUS: (jobId: string) => `/admin/dna-writing-styles/jobs/${encodeURIComponent(jobId)}`,
+  ADMIN_JOB_STREAM: (jobId: string) => `/admin/dna-writing-styles/jobs/${encodeURIComponent(jobId)}/stream`,
   BY_DOCTOR: (doctorId: string) => `/dna-writing-styles/doctor/${encodeURIComponent(doctorId)}`,
 } as const;
 
