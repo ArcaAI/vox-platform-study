@@ -41,6 +41,7 @@ const mockGlobalSettingRepository = {
     findById: vi.fn(),
     findAll: vi.fn(),
     count: vi.fn(),
+    create: vi.fn(),
     update: vi.fn(),
 };
 
@@ -124,13 +125,23 @@ const createMockTenantEntity = (overrides: Partial<{
 
 /**
  * Creates a complete mock global setting entity for tenant configuration tests.
+ *
+ * Includes the additional `locked`, `defaultValue`, `dataType`, `description`,
+ * and `name` fields used by the TASK-258 access-control + provisioning paths.
+ * `locked` is intentionally optional (defaults to `false`) so existing tests
+ * are unaffected.
  */
 const createMockGlobalSettingEntity = (overrides: Partial<{
     id: string;
     tenantId: string;
     namespace: string;
+    name: string;
     key: string;
     value: string;
+    defaultValue: string | null;
+    dataType: string;
+    description: string | null;
+    locked: boolean;
     resourceStatus: ResourceStatusType;
     createdBy: string | null;
     updatedBy: string | null;
@@ -140,12 +151,17 @@ const createMockGlobalSettingEntity = (overrides: Partial<{
     hasChanges: boolean;
     changes: Record<string, unknown>;
 }> = {}) => {
-    const entity = {
+    const entity: Record<string, unknown> & { value: string } = {
         id: overrides.id ?? 'setting-id-1',
         tenantId: overrides.tenantId ?? 'tenant-id-1',
         namespace: overrides.namespace ?? 'com.flw.configurations',
+        name: overrides.name ?? 'Setting Name',
         key: overrides.key ?? 'setting.key',
         value: overrides.value ?? 'setting-value',
+        defaultValue: overrides.defaultValue !== undefined ? overrides.defaultValue : 'default-value',
+        dataType: overrides.dataType ?? 'String',
+        description: overrides.description !== undefined ? overrides.description : 'Test description',
+        locked: overrides.locked ?? false,
         resourceStatus: overrides.resourceStatus ?? ResourceStatusType.ENABLED,
         createdBy: overrides.createdBy ?? null,
         updatedBy: overrides.updatedBy ?? null,
@@ -156,12 +172,17 @@ const createMockGlobalSettingEntity = (overrides: Partial<{
         changes: overrides.changes ?? {},
         toObject: vi.fn(),
     };
-    entity.toObject.mockReturnValue({
+    (entity.toObject as ReturnType<typeof vi.fn>).mockReturnValue({
         id: entity.id,
         tenantId: entity.tenantId,
         namespace: entity.namespace,
+        name: entity.name,
         key: entity.key,
         value: entity.value,
+        defaultValue: entity.defaultValue,
+        dataType: entity.dataType,
+        description: entity.description,
+        locked: entity.locked,
         resourceStatus: entity.resourceStatus,
         createdBy: entity.createdBy,
         createdAt: entity.createdAt,
@@ -170,7 +191,8 @@ const createMockGlobalSettingEntity = (overrides: Partial<{
     return entity;
 };
 
-// Mock TenantFactory - simulates entity creation
+// Mock TenantFactory + GlobalSettingFactory - simulate entity creation without
+// triggering the real generated constructors, which require additional setup.
 vi.mock('@arcaai/domains', async () => {
     const actual = await vi.importActual('@arcaai/domains');
     return {
@@ -188,6 +210,19 @@ vi.mock('@arcaai/domains', async () => {
                     ...data,
                     resourceStatus: (actual as any).ResourceStatusType?.ENABLED ?? 'ENABLED',
                 }),
+            })),
+        },
+        GlobalSettingFactory: {
+            CreateGlobalSetting: vi.fn((data) => ({
+                ...data,
+                id: `cloned-${data.key}`,
+                resourceStatus: (actual as any).ResourceStatusType?.ENABLED ?? 'ENABLED',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                deletedAt: null,
+                hasChanges: true,
+                changes: { ...data },
+                toObject: vi.fn().mockReturnValue({ ...data }),
             })),
         },
     };
@@ -807,9 +842,7 @@ describe('TenantService', () => {
             });
 
             expect(mockTenantRepository.findFirst).toHaveBeenCalledWith({
-                where: {
-                    OR: [{ id: undefined }, { key: 'MY_CODE' }],
-                },
+                where: { key: 'MY_CODE' },
             });
         });
 
@@ -883,9 +916,7 @@ describe('TenantService', () => {
             ).rejects.toThrow('Config with id config-1 not found');
 
             expect(mockTenantRepository.findFirst).toHaveBeenCalledWith({
-                where: {
-                    OR: [{ id: 'TENANT_CODE' }, { key: 'TENANT_CODE' }],
-                },
+                where: { key: 'TENANT_CODE' },
             });
         });
     });
@@ -1038,6 +1069,358 @@ describe('TenantService', () => {
             ]);
 
             expect(result.data).toHaveLength(1);
+        });
+    });
+
+    /* =================================================================
+     * TASK-258 — Tenant config provisioning, locked enforcement, and
+     * identifier disambiguation. See
+     * docs/implementation/TASK-258-Tenant-Config-Provisioning/README.md
+     * ================================================================= */
+
+    /**
+     * Helper that re-installs the CLS mock so the active request user carries
+     * the given roles list. Mirrors the default beforeEach setup but lets each
+     * test opt into super-admin context without leaking state into siblings.
+     */
+    const setRequestUserRoles = (roles: string[] | undefined) => {
+        mockClsService.get.mockImplementation((key: string) => {
+            switch (key) {
+                case 'user':
+                    return {
+                        id: 'current-user-id',
+                        firstName: 'Test',
+                        lastName: 'User',
+                        email: 'test@example.com',
+                        roles,
+                    };
+                case 'tenantId':
+                    return 'tenant-1';
+                case 'tenantCode':
+                    return 'TENANT_1';
+                case 'correlationId':
+                    return 'corr-123';
+                case 'requestIp':
+                    return '192.168.1.1';
+                default:
+                    return null;
+            }
+        });
+    };
+
+    const VALID_TENANT_UUID = '01931234-7abc-7def-9012-3456789abcde';
+
+    describe('create — provisionTenantConfigs (TASK-258 #1)', () => {
+        it('reads global tenant settings via globalSettingRepository.findAll filtered by global tenant id', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id', key: 'NEW_TENANT' });
+            const globalTenant = createMockTenantEntity({ id: 'global-id', key: '__GLOBAL__' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockTenantRepository.findFirst.mockResolvedValue(globalTenant);
+            mockGlobalSettingRepository.findAll.mockResolvedValue([]);
+
+            await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
+
+            expect(mockTenantRepository.findFirst).toHaveBeenCalledWith({
+                where: { key: '__GLOBAL__' },
+            });
+            expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith({
+                where: { tenantId: 'global-id' },
+            });
+        });
+
+        it('clones each source row using defaultValue as both value and defaultValue, with new tenant id and source metadata', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            const globalTenant = createMockTenantEntity({ id: 'global-id', key: '__GLOBAL__' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockTenantRepository.findFirst.mockResolvedValue(globalTenant);
+
+            const sources = [
+                createMockGlobalSettingEntity({
+                    id: 'src-1',
+                    tenantId: 'global-id',
+                    name: 'Default STT Model',
+                    key: 'default-stt-model',
+                    value: 'should-not-be-used',
+                    defaultValue: 'whisper-base',
+                    dataType: 'String',
+                    description: 'STT default',
+                    namespace: 'com.flw.stt',
+                }),
+                createMockGlobalSettingEntity({
+                    id: 'src-2',
+                    tenantId: 'global-id',
+                    name: 'Feature Toggle',
+                    key: 'feature.x',
+                    value: 'true',
+                    defaultValue: null,
+                    dataType: 'Boolean',
+                    description: null,
+                    namespace: 'com.flw.feature-flags',
+                }),
+            ];
+            mockGlobalSettingRepository.findAll.mockResolvedValue(sources);
+            mockGlobalSettingRepository.create.mockImplementation(async (entity: any) => entity);
+
+            await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
+
+            expect(mockGlobalSettingRepository.create).toHaveBeenCalledTimes(2);
+
+            const firstCall = mockGlobalSettingRepository.create.mock.calls[0][0];
+            expect(firstCall.tenantId).toBe('new-tenant-id');
+            expect(firstCall.name).toBe('Default STT Model');
+            expect(firstCall.key).toBe('default-stt-model');
+            expect(firstCall.dataType).toBe('String');
+            expect(firstCall.description).toBe('STT default');
+            expect(firstCall.namespace).toBe('com.flw.stt');
+            expect(firstCall.value).toBe('whisper-base');
+            expect(firstCall.defaultValue).toBe('whisper-base');
+
+            const secondCall = mockGlobalSettingRepository.create.mock.calls[1][0];
+            expect(secondCall.tenantId).toBe('new-tenant-id');
+            expect(secondCall.key).toBe('feature.x');
+            expect(secondCall.value).toBe('true');
+            expect(secondCall.defaultValue).toBe('true');
+        });
+
+        it('continues cloning when a single insert fails and does not throw from create()', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            const globalTenant = createMockTenantEntity({ id: 'global-id', key: '__GLOBAL__' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockTenantRepository.findFirst.mockResolvedValue(globalTenant);
+
+            const sources = [
+                createMockGlobalSettingEntity({ id: 'src-1', tenantId: 'global-id', key: 'will-fail' }),
+                createMockGlobalSettingEntity({ id: 'src-2', tenantId: 'global-id', key: 'will-succeed' }),
+            ];
+            mockGlobalSettingRepository.findAll.mockResolvedValue(sources);
+
+            mockGlobalSettingRepository.create
+                .mockRejectedValueOnce(new Error('unique constraint race'))
+                .mockResolvedValueOnce({ id: 'cloned-2' });
+
+            const result = await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
+
+            expect(result.id).toBe('new-tenant-id');
+            expect(mockGlobalSettingRepository.create).toHaveBeenCalledTimes(2);
+        });
+
+        it('does not throw and still returns the new tenant when global tenant lookup returns null', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockTenantRepository.findFirst.mockResolvedValue(null);
+
+            const result = await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
+
+            expect(result.id).toBe('new-tenant-id');
+            expect(mockGlobalSettingRepository.findAll).not.toHaveBeenCalled();
+            expect(mockGlobalSettingRepository.create).not.toHaveBeenCalled();
+        });
+
+        it('does not throw and still returns the new tenant when global tenant lookup itself rejects', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockTenantRepository.findFirst.mockRejectedValue(new Error('db down'));
+
+            const result = await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
+
+            expect(result.id).toBe('new-tenant-id');
+            expect(mockGlobalSettingRepository.create).not.toHaveBeenCalled();
+        });
+
+        it('does not block tenant creation when bucket provisioning fails (mirrors existing behaviour, TASK-258 #9)', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockTenantBucketService.provisionSystemBuckets.mockRejectedValue(new Error('s3 down'));
+            mockTenantRepository.findFirst.mockResolvedValue(null);
+
+            await expect(
+                service.create({ key: 'NEW_TENANT', name: 'New Tenant' }),
+            ).resolves.toEqual(expect.objectContaining({ id: 'new-tenant-id' }));
+        });
+    });
+
+    describe('updateTenantConfigs — locked + __GLOBAL__ guards (TASK-258 #4)', () => {
+        it('throws ForbiddenException when caller without SUPER_ADMIN role tries to edit a locked setting', async () => {
+            setRequestUserRoles(['DOCTOR']);
+            const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'CUSTOMER' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const lockedConfig = createMockGlobalSettingEntity({
+                id: 'cfg-1',
+                tenantId: 'tenant-123',
+                key: 'default-stt-model',
+                locked: true,
+            });
+            mockGlobalSettingRepository.findById.mockResolvedValue(lockedConfig);
+
+            await expect(
+                service.updateTenantConfigs('tenant-123', [{ id: 'cfg-1', value: 'whisper-base' }]),
+            ).rejects.toThrow(/locked/i);
+        });
+
+        it('allows SUPER_ADMIN callers to edit locked settings', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'CUSTOMER' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const lockedConfig = createMockGlobalSettingEntity({
+                id: 'cfg-1',
+                tenantId: 'tenant-123',
+                key: 'admin-only-toggle',
+                value: 'old',
+                locked: true,
+                hasChanges: true,
+                changes: { value: 'new' },
+            });
+            mockGlobalSettingRepository.findById.mockResolvedValue(lockedConfig);
+            mockGlobalSettingRepository.update.mockResolvedValue(lockedConfig);
+
+            const result = await service.updateTenantConfigs('tenant-123', [
+                { id: 'cfg-1', value: 'new' },
+            ]);
+
+            expect(result.data).toHaveLength(1);
+            expect(mockGlobalSettingRepository.update).toHaveBeenCalled();
+        });
+
+        it('throws ForbiddenException when non-SUPER_ADMIN targets the __GLOBAL__ tenant', async () => {
+            setRequestUserRoles(['DOCTOR']);
+            const globalTenant = createMockTenantEntity({ id: 'global-id', key: '__GLOBAL__' });
+            mockTenantRepository.findFirst.mockResolvedValue(globalTenant);
+
+            await expect(
+                service.updateTenantConfigs('__GLOBAL__', [{ id: 'cfg-1', value: 'x' }]),
+            ).rejects.toThrow(/__GLOBAL__/);
+
+            expect(mockGlobalSettingRepository.findById).not.toHaveBeenCalled();
+        });
+
+        it('allows SUPER_ADMIN to update settings on the __GLOBAL__ tenant', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const globalTenant = createMockTenantEntity({ id: 'global-id', key: '__GLOBAL__' });
+            mockTenantRepository.findFirst.mockResolvedValue(globalTenant);
+
+            const cfg = createMockGlobalSettingEntity({
+                id: 'cfg-1',
+                tenantId: 'global-id',
+                key: 'default-language',
+                hasChanges: true,
+                changes: { value: 'en' },
+            });
+            mockGlobalSettingRepository.findById.mockResolvedValue(cfg);
+            mockGlobalSettingRepository.update.mockResolvedValue(cfg);
+
+            const result = await service.updateTenantConfigs('__GLOBAL__', [
+                { id: 'cfg-1', value: 'en' },
+            ]);
+
+            expect(result.data).toHaveLength(1);
+        });
+    });
+
+    describe('fetchTenantConfigs / updateTenantConfigs — identifier disambiguation (TASK-258 #7)', () => {
+        it('looks up tenant by id when identifier is a UUID (fetchTenantConfigs)', async () => {
+            const tenant = createMockTenantEntity({ id: VALID_TENANT_UUID, key: 'CUSTOMER' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+            mockGlobalSettingRepository.findAll.mockResolvedValue([]);
+            mockGlobalSettingRepository.count.mockResolvedValue(0);
+
+            await service.fetchTenantConfigs({ limit: 10, page: 1, tenantId: VALID_TENANT_UUID });
+
+            expect(mockTenantRepository.findFirst).toHaveBeenCalledWith({
+                where: { id: VALID_TENANT_UUID },
+            });
+        });
+
+        it('looks up tenant by key when identifier is a non-UUID string (fetchTenantConfigs)', async () => {
+            const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'CODE_NAME' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+            mockGlobalSettingRepository.findAll.mockResolvedValue([]);
+            mockGlobalSettingRepository.count.mockResolvedValue(0);
+
+            await service.fetchTenantConfigs({ limit: 10, page: 1, codeName: 'CODE_NAME' });
+
+            expect(mockTenantRepository.findFirst).toHaveBeenCalledWith({
+                where: { key: 'CODE_NAME' },
+            });
+        });
+
+        it('looks up tenant by id when identifier is a UUID (updateTenantConfigs)', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const tenant = createMockTenantEntity({ id: VALID_TENANT_UUID, key: 'CUSTOMER' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+            mockGlobalSettingRepository.findById.mockResolvedValue(null);
+
+            await expect(
+                service.updateTenantConfigs(VALID_TENANT_UUID, [{ id: 'cfg-1', value: 'x' }]),
+            ).rejects.toThrow('Config with id cfg-1 not found');
+
+            expect(mockTenantRepository.findFirst).toHaveBeenCalledWith({
+                where: { id: VALID_TENANT_UUID },
+            });
+        });
+    });
+
+    describe('fetchTenantConfigs — locked value masking (TASK-258 #8)', () => {
+        it('replaces value with empty string for locked rows when caller is non-SUPER_ADMIN', async () => {
+            setRequestUserRoles(['DOCTOR']);
+            const tenant = createMockTenantEntity({ id: 'tenant-123' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const configs = [
+                createMockGlobalSettingEntity({
+                    id: 'cfg-1',
+                    tenantId: 'tenant-123',
+                    key: 'public.setting',
+                    value: 'visible',
+                    locked: false,
+                }),
+                createMockGlobalSettingEntity({
+                    id: 'cfg-2',
+                    tenantId: 'tenant-123',
+                    key: 'secret.setting',
+                    value: 'super-secret',
+                    locked: true,
+                }),
+            ];
+            mockGlobalSettingRepository.findAll.mockResolvedValue(configs);
+            mockGlobalSettingRepository.count.mockResolvedValue(2);
+
+            const result = await service.fetchTenantConfigs({
+                limit: 10,
+                page: 1,
+                tenantId: 'tenant-123',
+            });
+
+            const byKey = Object.fromEntries(result.data.map((c: any) => [c.key, c.value]));
+            expect(byKey['public.setting']).toBe('visible');
+            expect(byKey['secret.setting']).toBe('');
+        });
+
+        it('returns full value for locked rows when caller is SUPER_ADMIN', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const tenant = createMockTenantEntity({ id: 'tenant-123' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const configs = [
+                createMockGlobalSettingEntity({
+                    id: 'cfg-2',
+                    tenantId: 'tenant-123',
+                    key: 'secret.setting',
+                    value: 'super-secret',
+                    locked: true,
+                }),
+            ];
+            mockGlobalSettingRepository.findAll.mockResolvedValue(configs);
+            mockGlobalSettingRepository.count.mockResolvedValue(1);
+
+            const result = await service.fetchTenantConfigs({
+                limit: 10,
+                page: 1,
+                tenantId: 'tenant-123',
+            });
+
+            expect((result.data[0] as any).value).toBe('super-secret');
         });
     });
 });

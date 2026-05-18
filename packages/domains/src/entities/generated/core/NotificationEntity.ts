@@ -128,6 +128,30 @@ export class NotificationEntity extends BaseTaggedEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._title || this._title.trim().length === 0) {
+      throw new BusinessException('Notification title is required.');
+    }
+    if (this._title.length > 255) {
+      throw new BusinessException('Notification title must not exceed 255 characters.');
+    }
+    if (this._type === undefined || this._type === null) {
+      throw new BusinessException('Notification type is required.');
+    }
+    if (!Object.values(Enums.NotificationType).includes(this._type)) {
+      throw new BusinessException(`Notification type is invalid: ${String(this._type)}.`);
+    }
+    if (typeof this._read !== 'boolean') {
+      throw new BusinessException('Notification read must be a boolean.');
+    }
+    if (!this._targetUserId || this._targetUserId.trim().length === 0) {
+      throw new BusinessException('Notification targetUserId is required.');
+    }
+    if (
+      this._resourceSubscriptionId !== null &&
+      this._resourceSubscriptionId !== undefined &&
+      this._resourceSubscriptionId.trim().length === 0
+    ) {
+      throw new BusinessException('Notification resourceSubscriptionId must not be empty when provided.');
+    }
   }
 }

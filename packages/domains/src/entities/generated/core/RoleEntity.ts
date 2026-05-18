@@ -95,6 +95,20 @@ export class RoleEntity extends BaseEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._name || this._name.trim().length === 0) {
+      throw new BusinessException('Role name is required.');
+    }
+    if (this._name.length > 255) {
+      throw new BusinessException('Role name must not exceed 255 characters.');
+    }
+    if (this._description && this._description.length > 1000) {
+      throw new BusinessException('Role description must not exceed 1000 characters.');
+    }
+    if (this._externalName && this._externalName.length > 255) {
+      throw new BusinessException('Role externalName must not exceed 255 characters.');
+    }
+    if (this._externalId && this._externalId.length > 255) {
+      throw new BusinessException('Role externalId must not exceed 255 characters.');
+    }
   }
 }

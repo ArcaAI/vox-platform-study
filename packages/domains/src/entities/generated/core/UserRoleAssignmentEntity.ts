@@ -62,6 +62,11 @@ export class UserRoleAssignmentEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._userId || this._userId.trim().length === 0) {
+      throw new BusinessException('UserRoleAssignment userId is required.');
+    }
+    if (!this._roleId || this._roleId.trim().length === 0) {
+      throw new BusinessException('UserRoleAssignment roleId is required.');
+    }
   }
 }

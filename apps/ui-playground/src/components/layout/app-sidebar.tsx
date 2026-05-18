@@ -19,7 +19,7 @@ import {
   Settings2,
   Users,
   Workflow,
-  Zap
+  Zap,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { NavGroup, type NavItem } from './nav-group';

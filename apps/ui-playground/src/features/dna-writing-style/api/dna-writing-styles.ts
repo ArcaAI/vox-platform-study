@@ -181,7 +181,11 @@ export function streamDnaJob(jobId: string, callbacks: DnaStreamCallbacks): Abor
 
         for (const eventBlock of events) {
           const lines = eventBlock.split('\n');
-          const eventName = lines.find((line) => line.startsWith('event:'))?.slice(6).trim() ?? 'message';
+          const eventName =
+            lines
+              .find((line) => line.startsWith('event:'))
+              ?.slice(6)
+              .trim() ?? 'message';
           const data = lines
             .filter((line) => line.startsWith('data:'))
             .map((line) => line.slice(5).trimStart())

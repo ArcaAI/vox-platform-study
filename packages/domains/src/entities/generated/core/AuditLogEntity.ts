@@ -161,6 +161,40 @@ export class AuditLogEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (this._action === undefined || this._action === null) {
+      throw new BusinessException('AuditLog action is required.');
+    }
+    if (!Object.values(Enums.AuditAction).includes(this._action)) {
+      throw new BusinessException(`AuditLog action is invalid: ${String(this._action)}.`);
+    }
+    if (this._resourceType === undefined || this._resourceType === null) {
+      throw new BusinessException('AuditLog resourceType is required.');
+    }
+    if (!Object.values(Enums.ResourceType).includes(this._resourceType)) {
+      throw new BusinessException(`AuditLog resourceType is invalid: ${String(this._resourceType)}.`);
+    }
+    if (
+      this._responsibleUserId !== undefined &&
+      this._responsibleUserId !== null &&
+      this._responsibleUserId.trim().length === 0
+    ) {
+      throw new BusinessException('AuditLog responsibleUserId must not be blank when provided.');
+    }
+    if (this._responsibleIp && this._responsibleIp.length > 45) {
+      throw new BusinessException('AuditLog responsibleIp must not exceed 45 characters.');
+    }
+    if (
+      this._resourceId !== undefined &&
+      this._resourceId !== null &&
+      this._resourceId.trim().length === 0
+    ) {
+      throw new BusinessException('AuditLog resourceId must not be blank when provided.');
+    }
+    if (this._eventType && this._eventType.length > 100) {
+      throw new BusinessException('AuditLog eventType must not exceed 100 characters.');
+    }
+    // Note: data, previousData, metadata are Json columns. Per TASK-261
+    // Conservative Defaults, JSON shapes are track-only — no structural
+    // validation at the domain layer.
   }
 }

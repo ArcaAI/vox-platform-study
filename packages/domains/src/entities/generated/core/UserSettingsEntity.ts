@@ -95,6 +95,32 @@ export class UserSettingsEntity extends BaseEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._name || this._name.trim().length === 0) {
+      throw new BusinessException('User settings name is required.');
+    }
+    if (this._name.length > 255) {
+      throw new BusinessException('User settings name must not exceed 255 characters.');
+    }
+    if (!this._key || this._key.trim().length === 0) {
+      throw new BusinessException('User settings key is required.');
+    }
+    if (this._key.length > 100) {
+      throw new BusinessException('User settings key must not exceed 100 characters.');
+    }
+    if (typeof this._value !== 'string') {
+      throw new BusinessException('User settings value must be a string.');
+    }
+    if (this._dataType === undefined || this._dataType === null) {
+      throw new BusinessException('User settings dataType is required.');
+    }
+    if (!Object.values(Enums.ValueType).includes(this._dataType)) {
+      throw new BusinessException(`User settings dataType is invalid: ${String(this._dataType)}.`);
+    }
+    if (this._namespace && this._namespace.length > 100) {
+      throw new BusinessException('User settings namespace must not exceed 100 characters.');
+    }
+    if (!this._userId || this._userId.trim().length === 0) {
+      throw new BusinessException('User settings userId is required.');
+    }
   }
 }

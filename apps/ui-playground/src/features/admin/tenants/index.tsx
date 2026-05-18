@@ -157,13 +157,6 @@ const tenantUserEditSchema = z.object({
 
 type TenantUserFormValues = z.infer<typeof tenantUserSchema>;
 
-const addConfigSchema = z.object({
-  key: z.string().min(1, 'Key is required'),
-  value: z.string(),
-});
-
-type AddConfigFormValues = z.infer<typeof addConfigSchema>;
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -670,7 +663,6 @@ function ConfigsTab({ tenantIdentifier }: { tenantIdentifier: string }) {
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState('');
-  const [addOpen, setAddOpen] = useState(false);
 
   const { data, isLoading } = useTenantConfigs(tenantIdentifier, {
     page: pagination.pageIndex,
@@ -678,11 +670,6 @@ function ConfigsTab({ tenantIdentifier }: { tenantIdentifier: string }) {
   });
 
   const updateConfigs = useUpdateTenantConfigs();
-
-  const addForm = useForm<AddConfigFormValues>({
-    resolver: zodResolver(addConfigSchema),
-    defaultValues: { key: '', value: '' },
-  });
 
   const filteredData = useMemo(() => {
     if (!search) return data?.data ?? [];
@@ -724,13 +711,6 @@ function ConfigsTab({ tenantIdentifier }: { tenantIdentifier: string }) {
     },
     [tenantIdentifier, updateConfigs],
   );
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleAddConfig = (values: AddConfigFormValues) => {
-    toast.info('To add a new configuration, use the API directly or seed data.');
-    addForm.reset();
-    setAddOpen(false);
-  };
 
   const columns = useMemo<ColumnDef<TenantConfig, unknown>[]>(
     () => [
@@ -839,7 +819,11 @@ function ConfigsTab({ tenantIdentifier }: { tenantIdentifier: string }) {
   );
 
   return (
-    <>
+    <div className="space-y-3">
+      <div className="bg-muted/50 text-muted-foreground flex items-center gap-2 rounded-md border px-3 py-2 text-xs">
+        <Settings2 className="size-3.5 shrink-0" />
+        <span>Configurations are provisioned automatically when a tenant is created. Use the row actions to edit values or restore defaults.</span>
+      </div>
       <AdminDataTable
         data={filteredData}
         columns={columns}
@@ -848,68 +832,9 @@ function ConfigsTab({ tenantIdentifier }: { tenantIdentifier: string }) {
         onPaginationChange={setPagination}
         rowCount={data?.count ?? 0}
         emptyMessage="No configurations found."
-        toolbar={
-          <SearchFilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Search configurations…">
-            <Button size="sm" onClick={() => setAddOpen(true)}>
-              <Plus className="mr-1 size-4" />
-              Add
-            </Button>
-          </SearchFilterBar>
-        }
+        toolbar={<SearchFilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Search configurations…" />}
       />
-
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Configuration</DialogTitle>
-            <DialogDescription>Create a new configuration key-value pair.</DialogDescription>
-          </DialogHeader>
-          <Form {...addForm}>
-            <form onSubmit={addForm.handleSubmit(handleAddConfig)} className="space-y-4">
-              <FormField
-                control={addForm.control}
-                name="key"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                render={({ field }: { field: any }) => (
-                  <FormItem>
-                    <FormLabel>Key</FormLabel>
-                    <FormControl>
-                      <Input placeholder="my.config.key" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={addForm.control}
-                name="value"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                render={({ field }: { field: any }) => (
-                  <FormItem>
-                    <FormLabel>Value</FormLabel>
-                    <FormControl>
-                      <Input placeholder="value" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button type="button" variant="outline">
-                    Cancel
-                  </Button>
-                </DialogClose>
-                <Button type="submit" disabled={updateConfigs.isPending}>
-                  {updateConfigs.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
-                  Add
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-    </>
+    </div>
   );
 }
 
