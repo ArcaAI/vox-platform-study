@@ -351,6 +351,8 @@ test-api-e2e:
   variables:
     <<: *test-env-vars
     RESET_DB: "false"
+    # Schema+seed already done by prepare-test-db
+    SKIP_DB_PRECHECK: "true"
     PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: "yes"
     CI: "true"
   script:
