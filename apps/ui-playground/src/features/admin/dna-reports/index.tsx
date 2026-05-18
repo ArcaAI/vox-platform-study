@@ -18,7 +18,13 @@ import { VersionDiffPanel } from '@/components/version-diff-panel';
 import type { DnaReport, DnaReportData, DnaStyleVersion } from '@/features/dna-writing-style/api/dna-writing-styles';
 import { zodResolver } from '@/lib/zod-resolver';
 import { useAuthStore } from '@/store/auth-store';
-import { useAdminUpdateDnaReport, useDnaReportVersions, useRefreshDnaReportVersions, useRefreshTenantDnaReportData, useTenantDnaReportData } from '../api/dna-reports';
+import {
+  useAdminUpdateDnaReport,
+  useDnaReportVersions,
+  useRefreshDnaReportVersions,
+  useRefreshTenantDnaReportData,
+  useTenantDnaReportData,
+} from '../api/dna-reports';
 import { type Tenant, useTenant, useTenantsInfinite } from '../api/tenants';
 import { type AdminUser } from '../api/users';
 
@@ -624,12 +630,7 @@ export default function DnaReportsAdminPage() {
         height="calc(100vh - 12rem)"
       />
 
-      <AdminEditDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        report={selectedReport}
-        tenantId={effectiveTenantId}
-      />
+      <AdminEditDialog open={editOpen} onOpenChange={setEditOpen} report={selectedReport} tenantId={effectiveTenantId} />
     </Main>
   );
 }

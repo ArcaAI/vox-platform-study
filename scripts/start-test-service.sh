@@ -47,11 +47,28 @@ check_docker_containers() {
         echo -e "${YELLOW}Warning: Test database container doesn't appear to be running.${NC}"
         echo "Start it with: pnpm docker:test:up"
         echo ""
+        # In non-interactive contexts (CI, nohup, IDE task runners without TTY) `read`
+        # returns immediately with empty input; falling through silently leads to a
+        # confusing DB-connection failure later. Fail fast with a clear directive.
+        if [ ! -t 0 ]; then
+            echo -e "${RED}Error: stdin is not a TTY; cannot prompt to start containers.${NC}"
+            echo "Run 'pnpm docker:test:up' first, then retry."
+            exit 1
+        fi
         read -p "Would you like to start the test containers now? (y/n) " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             echo -e "${GREEN}Starting test containers...${NC}"
-            docker compose -f "$PROJECT_ROOT/tests/docker-compose.test.yml" up -d --wait
+            # --wait returns non-zero when one-shot init containers (minio-createbuckets,
+            # qdrant-init-test) finish their work and exit. Compose flags this as
+            # "exited prematurely" even though exit 0 is the intended outcome. Mirrors
+            # the handling in start-test-infra.sh; we re-validate below to catch real
+            # failures of the long-running services.
+            docker compose -f "$PROJECT_ROOT/tests/docker-compose.test.yml" up -d --wait || true
+            if ! docker compose -f "$PROJECT_ROOT/tests/docker-compose.test.yml" ps --status running 2>/dev/null | grep -q "hope-postgres-test"; then
+                echo -e "${RED}Error: postgres-test failed to start. Inspect with 'pnpm docker:test:logs'.${NC}"
+                exit 1
+            fi
         else
             echo -e "${YELLOW}Proceeding without containers. Service may fail to start.${NC}"
         fi
@@ -60,7 +77,9 @@ check_docker_containers() {
 
 check_conda_env() {
     local env_name="${1:-arcaenv}"
-    if ! conda info --envs 2>/dev/null | grep -q "$env_name"; then
+    # Match only the env-name column (first whitespace-separated field) so that
+    # similarly-prefixed envs like "arcaenv-dev" don't satisfy a request for "arcaenv".
+    if ! conda env list 2>/dev/null | awk 'NF && $1 !~ /^#/ {print $1}' | grep -qx "$env_name"; then
         echo -e "${RED}Error: conda environment '$env_name' not found.${NC}"
         echo "Set it up with: pnpm py:setup"
         exit 1
@@ -68,14 +87,17 @@ check_conda_env() {
 }
 
 handle_build_flag() {
-    if [ "$1" = "--build" ]; then
-        echo -e "${GREEN}Building packages first...${NC}"
-        cd "$PROJECT_ROOT"
-        pnpm db:generate
-        pnpm build:packages
-        pnpm build:modules
-        echo -e "${GREEN}Build complete.${NC}"
-    fi
+    for arg in "$@"; do
+        if [ "$arg" = "--build" ]; then
+            echo -e "${GREEN}Building packages first...${NC}"
+            cd "$PROJECT_ROOT"
+            pnpm db:generate
+            pnpm build:packages
+            pnpm build:modules
+            echo -e "${GREEN}Build complete.${NC}"
+            return
+        fi
+    done
 }
 
 load_env_test() {

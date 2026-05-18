@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { UnauthorizedException, NotFoundException } from '@nestjs/common';
+import { describe, it, expect, vi } from 'vitest';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { MyTenantController } from '../my-tenant.controller';
 
 const SWAGGER = {
@@ -69,41 +69,26 @@ describe('MyTenantController', () => {
             expect(result.key).toBe('test-hospital');
         });
 
-        it('should throw UnauthorizedException when no tenantId and not super admin', async () => {
+        it('should throw BadRequestException when no tenantId and not super admin', async () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService(undefined, { roles: ['DOCTOR'] });
 
             controller = new MyTenantController(tenantService as any, clsService as any);
 
-            await expect(controller.me()).rejects.toThrow(UnauthorizedException);
+            await expect(controller.me()).rejects.toThrow(BadRequestException);
             expect(tenantService.fetchById).not.toHaveBeenCalled();
         });
 
-        it('should fall back to global tenant for super admin with no tenantId', async () => {
+        it('should throw BadRequestException when CLS has no tenantId, even for SUPER_ADMIN', async () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService(undefined, { roles: ['SUPER_ADMIN'] });
 
-            tenantService.fetchByCodeName.mockResolvedValue({
-                id: 'global-tenant-id',
-                name: 'Global',
-                key: '__GLOBAL__',
-            });
-            tenantService.fetchById.mockResolvedValue({
-                id: 'global-tenant-id',
-                name: 'Global',
-                key: '__GLOBAL__',
-                description: 'System-wide default tenant',
-                createdAt: new Date(),
-                updatedAt: new Date(),
-            });
-
             controller = new MyTenantController(tenantService as any, clsService as any);
-            const result = await controller.me();
 
-            expect(tenantService.fetchByCodeName).toHaveBeenCalledWith('__GLOBAL__');
-            expect(tenantService.fetchById).toHaveBeenCalledWith('global-tenant-id');
-            expect(result.name).toBe('Global');
-            expect(result.key).toBe('__GLOBAL__');
+            await expect(controller.me()).rejects.toThrow(BadRequestException);
+            await expect(controller.me()).rejects.toThrow(/Tenant context is required/);
+            expect(tenantService.fetchByCodeName).not.toHaveBeenCalled();
+            expect(tenantService.fetchById).not.toHaveBeenCalled();
         });
 
         it('should propagate NotFoundException when tenant not found', async () => {
@@ -173,40 +158,25 @@ describe('MyTenantController', () => {
             );
         });
 
-        it('should throw UnauthorizedException when no tenantId and not super admin', async () => {
+        it('should throw BadRequestException when no tenantId and not super admin', async () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService(undefined, { roles: ['DOCTOR'] });
 
             controller = new MyTenantController(tenantService as any, clsService as any);
 
-            await expect(controller.myConfig()).rejects.toThrow(UnauthorizedException);
+            await expect(controller.myConfig()).rejects.toThrow(BadRequestException);
             expect(tenantService.fetchTenantConfigs).not.toHaveBeenCalled();
         });
 
-        it('should fall back to global tenant config for super admin with no tenantId', async () => {
+        it('should throw BadRequestException for super admin with no tenantId (no silent fallback)', async () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService(undefined, { roles: ['SUPER_ADMIN'] });
 
-            tenantService.fetchByCodeName.mockResolvedValue({
-                id: 'global-tenant-id',
-                name: 'Global',
-                key: '__GLOBAL__',
-            });
-            tenantService.fetchTenantConfigs.mockResolvedValue({
-                data: [{ id: 'cfg-1', key: 'default-language', value: 'en' }],
-                count: 1,
-                limit: 100,
-                page: 1,
-            });
-
             controller = new MyTenantController(tenantService as any, clsService as any);
-            const result = await controller.myConfig();
 
-            expect(tenantService.fetchByCodeName).toHaveBeenCalledWith('__GLOBAL__');
-            expect(tenantService.fetchTenantConfigs).toHaveBeenCalledWith(
-                expect.objectContaining({ tenantId: 'global-tenant-id' }),
-            );
-            expect(result).toBeDefined();
+            await expect(controller.myConfig()).rejects.toThrow(BadRequestException);
+            expect(tenantService.fetchByCodeName).not.toHaveBeenCalled();
+            expect(tenantService.fetchTenantConfigs).not.toHaveBeenCalled();
         });
     });
 
@@ -243,39 +213,26 @@ describe('MyTenantController', () => {
             expect(result).toBeDefined();
         });
 
-        it('should throw UnauthorizedException when no tenantId and not super admin', async () => {
+        it('should throw BadRequestException when no tenantId and not super admin', async () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService(undefined, { roles: ['DOCTOR'] });
 
             controller = new MyTenantController(tenantService as any, clsService as any);
 
-            await expect(controller.updateMyConfig([] as any)).rejects.toThrow(UnauthorizedException);
+            await expect(controller.updateMyConfig([] as any)).rejects.toThrow(BadRequestException);
             expect(tenantService.updateTenantConfigs).not.toHaveBeenCalled();
         });
 
-        it('should fall back to global tenant for super admin update with no tenantId', async () => {
+        it('should throw BadRequestException for super admin update with no tenantId (no silent fallback)', async () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService(undefined, { roles: ['SUPER_ADMIN'] });
 
-            tenantService.fetchByCodeName.mockResolvedValue({
-                id: 'global-tenant-id',
-                name: 'Global',
-                key: '__GLOBAL__',
-            });
-            tenantService.updateTenantConfigs.mockResolvedValue({
-                data: [{ id: 'cfg-1', key: 'default-language', value: 'th' }],
-                count: 1,
-                limit: 100,
-                page: 1,
-            });
-
             controller = new MyTenantController(tenantService as any, clsService as any);
             const configs = [{ id: 'cfg-1', value: 'th' }];
-            const result = await controller.updateMyConfig(configs as any);
 
-            expect(tenantService.fetchByCodeName).toHaveBeenCalledWith('__GLOBAL__');
-            expect(tenantService.updateTenantConfigs).toHaveBeenCalledWith('global-tenant-id', configs);
-            expect(result).toBeDefined();
+            await expect(controller.updateMyConfig(configs as any)).rejects.toThrow(BadRequestException);
+            expect(tenantService.fetchByCodeName).not.toHaveBeenCalled();
+            expect(tenantService.updateTenantConfigs).not.toHaveBeenCalled();
         });
     });
 
@@ -297,10 +254,10 @@ describe('MyTenantController', () => {
             expect(metadata.summary).toBeDefined();
         });
 
-        it('me() should have @ApiResponse for 401', () => {
+        it('me() should have @ApiResponse for 400 (bad request - missing tenant context)', () => {
             const responses = getMethodMetadata(SWAGGER.API_RESPONSE, 'me');
             expect(responses).toBeDefined();
-            expect(responses[401]).toBeDefined();
+            expect(responses[400]).toBeDefined();
         });
 
         it('myConfig() should have @ApiOperation', () => {
@@ -309,10 +266,10 @@ describe('MyTenantController', () => {
             expect(metadata.summary).toBeDefined();
         });
 
-        it('myConfig() should have @ApiResponse for 401', () => {
+        it('myConfig() should have @ApiResponse for 400 (bad request - missing tenant context)', () => {
             const responses = getMethodMetadata(SWAGGER.API_RESPONSE, 'myConfig');
             expect(responses).toBeDefined();
-            expect(responses[401]).toBeDefined();
+            expect(responses[400]).toBeDefined();
         });
     });
 });

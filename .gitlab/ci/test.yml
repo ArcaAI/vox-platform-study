@@ -302,6 +302,104 @@ test-guardrail:
       when: never
     - !reference [.rules-guardrail, rules]
 
+# ── API E2E tests (Playwright) ──────────────────────────────────────────────
+#
+# Boots the NestJS API against the shared test database + Redis and exercises
+# the Playwright specs under `apps/api/tests/e2e/`. Currently locked to the
+# TASK-258 / TASK-259 tenant-access-control spec — the smallest blast radius
+# that proves the boot pattern works. Future tickets can broaden the glob
+# once this job is stable.
+#
+# Prerequisites (provided by CI/CD Variables, identical to test-api):
+#   CI_DATABASE_URL, CI_DATABASE_URL_DIRECT, CI_REDIS_URL, CI_REDIS_PASS,
+#   CI_JWT_SECRET, CI_JWT_REFRESH_SECRET, CI_API_KEY_PEPPER
+#
+# Schema reset + seed is delegated to the `prepare-test-db` job (Phase 2).
+# `RESET_DB=false` keeps the Playwright global-setup from re-pushing the
+# schema mid-run.
+
+test-api-e2e:
+  stage: test
+  extends: .test-node-base
+  needs:
+    - job: install-node
+      optional: true
+    - job: lint-ts
+      optional: true
+      artifacts: false
+    - job: prepare-test-db
+      optional: true
+      artifacts: false
+    - job: test-api
+      optional: true
+      artifacts: false
+  variables:
+    <<: *test-env-vars
+    RESET_DB: "false"
+    PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: "yes"
+    CI: "true"
+  script:
+    - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
+    - apk add --no-cache postgresql-client
+    - pnpm --filter @arcaai/database db:generate
+    - pnpm turbo build --filter=@arcaai/database
+    - pnpm turbo build --filter=@arcaai/exceptions
+    - pnpm turbo build --filter=@arcaai/logger
+    - pnpm turbo build --filter=@arcaai/domains
+    - pnpm turbo build --filter=@arcaai/applications
+    - pnpm turbo build --filter=@arcaai/api
+    - echo "── Booting API in background..."
+    - pnpm --filter @arcaai/api start > api.log 2>&1 &
+    - echo $! > api.pid
+    - echo "── Waiting for API health endpoint (60s timeout)..."
+    - |
+      for i in $(seq 1 60); do
+        if wget -q -O- "${API_URL}/api/v1/health" >/dev/null 2>&1; then
+          echo "  ✓ API is healthy after ${i}s"
+          break
+        fi
+        if [ "$i" -eq 60 ]; then
+          echo "  ✗ API did not become healthy in 60s — dumping log:"
+          tail -200 api.log || true
+          exit 1
+        fi
+        sleep 1
+      done
+    - echo "── Running Playwright tenant-access-control spec..."
+    - pnpm exec playwright install --with-deps chromium
+    - pnpm exec playwright test apps/api/tests/e2e/tenant-access-control.spec.ts --project=api-tests --reporter=line
+  after_script:
+    - if [ -f api.pid ]; then kill "$(cat api.pid)" 2>/dev/null || true; fi
+  artifacts:
+    when: on_failure
+    paths:
+      - test-results/
+      - api.log
+    expire_in: 30 days
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_TS == "true"
+      when: never
+    - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/api/**/*
+          - packages/applications/src/services/tenant/**/*
+          - packages/applications/src/authorization/**/*
+          - packages/database/src/prisma/db_main/seed/**/*
+          - .gitlab/ci/test.yml
+        compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
+      changes:
+        - apps/api/**/*
+        - packages/applications/src/services/tenant/**/*
+        - packages/applications/src/authorization/**/*
+        - packages/database/src/prisma/db_main/seed/**/*
+
 # ── NLP tests (pytest) ──────────────────────────────────────────────────────
 
 test-nlp:

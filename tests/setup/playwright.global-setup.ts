@@ -24,6 +24,22 @@
  *   - Does NOT start API server (do this manually or via CI)
  *   - Waits for API to be available
  *   - Optionally waits for Python services (STT-v2, SMR-v2, NLP)
+ *
+ * ENVIRONMENT FLAGS:
+ *   - RESET_DB=false           Skip the destructive `pnpm test:db:reset`
+ *                              (schema push + seed) step. Useful for
+ *                              single-spec smoke runs against an already
+ *                              seeded database.
+ *   - SKIP_DB_PRECHECK=true|1  Skip the `pg_isready` reachability probe
+ *                              entirely. Useful for HTTP-only specs (e.g.
+ *                              `apps/api/tests/e2e/tenant-access-control.spec.ts`)
+ *                              that talk to the API but don't require a live
+ *                              Postgres on the test port. When set, the
+ *                              schema-push/seed step is also skipped because
+ *                              it implicitly depends on the same database.
+ *                              Default: probe runs and hard-fails on miss.
+ *   - E2E_WAIT_SERVICES=true   Additionally wait for Python micro-services
+ *                              (STT-v2, SMR-v2, NLP) before starting the run.
  */
 
 /**
@@ -89,6 +105,8 @@ async function globalSetup(config: FullConfig): Promise<void> {
 
   const isCI = process.env.CI === 'true';
   const waitForServices = process.env.E2E_WAIT_SERVICES === 'true';
+  const skipDbPrecheck =
+    process.env.SKIP_DB_PRECHECK === 'true' || process.env.SKIP_DB_PRECHECK === '1';
 
   if (isCI) {
     console.log('📦 CI Environment detected');
@@ -100,34 +118,42 @@ async function globalSetup(config: FullConfig): Promise<void> {
     console.log('   - Run "pnpm docker:test:up" if not already running');
   }
 
-  // Step 1: Verify database is accessible
-  console.log('\n🔍 Step 1: Checking database connection...');
-  const dbReady = await waitForDatabase();
-  if (!dbReady) {
-    console.error('❌ Database is not accessible!');
-    if (!isCI) {
-      console.error('   Run: pnpm docker:test:up');
+  // Step 1: Verify database is accessible (unless explicitly opted out)
+  if (skipDbPrecheck) {
+    console.warn(
+      '[playwright global-setup] SKIP_DB_PRECHECK=true — skipping pg_isready probe ' +
+        'and the test:db:reset step. HTTP-only specs may proceed against an already-up API.'
+    );
+  } else {
+    console.log('\n🔍 Step 1: Checking database connection...');
+    const dbReady = await waitForDatabase();
+    if (!dbReady) {
+      console.error('❌ Database is not accessible!');
+      if (!isCI) {
+        console.error('   Run: pnpm docker:test:up');
+        console.error('   To bypass for HTTP-only specs: SKIP_DB_PRECHECK=true pnpm test:e2e');
+      }
+      throw new Error('Database connection failed');
     }
-    throw new Error('Database connection failed');
-  }
-  console.log('✅ Database is ready\n');
+    console.log('✅ Database is ready\n');
 
-  // Step 2: Reset database — push schema and seed test data
-  if (process.env.RESET_DB !== 'false') {
-    console.log('📦 Step 2: Resetting database (schema push + seed)...');
-    try {
-      execSync('pnpm test:db:reset', {
-        stdio: 'pipe',
-        env: {
-          ...process.env,
-          PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: 'yes',
-        },
-        cwd: process.cwd(),
-      });
-      console.log('✅ Database reset and seeded\n');
-    } catch (error) {
-      console.warn('⚠️ Database reset failed:', (error as Error).message?.slice(0, 200));
-      console.warn('   Some tests may fail if seeded data is missing\n');
+    // Step 2: Reset database — push schema and seed test data
+    if (process.env.RESET_DB !== 'false') {
+      console.log('📦 Step 2: Resetting database (schema push + seed)...');
+      try {
+        execSync('pnpm test:db:reset', {
+          stdio: 'pipe',
+          env: {
+            ...process.env,
+            PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: 'yes',
+          },
+          cwd: process.cwd(),
+        });
+        console.log('✅ Database reset and seeded\n');
+      } catch (error) {
+        console.warn('⚠️ Database reset failed:', (error as Error).message?.slice(0, 200));
+        console.warn('   Some tests may fail if seeded data is missing\n');
+      }
     }
   }
 
@@ -204,16 +230,18 @@ async function waitForService(
 }
 
 /**
- * Wait for the database to be ready
+ * Wait for the database to be ready via `pg_isready`.
+ *
+ * Logs the exact command and port on the final miss so the developer can
+ * diagnose without grepping through this helper.
  */
 async function waitForDatabase(maxRetries = 30): Promise<boolean> {
   const port = process.env.DATABASE_URL?.includes('5433') ? '5433' : '5432';
+  const cmd = `pg_isready -h localhost -p ${port} -U test`;
 
   for (let i = 0; i < maxRetries; i++) {
     try {
-      execSync(`pg_isready -h localhost -p ${port} -U test`, {
-        stdio: 'pipe',
-      });
+      execSync(cmd, { stdio: 'pipe' });
       return true;
     } catch {
       // Not ready yet
@@ -226,6 +254,9 @@ async function waitForDatabase(maxRetries = 30): Promise<boolean> {
     await sleep(1000);
   }
 
+  console.error(`  Probe command:    ${cmd}`);
+  console.error(`  Port:             ${port}`);
+  console.error(`  Bypass for HTTP:  SKIP_DB_PRECHECK=true pnpm test:e2e`);
   return false;
 }
 

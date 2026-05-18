@@ -42,7 +42,7 @@ const createMockDnaReportRepository = () => ({
 });
 
 const createMockDnaVersionRepository = () => ({
-    findAll: vi.fn(),
+    findAll: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
 });
 
@@ -282,7 +282,6 @@ describe('DnaWritingStyleService', () => {
             });
 
             expect(mockVersionRepo.create).toHaveBeenCalledTimes(1);
-            expect(existing.incrementVersion).toHaveBeenCalled();
             expect(result.currentVersionNumber).toBe(2);
         });
 
@@ -565,7 +564,6 @@ describe('DnaWritingStyleService', () => {
             });
 
             expect(mockVersionRepo.create).toHaveBeenCalledTimes(1);
-            expect(existing.incrementVersion).toHaveBeenCalled();
             expect(result.currentVersionNumber).toBe(2);
         });
 

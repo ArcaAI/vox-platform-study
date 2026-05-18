@@ -14,6 +14,7 @@ export interface IGlobalSettingEntity extends IBaseTaggedEntity {
   key: string;
   defaultValue?: string | null;
   value: string;
+  locked: boolean;
   dataType: Enums.ValueType;
   namespace?: string | null;
 }
@@ -24,6 +25,7 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
   private _key: IGlobalSettingEntity['key'];
   private _defaultValue?: IGlobalSettingEntity['defaultValue'];
   private _value: IGlobalSettingEntity['value'];
+  private _locked: IGlobalSettingEntity['locked'];
   private _dataType: IGlobalSettingEntity['dataType'];
   private _namespace?: IGlobalSettingEntity['namespace'];
 
@@ -34,6 +36,7 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
     this._key = init.key;
     this._defaultValue = init.defaultValue;
     this._value = init.value;
+    this._locked = init.locked;
     this._dataType = init.dataType;
     this._namespace = init.namespace;
   }
@@ -78,6 +81,14 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
     this.setProperty('value', value);
   }
 
+  get locked(): IGlobalSettingEntity['locked'] {
+    return this._locked;
+  }
+
+  set locked(value: IGlobalSettingEntity['locked']) {
+    this.setProperty('locked', value);
+  }
+
   get parsedValue(): any {
     if (this.dataType === Enums.ValueType.Boolean) {
       return this.value === 'true';
@@ -114,6 +125,88 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._name || this._name.trim().length === 0) {
+      throw new BusinessException('Global setting name is required.');
+    }
+    if (!this._key || this._key.trim().length === 0) {
+      throw new BusinessException('Global setting key is required.');
+    }
+    if (this._key.length > 100) {
+      throw new BusinessException('Global setting key must not exceed 100 characters.');
+    }
+    if (this._dataType === undefined || this._dataType === null) {
+      throw new BusinessException('Global setting dataType is required.');
+    }
+    if (!Object.values(Enums.ValueType).includes(this._dataType)) {
+      throw new BusinessException(`Global setting dataType is invalid: ${String(this._dataType)}.`);
+    }
+    if (typeof this._value !== 'string') {
+      // Note: Prisma column is `value String` (required, non-null). The
+      // tenant.service.fetchTenantConfigs masking path sets `value = ''` for
+      // locked rows surfaced to non-super-admins; an empty string is therefore
+      // tolerated here, but `null`/`undefined` is not.
+      throw new BusinessException('Global setting value must be a string.');
+    }
+    if (typeof this._locked !== 'boolean') {
+      throw new BusinessException('Global setting locked must be a boolean.');
+    }
+    if (this._namespace && this._namespace.length > 100) {
+      throw new BusinessException('Global setting namespace must not exceed 100 characters.');
+    }
+    if (this._defaultValue && this._defaultValue.length > 4000) {
+      throw new BusinessException('Global setting defaultValue must not exceed 4000 characters.');
+    }
+    if (this._value.length > 0) {
+      this.assertValueParseable(this._dataType, this._value, 'value');
+    }
+    if (this._defaultValue && this._defaultValue.length > 0) {
+      this.assertValueParseable(this._dataType, this._defaultValue, 'defaultValue');
+    }
+  }
+
+  private assertValueParseable(dataType: Enums.ValueType, raw: string, field: string): void {
+    switch (dataType) {
+      case Enums.ValueType.Boolean:
+        if (raw !== 'true' && raw !== 'false') {
+          throw new BusinessException(`Global setting ${field} '${raw}' cannot be parsed as Boolean.`);
+        }
+        break;
+      case Enums.ValueType.Integer: {
+        const n = Number(raw);
+        if (!Number.isFinite(n) || !Number.isInteger(n)) {
+          throw new BusinessException(`Global setting ${field} '${raw}' cannot be parsed as Integer.`);
+        }
+        break;
+      }
+      case Enums.ValueType.Float:
+      case Enums.ValueType.Double:
+      case Enums.ValueType.Decimal: {
+        if (!Number.isFinite(Number(raw))) {
+          throw new BusinessException(`Global setting ${field} '${raw}' cannot be parsed as ${dataType}.`);
+        }
+        break;
+      }
+      case Enums.ValueType.Json:
+      case Enums.ValueType.Array: {
+        try {
+          JSON.parse(raw);
+        } catch {
+          throw new BusinessException(`Global setting ${field} '${raw}' cannot be parsed as ${dataType}.`);
+        }
+        break;
+      }
+      case Enums.ValueType.Date:
+      case Enums.ValueType.DateTime: {
+        if (Number.isNaN(new Date(raw).getTime())) {
+          throw new BusinessException(`Global setting ${field} '${raw}' cannot be parsed as ${dataType}.`);
+        }
+        break;
+      }
+      default:
+        // String / Uuid / Binary / Enum / Hstore / Inet / Citext / Interval —
+        // no structural parser available at the domain layer; treat the raw
+        // string as-is. Format-specific validation belongs in the service layer.
+        break;
+    }
   }
 }

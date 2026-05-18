@@ -22,7 +22,7 @@ source "$SCRIPT_DIR/start-test-service.sh"
 
 check_env_file
 check_docker_containers
-handle_build_flag "$1"
+handle_build_flag "$@"
 
 cd "$PROJECT_ROOT"
 load_env_test

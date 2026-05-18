@@ -95,6 +95,23 @@ export class UserProfileEntity extends BaseEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._userId || this._userId.trim().length === 0) {
+      throw new BusinessException('User profile userId is required.');
+    }
+    if (this._firstName && this._firstName.length > 255) {
+      throw new BusinessException('User profile firstName must not exceed 255 characters.');
+    }
+    if (this._lastName && this._lastName.length > 255) {
+      throw new BusinessException('User profile lastName must not exceed 255 characters.');
+    }
+    if (this._email && this._email.length > 255) {
+      throw new BusinessException('User profile email must not exceed 255 characters.');
+    }
+    if (this._phone && this._phone.length > 255) {
+      throw new BusinessException('User profile phone must not exceed 255 characters.');
+    }
+    if (this._avatarId && this._avatarId.length > 255) {
+      throw new BusinessException('User profile avatarId must not exceed 255 characters.');
+    }
   }
 }

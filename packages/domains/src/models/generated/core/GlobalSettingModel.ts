@@ -13,6 +13,7 @@ export class GlobalSetting extends BaseTenantDataModel {
   public key: string;
   public defaultValue: string | null;
   public value: string;
+  public locked: boolean;
   public dataType: Enums.ValueType;
   public namespace: string | null;
   public resourceStatus: Enums.ResourceStatusType;
@@ -27,6 +28,7 @@ export class GlobalSetting extends BaseTenantDataModel {
     this.key = data.key;
     this.defaultValue = data.defaultValue;
     this.value = data.value;
+    this.locked = data.locked;
     this.dataType = data.dataType;
     this.namespace = data.namespace;
     this.resourceStatus = data.resourceStatus;

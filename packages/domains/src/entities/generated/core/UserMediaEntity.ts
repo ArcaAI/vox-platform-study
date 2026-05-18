@@ -73,6 +73,11 @@ export class UserMediaEntity extends BaseTaggedEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._userId || this._userId.trim().length === 0) {
+      throw new BusinessException('User media userId is required.');
+    }
+    if (!this._mediaId || this._mediaId.trim().length === 0) {
+      throw new BusinessException('User media mediaId is required.');
+    }
   }
 }

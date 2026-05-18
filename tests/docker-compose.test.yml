@@ -24,10 +24,12 @@ services:
   # ==========================================================================
   # PostgreSQL 18 Test Database (Minimal Resources)
   # ==========================================================================
-  # Using official PostgreSQL 18 Alpine (lightweight, fast startup)
-  # Note: Switch to timescale/timescaledb-ha:pg18-all if TimescaleDB/pgvector needed
+  # Image must match dev (timescale/timescaledb-ha:pg18-all) so the schema's
+  # required extensions are available:
+  #   - pgvector  (used by user.embedding vector(256))
+  #   - vectorscale (CASCADE in 20260413000000_add_user_voice_profile migration)
   postgres-test:
-    image: postgres:18-alpine
+    image: timescale/timescaledb-ha:pg18-all
     container_name: hope-postgres-test
     environment:
       POSTGRES_USER: test

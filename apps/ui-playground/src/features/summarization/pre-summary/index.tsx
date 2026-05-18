@@ -1284,12 +1284,7 @@ export default function PreSummaryPage() {
                       />
                     </div>
                     <div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={handleAddCustomItem}
-                        disabled={!customHeader.trim() || !customContent.trim()}
-                      >
+                      <Button type="button" size="sm" onClick={handleAddCustomItem} disabled={!customHeader.trim() || !customContent.trim()}>
                         <Plus className="mr-1 size-3.5" />
                         Add to Prompt
                       </Button>

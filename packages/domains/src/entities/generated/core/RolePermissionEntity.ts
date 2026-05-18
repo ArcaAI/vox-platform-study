@@ -62,6 +62,11 @@ export class RolePermissionEntity extends BaseEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._roleId || this._roleId.trim().length === 0) {
+      throw new BusinessException('RolePermission roleId is required.');
+    }
+    if (!this._permissionId || this._permissionId.trim().length === 0) {
+      throw new BusinessException('RolePermission permissionId is required.');
+    }
   }
 }

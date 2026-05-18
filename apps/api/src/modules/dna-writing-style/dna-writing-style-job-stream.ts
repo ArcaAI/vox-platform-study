@@ -65,7 +65,10 @@ export function streamDnaJobStatus(dnaQueue: Queue, jobId: string): Observable<M
         }
 
         if (status.status === 'failed') {
-          subscriber.next({ type: 'error', data: JSON.stringify({ jobId: status.jobId, error: status.error ?? 'Generation failed' }) } as MessageEvent);
+          subscriber.next({
+            type: 'error',
+            data: JSON.stringify({ jobId: status.jobId, error: status.error ?? 'Generation failed' }),
+          } as MessageEvent);
           subscriber.complete();
         }
       } catch (error) {
