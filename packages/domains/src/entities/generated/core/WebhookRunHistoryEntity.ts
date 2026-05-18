@@ -73,6 +73,26 @@ export class WebhookRunHistoryEntity extends BaseEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (this._status === undefined || this._status === null) {
+      throw new BusinessException('WebhookRunHistory status is required.');
+    }
+    if (!Object.values(Enums.WebhookRunStatus).includes(this._status)) {
+      throw new BusinessException(`WebhookRunHistory status is invalid: ${String(this._status)}.`);
+    }
+    if (!this._webhookId || this._webhookId.trim().length === 0) {
+      throw new BusinessException('WebhookRunHistory webhookId is required.');
+    }
+    if (this._responeStatusCode !== undefined && this._responeStatusCode !== null) {
+      if (
+        typeof this._responeStatusCode !== 'number' ||
+        !Number.isInteger(this._responeStatusCode) ||
+        this._responeStatusCode < 100 ||
+        this._responeStatusCode > 599
+      ) {
+        throw new BusinessException(
+          'WebhookRunHistory responeStatusCode must be a valid HTTP status code (100-599).',
+        );
+      }
+    }
   }
 }

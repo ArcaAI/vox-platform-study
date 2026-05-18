@@ -95,6 +95,29 @@ export class TagEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._tagValue || this._tagValue.trim().length === 0) {
+      throw new BusinessException('Tag tagValue is required.');
+    }
+    if (this._tagValue.length > 255) {
+      throw new BusinessException('Tag tagValue must not exceed 255 characters.');
+    }
+    if (this._tagKey && this._tagKey.length > 100) {
+      throw new BusinessException('Tag tagKey must not exceed 100 characters.');
+    }
+    if (this._resourceTypeName && this._resourceTypeName.length > 100) {
+      throw new BusinessException('Tag resourceTypeName must not exceed 100 characters.');
+    }
+    if (this._resourceId !== undefined && this._resourceId !== null && this._resourceId.trim().length === 0) {
+      throw new BusinessException('Tag resourceId must not be blank when provided.');
+    }
+    if (this._description && this._description.length > 1000) {
+      throw new BusinessException('Tag description must not exceed 1000 characters.');
+    }
+    if (this._color && this._color.length > 32) {
+      throw new BusinessException('Tag color must not exceed 32 characters.');
+    }
+    if (this._icon && this._icon.length > 255) {
+      throw new BusinessException('Tag icon must not exceed 255 characters.');
+    }
   }
 }

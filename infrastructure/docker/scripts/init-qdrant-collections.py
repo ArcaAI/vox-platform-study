@@ -173,7 +173,7 @@ def main():
     try:
         collection_info = client.get_collection(COLLECTION_NAME)
         print(f"✓ Collection verified:")
-        print(f"  - Name: {collection_info.name}")
+        print(f"  - Name: {COLLECTION_NAME}")
         print(f"  - Vector size: {collection_info.config.params.vectors.size}")
         print(f"  - Distance metric: {collection_info.config.params.vectors.distance}")
         print(f"  - Status: {collection_info.status}")

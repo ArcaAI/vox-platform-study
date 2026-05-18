@@ -84,6 +84,26 @@ export class PermissionEntity extends BaseEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._name || this._name.trim().length === 0) {
+      throw new BusinessException('Permission name is required.');
+    }
+    if (this._name.length > 255) {
+      throw new BusinessException('Permission name must not exceed 255 characters.');
+    }
+    if (!this._resourceTypeName || this._resourceTypeName.trim().length === 0) {
+      throw new BusinessException('Permission resourceTypeName is required.');
+    }
+    if (this._resourceTypeName.length > 255) {
+      throw new BusinessException('Permission resourceTypeName must not exceed 255 characters.');
+    }
+    if (this._permissionAction === undefined || this._permissionAction === null) {
+      throw new BusinessException('Permission permissionAction is required.');
+    }
+    if (!Object.values(Enums.PermissionAction).includes(this._permissionAction)) {
+      throw new BusinessException(`Permission permissionAction is invalid: ${String(this._permissionAction)}.`);
+    }
+    if (this._description && this._description.length > 1000) {
+      throw new BusinessException('Permission description must not exceed 1000 characters.');
+    }
   }
 }

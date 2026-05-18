@@ -9,7 +9,18 @@ import {
 } from '@arcaai/applications';
 import { DnaJobResponseDto, DnaJobStatusResponseDto } from './dna-writing-style.dto';
 import { JobQueue } from '@arcaai/domains';
-import { Controller, Body, Param, Inject, ForbiddenException, NotFoundException, UnauthorizedException, Get, Sse, type MessageEvent } from '@nestjs/common';
+import {
+  Controller,
+  Body,
+  Param,
+  Inject,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+  Get,
+  Sse,
+  type MessageEvent,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';

@@ -1,11 +1,11 @@
 import {
-    CreateAudioRecordRequest,
-    CreateTranscriptRequest,
-    InternalCompleteJobRequest,
-    InternalFailJobRequest,
-    InternalStartJobRequest,
-    InternalUpdateProgressRequest,
-    SttInternalService,
+  CreateAudioRecordRequest,
+  CreateTranscriptRequest,
+  InternalCompleteJobRequest,
+  InternalFailJobRequest,
+  InternalStartJobRequest,
+  InternalUpdateProgressRequest,
+  SttInternalService,
 } from '@arcaai/applications';
 import { Body, Controller, Get, Param, Patch, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { ApiExcludeController, ApiOperation, ApiParam, ApiSecurity, ApiTags } from '@nestjs/swagger';

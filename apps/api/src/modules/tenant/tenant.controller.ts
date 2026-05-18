@@ -13,13 +13,13 @@ import {
 } from '@arcaai/applications';
 import { Controller, Body, Param, Get, Inject, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize } from '../../decorators';
+import { ApiEndpoint, CanManage } from '../../decorators';
 import { TenantUsageResponse } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('admin-tenants')
 @Controller('admin/tenants')
-@Authorize()
+@CanManage('Tenant')
 export class TenantController {
   constructor(
     @Inject(ITenantService)
