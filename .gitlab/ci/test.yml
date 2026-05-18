@@ -320,7 +320,22 @@ test-guardrail:
 
 test-api-e2e:
   stage: test
-  extends: .test-node-base
+  image: mcr.microsoft.com/playwright:v1.58.0-noble
+  tags: [test]
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - node_modules/
+        - apps/*/node_modules/
+        - packages/*/node_modules/
+      policy: pull
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@latest --activate
+    - pnpm config set store-dir /pnpm-store
+    - pnpm install --frozen-lockfile --prefer-offline
   needs:
     - job: install-node
       optional: true
@@ -336,11 +351,12 @@ test-api-e2e:
   variables:
     <<: *test-env-vars
     RESET_DB: "false"
+    # Schema+seed already done by prepare-test-db
+    SKIP_DB_PRECHECK: "true"
     PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: "yes"
     CI: "true"
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
-    - apk add --no-cache postgresql-client
     - pnpm --filter @arcaai/database db:generate
     - pnpm turbo build --filter=@arcaai/database
     - pnpm turbo build --filter=@arcaai/exceptions
@@ -366,7 +382,7 @@ test-api-e2e:
         sleep 1
       done
     - echo "── Running Playwright tenant-access-control spec..."
-    - pnpm exec playwright install --with-deps chromium
+    - pnpm exec playwright install chromium
     - pnpm exec playwright test apps/api/tests/e2e/tenant-access-control.spec.ts --project=api-tests --reporter=line
   after_script:
     - if [ -f api.pid ]; then kill "$(cat api.pid)" 2>/dev/null || true; fi
