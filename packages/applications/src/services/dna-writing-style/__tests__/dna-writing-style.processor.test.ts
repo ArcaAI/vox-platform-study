@@ -134,6 +134,7 @@ const createMockJob = (overrides: Record<string, unknown> = {}) => ({
     id: overrides.jobId ?? 'job-1',
     progress: 0,
     timestamp: Date.now(),
+    updateProgress: vi.fn().mockResolvedValue(undefined),
 });
 
 // ─── SMR V2 Response Helper ─────────────────────────────────────────

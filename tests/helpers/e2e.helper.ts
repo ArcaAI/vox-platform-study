@@ -136,12 +136,76 @@ export function createTestDataRegistry(): TestDataRegistry {
 }
 
 // =============================================================================
+// Internal diagnostics (not exported)
+// =============================================================================
+
+const MAX_BODY_EXCERPT = 500;
+
+interface MinimalResponse {
+  status: () => number;
+  text: () => Promise<string>;
+}
+
+/**
+ * Read up to MAX_BODY_EXCERPT chars from a response body, swallowing read errors.
+ * Used purely for log diagnostics; never raises.
+ */
+async function readBodyExcerpt(response: MinimalResponse): Promise<string> {
+  try {
+    const text = await response.text();
+    if (!text) return '<empty body>';
+    return text.length > MAX_BODY_EXCERPT
+      ? `${text.slice(0, MAX_BODY_EXCERPT)}…`
+      : text;
+  } catch {
+    return '<unreadable body>';
+  }
+}
+
+/**
+ * Log a structured warning for a non-2xx HTTP response so test failures point
+ * at the API answer rather than a bare `null`/`false` sentinel.
+ */
+async function warnHttpFailure(
+  method: string,
+  url: string,
+  response: MinimalResponse
+): Promise<void> {
+  const excerpt = await readBodyExcerpt(response);
+  console.warn(
+    `[e2e.helper] ${method} ${url} returned ${response.status()}: ${excerpt}`
+  );
+}
+
+/**
+ * Wrap a transport-level failure (DNS, connection refused, timeout, …) so the
+ * stack trace pinpoints API unreachability instead of being swallowed.
+ */
+function wrapTransportError(method: string, url: string, error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  const wrapped = new Error(
+    `Failed to reach API at ${method} ${url}: ${message}. Is the dev/test stack running?`,
+    error instanceof Error ? { cause: error } : undefined
+  );
+  return wrapped;
+}
+
+// =============================================================================
 // Authentication Helpers
 // =============================================================================
 
 /**
  * Login and get auth token for a user.
  * Non-super-admin users require tenantKey (defaults to DEFAULT_TENANT_KEY).
+ *
+ * Error semantics:
+ * - HTTP 2xx with a parseable body → return parsed `{ token, refreshToken, user }`.
+ * - HTTP non-2xx → log a structured warning (method, url, status, body excerpt)
+ *   to stderr and return `null`. This preserves the long-standing sentinel for
+ *   credential / seed mismatches.
+ * - Network / DNS / timeout errors are RETHROWN (wrapped with a clear message)
+ *   so test failures surface "API unreachable" rather than masquerading as
+ *   `Received: null`.
  */
 export async function loginUser(
   request: APIRequestContext,
@@ -149,25 +213,28 @@ export async function loginUser(
   password: string,
   tenantKey?: string
 ): Promise<{ token: string; refreshToken: string; user: { id: string; username: string } } | null> {
-  try {
-    const data: Record<string, string> = { username, password };
-    if (tenantKey) data.tenantKey = tenantKey;
-    const response = await request.post('/api/v1/auth/login', {
-      data,
-    });
+  const url = '/api/v1/auth/login';
+  const data: Record<string, string> = { username, password };
+  if (tenantKey) data.tenantKey = tenantKey;
 
-    if (response.status() === 200) {
-      const body = await response.json();
-      return {
-        token: body.token,
-        refreshToken: body.refreshToken,
-        user: body.user,
-      };
-    }
-    return null;
-  } catch {
-    return null;
+  let response;
+  try {
+    response = await request.post(url, { data });
+  } catch (error) {
+    throw wrapTransportError('POST', url, error);
   }
+
+  if (response.status() === 200) {
+    const body = await response.json();
+    return {
+      token: body.token,
+      refreshToken: body.refreshToken,
+      user: body.user,
+    };
+  }
+
+  await warnHttpFailure('POST', url, response);
+  return null;
 }
 
 /**
@@ -207,7 +274,10 @@ export function generateUniqueUsername(prefix = 'test'): string {
 }
 
 /**
- * Create a test user via API
+ * Create a test user via API.
+ *
+ * Network failures rethrow (wrapped); non-2xx responses log a structured
+ * warning and return `null`. See `loginUser` for the rationale.
  */
 export async function createTestUser(
   request: APIRequestContext,
@@ -218,55 +288,65 @@ export async function createTestUser(
   const username = data.username || generateUniqueUsername();
   const email = data.email || `${username}@test.com`;
   const password = data.password || 'TestPassword123!';
+  const url = '/api/v1/users';
 
+  let response;
   try {
-    const response = await request.post('/api/v1/users', {
+    response = await request.post(url, {
       headers: { Authorization: `Bearer ${token}` },
       data: { username, email, password },
     });
+  } catch (error) {
+    throw wrapTransportError('POST', url, error);
+  }
 
-    if (response.status() === 200 || response.status() === 201) {
-      const body = await response.json();
-      const credentials: TestUserCredentials = {
-        id: body.id,
-        username,
-        email,
-        password,
-      };
+  if (response.status() === 200 || response.status() === 201) {
+    const body = await response.json();
+    const credentials: TestUserCredentials = {
+      id: body.id,
+      username,
+      email,
+      password,
+    };
 
-      // Track for cleanup
-      if (registry) {
-        registry.users.push(body.id);
-      }
-
-      return credentials;
+    if (registry) {
+      registry.users.push(body.id);
     }
 
-    console.warn(`Failed to create test user: ${response.status()}`);
-    return null;
-  } catch (error) {
-    console.error('Error creating test user:', error);
-    return null;
+    return credentials;
   }
+
+  await warnHttpFailure('POST', url, response);
+  return null;
 }
 
 /**
- * Delete a test user via API
+ * Delete a test user via API.
+ *
+ * Network failures rethrow (wrapped); non-2xx responses log a structured
+ * warning and return `false`. See `loginUser` for the rationale.
  */
 export async function deleteTestUser(
   request: APIRequestContext,
   token: string,
   userId: string
 ): Promise<boolean> {
+  const url = `/api/v1/users/${userId}`;
+  let response;
   try {
-    const response = await request.delete(`/api/v1/users/${userId}`, {
+    response = await request.delete(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
-
-    return response.status() === 200 || response.status() === 204;
-  } catch {
-    return false;
+  } catch (error) {
+    throw wrapTransportError('DELETE', url, error);
   }
+
+  if (response.status() === 200 || response.status() === 204) {
+    return true;
+  }
+
+  await warnHttpFailure('DELETE', url, response);
+  return false;
 }
 
 // =============================================================================
@@ -274,7 +354,10 @@ export async function deleteTestUser(
 // =============================================================================
 
 /**
- * Create a test role via API
+ * Create a test role via API.
+ *
+ * Network failures rethrow (wrapped); non-2xx responses log a structured
+ * warning and return `null`. See `loginUser` for the rationale.
  */
 export async function createTestRole(
   request: APIRequestContext,
@@ -284,46 +367,59 @@ export async function createTestRole(
 ): Promise<{ id: string; name: string } | null> {
   const name = data.name || `test-role-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
   const description = data.description || `E2E test role: ${name}`;
+  const url = '/api/v1/admin/rbac/roles';
 
+  let response;
   try {
-    const response = await request.post('/api/v1/admin/rbac/roles', {
+    response = await request.post(url, {
       headers: { Authorization: `Bearer ${token}` },
       data: { name, description, isSystemRole: false },
     });
+  } catch (error) {
+    throw wrapTransportError('POST', url, error);
+  }
 
-    if (response.status() === 201) {
-      const body = await response.json();
+  if (response.status() === 201) {
+    const body = await response.json();
 
-      if (registry) {
-        registry.roles.push(body.id);
-      }
-
-      return { id: body.id, name: body.name };
+    if (registry) {
+      registry.roles.push(body.id);
     }
 
-    return null;
-  } catch {
-    return null;
+    return { id: body.id, name: body.name };
   }
+
+  await warnHttpFailure('POST', url, response);
+  return null;
 }
 
 /**
- * Delete a test role via API
+ * Delete a test role via API.
+ *
+ * Network failures rethrow (wrapped); non-2xx responses log a structured
+ * warning and return `false`. See `loginUser` for the rationale.
  */
 export async function deleteTestRole(
   request: APIRequestContext,
   token: string,
   roleId: string
 ): Promise<boolean> {
+  const url = `/api/v1/admin/rbac/roles/${roleId}`;
+  let response;
   try {
-    const response = await request.delete(`/api/v1/admin/rbac/roles/${roleId}`, {
+    response = await request.delete(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
-
-    return response.status() === 200 || response.status() === 204;
-  } catch {
-    return false;
+  } catch (error) {
+    throw wrapTransportError('DELETE', url, error);
   }
+
+  if (response.status() === 200 || response.status() === 204) {
+    return true;
+  }
+
+  await warnHttpFailure('DELETE', url, response);
+  return false;
 }
 
 // =============================================================================
@@ -331,7 +427,10 @@ export async function deleteTestRole(
 // =============================================================================
 
 /**
- * Create a test policy via API
+ * Create a test policy via API.
+ *
+ * Network failures rethrow (wrapped); non-2xx responses log a structured
+ * warning and return `null`. See `loginUser` for the rationale.
  */
 export async function createTestPolicy(
   request: APIRequestContext,
@@ -346,46 +445,59 @@ export async function createTestPolicy(
   const name = data.name || `test-policy-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
   const description = data.description || `E2E test policy: ${name}`;
   const rules = data.rules || [{ action: 'read', subject: 'TestResource' }];
+  const url = '/api/v1/admin/rbac/policies';
 
+  let response;
   try {
-    const response = await request.post('/api/v1/admin/rbac/policies', {
+    response = await request.post(url, {
       headers: { Authorization: `Bearer ${token}` },
       data: { name, description, scope: 'TENANT', rules },
     });
+  } catch (error) {
+    throw wrapTransportError('POST', url, error);
+  }
 
-    if (response.status() === 201) {
-      const body = await response.json();
+  if (response.status() === 201) {
+    const body = await response.json();
 
-      if (registry) {
-        registry.policies.push(body.id);
-      }
-
-      return { id: body.id, name: body.name };
+    if (registry) {
+      registry.policies.push(body.id);
     }
 
-    return null;
-  } catch {
-    return null;
+    return { id: body.id, name: body.name };
   }
+
+  await warnHttpFailure('POST', url, response);
+  return null;
 }
 
 /**
- * Delete a test policy via API
+ * Delete a test policy via API.
+ *
+ * Network failures rethrow (wrapped); non-2xx responses log a structured
+ * warning and return `false`. See `loginUser` for the rationale.
  */
 export async function deleteTestPolicy(
   request: APIRequestContext,
   token: string,
   policyId: string
 ): Promise<boolean> {
+  const url = `/api/v1/admin/rbac/policies/${policyId}`;
+  let response;
   try {
-    const response = await request.delete(`/api/v1/admin/rbac/policies/${policyId}`, {
+    response = await request.delete(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
-
-    return response.status() === 200 || response.status() === 204;
-  } catch {
-    return false;
+  } catch (error) {
+    throw wrapTransportError('DELETE', url, error);
   }
+
+  if (response.status() === 200 || response.status() === 204) {
+    return true;
+  }
+
+  await warnHttpFailure('DELETE', url, response);
+  return false;
 }
 
 // =============================================================================

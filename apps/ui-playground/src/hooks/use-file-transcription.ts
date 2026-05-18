@@ -384,9 +384,7 @@ export function useFileTranscription(): UseFileTranscriptionReturn {
         setIsReconnecting(false);
         return;
       } catch (err) {
-        const is404 =
-          err instanceof Error &&
-          (err.message.includes('404') || err.message.includes('not found') || err.message.includes('NOT_FOUND'));
+        const is404 = err instanceof Error && (err.message.includes('404') || err.message.includes('not found') || err.message.includes('NOT_FOUND'));
         if (is404) {
           childLogger?.warn?.('Reconnect: job not found, clearing saved job', {
             operation: 'reconnect',

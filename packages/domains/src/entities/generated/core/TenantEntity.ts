@@ -51,6 +51,23 @@ export class TenantEntity extends BaseTaggedEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._name || this._name.trim().length === 0) {
+      throw new BusinessException('Tenant name is required.');
+    }
+    if (this._name.length > 255) {
+      throw new BusinessException('Tenant name must not exceed 255 characters.');
+    }
+    if (!this._key || this._key.trim().length === 0) {
+      throw new BusinessException('Tenant key is required.');
+    }
+    if (this._key.length > 100) {
+      throw new BusinessException('Tenant key must not exceed 100 characters.');
+    }
+    if (!/^[A-Z0-9_-]+$/i.test(this._key)) {
+      throw new BusinessException('Tenant key format is invalid; expected alphanumeric, hyphen, or underscore characters only.');
+    }
+    if (this._description && this._description.length > 1000) {
+      throw new BusinessException('Tenant description must not exceed 1000 characters.');
+    }
   }
 }

@@ -146,18 +146,31 @@ export function AudioSourcePanel() {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="outline" size="sm" className="cursor-pointer size-6 p-0" onClick={requestMicPermission} disabled={requestingPermission}>
-                      <ShieldCheck className={cn('size-3.5', requestingPermission ? 'animate-pulse' : permissionGranted ? 'text-emerald-500' : 'text-muted-foreground')} />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="cursor-pointer size-6 p-0"
+                      onClick={requestMicPermission}
+                      disabled={requestingPermission}
+                    >
+                      <ShieldCheck
+                        className={cn(
+                          'size-3.5',
+                          requestingPermission ? 'animate-pulse' : permissionGranted ? 'text-emerald-500' : 'text-muted-foreground',
+                        )}
+                      />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p className="text-xs">{permissionGranted ? 'Microphone access granted. Click to refresh devices.' : 'Microphone unavailable. Click to allow access.'}</p>
+                    <p className="text-xs">
+                      {permissionGranted ? 'Microphone access granted. Click to refresh devices.' : 'Microphone unavailable. Click to allow access.'}
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
               <Badge variant="outline" className="text-[10px]">
-              {micSources.length} selected
-            </Badge>
+                {micSources.length} selected
+              </Badge>
             </div>
           </div>
           {availableDevices.length > 0 && (

@@ -502,9 +502,7 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
             </div>
             <Button type="submit" className="shrink-0 self-start" disabled={isLoading}>
               {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
-              {isLoading
-                ? 'Adding...'
-                : `Add ${SUMMARY_TYPE_OPTIONS.find((o) => o.value === selectedSummaryType)?.label ?? 'Summary'}`}
+              {isLoading ? 'Adding...' : `Add ${SUMMARY_TYPE_OPTIONS.find((o) => o.value === selectedSummaryType)?.label ?? 'Summary'}`}
             </Button>
           </form>
         </TabsContent>

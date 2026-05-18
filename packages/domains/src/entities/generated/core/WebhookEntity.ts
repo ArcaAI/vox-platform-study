@@ -95,6 +95,34 @@ export class WebhookEntity extends BaseTaggedEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._name || this._name.trim().length === 0) {
+      throw new BusinessException('Webhook name is required.');
+    }
+    if (this._name.length > 255) {
+      throw new BusinessException('Webhook name must not exceed 255 characters.');
+    }
+    if (!this._url || this._url.trim().length === 0) {
+      throw new BusinessException('Webhook url is required.');
+    }
+    if (this._url.length > 2048) {
+      throw new BusinessException('Webhook url must not exceed 2048 characters.');
+    }
+    try {
+      new URL(this._url);
+    } catch {
+      throw new BusinessException(`Webhook url is not a valid URL: ${this._url}.`);
+    }
+    if (!this._resourceTypeName || this._resourceTypeName.trim().length === 0) {
+      throw new BusinessException('Webhook resourceTypeName is required.');
+    }
+    if (this._resourceTypeName.length > 100) {
+      throw new BusinessException('Webhook resourceTypeName must not exceed 100 characters.');
+    }
+    if (this._hashedSecret && this._hashedSecret.length > 255) {
+      throw new BusinessException('Webhook hashedSecret must not exceed 255 characters.');
+    }
+    if (this._resourceId !== undefined && this._resourceId !== null && this._resourceId.trim().length === 0) {
+      throw new BusinessException('Webhook resourceId must not be blank when provided.');
+    }
   }
 }

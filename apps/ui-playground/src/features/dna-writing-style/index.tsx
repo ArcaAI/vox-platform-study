@@ -131,7 +131,6 @@ function StyleAttributeCard({ label, value, icon }: { label: string; value?: str
 // JobPollingBanner — HTTP polling progress display
 // ---------------------------------------------------------------------------
 
-
 function StreamingJobBanner({ state, onCancel, onDismiss }: { state: StreamingState; onCancel: () => void; onDismiss: () => void }) {
   if (state.status === 'idle') return null;
 
@@ -139,14 +138,26 @@ function StreamingJobBanner({ state, onCancel, onDismiss }: { state: StreamingSt
   const isError = state.status === 'error';
 
   return (
-    <div className={`rounded-lg border px-4 py-3 space-y-2 ${isError ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800' : 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800'}`}>
+    <div
+      className={`rounded-lg border px-4 py-3 space-y-2 ${isError ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800' : 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800'}`}
+    >
       <div className="flex items-center gap-3">
         <span className={isError ? 'text-red-600' : 'text-blue-600'}>
-          {isTerminal ? isError ? <AlertCircle className="size-4" /> : <CheckCircle2 className="size-4" /> : <Loader2 className="size-4 animate-spin" />}
+          {isTerminal ? (
+            isError ? (
+              <AlertCircle className="size-4" />
+            ) : (
+              <CheckCircle2 className="size-4" />
+            )
+          ) : (
+            <Loader2 className="size-4 animate-spin" />
+          )}
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between">
-            <p className={`text-sm font-medium ${isError ? 'text-red-600' : 'text-blue-600'}`}>SSE Stream: {isError ? 'Failed' : state.status === 'done' ? 'Completed' : state.status === 'connecting' ? 'Connecting' : 'Streaming'}</p>
+            <p className={`text-sm font-medium ${isError ? 'text-red-600' : 'text-blue-600'}`}>
+              SSE Stream: {isError ? 'Failed' : state.status === 'done' ? 'Completed' : state.status === 'connecting' ? 'Connecting' : 'Streaming'}
+            </p>
             {isTerminal ? (
               <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onDismiss}>
                 Dismiss
@@ -354,8 +365,8 @@ function GenerateDialog({
                     />
                   </FormControl>
                   <FormDescription>
-                    More samples yield a more accurate writing style profile. Recommended: 3-5 samples of 200+ words each. The job typically
-                    completes in 5–10 seconds.
+                    More samples yield a more accurate writing style profile. Recommended: 3-5 samples of 200+ words each. The job typically completes
+                    in 5–10 seconds.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -741,7 +752,9 @@ export default function DnaWritingStylePage() {
           {(activeJobId || streamState.status !== 'idle') && (
             <div className="mb-4 space-y-3">
               {activeJobId && <JobPollingBanner jobId={activeJobId} onComplete={handleJobComplete} onDismiss={handleJobDismiss} />}
-              {streamState.status !== 'idle' && <StreamingJobBanner state={streamState} onCancel={handleStreamCancel} onDismiss={handleStreamDismiss} />}
+              {streamState.status !== 'idle' && (
+                <StreamingJobBanner state={streamState} onCancel={handleStreamCancel} onDismiss={handleStreamDismiss} />
+              )}
             </div>
           )}
 

@@ -106,6 +106,46 @@ export class MediaEntity extends BaseTaggedEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._name || this._name.trim().length === 0) {
+      throw new BusinessException('Media name is required.');
+    }
+    if (this._name.length > 255) {
+      throw new BusinessException('Media name must not exceed 255 characters.');
+    }
+    if (!this._uri || this._uri.trim().length === 0) {
+      throw new BusinessException('Media uri is required.');
+    }
+    if (this._uri.length > 2048) {
+      throw new BusinessException('Media uri must not exceed 2048 characters.');
+    }
+    if (!this._extension || this._extension.trim().length === 0) {
+      throw new BusinessException('Media extension is required.');
+    }
+    if (this._extension.length > 32) {
+      throw new BusinessException('Media extension must not exceed 32 characters.');
+    }
+    if (!this._mimeType || this._mimeType.trim().length === 0) {
+      throw new BusinessException('Media mimeType is required.');
+    }
+    if (this._mimeType.length > 255) {
+      throw new BusinessException('Media mimeType must not exceed 255 characters.');
+    }
+    if (
+      typeof this._size !== 'number' ||
+      !Number.isFinite(this._size) ||
+      !Number.isInteger(this._size) ||
+      this._size < 0
+    ) {
+      throw new BusinessException('Media size must be a non-negative number.');
+    }
+    if (!this._hash || this._hash.trim().length === 0) {
+      throw new BusinessException('Media hash is required.');
+    }
+    if (this._hash.length > 255) {
+      throw new BusinessException('Media hash must not exceed 255 characters.');
+    }
+    if (this._bucketId !== undefined && this._bucketId !== null && this._bucketId.trim().length === 0) {
+      throw new BusinessException('Media bucketId must not be blank when provided.');
+    }
   }
 }

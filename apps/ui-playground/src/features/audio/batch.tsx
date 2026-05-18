@@ -331,7 +331,9 @@ function BatchTranscriptPanel() {
             <div className="flex items-center gap-2 rounded-lg border px-3 py-1.5">
               <FileAudio className="text-muted-foreground size-3.5" />
               <span className="text-xs">{fileTranscription.fileName}</span>
-              <Badge variant="secondary" className="text-[10px]">Resumed</Badge>
+              <Badge variant="secondary" className="text-[10px]">
+                Resumed
+              </Badge>
             </div>
           )}
 

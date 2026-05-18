@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -8,6 +8,7 @@ import {
   TenantEntity,
   TenantFactory,
   TenantRepository,
+  GlobalSettingFactory,
   GlobalSettingRepository,
   GlobalSettingEntity,
   CoreDatabaseService,
@@ -22,6 +23,7 @@ import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps
 import { IActiveUserContext } from '../../interfaces';
 import { UpdateTenantConfigRequest } from './dto/updateTenantConfigRequest';
 import { ITenantBucketService } from '../tenant-bucket/ITenantBucketService';
+import { GLOBAL_TENANT_KEY, SUPER_ADMIN_ROLE, isUuidIdentifier } from './constants';
 
 /**
  * Service for managing tenants and their configurations
@@ -79,6 +81,124 @@ export class TenantService extends BaseService implements ITenantService {
         tenantId: tenant.id,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+
+    try {
+      await this.provisionTenantConfigs(tenant.id);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to provision tenant configurations for new tenant',
+        tenantId: tenant.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return tenant;
+  }
+
+  /**
+   * Clones every `GlobalSetting` row from the master `__GLOBAL__` tenant into
+   * the newly created tenant so that the SDK and admin UI find a fully
+   * populated configuration on first load.
+   *
+   * Behaviour:
+   *  - Looks up the global tenant by `key === GLOBAL_TENANT_KEY` and reads
+   *    every setting belonging to it.
+   *  - For each source row, builds a clone via `GlobalSettingFactory` whose
+   *    `value` starts at `defaultValue ?? value` and copies the descriptive
+   *    metadata (`name`, `key`, `dataType`, `description`, `namespace`,
+   *    `locked`). The `locked` flag is preserved so admin-restricted defaults
+   *    (e.g. `default-stt-model`, `smr-provider-models`) remain locked on the
+   *    new tenant and are enforced by `updateTenantConfigs`.
+   *  - Each insert is wrapped in a try/catch so a single failure (e.g. a
+   *    unique-constraint race on `(tenantId, name, key)`) does not abort the
+   *    whole batch — the failure is logged and the loop continues.
+   *  - When zero rows are cloned, a warning is emitted with the global
+   *    tenant id so operators can investigate.
+   */
+  private async provisionTenantConfigs(newTenantId: string): Promise<void> {
+    let globalTenant: TenantEntity | null = null;
+    try {
+      globalTenant = await this.tenantRepository.findFirst({
+        where: { key: GLOBAL_TENANT_KEY },
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Global tenant lookup failed during config provisioning',
+        newTenantId,
+        globalTenantKey: GLOBAL_TENANT_KEY,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+
+    if (!globalTenant) {
+      this.logger.warn({
+        message: 'Global tenant not found during config provisioning',
+        newTenantId,
+        globalTenantKey: GLOBAL_TENANT_KEY,
+      });
+      return;
+    }
+
+    const sourceSettings = await this.globalSettingRepository.findAll({
+      where: { tenantId: globalTenant.id },
+    });
+
+    let clonedCount = 0;
+    for (const src of sourceSettings) {
+      const seedValue = src.defaultValue ?? src.value;
+      try {
+        const cloned = GlobalSettingFactory.CreateGlobalSetting({
+          tenantId: newTenantId,
+          name: src.name,
+          key: src.key,
+          dataType: src.dataType,
+          description: src.description ?? undefined,
+          namespace: src.namespace ?? undefined,
+          defaultValue: seedValue,
+          value: seedValue,
+          locked: src.locked,
+          createdBy: this.requestUser?.id,
+        });
+
+        await this.globalSettingRepository.create(cloned);
+        clonedCount += 1;
+      } catch (error) {
+        this.logger.warn({
+          message: 'Failed to clone global setting for new tenant - continuing',
+          newTenantId,
+          sourceSettingId: src.id,
+          sourceKey: src.key,
+          sourceName: src.name,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (clonedCount === 0) {
+      this.logger.warn({
+        message: 'No global settings cloned for new tenant',
+        newTenantId,
+        globalTenantId: globalTenant.id,
+      });
+    }
+  }
+
+  /**
+   * Resolves a tenant by an opaque identifier that may be either a UUID (the
+   * tenant primary key) or a tenant `key` / code-name. Replaces the previous
+   * ambiguous `OR { id, key }` lookup which could resolve the wrong tenant if
+   * a `key` happened to match a UUID format.
+   *
+   * @throws ArgumentInvalidException if no tenant matches the identifier.
+   */
+  private async resolveTenantByIdentifier(identifier: string): Promise<TenantEntity> {
+    const where = isUuidIdentifier(identifier) ? { id: identifier } : { key: identifier };
+    const tenant = await this.tenantRepository.findFirst({ where });
+
+    if (!tenant) {
+      throw new ArgumentInvalidException('Tenant not found');
     }
 
     return tenant;
@@ -260,27 +380,34 @@ export class TenantService extends BaseService implements ITenantService {
    */
 
   /**
-   * Fetches configurations for a specific tenant
-   * @param props - Query parameters including tenant ID, pagination
+   * Fetches configurations for a specific tenant.
+   *
+   * Identifier resolution: either `tenantId` (UUID primary key) or `codeName`
+   * (tenant `key`) must be provided. The active identifier is disambiguated
+   * via `resolveTenantByIdentifier` — UUID-shaped values use `id`, otherwise
+   * we look up by `key`. This avoids the previous broad `OR { id, key }`
+   * lookup which could resolve the wrong tenant.
+   *
+   * Locked-value masking: settings whose `locked === true` are sensitive
+   * defaults (e.g. provider credentials). When the active caller does not
+   * carry the `SUPER_ADMIN` role, the `value` of every locked row is replaced
+   * with an empty string before the response is returned. The original entity
+   * instance is mutated via its setter, which is safe because each fetch
+   * yields freshly constructed entities; no shared in-memory state escapes.
+   *
+   * @param props - Query parameters including tenant ID or codeName + pagination
    * @returns Promise resolving to paginated configuration response
-   * @throws ArgumentInvalidException if tenant not found
+   * @throws ArgumentInvalidException if neither identifier is provided or the tenant cannot be found
    */
   async fetchTenantConfigs(props: PaginatedQuery & { tenantId?: string; codeName?: string }): Promise<FetchResponse<GlobalSettingEntity>> {
     const { limit, page, tenantId, codeName } = props;
 
-    if (!tenantId && !props.codeName) {
+    if (!tenantId && !codeName) {
       throw new ArgumentInvalidException('Tenant ID or Tenant Code is required');
     }
 
-    const tenant = await this.tenantRepository.findFirst({
-      where: {
-        OR: [{ id: tenantId }, { key: codeName }],
-      },
-    });
-
-    if (!tenant) {
-      throw new ArgumentInvalidException('Tenant not found');
-    }
+    const identifier = (tenantId ?? codeName) as string;
+    const tenant = await this.resolveTenantByIdentifier(identifier);
 
     const paginatedProps = withFormattedPaginatedProps(props);
     const countProps = withFormattedCountProps(props);
@@ -298,6 +425,15 @@ export class TenantService extends BaseService implements ITenantService {
       }),
     ]);
 
+    const isSuperAdmin = this.isSuperAdmin();
+    if (!isSuperAdmin) {
+      for (const config of configs) {
+        if (config.locked === true) {
+          config.value = '';
+        }
+      }
+    }
+
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {
         tenantId: tenant.id,
@@ -314,22 +450,32 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * Updates configurations for a specific tenant
-   * @param identifier - The tenant ID or code name
-   * @param configs - Array of configuration entities to update
+   * Updates configurations for a specific tenant.
+   *
+   * Access control:
+   *  - Tenant identifier is disambiguated via `resolveTenantByIdentifier`
+   *    (UUID -> `id`, otherwise `key`).
+   *  - All writes against the master `__GLOBAL__` tenant are rejected with
+   *    `ForbiddenException` unless the caller carries the `SUPER_ADMIN`
+   *    role, preventing accidental mutation of the system defaults.
+   *  - Each individual setting whose `locked === true` is rejected with
+   *    `ForbiddenException` for non-super-admins. Super-admins may update
+   *    locked rows.
+   *
+   * @param identifier - The tenant id (UUID) or code name (`key`)
+   * @param request - Array of config update payloads (id + partial fields)
    * @returns Promise resolving to array of updated configurations
-   * @throws ArgumentInvalidException if tenant not found or configs invalid
-   * @throws InternalServerErrorException if update fails
+   * @throws ArgumentInvalidException if tenant or config not found, or config belongs to another tenant
+   * @throws ForbiddenException if a non-super-admin attempts to write to a locked row or to the global tenant
+   * @throws InternalServerErrorException if a repository update returns null
    */
   async updateTenantConfigs(identifier: EntityId | string, request: UpdateTenantConfigRequest[]): Promise<FetchResponse<GlobalSettingEntity>> {
-    const tenant = await this.tenantRepository.findFirst({
-      where: {
-        OR: [{ id: identifier }, { key: identifier }],
-      },
-    });
+    const tenant = await this.resolveTenantByIdentifier(identifier);
 
-    if (!tenant) {
-      throw new ArgumentInvalidException('Tenant not found');
+    const isSuperAdmin = this.isSuperAdmin();
+
+    if (tenant.key === GLOBAL_TENANT_KEY && !isSuperAdmin) {
+      throw new ForbiddenException(`Tenant '${GLOBAL_TENANT_KEY}' holds system defaults and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
     }
 
     const updatedConfigs: GlobalSettingEntity[] = [];
@@ -343,6 +489,10 @@ export class TenantService extends BaseService implements ITenantService {
 
       if (existingConfig.tenantId !== tenant.id) {
         throw new ArgumentInvalidException(`Config ${config.id} does not belong to tenant ${tenant.id}`);
+      }
+
+      if (existingConfig.locked === true && !isSuperAdmin) {
+        throw new ForbiddenException(`Setting '${existingConfig.key}' is locked and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
       }
 
       if (config.value !== undefined) {
@@ -410,6 +560,16 @@ export class TenantService extends BaseService implements ITenantService {
       totalPromptTemplates,
       totalPipelines,
     };
+  }
+
+  /**
+   * True when the active request user carries the `SUPER_ADMIN` role.
+   * Falls back to `false` whenever the CLS context is missing or the role
+   * list is undefined — locking the strictest behaviour by default.
+   */
+  private isSuperAdmin(): boolean {
+    const roles = this.requestUser?.roles;
+    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
   }
 
   private async validateSmrConfigValue(settingKey: string, newValue: string, tenantId: string): Promise<void> {

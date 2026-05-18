@@ -96,15 +96,17 @@ test.describe('Authorization Flow', () => {
       expect([200, 403]).toContain(response.status());
     });
 
-    test('should allow authenticated users to access tenants endpoint', async ({ request }) => {
-      // The tenants endpoint requires authentication but not specific permissions
-      // Any authenticated user can access it (JwtAuthGuard only)
+    test('should deny authenticated users without manage:Tenant permission', async ({ request }) => {
+      // TASK-258 hardened TenantController with @CanManage('Tenant') at the class level,
+      // so /admin/tenants/* now requires the manage:Tenant ability. A clinician token
+      // (doctor) is authenticated but lacks that ability and must be rejected with 403.
+      // See docs/implementation/TASK-258-Tenant-Config-Provisioning/README.md (Issue #2)
+      // and apps/api/tests/e2e/tenant-access-control.spec.ts for the dedicated coverage.
       const response = await request.get('/api/v1/admin/tenants', {
         headers: { Authorization: `Bearer ${doctorToken}` },
       });
 
-      // Should succeed for any authenticated user
-      expect(response.status()).toBe(200);
+      expect(response.status()).toBe(403);
     });
 
     test('should deny access to unauthenticated users', async ({ request }) => {

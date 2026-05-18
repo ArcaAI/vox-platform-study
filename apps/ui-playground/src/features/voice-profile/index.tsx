@@ -393,7 +393,11 @@ function ProfileTable() {
     {
       accessorKey: 'createdAt',
       header: 'Created',
-      cell: ({ row }) => <span className="text-muted-foreground text-sm">{new Date(row.original.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>,
+      cell: ({ row }) => (
+        <span className="text-muted-foreground text-sm">
+          {new Date(row.original.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+        </span>
+      ),
     },
     {
       id: 'actions',
@@ -434,44 +438,48 @@ function ProfileTable() {
     },
   ];
 
-  return (<>
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <CardTitle className="text-base">Your Voice Profiles</CardTitle>
-            <CardDescription className="text-xs">The active profile is used for speaker identification in live transcription</CardDescription>
+  return (
+    <>
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-base">Your Voice Profiles</CardTitle>
+              <CardDescription className="text-xs">The active profile is used for speaker identification in live transcription</CardDescription>
+            </div>
+            {(profiles?.length ?? 0) > 0 && (
+              <Badge variant="outline" className="text-[10px]">
+                {profiles!.length} profile{profiles!.length !== 1 && 's'}
+              </Badge>
+            )}
           </div>
-          {(profiles?.length ?? 0) > 0 && (
-            <Badge variant="outline" className="text-[10px]">
-              {profiles!.length} profile{profiles!.length !== 1 && 's'}
-            </Badge>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {error ? (
+            <div className="flex flex-col items-center justify-center gap-2 rounded-md border py-8">
+              <p className="text-destructive text-sm">Failed to load voice profiles</p>
+              <p className="text-muted-foreground mt-1 text-xs">{error instanceof Error ? error.message : 'Unknown error'}</p>
+            </div>
+          ) : (
+            <AdminDataTable data={profiles ?? []} columns={columns} isLoading={isLoading} emptyMessage="No voice profiles yet" />
           )}
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        {error ? (
-          <div className="flex flex-col items-center justify-center gap-2 rounded-md border py-8">
-            <p className="text-destructive text-sm">Failed to load voice profiles</p>
-            <p className="text-muted-foreground mt-1 text-xs">{error instanceof Error ? error.message : 'Unknown error'}</p>
-          </div>
-        ) : (
-          <AdminDataTable data={profiles ?? []} columns={columns} isLoading={isLoading} emptyMessage="No voice profiles yet" />
-        )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
 
-    <ConfirmDialog
-      open={!!deleteTarget}
-      onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
-      title="Delete Voice Profile"
-      description="This will permanently delete the voice profile. This action cannot be undone."
-      confirmLabel="Delete"
-      variant="destructive"
-      onConfirm={handleDeleteConfirm}
-      isLoading={remove.isPending}
-    />
-  </>);
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Delete Voice Profile"
+        description="This will permanently delete the voice profile. This action cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDeleteConfirm}
+        isLoading={remove.isPending}
+      />
+    </>
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -194,6 +194,26 @@ export class UserEntity extends BaseTaggedEntity {
   }
 
   public override validate(): void {
-    throw new BusinessException('Method not implemented.');
+    if (!this._username || this._username.trim().length === 0) {
+      throw new BusinessException('User username is required.');
+    }
+    if (this._username.length > 255) {
+      throw new BusinessException('User username must not exceed 255 characters.');
+    }
+    if (!this._password || this._password.trim().length === 0) {
+      throw new BusinessException('User password is required.');
+    }
+    if (typeof this._isServiceAccount !== 'boolean') {
+      throw new BusinessException('User isServiceAccount must be a boolean.');
+    }
+    if (this._externalId && this._externalId.length > 255) {
+      throw new BusinessException('User externalId must not exceed 255 characters.');
+    }
+    if (this._secret1 && this._secret1.length > 255) {
+      throw new BusinessException('User secret1 must not exceed 255 characters.');
+    }
+    if (this._secret2 && this._secret2.length > 255) {
+      throw new BusinessException('User secret2 must not exceed 255 characters.');
+    }
   }
 }
