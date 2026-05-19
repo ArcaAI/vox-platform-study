@@ -2,6 +2,7 @@ import { recordSpeakerObservation, resolveSpeakerLabel } from '@/features/audio/
 import { upsertTranscriptEntry } from '@/features/audio/lib/transcript-state';
 import type { TranscriptEntry } from '@/store/audio-store';
 import { FileTranscriptionService, SSEClient, useAgenticStore, type TranscriptionJobResponse } from '@arcaai/vox';
+import type { ISDKLogger } from '@arcaai/vox';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const BATCH_JOB_STORAGE_KEY = 'hope:batch-job';
@@ -39,6 +40,7 @@ export type FileTranscriptionStatus = 'idle' | 'uploading' | 'streaming' | 'comp
 export interface FileUploadOptions {
   pipelineId: string;
   consultationId?: string;
+  language?: string;
 }
 
 export interface UseFileTranscriptionReturn {
@@ -95,7 +97,7 @@ export function useFileTranscription(): UseFileTranscriptionReturn {
   }, []);
 
   const connectToJobSSE = useCallback(
-    (targetJobId: string, fileService: FileTranscriptionService, childLogger: typeof logger) => {
+    (targetJobId: string, fileService: FileTranscriptionService, childLogger: ISDKLogger | undefined) => {
       const sseClient = new SSEClient(childLogger);
       sseClientRef.current = sseClient;
 
@@ -280,7 +282,8 @@ export function useFileTranscription(): UseFileTranscriptionReturn {
         transcriptIdRef.current = 0;
         segmentCounterRef.current = 0;
 
-        const childLogger = logger?.child?.('FileTranscription') ?? logger;
+        const baseLogger: ISDKLogger | undefined = logger ?? undefined;
+        const childLogger = baseLogger?.child('FileTranscription') ?? baseLogger;
         const fileService = new FileTranscriptionService(apiClient, childLogger);
         fileServiceRef.current = fileService;
 
@@ -290,6 +293,7 @@ export function useFileTranscription(): UseFileTranscriptionReturn {
         const job = await fileService.uploadAndTranscribeWithProgress(file, {
           pipelineId: options.pipelineId,
           consultationId: options.consultationId,
+          language: options.language,
           signal: abortController.signal,
           onProgress: (progress) => setUploadProgress(Math.round(progress)),
         });
@@ -341,7 +345,8 @@ export function useFileTranscription(): UseFileTranscriptionReturn {
     if (!saved || !apiClient) return;
 
     setIsReconnecting(true);
-    const childLogger = logger?.child?.('FileTranscription') ?? logger;
+    const baseLogger: ISDKLogger | undefined = logger ?? undefined;
+    const childLogger = baseLogger?.child('FileTranscription') ?? baseLogger;
     const maxRetries = 3;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {

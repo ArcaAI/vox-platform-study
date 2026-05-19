@@ -616,7 +616,7 @@ export class SmrProxyController {
 
   @Get('providers')
   @Authorize()
-  @ApiOperation({ summary: 'List configured LLM providers from tenant settings' })
+  @ApiOperation({ summary: 'List configured LLM providers from tenant settings, with SMR service fallback' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getProviders(): Promise<any[]> {
     const tenantId = await this.resolveTenantId();
@@ -626,11 +626,42 @@ export class SmrProxyController {
       page: 1,
     });
 
-    return this.buildProvidersFromTenantSettings(
+    const tenantProviders = this.buildProvidersFromTenantSettings(
       configs.data.map((setting) => ({
         key: setting.key,
         value: setting.value,
       })),
     );
+
+    if (tenantProviders.length > 0) {
+      return tenantProviders;
+    }
+
+    // Fallback: no tenant settings configured — fetch live providers from the SMR service.
+    // The Python ProviderInfo model uses `status: str` ("available"/"unavailable") rather than
+    // `is_available: boolean`, so we map it here to satisfy the TypeScript SmrProvider interface.
+    try {
+      const base = this.getSmrBaseUrl();
+      const response = await this.withRetry(
+        () =>
+          this.httpService.axiosRef.get(`${base}/api/v1/providers`, {
+            headers: this.getForwardHeaders(),
+            timeout: 5_000,
+          }),
+        'SMR providers fallback',
+        1,
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (response.data as Array<Record<string, any>>).map((p) => ({
+        ...p,
+        is_available: p['status'] === 'available',
+      }));
+    } catch (err) {
+      this.logger.warn({
+        message: 'SMR service providers fallback failed — returning empty list',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    }
   }
 }
