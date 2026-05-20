@@ -416,6 +416,53 @@ describe('SmrProxyController', () => {
         },
       ]);
     });
+
+    it('should fall back to SMR /providers when tenant settings are empty', async () => {
+      mockTenantService.fetchTenantConfigs.mockResolvedValue({
+        data: [],
+        count: 0,
+        limit: 200,
+        page: 1,
+      });
+      mockHttpService.axiosRef.get.mockResolvedValue({
+        data: [
+          {
+            name: 'ollama',
+            display_name: 'Ollama',
+            status: 'available',
+            default_model: 'granite4:latest',
+            models: [{ name: 'granite4:latest', supports_streaming: true }],
+          },
+          {
+            name: 'azure-openai',
+            display_name: 'Azure OpenAI',
+            status: 'unavailable',
+            default_model: 'gpt-4o-mini',
+            models: [{ name: 'gpt-4o-mini', supports_streaming: true }],
+          },
+        ],
+      });
+
+      const result = await controller.getProviders();
+
+      expect(mockHttpService.axiosRef.get).toHaveBeenCalledWith(expect.stringContaining('/api/v1/providers'), expect.any(Object));
+      expect(result).toEqual([
+        expect.objectContaining({ name: 'ollama', is_available: true, status: 'available' }),
+        expect.objectContaining({ name: 'azure-openai', is_available: false, status: 'unavailable' }),
+      ]);
+    });
+
+    it('should return empty list when tenant settings are empty and SMR fallback fails', async () => {
+      mockTenantService.fetchTenantConfigs.mockResolvedValue({
+        data: [],
+        count: 0,
+        limit: 200,
+        page: 1,
+      });
+      mockHttpService.axiosRef.get.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      await expect(controller.getProviders()).resolves.toEqual([]);
+    });
   });
 
   describe('GET /text/providers (catalog-based — TASK-240)', () => {
