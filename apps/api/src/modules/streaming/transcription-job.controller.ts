@@ -7,7 +7,6 @@ import {
   TranscriptionJobService,
   TranscriptionRealtimeService,
 } from '@arcaai/applications';
-import { SYSTEM_BUCKET_SLUGS } from '@arcaai/domains';
 import type { MessageEvent } from '@nestjs/common';
 import {
   BadRequestException,
@@ -16,7 +15,9 @@ import {
   Delete,
   Get,
   HttpCode,
+  HttpException,
   Inject,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   Param,
@@ -48,6 +49,23 @@ import {
 @Controller('audio/transcription-jobs')
 export class TranscriptionJobController {
   private readonly logger = new Logger(TranscriptionJobController.name);
+
+  private async dispatchBatchJob(params: {
+    jobId: string;
+    tenantId: string;
+    pipelineId: string;
+    audioUri: string;
+    consultationId?: string;
+    mediaId?: string;
+    language?: string;
+    userId?: string;
+    audioBucketName?: string;
+  }): Promise<void> {
+    const service = this.realtimeService as unknown as {
+      dispatchDramatiqJob: (args: typeof params) => Promise<void>;
+    };
+    await service.dispatchDramatiqJob(params);
+  }
 
   constructor(
     private readonly jobService: TranscriptionJobService,
@@ -135,7 +153,7 @@ export class TranscriptionJobController {
     // 3. Resolve tenant bucket (prefer tenant-scoped, fallback to global)
     let uploadBucket = AUDIO_BUCKET;
     try {
-      const tenantBucket = await this.tenantBucketService.getBucketBySlug(SYSTEM_BUCKET_SLUGS.AUDIO);
+      const tenantBucket = await this.tenantBucketService.getBucketBySlug('audio');
       if (tenantBucket) {
         uploadBucket = tenantBucket.name;
       }
@@ -163,7 +181,7 @@ export class TranscriptionJobController {
 
       // 6. Dispatch Dramatiq message to stt_batch queue
       const user = this.cls.get('user');
-      await this.realtimeService.dispatchDramatiqJob({
+      await this.dispatchBatchJob({
         jobId: job.id,
         tenantId,
         pipelineId: body.pipelineId,
@@ -179,7 +197,9 @@ export class TranscriptionJobController {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`Batch transcription setup failed for job ${job.id}: ${errorMessage}`);
       await this.jobService.failJob(job.id, errorMessage, 'SETUP_ERROR').catch(() => {});
-      throw error;
+      throw error instanceof HttpException
+        ? error
+        : new InternalServerErrorException(`Batch transcription setup failed: ${errorMessage}`);
     }
 
     // 6. Return job details + SSE URL immediately
@@ -234,13 +254,13 @@ export class TranscriptionJobController {
     // tenant's bucket instead of falling back to the global 'hope-audio'.
     let audioBucketName: string | undefined;
     try {
-      const tenantBucket = await this.tenantBucketService.getBucketBySlug(SYSTEM_BUCKET_SLUGS.AUDIO);
+      const tenantBucket = await this.tenantBucketService.getBucketBySlug('audio');
       audioBucketName = tenantBucket?.name;
     } catch (err) {
       this.logger.warn(`Failed to resolve tenant audio bucket for streaming: ${err}`);
     }
 
-    const result = await this.sessionService.createSession({
+    const sessionPayload = {
       sessionId,
       tenantId,
       pipelineId: body.pipelineId,
@@ -249,7 +269,9 @@ export class TranscriptionJobController {
       language: body.language,
       userId: user?.id,
       audioBucketName,
-    });
+    } as Parameters<StreamingSessionService['createSession']>[0];
+
+    const result = await this.sessionService.createSession(sessionPayload);
 
     if (!result) {
       throw new ServiceUnavailableException('STT-V2 streaming service at capacity');

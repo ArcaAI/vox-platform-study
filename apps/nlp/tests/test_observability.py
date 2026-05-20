@@ -142,10 +142,14 @@ def in_memory_log_exporter():
     provider = LoggerProvider(resource=_TEST_RESOURCE)
     provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
     set_logger_provider(provider)
+    root_logger = logging.getLogger()
+    previous_root_level = root_logger.level
+    root_logger.setLevel(logging.DEBUG)
     handler = LoggingHandler(level=logging.DEBUG, logger_provider=provider)
-    logging.getLogger().addHandler(handler)
+    root_logger.addHandler(handler)
     yield exporter
-    logging.getLogger().removeHandler(handler)
+    root_logger.removeHandler(handler)
+    root_logger.setLevel(previous_root_level)
     provider.shutdown()
 
 
