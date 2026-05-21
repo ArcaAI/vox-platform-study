@@ -1,5 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BaseResponse, BaseResponseProps } from '../../../../common';
+import { UserRoleAssignmentResponse } from '../../userRoleAssignment/dto';
 
 export class UserResponse extends BaseResponse {
   @ApiProperty({ description: 'Username of the user' })
@@ -29,6 +30,9 @@ export class UserResponse extends BaseResponse {
   @ApiProperty({ description: 'Second secret key expiry', required: false })
   secret2Expiry?: Date;
 
+  @ApiPropertyOptional({ type: [UserRoleAssignmentResponse], description: 'Role assignments (included when includeRoles=true)' })
+  UserRoleAssignments?: UserRoleAssignmentResponse[];
+
   constructor(init: UserResponse & BaseResponseProps) {
     super(init);
     this.username = init.username;
@@ -40,5 +44,6 @@ export class UserResponse extends BaseResponse {
     this.secret1Expiry = init.secret1Expiry;
     this.secret2 = init.secret2;
     this.secret2Expiry = init.secret2Expiry;
+    this.UserRoleAssignments = init.UserRoleAssignments;
   }
 }

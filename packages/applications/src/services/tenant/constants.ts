@@ -27,7 +27,8 @@ export const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
  * the database are UUID v7, but we accept any UUID-shaped value to keep the
  * disambiguation logic forgiving of legacy data.
  */
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-7][0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-7][0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Returns true when the given identifier looks structurally like a UUID and

@@ -59,6 +59,8 @@ import {
   useUpdateUserStatus,
   useUserApiKeys,
   useRevokeApiKey,
+  useAssignUserRole,
+  useRemoveUserRole,
 } from '../api/users';
 import { useTenants } from '../api/tenants';
 import { useRoles } from '../api/roles';
@@ -152,9 +154,11 @@ function InfoRow({ label, value, icon, children }: { label: string; value?: stri
   return (
     <div className="flex items-start gap-2.5">
       {icon && <span className="text-muted-foreground mt-0.5 shrink-0">{icon}</span>}
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-muted-foreground text-xs leading-none">{label}</p>
-        <div className="mt-1">{children ?? <p className="text-sm font-medium leading-none">{value ?? '—'}</p>}</div>
+        <div className="mt-1 break-words">
+          {children ?? <p className="text-sm font-medium leading-snug break-all">{value ?? '—'}</p>}
+        </div>
       </div>
     </div>
   );
@@ -170,14 +174,28 @@ function UserFormDialog({
   user,
   isPending,
   onSubmit,
+  createdUserId,
+  onRoleAssigned,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   user?: AdminUser | null;
   isPending: boolean;
   onSubmit: (values: UserFormValues) => void;
+  createdUserId?: string | null;
+  onRoleAssigned?: () => void;
 }) {
   const isEdit = !!user;
+  const [step, setStep] = useState<'form' | 'role'>('form');
+
+  const { data: rolesData, isLoading: rolesLoading } = useRoles({ page: 1, limit: 100 }, { enabled: !isEdit });
+  const { data: tenantsData } = useTenants({ page: 1, limit: 100 }, { enabled: !isEdit });
+  const assignRole = useAssignUserRole();
+  const [selectedRoleId, setSelectedRoleId] = useState('');
+  const [selectedTenantId, setSelectedTenantId] = useState('');
+
+  const roles = rolesData?.data ?? [];
+  const tenants = tenantsData?.data ?? [];
 
   const form = useForm<UserFormValues>({
     resolver: zodResolver(isEdit ? editSchema : createSchema),
@@ -197,97 +215,194 @@ function UserFormDialog({
         externalId: user?.externalId ?? '',
         isServiceAccount: user?.isServiceAccount ?? false,
       });
+      setStep('form');
+      setSelectedRoleId('');
+      setSelectedTenantId('');
     }
   }, [open, user, form]);
+
+  useEffect(() => {
+    if (createdUserId && !isEdit) {
+      setStep('role');
+    }
+  }, [createdUserId, isEdit]);
+
+  const handleAssignAndFinish = () => {
+    if (!createdUserId || !selectedRoleId || !selectedTenantId) return;
+    assignRole.mutate(
+      {
+        userId: createdUserId,
+        roleId: selectedRoleId,
+        tenantId: selectedTenantId || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Role assigned');
+          setStep('form');
+          onRoleAssigned?.();
+        },
+        onError: (err: unknown) => {
+          const msg = err instanceof Error ? err.message : 'Failed to assign role';
+          toast.error(msg);
+        },
+      },
+    );
+  };
+
+  const handleSkip = () => {
+    onRoleAssigned?.();
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit User' : 'Create User'}</DialogTitle>
-          <DialogDescription>{isEdit ? 'Update the user details below.' : 'Fill in the details to create a new user account.'}</DialogDescription>
-        </DialogHeader>
+        {step === 'form' ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>{isEdit ? 'Edit User' : 'Create User'}</DialogTitle>
+              <DialogDescription>
+                {isEdit ? 'Update the user details below.' : 'Fill in the details to create a new user account.'}
+              </DialogDescription>
+            </DialogHeader>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="username"
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              render={({ field }: { field: any }) => (
-                <FormItem>
-                  <FormLabel>Username</FormLabel>
-                  <FormControl>
-                    <Input placeholder="johndoe" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="username"
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  render={({ field }: { field: any }) => (
+                    <FormItem>
+                      <FormLabel>Username</FormLabel>
+                      <FormControl>
+                        <Input placeholder="johndoe" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <FormField
-              control={form.control}
-              name="password"
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              render={({ field }: { field: any }) => (
-                <FormItem>
-                  <FormLabel>
-                    Password
-                    {isEdit && <span className="text-muted-foreground ml-1 text-xs font-normal">(leave blank to keep current)</span>}
-                  </FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder={isEdit ? '••••••••' : 'Enter password'} {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  render={({ field }: { field: any }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Password
+                        {isEdit && <span className="text-muted-foreground ml-1 text-xs font-normal">(leave blank to keep current)</span>}
+                      </FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder={isEdit ? '••••••••' : 'Enter password'} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <FormField
-              control={form.control}
-              name="externalId"
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              render={({ field }: { field: any }) => (
-                <FormItem>
-                  <FormLabel>
-                    External ID
-                    <span className="text-muted-foreground ml-1 text-xs font-normal">(optional)</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input placeholder="ext-123" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                <FormField
+                  control={form.control}
+                  name="externalId"
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  render={({ field }: { field: any }) => (
+                    <FormItem>
+                      <FormLabel>
+                        External ID
+                        <span className="text-muted-foreground ml-1 text-xs font-normal">(optional)</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input placeholder="ext-123" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <FormField
-              control={form.control}
-              name="isServiceAccount"
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              render={({ field }: { field: any }) => (
-                <FormItem className="flex items-center gap-2 space-y-0">
-                  <FormControl>
-                    <Checkbox checked={field.value} onCheckedChange={field.onChange} />
-                  </FormControl>
-                  <FormLabel className="text-sm font-normal">This is a service account</FormLabel>
-                </FormItem>
-              )}
-            />
+                <FormField
+                  control={form.control}
+                  name="isServiceAccount"
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  render={({ field }: { field: any }) => (
+                    <FormItem className="flex items-center gap-2 space-y-0">
+                      <FormControl>
+                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                      <FormLabel className="text-sm font-normal">This is a service account</FormLabel>
+                    </FormItem>
+                  )}
+                />
+
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button type="button" variant="outline" disabled={isPending}>
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                  <Button type="submit" disabled={isPending}>
+                    {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+                    {isEdit ? 'Save Changes' : 'Create User'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>Assign Role (Optional)</DialogTitle>
+              <DialogDescription>Assign a role to the new user, or skip to finish.</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-muted-foreground mb-1 block text-xs">Role</label>
+                {rolesLoading ? (
+                  <Skeleton className="h-9 w-full" />
+                ) : (
+                  <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select a role…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roles.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name}
+                          {r.description && <span className="text-muted-foreground ml-1 text-xs">— {r.description}</span>}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              <div>
+                <label className="text-muted-foreground mb-1 block text-xs">Tenant scope</label>
+                <Select value={selectedTenantId} onValueChange={setSelectedTenantId}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select a tenant…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tenants.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name} ({t.key})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
             <DialogFooter>
-              <DialogClose asChild>
-                <Button type="button" variant="outline" disabled={isPending}>
-                  Cancel
-                </Button>
-              </DialogClose>
-              <Button type="submit" disabled={isPending}>
-                {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
-                {isEdit ? 'Save Changes' : 'Create User'}
+              <Button variant="outline" onClick={handleSkip} disabled={assignRole.isPending}>
+                Skip
+              </Button>
+              <Button onClick={handleAssignAndFinish} disabled={!selectedRoleId || !selectedTenantId || assignRole.isPending}>
+                {assignRole.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+                Assign & Finish
               </Button>
             </DialogFooter>
-          </form>
-        </Form>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -408,10 +523,51 @@ function RoleAssignmentSection({ user }: { user: AdminUser }) {
   const [showAssign, setShowAssign] = useState(false);
   const [selectedRoleId, setSelectedRoleId] = useState('');
   const [selectedTenantId, setSelectedTenantId] = useState('');
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const assignRole = useAssignUserRole();
+  const removeRole = useRemoveUserRole();
 
   const roles = rolesData?.data ?? [];
   const tenants = tenantsData?.data ?? [];
   const assignments = user.UserRoleAssignments ?? [];
+
+  const handleAssign = () => {
+    if (!selectedRoleId || !selectedTenantId) return;
+    assignRole.mutate(
+      {
+        userId: user.id,
+        roleId: selectedRoleId,
+        tenantId: selectedTenantId || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Role assigned');
+          setShowAssign(false);
+          setSelectedRoleId('');
+          setSelectedTenantId('');
+        },
+        onError: (err: unknown) => {
+          const msg = err instanceof Error ? err.message : 'Failed to assign role';
+          toast.error(msg);
+        },
+      },
+    );
+  };
+
+  const handleRemove = (assignmentId: string) => {
+    setRemovingId(assignmentId);
+    removeRole.mutate(
+      { userId: user.id, assignmentId },
+      {
+        onSuccess: () => toast.success('Role removed'),
+        onError: (err: unknown) => {
+          const msg = err instanceof Error ? err.message : 'Failed to remove role';
+          toast.error(msg);
+        },
+        onSettled: () => setRemovingId(null),
+      },
+    );
+  };
 
   return (
     <div>
@@ -433,21 +589,23 @@ function RoleAssignmentSection({ user }: { user: AdminUser }) {
 
       {showAssign && (
         <div className="bg-muted/30 mb-3 space-y-3 rounded-lg border p-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
             <div>
               <label className="text-muted-foreground mb-1 block text-xs">Role</label>
               {rolesLoading ? (
                 <Skeleton className="h-9 w-full" />
               ) : (
                 <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
-                  <SelectTrigger className="h-9">
+                  <SelectTrigger className="h-9 w-full">
                     <SelectValue placeholder="Select a role…" />
                   </SelectTrigger>
                   <SelectContent>
                     {roles.map((r) => (
                       <SelectItem key={r.id} value={r.id}>
-                        {r.name}
-                        {r.description && <span className="text-muted-foreground ml-1 text-xs">— {r.description}</span>}
+                        <span className="font-medium">{r.name}</span>
+                        {r.description && (
+                          <span className="text-muted-foreground ml-1 block truncate text-xs">{r.description}</span>
+                        )}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -457,11 +615,10 @@ function RoleAssignmentSection({ user }: { user: AdminUser }) {
             <div>
               <label className="text-muted-foreground mb-1 block text-xs">Tenant (scope)</label>
               <Select value={selectedTenantId} onValueChange={setSelectedTenantId}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Global (default)" />
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue placeholder="Select a tenant…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__global__">Global (default)</SelectItem>
                   {tenants.map((t) => (
                     <SelectItem key={t.id} value={t.id}>
                       {t.name} ({t.key})
@@ -471,22 +628,12 @@ function RoleAssignmentSection({ user }: { user: AdminUser }) {
               </Select>
             </div>
           </div>
-          <p className="text-muted-foreground text-xs">
-            Role assignment requires the backend UserRoleAssignment endpoints to be exposed via the admin API. Currently, role data is read-only from
-            the user response.
-          </p>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setShowAssign(false)}>
+            <Button variant="ghost" size="sm" onClick={() => setShowAssign(false)} disabled={assignRole.isPending}>
               Cancel
             </Button>
-            <Button
-              size="sm"
-              disabled={!selectedRoleId}
-              onClick={() => {
-                toast.info('Role assignment requires a dedicated backend endpoint (POST /admin/users/:id/roles). This UI is ready for integration.');
-                setShowAssign(false);
-              }}
-            >
+            <Button size="sm" disabled={!selectedRoleId || !selectedTenantId || assignRole.isPending} onClick={handleAssign}>
+              {assignRole.isPending && <Loader2 className="mr-1 size-3 animate-spin" />}
               Assign
             </Button>
           </div>
@@ -495,27 +642,40 @@ function RoleAssignmentSection({ user }: { user: AdminUser }) {
 
       {assignments.length > 0 ? (
         <div className="space-y-2">
-          {assignments.map((a) => (
-            <div key={a.id} className="bg-muted/20 flex items-center justify-between rounded-md border px-3 py-2">
-              <div className="flex items-center gap-2">
-                <Shield className="text-muted-foreground size-3.5" />
-                <span className="text-sm font-medium">{a.roleName || a.roleId}</span>
-                {a.tenantId && (
-                  <Badge variant="outline" className="text-[10px]">
-                    {a.tenantId.slice(0, 8)}…
+          {assignments.map((a) => {
+            const tenantName = a.tenantId
+              ? (tenants.find((t) => t.id === a.tenantId)?.name ?? a.tenantId.slice(0, 8) + '…')
+              : null;
+            const isRemoving = removingId === a.id;
+            return (
+              <div key={a.id} className="bg-muted/20 flex items-center gap-2 rounded-md border px-3 py-2">
+                <span className="min-w-0 flex-1 truncate text-xs font-medium">{a.roleName || a.roleId}</span>
+                {tenantName ? (
+                  <Badge variant="outline" className="shrink-0 text-[10px]">
+                    {tenantName}
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="shrink-0 text-[10px]">
+                    Global
                   </Badge>
                 )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-destructive h-6 w-6 shrink-0 p-0"
+                  disabled={isRemoving}
+                  onClick={() => handleRemove(a.id)}
+                >
+                  {isRemoving ? <Loader2 className="size-3 animate-spin" /> : <Trash2 className="size-3" />}
+                </Button>
               </div>
-              <StatusBadge status={a.resourceStatus || 'ENABLED'} />
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="bg-muted/20 flex flex-col items-center justify-center rounded-lg border border-dashed py-6">
           <Shield className="text-muted-foreground/50 mb-2 size-6" />
-          <p className="text-muted-foreground text-xs">
-            No role assignments found. Role data requires the backend to include UserRoleAssignments in the user response.
-          </p>
+          <p className="text-muted-foreground text-xs">No role assignments. Use &quot;Assign Role&quot; above.</p>
         </div>
       )}
     </div>
@@ -762,7 +922,17 @@ function UserPreferencesSection({ userId }: { userId: string }) {
 // UserDetailDialog — shows user info, profile, roles, API keys
 // ---------------------------------------------------------------------------
 
-function UserDetailDialog({ open, onOpenChange, userId }: { open: boolean; onOpenChange: (open: boolean) => void; userId: string | null }) {
+function UserDetailDialog({
+  open,
+  onOpenChange,
+  userId,
+  onEdit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  userId: string | null;
+  onEdit?: () => void;
+}) {
   const { data: user, isLoading: userLoading } = useAdminUser(userId ?? '', { enabled: !!userId && open });
   const { data: apiKeysData, isLoading: keysLoading } = useUserApiKeys(userId ?? '', undefined, { enabled: !!userId && open });
   const revokeMut = useRevokeApiKey();
@@ -786,9 +956,9 @@ function UserDetailDialog({ open, onOpenChange, userId }: { open: boolean; onOpe
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader className="sr-only">
-          <DialogTitle>User Details</DialogTitle>
-          <DialogDescription>Account information, profile, roles, and API keys.</DialogDescription>
-        </DialogHeader>
+              <DialogTitle>User Details</DialogTitle>
+              <DialogDescription>Account information, profile, roles, and API keys.</DialogDescription>
+                    </DialogHeader>
 
         {userLoading ? (
           <div className="space-y-4 py-2">
@@ -827,7 +997,7 @@ function UserDetailDialog({ open, onOpenChange, userId }: { open: boolean; onOpe
 
               {/* User profile info */}
               {profile && (profile.firstName || profile.lastName || profile.email || profile.phone) && (
-                <div className="bg-muted/30 grid grid-cols-2 gap-4 rounded-lg border p-4 sm:grid-cols-4">
+                <div className="bg-muted/30 grid grid-cols-1 gap-4 rounded-lg border p-4 sm:grid-cols-2">
                   {(profile.firstName || profile.lastName) && (
                     <InfoRow
                       label="Full Name"
@@ -841,7 +1011,7 @@ function UserDetailDialog({ open, onOpenChange, userId }: { open: boolean; onOpe
               )}
 
               {/* Activity & timestamps */}
-              <div className="bg-muted/30 grid grid-cols-2 gap-4 rounded-lg border p-4 sm:grid-cols-4">
+              <div className="bg-muted/30 grid grid-cols-2 gap-4 rounded-lg border p-4">
                 <InfoRow label="Last Login" icon={<Clock className="size-3.5" />} value={relativeTime(user.lastLoginAt)} />
                 <InfoRow label="Last Active" icon={<Clock className="size-3.5" />} value={relativeTime(user.lastActiveAt)} />
                 <InfoRow label="Created" icon={<Calendar className="size-3.5" />} value={fmtDate(user.createdAt)} />
@@ -933,6 +1103,7 @@ export default function UserManagementPage() {
   const [accountTypeFilter, setAccountTypeFilter] = useState('_all');
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [createdUserId, setCreatedUserId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
@@ -991,9 +1162,9 @@ export default function UserManagementPage() {
           isServiceAccount: values.isServiceAccount,
         },
         {
-          onSuccess: () => {
+          onSuccess: (data) => {
             toast.success('User created successfully');
-            setCreateOpen(false);
+            setCreatedUserId(data.id);
           },
           onError: (err) => toast.error(`Failed to create user: ${err.message}`),
         },
@@ -1166,7 +1337,7 @@ export default function UserManagementPage() {
                   }}
                 >
                   <Pencil className="mr-2 size-4" />
-                  Edit
+                  Edit Profile
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleToggleStatus(u)}>
                   {isEnabled ? <PowerOff className="mr-2 size-4" /> : <Power className="mr-2 size-4" />}
@@ -1259,7 +1430,20 @@ export default function UserManagementPage() {
       />
 
       {/* Create dialog */}
-      <UserFormDialog open={createOpen} onOpenChange={setCreateOpen} isPending={createMutation.isPending} onSubmit={handleCreate} />
+      <UserFormDialog
+        open={createOpen}
+        onOpenChange={(v) => {
+          setCreateOpen(v);
+          if (!v) setCreatedUserId(null);
+        }}
+        isPending={createMutation.isPending}
+        onSubmit={handleCreate}
+        createdUserId={createdUserId}
+        onRoleAssigned={() => {
+          setCreateOpen(false);
+          setCreatedUserId(null);
+        }}
+      />
 
       {/* Edit dialog */}
       <UserFormDialog
@@ -1281,6 +1465,10 @@ export default function UserManagementPage() {
           if (!v) setSelectedUser(null);
         }}
         userId={selectedUser?.id ?? null}
+        onEdit={() => {
+          setDetailOpen(false);
+          setEditOpen(true);
+        }}
       />
 
       {/* Single delete confirmation */}

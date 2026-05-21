@@ -38,7 +38,7 @@ export class UserRoleAssignmentFactory {
       roleId: props.roleId,
       User: props.User ?? null,
       Roles: props.Roles ?? [],
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId ?? null,
       Tenant: props.Tenant ?? null,
     });
   }
