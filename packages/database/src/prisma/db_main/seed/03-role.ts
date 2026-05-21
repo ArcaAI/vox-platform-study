@@ -54,7 +54,7 @@ export const SYSTEM_ROLES = [
         externalName: 'Doctor / Clinician',
         isSystemRole: true,
         parentRoleId: null,
-        policies: ['consultation-own-manage', 'consultation-shared-patient-read', 'user-profile-own', 'api-key-own-manage'],
+        policies: ['consultation-own-manage', 'consultation-shared-patient-read', 'user-profile-own', 'api-key-own-manage', 'storage-upload'],
     },
     {
         id: SEED_ROLE_IDS.NURSE,

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 import { BaseRequest } from '../../../../common';
 
 export class CreateUserRoleAssignmentRequest extends BaseRequest {
@@ -12,8 +12,9 @@ export class CreateUserRoleAssignmentRequest extends BaseRequest {
   @IsString()
   roleId!: string;
 
+  // TODO: migrate to standard UUID format and restore to @IsUUID()
   @ApiPropertyOptional({ description: 'Tenant ID for tenant-scoped assignment. Null = global assignment.' })
   @IsOptional()
-  @IsUUID()
+  @IsString()
   tenantId?: string;
 }

@@ -296,6 +296,15 @@ export const DEFAULT_POLICIES = [
             { action: ['read', 'list'], subject: 'AuditLog', conditions: { tenantId: '${context.tenantId}' } },
         ],
     },
+    {
+        id: '00000000-0000-0000-0001-000000000060',
+        name: 'storage-upload',
+        description: 'Upload files to storage buckets (required for consultation attachments)',
+        scope: PolicyScope.TENANT,
+        rules: [
+            { action: 'create', subject: 'Storage', conditions: { tenantId: '${context.tenantId}' } },
+        ],
+    },
 ];
 
 export const seedPolicy = async (client: CorePrismaClient) => {
