@@ -78,7 +78,7 @@ export interface PromptResolutionParams {
 /** System default values — the final fallback tier */
 export const SYSTEM_DEFAULTS = {
   template: 'SOAP',
-  promptId: 'prompt_default',
+  promptId: '71000000-0000-0000-0000-000000000036', // CATCHALL_SOAP — see seed/00-constants.ts
 } as const;
 
 // ============================================================================

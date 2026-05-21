@@ -290,3 +290,32 @@ export function useUpdateAdminUserSetting() {
 }
 
 export { keys as userKeys };
+
+export interface AssignRoleInput {
+  roleId: string;
+  tenantId?: string;
+}
+
+export function useAssignUserRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, ...input }: AssignRoleInput & { userId: string }) =>
+      adminClient.post<UserRoleAssignmentInfo>(`/admin/users/${userId}/roles`, input),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: keys.all });
+      qc.invalidateQueries({ queryKey: keys.detail(variables.userId) });
+    },
+  });
+}
+
+export function useRemoveUserRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, assignmentId }: { userId: string; assignmentId: string }) =>
+      adminClient.delete<void>(`/admin/users/${userId}/roles/${assignmentId}`),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: keys.all });
+      qc.invalidateQueries({ queryKey: keys.detail(variables.userId) });
+    },
+  });
+}

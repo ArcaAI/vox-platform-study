@@ -30,6 +30,7 @@ export const UserRoleAssignmentEntityMapperHandlers = createMapperHandlers<Entit
     userId: (obj: Models.UserRoleAssignment) => obj.userId,
     roleId: (obj: Models.UserRoleAssignment) => obj.roleId,
     User: (obj: Models.UserRoleAssignment) => (obj.User ? Mappers.UserEntityMapper.getInstance().toDomainEntity(obj.User) : null),
-    Roles: (obj: Models.UserRoleAssignment) => obj.Roles?.map((item) => Mappers.RoleEntityMapper.getInstance().toDomainEntity(item)) || [],
+    Roles: (obj: Models.UserRoleAssignment) =>
+      obj.Role ? [Mappers.RoleEntityMapper.getInstance().toDomainEntity(obj.Role)] : obj.Roles?.map((item) => Mappers.RoleEntityMapper.getInstance().toDomainEntity(item)) || [],
   },
 });

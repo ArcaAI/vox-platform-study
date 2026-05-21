@@ -16,6 +16,8 @@ export class UserRoleAssignment extends BaseTenantDataModel {
   @VirtualDbProperty()
   public User: Models.User | undefined;
   @VirtualDbProperty()
+  public Role: Models.Role | undefined;
+  @VirtualDbProperty()
   public Roles: Models.Role[] | undefined;
 
   constructor(data: UserRoleAssignment & BaseTenantDataModel) {
@@ -26,6 +28,7 @@ export class UserRoleAssignment extends BaseTenantDataModel {
     this.userId = data.userId;
     this.roleId = data.roleId;
     this.User = data.User;
+    this.Role = data.Role;
     this.Roles = data.Roles;
   }
 }
