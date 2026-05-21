@@ -23,6 +23,12 @@ const createMockUserSettingsService = () => ({
     upsertByUserKeyNamespace: vi.fn(),
 });
 
+const createMockUserRoleAssignmentService = () => ({
+    assignRole: vi.fn(),
+    removeRole: vi.fn(),
+    fetchAllByUserId: vi.fn(),
+});
+
 const fakeUserEntity = {
     id: 'user-1',
     username: 'john_doe',
@@ -71,16 +77,19 @@ describe('UserController', () => {
     let mockUserService: ReturnType<typeof createMockUserService>;
     let mockApiKeyService: ReturnType<typeof createMockApiKeyService>;
     let mockUserSettingsService: ReturnType<typeof createMockUserSettingsService>;
+    let mockUserRoleAssignmentService: ReturnType<typeof createMockUserRoleAssignmentService>;
 
     beforeEach(() => {
         vi.clearAllMocks();
         mockUserService = createMockUserService();
         mockApiKeyService = createMockApiKeyService();
         mockUserSettingsService = createMockUserSettingsService();
+        mockUserRoleAssignmentService = createMockUserRoleAssignmentService();
         controller = new UserController(
             mockUserService as any,
             mockApiKeyService as any,
             mockUserSettingsService as any,
+            mockUserRoleAssignmentService as any,
         );
     });
 
