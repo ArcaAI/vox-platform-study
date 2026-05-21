@@ -2,6 +2,7 @@ import {
   IUserService,
   IApiKeyService,
   IUserSettingsService,
+  IUserRoleAssignmentService,
   PaginatedQuery,
   UserResponse,
   CreateUserRequest,
@@ -14,8 +15,11 @@ import {
   HttpMethod,
   ApiKeyDtoMapper,
   PaginatedApiKeyResponse,
+  UserRoleAssignmentResponse,
+  UserRoleAssignmentDtoMapper,
+  CreateUserRoleAssignmentRequest,
 } from '@arcaai/applications';
-import { Controller, Body, Param, Inject, Query, Get, Patch } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, HttpStatus, Inject, Param, Post, Query, Get, Patch } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize } from '../../decorators';
 import { UpdateUserStatusRequest, BulkDeleteUsersRequest } from './dto';
@@ -32,6 +36,8 @@ export class UserController {
     private readonly apiKeyService: IApiKeyService,
     @Inject(IUserSettingsService)
     private readonly userSettingsService: IUserSettingsService,
+    @Inject(IUserRoleAssignmentService)
+    private readonly userRoleAssignmentService: IUserRoleAssignmentService,
   ) {}
 
   @ApiEndpoint({
@@ -191,5 +197,26 @@ export class UserController {
   ): Promise<UserSettingsResponse> {
     const updated = await this.userSettingsService.upsertByUserKeyNamespace(id, namespace, key, request);
     return UserSettingsDtoMapper.ToResponse(updated);
+  }
+
+  @Post(':id/roles')
+  @ApiOperation({ summary: 'Assign a role to a user' })
+  @ApiParam({ name: 'id', description: 'User ID', type: String })
+  @ApiResponse({ status: 201, description: 'Role assigned', type: UserRoleAssignmentResponse })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  async assignRole(@Param('id') id: string, @Body() body: CreateUserRoleAssignmentRequest): Promise<UserRoleAssignmentResponse> {
+    const result = await this.userRoleAssignmentService.create({ ...body, userId: id });
+    return UserRoleAssignmentDtoMapper.ToResponse(result);
+  }
+
+  @Delete(':id/roles/:assignmentId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remove a role assignment from a user' })
+  @ApiParam({ name: 'id', description: 'User ID', type: String })
+  @ApiParam({ name: 'assignmentId', description: 'Role assignment ID', type: String })
+  @ApiResponse({ status: 204, description: 'Role removed' })
+  @ApiResponse({ status: 404, description: 'Assignment not found' })
+  async removeRole(@Param('assignmentId') assignmentId: string): Promise<void> {
+    await this.userRoleAssignmentService.deleteById(assignmentId);
   }
 }

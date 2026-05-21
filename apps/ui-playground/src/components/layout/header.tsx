@@ -121,7 +121,7 @@ export function Header({ className, fixed, ...props }: HeaderProps) {
   const setTenant = useAuthStore((s) => s.setTenant);
   const matches = useMatches();
 
-  const needsFetch = !!tenantId && !tenantName;
+  const needsFetch = !!tenantId && !tenantName && !isImpersonating;
   const { data: tenantData } = useTenant(tenantId, { enabled: needsFetch, staleTime: 5 * 60 * 1000, retry: 1 });
 
   useEffect(() => {

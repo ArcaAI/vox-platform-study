@@ -14,7 +14,7 @@ import { Slider } from '@arcaai/ui/slider';
 import { Switch } from '@arcaai/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/tabs';
 import { Textarea } from '@arcaai/ui/textarea';
-import { AlertCircle, ChevronDown, Dna, FileText, Loader2, Radio, Search, Settings2, Sparkles, X } from 'lucide-react';
+import { AlertCircle, Calendar, ChevronDown, Dna, FileText, Loader2, Mic, Radio, Search, Settings2, Sparkles, User, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { toast } from 'sonner';
 import type { AssembledGenerateRequest, SmrGenerateRequest, SmrGenerateResponse } from '../api';
@@ -82,6 +82,8 @@ export default function SummaryPage() {
   const [contextSuggestionsLoaded, setContextSuggestionsLoaded] = useState(false);
   const [contextSuggestionsOpen, setContextSuggestionsOpen] = useState(true);
   const [contextSuggestionsError, setContextSuggestionsError] = useState<string | null>(null);
+  const [patientFilter, setPatientFilter] = useState<string>('ALL');
+  const [consultationMeta, setConsultationMeta] = useState<Record<string, { patientId?: string; appointmentDate?: string }>>({});
 
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [selectedDnaStyleId, setSelectedDnaStyleId] = useState('');
@@ -187,14 +189,77 @@ export default function SummaryPage() {
 
   const availableContextTypes = Object.keys(STATIC_CONTEXT_TYPES);
 
+  const consultationPatientMap = useMemo(() => {
+    const map: Record<string, string | undefined> = {};
+    for (const [cId, meta] of Object.entries(consultationMeta)) {
+      map[cId] = meta.patientId;
+    }
+    return map;
+  }, [consultationMeta]);
+
+  const availablePatientIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of contextSuggestions) {
+      const pid = consultationPatientMap[item.consultationId];
+      if (pid) set.add(pid);
+    }
+    return Array.from(set).sort();
+  }, [contextSuggestions, consultationPatientMap]);
+
+  const formatSourceLabel = useCallback((item: ContextItem): string => {
+    if (item.source === 'TRANSCRIPTION') return 'Live Transcription';
+    if (item.source === 'AI') return 'AI-generated';
+    if (item.source === 'SYSTEM') return 'System';
+    return 'Manual Entry';
+  }, []);
+
+  const formatItemDate = useCallback((value?: string): string => {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  }, []);
+
+  const renderItemMetaRow = useCallback(
+    (item: ContextItem, compact = false) => {
+      const meta = consultationMeta[item.consultationId];
+      const patientId = meta?.patientId;
+      const appointmentDate = meta?.appointmentDate;
+      const sourceLabel = formatSourceLabel(item);
+      const textSize = compact ? 'text-[10px]' : 'text-[11px]';
+      return (
+        <div className={`text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 ${textSize}`}>
+          <span className="flex items-center gap-1">
+            <User className="size-3" />
+            {patientId ?? 'Unknown patient'}
+          </span>
+          {appointmentDate && (
+            <span className="flex items-center gap-1">
+              <Calendar className="size-3" />
+              {appointmentDate}
+            </span>
+          )}
+          <span className="flex items-center gap-1">
+            <Mic className="size-3" />
+            {sourceLabel}
+          </span>
+          <span>{formatItemDate(item.createdAt)}</span>
+        </div>
+      );
+    },
+    [consultationMeta, formatSourceLabel, formatItemDate],
+  );
+
   const filteredContextSuggestions = useMemo(
     () =>
       filterContextItems(contextSuggestions, {
         query: contextSearchQuery,
         type: contextTypeFilter,
         recency: contextRecencyFilter,
+        patientId: patientFilter,
+        consultationPatientMap,
       }) as ContextItem[],
-    [contextSuggestions, contextSearchQuery, contextTypeFilter, contextRecencyFilter],
+    [contextSuggestions, contextSearchQuery, contextTypeFilter, contextRecencyFilter, patientFilter, consultationPatientMap],
   );
 
   const hasManualText = Boolean(debugMode && transcript.trim());
@@ -250,7 +315,12 @@ export default function SummaryPage() {
       });
 
       const merged: ContextItem[] = [];
+      const metaMap: Record<string, { patientId?: string; appointmentDate?: string }> = {};
       for (const consultation of consultations.data ?? []) {
+        metaMap[consultation.id] = {
+          patientId: consultation.patientId,
+          appointmentDate: consultation.appointmentDate,
+        };
         await session.load(consultation.id);
         const freshState = useAgenticStore.getState();
         const { apiClient: freshClient, consultation: freshConsultation } = freshState;
@@ -266,6 +336,7 @@ export default function SummaryPage() {
         .slice(0, 40);
 
       setContextSuggestions(deduped);
+      setConsultationMeta(metaMap);
       setContextSuggestionsLoaded(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load context items';
@@ -310,6 +381,8 @@ export default function SummaryPage() {
     setContextSearchQuery('');
     setContextTypeFilter('ALL');
     setContextRecencyFilter('ALL');
+    setPatientFilter('ALL');
+    setConsultationMeta({});
   }, [ctx.effectiveUserId]);
 
   useEffect(() => {
@@ -820,8 +893,8 @@ export default function SummaryPage() {
 
                         <TabsContent value="context_item" className="flex flex-col gap-3 mt-3">
                           {/* Search & filter controls */}
-                          <div className="grid gap-2 sm:grid-cols-5">
-                            <div className="sm:col-span-3">
+                          <div className="grid gap-2 sm:grid-cols-6">
+                            <div className="sm:col-span-2">
                               <Label htmlFor="smr-context-item-search" className="text-xs">
                                 Search Context Items
                               </Label>
@@ -829,12 +902,28 @@ export default function SummaryPage() {
                                 <Search className="text-muted-foreground absolute left-2 top-2.5 size-4" />
                                 <Input
                                   id="smr-context-item-search"
-                                  placeholder="Search by context item ID (fuzzy match)..."
+                                  placeholder="Search by id or content..."
                                   value={contextSearchQuery}
                                   onChange={(e: ChangeEvent<HTMLInputElement>) => setContextSearchQuery(e.target.value)}
                                   className="pl-8 font-mono text-sm"
                                 />
                               </div>
+                            </div>
+                            <div className="sm:col-span-2">
+                              <Label className="text-xs">Patient</Label>
+                              <Select value={patientFilter} onValueChange={setPatientFilter}>
+                                <SelectTrigger className="mt-1 w-full">
+                                  <SelectValue placeholder="All patients" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="ALL">All patients</SelectItem>
+                                  {availablePatientIds.map((pid) => (
+                                    <SelectItem key={pid} value={pid}>
+                                      {pid}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             </div>
                             <div className="sm:col-span-1">
                               <Label className="text-xs">Item Type</Label>
@@ -935,6 +1024,7 @@ export default function SummaryPage() {
                                                 ? `${preview.slice(0, 120)}...`
                                                 : preview || 'No preview available'}
                                           </p>
+                                          <div className="mt-1">{renderItemMetaRow(item, true)}</div>
                                         </button>
                                       );
                                     })}
@@ -950,7 +1040,7 @@ export default function SummaryPage() {
                               <Label className="text-xs font-medium">Selected Context Items</Label>
                               {selectedContextItems.map((item) => (
                                 <div key={item.id} className="rounded-lg border bg-muted/30 p-3">
-                                  <div className="mb-2 flex items-center justify-between gap-2">
+                                  <div className="mb-1 flex items-center justify-between gap-2">
                                     <div className="flex min-w-0 items-center gap-2">
                                       <span className="truncate font-mono text-[11px]">{item.id}</span>
                                       <Badge variant="outline" className="text-[10px]">
@@ -973,6 +1063,7 @@ export default function SummaryPage() {
                                       </Button>
                                     </div>
                                   </div>
+                                  <div className="mb-2">{renderItemMetaRow(item, true)}</div>
                                   <ScrollArea className="h-40 rounded border bg-background p-2">
                                     <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
                                       {item.content?.trim() || 'No content available'}
@@ -1010,8 +1101,8 @@ export default function SummaryPage() {
                     ) : (
                       /* Production mode: context item selection only (no tabs) */
                       <div className="flex flex-col gap-3">
-                        <div className="grid gap-2 sm:grid-cols-5">
-                          <div className="sm:col-span-3">
+                        <div className="grid gap-2 sm:grid-cols-6">
+                          <div className="sm:col-span-2">
                             <Label htmlFor="smr-context-item-search-prod" className="text-xs">
                               Search Context Items
                             </Label>
@@ -1019,12 +1110,28 @@ export default function SummaryPage() {
                               <Search className="text-muted-foreground absolute left-2 top-2.5 size-4" />
                               <Input
                                 id="smr-context-item-search-prod"
-                                placeholder="Search by context item ID (fuzzy match)..."
+                                placeholder="Search by id or content..."
                                 value={contextSearchQuery}
                                 onChange={(e: ChangeEvent<HTMLInputElement>) => setContextSearchQuery(e.target.value)}
                                 className="pl-8 font-mono text-sm"
                               />
                             </div>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <Label className="text-xs">Patient</Label>
+                            <Select value={patientFilter} onValueChange={setPatientFilter}>
+                              <SelectTrigger className="mt-1 w-full">
+                                <SelectValue placeholder="All patients" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ALL">All patients</SelectItem>
+                                {availablePatientIds.map((pid) => (
+                                  <SelectItem key={pid} value={pid}>
+                                    {pid}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </div>
                           <div className="sm:col-span-1">
                             <Label className="text-xs">Item Type</Label>
@@ -1123,6 +1230,7 @@ export default function SummaryPage() {
                                               ? `${preview.slice(0, 120)}...`
                                               : preview || 'No preview available'}
                                         </p>
+                                        <div className="mt-1">{renderItemMetaRow(item, true)}</div>
                                       </button>
                                     );
                                   })}
@@ -1137,7 +1245,7 @@ export default function SummaryPage() {
                             <Label className="text-xs font-medium">Selected Context Items</Label>
                             {selectedContextItems.map((item) => (
                               <div key={item.id} className="rounded-lg border bg-muted/30 p-3">
-                                <div className="mb-2 flex items-center justify-between gap-2">
+                                <div className="mb-1 flex items-center justify-between gap-2">
                                   <div className="flex min-w-0 items-center gap-2">
                                     <span className="truncate font-mono text-[11px]">{item.id}</span>
                                     <Badge variant="outline" className="text-[10px]">
@@ -1160,6 +1268,7 @@ export default function SummaryPage() {
                                     </Button>
                                   </div>
                                 </div>
+                                <div className="mb-2">{renderItemMetaRow(item, true)}</div>
                                 <ScrollArea className="h-40 rounded border bg-background p-2">
                                   <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
                                     {item.content?.trim() || 'No content available'}

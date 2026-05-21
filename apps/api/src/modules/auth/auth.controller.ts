@@ -350,6 +350,10 @@ export class AuthController {
     });
     const resolvedTenantId = tenantAssignment?.tenantId ?? '';
 
+    if (!resolvedTenantId) {
+      throw new BadRequestException('Target user has no tenant assignment. Assign the user to a tenant before impersonating.');
+    }
+
     const jwtSecretKey = this.appSettingsService.getValueWithDefault('JWT_SECRET_KEY', 'default-jwt-secret-key-change-in-production');
     const jwtImpersonationExpiresIn = this.appSettingsService.getValueWithDefault('JWT_IMPERSONATION_EXPIRES_IN', '15m') as string;
 
