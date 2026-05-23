@@ -74,6 +74,14 @@ export class ParallelPipeline<TInput, TOutput> implements IPipeline<TInput, Para
   private results: Map<string, TOutput> = new Map();
   private errors: Map<string, Error> = new Map();
 
+  /**
+   * Per-stage serialization chain. Every call to `executeStage` for the same
+   * stage name appends to this chain so concurrent invocations (e.g. multiple
+   * `triggerStage('s')` calls, or a `triggerStage` overlapping `execute()`)
+   * never race on the shared `results` / `errors` maps. (TASK-273 H-2)
+   */
+  private stageLocks: Map<string, Promise<unknown>> = new Map();
+
   constructor(name: string) {
     this.name = name;
   }
@@ -326,6 +334,7 @@ export class ParallelPipeline<TInput, TOutput> implements IPipeline<TInput, Para
     this.cancel();
     this.results.clear();
     this.errors.clear();
+    this.stageLocks.clear();
     this.currentInput = null;
     this.currentContext = null;
     this.updateState({
@@ -369,19 +378,59 @@ export class ParallelPipeline<TInput, TOutput> implements IPipeline<TInput, Para
     this.emitter.off(event, listener);
   }
 
+  /**
+   * Number of listeners currently registered for `event`. Useful for
+   * detecting listener leaks during long-lived pipeline observation.
+   */
+  listenerCount(event: PipelineEvent): number {
+    return this.emitter.listenerCount(event);
+  }
+
   // =========================================================================
   // Private Methods
   // =========================================================================
 
   /**
-   * Execute a single stage.
+   * Execute a single stage. Wraps the actual execution in a per-stage lock
+   * (TASK-273 H-2) so concurrent invocations against the same stage name
+   * serialize and do not race on the shared `results` / `errors` maps.
    */
-  private async executeStage(entry: StageEntry & { triggerMode: ParallelTriggerMode }, input: TInput, context: PipelineContext): Promise<void> {
+  private executeStage(entry: StageEntry & { triggerMode: ParallelTriggerMode }, input: TInput, context: PipelineContext): Promise<void> {
+    const stageName = entry.stage.name;
+    const previousLock = this.stageLocks.get(stageName) ?? Promise.resolve();
+    const next = previousLock.catch(() => undefined).then(() => this.executeStageBody(entry, input, context));
+    this.stageLocks.set(stageName, next);
+    return next;
+  }
+
+  /**
+   * Body of a single stage execution. Races `stage.execute(...)` against the
+   * pipeline's abort signal so cancellation surfaces promptly even when the
+   * stage's `onExecute` does not observe `ctx.abortSignal` (TASK-273 H-1).
+   */
+  private async executeStageBody(entry: StageEntry & { triggerMode: ParallelTriggerMode }, input: TInput, context: PipelineContext): Promise<void> {
     const stage = entry.stage;
 
-    // Check if stage can execute
     if (stage.canExecute && !stage.canExecute(input, context)) {
       this.emit(PipelineEvent.StageSkipped, { stageName: stage.name });
+      return;
+    }
+
+    if (context.abortSignal?.aborted) {
+      const cancelError = this.makeCancelError(context.abortSignal, stage.name);
+      this.errors.set(stage.name, cancelError);
+      this.emit(PipelineEvent.StageFailed, {
+        stageName: stage.name,
+        durationMs: 0,
+        error: cancelError,
+      });
+      this.updateState({
+        completedStages: this.results.size + this.errors.size,
+        progress: Math.round(((this.results.size + this.errors.size) / this.stages.size) * 100),
+      });
+      if (entry.required) {
+        throw cancelError;
+      }
       return;
     }
 
@@ -390,10 +439,10 @@ export class ParallelPipeline<TInput, TOutput> implements IPipeline<TInput, Para
     const stageStartTime = performance.now();
 
     try {
-      const result = await stage.execute(input, context);
+      const result = (await this.raceWithAbort(stage.execute(input, context), context.abortSignal, stage.name)) as TOutput;
       const durationMs = performance.now() - stageStartTime;
 
-      this.results.set(stage.name, result as TOutput);
+      this.results.set(stage.name, result);
 
       this.emit(PipelineEvent.StageCompleted, {
         stageName: stage.name,
@@ -421,11 +470,54 @@ export class ParallelPipeline<TInput, TOutput> implements IPipeline<TInput, Para
         progress: Math.round(((this.results.size + this.errors.size) / this.stages.size) * 100),
       });
 
-      // Only throw if this is a required stage
       if (entry.required) {
         throw error;
       }
     }
+  }
+
+  /**
+   * Race a stage's promise against the pipeline's abort signal so cancel
+   * settles promptly even when the stage ignores `ctx.abortSignal`. The
+   * underlying promise is intentionally allowed to settle in the background
+   * (we cannot forcibly stop user code), but the pipeline does not wait on it.
+   */
+  private raceWithAbort<T>(work: Promise<T>, signal: AbortSignal | undefined, stageName: string): Promise<T> {
+    if (!signal) return work;
+    return new Promise<T>((resolve, reject) => {
+      let settled = false;
+      const onAbort = (): void => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', onAbort);
+        reject(this.makeCancelError(signal, stageName));
+      };
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+      work.then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          signal.removeEventListener('abort', onAbort);
+          resolve(value);
+        },
+        (error) => {
+          if (settled) return;
+          settled = true;
+          signal.removeEventListener('abort', onAbort);
+          reject(error);
+        },
+      );
+    });
+  }
+
+  private makeCancelError(signal: AbortSignal, stageName: string): Error {
+    const reason = signal.reason;
+    if (reason instanceof Error) return reason;
+    return new PipelineError(PipelineErrorCode.CANCELLED, `Stage '${stageName}' cancelled`, { stage: stageName });
   }
 
   /**

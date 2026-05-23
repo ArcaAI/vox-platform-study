@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useRoles } from '../useRoles';
+import { useRoles, USER_ROLES, type UserRole } from '../useRoles';
 import { useAgenticStore } from '../../store/agenticStore';
 import { createMockLogger } from '../../__tests__/setup';
 import { ROLE_ENDPOINTS } from '../../core/constants';
@@ -463,6 +463,27 @@ describe('useRoles', () => {
             expect(resp).toEqual(role);
             expect((resp as any).parentRoleId).toBe('r-parent');
             expect((resp as any).childRoles).toHaveLength(1);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // TASK-265 W0-10 / GAP-04 — typed USER_ROLES tuple re-export
+    // -----------------------------------------------------------------------
+
+    describe('USER_ROLES re-export (TASK-265 W0-10)', () => {
+        it('re-exports the role_-prefixed tuple from useRoles module', () => {
+            expect(USER_ROLES).toEqual(['role_admin', 'role_doctor', 'role_patient']);
+        });
+
+        it('every value is prefixed with role_', () => {
+            for (const r of USER_ROLES) expect(r).toMatch(/^role_/);
+        });
+
+        it('UserRole type accepts each tuple value at compile-time', () => {
+            const admin: UserRole = 'role_admin';
+            const doctor: UserRole = 'role_doctor';
+            const patient: UserRole = 'role_patient';
+            expect([admin, doctor, patient]).toEqual([...USER_ROLES]);
         });
     });
 });

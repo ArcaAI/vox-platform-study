@@ -122,3 +122,9 @@ export {
   getRecommendedProcessingMode,
   logBrowserSupport,
 } from './utils/index.js';
+
+// ============================================================================
+// WASM Asset
+// ============================================================================
+
+export { getDefaultWasmUrl } from './wasmAsset.js';

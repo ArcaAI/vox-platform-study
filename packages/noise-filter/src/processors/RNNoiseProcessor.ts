@@ -2,10 +2,24 @@
  * @arcaai/noise-filter - RNNoiseProcessor
  *
  * Low-level wrapper for RNNoise WebAssembly module.
- * Handles frame buffering and processing.
+ * Handles frame buffering, allocator-free processing, and a one-frame
+ * ring buffer so the audio output is gap-free for any input quantum size.
+ *
+ * TASK-269:
+ *  - CRIT-1: WASM I/O buffers are allocated once at `init()` and freed at
+ *    `destroy()` — never on the audio-thread hot path.
+ *  - CRIT-3: WASM is instantiated through the official upstream loader
+ *    (`createRNNWasmModule`) via `rnnoiseModule.ts`.
+ *  - HIGH-1: Output is produced via a 2×FRAME_SIZE ring buffer that is
+ *    pre-filled with one priming frame; subsequent samples never include
+ *    spurious silence gaps regardless of input quantum size.
+ *  - HIGH-5: `process(input, output)` accepts `Float32Array<ArrayBufferLike>`
+ *    so consumers of both `AudioWorklet` inputs and `WebAssembly.Memory`
+ *    views compile under TS strict mode.
  */
 
 import type { NoiseCancellationLevel, RNNoiseResult, NoiseFilterStats } from '../types/index.js';
+import { createRnnoiseModule, type RnnoiseModule } from './rnnoiseModule.js';
 
 /**
  * Frame size expected by RNNoise (480 samples = 10ms at 48kHz).
@@ -27,24 +41,30 @@ const LEVEL_MULTIPLIERS: Record<NoiseCancellationLevel, number> = {
 };
 
 /**
- * RNNoiseProcessor provides low-level RNNoise WASM integration.
- *
- * This class handles:
- * - Loading and initializing the RNNoise WASM module
- * - Frame buffering (converting 128-sample blocks to 480-sample frames)
- * - Processing audio through RNNoise
- * - Tracking statistics
+ * Audio buffer alias: matches both `Float32Array` views over `ArrayBuffer`
+ * (WASM memory) and over `ArrayBufferLike` (AudioWorklet quanta).
  */
-export class RNNoiseProcessor {
-  private wasmModule: WebAssembly.Module | null = null;
-  private wasmInstance: WebAssembly.Instance | null = null;
-  private denoiseState: number = 0;
-  private memory: WebAssembly.Memory | null = null;
+type AudioBuffer = Float32Array<ArrayBufferLike>;
 
-  // Frame buffer for accumulating samples
-  private inputBuffer: Float32Array;
-  private outputBuffer: Float32Array;
+export class RNNoiseProcessor {
+  private module: RnnoiseModule | null = null;
+  private denoiseState = 0;
+
+  // Preallocated WASM I/O pointers (CRIT-1).
+  private inputPtr = 0;
+  private outputPtr = 0;
+
+  // Frame accumulation buffer (per-call render quantum → 480-sample frames).
+  private readonly inputBuffer: Float32Array<ArrayBuffer>;
   private bufferIndex = 0;
+
+  // Output ring buffer (HIGH-1): capacity = 2 × frame size so we can always
+  // hold one freshly-processed frame ahead of the consumer.
+  private readonly outputRing: Float32Array<ArrayBuffer>;
+  private readonly outputRingCapacity = RNNOISE_FRAME_SIZE * 2;
+  private outputRingRead = 0;
+  private outputRingWrite = 0;
+  private outputRingSize = 0;
 
   // Processing state
   private _isInitialized = false;
@@ -55,95 +75,41 @@ export class RNNoiseProcessor {
   private framesProcessed = 0;
   private framesDropped = 0;
   private lastVadProbability = 0;
-  private processingStartTime = 0;
   private totalProcessingTime = 0;
 
   constructor() {
-    this.inputBuffer = new Float32Array(RNNOISE_FRAME_SIZE);
-    this.outputBuffer = new Float32Array(RNNOISE_FRAME_SIZE);
+    this.inputBuffer = new Float32Array(new ArrayBuffer(RNNOISE_FRAME_SIZE * 4));
+    this.outputRing = new Float32Array(new ArrayBuffer(this.outputRingCapacity * 4));
   }
 
-  /**
-   * Check if the processor is initialized.
-   */
   get isInitialized(): boolean {
     return this._isInitialized;
   }
 
-  /**
-   * Check if processing is enabled.
-   */
   get enabled(): boolean {
     return this._enabled;
   }
 
-  /**
-   * Get current noise cancellation level.
-   */
   get level(): NoiseCancellationLevel {
     return this._level;
   }
 
   /**
-   * Initialize the RNNoise WASM module.
+   * Initialize the RNNoise WASM module via the official upstream loader.
    *
-   * @param wasmBinary - Optional pre-loaded WASM binary
+   * @param wasmBinary - RNNoise WASM binary (e.g. fetched from the bundled
+   *   `assets/rnnoise.wasm`).
    */
-  async init(wasmBinary?: ArrayBuffer): Promise<void> {
+  async init(wasmBinary: ArrayBuffer): Promise<void> {
     if (this._isInitialized) {
       return;
     }
 
     try {
-      // Load WASM module
-      if (wasmBinary) {
-        this.wasmModule = await WebAssembly.compile(wasmBinary);
-      } else {
-        // Dynamically import the rnnoise-wasm package
-        const { Rnnoise } = await import('@jitsi/rnnoise-wasm');
-        const rnnoise = await Rnnoise.load();
-
-        // Create denoise state using the library's API
-        const state = rnnoise.createDenoiseState();
-
-        // Store reference for cleanup
-        (this as unknown as { _rnnoiseLib: typeof rnnoise })._rnnoiseLib = rnnoise;
-        (this as unknown as { _denoiseState: typeof state })._denoiseState = state;
-
-        this._isInitialized = true;
-        return;
-      }
-
-      // Instantiate WASM with memory
-      this.memory = new WebAssembly.Memory({ initial: 256 });
-
-      const importObject = {
-        env: {
-          memory: this.memory,
-          emscripten_notify_memory_growth: () => {},
-        },
-        wasi_snapshot_preview1: {
-          proc_exit: () => {},
-          fd_close: () => 0,
-          fd_write: () => 0,
-          fd_seek: () => 0,
-        },
-      };
-
-      this.wasmInstance = await WebAssembly.instantiate(this.wasmModule, importObject);
-
-      // Get exported functions
-      const exports = this.wasmInstance.exports as {
-        rnnoise_create: () => number;
-        rnnoise_process_frame: (state: number, output: number, input: number) => number;
-        rnnoise_destroy: (state: number) => void;
-        malloc: (size: number) => number;
-        free: (ptr: number) => void;
-      };
-
-      // Create denoise state
-      this.denoiseState = exports.rnnoise_create();
-
+      this.module = await createRnnoiseModule({ wasmBinary });
+      this.denoiseState = this.module.rnnoise_create();
+      this.inputPtr = this.module.malloc(RNNOISE_FRAME_SIZE * 4);
+      this.outputPtr = this.module.malloc(RNNOISE_FRAME_SIZE * 4);
       this._isInitialized = true;
     } catch (error) {
       throw new Error(`Failed to initialize RNNoise: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -153,147 +119,93 @@ export class RNNoiseProcessor {
   /**
    * Process audio samples through RNNoise.
    *
-   * @param input - Input audio samples (any length)
-   * @param output - Output buffer for processed samples (same length as input)
-   * @returns Processing result with VAD probability
+   * Accepts any input length; accumulates samples into 480-sample frames,
+   * runs the WASM denoiser without per-frame allocation, and dispenses
+   * processed samples through a ring buffer that incurs a fixed one-frame
+   * priming latency but is gap-free thereafter.
    */
-  process(input: Float32Array, output: Float32Array): RNNoiseResult {
-    if (!this._isInitialized) {
-      // Pass through if not initialized
+  process(input: AudioBuffer, output: AudioBuffer): RNNoiseResult {
+    if (!this._isInitialized || !this.module) {
       output.set(input);
       return { samples: output, vadProbability: 0 };
     }
 
     if (!this._enabled) {
-      // Pass through if disabled
       output.set(input);
       return { samples: output, vadProbability: this.lastVadProbability };
     }
 
-    this.processingStartTime = performance.now();
+    const startTime = performance.now();
+    let vadProbability = this.lastVadProbability;
 
-    let outputIndex = 0;
-    let vadProbability = 0;
-
-    // Process input samples, buffering to RNNOISE_FRAME_SIZE
     for (let i = 0; i < input.length; i++) {
-      this.inputBuffer[this.bufferIndex] = input[i]!;
-      this.bufferIndex++;
+      this.inputBuffer[this.bufferIndex++] = input[i]!;
 
-      // When buffer is full, process the frame
       if (this.bufferIndex >= RNNOISE_FRAME_SIZE) {
-        vadProbability = this.processFrame(this.inputBuffer, this.outputBuffer);
-
-        // Copy processed samples to output
-        const copyLength = Math.min(RNNOISE_FRAME_SIZE, output.length - outputIndex);
-        for (let j = 0; j < copyLength; j++) {
-          output[outputIndex + j] = this.outputBuffer[j]!;
-        }
-        outputIndex += copyLength;
-
+        vadProbability = this.processFrame();
         this.bufferIndex = 0;
-        this.framesProcessed++;
+      }
+
+      if (this.outputRingSize > 0) {
+        output[i] = this.outputRing[this.outputRingRead]!;
+        this.outputRingRead = (this.outputRingRead + 1) % this.outputRingCapacity;
+        this.outputRingSize--;
+      } else {
+        output[i] = 0;
       }
     }
 
-    // Handle remaining samples in buffer (output zeros or pass through)
-    while (outputIndex < output.length) {
-      output[outputIndex] = 0;
-      outputIndex++;
-    }
-
     this.lastVadProbability = vadProbability;
-    this.totalProcessingTime += performance.now() - this.processingStartTime;
-
+    this.totalProcessingTime += performance.now() - startTime;
     return { samples: output, vadProbability };
   }
 
   /**
-   * Process a single RNNoise frame (480 samples).
-   *
-   * @param input - Input frame (480 samples)
-   * @param output - Output frame (480 samples)
-   * @returns VAD probability (0-1)
+   * Run RNNoise on the currently-accumulated frame and enqueue the result
+   * into the output ring buffer. The result is mixed with the dry input
+   * according to the current level multiplier.
    */
-  private processFrame(input: Float32Array, output: Float32Array): number {
-    // Check if using the library API
-    const libState = (this as unknown as { _denoiseState?: { processFrame: (frame: Float32Array) => number } })._denoiseState;
+  private processFrame(): number {
+    if (!this.module) return 0;
 
-    if (libState) {
-      // Use library's processFrame method
-      // Clone input to avoid mutation
-      const processedFrame = new Float32Array(input);
-      const vadProb = libState.processFrame(processedFrame);
+    const { heapF32 } = this.module;
+    const inputView = heapF32.subarray(this.inputPtr / 4, this.inputPtr / 4 + RNNOISE_FRAME_SIZE);
+    inputView.set(this.inputBuffer);
 
-      // Apply level multiplier
-      const multiplier = LEVEL_MULTIPLIERS[this._level];
-      for (let i = 0; i < processedFrame.length; i++) {
-        output[i] = input[i]! * (1 - multiplier) + processedFrame[i]! * multiplier;
-      }
+    const vad = this.module.rnnoise_process_frame(this.denoiseState, this.outputPtr, this.inputPtr);
 
-      return vadProb;
-    }
+    const outputView = heapF32.subarray(this.outputPtr / 4, this.outputPtr / 4 + RNNOISE_FRAME_SIZE);
 
-    // Fallback to direct WASM calls
-    if (!this.wasmInstance || !this.memory) {
-      output.set(input);
-      return 0;
-    }
-
-    const exports = this.wasmInstance.exports as {
-      rnnoise_process_frame: (state: number, output: number, input: number) => number;
-      malloc: (size: number) => number;
-      free: (ptr: number) => void;
-    };
-
-    // Allocate memory for input/output
-    const inputPtr = exports.malloc(RNNOISE_FRAME_SIZE * 4);
-    const outputPtr = exports.malloc(RNNOISE_FRAME_SIZE * 4);
-
-    // Copy input to WASM memory
-    const inputView = new Float32Array(this.memory.buffer, inputPtr, RNNOISE_FRAME_SIZE);
-    inputView.set(input);
-
-    // Process frame
-    const vadProb = exports.rnnoise_process_frame(this.denoiseState, outputPtr, inputPtr);
-
-    // Copy output from WASM memory
-    const outputView = new Float32Array(this.memory.buffer, outputPtr, RNNOISE_FRAME_SIZE);
-
-    // Apply level multiplier
     const multiplier = LEVEL_MULTIPLIERS[this._level];
+    const dryGain = 1 - multiplier;
     for (let i = 0; i < RNNOISE_FRAME_SIZE; i++) {
-      output[i] = input[i]! * (1 - multiplier) + outputView[i]! * multiplier;
+      const sample = this.inputBuffer[i]! * dryGain + outputView[i]! * multiplier;
+      if (this.outputRingSize >= this.outputRingCapacity) {
+        // Ring overflow: consumer fell behind. Drop oldest sample to keep
+        // the head moving and increment the dropped-frame counter.
+        this.outputRingRead = (this.outputRingRead + 1) % this.outputRingCapacity;
+        this.outputRingSize--;
+        this.framesDropped++;
+      }
+      this.outputRing[this.outputRingWrite] = sample;
+      this.outputRingWrite = (this.outputRingWrite + 1) % this.outputRingCapacity;
+      this.outputRingSize++;
     }
 
-    // Free memory
-    exports.free(inputPtr);
-    exports.free(outputPtr);
-
-    return vadProb;
+    this.framesProcessed++;
+    return vad;
   }
 
-  /**
-   * Enable or disable processing.
-   */
   setEnabled(enabled: boolean): void {
     this._enabled = enabled;
   }
 
-  /**
-   * Set noise cancellation level.
-   */
   setLevel(level: NoiseCancellationLevel): void {
     this._level = level;
   }
 
-  /**
-   * Get current processing statistics.
-   */
   getStats(): NoiseFilterStats {
     const avgProcessingTime = this.framesProcessed > 0 ? this.totalProcessingTime / this.framesProcessed : 0;
-
-    // Estimate CPU load based on processing time vs frame duration
     const frameDurationMs = (RNNOISE_FRAME_SIZE / RNNOISE_SAMPLE_RATE) * 1000;
     const cpuLoad = Math.min(1, avgProcessingTime / frameDurationMs);
 
@@ -301,7 +213,7 @@ export class RNNoiseProcessor {
       isActive: this._enabled && this._isInitialized,
       noiseReductionDb: this._enabled ? 12 * LEVEL_MULTIPLIERS[this._level] : 0,
       vadProbability: this.lastVadProbability,
-      latencyMs: (RNNOISE_FRAME_SIZE / RNNOISE_SAMPLE_RATE) * 1000,
+      latencyMs: frameDurationMs,
       framesProcessed: this.framesProcessed,
       framesDropped: this.framesDropped,
       cpuLoad,
@@ -309,48 +221,32 @@ export class RNNoiseProcessor {
     };
   }
 
-  /**
-   * Reset statistics.
-   */
   resetStats(): void {
     this.framesProcessed = 0;
     this.framesDropped = 0;
     this.totalProcessingTime = 0;
   }
 
-  /**
-   * Destroy the processor and free resources.
-   */
   destroy(): void {
-    // Clean up library state if used
-    const libState = (this as unknown as { _denoiseState?: { destroy: () => void } })._denoiseState;
-    if (libState) {
-      libState.destroy();
-      (this as unknown as { _denoiseState: undefined })._denoiseState = undefined;
-      (this as unknown as { _rnnoiseLib: undefined })._rnnoiseLib = undefined;
-    }
-
-    // Clean up WASM state
-    if (this.wasmInstance && this.denoiseState) {
+    if (this.module) {
       try {
-        const exports = this.wasmInstance.exports as {
-          rnnoise_destroy: (state: number) => void;
-        };
-        exports.rnnoise_destroy(this.denoiseState);
+        if (this.inputPtr) this.module.free(this.inputPtr);
+        if (this.outputPtr) this.module.free(this.outputPtr);
+        if (this.denoiseState) this.module.rnnoise_destroy(this.denoiseState);
       } catch {
-        // Ignore cleanup errors
+        // Best-effort cleanup; the underlying module may already be torn down.
       }
     }
 
-    this.wasmModule = null;
-    this.wasmInstance = null;
+    this.module = null;
     this.denoiseState = 0;
-    this.memory = null;
+    this.inputPtr = 0;
+    this.outputPtr = 0;
     this._isInitialized = false;
 
-    // Clear buffers
-    this.inputBuffer = new Float32Array(RNNOISE_FRAME_SIZE);
-    this.outputBuffer = new Float32Array(RNNOISE_FRAME_SIZE);
     this.bufferIndex = 0;
+    this.outputRingRead = 0;
+    this.outputRingWrite = 0;
+    this.outputRingSize = 0;
   }
 }

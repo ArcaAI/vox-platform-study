@@ -6,3 +6,5 @@ export * from './impersonate.dto';
 export * from './refresh.request';
 export * from './refresh.response';
 export * from './revoke-impersonation.response';
+export * from './stream-ticket.request';
+export * from './stream-ticket.response';

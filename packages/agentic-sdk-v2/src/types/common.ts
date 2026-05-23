@@ -52,12 +52,20 @@ export class AgenticError extends Error {
 
 /**
  * SDK Error codes
+ *
+ * `FORBIDDEN` and `RATE_LIMITED` were added in TASK-264 W0-11 so that consumers
+ * can distinguish HTTP 403 (lacking permission) and HTTP 429 (throttled) from
+ * the generic 4xx `VALIDATION_ERROR` bucket. `RATE_LIMITED` was already used
+ * for the client-side rate limiter in `AgenticClient`; adding it here closes
+ * a pre-existing type hole.
  */
 export type AgenticErrorCode =
   | 'NOT_INITIALIZED'
   | 'API_ERROR'
   | 'NETWORK_ERROR'
   | 'AUTHENTICATION_ERROR'
+  | 'FORBIDDEN'
+  | 'RATE_LIMITED'
   | 'VALIDATION_ERROR'
   | 'NOT_FOUND'
   | 'AUDIO_ERROR'

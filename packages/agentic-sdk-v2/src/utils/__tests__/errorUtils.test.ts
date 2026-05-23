@@ -13,6 +13,7 @@ import {
   isAuthError,
   isRetriableError,
   withRetry,
+  classifyHttpError,
 } from '../errorUtils';
 import type { RetryOptions } from '../errorUtils';
 import { AgenticError } from '../../types';
@@ -470,6 +471,37 @@ describe('errorUtils', () => {
         onRetry: () => {},
       };
       expect(opts.maxRetries).toBe(5);
+    });
+  });
+
+  // ===========================================================================
+  // TASK-264 W0-11 — classifyHttpError
+  // ===========================================================================
+
+  describe('classifyHttpError', () => {
+    it('should map 401 → AUTHENTICATION_ERROR', () => {
+      expect(classifyHttpError(401)).toBe('AUTHENTICATION_ERROR');
+    });
+    it('should map 403 → FORBIDDEN', () => {
+      expect(classifyHttpError(403)).toBe('FORBIDDEN');
+    });
+    it('should map 404 → NOT_FOUND', () => {
+      expect(classifyHttpError(404)).toBe('NOT_FOUND');
+    });
+    it('should map 429 → RATE_LIMITED', () => {
+      expect(classifyHttpError(429)).toBe('RATE_LIMITED');
+    });
+    it('should map other 4xx (400, 422) → VALIDATION_ERROR', () => {
+      expect(classifyHttpError(400)).toBe('VALIDATION_ERROR');
+      expect(classifyHttpError(422)).toBe('VALIDATION_ERROR');
+    });
+    it('should map 5xx (500, 503) → API_ERROR', () => {
+      expect(classifyHttpError(500)).toBe('API_ERROR');
+      expect(classifyHttpError(503)).toBe('API_ERROR');
+    });
+    it('should map non-error status (200, 0) → API_ERROR (defensive)', () => {
+      expect(classifyHttpError(200)).toBe('API_ERROR');
+      expect(classifyHttpError(0)).toBe('API_ERROR');
     });
   });
 });

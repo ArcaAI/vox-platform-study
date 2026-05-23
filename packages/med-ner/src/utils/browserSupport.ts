@@ -4,7 +4,7 @@
  * Utilities for detecting browser capabilities for Medical NER.
  */
 
-import type { MedNERBrowserSupport } from '../types/index.js';
+import type { MedNERBrowserSupport, MedNERDevice } from '../types/index.js';
 
 /**
  * Check if running in a browser environment.
@@ -142,6 +142,45 @@ export function getRecommendedDtype(): 'fp32' | 'fp16' | 'q8' | 'q4' {
 }
 
 /**
+ * Check if the WebGPU API is exposed on `navigator`.
+ *
+ * Presence of `navigator.gpu` does NOT guarantee that a usable adapter
+ * exists — use {@link getRecommendedDevice} to actually request one.
+ */
+export function isWebGPUSupported(): boolean {
+  if (!isBrowser()) return false;
+  return typeof (navigator as Navigator & { gpu?: unknown }).gpu !== 'undefined';
+}
+
+/**
+ * Probe the runtime for the best compute backend for the NER pipeline.
+ *
+ * Order of preference:
+ * 1. WebGPU, if `navigator.gpu.requestAdapter()` resolves to an adapter.
+ * 2. WASM (always available where Transformers.js is supported).
+ *
+ * Any error (no `navigator.gpu`, no adapter, exception from the adapter
+ * request) silently falls back to `'wasm'`.
+ */
+export async function getRecommendedDevice(): Promise<MedNERDevice> {
+  if (!isBrowser()) return 'wasm';
+
+  const nav = navigator as Navigator & {
+    gpu?: { requestAdapter: () => Promise<unknown> };
+  };
+  if (!nav.gpu || typeof nav.gpu.requestAdapter !== 'function') {
+    return 'wasm';
+  }
+
+  try {
+    const adapter = await nav.gpu.requestAdapter();
+    return adapter ? 'webgpu' : 'wasm';
+  } catch {
+    return 'wasm';
+  }
+}
+
+/**
  * Check if Medical NER is supported in the current environment.
  */
 export function isMedNERSupported(): boolean {
@@ -157,6 +196,7 @@ export function getMedNERBrowserSupport(): MedNERBrowserSupport {
   const indexedDB = isIndexedDBSupported();
   const fetch = isFetchSupported();
   const recommendedDtype = getRecommendedDtype();
+  const webGPU = isWebGPUSupported();
 
   // NER requires WebAssembly and Fetch
   const nerSupported = webAssembly && fetch;
@@ -175,6 +215,7 @@ export function getMedNERBrowserSupport(): MedNERBrowserSupport {
     nerSupported,
     unsupportedReason,
     recommendedDtype,
+    webGPU,
   };
 }
 

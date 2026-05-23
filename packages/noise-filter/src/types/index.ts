@@ -168,16 +168,16 @@ export interface NoiseStatsDataPayload {
 
 /**
  * RNNoise processing result.
+ *
+ * `samples` uses `Float32Array<ArrayBufferLike>` so the same shape covers
+ * both AudioWorklet inputs (`ArrayBufferLike`) and WASM-memory-backed
+ * views (`ArrayBuffer`). TASK-269 — HIGH-5.
  */
 export interface RNNoiseResult {
-  /**
-   * Processed audio samples.
-   */
-  samples: Float32Array;
+  /** Processed audio samples (same identity as the `output` argument). */
+  samples: Float32Array<ArrayBufferLike>;
 
-  /**
-   * Voice Activity Detection probability (0-1).
-   */
+  /** Voice Activity Detection probability (0-1). */
   vadProbability: number;
 }
 

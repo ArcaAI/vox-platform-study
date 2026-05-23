@@ -28,16 +28,33 @@ describe('useAuth', () => {
         mockPost.mockReset();
 
         mockStore = {
-            apiClient: { get: mockGet, post: mockPost, patch: vi.fn(), delete: vi.fn(), updateAccessToken: vi.fn(), clearAccessToken: vi.fn(), getAccessToken: vi.fn(), updateApiKey: vi.fn(), clearApiKey: vi.fn(), getApiKey: vi.fn(), getBaseUrl: vi.fn().mockReturnValue('https://api.example.com'), postFormData: vi.fn() },
+            apiClient: {
+                get: mockGet,
+                post: mockPost,
+                patch: vi.fn(),
+                delete: vi.fn(),
+                updateAccessToken: vi.fn(),
+                clearAccessToken: vi.fn(),
+                getAccessToken: vi.fn(),
+                updateApiKey: vi.fn(),
+                clearApiKey: vi.fn(),
+                getApiKey: vi.fn(),
+                getBaseUrl: vi.fn().mockReturnValue('https://api.example.com'),
+                postFormData: vi.fn(),
+                // TASK-264 W0-3: AgenticClient impersonation API
+                startImpersonation: vi.fn(),
+                stopImpersonation: vi.fn(),
+                isImpersonating: vi.fn().mockReturnValue(false),
+            },
             logger: mockLogger,
             authUser: null as unknown,
             authIsAuthenticated: false,
             authImpersonatedUser: null as unknown,
-            authOriginalToken: null as string | null,
+            // NOTE: `authOriginalToken` removed in TASK-264 W0-3 — admin JWT lives in AgenticClient.
+            authOriginalUser: null as unknown,
             setAuthUser: vi.fn((user: unknown) => { mockStore.authUser = user; }),
             setIsAuthenticated: vi.fn((val: boolean) => { mockStore.authIsAuthenticated = val; }),
             setImpersonatedUser: vi.fn(),
-            setOriginalToken: vi.fn(),
             setOriginalUser: vi.fn(),
         };
         (useAgenticStore as any).mockImplementation(() => mockStore);
@@ -331,11 +348,11 @@ describe('useAuth', () => {
         });
     });
 
-    describe('TASK-212: endImpersonation with null originalToken', () => {
-        it('should NOT call updateAccessToken when originalToken is null', async () => {
+    describe('TASK-212 + TASK-264 W0-3: endImpersonation with no stashed admin token', () => {
+        it('should NOT call updateAccessToken when stopImpersonation returns undefined', async () => {
             const mockUpdateAccessToken = vi.fn();
             mockStore.apiClient.updateAccessToken = mockUpdateAccessToken;
-            mockStore.authOriginalToken = null;
+            mockStore.apiClient.stopImpersonation = vi.fn().mockReturnValue(undefined);
             mockPost.mockResolvedValue({ success: true });
             (useAgenticStore as any).mockReturnValue(mockStore);
 
@@ -344,8 +361,9 @@ describe('useAuth', () => {
 
             expect(mockUpdateAccessToken).not.toHaveBeenCalled();
             expect(mockStore.setImpersonatedUser).toHaveBeenCalledWith(null);
-            expect(mockStore.setOriginalToken).toHaveBeenCalledWith(null);
             expect(mockStore.setOriginalUser).toHaveBeenCalledWith(null);
+            // TASK-264 W0-3 — token removed from store, must come from client
+            expect(mockStore.apiClient.stopImpersonation).toHaveBeenCalled();
         });
 
         it('should silently no-op when apiClient is null', async () => {
@@ -361,10 +379,12 @@ describe('useAuth', () => {
     // TASK-212: Impersonation uses accessToken channel
     // =========================================================================
 
-    describe('TASK-212: impersonation uses accessToken channel', () => {
-        it('should save current accessToken before impersonating', async () => {
+    describe('TASK-212 + TASK-264 W0-3: impersonation uses AgenticClient internal stash', () => {
+        it('should save current accessToken via apiClient.startImpersonation before impersonating', async () => {
             const mockGetAccessToken = vi.fn().mockReturnValue('original-admin-jwt');
+            const mockStart = vi.fn();
             mockStore.apiClient.getAccessToken = mockGetAccessToken;
+            mockStore.apiClient.startImpersonation = mockStart;
             (useAgenticStore as any).mockReturnValue(mockStore);
 
             mockPost.mockResolvedValue({
@@ -376,7 +396,7 @@ describe('useAuth', () => {
             await act(async () => { await result.current.impersonate('u-target'); });
 
             expect(mockGetAccessToken).toHaveBeenCalled();
-            expect(mockStore.setOriginalToken).toHaveBeenCalledWith('original-admin-jwt');
+            expect(mockStart).toHaveBeenCalledWith('original-admin-jwt');
         });
 
         it('should update accessToken with impersonated token', async () => {
@@ -396,21 +416,25 @@ describe('useAuth', () => {
             expect(mockUpdateAccessToken).toHaveBeenCalledWith('impersonated-jwt');
         });
 
-        it('should restore original accessToken when ending impersonation', async () => {
+        it('should restore original accessToken (from apiClient.stopImpersonation) when ending impersonation', async () => {
             const mockUpdateAccessToken = vi.fn();
+            const mockStop = vi.fn().mockReturnValue('original-admin-jwt');
             mockStore.apiClient.updateAccessToken = mockUpdateAccessToken;
-            mockStore.authOriginalToken = 'original-admin-jwt';
+            mockStore.apiClient.stopImpersonation = mockStop;
             mockPost.mockResolvedValue({ success: true });
             (useAgenticStore as any).mockReturnValue(mockStore);
 
             const { result } = renderHook(() => useAuth());
             await act(async () => { await result.current.endImpersonation(); });
 
+            expect(mockStop).toHaveBeenCalled();
             expect(mockUpdateAccessToken).toHaveBeenCalledWith('original-admin-jwt');
         });
 
-        it('should handle null originalToken gracefully when getAccessToken returns undefined', async () => {
+        it('should NOT call startImpersonation when getAccessToken returns undefined', async () => {
+            const mockStart = vi.fn();
             mockStore.apiClient.getAccessToken = vi.fn().mockReturnValue(undefined);
+            mockStore.apiClient.startImpersonation = mockStart;
             (useAgenticStore as any).mockReturnValue(mockStore);
 
             mockPost.mockResolvedValue({
@@ -421,7 +445,60 @@ describe('useAuth', () => {
             const { result } = renderHook(() => useAuth());
             await act(async () => { await result.current.impersonate('u-target'); });
 
-            expect(mockStore.setOriginalToken).toHaveBeenCalledWith(null);
+            // No token to stash → no call.
+            expect(mockStart).not.toHaveBeenCalled();
+        });
+    });
+
+    // =========================================================================
+    // TASK-264 W0-3: low-level startImpersonation / stopImpersonation helpers
+    // =========================================================================
+
+    describe('TASK-264 W0-3: low-level impersonation helpers', () => {
+        it('exposes startImpersonation that proxies to apiClient', () => {
+            const mockStart = vi.fn();
+            mockStore.apiClient.startImpersonation = mockStart;
+            (useAgenticStore as any).mockReturnValue(mockStore);
+
+            const { result } = renderHook(() => useAuth());
+            result.current.startImpersonation('admin-jwt');
+
+            expect(mockStart).toHaveBeenCalledWith('admin-jwt');
+        });
+
+        it('exposes stopImpersonation that proxies to apiClient', () => {
+            const mockStop = vi.fn();
+            mockStore.apiClient.stopImpersonation = mockStop;
+            (useAgenticStore as any).mockReturnValue(mockStore);
+
+            const { result } = renderHook(() => useAuth());
+            result.current.stopImpersonation();
+
+            expect(mockStop).toHaveBeenCalled();
+        });
+
+        it('startImpersonation throws when apiClient is null', () => {
+            mockStore.apiClient = null;
+            (useAgenticStore as any).mockReturnValue(mockStore);
+
+            const { result } = renderHook(() => useAuth());
+            expect(() => result.current.startImpersonation('jwt')).toThrow('SDK not initialized');
+        });
+
+        it('stopImpersonation is a silent no-op when apiClient is null', () => {
+            mockStore.apiClient = null;
+            (useAgenticStore as any).mockReturnValue(mockStore);
+
+            const { result } = renderHook(() => useAuth());
+            expect(() => result.current.stopImpersonation()).not.toThrow();
+        });
+
+        it('isImpersonating returns true when apiClient.isImpersonating() returns true', () => {
+            mockStore.apiClient.isImpersonating = vi.fn().mockReturnValue(true);
+            (useAgenticStore as any).mockReturnValue(mockStore);
+
+            const { result } = renderHook(() => useAuth());
+            expect(result.current.isImpersonating).toBe(true);
         });
     });
 

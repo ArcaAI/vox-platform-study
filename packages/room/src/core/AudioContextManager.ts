@@ -7,6 +7,15 @@
 
 import { getAudioContextConstructor, isBrowser } from '../utils/browserSupport.js';
 import { RoomError, RoomErrorCode, type RoomOptions } from '../types/index.js';
+import { RoomResumeTimeoutError } from './RoomErrors.js';
+
+/**
+ * Default timeout (in milliseconds) for {@link AudioContextManager.resume}
+ * before throwing {@link RoomResumeTimeoutError}. Empirically, iOS Safari
+ * resolves `resume()` within ~50ms after a user gesture; 3s gives ample
+ * headroom while still surfacing a stuck state to callers.
+ */
+const DEFAULT_RESUME_TIMEOUT_MS = 3000;
 
 /**
  * Singleton manager for AudioContext.
@@ -34,6 +43,14 @@ export class AudioContextManager {
   private referenceCount = 0;
   private resumePromise: Promise<void> | null = null;
   private clickHandler: (() => void) | null = null;
+
+  /**
+   * Tracks whether a deferred close is in flight. Set by {@link release}
+   * when the reference count reaches zero, and cleared by either a fresh
+   * {@link acquire} (cancels the pending close — the StrictMode case) or by
+   * the deferred microtask itself when it executes the close.
+   */
+  private pendingClose = false;
 
   private readonly options: RoomOptions;
   private creationOptions: { sampleRate?: number; latencyHint?: AudioContextLatencyCategory } | null = null;
@@ -90,9 +107,18 @@ export class AudioContextManager {
    * Creates a new context if one doesn't exist, or resumes a suspended one.
    * Increments the reference count.
    *
+   * If a deferred close from a prior {@link release} is still pending in the
+   * microtask queue, it is cancelled here — this is what makes the manager
+   * tolerant of React 19 StrictMode dev double-mount, where the cleanup phase
+   * (release) and re-mount phase (acquire) run within the same synchronous
+   * task.
+   *
    * @returns Promise that resolves when the AudioContext is ready
    */
   async acquire(): Promise<AudioContext> {
+    // Cancel any pending deferred close — keeps the existing context alive
+    // across StrictMode mount → cleanup → re-mount cycles.
+    this.pendingClose = false;
     this.referenceCount++;
 
     // If custom AudioContext is provided in options, use it
@@ -115,19 +141,38 @@ export class AudioContextManager {
 
   /**
    * Release the AudioContext.
-   * Decrements the reference count and closes the context when count reaches 0.
+   *
+   * Decrements the reference count. When the count reaches zero, the close
+   * is **deferred** to the next microtask via {@link queueMicrotask}. This
+   * grace window allows React 19 StrictMode to call cleanup (release)
+   * followed immediately by re-mount (acquire) without losing the underlying
+   * `AudioContext`. If a synchronous {@link acquire} arrives before the
+   * microtask runs, it cancels the pending close (sets `pendingClose=false`
+   * and bumps the reference count back up), and the close is skipped.
+   *
+   * Custom (caller-supplied) contexts are never closed — the caller owns
+   * them.
    */
   release(): void {
     if (this.referenceCount > 0) {
       this.referenceCount--;
     }
 
-    // Don't close if there are still references or if it's a custom context
+    // Don't close if there are still references or if it's a custom context.
     if (this.referenceCount > 0 || this.options.audioContext) {
       return;
     }
 
-    this.closeContext();
+    // Schedule a deferred close. A subsequent acquire() within the same
+    // synchronous task will set pendingClose = false (and ref count back to >0)
+    // so this microtask becomes a no-op — the StrictMode safety guard.
+    this.pendingClose = true;
+    queueMicrotask(() => {
+      if (!this.pendingClose) return;
+      if (this.referenceCount > 0) return;
+      this.pendingClose = false;
+      this.closeContext();
+    });
   }
 
   /**
@@ -178,8 +223,12 @@ export class AudioContextManager {
 
   /**
    * Dispose of the AudioContextManager and close the AudioContext.
+   *
+   * Cancels any deferred close from {@link release} and forces an immediate
+   * close. This is the hard-reset path used by tests and `resetInstance`.
    */
   dispose(): void {
+    this.pendingClose = false;
     this.removeClickHandler();
     this.closeContext();
     this.referenceCount = 0;
@@ -245,16 +294,49 @@ export class AudioContextManager {
 
   /**
    * Resume the AudioContext with a timeout.
+   *
+   * Races `audioContext.resume()` against a {@link setTimeout}-driven
+   * rejection. If the timeout wins, throws {@link RoomResumeTimeoutError}
+   * and attaches a fallback click/touchstart/keydown handler so the next
+   * user gesture can still recover the context (iOS Safari pattern).
+   *
+   * Distinct from the previous implementation, the timeout branch now
+   * surfaces an error to the caller instead of silently treating it as a
+   * successful resume.
    */
-  private async resumeWithTimeout(timeoutMs = 500): Promise<void> {
+  private async resumeWithTimeout(timeoutMs = DEFAULT_RESUME_TIMEOUT_MS): Promise<void> {
     if (!this.audioContext) return;
 
+    const ctx = this.audioContext;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        reject(new RoomResumeTimeoutError(`AudioContext.resume() timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
     try {
-      await Promise.race([this.audioContext.resume(), this.sleep(timeoutMs)]);
+      await Promise.race([ctx.resume(), timeoutPromise]);
     } catch (error) {
-      console.warn('Could not resume AudioContext:', error);
-      // Set up click handler as fallback
-      this.setupClickHandler(this.audioContext);
+      // Whether the failure was the timeout or a resume() rejection, if the
+      // context is still not running, attach the click-handler fallback so
+      // the next user gesture can recover.
+      if (ctx.state !== 'running') {
+        this.setupClickHandler(ctx);
+      }
+      throw error;
+    } finally {
+      if (timeoutHandle !== null) {
+        clearTimeout(timeoutHandle);
+      }
+    }
+
+    // Defensive: if resume() resolved without transitioning to 'running'
+    // (some browsers report state changes asynchronously), still attach the
+    // click handler so a subsequent gesture can finish the job.
+    if (ctx.state !== 'running') {
+      this.setupClickHandler(ctx);
     }
   }
 
@@ -307,13 +389,6 @@ export class AudioContextManager {
       }
     }
     this.audioContext = null;
-  }
-
-  /**
-   * Sleep for a specified duration.
-   */
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 

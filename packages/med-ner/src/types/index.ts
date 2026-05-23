@@ -173,12 +173,40 @@ export interface RawTokenResult {
 export type MedNERModel = 'default' | 'biomedical' | 'clinical' | string; // Custom model ID from HuggingFace
 
 /**
- * Default model mappings to HuggingFace model IDs.
+ * A pinned reference to a HuggingFace model: the model id plus the commit
+ * SHA we have validated. Pinning the revision prevents a silent re-train or
+ * a malicious push on the upstream account from changing inference results
+ * underneath production users (see TASK-272 / R-12).
+ *
+ * To bump a revision, see
+ * `docs/implementation/TASK-272-MedNER-Worker/README.md#how-to-bump-a-pinned-model-revision`.
  */
-export const MODEL_MAP: Record<string, string> = {
-  default: 'Xenova/bert-base-NER',
-  biomedical: 'Kushtrim/bert-base-cased-biomedical-ner',
-  clinical: 'samrawal/bert-base-uncased_clinical-ner',
+export interface ModelReference {
+  /** HuggingFace Hub model id (e.g. `Xenova/bert-base-NER`). */
+  id: string;
+  /** Pinned git commit SHA on the Hub (the value forwarded to `pipeline({ revision })`). */
+  revision: string;
+}
+
+/**
+ * Pre-configured medical NER models with pinned revisions.
+ *
+ * Last refreshed against `https://huggingface.co/api/models/<id>` on
+ * 2026-05-23. Bump procedure is documented in the TASK-272 README.
+ */
+export const MODEL_MAP: Record<string, ModelReference> = {
+  default: {
+    id: 'Xenova/bert-base-NER',
+    revision: '24c7e5aba9ae350923357a6f0b92571be34037ec',
+  },
+  biomedical: {
+    id: 'Kushtrim/bert-base-cased-biomedical-ner',
+    revision: '52d842d49d18b95bc7ce6d78e95367ce94004c49',
+  },
+  clinical: {
+    id: 'samrawal/bert-base-uncased_clinical-ner',
+    revision: '5db48a44e7e04d9b0e95b8209c0e4b0f4c29cc6d',
+  },
 };
 
 /**
@@ -220,15 +248,33 @@ export interface MedNEROptions {
   /**
    * Maximum text length to process at once.
    * Longer texts will be chunked.
+   *
+   * @deprecated Prefer {@link maxTokens} — character-based limits are not
+   *   safe with BERT WordPiece tokenisation. `maxLength` only triggers the
+   *   chunked code path; the actual chunking is token-aware.
    * @default 512
    */
   maxLength?: number;
 
   /**
-   * Chunk overlap when processing long texts (in characters).
+   * @deprecated Use {@link stride} instead.
    * @default 50
    */
   chunkOverlap?: number;
+
+  /**
+   * Maximum tokens per chunk fed to the model. Leaves headroom for the
+   * `[CLS]`/`[SEP]` special tokens on a 512-cap BERT model.
+   * @default 384
+   */
+  maxTokens?: number;
+
+  /**
+   * Token-count overlap between consecutive chunks for entity continuity
+   * across boundaries.
+   * @default 64
+   */
+  stride?: number;
 
   /**
    * Enable statistics emission.
@@ -252,18 +298,39 @@ export interface MedNEROptions {
    * @default 'q8' for browser, 'fp32' for Node.js
    */
   dtype?: 'fp32' | 'fp16' | 'q8' | 'q4';
+
+  /**
+   * Optional factory that returns a Web Worker hosting `medner.worker.js`.
+   *
+   * When provided, `MedNERProcessor` delegates **all** inference to the
+   * worker (TASK-272 / C-1) and the main thread never imports
+   * `@huggingface/transformers`. When omitted, the processor falls back to
+   * the legacy main-thread code path — appropriate for SSR, jsdom tests,
+   * and environments without `Worker` support.
+   *
+   * Recommended factory in consumer apps:
+   * ```ts
+   * workerFactory: () => new Worker(
+   *   new URL('@arcaai/med-ner/dist/workers/medner.worker.js', import.meta.url),
+   *   { type: 'module' },
+   * );
+   * ```
+   */
+  workerFactory?: () => Worker;
 }
 
 /**
  * Default options for MedNERProcessor.
  */
-export const DEFAULT_MED_NER_OPTIONS: Required<Omit<MedNEROptions, 'entityTypes' | 'onProgress' | 'dtype'>> = {
+export const DEFAULT_MED_NER_OPTIONS: Required<Omit<MedNEROptions, 'entityTypes' | 'onProgress' | 'dtype' | 'workerFactory'>> = {
   model: 'default',
   threshold: 0.5,
   mergeAdjacent: true,
   mergeOverlapping: true,
   maxLength: 512,
   chunkOverlap: 50,
+  maxTokens: 384,
+  stride: 64,
   enableStats: false,
   statsInterval: 1000,
 };
@@ -370,6 +437,11 @@ export type NERDataEventType = 'ner-extraction' | 'ner-stats' | 'ner-progress';
 // ============================================================================
 
 /**
+ * Compute backend the ONNX pipeline runs on.
+ */
+export type MedNERDevice = 'webgpu' | 'wasm';
+
+/**
  * Browser support information for NER features.
  */
 export interface MedNERBrowserSupport {
@@ -385,6 +457,8 @@ export interface MedNERBrowserSupport {
   unsupportedReason?: string;
   /** Recommended quantization type based on device */
   recommendedDtype: 'fp32' | 'fp16' | 'q8' | 'q4';
+  /** Whether the WebGPU API is available (does NOT confirm an adapter resolved). */
+  webGPU: boolean;
 }
 
 // ============================================================================

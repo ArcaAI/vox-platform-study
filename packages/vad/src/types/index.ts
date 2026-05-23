@@ -120,6 +120,20 @@ export interface VADOptions {
    * @default false
    */
   submitUserSpeechOnPause?: boolean;
+
+  /**
+   * After this many milliseconds of contiguous non-speech frames the
+   * processor will internally rebuild its underlying MicVAD instance to
+   * reset the Silero VAD v5 LSTM hidden state (`h`, `c`).
+   *
+   * Set to `0` to disable auto-reset (LSTM state then persists for the
+   * whole session). For multi-speaker / long-running medical sessions the
+   * default is appropriate; downstream consumers can still force a reset
+   * via `VADProcessor.reset()` at any time. (TASK-271 H-1.)
+   *
+   * @default 5000
+   */
+  silenceResetMs?: number;
 }
 
 /**
@@ -137,6 +151,7 @@ export const DEFAULT_VAD_OPTIONS: Required<Omit<VADOptions, 'baseAssetPath' | 'o
   enableStats: false,
   statsInterval: 1000,
   submitUserSpeechOnPause: false,
+  silenceResetMs: 5000,
 };
 
 // ============================================================================
@@ -284,6 +299,16 @@ export interface VADSpeechEndPayload {
    * Duration of the speech segment in seconds.
    */
   durationSec: number;
+
+  /**
+   * Duration of the speech segment in milliseconds.
+   * Convenience alias equal to `endTime - startTime`.
+   *
+   * Computed at the source in `VADProcessor` (TASK-271 H-4); consumers
+   * should NOT compute their own duration from `audio.length` because the
+   * pre/post-speech padding skews that figure.
+   */
+  duration: number;
 }
 
 /**
@@ -315,41 +340,6 @@ export interface VADStatsPayload {
  * All possible VAD data event types.
  */
 export type VADDataEventType = 'vad-frame' | 'vad-speech-start' | 'vad-speech-real-start' | 'vad-speech-end' | 'vad-misfire' | 'vad-stats';
-
-// ============================================================================
-// Worklet Message Types
-// ============================================================================
-
-/**
- * Messages sent to the VAD AudioWorklet.
- */
-export type VADWorkletInboundMessage =
-  | { type: 'init'; config: VADWorkletConfig }
-  | { type: 'setEnabled'; enabled: boolean }
-  | { type: 'updateThreshold'; positiveSpeechThreshold: number; negativeSpeechThreshold: number }
-  | { type: 'getStats' }
-  | { type: 'destroy' };
-
-/**
- * Configuration passed to the VAD worklet during initialization.
- */
-export interface VADWorkletConfig {
-  model: VADModel;
-  positiveSpeechThreshold: number;
-  negativeSpeechThreshold: number;
-  frameSamples: number;
-  sampleRate: number;
-}
-
-/**
- * Messages sent from the VAD AudioWorklet.
- */
-export type VADWorkletOutboundMessage =
-  | { type: 'ready' }
-  | { type: 'frame'; isSpeech: boolean; probability: number; timestamp: number }
-  | { type: 'stats'; stats: VADStats }
-  | { type: 'error'; message: string }
-  | { type: 'destroyed' };
 
 // ============================================================================
 // Browser Support Types

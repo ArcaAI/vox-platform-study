@@ -109,11 +109,13 @@ describe('Browser Support Utilities', () => {
       expect(support).toHaveProperty('fetch');
       expect(support).toHaveProperty('nerSupported');
       expect(support).toHaveProperty('recommendedDtype');
+      expect(support).toHaveProperty('webGPU');
 
       expect(typeof support.webAssembly).toBe('boolean');
       expect(typeof support.indexedDB).toBe('boolean');
       expect(typeof support.fetch).toBe('boolean');
       expect(typeof support.nerSupported).toBe('boolean');
+      expect(typeof support.webGPU).toBe('boolean');
       expect(['fp32', 'fp16', 'q8', 'q4']).toContain(support.recommendedDtype);
     });
 

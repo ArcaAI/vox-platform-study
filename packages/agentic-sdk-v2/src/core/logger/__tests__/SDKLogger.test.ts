@@ -263,7 +263,7 @@ describe('SDKLogger', () => {
             expect(entry.trace?.spanId).toBe('span-456');
         });
 
-        it('should include user context', () => {
+        it('should include user context — non-PHI passed through, PHI redacted per TASK-266 W0-2', () => {
             logger.info('Test', {
                 userId: 'user-123',
                 tenantId: 'tenant-456',
@@ -274,8 +274,11 @@ describe('SDKLogger', () => {
             const entry = mockTransport.logs[0];
             expect(entry.user?.userId).toBe('user-123');
             expect(entry.user?.tenantId).toBe('tenant-456');
-            expect(entry.user?.doctorId).toBe('doctor-789');
-            expect(entry.user?.patientId).toBe('patient-012');
+            // doctorId and patientId are now redacted by redactPHI before dispatch
+            // (TASK-266 W0-2). The legacy assertion that they passed through verbatim
+            // is intentionally inverted here — this is a HIPAA-driven contract change.
+            expect(entry.user?.doctorId).toBe('[REDACTED]');
+            expect(entry.user?.patientId).toBe('[REDACTED]');
         });
 
         it('should include operation context', () => {
@@ -691,6 +694,96 @@ describe('SDKLogger', () => {
             expect(attrs?.patientId).toBe('[REDACTED]');
             expect(attrs?.customSecret).toBe('[REDACTED]');
             expect(attrs?.normalField).toBe('visible');
+        });
+    });
+
+    // =========================================================================
+    // TASK-266 W0-2: defence-in-depth PHI redaction across the WHOLE log entry
+    //
+    // The legacy `redactSensitiveFields` only scrubbed `entry.attributes`. The
+    // W0-2 contract requires redactPHI to walk the entire entry before any
+    // transport sees it, so PHI nested in `user`, `sdk`, `error`, `meta`, etc.
+    // is also scrubbed and `data:`/`blob:`/`file:` URLs become `[REDACTED-URL]`.
+    // =========================================================================
+    describe('TASK-266 W0-2: PHI redaction reaches every transport surface', () => {
+        let transport: MockTransport;
+        let logger: SDKLogger;
+
+        beforeEach(() => {
+            transport = new MockTransport();
+            logger = new SDKLogger({
+                level: 'trace',
+                console: { enabled: false },
+                customTransports: [transport],
+            });
+        });
+
+        it('redacts PHI in user context (patientId, doctorId) before dispatch', () => {
+            logger.info('with user', {
+                userId: 'user-keep',
+                tenantId: 'tenant-keep',
+                doctorId: 'doctor-PHI',
+                patientId: 'patient-PHI',
+            });
+
+            const entry = transport.logs[0];
+            expect(entry.user?.userId).toBe('user-keep');
+            expect(entry.user?.tenantId).toBe('tenant-keep');
+            expect(entry.user?.doctorId).toBe('[REDACTED]');
+            expect(entry.user?.patientId).toBe('[REDACTED]');
+        });
+
+        it('redacts PHI in sdk context (consultationId)', () => {
+            logger.info('with sdk', {
+                sdk: { consultationId: 'consult-PHI', modelId: 'whisper-large' },
+            });
+
+            const entry = transport.logs[0];
+            expect(entry.sdk?.consultationId).toBe('[REDACTED]');
+            expect(entry.sdk?.modelId).toBe('whisper-large');
+        });
+
+        it('redacts PHI nested in attributes (transcript, sttResult, voiceEmbedding)', () => {
+            logger.info('with phi attrs', {
+                attributes: {
+                    transcript: 'Patient reports chest pain',
+                    sttResult: { text: 'PHI text' },
+                    voiceEmbedding: [0.1, 0.2, 0.3],
+                    safeField: 'visible',
+                },
+            });
+
+            const attrs = transport.logs[0].attributes;
+            expect(attrs?.transcript).toBe('[REDACTED]');
+            expect(attrs?.sttResult).toBe('[REDACTED]');
+            expect(attrs?.voiceEmbedding).toBe('[REDACTED]');
+            expect(attrs?.safeField).toBe('visible');
+        });
+
+        it('rewrites data:/blob:/file: URLs to [REDACTED-URL] anywhere in the entry', () => {
+            logger.info('with urls', {
+                attributes: {
+                    audioSrc: 'blob:https://x/y',
+                    image: 'data:image/png;base64,abcdef==',
+                    diskPath: 'file:///etc/passwd',
+                    httpsOk: 'https://example.com/keep',
+                },
+            });
+
+            const attrs = transport.logs[0].attributes;
+            expect(attrs?.audioSrc).toBe('[REDACTED-URL]');
+            expect(attrs?.image).toBe('[REDACTED-URL]');
+            expect(attrs?.diskPath).toBe('[REDACTED-URL]');
+            expect(attrs?.httpsOk).toBe('https://example.com/keep');
+        });
+
+        it('does not mutate the caller-provided meta object', () => {
+            const meta: LogMeta = {
+                attributes: { patientId: 'p-1', keep: 'safe' },
+            };
+            const snapshot = JSON.parse(JSON.stringify(meta));
+            logger.info('immutability check', meta);
+            expect(meta).toEqual(snapshot);
         });
     });
 });

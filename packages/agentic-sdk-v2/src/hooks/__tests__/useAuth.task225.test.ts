@@ -29,17 +29,20 @@ describe('TASK-225 A1: useAuth canImpersonate', () => {
                 getAccessToken: vi.fn(), updateApiKey: vi.fn(), clearApiKey: vi.fn(),
                 getApiKey: vi.fn(), getBaseUrl: vi.fn().mockReturnValue('https://api.test'),
                 postFormData: vi.fn(),
+                // TASK-264 W0-3
+                startImpersonation: vi.fn(),
+                stopImpersonation: vi.fn(),
+                isImpersonating: vi.fn().mockReturnValue(false),
             },
             logger: createMockLogger(),
             authUser,
             authIsAuthenticated: authUser !== null,
             authImpersonatedUser: null,
-            authOriginalToken: null,
+            // NOTE: TASK-264 W0-3 — `authOriginalToken` removed from store.
             authOriginalUser: null,
             setAuthUser: vi.fn(),
             setIsAuthenticated: vi.fn(),
             setImpersonatedUser: vi.fn(),
-            setOriginalToken: vi.fn(),
             setOriginalUser: vi.fn(),
         };
     }

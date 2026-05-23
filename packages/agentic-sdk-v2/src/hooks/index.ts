@@ -34,6 +34,8 @@ export type { User, CreateUserInput, UpdateUserInput } from './useUsers';
 // Role management hook (TASK-032 WS-G)
 export { useRoles, type UseRolesReturn } from './useRoles';
 export type { Role, UserRoleAssignment } from './useRoles';
+// TASK-265 W0-10: typed built-in role identifiers tuple
+export { USER_ROLES, type UserRole } from './useRoles';
 
 // API key management hook (TASK-032 WS-G)
 export { useApiKeys, type UseApiKeysReturn } from './useApiKeys';
@@ -65,9 +67,9 @@ export { useGlobalSettings, type UseGlobalSettingsReturn } from './useGlobalSett
 // User settings hook (TASK-034 WS-H)
 export { useUserSettings, type UseUserSettingsReturn } from './useUserSettings';
 
-// Voice embedding hook (TASK-033)
+// Voice embedding hook (TASK-265 W0-7 — voice-profile rewrite)
 export { useVoiceEmbedding, type UseVoiceEmbeddingReturn } from './useVoiceEmbedding';
-export type { VoiceEmbeddingResponse, VoiceEmbeddingStatus } from './useVoiceEmbedding';
+export type { VoiceProfile, EnrollFiles } from './useVoiceEmbedding';
 
 // Tenant management hook (TASK-218)
 export { useTenants, type UseTenantsReturn } from './useTenants';

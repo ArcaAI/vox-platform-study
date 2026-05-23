@@ -197,9 +197,7 @@ export class TranscriptionJobController {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`Batch transcription setup failed for job ${job.id}: ${errorMessage}`);
       await this.jobService.failJob(job.id, errorMessage, 'SETUP_ERROR').catch(() => {});
-      throw error instanceof HttpException
-        ? error
-        : new InternalServerErrorException(`Batch transcription setup failed: ${errorMessage}`);
+      throw error instanceof HttpException ? error : new InternalServerErrorException(`Batch transcription setup failed: ${errorMessage}`);
     }
 
     // 6. Return job details + SSE URL immediately

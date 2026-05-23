@@ -29,7 +29,7 @@ export {
 } from './browserSupport.js';
 
 // Audio resampling
-export { VAD_SAMPLE_RATE, linearResample, Resampler, downsampleTo16kHz, upsampleFrom16kHz } from './resampler.js';
+export { VAD_SAMPLE_RATE, linearResample, Resampler, downsampleTo16kHz, upsampleFrom16kHz, resampleToVADRate } from './resampler.js';
 
 // Frame processing
 export {

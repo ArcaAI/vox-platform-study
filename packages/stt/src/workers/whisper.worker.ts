@@ -35,6 +35,12 @@ interface TranscribePayload {
   options?: {
     language?: string;
     returnTimestamps?: boolean | 'word';
+    /**
+     * Initial prompt to bias decoder toward domain vocabulary. Passed to
+     * Transformers.js as `initial_prompt` (Whisper's standard prompt-priming
+     * mechanism). When omitted, no prompt is forwarded.
+     */
+    prompt?: string;
   };
 }
 
@@ -282,6 +288,12 @@ async function transcribe(id: string, payload: TranscribePayload): Promise<void>
     if (audio.length > currentConfig.chunkLengthS * 16000) {
       transcribeOptions.chunk_length_s = currentConfig.chunkLengthS;
       transcribeOptions.stride_length_s = currentConfig.overlapLengthS;
+    }
+
+    // Forward optional initial prompt to suppress hallucinations on
+    // domain-specific vocabulary.
+    if (options?.prompt !== undefined && options.prompt !== '') {
+      transcribeOptions.initial_prompt = options.prompt;
     }
 
     type PipelineResult = {

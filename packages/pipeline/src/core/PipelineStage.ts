@@ -105,59 +105,110 @@ export abstract class PipelineStage<TInput, TOutput> implements IPipelineStage<T
 
   /**
    * Execute the stage with timeout and error handling.
+   *
+   * Timeout and retry compose:
+   * - When `timeout` is set, each attempt receives a context whose `abortSignal`
+   *   is `AbortSignal.any([userSignal, AbortSignal.timeout(ms)])`, so the user's
+   *   `onExecute` can observe a single signal that fires on either user cancel
+   *   or timeout.
+   * - When `retry` is set, each attempt is wrapped with the timeout (if any),
+   *   and the retry delay itself respects the user's abort signal so cancel
+   *   short-circuits a pending retry.
    */
   async execute(input: TInput, context: PipelineContext): Promise<TOutput> {
-    // Check if stage can execute
     if (this.canExecute && !this.canExecute(input, context)) {
       throw new Error(`Stage '${this.name}' cannot execute with given input`);
     }
 
-    // Apply timeout if configured
-    if (this.config.timeout) {
-      return this.executeWithTimeout(input, context, this.config.timeout);
-    }
-
-    // Apply retry if configured
     if (this.config.retry) {
       return this.executeWithRetry(input, context);
+    }
+
+    if (this.config.timeout != null) {
+      return this.executeOnceWithTimeout(input, context, this.config.timeout);
     }
 
     return this.onExecute(input, context);
   }
 
   /**
-   * Execute with timeout.
+   * Run `onExecute` exactly once, applying a per-attempt timeout via
+   * `AbortSignal.timeout(ms)`. The user's `context.abortSignal` is combined
+   * with the timeout signal via `AbortSignal.any([...])` so user cancel and
+   * timeout share a single child signal that is forwarded as `ctx.abortSignal`.
+   *
+   * The returned promise rejects:
+   * - with a timeout error (`Stage '<name>' timed out after <ms>ms`) when the
+   *   timeout signal fires before `onExecute` settles, or
+   * - with the user's abort reason when the user signal fires first, or
+   * - with the original `onExecute` error when it rejects on its own.
    */
-  private async executeWithTimeout(input: TInput, context: PipelineContext, timeoutMs: number): Promise<TOutput> {
-    return new Promise<TOutput>((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        reject(new Error(`Stage '${this.name}' timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
+  private async executeOnceWithTimeout(input: TInput, context: PipelineContext, timeoutMs: number): Promise<TOutput> {
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const userSignal = context.abortSignal;
+    const combinedSignal = userSignal ? AbortSignal.any([userSignal, timeoutSignal]) : timeoutSignal;
 
-      this.onExecute(input, context)
-        .then((result) => {
-          clearTimeout(timeoutId);
-          resolve(result);
-        })
-        .catch((error) => {
-          clearTimeout(timeoutId);
-          reject(error);
-        });
+    const childContext: PipelineContext = { ...context, abortSignal: combinedSignal };
+
+    return new Promise<TOutput>((resolve, reject) => {
+      let settled = false;
+      const settle = (fn: () => void): void => {
+        if (settled) return;
+        settled = true;
+        combinedSignal.removeEventListener('abort', onAbort);
+        fn();
+      };
+
+      const onAbort = (): void => {
+        if (timeoutSignal.aborted) {
+          settle(() => reject(new Error(`Stage '${this.name}' timed out after ${timeoutMs}ms`)));
+          return;
+        }
+        const reason = combinedSignal.reason;
+        const err = reason instanceof Error ? reason : new Error(`Stage '${this.name}' aborted`);
+        settle(() => reject(err));
+      };
+
+      if (combinedSignal.aborted) {
+        onAbort();
+        return;
+      }
+      combinedSignal.addEventListener('abort', onAbort, { once: true });
+
+      this.onExecute(input, childContext).then(
+        (result) => settle(() => resolve(result)),
+        (error) => settle(() => reject(error)),
+      );
     });
   }
 
   /**
-   * Execute with retry logic.
+   * Execute with retry logic. Each attempt honours the per-attempt timeout
+   * (when configured) via `executeOnceWithTimeout`, and the retry delay is
+   * abort-aware so a cancellation during the delay short-circuits the loop.
    */
   private async executeWithRetry(input: TInput, context: PipelineContext): Promise<TOutput> {
     const { maxRetries, retryDelayMs, exponentialBackoff } = this.config.retry!;
+    const timeoutMs = this.config.timeout;
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (context.abortSignal?.aborted) {
+        const reason = context.abortSignal.reason;
+        throw reason instanceof Error ? reason : new Error(`Stage '${this.name}' cancelled before attempt ${attempt + 1}`);
+      }
+
       try {
+        if (timeoutMs != null) {
+          return await this.executeOnceWithTimeout(input, context, timeoutMs);
+        }
         return await this.onExecute(input, context);
       } catch (error) {
         lastError = error as Error;
+
+        if (context.abortSignal?.aborted) {
+          throw lastError;
+        }
 
         if (attempt < maxRetries) {
           const delay = exponentialBackoff ? retryDelayMs * Math.pow(2, attempt) : retryDelayMs;
@@ -166,7 +217,7 @@ export abstract class PipelineStage<TInput, TOutput> implements IPipelineStage<T
             error: lastError.message,
           });
 
-          await this.sleep(delay);
+          await this.sleepWithAbort(delay, context.abortSignal);
         }
       }
     }
@@ -175,10 +226,27 @@ export abstract class PipelineStage<TInput, TOutput> implements IPipelineStage<T
   }
 
   /**
-   * Sleep helper.
+   * Sleep helper that resolves after `ms` or rejects if the optional
+   * `signal` aborts during the wait.
    */
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  private sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) {
+        const reason = signal.reason;
+        reject(reason instanceof Error ? reason : new Error(`Stage '${this.name}' cancelled during retry delay`));
+        return;
+      }
+      const id = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      const onAbort = (): void => {
+        clearTimeout(id);
+        const reason = signal!.reason;
+        reject(reason instanceof Error ? reason : new Error(`Stage '${this.name}' cancelled during retry delay`));
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
   }
 
   /**

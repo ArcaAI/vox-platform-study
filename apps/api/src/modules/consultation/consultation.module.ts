@@ -9,6 +9,7 @@ import {
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { ConsultationController } from './consultation.controller';
+import { ConsultationJobController } from './consultation-job.controller';
 
 @Module({
   imports: [
@@ -20,6 +21,6 @@ import { ConsultationController } from './consultation.controller';
     ChainSummaryServiceModule,
     CoreDatabaseModule,
   ],
-  controllers: [ConsultationController],
+  controllers: [ConsultationController, ConsultationJobController],
 })
 export class ConsultationModule {}

@@ -402,3 +402,160 @@ describe('TrackEvent enum', () => {
     expect(TrackEvent.AudioLevelUpdate).toBe('audioLevelUpdate');
   });
 });
+
+// ============================================================================
+// W1-4 — track 'ended' handling cleans up resources
+// ============================================================================
+
+describe('AudioTrack track-ended handling (W1-4)', () => {
+  let mockAudioContext: AudioContext;
+  let mockMediaTrack: MediaStreamTrack;
+  let mockSourceNode: { connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> };
+  let track: AudioTrack;
+
+  beforeEach(async () => {
+    mockSourceNode = {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    };
+
+    mockAudioContext = {
+      state: 'running',
+      sampleRate: 48000,
+      currentTime: 0,
+      destination: {} as AudioDestinationNode,
+      createAnalyser: vi.fn().mockReturnValue({
+        fftSize: 2048,
+        frequencyBinCount: 1024,
+        getFloatTimeDomainData: vi.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+      createGain: vi.fn(),
+      createMediaStreamSource: vi.fn().mockReturnValue(mockSourceNode),
+      createMediaStreamDestination: vi.fn(),
+      resume: vi.fn().mockResolvedValue(undefined),
+      suspend: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as unknown as AudioContext;
+
+    mockMediaTrack = createMockMediaStreamTrack();
+
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getUserMedia: vi.fn().mockResolvedValue(new MockMediaStreamClass([mockMediaTrack])),
+        enumerateDevices: vi.fn().mockResolvedValue([]),
+      },
+    });
+    vi.stubGlobal('MediaStream', MockMediaStreamClass);
+
+    track = new AudioTrack({ audioContext: mockAudioContext, audioLevelInterval: 10 });
+    await track.initialize();
+  });
+
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+  });
+
+  it('should transition state to ENDED when MediaStreamTrack.onended fires', () => {
+    expect(track.getState()).toBe(TrackState.ACTIVE);
+    expect(typeof mockMediaTrack.onended).toBe('function');
+
+    (mockMediaTrack.onended as () => void)();
+
+    expect(track.getState()).toBe(TrackState.ENDED);
+  });
+
+  it('should emit TrackEvent.Ended exactly once when MediaStreamTrack.onended fires', () => {
+    const endedHandler = vi.fn();
+    track.on(TrackEvent.Ended, endedHandler);
+
+    (mockMediaTrack.onended as () => void)();
+
+    expect(endedHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it('should disconnect the source node and clear the level monitor on track-ended', async () => {
+    expect(mockSourceNode.connect).toHaveBeenCalled();
+
+    (mockMediaTrack.onended as () => void)();
+    // Wait one tick so the async cleanup settles.
+    await new Promise<void>((r) => setTimeout(r, 0));
+
+    expect(mockSourceNode.disconnect).toHaveBeenCalled();
+  });
+
+  it('should make subsequent stop() a no-op (no double-Ended emit)', async () => {
+    const endedHandler = vi.fn();
+    track.on(TrackEvent.Ended, endedHandler);
+
+    (mockMediaTrack.onended as () => void)();
+    await new Promise<void>((r) => setTimeout(r, 0));
+    await track.stop();
+
+    expect(endedHandler).toHaveBeenCalledTimes(1);
+    expect(track.getState()).toBe(TrackState.ENDED);
+  });
+});
+
+// ============================================================================
+// W1-6 — Float32Array preallocation in updateAudioLevel
+// ============================================================================
+
+describe('AudioTrack level-monitor allocation budget (W1-6)', () => {
+  it('should reuse a single Float32Array buffer across many ticks', async () => {
+    vi.useFakeTimers();
+
+    const passedBuffers = new Set<Float32Array>();
+    const mockAnalyser = {
+      fftSize: 2048,
+      frequencyBinCount: 1024,
+      getFloatTimeDomainData: vi.fn((arr: Float32Array) => {
+        passedBuffers.add(arr);
+      }),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    };
+
+    const localCtx = {
+      state: 'running',
+      sampleRate: 48000,
+      currentTime: 0,
+      destination: {} as AudioDestinationNode,
+      createAnalyser: vi.fn().mockReturnValue(mockAnalyser),
+      createGain: vi.fn().mockReturnValue({ gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() }),
+      createMediaStreamSource: vi.fn().mockReturnValue({ connect: vi.fn(), disconnect: vi.fn() }),
+      createMediaStreamDestination: vi.fn(),
+      resume: vi.fn().mockResolvedValue(undefined),
+      suspend: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as unknown as AudioContext;
+
+    const mockMediaTrack = createMockMediaStreamTrack();
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getUserMedia: vi.fn().mockResolvedValue(new MockMediaStreamClass([mockMediaTrack])),
+        enumerateDevices: vi.fn().mockResolvedValue([]),
+      },
+    });
+    vi.stubGlobal('MediaStream', MockMediaStreamClass);
+
+    const localTrack = new AudioTrack({ audioContext: localCtx, audioLevelInterval: 1 });
+    await localTrack.initialize();
+
+    // Drain queued microtasks before fake-timer advancement.
+    await Promise.resolve();
+
+    // 1000 ticks at 1ms interval.
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(mockAnalyser.getFloatTimeDomainData.mock.calls.length).toBeGreaterThanOrEqual(500);
+    // Critical assertion: only ONE buffer instance was passed to getFloatTimeDomainData
+    // across all those ticks.
+    expect(passedBuffers.size).toBe(1);
+
+    vi.useRealTimers();
+    await localTrack.stop();
+    vi.unstubAllGlobals();
+  });
+});

@@ -245,6 +245,44 @@ describe('Entity Utilities', () => {
       expect(result).toContain('data-entity-type="DISEASE"');
       expect(result).toContain('data-score="0.90"');
     });
+
+    it('should HTML-escape malicious literal text outside entity spans (M-3)', () => {
+      const text = 'Note: <script>alert("xss")</script> diabetes';
+      const entities = [createEntity('diabetes', MedicalEntityType.DISEASE, 36, 44, 0.9)];
+
+      const result = highlightEntities(text, entities);
+
+      // The script tag literal must not survive as a real tag.
+      expect(result).not.toContain('<script>');
+      expect(result).not.toContain('</script>');
+      expect(result).toContain('&lt;script&gt;');
+      expect(result).toContain('&lt;/script&gt;');
+      // The DISEASE wrapper for the actual entity is the ONLY <span> emitted.
+      const spanCount = result.match(/<span /g)?.length ?? 0;
+      expect(spanCount).toBe(1);
+    });
+
+    it('should HTML-escape malicious entity body text (M-3)', () => {
+      // A clinical note where the entity text itself contains HTML-unsafe chars
+      const text = 'Result: pH<7';
+      const entities = [createEntity('pH<7', MedicalEntityType.LAB_VALUE, 8, 12, 0.9)];
+
+      const result = highlightEntities(text, entities);
+
+      expect(result).toContain('pH&lt;7');
+      expect(result).not.toMatch(/pH<7<\/span>/);
+    });
+
+    it('should escape clinical text with comparison operators commonly found in EHR (M-3)', () => {
+      const text = 'T<38.5°C & SpO2>92%';
+      const entities = [createEntity('T<38.5°C', MedicalEntityType.LAB_VALUE, 0, 8, 0.9)];
+
+      const result = highlightEntities(text, entities);
+
+      expect(result).toContain('T&lt;38.5°C');
+      expect(result).toContain('&amp;');
+      expect(result).toContain('SpO2&gt;92%');
+    });
   });
 
   describe('entitiesToJSON', () => {

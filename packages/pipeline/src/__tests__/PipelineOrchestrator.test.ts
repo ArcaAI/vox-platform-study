@@ -13,6 +13,7 @@ import {
 import { SequentialPipeline } from '../core/SequentialPipeline.js';
 import { ParallelPipeline } from '../core/ParallelPipeline.js';
 import { PipelineStage } from '../core/PipelineStage.js';
+import { PipelineEvent } from '../types/index.js';
 import type { PipelineLogger, StageConfig } from '../types/index.js';
 
 // Test stage implementations
@@ -526,6 +527,140 @@ describe('PipelineOrchestrator', () => {
           timestamp: expect.any(Number),
         })
       );
+    });
+  });
+
+  // =========================================================================
+  // TASK-273 — H-4: autoExecute actually runs target with source's result.
+  // =========================================================================
+
+  describe('autoExecute (TASK-273 H-4)', () => {
+    it('should execute target pipeline with source result when autoExecute is true', async () => {
+      const targetCompleted = vi.fn();
+
+      const source = new SequentialPipeline<number, number>('source');
+      source.addStage(new AddStage('add', 5));
+
+      const target = new SequentialPipeline<number, number>('target');
+      target.addStage(new MultiplyStage('mul', 2));
+      target.on(PipelineEvent.Completed, targetCompleted);
+
+      orchestrator.register('source', source);
+      orchestrator.register('target', target);
+      orchestrator.connect('source', 'target', { autoExecute: true });
+
+      const sourceResult = await orchestrator.execute<number, number>('source', 10);
+      expect(sourceResult).toBe(15);
+
+      // Wait for the auto-executed target to settle.
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(targetCompleted).toHaveBeenCalled();
+      // (10 + 5) -> source -> target -> (15 * 2) = 30
+      const targetState = target.getState();
+      expect(targetState.status).toBe('COMPLETED');
+    });
+
+    it('should apply transform before passing source result to target', async () => {
+      const captured: number[] = [];
+
+      const source = new SequentialPipeline<number, number>('source');
+      source.addStage(new AddStage('add', 1)); // 10 -> 11
+
+      class CaptureStage extends PipelineStage<number, number> {
+        protected async onExecute(input: number): Promise<number> {
+          captured.push(input);
+          return input;
+        }
+      }
+
+      const target = new SequentialPipeline<number, number>('target');
+      target.addStage(new CaptureStage('capture'));
+
+      orchestrator.register('source', source);
+      orchestrator.register('target', target);
+      orchestrator.connect('source', 'target', {
+        autoExecute: true,
+        transform: (x) => (x as number) * 100,
+      });
+
+      await orchestrator.execute<number, number>('source', 10);
+      await new Promise((r) => setTimeout(r, 50));
+
+      // 11 transformed by *100 -> 1100 fed to target
+      expect(captured).toEqual([1100]);
+    });
+
+    it('should NOT execute target by default (autoExecute false)', async () => {
+      const targetExecuted = vi.fn();
+
+      const source = new SequentialPipeline<number, number>('source');
+      source.addStage(new AddStage('add', 5));
+
+      class SpyStage extends PipelineStage<number, number> {
+        protected async onExecute(input: number): Promise<number> {
+          targetExecuted();
+          return input;
+        }
+      }
+
+      const target = new SequentialPipeline<number, number>('target');
+      target.addStage(new SpyStage('spy'));
+
+      orchestrator.register('source', source);
+      orchestrator.register('target', target);
+      // No autoExecute option.
+      orchestrator.connect('source', 'target');
+
+      await orchestrator.execute('source', 10);
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(targetExecuted).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // TASK-273 — L-7: listener leak on register/unregister and destroy.
+  // =========================================================================
+
+  describe('listener leak (TASK-273 L-7)', () => {
+    it('should not leak listeners on a pipeline after register/unregister cycle', async () => {
+      const pipeline = new SequentialPipeline<number, number>('leaky');
+
+      const totalListeners = (): number =>
+        pipeline.listenerCount(PipelineEvent.StateChange) +
+        pipeline.listenerCount(PipelineEvent.Completed) +
+        pipeline.listenerCount(PipelineEvent.Error);
+
+      const baseline = totalListeners();
+
+      for (let i = 0; i < 100; i++) {
+        orchestrator.register('leaky', pipeline);
+        await orchestrator.unregister('leaky');
+      }
+
+      expect(totalListeners()).toBe(baseline);
+    });
+
+    it('should remove orchestrator listeners on destroy()', async () => {
+      const p1 = new SequentialPipeline<number, number>('a');
+      const p2 = new SequentialPipeline<number, number>('b');
+
+      orchestrator.register('a', p1);
+      orchestrator.register('b', p2);
+
+      const total = (p: SequentialPipeline<number, number>): number =>
+        p.listenerCount(PipelineEvent.StateChange) +
+        p.listenerCount(PipelineEvent.Completed) +
+        p.listenerCount(PipelineEvent.Error);
+
+      expect(total(p1)).toBeGreaterThan(0);
+      expect(total(p2)).toBeGreaterThan(0);
+
+      await orchestrator.destroy();
+
+      expect(total(p1)).toBe(0);
+      expect(total(p2)).toBe(0);
     });
   });
 });

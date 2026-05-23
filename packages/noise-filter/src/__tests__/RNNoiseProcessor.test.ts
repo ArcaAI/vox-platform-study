@@ -279,19 +279,16 @@ describe('RNNoiseProcessor', () => {
   });
 
   describe('init method', () => {
-    it('should return early if already initialized', async () => {
-      // Mock the isInitialized property to simulate already initialized
-      // Since we can't actually initialize in Node, we test the early return logic
+    it('throws when given an invalid WASM binary', async () => {
+      // RNNoiseProcessor.init now always requires a WASM binary argument
+      // and delegates compilation to the upstream loader.
       const newProcessor = new RNNoiseProcessor();
-
-      // First call should try to initialize (and fail in Node)
-      await expect(newProcessor.init()).rejects.toThrow();
-
+      await expect(newProcessor.init(new ArrayBuffer(8))).rejects.toThrow(/Failed to initialize RNNoise/);
       newProcessor.destroy();
     });
 
-    it('should throw error when WASM loading fails', async () => {
-      await expect(processor.init()).rejects.toThrow(/Failed to initialize RNNoise/);
+    it('throws a wrapped error message starting with "Failed to initialize RNNoise"', async () => {
+      await expect(processor.init(new ArrayBuffer(8))).rejects.toThrow(/Failed to initialize RNNoise/);
     });
   });
 });

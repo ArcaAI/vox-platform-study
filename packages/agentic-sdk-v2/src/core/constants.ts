@@ -395,14 +395,16 @@ export const GLOBAL_SETTINGS_ENDPOINTS = {
 } as const;
 
 /**
- * User settings endpoints (TASK-032 WS-A)
+ * User settings endpoints (TASK-265 W0-8 reduction)
+ *
+ * The API only exposes two real routes — `GET /user/me/settings` and
+ * `PATCH /user/me/settings/:namespace/:key`. The previous shape (CRUD by id,
+ * MY_SETTINGS by userId) targeted routes that do not exist; see
+ * docs/implementation/TASK-265-SDK-Endpoint-Drift/README.md.
  */
 export const USER_SETTINGS_ENDPOINTS = {
-  LIST: '/user/me/settings',
-  GET: (id: string) => `/user/me/settings/${encodeURIComponent(id)}`,
-  CREATE: '/user/me/settings',
-  UPDATE: (id: string) => `/user/me/settings/${encodeURIComponent(id)}`,
-  MY_SETTINGS: (userId: string) => `/user/me/settings/user/${encodeURIComponent(userId)}`,
+  list: '/user/me/settings',
+  updateByKey: (namespace: string, key: string) => `/user/me/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`,
 } as const;
 
 /**
@@ -542,12 +544,26 @@ export const DEFAULT_NER_CONFIG = {
 };
 
 /**
- * Voice embedding endpoints (TASK-033)
+ * Voice profile endpoints (TASK-265 W0-7 / GAP-02 — D2 Option B)
  *
- * Matches VoiceEmbeddingController at `/users/:id/voice-embedding`.
+ * Matches `VoiceProfileController` at `@Controller('voice-profile')`. Replaces
+ * the previous `/users/:userId/voice-embedding` shape, which never had a
+ * matching API controller. Enrollment uses multipart/form-data via
+ * `apiClient.postFormData()`. Deletion is keyed by **profile id**, not user id.
  */
 export const VOICE_EMBEDDING_ENDPOINTS = {
-  UPLOAD: (userId: string) => `/users/${encodeURIComponent(userId)}/voice-embedding`,
-  STATUS: (userId: string) => `/users/${encodeURIComponent(userId)}/voice-embedding`,
-  REMOVE: (userId: string) => `/users/${encodeURIComponent(userId)}/voice-embedding`,
+  enroll: '/voice-profile/enroll',
+  list: '/voice-profile',
+  delete: (profileId: string) => `/voice-profile/${encodeURIComponent(profileId)}`,
 } as const;
+
+/**
+ * Built-in user role identifiers (TASK-265 W0-10).
+ *
+ * Canonical typed tuple of the SDK's recognised system role names. Consumers
+ * use these for guards and switch statements on the user's effective roles.
+ * Frozen at runtime so accidental mutation is rejected.
+ */
+export const USER_ROLES = Object.freeze(['role_admin', 'role_doctor', 'role_patient'] as const);
+
+export type UserRole = (typeof USER_ROLES)[number];

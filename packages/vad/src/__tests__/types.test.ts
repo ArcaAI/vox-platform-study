@@ -19,7 +19,6 @@ import {
   type VADSpeechEndPayload,
   type VADMisfirePayload,
   type VADBrowserSupport,
-  type VADWorkletConfig,
   type VADDataEventType,
 } from '../types/index.js';
 
@@ -228,7 +227,7 @@ describe('VAD Types', () => {
     });
 
     describe('VADSpeechEndPayload', () => {
-      it('should have correct shape with stream-relative timing', () => {
+      it('should have correct shape with stream-relative timing and duration (ms)', () => {
         const audio = new Float32Array([0.1, 0.2, 0.3]);
         const startTime = Date.now() - 1000;
         const endTime = Date.now();
@@ -241,6 +240,7 @@ describe('VAD Types', () => {
           streamStartSec: 5.0,
           streamEndSec: 6.0,
           durationSec: 1.0,
+          duration: 1000,
         };
 
         expect(payload.audio).toBe(audio);
@@ -250,9 +250,10 @@ describe('VAD Types', () => {
         expect(payload.streamStartSec).toBe(5.0);
         expect(payload.streamEndSec).toBe(6.0);
         expect(payload.durationSec).toBe(1.0);
+        expect(payload.duration).toBe(1000);
       });
 
-      it('should have valid duration calculation in seconds', () => {
+      it('should have valid duration calculation in seconds and ms', () => {
         const audio = new Float32Array(16000); // 1 second at 16kHz
         const startTime = 1000;
         const endTime = 2000;
@@ -265,9 +266,11 @@ describe('VAD Types', () => {
           streamStartSec: 10.0,
           streamEndSec: 11.0,
           durationSec: 1.0,
+          duration: 1000,
         };
 
         expect(payload.durationSec).toBe(payload.streamEndSec - payload.streamStartSec);
+        expect(payload.duration).toBe(payload.endTime - payload.startTime);
       });
     });
 
@@ -317,47 +320,6 @@ describe('VAD Types', () => {
       });
     });
 
-    describe('VADWorkletConfig', () => {
-      it('should have correct shape', () => {
-        const config: VADWorkletConfig = {
-          model: 'v5',
-          positiveSpeechThreshold: 0.5,
-          negativeSpeechThreshold: 0.35,
-          frameSamples: 512,
-          sampleRate: 16000,
-        };
-
-        expect(config.model).toBe('v5');
-        expect(config.positiveSpeechThreshold).toBe(0.5);
-        expect(config.negativeSpeechThreshold).toBe(0.35);
-        expect(config.frameSamples).toBe(512);
-        expect(config.sampleRate).toBe(16000);
-      });
-
-      it('should have correct frame samples for v5', () => {
-        const config: VADWorkletConfig = {
-          model: 'v5',
-          positiveSpeechThreshold: 0.5,
-          negativeSpeechThreshold: 0.35,
-          frameSamples: 512,
-          sampleRate: 16000,
-        };
-
-        expect(config.frameSamples).toBe(512);
-      });
-
-      it('should have correct frame samples for legacy', () => {
-        const config: VADWorkletConfig = {
-          model: 'legacy',
-          positiveSpeechThreshold: 0.5,
-          negativeSpeechThreshold: 0.35,
-          frameSamples: 1536,
-          sampleRate: 16000,
-        };
-
-        expect(config.frameSamples).toBe(1536);
-      });
-    });
   });
 
   describe('VADModel type', () => {

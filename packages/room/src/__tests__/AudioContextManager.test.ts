@@ -363,3 +363,176 @@ describe('getNewAudioContext', () => {
     expect(ctx).toBeUndefined();
   });
 });
+
+// ============================================================================
+// W1-2 — StrictMode-safe ref-counted acquire/release
+// ============================================================================
+
+describe('AudioContextManager StrictMode safety (W1-2)', () => {
+  beforeEach(() => {
+    AudioContextManager.resetInstance();
+  });
+
+  afterEach(() => {
+    AudioContextManager.resetInstance();
+    vi.unstubAllGlobals();
+  });
+
+  it('should not close the context when release() is followed synchronously by acquire()', async () => {
+    // Use the global mock AudioContext (jsdom env via vitest.setup.ts)
+    const manager = AudioContextManager.getInstance();
+    const ctx1 = await manager.acquire();
+    expect(ctx1).toBeDefined();
+    const closeSpy = ctx1.close as unknown as ReturnType<typeof vi.fn>;
+    closeSpy.mockClear();
+
+    // Mimic React 19 StrictMode: cleanup decrements to 0, then remount re-acquires.
+    manager.release();
+    const ctx2 = await manager.acquire();
+
+    // Same context should be reused — release should have been deferred and cancelled.
+    expect(ctx2).toBe(ctx1);
+
+    // Allow any pending microtasks to settle.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(closeSpy).not.toHaveBeenCalled();
+  });
+
+  it('should close the context when release() is final (no re-acquire)', async () => {
+    const manager = AudioContextManager.getInstance();
+    const ctx1 = await manager.acquire();
+    const closeSpy = ctx1.close as unknown as ReturnType<typeof vi.fn>;
+    closeSpy.mockClear();
+
+    manager.release();
+
+    // Wait for the deferred close microtask to run.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(closeSpy).toHaveBeenCalled();
+    expect(manager.getContext()).toBeNull();
+  });
+
+  it('dispose() should hard-close even when release is pending', async () => {
+    const manager = AudioContextManager.getInstance();
+    const ctx1 = await manager.acquire();
+    const closeSpy = ctx1.close as unknown as ReturnType<typeof vi.fn>;
+    closeSpy.mockClear();
+
+    manager.release();
+    manager.dispose();
+
+    expect(closeSpy).toHaveBeenCalled();
+    expect(manager.getContext()).toBeNull();
+  });
+
+  it('should survive multiple synchronous release/acquire cycles', async () => {
+    const manager = AudioContextManager.getInstance();
+    const ctx1 = await manager.acquire();
+    const closeSpy = ctx1.close as unknown as ReturnType<typeof vi.fn>;
+    closeSpy.mockClear();
+
+    manager.release();
+    const ctx2 = await manager.acquire();
+    manager.release();
+    const ctx3 = await manager.acquire();
+
+    expect(ctx2).toBe(ctx1);
+    expect(ctx3).toBe(ctx1);
+    await Promise.resolve();
+    expect(closeSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// W1-7 — resumeWithTimeout throws RoomResumeTimeoutError on stuck resume
+// ============================================================================
+
+describe('AudioContextManager.resume timeout (W1-7)', () => {
+  beforeEach(() => {
+    AudioContextManager.resetInstance();
+  });
+
+  afterEach(() => {
+    AudioContextManager.resetInstance();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it('should throw a typed RoomResumeTimeoutError after the default 3000ms when resume() never resolves', async () => {
+    vi.useFakeTimers();
+    const stuckCtx = createMockAudioContext('running');
+    stuckCtx.resume = vi.fn().mockImplementation(() => new Promise<void>(() => {/* hangs forever */}));
+
+    const manager = AudioContextManager.getInstance({ audioContext: stuckCtx });
+    // acquire while running (no resume needed); flip to suspended afterward.
+    await manager.acquire();
+    (stuckCtx as { state: string }).state = 'suspended';
+
+    const resumePromise = manager.resume();
+    // Tap the rejection so node doesn't surface unhandled promise warnings.
+    const captured = resumePromise.catch((e: unknown) => e);
+
+    await vi.advanceTimersByTimeAsync(3001);
+
+    const err = await captured;
+    expect((err as Error).name).toBe('RoomResumeTimeoutError');
+    expect((err as { code: string }).code).toBe('mic_resume_timeout');
+  });
+
+  it('should set up the click handler when timeout fires and context is still not running', async () => {
+    vi.useFakeTimers();
+    const stuckCtx = createMockAudioContext('running');
+    stuckCtx.resume = vi.fn().mockImplementation(() => new Promise<void>(() => {}));
+
+    const manager = AudioContextManager.getInstance({ audioContext: stuckCtx });
+    await manager.acquire();
+    (stuckCtx as { state: string }).state = 'suspended';
+
+    const addEventListenerSpy = vi.spyOn(document.body, 'addEventListener');
+
+    const resumePromise = manager.resume();
+    const captured = resumePromise.catch((e: unknown) => e);
+
+    await vi.advanceTimersByTimeAsync(3001);
+    await captured;
+
+    // setupClickHandler attaches click + touchstart + keydown listeners.
+    const eventNames = addEventListenerSpy.mock.calls.map((c) => c[0]);
+    expect(eventNames).toContain('click');
+    expect(eventNames).toContain('touchstart');
+    expect(eventNames).toContain('keydown');
+
+    addEventListenerSpy.mockRestore();
+  });
+
+  it('should not throw when resume() succeeds before timeout', async () => {
+    vi.useFakeTimers();
+    const fastCtx = createMockAudioContext('running');
+    let resolveResume!: () => void;
+    fastCtx.resume = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((r) => {
+          resolveResume = () => {
+            (fastCtx as { state: string }).state = 'running';
+            r();
+          };
+        }),
+    );
+
+    const manager = AudioContextManager.getInstance({ audioContext: fastCtx });
+    // Acquire while the context is already running so ensureResumed() short-circuits.
+    await manager.acquire();
+    // Now flip to suspended and exercise the resume() public method.
+    (fastCtx as { state: string }).state = 'suspended';
+
+    const p = manager.resume();
+    // The Promise executor runs synchronously, so resolveResume is captured here.
+    resolveResume();
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(p).resolves.toBeUndefined();
+  });
+});

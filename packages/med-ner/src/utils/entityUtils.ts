@@ -6,6 +6,7 @@
 
 import type { EntitySpan } from '../types/index.js';
 import { MedicalEntityType } from '../types/index.js';
+import { escapeHtml } from './htmlEscape.js';
 
 /**
  * Filter entities by confidence threshold.
@@ -219,20 +220,40 @@ export function getTopEntities(entities: EntitySpan[], n: number): EntitySpan[] 
  * @returns HTML string with highlighted entities
  */
 export function highlightEntities(text: string, entities: EntitySpan[], classPrefix = 'ner-entity'): string {
-  // Sort by position (descending) so we can insert from end
-  const sorted = sortEntitiesByPosition(entities).reverse();
-  let result = text;
+  // Walk the entities in source order and rebuild the string so we can
+  // HTML-escape both the literal text segments and the entity body. This
+  // is safer than slice-and-insert: we never re-escape an already-escaped
+  // substring, and the `data-` attribute values stay quoted.
+  const sorted = sortEntitiesByPosition(entities);
+  const safeClassPrefix = escapeHtml(classPrefix);
+  let cursor = 0;
+  let out = '';
 
   for (const entity of sorted) {
-    const typeClass = `${classPrefix}--${entity.type.toLowerCase()}`;
-    const before = result.slice(0, entity.start);
-    const entityText = result.slice(entity.start, entity.end);
-    const after = result.slice(entity.end);
-
-    result = `${before}<span class="${classPrefix} ${typeClass}" data-entity-type="${entity.type}" data-score="${entity.score.toFixed(2)}">${entityText}</span>${after}`;
+    if (entity.start < cursor) {
+      // Overlapping or out-of-order entity — skip; mergeOverlappingEntities
+      // should have collapsed these upstream. Skipping prevents us from
+      // emitting nested/malformed spans.
+      continue;
+    }
+    if (entity.start > cursor) {
+      out += escapeHtml(text.slice(cursor, entity.start));
+    }
+    const entityText = text.slice(entity.start, entity.end);
+    const typeClass = `${safeClassPrefix}--${escapeHtml(entity.type.toLowerCase())}`;
+    out +=
+      `<span class="${safeClassPrefix} ${typeClass}"` +
+      ` data-entity-type="${escapeHtml(entity.type)}"` +
+      ` data-score="${escapeHtml(entity.score.toFixed(2))}">` +
+      `${escapeHtml(entityText)}</span>`;
+    cursor = entity.end;
   }
 
-  return result;
+  if (cursor < text.length) {
+    out += escapeHtml(text.slice(cursor));
+  }
+
+  return out;
 }
 
 /**

@@ -15,13 +15,19 @@ export const WORKLET_PROCESSOR_NAME = 'rnnoise-worklet-processor';
 
 /**
  * Generate the worklet source code as a string.
+ *
+ * MUST stay algorithmically identical to `src/worklets/rnnoise.worklet.ts`
+ * and `src/processors/workletRnnoiseLoader.ts`:
+ *  - CRIT-1: preallocated WASM I/O pointers
+ *  - CRIT-3: correct `{ a: { a: resize_heap, b: memcpy_big } }` import object
+ *            for `@jitsi/rnnoise-wasm@0.2.1`; exports addressed by their
+ *            minified names (c, d, e, f, g, h, i, j)
+ *  - HIGH-1: two-frame ring buffer with one frame priming latency
+ *
+ * Unifying the source into a single file is deferred (MED-8).
  */
 function generateWorkletSource(): string {
   return `
-/**
- * Inline RNNoise AudioWorklet Processor
- */
-
 const RNNOISE_FRAME_SIZE = 480;
 const LEVEL_MULTIPLIERS = { low: 0.5, medium: 0.75, high: 1.0 };
 
@@ -32,24 +38,46 @@ class RNNoiseWorkletProcessor extends AudioWorkletProcessor {
     this.enabled = true;
     this.level = 'medium';
     this.wasmInstance = null;
+    this.exports = null;
     this.memory = null;
+    this.heapU8 = null;
+    this.heapF32 = null;
     this.denoiseState = 0;
+    this.inputPtr = 0;
+    this.outputPtr = 0;
+
     this.inputBuffer = new Float32Array(RNNOISE_FRAME_SIZE);
     this.inputBufferIndex = 0;
-    this.outputBuffer = new Float32Array(RNNOISE_FRAME_SIZE);
-    this.outputBufferIndex = 0;
-    this.outputBufferFilled = 0;
+
+    this.outputRingCapacity = RNNOISE_FRAME_SIZE * 2;
+    this.outputRing = new Float32Array(this.outputRingCapacity);
+    this.outputRingRead = 0;
+    this.outputRingWrite = 0;
+    this.outputRingSize = 0;
+
     this.framesProcessed = 0;
+    this.framesDropped = 0;
     this.lastVadProbability = 0;
     this.processingTimeSum = 0;
 
     this.port.onmessage = (event) => this.handleMessage(event.data);
   }
 
+  refreshViews() {
+    if (!this.memory) return;
+    this.heapU8 = new Uint8Array(this.memory.buffer);
+    this.heapF32 = new Float32Array(this.memory.buffer);
+  }
+
   handleMessage(message) {
     switch (message.type) {
       case 'init':
-        this.initWasm(message.wasmBinary);
+        this.initWasm(message.wasmBinary).catch((err) => {
+          this.port.postMessage({
+            type: 'error',
+            message: 'WASM init failed: ' + ((err && err.message) || 'Unknown error'),
+          });
+        });
         break;
       case 'setEnabled':
         this.enabled = message.enabled;
@@ -67,97 +95,98 @@ class RNNoiseWorkletProcessor extends AudioWorkletProcessor {
   }
 
   async initWasm(wasmBinary) {
-    try {
-      const wasmModule = await WebAssembly.compile(wasmBinary);
-      this.memory = new WebAssembly.Memory({ initial: 256 });
+    const self = this;
+    const memcpyBig = (dest, src, num) => { self.heapU8.copyWithin(dest, src, src + num); };
+    const resizeHeap = (requestedSize) => {
+      try {
+        const oldSize = self.memory.buffer.byteLength;
+        const requested = requestedSize >>> 0;
+        const delta = Math.max(0, Math.ceil((requested - oldSize) / 65536));
+        self.memory.grow(delta);
+        self.refreshViews();
+        return 1;
+      } catch (e) { return 0; }
+    };
+    const importObject = { a: { a: resizeHeap, b: memcpyBig } };
 
-      const importObject = {
-        env: {
-          memory: this.memory,
-          emscripten_notify_memory_growth: () => {},
-        },
-        wasi_snapshot_preview1: {
-          proc_exit: () => {},
-          fd_close: () => 0,
-          fd_write: () => 0,
-          fd_seek: () => 0,
-        },
-      };
+    const { instance } = await WebAssembly.instantiate(wasmBinary, importObject);
+    this.wasmInstance = instance;
+    this.exports = instance.exports;
+    this.memory = this.exports.c;
+    this.refreshViews();
+    this.exports.d();
 
-      this.wasmInstance = await WebAssembly.instantiate(wasmModule, importObject);
-      this.denoiseState = this.wasmInstance.exports.rnnoise_create();
-      this.initialized = true;
-      this.port.postMessage({ type: 'ready' });
-    } catch (error) {
-      this.port.postMessage({
-        type: 'error',
-        message: 'WASM init failed: ' + (error.message || 'Unknown error'),
-      });
-    }
+    this.denoiseState = this.exports.f();
+    this.inputPtr = this.exports.g(RNNOISE_FRAME_SIZE * 4);
+    this.outputPtr = this.exports.g(RNNOISE_FRAME_SIZE * 4);
+
+    this.initialized = true;
+    this.port.postMessage({ type: 'ready' });
   }
 
   process(inputs, outputs, parameters) {
-    const input = inputs[0]?.[0];
-    const output = outputs[0]?.[0];
+    const input = inputs[0] && inputs[0][0];
+    const output = outputs[0] && outputs[0][0];
 
     if (!input || !output) return true;
-
-    if (!this.initialized || !this.enabled || !this.wasmInstance) {
+    if (!this.initialized || !this.enabled || !this.exports) {
       output.set(input);
       return true;
     }
 
+    const startTime = currentTime;
+
     for (let i = 0; i < input.length; i++) {
-      if (this.outputBufferIndex < this.outputBufferFilled) {
-        output[i] = this.outputBuffer[this.outputBufferIndex++];
-      } else {
-        output[i] = 0;
-      }
-
       this.inputBuffer[this.inputBufferIndex++] = input[i];
-
       if (this.inputBufferIndex >= RNNOISE_FRAME_SIZE) {
         this.processFrame();
         this.inputBufferIndex = 0;
       }
+
+      if (this.outputRingSize > 0) {
+        output[i] = this.outputRing[this.outputRingRead];
+        this.outputRingRead = (this.outputRingRead + 1) % this.outputRingCapacity;
+        this.outputRingSize--;
+      } else {
+        output[i] = 0;
+      }
     }
 
+    this.processingTimeSum += (currentTime - startTime) * 1000;
     return true;
   }
 
   processFrame() {
-    if (!this.wasmInstance || !this.memory) return;
+    if (!this.exports || !this.heapF32) return;
 
-    const exports = this.wasmInstance.exports;
-    const inputPtr = exports.malloc(RNNOISE_FRAME_SIZE * 4);
-    const outputPtr = exports.malloc(RNNOISE_FRAME_SIZE * 4);
+    const inputView = this.heapF32.subarray(this.inputPtr / 4, this.inputPtr / 4 + RNNOISE_FRAME_SIZE);
+    inputView.set(this.inputBuffer);
 
-    try {
-      const inputView = new Float32Array(this.memory.buffer, inputPtr, RNNOISE_FRAME_SIZE);
-      inputView.set(this.inputBuffer);
+    this.lastVadProbability = this.exports.j(this.denoiseState, this.outputPtr, this.inputPtr);
 
-      this.lastVadProbability = exports.rnnoise_process_frame(
-        this.denoiseState, outputPtr, inputPtr
-      );
+    const outputView = this.heapF32.subarray(this.outputPtr / 4, this.outputPtr / 4 + RNNOISE_FRAME_SIZE);
+    const multiplier = LEVEL_MULTIPLIERS[this.level];
+    const dryGain = 1 - multiplier;
 
-      const outputView = new Float32Array(this.memory.buffer, outputPtr, RNNOISE_FRAME_SIZE);
-      const multiplier = LEVEL_MULTIPLIERS[this.level];
-
-      for (let i = 0; i < RNNOISE_FRAME_SIZE; i++) {
-        this.outputBuffer[i] = this.inputBuffer[i] * (1 - multiplier) + outputView[i] * multiplier;
+    for (let i = 0; i < RNNOISE_FRAME_SIZE; i++) {
+      const sample = this.inputBuffer[i] * dryGain + outputView[i] * multiplier;
+      if (this.outputRingSize >= this.outputRingCapacity) {
+        this.outputRingRead = (this.outputRingRead + 1) % this.outputRingCapacity;
+        this.outputRingSize--;
+        this.framesDropped++;
       }
-
-      this.outputBufferIndex = 0;
-      this.outputBufferFilled = RNNOISE_FRAME_SIZE;
-      this.framesProcessed++;
-    } finally {
-      exports.free(inputPtr);
-      exports.free(outputPtr);
+      this.outputRing[this.outputRingWrite] = sample;
+      this.outputRingWrite = (this.outputRingWrite + 1) % this.outputRingCapacity;
+      this.outputRingSize++;
     }
+
+    this.framesProcessed++;
   }
 
   sendStats() {
     const frameDurationMs = (RNNOISE_FRAME_SIZE / sampleRate) * 1000;
+    const avgProcessingTime = this.framesProcessed > 0 ? this.processingTimeSum / this.framesProcessed : 0;
+    const cpuLoad = Math.min(1, avgProcessingTime / frameDurationMs);
     this.port.postMessage({
       type: 'stats',
       stats: {
@@ -166,22 +195,29 @@ class RNNoiseWorkletProcessor extends AudioWorkletProcessor {
         vadProbability: this.lastVadProbability,
         latencyMs: frameDurationMs,
         framesProcessed: this.framesProcessed,
-        framesDropped: 0,
-        cpuLoad: 0,
+        framesDropped: this.framesDropped,
+        cpuLoad: cpuLoad,
         timestamp: Date.now(),
       },
     });
   }
 
   cleanup() {
-    if (this.wasmInstance && this.denoiseState) {
+    if (this.exports) {
       try {
-        this.wasmInstance.exports.rnnoise_destroy(this.denoiseState);
-      } catch {}
+        if (this.inputPtr) this.exports.i(this.inputPtr);
+        if (this.outputPtr) this.exports.i(this.outputPtr);
+        if (this.denoiseState) this.exports.h(this.denoiseState);
+      } catch (e) {}
     }
     this.wasmInstance = null;
+    this.exports = null;
     this.memory = null;
+    this.heapU8 = null;
+    this.heapF32 = null;
     this.denoiseState = 0;
+    this.inputPtr = 0;
+    this.outputPtr = 0;
     this.initialized = false;
     this.port.postMessage({ type: 'destroyed' });
   }

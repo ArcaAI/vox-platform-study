@@ -138,6 +138,18 @@ function setupStore(overrides: Record<string, any> = {}) {
     setCurrentTranscript: vi.fn(),
     setAudioPlugins: vi.fn(),
     setAudioError: vi.fn(),
+    // TASK-267 W1-1: useArca.audio now delegates to useArcaAudio,
+    // which reads/writes activeStream / activeAudioContext / transcript segments
+    // / audio language. The mock must expose both the state fields and the
+    // matching setters or the delegated start/stop path throws.
+    activeStream: null,
+    activeAudioContext: null,
+    transcriptSegments: [],
+    audioLanguage: 'en',
+    setActiveStream: vi.fn(),
+    setActiveAudioContext: vi.fn(),
+    addTranscriptSegment: vi.fn(),
+    setAudioLanguage: vi.fn(),
     reset: vi.fn(),
     ...overrides,
   };

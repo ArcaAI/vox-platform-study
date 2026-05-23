@@ -63,11 +63,6 @@ export {
   type VADStatsPayload,
   type VADDataEventType,
 
-  // Worklet Messages
-  type VADWorkletInboundMessage,
-  type VADWorkletOutboundMessage,
-  type VADWorkletConfig,
-
   // Browser Support
   type VADBrowserSupport,
 
@@ -82,6 +77,12 @@ export {
   type OnVADMisfireCallback,
   type OnFrameProcessedCallback,
 } from './types/index.js';
+
+// ============================================================================
+// Constants (CDN version pinning — TASK-271 C-1 / C-2)
+// ============================================================================
+
+export { VAD_WEB_VERSION, ORT_WEB_VERSION, DEFAULT_BASE_ASSET_PATH, DEFAULT_ONNX_WASM_BASE_PATH } from './constants.js';
 
 // ============================================================================
 // Processors
@@ -128,6 +129,7 @@ export {
   Resampler,
   downsampleTo16kHz,
   upsampleFrom16kHz,
+  resampleToVADRate,
 
   // Frame Processing
   FRAME_SIZE_V5,
@@ -140,9 +142,3 @@ export {
   framesToDuration,
   type OnFrameReadyCallback,
 } from './utils/index.js';
-
-// ============================================================================
-// Worklets (public subset — registration/cleanup are internal)
-// ============================================================================
-
-export { WORKLET_PROCESSOR_NAME, isVADWorkletRegistered } from './worklets/index.js';

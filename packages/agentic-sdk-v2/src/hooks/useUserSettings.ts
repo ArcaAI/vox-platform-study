@@ -1,8 +1,10 @@
 /**
- * @arcaai/vox - useUserSettings Hook (TASK-032 WS-A)
+ * @arcaai/vox - useUserSettings Hook (TASK-265 W0-8 / GAP-03 reduction)
  *
- * User settings CRUD hook. Separate from PersonalizationManager (lightweight preferences).
- * User settings are RBAC-protected structured configuration records.
+ * Reduced surface — the API only implements `GET /user/me/settings` and
+ * `PATCH /user/me/settings/:namespace/:key`. Earlier methods (get(id), create,
+ * update(id), getMySettings) targeted routes that do not exist and have been
+ * removed. See docs/implementation/TASK-265-SDK-Endpoint-Drift/README.md.
  */
 
 import { useState, useCallback } from 'react';
@@ -10,31 +12,25 @@ import { useApiOperation } from './useApiOperation';
 import { extractArray } from '../utils/responseUtils';
 import { appendPagination } from '../utils/urlUtils';
 import { USER_SETTINGS_ENDPOINTS } from '../core/constants';
-import type { UserSetting, CreateUserSettingInput, UpdateUserSettingInput } from '../types/settings';
+import type { UserSetting } from '../types/settings';
 import type { PaginationParams } from '../types/common';
 
 export interface UseUserSettingsReturn {
   settings: UserSetting[];
-  mySettings: UserSetting[];
   isLoading: boolean;
   error: Error | null;
   list: (pagination?: PaginationParams) => Promise<UserSetting[]>;
-  getMySettings: (userId: string) => Promise<UserSetting[]>;
-  get: (id: string) => Promise<UserSetting>;
-  create: (input: CreateUserSettingInput) => Promise<UserSetting>;
-  update: (id: string, input: UpdateUserSettingInput) => Promise<UserSetting>;
+  updateByKey: (namespace: string, key: string, value: unknown) => Promise<UserSetting>;
 }
 
 export function useUserSettings(): UseUserSettingsReturn {
   const { execute, isLoading, error } = useApiOperation('useUserSettings');
-
   const [settings, setSettings] = useState<UserSetting[]>([]);
-  const [mySettings, setMySettings] = useState<UserSetting[]>([]);
 
   const list = useCallback(
     (pagination?: PaginationParams) =>
       execute<UserSetting[]>('list', async (client) => {
-        const raw = await client.get(appendPagination(USER_SETTINGS_ENDPOINTS.LIST, pagination));
+        const raw = await client.get(appendPagination(USER_SETTINGS_ENDPOINTS.list, pagination));
         const items = extractArray<UserSetting>(raw);
         setSettings(items);
         return items;
@@ -42,57 +38,11 @@ export function useUserSettings(): UseUserSettingsReturn {
     [execute],
   );
 
-  const getMySettings = useCallback(
-    (userId: string) =>
-      execute<UserSetting[]>('getMySettings', async (client) => {
-        const raw = await client.get(USER_SETTINGS_ENDPOINTS.MY_SETTINGS(userId));
-        const items = extractArray<UserSetting>(raw);
-        setMySettings(items);
-        return items;
-      }),
+  const updateByKey = useCallback(
+    (namespace: string, key: string, value: unknown) =>
+      execute<UserSetting>('updateByKey', (client) => client.patch<UserSetting>(USER_SETTINGS_ENDPOINTS.updateByKey(namespace, key), { value })),
     [execute],
   );
 
-  const get = useCallback(
-    (id: string) => execute<UserSetting>('get', (client) => client.get<UserSetting>(USER_SETTINGS_ENDPOINTS.GET(id))),
-    [execute],
-  );
-
-  const create = useCallback(
-    (input: CreateUserSettingInput) =>
-      execute<UserSetting>('create', async (client) => {
-        const payload = {
-          ...input,
-          name: input.name || input.key,
-          value: typeof input.value === 'string' ? input.value : JSON.stringify(input.value),
-          dataType: input.dataType || (typeof input.value === 'object' ? 'Json' : 'String'),
-        };
-        const data = await client.post<UserSetting>(USER_SETTINGS_ENDPOINTS.CREATE, payload);
-        setSettings((prev) => [...prev, data]);
-        return data;
-      }),
-    [execute],
-  );
-
-  const update = useCallback(
-    (id: string, input: UpdateUserSettingInput) =>
-      execute<UserSetting>('update', async (client) => {
-        const data = await client.patch<UserSetting>(USER_SETTINGS_ENDPOINTS.UPDATE(id), input);
-        setSettings((prev) => prev.map((s) => (s.id === id ? data : s)));
-        return data;
-      }),
-    [execute],
-  );
-
-  return {
-    settings,
-    mySettings,
-    isLoading,
-    error,
-    list,
-    getMySettings,
-    get,
-    create,
-    update,
-  };
+  return { settings, isLoading, error, list, updateByKey };
 }

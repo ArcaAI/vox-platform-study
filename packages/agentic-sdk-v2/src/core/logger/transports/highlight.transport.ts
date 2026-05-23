@@ -49,27 +49,71 @@ interface HighlightOptions {
 }
 
 /**
- * Highlight.io transport implementation
+ * Highlight.io transport implementation.
+ *
+ * **TASK-266 W0-2 — gated activation.**
+ * Sending healthcare consultation telemetry to a third-party SaaS is a HIPAA
+ * exposure. This transport is therefore default-disabled and refuses to
+ * initialise unless ALL of the following are true:
+ *
+ *   1. `process.env.NODE_ENV !== 'production'` (or `process` is undefined).
+ *   2. The caller explicitly opted in via `config.enabled === true`.
+ *   3. A non-empty `projectId` (Highlight DSN equivalent) is supplied.
+ *
+ * If any gate fails the transport enters a permanently-disabled state where
+ * `log()` is a no-op (no queueing, no buffering, no PHI held in memory) and
+ * `initialize()` is a no-op. This means a misconfigured production deploy
+ * silently drops telemetry rather than leaking PHI to Highlight.
+ *
+ * The PHI redactor (`redactPHI`) in `SDKLogger.dispatch()` already strips
+ * PHI from every log entry before transports see it; this gate is the
+ * second, "fail-closed" layer of defence in depth.
  */
 export class HighlightTransport implements ILogTransport {
   readonly name = 'highlight';
   private config: HighlightTransportConfig;
   private highlight: HighlightInstance | null = null;
   private initialized = false;
+  /**
+   * Once true, this transport will never POST another log and will not even
+   * queue them. Set when the W0-2 gate refuses activation (production env,
+   * not opted in, or missing DSN).
+   */
+  private permanentlyDisabled = false;
   private pendingLogs: LogEntry[] = [];
   private level: LogLevel;
 
   constructor(config: HighlightTransportConfig) {
     this.config = config;
-    this.level = config.level || 'info';
+    // `config.level` is a pre-existing untyped extension carried over from the
+    // SDK's original transport contract. Keeping the runtime behaviour intact.
+    this.level = (config as HighlightTransportConfig & { level?: LogLevel }).level || 'info';
+    if (!HighlightTransport.isAllowedToActivate(config)) {
+      this.permanentlyDisabled = true;
+      this.pendingLogs = [];
+    }
+  }
+
+  /**
+   * TASK-266 W0-2 activation predicate.
+   *
+   * Pure & static so `SDKLogger.initializeTransports()` can also call it
+   * to skip constructing the transport entirely.
+   */
+  static isAllowedToActivate(config: HighlightTransportConfig): boolean {
+    if (!config.enabled) return false;
+    if (!config.projectId || config.projectId.trim().length === 0) return false;
+    // `process` may be undefined in some browser bundles — treat as non-prod.
+    const env = typeof process !== 'undefined' ? process.env?.NODE_ENV : undefined;
+    if (env === 'production') return false;
+    return true;
   }
 
   /**
    * Initialize Highlight.io SDK
    */
   async initialize(): Promise<void> {
-    if (this.initialized || typeof window === 'undefined') {
-      // Highlight.io only works in browser
+    if (this.permanentlyDisabled || this.initialized || typeof window === 'undefined') {
       return;
     }
 
@@ -125,13 +169,18 @@ export class HighlightTransport implements ILogTransport {
   }
 
   /**
-   * Log entry to Highlight.io
+   * Log entry to Highlight.io.
+   *
+   * TASK-266 W0-2: when the transport is permanently disabled (production env,
+   * not opted in, or missing DSN) this is a hard no-op — we do not even queue
+   * the entry, so a misconfigured deploy cannot silently buffer PHI in memory
+   * that a later runtime gate-flip could flush to Highlight.
    */
   log(entry: LogEntry): void {
+    if (this.permanentlyDisabled) return;
     if (!this.shouldLog(entry.level)) return;
 
     if (!this.initialized || !this.highlight) {
-      // Queue for later if not initialized
       this.pendingLogs.push(entry);
       return;
     }

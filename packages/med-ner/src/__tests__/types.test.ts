@@ -72,16 +72,34 @@ describe('LABEL_TO_ENTITY_TYPE', () => {
 });
 
 describe('MODEL_MAP', () => {
-  it('should have default model mapping', () => {
-    expect(MODEL_MAP['default']).toBe('Xenova/bert-base-NER');
+  it('should have default model mapping with pinned revision', () => {
+    expect(MODEL_MAP['default']).toEqual({
+      id: 'Xenova/bert-base-NER',
+      revision: '24c7e5aba9ae350923357a6f0b92571be34037ec',
+    });
   });
 
-  it('should have biomedical model mapping', () => {
-    expect(MODEL_MAP['biomedical']).toBe('Kushtrim/bert-base-cased-biomedical-ner');
+  it('should have biomedical model mapping with pinned revision', () => {
+    expect(MODEL_MAP['biomedical']).toEqual({
+      id: 'Kushtrim/bert-base-cased-biomedical-ner',
+      revision: '52d842d49d18b95bc7ce6d78e95367ce94004c49',
+    });
   });
 
-  it('should have clinical model mapping', () => {
-    expect(MODEL_MAP['clinical']).toBe('samrawal/bert-base-uncased_clinical-ner');
+  it('should have clinical model mapping with pinned revision', () => {
+    expect(MODEL_MAP['clinical']).toEqual({
+      id: 'samrawal/bert-base-uncased_clinical-ner',
+      revision: '5db48a44e7e04d9b0e95b8209c0e4b0f4c29cc6d',
+    });
+  });
+
+  it('should pin every preset to a 40-char hex commit SHA', () => {
+    const shaRegex = /^[0-9a-f]{40}$/;
+    for (const [name, ref] of Object.entries(MODEL_MAP)) {
+      expect(typeof ref.id, `${name}.id`).toBe('string');
+      expect(ref.id.length, `${name}.id`).toBeGreaterThan(0);
+      expect(ref.revision, `${name}.revision`).toMatch(shaRegex);
+    }
   });
 });
 

@@ -351,6 +351,14 @@ export class SequentialPipeline<TInput, TOutput> implements IPipeline<TInput, TO
     this.emitter.off(event, listener);
   }
 
+  /**
+   * Number of listeners currently registered for `event`. Useful for
+   * detecting listener leaks during long-lived pipeline observation.
+   */
+  listenerCount(event: PipelineEvent): number {
+    return this.emitter.listenerCount(event);
+  }
+
   // =========================================================================
   // Private Methods
   // =========================================================================

@@ -341,6 +341,105 @@ describe('ParallelPipeline', () => {
 
       expect(cancelledHandler).not.toHaveBeenCalled();
     });
+
+    // -----------------------------------------------------------------------
+    // TASK-273 — H-1: cancel must short-circuit in-flight stages.
+    // -----------------------------------------------------------------------
+
+    it('should short-circuit in-flight stages on cancel even when stage ignores ctx.abortSignal (TASK-273 H-1)', async () => {
+      class IgnoresAbortStage extends PipelineStage<string, string> {
+        protected async onExecute(input: string): Promise<string> {
+          await new Promise((r) => setTimeout(r, 5000));
+          return `${input}-ignored`;
+        }
+      }
+
+      pipeline.addStage(new IgnoresAbortStage('ignores'));
+
+      const start = Date.now();
+      const promise = pipeline.execute('input');
+      setTimeout(() => pipeline.cancel(), 30);
+
+      const result = await promise;
+      const elapsed = Date.now() - start;
+
+      expect(result.success).toBe(false);
+      expect(result.results.has('ignores')).toBe(false);
+      // Pipeline must NOT wait for the 5s timer — race against the abort
+      // signal must surface the cancel promptly.
+      expect(elapsed).toBeLessThan(500);
+    });
+  });
+
+  // =========================================================================
+  // TASK-273 — H-2: per-stage serialization on shared results / errors maps.
+  // =========================================================================
+
+  describe('triggerStage concurrency (TASK-273 H-2)', () => {
+    it('should serialize concurrent triggerStage calls on the same stage', async () => {
+      let inFlight = 0;
+      let maxInFlight = 0;
+      let totalCalls = 0;
+
+      class CountingStage extends PipelineStage<string, string> {
+        protected async onExecute(input: string): Promise<string> {
+          totalCalls++;
+          inFlight++;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          await new Promise((r) => setTimeout(r, 5));
+          inFlight--;
+          return `${input}:${totalCalls}`;
+        }
+      }
+
+      const counting = new CountingStage('counting');
+      pipeline.addStage(counting, { triggerMode: 'manual' });
+
+      // Bootstrap input/context.
+      pipeline.addStage(new ProcessorStage('boot', '-boot'), { triggerMode: 'auto' });
+      await pipeline.execute('input');
+
+      const N = 50;
+      const triggers = Array.from({ length: N }, () => pipeline.triggerStage('counting'));
+      const results = await Promise.all(triggers);
+
+      expect(totalCalls).toBe(N);
+      expect(maxInFlight).toBe(1);
+      expect(results.every((r) => typeof r === 'string' && r!.startsWith('input:'))).toBe(true);
+    });
+
+    it('should not corrupt results map when triggerStage runs while execute is in-flight', async () => {
+      class FastStage extends PipelineStage<string, string> {
+        protected async onExecute(input: string): Promise<string> {
+          await new Promise((r) => setTimeout(r, 30));
+          return `${input}-fast`;
+        }
+      }
+
+      class ManualStage extends PipelineStage<string, string> {
+        protected async onExecute(input: string): Promise<string> {
+          await new Promise((r) => setTimeout(r, 5));
+          return `${input}-manual`;
+        }
+      }
+
+      pipeline.addStage(new FastStage('fast'), { triggerMode: 'auto' });
+      pipeline.addStage(new ManualStage('manual'), { triggerMode: 'manual' });
+
+      // Seed input via a first short execute so triggerStage is callable.
+      await pipeline.execute('seed');
+
+      const exec = pipeline.execute('payload');
+      // Fire a triggerStage during the parallel run — it must not race with
+      // execute()'s clearing/setting of the shared maps.
+      const triggered = pipeline.triggerStage('manual');
+
+      const [execResult, manualResult] = await Promise.all([exec, triggered]);
+
+      expect(execResult.success).toBe(true);
+      expect(execResult.results.get('fast')).toBe('payload-fast');
+      expect(manualResult).toBe('payload-manual');
+    });
   });
 
   describe('reset', () => {

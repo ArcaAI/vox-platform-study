@@ -16,6 +16,8 @@ import {
   type EntitySpan,
   type RawTokenResult,
   type ModelLoadProgress,
+  type MedNERDevice,
+  type ModelReference,
   MedicalEntityType,
   LABEL_TO_ENTITY_TYPE,
   MODEL_MAP,
@@ -24,14 +26,58 @@ import {
   MedNERErrorCode,
 } from '../types/index.js';
 
-import { getMedNERBrowserSupport, isMedNERSupported } from '../utils/browserSupport.js';
+import { getMedNERBrowserSupport, getRecommendedDevice, isMedNERSupported } from '../utils/browserSupport.js';
 
 import { mergeAdjacentEntities, mergeOverlappingEntities, filterEntitiesByType, filterEntitiesByThreshold } from '../utils/entityUtils.js';
+import { chunkByTokens, mergeChunkEntities, type Tokenizer, type TokenChunk } from '../utils/chunking.js';
+import { MedNERWorkerClient } from '../workers/workerClient.js';
 
 // Configure Transformers.js for browser usage
 if (typeof window !== 'undefined') {
   env.allowLocalModels = false;
   env.useBrowserCache = true;
+}
+
+/**
+ * Shape returned by Transformers.js when an aggregation strategy is set
+ * (`simple`, `first`, `max`, `average`). Each row is a merged word-level
+ * entity group rather than a BIO subword token.
+ */
+interface AggregatedTokenResult {
+  entity_group: string;
+  word: string;
+  score: number;
+  start: number;
+  end: number;
+}
+
+function isAggregatedResult(r: RawTokenResult | AggregatedTokenResult): r is AggregatedTokenResult {
+  return typeof (r as AggregatedTokenResult).entity_group === 'string';
+}
+
+/**
+ * Convert a pipeline row (either BIO or aggregated) into our EntitySpan.
+ */
+function normaliseRawResult(result: RawTokenResult | AggregatedTokenResult, mapLabel: (label: string) => MedicalEntityType): EntitySpan {
+  if (isAggregatedResult(result)) {
+    return {
+      text: result.word,
+      type: mapLabel(result.entity_group),
+      start: result.start,
+      end: result.end,
+      score: result.score,
+      rawLabel: result.entity_group,
+    };
+  }
+  return {
+    text: result.word.replace(/^##/, ''),
+    type: mapLabel(result.entity),
+    start: result.start,
+    end: result.end,
+    score: result.score,
+    rawLabel: result.entity,
+    tokenIndex: result.index,
+  };
 }
 
 /**
@@ -77,11 +123,21 @@ if (typeof window !== 'undefined') {
 export class MedNERProcessor {
   readonly name = 'med-ner-processor';
 
-  private options: Required<Omit<MedNEROptions, 'entityTypes' | 'onProgress' | 'dtype'>> & {
+  private options: Required<Omit<MedNEROptions, 'entityTypes' | 'onProgress' | 'dtype' | 'workerFactory'>> & {
     entityTypes?: MedicalEntityType[];
     onProgress?: (progress: ModelLoadProgress) => void;
     dtype?: 'fp32' | 'fp16' | 'q8' | 'q4';
+    workerFactory?: () => Worker;
   };
+
+  /**
+   * Resolved tokenizer callable, set after `init()`. Wraps the model's
+   * tokenizer so `chunkByTokens` can count tokens deterministically.
+   */
+  private tokenizer: Tokenizer | null = null;
+
+  /** Worker client when running off-main-thread (TASK-272 / C-1). */
+  private workerClient: MedNERWorkerClient | null = null;
 
   // NER pipeline from Transformers.js
   private pipeline: TokenClassificationPipeline | null = null;
@@ -95,6 +151,7 @@ export class MedNERProcessor {
   // State
   private _initialized = false;
   private _isProcessing = false;
+  private _activeDevice: MedNERDevice | null = null;
 
   // Statistics
   private stats: MedNERStats = {
@@ -134,11 +191,14 @@ export class MedNERProcessor {
       mergeOverlapping: options.mergeOverlapping ?? DEFAULT_MED_NER_OPTIONS.mergeOverlapping,
       maxLength: options.maxLength ?? DEFAULT_MED_NER_OPTIONS.maxLength,
       chunkOverlap: options.chunkOverlap ?? DEFAULT_MED_NER_OPTIONS.chunkOverlap,
+      maxTokens: options.maxTokens ?? DEFAULT_MED_NER_OPTIONS.maxTokens,
+      stride: options.stride ?? DEFAULT_MED_NER_OPTIONS.stride,
       enableStats: options.enableStats ?? DEFAULT_MED_NER_OPTIONS.enableStats,
       statsInterval: options.statsInterval ?? DEFAULT_MED_NER_OPTIONS.statsInterval,
       entityTypes: options.entityTypes,
       onProgress: options.onProgress,
       dtype: options.dtype,
+      workerFactory: options.workerFactory,
     };
 
     // Initialize entity counts
@@ -147,14 +207,16 @@ export class MedNERProcessor {
     });
 
     // Set model ID in stats
-    this.stats.modelId = this.resolveModelId(this.options.model);
+    this.stats.modelId = this.resolveModel(this.options.model).id;
   }
 
   /**
-   * Resolve model name to HuggingFace model ID.
+   * Resolve a model preset name (or a raw HuggingFace model id) to its
+   * pinned reference. Custom ids that are not in MODEL_MAP get an empty
+   * revision (no pin) — by design, only the curated presets are pinned.
    */
-  private resolveModelId(model: string): string {
-    return MODEL_MAP[model] || model;
+  private resolveModel(model: string): ModelReference {
+    return MODEL_MAP[model] ?? { id: model, revision: '' };
   }
 
   /**
@@ -192,16 +254,72 @@ export class MedNERProcessor {
       throw new MedNERError(MedNERErrorCode.NOT_SUPPORTED, support.unsupportedReason ?? 'Medical NER not supported in this browser');
     }
 
-    const modelId = this.resolveModelId(this.options.model);
+    const modelRef = this.resolveModel(this.options.model);
+    const device = await getRecommendedDevice();
+    this._activeDevice = device;
+
+    if (typeof console !== 'undefined' && typeof console.info === 'function') {
+      console.info(`[@arcaai/med-ner] resolved compute device='${device}' for model='${modelRef.id}'`);
+    }
+
+    // Off-main-thread path (TASK-272 / C-1). The worker imports
+    // `@huggingface/transformers` itself; we never touch it here.
+    if (this.options.workerFactory) {
+      try {
+        const worker = this.options.workerFactory();
+        this.workerClient = new MedNERWorkerClient(worker);
+        this.emitProgress({ status: 'downloading', progress: 0 });
+        await this.workerClient.init(
+          {
+            modelId: modelRef.id,
+            revision: modelRef.revision || undefined,
+            dtype: this.options.dtype,
+            device,
+            maxTokens: this.options.maxTokens,
+            stride: this.options.stride,
+          },
+          (progress) => {
+            this.emitProgress(progress);
+            this.options.onProgress?.(progress);
+          },
+        );
+
+        this._initialized = true;
+        this.stats.isReady = true;
+        this.stats.modelId = modelRef.id;
+        this.emitProgress({ status: 'ready' });
+
+        if (this.options.enableStats) {
+          this.startStatsEmission();
+        }
+        return;
+      } catch (error) {
+        const nerError = new MedNERError(
+          MedNERErrorCode.MODEL_LOAD_FAILED,
+          `Failed to load NER model '${modelRef.id}' in Worker: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          error instanceof Error ? error : undefined,
+        );
+        this.workerClient?.dispose();
+        this.workerClient = null;
+        this.emitProgress({ status: 'error' });
+        this.callbacks.onError?.(nerError);
+        throw nerError;
+      }
+    }
 
     try {
       // Emit progress: downloading
       this.emitProgress({ status: 'downloading', progress: 0 });
 
-      // Load the NER pipeline
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.pipeline = (await (pipeline as any)('token-classification', modelId, {
+      // Build pipeline options. We always pass `aggregation_strategy: 'simple'`
+      // (H-6) so the runtime merges BIO subword tokens into word-level entity
+      // groups before they cross the worker boundary. The `revision` is the
+      // pinned commit SHA (R-12), and `device` is what `getRecommendedDevice`
+      // resolved (H-1).
+      const pipelineOptions: Record<string, unknown> = {
         dtype: this.options.dtype ?? support.recommendedDtype,
+        device,
+        aggregation_strategy: 'simple',
         progress_callback: (progressData: unknown) => {
           const data = progressData as {
             status?: string;
@@ -225,12 +343,25 @@ export class MedNERProcessor {
             total: data.total,
           });
         },
-      })) as TokenClassificationPipeline;
+      };
+      if (modelRef.revision) {
+        pipelineOptions.revision = modelRef.revision;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.pipeline = (await (pipeline as any)('token-classification', modelRef.id, pipelineOptions)) as TokenClassificationPipeline;
+
+      // Adapt the pipeline's tokenizer into our chunker's Tokenizer signature.
+      // Transformers.js v3 exposes the tokenizer at `pipeline.tokenizer` with
+      // a callable signature returning a `BatchEncoding`-like object whose
+      // `input_ids` carries the token IDs. We tolerate any of the common
+      // return shapes via duck typing.
+      this.tokenizer = this.buildTokenizer(this.pipeline);
 
       // Update state
       this._initialized = true;
       this.stats.isReady = true;
-      this.stats.modelId = modelId;
+      this.stats.modelId = modelRef.id;
 
       // Emit progress: ready
       this.emitProgress({ status: 'ready' });
@@ -242,7 +373,7 @@ export class MedNERProcessor {
     } catch (error) {
       const nerError = new MedNERError(
         MedNERErrorCode.MODEL_LOAD_FAILED,
-        `Failed to load NER model '${modelId}': ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to load NER model '${modelRef.id}': ${error instanceof Error ? error.message : 'Unknown error'}`,
         error instanceof Error ? error : undefined,
       );
 
@@ -259,7 +390,7 @@ export class MedNERProcessor {
    * @returns Promise<MedNERResult>
    */
   async extract(text: string): Promise<MedNERResult> {
-    if (!this._initialized || !this.pipeline) {
+    if (!this._initialized || (!this.pipeline && !this.workerClient)) {
       throw new MedNERError(MedNERErrorCode.NOT_INITIALIZED, 'MedNERProcessor is not initialized. Call init() first.');
     }
 
@@ -274,15 +405,27 @@ export class MedNERProcessor {
     try {
       let entities: EntitySpan[];
 
-      // Handle long texts by chunking
-      if (text.length > this.options.maxLength) {
-        entities = await this.extractChunked(text);
+      if (this.workerClient) {
+        // The worker performs chunking, inference, and post-processing in one
+        // round-trip. We pass the post-processing knobs across so the worker
+        // returns the final list ready to consume.
+        entities = await this.workerClient.extract({
+          text,
+          threshold: this.options.threshold,
+          entityTypes: this.options.entityTypes,
+          mergeAdjacent: this.options.mergeAdjacent,
+          mergeOverlapping: this.options.mergeOverlapping,
+        });
       } else {
-        entities = await this.extractSingle(text);
+        const charBudget = this.options.maxLength;
+        const tokensOverBudget = this.tokenizer !== null && this.tokenizer(text).length > this.options.maxTokens;
+        if (text.length > charBudget || tokensOverBudget) {
+          entities = await this.extractChunked(text);
+        } else {
+          entities = await this.extractSingle(text);
+        }
+        entities = this.postProcessEntities(entities, text);
       }
-
-      // Post-process entities
-      entities = this.postProcessEntities(entities, text);
 
       const processingTime = performance.now() - startTime;
 
@@ -319,66 +462,76 @@ export class MedNERProcessor {
 
   /**
    * Extract entities from a single text chunk.
+   *
+   * Handles both pipeline output shapes:
+   *   - aggregation_strategy='simple' / 'first' / 'max' / 'average' →
+   *     `[{ entity_group, score, word, start, end }]`
+   *   - aggregation_strategy='none' (legacy BIO) →
+   *     `[{ entity, score, word, index, start, end }]`
    */
   private async extractSingle(text: string): Promise<EntitySpan[]> {
     if (!this.pipeline) return [];
 
-    const rawResults = (await this.pipeline(text)) as RawTokenResult[];
+    const rawResults = (await this.pipeline(text)) as Array<RawTokenResult | AggregatedTokenResult>;
 
-    return rawResults.map((result) => ({
-      text: result.word.replace(/^##/, ''),
-      type: this.mapLabelToEntityType(result.entity),
-      start: result.start,
-      end: result.end,
-      score: result.score,
-      rawLabel: result.entity,
-      tokenIndex: result.index,
-    }));
+    return rawResults.map((result) => normaliseRawResult(result, (label) => this.mapLabelToEntityType(label)));
   }
 
   /**
-   * Extract entities from long text using chunking.
+   * Extract entities from long text using token-aware sentence chunking
+   * (TASK-272 / C-2). Falls back to a single-chunk pass if no tokenizer
+   * is available yet (e.g. before init() resolved).
    */
   private async extractChunked(text: string): Promise<EntitySpan[]> {
-    const chunks = this.chunkText(text);
-    const allEntities: EntitySpan[] = [];
+    if (!this.tokenizer) {
+      return this.extractSingle(text);
+    }
 
+    const chunks = chunkByTokens(text, this.tokenizer, {
+      maxTokens: this.options.maxTokens,
+      stride: this.options.stride,
+    });
+
+    const chunkResults: Array<{ chunk: TokenChunk; entities: EntitySpan[] }> = [];
     for (const chunk of chunks) {
       const chunkEntities = await this.extractSingle(chunk.text);
-
-      // Adjust entity positions based on chunk offset
+      // Adjust entity positions back into the original document.
       for (const entity of chunkEntities) {
         entity.start += chunk.offset;
         entity.end += chunk.offset;
       }
-
-      allEntities.push(...chunkEntities);
+      chunkResults.push({ chunk, entities: chunkEntities });
     }
 
-    return allEntities;
+    return mergeChunkEntities(chunkResults);
   }
 
   /**
-   * Split text into overlapping chunks.
+   * Adapt the model's tokenizer (if exposed by the pipeline) into the
+   * uniform `Tokenizer` signature used by `chunkByTokens`. Returns `null`
+   * if no usable tokenizer is found.
    */
-  private chunkText(text: string): Array<{ text: string; offset: number }> {
-    const chunks: Array<{ text: string; offset: number }> = [];
-    const maxLength = this.options.maxLength;
-    const overlap = this.options.chunkOverlap;
+  private buildTokenizer(pipeline: TokenClassificationPipeline | null): Tokenizer | null {
+    if (!pipeline) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tok = (pipeline as any).tokenizer;
+    if (!tok) return null;
 
-    let offset = 0;
-    while (offset < text.length) {
-      const end = Math.min(offset + maxLength, text.length);
-      chunks.push({
-        text: text.slice(offset, end),
-        offset,
-      });
-
-      if (end === text.length) break;
-      offset += maxLength - overlap;
-    }
-
-    return chunks;
+    return (text: string): ArrayLike<unknown> => {
+      try {
+        // Transformers.js v3 tokenizers are callable; the result has
+        // `input_ids` (a Tensor or ArrayLike).
+        const encoded = typeof tok === 'function' ? tok(text) : tok.encode?.(text);
+        if (!encoded) return [];
+        const ids = encoded.input_ids ?? encoded;
+        // Tensors expose `.data`, plain arrays do not.
+        const arr = ids.data ?? ids;
+        if (typeof arr.length === 'number') return arr as ArrayLike<unknown>;
+        return [];
+      } catch {
+        return [];
+      }
+    };
   }
 
   /**
@@ -473,8 +626,19 @@ export class MedNERProcessor {
    */
   async destroy(): Promise<void> {
     this.stopStatsEmission();
+    if (this.workerClient) {
+      try {
+        await this.workerClient.destroy();
+      } catch {
+        // Worker may already be dead; we'll dispose unconditionally below.
+      }
+      this.workerClient.dispose();
+      this.workerClient = null;
+    }
     this.pipeline = null;
+    this.tokenizer = null;
     this._initialized = false;
+    this._activeDevice = null;
     this.stats.isReady = false;
     this.listeners.clear();
   }
@@ -488,6 +652,15 @@ export class MedNERProcessor {
    */
   getModelId(): string {
     return this.stats.modelId;
+  }
+
+  /**
+   * Get the compute backend chosen by `init()` (`'webgpu'` or `'wasm'`).
+   *
+   * Returns `null` before `init()` has resolved (and after `destroy()`).
+   */
+  getActiveDevice(): MedNERDevice | null {
+    return this._activeDevice;
   }
 
   /**

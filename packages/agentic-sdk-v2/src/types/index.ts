@@ -262,5 +262,5 @@ export type { Role, UserRoleAssignment } from '../hooks/useRoles';
 // Health check types (TASK-034 WS-H)
 export type { ComponentCheck, ComponentStatus, HealthStatus, ServiceHealthStatus } from './health';
 
-// Voice embedding types (TASK-033)
-export type { VoiceEmbeddingResponse, VoiceEmbeddingStatus } from '../hooks/useVoiceEmbedding';
+// Voice embedding types (TASK-265 W0-7 — voice-profile rewrite)
+export type { VoiceProfile, EnrollFiles } from '../hooks/useVoiceEmbedding';

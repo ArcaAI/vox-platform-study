@@ -12,6 +12,7 @@ import {
   Resampler,
   downsampleTo16kHz,
   upsampleFrom16kHz,
+  resampleToVADRate,
 } from '../utils/resampler.js';
 
 describe('resampler utilities', () => {
@@ -267,6 +268,43 @@ describe('resampler utilities', () => {
 
       const correlation = sumProduct / Math.sqrt(sumOrigSquare * sumRestoredSquare);
       expect(correlation).toBeGreaterThan(0.9);
+    });
+  });
+
+  describe('resampleToVADRate (TASK-271 L-2)', () => {
+    it('returns input untouched when already at 16 kHz', () => {
+      const samples = new Float32Array([0.1, 0.2, 0.3]);
+      const result = resampleToVADRate(samples, VAD_SAMPLE_RATE);
+      expect(result).toBe(samples);
+    });
+
+    it('downsamples a 48 kHz buffer to 16 kHz with a 3:1 ratio (one second)', () => {
+      const oneSecondAt48k = new Float32Array(48000);
+      for (let i = 0; i < oneSecondAt48k.length; i++) {
+        oneSecondAt48k[i] = Math.sin((2 * Math.PI * 440 * i) / 48000);
+      }
+
+      const result = resampleToVADRate(oneSecondAt48k, 48000);
+
+      expect(result.length).toBeGreaterThan(15990);
+      expect(result.length).toBeLessThan(16010);
+    });
+
+    it('downsamples a 44.1 kHz buffer to 16 kHz', () => {
+      const samples = new Float32Array(44100);
+      const result = resampleToVADRate(samples, 44100);
+
+      // 44100 -> 16000: expected ~16000 samples per second of input
+      expect(result.length).toBeGreaterThan(15990);
+      expect(result.length).toBeLessThan(16010);
+    });
+
+    it('handles short buffers (one v5 frame worth of 48 kHz audio)', () => {
+      const frameAt48k = new Float32Array(1536);
+      const result = resampleToVADRate(frameAt48k, 48000);
+
+      expect(result.length).toBeGreaterThanOrEqual(510);
+      expect(result.length).toBeLessThanOrEqual(514);
     });
   });
 });

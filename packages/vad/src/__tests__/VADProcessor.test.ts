@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { VADProcessor, createVAD } from '../processors/VADProcessor.js';
-import { VADError, VADErrorCode, DEFAULT_VAD_OPTIONS } from '../types/index.js';
+import { VADError, DEFAULT_VAD_OPTIONS } from '../types/index.js';
 
 // Mock @arcaai/room module
 vi.mock('@arcaai/room', () => {
@@ -23,9 +23,11 @@ vi.mock('@arcaai/room', () => {
   class MockBaseProcessor {
     name: string;
     protected processedTrack: MediaStreamTrack | null = null;
+    protected debugMode: boolean = false;
 
-    constructor(name: string) {
+    constructor(name: string, debugMode = false) {
       this.name = name;
+      this.debugMode = debugMode;
     }
 
     emit = vi.fn();
@@ -38,10 +40,32 @@ vi.mock('@arcaai/room', () => {
       this.emit('data', { type, data, timestamp: Date.now() });
     }
 
-    async init() {}
-    async destroy() {}
-    async enable() {}
-    async disable() {}
+    // Delegate to subclass lifecycle hooks so TASK-271 tests can exercise
+    // the real init / reset / setStream paths under jsdom.
+    async init(opts: unknown) {
+      const self = this as unknown as { onInit?: (opts: unknown) => Promise<void> };
+      if (typeof self.onInit === 'function') {
+        await self.onInit(opts);
+      }
+    }
+    async destroy() {
+      const self = this as unknown as { onDestroy?: () => Promise<void> };
+      if (typeof self.onDestroy === 'function') {
+        await self.onDestroy();
+      }
+    }
+    async enable() {
+      const self = this as unknown as { onEnable?: () => Promise<void> };
+      if (typeof self.onEnable === 'function') {
+        await self.onEnable();
+      }
+    }
+    async disable() {
+      const self = this as unknown as { onDisable?: () => Promise<void> };
+      if (typeof self.onDisable === 'function') {
+        await self.onDisable();
+      }
+    }
   }
 
   return {
@@ -55,20 +79,27 @@ vi.mock('@arcaai/room', () => {
   };
 });
 
-// Mock @ricky0123/vad-web
-vi.mock('@ricky0123/vad-web', () => {
-  const mockMicVAD = {
-    start: vi.fn(),
-    pause: vi.fn(),
-    destroy: vi.fn(),
-  };
+// Mock @ricky0123/vad-web — each call to MicVAD.new returns a fresh instance
+// so tests can assert that reset / setStream actually replace the underlying
+// LSTM session (instance identity is the proxy for "hidden state reset").
+const micVADCalls: Array<{
+  instance: { start: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> };
+  options: Record<string, unknown>;
+}> = [];
 
-  return {
-    MicVAD: {
-      new: vi.fn().mockResolvedValue(mockMicVAD),
-    },
-  };
-});
+vi.mock('@ricky0123/vad-web', () => ({
+  MicVAD: {
+    new: vi.fn(async (options: Record<string, unknown>) => {
+      const instance = {
+        start: vi.fn(),
+        pause: vi.fn(),
+        destroy: vi.fn(),
+      };
+      micVADCalls.push({ instance, options });
+      return instance;
+    }),
+  },
+}));
 
 // Mock browser support
 vi.mock('../utils/browserSupport.js', () => ({
@@ -87,6 +118,7 @@ vi.mock('../utils/browserSupport.js', () => ({
 describe('VADProcessor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    micVADCalls.length = 0;
   });
 
   afterEach(() => {
@@ -438,5 +470,294 @@ describe('VADProcessor edge cases', () => {
 
     const stats = processor.getStats();
     expect(stats.framesProcessed).toBe(0);
+  });
+});
+
+// ============================================================================
+// TASK-271 — lifecycle integration tests (init / reset / setStream / silence)
+// ============================================================================
+
+interface InitOpts {
+  audioContext: AudioContext;
+  track: MediaStreamTrack;
+}
+
+const makeInitOpts = (): InitOpts => ({
+  audioContext: new (globalThis as unknown as { AudioContext: new () => AudioContext }).AudioContext(),
+  track: new (globalThis as unknown as { MediaStreamTrack: new () => MediaStreamTrack }).MediaStreamTrack(),
+});
+
+interface InternalProcessor {
+  init: (opts: InitOpts) => Promise<void>;
+  destroy: () => Promise<void>;
+}
+
+const asInternal = (p: VADProcessor): InternalProcessor =>
+  p as unknown as InternalProcessor;
+
+// Every TASK-271 describe shares the module-level micVADCalls array; make
+// sure it does not leak across tests (the existing vi.clearAllMocks() does
+// not touch our local array).
+beforeEach(() => {
+  micVADCalls.length = 0;
+});
+
+describe('VADProcessor.reset() (TASK-271 H-1)', () => {
+  it('creates a new MicVAD instance, resetting LSTM state', async () => {
+    const processor = new VADProcessor();
+    await asInternal(processor).init(makeInitOpts());
+
+    expect(micVADCalls).toHaveLength(1);
+    const firstInstance = micVADCalls[0]!.instance;
+
+    await processor.reset();
+
+    expect(micVADCalls).toHaveLength(2);
+    expect(micVADCalls[1]!.instance).not.toBe(firstInstance);
+    expect(firstInstance.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves processor options across reset', async () => {
+    const processor = new VADProcessor({
+      positiveSpeechThreshold: 0.66,
+      negativeSpeechThreshold: 0.42,
+      model: 'v5',
+    });
+    await asInternal(processor).init(makeInitOpts());
+
+    await processor.reset();
+
+    const secondOpts = micVADCalls[1]!.options as {
+      positiveSpeechThreshold: number;
+      negativeSpeechThreshold: number;
+      model: string;
+    };
+    expect(secondOpts.positiveSpeechThreshold).toBe(0.66);
+    expect(secondOpts.negativeSpeechThreshold).toBe(0.42);
+    expect(secondOpts.model).toBe('v5');
+  });
+
+  it('is a no-op when not initialized (does not throw)', async () => {
+    const processor = new VADProcessor();
+    await expect(processor.reset()).resolves.toBeUndefined();
+    expect(micVADCalls).toHaveLength(0);
+  });
+});
+
+describe('VADProcessor.setStream() (TASK-271 H-1)', () => {
+  it('rebuilds MicVAD with the new stream', async () => {
+    const processor = new VADProcessor();
+    await asInternal(processor).init(makeInitOpts());
+
+    expect(micVADCalls).toHaveLength(1);
+    const firstInstance = micVADCalls[0]!.instance;
+
+    const newTrack = new (globalThis as unknown as { MediaStreamTrack: new () => MediaStreamTrack }).MediaStreamTrack();
+    const newStream = new (globalThis as unknown as { MediaStream: new (tracks: MediaStreamTrack[]) => MediaStream }).MediaStream([newTrack]);
+
+    await processor.setStream(newStream);
+
+    expect(micVADCalls).toHaveLength(2);
+    expect(micVADCalls[1]!.instance).not.toBe(firstInstance);
+    expect(firstInstance.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws when called before init (no implicit stream)', async () => {
+    const processor = new VADProcessor();
+    const stream = new (globalThis as unknown as { MediaStream: new () => MediaStream }).MediaStream();
+    await expect(processor.setStream(stream)).rejects.toThrow(VADError);
+  });
+});
+
+describe('VADProcessor silence-triggered reset (TASK-271 H-1)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('auto-resets MicVAD after silenceResetMs of contiguous non-speech', async () => {
+    const processor = new VADProcessor({
+      positiveSpeechThreshold: 0.5,
+      silenceResetMs: 500,
+    });
+    await asInternal(processor).init(makeInitOpts());
+
+    expect(micVADCalls).toHaveLength(1);
+    const onFrameProcessed = micVADCalls[0]!.options.onFrameProcessed as (
+      probs: { isSpeech: number; notSpeech: number },
+      frame: Float32Array,
+    ) => void;
+
+    const frame = new Float32Array(512);
+
+    onFrameProcessed({ isSpeech: 0.1, notSpeech: 0.9 }, frame);
+    expect(micVADCalls).toHaveLength(1);
+
+    vi.advanceTimersByTime(600);
+
+    onFrameProcessed({ isSpeech: 0.05, notSpeech: 0.95 }, frame);
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(micVADCalls).toHaveLength(2);
+  });
+
+  it('does NOT reset while frames remain above the positive threshold', async () => {
+    const processor = new VADProcessor({
+      positiveSpeechThreshold: 0.5,
+      silenceResetMs: 200,
+    });
+    await asInternal(processor).init(makeInitOpts());
+
+    const onFrameProcessed = micVADCalls[0]!.options.onFrameProcessed as (
+      probs: { isSpeech: number; notSpeech: number },
+      frame: Float32Array,
+    ) => void;
+    const frame = new Float32Array(512);
+
+    for (let i = 0; i < 20; i++) {
+      vi.advanceTimersByTime(50);
+      onFrameProcessed({ isSpeech: 0.9, notSpeech: 0.1 }, frame);
+    }
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(micVADCalls).toHaveLength(1);
+  });
+
+  it('uses the default silenceResetMs of 5000 when not configured', () => {
+    const processor = new VADProcessor();
+    expect(processor.getOptions().silenceResetMs).toBe(5000);
+  });
+
+  it('disables silence-triggered reset when silenceResetMs is 0', async () => {
+    const processor = new VADProcessor({
+      positiveSpeechThreshold: 0.5,
+      silenceResetMs: 0,
+    });
+    await asInternal(processor).init(makeInitOpts());
+
+    const onFrameProcessed = micVADCalls[0]!.options.onFrameProcessed as (
+      probs: { isSpeech: number; notSpeech: number },
+      frame: Float32Array,
+    ) => void;
+    const frame = new Float32Array(512);
+
+    vi.advanceTimersByTime(60000);
+    onFrameProcessed({ isSpeech: 0.05, notSpeech: 0.95 }, frame);
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(micVADCalls).toHaveLength(1);
+  });
+});
+
+// ============================================================================
+// TASK-271 H-2 — sliding-window probability stats (memory bounded)
+// ============================================================================
+
+describe('VADProcessor sliding-window stats (TASK-271 H-2)', () => {
+  it('uses a fixed Float32Array(300) ring buffer for averageSpeechProbability', () => {
+    const processor = new VADProcessor();
+    const internals = processor as unknown as { probWindow: Float32Array; PROB_WINDOW_SIZE: number };
+    expect(internals.probWindow).toBeInstanceOf(Float32Array);
+    expect(internals.probWindow.length).toBe(300);
+  });
+
+  it('does not grow memory as frame count exceeds the window size', async () => {
+    const processor = new VADProcessor({ silenceResetMs: 0 });
+    await asInternal(processor).init(makeInitOpts());
+
+    const onFrameProcessed = micVADCalls[0]!.options.onFrameProcessed as (
+      probs: { isSpeech: number; notSpeech: number },
+      frame: Float32Array,
+    ) => void;
+    const frame = new Float32Array(512);
+
+    for (let i = 0; i < 10_000; i++) {
+      onFrameProcessed({ isSpeech: 0.5, notSpeech: 0.5 }, frame);
+    }
+
+    const internals = processor as unknown as { probWindow: Float32Array };
+    expect(internals.probWindow.length).toBe(300);
+
+    expect(processor.getStats().framesProcessed).toBe(10_000);
+  });
+
+  it('computes averageSpeechProbability from at most the last N frames', async () => {
+    const processor = new VADProcessor({ silenceResetMs: 0 });
+    await asInternal(processor).init(makeInitOpts());
+
+    const onFrameProcessed = micVADCalls[0]!.options.onFrameProcessed as (
+      probs: { isSpeech: number; notSpeech: number },
+      frame: Float32Array,
+    ) => void;
+    const frame = new Float32Array(512);
+
+    for (let i = 0; i < 500; i++) {
+      onFrameProcessed({ isSpeech: 0.1, notSpeech: 0.9 }, frame);
+    }
+    for (let i = 0; i < 300; i++) {
+      onFrameProcessed({ isSpeech: 0.9, notSpeech: 0.1 }, frame);
+    }
+
+    expect(processor.getStats().averageSpeechProbability).toBeCloseTo(0.9, 5);
+  });
+
+  it('resetStats() clears the ring buffer (averageSpeechProbability -> 0)', async () => {
+    const processor = new VADProcessor({ silenceResetMs: 0 });
+    await asInternal(processor).init(makeInitOpts());
+
+    const onFrameProcessed = micVADCalls[0]!.options.onFrameProcessed as (
+      probs: { isSpeech: number; notSpeech: number },
+      frame: Float32Array,
+    ) => void;
+    const frame = new Float32Array(512);
+
+    for (let i = 0; i < 100; i++) {
+      onFrameProcessed({ isSpeech: 0.8, notSpeech: 0.2 }, frame);
+    }
+    expect(processor.getStats().averageSpeechProbability).toBeGreaterThan(0);
+
+    processor.resetStats();
+
+    expect(processor.getStats().averageSpeechProbability).toBe(0);
+  });
+});
+
+// ============================================================================
+// TASK-271 H-4 — VADSpeechEndPayload.duration (ms) at the source
+// ============================================================================
+
+describe('VADSpeechEndPayload.duration (TASK-271 H-4)', () => {
+  it('emits duration in milliseconds equal to endTime - startTime', async () => {
+    const processor = new VADProcessor({ silenceResetMs: 0 });
+    await asInternal(processor).init(makeInitOpts());
+
+    const internalEmits: Array<{ type: string; data: Record<string, unknown> }> = [];
+    (processor as unknown as { emitData: (t: string, d: unknown) => void }).emitData =
+      (type: string, data: unknown) => {
+        internalEmits.push({ type, data: data as Record<string, unknown> });
+      };
+
+    const onSpeechStart = micVADCalls[0]!.options.onSpeechStart as () => void;
+    const onSpeechEnd = micVADCalls[0]!.options.onSpeechEnd as (audio: Float32Array) => void;
+
+    onSpeechStart();
+    await new Promise((r) => setTimeout(r, 25));
+    onSpeechEnd(new Float32Array(8000));
+
+    const endEvents = internalEmits.filter((e) => e.type === 'vad-speech-end');
+    expect(endEvents).toHaveLength(1);
+
+    const payload = endEvents[0]!.data as {
+      startTime: number;
+      endTime: number;
+      duration: number;
+      durationSec: number;
+    };
+    expect(payload.duration).toBe(payload.endTime - payload.startTime);
+    expect(payload.duration).toBeCloseTo(payload.durationSec * 1000, 0);
+    expect(payload.duration).toBeGreaterThan(0);
   });
 });

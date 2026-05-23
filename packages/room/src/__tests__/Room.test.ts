@@ -9,6 +9,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Room, RoomEvent, RoomState, createLocalTracks } from '../core/Room.js';
 import { AudioContextManager } from '../core/AudioContextManager.js';
 import { RoomErrorCode } from '../types/index.js';
+import {
+  RoomPermissionError,
+  RoomDeviceError,
+  RoomSecurityError,
+  RoomConstraintError,
+  RoomUnknownError,
+} from '../core/RoomErrors.js';
 
 // ============================================================================
 // Mock Factories
@@ -472,6 +479,91 @@ describe('createLocalTracks', () => {
       echoCancellation: true,
     });
     expect(tracks).toHaveLength(1);
+  });
+});
+
+// ============================================================================
+// W1-3 — typed getUserMedia errors from createLocalTracks
+// ============================================================================
+
+describe('createLocalTracks typed errors (W1-3)', () => {
+  function makeDOMException(name: string, message?: string): DOMException {
+    // jsdom supports DOMException constructor.
+    return new DOMException(message ?? name, name);
+  }
+
+  beforeEach(() => {
+    AudioContextManager.resetInstance();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    AudioContextManager.resetInstance();
+  });
+
+  it('should rethrow NotAllowedError as RoomPermissionError with code "mic_permission_denied"', async () => {
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getUserMedia: vi.fn().mockRejectedValue(makeDOMException('NotAllowedError', 'Permission denied')),
+        enumerateDevices: vi.fn().mockResolvedValue([]),
+      },
+    });
+
+    const err = await createLocalTracks().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RoomPermissionError);
+    expect((err as RoomPermissionError).code).toBe('mic_permission_denied');
+    expect((err as RoomPermissionError).name).toBe('RoomPermissionError');
+  });
+
+  it('should rethrow NotFoundError as RoomDeviceError with code "mic_not_found"', async () => {
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getUserMedia: vi.fn().mockRejectedValue(makeDOMException('NotFoundError', 'No mic')),
+        enumerateDevices: vi.fn().mockResolvedValue([]),
+      },
+    });
+
+    const err = await createLocalTracks().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RoomDeviceError);
+    expect((err as RoomDeviceError).code).toBe('mic_not_found');
+  });
+
+  it('should rethrow SecurityError as RoomSecurityError with code "mic_insecure_context"', async () => {
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getUserMedia: vi.fn().mockRejectedValue(makeDOMException('SecurityError', 'Insecure')),
+        enumerateDevices: vi.fn().mockResolvedValue([]),
+      },
+    });
+
+    const err = await createLocalTracks().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RoomSecurityError);
+    expect((err as RoomSecurityError).code).toBe('mic_insecure_context');
+  });
+
+  it('should rethrow OverconstrainedError as RoomConstraintError with code "mic_constraints_unsupported"', async () => {
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getUserMedia: vi.fn().mockRejectedValue(makeDOMException('OverconstrainedError', 'Bad constraints')),
+        enumerateDevices: vi.fn().mockResolvedValue([]),
+      },
+    });
+
+    const err = await createLocalTracks().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RoomConstraintError);
+    expect((err as RoomConstraintError).code).toBe('mic_constraints_unsupported');
+  });
+
+  it('should rethrow unknown errors as RoomUnknownError', async () => {
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getUserMedia: vi.fn().mockRejectedValue(new Error('something exotic')),
+        enumerateDevices: vi.fn().mockResolvedValue([]),
+      },
+    });
+
+    const err = await createLocalTracks().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RoomUnknownError);
   });
 });
 
