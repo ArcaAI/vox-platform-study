@@ -119,48 +119,72 @@ export function useAudioTrack(options: UseAudioTrackOptions = {}): UseAudioTrack
     async (captureOptions?: AudioCaptureOptions) => {
       setError(null);
 
+      // Stop existing track before creating new one. Capture the previous ref
+      // synchronously so we can null it out before awaiting — otherwise the
+      // unmount cleanup might also see and re-stop it.
+      if (trackRef.current) {
+        const previous = trackRef.current;
+        trackRef.current = null;
+        await previous.stop().catch(() => {
+          // best-effort
+        });
+      }
+
+      const mergedOptions = { ...optionsRef.current, ...captureOptions };
+      const audioContext = getAudioContext();
+
+      const trackOptions: AudioTrackOptions = {
+        ...mergedOptions,
+        audioContext,
+      };
+
+      const newTrack = new AudioTrack(trackOptions);
+
+      // Critical (W1-5): assign trackRef.current BEFORE the async initialize()
+      // call. If the component unmounts mid-getUserMedia, the cleanup effect
+      // will see the in-flight track and stop it — preventing the leak where
+      // initialize() resolves into a stopped/unmounted component holding a
+      // live MediaStreamTrack.
+      trackRef.current = newTrack;
+
+      // Set up event listeners
+      const handleMuted = () => setIsMuted(true);
+      const handleUnmuted = () => setIsMuted(false);
+      const handleEnded = () => {
+        setIsCapturing(false);
+        setState(newTrack.getState());
+      };
+
+      newTrack.on(TrackEvent.Muted, handleMuted);
+      newTrack.on(TrackEvent.Unmuted, handleUnmuted);
+      newTrack.on(TrackEvent.Ended, handleEnded);
+
       try {
-        // Stop existing track before creating new one
-        if (trackRef.current) {
-          await trackRef.current.stop();
+        await newTrack.initialize(mergedOptions);
+      } catch (err) {
+        // initialize failed — clear the ref only if it still points at us.
+        if (trackRef.current === newTrack) {
           trackRef.current = null;
         }
-
-        const mergedOptions = { ...optionsRef.current, ...captureOptions };
-        const audioContext = getAudioContext();
-
-        const trackOptions: AudioTrackOptions = {
-          ...mergedOptions,
-          audioContext,
-        };
-
-        const newTrack = new AudioTrack(trackOptions);
-
-        // Set up event listeners
-        const handleMuted = () => setIsMuted(true);
-        const handleUnmuted = () => setIsMuted(false);
-        const handleEnded = () => {
-          setIsCapturing(false);
-          setState(newTrack.getState());
-        };
-
-        newTrack.on(TrackEvent.Muted, handleMuted);
-        newTrack.on(TrackEvent.Unmuted, handleUnmuted);
-        newTrack.on(TrackEvent.Ended, handleEnded);
-
-        await newTrack.initialize(mergedOptions);
-
-        trackRef.current = newTrack;
-        setTrack(newTrack);
-        setIsCapturing(true);
-        setState(newTrack.getState());
-        setIsMuted(newTrack.isMuted());
-      } catch (err) {
         const roomError = err as RoomError;
         setError(roomError);
         setIsCapturing(false);
         throw err;
       }
+
+      // If the component unmounted while initialize() was in flight, the
+      // cleanup effect will have stopped the track via trackRef.current
+      // (which we set above). Detect that case and skip the React state
+      // updates — they would target an unmounted component.
+      if (trackRef.current !== newTrack) {
+        // Track was stopped/cleared during initialize — nothing to publish.
+        return;
+      }
+
+      setTrack(newTrack);
+      setIsCapturing(true);
+      setState(newTrack.getState());
+      setIsMuted(newTrack.isMuted());
     },
     [getAudioContext],
   );
@@ -223,8 +247,13 @@ export function useAudioTrack(options: UseAudioTrackOptions = {}): UseAudioTrack
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (trackRef.current) {
-        trackRef.current.stop().catch(() => {
+      // Critical (W1-5): trackRef.current is now set BEFORE initialize()
+      // resolves, so unmount-mid-init reliably reaches this branch and
+      // stops the in-flight track.
+      const inflightTrack = trackRef.current;
+      if (inflightTrack) {
+        trackRef.current = null;
+        inflightTrack.stop().catch(() => {
           // Ignore errors on unmount
         });
       }

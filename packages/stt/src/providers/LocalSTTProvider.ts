@@ -9,6 +9,7 @@
  */
 
 import type { TranscriptionResult, STTStats, LocalProviderConfig, ComputeDevice } from '../types/index.js';
+import type { TranscribeOptions } from '../engines/types.js';
 import { isWhisperModelSize, normalizeModelId } from '../types/index.js';
 import { BaseSTTProvider } from './BaseSTTProvider.js';
 import { WhisperWorkerEngine } from '../engines/WhisperWorkerEngine.js';
@@ -166,7 +167,9 @@ export class LocalSTTProvider extends BaseSTTProvider {
     }
 
     const startTime = performance.now();
-    const baseResult = await this.engine.transcribe(audio);
+    const transcribeOptions: TranscribeOptions | undefined =
+      this.config && (this.config as LocalProviderConfig).prompt ? { prompt: (this.config as LocalProviderConfig).prompt } : undefined;
+    const baseResult = await this.engine.transcribe(audio, transcribeOptions);
     const result = this.applyLocalDiarization(baseResult, audio);
     const latencyMs = performance.now() - startTime;
 

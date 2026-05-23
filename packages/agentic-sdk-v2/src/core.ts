@@ -103,9 +103,13 @@ export type {
   UseUserSettingsReturn,
   UseUsersReturn,
   UseVoiceEmbeddingReturn,
-  VoiceEmbeddingResponse,
-  VoiceEmbeddingStatus,
+  VoiceProfile,
+  EnrollFiles,
+  UserRole,
 } from './hooks';
+
+// TASK-265 W0-10 — typed built-in role identifiers
+export { USER_ROLES } from './hooks';
 
 // =============================================================================
 // Types - Configuration

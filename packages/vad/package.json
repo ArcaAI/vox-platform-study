@@ -11,10 +11,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    },
-    "./worklet": {
-      "types": "./dist/worklets/vad.worklet.d.ts",
-      "import": "./dist/worklets/vad.worklet.js"
     }
   },
   "files": [

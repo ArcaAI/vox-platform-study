@@ -153,6 +153,13 @@ export class WhisperEngine extends BaseEngine {
         transcribeOptions.stride_length_s = this.config.overlapLengthS;
       }
 
+      // Forward optional initial prompt to bias decoder toward domain vocabulary
+      // (e.g. medical terminology). Suppresses Whisper hallucinations on
+      // specialised content.
+      if (options?.prompt !== undefined && options.prompt !== '') {
+        transcribeOptions.initial_prompt = options.prompt;
+      }
+
       type PipelineResult = {
         text: string;
         chunks?: Array<{ text: string; timestamp: [number, number | null] }>;

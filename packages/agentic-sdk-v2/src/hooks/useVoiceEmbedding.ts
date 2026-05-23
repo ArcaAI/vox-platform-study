@@ -1,133 +1,98 @@
 /**
- * @arcaai/vox - useVoiceEmbedding Hook (TASK-033)
+ * @arcaai/vox - useVoiceEmbedding Hook (TASK-265 W0-7 / GAP-02 rewrite)
  *
- * Manages speaker voice embeddings for personalized speaker recognition.
+ * Targets the real `/voice-profile` API surface:
+ *   POST   /voice-profile/enroll   (multipart, up to 3 files)
+ *   GET    /voice-profile          (current user's profiles)
+ *   DELETE /voice-profile/:id      (by profile id, not user id)
+ *
+ * Replaces the legacy `/users/:userId/voice-embedding` flow which 100% 404'd.
+ * See docs/implementation/TASK-265-SDK-Endpoint-Drift/README.md.
  */
 
-import { useState, useMemo, useCallback } from 'react';
-import { useAgenticStore } from '../store';
+import { useState, useCallback } from 'react';
+import { useApiOperation } from './useApiOperation';
+import { extractArray } from '../utils/responseUtils';
 import { VOICE_EMBEDDING_ENDPOINTS } from '../core/constants';
 
-export interface VoiceEmbeddingResponse {
-  userId: string;
-  speakerId: string;
-  embeddingId: string;
-  dimensions: number;
-  createdAt: string;
-  audioFileKey: string;
+export interface VoiceProfile {
+  id: string;
+  userId?: string;
+  tenantId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  /** Permissive bag for fields the API may add over time. */
+  [key: string]: unknown;
 }
 
-export interface VoiceEmbeddingStatus {
-  userId: string;
-  exists: boolean;
-  createdAt?: string;
-  dimensions?: number;
-  audioFileKey?: string;
-}
+export type EnrollFiles = File | Blob | ReadonlyArray<File | Blob>;
 
 export interface UseVoiceEmbeddingReturn {
-  status: VoiceEmbeddingStatus | null;
+  profiles: VoiceProfile[];
   isLoading: boolean;
   isUploading: boolean;
   error: Error | null;
-  upload: (userId: string, audioFile: File | Blob) => Promise<VoiceEmbeddingResponse>;
-  getStatus: (userId: string) => Promise<VoiceEmbeddingStatus>;
-  remove: (userId: string) => Promise<void>;
+  enroll: (files: EnrollFiles) => Promise<VoiceProfile>;
+  list: () => Promise<VoiceProfile[]>;
+  delete: (profileId: string) => Promise<void>;
 }
 
 export function useVoiceEmbedding(): UseVoiceEmbeddingReturn {
-  const store = useAgenticStore();
-  const apiClient = store.apiClient;
-  const logger = useMemo(() => store.logger?.child('useVoiceEmbedding'), [store.logger]);
-
-  const [status, setStatus] = useState<VoiceEmbeddingStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const { execute, isLoading, error, apiClient } = useApiOperation('useVoiceEmbedding');
+  const [profiles, setProfiles] = useState<VoiceProfile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
 
-  const upload = useCallback(
-    async (userId: string, audioFile: File | Blob): Promise<VoiceEmbeddingResponse> => {
+  const enroll = useCallback(
+    async (files: EnrollFiles): Promise<VoiceProfile> => {
       if (!apiClient) throw new Error('SDK not initialized');
+      const fileList: ReadonlyArray<File | Blob> = Array.isArray(files) ? (files as ReadonlyArray<File | Blob>) : [files as File | Blob];
+
+      const formData = new FormData();
+      for (const file of fileList) {
+        formData.append('files', file);
+      }
+
       setIsUploading(true);
-      setError(null);
-      const timer = logger?.startOperation('uploadVoiceEmbedding');
       try {
-        const formData = new FormData();
-        formData.append('file', audioFile);
-        const data = await apiClient.post<VoiceEmbeddingResponse>(VOICE_EMBEDDING_ENDPOINTS.UPLOAD(userId), formData);
-        setStatus({
-          userId: data.userId,
-          exists: true,
-          dimensions: data.dimensions,
-          createdAt: data.createdAt,
-          audioFileKey: data.audioFileKey,
-        });
-        timer?.end(true);
-        return data;
-      } catch (err) {
-        setError(err as Error);
-        timer?.error(err as Error);
-        throw err;
+        return await execute<VoiceProfile>(
+          'enroll',
+          (client) => client.postFormData<VoiceProfile>(VOICE_EMBEDDING_ENDPOINTS.enroll, formData),
+          false,
+        );
       } finally {
         setIsUploading(false);
       }
     },
-    [apiClient, logger],
+    [apiClient, execute],
   );
 
-  const getStatus = useCallback(
-    async (userId: string): Promise<VoiceEmbeddingStatus> => {
-      if (!apiClient) throw new Error('SDK not initialized');
-      setIsLoading(true);
-      setError(null);
-      const timer = logger?.startOperation('getVoiceEmbeddingStatus');
-      try {
-        const data = await apiClient.get<VoiceEmbeddingStatus>(VOICE_EMBEDDING_ENDPOINTS.STATUS(userId));
-        setStatus(data);
-        timer?.end(true);
-        return data;
-      } catch (err) {
-        setError(err as Error);
-        timer?.error(err as Error);
-        throw err;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [apiClient, logger],
+  const listProfiles = useCallback(
+    () =>
+      execute<VoiceProfile[]>('list', async (client) => {
+        const raw = await client.get(VOICE_EMBEDDING_ENDPOINTS.list);
+        const items = extractArray<VoiceProfile>(raw);
+        setProfiles(items);
+        return items;
+      }),
+    [execute],
   );
 
-  const remove = useCallback(
-    async (userId: string): Promise<void> => {
-      if (!apiClient) throw new Error('SDK not initialized');
-      setIsLoading(true);
-      setError(null);
-      const timer = logger?.startOperation('removeVoiceEmbedding');
-      try {
-        await apiClient.delete(VOICE_EMBEDDING_ENDPOINTS.REMOVE(userId));
-        setStatus(null);
-        timer?.end(true);
-      } catch (err) {
-        setError(err as Error);
-        timer?.error(err as Error);
-        throw err;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [apiClient, logger],
+  const deleteProfile = useCallback(
+    (profileId: string) =>
+      execute<void>('delete', async (client) => {
+        await client.delete(VOICE_EMBEDDING_ENDPOINTS.delete(profileId));
+        setProfiles((prev) => prev.filter((p) => p.id !== profileId));
+      }),
+    [execute],
   );
 
-  return useMemo(
-    () => ({
-      status,
-      isLoading,
-      isUploading,
-      error,
-      upload,
-      getStatus,
-      remove,
-    }),
-    [status, isLoading, isUploading, error, upload, getStatus, remove],
-  );
+  return {
+    profiles,
+    isLoading,
+    isUploading,
+    error,
+    enroll,
+    list: listProfiles,
+    delete: deleteProfile,
+  };
 }

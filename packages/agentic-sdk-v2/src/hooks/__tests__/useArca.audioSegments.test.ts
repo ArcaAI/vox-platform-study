@@ -72,6 +72,13 @@ const mockStoreDefaults = {
     setDNAStyle: vi.fn(),
     setTranscriptSegments: vi.fn(),
     setAudioLanguage: vi.fn(),
+    // TASK-267 W1-1: useArca.audio now delegates to useArcaAudio,
+    // which writes activeStream / activeAudioContext / transcript segments.
+    activeStream: null,
+    activeAudioContext: null,
+    setActiveStream: vi.fn(),
+    setActiveAudioContext: vi.fn(),
+    addTranscriptSegment: vi.fn(),
     reset: vi.fn(),
 };
 

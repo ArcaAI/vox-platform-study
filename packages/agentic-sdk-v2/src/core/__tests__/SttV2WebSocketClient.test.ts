@@ -1235,26 +1235,33 @@ describe('SttV2WebSocketClient', () => {
   });
 
   // =========================================================================
-  // TASK-241: Debug Mode
+  // TASK-241 + TASK-266 W0-13: Debug Mode
+  //
+  // Originally these tests asserted that debug-mode transcripts hit
+  // `console.log`. W0-13 routes that channel through `SDKLogger.debug(...)`
+  // instead, so the assertions now target `mockLogger.debug` and we keep a
+  // spy on `console.log` to PROVE the ad-hoc console call has been removed.
   // =========================================================================
-
   describe('debug mode transcript logging', () => {
     let consoleSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
       consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      mockLogger.debug.mockClear();
     });
 
     afterEach(() => {
       consoleSpy.mockRestore();
     });
 
-    it('should log transcript JSON when debugMode is true and result is final', async () => {
+    it('routes transcript debug through SDKLogger.debug (NOT console.log) when debugMode=true', async () => {
       const debugClient = new SttV2WebSocketClient(mockLogger, undefined, true);
 
       const connectPromise = debugClient.connect('wss://api.example.com/ws/stream');
       lastMockWs!.simulateOpen();
       await connectPromise;
+
+      mockLogger.debug.mockClear();
 
       const transcriptCb = vi.fn();
       debugClient.onTranscript(transcriptCb);
@@ -1269,28 +1276,35 @@ describe('SttV2WebSocketClient', () => {
       }));
 
       expect(transcriptCb).toHaveBeenCalled();
-      expect(consoleSpy).toHaveBeenCalled();
-      const logOutput = consoleSpy.mock.calls[0]![0] as string;
-      expect(logOutput).toContain('[ARCAAI:DEBUG]');
-      expect(logOutput).toContain('Transcript:');
+      expect(consoleSpy).not.toHaveBeenCalled();
 
-      const jsonStr = logOutput.split('Transcript:\n')[1]!;
-      const parsed = JSON.parse(jsonStr);
-      expect(parsed.segment).toBe(1);
-      expect(parsed.speaker).toBe('speaker-2');
-      expect(parsed.start).toBe(1.234);
-      expect(parsed.end).toBe(3.567);
+      // Find the transcript debug call (debug() is also invoked from other
+      // code paths like onclose; filter on the [ARCAAI:DEBUG] marker).
+      const transcriptDebugCalls = mockLogger.debug.mock.calls.filter(
+        (call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('[ARCAAI:DEBUG]'),
+      );
+      expect(transcriptDebugCalls).toHaveLength(1);
+      const message = transcriptDebugCalls[0]![0] as string;
+      expect(message).toContain('SttV2WebSocket');
+      expect(message).toContain('Transcript:');
+      const meta = transcriptDebugCalls[0]![1] as { component?: string; attributes?: { entry?: Record<string, unknown> } } | undefined;
+      expect(meta?.component).toBe('SttV2WebSocketClient');
+      expect(meta?.attributes?.entry?.segment).toBe(1);
+      expect(meta?.attributes?.entry?.speaker).toBe('speaker-2');
+      expect(meta?.attributes?.entry?.start).toBe(1.234);
+      expect(meta?.attributes?.entry?.end).toBe(3.567);
 
       debugClient.disconnect();
     });
 
-    it('should not log transcript when debugMode is false', async () => {
+    it('does NOT log transcript debug when debugMode is false', async () => {
       const noDebugClient = new SttV2WebSocketClient(mockLogger, undefined, false);
 
       const connectPromise = noDebugClient.connect('wss://api.example.com/ws/stream');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
+      mockLogger.debug.mockClear();
       noDebugClient.onTranscript(vi.fn());
 
       lastMockWs!.simulateMessage(JSON.stringify({
@@ -1302,17 +1316,22 @@ describe('SttV2WebSocketClient', () => {
       }));
 
       expect(consoleSpy).not.toHaveBeenCalled();
+      const transcriptDebugCalls = mockLogger.debug.mock.calls.filter(
+        (call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('[ARCAAI:DEBUG]'),
+      );
+      expect(transcriptDebugCalls).toHaveLength(0);
 
       noDebugClient.disconnect();
     });
 
-    it('should not log transcript for non-final results even in debug mode', async () => {
+    it('does NOT log transcript for non-final results even in debug mode', async () => {
       const debugClient = new SttV2WebSocketClient(mockLogger, undefined, true);
 
       const connectPromise = debugClient.connect('wss://api.example.com/ws/stream');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
+      mockLogger.debug.mockClear();
       debugClient.onTranscript(vi.fn());
 
       lastMockWs!.simulateMessage(JSON.stringify({
@@ -1324,17 +1343,22 @@ describe('SttV2WebSocketClient', () => {
       }));
 
       expect(consoleSpy).not.toHaveBeenCalled();
+      const transcriptDebugCalls = mockLogger.debug.mock.calls.filter(
+        (call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('[ARCAAI:DEBUG]'),
+      );
+      expect(transcriptDebugCalls).toHaveLength(0);
 
       debugClient.disconnect();
     });
 
-    it('should increment segment counter across multiple final transcripts', async () => {
+    it('increments the segment counter across multiple final transcripts (via logger.debug)', async () => {
       const debugClient = new SttV2WebSocketClient(mockLogger, undefined, true);
 
       const connectPromise = debugClient.connect('wss://api.example.com/ws/stream');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
+      mockLogger.debug.mockClear();
       debugClient.onTranscript(vi.fn());
 
       for (let i = 0; i < 3; i++) {
@@ -1347,13 +1371,40 @@ describe('SttV2WebSocketClient', () => {
         }));
       }
 
-      expect(consoleSpy).toHaveBeenCalledTimes(3);
-      const firstParsed = JSON.parse((consoleSpy.mock.calls[0]![0] as string).split('Transcript:\n')[1]!);
-      const thirdParsed = JSON.parse((consoleSpy.mock.calls[2]![0] as string).split('Transcript:\n')[1]!);
-      expect(firstParsed.segment).toBe(1);
-      expect(thirdParsed.segment).toBe(3);
+      const transcriptDebugCalls = mockLogger.debug.mock.calls.filter(
+        (call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('[ARCAAI:DEBUG]'),
+      );
+      expect(transcriptDebugCalls).toHaveLength(3);
+      expect((transcriptDebugCalls[0]![1] as { attributes: { entry: { segment: number } } }).attributes.entry.segment).toBe(1);
+      expect((transcriptDebugCalls[2]![1] as { attributes: { entry: { segment: number } } }).attributes.entry.segment).toBe(3);
+      expect(consoleSpy).not.toHaveBeenCalled();
 
       debugClient.disconnect();
+    });
+  });
+
+  // =========================================================================
+  // TASK-266 W0-13: source file MUST NOT contain `console.log`.
+  //
+  // This locks the contract that no future edit can accidentally re-introduce
+  // an ad-hoc console.log call into SttV2WebSocketClient.ts. The check reads
+  // the source file as text and strips comments so doc-block examples that
+  // mention `console.log` don't false-positive.
+  // =========================================================================
+  describe('TASK-266 W0-13: source must not contain console.log', () => {
+    it('SttV2WebSocketClient.ts source file contains zero console.log call sites', async () => {
+      const { readFileSync } = await import('node:fs');
+      const { resolve } = await import('node:path');
+      const sourcePath = resolve(__dirname, '..', 'SttV2WebSocketClient.ts');
+      const source = readFileSync(sourcePath, 'utf8');
+
+      // Strip JSDoc block comments so usage-example snippets don't trip the
+      // regex (they contain literal `console.log(t.text, t.isFinal)`).
+      const noBlockComments = source.replace(/\/\*[\s\S]*?\*\//g, '');
+      // Strip single-line comments.
+      const stripped = noBlockComments.replace(/^\s*\/\/.*$/gm, '');
+
+      expect(stripped).not.toMatch(/console\.log\s*\(/);
     });
   });
 });

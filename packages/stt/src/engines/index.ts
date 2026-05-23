@@ -7,6 +7,9 @@
 // Types
 export type { EngineConfig, TranscribeOptions, EngineStats, STTEngine } from './types.js';
 
+// Errors
+export { STTWorkerCrashError } from './errors.js';
+
 // Base
 export { BaseEngine } from './BaseEngine.js';
 

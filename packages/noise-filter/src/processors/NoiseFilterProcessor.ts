@@ -22,6 +22,7 @@ import { RNNoiseProcessor } from './RNNoiseProcessor.js';
 import { registerRNNoiseWorklet, createRNNoiseWorkletNode, isWorkletRegistered } from '../worklets/worklet-loader.js';
 
 import { getNoiseFilterBrowserSupport, isRNNoiseSupported } from '../utils/browserSupport.js';
+import { getDefaultWasmUrl } from '../wasmAsset.js';
 
 /**
  * NoiseFilterProcessor provides AI-powered noise cancellation for audio tracks.
@@ -214,16 +215,19 @@ export class NoiseFilterProcessor extends BaseProcessor {
 
   /**
    * Load the RNNoise WASM binary.
+   *
+   * Uses the bundled asset at `assets/rnnoise.wasm` (resolved via
+   * `getDefaultWasmUrl()`) unless an explicit `wasmPath` override is set.
+   * TASK-269 — CRIT-2: the previous default was a `cdn.jsdelivr.net` URL
+   * that violated strict CSP, broke offline/corporate deployments, and
+   * had no SRI integrity guarantee.
    */
   private async loadWasmBinary(): Promise<ArrayBuffer> {
-    // Try to load from custom path or use bundled
-    const wasmPath = this.options.wasmPath ?? 'https://cdn.jsdelivr.net/npm/@jitsi/rnnoise-wasm/dist/rnnoise.wasm';
-
+    const wasmPath = this.options.wasmPath ?? getDefaultWasmUrl();
     const response = await fetch(wasmPath);
     if (!response.ok) {
       throw new Error(`Failed to fetch WASM: ${response.status}`);
     }
-
     return response.arrayBuffer();
   }
 
@@ -238,11 +242,10 @@ export class NoiseFilterProcessor extends BaseProcessor {
     // Create RNNoise processor for main thread processing
     this.rnnoiseProcessor = new RNNoiseProcessor();
 
-    // Initialize RNNoise
-    this.rnnoiseProcessor
-      .init()
+    // Load the bundled WASM binary then initialize the processor.
+    this.loadWasmBinary()
+      .then((wasmBinary) => this.rnnoiseProcessor!.init(wasmBinary))
       .then(() => {
-        // Set initial options
         this.rnnoiseProcessor!.setLevel(this.options.noiseCancellationLevel);
         this.rnnoiseProcessor!.setEnabled(this.options.noiseCancellation);
       })

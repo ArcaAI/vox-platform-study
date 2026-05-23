@@ -268,6 +268,20 @@ describe('usePipelines', () => {
             expect(resp).toEqual(validationResult);
         });
 
+        // TASK-265 W0-9 / GAP-10: lock the actual URL string. The previous SDK
+        // value ended in `/validate-yaml`, the API was renamed to `/validate`.
+        it('TASK-265: posts to exactly /admin/audio/pipelines/validate (no -yaml)', async () => {
+            const mockPost = mockStore.apiClient.post;
+            mockPost.mockResolvedValue({ valid: true });
+            const { result } = renderHook(() => usePipelines());
+
+            await act(async () => { await result.current.validateConfig('stages: []'); });
+
+            const [endpoint] = mockPost.mock.calls[0];
+            expect(endpoint).toBe('/admin/audio/pipelines/validate');
+            expect(endpoint).not.toContain('-yaml');
+        });
+
         it('should return validation errors for invalid config', async () => {
             const mockPost = mockStore.apiClient.post;
             const validationResult = { valid: false, errors: ['Invalid YAML syntax at line 3'] };

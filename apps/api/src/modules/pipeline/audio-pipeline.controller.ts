@@ -95,7 +95,7 @@ export class AudioPipelineController {
   @ApiEndpoint({
     returnedModel: PipelineResponse,
     method: HttpMethod.POST,
-    path: 'validate-yaml',
+    path: 'validate',
   })
   @ApiResponse({ status: 200, description: 'YAML validation result', type: ValidateYamlResponse })
   async validateYaml(@Body() body: ValidateYamlRequest): Promise<ValidateYamlResponse> {

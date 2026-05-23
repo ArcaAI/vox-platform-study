@@ -15,11 +15,14 @@
     "./worklet": {
       "types": "./dist/worklets/rnnoise.worklet.d.ts",
       "import": "./dist/worklets/rnnoise.worklet.js"
-    }
+    },
+    "./wasm": "./assets/rnnoise.wasm",
+    "./assets/rnnoise.wasm": "./assets/rnnoise.wasm"
   },
   "files": [
     "dist",
     "src",
+    "assets",
     "README.md"
   ],
   "scripts": {

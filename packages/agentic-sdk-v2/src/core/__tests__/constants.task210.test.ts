@@ -222,33 +222,16 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
   // ===========================================================================
 
   describe('USER_SETTINGS_ENDPOINTS (/user-settings -> /user/me/settings)', () => {
-    it('should use /user/me/settings for LIST', () => {
-      expect(USER_SETTINGS_ENDPOINTS.LIST).toBe('/user/me/settings');
-    });
-
-    it('should use /user/me/settings/:id for GET', () => {
-      expect(USER_SETTINGS_ENDPOINTS.GET('us-1')).toBe('/user/me/settings/us-1');
-    });
-
-    it('should use /user/me/settings for CREATE', () => {
-      expect(USER_SETTINGS_ENDPOINTS.CREATE).toBe('/user/me/settings');
-    });
-
-    it('should use /user/me/settings/:id for UPDATE', () => {
-      expect(USER_SETTINGS_ENDPOINTS.UPDATE('us-1')).toBe('/user/me/settings/us-1');
-    });
-
-    it('should use /user/me/settings/user/:userId for MY_SETTINGS', () => {
-      expect(USER_SETTINGS_ENDPOINTS.MY_SETTINGS('u-1')).toBe('/user/me/settings/user/u-1');
+    // TASK-265 W0-8 / GAP-03 reduced this surface to { list, updateByKey }
+    // — see docs/implementation/TASK-265-SDK-Endpoint-Drift/README.md
+    it('should use /user/me/settings for list', () => {
+      expect(USER_SETTINGS_ENDPOINTS.list).toBe('/user/me/settings');
     });
 
     it('should NOT contain /user-settings path', () => {
       const all = [
-        USER_SETTINGS_ENDPOINTS.LIST,
-        USER_SETTINGS_ENDPOINTS.CREATE,
-        USER_SETTINGS_ENDPOINTS.GET('x'),
-        USER_SETTINGS_ENDPOINTS.UPDATE('x'),
-        USER_SETTINGS_ENDPOINTS.MY_SETTINGS('x'),
+        USER_SETTINGS_ENDPOINTS.list,
+        USER_SETTINGS_ENDPOINTS.updateByKey('ns', 'k'),
       ];
       all.forEach(ep => expect(ep).not.toContain('/user-settings'));
     });
@@ -438,8 +421,10 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(STORAGE_ENDPOINTS.HEALTH).toBe('/storage/health');
     });
 
-    it('VOICE_EMBEDDING_ENDPOINTS should be unchanged', () => {
-      expect(VOICE_EMBEDDING_ENDPOINTS.UPLOAD('u-1')).toBe('/users/u-1/voice-embedding');
+    it('VOICE_EMBEDDING_ENDPOINTS targets the /voice-profile API (TASK-265 W0-7)', () => {
+      expect(VOICE_EMBEDDING_ENDPOINTS.enroll).toBe('/voice-profile/enroll');
+      expect(VOICE_EMBEDDING_ENDPOINTS.list).toBe('/voice-profile');
+      expect(VOICE_EMBEDDING_ENDPOINTS.delete('p-1')).toBe('/voice-profile/p-1');
     });
   });
 
@@ -463,8 +448,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
         PIPELINE_ENDPOINTS.VALIDATE,
         GLOBAL_SETTINGS_ENDPOINTS.LIST,
         GLOBAL_SETTINGS_ENDPOINTS.CREATE,
-        USER_SETTINGS_ENDPOINTS.LIST,
-        USER_SETTINGS_ENDPOINTS.CREATE,
+        USER_SETTINGS_ENDPOINTS.list,
         API_KEY_ENDPOINTS.LIST,
         API_KEY_ENDPOINTS.CREATE,
         ROLE_ENDPOINTS.LIST,
@@ -491,9 +475,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
         GLOBAL_SETTINGS_ENDPOINTS.UPDATE('x'),
         GLOBAL_SETTINGS_ENDPOINTS.BY_TENANT('x'),
         GLOBAL_SETTINGS_ENDPOINTS.TENANT_CONFIG('x'),
-        USER_SETTINGS_ENDPOINTS.GET('x'),
-        USER_SETTINGS_ENDPOINTS.UPDATE('x'),
-        USER_SETTINGS_ENDPOINTS.MY_SETTINGS('x'),
+        USER_SETTINGS_ENDPOINTS.updateByKey('x', 'y'),
         API_KEY_ENDPOINTS.GET('x'),
         API_KEY_ENDPOINTS.UPDATE('x'),
         API_KEY_ENDPOINTS.DELETE('x'),
@@ -544,10 +526,9 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(GLOBAL_SETTINGS_ENDPOINTS.TENANT_CONFIG(dangerous)).toContain(encoded);
     });
 
-    it('USER_SETTINGS_ENDPOINTS should encode special chars', () => {
-      expect(USER_SETTINGS_ENDPOINTS.GET(dangerous)).toContain(encoded);
-      expect(USER_SETTINGS_ENDPOINTS.UPDATE(dangerous)).toContain(encoded);
-      expect(USER_SETTINGS_ENDPOINTS.MY_SETTINGS(dangerous)).toContain(encoded);
+    it('USER_SETTINGS_ENDPOINTS should encode special chars (TASK-265 reduced surface)', () => {
+      const path = USER_SETTINGS_ENDPOINTS.updateByKey(dangerous, dangerous);
+      expect(path.split(encoded).length - 1).toBe(2);
     });
 
     it('API_KEY_ENDPOINTS should encode special chars', () => {
@@ -595,7 +576,6 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
 
     it('admin endpoints should handle UUID IDs', () => {
       expect(GLOBAL_SETTINGS_ENDPOINTS.GET(uuid)).toBe(`/admin/settings/${uuid}`);
-      expect(USER_SETTINGS_ENDPOINTS.GET(uuid)).toBe(`/user/me/settings/${uuid}`);
       expect(API_KEY_ENDPOINTS.GET(uuid)).toBe(`/admin/api-keys/${uuid}`);
       expect(API_KEY_ENDPOINTS.REVOKE(uuid)).toBe(`/admin/api-keys/${uuid}/revoke`);
       expect(ROLE_ENDPOINTS.GET(uuid)).toBe(`/admin/rbac/roles/${uuid}`);
@@ -612,7 +592,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(() => STT_V2_ENDPOINTS.GET_JOB('')).not.toThrow();
       expect(() => PIPELINE_ENDPOINTS.GET('')).not.toThrow();
       expect(() => GLOBAL_SETTINGS_ENDPOINTS.GET('')).not.toThrow();
-      expect(() => USER_SETTINGS_ENDPOINTS.GET('')).not.toThrow();
+      expect(() => USER_SETTINGS_ENDPOINTS.updateByKey('', '')).not.toThrow();
       expect(() => API_KEY_ENDPOINTS.GET('')).not.toThrow();
       expect(() => ROLE_ENDPOINTS.GET('')).not.toThrow();
       expect(() => TENANT_ENDPOINTS.GET_CONFIGS('')).not.toThrow();
@@ -647,8 +627,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
         PIPELINE_ENDPOINTS.VALIDATE,
         GLOBAL_SETTINGS_ENDPOINTS.LIST,
         GLOBAL_SETTINGS_ENDPOINTS.CREATE,
-        USER_SETTINGS_ENDPOINTS.LIST,
-        USER_SETTINGS_ENDPOINTS.CREATE,
+        USER_SETTINGS_ENDPOINTS.list,
         API_KEY_ENDPOINTS.LIST,
         API_KEY_ENDPOINTS.CREATE,
         ROLE_ENDPOINTS.LIST,
@@ -675,9 +654,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
         GLOBAL_SETTINGS_ENDPOINTS.UPDATE(id),
         GLOBAL_SETTINGS_ENDPOINTS.BY_TENANT(id),
         GLOBAL_SETTINGS_ENDPOINTS.TENANT_CONFIG(id),
-        USER_SETTINGS_ENDPOINTS.GET(id),
-        USER_SETTINGS_ENDPOINTS.UPDATE(id),
-        USER_SETTINGS_ENDPOINTS.MY_SETTINGS(id),
+        USER_SETTINGS_ENDPOINTS.updateByKey(id, id),
         API_KEY_ENDPOINTS.GET(id),
         API_KEY_ENDPOINTS.UPDATE(id),
         API_KEY_ENDPOINTS.DELETE(id),
@@ -724,8 +701,9 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(Object.keys(GLOBAL_SETTINGS_ENDPOINTS)).toHaveLength(7);
     });
 
-    it('USER_SETTINGS_ENDPOINTS should have exactly 5 keys', () => {
-      expect(Object.keys(USER_SETTINGS_ENDPOINTS)).toHaveLength(5);
+    it('USER_SETTINGS_ENDPOINTS should have exactly 2 keys (TASK-265 W0-8 reduction)', () => {
+      expect(Object.keys(USER_SETTINGS_ENDPOINTS)).toHaveLength(2);
+      expect(Object.keys(USER_SETTINGS_ENDPOINTS).sort()).toEqual(['list', 'updateByKey']);
     });
 
     it('API_KEY_ENDPOINTS should have exactly 7 keys', () => {
@@ -906,7 +884,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
 
     it('user self-service endpoints should use /user/me/ prefix', () => {
       expect(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES).toMatch(/^\/user\/me\//);
-      expect(USER_SETTINGS_ENDPOINTS.LIST).toMatch(/^\/user\/me\//);
+      expect(USER_SETTINGS_ENDPOINTS.list).toMatch(/^\/user\/me\//);
     });
 
     it('WS_STREAM should NOT use /audio/ prefix (WebSocket bypasses global prefix)', () => {

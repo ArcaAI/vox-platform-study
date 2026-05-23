@@ -49,6 +49,9 @@ describe('TASK-224: Auth Security Enhancement', () => {
         mockGet.mockReset();
         mockPost.mockReset();
 
+        // TASK-264 W0-3: admin JWT now lives inside AgenticClient (WeakMap),
+        // not in the store. The mock client emulates the stash with a closure.
+        let stashedAdminToken: string | undefined;
         mockStore = {
             apiClient: {
                 get: mockGet,
@@ -63,17 +66,23 @@ describe('TASK-224: Auth Security Enhancement', () => {
                 getApiKey: vi.fn(),
                 getBaseUrl: vi.fn().mockReturnValue('https://api.arcaai.com'),
                 postFormData: vi.fn(),
+                startImpersonation: vi.fn((token: string) => { stashedAdminToken = token; }),
+                stopImpersonation: vi.fn(() => {
+                    const t = stashedAdminToken;
+                    stashedAdminToken = undefined;
+                    return t;
+                }),
+                isImpersonating: vi.fn(() => stashedAdminToken !== undefined),
             },
             logger: mockLogger,
             authUser: adminUser,
             authIsAuthenticated: true,
             authImpersonatedUser: null as unknown,
-            authOriginalToken: null as string | null,
+            // NOTE: `authOriginalToken` removed in TASK-264 W0-3.
             authOriginalUser: null as unknown,
             setAuthUser: vi.fn((user: unknown) => { mockStore.authUser = user; }),
             setIsAuthenticated: vi.fn((val: boolean) => { mockStore.authIsAuthenticated = val; }),
             setImpersonatedUser: vi.fn((user: unknown) => { mockStore.authImpersonatedUser = user; }),
-            setOriginalToken: vi.fn((token: string | null) => { mockStore.authOriginalToken = token; }),
             setOriginalUser: vi.fn((user: unknown) => { mockStore.authOriginalUser = user; }),
         };
         (useAgenticStore as any).mockImplementation(() => mockStore);
@@ -87,7 +96,8 @@ describe('TASK-224: Auth Security Enhancement', () => {
 
     describe('Fix 1: endImpersonation restores admin user identity', () => {
         it('should call setAuthUser with the original admin user when ending impersonation', async () => {
-            mockStore.authOriginalToken = 'admin-jwt-token';
+            // TASK-264 W0-3 — stash token in AgenticClient instead of store
+            mockStore.apiClient.startImpersonation('admin-jwt-token');
             mockStore.authOriginalUser = adminUser;
             mockPost.mockResolvedValue({ success: true });
             (useAgenticStore as any).mockReturnValue(mockStore);
@@ -99,7 +109,7 @@ describe('TASK-224: Auth Security Enhancement', () => {
         });
 
         it('should NOT call setAuthUser when originalUser is null', async () => {
-            mockStore.authOriginalToken = 'admin-jwt-token';
+            mockStore.apiClient.startImpersonation('admin-jwt-token');
             mockStore.authOriginalUser = null;
             mockPost.mockResolvedValue({ success: true });
             (useAgenticStore as any).mockReturnValue(mockStore);
@@ -112,13 +122,16 @@ describe('TASK-224: Auth Security Enhancement', () => {
 
         it('should restore both token AND user in correct order', async () => {
             const callOrder: string[] = [];
+            // TASK-264 W0-3 — stopImpersonation comes from client
+            mockStore.apiClient.stopImpersonation = vi.fn(() => {
+                callOrder.push('stopImpersonation');
+                return 'admin-jwt-token';
+            });
             mockStore.apiClient.updateAccessToken = vi.fn(() => callOrder.push('updateToken'));
             mockStore.setAuthUser = vi.fn(() => callOrder.push('setUser'));
             mockStore.setImpersonatedUser = vi.fn(() => callOrder.push('clearImpersonated'));
-            mockStore.setOriginalToken = vi.fn(() => callOrder.push('clearOriginalToken'));
             mockStore.setOriginalUser = vi.fn(() => callOrder.push('clearOriginalUser'));
 
-            mockStore.authOriginalToken = 'admin-jwt-token';
             mockStore.authOriginalUser = adminUser;
             mockPost.mockResolvedValue({ success: true });
             (useAgenticStore as any).mockReturnValue(mockStore);
@@ -127,16 +140,16 @@ describe('TASK-224: Auth Security Enhancement', () => {
             await act(async () => { await result.current.endImpersonation(); });
 
             expect(callOrder).toEqual([
+                'stopImpersonation',
                 'updateToken',
                 'setUser',
                 'clearImpersonated',
-                'clearOriginalToken',
                 'clearOriginalUser',
             ]);
         });
 
         it('should log when impersonation session ends', async () => {
-            mockStore.authOriginalToken = 'admin-jwt-token';
+            mockStore.apiClient.startImpersonation('admin-jwt-token');
             mockStore.authOriginalUser = adminUser;
             mockPost.mockResolvedValue({ success: true });
             (useAgenticStore as any).mockReturnValue(mockStore);
@@ -305,7 +318,7 @@ describe('TASK-224: Auth Security Enhancement', () => {
 
     describe('Recommendation 4: endImpersonation calls revoke endpoint', () => {
         it('should POST to /auth/revoke-impersonation when ending impersonation', async () => {
-            mockStore.authOriginalToken = 'admin-jwt-token';
+            mockStore.apiClient.startImpersonation('admin-jwt-token');
             mockStore.authOriginalUser = adminUser;
             mockPost.mockResolvedValue({ success: true });
             (useAgenticStore as any).mockReturnValue(mockStore);
@@ -317,7 +330,7 @@ describe('TASK-224: Auth Security Enhancement', () => {
         });
 
         it('should still restore admin state even if revocation fails', async () => {
-            mockStore.authOriginalToken = 'admin-jwt-token';
+            mockStore.apiClient.startImpersonation('admin-jwt-token');
             mockStore.authOriginalUser = adminUser;
             mockPost.mockRejectedValue(new Error('Network error'));
             (useAgenticStore as any).mockReturnValue(mockStore);

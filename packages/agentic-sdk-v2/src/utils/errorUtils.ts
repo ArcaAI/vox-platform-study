@@ -81,6 +81,29 @@ export function isRetriableError(error: unknown): boolean {
   return isNetworkError(error);
 }
 
+/**
+ * Classify an HTTP response status into an `AgenticErrorCode`.
+ *
+ * Added in TASK-264 W0-11 to centralise the mapping previously inlined in
+ * three places inside `AgenticClient` (`request`, `postFormData`, `uploadFormData`).
+ *
+ * Mapping:
+ * - 401             → `AUTHENTICATION_ERROR`
+ * - 403             → `FORBIDDEN`
+ * - 404             → `NOT_FOUND`
+ * - 429             → `RATE_LIMITED`
+ * - other 4xx       → `VALIDATION_ERROR`
+ * - 5xx and others  → `API_ERROR`
+ */
+export function classifyHttpError(status: number): AgenticErrorCode {
+  if (status === 401) return 'AUTHENTICATION_ERROR';
+  if (status === 403) return 'FORBIDDEN';
+  if (status === 404) return 'NOT_FOUND';
+  if (status === 429) return 'RATE_LIMITED';
+  if (status >= 400 && status < 500) return 'VALIDATION_ERROR';
+  return 'API_ERROR';
+}
+
 // =============================================================================
 // Retry Utility (extracted from useArca — HOOK-07)
 // =============================================================================

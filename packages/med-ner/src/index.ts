@@ -63,6 +63,8 @@ export {
 
   // Model Types
   type MedNERModel,
+  type ModelReference,
+  type MedNERDevice,
   MODEL_MAP,
 
   // Options
@@ -109,6 +111,19 @@ export { MedNERProcessor, createMedNER } from './processors/index.js';
 export { useMedNER, type UseMedNEROptions, type UseMedNERReturn } from './hooks/index.js';
 
 // ============================================================================
+// Worker (off-main-thread inference)
+// ============================================================================
+
+export {
+  MedNERWorkerClient,
+  type WorkerLike,
+  type MedNERWorkerInitPayload,
+  type MedNERWorkerExtractPayload,
+  type MedNERWorkerInitResult,
+  type MedNERWorkerExtractResult,
+} from './workers/index.js';
+
+// ============================================================================
 // Utilities
 // ============================================================================
 
@@ -124,9 +139,25 @@ export {
   getDeviceMemory,
   getHardwareConcurrency,
   getRecommendedDtype,
+  isWebGPUSupported,
+  getRecommendedDevice,
   isMedNERSupported,
   getMedNERBrowserSupport,
   logBrowserSupport,
+
+  // HTML escape (XSS protection)
+  escapeHtml,
+
+  // Token-aware chunking
+  chunkByTokens,
+  segmentSentences,
+  mergeChunkEntities,
+  DEFAULT_MAX_TOKENS,
+  DEFAULT_STRIDE,
+  type Tokenizer,
+  type ChunkByTokensOptions,
+  type TokenChunk,
+  type ChunkEntities,
 
   // Entity Utilities
   filterEntitiesByThreshold,

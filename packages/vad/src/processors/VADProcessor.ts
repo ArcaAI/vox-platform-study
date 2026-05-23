@@ -26,11 +26,7 @@ import {
 
 import { getVADBrowserSupport, isVADSupported } from '../utils/browserSupport.js';
 
-/**
- * Default CDN paths for VAD assets.
- */
-const DEFAULT_BASE_ASSET_PATH = 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.29/dist/';
-const DEFAULT_ONNX_WASM_BASE_PATH = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+import { DEFAULT_BASE_ASSET_PATH, DEFAULT_ONNX_WASM_BASE_PATH } from '../constants.js';
 
 /**
  * VADProcessor provides Voice Activity Detection for audio tracks.
@@ -77,6 +73,20 @@ export class VADProcessor extends BaseProcessor {
   // VAD engine from @ricky0123/vad-web
   private micVAD: MicVAD | null = null;
 
+  // Active input stream backing the current MicVAD instance. Kept so that
+  // `reset()` can rebuild the engine without a stream argument, and so the
+  // silence-triggered auto-reset (TASK-271 H-1) has a stream to reuse.
+  private currentStream: MediaStream | null = null;
+
+  // Wall-clock timestamp (Date.now) of the most recent frame whose
+  // speech probability exceeded `positiveSpeechThreshold`. Used to detect
+  // long silence and trigger an LSTM hidden-state reset (TASK-271 H-1).
+  private lastSpeechActivityMs = 0;
+
+  // Re-entrancy guard: prevents the silence-triggered reset from firing
+  // while a reset is already in progress.
+  private resetting = false;
+
   // Audio processing nodes
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private destinationNode: MediaStreamAudioDestinationNode | null = null;
@@ -108,8 +118,17 @@ export class VADProcessor extends BaseProcessor {
 
   // Speech tracking
   private speechStartTime = 0;
-  private probabilitySum = 0;
-  private probabilityCount = 0;
+
+  // Sliding-window probability stats (TASK-271 H-2).
+  // At 31.25 v5 frames/sec a 300-slot window covers ~9.6s of audio. Using
+  // a fixed Float32Array keeps memory constant regardless of session
+  // length (previously the running average accumulated unboundedly,
+  // eroding precision over multi-hour consultations).
+  private readonly PROB_WINDOW_SIZE = 300;
+  private readonly probWindow = new Float32Array(this.PROB_WINDOW_SIZE);
+  private probWindowIdx = 0;
+  private probWindowCount = 0;
+  private probWindowSum = 0;
 
   // Stream-relative timing: wall-clock timestamp when the audio stream started
   private streamStartWallClock = 0;
@@ -140,6 +159,7 @@ export class VADProcessor extends BaseProcessor {
       enableStats: options.enableStats ?? DEFAULT_VAD_OPTIONS.enableStats,
       statsInterval: options.statsInterval ?? DEFAULT_VAD_OPTIONS.statsInterval,
       submitUserSpeechOnPause: options.submitUserSpeechOnPause ?? DEFAULT_VAD_OPTIONS.submitUserSpeechOnPause,
+      silenceResetMs: options.silenceResetMs ?? DEFAULT_VAD_OPTIONS.silenceResetMs,
       baseAssetPath: options.baseAssetPath,
       onnxWASMBasePath: options.onnxWASMBasePath,
       additionalAudioConstraints: options.additionalAudioConstraints,
@@ -194,7 +214,11 @@ export class VADProcessor extends BaseProcessor {
     // Set the processed track (passthrough - VAD doesn't modify audio)
     this.processedTrack = this.destinationNode.stream.getAudioTracks()[0];
 
-    // Initialize MicVAD
+    // Initialize MicVAD against the current input stream and seed the
+    // silence tracker so the first frame isn't immediately classified as
+    // "long silence" (TASK-271 H-1).
+    this.currentStream = stream;
+    this.lastSpeechActivityMs = Date.now();
     await this.initMicVAD(stream);
 
     // Update stats
@@ -325,6 +349,10 @@ export class VADProcessor extends BaseProcessor {
       streamStartSec,
       streamEndSec,
       durationSec: streamEndSec - streamStartSec,
+      // TASK-271 H-4: compute duration in ms at the source so consumers
+      // (and the published README example) get a meaningful value rather
+      // than `undefined ms`.
+      duration: endTime - this.speechStartTime,
     };
 
     // Emit event
@@ -360,22 +388,50 @@ export class VADProcessor extends BaseProcessor {
    * Handle frame processed event.
    */
   private handleFrameProcessed(probabilities: { isSpeech: number; notSpeech: number }, frame: Float32Array): void {
+    const now = Date.now();
+
     // Update statistics
     this.stats.framesProcessed++;
     this.stats.speechProbability = probabilities.isSpeech;
-    this.probabilitySum += probabilities.isSpeech;
-    this.probabilityCount++;
-    this.stats.averageSpeechProbability = this.probabilitySum / this.probabilityCount;
+
+    // Sliding-window average (TASK-271 H-2): subtract the slot we are about
+    // to overwrite from the running sum, then add the new sample. This keeps
+    // the average bounded to the last PROB_WINDOW_SIZE frames in O(1).
+    const slotIdx = this.probWindowIdx;
+    this.probWindowSum += probabilities.isSpeech - this.probWindow[slotIdx]!;
+    this.probWindow[slotIdx] = probabilities.isSpeech;
+    this.probWindowIdx = (slotIdx + 1) % this.PROB_WINDOW_SIZE;
+    if (this.probWindowCount < this.PROB_WINDOW_SIZE) {
+      this.probWindowCount++;
+    }
+    this.stats.averageSpeechProbability = this.probWindowSum / this.probWindowCount;
 
     if (this.stats.isSpeaking) {
-      this.stats.currentSpeechDuration = Date.now() - this.speechStartTime;
+      this.stats.currentSpeechDuration = now - this.speechStartTime;
+    }
+
+    // Silence-triggered LSTM reset (TASK-271 H-1).
+    // The Silero v5 hidden state can carry stale activations across long
+    // gaps between speakers / sessions; rebuilding MicVAD zeroes `h` and
+    // `c`. Disabled when `silenceResetMs <= 0`.
+    const isSpeechFrame = probabilities.isSpeech > this.options.positiveSpeechThreshold;
+    if (isSpeechFrame) {
+      this.lastSpeechActivityMs = now;
+    } else if (
+      this.options.silenceResetMs > 0 &&
+      !this.resetting &&
+      this.micVAD !== null &&
+      now - this.lastSpeechActivityMs >= this.options.silenceResetMs
+    ) {
+      this.lastSpeechActivityMs = now;
+      void this.reset();
     }
 
     const payload: VADFramePayload = {
-      isSpeech: probabilities.isSpeech > this.options.positiveSpeechThreshold,
+      isSpeech: isSpeechFrame,
       probability: probabilities.isSpeech,
       notSpeechProbability: probabilities.notSpeech,
-      timestamp: Date.now(),
+      timestamp: now,
     };
 
     // Emit event
@@ -428,6 +484,7 @@ export class VADProcessor extends BaseProcessor {
       this.destinationNode = null;
     }
 
+    this.currentStream = null;
     this.stats.isActive = false;
   }
 
@@ -574,8 +631,74 @@ export class VADProcessor extends BaseProcessor {
       averageSpeechProbability: 0,
       timestamp: Date.now(),
     };
-    this.probabilitySum = 0;
-    this.probabilityCount = 0;
+    this.probWindow.fill(0);
+    this.probWindowIdx = 0;
+    this.probWindowCount = 0;
+    this.probWindowSum = 0;
+  }
+
+  /**
+   * Rebuild the underlying `MicVAD` to reset Silero VAD v5's LSTM hidden
+   * state (`h`, `c`). Use when:
+   *
+   * - Switching speakers in a multi-speaker session.
+   * - After a long pause where the previous activation context is stale.
+   * - Manually, after a known noise burst that may have poisoned the LSTM.
+   *
+   * The current input stream is preserved. No-op when the processor has
+   * not been initialized.
+   *
+   * Note: this destroys and reloads the ONNX session, so it is comparable
+   * in cost to an `init`. Do not call it on every frame.
+   *
+   * TASK-271 H-1.
+   */
+  async reset(): Promise<void> {
+    if (!this.micVAD || !this.currentStream) {
+      return;
+    }
+    if (this.resetting) {
+      return;
+    }
+    this.resetting = true;
+    try {
+      const oldVAD = this.micVAD;
+      this.micVAD = null;
+      oldVAD.pause();
+      oldVAD.destroy();
+      this.lastSpeechActivityMs = Date.now();
+      await this.initMicVAD(this.currentStream);
+    } finally {
+      this.resetting = false;
+    }
+  }
+
+  /**
+   * Swap the input stream backing the VAD. Rebuilds the underlying
+   * `MicVAD` against the new stream, which also resets the LSTM hidden
+   * state. Throws when called before `init()` because there is no
+   * audio-graph plumbing to attach the new stream to.
+   *
+   * TASK-271 H-1.
+   *
+   * @param stream - The new MediaStream to use for VAD inference
+   */
+  async setStream(stream: MediaStream): Promise<void> {
+    if (!this.micVAD) {
+      throw new VADError(VADErrorCode.NOT_INITIALIZED, 'VADProcessor.setStream() requires the processor to be initialized first.');
+    }
+    this.resetting = true;
+    try {
+      const oldVAD = this.micVAD;
+      this.micVAD = null;
+      oldVAD.pause();
+      oldVAD.destroy();
+      this.currentStream = stream;
+      this.lastSpeechActivityMs = Date.now();
+      await this.initMicVAD(stream);
+    } finally {
+      this.resetting = false;
+    }
   }
 }
 

@@ -87,6 +87,13 @@ export const DEFAULT_WS_OPTIONS: Required<Omit<WebSocketClientOptions, 'sttSocke
 };
 
 /**
+ * Upper bound on the reconnect backoff delay. Mobile networks can produce
+ * very long abnormal-close windows; capping the exponential at 30 s prevents
+ * the delay from growing past several minutes after the first few crashes.
+ */
+const RECONNECT_BACKOFF_CAP_MS = 30_000;
+
+/**
  * WebSocket client for remote STT service.
  *
  * Features:
@@ -127,6 +134,13 @@ export class WebSocketClient {
   private reconnectAttempts = 0;
   private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
   private connectionTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Latched by `disconnect()` and `destroy()`. Aborts any scheduled
+   * reconnect and rejects subsequent `connect()` calls so a destroyed client
+   * cannot resurrect itself via an in-flight backoff timer.
+   */
+  private destroyed = false;
 
   constructor(options: WebSocketClientOptions) {
     this.options = {
@@ -165,8 +179,14 @@ export class WebSocketClient {
 
   /**
    * Connect to the WebSocket server.
+   *
+   * @throws if the client has been destroyed via `destroy()`.
    */
   async connect(): Promise<void> {
+    if (this.destroyed) {
+      throw new Error('WebSocketClient is destroyed');
+    }
+
     if (this.state === 'connected' || this.state === 'connecting') {
       return;
     }
@@ -238,11 +258,15 @@ export class WebSocketClient {
   }
 
   /**
-   * Disconnect from the WebSocket server.
+   * Disconnect from the WebSocket server. Cancels any pending reconnect
+   * timer so the client cannot resurrect itself after the caller has decided
+   * to stop.
    */
   disconnect(): void {
     this.stopKeepAlive();
     this.clearConnectionTimeout();
+    this.clearReconnectTimer();
+    this.reconnectAttempts = 0;
 
     if (this.socket) {
       // Send stop message before closing
@@ -254,6 +278,21 @@ export class WebSocketClient {
     }
 
     this.setState('disconnected');
+  }
+
+  /**
+   * Permanently shut down this client. Equivalent to {@link disconnect} plus
+   * latching a `destroyed` flag that:
+   *   - Cancels any scheduled reconnect attempt
+   *   - Rejects subsequent `connect()` calls
+   *   - Suppresses post-disconnect `onclose` reconnect logic
+   *
+   * Use this when the owning hook / component unmounts. After `destroy()`
+   * the client instance must be discarded.
+   */
+  destroy(): void {
+    this.destroyed = true;
+    this.disconnect();
   }
 
   /**
@@ -350,23 +389,66 @@ export class WebSocketClient {
     this.socket = null;
     this.callbacks.onClose?.(code, reason);
 
-    // Attempt reconnection if not intentional close
+    // Always transition to 'disconnected' so a scheduled reconnect's
+    // `connect()` call actually opens a fresh socket (the early-return guard
+    // in `connect()` skips it when state is still 'connected').
+    this.setState('disconnected');
+
+    // Attempt reconnection only when:
+    //   - The close was abnormal (non-1000)
+    //   - The client has not been destroyed
+    //   - The retry budget has not been exhausted
+    if (this.destroyed) {
+      return;
+    }
+
     if (code !== 1000 && this.reconnectAttempts < this.options.maxReconnectAttempts) {
       this.scheduleReconnect();
-    } else {
-      this.setState('disconnected');
     }
   }
 
+  /**
+   * Schedule a reconnect attempt with **jittered full-random exponential
+   * backoff**:
+   *
+   *     delay = min(cap, base * 2^attempt) * Math.random()
+   *
+   * Full jitter (Math.random() multiplier on the entire window) prevents
+   * synchronised reconnect storms when many clients lose connection at the
+   * same time. The cap (`RECONNECT_BACKOFF_CAP_MS`) bounds the exponential
+   * tail.
+   */
   private scheduleReconnect(): void {
+    if (this.destroyed) {
+      return;
+    }
+
+    this.clearReconnectTimer();
     this.reconnectAttempts++;
-    setTimeout(() => {
+
+    const exponential = this.options.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+    const window_ = Math.min(RECONNECT_BACKOFF_CAP_MS, exponential);
+    const delay = window_ * Math.random();
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.destroyed) {
+        return;
+      }
       if (this.state !== 'connected') {
         this.connect().catch(() => {
-          // Reconnection failed, will be handled by error callback
+          // Reconnection failed; subsequent onclose will schedule the next
+          // attempt (or give up if the retry budget is exhausted).
         });
       }
-    }, this.options.reconnectDelay * this.reconnectAttempts);
+    }, delay);
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
   }
 
   private startKeepAlive(): void {

@@ -384,6 +384,52 @@ describe('SequentialPipeline', () => {
       pipeline.cancel();
       expect(pipeline.getState().status).toBe('IDLE');
     });
+
+    // -----------------------------------------------------------------------
+    // TASK-273 — C-1: cancellation propagates into onExecute, no further
+    // stages run, cancel returns promptly.
+    // -----------------------------------------------------------------------
+
+    it('should propagate cancel into the in-flight stage via ctx.abortSignal (TASK-273 C-1)', async () => {
+      const aborted = vi.fn();
+      const stage2OnExecute = vi.fn();
+
+      class CancellableStage extends PipelineStage<number, number> {
+        protected async onExecute(input: number, ctx: PipelineContext): Promise<number> {
+          return new Promise<number>((resolve, reject) => {
+            const id = setTimeout(() => resolve(input), 5000);
+            ctx.abortSignal?.addEventListener('abort', () => {
+              clearTimeout(id);
+              aborted();
+              reject(new Error('cancelled inside onExecute'));
+            });
+          });
+        }
+      }
+
+      class NeverRunStage extends PipelineStage<number, number> {
+        protected async onExecute(input: number, ctx: PipelineContext): Promise<number> {
+          stage2OnExecute(input, ctx);
+          return input;
+        }
+      }
+
+      pipeline.addStage(new CancellableStage('cancellable'), { priority: 10 });
+      pipeline.addStage(new NeverRunStage('after'), { priority: 20 });
+
+      const start = Date.now();
+      const promise = pipeline.execute(1);
+
+      setTimeout(() => pipeline.cancel(), 30);
+
+      await expect(promise).rejects.toThrow();
+      const elapsed = Date.now() - start;
+
+      expect(aborted).toHaveBeenCalled();
+      expect(stage2OnExecute).not.toHaveBeenCalled();
+      // Cancel should be prompt — well under the 5s the stage would otherwise wait for.
+      expect(elapsed).toBeLessThan(500);
+    });
   });
 
   describe('reset', () => {

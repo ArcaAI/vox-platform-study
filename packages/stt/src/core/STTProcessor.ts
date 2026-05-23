@@ -42,6 +42,7 @@ import { LocalSTTProvider } from '../providers/LocalSTTProvider.js';
 import { RemoteSTTProvider } from '../providers/BackendSTTProvider.js';
 import { getSTTBrowserSupport } from '../utils/browserSupport.js';
 import { WHISPER_SAMPLE_RATE } from '../utils/audioResampler.js';
+import { createAudioCapture, type AudioCaptureHandle } from './audioCapture.js';
 
 /**
  * STTProcessor provides speech-to-text transcription for audio tracks.
@@ -92,10 +93,7 @@ export class STTProcessor extends BaseProcessor {
   private statsInterval: ReturnType<typeof setInterval> | null = null;
 
   // Audio processing
-  private analyser: AnalyserNode | null = null;
-  private sourceNode: MediaStreamAudioSourceNode | null = null;
-  private scriptProcessor: ScriptProcessorNode | null = null;
-  private scriptProcessorSink: GainNode | null = null;
+  private captureHandle: AudioCaptureHandle | null = null;
   private localProviderCacheKey: string | null = null;
   private debugSegmentCounter = 0;
 
@@ -213,26 +211,9 @@ export class STTProcessor extends BaseProcessor {
       }
     }
 
-    // Clean up audio nodes
-    if (this.scriptProcessor) {
-      this.scriptProcessor.disconnect();
-      this.scriptProcessor.onaudioprocess = null;
-      this.scriptProcessor = null;
-    }
-
-    if (this.scriptProcessorSink) {
-      this.scriptProcessorSink.disconnect();
-      this.scriptProcessorSink = null;
-    }
-
-    if (this.sourceNode) {
-      this.sourceNode.disconnect();
-      this.sourceNode = null;
-    }
-
-    if (this.analyser) {
-      this.analyser.disconnect();
-      this.analyser = null;
+    if (this.captureHandle) {
+      this.captureHandle.destroy();
+      this.captureHandle = null;
     }
   }
 
@@ -490,6 +471,7 @@ export class STTProcessor extends BaseProcessor {
       codeSwitching: features.codeSwitching ?? false,
       diarization: features.diarization ?? false,
       numSpeakers: features.numSpeakers ?? 2,
+      prompt: this.options.prompt,
       onProgress: this.options.onModelProgress,
     };
 
@@ -575,21 +557,13 @@ export class STTProcessor extends BaseProcessor {
 
   /**
    * Set up audio capture from the MediaStreamTrack.
+   *
+   * Uses `AudioWorkletNode` when available (off-main-thread, modern API).
+   * Transparently falls back to the deprecated `ScriptProcessorNode` with a
+   * console warning when the runtime lacks AudioWorklet support.
    */
   private async setupAudioCapture(audioContext: AudioContext, track: MediaStreamTrack): Promise<void> {
-    // Create source from track
-    const stream = new MediaStream([track]);
-    this.sourceNode = audioContext.createMediaStreamSource(stream);
-
-    // Create analyser for audio data
-    this.analyser = audioContext.createAnalyser();
-    this.analyser.fftSize = 2048;
-
-    // Use ScriptProcessorNode to capture audio samples
-    // Buffer size of 4096 for reasonable latency
-    this.scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
-
-    this.scriptProcessor.onaudioprocess = (event) => {
+    this.captureHandle = await createAudioCapture(audioContext, track, (frame) => {
       if (!this.provider || !this._enabled) {
         return;
       }
@@ -599,23 +573,8 @@ export class STTProcessor extends BaseProcessor {
         return;
       }
 
-      const inputData = event.inputBuffer.getChannelData(0);
-
-      // Copy data (input buffer is reused)
-      const audioData = new Float32Array(inputData.length);
-      audioData.set(inputData);
-
-      // Send to provider
-      this.provider.processAudio(audioData, audioContext.sampleRate);
-    };
-
-    // Connect audio graph
-    this.sourceNode.connect(this.analyser);
-    this.analyser.connect(this.scriptProcessor);
-    this.scriptProcessorSink = audioContext.createGain();
-    this.scriptProcessorSink.gain.value = 0;
-    this.scriptProcessor.connect(this.scriptProcessorSink);
-    this.scriptProcessorSink.connect(audioContext.destination);
+      this.provider.processAudio(frame, audioContext.sampleRate);
+    });
   }
 
   /**

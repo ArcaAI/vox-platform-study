@@ -780,6 +780,13 @@ export interface LocalProviderConfig extends ProviderConfig {
   quantized: boolean;
 
   /**
+   * Initial prompt to guide transcription. Forwarded to Whisper as
+   * `initial_prompt` on every transcribe call — useful for biasing the
+   * model toward domain-specific vocabulary (e.g. medical terminology).
+   */
+  prompt?: string;
+
+  /**
    * Progress callback.
    */
   onProgress?: (progress: ModelLoadProgress) => void;

@@ -14,10 +14,28 @@ export {
   getDeviceMemory,
   getHardwareConcurrency,
   getRecommendedDtype,
+  isWebGPUSupported,
+  getRecommendedDevice,
   isMedNERSupported,
   getMedNERBrowserSupport,
   logBrowserSupport,
 } from './browserSupport.js';
+
+// HTML escape (XSS protection for entity rendering)
+export { escapeHtml } from './htmlEscape.js';
+
+// Token-aware chunking (TASK-272 / C-2)
+export {
+  chunkByTokens,
+  segmentSentences,
+  mergeChunkEntities,
+  DEFAULT_MAX_TOKENS,
+  DEFAULT_STRIDE,
+  type Tokenizer,
+  type ChunkByTokensOptions,
+  type TokenChunk,
+  type ChunkEntities,
+} from './chunking.js';
 
 // Entity Utilities
 export {

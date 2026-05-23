@@ -12,6 +12,7 @@ import type { TranscriptionResult, ComputeDevice, ModelLoadProgress } from '../t
 import { getLanguageCode } from '../types/index.js';
 import type { EngineConfig, TranscribeOptions, EngineStats } from './types.js';
 import { BaseEngine } from './BaseEngine.js';
+import { STTWorkerCrashError } from './errors.js';
 import { isWebGPUSupported, isWebAssemblySupported } from '../utils/browserSupport.js';
 
 /**
@@ -77,6 +78,28 @@ function generateRequestId(): string {
  * await engine.destroy();
  * ```
  */
+/**
+ * Crash-recovery tuning. Constructor-overridable so tests can shrink the
+ * backoff schedule without exposing it as a public API.
+ */
+export interface WhisperWorkerEngineOptions {
+  /**
+   * Maximum number of restart attempts before further `transcribe()` calls
+   * are rejected with `STTWorkerCrashError`.
+   *
+   * @default 3
+   */
+  maxCrashRetries?: number;
+
+  /**
+   * Base backoff in milliseconds. Each successive restart waits
+   * `crashBackoffBaseMs * 2^(attempt - 1)`.
+   *
+   * @default 100
+   */
+  crashBackoffBaseMs?: number;
+}
+
 export class WhisperWorkerEngine extends BaseEngine {
   readonly name = 'whisper-worker';
 
@@ -85,9 +108,21 @@ export class WhisperWorkerEngine extends BaseEngine {
   private actualDevice: ComputeDevice = 'wasm';
   private workerSupported: boolean;
 
-  constructor() {
+  // Crash recovery state. `crashRetryAttempts` resets on successful restart;
+  // `crashPermanent` latches when retries are exhausted so subsequent
+  // transcribe() calls reject early instead of hanging.
+  private readonly maxCrashRetries: number;
+  private readonly crashBackoffBaseMs: number;
+  private crashRetryAttempts = 0;
+  private crashPermanent = false;
+  private destroyed = false;
+  private restartTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(options: WhisperWorkerEngineOptions = {}) {
     super();
     this.workerSupported = isWorkerSupported();
+    this.maxCrashRetries = options.maxCrashRetries ?? 3;
+    this.crashBackoffBaseMs = options.crashBackoffBaseMs ?? 100;
   }
 
   isSupported(): boolean {
@@ -146,11 +181,7 @@ export class WhisperWorkerEngine extends BaseEngine {
         };
 
         this.worker.onerror = (error) => {
-          console.error('[WhisperWorkerEngine] Worker error:', error);
-          const pending = this.pendingRequests.values().next().value;
-          if (pending) {
-            pending.reject(new Error(`Worker error: ${error.message}`));
-          }
+          this.handleWorkerCrash(error);
         };
 
         // Send init message
@@ -298,6 +329,10 @@ export class WhisperWorkerEngine extends BaseEngine {
   }
 
   async transcribe(audio: Float32Array, options?: TranscribeOptions): Promise<TranscriptionResult> {
+    if (this.crashPermanent) {
+      throw new STTWorkerCrashError(this.maxCrashRetries);
+    }
+
     if (!this.config) {
       throw new Error('Engine not initialized. Call init() first.');
     }
@@ -316,13 +351,22 @@ export class WhisperWorkerEngine extends BaseEngine {
     const startTime = performance.now();
 
     try {
-      const result = await this.sendWorkerRequest<TranscriptionResult>('transcribe', {
-        audio,
-        options: {
-          language: options?.language,
-          returnTimestamps: options?.returnTimestamps,
+      // Transfer the audio buffer (zero-copy). After this call the caller's
+      // `audio` view is detached; callers must not reuse it. This avoids the
+      // ~1.9 MB structured-clone per 30 s chunk that would otherwise occur on
+      // every transcription (TASK-270 / C-2 in 04-stt.md).
+      const result = await this.sendWorkerRequest<TranscriptionResult>(
+        'transcribe',
+        {
+          audio,
+          options: {
+            language: options?.language,
+            returnTimestamps: options?.returnTimestamps,
+            prompt: options?.prompt,
+          },
         },
-      });
+        [audio.buffer],
+      );
 
       const latencyMs = performance.now() - startTime;
       this.recordTranscription(latencyMs);
@@ -335,8 +379,15 @@ export class WhisperWorkerEngine extends BaseEngine {
 
   /**
    * Send a request to the worker and wait for response.
+   *
+   * @param type - Worker message type.
+   * @param payload - Request payload. If `transfer` is provided, the listed
+   *   `ArrayBuffer`s are detached from the main thread to avoid a copy.
+   * @param transfer - Optional transferable objects (e.g. audio `ArrayBuffer`s)
+   *   handed to the worker by reference. The caller forfeits ownership of any
+   *   buffer included here.
    */
-  private sendWorkerRequest<T>(type: string, payload: unknown): Promise<T> {
+  private sendWorkerRequest<T>(type: string, payload: unknown, transfer: Transferable[] = []): Promise<T> {
     return new Promise((resolve, reject) => {
       if (!this.worker) {
         reject(new Error('Worker not initialized'));
@@ -350,15 +401,25 @@ export class WhisperWorkerEngine extends BaseEngine {
         reject,
       });
 
-      this.worker.postMessage({
-        type,
-        id: requestId,
-        payload,
-      } as WorkerRequest);
+      this.worker.postMessage(
+        {
+          type,
+          id: requestId,
+          payload,
+        } as WorkerRequest,
+        transfer,
+      );
     });
   }
 
   async destroy(): Promise<void> {
+    this.destroyed = true;
+
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+
     // Clean up main thread engine if used
     const mainThreadEngine = (this as unknown as { _mainThreadEngine?: BaseEngine })._mainThreadEngine;
     if (mainThreadEngine) {
@@ -387,6 +448,97 @@ export class WhisperWorkerEngine extends BaseEngine {
     this.config = null;
     this.initialized = false;
     this.transcribing = false;
+  }
+
+  /**
+   * Handle a worker crash (`worker.onerror` or unhandled worker exception).
+   * Rejects all pending requests with `STTWorkerCrashError`, tears down the
+   * worker, and schedules a background restart with exponential backoff up
+   * to `maxCrashRetries`.
+   */
+  private handleWorkerCrash(error: ErrorEvent): void {
+    if (this.destroyed) {
+      return;
+    }
+
+    const causeMessage = (error && (error.message || (error as unknown as { type?: string }).type)) || 'unknown worker error';
+    const cause = new Error(causeMessage);
+
+    const attempts = this.crashRetryAttempts + 1;
+    const crashError = new STTWorkerCrashError(attempts, cause);
+
+    console.error('[WhisperWorkerEngine] Worker crash', { message: causeMessage, attempts });
+
+    // Reject all in-flight requests so callers see a typed failure instead
+    // of hanging forever.
+    for (const pending of this.pendingRequests.values()) {
+      pending.reject(crashError);
+    }
+    this.pendingRequests.clear();
+
+    // Tear down the dead worker
+    if (this.worker) {
+      try {
+        this.worker.terminate();
+      } catch {
+        /* terminate may throw if worker already gone */
+      }
+      this.worker = null;
+    }
+    this.initialized = false;
+    this.transcribing = false;
+
+    // Decide whether to restart
+    if (!this.config || attempts > this.maxCrashRetries) {
+      this.crashPermanent = true;
+      return;
+    }
+
+    this.crashRetryAttempts = attempts;
+    this.scheduleRestart();
+  }
+
+  /**
+   * Schedule a background worker restart attempt with exponential backoff.
+   * The current attempt count drives the delay.
+   */
+  private scheduleRestart(): void {
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+    }
+    const delay = this.crashBackoffBaseMs * Math.pow(2, this.crashRetryAttempts - 1);
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+      void this.restartWorker();
+    }, delay);
+  }
+
+  /**
+   * Attempt to re-create the worker with the cached config. Success resets
+   * the crash retry counter; failure either schedules another retry or, if
+   * retries are exhausted, latches `crashPermanent` so subsequent
+   * `transcribe()` calls reject early.
+   */
+  private async restartWorker(): Promise<void> {
+    if (this.destroyed || !this.config) {
+      return;
+    }
+
+    const config = this.config;
+    const modelId = config.modelPath ?? this.getModelId(config.model, config.language, config.quantized, config.returnTimestamps);
+
+    try {
+      await this.initWithWorker(modelId, config);
+      this.initialized = true;
+      this.crashRetryAttempts = 0;
+    } catch {
+      // initWithWorker may have called handleWorkerCrash already (which
+      // schedules the next attempt). If we reach here without that having
+      // triggered a re-schedule, latch crashPermanent so callers don't hang.
+      if (this.crashRetryAttempts >= this.maxCrashRetries && !this.restartTimer) {
+        this.crashPermanent = true;
+      }
+    }
   }
 
   /**

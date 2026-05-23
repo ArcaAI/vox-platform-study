@@ -36,6 +36,7 @@ import { HighlightTransport } from './transports/highlight.transport';
 import { LokiTransport } from './transports/loki.transport';
 import { OTelTransport } from './transports/otel.transport';
 import { generateId } from './utils';
+import { redactPHI } from './redactor';
 
 // SDK Version (should match package.json)
 const SDK_VERSION = '2.0.0';
@@ -163,8 +164,14 @@ export class SDKLogger implements ISDKLogger {
       );
     }
 
-    // Highlight.io transport
-    if (this.config.highlight?.enabled && this.config.highlight.projectId) {
+    // Highlight.io transport.
+    //
+    // TASK-266 W0-2: only construct the transport when the activation gate
+    // permits it (not production, explicit opt-in, DSN present). In production
+    // or without opt-in we do not even push it onto the transport list, so no
+    // PHI-bearing log entry can ever reach this transport. The constructor
+    // re-checks the gate as a belt-and-suspenders safety.
+    if (this.config.highlight && HighlightTransport.isAllowedToActivate(this.config.highlight)) {
       this.transports.push(
         new HighlightTransport({
           ...this.config.highlight,
@@ -360,14 +367,23 @@ export class SDKLogger implements ISDKLogger {
   }
 
   /**
-   * Dispatch log entry to all transports
+   * Dispatch log entry to all transports.
+   *
+   * TASK-266 W0-2: every entry is run through `redactPHI` BEFORE any transport
+   * (highlight, loki, otel, console, custom) sees it. The redactor walks the
+   * full entry — `user`, `sdk`, `attributes`, error stacks, etc. — and replaces
+   * PHI fields with `[REDACTED]` and `data:`/`blob:`/`file:` URLs with
+   * `[REDACTED-URL]`. This is the primary in-process PHI safety boundary.
+   *
+   * The redactor returns a deep clone, so transports may safely mutate their
+   * input without affecting downstream transports.
    */
   private dispatch(entry: LogEntry): void {
+    const safeEntry = redactPHI(entry, this.config.redactFields) as LogEntry;
     for (const transport of this.transports) {
       try {
-        transport.log(entry);
+        transport.log(safeEntry);
       } catch (err) {
-        // Fallback to native console if transport fails
         console.error(`[SDKLogger] Transport ${transport.name} failed:`, err);
       }
     }

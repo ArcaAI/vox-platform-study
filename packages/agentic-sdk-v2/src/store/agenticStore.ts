@@ -91,7 +91,9 @@ interface AgenticState {
   authUser: unknown;
   authIsAuthenticated: boolean;
   authImpersonatedUser: unknown;
-  authOriginalToken: string | null;
+  // NOTE: `authOriginalToken` was removed in TASK-264 W0-3. The admin JWT now
+  // lives inside `AgenticClient` (module-level WeakMap, not enumerable on the
+  // instance). See `AgenticClient.startImpersonation()` / `stopImpersonation()`.
   authOriginalUser: unknown;
 
   // Global error
@@ -180,7 +182,7 @@ interface AgenticActions {
   setAuthUser: (user: unknown) => void;
   setIsAuthenticated: (isAuthenticated: boolean) => void;
   setImpersonatedUser: (user: unknown) => void;
-  setOriginalToken: (token: string | null) => void;
+  // NOTE: `setOriginalToken` was removed in TASK-264 W0-3. See `AgenticClient`.
   setOriginalUser: (user: unknown) => void;
 
   // Error actions
@@ -264,11 +266,10 @@ const initialState: AgenticState = {
   isAudioSource: false,
   audioSourceTabId: null,
 
-  // Auth state
+  // Auth state (TASK-264 W0-3: `authOriginalToken` deliberately omitted)
   authUser: null,
   authIsAuthenticated: false,
   authImpersonatedUser: null,
-  authOriginalToken: null,
   authOriginalUser: null,
 
   // Global error
@@ -407,7 +408,7 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
   setAuthUser: (user) => set({ authUser: user }),
   setIsAuthenticated: (isAuthenticated) => set({ authIsAuthenticated: isAuthenticated }),
   setImpersonatedUser: (user) => set({ authImpersonatedUser: user }),
-  setOriginalToken: (token) => set({ authOriginalToken: token }),
+  // NOTE: TASK-264 W0-3 — `setOriginalToken` removed; admin JWT lives in `AgenticClient`.
   setOriginalUser: (user) => set({ authOriginalUser: user }),
 
   setGlobalError: (error) => set({ globalError: error }),
@@ -426,7 +427,6 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
       authUser: null,
       authIsAuthenticated: false,
       authImpersonatedUser: null,
-      authOriginalToken: null,
       authOriginalUser: null,
       sessionError: null,
       contextError: null,
@@ -476,7 +476,6 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
       authUser: null,
       authIsAuthenticated: false,
       authImpersonatedUser: null,
-      authOriginalToken: null,
       authOriginalUser: null,
       sessionError: null,
       contextError: null,

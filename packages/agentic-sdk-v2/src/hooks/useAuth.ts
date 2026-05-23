@@ -1,8 +1,13 @@
 /**
- * @arcaai/vox - useAuth Hook (TASK-032 WS-A, TASK-209, TASK-224)
+ * @arcaai/vox - useAuth Hook (TASK-032 WS-A, TASK-209, TASK-224, TASK-264)
  *
  * JWT-based authentication hook with impersonation support.
  * Provides login, logout, token refresh, impersonate, and current user retrieval.
+ *
+ * TASK-264 W0-3: the admin "original" JWT is no longer stored in the Zustand
+ * store. It lives in a private WeakMap inside `AgenticClient` and is restored
+ * via `apiClient.stopImpersonation()`. `useAuth` simply exposes the boolean
+ * `isImpersonating` and proxies `startImpersonation` / `stopImpersonation`.
  */
 
 import { useState, useMemo, useCallback } from 'react';
@@ -26,6 +31,18 @@ export interface UseAuthReturn {
   refreshToken: (refreshToken: string) => Promise<RefreshTokenResponse>;
   impersonate: (targetUserId: string) => Promise<ImpersonateResponse>;
   endImpersonation: () => Promise<void>;
+  /**
+   * Low-level escape hatch: stash an admin token explicitly. Most consumers
+   * should use `impersonate()` instead, which performs the server round-trip
+   * and wires this up. TASK-264 W0-3.
+   */
+  startImpersonation: (token: string) => void;
+  /**
+   * Low-level escape hatch: clear any active impersonation locally. Most
+   * consumers should use `endImpersonation()` instead, which also restores
+   * the admin user identity in the store. TASK-264 W0-3.
+   */
+  stopImpersonation: () => void;
 }
 
 export function useAuth(): UseAuthReturn {
@@ -36,7 +53,11 @@ export function useAuth(): UseAuthReturn {
   const user = (store.authUser as AuthUser | null) ?? null;
   const isAuthenticated = store.authIsAuthenticated;
   const impersonatedUser = (store.authImpersonatedUser as AuthUser | null) ?? null;
-  const isImpersonating = impersonatedUser !== null;
+  // TASK-264 W0-3: impersonation flag now derived from BOTH the impersonated
+  // user (UI cue) and the client's private flag (source of truth for the
+  // admin token). They should agree, but the client flag is authoritative
+  // because the admin JWT is no longer in the store.
+  const isImpersonating = impersonatedUser !== null || (apiClient?.isImpersonating() ?? false);
   const canImpersonate = user?.roles?.some((r) => (IMPERSONATION_ROLES as readonly string[]).includes(r)) ?? false;
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -78,10 +99,11 @@ export function useAuth(): UseAuthReturn {
     try {
       await apiClient.post(AUTH_ENDPOINTS.LOGOUT, {});
       apiClient.clearAccessToken();
+      // TASK-264 W0-3: discard any stashed admin token defensively.
+      if (apiClient.isImpersonating()) apiClient.stopImpersonation();
       store.setAuthUser(null);
       store.setIsAuthenticated(false);
       store.setImpersonatedUser(null);
-      store.setOriginalToken(null);
       store.setOriginalUser(null);
       timer?.end(true);
     } catch (err) {
@@ -147,7 +169,12 @@ export function useAuth(): UseAuthReturn {
         const currentToken = apiClient.getAccessToken();
         const data = await apiClient.post<ImpersonateResponse>(AUTH_ENDPOINTS.IMPERSONATE, { targetUserId });
 
-        store.setOriginalToken(currentToken ?? null);
+        // TASK-264 W0-3: stash admin token inside AgenticClient (WeakMap),
+        // not in the Zustand store. Only stash when we have a non-empty
+        // token — `startImpersonation` rejects empty input.
+        if (currentToken && currentToken.length > 0) {
+          apiClient.startImpersonation(currentToken);
+        }
         store.setOriginalUser(store.authUser);
         store.setImpersonatedUser(data.user);
 
@@ -177,7 +204,8 @@ export function useAuth(): UseAuthReturn {
       logger?.warn('Failed to revoke impersonation token on server — proceeding with local cleanup');
     }
 
-    const originalToken = store.authOriginalToken as string | null;
+    // TASK-264 W0-3: retrieve and restore admin token from AgenticClient.
+    const originalToken = apiClient.stopImpersonation();
     const originalUser = store.authOriginalUser as AuthUser | null;
 
     if (originalToken) {
@@ -189,10 +217,23 @@ export function useAuth(): UseAuthReturn {
     }
 
     store.setImpersonatedUser(null);
-    store.setOriginalToken(null);
     store.setOriginalUser(null);
     logger?.info('Impersonation session ended, admin identity restored');
   }, [apiClient, store, logger]);
+
+  // TASK-264 W0-3 — low-level escape hatches that proxy to AgenticClient.
+  const startImpersonationFn = useCallback(
+    (token: string): void => {
+      if (!apiClient) throw new Error('SDK not initialized');
+      apiClient.startImpersonation(token);
+    },
+    [apiClient],
+  );
+
+  const stopImpersonationFn = useCallback((): void => {
+    if (!apiClient) return;
+    apiClient.stopImpersonation();
+  }, [apiClient]);
 
   return useMemo(
     () => ({
@@ -209,6 +250,8 @@ export function useAuth(): UseAuthReturn {
       refreshToken: refreshTokenFn,
       impersonate,
       endImpersonation,
+      startImpersonation: startImpersonationFn,
+      stopImpersonation: stopImpersonationFn,
     }),
     [
       user,
@@ -224,6 +267,8 @@ export function useAuth(): UseAuthReturn {
       refreshTokenFn,
       impersonate,
       endImpersonation,
+      startImpersonationFn,
+      stopImpersonationFn,
     ],
   );
 }

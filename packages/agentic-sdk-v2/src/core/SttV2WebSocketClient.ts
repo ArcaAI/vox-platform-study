@@ -29,10 +29,16 @@ interface DebugTranscriptEntry {
   inference: number;
 }
 
-function debugLogTranscript(source: string, entry: DebugTranscriptEntry): void {
-  // Keep a stable debug format for existing tests and tooling.
-  // eslint-disable-next-line no-console
-  console.log(`[ARCAAI:DEBUG] ${source} Transcript:\n${JSON.stringify(entry, null, 2)}`);
+function debugLogTranscript(logger: ISDKLogger | undefined, source: string, entry: DebugTranscriptEntry): void {
+  // TASK-266 W0-13: route through SDKLogger.debug so the entry passes through
+  // the redactPHI pipeline (and any user-configured transports) instead of
+  // emitting raw PHI to the browser console. The structured `entry` lives in
+  // `attributes.entry` so consumers can parse it without regex-splitting.
+  logger?.debug(`[ARCAAI:DEBUG] ${source} Transcript:\n${JSON.stringify(entry, null, 2)}`, {
+    operation: 'debugLogTranscript',
+    component: 'SttV2WebSocketClient',
+    attributes: { entry },
+  });
 }
 
 /**
@@ -595,7 +601,7 @@ export class SttV2WebSocketClient {
                 duration: endSec - startSec,
                 inference: transcript.inference ?? 0,
               };
-              debugLogTranscript('SttV2WebSocket', entry);
+              debugLogTranscript(this.logger, 'SttV2WebSocket', entry);
             }
             this.onTranscriptCb?.(transcript);
           }

@@ -1,53 +1,37 @@
 /**
- * Type declarations for @jitsi/rnnoise-wasm
+ * Type declarations for @jitsi/rnnoise-wasm (0.2.x).
  *
- * This module provides RNNoise audio denoising via WebAssembly.
+ * The upstream package is a compiled Emscripten module with the symbols
+ * documented below. Names match the official `dist/rnnoise.js` glue
+ * code; the underscore prefix is the Emscripten convention.
  */
 
 declare module '@jitsi/rnnoise-wasm' {
-  export interface DenoiseState {
-    /**
-     * Process a frame of audio samples.
-     * @param input - Float32Array of audio samples (typically 480 samples at 48kHz)
-     * @returns Denoised audio samples as Float32Array
-     */
-    processFrame(input: Float32Array): Float32Array;
-
-    /**
-     * Get the VAD (Voice Activity Detection) probability from the last processed frame.
-     * @returns A number between 0 and 1 indicating speech probability
-     */
-    getVadProb(): number;
-
-    /**
-     * Destroy the denoise state and free resources.
-     */
-    destroy(): void;
+  export interface RNNWasmModule {
+    HEAPF32: Float32Array;
+    HEAPU8: Uint8Array;
+    _rnnoise_create: () => number;
+    _rnnoise_destroy: (state: number) => void;
+    _rnnoise_init: (state: number) => number;
+    _rnnoise_process_frame: (state: number, output: number, input: number) => number;
+    _malloc: (size: number) => number;
+    _free: (ptr: number) => void;
   }
 
-  export interface RnnoiseInstance {
-    /**
-     * Create a new denoise state for processing audio.
-     * @returns A new DenoiseState instance
-     */
-    createDenoiseState(): DenoiseState;
-
-    /**
-     * Get the frame size expected by RNNoise (typically 480 samples).
-     */
-    getFrameSize(): number;
-
-    /**
-     * Get the sample rate expected by RNNoise (typically 48000 Hz).
-     */
-    getSampleRate(): number;
+  export interface CreateRNNWasmModuleOptions {
+    wasmBinary?: ArrayBuffer | Uint8Array;
+    locateFile?: (path: string, prefix: string) => string;
   }
 
-  export class Rnnoise {
-    /**
-     * Load and initialize the RNNoise WASM module.
-     * @returns Promise that resolves to an RnnoiseInstance
-     */
-    static load(): Promise<RnnoiseInstance>;
-  }
+  /**
+   * Async loader. Pass `{ wasmBinary }` to skip network fetch and
+   * supply the binary yourself.
+   */
+  export function createRNNWasmModule(options?: CreateRNNWasmModuleOptions): Promise<RNNWasmModule>;
+
+  /**
+   * Sync loader. The WASM binary is embedded as base64 inside the JS file
+   * (~1.9 MB). Useful for AudioWorklet contexts that cannot await imports.
+   */
+  export function createRNNWasmModuleSync(options?: CreateRNNWasmModuleOptions): RNNWasmModule;
 }

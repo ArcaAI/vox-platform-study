@@ -1,23 +1,60 @@
 /**
  * @arcaai/vox - SSEClient
  *
- * Server-Sent Events (EventSource) client for reconnecting to job streams.
- * Used to subscribe to:
- *   - GET /api/v1/transcription-jobs/:id/stream (SSE job updates)
+ * Server-Sent Events client for `EventSource`-based job/transcript streams.
  *
- * Supports:
- *   - Named event listeners (e.g., 'transcript', 'status', 'progress')
- *   - Generic message listener
- *   - Auto-reconnection with configurable interval and max attempts
- *   - Clean disconnect
+ * TASK-264 W0-1 (Single-use stream tickets):
+ *   The previous implementation appended the user JWT to the URL as
+ *   `?token=<jwt>`, which leaks the credential through Referer headers,
+ *   browser history, CDN logs, and the Highlight.io network recorder
+ *   (TASK-262 §2.4 SEC-A). The replacement protocol is:
  *
- * @see SDK-206 Gap Analysis — ASR-R-09
+ *     1. At construction the caller declares the stream `scope`
+ *        (e.g. `consultation-jobs`) and supplies an `AgenticClient`-shaped
+ *        API client used to mint tickets.
+ *     2. Immediately before every `EventSource` open — including reconnects —
+ *        the client POSTs `/auth/stream-ticket` with `{ scope }` and receives
+ *        `{ ticket, expiresAt, scope }`.
+ *     3. The ticket is appended to the endpoint URL as `?ticket=<ticket>`
+ *        (URL-encoded). The ticket is held only in memory and discarded on
+ *        the next reconnect.
+ *
+ * TASK-264 W2-1 (No listener leaks across reconnects):
+ *   Every named listener attached to an `EventSource` is now tracked in a
+ *   `Map<string, EventListener>` so we can call `removeEventListener` on
+ *   `close()` (both for explicit `disconnect()` and the implicit close that
+ *   precedes a reconnect). The leak test
+ *   (`SSEClient.leak.test.ts`) opens/closes 50 times and asserts the listener
+ *   count never accumulates.
+ *
+ * @see docs/implementation/TASK-264-SDK-Auth-Core/README.md
  */
 
 import type { ISDKLogger } from './logger';
 
 /**
- * Options for SSE connection
+ * Subset of `AgenticClient` that `SSEClient` actually depends on.
+ * Defining a structural type here keeps the dependency one-way and avoids a
+ * circular import.
+ */
+export interface SSEApiClient {
+  post<T = unknown>(path: string, body: unknown): Promise<T>;
+}
+
+/**
+ * Shape of the response from POST `/auth/stream-ticket`.
+ */
+export interface StreamTicket {
+  ticket: string;
+  expiresAt?: string;
+  scope?: string;
+}
+
+/**
+ * Options for SSE connection.
+ *
+ * NOTE: The legacy `authToken` field was removed in TASK-264 W0-1. The only
+ * authentication path is the single-use stream ticket fetched per connect.
  */
 export interface SSEConnectOptions {
   /** Enable automatic reconnection on error (default: false) */
@@ -28,16 +65,23 @@ export interface SSEConnectOptions {
   maxReconnectAttempts?: number;
   /** Maximum delay cap in milliseconds for exponential backoff (default: 30000) */
   maxDelayMs?: number;
-  /** Auth token appended as `?token=<value>` query parameter (EventSource doesn't support custom headers) */
-  authToken?: string;
 }
+
+const TICKET_ENDPOINT = '/auth/stream-ticket';
 
 /**
  * SSE client for subscribing to job update streams.
  */
 export class SSEClient {
+  private readonly scope: string | null;
+  private readonly apiClient: SSEApiClient | null;
+  private readonly logger?: ISDKLogger;
+
   private eventSource: EventSource | null = null;
-  private logger?: ISDKLogger;
+  /** Listener references currently attached to `this.eventSource`. */
+  private attachedListeners: Map<string, EventListener> = new Map();
+
+  /** Endpoint URL passed by the caller, *without* the ticket suffix. */
   private url: string | null = null;
   private options: SSEConnectOptions = {};
   private connected = false;
@@ -50,81 +94,69 @@ export class SSEClient {
   private onOpenCb?: () => void;
   private namedListeners: Map<string, (data: string) => void> = new Map();
 
-  constructor(logger?: ISDKLogger) {
-    this.logger = logger;
+  /**
+   * Construct an SSEClient.
+   *
+   * Preferred signature: `new SSEClient(scope, apiClient, logger?)`.
+   *
+   * A legacy signature `new SSEClient(logger?)` is still accepted at the TS
+   * level so that pre-migration callers (currently `useConsultationJob`) keep
+   * compiling. Such instances WILL surface a deterministic error via
+   * `onError` from `connect()`. See TASK-264 README §5 (Deviations).
+   */
+  constructor(scope?: string | ISDKLogger, apiClient?: SSEApiClient, logger?: ISDKLogger) {
+    if (typeof scope === 'string') {
+      this.scope = scope;
+      this.apiClient = apiClient ?? null;
+      this.logger = logger;
+    } else {
+      this.scope = null;
+      this.apiClient = null;
+      this.logger = scope;
+    }
   }
 
-  /**
-   * Connect to an SSE endpoint.
-   */
   connect(url: string, options: SSEConnectOptions = {}): void {
     if (this.connected && this.eventSource) {
       throw new Error('SSEClient already connected. Call disconnect() first.');
     }
 
-    const effectiveUrl = options.authToken ? SSEClient.appendAuthToken(url, options.authToken) : url;
-
-    this.url = effectiveUrl;
+    this.url = url;
     this.options = options;
     this.disposed = false;
 
-    this.createEventSource(effectiveUrl);
+    void this.openWithTicket(url);
   }
 
-  private static appendAuthToken(url: string, token: string): string {
-    const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}token=${encodeURIComponent(token)}`;
-  }
-
-  /**
-   * Register a callback for generic (unnamed) messages.
-   */
   onMessage(cb: (data: string) => void): void {
     this.onMessageCb = cb;
   }
 
-  /**
-   * Register a callback for a named SSE event type.
-   */
   onEvent(eventName: string, cb: (data: string) => void): void {
     this.namedListeners.set(eventName, cb);
 
-    if (this.eventSource) {
+    if (this.eventSource && !this.attachedListeners.has(eventName)) {
       this.attachNamedListener(this.eventSource, eventName);
     }
   }
 
-  /**
-   * Register a callback for EventSource errors.
-   */
   onError(cb: (event: Event) => void): void {
     this.onErrorCb = cb;
   }
 
-  /**
-   * Register a callback for connection open.
-   */
   onOpen(cb: () => void): void {
     this.onOpenCb = cb;
   }
 
-  /**
-   * Check if connected.
-   */
   isConnected(): boolean {
     return this.connected;
   }
 
-  /**
-   * Get the current URL.
-   */
+  /** Returns the caller-supplied endpoint URL (without the ticket suffix). */
   getUrl(): string | null {
     return this.url;
   }
 
-  /**
-   * Disconnect and clean up.
-   */
   disconnect(): void {
     this.disposed = true;
     this.connected = false;
@@ -134,18 +166,65 @@ export class SSEClient {
       this.reconnectTimer = null;
     }
 
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
-    }
+    this.closeEventSource();
   }
 
   // =========================================================================
-  // Internal
+  // Internal — ticket flow
+  // =========================================================================
+
+  private async openWithTicket(callerUrl: string): Promise<void> {
+    if (this.scope === null || this.apiClient === null) {
+      const message = '[SSEClient] missing scope/apiClient — caller must migrate to new SSEClient(scope, apiClient, logger?)';
+      this.logger?.error?.('SSEClient legacy construction blocked', {
+        operation: 'connect',
+        component: 'SSEClient',
+        attributes: { message },
+      });
+      this.onErrorCb?.(new Event('error'));
+      return;
+    }
+
+    let ticket: string;
+    try {
+      const response = await this.apiClient.post<StreamTicket>(TICKET_ENDPOINT, {
+        scope: this.scope,
+      });
+      ticket = response.ticket;
+      if (typeof ticket !== 'string' || ticket.length === 0) {
+        throw new Error('[SSEClient] /auth/stream-ticket returned no ticket');
+      }
+    } catch (error) {
+      this.logger?.error?.('Failed to obtain SSE stream ticket', {
+        operation: 'fetchTicket',
+        component: 'SSEClient',
+        attributes: {
+          scope: this.scope,
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      this.onErrorCb?.(new Event('error'));
+      this.scheduleReconnect();
+      return;
+    }
+
+    if (this.disposed) return;
+
+    const fullUrl = SSEClient.appendTicket(callerUrl, ticket);
+    this.createEventSource(fullUrl);
+  }
+
+  private static appendTicket(url: string, ticket: string): string {
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}ticket=${encodeURIComponent(ticket)}`;
+  }
+
+  // =========================================================================
+  // Internal — EventSource lifecycle
   // =========================================================================
 
   private createEventSource(url: string): void {
-    this.logger?.debug('Connecting to SSE stream', {
+    this.logger?.debug?.('Connecting to SSE stream', {
       operation: 'connect',
       component: 'SSEClient',
       attributes: { url },
@@ -158,11 +237,10 @@ export class SSEClient {
       this.connected = true;
       this.reconnectCount = 0;
 
-      this.logger?.info('SSE connection opened', {
+      this.logger?.info?.('SSE connection opened', {
         operation: 'connect',
         component: 'SSEClient',
         success: true,
-        attributes: { url },
       });
 
       this.onOpenCb?.();
@@ -175,15 +253,15 @@ export class SSEClient {
     es.onerror = (event: Event) => {
       this.connected = false;
 
-      this.logger?.warn('SSE connection error', {
+      this.logger?.warn?.('SSE connection error', {
         operation: 'onerror',
         component: 'SSEClient',
-        attributes: { url, reconnectCount: this.reconnectCount },
+        attributes: { reconnectCount: this.reconnectCount },
       });
 
       this.onErrorCb?.(event);
 
-      this.attemptReconnect();
+      this.scheduleReconnect();
     };
 
     for (const [name] of this.namedListeners) {
@@ -191,20 +269,42 @@ export class SSEClient {
     }
   }
 
+  /**
+   * Attach a named-event listener and remember its reference so we can
+   * `removeEventListener` it before closing the `EventSource`.
+   */
   private attachNamedListener(es: EventSource, eventName: string): void {
-    es.addEventListener(eventName, ((event: MessageEvent) => {
+    const listener: EventListener = (event) => {
       const cb = this.namedListeners.get(eventName);
-      cb?.(event.data);
-    }) as EventListener);
+      cb?.((event as MessageEvent).data);
+    };
+    es.addEventListener(eventName, listener);
+    this.attachedListeners.set(eventName, listener);
   }
 
-  private attemptReconnect(): void {
+  private closeEventSource(): void {
+    const es = this.eventSource;
+    if (!es) return;
+
+    for (const [eventName, listener] of this.attachedListeners) {
+      es.removeEventListener(eventName, listener);
+    }
+    this.attachedListeners.clear();
+
+    es.onopen = null;
+    es.onmessage = null;
+    es.onerror = null;
+    es.close();
+    this.eventSource = null;
+  }
+
+  private scheduleReconnect(): void {
     if (this.disposed) return;
     if (!this.options.autoReconnect) return;
 
     const maxAttempts = this.options.maxReconnectAttempts ?? 10;
     if (this.reconnectCount >= maxAttempts) {
-      this.logger?.error('SSE max reconnect attempts reached', {
+      this.logger?.error?.('SSE max reconnect attempts reached', {
         operation: 'reconnect',
         component: 'SSEClient',
         attributes: {
@@ -215,6 +315,8 @@ export class SSEClient {
       return;
     }
 
+    if (this.reconnectTimer) return;
+
     this.reconnectCount++;
     const baseInterval = this.options.reconnectIntervalMs ?? 3000;
     const maxDelayMs = this.options.maxDelayMs ?? 30000;
@@ -223,7 +325,7 @@ export class SSEClient {
     const jitter = Math.random() * cappedDelay * 0.5;
     const interval = Math.round(cappedDelay + jitter);
 
-    this.logger?.debug('Scheduling SSE reconnect', {
+    this.logger?.debug?.('Scheduling SSE reconnect', {
       operation: 'reconnect',
       component: 'SSEClient',
       attributes: {
@@ -234,15 +336,11 @@ export class SSEClient {
     });
 
     this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       if (this.disposed || !this.url) return;
 
-      // Close old EventSource before creating new one
-      if (this.eventSource) {
-        this.eventSource.close();
-        this.eventSource = null;
-      }
-
-      this.createEventSource(this.url);
+      this.closeEventSource();
+      void this.openWithTicket(this.url);
     }, interval);
   }
 }

@@ -9,6 +9,25 @@ import { AgenticError } from '../types';
 import { DEFAULT_TIMEOUT } from './constants';
 import type { ISDKLogger } from './logger';
 import { createTraceparent, generateSpanId } from './logger';
+import { classifyHttpError } from '../utils/errorUtils';
+
+/**
+ * Module-level WeakMap holding the admin JWT during impersonation.
+ *
+ * TASK-264 W0-3: keeping the token outside any AgenticClient instance field
+ * (and outside the Zustand store) guarantees it cannot leak via:
+ *   - `Object.keys(client)` / `Object.getOwnPropertyNames(client)`
+ *   - `JSON.stringify(client)` (no enumerable property exists)
+ *   - DevTools "expand object" view (the WeakMap entry is not shown on the
+ *     instance)
+ *   - Structured-clone messages over `BroadcastChannel` / `postMessage`
+ *   - Zustand store snapshots, persisted storage, Highlight session replays
+ *
+ * The token is removed when `stopImpersonation()` is called, when the client
+ * is garbage-collected (WeakMap semantics), or when `clearImpersonation()`
+ * (test hook) is invoked.
+ */
+const impersonationTokens = new WeakMap<AgenticClient, string>();
 
 /**
  * HTTP client for ARCAAI API communication.
@@ -194,14 +213,7 @@ export class AgenticClient {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const errorCode =
-          response.status === 401
-            ? 'AUTHENTICATION_ERROR'
-            : response.status === 404
-              ? 'NOT_FOUND'
-              : response.status >= 400 && response.status < 500
-                ? 'VALIDATION_ERROR'
-                : 'API_ERROR';
+        const errorCode = classifyHttpError(response.status);
         const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
 
         this.logger?.error(`API request failed: ${errorMessage}`, {
@@ -447,14 +459,7 @@ export class AgenticClient {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const errorCode =
-          response.status === 401
-            ? 'AUTHENTICATION_ERROR'
-            : response.status === 404
-              ? 'NOT_FOUND'
-              : response.status >= 400 && response.status < 500
-                ? 'VALIDATION_ERROR'
-                : 'API_ERROR';
+        const errorCode = classifyHttpError(response.status);
         const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
 
         throw new AgenticError(errorCode, errorMessage, {
@@ -563,9 +568,11 @@ export class AgenticClient {
 
       if (options?.signal) {
         if (options.signal.aborted) {
-          reject(new AgenticError('NETWORK_ERROR', 'Request aborted', {
-            context: { endpoint, requestId },
-          }));
+          reject(
+            new AgenticError('NETWORK_ERROR', 'Request aborted', {
+              context: { endpoint, requestId },
+            }),
+          );
           return;
         }
         options.signal.addEventListener('abort', () => xhr.abort(), { once: true });
@@ -604,37 +611,38 @@ export class AgenticClient {
           } catch {
             // ignore parse errors
           }
-          const errorCode =
-            xhr.status === 401
-              ? 'AUTHENTICATION_ERROR'
-              : xhr.status === 404
-                ? 'NOT_FOUND'
-                : xhr.status >= 400 && xhr.status < 500
-                  ? 'VALIDATION_ERROR'
-                  : 'API_ERROR';
+          const errorCode = classifyHttpError(xhr.status);
           const errorMessage = (errorData.message as string) || `HTTP ${xhr.status}: ${xhr.statusText}`;
-          reject(new AgenticError(errorCode, errorMessage, {
-            context: { status: xhr.status, endpoint, requestId },
-          }));
+          reject(
+            new AgenticError(errorCode, errorMessage, {
+              context: { status: xhr.status, endpoint, requestId },
+            }),
+          );
         }
       };
 
       xhr.onerror = () => {
-        reject(new AgenticError('NETWORK_ERROR', 'Network error - check your connection', {
-          context: { endpoint, requestId },
-        }));
+        reject(
+          new AgenticError('NETWORK_ERROR', 'Network error - check your connection', {
+            context: { endpoint, requestId },
+          }),
+        );
       };
 
       xhr.ontimeout = () => {
-        reject(new AgenticError('NETWORK_ERROR', 'Request timeout', {
-          context: { timeout: effectiveTimeout, endpoint, requestId },
-        }));
+        reject(
+          new AgenticError('NETWORK_ERROR', 'Request timeout', {
+            context: { timeout: effectiveTimeout, endpoint, requestId },
+          }),
+        );
       };
 
       xhr.onabort = () => {
-        reject(new AgenticError('NETWORK_ERROR', 'Request aborted', {
-          context: { endpoint, requestId },
-        }));
+        reject(
+          new AgenticError('NETWORK_ERROR', 'Request aborted', {
+            context: { endpoint, requestId },
+          }),
+        );
       };
 
       xhr.send(formData);
@@ -729,5 +737,67 @@ export class AgenticClient {
    */
   setOnUnauthorized(handler: () => Promise<boolean>): void {
     this.onUnauthorizedHandler = handler;
+  }
+
+  // =========================================================================
+  // Impersonation (TASK-264 W0-3)
+  //
+  // The admin's original JWT lives in a module-level WeakMap keyed by `this`.
+  // It is NOT a field on the instance so it cannot leak via Object.keys,
+  // JSON.stringify, Zustand snapshots, or BroadcastChannel structured clone.
+  // =========================================================================
+
+  /**
+   * Begin an impersonation session by stashing the caller's current admin
+   * JWT in a non-enumerable, non-serializable store. Must be paired with
+   * `stopImpersonation()` to restore the original token.
+   *
+   * After calling this, `updateAccessToken(impersonatedJwt)` is the caller's
+   * responsibility (see `useAuth.impersonate`).
+   *
+   * @throws if `token` is empty or impersonation is already active.
+   */
+  startImpersonation(token: string): void {
+    if (typeof token !== 'string' || token.length === 0) {
+      throw new AgenticError('VALIDATION_ERROR', 'startImpersonation requires a non-empty token', {
+        context: { operation: 'startImpersonation' },
+      });
+    }
+    if (impersonationTokens.has(this)) {
+      throw new AgenticError('VALIDATION_ERROR', 'Impersonation already active — call stopImpersonation first', {
+        context: { operation: 'startImpersonation' },
+      });
+    }
+    impersonationTokens.set(this, token);
+    this.logger?.info('Impersonation started', {
+      operation: 'startImpersonation',
+      component: 'AgenticClient',
+    });
+  }
+
+  /**
+   * End an impersonation session and return the original admin token, which
+   * the caller is expected to feed back into `updateAccessToken()`.
+   *
+   * Returns `undefined` if no impersonation was active. Idempotent — the
+   * second call returns `undefined`.
+   */
+  stopImpersonation(): string | undefined {
+    const token = impersonationTokens.get(this);
+    impersonationTokens.delete(this);
+    if (token !== undefined) {
+      this.logger?.info('Impersonation stopped', {
+        operation: 'stopImpersonation',
+        component: 'AgenticClient',
+      });
+    }
+    return token;
+  }
+
+  /**
+   * Whether an impersonation session is currently active.
+   */
+  isImpersonating(): boolean {
+    return impersonationTokens.has(this);
   }
 }

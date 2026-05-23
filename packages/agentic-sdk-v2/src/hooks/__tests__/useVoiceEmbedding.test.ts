@@ -1,5 +1,10 @@
 /**
- * useVoiceEmbedding Hook Tests (TASK-033)
+ * useVoiceEmbedding Hook Tests
+ *
+ * TASK-265 W0-7 / GAP-02: rewritten against the real `/voice-profile` API.
+ * Enrollment posts multipart via `apiClient.postFormData()`. Listing GETs
+ * `/voice-profile`. Deletion targets `/voice-profile/:profileId` (profile id,
+ * not user id).
  *
  * @vitest-environment jsdom
  */
@@ -21,6 +26,7 @@ function createMockStore() {
         apiClient: {
             get: vi.fn(),
             post: vi.fn(),
+            postFormData: vi.fn(),
             patch: vi.fn(),
             delete: vi.fn(),
         },
@@ -28,7 +34,7 @@ function createMockStore() {
     };
 }
 
-describe('useVoiceEmbedding', () => {
+describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
     let mockStore: ReturnType<typeof createMockStore>;
 
     beforeEach(() => {
@@ -39,263 +45,197 @@ describe('useVoiceEmbedding', () => {
     afterEach(() => { vi.clearAllMocks(); });
 
     describe('initial state', () => {
-        it('should return null status and loading=false', () => {
+        it('returns empty profiles array and loading=false', () => {
             const { result } = renderHook(() => useVoiceEmbedding());
-            expect(result.current.status).toBeNull();
+            expect(result.current.profiles).toEqual([]);
             expect(result.current.isLoading).toBe(false);
             expect(result.current.isUploading).toBe(false);
             expect(result.current.error).toBeNull();
         });
     });
 
-    describe('upload', () => {
-        it('should POST to VOICE_EMBEDDING_ENDPOINTS.UPLOAD and return response', async () => {
-            const mockResponse = {
-                userId: 'user-123',
-                speakerId: 'user-123',
-                embeddingId: 'emb-001',
-                dimensions: 512,
-                createdAt: '2026-02-21T00:00:00Z',
-                audioFileKey: 'voice-samples/tenant-001/user-123',
-            };
-            mockStore.apiClient.post.mockResolvedValue(mockResponse);
-
+    describe('enroll', () => {
+        it('POSTs multipart via postFormData to VOICE_EMBEDDING_ENDPOINTS.enroll', async () => {
+            const enrolled = { id: 'p-1', userId: 'u-1' };
+            mockStore.apiClient.postFormData.mockResolvedValue(enrolled);
             const { result } = renderHook(() => useVoiceEmbedding());
-            const audioFile = new Blob(['audio-data'], { type: 'audio/wav' });
+            const audio = new Blob(['audio-data'], { type: 'audio/wav' });
 
             let resp: unknown;
-            await act(async () => {
-                resp = await result.current.upload('user-123', audioFile);
-            });
+            await act(async () => { resp = await result.current.enroll(audio); });
 
-            expect(mockStore.apiClient.post).toHaveBeenCalledOnce();
-            const [endpoint, formData] = mockStore.apiClient.post.mock.calls[0];
-            expect(endpoint).toBe(VOICE_EMBEDDING_ENDPOINTS.UPLOAD('user-123'));
+            expect(mockStore.apiClient.postFormData).toHaveBeenCalledOnce();
+            const [endpoint, formData] = mockStore.apiClient.postFormData.mock.calls[0];
+            expect(endpoint).toBe(VOICE_EMBEDDING_ENDPOINTS.enroll);
+            expect(endpoint).toBe('/voice-profile/enroll');
             expect(formData).toBeInstanceOf(FormData);
-            expect(resp).toEqual(mockResponse);
+            expect(resp).toEqual(enrolled);
         });
 
-        it('should set error on failure', async () => {
-            mockStore.apiClient.post.mockRejectedValue(new Error('Upload failed'));
+        it('does NOT call apiClient.post for enroll (multipart only)', async () => {
+            mockStore.apiClient.postFormData.mockResolvedValue({ id: 'p-1' });
             const { result } = renderHook(() => useVoiceEmbedding());
-            const audioFile = new Blob(['audio-data'], { type: 'audio/wav' });
+            const audio = new Blob(['data'], { type: 'audio/wav' });
+
+            await act(async () => { await result.current.enroll(audio); });
+
+            expect(mockStore.apiClient.post).not.toHaveBeenCalled();
+        });
+
+        it('appends each provided file to the multipart form', async () => {
+            mockStore.apiClient.postFormData.mockResolvedValue({ id: 'p-1' });
+            const { result } = renderHook(() => useVoiceEmbedding());
+            const a = new File(['a'], 'a.wav', { type: 'audio/wav' });
+            const b = new File(['b'], 'b.wav', { type: 'audio/wav' });
+            const c = new File(['c'], 'c.wav', { type: 'audio/wav' });
+
+            await act(async () => { await result.current.enroll([a, b, c]); });
+
+            const [, formData] = mockStore.apiClient.postFormData.mock.calls[0];
+            const entries = (formData as FormData).getAll('files');
+            expect(entries).toHaveLength(3);
+        });
+
+        it('sets error on failure and resets isUploading', async () => {
+            mockStore.apiClient.postFormData.mockRejectedValue(new Error('Enroll failed'));
+            const { result } = renderHook(() => useVoiceEmbedding());
+            const audio = new Blob(['data'], { type: 'audio/wav' });
 
             await act(async () => {
-                try { await result.current.upload('user-123', audioFile); } catch { /* expected */ }
+                try { await result.current.enroll(audio); } catch { /* expected */ }
             });
 
-            expect(result.current.error?.message).toBe('Upload failed');
-        });
-
-        it('should update status with embedding data after successful upload', async () => {
-            const mockResponse = {
-                userId: 'user-123',
-                speakerId: 'user-123',
-                embeddingId: 'emb-001',
-                dimensions: 512,
-                createdAt: '2026-02-21T00:00:00Z',
-                audioFileKey: 'voice-samples/tenant-001/user-123',
-            };
-            mockStore.apiClient.post.mockResolvedValue(mockResponse);
-
-            const { result } = renderHook(() => useVoiceEmbedding());
-            const audioFile = new Blob(['audio-data'], { type: 'audio/wav' });
-
-            await act(async () => { await result.current.upload('user-123', audioFile); });
-
-            expect(result.current.status).toEqual({
-                userId: 'user-123',
-                exists: true,
-                dimensions: 512,
-                createdAt: '2026-02-21T00:00:00Z',
-                audioFileKey: 'voice-samples/tenant-001/user-123',
-            });
-        });
-
-        it('should clear previous error on new upload attempt', async () => {
-            mockStore.apiClient.post.mockRejectedValueOnce(new Error('first failure'));
-            const { result } = renderHook(() => useVoiceEmbedding());
-            const audioFile = new Blob(['audio-data'], { type: 'audio/wav' });
-
-            await act(async () => {
-                try { await result.current.upload('user-123', audioFile); } catch { /* expected */ }
-            });
-            expect(result.current.error?.message).toBe('first failure');
-
-            const successResponse = {
-                userId: 'user-123', speakerId: 'user-123', embeddingId: 'emb-002',
-                dimensions: 512, createdAt: '2026-02-21T00:00:00Z', audioFileKey: 'key',
-            };
-            mockStore.apiClient.post.mockResolvedValueOnce(successResponse);
-
-            await act(async () => { await result.current.upload('user-123', audioFile); });
-            expect(result.current.error).toBeNull();
-        });
-
-        it('should reset isUploading to false after failure', async () => {
-            mockStore.apiClient.post.mockRejectedValue(new Error('fail'));
-            const { result } = renderHook(() => useVoiceEmbedding());
-            const audioFile = new Blob(['audio-data'], { type: 'audio/wav' });
-
-            await act(async () => {
-                try { await result.current.upload('user-123', audioFile); } catch { /* expected */ }
-            });
-
+            expect(result.current.error?.message).toBe('Enroll failed');
             expect(result.current.isUploading).toBe(false);
         });
 
-        it('should throw the error for the caller to catch', async () => {
-            mockStore.apiClient.post.mockRejectedValue(new Error('Upload failed'));
+        it('throws the underlying error to the caller', async () => {
+            mockStore.apiClient.postFormData.mockRejectedValue(new Error('boom'));
             const { result } = renderHook(() => useVoiceEmbedding());
-            const audioFile = new Blob(['audio-data'], { type: 'audio/wav' });
+            const audio = new Blob(['data'], { type: 'audio/wav' });
 
             await expect(
-                act(async () => { await result.current.upload('user-123', audioFile); }),
-            ).rejects.toThrow('Upload failed');
+                act(async () => { await result.current.enroll(audio); }),
+            ).rejects.toThrow('boom');
         });
     });
 
-    describe('getStatus', () => {
-        it('should GET from VOICE_EMBEDDING_ENDPOINTS.STATUS and update state', async () => {
-            const mockStatus = {
-                userId: 'user-123',
-                exists: true,
-                dimensions: 512,
-                audioFileKey: 'voice-samples/tenant-001/user-123',
-            };
-            mockStore.apiClient.get.mockResolvedValue(mockStatus);
-
+    describe('list', () => {
+        it('GETs from VOICE_EMBEDDING_ENDPOINTS.list and updates profiles', async () => {
+            const profiles = [{ id: 'p-1' }, { id: 'p-2' }];
+            mockStore.apiClient.get.mockResolvedValue(profiles);
             const { result } = renderHook(() => useVoiceEmbedding());
 
             let resp: unknown;
-            await act(async () => {
-                resp = await result.current.getStatus('user-123');
-            });
+            await act(async () => { resp = await result.current.list(); });
 
-            expect(mockStore.apiClient.get).toHaveBeenCalledWith(VOICE_EMBEDDING_ENDPOINTS.STATUS('user-123'));
-            expect(result.current.status).toEqual(mockStatus);
-            expect(resp).toEqual(mockStatus);
+            expect(mockStore.apiClient.get).toHaveBeenCalledWith('/voice-profile');
+            expect(result.current.profiles).toEqual(profiles);
+            expect(resp).toEqual(profiles);
         });
 
-        it('should set error on failure', async () => {
-            mockStore.apiClient.get.mockRejectedValue(new Error('Fetch failed'));
+        it('extracts array from paginated wrapper responses', async () => {
+            const profiles = [{ id: 'p-1' }];
+            mockStore.apiClient.get.mockResolvedValue({ data: profiles, count: 1 });
             const { result } = renderHook(() => useVoiceEmbedding());
 
-            await act(async () => {
-                try { await result.current.getStatus('user-123'); } catch { /* expected */ }
-            });
+            await act(async () => { await result.current.list(); });
 
-            expect(result.current.error?.message).toBe('Fetch failed');
-        });
-
-        it('should reset isLoading to false after failure', async () => {
-            mockStore.apiClient.get.mockRejectedValue(new Error('network error'));
-            const { result } = renderHook(() => useVoiceEmbedding());
-
-            await act(async () => {
-                try { await result.current.getStatus('user-123'); } catch { /* expected */ }
-            });
-
-            expect(result.current.isLoading).toBe(false);
+            expect(result.current.profiles).toEqual(profiles);
         });
     });
 
-    describe('remove', () => {
-        it('should DELETE from VOICE_EMBEDDING_ENDPOINTS.REMOVE', async () => {
+    describe('delete', () => {
+        it('DELETEs by profileId, not userId', async () => {
             mockStore.apiClient.delete.mockResolvedValue(undefined);
             const { result } = renderHook(() => useVoiceEmbedding());
 
-            await act(async () => {
-                await result.current.remove('user-123');
-            });
+            await act(async () => { await result.current.delete('profile-abc'); });
 
-            expect(mockStore.apiClient.delete).toHaveBeenCalledWith(VOICE_EMBEDDING_ENDPOINTS.REMOVE('user-123'));
+            expect(mockStore.apiClient.delete).toHaveBeenCalledWith('/voice-profile/profile-abc');
         });
 
-        it('should clear status after remove', async () => {
-            const mockStatus = { userId: 'user-123', exists: true, dimensions: 512 };
-            mockStore.apiClient.get.mockResolvedValue(mockStatus);
+        it('removes the deleted profile from the cached profiles list', async () => {
+            mockStore.apiClient.get.mockResolvedValue([{ id: 'p-1' }, { id: 'p-2' }]);
             mockStore.apiClient.delete.mockResolvedValue(undefined);
             const { result } = renderHook(() => useVoiceEmbedding());
 
-            await act(async () => { await result.current.getStatus('user-123'); });
-            expect(result.current.status).toEqual(mockStatus);
+            await act(async () => { await result.current.list(); });
+            await act(async () => { await result.current.delete('p-1'); });
 
-            await act(async () => { await result.current.remove('user-123'); });
-            expect(result.current.status).toBeNull();
+            expect(result.current.profiles).toEqual([{ id: 'p-2' }]);
         });
 
-        it('should set error when remove fails', async () => {
+        it('sets error on failure', async () => {
             mockStore.apiClient.delete.mockRejectedValue(new Error('Delete failed'));
             const { result } = renderHook(() => useVoiceEmbedding());
 
             await act(async () => {
-                try { await result.current.remove('user-123'); } catch { /* expected */ }
+                try { await result.current.delete('p-1'); } catch { /* expected */ }
             });
 
             expect(result.current.error?.message).toBe('Delete failed');
         });
 
-        it('should reset isLoading to false after remove failure', async () => {
-            mockStore.apiClient.delete.mockRejectedValue(new Error('timeout'));
-            const { result } = renderHook(() => useVoiceEmbedding());
-
-            await act(async () => {
-                try { await result.current.remove('user-123'); } catch { /* expected */ }
-            });
-
-            expect(result.current.isLoading).toBe(false);
-        });
-
-        it('should throw the error for the caller to catch on remove', async () => {
+        it('rethrows the underlying error to the caller', async () => {
             mockStore.apiClient.delete.mockRejectedValue(new Error('Delete failed'));
             const { result } = renderHook(() => useVoiceEmbedding());
 
             await expect(
-                act(async () => { await result.current.remove('user-123'); }),
+                act(async () => { await result.current.delete('p-1'); }),
             ).rejects.toThrow('Delete failed');
         });
     });
 
     describe('SDK not initialized', () => {
-        it('should throw on getStatus when apiClient is null', async () => {
+        it('throws on enroll when apiClient is null', async () => {
             (useAgenticStore as any).mockReturnValue({ apiClient: null, logger: null });
             const { result } = renderHook(() => useVoiceEmbedding());
+            const audio = new Blob(['data'], { type: 'audio/wav' });
 
             await expect(
-                act(async () => { await result.current.getStatus('user-123'); })
+                act(async () => { await result.current.enroll(audio); })
             ).rejects.toThrow('SDK not initialized');
         });
 
-        it('should throw on upload when apiClient is null', async () => {
+        it('throws on list when apiClient is null', async () => {
             (useAgenticStore as any).mockReturnValue({ apiClient: null, logger: null });
             const { result } = renderHook(() => useVoiceEmbedding());
-            const audioFile = new Blob(['audio-data'], { type: 'audio/wav' });
 
             await expect(
-                act(async () => { await result.current.upload('user-123', audioFile); })
+                act(async () => { await result.current.list(); })
             ).rejects.toThrow('SDK not initialized');
         });
 
-        it('should throw on remove when apiClient is null', async () => {
+        it('throws on delete when apiClient is null', async () => {
             (useAgenticStore as any).mockReturnValue({ apiClient: null, logger: null });
             const { result } = renderHook(() => useVoiceEmbedding());
 
             await expect(
-                act(async () => { await result.current.remove('user-123'); })
+                act(async () => { await result.current.delete('p-1'); })
             ).rejects.toThrow('SDK not initialized');
         });
     });
 
     describe('null logger', () => {
-        it('should work correctly when store.logger is null', async () => {
+        it('works correctly when store.logger is null', async () => {
             (useAgenticStore as any).mockReturnValue({ ...mockStore, logger: null });
-            const mockStatus = { userId: 'user-123', exists: false };
-            mockStore.apiClient.get.mockResolvedValue(mockStatus);
+            mockStore.apiClient.get.mockResolvedValue([]);
             const { result } = renderHook(() => useVoiceEmbedding());
 
-            await act(async () => { await result.current.getStatus('user-123'); });
-            expect(result.current.status).toEqual(mockStatus);
+            await act(async () => { await result.current.list(); });
+            expect(result.current.profiles).toEqual([]);
+        });
+    });
+
+    describe('removed legacy surface', () => {
+        it('does not expose upload/getStatus/remove/status/userId-based delete', () => {
+            const { result } = renderHook(() => useVoiceEmbedding());
+            // The new surface has enroll, list, delete only
+            expect((result.current as any).upload).toBeUndefined();
+            expect((result.current as any).getStatus).toBeUndefined();
+            expect((result.current as any).remove).toBeUndefined();
+            expect((result.current as any).status).toBeUndefined();
         });
     });
 });

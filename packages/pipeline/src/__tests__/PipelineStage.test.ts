@@ -324,4 +324,150 @@ describe('PipelineStage', () => {
       expect(stage.config.priority).toBe(0);
     });
   });
+
+  // ===========================================================================
+  // TASK-273 — AbortSignal handling (C-1, C-2)
+  // ===========================================================================
+
+  describe('AbortSignal propagation (TASK-273)', () => {
+    it('should propagate context.abortSignal into onExecute when no timeout/retry', async () => {
+      let observed: AbortSignal | undefined;
+
+      class CapturingStage extends PipelineStage<string, string> {
+        protected async onExecute(_input: string, ctx: PipelineContext): Promise<string> {
+          observed = ctx.abortSignal;
+          return 'ok';
+        }
+      }
+
+      const ac = new AbortController();
+      const captureStage = new CapturingStage('capture');
+      const ctx = { ...context, abortSignal: ac.signal };
+
+      await captureStage.execute('input', ctx);
+
+      expect(observed).toBe(ac.signal);
+    });
+
+    it('should expose a combined abort signal to onExecute when timeout is configured', async () => {
+      let observedSignal: AbortSignal | undefined;
+
+      class CapturingStage extends PipelineStage<string, string> {
+        protected async onExecute(_input: string, ctx: PipelineContext): Promise<string> {
+          observedSignal = ctx.abortSignal;
+          return 'ok';
+        }
+      }
+
+      const ac = new AbortController();
+      const stage = new CapturingStage('capture-timeout', { timeout: 1000 });
+      const ctx = { ...context, abortSignal: ac.signal };
+
+      await stage.execute('input', ctx);
+
+      // The user signal should NOT be the exact one onExecute saw — it must be a combined signal
+      // that aborts when either user or timeout aborts.
+      expect(observedSignal).toBeDefined();
+      expect(observedSignal).not.toBe(ac.signal);
+    });
+
+    it('should abort onExecute via combined signal when user cancels mid-stage', async () => {
+      const onExecuteAborted = vi.fn();
+
+      class CancellableStage extends PipelineStage<string, string> {
+        protected async onExecute(_input: string, ctx: PipelineContext): Promise<string> {
+          return new Promise<string>((resolve, reject) => {
+            const id = setTimeout(() => resolve('done'), 5000);
+            ctx.abortSignal?.addEventListener('abort', () => {
+              clearTimeout(id);
+              onExecuteAborted();
+              reject(new Error('aborted'));
+            });
+          });
+        }
+      }
+
+      const ac = new AbortController();
+      const stage = new CancellableStage('cancellable', { timeout: 5000 });
+      const ctx = { ...context, abortSignal: ac.signal };
+
+      const promise = stage.execute('input', ctx);
+
+      setTimeout(() => ac.abort(), 20);
+
+      await expect(promise).rejects.toThrow();
+      expect(onExecuteAborted).toHaveBeenCalled();
+    });
+
+    it('should abort onExecute via combined signal when timeout fires (C-2)', async () => {
+      const onExecuteAborted = vi.fn();
+
+      class SlowSignalStage extends PipelineStage<string, string> {
+        protected async onExecute(_input: string, ctx: PipelineContext): Promise<string> {
+          return new Promise<string>((resolve, reject) => {
+            const id = setTimeout(() => resolve('done'), 5000);
+            ctx.abortSignal?.addEventListener('abort', () => {
+              clearTimeout(id);
+              onExecuteAborted();
+              reject(new Error('aborted by timeout'));
+            });
+          });
+        }
+      }
+
+      const stage = new SlowSignalStage('slow-signal', { timeout: 30 });
+
+      await expect(stage.execute('input', context)).rejects.toThrow(
+        "Stage 'slow-signal' timed out after 30ms"
+      );
+      expect(onExecuteAborted).toHaveBeenCalled();
+    });
+
+    it('should compose timeout with retry — retries transient errors and aborts via timeout (C-2)', async () => {
+      let attempts = 0;
+
+      class FlakyStage extends PipelineStage<string, string> {
+        protected async onExecute(_input: string, _ctx: PipelineContext): Promise<string> {
+          attempts++;
+          if (attempts < 3) {
+            throw new Error('transient');
+          }
+          return 'ok';
+        }
+      }
+
+      const stage = new FlakyStage('flaky', {
+        timeout: 1000,
+        retry: { maxRetries: 3, retryDelayMs: 5 },
+      });
+
+      const result = await stage.execute('input', context);
+      expect(result).toBe('ok');
+      expect(attempts).toBe(3);
+    });
+
+    it('should not retry after the user signal aborts during retry delay', async () => {
+      let attempts = 0;
+      const ac = new AbortController();
+
+      class AlwaysFailStage extends PipelineStage<string, string> {
+        protected async onExecute(): Promise<string> {
+          attempts++;
+          throw new Error('fail');
+        }
+      }
+
+      const stage = new AlwaysFailStage('always-fail', {
+        retry: { maxRetries: 5, retryDelayMs: 100 },
+      });
+      const ctx = { ...context, abortSignal: ac.signal };
+
+      const promise = stage.execute('input', ctx);
+      setTimeout(() => ac.abort(), 30);
+
+      await expect(promise).rejects.toThrow();
+      // Should have attempted at most 2 times before abort (one immediate + maybe one retry interrupted)
+      expect(attempts).toBeLessThanOrEqual(2);
+    });
+  });
 });

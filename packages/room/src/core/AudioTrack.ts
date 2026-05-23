@@ -11,6 +11,7 @@ import type { TrackProcessor, AudioProcessorOptions } from '../processors/types.
 import { AudioFeature, TrackState, type AudioCaptureOptions, type AudioLevelInfo, RoomError, RoomErrorCode } from '../types/index.js';
 import { buildAudioConstraints, getTrackFeatures, applyFeatureConstraint } from '../utils/constraints.js';
 import { calculateRMSLevel, calculatePeakLevel, createSmoothingCalculator, detectVoiceActivity } from '../utils/audioUtils.js';
+import { mapGetUserMediaError } from './RoomErrors.js';
 
 /**
  * Mutex-like lock for serializing async operations.
@@ -102,6 +103,12 @@ export class AudioTrack extends TypedEventEmitter<TrackEventMap> {
   private levelMonitorInterval: ReturnType<typeof setInterval> | null = null;
   private smoothLevel = createSmoothingCalculator(0.8);
   private peakLevel = 0;
+  /**
+   * Pre-allocated buffer for {@link AnalyserNode.getFloatTimeDomainData}.
+   * Allocated once in {@link setupAudioLevelMonitoring} and reused across
+   * every interval tick to avoid per-frame GC pressure (W1-6).
+   */
+  private levelDataArray: Float32Array | null = null;
 
   // Lock for processor changes
   private readonly processorLock = new AsyncLock();
@@ -425,6 +432,11 @@ export class AudioTrack extends TypedEventEmitter<TrackEventMap> {
 
   /**
    * Set up audio level monitoring using Web Audio API.
+   *
+   * Pre-allocates a single {@link Float32Array} sized to the analyser's
+   * `fftSize` and reuses it across every interval tick. This avoids the
+   * 8 KB-per-tick allocation churn the previous implementation introduced
+   * (W1-6).
    */
   private setupAudioLevelMonitoring(): void {
     if (!this.sourceTrack || !this.audioContext) return;
@@ -433,6 +445,9 @@ export class AudioTrack extends TypedEventEmitter<TrackEventMap> {
       // Create analyser node
       this.analyserNode = this.audioContext.createAnalyser();
       this.analyserNode.fftSize = 2048;
+
+      // Pre-allocate the buffer once; reused on every tick.
+      this.levelDataArray = new Float32Array(this.analyserNode.fftSize);
 
       // Create source from track
       const stream = new MediaStream([this.sourceTrack]);
@@ -451,12 +466,14 @@ export class AudioTrack extends TypedEventEmitter<TrackEventMap> {
 
   /**
    * Update audio level and emit event.
+   *
+   * Reuses {@link levelDataArray} across every tick — never allocates a new
+   * buffer in this hot path.
    */
   private updateAudioLevel(): void {
-    if (!this.analyserNode) return;
+    if (!this.analyserNode || !this.levelDataArray) return;
 
-    const bufferLength = this.analyserNode.fftSize;
-    const dataArray = new Float32Array(bufferLength);
+    const dataArray = this.levelDataArray;
     this.analyserNode.getFloatTimeDomainData(dataArray);
 
     const currentLevel = calculateRMSLevel(dataArray);
@@ -510,11 +527,41 @@ export class AudioTrack extends TypedEventEmitter<TrackEventMap> {
 
   /**
    * Stop the track and release resources.
+   *
+   * Idempotent — calling on an already-ended track is a no-op (no double
+   * `Ended` emit). The shared cleanup path is also exercised by
+   * {@link handleTrackEnded} when the OS reports the underlying device went
+   * away.
    */
   async stop(): Promise<void> {
+    if (this.state === TrackState.ENDED) {
+      return;
+    }
+    await this.teardownInternal({ stopSourceTrack: true });
+    this.state = TrackState.ENDED;
+    this.emit(TrackEvent.Ended);
+  }
+
+  /**
+   * Internal cleanup path shared by {@link stop} and
+   * {@link handleTrackEnded}. Releases the processor, level monitor,
+   * analyser, source node, and (optionally) the underlying
+   * {@link MediaStreamTrack}. Does **not** mutate `state` or emit events —
+   * the caller decides which event to emit so we don't double-fire `Ended`.
+   *
+   * @param opts.stopSourceTrack When `true`, also calls
+   * `this.sourceTrack.stop()`. When `false` (e.g. the device already ended),
+   * we skip the redundant `stop()` call but still null out the reference.
+   */
+  private async teardownInternal(opts: { stopSourceTrack: boolean }): Promise<void> {
     // Stop processor
     if (this.currentProcessor) {
-      await this.stopProcessor();
+      try {
+        await this.stopProcessor();
+      } catch {
+        // Best-effort cleanup — swallow processor errors here so we still
+        // tear down the rest of the graph.
+      }
     }
 
     // Stop level monitoring
@@ -525,50 +572,76 @@ export class AudioTrack extends TypedEventEmitter<TrackEventMap> {
 
     // Disconnect audio nodes
     if (this.sourceNode) {
-      this.sourceNode.disconnect();
+      try {
+        this.sourceNode.disconnect();
+      } catch {
+        // Already disconnected — ignore.
+      }
       this.sourceNode = null;
     }
     this.analyserNode = null;
+    this.levelDataArray = null;
 
     // Stop the source track
     if (this.sourceTrack) {
-      this.sourceTrack.stop();
+      if (opts.stopSourceTrack) {
+        try {
+          this.sourceTrack.stop();
+        } catch {
+          // Already stopped — ignore.
+        }
+      }
       this.sourceTrack = null;
     }
-
-    this.state = TrackState.ENDED;
-    this.emit(TrackEvent.Ended);
   }
 
   /**
    * Handle source track ended event.
+   *
+   * Fires when the OS reports the underlying device disappeared (microphone
+   * unplug, OS-level revocation, browser tab interrupted). The state is
+   * transitioned to {@link TrackState.ENDED} and {@link TrackEvent.Ended} is
+   * emitted **synchronously** so subscribed React hooks see the new state on
+   * the same tick. The async resource teardown (processor destroy, source
+   * node disconnect) runs as a fire-and-forget tail — `onended` is a
+   * synchronous browser callback we cannot await.
+   *
+   * Re-entrant calls (e.g. `onended` fires twice from different graph nodes)
+   * short-circuit on the `state === ENDED` guard so `Ended` is emitted at
+   * most once.
    */
   private handleTrackEnded(): void {
+    if (this.state === TrackState.ENDED) {
+      return;
+    }
     this.state = TrackState.ENDED;
     this.emit(TrackEvent.Ended);
+    // Run the async cleanup tail. Any rejection is swallowed inside
+    // teardownInternal's per-step try/catch; this `void` keeps eslint
+    // (no-floating-promises) and stops noisy unhandled-rejection logs.
+    void this.teardownInternal({ stopSourceTrack: false });
   }
 
   /**
    * Wrap an error in a RoomError.
+   *
+   * `NotReadableError` keeps its dedicated `RoomError` so existing consumers
+   * that switch on `RoomErrorCode.DEVICE_IN_USE` continue to function. All
+   * other recognised `getUserMedia` failures route through
+   * {@link mapGetUserMediaError}, which produces a typed subclass with a
+   * stable string code (`mic_permission_denied`, `mic_not_found`,
+   * `mic_insecure_context`, `mic_constraints_unsupported`, or
+   * `mic_unknown`).
    */
   private wrapError(error: unknown): RoomError {
     if (error instanceof RoomError) {
       return error;
     }
 
-    if (error instanceof DOMException) {
-      switch (error.name) {
-        case 'NotAllowedError':
-          return new RoomError(RoomErrorCode.PERMISSION_DENIED, 'Microphone permission denied', error);
-        case 'NotFoundError':
-          return new RoomError(RoomErrorCode.DEVICE_NOT_FOUND, 'No microphone found', error);
-        case 'NotReadableError':
-          return new RoomError(RoomErrorCode.DEVICE_IN_USE, 'Microphone is in use by another application', error);
-        default:
-          return new RoomError(RoomErrorCode.UNKNOWN, error.message, error);
-      }
+    if (error instanceof DOMException && error.name === 'NotReadableError') {
+      return new RoomError(RoomErrorCode.DEVICE_IN_USE, 'Microphone is in use by another application', error);
     }
 
-    return new RoomError(RoomErrorCode.UNKNOWN, error instanceof Error ? error.message : 'Unknown error', error instanceof Error ? error : undefined);
+    return mapGetUserMediaError(error);
   }
 }

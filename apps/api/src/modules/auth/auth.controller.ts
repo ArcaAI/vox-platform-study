@@ -26,7 +26,10 @@ import {
   RefreshTokenRequest,
   RefreshTokenResponse,
   RevokeImpersonationResponse,
+  IssueStreamTicketRequest,
+  IssueStreamTicketResponse,
 } from './dto';
+import { StreamTicketService } from './stream-ticket.service';
 
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
@@ -44,6 +47,7 @@ export class AuthController {
     private readonly roleRepository: RoleRepository,
     private readonly tenantRepository: TenantRepository,
     private readonly clsService: ClsService<IActiveUserContext>,
+    private readonly streamTicketService: StreamTicketService,
   ) {}
 
   @Post('login')
@@ -449,6 +453,35 @@ export class AuthController {
     const refreshToken = this.generateRefreshToken(user.id);
 
     return { token, refreshToken };
+  }
+
+  @Post('stream-ticket')
+  @HttpCode(HttpStatus.OK)
+  @Authorize()
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Issue a single-use, 30-second ticket for authenticating SSE streams (TASK-263 W0-1)',
+    description:
+      'Returns a single-use ticket bound to the requested scope (e.g. `consultation_job:<jobId>`). The SDK passes the ticket as `?ticket=<ticket>` when opening the SSE endpoint, avoiding the HIPAA-sensitive pattern of putting the long-lived JWT in the URL query string.',
+  })
+  @ApiResponse({ status: 200, description: 'Ticket issued', type: IssueStreamTicketResponse })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async issueStreamTicket(@Body() body: IssueStreamTicketRequest): Promise<IssueStreamTicketResponse> {
+    const user = this.clsService.get('user');
+    if (!user?.id) {
+      throw new UnauthorizedException('User context not available');
+    }
+    const tenantId = user.tenantId ?? this.clsService.get('tenantId') ?? null;
+    const issued = await this.streamTicketService.issueTicket({
+      userId: user.id,
+      tenantId,
+      scope: body.scope,
+    });
+    return {
+      ticket: issued.ticket,
+      expiresAt: issued.expiresAt,
+      scope: issued.scope,
+    };
   }
 
   @Post('revoke-impersonation')

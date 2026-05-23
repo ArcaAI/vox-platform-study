@@ -129,3 +129,29 @@ export function downsampleTo16kHz(samples: Float32Array, sampleRate: number): Fl
 export function upsampleFrom16kHz(samples: Float32Array, targetSampleRate: number): Float32Array {
   return linearResample(samples, VAD_SAMPLE_RATE, targetSampleRate);
 }
+
+/**
+ * Resample any input audio buffer to the Silero VAD's required 16 kHz.
+ *
+ * Returns the input untouched (same identity) when `inputSampleRate` is
+ * already 16 kHz so callers can hot-path the common case without a
+ * defensive `if`. For 44.1 / 48 kHz captures (the typical browser default
+ * `AudioContext.sampleRate`) the helper produces a Float32Array of the
+ * expected length using the project-wide `linearResample` implementation.
+ *
+ * Intended primarily for consumers building custom pipelines around
+ * `VADProcessor`. The processor itself delegates real-time resampling to
+ * `MicVAD`'s internal worklet, but callers that pre-buffer audio or run
+ * non-real-time inference should funnel through this helper instead of
+ * implementing their own conversion. (TASK-271 L-2.)
+ *
+ * @param samples - Input audio samples
+ * @param inputSampleRate - Sample rate of the input samples
+ * @returns The same buffer (when already 16 kHz) or a freshly resampled buffer
+ */
+export function resampleToVADRate(samples: Float32Array, inputSampleRate: number): Float32Array {
+  if (inputSampleRate === VAD_SAMPLE_RATE) {
+    return samples;
+  }
+  return linearResample(samples, inputSampleRate, VAD_SAMPLE_RATE);
+}

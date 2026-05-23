@@ -821,50 +821,9 @@ test.describe('@arcaai/vad UI Interaction Tests', () => {
   });
 });
 
-test.describe('@arcaai/vad Worklet Loader Tests', () => {
-  test('should have worklet processor name constant', async ({ page }) => {
-    await page.goto('http://localhost:3334/');
-
-    const result = await page.evaluate(async () => {
-      try {
-        const { WORKLET_PROCESSOR_NAME } = await import('/dist/index.mjs');
-        return { name: WORKLET_PROCESSOR_NAME };
-      } catch {
-        return null;
-      }
-    });
-
-    if (result === null) {
-      test.skip();
-    } else {
-      expect(result.name).toBe('vad-worklet-processor');
-    }
-  });
-
-  test('should export worklet registration functions', async ({ page }) => {
-    await page.goto('http://localhost:3334/');
-
-    const exports = await page.evaluate(async () => {
-      try {
-        const module = await import('/dist/index.mjs');
-        return {
-          hasRegister: typeof module.registerVADWorklet === 'function',
-          hasIsRegistered: typeof module.isVADWorkletRegistered === 'function',
-          hasCreateNode: typeof module.createVADWorkletNode === 'function',
-          hasCleanup: typeof module.cleanupVADWorkletResources === 'function',
-        };
-      } catch {
-        return null;
-      }
-    });
-
-    if (exports === null) {
-      test.skip();
-    } else {
-      expect(exports.hasRegister).toBe(true);
-      expect(exports.hasIsRegistered).toBe(true);
-      expect(exports.hasCreateNode).toBe(true);
-      expect(exports.hasCleanup).toBe(true);
-    }
-  });
-});
+// TASK-271 (C-3 / C-4): the `@arcaai/vad Worklet Loader Tests` describe block
+// was removed when the dead custom worklet code (`registerVADWorklet`,
+// `createVADWorkletNode`, `cleanupVADWorkletResources`, `isVADWorkletRegistered`,
+// `WORKLET_PROCESSOR_NAME`) was deleted from the package public surface.
+// The production VAD path uses `@ricky0123/vad-web`'s own worklet; no custom
+// worklet exports remain to validate here.

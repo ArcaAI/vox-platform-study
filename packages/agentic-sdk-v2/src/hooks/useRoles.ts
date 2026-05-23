@@ -6,8 +6,16 @@
 
 import { useState, useCallback } from 'react';
 import { useApiOperation } from './useApiOperation';
-import { ROLE_ENDPOINTS } from '../core/constants';
+import { ROLE_ENDPOINTS, USER_ROLES, type UserRole } from '../core/constants';
 import { extractArray } from '../utils/responseUtils';
+
+/**
+ * Built-in user role identifiers (TASK-265 W0-10).
+ *
+ * Re-exported from `core/constants` so consumers importing the role hook get
+ * the canonical typed tuple alongside the API surface.
+ */
+export { USER_ROLES, type UserRole };
 
 export interface Role {
   id: string;
