@@ -1,12 +1,19 @@
 /**
- * @arcaai/vox - useRoles Hook (TASK-032 WS-G, refactored TASK-039)
+ * @arcaai/vox - useRoles Hook (TASK-032 WS-G, refactored TASK-039, TASK-279 R-05)
  *
  * Role management and user-role assignment hook for admin operations.
+ *
+ * TASK-279 R-05: split user-role assignment into the canonical admin path.
+ * The pre-existing `getUserRoles` / `assignRole` / `removeRole` API surface
+ * is kept as deprecated aliases that delegate to the new methods, with a
+ * one-time `console.warn` per hook instance. The aliases will be removed in
+ * a future major; consumers should migrate to `listUserRoleAssignments`,
+ * `assignRoleToUser`, and `removeUserRoleAssignment`.
  */
 
-import { useState, useCallback } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useApiOperation } from './useApiOperation';
-import { ROLE_ENDPOINTS, USER_ROLES, type UserRole } from '../core/constants';
+import { ADMIN_USER_ROLES_ENDPOINTS, ROLE_ENDPOINTS, USER_ROLES, type UserRole } from '../core/constants';
 import { extractArray } from '../utils/responseUtils';
 
 /**
@@ -56,6 +63,8 @@ export interface UseRolesReturn {
   roles: Role[];
   isLoading: boolean;
   error: Error | null;
+
+  // Role CRUD (admin /admin/rbac/roles)
   listRoles: () => Promise<Role[]>;
   getRole: (id: string) => Promise<Role>;
   createRole: (input: CreateRoleInput) => Promise<Role>;
@@ -63,14 +72,34 @@ export interface UseRolesReturn {
   deleteRole: (id: string) => Promise<void>;
   assignPolicy: (roleId: string, policyId: string, priority?: number) => Promise<unknown>;
   removePolicy: (roleId: string, policyId: string) => Promise<void>;
+
+  // TASK-279 R-05 — admin user-role assignment surface
+  // (uses ADMIN_USER_ROLES_ENDPOINTS → /admin/users/:id/roles[/:assignmentId])
+  listUserRoleAssignments: (userId: string) => Promise<UserRoleAssignment[]>;
+  assignRoleToUser: (userId: string, roleId: string, tenantId?: string) => Promise<UserRoleAssignment>;
+  removeUserRoleAssignment: (userId: string, assignmentId: string) => Promise<void>;
+
+  /** @deprecated TASK-279 R-05 — use `listUserRoleAssignments` instead. */
   getUserRoles: (userId: string) => Promise<UserRoleAssignment[]>;
+  /** @deprecated TASK-279 R-05 — use `assignRoleToUser` instead. */
   assignRole: (userId: string, roleId: string, tenantId?: string) => Promise<UserRoleAssignment>;
-  removeRole: (userId: string, roleId: string) => Promise<void>;
+  /**
+   * @deprecated TASK-279 R-05 — use `removeUserRoleAssignment` instead. The
+   * second argument is `assignmentId` (a join-table row id), NOT a roleId.
+   */
+  removeRole: (userId: string, assignmentId: string) => Promise<void>;
 }
 
 export function useRoles(): UseRolesReturn {
   const { execute, isLoading, error } = useApiOperation('useRoles');
   const [roles, setRoles] = useState<Role[]>([]);
+
+  // Per-hook-instance one-shot deprecation flags. Using `useRef` (not module
+  // state) so each tree gets its own warning lifecycle and StrictMode
+  // double-mounts behave predictably.
+  const getUserRolesWarnedRef = useRef(false);
+  const assignRoleWarnedRef = useRef(false);
+  const removeRoleWarnedRef = useRef(false);
 
   const listRoles = useCallback(
     () =>
@@ -128,27 +157,74 @@ export function useRoles(): UseRolesReturn {
     [execute],
   );
 
-  const getUserRoles = useCallback(
+  // -------------------------------------------------------------------------
+  // TASK-279 R-05 — admin user-role assignment surface
+  // -------------------------------------------------------------------------
+
+  const listUserRoleAssignments = useCallback(
     (userId: string) =>
-      execute<UserRoleAssignment[]>('getUserRoles', async (client) => {
-        const raw = await client.get(ROLE_ENDPOINTS.USER_ROLES(userId));
+      execute<UserRoleAssignment[]>('listUserRoleAssignments', async (client) => {
+        const raw = await client.get(ADMIN_USER_ROLES_ENDPOINTS.LIST(userId));
         return extractArray<UserRoleAssignment>(raw);
       }),
     [execute],
   );
 
-  const assignRole = useCallback(
+  const assignRoleToUser = useCallback(
     (userId: string, roleId: string, tenantId?: string) =>
-      execute<UserRoleAssignment>('assignRole', (client) =>
-        client.post<UserRoleAssignment>(ROLE_ENDPOINTS.USER_ROLES(userId), tenantId ? { roleId, tenantId } : { roleId }),
+      execute<UserRoleAssignment>('assignRoleToUser', (client) =>
+        client.post<UserRoleAssignment>(ADMIN_USER_ROLES_ENDPOINTS.ASSIGN(userId), tenantId ? { roleId, tenantId } : { roleId }),
       ),
     [execute],
   );
 
-  const removeRole = useCallback(
-    (userId: string, roleId: string) =>
-      execute<void>('removeRole', (client) => client.delete(ROLE_ENDPOINTS.USER_ROLE(userId, roleId)) as Promise<void>),
+  const removeUserRoleAssignment = useCallback(
+    (userId: string, assignmentId: string) =>
+      execute<void>('removeUserRoleAssignment', (client) => client.delete(ADMIN_USER_ROLES_ENDPOINTS.REMOVE(userId, assignmentId)) as Promise<void>),
     [execute],
+  );
+
+  // -------------------------------------------------------------------------
+  // Deprecated aliases — delegate to the new methods, warn once per instance.
+  // -------------------------------------------------------------------------
+
+  const getUserRoles = useCallback(
+    (userId: string) => {
+      if (!getUserRolesWarnedRef.current) {
+        getUserRolesWarnedRef.current = true;
+        // eslint-disable-next-line no-console
+        console.warn('[useRoles] `getUserRoles` is deprecated; use `listUserRoleAssignments`. (TASK-279)');
+      }
+      return listUserRoleAssignments(userId);
+    },
+    [listUserRoleAssignments],
+  );
+
+  const assignRole = useCallback(
+    (userId: string, roleId: string, tenantId?: string) => {
+      if (!assignRoleWarnedRef.current) {
+        assignRoleWarnedRef.current = true;
+        // eslint-disable-next-line no-console
+        console.warn('[useRoles] `assignRole` is deprecated; use `assignRoleToUser`. (TASK-279)');
+      }
+      return assignRoleToUser(userId, roleId, tenantId);
+    },
+    [assignRoleToUser],
+  );
+
+  const removeRole = useCallback(
+    (userId: string, assignmentId: string) => {
+      if (!removeRoleWarnedRef.current) {
+        removeRoleWarnedRef.current = true;
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[useRoles] `removeRole` is deprecated; use `removeUserRoleAssignment`. ' +
+            'Note: the second argument is `assignmentId`, not `roleId`. (TASK-279)',
+        );
+      }
+      return removeUserRoleAssignment(userId, assignmentId);
+    },
+    [removeUserRoleAssignment],
   );
 
   return {
@@ -162,6 +238,9 @@ export function useRoles(): UseRolesReturn {
     deleteRole,
     assignPolicy,
     removePolicy,
+    listUserRoleAssignments,
+    assignRoleToUser,
+    removeUserRoleAssignment,
     getUserRoles,
     assignRole,
     removeRole,

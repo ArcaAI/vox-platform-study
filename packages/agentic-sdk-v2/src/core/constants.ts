@@ -360,6 +360,10 @@ export const STORAGE_KEYS = {
 
 /**
  * Auth endpoints (TASK-032 WS-A)
+ *
+ * TASK-274 fu-sse-constants: `STREAM_TICKET` is the single source of truth
+ * for the SSE ticket-mint endpoint consumed by `core/SSEClient.ts`. The path
+ * is owned by the API at `POST /auth/stream-ticket` (TASK-263 D1).
  */
 export const AUTH_ENDPOINTS = {
   LOGIN: '/auth/login',
@@ -368,6 +372,7 @@ export const AUTH_ENDPOINTS = {
   REFRESH: '/auth/refresh',
   IMPERSONATE: '/auth/impersonate',
   REVOKE_IMPERSONATION: '/auth/revoke-impersonation',
+  STREAM_TICKET: '/auth/stream-ticket',
 } as const;
 
 /**
@@ -476,6 +481,17 @@ export const POLICY_ENDPOINTS = {
 
 /**
  * Role management endpoints (TASK-032 WS-G)
+ *
+ * Note (TASK-279 / R-05): the `USER_ROLES` / `USER_ROLE` builders below
+ * target the canonical end-user self-service path (`/users/:id/roles`),
+ * which the backend currently does NOT expose — the only end-user route
+ * for "my roles" today is `GET /auth/me`. The forward-looking placeholder
+ * is kept for SDK consumers that already integrate against this surface;
+ * see TASK-282 follow-up for the missing backend route.
+ *
+ * For admin user-role assignment operations, use `ADMIN_USER_ROLES_ENDPOINTS`
+ * (defined below), which targets the real `apps/api/.../user.controller.ts`
+ * routes at `/admin/users/:id/roles[/:assignmentId]`.
  */
 export const ROLE_ENDPOINTS = {
   LIST: '/admin/rbac/roles',
@@ -485,10 +501,35 @@ export const ROLE_ENDPOINTS = {
   DELETE: (id: string) => `/admin/rbac/roles/${encodeURIComponent(id)}`,
   ASSIGN_POLICY: (roleId: string, policyId: string) => `/admin/rbac/roles/${encodeURIComponent(roleId)}/policies/${encodeURIComponent(policyId)}`,
   REMOVE_POLICY: (roleId: string, policyId: string) => `/admin/rbac/roles/${encodeURIComponent(roleId)}/policies/${encodeURIComponent(policyId)}`,
+  /** End-user self-service roles surface — see TASK-279 / TASK-282. */
   USER_ROLES: (userId: string) => `/users/${encodeURIComponent(userId)}/roles`,
-  USER_ROLE: (userId: string, roleId: string) => `/users/${encodeURIComponent(userId)}/roles/${encodeURIComponent(roleId)}`,
+  /**
+   * End-user self-service role assignment row. The second argument is
+   * `assignmentId` (a join-table row id), NOT a roleId — the backend
+   * deletes by assignment, not by role.
+   */
+  USER_ROLE: (userId: string, assignmentId: string) => `/users/${encodeURIComponent(userId)}/roles/${encodeURIComponent(assignmentId)}`,
   CHILDREN: (id: string) => `/admin/rbac/roles/${encodeURIComponent(id)}/children`,
   HIERARCHY: (id: string) => `/admin/rbac/roles/${encodeURIComponent(id)}/hierarchy`,
+} as const;
+
+/**
+ * Admin user-role assignment endpoints (TASK-279 / R-05).
+ *
+ * Distinct from `ROLE_ENDPOINTS.USER_ROLES`, which targets the end-user
+ * self-service surface (`/users/:id/roles`, currently served only by
+ * `/auth/me.roles`). These admin paths target `apps/api/.../user.controller.ts`
+ * (`@Controller('admin/users')`).
+ *
+ * Backend reality (verified 2026-05-23):
+ *   - POST   /admin/users/:id/roles                 → assign     (CreateUserRoleAssignmentRequest)
+ *   - DELETE /admin/users/:id/roles/:assignmentId   → remove     (by assignmentId, NOT roleId)
+ *   - There is currently no GET listing endpoint   → see TASK-282 follow-up.
+ */
+export const ADMIN_USER_ROLES_ENDPOINTS = {
+  LIST: (userId: string) => `/admin/users/${encodeURIComponent(userId)}/roles`,
+  ASSIGN: (userId: string) => `/admin/users/${encodeURIComponent(userId)}/roles`,
+  REMOVE: (userId: string, assignmentId: string) => `/admin/users/${encodeURIComponent(userId)}/roles/${encodeURIComponent(assignmentId)}`,
 } as const;
 
 /**

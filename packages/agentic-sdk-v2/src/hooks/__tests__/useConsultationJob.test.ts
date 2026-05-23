@@ -18,9 +18,13 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
 });
 
 let mockSSEInstance: any;
+// TASK-274 fu-useConsultationJob — capture constructor args so we can assert
+// the migrated `(scope, apiClient, logger)` signature is honoured.
+let sseConstructorSpy: ReturnType<typeof vi.fn>;
 
 vi.mock('../../core/SSEClient', () => {
-    const MockSSEClient = function (this: any) {
+    const MockSSEClient = function (this: any, ...args: unknown[]) {
+        sseConstructorSpy(...args);
         Object.assign(this, mockSSEInstance);
         return this;
     } as any;
@@ -41,6 +45,7 @@ describe('useConsultationJob', () => {
         mockGet.mockReset();
         mockDelete.mockReset();
         mockPatch.mockReset();
+        sseConstructorSpy = vi.fn();
 
         mockSSEInstance = {
             connect: vi.fn(),
@@ -144,7 +149,10 @@ describe('useConsultationJob', () => {
     });
 
     describe('streamJob', () => {
-        it('should create SSEClient and connect with auth token', () => {
+        // TASK-274 fu-useConsultationJob — verify migration to the new
+        // `SSEClient(scope, apiClient, logger)` constructor introduced in
+        // TASK-264 W0-1, and confirm the legacy `authToken` plumbing is gone.
+        it('should construct SSEClient with (scope, apiClient, logger) and connect without authToken', () => {
             const { result } = renderHook(() => useConsultationJob());
             const callbacks = { onStatus: vi.fn(), onProgress: vi.fn(), onResult: vi.fn(), onError: vi.fn() };
 
@@ -152,13 +160,20 @@ describe('useConsultationJob', () => {
                 result.current.streamJob('job-1', callbacks);
             });
 
+            expect(sseConstructorSpy).toHaveBeenCalledTimes(1);
+            const ctorArgs = sseConstructorSpy.mock.calls[0]!;
+            expect(ctorArgs[0]).toBe('consultation-jobs');
+            expect(ctorArgs[1]).toBe(mockStore.apiClient);
+            expect(ctorArgs[2]).toBeDefined();
+
             expect(mockSSEInstance.connect).toHaveBeenCalledWith(
                 'http://localhost:8868/api/v1/consultations/jobs/job-1/stream',
                 expect.objectContaining({
                     autoReconnect: true,
-                    authToken: 'test-jwt-token',
                 }),
             );
+            const connectOpts = mockSSEInstance.connect.mock.calls[0]![1];
+            expect(connectOpts).not.toHaveProperty('authToken');
             expect(result.current.isStreaming).toBe(true);
         });
 

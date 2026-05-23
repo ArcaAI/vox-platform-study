@@ -9,7 +9,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useRoles, USER_ROLES, type UserRole } from '../useRoles';
 import { useAgenticStore } from '../../store/agenticStore';
 import { createMockLogger } from '../../__tests__/setup';
-import { ROLE_ENDPOINTS } from '../../core/constants';
+import { ADMIN_USER_ROLES_ENDPOINTS, ROLE_ENDPOINTS } from '../../core/constants';
 
 vi.mock('../../store/agenticStore', async (importOriginal) => {
     const actual = await importOriginal<typeof import('../../store/agenticStore')>();
@@ -112,8 +112,12 @@ describe('useRoles', () => {
         });
     });
 
-    describe('getUserRoles', () => {
-        it('should GET from ROLE_ENDPOINTS.USER_ROLES(userId)', async () => {
+    // -----------------------------------------------------------------------
+    // TASK-279 R-05: deprecated aliases now route to ADMIN_USER_ROLES_ENDPOINTS
+    // -----------------------------------------------------------------------
+
+    describe('getUserRoles (deprecated alias \u2192 listUserRoleAssignments)', () => {
+        it('should GET from ADMIN_USER_ROLES_ENDPOINTS.LIST(userId)', async () => {
             const assignments = [
                 { id: 'a-1', userId: 'u-1', roleId: 'r-1', roleName: 'Admin' },
             ];
@@ -123,7 +127,8 @@ describe('useRoles', () => {
             let resp: unknown;
             await act(async () => { resp = await result.current.getUserRoles('u-1'); });
 
-            expect(mockGet).toHaveBeenCalledWith(ROLE_ENDPOINTS.USER_ROLES('u-1'));
+            expect(mockGet).toHaveBeenCalledWith(ADMIN_USER_ROLES_ENDPOINTS.LIST('u-1'));
+            expect(mockGet).toHaveBeenCalledWith('/admin/users/u-1/roles');
             expect(resp).toEqual(assignments);
         });
 
@@ -152,8 +157,8 @@ describe('useRoles', () => {
         });
     });
 
-    describe('assignRole', () => {
-        it('should POST to ROLE_ENDPOINTS.USER_ROLES(userId) with roleId', async () => {
+    describe('assignRole (deprecated alias \u2192 assignRoleToUser)', () => {
+        it('should POST to ADMIN_USER_ROLES_ENDPOINTS.ASSIGN(userId) with roleId', async () => {
             const assignment = { id: 'a-new', userId: 'u-1', roleId: 'r-1' };
             mockPost.mockResolvedValue(assignment);
             const { result } = renderHook(() => useRoles());
@@ -161,7 +166,8 @@ describe('useRoles', () => {
             let resp: unknown;
             await act(async () => { resp = await result.current.assignRole('u-1', 'r-1'); });
 
-            expect(mockPost).toHaveBeenCalledWith(ROLE_ENDPOINTS.USER_ROLES('u-1'), { roleId: 'r-1' });
+            expect(mockPost).toHaveBeenCalledWith(ADMIN_USER_ROLES_ENDPOINTS.ASSIGN('u-1'), { roleId: 'r-1' });
+            expect(mockPost).toHaveBeenCalledWith('/admin/users/u-1/roles', { roleId: 'r-1' });
             expect(resp).toEqual(assignment);
         });
 
@@ -174,7 +180,7 @@ describe('useRoles', () => {
             await act(async () => { resp = await result.current.assignRole('u-1', 'r-1', 't-1'); });
 
             expect(mockPost).toHaveBeenCalledWith(
-                ROLE_ENDPOINTS.USER_ROLES('u-1'),
+                ADMIN_USER_ROLES_ENDPOINTS.ASSIGN('u-1'),
                 { roleId: 'r-1', tenantId: 't-1' },
             );
             expect(resp).toEqual(assignment);
@@ -187,20 +193,152 @@ describe('useRoles', () => {
             await act(async () => { await result.current.assignRole('u-1', 'r-1'); });
 
             expect(mockPost).toHaveBeenCalledWith(
-                ROLE_ENDPOINTS.USER_ROLES('u-1'),
+                ADMIN_USER_ROLES_ENDPOINTS.ASSIGN('u-1'),
                 { roleId: 'r-1' },
             );
         });
     });
 
-    describe('removeRole', () => {
-        it('should DELETE from ROLE_ENDPOINTS.USER_ROLE(userId, roleId)', async () => {
+    describe('removeRole (deprecated alias \u2192 removeUserRoleAssignment)', () => {
+        it('should DELETE from ADMIN_USER_ROLES_ENDPOINTS.REMOVE(userId, assignmentId)', async () => {
             mockDelete.mockResolvedValue(undefined);
             const { result } = renderHook(() => useRoles());
 
-            await act(async () => { await result.current.removeRole('u-1', 'r-1'); });
+            await act(async () => { await result.current.removeRole('u-1', 'a-9'); });
 
-            expect(mockDelete).toHaveBeenCalledWith(ROLE_ENDPOINTS.USER_ROLE('u-1', 'r-1'));
+            expect(mockDelete).toHaveBeenCalledWith(ADMIN_USER_ROLES_ENDPOINTS.REMOVE('u-1', 'a-9'));
+            expect(mockDelete).toHaveBeenCalledWith('/admin/users/u-1/roles/a-9');
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // TASK-279 R-05: new admin user-role assignment surface
+    // -----------------------------------------------------------------------
+
+    describe('listUserRoleAssignments (new admin surface)', () => {
+        it('should GET from ADMIN_USER_ROLES_ENDPOINTS.LIST(userId)', async () => {
+            const assignments = [
+                { id: 'a-1', userId: 'u-1', roleId: 'r-1', roleName: 'Admin' },
+            ];
+            mockGet.mockResolvedValue(assignments);
+            const { result } = renderHook(() => useRoles());
+
+            let resp: unknown;
+            await act(async () => { resp = await result.current.listUserRoleAssignments('u-1'); });
+
+            expect(mockGet).toHaveBeenCalledWith('/admin/users/u-1/roles');
+            expect(resp).toEqual(assignments);
+        });
+
+        it('should extract array from paginated wrapper', async () => {
+            const assignments = [{ id: 'a-1', userId: 'u-1', roleId: 'r-1' }];
+            mockGet.mockResolvedValue({ data: assignments, count: 1 });
+            const { result } = renderHook(() => useRoles());
+
+            let resp: unknown;
+            await act(async () => { resp = await result.current.listUserRoleAssignments('u-1'); });
+
+            expect(resp).toEqual(assignments);
+        });
+    });
+
+    describe('assignRoleToUser (new admin surface)', () => {
+        it('should POST {roleId} to ADMIN_USER_ROLES_ENDPOINTS.ASSIGN(userId)', async () => {
+            const assignment = { id: 'a-new', userId: 'u-1', roleId: 'r-1' };
+            mockPost.mockResolvedValue(assignment);
+            const { result } = renderHook(() => useRoles());
+
+            let resp: unknown;
+            await act(async () => { resp = await result.current.assignRoleToUser('u-1', 'r-1'); });
+
+            expect(mockPost).toHaveBeenCalledWith('/admin/users/u-1/roles', { roleId: 'r-1' });
+            expect(resp).toEqual(assignment);
+        });
+
+        it('should POST {roleId, tenantId} when tenantId is provided', async () => {
+            mockPost.mockResolvedValue({ id: 'a-2', userId: 'u-1', roleId: 'r-1', tenantId: 't-1' });
+            const { result } = renderHook(() => useRoles());
+
+            await act(async () => { await result.current.assignRoleToUser('u-1', 'r-1', 't-1'); });
+
+            expect(mockPost).toHaveBeenCalledWith('/admin/users/u-1/roles', { roleId: 'r-1', tenantId: 't-1' });
+        });
+    });
+
+    describe('removeUserRoleAssignment (new admin surface)', () => {
+        it('should DELETE from /admin/users/:id/roles/:assignmentId', async () => {
+            mockDelete.mockResolvedValue(undefined);
+            const { result } = renderHook(() => useRoles());
+
+            await act(async () => { await result.current.removeUserRoleAssignment('u-1', 'a-9'); });
+
+            expect(mockDelete).toHaveBeenCalledWith('/admin/users/u-1/roles/a-9');
+        });
+    });
+
+    describe('deprecation warnings (TASK-279)', () => {
+        it('warns exactly once per hook instance for assignRole alias', async () => {
+            const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            mockPost.mockResolvedValue({ id: 'a-1', userId: 'u-1', roleId: 'r-1' });
+            const { result } = renderHook(() => useRoles());
+
+            await act(async () => { await result.current.assignRole('u-1', 'r-1'); });
+            await act(async () => { await result.current.assignRole('u-2', 'r-2'); });
+            await act(async () => { await result.current.assignRole('u-3', 'r-3'); });
+
+            const deprecationCalls = warnSpy.mock.calls.filter((args) =>
+                typeof args[0] === 'string' && args[0].includes('`assignRole` is deprecated'),
+            );
+            expect(deprecationCalls).toHaveLength(1);
+            warnSpy.mockRestore();
+        });
+
+        it('warns exactly once per hook instance for removeRole alias', async () => {
+            const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            mockDelete.mockResolvedValue(undefined);
+            const { result } = renderHook(() => useRoles());
+
+            await act(async () => { await result.current.removeRole('u-1', 'a-1'); });
+            await act(async () => { await result.current.removeRole('u-2', 'a-2'); });
+
+            const deprecationCalls = warnSpy.mock.calls.filter((args) =>
+                typeof args[0] === 'string' && args[0].includes('`removeRole` is deprecated'),
+            );
+            expect(deprecationCalls).toHaveLength(1);
+            warnSpy.mockRestore();
+        });
+
+        it('warns exactly once per hook instance for getUserRoles alias', async () => {
+            const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            mockGet.mockResolvedValue([]);
+            const { result } = renderHook(() => useRoles());
+
+            await act(async () => { await result.current.getUserRoles('u-1'); });
+            await act(async () => { await result.current.getUserRoles('u-2'); });
+
+            const deprecationCalls = warnSpy.mock.calls.filter((args) =>
+                typeof args[0] === 'string' && args[0].includes('`getUserRoles` is deprecated'),
+            );
+            expect(deprecationCalls).toHaveLength(1);
+            warnSpy.mockRestore();
+        });
+
+        it('does NOT warn when calling the new method names directly', async () => {
+            const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            mockGet.mockResolvedValue([]);
+            mockPost.mockResolvedValue({ id: 'a-1', userId: 'u-1', roleId: 'r-1' });
+            mockDelete.mockResolvedValue(undefined);
+            const { result } = renderHook(() => useRoles());
+
+            await act(async () => { await result.current.listUserRoleAssignments('u-1'); });
+            await act(async () => { await result.current.assignRoleToUser('u-1', 'r-1'); });
+            await act(async () => { await result.current.removeUserRoleAssignment('u-1', 'a-1'); });
+
+            const deprecationCalls = warnSpy.mock.calls.filter((args) =>
+                typeof args[0] === 'string' && args[0].includes('deprecated'),
+            );
+            expect(deprecationCalls).toHaveLength(0);
+            warnSpy.mockRestore();
         });
     });
 

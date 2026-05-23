@@ -30,6 +30,7 @@
  * @see docs/implementation/TASK-264-SDK-Auth-Core/README.md
  */
 
+import { AUTH_ENDPOINTS } from './constants';
 import type { ISDKLogger } from './logger';
 
 /**
@@ -66,8 +67,6 @@ export interface SSEConnectOptions {
   /** Maximum delay cap in milliseconds for exponential backoff (default: 30000) */
   maxDelayMs?: number;
 }
-
-const TICKET_ENDPOINT = '/auth/stream-ticket';
 
 /**
  * SSE client for subscribing to job update streams.
@@ -187,7 +186,7 @@ export class SSEClient {
 
     let ticket: string;
     try {
-      const response = await this.apiClient.post<StreamTicket>(TICKET_ENDPOINT, {
+      const response = await this.apiClient.post<StreamTicket>(AUTH_ENDPOINTS.STREAM_TICKET, {
         scope: this.scope,
       });
       ticket = response.ticket;

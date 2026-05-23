@@ -34,6 +34,7 @@ describe('OTelTransport', () => {
     });
 
     config = {
+      enabled: true,
       endpoint: 'http://localhost:4318',
       level: 'debug',
       resourceAttributes: {
@@ -58,6 +59,7 @@ describe('OTelTransport', () => {
 
     it('should use default configuration values', () => {
       const minimalTransport = new OTelTransport({
+        enabled: true,
         endpoint: 'http://localhost:4318',
       });
       expect(minimalTransport.name).toBe('otel');
@@ -415,6 +417,7 @@ describe('OTelTransport', () => {
 
     it('should append /v1/logs to endpoint if missing', async () => {
       const trailingSlashTransport = new OTelTransport({
+        enabled: true,
         endpoint: 'http://localhost:4318/',
       });
       await trailingSlashTransport.initialize();
@@ -528,6 +531,138 @@ describe('OTelTransport', () => {
         key: 'telemetry.sdk.language',
         value: { stringValue: 'javascript' },
       });
+    });
+  });
+
+  // =========================================================================
+  // TASK-278: gated activation
+  //
+  // Mirrors TASK-266 W0-2 for HighlightTransport. The OTel transport may
+  // only activate when ALL of:
+  //   1. NODE_ENV !== 'production' (or process is undefined)
+  //   2. config.enabled === true (explicit opt-in)
+  //   3. config.endpoint is a non-empty string (OTLP endpoint present)
+  // If any gate fails: NO initialize work (no flush timer, no resource
+  // attributes), NO log buffering, NO POST. Fail-closed so a misconfigured
+  // deploy cannot leak PHI to the OTLP collector.
+  // =========================================================================
+  describe('TASK-278: gated activation', () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+
+    afterEach(() => {
+      process.env.NODE_ENV = originalNodeEnv;
+    });
+
+    it('does NOT initialise otel when NODE_ENV=production, even with enabled+endpoint', async () => {
+      process.env.NODE_ENV = 'production';
+      const t = new OTelTransport({
+        enabled: true,
+        endpoint: 'http://localhost:4318',
+        level: 'info',
+      });
+
+      await t.initialize();
+      t.log(createLogEntry({ level: 'info', message: 'should-drop' }));
+      await t.flush();
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      await t.shutdown();
+    });
+
+    it('does NOT initialise otel when enabled=false', async () => {
+      process.env.NODE_ENV = 'development';
+      const t = new OTelTransport({
+        enabled: false,
+        endpoint: 'http://localhost:4318',
+        level: 'info',
+      });
+
+      await t.initialize();
+      t.log(createLogEntry({ level: 'info' }));
+      await t.flush();
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      await t.shutdown();
+    });
+
+    it('does NOT initialise otel when endpoint is missing/empty', async () => {
+      process.env.NODE_ENV = 'development';
+      const t = new OTelTransport({
+        enabled: true,
+        endpoint: '',
+        level: 'info',
+      });
+
+      await t.initialize();
+      t.log(createLogEntry({ level: 'info' }));
+      await t.flush();
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      await t.shutdown();
+    });
+
+    it('initialises and POSTs when all gates pass (dev + enabled + endpoint)', async () => {
+      process.env.NODE_ENV = 'development';
+      vi.useRealTimers();
+      const t = new OTelTransport({
+        enabled: true,
+        endpoint: 'http://localhost:4318',
+        level: 'debug',
+      });
+
+      await t.initialize();
+      t.log(createLogEntry({ level: 'info', message: 'gated-on' }));
+      await t.flush();
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [callUrl] = mockFetch.mock.calls[0];
+      expect(callUrl).toBe('http://localhost:4318/v1/logs');
+
+      await t.shutdown();
+      vi.useFakeTimers();
+    });
+
+    it('does NOT buffer logs when gated off (no PHI leak via in-memory queue)', async () => {
+      process.env.NODE_ENV = 'production';
+      const t = new OTelTransport({
+        enabled: true,
+        endpoint: 'http://localhost:4318',
+        level: 'info',
+      });
+
+      // Pre- and post-init log() calls must be a hard no-op. A misconfigured
+      // production deploy must not be able to accumulate PHI in the buffer
+      // that a later runtime gate-flip could ship to the collector.
+      t.log(createLogEntry({ level: 'info', message: 'pre-init' }));
+      await t.initialize();
+      for (let i = 0; i < 200; i++) {
+        t.log(createLogEntry({ level: 'info', message: `flood-${i}` }));
+      }
+      await t.flush();
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      await t.shutdown();
+    });
+
+    it('exposes isAllowedToActivate as a pure static predicate', () => {
+      process.env.NODE_ENV = 'development';
+      expect(
+        OTelTransport.isAllowedToActivate({ enabled: true, endpoint: 'http://l:4318' })
+      ).toBe(true);
+      expect(
+        OTelTransport.isAllowedToActivate({ enabled: false, endpoint: 'http://l:4318' })
+      ).toBe(false);
+      expect(
+        OTelTransport.isAllowedToActivate({ enabled: true, endpoint: '' })
+      ).toBe(false);
+      expect(
+        OTelTransport.isAllowedToActivate({ enabled: true, endpoint: '   ' })
+      ).toBe(false);
+
+      process.env.NODE_ENV = 'production';
+      expect(
+        OTelTransport.isAllowedToActivate({ enabled: true, endpoint: 'http://l:4318' })
+      ).toBe(false);
     });
   });
 });

@@ -7,8 +7,7 @@
  *
  *   - **W0-4 — HMAC-signed messages.** Every outgoing message is wrapped in
  *     a `{ payload, hmac }` envelope. The HMAC is `HMAC-SHA-256` using a
- *     per-session 32-byte secret held in module memory (never persisted,
- *     regenerated on app reload). Receivers verify HMAC and drop any
+ *     per-session 32-byte secret. Receivers verify HMAC and drop any
  *     unsigned / mismatched message, logging a warning via the optional
  *     `SDKLogger` injected at construction.
  *
@@ -21,6 +20,18 @@
  *   - `setTenantId(id)` closes the existing channel and reopens a new one
  *     with the updated namespace so a runtime tenant switch is honoured.
  *
+ * Updated under TASK-280:
+ *
+ *   - HMAC sign / verify is now delegated to `CrossTabHmacKeyManager`,
+ *     which routes through a SharedWorker so that ALL tabs of the same
+ *     origin sign and verify against the same 32-byte secret. The prior
+ *     per-page module singleton survives as the manager's fallback path
+ *     for environments without SharedWorker (older Safari, non-secure
+ *     contexts, vitest/jsdom without a mock).
+ *
+ *   - `isUsingSharedWorkerHmac()` exposes the active mode for diagnostics
+ *     and for the new TASK-280 tests.
+ *
  * The `broadcastContext*` methods are `async` because Web Crypto's
  * `sign('HMAC')` is async — callers may `await` them in tests but the
  * existing fire-and-forget callsite in `useArcaSession` works fine because
@@ -28,6 +39,12 @@
  */
 
 import type { ContextItem } from '../types';
+import {
+  CrossTabHmacKeyManager,
+  __ensureFallbackSecretForTests,
+  __resetSessionHmacSecretForTests as __resetFallbackForTests,
+  __getSessionHmacSecretForTests as __getFallbackForTests,
+} from './CrossTabHmacKeyManager';
 
 // =============================================================================
 // Public types
@@ -66,44 +83,16 @@ export interface SimpleCrossTabSyncOptions {
 }
 
 // =============================================================================
-// Per-session HMAC secret (module-level singleton)
+// Test-only re-exports — preserve the pre-TASK-280 surface for existing tests.
+// Underscore-prefixed; NOT exported from the public SDK barrel.
 // =============================================================================
 
-let SESSION_HMAC_SECRET: Uint8Array | null = null;
-let SESSION_HMAC_KEY_PROMISE: Promise<CryptoKey> | null = null;
-
-function ensureSessionSecret(): Uint8Array {
-  if (SESSION_HMAC_SECRET === null) {
-    const buf = new Uint8Array(32);
-    crypto.getRandomValues(buf);
-    SESSION_HMAC_SECRET = buf;
-  }
-  return SESSION_HMAC_SECRET;
-}
-
-function getSessionHmacKey(): Promise<CryptoKey> {
-  if (SESSION_HMAC_KEY_PROMISE === null) {
-    const secret = ensureSessionSecret();
-    SESSION_HMAC_KEY_PROMISE = crypto.subtle.importKey('raw', secret as unknown as ArrayBuffer, { name: 'HMAC', hash: 'SHA-256' }, false, [
-      'sign',
-      'verify',
-    ]);
-  }
-  return SESSION_HMAC_KEY_PROMISE;
-}
-
-/**
- * Test-only: wipe the module singleton so tests can simulate "app reload".
- * Underscored prefix marks this as not part of the public SDK surface.
- */
 export function __resetSessionHmacSecretForTests(): void {
-  SESSION_HMAC_SECRET = null;
-  SESSION_HMAC_KEY_PROMISE = null;
+  __resetFallbackForTests();
 }
 
-/** Test-only: read the raw secret to assert its 32-byte length / freshness. */
 export function __getSessionHmacSecretForTests(): Uint8Array | null {
-  return SESSION_HMAC_SECRET;
+  return __getFallbackForTests();
 }
 
 // =============================================================================
@@ -135,6 +124,10 @@ export class SimpleCrossTabSync {
   private readonly logger?: MinimalLogger;
   private listeners: Map<CrossTabEventType, Set<(data: unknown) => void>> = new Map();
   private isSupported: boolean;
+  // TASK-280: SharedWorker-backed HMAC key. Constructed lazily on the first
+  // broadcast / handleIncoming / isUsingSharedWorkerHmac call so the
+  // constructor stays side-effect-free beyond opening the BroadcastChannel.
+  private hmacKey: CrossTabHmacKeyManager | null = null;
 
   constructor(config: { patientId: string; doctorId: string; appointmentDate: string }, options: SimpleCrossTabSyncOptions = {}) {
     this.tabId = `tab_${crypto.randomUUID()}`;
@@ -162,6 +155,16 @@ export class SimpleCrossTabSync {
 
   isAvailable(): boolean {
     return this.isSupported && this.channel !== null;
+  }
+
+  /**
+   * TASK-280: report whether HMAC sign/verify is currently routed through
+   * the SharedWorker (true) or the per-session fallback secret (false).
+   * Materialises the manager lazily so the answer is available even before
+   * any broadcast.
+   */
+  isUsingSharedWorkerHmac(): boolean {
+    return this.ensureHmacKey().isUsingSharedWorker();
   }
 
   /**
@@ -195,6 +198,10 @@ export class SimpleCrossTabSync {
         // Ignore — already closed.
       }
       this.channel = null;
+    }
+    if (this.hmacKey) {
+      this.hmacKey.close();
+      this.hmacKey = null;
     }
     this.listeners.clear();
   }
@@ -230,11 +237,24 @@ export class SimpleCrossTabSync {
     return `agentic.${suffix}`;
   }
 
+  private ensureHmacKey(): CrossTabHmacKeyManager {
+    if (this.hmacKey === null) {
+      this.hmacKey = new CrossTabHmacKeyManager({ logger: this.logger });
+    }
+    return this.hmacKey;
+  }
+
   private openChannel(): void {
     try {
-      // Materialise the per-session secret eagerly so the channel is ready to
-      // sign/verify as soon as the first message is exchanged. Idempotent.
-      ensureSessionSecret();
+      // TASK-280: When SharedWorker is unavailable the manager falls back
+      // to the per-session module singleton owned by CrossTabHmacKeyManager.
+      // Materialise that secret eagerly so the legacy invariant — the
+      // 32-byte secret exists immediately after `new SimpleCrossTabSync()` —
+      // survives the refactor. When SharedWorker IS available the secret
+      // lives in worker memory and there is nothing to eager-init here.
+      if (typeof SharedWorker === 'undefined') {
+        __ensureFallbackSecretForTests();
+      }
 
       const ch = new BroadcastChannel(this.channelName());
       ch.onmessage = (event: MessageEvent) => {
@@ -272,10 +292,9 @@ export class SimpleCrossTabSync {
 
     let verified = false;
     try {
-      const key = await getSessionHmacKey();
       const sigBytes = base64ToUint8(hmac);
       const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
-      verified = await crypto.subtle.verify('HMAC', key, sigBytes as unknown as ArrayBuffer, payloadBytes as unknown as ArrayBuffer);
+      verified = await this.ensureHmacKey().verify(payloadBytes, sigBytes);
     } catch {
       verified = false;
     }
@@ -313,10 +332,9 @@ export class SimpleCrossTabSync {
 
     let envelope: CrossTabEnvelope;
     try {
-      const key = await getSessionHmacKey();
       const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
-      const sig = await crypto.subtle.sign('HMAC', key, payloadBytes as unknown as ArrayBuffer);
-      envelope = { payload, hmac: uint8ToBase64(new Uint8Array(sig)) };
+      const sig = await this.ensureHmacKey().sign(payloadBytes);
+      envelope = { payload, hmac: uint8ToBase64(sig) };
     } catch (err) {
       this.logger?.warn('[SimpleCrossTabSync] HMAC sign failed — dropping outgoing broadcast', {
         component: 'SimpleCrossTabSync',

@@ -504,10 +504,19 @@
 
         log(`Initializing processor with model: ${modelSelect.value}...`);
 
+        // TASK-277 / TASK-272 — use the post-A10 `createMedNER({ workerFactory })`
+        // contract so inference is dispatched to a dedicated Web Worker
+        // and never blocks this page's main thread. The worker bundle
+        // is emitted alongside the main bundle at
+        // `dist/workers/medner.worker.js` by `tsup`.
         processor = createMedNER({
           model: modelSelect.value,
           threshold: parseFloat(thresholdSlider.value) / 100,
           enableStats: true,
+          workerFactory: () =>
+            new Worker(new URL('./dist/workers/medner.worker.js', import.meta.url), {
+              type: 'module',
+            }),
           onProgress: (progress) => {
             if (progress.progress !== undefined) {
               progressFill.style.width = `${progress.progress}%`;

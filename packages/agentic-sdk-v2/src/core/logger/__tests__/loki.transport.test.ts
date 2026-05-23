@@ -34,6 +34,7 @@ describe('LokiTransport', () => {
     });
 
     config = {
+      enabled: true,
       url: 'http://localhost:3100',
       labels: {
         app: 'test-app',
@@ -60,6 +61,7 @@ describe('LokiTransport', () => {
 
     it('should use default batch settings', () => {
       const minimalTransport = new LokiTransport({
+        enabled: true,
         url: 'http://localhost:3100',
       });
       expect(minimalTransport.name).toBe('loki');
@@ -368,6 +370,135 @@ describe('LokiTransport', () => {
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.streams[0].stream.component).toBe('MyComponent');
+    });
+  });
+
+  // =========================================================================
+  // TASK-278: gated activation
+  //
+  // Mirrors TASK-266 W0-2 for HighlightTransport. The Loki transport may
+  // only activate when ALL of:
+  //   1. NODE_ENV !== 'production' (or process is undefined)
+  //   2. config.enabled === true (explicit opt-in)
+  //   3. config.url is a non-empty string (endpoint present)
+  // If any gate fails: NO initialize work (no flush timer), NO log buffering,
+  // NO POST. Fail-closed so a misconfigured deploy cannot leak PHI to Loki.
+  // =========================================================================
+  describe('TASK-278: gated activation', () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+
+    afterEach(() => {
+      process.env.NODE_ENV = originalNodeEnv;
+    });
+
+    it('does NOT initialise loki when NODE_ENV=production, even with enabled+url', async () => {
+      process.env.NODE_ENV = 'production';
+      const t = new LokiTransport({
+        enabled: true,
+        url: 'http://localhost:3100',
+        level: 'info',
+      });
+
+      await t.initialize();
+      t.log(createLogEntry({ level: 'info', message: 'should-drop' }));
+      await t.flush();
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      await t.shutdown();
+    });
+
+    it('does NOT initialise loki when enabled=false', async () => {
+      process.env.NODE_ENV = 'development';
+      const t = new LokiTransport({
+        enabled: false,
+        url: 'http://localhost:3100',
+        level: 'info',
+      });
+
+      await t.initialize();
+      t.log(createLogEntry({ level: 'info' }));
+      await t.flush();
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      await t.shutdown();
+    });
+
+    it('does NOT initialise loki when url is missing/empty', async () => {
+      process.env.NODE_ENV = 'development';
+      const t = new LokiTransport({
+        enabled: true,
+        url: '',
+        level: 'info',
+      });
+
+      await t.initialize();
+      t.log(createLogEntry({ level: 'info' }));
+      await t.flush();
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      await t.shutdown();
+    });
+
+    it('initialises and POSTs when all gates pass (dev + enabled + url)', async () => {
+      process.env.NODE_ENV = 'development';
+      vi.useRealTimers();
+      const t = new LokiTransport({
+        enabled: true,
+        url: 'http://localhost:3100',
+        level: 'debug',
+      });
+
+      await t.initialize();
+      t.log(createLogEntry({ level: 'info', message: 'gated-on' }));
+      await t.flush();
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [callUrl] = mockFetch.mock.calls[0];
+      expect(callUrl).toBe('http://localhost:3100/loki/api/v1/push');
+
+      await t.shutdown();
+      vi.useFakeTimers();
+    });
+
+    it('does NOT buffer logs when gated off (no PHI leak via in-memory queue)', async () => {
+      process.env.NODE_ENV = 'production';
+      const t = new LokiTransport({
+        enabled: true,
+        url: 'http://localhost:3100',
+        level: 'info',
+      });
+
+      // Pre- and post-init log() calls must be a hard no-op. A misconfigured
+      // production deploy must not be able to accumulate PHI in the buffer
+      // that a later runtime gate-flip could ship to Loki.
+      t.log(createLogEntry({ level: 'info', message: 'pre-init' }));
+      await t.initialize();
+      for (let i = 0; i < 200; i++) {
+        t.log(createLogEntry({ level: 'info', message: `flood-${i}` }));
+      }
+      await t.flush();
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      await t.shutdown();
+    });
+
+    it('exposes isAllowedToActivate as a pure static predicate', () => {
+      process.env.NODE_ENV = 'development';
+      expect(
+        LokiTransport.isAllowedToActivate({ enabled: true, url: 'http://l:3100' })
+      ).toBe(true);
+      expect(
+        LokiTransport.isAllowedToActivate({ enabled: false, url: 'http://l:3100' })
+      ).toBe(false);
+      expect(LokiTransport.isAllowedToActivate({ enabled: true, url: '' })).toBe(false);
+      expect(
+        LokiTransport.isAllowedToActivate({ enabled: true, url: '   ' })
+      ).toBe(false);
+
+      process.env.NODE_ENV = 'production';
+      expect(
+        LokiTransport.isAllowedToActivate({ enabled: true, url: 'http://l:3100' })
+      ).toBe(false);
     });
   });
 });
