@@ -36,6 +36,18 @@ export { KnowledgePipeline, createKnowledgePipeline, type TriggerMode } from './
 // Cross-tab sync
 export { SimpleCrossTabSync, createCrossTabSync, type CrossTabEvent, type CrossTabEventType } from './SimpleCrossTabSync';
 
+// TASK-280: SharedWorker-backed HMAC key for cross-tab BroadcastChannel envelopes.
+export { CrossTabHmacKeyManager, type CrossTabHmacKeyManagerOptions } from './CrossTabHmacKeyManager';
+export type {
+  CrossTabHmacReq,
+  CrossTabHmacRes,
+  CrossTabHmacSignReq,
+  CrossTabHmacVerifyReq,
+  CrossTabHmacResetReq,
+  CrossTabHmacResOk,
+  CrossTabHmacResErr,
+} from './CrossTabHmacSharedWorker';
+
 // Shared connection management (multi-tab)
 export { SharedConnectionManager } from './SharedConnectionManager';
 export type { WorkerMessage, WorkerMessageType, SSESubscription, WSSubscription } from './SharedConnectionWorker';

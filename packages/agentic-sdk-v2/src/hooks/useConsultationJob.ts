@@ -3,14 +3,21 @@
  *
  * Consultation job tracking with SSE streaming and polling.
  * Uses SSEClient for authenticated, reconnectable SSE connections.
+ *
+ * TASK-274 fu-useConsultationJob: migrated to the
+ * `SSEClient(scope, apiClient, logger)` constructor introduced in TASK-264
+ * W0-1. The legacy `authToken` plumbing is gone — SSE auth is now ticket-based
+ * (`?ticket=<single-use>`), fetched per-connect by the SSEClient itself.
  */
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useAgenticStore } from '../store';
 import { CONSULTATION_JOB_ENDPOINTS, CONTEXT_ENDPOINTS } from '../core/constants';
-import { SSEClient } from '../core/SSEClient';
+import { SSEClient, type SSEApiClient } from '../core/SSEClient';
 import type { ConsultationJob, JobStatus, PollOptions, JobStreamCallbacks } from '../types/consultation-job';
 import { isTerminalStatus } from '../types/consultation-job';
+
+const SSE_SCOPE = 'consultation-jobs';
 
 export interface UseConsultationJobReturn {
   job: ConsultationJob | null;
@@ -100,7 +107,7 @@ export function useConsultationJob(): UseConsultationJobReturn {
       setIsStreaming(true);
       setError(null);
 
-      const sseClient = new SSEClient(logger);
+      const sseClient = new SSEClient(SSE_SCOPE, apiClient as unknown as SSEApiClient, logger);
       sseClientRef.current = sseClient;
 
       const cleanup = () => {
@@ -111,7 +118,6 @@ export function useConsultationJob(): UseConsultationJobReturn {
 
       const baseUrl = apiClient.getBaseUrl();
       const sseUrl = `${baseUrl}${CONSULTATION_JOB_ENDPOINTS.SSE(jobId)}`;
-      const authToken = apiClient.getAccessToken();
 
       logger?.info('Connecting to consultation job SSE stream', {
         operation: 'streamJob',
@@ -176,7 +182,6 @@ export function useConsultationJob(): UseConsultationJobReturn {
           reconnectIntervalMs: 2000,
           maxReconnectAttempts: 15,
           maxDelayMs: 30000,
-          authToken: authToken ?? undefined,
         });
       } catch (err) {
         setError(err as Error);

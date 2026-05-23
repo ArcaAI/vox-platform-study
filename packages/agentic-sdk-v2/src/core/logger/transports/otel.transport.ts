@@ -84,7 +84,28 @@ interface OTLPLogsRequest {
 }
 
 /**
- * OpenTelemetry transport implementation
+ * OpenTelemetry transport implementation.
+ *
+ * **TASK-278 — gated activation.**
+ * Mirrors the `HighlightTransport` (TASK-266 W0-2) defence-in-depth pattern.
+ * Shipping consultation telemetry to an OTLP collector is a HIPAA exposure
+ * unless the operator has explicitly opted in to a vetted endpoint. This
+ * transport therefore refuses to initialise unless ALL of the following are
+ * true:
+ *
+ *   1. `process.env.NODE_ENV !== 'production'` (or `process` is undefined).
+ *   2. The caller explicitly opted in via `config.enabled === true`.
+ *   3. A non-empty `config.endpoint` (OTLP logs endpoint) is supplied.
+ *
+ * If any gate fails the transport enters a permanently-disabled state where
+ * `initialize()` is a no-op (no flush timer is scheduled, no resource
+ * attributes are built) and `log()` is a hard no-op — no in-memory queue,
+ * no retries — so a misconfigured production deploy cannot silently buffer
+ * PHI in memory that a later runtime gate-flip could ship to the collector.
+ *
+ * `SDKLogger.dispatch()` already pre-redacts every entry via `redactPHI` so
+ * the primary in-process PHI safety boundary is upstream of this transport;
+ * this activation gate is the second, fail-closed layer.
  */
 export class OTelTransport implements ILogTransport {
   readonly name = 'otel';
@@ -94,6 +115,12 @@ export class OTelTransport implements ILogTransport {
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private isFlushing = false;
   private resourceAttributes: OTLPAttribute[] = [];
+  /**
+   * Once true, this transport will never POST another log and will not even
+   * queue them. Set when the TASK-278 gate refuses activation (production env,
+   * not opted in, or missing endpoint).
+   */
+  private permanentlyDisabled = false;
 
   constructor(config: OTelTransportConfig) {
     this.config = {
@@ -102,10 +129,33 @@ export class OTelTransport implements ILogTransport {
       samplingRatio: 1.0,
       ...config,
     };
-    this.level = config.level || 'info';
+    // `config.level` is a pre-existing untyped extension carried over from the
+    // SDK's original transport contract. Keeping the runtime behaviour intact.
+    this.level = (config as OTelTransportConfig & { level?: LogLevel }).level || 'info';
+    if (!OTelTransport.isAllowedToActivate(config)) {
+      this.permanentlyDisabled = true;
+      this.buffer = [];
+    }
+  }
+
+  /**
+   * TASK-278 activation predicate.
+   *
+   * Pure & static so `SDKLogger.initializeTransports()` can also call it
+   * to skip constructing the transport entirely.
+   */
+  static isAllowedToActivate(config: OTelTransportConfig): boolean {
+    if (!config.enabled) return false;
+    if (!config.endpoint || config.endpoint.trim().length === 0) return false;
+    // `process` may be undefined in some browser bundles — treat as non-prod.
+    const env = typeof process !== 'undefined' ? process.env?.NODE_ENV : undefined;
+    if (env === 'production') return false;
+    return true;
   }
 
   async initialize(): Promise<void> {
+    if (this.permanentlyDisabled) return;
+
     // Build resource attributes once
     this.resourceAttributes = this.buildResourceAttributes();
 
@@ -147,9 +197,15 @@ export class OTelTransport implements ILogTransport {
   }
 
   /**
-   * Log entry (buffers for batch sending)
+   * Log entry (buffers for batch sending).
+   *
+   * TASK-278: when the transport is permanently disabled (production env,
+   * not opted in, or missing endpoint) this is a hard no-op — we do not even
+   * queue the entry, so a misconfigured deploy cannot silently buffer PHI in
+   * memory that a later runtime gate-flip could flush to the OTLP collector.
    */
   log(entry: LogEntry): void {
+    if (this.permanentlyDisabled) return;
     if (!this.shouldLog(entry.level)) return;
 
     // Apply sampling

@@ -28,7 +28,28 @@ interface LokiPushRequest {
 }
 
 /**
- * Loki transport implementation
+ * Loki transport implementation.
+ *
+ * **TASK-278 — gated activation.**
+ * Mirrors the `HighlightTransport` (TASK-266 W0-2) defence-in-depth pattern.
+ * Shipping consultation telemetry to a Loki endpoint is a HIPAA exposure
+ * unless the operator has explicitly opted in to a vetted endpoint. This
+ * transport therefore refuses to initialise unless ALL of the following are
+ * true:
+ *
+ *   1. `process.env.NODE_ENV !== 'production'` (or `process` is undefined).
+ *   2. The caller explicitly opted in via `config.enabled === true`.
+ *   3. A non-empty `config.url` (Loki push endpoint) is supplied.
+ *
+ * If any gate fails the transport enters a permanently-disabled state where
+ * `initialize()` is a no-op (no flush timer is scheduled) and `log()` is a
+ * hard no-op — no in-memory queue, no retries — so a misconfigured production
+ * deploy cannot silently buffer PHI in memory that a later runtime gate-flip
+ * could ship to Loki.
+ *
+ * `SDKLogger.dispatch()` already pre-redacts every entry via `redactPHI` so
+ * the primary in-process PHI safety boundary is upstream of this transport;
+ * this activation gate is the second, fail-closed layer.
  */
 export class LokiTransport implements ILogTransport {
   readonly name = 'loki';
@@ -37,6 +58,12 @@ export class LokiTransport implements ILogTransport {
   private buffer: LogEntry[] = [];
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private isFlushing = false;
+  /**
+   * Once true, this transport will never POST another log and will not even
+   * queue them. Set when the TASK-278 gate refuses activation (production env,
+   * not opted in, or missing endpoint).
+   */
+  private permanentlyDisabled = false;
 
   constructor(config: LokiTransportConfig) {
     this.config = {
@@ -44,10 +71,32 @@ export class LokiTransport implements ILogTransport {
       maxBatchSize: 100,
       ...config,
     };
-    this.level = config.level || 'info';
+    // `config.level` is a pre-existing untyped extension carried over from the
+    // SDK's original transport contract. Keeping the runtime behaviour intact.
+    this.level = (config as LokiTransportConfig & { level?: LogLevel }).level || 'info';
+    if (!LokiTransport.isAllowedToActivate(config)) {
+      this.permanentlyDisabled = true;
+      this.buffer = [];
+    }
+  }
+
+  /**
+   * TASK-278 activation predicate.
+   *
+   * Pure & static so `SDKLogger.initializeTransports()` can also call it
+   * to skip constructing the transport entirely.
+   */
+  static isAllowedToActivate(config: LokiTransportConfig): boolean {
+    if (!config.enabled) return false;
+    if (!config.url || config.url.trim().length === 0) return false;
+    // `process` may be undefined in some browser bundles — treat as non-prod.
+    const env = typeof process !== 'undefined' ? process.env?.NODE_ENV : undefined;
+    if (env === 'production') return false;
+    return true;
   }
 
   async initialize(): Promise<void> {
+    if (this.permanentlyDisabled) return;
     // Start batch flush timer
     this.flushTimer = setInterval(() => {
       this.flush().catch((err) => {
@@ -64,9 +113,15 @@ export class LokiTransport implements ILogTransport {
   }
 
   /**
-   * Log entry (buffers for batch sending)
+   * Log entry (buffers for batch sending).
+   *
+   * TASK-278: when the transport is permanently disabled (production env,
+   * not opted in, or missing endpoint) this is a hard no-op — we do not even
+   * queue the entry, so a misconfigured deploy cannot silently buffer PHI in
+   * memory that a later runtime gate-flip could flush to Loki.
    */
   log(entry: LogEntry): void {
+    if (this.permanentlyDisabled) return;
     if (!this.shouldLog(entry.level)) return;
 
     this.buffer.push(entry);

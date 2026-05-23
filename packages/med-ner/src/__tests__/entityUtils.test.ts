@@ -133,6 +133,104 @@ describe('Entity Utilities', () => {
       const result = mergeAdjacentEntities([], 'test');
       expect(result).toHaveLength(0);
     });
+
+    // ------------------------------------------------------------------
+    // H-2 (TASK-277) — count-aware weighted-average score on merge.
+    //
+    // Before TASK-277, mergeAdjacentEntities averaged scores via
+    // `current.score = (current.score + entity.score) / 2`, which is a
+    // biased running average for N > 2 and ignores per-token weight for
+    // any N. These four tests pin the new behaviour:
+    //
+    //     mergedScore = Σ(score_i × weight_i) / Σ(weight_i)
+    //
+    // where `weight_i = max(end_i − start_i, 1)`. The character span is
+    // used because EntitySpan does not carry a token count directly and
+    // the original 06-med-ner review proposed character span as the
+    // safe fallback weight.
+    // ------------------------------------------------------------------
+
+    it('H-2: two equal-weight adjacent entities → simple arithmetic mean', () => {
+      // Both entities have an identical 4-char span ("abcd" and "efgh"),
+      // so weight is equal on both sides; the weighted mean MUST equal
+      // the simple mean. This locks regression safety: switching to a
+      // count-aware weighted average must not change the equal-weight
+      // case.
+      const text = 'abcd efghijklmnop';
+      const entities = [
+        createEntity('abcd', MedicalEntityType.DISEASE, 0, 4, 0.9),
+        createEntity('efgh', MedicalEntityType.DISEASE, 5, 9, 0.7),
+      ];
+
+      const result = mergeAdjacentEntities(entities, text);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].score).toBeCloseTo(0.8, 10); // (0.9 + 0.7) / 2
+    });
+
+    it('H-2: heavier-left adjacent entities → merged score skews left', () => {
+      // e1 spans 10 chars (weight 10) with score 0.9.
+      // e2 spans  2 chars (weight  2) with score 0.5.
+      // Weighted mean = (0.9*10 + 0.5*2) / 12 = 10.0 / 12 ≈ 0.8333…
+      // Old buggy impl returned the simple mean 0.7 regardless of span.
+      const text = 'abcdefghij kl extra trailing';
+      const entities = [
+        createEntity('abcdefghij', MedicalEntityType.DISEASE, 0, 10, 0.9),
+        createEntity('kl', MedicalEntityType.DISEASE, 11, 13, 0.5),
+      ];
+
+      const result = mergeAdjacentEntities(entities, text);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].score).toBeCloseTo((0.9 * 10 + 0.5 * 2) / 12, 10);
+      // Sanity: the new score is strictly greater than the simple mean
+      // (it must skew toward the heavier-left high-score contribution).
+      expect(result[0].score).toBeGreaterThan(0.7);
+      // And strictly less than the left score itself (still a mean).
+      expect(result[0].score).toBeLessThan(0.9);
+    });
+
+    it('H-2: heavier-right adjacent entities → merged score skews right', () => {
+      // e1 spans  2 chars (weight  2) with score 0.9.
+      // e2 spans 10 chars (weight 10) with score 0.5.
+      // Weighted mean = (0.9*2 + 0.5*10) / 12 = 6.8 / 12 ≈ 0.5667.
+      // Old buggy impl returned the simple mean 0.7.
+      const text = 'ab cdefghijkl trailing context';
+      const entities = [
+        createEntity('ab', MedicalEntityType.DISEASE, 0, 2, 0.9),
+        createEntity('cdefghijkl', MedicalEntityType.DISEASE, 3, 13, 0.5),
+      ];
+
+      const result = mergeAdjacentEntities(entities, text);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].score).toBeCloseTo((0.9 * 2 + 0.5 * 10) / 12, 10);
+      // The new score is strictly less than the simple mean — it skews
+      // toward the heavier-right low-score contribution.
+      expect(result[0].score).toBeLessThan(0.7);
+      // And strictly greater than the right score itself (still a mean).
+      expect(result[0].score).toBeGreaterThan(0.5);
+    });
+
+    it('H-2: three equal-weight adjacent entities reduce correctly (not the broken running-average)', () => {
+      // Classic 06-med-ner H-2 example: [B:0.95, I:0.90, I:0.85].
+      // Each contribution has identical 4-char weight, so weighted mean
+      // collapses to the plain mean (0.95 + 0.90 + 0.85) / 3 = 0.9.
+      // Old buggy impl computed ((0.95 + 0.90)/2 + 0.85)/2 = 0.8875.
+      const text = 'abcd efgh ijkl trailing context';
+      const entities = [
+        createEntity('abcd', MedicalEntityType.DISEASE, 0, 4, 0.95),
+        createEntity('efgh', MedicalEntityType.DISEASE, 5, 9, 0.9),
+        createEntity('ijkl', MedicalEntityType.DISEASE, 10, 14, 0.85),
+      ];
+
+      const result = mergeAdjacentEntities(entities, text);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].score).toBeCloseTo(0.9, 10);
+      // Guard against any future regression to the running-average bug.
+      expect(result[0].score).not.toBeCloseTo(0.8875, 6);
+    });
   });
 
   describe('doEntitiesOverlap', () => {

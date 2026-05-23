@@ -489,4 +489,191 @@ describe('SimpleCrossTabSync', () => {
       sync.close();
     });
   });
+
+  // ===========================================================================
+  // TASK-280: SharedWorker-backed HMAC key
+  //
+  // Two tabs of the same origin share a single 32-byte HMAC secret held in
+  // the SharedWorker process. Before TASK-280 each tab had its own module
+  // singleton and therefore COULD NOT verify cross-tab messages — the
+  // pre-refactor `SimpleCrossTabSync` only worked when the receiving page
+  // happened to be the same JS process as the sender (vitest jsdom case).
+  // The mock installs a `globalThis.SharedWorker` that proxies all ports
+  // to a single in-memory secret store, simulating real cross-tab routing.
+  // ===========================================================================
+  describe('TASK-280: SharedWorker-backed HMAC key', () => {
+    // Minimal in-memory SharedWorker mock — see CrossTabHmacKeyManager.test.ts
+    // for the comprehensive RPC-level coverage. This mirror exists so the
+    // SimpleCrossTabSync end-to-end (BroadcastChannel + HMAC manager) flow
+    // can be exercised against a shared secret.
+    type Req =
+      | { id: string; op: 'sign'; payload: ArrayBuffer }
+      | { id: string; op: 'verify'; payload: ArrayBuffer; hmac: ArrayBuffer }
+      | { id: string; op: 'reset' };
+    type Res =
+      | { id: string; ok: true; result: ArrayBuffer | boolean | null }
+      | { id: string; ok: false; error: string };
+
+    class MockSharedWorkerImpl {
+      private secret: Uint8Array | null = null;
+      private keyPromise: Promise<CryptoKey> | null = null;
+      private async getKey(): Promise<CryptoKey> {
+        if (this.keyPromise === null) {
+          if (this.secret === null) {
+            this.secret = new Uint8Array(32);
+            crypto.getRandomValues(this.secret);
+          }
+          this.keyPromise = crypto.subtle.importKey(
+            'raw',
+            this.secret as unknown as ArrayBuffer,
+            { name: 'HMAC', hash: 'SHA-256' },
+            false,
+            ['sign', 'verify'],
+          );
+        }
+        return this.keyPromise;
+      }
+      async handle(req: Req, respond: (r: Res) => void): Promise<void> {
+        try {
+          if (req.op === 'sign') {
+            const sig = await crypto.subtle.sign('HMAC', await this.getKey(), req.payload);
+            respond({ id: req.id, ok: true, result: sig });
+          } else if (req.op === 'verify') {
+            const ok = await crypto.subtle.verify('HMAC', await this.getKey(), req.hmac, req.payload);
+            respond({ id: req.id, ok: true, result: ok });
+          } else {
+            this.secret = null;
+            this.keyPromise = null;
+            respond({ id: req.id, ok: true, result: null });
+          }
+        } catch (err) {
+          respond({ id: req.id, ok: false, error: String(err) });
+        }
+      }
+    }
+    class MockMessagePort {
+      onmessage: ((e: MessageEvent) => void) | null = null;
+      closed = false;
+      constructor(private impl: MockSharedWorkerImpl) {}
+      postMessage(req: unknown): void {
+        if (this.closed) return;
+        queueMicrotask(() => {
+          void this.impl.handle(req as Req, (res) => {
+            if (this.closed) return;
+            this.onmessage?.(new MessageEvent('message', { data: res }));
+          });
+        });
+      }
+      start(): void {}
+      close(): void {
+        this.closed = true;
+      }
+    }
+    class MockSharedWorker {
+      static instances = new Map<string, MockSharedWorkerImpl>();
+      port: MockMessagePort;
+      constructor(url: string | URL, _options?: { name?: string }) {
+        const key = typeof url === 'string' ? url : url.toString();
+        let impl = MockSharedWorker.instances.get(key);
+        if (!impl) {
+          impl = new MockSharedWorkerImpl();
+          MockSharedWorker.instances.set(key, impl);
+        }
+        this.port = new MockMessagePort(impl);
+      }
+      static reset() {
+        this.instances.clear();
+      }
+    }
+
+    beforeEach(() => {
+      MockSharedWorker.reset();
+      __resetSessionHmacSecretForTests();
+      (globalThis as unknown as { SharedWorker: typeof MockSharedWorker }).SharedWorker = MockSharedWorker;
+    });
+
+    afterEach(() => {
+      delete (globalThis as { SharedWorker?: unknown }).SharedWorker;
+    });
+
+    it('isUsingSharedWorkerHmac() returns true when the SharedWorker mock is installed', async () => {
+      const sync = new SimpleCrossTabSync(baseConsultation);
+      // Trigger lazy manager construction.
+      await sync.broadcastContext(mkContext());
+      await flushAsync();
+      expect(sync.isUsingSharedWorkerHmac()).toBe(true);
+      sync.close();
+    });
+
+    it('two SimpleCrossTabSync tabs sharing the SharedWorker verify each other (cross-tab)', async () => {
+      // The CORE TASK-280 guarantee: tab A signs with the shared secret in
+      // the SharedWorker, tab B verifies against THE SAME secret — even
+      // though A and B would in real life be separate JS processes.
+      const tabA = new SimpleCrossTabSync(baseConsultation);
+      const tabB = new SimpleCrossTabSync(baseConsultation);
+      const received: ContextItem[] = [];
+      tabB.onContextAdded((c) => received.push(c));
+
+      await tabA.broadcastContext(mkContext({ content: 'cross-tab payload' }));
+      await flushAsync(8);
+
+      expect(received).toHaveLength(1);
+      expect(received[0].content).toBe('cross-tab payload');
+      // Both tabs must be using the SharedWorker path.
+      expect(tabA.isUsingSharedWorkerHmac()).toBe(true);
+      expect(tabB.isUsingSharedWorkerHmac()).toBe(true);
+
+      tabA.close();
+      tabB.close();
+    });
+
+    it('a message tampered after signing still fails HMAC even via the SharedWorker', async () => {
+      const warn = vi.fn();
+      const logger = { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn(), fatal: vi.fn(), trace: vi.fn() };
+      const sender = new SimpleCrossTabSync(baseConsultation);
+      const receiver = new SimpleCrossTabSync(baseConsultation, { logger });
+      const listener = vi.fn();
+      receiver.onContextAdded(listener);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test introspection.
+      const senderChannel = (sender as any).channel as MockBroadcastChannel;
+      vi.spyOn(senderChannel, 'postMessage').mockImplementation((wire: unknown) => {
+        const envelope = wire as { payload: { data: unknown }; hmac: string };
+        envelope.payload = { ...envelope.payload, data: mkContext({ content: 'TAMPERED VIA SHARED-WORKER' }) };
+        MockBroadcastChannel.instances
+          .filter((i) => i.name === senderChannel.name && i !== senderChannel && !i.closed)
+          .forEach((i) => i.onmessage?.(new MessageEvent('message', { data: envelope })));
+      });
+
+      await sender.broadcastContext(mkContext({ content: 'original' }));
+      await flushAsync(8);
+
+      expect(listener).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalled();
+
+      sender.close();
+      receiver.close();
+    });
+
+    it('SharedWorker unavailable → falls back to per-session secret silently', async () => {
+      delete (globalThis as { SharedWorker?: unknown }).SharedWorker;
+      __resetSessionHmacSecretForTests();
+
+      const tabA = new SimpleCrossTabSync(baseConsultation);
+      const tabB = new SimpleCrossTabSync(baseConsultation);
+      const got: ContextItem[] = [];
+      tabB.onContextAdded((c) => got.push(c));
+
+      await tabA.broadcastContext(mkContext({ content: 'fallback path' }));
+      await flushAsync();
+
+      expect(got).toHaveLength(1);
+      expect(got[0].content).toBe('fallback path');
+      // Trigger manager init on tabA so we can inspect.
+      expect(tabA.isUsingSharedWorkerHmac()).toBe(false);
+
+      tabA.close();
+      tabB.close();
+    });
+  });
 });

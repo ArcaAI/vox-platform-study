@@ -49,8 +49,38 @@ export function areEntitiesAdjacent(prev: EntitySpan, curr: EntitySpan, maxGap =
 }
 
 /**
+ * Per-entity weight used by `mergeAdjacentEntities`.
+ *
+ * `EntitySpan` does not carry an explicit token count, so we use the
+ * character span (`end - start`) as the weight. This is the fallback
+ * the 06-med-ner H-2 review proposes for the count-aware weighted
+ * average. A degenerate zero-length span is treated as weight 1 so that
+ * the contribution still participates in the mean instead of being
+ * silently discarded.
+ */
+function entityMergeWeight(entity: EntitySpan): number {
+  const span = entity.end - entity.start;
+  return span > 0 ? span : 1;
+}
+
+/**
  * Merge adjacent entities of the same type.
  * This handles B-I-O tagging where entities are split into tokens.
+ *
+ * The merged `score` is a **count-aware weighted average** over the
+ * contributing entities:
+ *
+ *     mergedScore = Σ(score_i × weight_i) / Σ(weight_i)
+ *
+ * where `weight_i = max(end_i − start_i, 1)`. This fixes the H-2 bug
+ * documented in
+ * `docs/implementation/TASK-262-Vox-SDK-Deep-Assessment/06-med-ner.md`
+ * where the previous implementation collapsed N merges into a biased
+ * running average of the form `((s1+s2)/2 + s3)/2 + …`, heavily
+ * favouring the most recently merged entity. With equal weights the new
+ * formula reduces to the simple arithmetic mean, preserving the
+ * intuitive behaviour for the common case while honouring per-token
+ * weight when contributions differ in length.
  *
  * @param entities - Array of entities (sorted by position)
  * @param originalText - Original text for extracting merged text
@@ -59,33 +89,35 @@ export function areEntitiesAdjacent(prev: EntitySpan, curr: EntitySpan, maxGap =
 export function mergeAdjacentEntities(entities: EntitySpan[], originalText: string): EntitySpan[] {
   if (entities.length === 0) return [];
 
-  // Sort by start position
   const sorted = [...entities].sort((a, b) => a.start - b.start);
   const merged: EntitySpan[] = [];
+
   let current: EntitySpan | null = null;
+  let weightedScoreSum = 0;
+  let weightSum = 0;
 
   for (const entity of sorted) {
     if (!current) {
       current = { ...entity };
+      weightedScoreSum = entity.score * entityMergeWeight(entity);
+      weightSum = entityMergeWeight(entity);
       continue;
     }
 
-    // Check if this entity should be merged with current
     if (areEntitiesAdjacent(current, entity)) {
-      // Extend current entity
       current.end = entity.end;
       current.text = originalText.slice(current.start, current.end);
-      // Average the scores
-      current.score = (current.score + entity.score) / 2;
-      // Keep the first raw label
+      weightedScoreSum += entity.score * entityMergeWeight(entity);
+      weightSum += entityMergeWeight(entity);
+      current.score = weightSum > 0 ? weightedScoreSum / weightSum : current.score;
     } else {
-      // Save current and start new
       merged.push(current);
       current = { ...entity };
+      weightedScoreSum = entity.score * entityMergeWeight(entity);
+      weightSum = entityMergeWeight(entity);
     }
   }
 
-  // Don't forget the last one
   if (current) {
     merged.push(current);
   }

@@ -17,6 +17,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SSEClient } from '../SSEClient';
+import { AUTH_ENDPOINTS } from '../constants';
 import { createMockLogger } from '../../__tests__/setup';
 
 // Pure-microtask flusher (no setTimeout dependency).
@@ -285,6 +286,28 @@ describe('TASK-264 W0-1: SSEClient ticket-based auth', () => {
     // EventSource should NOT have been constructed because we never got a ticket.
     expect(eventSourceCtorSpy).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalled();
+    client.disconnect();
+  });
+
+  // -------------------------------------------------------------------------
+  // TASK-274 fu-sse-constants — single source of truth for the ticket path
+  // -------------------------------------------------------------------------
+
+  it('exposes AUTH_ENDPOINTS.STREAM_TICKET = "/auth/stream-ticket" (TASK-274)', () => {
+    expect(AUTH_ENDPOINTS.STREAM_TICKET).toBe('/auth/stream-ticket');
+  });
+
+  it('SSEClient POSTs to AUTH_ENDPOINTS.STREAM_TICKET — not a hardcoded literal (TASK-274)', async () => {
+    const apiClient = makeApiClient([{ ticket: 'TKT-274' }]);
+    const client = new SSEClient('consultation-jobs', apiClient as never, createMockLogger());
+
+    client.connect('https://api.example.com/stream');
+    await flushPromises();
+    await flushPromises();
+
+    expect(apiClient.post).toHaveBeenCalledWith(AUTH_ENDPOINTS.STREAM_TICKET, {
+      scope: 'consultation-jobs',
+    });
     client.disconnect();
   });
 
