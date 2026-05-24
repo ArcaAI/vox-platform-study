@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { auditAdminRoutePermissions } from './bootstrap/admin-route-permission-audit';
 import { GracefulShutdownService } from './services';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import session = require('express-session');
@@ -314,6 +315,12 @@ async function bootstrap() {
     },
     'Bootstrap',
   );
+
+  // Phase 0 Item 3 (TASK-302 Stream A) — refuse to start if any admin
+  // route lacks an explicit permission decorator. Throws an Error that
+  // propagates out of bootstrap() and terminates the process before
+  // any request can be served.
+  auditAdminRoutePermissions(app);
 
   await app.listen(port);
 
