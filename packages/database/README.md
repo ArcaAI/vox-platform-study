@@ -31,6 +31,30 @@ Create a `.env` file with your database connection string:
 DATABASE_URL="postgresql://username:password@localhost:5432/hope"
 ```
 
+#### Pool sizing (Prisma 7 — TASK-302 Stream C Phase 0)
+
+In Prisma 7, the driver adapter (`@prisma/adapter-pg`) owns pool sizing —
+the legacy `connection_limit` URL parameter is ignored. The HOPE client
+in `src/client.ts` reads two env vars:
+
+| Env var          | Default | Purpose                                          |
+|------------------|---------|--------------------------------------------------|
+| `PRISMA_PG_MAX`  | `5`     | `max` connections per pool (per pod).            |
+| `DIRECT_URL`     | unset   | Un-pooled URL consumed by `prisma.config.ts` for migrations. Required after the PgBouncer cutover (TASK-302 Stream C Phase 2A/2B); optional today. |
+
+The client also pins `connectionTimeoutMillis = 5_000` and
+`idleTimeoutMillis = 300_000` so a saturated pool fails fast and idle
+backends survive Patroni / PgBouncer keep-alives.
+
+**Budget rule** for `PRISMA_PG_MAX`:
+
+```
+pods × PRISMA_PG_MAX ≤ 0.7 × PG max_connections
+```
+
+See [`docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md`](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md)
+for the full rationale, validation rig, and rollout plan.
+
 ### Commands
 
 - `pnpm build` - Build the package

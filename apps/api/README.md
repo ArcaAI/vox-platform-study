@@ -263,6 +263,59 @@ effect — the invariant still runs and the process still refuses to
 start. See `packages/applications/src/services/baseServices/_meta/appSettings/appSettings.service.ts`
 and TASK-302 `docs/implementation/TASK-302-System-Config-Implementation-Roadmap/01-phase-0-hotfix.md` §Section E.
 
+### Operating with PgBouncer (TASK-302 Stream C Phase 2A)
+
+The HOPE production HA stack runs **PgBouncer in transaction pooling
+mode** ([HA blueprint §10](../../research/deployments/deploy-vm500-502-postgres-ha.md#10-deploy-pgbouncer-transaction-mode)),
+validated by [`docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-validation-report.md`](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-validation-report.md).
+The Prisma adapter (`@prisma/adapter-pg`) owns pool sizing in Prisma 7
+— the v6 `connection_limit` URL parameter is ignored. Three env vars
+wire `packages/database/src/client.ts` and `packages/database/prisma.config.ts`:
+
+| Env var          | Default | Consumed by                                                                     | Notes |
+|------------------|---------|---------------------------------------------------------------------------------|-------|
+| `DATABASE_URL`   | —       | `client.ts` → `new PrismaPg({ connectionString })`                              | Runtime queries. In prod points at pgbouncer (`:6432`, txn mode). |
+| `DIRECT_URL`     | unset   | `prisma.config.ts` → `resolveMigrationUrl()` (migrations only)                  | Required in prod/staging. Un-pooled endpoint (`:5432` direct, or `:5000` HAProxy R/W). Bypasses the pooler so Prisma Migrate's advisory locks survive. |
+| `PRISMA_PG_MAX`  | `5`     | `client.ts` → `new PrismaPg({ max })`                                           | Per-pod pool size. See budget rule below. |
+
+**Budget rule** (do not exceed):
+
+```
+pods × PRISMA_PG_MAX ≤ 0.7 × PG max_connections
+```
+
+With `max_connections = 200` and `PRISMA_PG_MAX = 5`, HOPE supports up to
+**28 simultaneous pods** before approaching the safe ceiling. Raise
+`max_connections` (not `PRISMA_PG_MAX`) when scaling further. Because
+pgbouncer multiplexes ~50 backends per pool with `default_pool_size=50`,
+the effective pod ceiling is governed by PG backends, not pgbouncer
+clients.
+
+**When to set `DIRECT_URL`**:
+
+- **Local dev (no pooler in path)**: optional. Leaving it unset makes
+  `resolveMigrationUrl()` fall back to `DATABASE_URL`, which is fine when
+  `DATABASE_URL` is already an un-pooled `:5432` connection.
+- **Production / staging (post-Phase 2A)**: **required**. `DATABASE_URL`
+  points at pgbouncer (`:6432`); `DIRECT_URL` MUST point at the HAProxy
+  R/W VIP (`:5000`) or directly at the primary. Without this split,
+  `prisma migrate deploy` runs against the pooler, the per-session
+  advisory lock used to serialize migrations hops between PG backends,
+  and schema history can be corrupted by concurrent deploys.
+
+`prisma.config.ts` emits a `console.warn` when `DIRECT_URL` does not
+appear to target a direct port — see
+`packages/database/src/migration-url.ts`.
+
+**Prepared statements**: pgbouncer is configured with
+`MAX_PREPARED_STATEMENTS=200`, so Prisma's named prepared statements
+work natively in transaction mode. Do NOT set `?pgbouncer=true` on
+`DATABASE_URL` — that flag forces unnamed statements and is only needed
+when `MAX_PREPARED_STATEMENTS=0`.
+
+See the canonical plan at
+[`docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md`](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md).
+
 ### Configuration Files
 
 - **nest-cli.json**: NestJS CLI configuration
