@@ -92,6 +92,7 @@
   },
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",
+    "@nestjs/testing": "^11.1.17",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.5.0",
     "@types/nodemailer": "^6.4.23",
