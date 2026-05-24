@@ -1621,7 +1621,7 @@ describe('TenantService', () => {
 
             // ResourceUpdated must not fire when the batch was rolled back.
             const updatedBroadcasts = mockEventEmitter.emit.mock.calls.filter(
-                ([eventName]) => typeof eventName === 'string' && eventName.includes('Resource.Updated'),
+                ([eventName]) => eventName === SysEventType.ResourceUpdated,
             );
             expect(updatedBroadcasts).toEqual([]);
         });
@@ -1648,9 +1648,100 @@ describe('TenantService', () => {
             ).rejects.toThrow('transient db failure');
 
             const updatedBroadcasts = mockEventEmitter.emit.mock.calls.filter(
-                ([eventName]) => typeof eventName === 'string' && eventName.includes('Resource.Updated'),
+                ([eventName]) => eventName === SysEventType.ResourceUpdated,
             );
             expect(updatedBroadcasts).toEqual([]);
+        });
+    });
+
+    // TASK-302 Stream D Phase C (C.8) — the post-write audit log gets the
+    // version transition for every persisted row so downstream observers
+    // can reconstruct history via `metadata->>'newVersion'` (Research §7).
+    // The pre-write `previousVersion` must be snapshotted BEFORE the CAS so
+    // the audit reflects the state the operator actually read.
+    describe('updateTenantConfigs — audit-log version correlation (TASK-302 Stream D Phase C C.8)', () => {
+        beforeEach(() => {
+            (mockDatabaseService.baseClient.$transaction as any).mockImplementation(
+                async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient),
+            );
+        });
+
+        it('emits ResourceUpdated with previousVersion and newVersion for each row', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const settingA = createMockGlobalSettingEntity({ id: 'gs-1', tenantId: 'tenant-1', locked: false, hasChanges: true });
+            (settingA as any).version = 5;
+            const settingB = createMockGlobalSettingEntity({ id: 'gs-2', tenantId: 'tenant-1', locked: false, hasChanges: true });
+            (settingB as any).version = 12;
+            mockGlobalSettingRepository.findById.mockResolvedValueOnce(settingA).mockResolvedValueOnce(settingB);
+
+            // CAS bumps each row's version by 1.
+            const persistedA = createMockGlobalSettingEntity({ id: 'gs-1', tenantId: 'tenant-1', locked: false, hasChanges: true });
+            (persistedA as any).version = 6;
+            const persistedB = createMockGlobalSettingEntity({ id: 'gs-2', tenantId: 'tenant-1', locked: false, hasChanges: true });
+            (persistedB as any).version = 13;
+
+            (mockGlobalSettingRepository as any).updateWithVersion = vi
+                .fn()
+                .mockResolvedValueOnce(persistedA)
+                .mockResolvedValueOnce(persistedB);
+
+            mockEventEmitter.emit.mockClear();
+
+            await service.updateTenantConfigs('tenant-1', [
+                { id: 'gs-1', value: 'a', expectedVersion: 5 } as any,
+                { id: 'gs-2', value: 'b', expectedVersion: 12 } as any,
+            ]);
+
+            const updatedBroadcasts = mockEventEmitter.emit.mock.calls.filter(
+                ([eventName]) => eventName === SysEventType.ResourceUpdated,
+            );
+            expect(updatedBroadcasts).toHaveLength(1);
+
+            // Each entry in `data` must carry the pre-write and post-write
+            // version numbers, alongside the (scrubbed) entity object so an
+            // observer can correlate the transition with the row's state.
+            const [, payload] = updatedBroadcasts[0] as [string, { data: Array<Record<string, unknown>> }];
+            expect(payload.data).toEqual([
+                expect.objectContaining({ id: 'gs-1', previousVersion: 5, newVersion: 6 }),
+                expect.objectContaining({ id: 'gs-2', previousVersion: 12, newVersion: 13 }),
+            ]);
+        });
+
+        it('snapshots previousVersion BEFORE the CAS bump (mid-batch atomicity proof)', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            // Row read at v5; same id is returned from the CAS at v6.
+            // We must see `previousVersion: 5`, NOT `previousVersion: 6`,
+            // i.e. the audit reflects what the caller read, not what the
+            // post-write `entity.version` was mutated to.
+            const settingPre = createMockGlobalSettingEntity({ id: 'gs-1', tenantId: 'tenant-1', locked: false, hasChanges: true });
+            (settingPre as any).version = 5;
+            const settingPost = createMockGlobalSettingEntity({ id: 'gs-1', tenantId: 'tenant-1', locked: false, hasChanges: true });
+            (settingPost as any).version = 6;
+            mockGlobalSettingRepository.findById.mockResolvedValueOnce(settingPre);
+
+            (mockGlobalSettingRepository as any).updateWithVersion = vi.fn().mockImplementationOnce(async () => {
+                // Simulate Prisma round-trip: the cached entity's `_version`
+                // is bumped before we return from the repo.
+                (settingPre as any).version = 6;
+                return settingPost;
+            });
+
+            mockEventEmitter.emit.mockClear();
+            await service.updateTenantConfigs('tenant-1', [
+                { id: 'gs-1', value: 'new', expectedVersion: 5 } as any,
+            ]);
+
+            const updatedBroadcasts = mockEventEmitter.emit.mock.calls.filter(
+                ([eventName]) => eventName === SysEventType.ResourceUpdated,
+            );
+            const [, payload] = updatedBroadcasts[0] as [string, { data: Array<Record<string, unknown>> }];
+            expect(payload.data[0]).toMatchObject({ previousVersion: 5, newVersion: 6 });
         });
     });
 });
