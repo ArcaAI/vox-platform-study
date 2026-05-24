@@ -11,3 +11,5 @@ export * from './secrets.module';
 export * from './secrets.health';
 // Phase 6 Task 6.3 (TASK-302 Stream B) — rotation worker.
 export * from './vault-rotation-worker';
+// Phase 6 Task 6.6 (TASK-302 Stream B) — rotation policy helpers.
+export * from './scheduled-rotation.policy';
