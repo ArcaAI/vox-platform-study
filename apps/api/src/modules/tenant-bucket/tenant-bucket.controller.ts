@@ -1,12 +1,13 @@
 import { CreateTenantBucketRequest, ITenantBucketService, TenantBucketResponse, TenantBucketTreeResponse } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Authorize, CanCreate, CanDelete, CanManage, CanRead } from '../../decorators';
+import { CanCreate, CanDelete, CanManage, CanRead } from '../../decorators';
 
 @ApiBearerAuth()
 @ApiTags('tenant-storage')
 @Controller('admin/tenants/storage/buckets')
-@Authorize()
+// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
+@CanManage('Tenant')
 export class TenantBucketController {
   constructor(
     @Inject(ITenantBucketService)
