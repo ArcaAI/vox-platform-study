@@ -168,43 +168,49 @@ export function applySoftDeleteFilter(args: { where?: Record<string, unknown> })
  * - `{ resourceStatus: 'DELETED' }` - Only deleted records
  * - `{ resourceStatus: { in: ['ENABLED', 'DELETED'] } }` - Specific statuses
  */
-function createExtendedPrismaClient() {
-  const prisma = createPrismaClient();
-
-  // Extend the client with soft-delete filtering.
-  // Only applies to models that have a `resourceStatus` column.
-  const extendedPrisma = prisma.$extends({
+/**
+ * Apply the shared soft-delete extension to ANY PrismaClient instance.
+ *
+ * TASK-302 Phase 5 Task 5.6 (Stream B) extracted this from the
+ * `createExtendedPrismaClient` body so the Vault-backed prisma client
+ * (constructed in `apps/api/src/vault-prisma.module.ts`) can reuse the
+ * exact same extension config — keeping soft-delete semantics
+ * identical across env-mode and vault-mode pods.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function applySoftDeleteExtension<T extends { $extends: any }>(prisma: T) {
+  return prisma.$extends({
     name: 'softDeleteFilter',
     query: {
       $allModels: {
-        async findMany({ model, operation, args, query }: any) {
+        async findMany({ model, args, query }: any) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async findFirst({ model, operation, args, query }: any) {
+        async findFirst({ model, args, query }: any) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async findUnique({ model, operation, args, query }: any) {
+        async findUnique({ args, query }: any) {
           return query(args);
         },
-        async count({ model, operation, args, query }: any) {
+        async count({ model, args, query }: any) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async aggregate({ model, operation, args, query }: any) {
+        async aggregate({ model, args, query }: any) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async groupBy({ model, operation, args, query }: any) {
+        async groupBy({ model, args, query }: any) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
@@ -213,8 +219,11 @@ function createExtendedPrismaClient() {
       },
     },
   });
+}
 
-  return extendedPrisma;
+function createExtendedPrismaClient() {
+  const prisma = createPrismaClient();
+  return applySoftDeleteExtension(prisma);
 }
 
 // Export types

@@ -158,6 +158,93 @@ describe('CoreDatabaseService', () => {
   });
 });
 
+describe('CoreDatabaseService — Vault-backed prisma factory (Phase 5 Task 5.6)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('uses the injected VAULT_PRISMA_FACTORY when present and skips the static getPrismaClient', async () => {
+    const vaultPrisma = {
+      $connect: vi.fn().mockResolvedValue(undefined),
+      $disconnect: vi.fn().mockResolvedValue(undefined),
+      $queryRawUnsafe: vi.fn(),
+      $queryRaw: vi.fn(),
+    };
+    const vaultExtended = { ...vaultPrisma };
+    const disconnect = vi.fn().mockResolvedValue(undefined);
+    const vaultFactory = vi.fn(async () => ({
+      client: vaultPrisma,
+      extendedClient: vaultExtended,
+      disconnect,
+    }));
+
+    const { CoreDatabaseService } = await import('../core.database.service');
+    const svc = new CoreDatabaseService(vaultFactory as never);
+    await svc.onModuleInit();
+
+    expect(vaultFactory).toHaveBeenCalledTimes(1);
+    expect(svc.baseClient).toBe(vaultPrisma);
+    expect(svc.client).toBe(vaultExtended);
+    expect(vaultPrisma.$connect).not.toHaveBeenCalled();
+  });
+
+  it('calls the factory-provided disconnect on module destroy (Vault mode)', async () => {
+    const vaultPrisma = {
+      $connect: vi.fn(),
+      $disconnect: vi.fn().mockResolvedValue(undefined),
+      $queryRawUnsafe: vi.fn(),
+      $queryRaw: vi.fn(),
+    };
+    const disconnect = vi.fn().mockResolvedValue(undefined);
+    const vaultFactory = vi.fn(async () => ({
+      client: vaultPrisma,
+      extendedClient: { ...vaultPrisma },
+      disconnect,
+    }));
+
+    const { CoreDatabaseService } = await import('../core.database.service');
+    const svc = new CoreDatabaseService(vaultFactory as never);
+    await svc.onModuleInit();
+    await svc.onModuleDestroy();
+
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(vaultPrisma.$disconnect).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the env-mode singletons when no VAULT_PRISMA_FACTORY is injected', async () => {
+    const { CoreDatabaseService } = await import('../core.database.service');
+    const svc = new CoreDatabaseService();
+    await svc.onModuleInit();
+
+    expect(svc.baseClient).toBe(mockPrismaClient);
+    expect(svc.client).toBe(mockExtendedPrismaClient);
+    expect(mockPrismaClient.$connect).toHaveBeenCalled();
+  });
+
+  it('does not require the env DATABASE_URL when the Vault factory is wired', async () => {
+    const vaultPrisma = {
+      $connect: vi.fn(),
+      $disconnect: vi.fn().mockResolvedValue(undefined),
+      $queryRawUnsafe: vi.fn(),
+      $queryRaw: vi.fn(),
+    };
+    const vaultFactory = vi.fn(async () => ({
+      client: vaultPrisma,
+      extendedClient: { ...vaultPrisma },
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const { getPrismaClient, getExtendedPrismaClient } = await import('@arcaai/database');
+
+    const { CoreDatabaseService } = await import('../core.database.service');
+    const svc = new CoreDatabaseService(vaultFactory as never);
+    await svc.onModuleInit();
+
+    expect(getPrismaClient).not.toHaveBeenCalled();
+    expect(getExtendedPrismaClient).not.toHaveBeenCalled();
+  });
+});
+
 /**
  * Note: Soft-delete filtering behavior is tested in integration tests at:
  * packages/domains/src/integration/repository-soft-delete.integration.test.ts

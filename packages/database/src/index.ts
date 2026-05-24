@@ -23,7 +23,7 @@
 
 // Re-export client utilities
 export {
-  createNewExtendedPrismaClient, createNewPrismaClient, getExtendedPrismaClient, getPrismaClient, modelHasSoftDelete, MODELS_WITHOUT_SOFT_DELETE, Prisma, PrismaClientInitializationError, PrismaClientKnownRequestError, PrismaClientRustPanicError, PrismaClientUnknownRequestError, PrismaClientValidationError
+  applySoftDeleteExtension, createNewExtendedPrismaClient, createNewPrismaClient, getExtendedPrismaClient, getPrismaClient, modelHasSoftDelete, MODELS_WITHOUT_SOFT_DELETE, Prisma, PrismaClientInitializationError, PrismaClientKnownRequestError, PrismaClientRustPanicError, PrismaClientUnknownRequestError, PrismaClientValidationError
 } from './client.js';
 
 export type {
