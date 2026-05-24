@@ -124,3 +124,67 @@ sync-argocd:
   allow_failure: true
   rules:
     - if: $PIPELINE_TYPE == "staging"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PgBouncer smoke test — TASK-302 Stream C Phase 2A (Task 2A.6.2)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Manual / scheduled job that ssh-runs scripts/smoke-pgbouncer.sh against the
+# staging pgbouncer endpoint. Validates that the pooler is reachable, returns
+# pool_mode=transaction, that Prisma can route through it, and that
+# tenant-scoped GUCs do not leak across pooled checkouts.
+#
+# Required CI/CD variables (Settings → CI/CD → Variables, masked + protected):
+#   PGB_SMOKE_SSH_KEY            Private key authorised on PGB_SMOKE_SSH_HOST
+#   PGB_SMOKE_SSH_HOST           SSH host (bastion or one of the HA nodes)
+#   PGB_SMOKE_SSH_USER           SSH user
+#   PGB_SMOKE_POOLED_HOST        pgbouncer host as seen from PGB_SMOKE_SSH_HOST
+#                                (e.g., 10.10.1.250 — the keepalived VIP)
+#   PGB_SMOKE_ADMIN_PG_PASSWORD  Admin user password (for SHOW POOLS)
+#   PGB_SMOKE_APP_PG_PASSWORD    App user password (for runtime queries)
+#
+# Optional:
+#   PGB_SMOKE_POOLED_PORT (default 6432)
+#   PGB_SMOKE_ADMIN_USER  (default hope_admin)
+#   PGB_SMOKE_APP_USER    (default hope_app)
+#   PGB_SMOKE_DB          (default hope)
+
+smoke-pgbouncer-staging:
+  stage: deploy
+  tags: [deploy]
+  image: alpine:3.20
+  interruptible: false
+  before_script:
+    - apk add --no-cache git openssh-client
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - echo "$PGB_SMOKE_SSH_KEY" > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - ssh-keyscan -H "$PGB_SMOKE_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+  script:
+    - |
+      set -eu
+      echo "── Running PgBouncer smoke tests on $PGB_SMOKE_SSH_HOST → $PGB_SMOKE_POOLED_HOST ──"
+      ssh -i ~/.ssh/id_ed25519 "$PGB_SMOKE_SSH_USER@$PGB_SMOKE_SSH_HOST" \
+        "POOLED_HOST='$PGB_SMOKE_POOLED_HOST' \
+         POOLED_PORT='${PGB_SMOKE_POOLED_PORT:-6432}' \
+         ADMIN_USER='${PGB_SMOKE_ADMIN_USER:-hope_admin}' \
+         APP_USER='${PGB_SMOKE_APP_USER:-hope_app}' \
+         DB='${PGB_SMOKE_DB:-hope}' \
+         ADMIN_PG_PASSWORD='$PGB_SMOKE_ADMIN_PG_PASSWORD' \
+         APP_PG_PASSWORD='$PGB_SMOKE_APP_PG_PASSWORD' \
+         bash -s" < scripts/smoke-pgbouncer.sh
+  rules:
+    # Manual on staging, and on any cicd branch for pipeline validation.
+    # Also runnable from scheduled pipelines via SMOKE_PGBOUNCER=true.
+    - if: $CI_COMMIT_BRANCH == "staging"
+      when: manual
+      allow_failure: false
+    - if: $CI_COMMIT_BRANCH == "cicd"
+      when: manual
+      allow_failure: true
+    - if: $SMOKE_PGBOUNCER == "true"
+      when: on_success
+      allow_failure: false
+  environment:
+    name: staging
+    url: https://staging.hope.arcaai.com

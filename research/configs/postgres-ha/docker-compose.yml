@@ -112,8 +112,12 @@ services:
       - haproxy
 
   # ── PgBouncer (Connection Pooler) ──
+  # Transaction-mode rollout per TASK-302 Stream C Phase 2A.
+  # Validated by packages/database/tests/pgbouncer-validation/ (see
+  # docs/implementation/TASK-302-System-Config-Implementation-Roadmap/
+  # 03-pgbouncer-validation-report.md — PASS verdict).
   pgbouncer:
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:v1.25.1-p0  # ≥ 1.21 for MAX_PREPARED_STATEMENTS; v1.25.1-p0 is the validated tag
     container_name: pgbouncer
     hostname: pgbouncer-${NODE_NAME}
     restart: unless-stopped
@@ -121,16 +125,23 @@ services:
     environment:
       DATABASE_URL: "postgres://postgres:${PG_PASSWORD}@127.0.0.1:5432/postgres"
       POOL_MODE: transaction
-      MAX_CLIENT_CONN: 1000
-      DEFAULT_POOL_SIZE: 25
-      MIN_POOL_SIZE: 5
-      RESERVE_POOL_SIZE: 5
+      MAX_CLIENT_CONN: 500           # tuned per validation rig (was 1000)
+      DEFAULT_POOL_SIZE: 50          # raised for HOPE projected scale (was 25; ≤ 50 tenants by 2027)
+      MIN_POOL_SIZE: 5               # keep 5 idle backends pre-warmed per pool
+      RESERVE_POOL_SIZE: 10          # absorb deploy spikes (was 5)
       RESERVE_POOL_TIMEOUT: 3
       SERVER_LIFETIME: 3600
       SERVER_IDLE_TIMEOUT: 600
       LOG_CONNECTIONS: 1
       LOG_DISCONNECTIONS: 1
       LISTEN_PORT: 6432
+      # ── Prisma 7 transaction-mode requirements (Phase 2A, TASK-302) ──
+      MAX_PREPARED_STATEMENTS: 200       # required for Prisma in txn mode (PgBouncer ≥ 1.21)
+      SERVER_RESET_QUERY: 'DISCARD ALL'  # explicit (mirrors default)
+      SERVER_RESET_QUERY_ALWAYS: 1       # force DISCARD ALL between transactions in txn mode
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,search_path
+      LOG_POOLER_ERRORS: 1
+      AUTH_TYPE: scram-sha-256
     depends_on:
       patroni:
         condition: service_healthy
@@ -149,5 +160,30 @@ services:
     depends_on:
       patroni:
         condition: service_healthy
+    profiles:
+      - monitoring
+
+  # ── Prometheus pgbouncer_exporter (TASK-302 Stream C Phase 2A) ──
+  # Exposes pgbouncer pool stats (sv_active, cl_waiting, maxwait, etc.)
+  # for the Grafana dashboard (community ID 13353 or hand-crafted).
+  # Connects to the special `pgbouncer` admin database, which exposes
+  # SHOW STATS / SHOW POOLS to users listed in `stats_users`.
+  pgbouncer-exporter:
+    image: prometheuscommunity/pgbouncer-exporter:v0.10.0
+    container_name: pgbouncer-exporter
+    hostname: pgbouncer-exporter-${NODE_NAME}
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PGBOUNCER_EXPORTER_HOST: 127.0.0.1
+      PGBOUNCER_EXPORTER_PORT: 9127
+      # `hope_metrics` must be listed in pgbouncer's `stats_users`. The
+      # password is provisioned via PGBOUNCER_PASSWORD when AUTH_TYPE is
+      # scram-sha-256; see deploy-vm500-502-postgres-ha.md §10.
+      DATA_SOURCE_NAME: "postgres://hope_metrics:${METRICS_PASSWORD}@127.0.0.1:6432/pgbouncer?sslmode=disable"
+    # No `depends_on: pgbouncer` because pgbouncer lives in a separate
+    # profile; the exporter retries until pgbouncer is reachable. In a
+    # production deployment, start with `--profile pgbouncer --profile
+    # monitoring` to enable both.
     profiles:
       - monitoring
