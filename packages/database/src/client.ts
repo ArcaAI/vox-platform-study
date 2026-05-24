@@ -40,10 +40,20 @@ export type PrismaClientInitializationError = Prisma.PrismaClientInitializationE
 export type PrismaClientValidationError = Prisma.PrismaClientValidationError;
 
 /**
- * Create Prisma Client with PostgreSQL adapter
+ * Create Prisma Client with PostgreSQL adapter.
  *
- * In Prisma 7, driver adapters are required for all database connections.
- * The adapter handles the actual database communication.
+ * In Prisma 7, driver adapters own pool sizing — the v6 `connection_limit`
+ * URL parameter is ignored. Pool size comes from `PRISMA_PG_MAX` (default 5).
+ *
+ * Budget rule: `pods × PRISMA_PG_MAX ≤ 0.7 × PG max_connections`.
+ * At `max_connections = 200` and `max = 5`, HOPE supports up to 28
+ * simultaneous pods before approaching the safe ceiling.
+ *
+ * When DATABASE_URL points at PgBouncer (port 6432 in production), migrations
+ * must use DIRECT_URL via `prisma.config.ts` to keep advisory locks intact —
+ * they do not survive PgBouncer transaction-mode swaps.
+ *
+ * @see docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md
  */
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
@@ -52,10 +62,21 @@ function createPrismaClient() {
     throw new Error('DATABASE_URL environment variable is not set');
   }
 
-  // Create the PostgreSQL adapter with connection string
-  const adapter = new PrismaPg({ connectionString });
+  const rawMax = process.env.PRISMA_PG_MAX;
+  const max = rawMax === undefined || rawMax === '' ? 5 : Number(rawMax);
+  if (!Number.isInteger(max) || max <= 0) {
+    throw new Error(
+      `PRISMA_PG_MAX must be a positive integer; got ${JSON.stringify(rawMax)}`,
+    );
+  }
 
-  // Create Prisma Client with the adapter
+  const adapter = new PrismaPg({
+    connectionString,
+    max,
+    connectionTimeoutMillis: 5_000,
+    idleTimeoutMillis: 300_000,
+  });
+
   const prisma = new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === 'development'
