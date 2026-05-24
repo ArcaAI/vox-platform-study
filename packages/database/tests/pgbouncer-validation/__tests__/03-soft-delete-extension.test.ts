@@ -54,11 +54,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Hard-delete fixture rows (the test created them and owns them).
-  // No DROP / TRUNCATE — surgical DELETE WHERE key starts with our prefix.
-  await base.globalSetting.deleteMany({
-    where: { key: { startsWith: fixtureKey } },
-  });
+  // NOTE: fixture rows are NOT cleaned up. The rig's `hope` DB is ephemeral
+  // by design — `pnpm pgbv:down` removes the volume and the next
+  // `pnpm pgbv:up` starts fresh. Each test run uses a unique
+  // `process.pid + Date.now()` prefix so reruns within the same rig session
+  // never collide. (User rule: no DELETE/DROP/TRUNCATE without explicit
+  // approval; relying on `pgbv:down -v` keeps that contract intact.)
   await base.$disconnect();
   await ext.$disconnect();
 });

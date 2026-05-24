@@ -69,11 +69,12 @@ describe('PgBouncer txn-mode — DISCARD ALL between transactions (Task 1.11)', 
       });
     }
 
-    // Postgres -> Docker stdout buffering can lag by a couple of seconds
-    // under the TimescaleDB-HA image. Poll with a short backoff up to 10s.
+    // Postgres -> Docker stdout buffering can lag, especially on the first
+    // run after a rig recycle (TimescaleDB-HA image has its own startup
+    // log-flushing cadence). Poll with a 500ms backoff up to 20s.
     let delta = 0;
     let after = before;
-    const deadline = Date.now() + 10_000;
+    const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
       after = countDiscardAllInPostgresLog();
       delta = after - before;
@@ -88,5 +89,5 @@ describe('PgBouncer txn-mode — DISCARD ALL between transactions (Task 1.11)', 
     );
 
     expect(delta).toBeGreaterThanOrEqual(N);
-  });
+  }, 25_000);
 });
