@@ -8,3 +8,4 @@ export * from './providers/azure-keyvault.provider';
 export * from './providers/vault-secrets.provider';
 export * from './SecretsService';
 export * from './secrets.module';
+export * from './secrets.health';
