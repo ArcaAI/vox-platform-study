@@ -281,9 +281,14 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   async assignToDepartment(dto: AssignDepartmentPromptRequest): Promise<DepartmentResponse> {
+    // TASK-302 Stream D Phase E.2 — `updatePromptConfig` now enforces OCC,
+    // so the caller MUST carry the Department row's `expectedVersion`.
+    // Cross-service callers (e.g. the prompt-management UI) read the
+    // Department first and echo back its version on this DTO.
     return this.departmentService.updatePromptConfig(dto.departmentId, {
       newPatientPromptId: dto.newPatientPromptId,
       revisitPromptId: dto.revisitPromptId,
+      expectedVersion: dto.expectedVersion,
     });
   }
 

@@ -152,7 +152,14 @@ export class DepartmentService extends BaseService implements IDepartmentService
   }
 
   /**
-   * Update an existing department
+   * Update an existing department.
+   *
+   * TASK-302 Stream D Phase E.2 — write path is now Compare-And-Set
+   * against `_version`. The `expectedVersion` carried on the DTO is the
+   * CAS predicate input (a `@RequiresIfMatch()` HTTP route folds the
+   * `If-Match` header value over the body-field at the controller).
+   *
+   * @throws OptimisticConcurrencyException — version drift; HTTP 412.
    */
   async update(id: string, dto: UpdateDepartmentRequest): Promise<DepartmentResponse> {
     const tenantId = this.tenantId;
@@ -193,17 +200,28 @@ export class DepartmentService extends BaseService implements IDepartmentService
     // Track changes for audit
     const previousData = department.toObject();
 
-    await this.updateEntity(department, dto);
+    // `expectedVersion` is the CAS predicate input only — keep it out of
+    // `updateEntity` so it is never staged onto the entity. The
+    // `_version` getter on BaseEntity (B.5) is read-only.
+    const { expectedVersion, ...editableDto } = dto;
+    await this.updateEntity(department, editableDto as UpdateDepartmentRequest);
 
     if (!department.hasChanges) {
       throw new ArgumentInvalidException('No changes to write to.');
     }
 
-    const updated = await this.departmentRepository.update(id, department);
+    // Snapshot pre-write version BEFORE the CAS bumps it (mirrors C.8 / E.1).
+    const previousVersion = department.version;
+
+    const updated = await this.departmentRepository.updateWithVersion(id, department, expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
-      data: department.changes,
+      data: {
+        ...department.changes,
+        previousVersion,
+        newVersion: updated.version,
+      },
       previousData: previousData as object,
     });
 
@@ -211,10 +229,15 @@ export class DepartmentService extends BaseService implements IDepartmentService
   }
 
   /**
-   * Update department prompt configuration (pre-summary, new patient, revisit prompts)
+   * Update department prompt configuration (pre-summary, new patient, revisit prompts).
    *
    * TASK-294 DEF-C3: enforce tenant ownership before mutating. Mismatched tenant
    * raises NotFoundException (not Forbidden) to avoid leaking existence.
+   *
+   * TASK-302 Stream D Phase E.2 — also enforces OCC; the route requires
+   * `If-Match` and the body-field `expectedVersion` is the CAS predicate.
+   *
+   * @throws OptimisticConcurrencyException — version drift; HTTP 412.
    */
   async updatePromptConfig(id: string, dto: UpdateDepartmentPromptConfigRequest): Promise<DepartmentResponse> {
     const tenantId = this.tenantId;
@@ -239,11 +262,16 @@ export class DepartmentService extends BaseService implements IDepartmentService
       throw new ArgumentInvalidException('No changes to write to.');
     }
 
-    const updated = await this.departmentRepository.update(id, department);
+    const previousVersion = department.version;
+    const updated = await this.departmentRepository.updateWithVersion(id, department, dto.expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
-      data: department.changes,
+      data: {
+        ...department.changes,
+        previousVersion,
+        newVersion: updated.version,
+      },
     });
 
     return DepartmentDtoMapper.toResponse(updated);

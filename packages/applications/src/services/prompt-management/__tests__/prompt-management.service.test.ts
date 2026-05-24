@@ -1272,11 +1272,16 @@ describe('PromptManagementService', () => {
                 departmentId: 'dept-1',
                 newPatientPromptId: 'np-1',
                 revisitPromptId: 'rv-1',
+                // TASK-302 Stream D Phase E.2 — the AssignDepartmentPromptRequest
+                // DTO now carries the target Department row's expectedVersion
+                // so the downstream `updatePromptConfig` can CAS against it.
+                expectedVersion: 7,
             } as never);
 
             expect(mockDepartmentService.updatePromptConfig).toHaveBeenCalledWith('dept-1', {
                 newPatientPromptId: 'np-1',
                 revisitPromptId: 'rv-1',
+                expectedVersion: 7,
             });
         });
 
@@ -1284,7 +1289,7 @@ describe('PromptManagementService', () => {
             mockDepartmentService.updatePromptConfig.mockRejectedValue(new NotFoundException('Department not found'));
 
             await expect(
-                service.assignToDepartment({ departmentId: 'wrong', newPatientPromptId: 'np-1' } as never),
+                service.assignToDepartment({ departmentId: 'wrong', newPatientPromptId: 'np-1', expectedVersion: 1 } as never),
             ).rejects.toThrow(NotFoundException);
         });
     });
