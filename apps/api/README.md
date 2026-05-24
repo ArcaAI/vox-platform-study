@@ -239,6 +239,30 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 OTEL_TRACES_ENABLED=true
 ```
 
+### Phase 0 Item 5 — Boot-time duplicate-key invariant
+
+`AppSettingsService.cacheAppSettings()` refuses to start the process if
+more than one row exists in `GlobalSetting` for the same platform key
+(rows where `tenantId === GLOBAL_TENANT_ID`). The protection closes
+the TASK-301 §P0-1 cross-tenant cache collision: when two rows share a
+key, the `Map<key, entity>` cache silently picks the last writer and
+downstream consumers see non-deterministic config.
+
+| Env var | Default | When honoured |
+|---|---|---|
+| `APP_SETTINGS_BOOT_INVARIANT` | unset | Only when `NODE_ENV=development`. In `staging`/`production` the invariant runs unconditionally. |
+
+To bypass during a local rebase (dev only):
+
+```bash
+APP_SETTINGS_BOOT_INVARIANT=skip pnpm dev:api
+```
+
+Setting `APP_SETTINGS_BOOT_INVARIANT=skip` outside `development` has no
+effect — the invariant still runs and the process still refuses to
+start. See `packages/applications/src/services/baseServices/_meta/appSettings/appSettings.service.ts`
+and TASK-302 `docs/implementation/TASK-302-System-Config-Implementation-Roadmap/01-phase-0-hotfix.md` §Section E.
+
 ### Configuration Files
 
 - **nest-cli.json**: NestJS CLI configuration
