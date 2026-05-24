@@ -1,7 +1,8 @@
-import { Inject, Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Inject, Injectable, OnModuleInit, Logger, Optional } from '@nestjs/common';
 import { IConfigService } from './IConfigService';
 import { IAppConfig } from '@arcaai/domains';
 import { ConfigModuleOptions } from './config.module';
+import { SecretsService } from '../secrets';
 import { loadEnv, getNodeEnv, type LoadEnvResult } from '../../../../common/env';
 
 /**
@@ -36,7 +37,14 @@ export class ConfigService implements IConfigService, OnModuleInit {
    * Creates an instance of ConfigService.
    * @param options - Configuration module options
    */
-  constructor(@Inject('CONFIG_OPTIONS') private options: ConfigModuleOptions) {
+  constructor(
+    @Inject('CONFIG_OPTIONS') private options: ConfigModuleOptions,
+    // TASK-302 Phase 3 Tasks 3.10-3.11 — MQTT_PASS and REDIS_PASS are
+    // overlaid from SecretsService in loadVaultSecrets(). Optional so
+    // existing unit-test fixtures that construct the service directly
+    // continue to work (they fall through to the env-only path).
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+  ) {
     this.logger.log({
       message: 'Service created',
       service: ConfigService.name,
@@ -173,6 +181,10 @@ export class ConfigService implements IConfigService, OnModuleInit {
       // Load base configuration first
       this.loadBaseConfig();
 
+      // Overlay secret values from the SecretsService (Phase 3 Tasks 3.10/3.11).
+      // Runs in onModuleInit (async), so we can await Vault/env provider.
+      await this.loadVaultSecrets();
+
       // Validate critical configuration
       this.validateConfiguration();
 
@@ -190,10 +202,26 @@ export class ConfigService implements IConfigService, OnModuleInit {
   }
 
   /**
-   * Loads secrets from vault and merges them with existing configuration
+   * Loads secrets from SecretsService and overlays them onto the
+   * environment-derived base config. Specifically:
+   *   - MQTT_PASS (Task 3.10)
+   *   - REDIS_PASS (Task 3.11)
+   *
+   * The bulk getSecrets() call resolves both in a single round-trip
+   * (already supported by SecretsService); missing keys leave the env
+   * fallback in place (and aren't overwritten with empty values).
+   *
+   * When no SecretsService is injected (legacy test paths), the env
+   * fallback established by loadBaseConfig() is the final value.
    */
   private async loadVaultSecrets(): Promise<void> {
-    throw new Error('Vault secrets are not supported yet');
+    if (!this.secretsService) {
+      this.logger.warn('SecretsService not available; skipping vault secret merge (env-only mode)');
+      return;
+    }
+    const overrides = await this.secretsService.getSecrets(['MQTT_PASS', 'REDIS_PASS']);
+    if (overrides.MQTT_PASS) this.config.MQTT_PASS = overrides.MQTT_PASS;
+    if (overrides.REDIS_PASS) this.config.REDIS_PASS = overrides.REDIS_PASS;
   }
 
   /**
