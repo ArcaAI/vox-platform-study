@@ -1,6 +1,7 @@
 import { PassportStrategy } from '@nestjs/passport';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import { Strategy, Client } from 'openid-client';
 import { IAuthService } from './IAuthService';
 import { UnauthorizedException } from '@arcaai/exceptions';
@@ -27,6 +28,7 @@ export class OidcStrategy extends PassportStrategy(Strategy, 'oidc') {
     @Inject(IAppSettingsService) private appSettingsService: IAppSettingsService,
     @Inject(IAuthService) private authService: IAuthService,
     private readonly clsService: ClsService<IActiveUserContext>,
+    @Inject(SecretsService) private readonly secretsService: SecretsService,
   ) {
     const oidcScopes = appSettingsService.getValueWithDefault('OIDC_SCOPES', 'openid profile email');
     const oidcCallbackUrl = appSettingsService.getValueWithDefault('OIDC_CALLBACK_URL', 'http://localhost:8001/auth/callback');
@@ -77,9 +79,10 @@ export class OidcStrategy extends PassportStrategy(Strategy, 'oidc') {
       throw new UnauthorizedException('User could not be found/created');
     }
 
-    // Create a JWT token for the authenticated user.
-    // JWT configuration is now managed via AppSettingsService (database-stored settings)
-    const jwtSecretKey = this.appSettingsService.getValueWithDefault('JWT_SECRET_KEY', 'default-secret-key');
+    // TASK-302 Phase 3 Task 3.7 — JWT_SECRET_KEY now sourced from SecretsService
+    // (cache-warmed at bootstrap). JWT_EXPIRES_IN stays on AppSettings (it
+    // is not a secret per the plan — surgical-scope rule).
+    const jwtSecretKey = this.secretsService.getSecretSync('JWT_SECRET_KEY') ?? 'default-secret-key';
     const jwtExpiresIn = this.appSettingsService.getValueWithDefault('JWT_EXPIRES_IN', '1h') as StringValue;
 
     oauthUserResponse.token = createJwt({

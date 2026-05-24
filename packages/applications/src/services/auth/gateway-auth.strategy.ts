@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException, Logger, Inject } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { IAppSettingsService } from '../baseServices/_meta/appSettings';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import { IAuthService } from './IAuthService';
 
 /**
@@ -13,11 +13,16 @@ export class GatewayJwtStrategy extends PassportStrategy(Strategy, 'gateway-jwt'
   private readonly logger = new Logger(GatewayJwtStrategy.name);
 
   constructor(
-    @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
+    @Inject(SecretsService) private readonly secretsService: SecretsService,
     @Inject(IAuthService) private readonly authService: IAuthService,
   ) {
-    // JWT secret is now managed exclusively via AppSettingsService (database-stored settings)
-    const jwtSecret = appSettingsService.getValueWithDefault('JWT_SECRET_KEY', 'default-jwt-secret-key-change-in-production');
+    // TASK-302 Phase 3 Task 3.5 — JWT secret now sourced from SecretsService
+    // (cache-warmed at bootstrap by main.ts). Sync read because passport
+    // strategy constructors are invoked synchronously by NestJS DI. Falls
+    // back to a dev-only placeholder when the cache miss is observed in
+    // unit tests; production code paths warm the key in main.ts so a
+    // miss here would indicate a misconfiguration.
+    const jwtSecret = secretsService.getSecretSync('JWT_SECRET_KEY') ?? 'default-jwt-secret-key-change-in-production';
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
