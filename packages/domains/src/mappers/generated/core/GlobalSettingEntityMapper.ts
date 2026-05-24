@@ -3,17 +3,31 @@ import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 import * as Mappers from '../../../mappers';
 
+// TASK-302 Stream D Phase B (B.6) — `_version` is owned by the database and the
+// only legitimate writer is `Repository.updateWithVersion`. Strip it from every
+// write path here so the auto-mappers cannot leak it into a Prisma update.
+const FIELDS_NOT_WRITABLE: string[] = ['version'];
+
+function stripNonWritableFields<T extends object>(model: T, fields: string[]): T {
+  for (const field of fields) {
+    delete (model as Record<string, unknown>)[field];
+  }
+  return model;
+}
+
 export class GlobalSettingEntityMapper extends BaseMapper<Entities.GlobalSettingEntity, Models.GlobalSetting> {
   constructor() {
     super();
   }
 
   public toPersistence(entity: Entities.GlobalSettingEntity): Models.GlobalSetting {
-    return AutoClassMapper(entity, Models.GlobalSetting, GlobalSettingEntityMapperHandlers.$toPersistence);
+    const result = AutoClassMapper(entity, Models.GlobalSetting, GlobalSettingEntityMapperHandlers.$toPersistence);
+    return stripNonWritableFields(result, FIELDS_NOT_WRITABLE);
   }
 
   public toPersistenceChanges(entity: Entities.GlobalSettingEntity): Partial<Models.GlobalSetting> {
-    return AutoEntityChangeMapper(entity, Models.GlobalSetting, GlobalSettingEntityMapperHandlers.$toPersistence);
+    const result = AutoEntityChangeMapper(entity, Models.GlobalSetting, GlobalSettingEntityMapperHandlers.$toPersistence);
+    return stripNonWritableFields(result, FIELDS_NOT_WRITABLE);
   }
 
   public toDomainEntity(dataModel: Models.GlobalSetting): Entities.GlobalSettingEntity {
