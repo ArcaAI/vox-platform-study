@@ -1,4 +1,4 @@
-import { ILoggingService } from '@arcaai/applications';
+import { ILoggingService, SecretsService } from '@arcaai/applications';
 import { Logger, LogLevel, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
@@ -205,6 +205,31 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/v1/docs', app, document);
   }
+
+  // TASK-302 Phase 3 Task 3.1 — boot the SecretsService BEFORE any
+  // middleware or downstream service that reads a secret. boot() does
+  // two things: (1) delegate to the underlying provider's boot
+  // (VaultSecretsProvider performs the AppRole login here) and (2)
+  // pre-warm the cache for the keys read during bootstrap so the
+  // first request does not pay a Vault round-trip.
+  const secretsService = app.get(SecretsService);
+  await secretsService.boot({
+    warmupKeys: [
+      'JWT_SECRET_KEY',
+      'SESSION_SECRET_KEY',
+      'API_KEY_PEPPER',
+      'OIDC_CLIENT_SECRET',
+      'MINIO_ACCESS_KEY',
+      'MINIO_SECRET_KEY',
+      'S3_ACCESS_KEY',
+      'S3_SECRET_KEY',
+      'SMR_SERVICE_TOKEN',
+      'MQTT_PASS',
+      'REDIS_PASS',
+    ],
+  });
+  loggingService.info('Secrets warmed up', { keyCount: 11 }, 'Bootstrap');
+
   // Session configuration (debug logging removed - session config is sensitive)
   app.use(
     session({
