@@ -32,6 +32,10 @@ const mockWebhookRepository = {
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    // TASK-302 Stream D Phase E.5 — `update()` now writes via CAS. The
+    // legacy `update` stays on the mock so we can assert it is NOT
+    // called from the OCC-migrated path.
+    updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
 };
 
@@ -56,6 +60,7 @@ const createMockWebhookEntity = (overrides: Partial<{
     deletedAt: Date | null;
     hasChanges: boolean;
     changes: Record<string, unknown>;
+    version: number;
 }> = {}) => {
     const entity = {
         id: overrides.id ?? 'webhook-id-1',
@@ -74,6 +79,9 @@ const createMockWebhookEntity = (overrides: Partial<{
         deletedAt: overrides.deletedAt ?? null,
         hasChanges: overrides.hasChanges ?? false,
         changes: overrides.changes ?? {},
+        // TASK-302 Stream D Phase E.5 — `_version` is required for the
+        // CAS write path. Default = first-write (1).
+        version: overrides.version ?? 1,
         toObject: vi.fn(),
     };
     // Make toObject return a complete representation
@@ -486,38 +494,47 @@ describe('WebhookService', () => {
     });
 
     describe('update', () => {
-        it('should update webhook successfully and return updated entity', async () => {
+        it('should update webhook successfully via updateWithVersion (TASK-302 Stream D Phase E.5)', async () => {
             const existingWebhook = createMockWebhookEntity({
                 id: 'webhook-123',
                 name: 'Old Name',
                 hasChanges: true,
                 changes: { name: 'Updated Webhook' },
+                version: 4,
             });
             mockWebhookRepository.findById.mockResolvedValue(existingWebhook);
-            mockWebhookRepository.update.mockResolvedValue(existingWebhook);
+            mockWebhookRepository.updateWithVersion.mockResolvedValue({ ...existingWebhook, version: 5 });
 
-            const result = await service.update('webhook-123', { name: 'Updated Webhook' });
+            const result = await service.update('webhook-123', { name: 'Updated Webhook', expectedVersion: 4 } as never);
 
             expect(result.id).toBe('webhook-123');
-            expect(mockWebhookRepository.update).toHaveBeenCalledWith('webhook-123', existingWebhook);
+            // CAS-only — the legacy non-versioned write MUST NOT fire.
+            expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalledWith('webhook-123', existingWebhook, 4);
+            expect(mockWebhookRepository.update).not.toHaveBeenCalled();
         });
 
-        it('should emit ResourceUpdated event with changes and previous data', async () => {
+        it('should emit ResourceUpdated event with previousVersion + newVersion (TASK-302 Stream D Phase E.5)', async () => {
             const existingWebhook = createMockWebhookEntity({
                 id: 'webhook-123',
                 hasChanges: true,
                 changes: { name: 'Updated Webhook' },
+                version: 9,
             });
             mockWebhookRepository.findById.mockResolvedValue(existingWebhook);
-            mockWebhookRepository.update.mockResolvedValue(existingWebhook);
+            mockWebhookRepository.updateWithVersion.mockResolvedValue({ ...existingWebhook, version: 10 });
 
-            await service.update('webhook-123', { name: 'Updated Webhook' });
+            await service.update('webhook-123', { name: 'Updated Webhook', expectedVersion: 9 } as never);
 
+            // Same audit shape as Phase C.8 / E.1 / E.2 / E.3 / E.4.
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
                 SysEventType.ResourceUpdated,
                 expect.objectContaining({
                     resourceId: 'webhook-123',
-                    data: { name: 'Updated Webhook' },
+                    data: expect.objectContaining({
+                        name: 'Updated Webhook',
+                        previousVersion: 9,
+                        newVersion: 10,
+                    }),
                 })
             );
         });
@@ -530,7 +547,7 @@ describe('WebhookService', () => {
             mockWebhookRepository.findById.mockResolvedValue(existingWebhook);
 
             await expect(
-                service.update('webhook-123', { name: 'Same Name' })
+                service.update('webhook-123', { name: 'Same Name', expectedVersion: 1 } as never)
             ).rejects.toThrow('No changes to write to');
         });
 
@@ -541,14 +558,15 @@ describe('WebhookService', () => {
                 changes: { name: 'New Name', url: 'https://new.example.com/hook' },
             });
             mockWebhookRepository.findById.mockResolvedValue(existingWebhook);
-            mockWebhookRepository.update.mockResolvedValue(existingWebhook);
+            mockWebhookRepository.updateWithVersion.mockResolvedValue(existingWebhook);
 
             await service.update('webhook-123', {
                 name: 'New Name',
                 url: 'https://new.example.com/hook',
-            });
+                expectedVersion: 1,
+            } as never);
 
-            expect(mockWebhookRepository.update).toHaveBeenCalled();
+            expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalled();
         });
 
         it('should update webhook secret', async () => {
@@ -558,11 +576,35 @@ describe('WebhookService', () => {
                 changes: { hashedSecret: 'new-hashed-secret' },
             });
             mockWebhookRepository.findById.mockResolvedValue(existingWebhook);
-            mockWebhookRepository.update.mockResolvedValue(existingWebhook);
+            mockWebhookRepository.updateWithVersion.mockResolvedValue(existingWebhook);
 
-            await service.update('webhook-123', { hashedSecret: 'new-hashed-secret' });
+            await service.update('webhook-123', { hashedSecret: 'new-hashed-secret', expectedVersion: 1 } as never);
 
-            expect(mockWebhookRepository.update).toHaveBeenCalled();
+            expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalled();
+        });
+
+        it('propagates OptimisticConcurrencyException from the repository CAS write (TASK-302 Stream D Phase E.5)', async () => {
+            const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+            const existingWebhook = createMockWebhookEntity({
+                id: 'webhook-123',
+                hasChanges: true,
+                changes: { name: 'Stale write' },
+                version: 9,
+            });
+            mockWebhookRepository.findById.mockResolvedValue(existingWebhook);
+            mockWebhookRepository.updateWithVersion.mockRejectedValue(
+                new OptimisticConcurrencyException('Webhook', 'webhook-123', 9),
+            );
+
+            await expect(
+                service.update('webhook-123', { name: 'Stale write', expectedVersion: 9 } as never),
+            ).rejects.toThrow(OptimisticConcurrencyException);
+
+            // Audit MUST NOT broadcast on a failed CAS write.
+            expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+                SysEventType.ResourceUpdated,
+                expect.anything(),
+            );
         });
     });
 

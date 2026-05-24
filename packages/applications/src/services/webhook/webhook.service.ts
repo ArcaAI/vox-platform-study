@@ -131,20 +131,36 @@ export class WebhookService extends BaseService implements IWebhookService {
     return webhook;
   }
 
+  /**
+   * Update a webhook.
+   *
+   * TASK-302 Stream D Phase E.5 — OCC migration. Writes via Compare-And-Set
+   * against the row's `_version` column. The DTO's `expectedVersion` (or
+   * the controller's `If-Match`-folded value, once a controller is
+   * wired) is the CAS predicate; on version drift the repository raises
+   * `OptimisticConcurrencyException`, which the `ExceptionInterceptor`
+   * maps to `412 Precondition Failed`.
+   */
   async update(id: EntityId, request: UpdateWebhookRequest): Promise<WebhookEntity> {
     const webhook = await this.webhookRepository.findById(id);
 
     const previousData = webhook.toObject();
-    this.updateEntity(webhook, request);
+    const { expectedVersion, ...editableRequest } = request;
+    this.updateEntity(webhook, editableRequest as UpdateWebhookRequest);
 
     if (!webhook.hasChanges) {
       throw new ArgumentInvalidException(`No changes to write to.`);
     }
-    const updatedWebhook = await this.webhookRepository.update(id, webhook);
+
+    // Snapshot the pre-write `_version` BEFORE the CAS bumps it (audit
+    // correlation mirrors C.8 / E.1 / E.2 / E.3 / E.4).
+    const previousVersion = webhook.version;
+
+    const updatedWebhook = await this.webhookRepository.updateWithVersion(id, webhook, expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updatedWebhook.id,
-      data: webhook.changes,
+      data: { ...webhook.changes, previousVersion, newVersion: updatedWebhook.version },
       previousData,
     });
     return updatedWebhook;
