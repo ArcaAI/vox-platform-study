@@ -175,4 +175,43 @@ Repeat the three `unseal` commands on nodes 2 and 3 after section 8 join complet
 
 ---
 
-<REMAINING SECTIONS TO BE FILLED PER TASKS 1.11–1.14>
+## 9. HAProxy TLS terminator (on bastion VM 401 OR co-located on node 1)
+
+```haproxy
+global
+  log /dev/log local0
+  log /dev/log local1 notice
+  daemon
+  maxconn 4096
+
+defaults
+  log     global
+  mode    http
+  option  httplog
+  option  dontlognull
+  timeout connect 5s
+  timeout client  60s
+  timeout server  60s
+
+frontend vault_https
+  bind *:443 ssl crt /etc/haproxy/certs/vault.taphuynh.dev.pem
+  mode http
+  http-request set-header X-Forwarded-Proto https
+  default_backend vault_active
+
+backend vault_active
+  mode http
+  option httpchk GET /v1/sys/health?standbyok=true
+  http-check expect status 200
+  server vault-1 10.10.1.130:8200 check ssl verify required ca-file /etc/haproxy/certs/vault-ca.crt
+  server vault-2 10.10.1.131:8200 check ssl verify required ca-file /etc/haproxy/certs/vault-ca.crt backup
+  server vault-3 10.10.1.132:8200 check ssl verify required ca-file /etc/haproxy/certs/vault-ca.crt backup
+```
+
+Note: Vault returns `200` for active, `429` for performance standby, `473` for DR standby, `501` for unsealed. The `standbyok=true` query parameter accepts both active and performance standby as healthy.
+
+<SRE: provision `vault.taphuynh.dev.pem` from internal CA (chain + key, mode 0600 haproxy:haproxy)>
+
+---
+
+<REMAINING SECTIONS TO BE FILLED PER TASKS 1.12–1.14>
