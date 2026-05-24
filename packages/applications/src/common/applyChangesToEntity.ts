@@ -62,6 +62,16 @@ export async function applyChangesToEntity<T extends BaseEntity, K extends objec
   customHandlers?: ChangeFieldHandlers<T, K>,
 ): Promise<void> {
   for (const key of Object.keys(changes) as Array<keyof K>) {
+    // TASK-302 Stream D Phase B (B.7) — `version` is database-owned. The only
+    // legitimate writer is `Repository.updateWithVersion`. Filtering here is
+    // defense in depth on top of the entity having no public setter and the
+    // mapper $toPersistence excluding it. The guard runs before custom
+    // handler dispatch so a malicious DTO cannot smuggle `version` through a
+    // handler either.
+    if ((key as unknown as string) === 'version') {
+      continue;
+    }
+
     const value = changes[key];
 
     if (customHandlers && key in customHandlers) {
