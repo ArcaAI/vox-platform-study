@@ -13,6 +13,8 @@ export interface CreateGlobalSettingProps extends BaseEntityFactoryCreateProps {
   key: IGlobalSettingEntity['key'];
   defaultValue?: IGlobalSettingEntity['defaultValue'];
   value: IGlobalSettingEntity['value'];
+  encryptedValue?: IGlobalSettingEntity['encryptedValue'];
+  keyVersion?: IGlobalSettingEntity['keyVersion'];
   locked?: IGlobalSettingEntity['locked'];
   dataType: IGlobalSettingEntity['dataType'];
   namespace?: IGlobalSettingEntity['namespace'];
@@ -45,6 +47,8 @@ export class GlobalSettingFactory {
       key: props.key,
       defaultValue: props.defaultValue ?? '',
       value: props.value,
+      encryptedValue: props.encryptedValue ?? null,
+      keyVersion: props.keyVersion ?? null,
       locked: props.locked ?? false,
       dataType: props.dataType,
       namespace: props.namespace ?? '',

@@ -20,6 +20,8 @@ import { uuidv7 } from 'uuidv7';
 import { JwtAuthGuard } from './guards';
 import { ContextInterceptor, ExceptionInterceptor, ImpersonationAuditInterceptor, MaintenanceInterceptor, MetricsInterceptor } from './interceptors';
 import { GracefulShutdownModule } from './services';
+import { VaultPrismaFactoryModule } from './vault-prisma.module';
+import { VaultRotationWorkerModule } from './workers/vault-rotation.worker.module';
 
 // Feature modules
 import { ApiKeyModule } from './modules/api-key/api-key.module';
@@ -107,6 +109,16 @@ const common = [
   AuditLogServiceModule, // Event-driven audit logging (replaces Kafka audit topics)
   JwtAuthGuardModule, // JWT guard — before AuthorizationModule
   AuthorizationModule, // Policy-based authorization (RBAC)
+  // TASK-302 Phase 5 Task 5.6 (Stream B) — Vault prisma factory.
+  // Self-guards via SECRETS_PROVIDER=vault + PG_DYNAMIC_CREDS=true,
+  // so it's safe to import unconditionally; when off it provides a
+  // `null`-returning factory that CoreDatabaseService's @Optional
+  // inject treats as absent.
+  VaultPrismaFactoryModule,
+  // TASK-302 Phase 6 Task 6.5 (Stream B) — Vault rotation worker.
+  // Self-guards via SECRETS_PROVIDER=vault + VAULT_AUDIT_LOG_PATH +
+  // Redis leader-lock, so it's safe to import unconditionally.
+  VaultRotationWorkerModule,
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

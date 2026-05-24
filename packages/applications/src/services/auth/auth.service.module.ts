@@ -13,6 +13,7 @@ import { SessionSerializer } from './session.serializer';
 import { IAuthService } from './IAuthService';
 import { AuthService } from './auth.service';
 import { IAppSettingsService } from '../baseServices/_meta/';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import { UserServiceModule } from '../user/user/user.service.module';
 import { JwtRevocationService, IJwtRevocationService } from './jwt-revocation.service';
 
@@ -32,14 +33,22 @@ const logger = new Logger('AuthServiceModule');
   providers: [
     {
       provide: 'OPENID_CLIENT',
-      useFactory: async (appSettingsService: IAppSettingsService) => {
+      useFactory: async (
+        appSettingsService: IAppSettingsService,
+        secretsService: SecretsService,
+      ) => {
         try {
           const oidc_discovery_url = appSettingsService.getValueWithDefault(
             'OIDC_DISCOVERY_URL',
             'https://example.com/.well-known/openid_configuration',
           );
           const oidc_client_id = appSettingsService.getValueWithDefault('OIDC_CLIENT_ID', 'default-client-id');
-          const oidc_client_secret = appSettingsService.getValueWithDefault('OIDC_CLIENT_SECRET', 'default-client-secret');
+          // TASK-302 Phase 3 Task 3.8 — OIDC_CLIENT_SECRET (the only secret in
+          // this factory) now reads from SecretsService. The other three
+          // (DISCOVERY_URL, CLIENT_ID, CALLBACK_URL) stay on AppSettings —
+          // they're public OIDC config, not secrets.
+          const oidc_client_secret =
+            secretsService.getSecretSync('OIDC_CLIENT_SECRET') ?? 'default-client-secret';
           const oidc_callback_url = appSettingsService.getValueWithDefault('OIDC_CALLBACK_URL', 'http://localhost:8001/auth/callback');
 
           if (!oidc_discovery_url || oidc_discovery_url === 'https://example.com/.well-known/openid_configuration') {
@@ -71,7 +80,7 @@ const logger = new Logger('AuthServiceModule');
           return null;
         }
       },
-      inject: [IAppSettingsService],
+      inject: [IAppSettingsService, SecretsService],
     },
     {
       provide: IAuthService,
@@ -80,15 +89,22 @@ const logger = new Logger('AuthServiceModule');
     SessionSerializer,
     {
       provide: OidcStrategy,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      useFactory: (client: any, appSettingsService: IAppSettingsService, authService: IAuthService, clsService: any) => {
+      useFactory: (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        client: any,
+        appSettingsService: IAppSettingsService,
+        authService: IAuthService,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        clsService: any,
+        secretsService: SecretsService,
+      ) => {
         if (!client) {
           logger.warn('OIDC client not available — OidcStrategy will not be registered');
           return {};
         }
-        return new OidcStrategy(client, appSettingsService, authService, clsService);
+        return new OidcStrategy(client, appSettingsService, authService, clsService, secretsService);
       },
-      inject: ['OPENID_CLIENT', IAppSettingsService, IAuthService, ClsService],
+      inject: ['OPENID_CLIENT', IAppSettingsService, IAuthService, ClsService, SecretsService],
     },
     JwtStrategy,
     GatewayJwtStrategy,

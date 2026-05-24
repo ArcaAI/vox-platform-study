@@ -32,6 +32,10 @@ const mockClsService = {
     get: vi.fn(),
 };
 
+const mockSecretsService = {
+    getSecretSync: vi.fn(),
+};
+
 // --- Mock PassportStrategy (same pattern as jwt.strategy.test.ts) ---
 
 vi.mock('@nestjs/passport', async (importOriginal) => {
@@ -67,14 +71,18 @@ import { createJwt } from '../createJwt';
 function createStrategy(): OidcStrategy {
     mockAppSettingsService.getValueWithDefault.mockImplementation(
         (key: string, defaultValue: string) => {
+            // TASK-302 Phase 3 Task 3.7 — JWT_SECRET_KEY now resolved via
+            // SecretsService below; intentionally omitted from this map.
             const settings: Record<string, string> = {
                 OIDC_SCOPES: 'openid profile email',
                 OIDC_CALLBACK_URL: 'http://localhost:8001/auth/callback',
-                JWT_SECRET_KEY: 'test-jwt-secret',
                 JWT_EXPIRES_IN: '1h',
             };
             return settings[key] ?? defaultValue;
         },
+    );
+    mockSecretsService.getSecretSync.mockImplementation((key: string) =>
+        key === 'JWT_SECRET_KEY' ? 'test-jwt-secret' : undefined,
     );
 
     return new OidcStrategy(
@@ -82,6 +90,7 @@ function createStrategy(): OidcStrategy {
         mockAppSettingsService as any,
         mockAuthService as any,
         mockClsService as any,
+        mockSecretsService as any,
     );
 }
 
@@ -257,17 +266,20 @@ describe('OidcStrategy', () => {
             expect(result!.token).toBe('jwt-token-for-user-ret-1');
         });
 
-        it('should use AppSettingsService values for JWT secret and expiry', async () => {
+        it('uses SecretsService for JWT secret and AppSettings for JWT_EXPIRES_IN', async () => {
             mockClient.userinfo.mockResolvedValue(createMockUserinfo());
             mockAuthService.getOrCreateOidcUser.mockResolvedValue(
                 createMockOAuthResponse({ id: 'cfg-user' }),
             );
 
-            // Reconfigure settings AFTER createStrategy so validate() reads them
+            // TASK-302 Phase 3 Task 3.7 — JWT secret is now sourced from
+            // SecretsService; JWT_EXPIRES_IN stays on AppSettings.
+            mockSecretsService.getSecretSync.mockImplementation((key: string) =>
+                key === 'JWT_SECRET_KEY' ? 'custom-production-secret' : undefined,
+            );
             mockAppSettingsService.getValueWithDefault.mockImplementation(
                 (key: string, defaultValue: string) => {
                     const customSettings: Record<string, string> = {
-                        JWT_SECRET_KEY: 'custom-production-secret',
                         JWT_EXPIRES_IN: '24h',
                     };
                     return customSettings[key] ?? defaultValue;

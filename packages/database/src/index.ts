@@ -23,13 +23,21 @@
 
 // Re-export client utilities
 export {
-  createNewExtendedPrismaClient, createNewPrismaClient, getExtendedPrismaClient, getPrismaClient, modelHasSoftDelete, MODELS_WITHOUT_SOFT_DELETE, Prisma, PrismaClientInitializationError, PrismaClientKnownRequestError, PrismaClientRustPanicError, PrismaClientUnknownRequestError, PrismaClientValidationError
+  applySoftDeleteExtension, createNewExtendedPrismaClient, createNewPrismaClient, getExtendedPrismaClient, getPrismaClient, modelHasSoftDelete, MODELS_WITHOUT_SOFT_DELETE, Prisma, PrismaClientInitializationError, PrismaClientKnownRequestError, PrismaClientRustPanicError, PrismaClientUnknownRequestError, PrismaClientValidationError
 } from './client.js';
 
 export type {
   CorePrismaClient,
   ExtendedCorePrismaClient
 } from './client.js';
+
+// TASK-302 Phase 5 Task 5.5 (Stream B) — Vault-backed PrismaClient.
+export { getPrismaClientWithVault, VaultPrismaClient } from './vault-client.js';
+export type {
+  DbCredential,
+  VaultDbSecretsLike,
+  VaultPrismaClientOpts,
+} from './vault-client.js';
 
 // Re-export types and enums from generated client (via auto-generated index)
 export * from './generated/core-prisma-client/client.js';

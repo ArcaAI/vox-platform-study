@@ -1,31 +1,89 @@
 import type { ExtendedCorePrismaClient, CorePrismaClient } from '@arcaai/database';
 import { getExtendedPrismaClient, getPrismaClient } from '@arcaai/database';
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+
+/**
+ * TASK-302 Phase 5 Task 5.6 (Stream B) — DI token for the optional
+ * Vault-backed PrismaClient factory.
+ *
+ * When this token is bound (in `apps/api/app.module.ts` under the
+ * `PG_DYNAMIC_CREDS=true && SECRETS_PROVIDER=vault` toggle), the
+ * CoreDatabaseService delegates Prisma construction + disconnect to the
+ * factory, bypassing the env-driven singletons in `@arcaai/database`.
+ *
+ * The factory is expressed as a function — not a class instance —
+ * because:
+ *   1. It keeps `packages/domains` free of any `packages/applications`
+ *      import (no SecretsService leakage into the domain layer).
+ *   2. The factory is allowed to perform async I/O (Vault round-trip)
+ *      during NestJS `onModuleInit`, which is the natural integration
+ *      point.
+ *   3. The disconnect callback lets the wrapper class (VaultPrismaClient
+ *      in `@arcaai/database`) own its own teardown semantics — the
+ *      domain layer simply asks it to clean up at module destroy.
+ */
+export const VAULT_PRISMA_FACTORY = Symbol.for('CoreDatabaseService.VaultPrismaFactory');
+
+/**
+ * Shape returned by the Vault prisma factory.
+ *
+ *   client          base Prisma client (used by .baseClient getter).
+ *   extendedClient  same client with soft-delete extension applied.
+ *   disconnect      drains the Vault-backed pool; called once on
+ *                   onModuleDestroy. The factory owns this lifecycle
+ *                   because the underlying VaultPrismaClient may
+ *                   batch its disconnect with a grace period.
+ */
+export interface VaultPrismaFactoryResult {
+  client: CorePrismaClient;
+  extendedClient: ExtendedCorePrismaClient;
+  disconnect: () => Promise<void>;
+}
+
+export type VaultPrismaFactory = () => Promise<VaultPrismaFactoryResult>;
 
 /**
  * Core Database Service
  *
  * Prisma 7 Implementation:
- * - Uses the shared Prisma client from @arcaai/database package
- * - Soft-delete filtering is handled by the database package's extended client
- * - Implements NestJS lifecycle hooks for connection management
+ * - Uses the shared Prisma client from @arcaai/database package by
+ *   default (env-mode operation).
+ * - When the optional `VAULT_PRISMA_FACTORY` token is wired, defers
+ *   to that factory in `onModuleInit` to obtain a Vault-backed
+ *   PrismaClient with short-lived dynamic PostgreSQL credentials.
+ * - Soft-delete filtering is handled by the database package's
+ *   extended client (or by the factory in Vault mode).
+ * - Implements NestJS lifecycle hooks for connection management.
  *
- * Note: Soft-delete filtering is centralized in @arcaai/database/client.ts
+ * Note: Soft-delete filtering is centralised in @arcaai/database/client.ts
  * to avoid code duplication. The extended client automatically filters out
- * DELETED records from findMany, findFirst, count, aggregate, and groupBy operations.
+ * DELETED records from findMany, findFirst, count, aggregate, and groupBy
+ * operations.
  */
 @Injectable()
 export class CoreDatabaseService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CoreDatabaseService.name);
-  private prisma: CorePrismaClient;
-  private extendedPrisma: ExtendedCorePrismaClient;
+  private prisma!: CorePrismaClient;
+  private extendedPrisma!: ExtendedCorePrismaClient;
+  private vaultDisconnect: (() => Promise<void>) | null = null;
+  private readonly useVault: boolean;
 
-  constructor() {
-    // Use shared Prisma client instances from @arcaai/database
-    // This ensures consistent soft-delete filtering across the application
-    this.prisma = getPrismaClient();
-    this.extendedPrisma = getExtendedPrismaClient();
-    this.logger.log(`${CoreDatabaseService.name} has been created!`);
+  constructor(
+    @Optional()
+    @Inject(VAULT_PRISMA_FACTORY)
+    private readonly vaultFactory?: VaultPrismaFactory,
+  ) {
+    this.useVault = typeof vaultFactory === 'function';
+    if (!this.useVault) {
+      // Env-mode: eagerly resolve the shared singletons so synchronous
+      // getters (`.client`, `.baseClient`) are usable before
+      // `onModuleInit` runs (existing behavior the test suite relies on).
+      this.prisma = getPrismaClient();
+      this.extendedPrisma = getExtendedPrismaClient();
+    }
+    this.logger.log(
+      `${CoreDatabaseService.name} has been created! (mode=${this.useVault ? 'vault' : 'env'})`,
+    );
   }
 
   /**
@@ -73,6 +131,19 @@ export class CoreDatabaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
+    if (this.useVault && this.vaultFactory) {
+      try {
+        const result = await this.vaultFactory();
+        this.prisma = result.client;
+        this.extendedPrisma = result.extendedClient;
+        this.vaultDisconnect = result.disconnect;
+        this.logger.log('Core Service has been initialized via Vault factory! Core database connected!');
+      } catch (error) {
+        this.logger.error('Error initialising Vault-backed Prisma client', error);
+        throw error;
+      }
+      return;
+    }
     try {
       await this.prisma.$connect();
       this.logger.log('Core Service has been initialized! Core database connected!');
@@ -83,6 +154,13 @@ export class CoreDatabaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy() {
+    if (this.useVault && this.vaultDisconnect) {
+      // The Vault factory owns its own disconnect cadence (grace
+      // period, lease revoke, pool drain) — delegate fully.
+      await this.vaultDisconnect();
+      this.logger.warn('Core database disconnected via Vault factory! Core Service has been destroyed!');
+      return;
+    }
     await this.prisma.$disconnect();
     this.logger.warn('Core database disconnected! Core Service has been destroyed!');
   }

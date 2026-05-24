@@ -70,6 +70,28 @@ description = "HuggingFace token"
 regex = '''(?i)(HF_TOKEN|HUGGINGFACE_TOKEN)\s*[:=]\s*["']?hf_[A-Za-z0-9]{20,}["']?'''
 tags = ["huggingface"]
 
+# TASK-302 Stream B (Phase 1 + R6) — Vault tokens.
+#
+# Two variants:
+#   1. The named-env-var form: VAULT_TOKEN=hvs....  (most common
+#      slip-up — devs paste a token straight into a shell rc or .env).
+#   2. The raw token form: hvs.<base62>.<base62>.<base62>  (catches
+#      tokens copy-pasted into runbook examples, log scrubs that didn't
+#      catch the value, etc.).
+# Vault tokens are unambiguously identifiable by the `hvs.` prefix
+# introduced in Vault 1.10+; older `s.` and `b.` prefixes are deprecated.
+[[rules]]
+id = "hope-vault-token-env"
+description = "VAULT_TOKEN= committed in env/source"
+regex = '''(?i)VAULT_TOKEN\s*[:=]\s*["']?hvs\.[A-Za-z0-9_-]{20,}["']?'''
+tags = ["vault", "token"]
+
+[[rules]]
+id = "hope-vault-token-raw"
+description = "Raw Vault token (hvs.<...>) anywhere in source"
+regex = '''hvs\.[A-Za-z0-9_-]{20,}'''
+tags = ["vault", "token"]
+
 # ─── Allowlist ────────────────────────────────────────────────────────────────
 #
 # The allowlist below excludes paths and regex patterns that the Phase 0

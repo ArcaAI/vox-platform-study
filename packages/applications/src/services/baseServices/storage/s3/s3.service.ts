@@ -13,10 +13,11 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 
 import { NotFoundException } from '@arcaai/exceptions';
 import { IAppSettingsService } from '../../_meta/';
+import { SecretsService } from '../../_meta/secrets';
 import { IS3Service } from './IS3Service';
 
 const DEFAULT_PRESIGNED_URL_EXPIRY = 3600;
@@ -45,7 +46,14 @@ export class S3Service implements IS3Service, OnModuleInit {
   private initializationPromise: Promise<void> | null = null;
   private configurationAvailable = false;
 
-  constructor(@Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService) {
+  constructor(
+    @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
+    // TASK-302 Phase 3 Task 3.9 — S3_ACCESS_KEY + S3_SECRET_KEY come from
+    // SecretsService (cache-warmed at bootstrap). Optional so existing
+    // direct-construction unit tests compile; on miss the keys default
+    // to '' which is exactly what AppSettingsService used to return.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+  ) {
     this.logger.log({
       message: 'Service created',
       service: S3Service.name,
@@ -228,8 +236,10 @@ export class S3Service implements IS3Service, OnModuleInit {
     return {
       endpoint,
       region: this.appSettingsService.getValueWithDefault('S3_REGION', isMinIO ? 'us-east-1' : 'us-east-1'),
-      accessKey: this.appSettingsService.getValueWithDefault('S3_ACCESS_KEY', ''),
-      secretKey: this.appSettingsService.getValueWithDefault('S3_SECRET_KEY', ''),
+      // TASK-302 Phase 3 Task 3.9 — secrets via SecretsService cache-only sync
+      // path; non-secrets (S3_REGION, S3_PUBLIC_BUCKET, etc.) stay on AppSettings.
+      accessKey: this.secretsService?.getSecretSync('S3_ACCESS_KEY') ?? '',
+      secretKey: this.secretsService?.getSecretSync('S3_SECRET_KEY') ?? '',
       publicBucket: this.appSettingsService.getValueWithDefault('S3_PUBLIC_BUCKET', ''),
       privateBucket: this.appSettingsService.getValueWithDefault('S3_PRIVATE_BUCKET', ''),
       // MinIO requires forcePathStyle: true, AWS S3 can use either
