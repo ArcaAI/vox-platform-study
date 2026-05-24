@@ -1,0 +1,197 @@
+/**
+ * Phase 0 Item 2 (TASK-302 Stream A) — service-layer regression test.
+ *
+ * Asserts defense-in-depth: even if the global ValidationPipe is bypassed
+ * (internal callers, test harnesses, future refactors), the service MUST
+ * NOT apply unauthorized fields onto the GlobalSettingEntity. Only the
+ * explicit allowlist (value, description) may be mutated.
+ *
+ * RED — current code does `const { id, ...changes } = config; updateEntity(entity, changes)`
+ *        and `applyChangesToEntity` assigns every key onto the entity.
+ *        An evil payload with key/tenantId/locked/defaultValue MUTATES the
+ *        entity. This test fails before B.5 (allowlist refactor).
+ *
+ * GREEN — after B.5, `changes` is constructed from `{ value, description }`
+ *         only. Unauthorized fields silently disappear. This test passes.
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { TenantService } from '../tenant.service';
+import { ResourceStatusType } from '@arcaai/domains';
+
+const mockClsService = { get: vi.fn(), set: vi.fn() };
+const mockEventEmitter = { emit: vi.fn() };
+const mockTenantRepository = {
+  findById: vi.fn(),
+  findFirst: vi.fn(),
+  findAll: vi.fn(),
+  count: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
+  softDelete: vi.fn(),
+};
+const mockGlobalSettingRepository = {
+  findById: vi.fn(),
+  findAll: vi.fn(),
+  count: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
+};
+const mockDepartmentRepository = { findAll: vi.fn(), count: vi.fn() };
+const mockPromptTemplateRepository = { findAll: vi.fn(), count: vi.fn() };
+const mockAsrPipelineRepository = { findAll: vi.fn(), count: vi.fn() };
+const mockDatabaseService = { getClient: vi.fn() };
+const mockTenantBucketService = { provisionSystemBuckets: vi.fn() };
+
+const createMockTenantEntity = (overrides: { id?: string; key?: string } = {}) => ({
+  id: overrides.id ?? 'tenant-123',
+  key: overrides.key ?? 'CUSTOMER',
+  name: 'Customer Tenant',
+  description: null,
+  resourceStatus: ResourceStatusType.ENABLED,
+  createdBy: null,
+  updatedBy: null,
+  createdAt: new Date('2026-01-29T10:00:00Z'),
+  updatedAt: new Date('2026-01-29T10:00:00Z'),
+  deletedAt: null,
+  hasChanges: false,
+  changes: {},
+  enable: vi.fn(),
+  disable: vi.fn(),
+  toObject: vi.fn().mockReturnValue({ id: overrides.id, key: overrides.key }),
+});
+
+interface MockSetting extends Record<string, unknown> {
+  id: string;
+  tenantId: string;
+  key: string;
+  value: string;
+  defaultValue: string | null;
+  locked: boolean;
+  description: string | null;
+  hasChanges: boolean;
+  changes: Record<string, unknown>;
+  toObject: ReturnType<typeof vi.fn>;
+}
+
+const createMockSetting = (overrides: Partial<MockSetting> = {}): MockSetting => ({
+  id: overrides.id ?? 'cfg-1',
+  tenantId: overrides.tenantId ?? 'tenant-123',
+  namespace: 'com.flw.configurations',
+  name: 'Audio Language',
+  key: overrides.key ?? 'AUDIO_LANG',
+  value: overrides.value ?? 'en',
+  defaultValue: overrides.defaultValue !== undefined ? overrides.defaultValue : 'en',
+  dataType: 'String',
+  description: overrides.description !== undefined ? overrides.description : 'Spoken language',
+  locked: overrides.locked ?? false,
+  resourceStatus: ResourceStatusType.ENABLED,
+  createdBy: null,
+  updatedBy: null,
+  createdAt: new Date('2026-01-29T10:00:00Z'),
+  updatedAt: new Date('2026-01-29T10:00:00Z'),
+  deletedAt: null,
+  hasChanges: overrides.hasChanges ?? false,
+  changes: overrides.changes ?? {},
+  toObject: vi.fn().mockReturnValue({ id: overrides.id, value: overrides.value }),
+});
+
+const setRequestUserRoles = (roles: string[] | undefined) => {
+  mockClsService.get.mockImplementation((key: string) => {
+    switch (key) {
+      case 'user':
+        return {
+          id: 'doctor-user-id',
+          firstName: 'Doctor',
+          lastName: 'Evil',
+          email: 'doctor@example.com',
+          roles,
+        };
+      case 'tenantId':
+        return 'tenant-123';
+      case 'tenantCode':
+        return 'CUSTOMER';
+      case 'correlationId':
+        return 'corr-redteam';
+      case 'requestIp':
+        return '10.0.0.7';
+      default:
+        return null;
+    }
+  });
+};
+
+describe('Phase 0 Item 2 — TenantService.updateTenantConfigs must NOT apply unauthorized fields', () => {
+  let service: TenantService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setRequestUserRoles(['DOCTOR']);
+    service = new TenantService(
+      mockTenantRepository as any,
+      mockGlobalSettingRepository as any,
+      mockDepartmentRepository as any,
+      mockPromptTemplateRepository as any,
+      mockAsrPipelineRepository as any,
+      mockDatabaseService as any,
+      mockTenantBucketService as any,
+      mockEventEmitter as any,
+      mockClsService as any,
+    );
+  });
+
+  it('drops "key" / "tenantId" / "locked" / "defaultValue" smuggled in the request payload', async () => {
+    const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'CUSTOMER' });
+    const setting = createMockSetting({
+      id: 'cfg-1',
+      tenantId: 'tenant-123',
+      key: 'AUDIO_LANG',
+      value: 'en',
+      defaultValue: 'en',
+      locked: false,
+      description: 'Spoken language',
+    });
+    mockTenantRepository.findFirst.mockResolvedValue(tenant);
+    mockGlobalSettingRepository.findById.mockResolvedValue(setting);
+    mockGlobalSettingRepository.update.mockImplementation((_id: string, entity: MockSetting) => Promise.resolve(entity));
+
+    const evilPayload = {
+      id: 'cfg-1',
+      value: 'es',
+      description: 'Updated description',
+      key: 'JWT_SECRET_KEY',
+      tenantId: 'attacker-tenant',
+      locked: true,
+      defaultValue: 'attacker-default',
+    } as any;
+
+    await service.updateTenantConfigs('tenant-123', [evilPayload]);
+
+    expect(setting.key, 'key must be immutable via updateTenantConfigs').toBe('AUDIO_LANG');
+    expect(setting.tenantId, 'tenantId must be immutable via updateTenantConfigs').toBe('tenant-123');
+    expect(setting.locked, 'locked must be immutable via updateTenantConfigs').toBe(false);
+    expect(setting.defaultValue, 'defaultValue must be immutable via updateTenantConfigs').toBe('en');
+    expect(setting.value, 'value remains the one allowlisted writable field').toBe('es');
+  });
+
+  it('still applies the legitimate allowlist (value, description) on a clean payload', async () => {
+    const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'CUSTOMER' });
+    const setting = createMockSetting({
+      id: 'cfg-2',
+      tenantId: 'tenant-123',
+      key: 'AUDIO_LANG',
+      value: 'en',
+      description: 'old',
+    });
+    mockTenantRepository.findFirst.mockResolvedValue(tenant);
+    mockGlobalSettingRepository.findById.mockResolvedValue(setting);
+    mockGlobalSettingRepository.update.mockImplementation((_id: string, entity: MockSetting) => Promise.resolve(entity));
+
+    await service.updateTenantConfigs('tenant-123', [
+      { id: 'cfg-2', value: 'fr', description: 'new' } as any,
+    ]);
+
+    expect(setting.value).toBe('fr');
+    expect(setting.description).toBe('new');
+  });
+});

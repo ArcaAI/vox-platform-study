@@ -8,12 +8,13 @@ import {
 } from '@arcaai/applications';
 import { Controller, Body, Param, Inject, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize } from '../../decorators';
+import { ApiEndpoint, Authorize, CanManage } from '../../decorators';
 
 @ApiBearerAuth()
 @ApiTags('admin-departments')
 @Controller('admin/departments')
-@Authorize()
+// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
+@CanManage('Department')
 export class DepartmentController {
   constructor(
     @Inject(IDepartmentService)

@@ -94,8 +94,21 @@ export class AuthorizationGuard implements CanActivate {
     // Get required permissions from decorator
     const required = this.reflector.getAllAndOverride<RequiredPermission[]>(REQUIRED_PERMISSIONS_KEY, [context.getHandler(), context.getClass()]);
 
-    // No permissions required = allow (but still need authentication)
+    // Phase 0 Item 3 (TASK-302 Stream A) — deny by default on admin/* routes
+    // when no explicit permissions are declared. TASK-301 §P0-3 closed the
+    // empty-list bypass that previously auto-allowed any authenticated user.
     if (!required || required.length === 0) {
+      const httpRequest = context.switchToHttp().getRequest();
+      const path: string | undefined = httpRequest?.url;
+      const isAdminRoute = typeof path === 'string' && /^\/(api\/v\d+\/)?admin\//.test(path);
+
+      if (isAdminRoute) {
+        this.logger.warn({
+          message: 'Phase 0 Item 3: refused admin route with no @CanManage / @Authorize decorator',
+          path,
+        });
+        throw new ForbiddenException('Admin routes require an explicit permission decorator.');
+      }
       return true;
     }
 

@@ -36,7 +36,7 @@
 **HIPAA Impact:** Potential unauthorized access to PHI via Azure OpenAI
 
 ```166:167:.env.dev
-AZURE_OPENAI_API_KEY: F5Kvc2iVDdZVkGHsVSssaZs342f0qUURXUWIFn5VaJiodtqNV2McJQQJ99BAACYeBjFXJ3w3AAABACOGP15b
+AZURE_OPENAI_API_KEY: [REDACTED — rotated and revoked per TASK-302 Phase 0 Item 6; see docs/implementation/TASK-302-System-Config-Implementation-Roadmap/_section-a-rotation-log.md]
 AZURE_OPENAI_ENDPOINT: https://alaas-openai.openai.azure.com/openai/deployments/gpt-4o-mini/chat/completions?api-version=2025-01-01-preview
 ```
 
