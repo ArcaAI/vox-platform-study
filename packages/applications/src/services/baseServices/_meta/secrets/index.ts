@@ -9,3 +9,5 @@ export * from './providers/vault-secrets.provider';
 export * from './SecretsService';
 export * from './secrets.module';
 export * from './secrets.health';
+// Phase 6 Task 6.3 (TASK-302 Stream B) — rotation worker.
+export * from './vault-rotation-worker';
