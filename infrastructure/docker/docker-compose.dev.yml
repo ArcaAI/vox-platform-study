@@ -35,9 +35,14 @@ volumes:
 
 services:
   # HashiCorp Vault - Secret Management
+  # Phase 1A (TASK-302 Stream B): opt-in via `--profile vault`.
+  # Default `docker compose up` does NOT start Vault — local dev keeps using
+  # EnvSecretsProvider against .env.dev. Devs opt in with:
+  #   docker compose -f infrastructure/docker/docker-compose.dev.yml --profile vault up -d
   vault:
     container_name: hope-vault
-    image: hashicorp/vault:1.15
+    image: hashicorp/vault:1.18
+    profiles: ["vault"]
     networks:
       - hope-network
     restart: unless-stopped
@@ -45,18 +50,20 @@ services:
       - '8200:8200'
     volumes:
       - vault-data:/vault/file
+      - ./configs/vault/dev-init.sh:/vault/init/dev-init.sh:ro
     environment:
       VAULT_ADDR: 'http://0.0.0.0:8200'
       VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN:-root}
+      VAULT_DEV_LISTEN_ADDRESS: '0.0.0.0:8200'
     command: server -dev -dev-root-token-id="${VAULT_DEV_ROOT_TOKEN:-root}"
     cap_add:
       - IPC_LOCK
     healthcheck:
-      test: ['CMD', 'vault', 'status']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+      test: ['CMD-SHELL', 'wget -q -O- http://127.0.0.1:8200/v1/sys/health | grep -q "\"initialized\":true"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # Qdrant - Vector Database
   qdrant:
