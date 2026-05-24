@@ -147,4 +147,32 @@ telemetry {
 
 ---
 
-<REMAINING SECTIONS TO BE FILLED PER TASKS 1.10–1.14>
+## 7. Initialize + Shamir unseal (5-of-3)
+
+Run **once on node 1 only**:
+
+```bash
+export VAULT_ADDR=https://10.10.1.130:8200
+export VAULT_CACERT=/etc/vault.d/tls/vault-ca.crt
+vault operator init -key-shares=5 -key-threshold=3 -format=json > /tmp/init.json
+```
+
+`init.json` contains 5 unseal key shares + initial root token. **Distribute the 5 key shares to 5 separate operators** (printed envelopes, no email, no chat). Destroy `/tmp/init.json` after distribution. Record the initial root token in the secure SRE password vault for emergency use only; rotate it after creating per-operator userpass accounts in section 11.
+
+Unseal node 1:
+
+```bash
+vault operator unseal <key-share-1>   # operator A enters
+vault operator unseal <key-share-2>   # operator B enters
+vault operator unseal <key-share-3>   # operator C enters
+vault status | grep -E 'Sealed|HA Mode'
+# Expected: Sealed=false, HA Mode=active
+```
+
+Repeat the three `unseal` commands on nodes 2 and 3 after section 8 join completes.
+
+> **Recovery**: if 3 key holders are simultaneously unavailable, the cluster cannot be unsealed. Document this in the incident response plan. **Do NOT** store key shares in encrypted files, password managers, or any digital channel; they must be physical envelopes in geographically separated locations.
+
+---
+
+<REMAINING SECTIONS TO BE FILLED PER TASKS 1.11–1.14>
