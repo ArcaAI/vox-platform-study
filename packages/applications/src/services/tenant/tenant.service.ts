@@ -479,67 +479,87 @@ export class TenantService extends BaseService implements ITenantService {
       throw new ForbiddenException(`Tenant '${GLOBAL_TENANT_KEY}' holds system defaults and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
     }
 
-    const updatedConfigs: GlobalSettingEntity[] = [];
+    // TASK-302 Stream D Phase C (C.4) — all-or-nothing via Prisma's
+    // interactive transaction. Each per-row CAS is issued through the
+    // tx client; if any row's `_version` drifted (or any other failure
+    // bubbles out of the callback) the SQL transaction is automatically
+    // rolled back, including the already-applied earlier rows. The
+    // success-only `broadcastSysEvent(ResourceUpdated)` lives OUTSIDE
+    // the callback so a rolled-back batch produces no audit entry that
+    // would mislead downstream observers.
+    //
+    // Note: we deliberately do NOT route through `CoreUnitOfWorkService`
+    // because its `startTransaction()` issues `$transaction(async (tx) => tx)`
+    // which commits the transaction before any subsequent caller can use
+    // the tx client — i.e., the existing UoW pattern is non-functional.
+    // Using `databaseService.baseClient.$transaction(callback)` directly
+    // is the canonical Prisma idiom and delivers actual atomicity.
+    const updatedConfigs: GlobalSettingEntity[] = await this.databaseService.baseClient.$transaction(async (tx) => {
+      const results: GlobalSettingEntity[] = [];
+      for (const config of request) {
+        const existingConfig = await this.globalSettingRepository.findById(config.id);
 
-    for (const config of request) {
-      const existingConfig = await this.globalSettingRepository.findById(config.id);
+        if (!existingConfig) {
+          throw new ArgumentInvalidException(`Config with id ${config.id} not found`);
+        }
 
-      if (!existingConfig) {
-        throw new ArgumentInvalidException(`Config with id ${config.id} not found`);
+        if (existingConfig.tenantId !== tenant.id) {
+          throw new ArgumentInvalidException(`Config ${config.id} does not belong to tenant ${tenant.id}`);
+        }
+
+        if (existingConfig.locked === true && !isSuperAdmin) {
+          throw new ForbiddenException(`Setting '${existingConfig.key}' is locked and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
+        }
+
+        if (config.value !== undefined) {
+          await this.validateSmrConfigValue(existingConfig.key, config.value, tenant.id);
+        }
+
+        // Phase 0 Item 2 (TASK-302 Stream A) — explicit allowlist.
+        // NEVER spread `config` directly into `updateEntity`: that path
+        // assigns every key on the entity (mass-assignment) and lets a
+        // caller smuggle `key`, `tenantId`, `locked`, `defaultValue` into
+        // a GlobalSettingEntity even if the HTTP ValidationPipe is
+        // bypassed. Only `value` and `description` are mutable here.
+        const changes: { value?: string; description?: string } = {};
+        if (config.value !== undefined) {
+          changes.value = config.value;
+        }
+        if (config.description !== undefined) {
+          changes.description = config.description;
+        }
+        this.updateEntity(existingConfig, changes);
+
+        if (!existingConfig.hasChanges) {
+          results.push(existingConfig);
+          continue;
+        }
+
+        // TASK-302 Stream D Phase C (C.3) — Compare-And-Set against `_version`.
+        // The `OptimisticConcurrencyException` propagates straight out of
+        // the callback, aborting the outer `$transaction` (C.4 atomicity).
+        // The HTTP layer (Phase D ExceptionFilter) renders `412 Precondition
+        // Failed` with `{ currentVersion, yourVersion }`.
+        const updatedConfig = await this.globalSettingRepository.updateWithVersion(
+          existingConfig.id,
+          existingConfig,
+          config.expectedVersion,
+          tx,
+        );
+
+        if (!updatedConfig) {
+          throw new InternalServerErrorException(`Failed to update GlobalSettingEntity with id: ${config.id}`);
+        }
+
+        results.push(updatedConfig);
       }
-
-      if (existingConfig.tenantId !== tenant.id) {
-        throw new ArgumentInvalidException(`Config ${config.id} does not belong to tenant ${tenant.id}`);
-      }
-
-      if (existingConfig.locked === true && !isSuperAdmin) {
-        throw new ForbiddenException(`Setting '${existingConfig.key}' is locked and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
-      }
-
-      if (config.value !== undefined) {
-        await this.validateSmrConfigValue(existingConfig.key, config.value, tenant.id);
-      }
-
-      // Phase 0 Item 2 (TASK-302 Stream A) — explicit allowlist.
-      // NEVER spread `config` directly into `updateEntity`: that path
-      // assigns every key on the entity (mass-assignment) and lets a
-      // caller smuggle `key`, `tenantId`, `locked`, `defaultValue` into
-      // a GlobalSettingEntity even if the HTTP ValidationPipe is
-      // bypassed. Only `value` and `description` are mutable here.
-      const changes: { value?: string; description?: string } = {};
-      if (config.value !== undefined) {
-        changes.value = config.value;
-      }
-      if (config.description !== undefined) {
-        changes.description = config.description;
-      }
-      this.updateEntity(existingConfig, changes);
-
-      if (!existingConfig.hasChanges) {
-        updatedConfigs.push(existingConfig);
-        continue;
-      }
-
-      // TASK-302 Stream D Phase C (C.3) — Compare-And-Set against `_version`.
-      // The `OptimisticConcurrencyException` propagates straight out so the
-      // HTTP layer (Phase D ExceptionFilter) can render `412 Precondition
-      // Failed` with `{ currentVersion, yourVersion }`. The transaction
-      // wrapper added in C.4 turns the multi-row case into all-or-nothing.
-      const updatedConfig = await this.globalSettingRepository.updateWithVersion(
-        existingConfig.id,
-        existingConfig,
-        config.expectedVersion,
-      );
-
-      if (!updatedConfig) {
-        throw new InternalServerErrorException(`Failed to update GlobalSettingEntity with id: ${config.id}`);
-      }
-
-      updatedConfigs.push(updatedConfig);
-    }
+      return results;
+    });
 
     // Phase 0 Item 4 (TASK-302 Stream A) — scrub @Secret fields when locked.
     // Per-entity decision: a mixed batch emits a partially-scrubbed array.
+    // C.4 — broadcast lives OUTSIDE the transaction so a rolled-back batch
+    // produces no `Resource.Updated` audit entry.
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceIds: updatedConfigs.map((config) => config.id),
       data: updatedConfigs.map((config) => scrubLockedForAudit(config)),

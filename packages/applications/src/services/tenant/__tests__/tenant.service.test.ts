@@ -67,9 +67,18 @@ const mockAsrPipelineRepository = {
     count: vi.fn(),
 };
 
-// Mock CoreDatabaseService
+// Mock CoreDatabaseService.
+// TASK-302 Stream D Phase C (C.4) — `updateTenantConfigs` now wraps the
+// per-row CAS loop in `databaseService.baseClient.$transaction(callback)`
+// for all-or-nothing semantics. The mock `$transaction` simply invokes the
+// callback with a stub tx client so the loop executes; tests then assert
+// on tx propagation, conflict rollback, and broadcast suppression.
+const mockTxClient = { __tx: true } as const;
 const mockDatabaseService = {
     getClient: vi.fn(),
+    baseClient: {
+        $transaction: vi.fn().mockImplementation(async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient)),
+    },
 };
 
 // Mock TenantBucketService
@@ -1453,7 +1462,8 @@ describe('TenantService', () => {
                 { id: 'gs-1', value: 'new', expectedVersion: 5 } as any,
             ]);
 
-            expect(updateWithVersion).toHaveBeenCalledWith('gs-1', setting, 5);
+            // The 4th arg is the tx client threaded by C.4's $transaction wrap.
+            expect(updateWithVersion).toHaveBeenCalledWith('gs-1', setting, 5, mockTxClient);
             expect(mockGlobalSettingRepository.update).not.toHaveBeenCalled();
         });
 
@@ -1508,6 +1518,139 @@ describe('TenantService', () => {
             ]);
 
             expect(updateWithVersion).not.toHaveBeenCalled();
+        });
+    });
+
+    // TASK-302 Stream D Phase C (C.4) — Prisma `$transaction(callback)` wraps
+    // the per-row CAS loop, so a mid-batch conflict rolls back BOTH the
+    // already-applied rows and the in-flight one. We rely on Prisma's
+    // interactive transaction semantics: if the callback throws, the SQL
+    // transaction is aborted automatically. Unit tests can only verify the
+    // structural guarantees (a `$transaction` was started, the conflict
+    // propagates, and the success-only broadcast does not fire on conflict).
+    // The B.4 Postgres regression test is the on-DB guard that real SQL
+    // rollback occurs.
+    describe('updateTenantConfigs — atomicity via $transaction (TASK-302 Stream D Phase C C.4)', () => {
+        beforeEach(() => {
+            // Reset the $transaction mock to the default "invoke callback with tx"
+            // implementation; individual tests can override it.
+            (mockDatabaseService.baseClient.$transaction as any).mockImplementation(
+                async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient),
+            );
+        });
+
+        it('wraps the bulk update in a single Prisma $transaction', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const setting = createMockGlobalSettingEntity({
+                id: 'gs-1',
+                tenantId: 'tenant-1',
+                locked: false,
+                hasChanges: true,
+            });
+            (setting as any).version = 5;
+            mockGlobalSettingRepository.findById.mockResolvedValueOnce(setting);
+            (mockGlobalSettingRepository as any).updateWithVersion = vi.fn().mockResolvedValueOnce(setting);
+
+            await service.updateTenantConfigs('tenant-1', [
+                { id: 'gs-1', value: 'new', expectedVersion: 5 } as any,
+            ]);
+
+            expect(mockDatabaseService.baseClient.$transaction).toHaveBeenCalledTimes(1);
+        });
+
+        it('threads the transaction client through to updateWithVersion as the 4th arg', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const setting = createMockGlobalSettingEntity({
+                id: 'gs-1',
+                tenantId: 'tenant-1',
+                locked: false,
+                hasChanges: true,
+            });
+            (setting as any).version = 5;
+            mockGlobalSettingRepository.findById.mockResolvedValueOnce(setting);
+
+            const updateWithVersion = vi.fn().mockResolvedValueOnce(setting);
+            (mockGlobalSettingRepository as any).updateWithVersion = updateWithVersion;
+
+            await service.updateTenantConfigs('tenant-1', [
+                { id: 'gs-1', value: 'new', expectedVersion: 5 } as any,
+            ]);
+
+            // Calls signature: (id, entity, expectedVersion, tx)
+            expect(updateWithVersion).toHaveBeenCalledWith('gs-1', setting, 5, mockTxClient);
+        });
+
+        it('rolls the whole batch back when any row\'s version drifted mid-batch', async () => {
+            const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const row1 = createMockGlobalSettingEntity({ id: 'gs-1', tenantId: 'tenant-1', locked: false, hasChanges: true });
+            const row2 = createMockGlobalSettingEntity({ id: 'gs-2', tenantId: 'tenant-1', locked: false, hasChanges: true });
+            (row1 as any).version = 5;
+            (row2 as any).version = 9;
+            mockGlobalSettingRepository.findById
+                .mockResolvedValueOnce(row1)
+                .mockResolvedValueOnce(row2);
+
+            (mockGlobalSettingRepository as any).updateWithVersion = vi.fn()
+                .mockResolvedValueOnce(row1) // row 1 wrote
+                .mockRejectedValueOnce(       // row 2 conflict — Prisma rolls back row 1
+                    new OptimisticConcurrencyException('GlobalSetting', 'gs-2', {
+                        expectedVersion: 9,
+                        currentVersion: 10,
+                    }),
+                );
+
+            // Clear emit so we can assert it was NOT fired on the failure.
+            mockEventEmitter.emit.mockClear();
+
+            await expect(
+                service.updateTenantConfigs('tenant-1', [
+                    { id: 'gs-1', value: 'a', expectedVersion: 5 } as any,
+                    { id: 'gs-2', value: 'b', expectedVersion: 9 } as any,
+                ]),
+            ).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+
+            // ResourceUpdated must not fire when the batch was rolled back.
+            const updatedBroadcasts = mockEventEmitter.emit.mock.calls.filter(
+                ([eventName]) => typeof eventName === 'string' && eventName.includes('Resource.Updated'),
+            );
+            expect(updatedBroadcasts).toEqual([]);
+        });
+
+        it('propagates a non-OCC failure inside the transaction so the batch still rolls back', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const setting = createMockGlobalSettingEntity({ id: 'gs-1', tenantId: 'tenant-1', locked: false, hasChanges: true });
+            (setting as any).version = 5;
+            mockGlobalSettingRepository.findById.mockResolvedValueOnce(setting);
+
+            (mockGlobalSettingRepository as any).updateWithVersion = vi.fn().mockRejectedValueOnce(
+                new Error('transient db failure'),
+            );
+
+            mockEventEmitter.emit.mockClear();
+
+            await expect(
+                service.updateTenantConfigs('tenant-1', [
+                    { id: 'gs-1', value: 'new', expectedVersion: 5 } as any,
+                ]),
+            ).rejects.toThrow('transient db failure');
+
+            const updatedBroadcasts = mockEventEmitter.emit.mock.calls.filter(
+                ([eventName]) => typeof eventName === 'string' && eventName.includes('Resource.Updated'),
+            );
+            expect(updatedBroadcasts).toEqual([]);
         });
     });
 });

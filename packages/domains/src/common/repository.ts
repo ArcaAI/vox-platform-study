@@ -138,17 +138,28 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
    *
    * Safe under transaction-mode pooling — no row lock is taken.
    *
+   * When `tx` is provided, the CAS predicate and the post-failure re-read
+   * are both issued through the interactive Prisma transaction client; the
+   * subsequent `findById` for the success-return shape is also routed via
+   * `tx`. This lets callers (e.g. `TenantService.updateTenantConfigs` C.4)
+   * compose a multi-row CAS batch inside a single Postgres transaction so
+   * a mid-batch conflict rolls every prior row back via standard SQL
+   * rollback semantics. When `tx` is omitted, behaviour is identical to
+   * before C.4 — the cached extended client is used.
+   *
    * @throws OptimisticConcurrencyException when the row exists but its
    *   version is no longer `expectedVersion`
    * @throws DataNotFoundException when the row no longer exists
    *
-   * @see TASK-302 Stream D Phase B
+   * @see TASK-302 Stream D Phase B (CAS), Phase C C.4 (transactional batch)
    * @see https://github.com/prisma/prisma/issues/10207 (MySQL-only caveat)
    */
   public async updateWithVersion(
     id: EntityId,
     entity: DomainEntity,
     expectedVersion: number,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tx?: Prisma.TransactionClient | any,
   ): Promise<DomainEntity> {
     const changes = this._mapper.toPersistenceChanges(entity);
 
@@ -158,13 +169,19 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
     const { version: _v, ...safeChanges } = changes as Record<string, any>;
 
-    const result = await this.db.updateMany({
+    // When a transaction client is supplied, route writes and the
+    // disambiguating re-read through it; otherwise fall back to the
+    // cached extended client (`this.db`).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const model: any = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
+
+    const result = await model.updateMany({
       where: { id, version: expectedVersion },
       data: { ...safeChanges, version: { increment: 1 } },
     });
 
     if (result.count === 0) {
-      const current = await this.db.findUnique({
+      const current = await model.findUnique({
         where: { id },
         select: { version: true },
       });
@@ -177,7 +194,33 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
       });
     }
 
-    return this.findById(id);
+    // Read the freshly-bumped row through the same context so callers
+    // inside `$transaction` see the in-flight write rather than the
+    // snapshot of the outer connection.
+    return this.findByIdInContext(id, tx);
+  }
+
+  /**
+   * Variant of `findById` that uses the supplied transaction client when
+   * one is provided. Kept private to the CAS path because no other call
+   * site needs it today; promote to a generic helper if and when a second
+   * caller appears.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async findByIdInContext(id: EntityId, tx?: Prisma.TransactionClient | any): Promise<DomainEntity> {
+    if (!tx) {
+      return this.findById(id);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const model: any = (tx as Record<string, any>)[this._modelName];
+    const found = await model.findUnique({
+      where: { id },
+      include: this._includes,
+    });
+    if (!found) {
+      throw new DataNotFoundException(this._modelName, id);
+    }
+    return this._mapper.toDomainEntity(found);
   }
 
   public async delete(id: EntityId): Promise<DomainEntity> {
