@@ -131,6 +131,7 @@ export {
   // Main Processor
   STTProcessor,
   createSTT,
+  type STTStreamingTransport, // TASK-298 D-4
 
   // Audio Buffer Manager
   AudioBufferManager,
@@ -154,6 +155,13 @@ export {
   LocalSTTProvider,
   RemoteSTTProvider,
   BackendSTTProvider, // Deprecated alias
+
+  // TASK-298 D-4 — pipeline-aware streaming provider.
+  StreamingBackendSTTProvider,
+  type StreamingRemoteProviderConfig,
+  type StreamingSessionLike,
+  type StreamingWsClientLike,
+  type StreamingTranscriptPayload,
 } from './providers/index.js';
 
 // ============================================================================

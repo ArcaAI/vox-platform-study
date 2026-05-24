@@ -29,6 +29,34 @@ import { getVADBrowserSupport, isVADSupported } from '../utils/browserSupport.js
 import { DEFAULT_BASE_ASSET_PATH, DEFAULT_ONNX_WASM_BASE_PATH } from '../constants.js';
 
 /**
+ * TASK-300 L-10: resolve a safe ONNX Runtime WASM thread count.
+ *
+ * Returns `min(8, navigator.hardwareConcurrency)` when the host page is
+ * cross-origin-isolated (SharedArrayBuffer is available), `1` otherwise.
+ * Mirrors the strategy used in `packages/stt/src/workers/whisper.worker.ts`
+ * so the two ORT consumers stay aligned.
+ */
+const MAX_VAD_ORT_THREADS = 8;
+function resolveOrtNumThreads(): number {
+  const isolated = (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
+  if (!isolated) return 1;
+  const hwConcurrency = (globalThis as { navigator?: { hardwareConcurrency?: number } }).navigator?.hardwareConcurrency;
+  if (typeof hwConcurrency !== 'number' || !Number.isFinite(hwConcurrency) || hwConcurrency < 2) return 1;
+  return Math.min(MAX_VAD_ORT_THREADS, Math.floor(hwConcurrency));
+}
+
+/**
+ * Configure the global `ort.env.wasm.numThreads` if `ort` is available on
+ * the page (vad-web bundles its own ORT instance). We avoid hard-importing
+ * `onnxruntime-web` here because vad-web manages the runtime instance.
+ */
+function configureOrtThreads(): void {
+  const ort = (globalThis as { ort?: { env?: { wasm?: { numThreads?: number } } } }).ort;
+  if (!ort?.env?.wasm) return;
+  ort.env.wasm.numThreads = resolveOrtNumThreads();
+}
+
+/**
  * VADProcessor provides Voice Activity Detection for audio tracks.
  *
  * Features:
@@ -119,12 +147,16 @@ export class VADProcessor extends BaseProcessor {
   // Speech tracking
   private speechStartTime = 0;
 
-  // Sliding-window probability stats (TASK-271 H-2).
-  // At 31.25 v5 frames/sec a 300-slot window covers ~9.6s of audio. Using
+  // Sliding-window probability stats (TASK-271 H-2 / TASK-300 L-4).
+  // At 31.25 v5 frames/sec a 1024-slot window covers ~32.8s of audio. Using
   // a fixed Float32Array keeps memory constant regardless of session
   // length (previously the running average accumulated unboundedly,
   // eroding precision over multi-hour consultations).
-  private readonly PROB_WINDOW_SIZE = 300;
+  //
+  // TASK-300 L-4 raised the window from 300 → 1024 to span the typical
+  // pause/turn boundary in a doctor-patient consultation; the audit found
+  // 300 was too aggressive for medical dictation.
+  private readonly PROB_WINDOW_SIZE = 1024;
   private readonly probWindow = new Float32Array(this.PROB_WINDOW_SIZE);
   private probWindowIdx = 0;
   private probWindowCount = 0;
@@ -235,6 +267,14 @@ export class VADProcessor extends BaseProcessor {
    */
   private async initMicVAD(stream: MediaStream): Promise<void> {
     try {
+      // TASK-300 L-10: opt into multi-threaded ONNX Runtime WASM when the host
+      // page is cross-origin-isolated. SharedArrayBuffer (required for ORT's
+      // threaded inference) is only available under COOP/COEP isolation.
+      // Without isolation we leave the default (1) intact — promoting it
+      // crashes ORT immediately. We clamp to 8 because Silero VAD sees no
+      // benefit past that and the rest of the page must remain responsive.
+      configureOrtThreads();
+
       // Build vad-web options (library expects milliseconds, not frames)
       const vadOptions: Partial<RealTimeVADOptions> = {
         // Model configuration
@@ -549,17 +589,28 @@ export class VADProcessor extends BaseProcessor {
   }
 
   /**
-   * Update thresholds dynamically.
+   * Update thresholds dynamically. Triggers a `restart()` when the new
+   * thresholds differ from the active ones — vad-web does not support
+   * mutating thresholds on a live `MicVAD`, so the underlying ONNX session
+   * is rebuilt with the new values (TASK-300 L-3).
+   *
+   * Safe to call before `init()`; the new values are stored and applied on
+   * the next `init()` call.
    *
    * @param positiveSpeechThreshold - New positive threshold
    * @param negativeSpeechThreshold - New negative threshold
    */
   async updateThresholds(positiveSpeechThreshold: number, negativeSpeechThreshold: number): Promise<void> {
+    const changed =
+      this.options.positiveSpeechThreshold !== positiveSpeechThreshold ||
+      this.options.negativeSpeechThreshold !== negativeSpeechThreshold;
+
     this.options.positiveSpeechThreshold = positiveSpeechThreshold;
     this.options.negativeSpeechThreshold = negativeSpeechThreshold;
 
-    // Note: vad-web doesn't support runtime threshold updates,
-    // would need to restart with new options
+    if (changed && this.micVAD) {
+      await this.restart();
+    }
   }
 
   /**
@@ -586,7 +637,8 @@ export class VADProcessor extends BaseProcessor {
       }
     }
 
-    // Update thresholds if provided
+    // Update thresholds if provided. `updateThresholds` already guards
+    // against unchanged values so callers don't trigger a redundant restart.
     if (options.positiveSpeechThreshold !== undefined || options.negativeSpeechThreshold !== undefined) {
       await this.updateThresholds(
         options.positiveSpeechThreshold ?? this.options.positiveSpeechThreshold,
@@ -671,6 +723,24 @@ export class VADProcessor extends BaseProcessor {
     } finally {
       this.resetting = false;
     }
+  }
+
+  /**
+   * Public alias for {@link reset}. Rebuilds the underlying `MicVAD`
+   * (which resets Silero v5's LSTM hidden state) without changing the
+   * input stream or any processor options.
+   *
+   * Used by {@link updateThresholds} / {@link updateOptions} to apply
+   * threshold/sensitivity changes (vad-web has no live-update API). Also
+   * available to integrators for manual hot-reload scenarios — e.g. after
+   * a known noise burst that poisoned the LSTM activations.
+   *
+   * No-op when the processor has not been initialized.
+   *
+   * TASK-300 L-3.
+   */
+  async restart(): Promise<void> {
+    return this.reset();
   }
 
   /**

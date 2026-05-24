@@ -116,6 +116,14 @@ export interface TranscriptionPipelineConfig {
     returnTimestamps?: boolean | 'word';
     /** Let model auto-detect language for multilingual/code-switching audio */
     codeSwitching?: boolean;
+    /**
+     * TASK-298 D-4 — Pipeline-aware streaming transport injected by the SDK
+     * (PluginManager builds it when a remote `pipelineId` is set, then passes
+     * it through to the STT stage factory). The transport is `unknown` here
+     * to keep this file free of a hard dependency on `@arcaai/stt` types;
+     * `TranscriptionPipeline` narrows it to `STTStreamingTransport` at use.
+     */
+    streamingTransport?: unknown;
   };
 }
 

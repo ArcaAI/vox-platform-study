@@ -82,6 +82,7 @@ enum AuditAction {
     ARCHIVE
     LOGIN
     LOGOUT
+    IMPERSONATED_ACTION
 
     @@schema("core")
 }

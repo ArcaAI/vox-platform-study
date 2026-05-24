@@ -9,7 +9,7 @@
  */
 
 import type { TranscriptionResult, ComputeDevice, ModelLoadProgress } from '../types/index.js';
-import { getLanguageCode } from '../types/index.js';
+import { getLanguageCode, STTError, STTErrorCode } from '../types/index.js';
 import type { EngineConfig, TranscribeOptions, EngineStats } from './types.js';
 import { BaseEngine } from './BaseEngine.js';
 import { STTWorkerCrashError } from './errors.js';
@@ -347,6 +347,22 @@ export class WhisperWorkerEngine extends BaseEngine {
       throw new Error('Worker not initialized');
     }
 
+    // TASK-300 L-2: capability gate before crossing the worker boundary so
+    // callers get a synchronous, typed STTError instead of an opaque worker
+    // failure. Mirrors WhisperEngine's check on the main-thread path.
+    const task = options?.task ?? this.config.task;
+    if (task === 'translate') {
+      const modelId =
+        this.config.modelPath ??
+        this.getModelId(this.config.model, this.config.language, this.config.quantized, this.config.returnTimestamps);
+      if (modelId.endsWith('.en')) {
+        throw new STTError(
+          STTErrorCode.NOT_SUPPORTED,
+          `English-only Whisper models cannot translate (model: ${modelId}). Use a multilingual checkpoint (e.g. Xenova/whisper-small).`,
+        );
+      }
+    }
+
     this.transcribing = true;
     const startTime = performance.now();
 
@@ -363,6 +379,9 @@ export class WhisperWorkerEngine extends BaseEngine {
             language: options?.language,
             returnTimestamps: options?.returnTimestamps,
             prompt: options?.prompt,
+            // TASK-300 L-2: forward the resolved task (per-call override else
+            // engine-level default) so the worker can pipe it to the pipeline.
+            task,
           },
         },
         [audio.buffer],

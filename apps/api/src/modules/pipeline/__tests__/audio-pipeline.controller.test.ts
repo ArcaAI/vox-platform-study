@@ -9,10 +9,13 @@
  * `validateYaml` handler rather than the source string, so the test fails
  * if a future refactor changes the route in either direction.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
-import { RequestMethod } from '@nestjs/common';
+import { BadRequestException, RequestMethod } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { AudioPipelineController } from '../audio-pipeline.controller';
+import { ValidateYamlRequest } from '../dto';
 
 describe('AudioPipelineController route metadata (TASK-263 W0-9)', () => {
   it('class-level @Controller path stays admin/audio/pipelines', () => {
@@ -33,5 +36,89 @@ describe('AudioPipelineController route metadata (TASK-263 W0-9)', () => {
   it('validateYaml handler must NOT be bound to the legacy "validate-yaml" path', () => {
     const path = Reflect.getMetadata(PATH_METADATA, AudioPipelineController.prototype.validateYaml);
     expect(path).not.toBe('validate-yaml');
+  });
+});
+
+// =============================================================================
+// TASK-298 D-6 — validateConfig body field alignment
+// =============================================================================
+describe('AudioPipelineController validateYaml — TASK-298 D-6 body alignment', () => {
+  const buildController = () => {
+    const validateYaml = vi.fn().mockResolvedValue({ valid: true });
+    const svc = { validateYaml } as any;
+    return { controller: new AudioPipelineController(svc), validateYaml };
+  };
+
+  it('accepts `{ configYaml }` (SDK canonical field) and forwards its value', async () => {
+    const { controller, validateYaml } = buildController();
+    await controller.validateYaml({ configYaml: 'models:\n  asr: x' } as ValidateYamlRequest);
+    expect(validateYaml).toHaveBeenCalledWith('models:\n  asr: x');
+  });
+
+  it('accepts `{ yaml }` (legacy field) and forwards its value', async () => {
+    const { controller, validateYaml } = buildController();
+    await controller.validateYaml({ yaml: 'models:\n  asr: y' } as ValidateYamlRequest);
+    expect(validateYaml).toHaveBeenCalledWith('models:\n  asr: y');
+  });
+
+  it('rejects empty payloads via DTO validation', async () => {
+    const dto = plainToInstance(ValidateYamlRequest, {});
+    const errors = await validate(dto);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+});
+
+// =============================================================================
+// TASK-298 D-10 — narrower @Authorize on the admin controller
+// =============================================================================
+describe('AudioPipelineController authorization metadata — TASK-298 D-10', () => {
+  it('uses [manage, AsrPipeline] (tenant admins can self-serve), not [manage, all]', () => {
+    const meta = Reflect.getMetadata('required_permissions', AudioPipelineController);
+    expect(meta).toBeDefined();
+    expect(meta).toEqual(
+      expect.arrayContaining([{ action: 'manage', subject: 'AsrPipeline' }]),
+    );
+    expect(JSON.stringify(meta)).not.toContain('"all"');
+  });
+});
+
+// =============================================================================
+// TASK-298 D-7 — assign-tenant endpoint
+// =============================================================================
+describe('AudioPipelineController assignTenant — TASK-298 D-7', () => {
+  const buildController = () => {
+    const getById = vi.fn();
+    const svc = { getById } as any;
+    return { controller: new AudioPipelineController(svc), getById };
+  };
+
+  it('exposes POST :id/assign-tenant', () => {
+    const path = Reflect.getMetadata(PATH_METADATA, AudioPipelineController.prototype.assignTenant);
+    const method = Reflect.getMetadata(METHOD_METADATA, AudioPipelineController.prototype.assignTenant);
+    expect(path).toBe(':id/assign-tenant');
+    expect(method).toBe(RequestMethod.POST);
+  });
+
+  it('returns success when the pipeline belongs to the caller tenant', async () => {
+    const { controller, getById } = buildController();
+    getById.mockResolvedValue({ id: 'p-1', tenantId: 't-1' });
+
+    const result = await controller.assignTenant('p-1', { tenantId: 't-target' });
+
+    expect(result).toEqual(
+      expect.objectContaining({ pipelineId: 'p-1', tenantId: 't-target' }),
+    );
+  });
+
+  it('throws BadRequestException when pipeline is not in tenant scope', async () => {
+    const { controller, getById } = buildController();
+    getById.mockResolvedValue(null);
+
+    await expect(controller.assignTenant('p-foreign', { tenantId: 't-x' })).rejects.toThrow(BadRequestException);
+  });
+
+  it('throws BadRequestException when tenantId is missing', async () => {
+    const { controller } = buildController();
+    await expect(controller.assignTenant('p-1', { tenantId: '   ' } as any)).rejects.toThrow(BadRequestException);
   });
 });

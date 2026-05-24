@@ -5,11 +5,48 @@ import type { IncomingMessage } from 'http';
 import type { Subscription } from 'rxjs';
 import type WebSocket from 'ws';
 import type { Server } from 'ws';
+import { StreamTicketService } from '../auth/stream-ticket.service';
+
+/**
+ * TASK-298 D-1 / D-17 — STT WebSocket close codes.
+ *
+ * 4001 — missing required query parameter (sessionId or ticket)
+ * 4401 — invalid / expired / scope-mismatched stream ticket
+ * 1011 — internal error (resume buffer corruption etc.)
+ */
+export const WS_CLOSE_CODES = {
+  MISSING_PARAM: 4001,
+  AUTH_FAILED: 4401,
+} as const;
+
+/**
+ * TASK-298 D-17 — bounded per-session transcript replay buffer.
+ *
+ * The gateway keeps the last `RESUME_BUFFER_SIZE` transcript messages for
+ * every active session so that a brief disconnect (≤ buffer window) can be
+ * resumed without dropping transcripts. Bound is per-session to cap total
+ * memory at ~`activeSessions × RESUME_BUFFER_SIZE × avg msg size`.
+ */
+export const RESUME_BUFFER_SIZE = 200;
+
+/** Buffered transcript ready for replay. */
+interface BufferedTranscript {
+  seq: number;
+  msg: { type: string; seq?: number; [key: string]: unknown };
+}
 
 interface SessionInfo {
   sessionId: string;
   connectedAt: Date;
   binarySeq: number;
+  /** Server-assigned monotonic transcript seq (TASK-298 D-17). */
+  resultSeq: number;
+  /** Last N transcripts retained for replay (TASK-298 D-17). */
+  resumeBuffer: BufferedTranscript[];
+  /** User id from the consumed stream ticket (TASK-298 D-1). */
+  userId: string;
+  /** Tenant id from the consumed stream ticket (TASK-298 D-1). */
+  tenantId: string | null;
   resultSubscription?: Subscription;
 }
 
@@ -24,14 +61,46 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly sessionService: StreamingSessionService,
     private readonly bridgeService: StreamingAudioBridgeService,
+    private readonly streamTicketService: StreamTicketService,
   ) {}
 
-  handleConnection(client: WebSocket, req: IncomingMessage): void {
+  async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
     const url = new URL(req.url || '', 'http://localhost');
     const sessionId = url.searchParams.get('sessionId');
+    const ticket = url.searchParams.get('ticket');
 
+    // TASK-298 D-1 — auth gate runs BEFORE we register the session or
+    // subscribe to the result stream. A failed gate must NOT leak any
+    // transcript or even the session id.
     if (!sessionId) {
-      client.close(4001, 'Missing required query parameter: sessionId');
+      client.close(WS_CLOSE_CODES.MISSING_PARAM, 'Missing required query parameter: sessionId');
+      return;
+    }
+
+    if (!ticket) {
+      client.close(WS_CLOSE_CODES.MISSING_PARAM, 'Missing required query parameter: ticket');
+      return;
+    }
+
+    const stored = await this.streamTicketService.consumeTicket(ticket);
+    if (!stored) {
+      this.logger.warn({
+        message: 'WS handshake rejected — invalid stream ticket',
+        sessionId,
+      });
+      client.close(WS_CLOSE_CODES.AUTH_FAILED, 'Invalid or expired stream ticket');
+      return;
+    }
+
+    const expectedScope = `stt_session:${sessionId}`;
+    if (stored.scope !== expectedScope) {
+      this.logger.warn({
+        message: 'WS handshake rejected — ticket scope mismatch',
+        sessionId,
+        expectedScope,
+        actualScope: stored.scope,
+      });
+      client.close(WS_CLOSE_CODES.AUTH_FAILED, 'Stream ticket scope does not match session');
       return;
     }
 
@@ -39,6 +108,10 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       sessionId,
       connectedAt: new Date(),
       binarySeq: 0,
+      resultSeq: 0,
+      resumeBuffer: [],
+      userId: stored.userId,
+      tenantId: stored.tenantId,
     };
 
     this.sessions.set(client, session);
@@ -46,6 +119,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log({
       message: 'WebSocket client connected',
       sessionId,
+      userId: stored.userId,
+      tenantId: stored.tenantId,
       activeSessions: this.sessions.size,
     });
 
@@ -59,10 +134,12 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
     });
 
+    // TASK-298 D-1 — subscribe to results ONLY after the ticket gate passes.
     const resultSub = this.bridgeService.subscribeToResults(sessionId).subscribe({
       next: (msg) => {
+        const tagged = this.tagAndBuffer(session, msg as unknown as { type: string; [key: string]: unknown });
         if (client.readyState === client.OPEN) {
-          client.send(JSON.stringify(msg));
+          client.send(JSON.stringify(tagged));
         }
       },
       error: (err) => {
@@ -87,6 +164,24 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
 
     session.resultSubscription = resultSub;
+  }
+
+  /**
+   * Tag transcript messages with a server-assigned monotonic `seq` and push
+   * onto the bounded resume buffer (TASK-298 D-17). Non-transcript messages
+   * pass through unchanged.
+   */
+  private tagAndBuffer(session: SessionInfo, msg: { type: string; [key: string]: unknown }): { type: string; [key: string]: unknown } {
+    if (msg?.type !== 'transcript') {
+      return msg;
+    }
+    session.resultSeq += 1;
+    const tagged = { ...msg, seq: session.resultSeq };
+    session.resumeBuffer.push({ seq: session.resultSeq, msg: tagged });
+    if (session.resumeBuffer.length > RESUME_BUFFER_SIZE) {
+      session.resumeBuffer.splice(0, session.resumeBuffer.length - RESUME_BUFFER_SIZE);
+    }
+    return tagged;
   }
 
   handleDisconnect(client: WebSocket): void {
@@ -160,6 +255,12 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           break;
         }
 
+        case 'resume': {
+          // TASK-298 D-17 — resumability handshake.
+          this.handleResume(client, session, msg);
+          break;
+        }
+
         case 'close': {
           session.resultSubscription?.unsubscribe();
           this.bridgeService.unsubscribeFromResults(session.sessionId);
@@ -185,6 +286,80 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   getActiveSessionCount(): number {
     return this.sessions.size;
+  }
+
+  /**
+   * Handle the `{type:'resume', sessionId, lastSeq}` handshake from the SDK
+   * (TASK-298 D-17). When the requested `lastSeq` is still inside the bounded
+   * buffer, replay every buffered transcript with `seq > lastSeq` so the
+   * client recovers without dropping any final transcript. When the gap
+   * exceeds the buffer window, respond with `resume_failed` and the lowest
+   * still-available seq so the client knows the loss size.
+   */
+  private handleResume(client: WebSocket, session: SessionInfo, msg: { type: string; [key: string]: unknown }): void {
+    const reqSessionId = typeof msg.sessionId === 'string' ? msg.sessionId : null;
+    const lastSeq = typeof msg.lastSeq === 'number' && Number.isFinite(msg.lastSeq) ? msg.lastSeq : null;
+
+    if (!reqSessionId || reqSessionId !== session.sessionId || lastSeq === null) {
+      if (client.readyState === client.OPEN) {
+        client.send(
+          JSON.stringify({
+            type: 'resume_failed',
+            sessionId: session.sessionId,
+            reason: 'unknown_session',
+          }),
+        );
+      }
+      return;
+    }
+
+    const buffer = session.resumeBuffer;
+    if (buffer.length === 0) {
+      // Nothing buffered yet (e.g. first connect after server restart).
+      // Acknowledge the resume without replay; the client will receive new
+      // transcripts starting from `resultSeq + 1` as they come in.
+      if (client.readyState === client.OPEN) {
+        client.send(
+          JSON.stringify({
+            type: 'resumed',
+            sessionId: session.sessionId,
+            fromSeq: session.resultSeq,
+          }),
+        );
+      }
+      return;
+    }
+
+    const minAvailableSeq = buffer[0]!.seq;
+    if (lastSeq < minAvailableSeq - 1) {
+      if (client.readyState === client.OPEN) {
+        client.send(
+          JSON.stringify({
+            type: 'resume_failed',
+            sessionId: session.sessionId,
+            reason: 'buffer_overflow',
+            minAvailableSeq,
+          }),
+        );
+      }
+      return;
+    }
+
+    const toReplay = buffer.filter((b) => b.seq > lastSeq);
+    if (client.readyState === client.OPEN) {
+      client.send(
+        JSON.stringify({
+          type: 'resumed',
+          sessionId: session.sessionId,
+          fromSeq: toReplay.length > 0 ? toReplay[0]!.seq : session.resultSeq,
+        }),
+      );
+      for (const entry of toReplay) {
+        if (client.readyState === client.OPEN) {
+          client.send(JSON.stringify(entry.msg));
+        }
+      }
+    }
   }
 
   private sendError(client: WebSocket, code: string, message: string): void {

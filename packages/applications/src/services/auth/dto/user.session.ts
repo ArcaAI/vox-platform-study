@@ -50,6 +50,33 @@ export class UserSession {
   @IsOptional()
   permissions?: string[];
 
+  /**
+   * When the session is the result of an impersonation grant, this holds the
+   * admin user id who initiated the impersonation. Carried through JWT claim
+   * `impersonatedBy` (see TASK-295 H-2).
+   */
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  impersonatedBy?: string;
+
+  /**
+   * JWT `jti` claim of the active token. Required by `JwtRevocationService`
+   * to mark this exact token revoked when `/auth/revoke-impersonation` runs.
+   */
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  jti?: string;
+
+  /**
+   * JWT `exp` claim (epoch seconds). Bounds the Redis TTL of the revocation
+   * entry so revoked-jti rows self-clean.
+   */
+  @ApiProperty({ required: false })
+  @IsOptional()
+  exp?: number;
+
   constructor(init: UserSession) {
     this.id = init.id;
     this.firstName = init.firstName;
@@ -61,5 +88,8 @@ export class UserSession {
     this.token = init.token;
     this.roles = init.roles || [];
     this.permissions = init.permissions || [];
+    this.impersonatedBy = init.impersonatedBy;
+    this.jti = init.jti;
+    this.exp = init.exp;
   }
 }

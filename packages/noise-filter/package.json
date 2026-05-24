@@ -3,13 +3,17 @@
   "version": "0.1.0",
   "description": "AI-powered noise cancellation plugin for @arcaai/room using RNNoise WebAssembly",
   "private": false,
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "sideEffects": [
+    "./dist/worklets/rnnoise.worklet.js"
+  ],
   "exports": {
     ".": {
+      "react-server": "./dist/react-server-stub.mjs",
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
+      "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
     "./worklet": {

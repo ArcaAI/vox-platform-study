@@ -101,6 +101,7 @@ describe('StreamTicketService', () => {
         tenantId: 'tenant-1',
         scope: 'consultation_job:job-1',
         exp: issued.expiresAt,
+        impersonatedBy: null,
       });
       expect(cache.del).toHaveBeenCalledWith(`${STREAM_TICKET_KEY_PREFIX}${issued.ticket}`);
       expect(cache.store.has(`${STREAM_TICKET_KEY_PREFIX}${issued.ticket}`)).toBe(false);
@@ -142,6 +143,59 @@ describe('StreamTicketService', () => {
       expect(result).toBeNull();
       // We still attempt to clean up the bad key.
       expect(cache.del).toHaveBeenCalledWith(`${STREAM_TICKET_KEY_PREFIX}garbage`);
+    });
+  });
+
+  // ─── TASK-295 SEC-A5-6 / M-8: impersonatedBy ─────────────────────────────
+  describe('impersonatedBy propagation (TASK-295 SEC-A5-6)', () => {
+    it('persists impersonatedBy on the stored ticket when supplied at issue time', async () => {
+      const issued = await service.issueTicket({
+        userId: 'doctor-001',
+        tenantId: 'tenant-acme',
+        scope: 'consultation_job:job-1',
+        impersonatedBy: 'admin-007',
+      });
+
+      const stored = JSON.parse(cache.store.get(`${STREAM_TICKET_KEY_PREFIX}${issued.ticket}`)!);
+      expect(stored.impersonatedBy).toBe('admin-007');
+    });
+
+    it('returns impersonatedBy on consumeTicket so the guard can restore it on req.user', async () => {
+      const issued = await service.issueTicket({
+        userId: 'doctor-001',
+        tenantId: 'tenant-acme',
+        scope: 'consultation_job:job-1',
+        impersonatedBy: 'admin-007',
+      });
+
+      const consumed = await service.consumeTicket(issued.ticket);
+      expect(consumed?.impersonatedBy).toBe('admin-007');
+    });
+
+    it('persists impersonatedBy as null when caller omits it', async () => {
+      const issued = await service.issueTicket({
+        userId: 'user-1',
+        scope: 'foo:bar',
+      });
+
+      const stored = JSON.parse(cache.store.get(`${STREAM_TICKET_KEY_PREFIX}${issued.ticket}`)!);
+      expect(stored.impersonatedBy).toBeNull();
+    });
+
+    it('honours legacy stored tickets without impersonatedBy field (backward compat)', async () => {
+      const legacyTicket = 'legacy-ticket-1';
+      const legacyPayload = {
+        userId: 'user-1',
+        tenantId: 'tenant-1',
+        scope: 'consultation_job:job-1',
+        exp: Date.now() + 30_000,
+        // No impersonatedBy — simulating a ticket minted before TASK-295.
+      };
+      cache.store.set(`${STREAM_TICKET_KEY_PREFIX}${legacyTicket}`, JSON.stringify(legacyPayload));
+
+      const consumed = await service.consumeTicket(legacyTicket);
+      expect(consumed?.impersonatedBy).toBeNull();
+      expect(consumed?.userId).toBe('user-1');
     });
   });
 

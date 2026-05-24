@@ -21,6 +21,11 @@ const createMockContextItemRepository = () => ({
     findAll: vi.fn(),
 });
 
+// TASK-299 D-11 — approval check via ContextItemVersion (changeReason='approved').
+const createMockContextItemVersionRepository = () => ({
+    getVersionsByChangeReason: vi.fn(),
+});
+
 const createMockDnaReportRepository = () => ({
     findLatestForDoctor: vi.fn(),
     create: vi.fn(),
@@ -173,6 +178,7 @@ describe('DnaWritingStyleProcessor', () => {
     let mockConfigService: ReturnType<typeof createMockConfigService>;
     let mockJobMetrics: ReturnType<typeof createMockJobMetrics>;
     let mockClsService: ReturnType<typeof createMockClsService>;
+    let mockContextItemVersionRepo: ReturnType<typeof createMockContextItemVersionRepository>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -189,11 +195,21 @@ describe('DnaWritingStyleProcessor', () => {
         mockConfigService = createMockConfigService();
         mockJobMetrics = createMockJobMetrics();
         mockClsService = createMockClsService();
+        // TASK-299 D-11 — default to "everything approved" so the legacy
+        // tests below continue to exercise the success path.
+        mockContextItemVersionRepo = createMockContextItemVersionRepository();
+        mockContextItemVersionRepo.getVersionsByChangeReason.mockImplementation(
+            async (contextItemId: string, changeReason: string) =>
+                changeReason === 'approved'
+                    ? [{ id: 'v', contextItemId, changeReason: 'approved', versionNumber: 1 }]
+                    : [],
+        );
 
         processor = new DnaWritingStyleProcessor(
             mockJobService as never,
             mockAppSettings as never,
             mockContextItemRepo as never,
+            mockContextItemVersionRepo as never,
             mockDnaReportRepo as never,
             mockDnaVersionRepo as never,
             mockDnaUsageRepo as never,
@@ -276,8 +292,8 @@ describe('DnaWritingStyleProcessor', () => {
 
         it('should succeed gathering from ContextItems when no textSamples provided', async () => {
             mockContextItemRepo.findAll.mockResolvedValue([
-                { content: 'Doctor summary text 1', text: null },
-                { content: null, text: 'Doctor summary text 2' },
+                { id: 'ci-1', content: 'Doctor summary text 1', text: null, type: 'RAW_SUMMARY' },
+                { id: 'ci-2', content: null, text: 'Doctor summary text 2', type: 'MODIFIED_SUMMARY' },
             ]);
             mockPromptService.listPromptTemplates.mockResolvedValue([
                 { id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' },
@@ -376,8 +392,8 @@ describe('DnaWritingStyleProcessor', () => {
 
         it('should still process when ContextItems exist but all have empty content', async () => {
             mockContextItemRepo.findAll.mockResolvedValue([
-                { content: '', text: null },
-                { content: null, text: '' },
+                { id: 'ci-empty-1', content: '', text: null, type: 'RAW_SUMMARY' },
+                { id: 'ci-empty-2', content: null, text: '', type: 'MODIFIED_SUMMARY' },
             ]);
             mockPromptService.listPromptTemplates.mockResolvedValue([
                 { id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' },
@@ -605,6 +621,7 @@ describe('DnaWritingStyleProcessor', () => {
                 mockJobService as never,
                 mockAppSettings as never,
                 mockContextItemRepo as never,
+                mockContextItemVersionRepo as never,
                 mockDnaReportRepo as never,
                 mockDnaVersionRepo as never,
                 mockDnaUsageRepo as never,
@@ -645,6 +662,7 @@ describe('DnaWritingStyleProcessor', () => {
                 mockJobService as never,
                 mockAppSettings as never,
                 mockContextItemRepo as never,
+                mockContextItemVersionRepo as never,
                 mockDnaReportRepo as never,
                 mockDnaVersionRepo as never,
                 mockDnaUsageRepo as never,
@@ -724,6 +742,7 @@ describe('DnaWritingStyleProcessor', () => {
                 mockJobService as never,
                 limitedSettings as never,
                 mockContextItemRepo as never,
+                mockContextItemVersionRepo as never,
                 mockDnaReportRepo as never,
                 mockDnaVersionRepo as never,
                 mockDnaUsageRepo as never,
@@ -736,7 +755,7 @@ describe('DnaWritingStyleProcessor', () => {
             );
 
             mockContextItemRepo.findAll.mockResolvedValue([
-                { content: 'text-1', text: null },
+                { id: 'ci-1', content: 'text-1', text: null, type: 'RAW_SUMMARY' },
             ]);
             mockPromptService.listPromptTemplates.mockResolvedValue([]);
             mockHttpService.axiosRef.post.mockResolvedValue(
@@ -764,6 +783,7 @@ describe('DnaWritingStyleProcessor', () => {
                 mockJobService as never,
                 tinyLimit as never,
                 mockContextItemRepo as never,
+                mockContextItemVersionRepo as never,
                 mockDnaReportRepo as never,
                 mockDnaVersionRepo as never,
                 mockDnaUsageRepo as never,
@@ -824,6 +844,7 @@ describe('DnaWritingStyleProcessor', () => {
                 mockJobService as never,
                 emptySettings as never,
                 mockContextItemRepo as never,
+                mockContextItemVersionRepo as never,
                 mockDnaReportRepo as never,
                 mockDnaVersionRepo as never,
                 mockDnaUsageRepo as never,
@@ -836,7 +857,7 @@ describe('DnaWritingStyleProcessor', () => {
             );
 
             mockContextItemRepo.findAll.mockResolvedValue([
-                { content: 'text', text: null },
+                { id: 'ci-x', content: 'text', text: null, type: 'RAW_SUMMARY' },
             ]);
             mockPromptService.listPromptTemplates.mockResolvedValue([]);
             mockHttpService.axiosRef.post.mockResolvedValue(
@@ -966,6 +987,166 @@ describe('DnaWritingStyleProcessor', () => {
             );
 
             expect(mockClsService.set).toHaveBeenCalledWith('user', expect.objectContaining({ id: 'user-from-job' }));
+        });
+    });
+
+    // ─── TASK-299 D-11 — APPROVED-only learning corpus ──────────────────
+
+    describe('TASK-299 D-11 — APPROVED-only learning corpus', () => {
+        it('excludes non-approved summaries from the corpus and only feeds approved ones to SMR', async () => {
+            mockContextItemVersionRepo.getVersionsByChangeReason.mockImplementation(
+                async (contextItemId: string, changeReason: string) => {
+                    if (changeReason !== 'approved') return [];
+                    return contextItemId === 'ci-approved'
+                        ? [{ id: 'v-1', contextItemId, changeReason: 'approved', versionNumber: 1 }]
+                        : [];
+                },
+            );
+
+            mockContextItemRepo.findAll.mockResolvedValue([
+                { id: 'ci-approved', content: 'Approved summary body', type: 'RAW_SUMMARY' },
+                { id: 'ci-pending', content: 'Pending summary body', type: 'RAW_SUMMARY' },
+                { id: 'ci-modified-pending', content: 'Modified but not approved', type: 'MODIFIED_SUMMARY' },
+            ]);
+            mockPromptService.listPromptTemplates.mockResolvedValue([
+                { id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' },
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue(
+                createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'),
+            );
+            mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
+            mockDnaReportRepo.create.mockResolvedValue({
+                id: 'r',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            });
+            mockDnaVersionRepo.create.mockResolvedValue({});
+            mockDnaUsageRepo.create.mockResolvedValue({});
+
+            await processor.process(createMockJob({}) as never);
+
+            const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
+            expect(requestBody.prompt).toContain('Approved summary body');
+            expect(requestBody.prompt).not.toContain('Pending summary body');
+            expect(requestBody.prompt).not.toContain('Modified but not approved');
+        });
+
+        it('persists source contextItemIds inside reportData for explainability', async () => {
+            const { DnaWritingStyleReportFactory } = await import('@arcaai/domains');
+
+            mockContextItemVersionRepo.getVersionsByChangeReason.mockImplementation(
+                async (contextItemId: string, changeReason: string) => {
+                    if (changeReason !== 'approved') return [];
+                    return contextItemId === 'ci-a' || contextItemId === 'ci-c'
+                        ? [{ id: 'v', contextItemId, changeReason: 'approved', versionNumber: 1 }]
+                        : [];
+                },
+            );
+
+            mockContextItemRepo.findAll.mockResolvedValue([
+                { id: 'ci-a', content: 'A', type: 'RAW_SUMMARY' },
+                { id: 'ci-b', content: 'B', type: 'RAW_SUMMARY' },
+                { id: 'ci-c', content: 'C', type: 'MODIFIED_SUMMARY' },
+            ]);
+            mockPromptService.listPromptTemplates.mockResolvedValue([
+                { id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' },
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue(
+                createAxiosSmrResponse('{"reportData":{"x":1},"styleText":"Style"}'),
+            );
+            mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
+            mockDnaReportRepo.create.mockResolvedValue({
+                id: 'r',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            });
+            mockDnaVersionRepo.create.mockResolvedValue({});
+            mockDnaUsageRepo.create.mockResolvedValue({});
+
+            await processor.process(createMockJob({}) as never);
+
+            expect(DnaWritingStyleReportFactory.CreateDnaWritingStyleReport).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    reportData: expect.objectContaining({
+                        sourceContextItemIds: ['ci-a', 'ci-c'],
+                    }),
+                }),
+            );
+        });
+
+        it('skips non-final-summary context items (e.g. PRE_SUMMARY, TRANSCRIPT) even when approved', async () => {
+            mockContextItemVersionRepo.getVersionsByChangeReason.mockImplementation(
+                async (_contextItemId: string, changeReason: string) =>
+                    changeReason === 'approved'
+                        ? [{ id: 'v', contextItemId: _contextItemId, changeReason: 'approved', versionNumber: 1 }]
+                        : [],
+            );
+
+            mockContextItemRepo.findAll.mockResolvedValue([
+                { id: 'ci-final', content: 'Final summary', type: 'RAW_SUMMARY' },
+                { id: 'ci-pre', content: 'Pre summary', type: 'PRE_SUMMARY' },
+                { id: 'ci-tx', content: 'Transcript', type: 'TRANSCRIPT' },
+            ]);
+            mockPromptService.listPromptTemplates.mockResolvedValue([
+                { id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' },
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue(
+                createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'),
+            );
+            mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
+            mockDnaReportRepo.create.mockResolvedValue({
+                id: 'r',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            });
+            mockDnaVersionRepo.create.mockResolvedValue({});
+            mockDnaUsageRepo.create.mockResolvedValue({});
+
+            await processor.process(createMockJob({}) as never);
+
+            const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
+            expect(requestBody.prompt).toContain('Final summary');
+            expect(requestBody.prompt).not.toContain('Pre summary');
+            expect(requestBody.prompt).not.toContain('Transcript');
+        });
+
+        it('fails the job when no approved summaries exist (no textSamples override)', async () => {
+            mockContextItemVersionRepo.getVersionsByChangeReason.mockResolvedValue([]);
+            mockContextItemRepo.findAll.mockResolvedValue([
+                { id: 'ci-1', content: 'Unapproved', type: 'RAW_SUMMARY' },
+                { id: 'ci-2', content: 'Unapproved 2', type: 'MODIFIED_SUMMARY' },
+            ]);
+
+            await expect(processor.process(createMockJob({}) as never)).rejects.toThrow(
+                /no.*approved.*samples|No text samples available/i,
+            );
+
+            expect(mockJobService.notifyFailed).toHaveBeenCalled();
+        });
+
+        it('bypasses the approval filter when explicit textSamples are supplied (admin/migration path)', async () => {
+            mockContextItemVersionRepo.getVersionsByChangeReason.mockResolvedValue([]);
+            mockPromptService.listPromptTemplates.mockResolvedValue([
+                { id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' },
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue(
+                createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'),
+            );
+            mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
+            mockDnaReportRepo.create.mockResolvedValue({
+                id: 'r',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            });
+            mockDnaVersionRepo.create.mockResolvedValue({});
+            mockDnaUsageRepo.create.mockResolvedValue({});
+
+            await processor.process(
+                createMockJob({ textSamples: ['Explicit text sample bypassing approval'] }) as never,
+            );
+
+            const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
+            expect(requestBody.prompt).toContain('Explicit text sample bypassing approval');
         });
     });
 });

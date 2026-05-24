@@ -11,6 +11,16 @@ export interface LocalSpeakerDiarizerOptions {
   enabled: boolean;
   maxSpeakers: number;
   similarityThreshold?: number;
+  /**
+   * TASK-296 C-2: when set, the FIRST allocated speaker slot's id is pinned
+   * to this value instead of the default `speaker-1`. Subsequent slots stay
+   * sequentially numbered (`speaker-2`, `speaker-3`, ...).
+   *
+   * Short-term workaround for the 40-d MFCC vs 256-d backend embedding
+   * mismatch — gives the doctor a stable label even though the local
+   * diarizer cannot consume the backend embedding directly.
+   */
+  reservedSpeakerId?: string;
 }
 
 export interface LocalSpeakerAssignment {
@@ -40,11 +50,24 @@ export class LocalSpeakerDiarizer {
   private readonly maxSpeakers: number;
   private readonly similarityThreshold: number;
   private readonly profiles: SpeakerProfile[] = [];
+  private reservedSpeakerId?: string;
 
   constructor(options: LocalSpeakerDiarizerOptions) {
     this.enabled = options.enabled;
     this.maxSpeakers = Math.max(1, options.maxSpeakers || DEFAULT_MAX_SPEAKERS);
     this.similarityThreshold = options.similarityThreshold ?? DEFAULT_SIMILARITY_THRESHOLD;
+    this.reservedSpeakerId = options.reservedSpeakerId;
+  }
+
+  /**
+   * TASK-296 C-2: set / replace the doctor-reserved speaker id used for the
+   * FIRST allocated speaker slot. No-op if a profile has already been
+   * allocated (the first slot is fixed at creation time).
+   */
+  setReservedSpeakerId(id: string | undefined): void {
+    if (this.profiles.length === 0) {
+      this.reservedSpeakerId = id;
+    }
   }
 
   assignSpeaker(audio: Float32Array): string | undefined {
@@ -130,8 +153,12 @@ export class LocalSpeakerDiarizer {
   }
 
   private createProfile(feature: Float32Array): SpeakerProfile {
+    const id =
+      this.profiles.length === 0 && this.reservedSpeakerId
+        ? this.reservedSpeakerId
+        : `speaker-${this.profiles.length + 1}`;
     const profile: SpeakerProfile = {
-      id: `speaker-${this.profiles.length + 1}`,
+      id,
       centroid: feature.slice(),
       samples: 1,
     };

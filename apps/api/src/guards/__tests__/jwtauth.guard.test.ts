@@ -54,6 +54,7 @@ describe('JwtAuthGuard', () => {
     let guard: JwtAuthGuard;
     let reflector: Reflector;
     let streamTicketService: ReturnType<typeof createMockTicketService>;
+    let clsService: { set: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> };
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -61,7 +62,8 @@ describe('JwtAuthGuard', () => {
             getAllAndOverride: vi.fn(),
         } as unknown as Reflector;
         streamTicketService = createMockTicketService();
-        guard = new JwtAuthGuard(reflector, streamTicketService as never);
+        clsService = { set: vi.fn(), get: vi.fn() };
+        guard = new JwtAuthGuard(reflector, streamTicketService as never, clsService as never);
     });
 
     describe('canActivate — base behaviour', () => {
@@ -241,6 +243,87 @@ describe('JwtAuthGuard', () => {
 
             expect(result).toBe(true);
             expect(streamTicketService.consumeTicket).toHaveBeenCalledWith('tkt-1');
+        });
+    });
+
+    // ─── TASK-295 SEC-A5-6 / M-8: stream-ticket carries impersonatedBy ───────
+    describe('canActivate — ticket impersonation context (TASK-295 SEC-A5-6)', () => {
+        function whenScopeMetadataIs(config: { namespace: string; param: string } | undefined) {
+            (reflector.getAllAndOverride as ReturnType<typeof vi.fn>).mockImplementation((key: unknown) => {
+                if (key === SKIP_AUTH_KEY) return false;
+                if (key === STREAM_SCOPE_METADATA) return config;
+                return undefined;
+            });
+        }
+
+        it('restores impersonatedBy on req.user when the ticket was minted under impersonation', async () => {
+            const request: MockRequest = {
+                query: { ticket: 'tkt-imp' },
+                params: { jobId: 'job-9' },
+            };
+            const context = createMockContext(request);
+            whenScopeMetadataIs({ namespace: 'consultation_job', param: 'jobId' });
+            streamTicketService.consumeTicket.mockResolvedValueOnce({
+                userId: 'doctor-001',
+                tenantId: 'tenant-acme',
+                scope: 'consultation_job:job-9',
+                exp: Date.now() + 30_000,
+                impersonatedBy: 'admin-007',
+            });
+
+            const result = await guard.canActivate(context);
+
+            expect(result).toBe(true);
+            expect(request.user).toEqual({
+                id: 'doctor-001',
+                tenantId: 'tenant-acme',
+                impersonatedBy: 'admin-007',
+            });
+        });
+
+        it('does NOT include impersonatedBy on req.user for non-impersonated tickets (backward compat)', async () => {
+            const request: MockRequest = {
+                query: { ticket: 'tkt-plain' },
+                params: { jobId: 'job-3' },
+            };
+            const context = createMockContext(request);
+            whenScopeMetadataIs({ namespace: 'consultation_job', param: 'jobId' });
+            streamTicketService.consumeTicket.mockResolvedValueOnce({
+                userId: 'user-1',
+                tenantId: 'tenant-1',
+                scope: 'consultation_job:job-3',
+                exp: Date.now() + 30_000,
+                impersonatedBy: null,
+            });
+
+            await guard.canActivate(context);
+
+            expect(request.user).toEqual({ id: 'user-1', tenantId: 'tenant-1' });
+            expect((request.user as Record<string, unknown>).impersonatedBy).toBeUndefined();
+        });
+
+        it('mirrors the restored user (including impersonatedBy) into CLS so ImpersonationAuditInterceptor fires', async () => {
+            const request: MockRequest = {
+                query: { ticket: 'tkt-imp' },
+                params: { jobId: 'job-9' },
+            };
+            const context = createMockContext(request);
+            whenScopeMetadataIs({ namespace: 'consultation_job', param: 'jobId' });
+            streamTicketService.consumeTicket.mockResolvedValueOnce({
+                userId: 'doctor-001',
+                tenantId: 'tenant-acme',
+                scope: 'consultation_job:job-9',
+                exp: Date.now() + 30_000,
+                impersonatedBy: 'admin-007',
+            });
+
+            await guard.canActivate(context);
+
+            expect(clsService.set).toHaveBeenCalledWith('user', expect.objectContaining({
+                id: 'doctor-001',
+                impersonatedBy: 'admin-007',
+            }));
+            expect(clsService.set).toHaveBeenCalledWith('tenantId', 'tenant-acme');
         });
     });
 });

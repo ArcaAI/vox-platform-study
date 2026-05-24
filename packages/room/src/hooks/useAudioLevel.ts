@@ -146,7 +146,7 @@ function acquireSharedMonitor(
     newShared.intervalId = setInterval(() => {
       const local = newShared;
       try {
-        local.analyser.getFloatTimeDomainData(local.dataArray);
+        local.analyser.getFloatTimeDomainData(local.dataArray as Float32Array<ArrayBuffer>);
       } catch {
         // analyser disconnected mid-tick; bail.
         return;

@@ -157,10 +157,11 @@ describe('useDnaStyle — WS-H enhancements', () => {
                 await result.current.generate(input);
             });
 
-            expect(mockPost).toHaveBeenCalledWith(
-                DNA_STYLE_ENDPOINTS.GENERATE,
-                { departmentId: 'dept-1', promptTemplateId: 'prompt-tmpl-1' }
-            );
+            // TASK-299 D-9 — body now always carries an auto-generated idempotencyKey.
+            const [url, body] = mockPost.mock.calls[0];
+            expect(url).toBe(DNA_STYLE_ENDPOINTS.GENERATE);
+            expect(body).toMatchObject({ departmentId: 'dept-1', promptTemplateId: 'prompt-tmpl-1' });
+            expect(typeof body.idempotencyKey).toBe('string');
         });
 
         it('should POST without promptTemplateId when not provided', async () => {
@@ -171,10 +172,11 @@ describe('useDnaStyle — WS-H enhancements', () => {
                 await result.current.generate({ departmentId: 'dept-1' });
             });
 
-            expect(mockPost).toHaveBeenCalledWith(
-                DNA_STYLE_ENDPOINTS.GENERATE,
-                { departmentId: 'dept-1' }
-            );
+            const [url, body] = mockPost.mock.calls[0];
+            expect(url).toBe(DNA_STYLE_ENDPOINTS.GENERATE);
+            expect(body).toMatchObject({ departmentId: 'dept-1' });
+            expect(body).not.toHaveProperty('promptTemplateId');
+            expect(typeof body.idempotencyKey).toBe('string');
         });
     });
 

@@ -590,7 +590,31 @@ export class SmrProxyController {
 
     if (body.dna_writing_style_id) {
       const dnaStyle = await this.dnaWritingStyleRepository.findById(body.dna_writing_style_id);
-      if (dnaStyle?.styleText) {
+      // TASK-299 D-12 — cross-doctor DNA writing-style ownership check.
+      // The SMR proxy assembles prompts on behalf of the caller; without
+      // this guard a doctor could reference another doctor's stylistic
+      // fingerprint (or a style from a different tenant) to imitate them.
+      if (!dnaStyle) {
+        throw new NotFoundException(`DNA writing style ${body.dna_writing_style_id} not found`);
+      }
+      const user = this.clsService.get('user') as { id?: string } | undefined;
+      const tenantId = this.clsService.get('tenantId');
+      const callerId = user?.id;
+      const styleOwner = (dnaStyle as { doctorId?: string | null }).doctorId ?? null;
+      const styleTenant = (dnaStyle as { tenantId?: string | null }).tenantId ?? null;
+
+      if (!callerId || styleOwner !== callerId || (styleTenant !== null && tenantId && styleTenant !== tenantId)) {
+        this.logger.warn({
+          message: 'Cross-doctor DNA style usage rejected',
+          callerId,
+          callerTenant: tenantId,
+          dnaStyleId: dnaStyle.id,
+          styleOwner,
+          styleTenant,
+        });
+        throw new ForbiddenException('You do not have access to this DNA writing style');
+      }
+      if (dnaStyle.styleText) {
         systemPrompt += `\n\nApply the following writing style:\n${dnaStyle.styleText}`;
       }
     }

@@ -33,25 +33,39 @@ class UserVoiceProfileRead(Base):
     updated_at: Mapped[str] = mapped_column("updatedAt", DateTime)
 
 
-async def get_voice_embedding(user_id: str) -> list[float] | None:
+async def get_voice_embedding(
+    user_id: str,
+    tenant_id: str | None = None,
+) -> list[float] | None:
     """Fetch the active voice profile embedding for a user.
 
     Returns the 256d embedding as a list of floats, or None if no active profile.
     Uses raw SQL because the embedding column is a pgvector type
     not mapped in SQLAlchemy.
+
+    TASK-296 M-6: ``tenant_id`` is accepted as an optional scoping parameter.
+    The tenant filter is currently a TODO because ``UserVoiceProfile`` has no
+    ``tenantId`` column yet (master roadmap P2-5 will add it via migration).
+    Once the column lands, the filter below can be uncommented.
     """
     try:
         async with get_session() as session:
-            result = await session.execute(
-                text(
-                    'SELECT embedding::text FROM core."UserVoiceProfile" '
-                    'WHERE "userId" = :user_id '
-                    'AND "isActive" = true '
-                    "AND \"resourceStatus\" = 'ENABLED' "
-                    "LIMIT 1"
-                ),
-                {"user_id": user_id},
+            sql = (
+                'SELECT embedding::text FROM core."UserVoiceProfile" '
+                'WHERE "userId" = :user_id '
+                'AND "isActive" = true '
+                "AND \"resourceStatus\" = 'ENABLED' "
             )
+            params: dict[str, str] = {"user_id": user_id}
+            if tenant_id:
+                # TODO(TASK-296 M-6 / master roadmap P2-5): enable once
+                # core."UserVoiceProfile" has a "tenantId" column.
+                # sql += 'AND "tenantId" = :tenant_id '
+                # params["tenant_id"] = tenant_id
+                pass
+            sql += "LIMIT 1"
+
+            result = await session.execute(text(sql), params)
             row = result.fetchone()
             if row is None:
                 return None
@@ -63,6 +77,51 @@ async def get_voice_embedding(user_id: str) -> list[float] | None:
     except Exception:
         logger.warning(
             "Failed to fetch voice profile for user %s", user_id, exc_info=True
+        )
+        return None
+
+
+async def get_voice_profile_metadata(
+    user_id: str,
+    tenant_id: str | None = None,
+) -> dict[str, str | None] | None:
+    """Fetch the active voice profile metadata (id, modelId) for a user.
+
+    Returns ``{"profile_id": str, "model_id": str | None}`` or ``None`` when
+    no active profile exists. Non-fatal on DB errors — returns ``None`` so
+    callers can degrade gracefully (TASK-296 backend-echo: this powers the
+    ``voiceProfileSeeded`` echo payload sent to the SDK).
+
+    TASK-296 M-6: ``tenant_id`` accepted as optional scope; same TODO as
+    ``get_voice_embedding`` applies.
+    """
+    try:
+        async with get_session() as session:
+            sql = (
+                'SELECT id, "modelId" FROM core."UserVoiceProfile" '
+                'WHERE "userId" = :user_id '
+                'AND "isActive" = true '
+                "AND \"resourceStatus\" = 'ENABLED' "
+            )
+            params: dict[str, str] = {"user_id": user_id}
+            if tenant_id:
+                # TODO(TASK-296 M-6 / master roadmap P2-5): enable once
+                # core."UserVoiceProfile" has a "tenantId" column.
+                # sql += 'AND "tenantId" = :tenant_id '
+                # params["tenant_id"] = tenant_id
+                pass
+            sql += "LIMIT 1"
+
+            result = await session.execute(text(sql), params)
+            row = result.fetchone()
+            if row is None:
+                return None
+            return {"profile_id": row[0], "model_id": row[1]}
+    except Exception:
+        logger.warning(
+            "Failed to fetch voice profile metadata for user %s",
+            user_id,
+            exc_info=True,
         )
         return None
 

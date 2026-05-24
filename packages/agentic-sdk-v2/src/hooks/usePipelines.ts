@@ -6,10 +6,22 @@
 
 import { useState, useCallback } from 'react';
 import { useApiOperation } from './useApiOperation';
+import { useUserSettings } from './useUserSettings';
 import { PIPELINE_ENDPOINTS } from '../core/constants';
 import { extractArray } from '../utils/responseUtils';
 import { appendPagination } from '../utils/urlUtils';
 import type { PaginationParams } from '../types/common';
+
+/**
+ * TASK-298 D-5 — Namespace + key used to persist the doctor's chosen
+ * pipeline through the existing UserSettings backend
+ * (`PATCH /user/me/settings/:namespace/:key`). The server-side validator
+ * in `UserSettingsController` rejects cross-tenant pipeline ids.
+ */
+export const SELECTED_PIPELINE_SETTING = {
+  namespace: 'arcaai-sdk',
+  key: 'selectedPipelineId',
+} as const;
 
 export interface Pipeline {
   id: string;
@@ -51,7 +63,13 @@ export interface UsePipelinesReturn {
   list: (pagination?: PaginationParams) => Promise<Pipeline[]>;
   get: (id: string) => Promise<Pipeline>;
   getBySlug: (slug: string) => Promise<Pipeline>;
-  select: (pipelineId: string) => void;
+  /**
+   * Set the active pipeline. TASK-298 D-5 — also persists the choice to
+   * `PATCH /user/me/settings/arcaai-sdk/selectedPipelineId`. Backwards
+   * compatible: the return type is `Promise<void>`, but synchronous callers
+   * that drop the promise still get the immediate local-state update.
+   */
+  select: (pipelineId: string) => Promise<void>;
   createPipeline: (input: CreatePipelineInput) => Promise<Pipeline>;
   updatePipeline: (id: string, input: UpdatePipelineInput) => Promise<Pipeline>;
   deletePipeline: (id: string) => Promise<void>;
@@ -61,6 +79,7 @@ export interface UsePipelinesReturn {
 
 export function usePipelines(): UsePipelinesReturn {
   const { execute, isLoading, error } = useApiOperation('usePipelines');
+  const userSettings = useUserSettings();
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipeline, setSelectedPipeline] = useState<Pipeline | null>(null);
@@ -84,11 +103,25 @@ export function usePipelines(): UsePipelinesReturn {
   );
 
   const select = useCallback(
-    (pipelineId: string) => {
+    async (pipelineId: string): Promise<void> => {
       const found = pipelines.find((p) => p.id === pipelineId) ?? null;
       setSelectedPipeline(found);
+
+      if (!found) {
+        return;
+      }
+
+      // TASK-298 D-5 — persist selection through the existing UserSettings
+      // backend. The server validator rejects cross-tenant pipeline ids
+      // with `BadRequestException`; we swallow the failure here so the UI
+      // remains responsive (the caller's `error` state still surfaces it).
+      try {
+        await userSettings.updateByKey(SELECTED_PIPELINE_SETTING.namespace, SELECTED_PIPELINE_SETTING.key, pipelineId);
+      } catch {
+        // intentional: persistence failure must not unwind local state.
+      }
     },
-    [pipelines],
+    [pipelines, userSettings],
   );
 
   const createPipeline = useCallback(

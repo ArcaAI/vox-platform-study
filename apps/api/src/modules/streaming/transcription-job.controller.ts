@@ -3,10 +3,12 @@ import {
   Authorize,
   IS3Service,
   ITenantBucketService,
+  PipelineService,
   StreamingSessionService,
   TranscriptionJobService,
   TranscriptionRealtimeService,
 } from '@arcaai/applications';
+import { StreamTicketService } from '../auth/stream-ticket.service';
 import type { MessageEvent } from '@nestjs/common';
 import {
   BadRequestException,
@@ -74,6 +76,8 @@ export class TranscriptionJobController {
     private readonly cls: ClsService<IActiveUserContext>,
     @Inject(IS3Service) private readonly s3Service: IS3ServiceType,
     @Inject(ITenantBucketService) private readonly tenantBucketService: ITenantBucketService,
+    private readonly pipelineService: PipelineService,
+    private readonly streamTicketService: StreamTicketService,
   ) {}
 
   private getTenantId(): string {
@@ -82,6 +86,19 @@ export class TranscriptionJobController {
       throw new BadRequestException('Tenant context is required. Ensure you are authenticated with a tenant-scoped user.');
     }
     return user.tenantId;
+  }
+
+  /**
+   * TASK-298 D-2 — assert the caller's tenant owns `pipelineId` before the
+   * controller forwards work to STT-V2. We translate cross-tenant pipelines
+   * to `NotFoundException` so the error surface matches "unknown pipeline"
+   * and we do not leak the existence of pipelines in other tenants.
+   */
+  private async assertPipelineOwnership(pipelineId: string): Promise<void> {
+    const pipeline = await this.pipelineService.getById(pipelineId);
+    if (!pipeline) {
+      throw new NotFoundException(`Pipeline ${pipelineId} not found`);
+    }
   }
 
   @Post()
@@ -141,6 +158,8 @@ export class TranscriptionJobController {
     }
 
     const tenantId = this.getTenantId();
+    // TASK-298 D-2 — block cross-tenant pipeline use before any I/O.
+    await this.assertPipelineOwnership(body.pipelineId);
     const mediaId = uuidv7();
 
     // 2. Create batch job in DB (status: QUEUED)
@@ -243,10 +262,14 @@ export class TranscriptionJobController {
   @HttpCode(201)
   @ApiOperation({ summary: 'Create a WebSocket streaming session' })
   @ApiResponse({ status: 201, description: 'Streaming session created', type: StreamSessionResponse })
-  async createStreamSession(@Body() body: CreateStreamSessionRequest) {
+  async createStreamSession(@Body() body: CreateStreamSessionRequest): Promise<StreamSessionResponse> {
     const sessionId = uuidv7();
     const tenantId = this.getTenantId();
     const user = this.cls.get('user');
+
+    // TASK-298 D-2 — assert tenant ownership of the requested pipeline
+    // BEFORE we forward to STT-V2 (which is itself defended by D-3).
+    await this.assertPipelineOwnership(body.pipelineId);
 
     // Resolve tenant-scoped audio bucket so STT-v2 writes audio to the
     // tenant's bucket instead of falling back to the global 'hope-audio'.
@@ -275,12 +298,28 @@ export class TranscriptionJobController {
       throw new ServiceUnavailableException('STT-V2 streaming service at capacity');
     }
 
+    // TASK-298 D-1 — mint a one-shot stream ticket scoped to this session.
+    // The SDK appends it to the WS URL; the gateway consumes it on first
+    // open and rejects (4401) every subsequent attempt.
+    const issuedTicket = await this.streamTicketService.issueTicket({
+      userId: user?.id ?? '',
+      tenantId,
+      scope: `stt_session:${result.sessionId}`,
+    });
+
+    // TASK-296 preseed contract — capture voiceProfileSeeded if the
+    // streaming service surfaces it.
+    const voiceProfileSeeded = (result as unknown as { voiceProfileSeeded?: boolean }).voiceProfileSeeded ?? false;
+
     return {
       sessionId: result.sessionId,
       status: result.status,
       wsUrl: '/ws/stt-v2/stream',
       maxConcurrent: result.maxConcurrent,
       currentActive: result.currentActive,
+      ticket: issuedTicket.ticket,
+      ticketExpiresAt: issuedTicket.expiresAt,
+      voiceProfileSeeded,
     };
   }
 
@@ -290,6 +329,33 @@ export class TranscriptionJobController {
   @ApiParam({ name: 'sessionId', description: 'Streaming session ID' })
   async closeStreamSession(@Param('sessionId') sessionId: string): Promise<void> {
     await this.sessionService.removeSession(sessionId);
+  }
+
+  /**
+   * TASK-298 D-18 — mint a fresh single-use stream ticket for an existing
+   * session. The SDK calls this from `SttV2WebSocketClient.attemptReconnect`
+   * before reopening the WebSocket, since each ticket is one-shot and gets
+   * consumed by the previous connection.
+   */
+  @Post('stream/session/:sessionId/refresh-ticket')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Refresh the stream ticket for a live streaming session (TASK-298 D-18)' })
+  @ApiParam({ name: 'sessionId', description: 'Streaming session ID' })
+  async refreshStreamTicket(@Param('sessionId') sessionId: string): Promise<{ ticket: string; ticketExpiresAt: number }> {
+    if (!sessionId?.trim()) {
+      throw new BadRequestException('sessionId is required');
+    }
+
+    const tenantId = this.getTenantId();
+    const user = this.cls.get('user');
+
+    const issued = await this.streamTicketService.issueTicket({
+      userId: user?.id ?? '',
+      tenantId,
+      scope: `stt_session:${sessionId}`,
+    });
+
+    return { ticket: issued.ticket, ticketExpiresAt: issued.expiresAt };
   }
 
   @Get(':id')

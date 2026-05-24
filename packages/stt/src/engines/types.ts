@@ -4,7 +4,14 @@
  * Type definitions for STT engine implementations.
  */
 
-import type { ComputeDevice, WhisperModelSize, TranscriptionResult, ModelLoadProgress, LanguageLocale } from '../types/index.js';
+import type {
+  ComputeDevice,
+  WhisperModelSize,
+  TranscriptionResult,
+  ModelLoadProgress,
+  LanguageLocale,
+  WhisperTask,
+} from '../types/index.js';
 
 /**
  * Configuration for STT engines.
@@ -56,6 +63,20 @@ export interface EngineConfig {
   codeSwitching?: boolean;
 
   /**
+   * Default Whisper task for this engine instance.
+   *
+   * - `'transcribe'` (default) — output is in the source language.
+   * - `'translate'` — output is translated to English (multilingual models
+   *   only; `.en` checkpoints will be rejected with `STTError(NOT_SUPPORTED)`).
+   *
+   * Per-call `TranscribeOptions.task` overrides this default.
+   *
+   * @default 'transcribe'
+   * @see TASK-300 L-2
+   */
+  task?: WhisperTask;
+
+  /**
    * Progress callback for model loading.
    */
   onProgress?: (progress: ModelLoadProgress) => void;
@@ -79,6 +100,15 @@ export interface TranscribeOptions {
    * Initial prompt to guide transcription.
    */
   prompt?: string;
+
+  /**
+   * Whisper inference task for this single call.
+   *
+   * Overrides `EngineConfig.task`. See {@link WhisperTask} for semantics.
+   *
+   * @see TASK-300 L-2
+   */
+  task?: WhisperTask;
 }
 
 /**

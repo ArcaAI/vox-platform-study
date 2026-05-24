@@ -323,7 +323,7 @@ describe('TranscriptionPipeline', () => {
 
       await expect(
         pipeline.start({ track: mockTrack, audioContext: mockAudioContext })
-      ).rejects.toThrow('stt.sttSocket is required when STT provider resolves to backend/remote');
+      ).rejects.toThrow('stt.sttSocket or stt.streamingTransport is required when STT provider resolves to backend/remote');
     });
   });
 

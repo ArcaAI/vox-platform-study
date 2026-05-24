@@ -3,29 +3,51 @@ import { deepmerge } from 'deepmerge-ts';
 
 import { AppConfigSchema, SYSTEM_DEFAULTS, canUserEditField, getFieldPermission, type AppConfig, type DeepPartial } from './ConfigSchema.js';
 
-type ConfigEventType = 'configChanged' | 'userPreferencesChanged' | 'tenantConfigChanged';
+type ConfigEventType =
+  | 'configChanged'
+  | 'userPreferencesChanged'
+  | 'tenantConfigChanged'
+  /** TASK-297 DEF-C5 — emitted whenever the department tier changes. */
+  | 'departmentConfigChanged';
 type ConfigEventHandler = (config: AppConfig) => void;
+
+/**
+ * TASK-297 DEF-L3 — minimal logger surface the ConfigManager can call into
+ * to surface I/O failures (load / persist). Kept tiny and structurally
+ * compatible with `ISDKLogger` so `logger.child(...)` can be passed straight
+ * in from the provider.
+ */
+export interface ConfigManagerLogger {
+  warn: (message: string, context?: unknown) => void;
+}
 
 export interface ConfigManagerOptions {
   onPersistUserPreferences?: (prefs: DeepPartial<AppConfig>) => Promise<void>;
   onLoadUserPreferences?: () => Promise<DeepPartial<AppConfig> | null>;
+  /** Optional SDK logger; if provided, load/persist errors are surfaced via `warn`. */
+  logger?: ConfigManagerLogger;
 }
 
 /**
- * Three-tier configuration resolution engine.
+ * Four-tier configuration resolution engine (TASK-297 DEF-C5).
  *
  * Resolution order:
- *   SYSTEM_DEFAULTS  (frozen, Tier 0)
- *   <- deepmerge with tenantOverrides  (admin, Tier 1)
- *   <- deepmerge with userPreferences  (user-editable only, Tier 2)
+ *   SYSTEM_DEFAULTS         (frozen, Tier 0)
+ *   <- tenantOverrides      (admin, Tier 1)
+ *   <- departmentOverrides  (department admin, Tier 2 — TASK-297 DEF-C5)
+ *   <- userPreferences      (user-editable only, Tier 3)
  *   = resolved config
  *
- * Locked paths and static permission tiers enforce that users cannot
- * override admin-only fields.
+ * Locked paths from both tenant AND department are unioned for the user
+ * strip, so a user cannot override a path locked by either tier.
  */
 export class ConfigManager {
   private tenantOverrides: DeepPartial<AppConfig> = {};
   private tenantLockedPaths: Set<string> = new Set();
+  /** TASK-297 DEF-C5 — department tier (Tier 2). */
+  private departmentOverrides: DeepPartial<AppConfig> = {};
+  /** TASK-297 DEF-C5 — paths locked by the department tier. */
+  private departmentLockedPaths: Set<string> = new Set();
   private userPreferences: DeepPartial<AppConfig> = {};
   private resolved: AppConfig = SYSTEM_DEFAULTS;
   private listeners = new Map<ConfigEventType, Set<ConfigEventHandler>>();
@@ -52,7 +74,34 @@ export class ConfigManager {
   }
 
   // ---------------------------------------------------------------------------
-  // Tier 2 — User preferences (user-managed)
+  // Tier 2 — Department config (TASK-297 DEF-C5)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Apply department-tier overrides on top of tenant. `lockedPaths` here are
+   * unioned with the tenant's locked paths when stripping user preferences.
+   */
+  setDepartmentConfig(overrides: DeepPartial<AppConfig>, lockedPaths: string[] = []): void {
+    this.departmentOverrides = overrides;
+    this.departmentLockedPaths = new Set(lockedPaths);
+    this.resolve();
+    this.emit('departmentConfigChanged', this.resolved);
+  }
+
+  /** Drop the department tier (e.g. on department change / impersonation end). */
+  clearDepartmentConfig(): void {
+    this.departmentOverrides = {};
+    this.departmentLockedPaths = new Set();
+    this.resolve();
+    this.emit('departmentConfigChanged', this.resolved);
+  }
+
+  getDepartmentLockedPaths(): ReadonlySet<string> {
+    return this.departmentLockedPaths;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tier 3 — User preferences (user-managed)
   // ---------------------------------------------------------------------------
 
   setUserPreferences(prefs: DeepPartial<AppConfig>): void {
@@ -66,7 +115,7 @@ export class ConfigManager {
    * Returns false if the path is locked by tenant or is admin-only.
    */
   setUserValue(path: string, value: unknown): boolean {
-    if (!canUserEditField(path, this.tenantLockedPaths)) return false;
+    if (!canUserEditField(path, this.allLockedPaths())) return false;
     if (getFieldPermission(path) !== 'user') return false;
 
     const parts = path.split('.');
@@ -87,7 +136,18 @@ export class ConfigManager {
   }
 
   canUserEdit(path: string): boolean {
-    return canUserEditField(path, this.tenantLockedPaths);
+    return canUserEditField(path, this.allLockedPaths());
+  }
+
+  /**
+   * TASK-297 DEF-C5 — union of tenant + department locked paths.
+   */
+  private allLockedPaths(): ReadonlySet<string> {
+    if (this.departmentLockedPaths.size === 0) return this.tenantLockedPaths;
+    if (this.tenantLockedPaths.size === 0) return this.departmentLockedPaths;
+    const merged = new Set(this.tenantLockedPaths);
+    for (const p of this.departmentLockedPaths) merged.add(p);
+    return merged;
   }
 
   // ---------------------------------------------------------------------------
@@ -119,8 +179,13 @@ export class ConfigManager {
         this.resolve();
         this.emit('userPreferencesChanged', this.resolved);
       }
-    } catch {
-      // Silently fall back to defaults
+    } catch (error) {
+      // TASK-297 DEF-L3 — surface load failures via the SDK logger so the
+      // host app can wire them into Highlight / OTel. Behaviour-wise we
+      // still fall back to defaults so the SDK keeps working.
+      this.options.logger?.warn?.('[ConfigManager] loadUserPreferences failed; falling back to defaults', {
+        error: error as Error,
+      });
     }
   }
 
@@ -200,17 +265,20 @@ export class ConfigManager {
   // ---------------------------------------------------------------------------
 
   private resolve(): void {
+    // TASK-297 DEF-C5 — 4-tier: SYSTEM <- tenant <- department <- user
     const afterTenant = deepmerge(SYSTEM_DEFAULTS, this.tenantOverrides) as AppConfig;
+    const afterDept = deepmerge(afterTenant, this.departmentOverrides) as AppConfig;
     const allowedUserPrefs = this.stripLockedAndAdminPaths(this.userPreferences);
-    const merged = deepmerge(afterTenant, allowedUserPrefs) as AppConfig;
+    const merged = deepmerge(afterDept, allowedUserPrefs) as AppConfig;
     this.resolved = v.parse(AppConfigSchema, merged);
   }
 
   private stripLockedAndAdminPaths(preferences: DeepPartial<AppConfig>, prefix = ''): DeepPartial<AppConfig> {
+    const locked = this.allLockedPaths();
     const result: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(preferences)) {
       const path = prefix ? `${prefix}.${key}` : key;
-      if (this.tenantLockedPaths.has(path)) continue;
+      if (locked.has(path)) continue;
       if (getFieldPermission(path) !== 'user' && prefix !== '') continue;
       if (value && typeof value === 'object' && !Array.isArray(value)) {
         const nested = this.stripLockedAndAdminPaths(value as Record<string, unknown>, path);
@@ -248,8 +316,10 @@ export class ConfigManager {
     if (!this.options.onPersistUserPreferences) return;
     try {
       await this.options.onPersistUserPreferences(this.userPreferences);
-    } catch {
-      // Persist failures are non-fatal
+    } catch (error) {
+      this.options.logger?.warn?.('[ConfigManager] persistUserPreferences failed', {
+        error: error as Error,
+      });
     }
   }
 }

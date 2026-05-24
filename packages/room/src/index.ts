@@ -92,6 +92,7 @@ export {
   // AudioContext Management
   AudioContextManager,
   getNewAudioContext,
+  type AudioContextAcquireOptions,
 
   // AudioTrack
   AudioTrack,
@@ -111,6 +112,18 @@ export {
   AudioMixer,
   type AudioMixerSource,
   type AudioMixerEventMap,
+
+  // Typed Room errors (TASK-300 L-1 + others)
+  RoomPermissionError,
+  RoomDeviceError,
+  RoomSecurityError,
+  RoomConstraintError,
+  RoomResumeTimeoutError,
+  RoomSampleRateMismatchError,
+  RoomUnknownError,
+  RoomMediaErrorCode,
+  type RoomMediaErrorCodeValue,
+  mapGetUserMediaError,
 } from './core/index.js';
 
 // ============================================================================

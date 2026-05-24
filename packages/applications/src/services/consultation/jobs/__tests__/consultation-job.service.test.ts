@@ -1642,4 +1642,120 @@ describe('ConsultationJobService', () => {
             expect(mockPreSummaryQueue.add).toHaveBeenCalledTimes(3);
         });
     });
+
+    // ===========================================================================
+    // TASK-299 D-9 / D-10 — Idempotency-Key (Redis-backed dedupe)
+    // ===========================================================================
+
+    describe('TASK-299 D-9/D-10 — Idempotency-Key dedupe', () => {
+        const validParams = {
+            consultationId: 'consultation-idem',
+            tenantId: 'tenant-1',
+            userId: 'user-1',
+            request: { caseNoteIds: ['case-1'] } as const,
+            idempotencyKey: 'idem-key-uuid-1234',
+        };
+
+        it('createPreSummaryJob returns the prior jobId when the Redis key already exists', async () => {
+            mockCacheService.get.mockImplementation(async (key: string) => {
+                if (key.startsWith('idempotency:')) return 'prior-job-id-xyz';
+                return null;
+            });
+
+            const result = await service.createPreSummaryJob(
+                validParams.consultationId,
+                validParams.tenantId,
+                validParams.userId,
+                validParams.request,
+                undefined,
+                validParams.idempotencyKey,
+            );
+
+            expect(result.jobId).toBe('prior-job-id-xyz');
+            expect(result.status).toBe('PENDING');
+            expect(mockPreSummaryQueue.add).not.toHaveBeenCalled();
+        });
+
+        it('createPreSummaryJob persists the new jobId under the idempotency key with 24h TTL', async () => {
+            mockCacheService.get.mockResolvedValue(null);
+
+            await service.createPreSummaryJob(
+                validParams.consultationId,
+                validParams.tenantId,
+                validParams.userId,
+                validParams.request,
+                undefined,
+                validParams.idempotencyKey,
+            );
+
+            const idempotencyCall = mockCacheService.setex.mock.calls.find((args) => String(args[0]).startsWith('idempotency:'));
+            expect(idempotencyCall).toBeDefined();
+            expect(idempotencyCall![0]).toContain('tenant-1');
+            expect(idempotencyCall![0]).toContain('user-1');
+            expect(idempotencyCall![0]).toContain('idem-key-uuid-1234');
+            expect(idempotencyCall![1]).toBe(86400);
+            expect(idempotencyCall![2]).toBe('test-job-id-123');
+        });
+
+        it('createSummaryJob honors the idempotency key the same way', async () => {
+            mockCacheService.get.mockImplementation(async (key: string) =>
+                key.startsWith('idempotency:') ? 'prior-summary-job' : null,
+            );
+
+            const result = await service.createSummaryJob(
+                validParams.consultationId,
+                validParams.tenantId,
+                validParams.userId,
+                {},
+                undefined,
+                'idem-summary',
+            );
+
+            expect(result.jobId).toBe('prior-summary-job');
+            expect(mockSummaryQueue.add).not.toHaveBeenCalled();
+        });
+
+        it('createComprehensiveSummaryJob honors the idempotency key the same way', async () => {
+            mockCacheService.get.mockImplementation(async (key: string) =>
+                key.startsWith('idempotency:') ? 'prior-comp-job' : null,
+            );
+
+            const result = await service.createComprehensiveSummaryJob(
+                validParams.consultationId,
+                validParams.tenantId,
+                validParams.userId,
+                {},
+                undefined,
+                'idem-comp',
+            );
+
+            expect(result.jobId).toBe('prior-comp-job');
+            expect(mockComprehensiveSummaryQueue.add).not.toHaveBeenCalled();
+        });
+
+        it('namespaces the idempotency key by tenant + user so collisions cannot cross-leak', async () => {
+            mockCacheService.get.mockResolvedValue(null);
+
+            await service.createPreSummaryJob('c', 'tenant-A', 'user-1', validParams.request, undefined, 'shared-key');
+            await service.createPreSummaryJob('c', 'tenant-B', 'user-1', validParams.request, undefined, 'shared-key');
+
+            const idempotencyKeys = mockCacheService.setex.mock.calls
+                .filter((args) => String(args[0]).startsWith('idempotency:'))
+                .map((args) => String(args[0]));
+            expect(idempotencyKeys.length).toBe(2);
+            expect(idempotencyKeys[0]).not.toBe(idempotencyKeys[1]);
+        });
+
+        it('skips dedupe entirely when no idempotency key is supplied (back-compat)', async () => {
+            mockCacheService.get.mockResolvedValue(null);
+
+            await service.createPreSummaryJob('c', 't1', 'u1', validParams.request);
+
+            const idempotencyCalls = mockCacheService.setex.mock.calls.filter((args) =>
+                String(args[0]).startsWith('idempotency:'),
+            );
+            expect(idempotencyCalls.length).toBe(0);
+            expect(mockPreSummaryQueue.add).toHaveBeenCalled();
+        });
+    });
 });

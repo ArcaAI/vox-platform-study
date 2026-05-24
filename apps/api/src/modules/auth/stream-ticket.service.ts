@@ -29,6 +29,17 @@ export interface IssueTicketInput {
   userId: string;
   tenantId?: string | null;
   scope: string;
+  /**
+   * TASK-295 SEC-A5-6 / M-8: when the ticket is issued during an active
+   * impersonation, the admin's id is carried forward so the eventual
+   * ticket-authenticated request (e.g. SSE/WS) can restore the
+   * `impersonatedBy` claim on `req.user` and produce the appropriate
+   * audit row via `ImpersonationAuditInterceptor`.
+   *
+   * Optional and backward-compatible: existing call-sites omit it and
+   * receive non-impersonated tickets as before.
+   */
+  impersonatedBy?: string | null;
 }
 
 export interface IssuedTicket {
@@ -42,6 +53,8 @@ export interface StoredTicket {
   tenantId: string | null;
   scope: string;
   exp: number; // epoch milliseconds
+  /** Mirrors `IssueTicketInput.impersonatedBy`. Null when the request was not impersonated. */
+  impersonatedBy: string | null;
 }
 
 @Injectable()
@@ -58,6 +71,7 @@ export class StreamTicketService {
       tenantId: input.tenantId ?? null,
       scope: input.scope,
       exp: expiresAt,
+      impersonatedBy: input.impersonatedBy ?? null,
     };
 
     await this.cache.setex(this.key(ticket), STREAM_TICKET_TTL_SECONDS, JSON.stringify(payload));
@@ -83,6 +97,9 @@ export class StreamTicketService {
           tenantId: typeof candidate.tenantId === 'string' ? candidate.tenantId : null,
           scope: candidate.scope,
           exp: candidate.exp,
+          // Backward-compatible: tickets minted before TASK-295 lack this
+          // field; default to null so non-impersonated requests still work.
+          impersonatedBy: typeof candidate.impersonatedBy === 'string' ? candidate.impersonatedBy : null,
         };
       }
     } catch (error) {

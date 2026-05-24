@@ -103,11 +103,15 @@ describe('useDnaStyle', () => {
                 resp = await result.current.generate({ departmentId: 'dept-1' });
             });
 
-            expect(mockPost).toHaveBeenCalledWith(DNA_STYLE_ENDPOINTS.GENERATE, { departmentId: 'dept-1' });
+            // TASK-299 D-9 — body carries departmentId + auto-attached idempotencyKey.
+            const [url, body] = mockPost.mock.calls[0];
+            expect(url).toBe(DNA_STYLE_ENDPOINTS.GENERATE);
+            expect(body).toMatchObject({ departmentId: 'dept-1' });
+            expect(typeof body.idempotencyKey).toBe('string');
             expect(resp).toEqual(jobResp);
         });
 
-        it('should POST with empty body when no input', async () => {
+        it('should POST with idempotencyKey-only body when no input', async () => {
             mockPost.mockResolvedValue({ jobId: 'job-2' });
             const { result } = renderHook(() => useDnaStyle());
 
@@ -115,7 +119,9 @@ describe('useDnaStyle', () => {
                 await result.current.generate();
             });
 
-            expect(mockPost).toHaveBeenCalledWith(DNA_STYLE_ENDPOINTS.GENERATE, {});
+            const [url, body] = mockPost.mock.calls[0];
+            expect(url).toBe(DNA_STYLE_ENDPOINTS.GENERATE);
+            expect(typeof body.idempotencyKey).toBe('string');
         });
 
         it('should set error on failure and reset isLoading to false', async () => {
@@ -296,7 +302,11 @@ describe('useDnaStyle', () => {
             await act(async () => {
                 await result.current.generate({ departmentId: 'dept-1' });
             });
-            expect(mockPost).toHaveBeenCalledWith(DNA_STYLE_ENDPOINTS.GENERATE, { departmentId: 'dept-1' });
+            // TASK-299 D-9 — body adds idempotencyKey alongside departmentId.
+            const [url, body] = mockPost.mock.calls[0];
+            expect(url).toBe(DNA_STYLE_ENDPOINTS.GENERATE);
+            expect(body).toMatchObject({ departmentId: 'dept-1' });
+            expect(typeof body.idempotencyKey).toBe('string');
 
             mockPatch.mockResolvedValue(report);
             await act(async () => {

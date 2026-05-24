@@ -203,25 +203,47 @@ export class AuditLogService extends BaseService implements IAuditLogService {
    */
   @OnEvent(EventTypes.UserAuthenticated)
   async handleUserAuthenticatedEvent(
-    event: { userId?: string; timestamp?: Date; ip?: string; userAgent?: string; method?: string } & Record<string, unknown>,
+    event: {
+      userId?: string;
+      timestamp?: Date;
+      ip?: string;
+      userAgent?: string;
+      method?: string;
+      endpoint?: string;
+      impersonatedUserId?: string;
+    } & Record<string, unknown>,
   ): Promise<void> {
     try {
       const userId = event.userId || (event as { id?: string }).id || null;
       const timestamp = event.timestamp || new Date();
+      const impersonatedUserId = event.impersonatedUserId;
+      const isImpersonatedRequest = Boolean(impersonatedUserId);
 
+      // TASK-295 C-3: persist actor + subject + endpoint distinctly for
+      // impersonated per-request audit rows so HIPAA actor-on-subject
+      // traceability is queryable. Non-impersonated path (login/logout)
+      // continues to use the existing LOGIN row shape.
       const auditLog = AuditLogFactory.CreateAuditLog({
-        action: AuditAction.LOGIN,
-        eventType: 'AUTHENTICATION',
+        action: isImpersonatedRequest ? AuditAction.IMPERSONATED_ACTION : AuditAction.LOGIN,
+        eventType: isImpersonatedRequest ? 'IMPERSONATION' : 'AUTHENTICATION',
         success: true,
         responsibleUserId: userId,
         responsibleIp: event.ip || this.requestIp,
-        resourceId: userId,
+        resourceId: isImpersonatedRequest ? impersonatedUserId! : userId,
         resourceType: ResourceType.User,
-        data: {
-          method: event.method || 'oauth',
-          timestamp: timestamp.toISOString(),
-          userAgent: event.userAgent || null,
-        },
+        data: isImpersonatedRequest
+          ? {
+              endpoint: event.endpoint ?? null,
+              httpMethod: event.method ?? null,
+              impersonatedUserId,
+              timestamp: timestamp.toISOString(),
+              userAgent: event.userAgent || null,
+            }
+          : {
+              method: event.method || 'oauth',
+              timestamp: timestamp.toISOString(),
+              userAgent: event.userAgent || null,
+            },
         previousData: {},
         metadata: null,
         createdBy: null,
@@ -229,8 +251,12 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       await this.auditLogRepository.create(auditLog);
 
       this.logger.debug({
-        message: 'User authenticated audit log created',
+        message: isImpersonatedRequest
+          ? 'Impersonated request audit log created'
+          : 'User authenticated audit log created',
         userId,
+        impersonatedUserId: impersonatedUserId ?? null,
+        endpoint: event.endpoint ?? null,
         method: event.method || 'oauth',
       });
     } catch (error: unknown) {

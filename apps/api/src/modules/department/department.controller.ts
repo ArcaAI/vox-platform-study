@@ -101,6 +101,7 @@ export class DepartmentController {
     by: ['id'],
     append: '(prompt config)',
   })
+  @Authorize(['manage', 'Department'])
   @ApiParam({ name: 'id', description: 'Department ID', type: String })
   @ApiResponse({ status: 404, description: 'Department not found' })
   async updatePromptConfig(@Param('id') id: string, @Body() request: UpdateDepartmentPromptConfigRequest): Promise<DepartmentResponse> {

@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { UnauthorizedException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { AuthController } from '../auth.controller';
 
 const ADMIN_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN', 'admin', 'system-admin'];
@@ -96,6 +96,16 @@ const createMockRequest = (ip = '127.0.0.1') => ({
     headers: { 'user-agent': 'test-agent' },
 });
 
+const createMockStreamTicketService = () => ({
+    issueTicket: vi.fn(),
+    consumeTicket: vi.fn(),
+});
+
+const createMockJwtRevocationService = () => ({
+    revoke: vi.fn(),
+    isRevoked: vi.fn().mockResolvedValue(false),
+});
+
 describe('AuthController — TASK-224 Security Tests', () => {
     let controller: AuthController;
     let mockClsService: any;
@@ -137,6 +147,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 mockClsService as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             const token = (controller as any).generateRefreshToken('user-123');
@@ -154,6 +166,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 createMockClsService() as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             const token1 = (controller as any).generateRefreshToken('user-123');
@@ -200,7 +214,9 @@ describe('AuthController — TASK-224 Security Tests', () => {
                     userRoleAssignment: {
                         findMany: vi.fn()
                             .mockResolvedValueOnce([{ Role: adminRole }])
-                            .mockResolvedValueOnce([{ Role: doctorRole }]),
+                            .mockResolvedValueOnce([{ Role: doctorRole }])
+                            // TASK-295 H-3: third findMany call resolves the target's enabled tenants.
+                            .mockResolvedValueOnce([{ tenantId: 'tenant-001' }]),
                         findFirst: vi.fn().mockResolvedValue({ tenantId: 'tenant-001' }),
                     },
                 },
@@ -216,6 +232,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 mockClsService as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             const response = await controller.impersonate(
@@ -254,6 +272,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 mockClsService as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await expect(
@@ -294,6 +314,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 mockClsService as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await expect(
@@ -320,7 +342,9 @@ describe('AuthController — TASK-224 Security Tests', () => {
                     userRoleAssignment: {
                         findMany: vi.fn()
                             .mockResolvedValueOnce([{ Role: superAdminRole }])
-                            .mockResolvedValueOnce([{ Role: tenantAdminRole }]),
+                            .mockResolvedValueOnce([{ Role: tenantAdminRole }])
+                            // TASK-295 H-3
+                            .mockResolvedValueOnce([{ tenantId: 'tenant-001' }]),
                         findFirst: vi.fn().mockResolvedValue({ tenantId: 'tenant-001' }),
                     },
                 },
@@ -336,6 +360,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 mockClsService as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             const result = await controller.impersonate(
@@ -381,6 +407,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 mockClsService as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await expect(
@@ -422,6 +450,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 mockClsService as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await expect(
@@ -454,7 +484,9 @@ describe('AuthController — TASK-224 Security Tests', () => {
                     userRoleAssignment: {
                         findMany: vi.fn()
                             .mockResolvedValueOnce([{ Role: adminRole }])
-                            .mockResolvedValueOnce([{ Role: doctorRole }]),
+                            .mockResolvedValueOnce([{ Role: doctorRole }])
+                            // TASK-295 H-3
+                            .mockResolvedValueOnce([{ tenantId: 'tenant-001' }]),
                         findFirst: vi.fn().mockResolvedValue({ tenantId: 'tenant-001' }),
                     },
                 },
@@ -470,6 +502,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 mockClsService as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await controller.impersonate(
@@ -500,14 +534,23 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 createMockClsService() as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             expect(typeof (controller as any).revokeImpersonation).toBe('function');
         });
 
-        it('should return success true when called with a valid request', async () => {
-            const adminUser = createAdminUser();
-            mockClsService = createMockClsService(adminUser);
+        it('should return success true when called by an actively-impersonating caller', async () => {
+            // TASK-295 L-3: the caller is only allowed through when their JWT
+            // carries an `impersonatedBy` claim.
+            const impersonatedSession = {
+                id: 'doctor-001',
+                impersonatedBy: 'admin-001',
+                jti: 'impersonate-admin-001-doctor-001-1700',
+                exp: Math.floor(Date.now() / 1000) + 600,
+            };
+            mockClsService = createMockClsService(impersonatedSession);
             mockAuthService = createMockAuthService();
 
             controller = new AuthController(
@@ -520,6 +563,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 mockClsService as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             const result = await controller.revokeImpersonation(createMockRequest());
@@ -527,8 +572,13 @@ describe('AuthController — TASK-224 Security Tests', () => {
         });
 
         it('should call trackAuthentication with revoke-impersonation endpoint info', async () => {
-            const adminUser = createAdminUser();
-            mockClsService = createMockClsService(adminUser);
+            const impersonatedSession = {
+                id: 'doctor-001',
+                impersonatedBy: 'admin-001',
+                jti: 'impersonate-admin-001-doctor-001-1700',
+                exp: Math.floor(Date.now() / 1000) + 600,
+            };
+            mockClsService = createMockClsService(impersonatedSession);
             mockAuthService = createMockAuthService();
 
             controller = new AuthController(
@@ -541,12 +591,14 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 mockClsService as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await controller.revokeImpersonation(createMockRequest());
 
             expect(mockAuthService.trackAuthentication).toHaveBeenCalledWith(
-                'admin-001',
+                'doctor-001',
                 expect.objectContaining({
                     endpoint: '/auth/revoke-impersonation',
                     method: 'POST',
@@ -554,7 +606,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
             );
         });
 
-        it('should still return success when no user is in context', async () => {
+        it('should throw UnauthorizedException when no user is in context (TASK-295 L-3 supersedes TASK-224 no-op behavior)', async () => {
             mockClsService = createMockClsService(null);
             mockAuthService = createMockAuthService();
 
@@ -568,10 +620,13 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 mockClsService as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
-            const result = await controller.revokeImpersonation(createMockRequest());
-            expect(result).toEqual({ success: true });
+            await expect(
+                controller.revokeImpersonation(createMockRequest()),
+            ).rejects.toThrow(UnauthorizedException);
             expect(mockAuthService.trackAuthentication).not.toHaveBeenCalled();
         });
     });
@@ -592,6 +647,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 createMockClsService() as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await expect(
@@ -610,6 +667,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 createMockClsService() as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await expect(
@@ -632,6 +691,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 createMockClsService() as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await expect(
@@ -658,6 +719,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 createMockClsService() as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             const result = await controller.refresh({
@@ -686,6 +749,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 createMockClsService() as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             const result = await controller.refresh({
@@ -712,6 +777,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 createMockClsService() as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await expect(
@@ -730,6 +797,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 createMockClsService() as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await expect(
@@ -750,6 +819,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 createMockClsService() as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await expect(
@@ -780,6 +851,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 createMockTenantRepository() as any,
                 createMockClsService() as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             const result = await controller.login(
@@ -817,6 +890,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 createMockTenantRepository() as any,
                 createMockClsService() as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await controller.login(
@@ -852,6 +927,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 mockClsService as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await expect(
@@ -879,6 +956,8 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 {} as any,
                 {} as any,
                 mockClsService as any,
+                createMockStreamTicketService() as any,
+                createMockJwtRevocationService() as any,
             );
 
             await expect(

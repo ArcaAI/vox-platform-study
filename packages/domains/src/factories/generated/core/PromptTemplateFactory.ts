@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { generateId } from '../../../utils';
 import { BaseEntityFactoryCreateProps } from '../../../common';
-import { PromptTemplateEntity } from '../../../entities/generated/core/PromptTemplateEntity';
+import { PromptTemplateEntity, PromptTemplateScope } from '../../../entities/generated/core/PromptTemplateEntity';
 
 export interface CreatePromptTemplateProps extends BaseEntityFactoryCreateProps {
   name?: string | null;
@@ -13,6 +13,8 @@ export interface CreatePromptTemplateProps extends BaseEntityFactoryCreateProps 
   variables?: Record<string, unknown> | null;
   currentVersionNumber?: number | null;
   departmentId?: string | null;
+  scope?: PromptTemplateScope | null;
+  ownerUserId?: string | null;
   tags?: string[] | null;
   tenantId?: string;
   createdAt?: Date;
@@ -39,6 +41,8 @@ export class PromptTemplateFactory {
       variables: props.variables ?? null,
       currentVersionNumber: props.currentVersionNumber ?? 1,
       departmentId: props.departmentId ?? null,
+      scope: props.scope ?? 'TENANT_DEFAULT',
+      ownerUserId: props.ownerUserId ?? null,
       tags: props.tags ?? [],
     });
   }

@@ -33,6 +33,12 @@ export interface JobStreamCallbacks {
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
-export function isTerminalStatus(status: string): boolean {
-  return TERMINAL_STATUSES.has(status);
+/**
+ * TASK-299 D-8 — case-insensitive terminal-status check. The backend has
+ * historically emitted both `COMPLETED` and `completed`; either should
+ * resolve to a terminal state.
+ */
+export function isTerminalStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return TERMINAL_STATUSES.has(status.toLowerCase());
 }

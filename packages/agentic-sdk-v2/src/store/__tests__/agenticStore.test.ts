@@ -909,15 +909,44 @@ describe('agenticStore', () => {
         it('should clear all SDK localStorage keys and reset sensitive state', () => {
             localStorage.setItem('arcaai-preferences', '{"theme":"dark"}');
             localStorage.setItem('arcaai-selected-models', '{"stt":"model-1"}');
-            localStorage.setItem('arcaai-session-state', '{"active":true}');
+            // TASK-297 DEF-H1 — per-user namespaced keys are also cleared.
+            localStorage.setItem('arcaai-user-preferences/t1::u1', '{"lang":"en"}');
+            localStorage.setItem('arcaai-user-preferences/t2::u2', '{"lang":"th"}');
+            // TASK-297 DEF-L1 — `arcaai-session-state` is dead and NOT touched
+            // by clearOnLogout (the constant was removed entirely).
             localStorage.setItem('unrelated-key', 'keep-me');
 
             useAgenticStore.getState().clearOnLogout();
 
             expect(localStorage.getItem('arcaai-preferences')).toBeNull();
             expect(localStorage.getItem('arcaai-selected-models')).toBeNull();
-            expect(localStorage.getItem('arcaai-session-state')).toBeNull();
+            expect(localStorage.getItem('arcaai-user-preferences/t1::u1')).toBeNull();
+            expect(localStorage.getItem('arcaai-user-preferences/t2::u2')).toBeNull();
             expect(localStorage.getItem('unrelated-key')).toBe('keep-me');
+        });
+
+        // TASK-297 DEF-H6 — clearOnLogout drops the personalization tier too.
+        it('TASK-297 DEF-H6: clearOnLogout resets the personalization tier', () => {
+            useAgenticStore.setState({
+                preferences: { language: 'th' } as unknown as never,
+                tenantConfig: { defaultSttModel: 'whisper-base' } as unknown as never,
+                resolvedConfig: { stt: { language: 'th' } } as unknown as never,
+                configReady: true,
+                profileReady: true,
+                configManager: { fake: true } as unknown as never,
+                personalizationManager: { fake: true } as unknown as never,
+            });
+
+            useAgenticStore.getState().clearOnLogout();
+
+            const s = useAgenticStore.getState();
+            expect(s.preferences).toEqual({});
+            expect(s.tenantConfig).toBeNull();
+            expect(s.resolvedConfig).toBeNull();
+            expect(s.configReady).toBe(false);
+            expect(s.profileReady).toBe(false);
+            expect(s.configManager).toBeNull();
+            expect(s.personalizationManager).toBeNull();
         });
 
         it('should also clear sensitive in-memory state', () => {

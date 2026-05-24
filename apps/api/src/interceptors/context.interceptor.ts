@@ -52,11 +52,22 @@ export class ContextInterceptor implements NestInterceptor {
     const clientIp = request.ip?.startsWith('::ffff:') ? request.ip.split(':').pop() : request.ip;
     this.tryClsSet('requestIp', clientIp);
 
-    // Only override tenant context from header when explicitly provided;
-    // otherwise preserve the value already set by the auth guard from the JWT.
+    // SEC-J / TASK-295 C-2: the `x-tenant-id` header MUST NOT override the
+    // JWT-derived CLS `tenantId` (`JwtStrategy.validate` is the single source
+    // of truth). The header is informational only — if a client supplies one
+    // that disagrees with the JWT we warn-log so monitoring can flag the
+    // misconfiguration or attack attempt.
     const tenantIdHeader = request.headers['x-tenant-id'];
     if (tenantIdHeader) {
-      this.tryClsSet('tenantId', tenantIdHeader);
+      const clsUser = this.tryClsGet('user') as { tenantId?: string | null } | undefined;
+      const jwtTenantId = clsUser?.tenantId ?? undefined;
+      if (jwtTenantId && tenantIdHeader !== jwtTenantId) {
+        this.logger.warn({
+          message: 'x-tenant-id header diverges from JWT-derived tenant; ignoring header',
+          tenantIdHeader,
+          jwtTenantId,
+        });
+      }
     }
 
     // Capture start time for performance logging
@@ -75,7 +86,7 @@ export class ContextInterceptor implements NestInterceptor {
             path: request.url,
             durationMs,
             clientIp,
-            tenantId: tenantIdHeader ?? this.tryClsGet('tenantId'),
+            tenantId: this.tryClsGet('tenantId'),
             statusCode: httpContext.getResponse()?.statusCode,
           });
         },
@@ -90,7 +101,7 @@ export class ContextInterceptor implements NestInterceptor {
             path: request.url,
             durationMs,
             clientIp,
-            tenantId: tenantIdHeader ?? this.tryClsGet('tenantId'),
+            tenantId: this.tryClsGet('tenantId'),
             errorMessage: err?.message || String(err),
             errorType: err?.constructor?.name,
             statusCode: err?.status || err?.statusCode || 500,

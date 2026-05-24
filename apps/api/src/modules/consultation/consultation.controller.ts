@@ -592,13 +592,21 @@ export class ConsultationController {
     const tenantId = this.cls.get('tenantId') ?? 'unknown';
     const userId = this.getDoctorId();
     /* eslint-disable @typescript-eslint/no-explicit-any */
-    const job = await this.consultationJobService.createSummaryJob(consultationId, tenantId, userId, {
-      dnaStyleId: (request as any)?.dnaStyleId,
-      template: (request as any)?.template,
-      includeNER: (request as any)?.includeNER,
-      contextItemIds: (request as any)?.contextItemIds,
-      options: (request as any)?.options,
-    });
+    const job = await this.consultationJobService.createSummaryJob(
+      consultationId,
+      tenantId,
+      userId,
+      {
+        dnaStyleId: (request as any)?.dnaStyleId,
+        template: (request as any)?.template,
+        includeNER: (request as any)?.includeNER,
+        contextItemIds: (request as any)?.contextItemIds,
+        options: (request as any)?.options,
+      },
+      undefined,
+      // TASK-299 D-10 — forward the SDK-supplied idempotency key.
+      (request as any)?.idempotencyKey,
+    );
     /* eslint-enable @typescript-eslint/no-explicit-any */
     return new AsyncJobResponseDto({
       jobId: job.jobId,
@@ -620,11 +628,19 @@ export class ConsultationController {
     const tenantId = this.cls.get('tenantId') ?? 'unknown';
     const userId = this.getDoctorId();
     /* eslint-disable @typescript-eslint/no-explicit-any */
-    const job = await this.consultationJobService.createPreSummaryJob(consultationId, tenantId, userId, {
-      dnaStyleId: (request as any)?.dnaStyleId,
-      caseNoteIds: (request as any)?.caseNoteIds,
-      options: (request as any)?.options,
-    });
+    const job = await this.consultationJobService.createPreSummaryJob(
+      consultationId,
+      tenantId,
+      userId,
+      {
+        dnaStyleId: (request as any)?.dnaStyleId,
+        caseNoteIds: (request as any)?.caseNoteIds,
+        options: (request as any)?.options,
+      },
+      undefined,
+      // TASK-299 D-10 — forward the SDK-supplied idempotency key.
+      (request as any)?.idempotencyKey,
+    );
     /* eslint-enable @typescript-eslint/no-explicit-any */
     return new AsyncJobResponseDto({
       jobId: job.jobId,
@@ -681,13 +697,21 @@ export class ConsultationController {
     await this.verifyConsultationOwnership(consultationId);
     const tenantId = this.cls.get('tenantId') ?? 'unknown';
     const userId = this.getDoctorId();
-    const job = await this.consultationJobService.createComprehensiveSummaryJob(consultationId, tenantId, userId, {
-      dnaStyleId: request.dnaStyleId,
-      template: request.template,
-      includeNER: request.includeNER,
-      includeLabResults: request.includeLabResults,
-      options: request.options,
-    });
+    const job = await this.consultationJobService.createComprehensiveSummaryJob(
+      consultationId,
+      tenantId,
+      userId,
+      {
+        dnaStyleId: request.dnaStyleId,
+        template: request.template,
+        includeNER: request.includeNER,
+        includeLabResults: request.includeLabResults,
+        options: request.options,
+      },
+      undefined,
+      // TASK-299 D-10 — forward the SDK-supplied idempotency key.
+      request.idempotencyKey,
+    );
     return new AsyncJobResponseDto({
       jobId: job.jobId,
       status: 'pending',

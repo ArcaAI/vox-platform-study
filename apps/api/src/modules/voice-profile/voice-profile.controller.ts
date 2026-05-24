@@ -25,7 +25,6 @@ const MAX_AUDIO_SIZE = 10 * 1024 * 1024; // 10 MB per file
 const MAX_FILES = 3;
 
 @ApiBearerAuth()
-@Authorize()
 @ApiTags('voice-profile')
 @Controller('voice-profile')
 export class VoiceProfileController {
@@ -44,6 +43,7 @@ export class VoiceProfileController {
   }
 
   @Post('enroll')
+  @Authorize(['create', 'UserVoiceProfile'])
   @ApiOperation({ summary: 'Enroll a voice profile from audio samples' })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({ status: 201, description: 'Voice profile created', type: VoiceProfileResponse })
@@ -76,6 +76,7 @@ export class VoiceProfileController {
   }
 
   @Get()
+  @Authorize(['read', 'UserVoiceProfile'])
   @ApiOperation({ summary: 'List voice profiles for current user' })
   @ApiResponse({ status: 200, description: 'Voice profiles', type: [VoiceProfileResponse] })
   async list(): Promise<VoiceProfileResponse[]> {
@@ -85,6 +86,7 @@ export class VoiceProfileController {
   }
 
   @Patch(':id/activate')
+  @Authorize(['update', 'UserVoiceProfile'])
   @ApiOperation({ summary: 'Activate a voice profile' })
   @ApiParam({ name: 'id', description: 'Voice profile ID', type: String })
   @ApiResponse({ status: 200, description: 'Voice profile activated' })
@@ -94,6 +96,7 @@ export class VoiceProfileController {
   }
 
   @Patch(':id/deactivate')
+  @Authorize(['update', 'UserVoiceProfile'])
   @ApiOperation({ summary: 'Deactivate a voice profile' })
   @ApiParam({ name: 'id', description: 'Voice profile ID', type: String })
   @ApiResponse({ status: 200, description: 'Voice profile deactivated' })
@@ -103,6 +106,7 @@ export class VoiceProfileController {
   }
 
   @Delete(':id')
+  @Authorize(['delete', 'UserVoiceProfile'])
   @ApiOperation({ summary: 'Delete a voice profile' })
   @ApiParam({ name: 'id', description: 'Voice profile ID', type: String })
   @ApiResponse({ status: 200, description: 'Voice profile deleted', type: VoiceProfileResponse })

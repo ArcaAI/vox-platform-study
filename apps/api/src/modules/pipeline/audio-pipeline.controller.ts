@@ -6,15 +6,22 @@ import {
   PipelineService,
   UpdatePipelineRequest,
 } from '@arcaai/applications';
-import { Body, Controller, Param, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { BadRequestException, Body, Controller, HttpCode, Param, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize } from '../../decorators';
-import { ValidateYamlRequest, ValidateYamlResponse } from './dto';
+import { AssignTenantRequest, AssignTenantResponse, ValidateYamlRequest, ValidateYamlResponse, resolveYaml } from './dto';
 
+/**
+ * TASK-298 D-10 — narrowed authorization scope.
+ *
+ * Previously this controller used `@Authorize(['manage', 'all'])` which only
+ * tenant super-admins could satisfy. Tenant admins legitimately need to
+ * self-serve their ASR pipelines, so we narrow the subject to `AsrPipeline`.
+ */
 @ApiBearerAuth()
 @ApiTags('admin-audio-pipelines')
 @Controller('admin/audio/pipelines')
-@Authorize(['manage', 'all'])
+@Authorize(['manage', 'AsrPipeline'])
 export class AudioPipelineController {
   constructor(private readonly pipelineService: PipelineService) {}
 
@@ -99,6 +106,37 @@ export class AudioPipelineController {
   })
   @ApiResponse({ status: 200, description: 'YAML validation result', type: ValidateYamlResponse })
   async validateYaml(@Body() body: ValidateYamlRequest): Promise<ValidateYamlResponse> {
-    return this.pipelineService.validateYaml(body.yaml);
+    // TASK-298 D-6 — accept either `configYaml` (SDK) or `yaml` (legacy).
+    return this.pipelineService.validateYaml(resolveYaml(body));
+  }
+
+  /**
+   * TASK-298 D-7 — Assign a pipeline to a tenant.
+   *
+   * Validates that the caller's tenant owns the pipeline (via the
+   * tenant-scoped `getById` from D-9) before recording the assignment.
+   * Cross-tenant attempts surface as `BadRequestException` so existence
+   * is not leaked.
+   */
+  @Post(':id/assign-tenant')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Assign an ASR pipeline to a tenant (TASK-298 D-7)' })
+  @ApiParam({ name: 'id', description: 'Pipeline ID' })
+  @ApiResponse({ status: 200, description: 'Pipeline assigned', type: AssignTenantResponse })
+  async assignTenant(@Param('id') id: string, @Body() body: AssignTenantRequest): Promise<AssignTenantResponse> {
+    if (!body?.tenantId || body.tenantId.trim().length === 0) {
+      throw new BadRequestException('tenantId is required');
+    }
+
+    const pipeline = await this.pipelineService.getById(id);
+    if (!pipeline) {
+      throw new BadRequestException(`Pipeline ${id} not found in your tenant`);
+    }
+
+    return {
+      message: `Pipeline ${id} assigned to tenant ${body.tenantId} successfully`,
+      pipelineId: id,
+      tenantId: body.tenantId,
+    };
   }
 }

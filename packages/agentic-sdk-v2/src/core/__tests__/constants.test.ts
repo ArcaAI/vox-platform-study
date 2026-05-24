@@ -404,8 +404,8 @@ describe('constants', () => {
       expect(STORAGE_KEYS.SELECTED_MODELS).toBe('arcaai-selected-models');
     });
 
-    it('should have SESSION_STATE key', () => {
-      expect(STORAGE_KEYS.SESSION_STATE).toBe('arcaai-session-state');
+    it('TASK-297 DEF-L1: SESSION_STATE key has been removed (was dead code)', () => {
+      expect('SESSION_STATE' in STORAGE_KEYS).toBe(false);
     });
   });
 

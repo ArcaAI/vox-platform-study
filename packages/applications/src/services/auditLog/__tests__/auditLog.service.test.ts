@@ -431,6 +431,61 @@ describe('AuditLogService', () => {
                 await expect(service.handleUserAuthenticatedEvent(event)).resolves.toBeUndefined();
             });
 
+            describe('impersonation branch (TASK-295 C-3)', () => {
+                it('should persist impersonatedUserId, endpoint, httpMethod when event carries impersonatedUserId', async () => {
+                    const event = {
+                        userId: 'admin-001',
+                        impersonatedUserId: 'doctor-001',
+                        timestamp: new Date('2026-05-24T15:00:00Z'),
+                        ip: '10.0.0.1',
+                        userAgent: 'Mozilla/5.0',
+                        endpoint: '/api/v1/consultations',
+                        method: 'POST',
+                    } as any;
+
+                    await service.handleUserAuthenticatedEvent(event);
+
+                    expect(mockAuditLogRepository.create).toHaveBeenCalledWith(
+                        expect.objectContaining({
+                            action: AuditAction.IMPERSONATED_ACTION,
+                            eventType: 'IMPERSONATION',
+                            success: true,
+                            responsibleUserId: 'admin-001',
+                            resourceId: 'doctor-001',
+                            resourceType: ResourceType.User,
+                            data: expect.objectContaining({
+                                endpoint: '/api/v1/consultations',
+                                httpMethod: 'POST',
+                                impersonatedUserId: 'doctor-001',
+                                userAgent: 'Mozilla/5.0',
+                            }),
+                        }),
+                    );
+                });
+
+                it('should NOT use IMPERSONATED_ACTION for a regular login event (no impersonatedUserId)', async () => {
+                    const event = {
+                        userId: 'user-123',
+                        timestamp: new Date('2026-05-24T15:00:00Z'),
+                        ip: '10.0.0.1',
+                        userAgent: 'Mozilla/5.0',
+                        endpoint: '/auth/login',
+                        method: 'POST',
+                    } as any;
+
+                    await service.handleUserAuthenticatedEvent(event);
+
+                    expect(mockAuditLogRepository.create).toHaveBeenCalledWith(
+                        expect.objectContaining({
+                            action: AuditAction.LOGIN,
+                            eventType: 'AUTHENTICATION',
+                            responsibleUserId: 'user-123',
+                            resourceId: 'user-123',
+                        }),
+                    );
+                });
+            });
+
             it('should include userAgent and timestamp in audit data', async () => {
                 const timestamp = new Date('2026-02-06T15:30:00Z');
                 const event = {

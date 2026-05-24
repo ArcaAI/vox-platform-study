@@ -10,11 +10,13 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useVoiceEmbedding } from '../useVoiceEmbedding';
 import { useAgenticStore } from '../../store/agenticStore';
 import { createMockLogger } from '../../__tests__/setup';
 import { VOICE_EMBEDDING_ENDPOINTS } from '../../core/constants';
+import { AgenticError } from '../../types/common';
+import { SecureStorage } from '../../utils/secureStorage';
 
 vi.mock('../../store/agenticStore', async (importOriginal) => {
     const actual = await importOriginal<typeof import('../../store/agenticStore')>();
@@ -31,6 +33,9 @@ function createMockStore() {
             delete: vi.fn(),
         },
         logger: createMockLogger(),
+        // TASK-296 H-1: hook needs userId + tenantId to scope SecureStorage cache.
+        authUser: { id: 'user-1' },
+        config: { api: { tenantId: 'tenant-1' } },
     };
 }
 
@@ -236,6 +241,197 @@ describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
             expect((result.current as any).getStatus).toBeUndefined();
             expect((result.current as any).remove).toBeUndefined();
             expect((result.current as any).status).toBeUndefined();
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // TASK-296 H-3 — enroll opts.label
+    // ------------------------------------------------------------------
+    describe('TASK-296 H-3 — enroll opts.label', () => {
+        function audioFile(name = 'sample.wav'): File {
+            return new File([new Uint8Array(8)], name, { type: 'audio/wav' });
+        }
+
+        it('appends label to FormData when opts.label is provided', async () => {
+            mockStore.apiClient.postFormData.mockResolvedValue({ id: 'p-1' });
+            const { result } = renderHook(() => useVoiceEmbedding());
+
+            await act(async () => {
+                await result.current.enroll(audioFile(), { label: 'doctor-mic' });
+            });
+
+            const [, formData] = mockStore.apiClient.postFormData.mock.calls[0];
+            expect(formData.get('label')).toBe('doctor-mic');
+        });
+
+        it('does NOT append label when opts is omitted', async () => {
+            mockStore.apiClient.postFormData.mockResolvedValue({ id: 'p-1' });
+            const { result } = renderHook(() => useVoiceEmbedding());
+
+            await act(async () => {
+                await result.current.enroll(audioFile());
+            });
+
+            const [, formData] = mockStore.apiClient.postFormData.mock.calls[0];
+            expect(formData.get('label')).toBeNull();
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // TASK-296 H-7 — Client-side MIME precheck
+    // ------------------------------------------------------------------
+    describe('TASK-296 H-7 — MIME precheck', () => {
+        it('throws AgenticError VALIDATION_ERROR when Blob has no type', async () => {
+            const blob = new Blob([new Uint8Array(8)]);
+            const { result } = renderHook(() => useVoiceEmbedding());
+
+            await expect(result.current.enroll(blob)).rejects.toBeInstanceOf(AgenticError);
+            expect(mockStore.apiClient.postFormData).not.toHaveBeenCalled();
+        });
+
+        it('throws AgenticError VALIDATION_ERROR when file type is not audio/*', async () => {
+            const file = new File([new Uint8Array(8)], 'a.txt', { type: 'text/plain' });
+            const { result } = renderHook(() => useVoiceEmbedding());
+
+            await expect(result.current.enroll(file)).rejects.toMatchObject({
+                code: 'VALIDATION_ERROR',
+            });
+            expect(mockStore.apiClient.postFormData).not.toHaveBeenCalled();
+        });
+
+        it('proceeds normally when file type starts with audio/', async () => {
+            mockStore.apiClient.postFormData.mockResolvedValue({ id: 'p-1' });
+            const file = new File([new Uint8Array(8)], 'a.wav', { type: 'audio/wav' });
+            const { result } = renderHook(() => useVoiceEmbedding());
+
+            await act(async () => { await result.current.enroll(file); });
+            expect(mockStore.apiClient.postFormData).toHaveBeenCalledOnce();
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // TASK-296 C-1 — activate
+    // ------------------------------------------------------------------
+    describe('TASK-296 C-1 — activate', () => {
+        it('PATCHes the activate endpoint and marks the profile active locally', async () => {
+            mockStore.apiClient.get.mockResolvedValue([
+                { id: 'p-1', isActive: false },
+                { id: 'p-2', isActive: false },
+            ]);
+            mockStore.apiClient.patch.mockResolvedValue({ success: true });
+
+            const { result } = renderHook(() => useVoiceEmbedding());
+
+            await act(async () => { await result.current.list(); });
+            await act(async () => { await result.current.activate('p-1'); });
+
+            expect(mockStore.apiClient.patch).toHaveBeenCalledWith('/voice-profile/p-1/activate');
+            expect(result.current.profiles).toEqual([
+                { id: 'p-1', isActive: true },
+                { id: 'p-2', isActive: false },
+            ]);
+        });
+
+        it('uses VOICE_EMBEDDING_ENDPOINTS.activate factory', async () => {
+            expect(VOICE_EMBEDDING_ENDPOINTS.activate('p-1')).toBe('/voice-profile/p-1/activate');
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // TASK-296 C-1 — deactivate
+    // ------------------------------------------------------------------
+    describe('TASK-296 C-1 — deactivate', () => {
+        it('PATCHes the deactivate endpoint and marks the profile inactive locally', async () => {
+            mockStore.apiClient.get.mockResolvedValue([
+                { id: 'p-1', isActive: true },
+                { id: 'p-2', isActive: false },
+            ]);
+            mockStore.apiClient.patch.mockResolvedValue({ success: true });
+
+            const { result } = renderHook(() => useVoiceEmbedding());
+
+            await act(async () => { await result.current.list(); });
+            await act(async () => { await result.current.deactivate('p-1'); });
+
+            expect(mockStore.apiClient.patch).toHaveBeenCalledWith('/voice-profile/p-1/deactivate');
+            expect(result.current.profiles).toEqual([
+                { id: 'p-1', isActive: false },
+                { id: 'p-2', isActive: false },
+            ]);
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // TASK-296 H-1 — SecureStorage cache
+    // ------------------------------------------------------------------
+    describe('TASK-296 H-1 — SecureStorage cache', () => {
+        beforeEach(() => {
+            localStorage.clear();
+        });
+
+        it('writes profiles to SecureStorage on list() success', async () => {
+            const profiles = [{ id: 'p-1', isActive: true }];
+            mockStore.apiClient.get.mockResolvedValue(profiles);
+            const { result } = renderHook(() => useVoiceEmbedding());
+
+            await act(async () => { await result.current.list(); });
+
+            await waitFor(async () => {
+                const cached = await SecureStorage.getItemWithPassphrase(
+                    'vox.voiceProfiles.user-1.tenant-1',
+                    'vox-vp-user-1-tenant-1',
+                );
+                expect(cached).not.toBeNull();
+                expect(JSON.parse(cached!)).toEqual(profiles);
+            });
+        });
+
+        it('hydrates profiles from SecureStorage on mount', async () => {
+            const cached = [{ id: 'cached-1', isActive: true }];
+            await SecureStorage.setItemWithPassphrase(
+                'vox.voiceProfiles.user-1.tenant-1',
+                'vox-vp-user-1-tenant-1',
+                JSON.stringify(cached),
+            );
+
+            mockStore.apiClient.get.mockImplementation(
+                () => new Promise((resolve) => setTimeout(() => resolve(cached), 100)),
+            );
+            const { result } = renderHook(() => useVoiceEmbedding());
+
+            await waitFor(() => {
+                expect(result.current.profiles).toEqual(cached);
+            });
+        });
+
+        it('writes updated profiles to SecureStorage after activate', async () => {
+            mockStore.apiClient.get.mockResolvedValue([{ id: 'p-1', isActive: false }]);
+            mockStore.apiClient.patch.mockResolvedValue({ success: true });
+            const { result } = renderHook(() => useVoiceEmbedding());
+
+            await act(async () => { await result.current.list(); });
+            await act(async () => { await result.current.activate('p-1'); });
+
+            await waitFor(async () => {
+                const cached = await SecureStorage.getItemWithPassphrase(
+                    'vox.voiceProfiles.user-1.tenant-1',
+                    'vox-vp-user-1-tenant-1',
+                );
+                expect(cached).not.toBeNull();
+                expect(JSON.parse(cached!)).toEqual([{ id: 'p-1', isActive: true }]);
+            });
+        });
+
+        it('skips cache when authUser is missing (no userId scope)', async () => {
+            (useAgenticStore as any).mockReturnValue({ ...mockStore, authUser: null });
+            mockStore.apiClient.get.mockResolvedValue([{ id: 'p-1' }]);
+            const { result } = renderHook(() => useVoiceEmbedding());
+
+            await act(async () => { await result.current.list(); });
+
+            const cached = localStorage.getItem('vox.voiceProfiles.user-1.tenant-1');
+            expect(cached).toBeNull();
+            expect(result.current.profiles).toEqual([{ id: 'p-1' }]);
         });
     });
 });

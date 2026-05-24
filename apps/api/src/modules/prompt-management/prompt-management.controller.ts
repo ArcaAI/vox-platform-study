@@ -4,17 +4,19 @@ import {
   PromptVersionResponse,
   CreatePromptTemplateRequest,
   UpdatePromptTemplateRequest,
+  AssignDepartmentPromptRequest,
+  DepartmentResponse,
   HttpMethod,
 } from '@arcaai/applications';
-import { Controller, Body, Param, Inject, Query, Get, NotFoundException, ParseIntPipe } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, Inject, NotFoundException, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize } from '../../decorators';
 import { PaginatedPromptTemplateResponse, PromptUsageStatsResponse } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('prompt-templates')
 @Controller('prompt-templates')
-@Authorize()
+@Authorize(['read', 'PromptTemplate'])
 export class PromptManagementController {
   constructor(
     @Inject(IPromptManagementService)
@@ -25,6 +27,7 @@ export class PromptManagementController {
     returnedModel: PromptTemplateResponse,
     method: HttpMethod.POST,
   })
+  @Authorize(['create', 'PromptTemplate'])
   @ApiResponse({ status: 400, description: 'Bad request - invalid input' })
   async create(@Body() request: CreatePromptTemplateRequest): Promise<PromptTemplateResponse> {
     return this.promptService.createPromptTemplate(request);
@@ -82,6 +85,7 @@ export class PromptManagementController {
     path: ':id',
     by: ['id'],
   })
+  @Authorize(['update', 'PromptTemplate'])
   @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
   @ApiResponse({ status: 404, description: 'Template not found' })
   async update(@Param('id') id: string, @Body() request: UpdatePromptTemplateRequest): Promise<PromptTemplateResponse> {
@@ -94,6 +98,7 @@ export class PromptManagementController {
     path: '/:id',
     by: ['id'],
   })
+  @Authorize(['delete', 'PromptTemplate'])
   @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
   @ApiResponse({ status: 404, description: 'Template not found' })
   async remove(@Param('id') id: string): Promise<PromptTemplateResponse> {
@@ -143,6 +148,7 @@ export class PromptManagementController {
     path: ':id/versions/:versionNumber/activate',
     by: ['id', 'versionNumber'],
   })
+  @Authorize(['update', 'PromptTemplate'])
   @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
   @ApiParam({ name: 'versionNumber', description: 'Version number to activate', type: Number })
   @ApiResponse({ status: 404, description: 'Version not found' })
@@ -157,5 +163,17 @@ export class PromptManagementController {
       variables: version.variables,
       changeReason: `Activated version ${versionNumber}`,
     } as UpdatePromptTemplateRequest);
+  }
+
+  @Post('assign-department')
+  @HttpCode(200)
+  @Authorize(['manage', 'Department'])
+  @ApiOperation({ summary: 'Assign prompt templates to a department (TASK-294 DEF-C4)' })
+  @ApiBody({ type: AssignDepartmentPromptRequest })
+  @ApiResponse({ status: 200, description: 'Updated department prompt config', type: DepartmentResponse })
+  @ApiResponse({ status: 403, description: 'Forbidden - caller lacks manage Department ability' })
+  @ApiResponse({ status: 404, description: 'Department not found (or cross-tenant)' })
+  async assignDepartment(@Body() request: AssignDepartmentPromptRequest): Promise<DepartmentResponse> {
+    return this.promptService.assignToDepartment(request);
   }
 }

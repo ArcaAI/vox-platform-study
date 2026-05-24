@@ -173,6 +173,71 @@ describe('LocalSpeakerDiarizer', () => {
     expect(strict.getProfileCount()).toBeGreaterThanOrEqual(1);
   });
 
+  // TASK-296 C-2: reserved-speaker slot for the enrolled doctor.
+  describe('reservedSpeakerId (TASK-296 C-2)', () => {
+    it('pins the FIRST allocated speaker slot to reservedSpeakerId when provided', () => {
+      const diarizer = new LocalSpeakerDiarizer({
+        enabled: true,
+        maxSpeakers: 2,
+        reservedSpeakerId: 'Dr. Smith',
+      });
+
+      const id = diarizer.assignSpeaker(generateVoiceLike(140, 1.5, 0.5, 5));
+      expect(id).toBe('Dr. Smith');
+    });
+
+    it('keeps subsequent slots auto-numbered (speaker-2, speaker-3, ...) after the reserved first slot', () => {
+      const diarizer = new LocalSpeakerDiarizer({
+        enabled: true,
+        maxSpeakers: 3,
+        reservedSpeakerId: 'Dr. Smith',
+      });
+
+      const first = diarizer.assignSpeaker(generateVoiceLike(110, 2.0, 0.6, 6, 0));
+      const second = diarizer.assignSpeaker(generateVoiceLike(220, 2.0, 0.45, 4, 80));
+      const third = diarizer.assignSpeaker(generateVoiceLike(350, 2.0, 0.35, 3, 150));
+
+      expect(first).toBe('Dr. Smith');
+      expect(second).toBe('speaker-2');
+      expect(third).toBe('speaker-3');
+    });
+
+    it('uses default speaker-1 when reservedSpeakerId is not provided', () => {
+      const diarizer = new LocalSpeakerDiarizer({
+        enabled: true,
+        maxSpeakers: 2,
+      });
+
+      const id = diarizer.assignSpeaker(generateVoiceLike(140, 1.5, 0.5, 5));
+      expect(id).toBe('speaker-1');
+    });
+
+    it('setReservedSpeakerId before first profile pins the first slot', () => {
+      const diarizer = new LocalSpeakerDiarizer({
+        enabled: true,
+        maxSpeakers: 2,
+      });
+      diarizer.setReservedSpeakerId('Dr. Jones');
+
+      const id = diarizer.assignSpeaker(generateVoiceLike(140, 1.5, 0.5, 5));
+      expect(id).toBe('Dr. Jones');
+    });
+
+    it('setReservedSpeakerId is a no-op when a profile has already been allocated', () => {
+      const diarizer = new LocalSpeakerDiarizer({
+        enabled: true,
+        maxSpeakers: 2,
+      });
+
+      const first = diarizer.assignSpeaker(generateVoiceLike(110, 2.0, 0.6, 6, 0));
+      diarizer.setReservedSpeakerId('Too Late');
+      const second = diarizer.assignSpeaker(generateVoiceLike(350, 2.0, 0.35, 3, 150));
+
+      expect(first).toBe('speaker-1');
+      expect(second).toBe('speaker-2');
+    });
+  });
+
   it('does not drift centroids when max speakers reached and no match', () => {
     const diarizer = new LocalSpeakerDiarizer({
       enabled: true,

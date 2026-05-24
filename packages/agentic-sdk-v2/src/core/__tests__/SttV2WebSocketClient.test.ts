@@ -1391,6 +1391,263 @@ describe('SttV2WebSocketClient', () => {
   // the source file as text and strips comments so doc-block examples that
   // mention `console.log` don't false-positive.
   // =========================================================================
+  // =========================================================================
+  // TASK-298 D-15 — Bounded queue + bufferedAmount watermark backpressure
+  // =========================================================================
+  describe('TASK-298 D-15 backpressure', () => {
+    it('drops binary frames when bufferedAmount exceeds the high-watermark', async () => {
+      const client = new SttV2WebSocketClient(mockLogger, undefined, false, {
+        bufferedAmountHighWatermark: 100,
+      });
+      const onDrop = vi.fn();
+      client.onBackpressureDrop(onDrop);
+
+      const p = client.connect('wss://example.com/ws?sessionId=s1&ticket=t1');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      // 50 < 100 — should be sent.
+      lastMockWs!.bufferedAmount = 50;
+      const sent = client.sendAudioFrame(new ArrayBuffer(16));
+      expect(sent).toBe(true);
+      expect(lastMockWs!.sent).toHaveLength(1);
+
+      // 200 > 100 — drop.
+      lastMockWs!.bufferedAmount = 200;
+      const dropped = client.sendAudioFrame(new ArrayBuffer(16));
+      expect(dropped).toBe(false);
+      expect(lastMockWs!.sent).toHaveLength(1); // unchanged
+      expect(onDrop).toHaveBeenCalledWith('buffered_amount_high');
+      expect(client.getDroppedFrameCount()).toBe(1);
+    });
+
+    it('drops JSON frames when bufferedAmount exceeds the high-watermark', async () => {
+      const client = new SttV2WebSocketClient(mockLogger, undefined, false, {
+        bufferedAmountHighWatermark: 10,
+      });
+      const onDrop = vi.fn();
+      client.onBackpressureDrop(onDrop);
+
+      const p = client.connect('wss://example.com/ws?sessionId=s1');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      lastMockWs!.bufferedAmount = 50;
+      const ok = client.sendAudioFrameJson(1, 'aaa');
+      expect(ok).toBe(false);
+      expect(client.getDroppedFrameCount()).toBe(1);
+      expect(onDrop).toHaveBeenCalledTimes(1);
+    });
+
+    it('resets dropped-frame counter on each new connect', async () => {
+      const client = new SttV2WebSocketClient(mockLogger, undefined, false, {
+        bufferedAmountHighWatermark: 10,
+      });
+
+      const p = client.connect('wss://example.com/ws');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      lastMockWs!.bufferedAmount = 100;
+      client.sendAudioFrame(new ArrayBuffer(16));
+      expect(client.getDroppedFrameCount()).toBe(1);
+
+      client.disconnect();
+
+      const p2 = client.connect('wss://example.com/ws');
+      lastMockWs!.simulateOpen();
+      await p2;
+      expect(client.getDroppedFrameCount()).toBe(0);
+    });
+  });
+
+  // =========================================================================
+  // TASK-298 D-17 — Resumability handshake
+  // =========================================================================
+  describe('TASK-298 D-17 resume handshake', () => {
+    it('records the highest transcript seq and exposes it via getLastReceivedSeq', async () => {
+      const client = new SttV2WebSocketClient(mockLogger);
+
+      const p = client.connect('wss://example.com/ws?sessionId=s-1');
+      lastMockWs!.simulateOpen();
+      await p;
+      client.onTranscript(vi.fn());
+
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'transcript', text: 'a', startTime: 0, endTime: 1, isFinal: true, seq: 5 }));
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'transcript', text: 'b', startTime: 1, endTime: 2, isFinal: true, seq: 7 }));
+      // Out-of-order older seq must not lower lastReceivedSeq.
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'transcript', text: 'c', startTime: 2, endTime: 3, isFinal: true, seq: 6 }));
+
+      expect(client.getLastReceivedSeq()).toBe(7);
+    });
+
+    it('sends `{type:"resume", sessionId, lastSeq}` after a reconnect', async () => {
+      vi.useFakeTimers();
+      const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+      const reconnectClient = new SttV2WebSocketClient(mockLogger, {
+        enabled: true,
+        maxAttempts: 3,
+        baseDelayMs: 100,
+        maxDelayMs: 5000,
+      });
+
+      const p = reconnectClient.connect('wss://example.com/ws?sessionId=sess-abc&ticket=tkt-1');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      reconnectClient.onTranscript(vi.fn());
+      lastMockWs!.simulateMessage(
+        JSON.stringify({ type: 'transcript', text: 'foo', startTime: 0, endTime: 1, isFinal: true, seq: 42 }),
+      );
+      expect(reconnectClient.getLastReceivedSeq()).toBe(42);
+
+      // Trigger reconnect.
+      lastMockWs!.close(1006, 'lost');
+      await vi.advanceTimersByTimeAsync(101);
+      // The reconnect attempt creates a new MockWebSocket.
+      lastMockWs!.simulateOpen();
+
+      // First message on the resumed socket should be the resume handshake.
+      const resumeFrames = lastMockWs!.sent.filter((m) => typeof m === 'string' && (m as string).includes('"type":"resume"'));
+      expect(resumeFrames).toHaveLength(1);
+      const parsed = JSON.parse(resumeFrames[0] as string);
+      expect(parsed).toEqual({ type: 'resume', sessionId: 'sess-abc', lastSeq: 42 });
+
+      mathRandomSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it('does NOT send a resume handshake on the FIRST connect', async () => {
+      const client = new SttV2WebSocketClient(mockLogger);
+
+      const p = client.connect('wss://example.com/ws?sessionId=s-only');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      const resumeFrames = lastMockWs!.sent.filter((m) => typeof m === 'string' && (m as string).includes('"type":"resume"'));
+      expect(resumeFrames).toHaveLength(0);
+    });
+
+    it('handles a `resumed` server response without error', async () => {
+      const client = new SttV2WebSocketClient(mockLogger);
+
+      const p = client.connect('wss://example.com/ws?sessionId=s-1');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      const onError = vi.fn();
+      client.onWsError(onError);
+
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'resumed', sessionId: 's-1', fromSeq: 12 }));
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Server accepted resume handshake',
+        expect.objectContaining({ attributes: expect.objectContaining({ fromSeq: 12 }) }),
+      );
+    });
+
+    it('surfaces a `resume_failed` server response via onWsError and resets lastReceivedSeq', async () => {
+      const client = new SttV2WebSocketClient(mockLogger);
+
+      const p = client.connect('wss://example.com/ws?sessionId=s-1');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      client.onTranscript(vi.fn());
+      lastMockWs!.simulateMessage(
+        JSON.stringify({ type: 'transcript', text: 'x', startTime: 0, endTime: 1, isFinal: true, seq: 100 }),
+      );
+      expect(client.getLastReceivedSeq()).toBe(100);
+
+      const onError = vi.fn();
+      client.onWsError(onError);
+
+      lastMockWs!.simulateMessage(
+        JSON.stringify({ type: 'resume_failed', sessionId: 's-1', reason: 'buffer_overflow', minAvailableSeq: 500 }),
+      );
+
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'error', code: 'RESUME_FAILED' }),
+      );
+      expect(client.getLastReceivedSeq()).toBe(0);
+    });
+  });
+
+  // =========================================================================
+  // TASK-298 D-18 — Fresh ticket on reconnect
+  // =========================================================================
+  describe('TASK-298 D-18 fresh ticket on reconnect', () => {
+    it('calls refreshTicket() before reopening and rewrites the ticket query param', async () => {
+      vi.useFakeTimers();
+      const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+      const refreshTicket = vi.fn().mockResolvedValue('new-ticket-XYZ');
+      const reconnectClient = new SttV2WebSocketClient(mockLogger, {
+        enabled: true,
+        maxAttempts: 3,
+        baseDelayMs: 100,
+        maxDelayMs: 5000,
+        refreshTicket,
+      });
+
+      const p = reconnectClient.connect('wss://example.com/ws?sessionId=sess-1&ticket=stale-ticket');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      lastMockWs!.close(1006, 'lost');
+      await vi.advanceTimersByTimeAsync(101);
+      // Allow the awaited refreshTicket promise to resolve.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(refreshTicket).toHaveBeenCalledTimes(1);
+      const newUrl = lastMockWs!.url;
+      expect(newUrl).toContain('ticket=new-ticket-XYZ');
+      expect(newUrl).not.toContain('stale-ticket');
+      expect(newUrl).toContain('sessionId=sess-1');
+
+      mathRandomSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it('aborts the reconnect and fires onReconnectFailed when refreshTicket throws', async () => {
+      vi.useFakeTimers();
+      const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+      const refreshTicket = vi.fn().mockRejectedValue(new Error('network down'));
+      const reconnectClient = new SttV2WebSocketClient(mockLogger, {
+        enabled: true,
+        maxAttempts: 3,
+        baseDelayMs: 100,
+        maxDelayMs: 5000,
+        refreshTicket,
+      });
+      const failedCb = vi.fn();
+      reconnectClient.onReconnectFailed(failedCb);
+
+      const p = reconnectClient.connect('wss://example.com/ws?sessionId=sess-1&ticket=tkt');
+      lastMockWs!.simulateOpen();
+      await p;
+      const initialMock = lastMockWs;
+
+      lastMockWs!.close(1006, 'lost');
+      await vi.advanceTimersByTimeAsync(101);
+      // Let the rejected promise propagate.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(refreshTicket).toHaveBeenCalled();
+      expect(failedCb).toHaveBeenCalled();
+      // No new WebSocket should have been created.
+      expect(lastMockWs).toBe(initialMock);
+
+      mathRandomSpy.mockRestore();
+      vi.useRealTimers();
+    });
+  });
+
   describe('TASK-266 W0-13: source must not contain console.log', () => {
     it('SttV2WebSocketClient.ts source file contains zero console.log call sites', async () => {
       const { readFileSync } = await import('node:fs');

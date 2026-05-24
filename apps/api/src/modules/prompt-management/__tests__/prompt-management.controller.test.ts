@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { PromptManagementController } from '../prompt-management.controller';
 
 const fakeTemplateEntity = {
@@ -29,13 +30,17 @@ const fakeVersionEntity = {
 
 const createMockService = () => ({
     createPromptTemplate: vi.fn(),
+    createPersonal: vi.fn(),
     updatePromptTemplate: vi.fn(),
     getPromptTemplate: vi.fn(),
     listPromptTemplates: vi.fn(),
+    listDefaultsForDepartment: vi.fn(),
+    listMyPersonalForDepartment: vi.fn(),
     getVersions: vi.fn(),
     getVersion: vi.fn(),
     getUsageStats: vi.fn(),
     softDeletePromptTemplate: vi.fn(),
+    assignToDepartment: vi.fn(),
 });
 
 describe('PromptManagementController', () => {
@@ -265,6 +270,78 @@ describe('PromptManagementController', () => {
             mockService.getVersion.mockResolvedValue(null);
 
             await expect(controller.activateVersion('tpl-1', 99)).rejects.toThrow();
+        });
+    });
+
+    // ─── TASK-294 DEF-C2: Authorization metadata ─────────────────────────
+
+    describe('Authorization decorators (DEF-C2)', () => {
+        const getClassMetadata = () =>
+            Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, PromptManagementController);
+
+        const getMethodMetadata = (method: string) =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, (PromptManagementController.prototype as any)[method]);
+
+        it('should require ["read","PromptTemplate"] at class level', () => {
+            expect(getClassMetadata()).toEqual([{ action: 'read', subject: 'PromptTemplate' }]);
+        });
+
+        it('should require ["create","PromptTemplate"] on create (POST /prompt-templates)', () => {
+            expect(getMethodMetadata('create')).toEqual([{ action: 'create', subject: 'PromptTemplate' }]);
+        });
+
+        it('should require ["update","PromptTemplate"] on update (PATCH /prompt-templates/:id)', () => {
+            expect(getMethodMetadata('update')).toEqual([{ action: 'update', subject: 'PromptTemplate' }]);
+        });
+
+        it('should require ["delete","PromptTemplate"] on remove (DELETE /prompt-templates/:id)', () => {
+            expect(getMethodMetadata('remove')).toEqual([{ action: 'delete', subject: 'PromptTemplate' }]);
+        });
+
+        it('should require ["update","PromptTemplate"] on activateVersion (POST /prompt-templates/:id/versions/:n/activate)', () => {
+            expect(getMethodMetadata('activateVersion')).toEqual([
+                { action: 'update', subject: 'PromptTemplate' },
+            ]);
+        });
+
+        it('should require ["manage","Department"] on assignDepartment (POST /prompt-templates/assign-department)', () => {
+            expect(getMethodMetadata('assignDepartment')).toEqual([
+                { action: 'manage', subject: 'Department' },
+            ]);
+        });
+    });
+
+    // ─── TASK-294 DEF-C4: assign-department route ────────────────────────
+
+    describe('POST /prompt-templates/assign-department (DEF-C4)', () => {
+        it('should delegate to service.assignToDepartment with the request body', async () => {
+            const body = { departmentId: 'dept-card', newPatientPromptId: 'np-1', revisitPromptId: 'rv-1' };
+            mockService.assignToDepartment.mockResolvedValue({ id: 'dept-card' });
+
+            await controller.assignDepartment(body as never);
+
+            expect(mockService.assignToDepartment).toHaveBeenCalledWith(body);
+            expect(mockService.assignToDepartment).toHaveBeenCalledTimes(1);
+        });
+
+        it('should return the value produced by the service (no transformation)', async () => {
+            const deptResponse = { id: 'dept-card', name: 'Cardiology' };
+            mockService.assignToDepartment.mockResolvedValue(deptResponse);
+
+            const result = await controller.assignDepartment({
+                departmentId: 'dept-card',
+            } as never);
+
+            expect(result).toBe(deptResponse);
+        });
+
+        it('should propagate errors from the service (e.g., tenant guard NotFoundException)', async () => {
+            mockService.assignToDepartment.mockRejectedValue(new Error('Department not found'));
+
+            await expect(
+                controller.assignDepartment({ departmentId: 'wrong' } as never),
+            ).rejects.toThrow('Department not found');
         });
     });
 });

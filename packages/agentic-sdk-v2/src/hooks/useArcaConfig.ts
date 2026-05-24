@@ -2,11 +2,33 @@
  * @arcaai/vox - useArcaConfig Hook
  *
  * Configuration and personalization access hook.
+ *
+ * TASK-297 DEF-H3 — Reads from Zustand via discrete selectors rather than
+ * subscribing to the whole store. Each `useAgenticStore(selectX)` call
+ * only triggers re-render when its slice changes.
+ *
+ * TASK-297 DEF-C6 — Every mutation in this hook (`update`, `reset`,
+ * `selectModel`, `setUserPreference`, `resetUserPreferences`) is gated on
+ * `configReady`. Calling before the cascade is hydrated throws
+ * `AgenticError('CONFIG_NOT_READY', ...)` rather than silently writing
+ * to a half-initialized store.
  */
 
 import { useMemo, useCallback } from 'react';
-import { useAgenticStore } from '../store';
+import {
+  useAgenticStore,
+  selectPreferences,
+  selectTenantConfig,
+  selectResolvedConfig,
+  selectConfigReady,
+  selectConfigManager,
+  selectPersonalizationManager,
+  selectModelRegistry,
+  selectModelRegistryVersion,
+  selectLogger,
+} from '../store';
 import type { UserPreferences, ModelDefinition, TenantAudioConfig } from '../types';
+import { AgenticError } from '../types';
 import type { AppConfig } from '../core/ConfigSchema';
 import type { ISDKLogger } from '../core/logger';
 
@@ -56,60 +78,48 @@ export interface UseArcaConfigReturn {
 // Hook Implementation
 // =============================================================================
 
-/**
- * Configuration and personalization access hook.
- *
- * Use this hook to access and update user preferences and model selection.
- *
- * @example
- * ```tsx
- * function SettingsPage() {
- *   const { preferences, models, update, selectModel } = useArcaConfig();
- *
- *   return (
- *     <div>
- *       <select
- *         value={preferences.language}
- *         onChange={e => update({ language: e.target.value })}
- *       >
- *         <option value="en">English</option>
- *         <option value="th">Thai</option>
- *       </select>
- *
- *       <h3>STT Models</h3>
- *       {models.stt.map(model => (
- *         <button
- *           key={model.id}
- *           onClick={() => selectModel('stt', model.id)}
- *         >
- *           {model.name} {models.selected.stt === model.id && '✓'}
- *         </button>
- *       ))}
- *     </div>
- *   );
- * }
- * ```
- */
 export function useArcaConfig(): UseArcaConfigReturn {
-  const store = useAgenticStore();
+  // TASK-297 DEF-H3 — discrete selector subscriptions; each only re-renders
+  // on its own slice change.
+  const preferences = useAgenticStore(selectPreferences);
+  const tenantConfig = useAgenticStore(selectTenantConfig);
+  const resolvedConfig = useAgenticStore(selectResolvedConfig);
+  const configReady = useAgenticStore(selectConfigReady);
+  const configManager = useAgenticStore(selectConfigManager);
+  const personalizationManager = useAgenticStore(selectPersonalizationManager);
+  const modelRegistry = useAgenticStore(selectModelRegistry);
+  const modelRegistryVersion = useAgenticStore(selectModelRegistryVersion);
+  const sdkLogger = useAgenticStore(selectLogger);
+  const setPreferencesAction = useAgenticStore((s) => s.setPreferences);
+  const updatePreferencesAction = useAgenticStore((s) => s.updatePreferences);
+  const incrementModelRegistryVersion = useAgenticStore((s) => s.incrementModelRegistryVersion);
 
-  // Get logger from store
   const getLogger = useCallback((): ISDKLogger | undefined => {
-    return store.logger?.child('useArcaConfig');
-  }, [store.logger]);
+    return sdkLogger?.child('useArcaConfig');
+  }, [sdkLogger]);
 
-  // Get preference value
-  const get = useCallback(
-    <K extends keyof UserPreferences>(key: K): UserPreferences[K] => {
-      return store.preferences[key];
+  // TASK-297 DEF-C6 — gate every mutation on `configReady`.
+  const requireReady = useCallback(
+    (operation: string) => {
+      if (!configReady) {
+        throw new AgenticError('CONFIG_NOT_READY', `useArcaConfig.${operation}() called before configReady; await profile preload first.`, {
+          context: { operation },
+        });
+      }
     },
-    [store.preferences],
+    [configReady],
   );
 
-  // Update preferences
+  const get = useCallback(
+    <K extends keyof UserPreferences>(key: K): UserPreferences[K] => {
+      return preferences[key];
+    },
+    [preferences],
+  );
+
   const update = useCallback(
     async (updates: Partial<UserPreferences>): Promise<void> => {
-      const { personalizationManager } = store;
+      requireReady('update');
       const logger = getLogger();
 
       const timer = logger?.startOperation('updatePreferences', {
@@ -118,31 +128,29 @@ export function useArcaConfig(): UseArcaConfigReturn {
       });
 
       if (!personalizationManager) {
-        // Fallback to local update only
         logger?.debug('PersonalizationManager not available, updating locally', {
           operation: 'updatePreferences',
           component: 'useArcaConfig',
         });
-        store.updatePreferences(updates);
+        updatePreferencesAction(updates);
         timer?.end(true, { attributes: { localOnly: true } });
         return;
       }
 
       try {
         await personalizationManager.updatePreferences(updates);
-        store.setPreferences(personalizationManager.getPreferences());
+        setPreferencesAction(personalizationManager.getPreferences());
         timer?.end(true);
       } catch (error) {
         timer?.error(error as Error);
         throw error;
       }
     },
-    [store, getLogger],
+    [personalizationManager, setPreferencesAction, updatePreferencesAction, getLogger, requireReady],
   );
 
-  // Reset preferences
   const reset = useCallback(async (): Promise<void> => {
-    const { personalizationManager } = store;
+    requireReady('reset');
     const logger = getLogger();
     if (!personalizationManager) return;
 
@@ -152,7 +160,7 @@ export function useArcaConfig(): UseArcaConfigReturn {
 
     try {
       await personalizationManager.reset();
-      store.setPreferences(personalizationManager.getPreferences());
+      setPreferencesAction(personalizationManager.getPreferences());
       timer?.end(true);
       logger?.info('Preferences reset to defaults', {
         operation: 'resetPreferences',
@@ -163,12 +171,11 @@ export function useArcaConfig(): UseArcaConfigReturn {
       timer?.error(error as Error);
       throw error;
     }
-  }, [store, getLogger]);
+  }, [personalizationManager, setPreferencesAction, getLogger, requireReady]);
 
-  // Select model
   const selectModel = useCallback(
     (type: 'stt' | 'vad' | 'ner', modelId: string): void => {
-      const { modelRegistry } = store;
+      requireReady('selectModel');
       const logger = getLogger();
       if (!modelRegistry) return;
 
@@ -179,24 +186,22 @@ export function useArcaConfig(): UseArcaConfigReturn {
       });
 
       modelRegistry.selectModel(type, modelId);
-      store.incrementModelRegistryVersion();
+      incrementModelRegistryVersion();
     },
-    [store, getLogger],
+    [modelRegistry, incrementModelRegistryVersion, getLogger, requireReady],
   );
 
-  // Three-tier config helpers (TASK-244)
   const isLocked = useCallback(
     (path: string): boolean => {
-      const { configManager } = store;
       if (!configManager) return true;
       return !configManager.canUserEdit(path);
     },
-    [store.configManager],
+    [configManager],
   );
 
   const setUserPreference = useCallback(
     (path: string, value: unknown): boolean => {
-      const { configManager } = store;
+      requireReady('setUserPreference');
       const logger = getLogger();
       if (!configManager) return false;
       const ok = configManager.setUserValue(path, value);
@@ -215,11 +220,11 @@ export function useArcaConfig(): UseArcaConfigReturn {
       }
       return ok;
     },
-    [store.configManager, getLogger],
+    [configManager, getLogger, requireReady],
   );
 
   const resetUserPreferences = useCallback((): void => {
-    const { configManager } = store;
+    requireReady('resetUserPreferences');
     const logger = getLogger();
     if (!configManager) return;
     configManager.clearUserPreferences();
@@ -227,53 +232,46 @@ export function useArcaConfig(): UseArcaConfigReturn {
       operation: 'resetUserPreferences',
       component: 'useArcaConfig',
     });
-  }, [store.configManager, getLogger]);
+  }, [configManager, getLogger, requireReady]);
 
-  // Models state — only query types supported by ModelRegistry ('stt' | 'vad' | 'ner')
   const models = useMemo(() => {
-    const { modelRegistry } = store;
     if (!modelRegistry) {
-      return {
-        stt: [],
-        vad: [],
-        ner: [],
-        selected: {},
-      };
+      return { stt: [], vad: [], ner: [], selected: {} };
     }
-
     return {
       stt: modelRegistry.getModelsByType('stt') ?? [],
       vad: modelRegistry.getModelsByType('vad') ?? [],
       ner: modelRegistry.getModelsByType('ner') ?? [],
       selected: modelRegistry.getSelected() ?? {},
     };
-  }, [store.modelRegistry, store.modelRegistryVersion]);
+    // eslint-disable-next-line -- modelRegistryVersion is the explicit memo bust signal.
+  }, [modelRegistry, modelRegistryVersion]);
 
   return useMemo(
     () => ({
-      preferences: store.preferences,
+      preferences,
       models,
-      tenantConfig: store.tenantConfig,
+      tenantConfig,
       update,
       selectModel,
       get,
       reset,
-      resolvedConfig: store.resolvedConfig,
-      configReady: store.configReady,
+      resolvedConfig,
+      configReady,
       isLocked,
       setUserPreference,
       resetUserPreferences,
     }),
     [
-      store.preferences,
+      preferences,
       models,
-      store.tenantConfig,
+      tenantConfig,
       update,
       selectModel,
       get,
       reset,
-      store.resolvedConfig,
-      store.configReady,
+      resolvedConfig,
+      configReady,
       isLocked,
       setUserPreference,
       resetUserPreferences,

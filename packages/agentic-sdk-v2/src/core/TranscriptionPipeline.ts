@@ -162,14 +162,18 @@ export class TranscriptionPipeline {
         const { createSTT } = await import('@arcaai/stt');
         const runtimeProvider = this.resolveSTTRuntimeProvider();
         const sttSocket = this.config.stt.sttSocket;
+        const streamingTransport = this.config.stt.streamingTransport as import('@arcaai/stt').STTStreamingTransport | undefined;
         const useVadGate = runtimeProvider === 'local' && this.config.vad.enabled;
 
-        if (runtimeProvider === 'remote' && !sttSocket) {
-          throw new Error('stt.sttSocket is required when STT provider resolves to backend/remote');
+        // TASK-298 D-4 — the streaming transport carries its own WebSocket
+        // URL via `StreamingSessionManager.getWebSocketUrl()`; only require
+        // `sttSocket` for the legacy `RemoteSTTProvider` path.
+        if (runtimeProvider === 'remote' && !sttSocket && !streamingTransport) {
+          throw new Error('stt.sttSocket or stt.streamingTransport is required when STT provider resolves to backend/remote');
         }
 
-        return createSTT({
-          ...(runtimeProvider === 'remote' ? { sttSocket } : {}),
+        const processor = createSTT({
+          ...(runtimeProvider === 'remote' && sttSocket ? { sttSocket } : {}),
           audio: {
             language: this.getSTTLanguage(),
           },
@@ -184,6 +188,12 @@ export class TranscriptionPipeline {
           },
           debugMode: this.config.debugMode,
         });
+
+        if (runtimeProvider === 'remote' && streamingTransport) {
+          processor.setStreamingTransport(streamingTransport);
+        }
+
+        return processor;
       },
     });
   }

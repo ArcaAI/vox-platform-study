@@ -24,6 +24,8 @@ export interface IConsultationJobService {
     userId: string,
     request: GeneratePreSummaryJobPayload['request'],
     callbackUrl?: string,
+    /** TASK-299 D-10 — Redis-backed dedupe key for the POST creation. */
+    idempotencyKey?: string,
   ): Promise<JobResponse>;
 
   createSummaryJob(
@@ -32,6 +34,8 @@ export interface IConsultationJobService {
     userId: string,
     request: GenerateSummaryJobPayload['request'],
     callbackUrl?: string,
+    /** TASK-299 D-10 — Redis-backed dedupe key for the POST creation. */
+    idempotencyKey?: string,
   ): Promise<JobResponse>;
 
   createComprehensiveSummaryJob(
@@ -40,9 +44,19 @@ export interface IConsultationJobService {
     userId: string,
     request: GenerateComprehensiveSummaryJobPayload['request'],
     callbackUrl?: string,
+    /** TASK-299 D-10 — Redis-backed dedupe key for the POST creation. */
+    idempotencyKey?: string,
   ): Promise<JobResponse>;
 
-  createNerJob(contextItemId: string, consultationId: string, tenantId: string, userId: string, callbackUrl?: string): Promise<JobResponse>;
+  createNerJob(
+    contextItemId: string,
+    consultationId: string,
+    tenantId: string,
+    userId: string,
+    callbackUrl?: string,
+    /** TASK-299 D-10 — Redis-backed dedupe key for the POST creation. */
+    idempotencyKey?: string,
+  ): Promise<JobResponse>;
 
   getJobStatus(jobId: string): Promise<JobStatusResponse | null>;
   cancelJob(jobId: string): Promise<boolean>;
@@ -60,6 +74,11 @@ export class ConsultationJobService implements IConsultationJobService {
   private readonly JOB_TTL = 86400; // 24 hours
   private readonly JOB_KEY_PREFIX = 'consultation_job:';
   private readonly JOB_CHANNEL_PREFIX = 'consultation_job_updates:';
+  // TASK-299 D-10 — Idempotency-Key dedupe. The key namespace is intentionally
+  // scoped by tenantId + userId so two doctors (or two tenants) cannot collide
+  // on the same UUID and leak each other's jobIds.
+  private readonly IDEMPOTENCY_KEY_PREFIX = 'idempotency:';
+  private readonly IDEMPOTENCY_TTL = 86400; // 24 hours
 
   constructor(
     @InjectQueue(JobQueue.GeneratePreSummary) private preSummaryQueue: Queue,
@@ -81,7 +100,14 @@ export class ConsultationJobService implements IConsultationJobService {
     userId: string,
     request: GeneratePreSummaryJobPayload['request'],
     callbackUrl?: string,
+    idempotencyKey?: string,
   ): Promise<JobResponse> {
+    // TASK-299 D-10 — return the prior jobId on idempotency-key collision.
+    const prior = await this.lookupIdempotentJobId('pre-summary', tenantId, userId, idempotencyKey);
+    if (prior) {
+      return { jobId: prior, status: 'PENDING', sseUrl: `/api/consultations/jobs/${prior}/sse`, estimatedSeconds: 30 };
+    }
+
     const jobId = uuidv7();
 
     const payload: GeneratePreSummaryJobPayload = {
@@ -110,6 +136,8 @@ export class ConsultationJobService implements IConsultationJobService {
       createdAt: new Date(),
     });
 
+    await this.recordIdempotentJobId('pre-summary', tenantId, userId, idempotencyKey, jobId);
+
     this.logger.log({
       message: 'Created pre-summary job',
       jobId,
@@ -134,7 +162,13 @@ export class ConsultationJobService implements IConsultationJobService {
     userId: string,
     request: GenerateSummaryJobPayload['request'],
     callbackUrl?: string,
+    idempotencyKey?: string,
   ): Promise<JobResponse> {
+    const prior = await this.lookupIdempotentJobId('summary', tenantId, userId, idempotencyKey);
+    if (prior) {
+      return { jobId: prior, status: 'PENDING', sseUrl: `/api/consultations/jobs/${prior}/sse`, estimatedSeconds: 60 };
+    }
+
     const jobId = uuidv7();
 
     const payload: GenerateSummaryJobPayload = {
@@ -163,6 +197,8 @@ export class ConsultationJobService implements IConsultationJobService {
       createdAt: new Date(),
     });
 
+    await this.recordIdempotentJobId('summary', tenantId, userId, idempotencyKey, jobId);
+
     this.logger.log({
       message: 'Created summary job',
       jobId,
@@ -187,7 +223,13 @@ export class ConsultationJobService implements IConsultationJobService {
     userId: string,
     request: GenerateComprehensiveSummaryJobPayload['request'],
     callbackUrl?: string,
+    idempotencyKey?: string,
   ): Promise<JobResponse> {
+    const prior = await this.lookupIdempotentJobId('comprehensive', tenantId, userId, idempotencyKey);
+    if (prior) {
+      return { jobId: prior, status: 'PENDING', sseUrl: `/api/consultations/jobs/${prior}/sse`, estimatedSeconds: 120 };
+    }
+
     const jobId = uuidv7();
 
     const payload: GenerateComprehensiveSummaryJobPayload = {
@@ -216,6 +258,8 @@ export class ConsultationJobService implements IConsultationJobService {
       createdAt: new Date(),
     });
 
+    await this.recordIdempotentJobId('comprehensive', tenantId, userId, idempotencyKey, jobId);
+
     this.logger.log({
       message: 'Created comprehensive summary job',
       jobId,
@@ -234,7 +278,19 @@ export class ConsultationJobService implements IConsultationJobService {
   /**
    * Create a NER extraction job
    */
-  async createNerJob(contextItemId: string, consultationId: string, tenantId: string, userId: string, callbackUrl?: string): Promise<JobResponse> {
+  async createNerJob(
+    contextItemId: string,
+    consultationId: string,
+    tenantId: string,
+    userId: string,
+    callbackUrl?: string,
+    idempotencyKey?: string,
+  ): Promise<JobResponse> {
+    const prior = await this.lookupIdempotentJobId('ner', tenantId, userId, idempotencyKey);
+    if (prior) {
+      return { jobId: prior, status: 'PENDING', sseUrl: `/api/consultations/jobs/${prior}/sse`, estimatedSeconds: 15 };
+    }
+
     const jobId = uuidv7();
 
     const payload: ExtractNerJobPayload = {
@@ -263,6 +319,8 @@ export class ConsultationJobService implements IConsultationJobService {
       progress: 0,
       createdAt: new Date(),
     });
+
+    await this.recordIdempotentJobId('ner', tenantId, userId, idempotencyKey, jobId);
 
     this.logger.log({
       message: 'Created NER job',
@@ -473,6 +531,79 @@ export class ConsultationJobService implements IConsultationJobService {
    */
   private async storeJobStatus(jobId: string, status: ConsultationJobStatus): Promise<void> {
     await this.cacheService.setex(`${this.JOB_KEY_PREFIX}${jobId}`, this.JOB_TTL, JSON.stringify(status));
+  }
+
+  /**
+   * TASK-299 D-10 — Build the Redis key for an Idempotency-Key. Scoped by
+   * job type, tenantId, and userId so two doctors or two tenants cannot
+   * collide on the same UUID and inadvertently reuse each other's jobIds.
+   */
+  private buildIdempotencyRedisKey(jobType: string, tenantId: string, userId: string, idempotencyKey: string): string {
+    return `${this.IDEMPOTENCY_KEY_PREFIX}${jobType}:${tenantId}:${userId}:${idempotencyKey}`;
+  }
+
+  /**
+   * TASK-299 D-10 — Look up a prior jobId for this Idempotency-Key. Returns
+   * `null` when no key was provided or when no prior call exists; callers
+   * proceed to create a new job in that case.
+   */
+  private async lookupIdempotentJobId(
+    jobType: string,
+    tenantId: string,
+    userId: string,
+    idempotencyKey?: string,
+  ): Promise<string | null> {
+    if (!idempotencyKey) return null;
+    try {
+      const cached = await this.cacheService.get(this.buildIdempotencyRedisKey(jobType, tenantId, userId, idempotencyKey));
+      if (cached && cached.length > 0) {
+        this.logger.log({
+          message: 'Idempotency hit — returning prior jobId',
+          jobType,
+          tenantId,
+          userId,
+          idempotencyKey,
+          priorJobId: cached,
+        });
+        return cached;
+      }
+    } catch (err) {
+      // Best-effort dedupe — never block the caller on a Redis miss.
+      this.logger.warn({
+        message: 'Idempotency lookup failed — falling through to job creation',
+        jobType,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return null;
+  }
+
+  /**
+   * TASK-299 D-10 — Persist the newly-created jobId under the Idempotency-Key
+   * with a 24h TTL. No-op when no key is supplied.
+   */
+  private async recordIdempotentJobId(
+    jobType: string,
+    tenantId: string,
+    userId: string,
+    idempotencyKey: string | undefined,
+    jobId: string,
+  ): Promise<void> {
+    if (!idempotencyKey) return;
+    try {
+      await this.cacheService.setex(
+        this.buildIdempotencyRedisKey(jobType, tenantId, userId, idempotencyKey),
+        this.IDEMPOTENCY_TTL,
+        jobId,
+      );
+    } catch (err) {
+      this.logger.warn({
+        message: 'Idempotency recording failed — duplicate POSTs may create duplicate jobs',
+        jobType,
+        jobId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**

@@ -18,10 +18,39 @@ import type {
   DiffResult,
 } from '../types';
 import type { SummaryApprovalResponse } from '../types/summary';
-import type { SummaryGenerationOptions } from '../types/summary';
+import type { SummaryGenerationOptions, ComprehensiveSummaryGenerationOptions } from '../types/summary';
 import { SUMMARY_ENDPOINTS, CONTEXT_ENDPOINTS } from '../core/constants';
 import { computeSummaryDiff } from '../utils/diffUtils';
+import { withIdempotencyKey } from '../utils/idempotency';
 import type { ISDKLogger } from '../core/logger';
+
+/**
+ * TASK-299 D-4 — Reconcile legacy SDK option field names to the canonical
+ * backend DTO fields before POSTing. The backend's `GenerateSummaryRequest`
+ * does NOT accept `transcript` / `promptTemplateId` / `departmentId`, so we
+ * normalise them here and strip the legacy names from the body.
+ */
+function mapSummaryOptionsToBackend(options?: SummaryGenerationOptions): Record<string, unknown> | undefined {
+  if (!options) return undefined;
+
+  const { transcript, promptTemplateId, departmentId, transcription, template, options: optsBag, ...rest } = options;
+
+  const out: Record<string, unknown> = { ...rest };
+  const canonicalTranscription = transcription ?? transcript;
+  const canonicalTemplate = template ?? promptTemplateId;
+
+  if (canonicalTranscription !== undefined) out.transcription = canonicalTranscription;
+  if (canonicalTemplate !== undefined) out.template = canonicalTemplate;
+
+  if (departmentId !== undefined || optsBag !== undefined) {
+    out.options = {
+      ...(optsBag ?? {}),
+      ...(departmentId !== undefined ? { departmentId } : {}),
+    };
+  }
+
+  return out;
+}
 
 export type { UseArcaSummary } from './useArca';
 
@@ -47,7 +76,9 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const summary = await apiClient.post<SummaryResponse>(SUMMARY_ENDPOINTS.PRE_SUMMARY(consultation.id), options);
+        const mapped = mapSummaryOptionsToBackend(options);
+        const body = mapped ? withIdempotencyKey(mapped, options?.idempotencyKey) : undefined;
+        const summary = await apiClient.post<SummaryResponse>(SUMMARY_ENDPOINTS.PRE_SUMMARY(consultation.id), body);
         store.addSummary(summary);
         timer?.end(true, { attributes: { summaryId: summary.id } });
         return summary;
@@ -77,7 +108,9 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const summary = await apiClient.post<SummaryResponse>(SUMMARY_ENDPOINTS.GENERATE(consultation.id), options);
+        const mapped = mapSummaryOptionsToBackend(options);
+        const body = mapped ? withIdempotencyKey(mapped, options?.idempotencyKey) : undefined;
+        const summary = await apiClient.post<SummaryResponse>(SUMMARY_ENDPOINTS.GENERATE(consultation.id), body);
         store.addSummary(summary);
         timer?.end(true, { attributes: { summaryId: summary.id } });
         return summary;
@@ -177,7 +210,9 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.GENERATE_ASYNC(consultation.id), options || {});
+        const mapped = mapSummaryOptionsToBackend(options) ?? {};
+        const body = withIdempotencyKey(mapped, options?.idempotencyKey);
+        const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.GENERATE_ASYNC(consultation.id), body);
         return job;
       } catch (error) {
         store.setSummaryError(error as Error);
@@ -199,7 +234,9 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(consultation.id), options || {});
+        const mapped = mapSummaryOptionsToBackend(options) ?? {};
+        const body = withIdempotencyKey(mapped, options?.idempotencyKey);
+        const job = await apiClient.post<AsyncJobResponse>(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC(consultation.id), body);
         return job;
       } catch (error) {
         store.setSummaryError(error as Error);
@@ -212,7 +249,7 @@ export function useArcaSummary() {
   );
 
   const generateComprehensiveSummary = useCallback(
-    async (options?: { dnaStyleId?: string; includeNER?: boolean }): Promise<ComprehensiveSummaryResponse> => {
+    async (options?: ComprehensiveSummaryGenerationOptions): Promise<ComprehensiveSummaryResponse> => {
       const { apiClient, consultation } = store;
       if (!apiClient) throw new Error('SDK not initialized');
       if (!consultation) throw new Error('No active consultation');
@@ -221,7 +258,9 @@ export function useArcaSummary() {
       store.setSummaryError(null);
 
       try {
-        const result = await apiClient.post<ComprehensiveSummaryResponse>(SUMMARY_ENDPOINTS.COMPREHENSIVE(consultation.id), options || {});
+        const { idempotencyKey, ...rest } = options ?? {};
+        const body = withIdempotencyKey(rest as Record<string, unknown>, idempotencyKey);
+        const result = await apiClient.post<ComprehensiveSummaryResponse>(SUMMARY_ENDPOINTS.COMPREHENSIVE(consultation.id), body);
         return result;
       } catch (error) {
         store.setSummaryError(error as Error);

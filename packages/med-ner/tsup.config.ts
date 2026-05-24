@@ -38,6 +38,12 @@ export default defineConfig([
     clean: true,
     treeshake: true,
     external: ['react', 'react-dom', '@arcaai/room'],
+    // TASK-300 C-XCUT-3: emit ESM as `.mjs` (CJS as `.cjs`) for unambiguous
+    // resolution. Worker / E2E entries keep their `.js` extension since
+    // they're loaded via explicit URL paths.
+    outExtension({ format }) {
+      return { js: format === 'esm' ? '.mjs' : '.cjs' };
+    },
     esbuildOptions(options) {
       options.banner = {
         js: '"use client";',
@@ -71,6 +77,21 @@ export default defineConfig([
     esbuildOptions(options) {
       options.platform = 'browser';
       options.conditions = ['browser', 'module', 'import', 'default'];
+    },
+  },
+  // TASK-300 C-XCUT-2: react-server stub (ESM-only). Separate entry so it
+  // does NOT inherit the `"use client"` banner from the main bundle —
+  // RSC bundlers should be able to evaluate it server-side and throw.
+  {
+    entry: { 'react-server-stub': 'src/react-server-stub.ts' },
+    format: ['esm'],
+    dts: false,
+    splitting: false,
+    sourcemap: false,
+    clean: false,
+    minify: false,
+    outExtension() {
+      return { js: '.mjs' };
     },
   },
 ]);

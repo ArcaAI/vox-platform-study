@@ -40,9 +40,25 @@ import {
 import type { STTProvider } from '../providers/types.js';
 import { LocalSTTProvider } from '../providers/LocalSTTProvider.js';
 import { RemoteSTTProvider } from '../providers/BackendSTTProvider.js';
+import { StreamingBackendSTTProvider, type StreamingSessionLike, type StreamingWsClientLike } from '../providers/StreamingBackendSTTProvider.js';
 import { getSTTBrowserSupport } from '../utils/browserSupport.js';
 import { WHISPER_SAMPLE_RATE } from '../utils/audioResampler.js';
 import { createAudioCapture, type AudioCaptureHandle } from './audioCapture.js';
+
+/**
+ * Externally-constructed streaming transport injected into the STT
+ * processor by the SDK glue layer (TASK-298 D-4). When set, the processor
+ * routes `initializeRemoteProvider` through `StreamingBackendSTTProvider`
+ * instead of the legacy `RemoteSTTProvider`.
+ */
+export interface STTStreamingTransport {
+  sessionManager: StreamingSessionLike;
+  wsClient: StreamingWsClientLike;
+  /** Backend ASR pipeline UUID or slug. Required. */
+  pipelineId: string;
+  /** Optional consultation id to associate with the streaming session. */
+  consultationId?: string;
+}
 
 /**
  * STTProcessor provides speech-to-text transcription for audio tracks.
@@ -96,6 +112,13 @@ export class STTProcessor extends BaseProcessor {
   private captureHandle: AudioCaptureHandle | null = null;
   private localProviderCacheKey: string | null = null;
   private debugSegmentCounter = 0;
+
+  /**
+   * Optional streaming transport injected by the SDK (TASK-298 D-4).
+   * When set, `initializeRemoteProvider` uses `StreamingBackendSTTProvider`
+   * (pipeline-aware) instead of the deprecated `RemoteSTTProvider`.
+   */
+  private streamingTransport: STTStreamingTransport | null = null;
 
   constructor(options: STTOptions = {}) {
     super('stt-processor', options.debugMode);
@@ -297,6 +320,25 @@ export class STTProcessor extends BaseProcessor {
   }
 
   /**
+   * Inject (or clear) the streaming transport used by the remote provider
+   * path. Must be called BEFORE `onInit` for the new path to take effect.
+   *
+   * TASK-298 D-4: when a transport is set with a `pipelineId`, the next
+   * call to `initializeRemoteProvider()` constructs `StreamingBackendSTTProvider`
+   * instead of the legacy `RemoteSTTProvider`. Pass `null` to revert.
+   */
+  setStreamingTransport(transport: STTStreamingTransport | null): void {
+    this.streamingTransport = transport;
+  }
+
+  /**
+   * Visible for diagnostics — the currently-injected transport, if any.
+   */
+  getStreamingTransport(): STTStreamingTransport | null {
+    return this.streamingTransport;
+  }
+
+  /**
    * Fully release warm local-provider resources.
    * This should be called when the owning hook/component unmounts.
    */
@@ -350,8 +392,10 @@ export class STTProcessor extends BaseProcessor {
       throw new STTError(STTErrorCode.INVALID_CONFIG, 'modelId is required when provider is "local"');
     }
 
-    // For remote provider, sttSocket is required
-    if (provider === 'remote' && !this.options.sttSocket) {
+    // For remote provider, sttSocket is required UNLESS a streaming
+    // transport has been injected (TASK-298 D-4) — the transport already
+    // owns the WebSocket URL via StreamingSessionManager.getWebSocketUrl().
+    if (provider === 'remote' && !this.options.sttSocket && !this.streamingTransport) {
       throw new STTError(STTErrorCode.INVALID_CONFIG, 'sttSocket is required when provider is "remote"');
     }
   }
@@ -516,8 +560,19 @@ export class STTProcessor extends BaseProcessor {
 
   /**
    * Initialize the remote WebSocket provider.
+   *
+   * TASK-298 D-4: when a streaming transport has been injected via
+   * `setStreamingTransport(...)`, construct the pipeline-aware
+   * `StreamingBackendSTTProvider` instead of the legacy `RemoteSTTProvider`.
+   * The legacy path remains in place so existing callers that pass only an
+   * `sttSocket` URL continue to work until they migrate.
    */
   private async initializeRemoteProvider(): Promise<void> {
+    if (this.streamingTransport) {
+      await this.initializeStreamingRemoteProvider(this.streamingTransport);
+      return;
+    }
+
     const provider = new RemoteSTTProvider();
 
     if (!provider.isSupported()) {
@@ -551,6 +606,49 @@ export class STTProcessor extends BaseProcessor {
     });
 
     await provider.init(config);
+
+    this.provider = provider;
+  }
+
+  /**
+   * Initialize the pipeline-aware `StreamingBackendSTTProvider` using the
+   * externally-injected transport (TASK-298 D-4).
+   */
+  private async initializeStreamingRemoteProvider(transport: STTStreamingTransport): Promise<void> {
+    const provider = new StreamingBackendSTTProvider({
+      sessionManager: transport.sessionManager,
+      wsClient: transport.wsClient,
+    });
+
+    if (!provider.isSupported()) {
+      throw new STTError(STTErrorCode.NOT_SUPPORTED, 'Remote STT not supported in this browser');
+    }
+
+    const audio = this.options.audio ?? DEFAULT_AUDIO_CONFIG;
+    const features = this.options.features ?? DEFAULT_FEATURE_FLAGS;
+
+    provider.onTranscription((result) => {
+      this.handleTranscription(result);
+    });
+    provider.onError((error) => {
+      this.handleError(error);
+    });
+
+    await provider.init({
+      sessionId: this.sessionId,
+      language: audio.language ?? DEFAULT_LANGUAGE_LOCALE,
+      sampleRate: audio.sampleRate ?? WHISPER_SAMPLE_RATE,
+      channels: audio.channels ?? 1,
+      chunkLengthS: audio.chunkLengthS ?? 30,
+      overlapLengthS: audio.overlapLengthS ?? 5,
+      returnTimestamps: features.returnTimestamps ?? true,
+      codeSwitching: features.codeSwitching ?? false,
+      diarization: features.diarization ?? false,
+      numSpeakers: features.numSpeakers ?? 2,
+      pipelineId: transport.pipelineId,
+      consultationId: transport.consultationId,
+      prompt: this.options.prompt,
+    });
 
     this.provider = provider;
   }

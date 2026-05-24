@@ -185,15 +185,14 @@ export function UserList() {
     setIsActionLoading(true);
     try {
       const result = await impersonate(selectedUserId);
-      let tenantId = result.user.tenantId;
-      if (!tenantId && result.token) {
-        try {
-          const payload = JSON.parse(atob(result.token.split('.')[1]));
-          if (payload.tenantId) tenantId = payload.tenantId;
-        } catch {
-          /* malformed JWT — skip */
-        }
-      }
+      // TASK-295 M-5: trust `result.user.tenantId` from the server response.
+      // The previous `atob(token.split('.')[1])` fallback decoded the JWT
+      // client-side, which is both a code smell (re-implementing JWT parsing
+      // in a browser without verification) and a sign of dead defensive
+      // code: the backend always populates `tenantId` on the response now
+      // (TASK-295 H-3). If the server response ever omits it we want to
+      // surface that bug — not paper over it.
+      const tenantId = result.user.tenantId;
       useAuthStore.getState().startImpersonation(result.user, result.token, tenantId);
 
       // TASK-245: Isolate impersonated user's preferences

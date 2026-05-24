@@ -38,6 +38,8 @@ export {
   useArca,
   useArcaConfig,
   useArcaSession,
+  // TASK-299 D-13 — surface the dedicated summary hook from the core entry.
+  useArcaSummary,
   useAuditLog,
   useAuth,
   useConsultationJob,
@@ -202,6 +204,8 @@ export type {
 
 export type {
   AsyncJobResponse,
+  // TASK-299 D-17 — widened comprehensive summary options.
+  ComprehensiveSummaryGenerationOptions,
   ComprehensiveSummaryOptions,
   ComprehensiveSummaryResponse,
   DNAStyle,
@@ -212,6 +216,8 @@ export type {
   SummaryApprovalResponse,
   // Story 148: Summary approval
   SummaryApprovalStatus,
+  // TASK-299 D-4 — canonical summary-generation options.
+  SummaryGenerationOptions,
   SummaryJobStatus,
   SummaryMeta,
   SummaryOptions,
@@ -349,6 +355,9 @@ export { DEFAULT_MODELS, DEFAULT_STT_MODELS, DEFAULT_VAD_MODELS } from './types'
 // =============================================================================
 
 export {
+  // TASK-299 D-18 — SMR error → AgenticErrorCode classification helpers.
+  classifyHttpError,
+  classifySmrError,
   // SDK-207 WS-4: Diff utilities
   computeDiff,
   computePromptDiff,
@@ -358,6 +367,8 @@ export {
   formatDate,
   formatDateTime,
   formatRelativeTime,
+  // TASK-299 D-9 — Idempotency-Key helpers.
+  generateIdempotencyKey,
   getErrorCode,
   getErrorMessage,
   getToday,
@@ -370,6 +381,7 @@ export {
   // Stories 117-118: Prompt variable substitution
   substitutePromptVariables,
   validatePromptVariables,
+  withIdempotencyKey,
   wrapError,
 } from './utils';
 

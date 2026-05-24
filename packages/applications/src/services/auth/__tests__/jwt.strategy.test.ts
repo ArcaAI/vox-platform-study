@@ -10,6 +10,11 @@ const mockAppSettingsService = {
     getValueWithDefault: vi.fn().mockReturnValue('test-jwt-secret'),
 };
 
+const mockJwtRevocationService = {
+    isRevoked: vi.fn().mockResolvedValue(false),
+    revoke: vi.fn().mockResolvedValue(undefined),
+};
+
 vi.mock('@nestjs/passport', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@nestjs/passport')>();
     return {
@@ -35,6 +40,7 @@ function createStrategy(): JwtStrategy {
     return new JwtStrategy(
         mockAppSettingsService as any,
         mockClsService as any,
+        mockJwtRevocationService as any,
     );
 }
 
@@ -95,8 +101,64 @@ describe('JwtStrategy', () => {
         it('should store user session in CLS context', async () => {
             const result = await strategy.validate(fullPayload);
 
-            expect(mockClsService.set).toHaveBeenCalledTimes(1);
             expect(mockClsService.set).toHaveBeenCalledWith('user', result);
+        });
+
+        it('should propagate tenantId from JWT payload into CLS context (SEC-J)', async () => {
+            await strategy.validate(fullPayload);
+
+            expect(mockClsService.set).toHaveBeenCalledWith('tenantId', 'tenant-001');
+        });
+
+        it('should propagate impersonatedBy from JWT payload into UserSession (H-2)', async () => {
+            const impersonatedPayload = {
+                ...fullPayload,
+                impersonatedBy: 'admin-007',
+            };
+
+            const result = await strategy.validate(impersonatedPayload);
+
+            expect(result.impersonatedBy).toBe('admin-007');
+        });
+
+        it('should leave impersonatedBy undefined when not in payload', async () => {
+            const result = await strategy.validate(fullPayload);
+
+            expect(result.impersonatedBy).toBeUndefined();
+        });
+
+        it('should throw UnauthorizedException when the jti has been revoked (C-4)', async () => {
+            mockJwtRevocationService.isRevoked.mockResolvedValueOnce(true);
+            const payloadWithJti = { ...fullPayload, jti: 'impersonate-admin-007-doctor-001-1234567890' };
+
+            await expect(strategy.validate(payloadWithJti)).rejects.toThrowError(
+                /revoked|Unauthorized/i,
+            );
+            expect(mockJwtRevocationService.isRevoked).toHaveBeenCalledWith(
+                'impersonate-admin-007-doctor-001-1234567890',
+            );
+        });
+
+        it('should accept the token when jti has NOT been revoked', async () => {
+            mockJwtRevocationService.isRevoked.mockResolvedValueOnce(false);
+            const payloadWithJti = { ...fullPayload, jti: 'auth-user-001-9999' };
+
+            const result = await strategy.validate(payloadWithJti);
+
+            expect(result.id).toBe('user-001');
+        });
+
+        it('should not consult the revocation service when payload has no jti', async () => {
+            mockJwtRevocationService.isRevoked.mockClear();
+            const { jti, ...payloadNoJti } = { ...fullPayload, jti: undefined } as Record<
+                string,
+                unknown
+            >;
+            void jti;
+
+            await strategy.validate(payloadNoJti);
+
+            expect(mockJwtRevocationService.isRevoked).not.toHaveBeenCalled();
         });
 
         it('should return the UserSession instance', async () => {

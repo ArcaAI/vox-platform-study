@@ -8,7 +8,27 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useApiOperation } from './useApiOperation';
 import { extractArray } from '../utils/responseUtils';
 import { DNA_STYLE_ENDPOINTS } from '../core/constants';
+import { SSEClient, type SSEApiClient } from '../core/SSEClient';
+import { withIdempotencyKey } from '../utils/idempotency';
 import type { DnaReport, DnaStyleVersion, DnaGenerateInput, DnaUpdateInput, DnaJobStatus } from '../types';
+
+/**
+ * TASK-299 D-7 — SSE callbacks for DNA report generation.
+ */
+export interface DnaJobStreamCallbacks {
+  onStatus?: (status: DnaJobStatus['status']) => void;
+  onProgress?: (progress: number) => void;
+  onResult?: (result: unknown) => void;
+  onError?: (error: Error) => void;
+}
+
+/**
+ * TASK-299 D-7 — Build the per-job SSE scope literal expected by the backend
+ * `@StreamScope({ namespace: 'dna_job', param: 'jobId' })` decorator.
+ */
+const dnaJobScopeFor = (jobId: string): string => `dna_job:${jobId}`;
+
+const DNA_TERMINAL = new Set(['completed', 'failed']);
 
 export interface UseDnaStyleReturn {
   style: DnaReport | null;
@@ -16,11 +36,21 @@ export interface UseDnaStyleReturn {
   isLoading: boolean;
   error: Error | null;
   getMyStyle: () => Promise<DnaReport>;
-  generate: (input?: DnaGenerateInput) => Promise<{ jobId: string }>;
+  /**
+   * TASK-299 D-9 — DNA generate is a side-effectful POST. Pass an explicit
+   * `idempotencyKey` on the input to dedupe duplicate user-actions, or let
+   * the hook mint a UUID for you per call.
+   */
+  generate: (input?: DnaGenerateInput & { idempotencyKey?: string }) => Promise<{ jobId: string }>;
   update: (reportId: string, input: DnaUpdateInput) => Promise<DnaReport>;
   getVersions: (reportId: string) => Promise<DnaStyleVersion[]>;
   getJobStatus: (jobId: string) => Promise<DnaJobStatus>;
   pollJobStatus: (jobId: string, options?: { intervalMs?: number; maxAttempts?: number }) => Promise<DnaReport>;
+  /**
+   * TASK-299 D-7 — Subscribe to real-time DNA-report generation status via SSE.
+   * Returns a cleanup function that closes the SSE connection.
+   */
+  streamJobStatus: (jobId: string, callbacks: DnaJobStreamCallbacks) => () => void;
   getByDoctor: (doctorId: string) => Promise<DnaReport>;
 }
 
@@ -30,6 +60,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
   const [style, setStyle] = useState<DnaReport | null>(null);
   const [versions, setVersions] = useState<DnaStyleVersion[]>([]);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sseClientRef = useRef<SSEClient | null>(null);
 
   const getMyStyle = useCallback(
     (): Promise<DnaReport> =>
@@ -42,8 +73,15 @@ export function useDnaStyle(): UseDnaStyleReturn {
   );
 
   const generate = useCallback(
-    (input?: DnaGenerateInput): Promise<{ jobId: string }> =>
-      execute<{ jobId: string }>('generate', (client) => client.post<{ jobId: string }>(DNA_STYLE_ENDPOINTS.GENERATE, input ?? {})),
+    (input?: DnaGenerateInput & { idempotencyKey?: string }): Promise<{ jobId: string }> => {
+      // TASK-299 D-9 — attach an idempotency key to the POST body so the
+      // backend can dedupe duplicate submissions (double-clicks, retries).
+      const { idempotencyKey, ...rest } = (input ?? {}) as Record<string, unknown> & { idempotencyKey?: string };
+      const body = withIdempotencyKey(rest as Record<string, unknown>, idempotencyKey);
+      return execute<{ jobId: string }>('generate', (client) =>
+        client.post<{ jobId: string }>(DNA_STYLE_ENDPOINTS.GENERATE, body),
+      );
+    },
     [execute],
   );
 
@@ -119,12 +157,95 @@ export function useDnaStyle(): UseDnaStyleReturn {
     [apiClient, logger],
   );
 
+  // TASK-299 D-7 — SSE consumer for DNA generation jobs.
+  const streamJobStatus = useCallback(
+    (jobId: string, callbacks: DnaJobStreamCallbacks): (() => void) => {
+      if (!apiClient) throw new Error('SDK not initialized');
+
+      const sseClient = new SSEClient(dnaJobScopeFor(jobId), apiClient as unknown as SSEApiClient, logger);
+      sseClientRef.current = sseClient;
+
+      const cleanup = () => {
+        sseClient.disconnect();
+        if (sseClientRef.current === sseClient) {
+          sseClientRef.current = null;
+        }
+      };
+
+      const baseUrl = apiClient.getBaseUrl();
+      const sseUrl = `${baseUrl}${DNA_STYLE_ENDPOINTS.JOB_STREAM(jobId)}`;
+
+      sseClient.onEvent('status', (data: string) => {
+        try {
+          const parsed = JSON.parse(data) as DnaJobStatus;
+          callbacks.onStatus?.(parsed.status);
+          if (parsed.status && DNA_TERMINAL.has(parsed.status)) {
+            cleanup();
+          }
+        } catch (err) {
+          logger?.warn('Failed to parse DNA SSE status event', {
+            operation: 'streamJobStatus',
+            component: 'useDnaStyle',
+            error: err as Error,
+          });
+        }
+      });
+
+      sseClient.onEvent('progress', (data: string) => {
+        try {
+          const parsed = JSON.parse(data) as { progress?: number };
+          if (typeof parsed.progress === 'number') callbacks.onProgress?.(parsed.progress);
+        } catch (err) {
+          logger?.warn('Failed to parse DNA SSE progress event', {
+            operation: 'streamJobStatus',
+            component: 'useDnaStyle',
+            error: err as Error,
+          });
+        }
+      });
+
+      sseClient.onEvent('result', (data: string) => {
+        try {
+          const parsed = JSON.parse(data);
+          callbacks.onResult?.(parsed);
+        } catch (err) {
+          logger?.warn('Failed to parse DNA SSE result event', {
+            operation: 'streamJobStatus',
+            component: 'useDnaStyle',
+            error: err as Error,
+          });
+        }
+      });
+
+      sseClient.onError(() => {
+        const err = new Error('DNA SSE connection error');
+        callbacks.onError?.(err);
+      });
+
+      try {
+        sseClient.connect(sseUrl, {
+          autoReconnect: true,
+          reconnectIntervalMs: 2000,
+          maxReconnectAttempts: 15,
+          maxDelayMs: 30000,
+        });
+      } catch (err) {
+        callbacks.onError?.(err as Error);
+      }
+
+      return cleanup;
+    },
+    [apiClient, logger],
+  );
+
   useEffect(() => {
     return () => {
       if (pollTimerRef.current !== null) {
         clearTimeout(pollTimerRef.current);
         pollTimerRef.current = null;
       }
+      sseClientRef.current?.disconnect();
+      sseClientRef.current = null;
     };
   }, []);
 
@@ -149,6 +270,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
     getVersions,
     getJobStatus,
     pollJobStatus,
+    streamJobStatus,
     getByDoctor,
   };
 }

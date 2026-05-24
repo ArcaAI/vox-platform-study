@@ -4,11 +4,20 @@ import {
   UserSettingsDtoMapper,
   UpdateUserSettingByKeyRequest,
   IActiveUserContext,
+  PipelineService,
 } from '@arcaai/applications';
-import { Controller, Get, Patch, Body, Param, Inject, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Inject, Param, Patch, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Authorize } from '../../../decorators';
+
+/**
+ * TASK-298 D-5 — Setting namespace/key reserved for the doctor's chosen
+ * pipeline. The validator below enforces that the value identifies a
+ * pipeline the caller's tenant owns before persisting.
+ */
+const SELECTED_PIPELINE_NAMESPACE = 'arcaai-sdk';
+const SELECTED_PIPELINE_KEY = 'selectedPipelineId';
 
 /**
  * Controller for current user's raw settings (key-value by namespace).
@@ -21,6 +30,7 @@ export class UserSettingsController {
   constructor(
     @Inject(IUserSettingsService)
     private readonly userSettingsService: IUserSettingsService,
+    private readonly pipelineService: PipelineService,
     private readonly clsService: ClsService<IActiveUserContext>,
   ) {}
 
@@ -55,8 +65,26 @@ export class UserSettingsController {
     @Body() request: UpdateUserSettingByKeyRequest,
   ): Promise<UserSettingsResponse> {
     const userId = this.resolveUserId();
+    await this.validateSettingValue(namespace, key, request.value);
     const updated = await this.userSettingsService.upsertByUserKeyNamespace(userId, namespace, key, request);
     return UserSettingsDtoMapper.ToResponse(updated);
+  }
+
+  /**
+   * TASK-298 D-5 — per-key validators run BEFORE the upsert hits the DB.
+   * Currently only enforces that `arcaai-sdk:selectedPipelineId` references
+   * a pipeline owned by the caller's tenant. PipelineService.getById is
+   * already tenant-scoped (TASK-298 D-9), so a `null` result is sufficient
+   * to reject the request.
+   */
+  private async validateSettingValue(namespace: string, key: string, value: string): Promise<void> {
+    if (namespace !== SELECTED_PIPELINE_NAMESPACE || key !== SELECTED_PIPELINE_KEY) {
+      return;
+    }
+    const pipeline = await this.pipelineService.getById(value);
+    if (!pipeline) {
+      throw new BadRequestException(`Pipeline '${value}' is not available for the current tenant`);
+    }
   }
 
   private resolveUserId(): string {

@@ -289,14 +289,58 @@ export interface SummaryMeta {
 
 /**
  * Extended options for summary generation via useArca hook.
- * Allows passing transcript text, prompt template, and department directly.
+ *
+ * TASK-299 D-4 — field reconciliation between SDK and backend
+ * (`GenerateSummaryRequest`):
+ *
+ *   - `transcript`       → backend `transcription` (DEPRECATED legacy name).
+ *   - `promptTemplateId` → backend `template`      (DEPRECATED legacy name).
+ *   - `departmentId`     → mapped into `options.departmentId` (no first-class
+ *                          backend field; bag transport for analytics).
+ *
+ * `useArcaSummary` normalises the legacy fields to the canonical names at
+ * the network boundary. Prefer the canonical fields in new code.
  */
 export interface SummaryGenerationOptions {
   dnaStyleId?: string;
   includeNER?: boolean;
+  /** @deprecated Use `transcription`. */
   transcript?: string;
+  /** @deprecated Use `template`. */
   promptTemplateId?: string;
+  /** @deprecated Forwarded inside `options.departmentId`. */
   departmentId?: string;
+  /** Canonical transcript text. */
+  transcription?: string;
+  /** Canonical prompt-template id/name. */
+  template?: string;
+  /** Subset of context items to anchor the summary against. */
+  contextItemIds?: string[];
+  /** Free-form options bag forwarded verbatim to the backend. */
+  options?: Record<string, unknown>;
+  /**
+   * TASK-299 D-9 — explicit idempotency key. If omitted the hook mints a
+   * UUID per user-action so duplicate POSTs (double-clicks, retries, hot
+   * reloads) dedupe to the same job server-side.
+   */
+  idempotencyKey?: string;
+}
+
+/**
+ * TASK-299 D-17 — Comprehensive (cross-chain) summary options.
+ *
+ * Widened from `{ dnaStyleId; includeNER }` to mirror
+ * `ComprehensiveSummaryRequest` on the backend, which also accepts
+ * `template`, `includeLabResults`, and a free-form `options` bag.
+ */
+export interface ComprehensiveSummaryGenerationOptions {
+  dnaStyleId?: string;
+  includeNER?: boolean;
+  includeLabResults?: boolean;
+  template?: string;
+  options?: Record<string, unknown>;
+  /** TASK-299 D-9 — see {@link SummaryGenerationOptions.idempotencyKey}. */
+  idempotencyKey?: string;
 }
 
 // =============================================================================

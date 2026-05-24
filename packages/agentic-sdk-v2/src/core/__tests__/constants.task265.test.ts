@@ -54,8 +54,15 @@ describe('TASK-265 W0-7: VOICE_EMBEDDING_ENDPOINTS targets /voice-profile API', 
     }
   });
 
-  it('keys are exactly {enroll, list, delete}', () => {
-    expect(Object.keys(VOICE_EMBEDDING_ENDPOINTS).sort()).toEqual(['delete', 'enroll', 'list']);
+  it('keys are exactly {enroll, list, delete, activate, deactivate}', () => {
+    // TASK-296 C-1: extended with activate/deactivate for SDK control surface.
+    expect(Object.keys(VOICE_EMBEDDING_ENDPOINTS).sort()).toEqual([
+      'activate',
+      'deactivate',
+      'delete',
+      'enroll',
+      'list',
+    ]);
   });
 });
 

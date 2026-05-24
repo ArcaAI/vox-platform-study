@@ -101,6 +101,63 @@ inference:
 
             assert "not found" in str(exc_info.value).lower()
 
+    # TASK-298 D-3 — tenant filter on get_pipeline.
+    @pytest.mark.asyncio
+    async def test_get_pipeline_tenant_filter_matches(self, reader, mock_pipeline_row):
+        """When tenant_id matches, the row is returned."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_pipeline_row
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        mock_context = AsyncMock()
+        mock_context.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("stt_v2.pipeline.config_reader.get_session", return_value=mock_context):
+            result = await reader.get_pipeline("p-123", tenant_id="t-456")
+
+            assert isinstance(result, PipelineConfig)
+            assert result.id == "p-123"
+
+    @pytest.mark.asyncio
+    async def test_get_pipeline_tenant_filter_rejects_cross_tenant(self, reader):
+        """When tenant_id does not match, the DB filter returns nothing and a
+        NotFoundError is raised. The tenant filter is enforced at the SQL
+        level (the mocked session returns None for the tenant-bound query).
+        """
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        mock_context = AsyncMock()
+        mock_context.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("stt_v2.pipeline.config_reader.get_session", return_value=mock_context):
+            with pytest.raises(NotFoundError):
+                await reader.get_pipeline("p-123", tenant_id="t-other")
+
+    @pytest.mark.asyncio
+    async def test_get_pipeline_tenant_filter_is_optional(self, reader, mock_pipeline_row):
+        """Omitting tenant_id preserves the legacy unfiltered behaviour."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_pipeline_row
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        mock_context = AsyncMock()
+        mock_context.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("stt_v2.pipeline.config_reader.get_session", return_value=mock_context):
+            result = await reader.get_pipeline("p-123")
+            assert isinstance(result, PipelineConfig)
+
     @pytest.mark.asyncio
     async def test_get_pipeline_by_slug_success(self, reader, mock_pipeline_row):
         """Test getting pipeline by slug."""

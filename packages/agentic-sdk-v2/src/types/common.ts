@@ -72,6 +72,7 @@ export type AgenticErrorCode =
   | 'PLUGIN_ERROR'
   | 'MODEL_LOAD_ERROR'
   | 'STORAGE_ERROR'
+  | 'CONFIG_NOT_READY'
   | 'UNKNOWN_ERROR';
 
 // =============================================================================

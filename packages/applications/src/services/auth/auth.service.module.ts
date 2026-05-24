@@ -8,11 +8,13 @@ import { ClsService } from 'nestjs-cls';
 
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
+import { RedisCacheModule } from '../baseServices/redis/redis-cache.module';
 import { SessionSerializer } from './session.serializer';
 import { IAuthService } from './IAuthService';
 import { AuthService } from './auth.service';
 import { IAppSettingsService } from '../baseServices/_meta/';
 import { UserServiceModule } from '../user/user/user.service.module';
+import { JwtRevocationService, IJwtRevocationService } from './jwt-revocation.service';
 
 const logger = new Logger('AuthServiceModule');
 
@@ -25,6 +27,7 @@ const logger = new Logger('AuthServiceModule');
     }),
     CoreDatabaseModule,
     UserServiceModule,
+    RedisCacheModule.register(),
   ],
   providers: [
     {
@@ -89,7 +92,19 @@ const logger = new Logger('AuthServiceModule');
     },
     JwtStrategy,
     GatewayJwtStrategy,
+    {
+      provide: IJwtRevocationService,
+      useClass: JwtRevocationService,
+    },
   ],
-  exports: [PassportModule, 'OPENID_CLIENT', IAuthService, OidcStrategy, JwtStrategy, GatewayJwtStrategy],
+  exports: [
+    PassportModule,
+    'OPENID_CLIENT',
+    IAuthService,
+    OidcStrategy,
+    JwtStrategy,
+    GatewayJwtStrategy,
+    IJwtRevocationService,
+  ],
 })
 export class AuthServiceModule {}

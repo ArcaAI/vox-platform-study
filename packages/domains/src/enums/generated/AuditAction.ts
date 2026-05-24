@@ -10,4 +10,5 @@ export enum AuditAction {
   ARCHIVE = 'ARCHIVE',
   LOGIN = 'LOGIN',
   LOGOUT = 'LOGOUT',
+  IMPERSONATED_ACTION = 'IMPERSONATED_ACTION',
 }

@@ -4,7 +4,7 @@
 
 export { formatDate, formatDateTime, getToday, isSameDay, parseDate, formatRelativeTime } from './dateUtils';
 
-export { isAgenticError, getErrorCode, getErrorMessage, wrapError, isNetworkError, isAuthError, isRetriableError } from './errorUtils';
+export { isAgenticError, getErrorCode, getErrorMessage, wrapError, isNetworkError, isAuthError, isRetriableError, classifyHttpError, classifySmrError } from './errorUtils';
 
 // Secure storage (SEC-02)
 export { SecureStorage } from './secureStorage';
@@ -20,3 +20,6 @@ export { appendPagination, appendFilters } from './urlUtils';
 
 // Prompt template utilities (Stories 117-118, Gap G3)
 export { substitutePromptVariables, extractPromptVariables, validatePromptVariables } from './promptUtils';
+
+// TASK-299 D-9 — Idempotency-Key utilities for side-effectful POSTs.
+export { generateIdempotencyKey, withIdempotencyKey } from './idempotency';

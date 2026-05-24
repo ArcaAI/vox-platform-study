@@ -41,6 +41,15 @@ interface TranscribePayload {
      * mechanism). When omitted, no prompt is forwarded.
      */
     prompt?: string;
+    /**
+     * TASK-300 L-2: Whisper inference task.
+     *
+     * - `'transcribe'` (default) — output is in the source language.
+     * - `'translate'` — translate from the source language to English.
+     *   Multilingual checkpoints only; `.en` models are gated on the main
+     *   thread before postMessage.
+     */
+    task?: 'transcribe' | 'translate';
   };
 }
 
@@ -69,6 +78,30 @@ function isWebGpuInitError(message: string): boolean {
 
 function isCrossAttentionError(message: string): boolean {
   return /cross.attentions|output_attentions/i.test(message);
+}
+
+/**
+ * TASK-300 L-9: resolve ONNX Runtime WASM thread count.
+ *
+ * Returns `navigator.hardwareConcurrency` (clamped to 8) when the worker is
+ * running in a cross-origin-isolated context — the only time
+ * SharedArrayBuffer is available for ORT's threaded inference. Returns `1`
+ * otherwise, including legacy environments where `crossOriginIsolated` is
+ * undefined or `hardwareConcurrency` is missing.
+ *
+ * Cross-origin isolation requires the host page to ship:
+ *   Cross-Origin-Opener-Policy: same-origin
+ *   Cross-Origin-Embedder-Policy: require-corp
+ *
+ * See packages/stt/README.md → "Multi-threaded ONNX Runtime (COOP/COEP)".
+ */
+const MAX_ORT_THREADS = 8;
+function resolveOrtNumThreads(): number {
+  const isolated = (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
+  if (!isolated) return 1;
+  const hwConcurrency = (globalThis as { navigator?: { hardwareConcurrency?: number } }).navigator?.hardwareConcurrency;
+  if (typeof hwConcurrency !== 'number' || !Number.isFinite(hwConcurrency) || hwConcurrency < 2) return 1;
+  return Math.min(MAX_ORT_THREADS, Math.floor(hwConcurrency));
 }
 
 async function clearOnnxCaches(): Promise<void> {
@@ -131,15 +164,20 @@ async function initPipeline(id: string, payload: InitPayload): Promise<void> {
     //
     // Additionally:
     // - proxy=false: we're already in a worker; spawning a sub-worker would fail
-    // - numThreads=1: multi-threading requires SharedArrayBuffer + COOP/COEP headers
-    //   which may not be present, and nested workers are unreliable
+    // - numThreads: TASK-300 L-9 — opt into multi-threaded WASM when the host
+    //   page is cross-origin-isolated. SharedArrayBuffer (required for ORT
+    //   threaded inference) is only available when both COOP and COEP response
+    //   headers are set; without isolation we MUST stay at 1 or ORT crashes
+    //   immediately. We additionally clamp `hardwareConcurrency` at 8 because
+    //   ORT's thread pool sees diminishing returns past that point for Whisper
+    //   inference and can starve the rest of the page on big CPUs.
     type OnnxWasmEnv = { proxy?: boolean; numThreads?: number; wasmPaths?: string };
     type OnnxEnv = { wasm?: OnnxWasmEnv; webgpu?: Record<string, unknown> };
     const onnxEnv = (env as Record<string, unknown>).backends as { onnx?: OnnxEnv } | undefined;
     if (onnxEnv?.onnx?.wasm) {
       const wasmCfg = onnxEnv.onnx.wasm;
       wasmCfg.proxy = false;
-      wasmCfg.numThreads = 1;
+      wasmCfg.numThreads = resolveOrtNumThreads();
     }
 
     const progressCallback = (progressData: { status: string; file?: string; progress?: number; loaded?: number; total?: number }) => {
@@ -294,6 +332,13 @@ async function transcribe(id: string, payload: TranscribePayload): Promise<void>
     // domain-specific vocabulary.
     if (options?.prompt !== undefined && options.prompt !== '') {
       transcribeOptions.initial_prompt = options.prompt;
+    }
+
+    // TASK-300 L-2: forward Whisper `task` when explicitly requested.
+    // English-only checkpoints are gated upstream in WhisperWorkerEngine so
+    // we never reach here with `task === 'translate'` on a `.en` model.
+    if (options?.task !== undefined && !isEnglishOnlyModel) {
+      transcribeOptions.task = options.task;
     }
 
     type PipelineResult = {

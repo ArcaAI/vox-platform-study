@@ -76,7 +76,19 @@ export function useSharedConnection(workerUrl?: string): UseSharedConnectionRetu
 
 export interface UseSharedSSEOptions {
   url: string;
-  authToken?: string;
+  /**
+   * TASK-297 C-SSE-1 — short-lived stream ticket minted via
+   * `POST /auth/stream-ticket`. Replaces the legacy `authToken` field
+   * which embedded a raw JWT directly into the URL and leaked it to
+   * webserver logs and `Referer` headers.
+   */
+  ticket?: string;
+  /**
+   * TASK-297 H-SSE-5 — owner user id. The SharedWorker dedup key now
+   * includes `userId` so an upstream connection cannot be shared across
+   * distinct user contexts even when the base id matches.
+   */
+  userId?: string;
   autoReconnect?: boolean;
   enabled?: boolean;
   onEvent?: (eventName: string, data: string) => void;
@@ -102,7 +114,8 @@ export function useSharedSSE(connectionId: string, options: UseSharedSSEOptions,
       connectionId,
       {
         url: options.url,
-        authToken: options.authToken,
+        ticket: options.ticket,
+        userId: options.userId,
         autoReconnect: options.autoReconnect ?? true,
       },
       {
@@ -120,10 +133,10 @@ export function useSharedSSE(connectionId: string, options: UseSharedSSEOptions,
     );
 
     return () => {
-      manager.unsubscribeSSE(connectionId);
+      manager.unsubscribeSSE(connectionId, options.userId);
       setIsConnected(false);
     };
-  }, [connectionId, options.url, options.authToken, options.enabled, manager]);
+  }, [connectionId, options.url, options.ticket, options.userId, options.enabled, manager]);
 
   return useMemo(() => ({ isConnected, error }), [isConnected, error]);
 }

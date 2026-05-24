@@ -212,10 +212,22 @@ export class DepartmentService extends BaseService implements IDepartmentService
 
   /**
    * Update department prompt configuration (pre-summary, new patient, revisit prompts)
+   *
+   * TASK-294 DEF-C3: enforce tenant ownership before mutating. Mismatched tenant
+   * raises NotFoundException (not Forbidden) to avoid leaking existence.
    */
   async updatePromptConfig(id: string, dto: UpdateDepartmentPromptConfigRequest): Promise<DepartmentResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
     const department = await this.departmentRepository.findById(id);
     if (!department) {
+      throw new NotFoundException(`Department ${id} not found`);
+    }
+
+    if (department.tenantId !== tenantId) {
       throw new NotFoundException(`Department ${id} not found`);
     }
 

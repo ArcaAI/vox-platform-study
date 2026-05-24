@@ -339,6 +339,34 @@ describe('PipelineService', () => {
             const result = await service.getById('non-existent');
             expect(result).toBeNull();
         });
+
+        // TASK-298 D-9 — tenant scoping.
+        it('should return null when pipeline tenantId does not match caller tenant (D-9)', async () => {
+            const otherTenantPipeline = createBehavioralPipelineEntity({
+                id: 'pipeline-other',
+                tenantId: 'tenant-other',
+            });
+            mockPipelineRepository.findById.mockResolvedValue(otherTenantPipeline);
+
+            const result = await service.getById('pipeline-other');
+
+            expect(result).toBeNull();
+            // Cross-tenant lookups must NOT emit a "viewed" audit event for
+            // the foreign resource — that would leak existence.
+            expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+                SysEventType.ResourceViewed,
+                expect.objectContaining({ resourceId: 'pipeline-other' }),
+            );
+        });
+
+        it('should throw BadRequestException when tenant ID is missing (D-9)', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                return null;
+            });
+
+            await expect(service.getById('pipeline-123')).rejects.toThrow(BadRequestException);
+        });
     });
 
     describe('getBySlug', () => {

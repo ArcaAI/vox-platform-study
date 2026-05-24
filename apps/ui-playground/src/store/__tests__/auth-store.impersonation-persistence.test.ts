@@ -1,3 +1,22 @@
+/**
+ * TASK-295 H-1 / SEC-A5-4
+ *
+ * The previous test in this file asserted that an impersonation session
+ * survives a page reload (`impersonationToken` rehydrated from localStorage).
+ * That is a security defect: a long-lived bearer token for an impersonated
+ * subject must NOT survive a tab close / page refresh — only an active,
+ * intentional impersonation click should grant elevated access.
+ *
+ * Under TASK-295 H-1:
+ *   - Storage moves from `localStorage` to `sessionStorage`.
+ *   - The persisted slice no longer includes `impersonationToken`,
+ *     `impersonatedUser`, `isImpersonating`, or `originalTenantId`.
+ *   - Page reload during impersonation reverts to the bare admin session.
+ *     The user must explicitly re-impersonate.
+ *
+ * This file inverts the previous assertions accordingly.
+ */
+import { STORAGE_KEYS } from '@/lib/constants';
 import { useAuthStore } from '../auth-store';
 
 const mockAdminUser = {
@@ -18,90 +37,69 @@ const mockDoctorUser = {
 
 const TENANT_UUID = '50000000-0000-0000-0000-000000000000';
 
-const ADMIN_ROLES = ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'];
-const DOCTOR_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
-
-function simulateDoctorContext(state: ReturnType<typeof useAuthStore.getState>) {
-    const roles = state.user?.roles ?? [];
-    const isAdmin = roles.some((r) => ADMIN_ROLES.includes(r));
-    const isDoctor = roles.some((r) => DOCTOR_ROLES.includes(r));
-    const isImpersonating = state.isImpersonating;
-    const requiresImpersonation = isAdmin && !isDoctor && !isImpersonating;
-    const effectiveUserId = isImpersonating && state.impersonatedUser
-        ? state.impersonatedUser.id
-        : state.user?.id ?? '';
-
-    return { effectiveUserId, isImpersonating, requiresImpersonation, isAdmin, isDoctor };
-}
-
-describe('Impersonation persistence — simulated page refresh', () => {
+describe('Impersonation persistence — TASK-295 H-1 inverted contract', () => {
     beforeEach(() => {
+        sessionStorage.clear();
         localStorage.clear();
         useAuthStore.getState().logout();
     });
 
-    it('should survive a simulated page refresh (store rehydration)', () => {
+    it('does NOT persist impersonationToken across a simulated reload', () => {
         useAuthStore.getState().setCredentialsAuth('admin-token', mockAdminUser, TENANT_UUID);
         useAuthStore.getState().startImpersonation(mockDoctorUser, 'impersonation-token');
 
-        useAuthStore.persist.rehydrate();
+        const persistedRaw = sessionStorage.getItem(STORAGE_KEYS.AUTH);
+        expect(persistedRaw).toBeTruthy();
+        const persisted = JSON.parse(persistedRaw as string);
+        const state = persisted.state ?? persisted;
+        expect(state.impersonationToken).toBeUndefined();
+        expect(state.impersonatedUser).toBeUndefined();
+        expect(state.isImpersonating).toBeUndefined();
+        expect(state.originalTenantId).toBeUndefined();
+    });
 
-        const state = useAuthStore.getState();
-        expect(state.isImpersonating).toBe(true);
-        expect(state.impersonatedUser).toEqual(mockDoctorUser);
-        expect(state.impersonationToken).toBe('impersonation-token');
+    it('still persists the bare admin session (accessToken, user, tenant) to sessionStorage', () => {
+        useAuthStore.getState().setCredentialsAuth('admin-token', mockAdminUser, TENANT_UUID, 'tenant-key');
+
+        const raw = sessionStorage.getItem(STORAGE_KEYS.AUTH);
+        expect(raw).toBeTruthy();
+        const persisted = JSON.parse(raw as string);
+        const state = persisted.state ?? persisted;
         expect(state.accessToken).toBe('admin-token');
+        expect(state.user).toEqual(mockAdminUser);
+        expect(state.tenantId).toBe(TENANT_UUID);
     });
 
-    it('should resolve doctor context correctly after rehydration', () => {
+    it('uses sessionStorage rather than localStorage for the auth key', () => {
+        useAuthStore.getState().setCredentialsAuth('admin-token', mockAdminUser, TENANT_UUID);
+
+        expect(sessionStorage.getItem(STORAGE_KEYS.AUTH)).toBeTruthy();
+        expect(localStorage.getItem(STORAGE_KEYS.AUTH)).toBeNull();
+    });
+
+    it('reverts impersonation on a simulated reload — admin must re-impersonate', () => {
         useAuthStore.getState().setCredentialsAuth('admin-token', mockAdminUser, TENANT_UUID);
         useAuthStore.getState().startImpersonation(mockDoctorUser, 'impersonation-token');
 
-        useAuthStore.persist.rehydrate();
-
-        const ctx = simulateDoctorContext(useAuthStore.getState());
-        expect(ctx.requiresImpersonation).toBe(false);
-        expect(ctx.isImpersonating).toBe(true);
-        expect(ctx.effectiveUserId).toBe('doctor-001');
-    });
-
-    it('should resolve admin as requiring impersonation when NOT impersonating after rehydration', () => {
-        useAuthStore.getState().setCredentialsAuth('admin-token', mockAdminUser, TENANT_UUID);
-
-        useAuthStore.persist.rehydrate();
-
-        const ctx = simulateDoctorContext(useAuthStore.getState());
-        expect(ctx.requiresImpersonation).toBe(true);
-        expect(ctx.isImpersonating).toBe(false);
-        expect(ctx.effectiveUserId).toBe('admin-001');
-    });
-
-    it('should provide impersonation token for SDK config after rehydration', () => {
-        useAuthStore.getState().setCredentialsAuth('admin-token', mockAdminUser, TENANT_UUID);
-        useAuthStore.getState().startImpersonation(mockDoctorUser, 'impersonation-token');
-
+        // Simulate a reload: drop in-memory state, then rehydrate from storage.
+        useAuthStore.setState({
+            impersonatedUser: null,
+            impersonationToken: '',
+            isImpersonating: false,
+            originalTenantId: '',
+        });
         useAuthStore.persist.rehydrate();
 
         const state = useAuthStore.getState();
-        const effectiveToken = state.isImpersonating && state.impersonationToken
-            ? state.impersonationToken
-            : state.accessToken;
-        expect(effectiveToken).toBe('impersonation-token');
+        expect(state.isImpersonating).toBe(false);
+        expect(state.impersonatedUser).toBeNull();
+        expect(state.impersonationToken).toBe('');
+        // Admin session itself survives — only the impersonation does not.
+        expect(state.accessToken).toBe('admin-token');
+        expect(state.user).toEqual(mockAdminUser);
     });
 
-    it('should use admin token when not impersonating after rehydration', () => {
-        useAuthStore.getState().setCredentialsAuth('admin-token', mockAdminUser, TENANT_UUID);
-
-        useAuthStore.persist.rehydrate();
-
-        const state = useAuthStore.getState();
-        const effectiveToken = state.isImpersonating && state.impersonationToken
-            ? state.impersonationToken
-            : state.accessToken;
-        expect(effectiveToken).toBe('admin-token');
-    });
-
-    it('should clear impersonation state on logout and survive rehydration', () => {
+    it('clears impersonation state on logout regardless of storage backend', () => {
         useAuthStore.getState().setCredentialsAuth('admin-token', mockAdminUser, TENANT_UUID);
         useAuthStore.getState().startImpersonation(mockDoctorUser, 'impersonation-token');
         useAuthStore.getState().logout();
@@ -112,5 +110,6 @@ describe('Impersonation persistence — simulated page refresh', () => {
         expect(state.isImpersonating).toBe(false);
         expect(state.impersonatedUser).toBeNull();
         expect(state.impersonationToken).toBe('');
+        expect(state.accessToken).toBe('');
     });
 });

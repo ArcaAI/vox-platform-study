@@ -536,3 +536,81 @@ describe('AudioContextManager.resume timeout (W1-7)', () => {
     await expect(p).resolves.toBeUndefined();
   });
 });
+
+// ============================================================================
+// TASK-300 L-1 — acquire() sample-rate enforcement
+// ============================================================================
+
+describe('AudioContextManager.acquire sample-rate enforcement (TASK-300 L-1)', () => {
+  beforeEach(() => {
+    AudioContextManager.resetInstance();
+  });
+
+  afterEach(() => {
+    AudioContextManager.resetInstance();
+    vi.unstubAllGlobals();
+  });
+
+  it('does NOT throw or warn when no requireSampleRate is passed (backwards compatibility)', async () => {
+    const ctx = createMockAudioContext('running');
+    (ctx as { sampleRate: number }).sampleRate = 44100;
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const manager = AudioContextManager.getInstance({ audioContext: ctx });
+    await expect(manager.acquire()).resolves.toBe(ctx);
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
+  it('throws RoomSampleRateMismatchError when requireSampleRate is set and the context sampleRate differs', async () => {
+    const ctx = createMockAudioContext('running');
+    (ctx as { sampleRate: number }).sampleRate = 44100;
+
+    const manager = AudioContextManager.getInstance({ audioContext: ctx });
+    await expect(manager.acquire({ requireSampleRate: 48000 })).rejects.toMatchObject({
+      name: 'RoomSampleRateMismatchError',
+      code: 'sample_rate_mismatch',
+    });
+  });
+
+  it('warns (does not throw) when requireSampleRate mismatches but allowMismatch is true', async () => {
+    const ctx = createMockAudioContext('running');
+    (ctx as { sampleRate: number }).sampleRate = 44100;
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const manager = AudioContextManager.getInstance({ audioContext: ctx });
+    await expect(
+      manager.acquire({ requireSampleRate: 48000, allowMismatch: true }),
+    ).resolves.toBe(ctx);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]![0]).toMatch(/sampleRate is 44100 Hz but the caller required 48000 Hz/);
+
+    warnSpy.mockRestore();
+  });
+
+  it('does not throw or warn when sampleRate matches the requireSampleRate', async () => {
+    const ctx = createMockAudioContext('running');
+    (ctx as { sampleRate: number }).sampleRate = 48000;
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const manager = AudioContextManager.getInstance({ audioContext: ctx });
+    await expect(manager.acquire({ requireSampleRate: 48000 })).resolves.toBe(ctx);
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
+  it('emits the warning at most once per acquire() invocation', async () => {
+    const ctx = createMockAudioContext('running');
+    (ctx as { sampleRate: number }).sampleRate = 44100;
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const manager = AudioContextManager.getInstance({ audioContext: ctx });
+    await manager.acquire({ requireSampleRate: 48000, allowMismatch: true });
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+
+    warnSpy.mockRestore();
+  });
+});

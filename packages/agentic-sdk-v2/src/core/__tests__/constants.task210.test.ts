@@ -683,13 +683,16 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(Object.keys(PERSONALIZATION_ENDPOINTS)).toHaveLength(2);
     });
 
-    it('STT_V2_ENDPOINTS should have exactly 15 keys', () => {
-      expect(Object.keys(STT_V2_ENDPOINTS)).toHaveLength(15);
+    it('STT_V2_ENDPOINTS should have exactly 16 keys', () => {
+      // TASK-298 D-18 added REFRESH_TICKET to support stream-ticket refresh
+      // on reconnect.
+      expect(Object.keys(STT_V2_ENDPOINTS)).toHaveLength(16);
       expect(Object.keys(STT_V2_ENDPOINTS)).toEqual(expect.arrayContaining([
         'CREATE_SESSION', 'CLOSE_SESSION', 'WS_STREAM', 'CREATE_JOB',
         'CREATE_BATCH_JOB', 'CREATE_STREAMING_JOB', 'TRANSCRIBE',
         'JOB_STREAM', 'GET_JOB', 'LIST_JOBS', 'JOB_STATS',
         'JOBS_BY_CONSULTATION', 'JOBS_BY_STATUS', 'CANCEL_JOB', 'RETRY_JOB',
+        'REFRESH_TICKET',
       ]));
     });
 

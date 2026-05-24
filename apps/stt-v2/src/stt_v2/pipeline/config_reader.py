@@ -34,27 +34,43 @@ class PipelineConfigReader:
         self._session = session
         self._parser = get_yaml_parser()
 
-    async def get_pipeline(self, pipeline_id: str) -> PipelineConfig:
+    async def get_pipeline(
+        self, pipeline_id: str, tenant_id: str | None = None
+    ) -> PipelineConfig:
         """
         Fetch pipeline by ID from database.
 
+        TASK-298 D-3 — tenant filter.
+
+        When ``tenant_id`` is provided, the query additionally requires
+        ``AsrPipelineRead.tenant_id == tenant_id`` so STT-V2 cannot load a
+        pipeline owned by a different tenant. This is defense-in-depth on
+        top of the API gateway's D-2 check; both layers must independently
+        deny cross-tenant access.
+
         Args:
             pipeline_id: Pipeline ID
+            tenant_id: Optional tenant ID for multi-tenant filtering.
+                When set, pipelines belonging to any other tenant are
+                treated as not-found.
 
         Returns:
             PipelineConfig
 
         Raises:
-            NotFoundError: If pipeline not found
+            NotFoundError: If pipeline not found (or belongs to another tenant)
             ValidationError: If pipeline config is invalid
         """
         async with get_session() as session:
-            result = await session.execute(
-                select(AsrPipelineRead).where(
-                    AsrPipelineRead.id == pipeline_id,
-                    AsrPipelineRead.resource_status.in_(["ENABLED", "ARCHIVED"]),
-                )
+            query = select(AsrPipelineRead).where(
+                AsrPipelineRead.id == pipeline_id,
+                AsrPipelineRead.resource_status.in_(["ENABLED", "ARCHIVED"]),
             )
+
+            if tenant_id:
+                query = query.where(AsrPipelineRead.tenant_id == tenant_id)
+
+            result = await session.execute(query)
             pipeline = result.scalar_one_or_none()
 
             if not pipeline:

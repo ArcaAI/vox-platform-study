@@ -14,6 +14,7 @@ import {
   DnaUsageRecordFactory,
   PromptUsageRecordFactory,
   ContextItemRepository,
+  ContextItemVersionRepository,
   JobQueue,
 } from '@arcaai/domains';
 import { PromptManagementService } from '../prompt-management/prompt-management.service';
@@ -37,6 +38,8 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     @Inject(IConsultationJobService) private readonly jobService: IConsultationJobService,
     @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
     private readonly contextItemRepository: ContextItemRepository,
+    // TASK-299 D-11 — used to filter the learning corpus to APPROVED summaries only.
+    private readonly contextItemVersionRepository: ContextItemVersionRepository,
     private readonly dnaReportRepository: DnaWritingStyleReportRepository,
     private readonly dnaVersionRepository: DnaWritingStyleVersionRepository,
     private readonly dnaUsageRecordRepository: DnaUsageRecordRepository,
@@ -74,6 +77,8 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       await job.updateProgress(10);
       this.jobService.notifyProgress(job.data.jobId, 10, 'Gathering text samples');
       let samples: string;
+      // TASK-299 D-11 — explainability: track which context items contributed.
+      let sourceContextItemIds: string[] = [];
 
       if (textSamples && textSamples.length > 0) {
         samples = textSamples.join('\n\n---\n\n');
@@ -90,9 +95,37 @@ export class DnaWritingStyleProcessor extends WorkerHost {
           throw new Error('No text samples available for DNA analysis');
         }
 
-        samples = contextItems
+        // TASK-299 D-11 — corpus filter:
+        //   1. Only RAW_SUMMARY or MODIFIED_SUMMARY (final summaries).
+        //   2. Only items with at least one ContextItemVersion whose
+        //      changeReason is 'approved' (see SummaryService.approveSummary).
+        // This prevents the DNA writing-style model from learning from
+        // unreviewed AI output or from non-summary content (transcripts,
+        // pre-summaries, case notes).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const finalSummaries = (contextItems as any[]).filter(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((item: any) => item.content ?? item.text ?? '')
+          (item: any) => item?.type === 'RAW_SUMMARY' || item?.type === 'MODIFIED_SUMMARY',
+        );
+
+        const approved: Array<{ id: string; content: string }> = [];
+        for (const item of finalSummaries) {
+          if (!item?.id) continue;
+          const approvedVersions = await this.contextItemVersionRepository.getVersionsByChangeReason(item.id, 'approved');
+          if (approvedVersions && approvedVersions.length > 0) {
+            const content: string = item.content ?? item.text ?? '';
+            approved.push({ id: item.id, content });
+          }
+        }
+
+        if (approved.length === 0) {
+          this.jobService.notifyFailed(job.data.jobId, 'No approved samples available');
+          throw new Error('No approved text samples available for DNA analysis');
+        }
+
+        sourceContextItemIds = approved.map((a) => a.id);
+        samples = approved
+          .map((a) => a.content)
           .filter((s: string) => s.length > 0)
           .join('\n\n---\n\n');
       }
@@ -123,6 +156,13 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         styleText = parsed.styleText ?? smrResponse.content;
       } catch {
         styleText = smrResponse.content;
+      }
+
+      // TASK-299 D-11 — explainability: persist the corpus source IDs alongside
+      // the analytic report. Consumers can audit which approved summaries
+      // shaped this DNA writing-style snapshot.
+      if (sourceContextItemIds.length > 0) {
+        reportData = { ...reportData, sourceContextItemIds };
       }
 
       const previousLatest = await this.dnaReportRepository.findLatestForDoctor(doctorId);

@@ -474,7 +474,10 @@ export class AudioTrack extends TypedEventEmitter<TrackEventMap> {
     if (!this.analyserNode || !this.levelDataArray) return;
 
     const dataArray = this.levelDataArray;
-    this.analyserNode.getFloatTimeDomainData(dataArray);
+    // TypeScript 5.7 narrowed lib.dom to `Float32Array<ArrayBuffer>`. Our pool
+    // is `Float32Array<ArrayBufferLike>`; cast through the wider parameter
+    // shape (the data is in fact backed by a regular ArrayBuffer at runtime).
+    this.analyserNode.getFloatTimeDomainData(dataArray as Float32Array<ArrayBuffer>);
 
     const currentLevel = calculateRMSLevel(dataArray);
     const peak = calculatePeakLevel(dataArray);

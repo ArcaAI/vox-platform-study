@@ -1,6 +1,12 @@
 import * as v from 'valibot';
 
-export type ConfigPermission = 'system' | 'admin' | 'user';
+/**
+ * TASK-297 DEF-C5 — added `'department'` tier so the 4-tier cascade
+ * (`SYSTEM ← tenant ← department ← user`) can mark a path as
+ * department-locked. A `'department'` permission means: writable by the
+ * department admin tier (server-side), read-only at the `user` tier.
+ */
+export type ConfigPermission = 'system' | 'admin' | 'department' | 'user';
 
 export interface ConfigFieldMeta {
   permission: ConfigPermission;

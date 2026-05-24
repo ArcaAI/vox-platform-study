@@ -17,12 +17,21 @@ function buildController(opts: {
     issueTicket: ReturnType<typeof vi.fn>;
     consumeTicket: ReturnType<typeof vi.fn>;
   };
+  jwtRevocationService?: {
+    revoke: ReturnType<typeof vi.fn>;
+    isRevoked: ReturnType<typeof vi.fn>;
+  };
 } = {}) {
   const cls = opts.cls ?? { get: () => null };
   const streamTicketService =
     opts.streamTicketService ?? {
       issueTicket: vi.fn(),
       consumeTicket: vi.fn(),
+    };
+  const jwtRevocationService =
+    opts.jwtRevocationService ?? {
+      revoke: vi.fn(),
+      isRevoked: vi.fn().mockResolvedValue(false),
     };
 
   return {
@@ -37,8 +46,10 @@ function buildController(opts: {
       {} as never, // tenantRepository
       cls as never, // clsService
       streamTicketService as never, // streamTicketService
+      jwtRevocationService as never, // jwtRevocationService
     ),
     streamTicketService,
+    jwtRevocationService,
   };
 }
 
@@ -64,6 +75,7 @@ describe('AuthController.issueStreamTicket', () => {
       userId: 'user-1',
       tenantId: 'tenant-1',
       scope: 'consultation_job:job-1',
+      impersonatedBy: null,
     });
     expect(result).toEqual({
       ticket: 'tkt-1',
@@ -91,6 +103,29 @@ describe('AuthController.issueStreamTicket', () => {
       userId: 'user-1',
       tenantId: 'tenant-from-cls',
       scope: 's',
+      impersonatedBy: null,
+    });
+  });
+
+  it('carries impersonatedBy through to the ticket payload (TASK-295 SEC-A5-6)', async () => {
+    const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 's' }));
+    const { controller } = buildController({
+      cls: {
+        get: (key: string) =>
+          key === 'user'
+            ? { id: 'doctor-001', tenantId: 'tenant-acme', impersonatedBy: 'admin-007' }
+            : null,
+      },
+      streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+    });
+
+    await controller.issueStreamTicket({ scope: 'consultation_job:job-1' });
+
+    expect(issueTicket).toHaveBeenCalledWith({
+      userId: 'doctor-001',
+      tenantId: 'tenant-acme',
+      scope: 'consultation_job:job-1',
+      impersonatedBy: 'admin-007',
     });
   });
 

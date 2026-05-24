@@ -83,7 +83,7 @@ describe('auth-store — token refresh support (TASK-227)', () => {
     });
 
     describe('persistence', () => {
-        it('should persist refreshToken to localStorage', () => {
+        it('should persist refreshToken to sessionStorage (TASK-295 H-1)', () => {
             useAuthStore.getState().setCredentialsAuth(
                 'token',
                 mockUser,
@@ -91,7 +91,9 @@ describe('auth-store — token refresh support (TASK-227)', () => {
                 'acme',
                 'refresh_u-1_123_abc',
             );
-            const stored = JSON.parse(localStorage.getItem('arcavox.auth') || '{}');
+            // TASK-295 H-1: storage moved from localStorage to sessionStorage so
+            // tokens evict on tab close.
+            const stored = JSON.parse(sessionStorage.getItem('arcavox.auth') || '{}');
             expect(stored.state?.refreshToken).toBe('refresh_u-1_123_abc');
         });
     });

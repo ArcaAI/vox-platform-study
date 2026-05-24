@@ -2,6 +2,7 @@ import { ExecutionContext, Injectable, Logger, UnauthorizedException } from '@ne
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import { SKIP_AUTH_KEY } from '@arcaai/applications';
+import { ClsService } from 'nestjs-cls';
 import { STREAM_SCOPE_METADATA, type StreamScopeConfig } from '../modules/auth/decorators/stream-scope.decorator';
 import { StreamTicketService } from '../modules/auth/stream-ticket.service';
 
@@ -28,6 +29,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   constructor(
     private readonly reflector: Reflector,
     private readonly streamTicketService: StreamTicketService,
+    private readonly clsService: ClsService,
   ) {
     super();
   }
@@ -105,7 +107,30 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       throw new UnauthorizedException('Stream ticket scope does not match this route');
     }
 
-    request.user = { id: stored.userId, tenantId: stored.tenantId };
+    // TASK-295 SEC-A5-6 / M-8: when the ticket was minted under an active
+    // impersonation, restore the `impersonatedBy` claim on `req.user`. This
+    // is the only signal `ImpersonationAuditInterceptor` consults to decide
+    // whether to emit an impersonation audit event for streaming requests.
+    const restoredUser = {
+      id: stored.userId,
+      tenantId: stored.tenantId,
+      ...(stored.impersonatedBy ? { impersonatedBy: stored.impersonatedBy } : {}),
+    };
+    request.user = restoredUser;
+
+    // Make the restored user visible to CLS-aware interceptors
+    // (ImpersonationAuditInterceptor, BaseService.tenantId, etc.). Wrapped in
+    // try/catch because some bootstrap paths (e.g. /metrics) have no CLS
+    // context — we never want auth to crash the request on that.
+    try {
+      this.clsService.set('user', restoredUser);
+      if (stored.tenantId) {
+        this.clsService.set('tenantId', stored.tenantId);
+      }
+    } catch {
+      // best-effort; the JWT path remains the primary CLS populator.
+    }
+
     return true;
   }
 }

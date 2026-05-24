@@ -30,6 +30,22 @@ export default defineConfig([
     },
   },
 
+  // TASK-300 C-XCUT-2: react-server stub (ESM-only). Lives as a separate
+  // tsup entry so it never picks up the `"use client"` banner from the
+  // main bundle.
+  {
+    entry: { 'react-server-stub': 'src/react-server-stub.ts' },
+    format: ['esm'],
+    dts: false,
+    splitting: false,
+    sourcemap: false,
+    clean: false,
+    minify: false,
+    outExtension() {
+      return { js: '.mjs' };
+    },
+  },
+
   // Worker bundle - separate file for Web Worker
   // This gets bundled as a standalone file that can be loaded by WhisperWorkerEngine
   {
