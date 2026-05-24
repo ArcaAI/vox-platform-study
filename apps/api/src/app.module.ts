@@ -12,7 +12,8 @@ import {
 } from '@arcaai/applications';
 import { JobQueue } from '@arcaai/domains';
 import { Global, Module } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { RequiresIfMatchGuard } from './decorators/requiresIfMatch.guard';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ClsModule } from 'nestjs-cls';
@@ -63,6 +64,19 @@ const interceptors = [
   {
     provide: APP_INTERCEPTOR,
     useClass: ImpersonationAuditInterceptor,
+  },
+];
+
+// TASK-302 Stream D Phase D (D.2) — global guard that propagates the
+// `@RequiresIfMatch()` marker onto `req._requiresIfMatch`. The companion
+// `@ExpectedVersion()` param decorator then throws `428 Precondition
+// Required` if the inbound `If-Match` header is absent on an annotated
+// route. Non-annotated routes pay only one `Reflector.getAllAndOverride`
+// call per request — effectively free.
+const guards = [
+  {
+    provide: APP_GUARD,
+    useClass: RequiresIfMatchGuard,
   },
 ];
 
@@ -142,6 +156,6 @@ if (enableStudio) {
 
 @Module({
   imports: [...common, ...featureModules],
-  providers: [...interceptors],
+  providers: [...interceptors, ...guards],
 })
 export class AppModule {}
