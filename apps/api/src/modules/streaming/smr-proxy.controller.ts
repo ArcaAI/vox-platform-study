@@ -1,4 +1,4 @@
-import { Authorize, IActiveUserContext, ITenantService } from '@arcaai/applications';
+import { Authorize, IActiveUserContext, ITenantService, SecretsService } from '@arcaai/applications';
 import { ContextItemRepository, DepartmentRepository, DnaWritingStyleReportRepository, PromptTemplateRepository } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import {
@@ -12,6 +12,7 @@ import {
   Inject,
   Logger,
   NotFoundException,
+  Optional,
   Param,
   Post,
   Res,
@@ -106,6 +107,7 @@ export class SmrProxyController {
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly dnaWritingStyleRepository: DnaWritingStyleReportRepository,
     private readonly departmentRepository: DepartmentRepository,
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
 
   private getSmrBaseUrl(): string {
@@ -116,8 +118,10 @@ export class SmrProxyController {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
-    const serviceToken = process.env.SMR_SERVICE_TOKEN;
+    // TASK-302 Phase 3 Task 3.4 — sync lookup against the cache warmed at
+    // bootstrap. Same fail-open behavior on miss (no header set) we had
+    // when the env var was unset.
+    const serviceToken = this.secretsService?.getSecretSync('SMR_SERVICE_TOKEN');
     if (serviceToken) {
       headers['X-Service-Token'] = serviceToken;
     }

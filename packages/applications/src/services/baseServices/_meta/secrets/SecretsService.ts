@@ -77,6 +77,24 @@ export class SecretsService {
     }
   }
 
+  /**
+   * Synchronous, cache-only lookup. Used by sync call sites that cannot
+   * await — passport strategies' verify callback, http-proxy-middleware's
+   * on.proxyReq hook, etc. The expectation is the caller arranged for the
+   * key to be pre-warmed via SecretsService.boot({ warmupKeys: [...] }).
+   *
+   * Returns `undefined` on a miss (TTL expired, never warmed, or unknown
+   * key). Callers must tolerate undefined without throwing — typically by
+   * either failing the request or omitting the optional header. This is
+   * a deliberate non-fallback: we do NOT lazy-load from the provider here
+   * because that would re-introduce blocking I/O into a sync hot path.
+   */
+  getSecretSync(key: string): string | undefined {
+    const hit = this.cache.get(key);
+    if (hit && hit.expiresAt > Date.now()) return hit.value;
+    return undefined;
+  }
+
   async getSecretJson<T>(key: string, opts?: SecretFetchOptions): Promise<T> {
     const raw = await this.getSecret(key, opts);
     try {

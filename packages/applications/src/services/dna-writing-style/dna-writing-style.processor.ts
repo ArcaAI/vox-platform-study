@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Inject, Logger } from '@nestjs/common';
+import { Inject, Logger, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
@@ -20,6 +20,7 @@ import {
 import { PromptManagementService } from '../prompt-management/prompt-management.service';
 import { IConsultationJobService } from '../consultation/jobs/consultation-job.service';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import { GenerateDnaReportJobPayload, DnaReportJobResult } from './dna-writing-style.service';
 import { JobMetricsService } from '../baseServices/observability/job-metrics.service';
 import { IActiveUserContext } from '../../interfaces';
@@ -49,6 +50,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     private readonly configService: ConfigService,
     private readonly jobMetrics: JobMetricsService,
     private readonly clsService: ClsService<IActiveUserContext>,
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -259,8 +261,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         timeout: 120000,
         headers: {
           'Content-Type': 'application/json',
-          // eslint-disable-next-line turbo/no-undeclared-env-vars
-          'X-Service-Token': process.env.SMR_SERVICE_TOKEN || '',
+          'X-Service-Token': (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '',
         },
       },
     );

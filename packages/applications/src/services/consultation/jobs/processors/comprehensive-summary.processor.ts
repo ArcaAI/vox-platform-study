@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Inject, Logger } from '@nestjs/common';
+import { Inject, Logger, Optional } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -18,6 +18,7 @@ import { ChainSummaryService } from '../../summary/chain-summary.service';
 import { PromptResolutionService } from '../../prompt/prompt-resolution.service';
 import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
+import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
 
 /**
@@ -51,6 +52,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     private readonly promptResolutionService: PromptResolutionService,
     private readonly promptAssemblyService: PromptAssemblyService,
     private readonly jobMetrics: JobMetricsService,
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -280,12 +282,12 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         promptResolvedFrom: assembledPrompt.resolvedFrom,
         promptHyperparameters: assembledPrompt.hyperparameters,
       });
+      const smrServiceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
       const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, smrPayload, {
         timeout: 180000,
         headers: {
           'Content-Type': 'application/json',
-          // eslint-disable-next-line turbo/no-undeclared-env-vars
-          'X-Service-Token': process.env.SMR_SERVICE_TOKEN || '',
+          'X-Service-Token': smrServiceToken,
           ...(jobId && { 'X-Request-ID': jobId }),
         },
       });

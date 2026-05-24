@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, Optional, BadRequestException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
@@ -19,6 +19,7 @@ import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-v2-genera
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
+import { SecretsService } from '../../baseServices/_meta/secrets';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 
 /**
@@ -51,6 +52,7 @@ export class ChainSummaryService extends BaseService {
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     private readonly promptAssemblyService: PromptAssemblyService,
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -473,12 +475,12 @@ export class ChainSummaryService extends BaseService {
   }> {
     try {
       const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, payload.options, payload.context);
+      const smrServiceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
       const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, smrPayload, {
         timeout: 180000,
         headers: {
           'Content-Type': 'application/json',
-          // eslint-disable-next-line turbo/no-undeclared-env-vars
-          'X-Service-Token': process.env.SMR_SERVICE_TOKEN || '',
+          'X-Service-Token': smrServiceToken,
         },
       });
       return mapSmrGenerateResponse(response.data);
