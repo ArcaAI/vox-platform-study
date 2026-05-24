@@ -98,4 +98,53 @@ sudo systemctl daemon-reload
 
 ---
 
-<REMAINING SECTIONS TO BE FILLED PER TASKS 1.9–1.14>
+## 6. Raft integrated storage — `/etc/vault.d/vault.hcl` (per node, edit `node_id` and `api_addr` per host)
+
+```hcl
+ui = true
+cluster_addr  = "https://10.10.1.130:8201"   # change per node: .130 / .131 / .132
+api_addr      = "https://10.10.1.130:8200"   # change per node
+log_level     = "info"
+log_format    = "json"
+default_lease_ttl = "168h"
+max_lease_ttl     = "8760h"
+disable_mlock = false
+
+listener "tcp" {
+  address       = "0.0.0.0:8200"
+  tls_cert_file = "/etc/vault.d/tls/vault.crt"
+  tls_key_file  = "/etc/vault.d/tls/vault.key"
+  tls_min_version = "tls12"
+  telemetry {
+    unauthenticated_metrics_access = false
+  }
+}
+
+storage "raft" {
+  path    = "/opt/vault/data"
+  node_id = "vault-1"   # change per node: vault-1 / vault-2 / vault-3
+  retry_join {
+    leader_api_addr = "https://10.10.1.130:8200"
+    leader_ca_cert_file = "/etc/vault.d/tls/vault-ca.crt"
+  }
+  retry_join {
+    leader_api_addr = "https://10.10.1.131:8200"
+    leader_ca_cert_file = "/etc/vault.d/tls/vault-ca.crt"
+  }
+  retry_join {
+    leader_api_addr = "https://10.10.1.132:8200"
+    leader_ca_cert_file = "/etc/vault.d/tls/vault-ca.crt"
+  }
+}
+
+telemetry {
+  prometheus_retention_time = "30s"
+  disable_hostname = true
+}
+```
+
+<SRE: generate TLS material via your existing internal CA; private key file mode 0600 vault:vault>
+
+---
+
+<REMAINING SECTIONS TO BE FILLED PER TASKS 1.10–1.14>
