@@ -9,6 +9,10 @@ export * from './providers/vault-secrets.provider';
 export * from './SecretsService';
 export * from './secrets.module';
 export * from './secrets.health';
+// Phase 5 Task 5.7 (TASK-302 Stream B) — DB-lease renewer.
+export * from './vault-lease-renewer';
+// Phase 5 Task 5.7 (TASK-302 Stream B) — DB lease renewer.
+export * from './vault-lease-renewer';
 // Phase 6 Task 6.3 (TASK-302 Stream B) — rotation worker.
 export * from './vault-rotation-worker';
 // Phase 6 Task 6.6 (TASK-302 Stream B) — rotation policy helpers.

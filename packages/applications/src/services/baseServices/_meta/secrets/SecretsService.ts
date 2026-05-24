@@ -221,8 +221,42 @@ export class SecretsService {
     });
   }
 
-  health(): Promise<SecretsHealth> {
-    return this.provider.health();
+  /**
+   * Optional VaultLeaseRenewer handle (Phase 5 Task 5.7). When
+   * present, `health()` reports its `.degraded` flag so health
+   * indicators can warn without flipping `ok=false`. We intentionally
+   * type structurally so this file does not depend on
+   * `vault-lease-renewer.ts` at type-resolution time, keeping the
+   * import graph one-directional.
+   */
+  private leaseRenewer:
+    | { readonly degraded: boolean; readonly failureCount: number }
+    | null = null;
+
+  setLeaseRenewer(renewer: {
+    readonly degraded: boolean;
+    readonly failureCount: number;
+  }): void {
+    this.leaseRenewer = renewer;
+  }
+
+  clearLeaseRenewer(): void {
+    this.leaseRenewer = null;
+  }
+
+  async health(): Promise<SecretsHealth> {
+    const base = await this.provider.health();
+    if (!this.leaseRenewer || !this.leaseRenewer.degraded) {
+      return { ...base, degraded: false };
+    }
+    const merged: SecretsHealth = {
+      ...base,
+      degraded: true,
+      detail: base.detail
+        ? `${base.detail}; lease-renew degraded (failures=${this.leaseRenewer.failureCount})`
+        : `lease-renew degraded (failures=${this.leaseRenewer.failureCount})`,
+    };
+    return merged;
   }
 
   /**
