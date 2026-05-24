@@ -299,4 +299,32 @@ describe('applyChangesToEntity', () => {
       expect(entity.name).toBe('Typed Name');
     });
   });
+
+  // TASK-302 Stream D Phase B (B.7) — `version` is database-owned. The only
+  // legitimate writer is `Repository.updateWithVersion`. Defense in depth on
+  // top of the missing public setter on `BaseEntity` and the mapper exclusion.
+  describe('version is database-owned (TASK-302 Stream D Phase B)', () => {
+    it('ignores `version` in the changes payload', async () => {
+      await applyChangesToEntity(entity, { version: 99, name: 'Updated' } as any);
+
+      expect(entity.version).toBe(1); // unchanged — entity defaulted to 1 at construction
+      expect(entity.name).toBe('Updated'); // other fields still applied
+    });
+
+    it('does not call a custom handler for `version` (the guard runs before handler dispatch)', async () => {
+      let handlerCalled = false;
+      const handlers: ChangeFieldHandlers<TestEntity, { version?: number }> = {
+        // The handler is wired but must NOT fire.
+        ['version' as any]: () => {
+          handlerCalled = true;
+          return 42;
+        },
+      };
+
+      await applyChangesToEntity(entity, { version: 99 } as any, handlers as any);
+
+      expect(handlerCalled).toBe(false);
+      expect(entity.version).toBe(1); // still unchanged
+    });
+  });
 });
