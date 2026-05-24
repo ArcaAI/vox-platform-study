@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { SysEventType, ResourceStatusType } from '@arcaai/domains';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { PromptManagementService } from '../prompt-management.service';
 
 // ─── Mock Factories ─────────────────────────────────────────────────
@@ -56,6 +57,10 @@ const createMockPromptTemplateRepository = () => ({
     findAll: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    // TASK-302 Stream D Phase E.3 — `updatePromptTemplate` now writes via
+    // Compare-And-Set (`updateWithVersion`). Legacy `.update` stays on
+    // the mock for assertions that confirm it is NOT called.
+    updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
     $: vi.fn(),
 });
@@ -95,6 +100,11 @@ const createMockTemplateEntity = (overrides: Record<string, unknown> = {}) => {
         createdBy: overrides.createdBy ?? 'user-id-1',
         updatedBy: overrides.updatedBy ?? null,
         changes: overrides.changes ?? {},
+        // TASK-302 Stream D Phase E.3 — `_version` is required for the CAS
+        // write path. Default = first-write (1); override per-test as needed.
+        // Distinct from `currentVersionNumber` (the human-meaningful
+        // PromptVersion history counter).
+        version: 'version' in overrides ? overrides.version : 1,
         isActive: () => (overrides.resourceStatus ?? 'ENABLED') === 'ENABLED',
         incrementVersion: vi.fn().mockImplementation(() => { _changed = true; }),
         enable: vi.fn().mockImplementation(() => { _changed = true; }),
@@ -376,17 +386,18 @@ describe('PromptManagementService', () => {
 
     describe('updatePromptTemplate', () => {
         it('should create new version snapshot and increment version number on success', async () => {
-            const existing = createMockTemplateEntity({ currentVersionNumber: 2 });
+            const existing = createMockTemplateEntity({ currentVersionNumber: 2, version: 4 });
             mockTemplateRepo.findById.mockResolvedValue(existing);
-            mockTemplateRepo.update.mockResolvedValue(
-                createMockTemplateEntity({ currentVersionNumber: 3 }),
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(
+                createMockTemplateEntity({ currentVersionNumber: 3, version: 5 }),
             );
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 3 }));
 
             const result = await service.updatePromptTemplate('template-id-1', {
                 content: 'Updated content',
                 changeReason: 'Improved prompt',
-            });
+                expectedVersion: 4,
+            } as never);
 
             expect(mockVersionRepo.create).toHaveBeenCalledTimes(1);
             expect(mockVersionRepo.create).toHaveBeenCalledWith(
@@ -398,17 +409,20 @@ describe('PromptManagementService', () => {
             );
             expect(existing.incrementVersion).toHaveBeenCalled();
             expect(result.currentVersionNumber).toBe(3);
+            // CAS-only — the legacy non-versioned write MUST NOT fire.
+            expect(mockTemplateRepo.update).not.toHaveBeenCalled();
+            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('template-id-1', existing, 4);
         });
 
         it('should throw NotFoundException when template does not exist', async () => {
             mockTemplateRepo.findById.mockResolvedValue(null);
 
             await expect(
-                service.updatePromptTemplate('nonexistent', { content: 'x' }),
+                service.updatePromptTemplate('nonexistent', { content: 'x', expectedVersion: 1 } as never),
             ).rejects.toThrow(NotFoundException);
 
             await expect(
-                service.updatePromptTemplate('nonexistent', { content: 'x' }),
+                service.updatePromptTemplate('nonexistent', { content: 'x', expectedVersion: 1 } as never),
             ).rejects.toThrow('Prompt template nonexistent not found');
 
             expect(mockVersionRepo.create).not.toHaveBeenCalled();
@@ -420,12 +434,13 @@ describe('PromptManagementService', () => {
                 content: 'Original content',
             });
             mockTemplateRepo.findById.mockResolvedValue(existing);
-            mockTemplateRepo.update.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(existing);
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
 
             const result = await service.updatePromptTemplate('template-id-1', {
                 content: 'New content',
-            });
+                expectedVersion: 1,
+            } as never);
 
             expect(existing.content).toBe('New content');
             expect(existing.name).toBe('Original');
@@ -438,10 +453,10 @@ describe('PromptManagementService', () => {
                 content: 'Original content',
             });
             mockTemplateRepo.findById.mockResolvedValue(existing);
-            mockTemplateRepo.update.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(existing);
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
 
-            await service.updatePromptTemplate('template-id-1', { name: 'Renamed' });
+            await service.updatePromptTemplate('template-id-1', { name: 'Renamed', expectedVersion: 1 } as never);
 
             expect(existing.name).toBe('Renamed');
             expect(existing.content).toBe('Original content');
@@ -453,10 +468,10 @@ describe('PromptManagementService', () => {
                 tags: ['old'],
             });
             mockTemplateRepo.findById.mockResolvedValue(existing);
-            mockTemplateRepo.update.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(existing);
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
 
-            await service.updatePromptTemplate('template-id-1', { tags: ['new', 'tags'] });
+            await service.updatePromptTemplate('template-id-1', { tags: ['new', 'tags'], expectedVersion: 1 } as never);
 
             expect(existing.tags).toEqual(['new', 'tags']);
         });
@@ -464,12 +479,12 @@ describe('PromptManagementService', () => {
         it('should increment version from null when currentVersionNumber is null', async () => {
             const existing = createMockTemplateEntity({ currentVersionNumber: null });
             mockTemplateRepo.findById.mockResolvedValue(existing);
-            mockTemplateRepo.update.mockResolvedValue(
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(
                 createMockTemplateEntity({ currentVersionNumber: 1 }),
             );
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 1 }));
 
-            await service.updatePromptTemplate('template-id-1', { content: 'Updated' });
+            await service.updatePromptTemplate('template-id-1', { content: 'Updated', expectedVersion: 1 } as never);
 
             expect(mockVersionRepo.create).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -481,13 +496,14 @@ describe('PromptManagementService', () => {
         it('should include changeReason when provided', async () => {
             const existing = createMockTemplateEntity();
             mockTemplateRepo.findById.mockResolvedValue(existing);
-            mockTemplateRepo.update.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(existing);
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
 
             await service.updatePromptTemplate('template-id-1', {
                 content: 'Updated',
                 changeReason: 'Bug fix',
-            });
+                expectedVersion: 1,
+            } as never);
 
             expect(mockVersionRepo.create).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -499,10 +515,10 @@ describe('PromptManagementService', () => {
         it('should handle update without changeReason', async () => {
             const existing = createMockTemplateEntity();
             mockTemplateRepo.findById.mockResolvedValue(existing);
-            mockTemplateRepo.update.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(existing);
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
 
-            await service.updatePromptTemplate('template-id-1', { content: 'Updated' });
+            await service.updatePromptTemplate('template-id-1', { content: 'Updated', expectedVersion: 1 } as never);
 
             expect(mockVersionRepo.create).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -511,23 +527,58 @@ describe('PromptManagementService', () => {
             );
         });
 
-        it('should broadcast ResourceUpdated event', async () => {
-            const existing = createMockTemplateEntity();
+        it('should broadcast ResourceUpdated event with previousVersion + newVersion (TASK-302 Stream D Phase E.3)', async () => {
+            const existing = createMockTemplateEntity({ version: 9 });
             mockTemplateRepo.findById.mockResolvedValue(existing);
-            mockTemplateRepo.update.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ version: 10 }));
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
 
             await service.updatePromptTemplate('template-id-1', {
                 content: 'Updated',
                 changeReason: 'Improvement',
-            });
+                expectedVersion: 9,
+            } as never);
 
+            // Same audit shape as Phase C.8 / E.1 / E.2: the SysEvent carries
+            // both versions so downstream observers can correlate the change
+            // with the row's prior state.
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
                 SysEventType.ResourceUpdated,
                 expect.objectContaining({
                     resourceId: 'template-id-1',
-                    data: { changeReason: 'Improvement' },
+                    data: expect.objectContaining({
+                        changeReason: 'Improvement',
+                        previousVersion: 9,
+                        newVersion: 10,
+                    }),
                 }),
+            );
+        });
+
+        it('propagates OptimisticConcurrencyException from the repository CAS write (TASK-302 Stream D Phase E.3)', async () => {
+            // When the row drifted between read and write, the repository's
+            // `updateWithVersion` predicate matches 0 rows and throws. The
+            // service must surface that exception unwrapped so the
+            // `ExceptionInterceptor` can map it to 412 Precondition Failed.
+            const existing = createMockTemplateEntity({ version: 9 });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockRejectedValue(
+                new OptimisticConcurrencyException('PromptTemplate', 'template-id-1', 9),
+            );
+
+            await expect(
+                service.updatePromptTemplate('template-id-1', {
+                    content: 'Stale write',
+                    expectedVersion: 9,
+                } as never),
+            ).rejects.toThrow(OptimisticConcurrencyException);
+
+            // Audit-log MUST NOT broadcast on a failed CAS write — otherwise
+            // observers would see "update" events for changes that never
+            // landed.
+            expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+                SysEventType.ResourceUpdated,
+                expect.anything(),
             );
         });
     });
@@ -1054,9 +1105,12 @@ describe('PromptManagementService', () => {
                 mockTemplateRepo.findById.mockResolvedValue(foreign);
 
                 await expect(
-                    service.updatePromptTemplate('tpl-X', { content: 'edit' } as never),
+                    service.updatePromptTemplate('tpl-X', { content: 'edit', expectedVersion: 1 } as never),
                 ).rejects.toThrow(NotFoundException);
+                // DEF-C2 + TASK-302: neither legacy nor CAS writers may fire on
+                // a foreign-tenant row.
                 expect(mockTemplateRepo.update).not.toHaveBeenCalled();
+                expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
             });
 
             it('throws ForbiddenException on USER_PERSONAL owned by a different user', async () => {
@@ -1069,7 +1123,7 @@ describe('PromptManagementService', () => {
                 mockTemplateRepo.findById.mockResolvedValue(personal);
 
                 await expect(
-                    service.updatePromptTemplate('tpl-P', { content: 'edit' } as never),
+                    service.updatePromptTemplate('tpl-P', { content: 'edit', expectedVersion: 1 } as never),
                 ).rejects.toThrow(ForbiddenException);
             });
 
@@ -1079,7 +1133,7 @@ describe('PromptManagementService', () => {
                 mockTemplateRepo.findById.mockResolvedValue(tpl);
 
                 await expect(
-                    service.updatePromptTemplate('tpl-D', { content: 'edit' } as never),
+                    service.updatePromptTemplate('tpl-D', { content: 'edit', expectedVersion: 1 } as never),
                 ).rejects.toThrow(ForbiddenException);
             });
 
@@ -1093,11 +1147,11 @@ describe('PromptManagementService', () => {
                 });
                 mockTemplateRepo.findById.mockResolvedValue(personal);
                 mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
-                mockTemplateRepo.update.mockResolvedValue(personal);
+                mockTemplateRepo.updateWithVersion.mockResolvedValue(personal);
 
-                await service.updatePromptTemplate('tpl-mine', { content: 'new content' } as never);
+                await service.updatePromptTemplate('tpl-mine', { content: 'new content', expectedVersion: 1 } as never);
 
-                expect(mockTemplateRepo.update).toHaveBeenCalled();
+                expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalled();
             });
         });
 
