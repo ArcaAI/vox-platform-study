@@ -20,19 +20,35 @@ describe('useGlobalSettings', () => {
     let mockLogger: ReturnType<typeof createMockLogger>;
     let mockStore: any;
     const mockGet = vi.fn();
+    const mockGetWithEtag = vi.fn();
     const mockPost = vi.fn();
     const mockPatch = vi.fn();
+    const mockPatchWithIfMatch = vi.fn();
     const mockDelete = vi.fn();
 
     beforeEach(() => {
         mockLogger = createMockLogger();
         mockGet.mockReset();
+        mockGetWithEtag.mockReset();
         mockPost.mockReset();
         mockPatch.mockReset();
+        mockPatchWithIfMatch.mockReset();
         mockDelete.mockReset();
 
+        // TASK-302 Stream D Phase D — `get` and `update` now flow through
+        // `getWithEtag`/`patchWithIfMatch` (D.4). Pre-existing tests below
+        // are migrated to the new mocks; the `mockGet`/`mockPatch` keys
+        // are kept for `list`/`getByTenant`/`getTenantConfig`/`create`
+        // which still use the bare `get`/`post` paths.
         mockStore = {
-            apiClient: { get: mockGet, post: mockPost, patch: mockPatch, delete: mockDelete },
+            apiClient: {
+                get: mockGet,
+                getWithEtag: mockGetWithEtag,
+                post: mockPost,
+                patch: mockPatch,
+                patchWithIfMatch: mockPatchWithIfMatch,
+                delete: mockDelete,
+            },
             logger: mockLogger,
         };
         (useAgenticStore as any).mockReturnValue(mockStore);
@@ -168,14 +184,18 @@ describe('useGlobalSettings', () => {
 
     describe('get', () => {
         it('should GET from GLOBAL_SETTINGS_ENDPOINTS.GET(id)', async () => {
-            const setting = { id: 'gs-1', key: 'stt.model', value: 'whisper', tenantId: 't-1' };
-            mockGet.mockResolvedValue(setting);
+            // TASK-302 Stream D Phase D — `get` now calls `getWithEtag` to
+            // capture the ETag for a follow-up `update`. The body return
+            // shape is preserved (backwards-compatible for callers that
+            // only read `result.current.get(id)`'s resolved value).
+            const setting = { id: 'gs-bg1', key: 'stt.model', value: 'whisper', tenantId: 't-1', version: 1 };
+            mockGetWithEtag.mockResolvedValue({ body: setting, etag: '"1"' });
             const { result } = renderHook(() => useGlobalSettings());
 
             let resp: unknown;
-            await act(async () => { resp = await result.current.get('gs-1'); });
+            await act(async () => { resp = await result.current.get('gs-bg1'); });
 
-            expect(mockGet).toHaveBeenCalledWith(GLOBAL_SETTINGS_ENDPOINTS.GET('gs-1'));
+            expect(mockGetWithEtag).toHaveBeenCalledWith(GLOBAL_SETTINGS_ENDPOINTS.GET('gs-bg1'));
             expect(resp).toEqual(setting);
         });
     });
@@ -228,15 +248,27 @@ describe('useGlobalSettings', () => {
     });
 
     describe('update', () => {
-        it('should PATCH to GLOBAL_SETTINGS_ENDPOINTS.UPDATE(id)', async () => {
-            const updated = { id: 'gs-1', key: 'stt.model', value: 'whisper-v3', tenantId: 't-1' };
-            mockPatch.mockResolvedValue(updated);
+        it('should PATCH to GLOBAL_SETTINGS_ENDPOINTS.UPDATE(id) with cached If-Match', async () => {
+            // TASK-302 Stream D Phase D — `update` requires a prior `get`
+            // to populate the ETag cache. The PATCH path now flows
+            // through `patchWithIfMatch` (not bare `patch`).
+            const FRESH_ID = 'gs-update-bg-7c9d4e';
+            const fetched = { id: FRESH_ID, key: 'stt.model', value: 'whisper', tenantId: 't-1', version: 1 };
+            const updated = { id: FRESH_ID, key: 'stt.model', value: 'whisper-v3', tenantId: 't-1', version: 2 };
+            mockGetWithEtag.mockResolvedValue({ body: fetched, etag: '"1"' });
+            mockPatchWithIfMatch.mockResolvedValue(updated);
             const { result } = renderHook(() => useGlobalSettings());
 
-            let resp: unknown;
-            await act(async () => { resp = await result.current.update('gs-1', { value: 'whisper-v3' }); });
+            await act(async () => { await result.current.get(FRESH_ID); });
 
-            expect(mockPatch).toHaveBeenCalledWith(GLOBAL_SETTINGS_ENDPOINTS.UPDATE('gs-1'), { value: 'whisper-v3' });
+            let resp: unknown;
+            await act(async () => { resp = await result.current.update(FRESH_ID, { value: 'whisper-v3' }); });
+
+            expect(mockPatchWithIfMatch).toHaveBeenCalledWith(
+                GLOBAL_SETTINGS_ENDPOINTS.UPDATE(FRESH_ID),
+                { value: 'whisper-v3' },
+                '"1"',
+            );
             expect(resp).toEqual(updated);
         });
     });

@@ -117,7 +117,13 @@ export class AgenticClient {
   private static readonly AUTH_REFRESH_ENDPOINT = '/auth/refresh';
 
   /**
-   * Make an HTTP request with comprehensive logging
+   * Make an HTTP request with comprehensive logging — body-only variant.
+   *
+   * Thin wrapper around `requestWithMeta` that discards response headers.
+   * Used by `get`/`post`/`patch`/`put`/`delete`. Callers that need the
+   * response headers (e.g. RFC 7232 `ETag` for OCC — TASK-302 Stream D
+   * Phase D.4) should use `requestWithMeta` directly or the public
+   * `getWithEtag` helper.
    */
   private async request<T>(
     method: string,
@@ -127,6 +133,34 @@ export class AgenticClient {
     externalSignal?: AbortSignal,
     isRetry = false,
   ): Promise<T> {
+    const { body: parsed } = await this.requestWithMeta<T>(
+      method,
+      endpoint,
+      body,
+      options,
+      externalSignal,
+      isRetry,
+    );
+    return parsed;
+  }
+
+  /**
+   * Make an HTTP request and expose response headers + status alongside
+   * the parsed body — TASK-302 Stream D Phase D (D.4).
+   *
+   * Identical to the legacy `request<T>` in every behavioral respect
+   * (auth, retry, rate-limit, tracing); the ONLY difference is the
+   * return type. Refactor was preferred over a `request` overload to
+   * keep the existing call sites' types stable.
+   */
+  private async requestWithMeta<T>(
+    method: string,
+    endpoint: string,
+    body?: unknown,
+    options?: RequestInit,
+    externalSignal?: AbortSignal,
+    isRetry = false,
+  ): Promise<{ body: T; headers: Headers; status: number }> {
     this.checkRateLimit();
     AgenticClient.validateBody(body);
 
@@ -270,22 +304,33 @@ export class AgenticClient {
           try {
             const refreshed = await this.deduplicatedRefresh();
             if (refreshed) {
-              return this.request<T>(method, endpoint, body, options, externalSignal, true);
+              return this.requestWithMeta<T>(method, endpoint, body, options, externalSignal, true);
             }
           } catch {
             // Refresh failed — fall through to throw the original 401
           }
         }
 
-        throw new AgenticError(errorCode, errorMessage, { context: { status: response.status, endpoint, requestId } });
+        // TASK-302 Stream D Phase D — enrich the AgenticError context with
+        // OCC metadata when the server returns a 412 Precondition Failed.
+        // The body shape is `{ code, message, metadata: { expectedVersion,
+        // currentVersion } }`; we lift `currentVersion` into the error
+        // context so `useGlobalSettings.update` can build a
+        // `ConfigConflictError` without re-parsing the JSON.
+        const errorContext: Record<string, unknown> = { status: response.status, endpoint, requestId };
+        if (response.status === 412 && errorData?.metadata?.currentVersion !== undefined) {
+          errorContext.currentVersion = errorData.metadata.currentVersion;
+        }
+        throw new AgenticError(errorCode, errorMessage, { context: errorContext });
       }
 
       // Handle 204 No Content
       if (response.status === 204) {
-        return undefined as T;
+        return { body: undefined as T, headers: response.headers, status: response.status };
       }
 
-      return response.json();
+      const parsed = (await response.json()) as T;
+      return { body: parsed, headers: response.headers, status: response.status };
     } catch (error) {
       clearTimeout(timeoutId);
       const durationMs = Math.round(performance.now() - startTime);
@@ -395,6 +440,56 @@ export class AgenticClient {
    */
   async patch<T>(endpoint: string, body?: unknown, options?: { signal?: AbortSignal }): Promise<T> {
     return this.request<T>('PATCH', endpoint, body, undefined, options?.signal);
+  }
+
+  /**
+   * GET request that returns the parsed body PLUS the `ETag` response
+   * header — TASK-302 Stream D Phase D (D.4).
+   *
+   * The server (D.1) renders `ETag: "<n>"` from any response that carries
+   * a positive-integer `version`. SDK callers stash this token and replay
+   * it as `If-Match` on the corresponding `PATCH` via `patchWithIfMatch`.
+   *
+   * @returns `{ body, etag }` — `etag` is `undefined` when the response
+   *   has no `ETag` header (collections, non-versioned resources). In
+   *   that case OCC is not available for this endpoint and callers
+   *   should fall back to the body-field `expectedVersion`.
+   */
+  async getWithEtag<T>(
+    endpoint: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<{ body: T; etag: string | undefined }> {
+    const { body, headers } = await this.requestWithMeta<T>('GET', endpoint, undefined, undefined, options?.signal);
+    return { body, etag: headers.get('etag') ?? undefined };
+  }
+
+  /**
+   * PATCH request that sends an `If-Match` header carrying a strong
+   * validator — TASK-302 Stream D Phase D (D.4).
+   *
+   * Pairs with `getWithEtag`: the SDK fetches a resource, stashes the
+   * returned `ETag`, then replays it here. The server (D.2/D.3) runs a
+   * Compare-And-Set against the row's `_version`; a stale token yields
+   * `412 Precondition Failed` which the SDK surfaces as a
+   * `ConfigConflictError` (see `useGlobalSettings.update`).
+   *
+   * The `ifMatch` string is the raw header value — including the
+   * RFC 7232 double quotes (e.g. `"7"`). Pass it through verbatim from
+   * `getWithEtag`'s `etag` field.
+   */
+  async patchWithIfMatch<T>(
+    endpoint: string,
+    body: unknown,
+    ifMatch: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<T> {
+    return this.request<T>(
+      'PATCH',
+      endpoint,
+      body,
+      { headers: { 'If-Match': ifMatch } },
+      options?.signal,
+    );
   }
 
   /**
