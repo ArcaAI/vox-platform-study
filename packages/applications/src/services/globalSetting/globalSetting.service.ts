@@ -135,16 +135,32 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     const globalSetting = await this.globalSettingRepository.findById(id);
 
     const previousData = globalSetting.toObject();
+    // TASK-302 Stream D Phase C (C.7/C.8) — snapshot the row version BEFORE
+    // we mutate the entity so the post-write SysEvent can carry
+    // `{ previousVersion, newVersion }` for audit-log correlation.
+    const previousVersion = globalSetting.version;
     this.updateEntity(globalSetting, request);
 
     if (!globalSetting.hasChanges) {
       throw new ArgumentInvalidException(`No changes to write to.`);
     }
-    const updatedGlobalSetting = await this.globalSettingRepository.update(id, globalSetting);
+
+    // TASK-302 Stream D Phase C (C.7) — Compare-And-Set against `_version`.
+    // The `OptimisticConcurrencyException` propagates out so the HTTP layer
+    // (Phase D ExceptionFilter) renders `412 Precondition Failed` with
+    // `{ currentVersion, expectedVersion }`. No `$transaction` here because
+    // this is the single-row path (vs. the multi-row tenant config batch).
+    const updatedGlobalSetting = await this.globalSettingRepository.updateWithVersion(
+      id,
+      globalSetting,
+      request.expectedVersion,
+    );
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updatedGlobalSetting.id,
-      data: globalSetting.changes,
+      // C.8 — carry the version transition in the audit log so downstream
+      // observers can correlate previous and new state.
+      data: { ...globalSetting.changes, previousVersion, newVersion: updatedGlobalSetting.version },
       previousData,
     });
     return updatedGlobalSetting;
