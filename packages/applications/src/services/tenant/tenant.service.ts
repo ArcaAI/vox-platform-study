@@ -24,6 +24,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { UpdateTenantConfigRequest } from './dto/updateTenantConfigRequest';
 import { ITenantBucketService } from '../tenant-bucket/ITenantBucketService';
 import { GLOBAL_TENANT_KEY, SUPER_ADMIN_ROLE, isUuidIdentifier } from './constants';
+import { scrubLockedForAudit } from './scrubbing';
 
 /**
  * Service for managing tenants and their configurations
@@ -499,8 +500,19 @@ export class TenantService extends BaseService implements ITenantService {
         await this.validateSmrConfigValue(existingConfig.key, config.value, tenant.id);
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { id: _id, ...changes } = config;
+      // Phase 0 Item 2 (TASK-302 Stream A) — explicit allowlist.
+      // NEVER spread `config` directly into `updateEntity`: that path
+      // assigns every key on the entity (mass-assignment) and lets a
+      // caller smuggle `key`, `tenantId`, `locked`, `defaultValue` into
+      // a GlobalSettingEntity even if the HTTP ValidationPipe is
+      // bypassed. Only `value` and `description` are mutable here.
+      const changes: { value?: string; description?: string } = {};
+      if (config.value !== undefined) {
+        changes.value = config.value;
+      }
+      if (config.description !== undefined) {
+        changes.description = config.description;
+      }
       this.updateEntity(existingConfig, changes);
 
       if (!existingConfig.hasChanges) {
@@ -517,9 +529,11 @@ export class TenantService extends BaseService implements ITenantService {
       updatedConfigs.push(updatedConfig);
     }
 
+    // Phase 0 Item 4 (TASK-302 Stream A) — scrub @Secret fields when locked.
+    // Per-entity decision: a mixed batch emits a partially-scrubbed array.
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceIds: updatedConfigs.map((config) => config.id),
-      data: updatedConfigs.map((config) => config.toObject()),
+      data: updatedConfigs.map((config) => scrubLockedForAudit(config)),
     });
 
     return new FetchResponse<GlobalSettingEntity>({
