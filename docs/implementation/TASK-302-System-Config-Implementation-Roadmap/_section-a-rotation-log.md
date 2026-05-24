@@ -157,6 +157,48 @@ kubectl rollout restart deploy/hope-api -n staging
 | 3 — Soft-delete primer | `<ops>` | `<ISO-8601>` | n/a | `1 row updated` |
 | 4 — Confirm clean boot | `<ops>` | `<ISO-8601>` | `<pod>` | `AppSettingsService Service initialized` |
 
+## Section F.3 — Production deploy verification checklist
+
+> **Status**: PROPOSED — awaits execution by `git-manager` + `database-admin` + on-call security lead during the Phase 0 production deploy window.
+
+The Stream A worktree has shipped every Phase 0 code/config change. The remaining work is operational: deploying the merged branch, executing the rotation, and ticking the TASK-301 §Phase 0 exit-criteria boxes against real production evidence.
+
+### Pre-deploy
+
+- [ ] All Section A/B/C/D/E commits merged into `fix/2605-review` and then into `dev`.
+- [ ] CI green on `dev` for the merge commit — note pipeline URL.
+- [ ] Slack #engineering notified of the production deploy window (use *Pre-cutover announcement template* above).
+- [ ] On-call security lead has acknowledged the deploy in Slack thread.
+
+### Deploy
+
+- [ ] Deploy to **staging**.
+- [ ] Run `pnpm test:e2e -- phase-0-redteam` against the staging URL — paste the trailing summary block into this log.
+- [ ] Execute Section E staging duplicate-key smoke (table above) — record evidence in the smoke result table.
+- [ ] Deploy to **production**.
+- [ ] Within 5 minutes of production deploy, rotate `JWT_SECRET_KEY` in the production env-store and roll the pods (use *JWT cutover sub-runbook* above).
+- [ ] Record the new JWT fingerprint in the rotation table at the top of this document.
+- [ ] Sample 3 user sessions issued before rotation — confirm refresh tokens are rejected within `JWT_REFRESH_EXPIRES_IN`. Record sanitised user-id fingerprints (not raw IDs).
+
+### Post-deploy
+
+- [ ] Run `gitleaks detect --source . --config .gitleaks.toml --no-banner --redact` against the deployed branch — expect `no leaks found`. Paste the trailing summary line.
+- [ ] Execute the AuditLog SQL probe documented in `_section-d-backfill-proposal.md` (*Scope read-only probe*) with `<PHASE_0_DEPLOY_TIMESTAMP>` set to the production deploy ISO timestamp. Paste a sanitised count + sample (no secrets).
+- [ ] Confirm production API boot logs contain:
+  - `AppSettingsService Service initialized` (no Phase 0 Item 5 duplicate-key error).
+  - The boot-time admin route audit summary line (Phase 0 Item 3 — no offenders listed; if the audit added a summary log line, capture it here).
+- [ ] (Optional, recommended) Run the Section D backfill probe — if non-zero, surface for user approval per `_section-d-backfill-proposal.md`.
+
+### Sign-off
+
+| Role | Signer | Timestamp (UTC) | Notes |
+|---|---|---|---|
+| On-call security lead | `<name>` | `<ISO-8601>` | |
+| DBA | `<name>` | `<ISO-8601>` | |
+| Platform engineer | `<name>` | `<ISO-8601>` | |
+
+Once every box above is ticked and every signer has signed, follow Task F.4 — flip `docs/implementation/TASK-301-System-Config-Multi-Tenancy-Assessment/README.md` §Phase 0 status to `Completed (YYYY-MM-DD)` and update the exit-criteria checklist with evidence URLs.
+
 ## Out of scope
 
 - Backups and SIEM mirrors: see Section D backfill proposal (`_section-d-backfill-proposal.md`).
