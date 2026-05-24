@@ -1,0 +1,25 @@
+# pgbouncer userlist.txt — TEMPLATE ONLY (TASK-302 Stream C Phase 2A)
+#
+# Copy to userlist.txt and replace the SCRAM-SHA-256 hashes below with
+# the real hashes from PostgreSQL's pg_authid (or use the
+# `psql -c "SELECT 'hope_app \"' || rolpassword || '\"' FROM pg_authid WHERE rolname='hope_app';"`
+# trick once each role is created with `CREATE USER … PASSWORD …`).
+#
+# DO NOT COMMIT a populated userlist.txt — it is in .gitignore and a
+# gitleaks rule (`hope-pgbouncer-userlist`) catches accidentally
+# committed real hashes.
+#
+# File mode: 0640, owner pgbouncer:pgbouncer.
+#
+# Users defined here also need entries in pgbouncer.ini:
+#   admin_users = hope_admin
+#   stats_users = hope_metrics
+#
+# Format: "<username>" "<scram-hash-or-plaintext>"
+# When AUTH_TYPE=scram-sha-256, the hash MUST be the SCRAM-SHA-256 form
+# returned by pg_authid.rolpassword. Plaintext is supported but only
+# meaningful when AUTH_TYPE=plain (not recommended).
+
+"hope_app"     "SCRAM-SHA-256$4096:<base64-salt>$<base64-storedkey>:<base64-serverkey>"
+"hope_admin"   "SCRAM-SHA-256$4096:<base64-salt>$<base64-storedkey>:<base64-serverkey>"
+"hope_metrics" "SCRAM-SHA-256$4096:<base64-salt>$<base64-storedkey>:<base64-serverkey>"
