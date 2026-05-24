@@ -68,4 +68,22 @@ for kv in \
   vault kv put "secret/hope/${k}" value="${v}" >/dev/null
 done
 
+# TASK-302 Phase 4 Task 4.4 — Transit key for envelope-encrypting
+# GlobalSetting rows. The key is created idempotently (Vault returns 204
+# the first call, 400 if it already exists which we swallow). Config:
+#   min_decryption_version=1 — keeps historical ciphertexts decryptable
+#                              after rotation (forward-compat with Phase 6).
+#   deletion_allowed=false   — prevents accidental destructive ops; the
+#                              policy that owns the key must explicitly
+#                              flip this before delete is even possible.
+#   exportable=false         — production posture; the key material never
+#                              leaves Vault. Encryption happens server-side.
+echo "[vault-init] creating transit key 'hope-globalsetting'"
+vault write -f transit/keys/hope-globalsetting 2>/dev/null || true
+
+vault write transit/keys/hope-globalsetting/config \
+  min_decryption_version=1 \
+  deletion_allowed=false \
+  exportable=false 2>/dev/null || true
+
 echo "[vault-init] OK"
