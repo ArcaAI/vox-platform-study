@@ -153,3 +153,9 @@ infrastructure/deploy/k8s/config/secrets.*.yaml
 # gitleaks reports (Phase 0 Item 6, TASK-302 Stream A)
 *.gitleaks-report.json
 /tmp/phase-0-gitleaks-report.json
+
+# PgBouncer user lists (TASK-302 Stream C Phase 2A) — *.example is OK
+**/userlist.txt
+!**/userlist.txt.example
+**/pgbouncer.ini
+!**/pgbouncer.ini.example
