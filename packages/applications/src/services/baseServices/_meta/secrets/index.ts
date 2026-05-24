@@ -2,3 +2,4 @@
 // Exports are added incrementally as Tasks 2.2-2.20 land.
 export * from './ISecretsProvider';
 export * from './providers/env-secrets.provider';
+export * from './providers/in-memory-secrets.provider';
