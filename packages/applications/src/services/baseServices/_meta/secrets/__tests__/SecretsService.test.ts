@@ -46,6 +46,31 @@ describe('SecretsService (cache + TTL)', () => {
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
+  describe('getSecretSync (cache-only)', () => {
+    it('returns the cached value when warm', async () => {
+      await service.getSecret('FOO');
+      expect(service.getSecretSync('FOO')).toBe('bar');
+    });
+
+    it('returns undefined for a cold key (does NOT hit the provider)', () => {
+      const spy = vi.spyOn(provider, 'getSecret');
+      expect(service.getSecretSync('FOO')).toBeUndefined();
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('returns undefined when the TTL has expired', async () => {
+      const shortLived = new SecretsService(provider, { defaultTtlSec: 0, lruMax: 50 });
+      await shortLived.getSecret('FOO');
+      expect(shortLived.getSecretSync('FOO')).toBeUndefined();
+    });
+
+    it('returns undefined after invalidate(key)', async () => {
+      await service.getSecret('FOO');
+      service.invalidate('FOO');
+      expect(service.getSecretSync('FOO')).toBeUndefined();
+    });
+  });
+
   it('invalidateAll() clears the entire cache', async () => {
     const spy = vi.spyOn(provider, 'getSecret');
     await service.getSecret('FOO');
