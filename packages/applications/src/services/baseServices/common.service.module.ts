@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 
-import { ConfigModule, AppSettingsModule } from './_meta';
+import { ConfigModule, AppSettingsModule, SecretsModule } from './_meta';
 
 import { CoreDatabaseModule, JobQueue } from '@arcaai/domains';
 
@@ -9,6 +9,10 @@ import { IntegrationsModule, S3ServiceModule, RedisServiceModule, HealthCheckSer
 const imports = [
   ConfigModule,
   CoreDatabaseModule,
+  SecretsModule.forRoot({
+    defaultTtlSec: Number(process.env.SECRETS_TTL_SEC ?? 300),
+    lruMax: Number(process.env.SECRETS_LRU_MAX ?? 200),
+  }),
   AppSettingsModule.forRoot(),
 
   RedisServiceModule.register([
@@ -44,6 +48,7 @@ const exportModules = [
   ...DatabasesModules,
 
   AppSettingsModule,
+  SecretsModule,
   RedisServiceModule,
   IntegrationsModule,
   S3ServiceModule,

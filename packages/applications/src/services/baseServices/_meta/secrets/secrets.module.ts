@@ -1,5 +1,7 @@
 import { DynamicModule, Global, Logger, Module } from '@nestjs/common';
+import { TerminusModule } from '@nestjs/terminus';
 import { SecretsService, SECRETS_SERVICE_OPTIONS } from './SecretsService';
+import { SecretsHealthIndicator } from './secrets.health';
 import {
   ISecretsProvider,
   SECRETS_PROVIDER_TOKEN,
@@ -101,6 +103,9 @@ export class SecretsModule {
   static forRoot(options: SecretsModuleOptions = {}): DynamicModule {
     return {
       module: SecretsModule,
+      // TerminusModule exposes the HealthIndicator base class machinery
+      // SecretsHealthIndicator relies on.
+      imports: [TerminusModule],
       providers: [
         {
           provide: SECRETS_SERVICE_OPTIONS,
@@ -122,8 +127,14 @@ export class SecretsModule {
           useExisting: SECRETS_PROVIDER_INSTANCE,
         },
         SecretsService,
+        SecretsHealthIndicator,
       ],
-      exports: [SECRETS_PROVIDER_INSTANCE, SECRETS_PROVIDER_TOKEN, SecretsService],
+      exports: [
+        SECRETS_PROVIDER_INSTANCE,
+        SECRETS_PROVIDER_TOKEN,
+        SecretsService,
+        SecretsHealthIndicator,
+      ],
     };
   }
 }
