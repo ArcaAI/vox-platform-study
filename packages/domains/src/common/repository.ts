@@ -215,6 +215,11 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
         resourceStatus: ResourceStatusType.DELETED,
         resourceStatusUpdatedAt: new Date(),
         ...(updatedBy && { resourceStatusUpdatedBy: updatedBy }),
+        // TASK-302 Stream D Phase B (B.8) — soft-delete is a real state change.
+        // Bumping `_version` prevents a stale reader at v(n) from successfully
+        // calling `updateWithVersion(…, n)` after another admin soft-deleted
+        // the row, which would resurrect deleted PHI (compliance / SOC2 risk).
+        version: { increment: 1 },
       },
       include: this._includes,
     });
@@ -239,6 +244,9 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
         resourceStatus: ResourceStatusType.ENABLED,
         resourceStatusUpdatedAt: new Date(),
         ...(updatedBy && { resourceStatusUpdatedBy: updatedBy }),
+        // TASK-302 Stream D Phase B (B.8) — restore is the inverse state
+        // change and must also bump so OCC tracks the resurrection cleanly.
+        version: { increment: 1 },
       },
       include: this._includes,
     });
