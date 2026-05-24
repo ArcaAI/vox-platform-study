@@ -218,7 +218,16 @@ async function bootstrap() {
     }),
   );
 
-  app.useGlobalPipes(new ValidationPipe({ transform: true }));
+  // Phase 0 Item 1 (TASK-302 Stream A) — strict input validation.
+  // Stage 1 (this commit): whitelist:true strips unknown fields without
+  // throwing. After a 24h staging soak with no `dropped-field` warnings,
+  // stage 2 commit adds forbidNonWhitelisted + forbidUnknownValues.
+  app.useGlobalPipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+    }),
+  );
 
   // Enable shutdown hooks for graceful termination
   // This activates onModuleDestroy, beforeApplicationShutdown, and onApplicationShutdown hooks
