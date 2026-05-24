@@ -52,4 +52,20 @@ vault write auth/approle/role/hope-app \
 echo "[vault-init] role_id (committable):"
 vault read -field=role_id auth/approle/role/hope-app/role-id
 
+echo "[vault-init] seeding dev placeholder secrets"
+for kv in \
+  "JWT_SECRET_KEY=dev-jwt-secret-not-for-prod" \
+  "SESSION_SECRET_KEY=dev-session-secret-not-for-prod" \
+  "API_KEY_PEPPER=dev-api-key-pepper-not-for-prod" \
+  "OIDC_CLIENT_SECRET=dev-oidc-client-secret-not-for-prod" \
+  "MINIO_ACCESS_KEY=minio_admin" \
+  "MINIO_SECRET_KEY=minio_admin" \
+  "SMR_SERVICE_TOKEN=dev-smr-service-token-not-for-prod" \
+  "MQTT_PASS=" \
+  "REDIS_PASS="; do
+  k=${kv%%=*}
+  v=${kv#*=}
+  vault kv put "secret/hope/${k}" value="${v}" >/dev/null
+done
+
 echo "[vault-init] OK"
