@@ -263,6 +263,42 @@ effect — the invariant still runs and the process still refuses to
 start. See `packages/applications/src/services/baseServices/_meta/appSettings/appSettings.service.ts`
 and TASK-302 `docs/implementation/TASK-302-System-Config-Implementation-Roadmap/01-phase-0-hotfix.md` §Section E.
 
+### Connection pool sizing (PgBouncer — Phase 0 of TASK-302 Stream C)
+
+The Prisma adapter (`@prisma/adapter-pg`) owns connection pooling in
+Prisma 7 — the v6 `connection_limit` URL parameter is ignored. Two env
+vars wire `packages/database/src/client.ts` and `packages/database/prisma.config.ts`:
+
+| Env var          | Default | Consumed by                                | Notes |
+|------------------|---------|--------------------------------------------|-------|
+| `PRISMA_PG_MAX`  | `5`     | `client.ts` → `new PrismaPg({ max })`      | Per-pod pool size. |
+| `DIRECT_URL`     | unset   | `prisma.config.ts` (migrations only)       | When `DATABASE_URL` points at PgBouncer (port 6432), set this to an un-pooled connection so Prisma Migrate's advisory locks survive. |
+
+**Budget rule** (do not exceed):
+
+```
+pods × PRISMA_PG_MAX ≤ 0.7 × PG max_connections
+```
+
+With `max_connections = 200` and `PRISMA_PG_MAX = 5`, HOPE supports up to
+**28 simultaneous pods** before approaching the safe ceiling. Raise
+`max_connections` (not `PRISMA_PG_MAX`) when scaling further.
+
+**When to set `DIRECT_URL`**:
+
+- **Today (Phase 0, no pooler in app path)**: optional. Leaving it unset
+  makes `prisma.config.ts` fall back to `DATABASE_URL`, which is fine when
+  `DATABASE_URL` is already an un-pooled `5432` connection.
+- **After Phase 2A/2B cutover**: REQUIRED. `DATABASE_URL` will point at
+  PgBouncer (port `6432`); `DIRECT_URL` must point at the HAProxy R/W VIP
+  (port `5000`) or directly at the primary. Without this split,
+  `prisma migrate deploy` will silently degrade to a single backend per
+  request and the advisory lock used to serialize migrations will hop
+  between PG backends → corrupted schema history.
+
+See the canonical plan at
+[`docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md`](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md).
+
 ### Configuration Files
 
 - **nest-cli.json**: NestJS CLI configuration
