@@ -499,8 +499,19 @@ export class TenantService extends BaseService implements ITenantService {
         await this.validateSmrConfigValue(existingConfig.key, config.value, tenant.id);
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { id: _id, ...changes } = config;
+      // Phase 0 Item 2 (TASK-302 Stream A) — explicit allowlist.
+      // NEVER spread `config` directly into `updateEntity`: that path
+      // assigns every key on the entity (mass-assignment) and lets a
+      // caller smuggle `key`, `tenantId`, `locked`, `defaultValue` into
+      // a GlobalSettingEntity even if the HTTP ValidationPipe is
+      // bypassed. Only `value` and `description` are mutable here.
+      const changes: { value?: string; description?: string } = {};
+      if (config.value !== undefined) {
+        changes.value = config.value;
+      }
+      if (config.description !== undefined) {
+        changes.description = config.description;
+      }
       this.updateEntity(existingConfig, changes);
 
       if (!existingConfig.hasChanges) {
