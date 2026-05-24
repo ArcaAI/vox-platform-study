@@ -107,4 +107,83 @@ describe('TenantController', () => {
             expect(mode).toBe('AND');
         });
     });
+
+    // TASK-302 Stream D Phase E.1 — update() now requires `@RequiresIfMatch()`
+    // and the param decorator fires 428 in HTTP land if the header is
+    // missing. These unit tests cover the controller-internal logic of
+    // folding the header value into the body-field `expectedVersion`.
+    describe('update() — If-Match header handling (TASK-302 Stream D Phase E.1)', () => {
+        function makeUpdatedTenant(id: string, name: string, version: number) {
+            return {
+                id,
+                name,
+                key: 'k',
+                description: null,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                resourceStatus: null,
+                resourceStatusUpdatedAt: null,
+                resourceStatusUpdatedBy: '',
+                createdBy: null,
+                updatedBy: null,
+                projectId: null,
+                version,
+                toObject() {
+                    return {
+                        id,
+                        name,
+                        key: 'k',
+                        description: null,
+                        createdAt: this.createdAt,
+                        updatedAt: this.updatedAt,
+                        resourceStatus: null,
+                        resourceStatusUpdatedAt: null,
+                        resourceStatusUpdatedBy: '',
+                        createdBy: null,
+                        updatedBy: null,
+                        projectId: null,
+                        version,
+                    };
+                },
+            };
+        }
+
+        it('folds the If-Match header into the body-field expectedVersion (header wins)', async () => {
+            tenantService.update.mockResolvedValue(makeUpdatedTenant('t-1', 'New', 8));
+
+            // Body says version 99 (stale); header carries 7. The header
+            // MUST override.
+            await controller.update('t-1', { name: 'New', expectedVersion: 99 } as any, 7);
+
+            expect(tenantService.update).toHaveBeenCalledWith('t-1', expect.objectContaining({
+                name: 'New',
+                expectedVersion: 7,
+            }));
+        });
+
+        it('preserves the body-field expectedVersion when the header is absent (service-to-service fallback)', async () => {
+            // This branch is only reachable off-route in production (the
+            // `@RequiresIfMatch()` route guard + `@ExpectedVersion()` param
+            // decorator fire 428 before the handler runs). It documents the
+            // controller invariant for the service-to-service path.
+            tenantService.update.mockResolvedValue(makeUpdatedTenant('t-1', 'New', 8));
+
+            await controller.update('t-1', { name: 'New', expectedVersion: 5 } as any, undefined);
+
+            expect(tenantService.update).toHaveBeenCalledWith('t-1', expect.objectContaining({
+                name: 'New',
+                expectedVersion: 5,
+            }));
+        });
+
+        it('surfaces the row version on the TenantResponse so clients can echo it back', async () => {
+            tenantService.update.mockResolvedValue(makeUpdatedTenant('t-1', 'New', 8));
+
+            const response = await controller.update('t-1', { name: 'New', expectedVersion: 7 } as any, 7);
+
+            // The version round-trips so the SDK can set
+            // `If-Match: "<version>"` on the next PATCH without another GET.
+            expect(response.version).toBe(8);
+        });
+    });
 });

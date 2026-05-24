@@ -338,24 +338,54 @@ export class TenantService extends BaseService implements ITenantService {
   /**
    * Updates a tenant
    * @param id - The tenant ID
-   * @param request - The update request containing changes
+   * @param request - The update request containing changes (including
+   *   the mandatory `expectedVersion` carried from the prior GET — see
+   *   TASK-302 Stream D Phase E.1 / `UpdateTenantRequest`).
    * @returns Promise resolving to the updated tenant
    * @throws ArgumentInvalidException if no changes are detected
+   * @throws OptimisticConcurrencyException if the row's `_version` drifted
+   *   under us (CAS predicate matched zero rows). The HTTP layer renders
+   *   this as `412 Precondition Failed` via the Phase D ExceptionFilter.
+   *
+   * @see TASK-302 Stream D Phase E.1 — Tenant OCC migration
    */
   async update(id: EntityId, request: UpdateTenantRequest): Promise<TenantEntity> {
     const tenant = await this.tenantRepository.findById(id);
 
     const previousData = tenant.toObject();
-    this.updateEntity(tenant, request);
+    // `expectedVersion` is the CAS predicate input only — keep it out of
+    // `updateEntity` so it is never written onto the entity or staged for
+    // persistence. The DTO declares it but the entity has no such setter
+    // (the `_version` getter is read-only per B.5).
+    const { expectedVersion, ...editableRequest } = request;
+    this.updateEntity(tenant, editableRequest as UpdateTenantRequest);
 
     if (!tenant.hasChanges) {
       throw new ArgumentInvalidException(`No changes to write to.`);
     }
-    const updatedTenant = await this.tenantRepository.update(id, tenant);
+
+    // Snapshot the row's pre-write version BEFORE the CAS bumps it. After
+    // `updateWithVersion` returns, `tenant.version` (round-tripped from the
+    // DB) will already be the new version. Mirrors the pattern used by
+    // `updateTenantConfigs` after C.8.
+    const previousVersion = tenant.version;
+
+    // TASK-302 Stream D Phase E.1 — Compare-And-Set against `_version`.
+    // The repository wraps `prisma.tenant.updateMany` in a predicate that
+    // requires `_version === expectedVersion`; a mismatch surfaces as
+    // `OptimisticConcurrencyException`. We deliberately drop the legacy
+    // `tenantRepository.update(id, tenant)` write path, which bypassed OCC.
+    const updatedTenant = await this.tenantRepository.updateWithVersion(id, tenant, expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updatedTenant.id,
-      data: tenant.changes,
+      data: {
+        ...tenant.changes,
+        // Carry the version transition so audit consumers can correlate the
+        // change with the row's prior state (same shape as C.8).
+        previousVersion,
+        newVersion: updatedTenant.version,
+      },
       previousData,
     });
     return updatedTenant;
