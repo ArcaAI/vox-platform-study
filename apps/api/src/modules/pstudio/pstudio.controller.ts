@@ -2,11 +2,14 @@ import { IPrismaStudioService } from '@arcaai/applications';
 import { Controller, Get, Post, Body, Req, Res, HttpCode, Inject, Logger, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiExcludeEndpoint, ApiBearerAuth } from '@nestjs/swagger';
 import { Request, Response } from 'express';
-import { Authorize, Public } from '../../decorators';
+import { Authorize, CanManage, Public } from '../../decorators';
 import { getStudioHtml } from './pstudio.html';
 
 @ApiTags('admin-pstudio')
 @Controller('admin/pstudio')
+// Phase 0 Item 3 (TASK-302 Stream A): class-level baseline; method
+// @Public() / @Authorize(['manage', 'all']) decorators override.
+@CanManage('all')
 export class PrismaStudioController {
   private readonly logger = new Logger(PrismaStudioController.name);
 

@@ -149,3 +149,7 @@ storybook-static
 
 # Deployment secrets (never commit)
 infrastructure/deploy/k8s/config/secrets.*.yaml
+
+# gitleaks reports (Phase 0 Item 6, TASK-302 Stream A)
+*.gitleaks-report.json
+/tmp/phase-0-gitleaks-report.json
