@@ -21,6 +21,10 @@ export interface Department {
   revisitPromptId?: string;
   promptConfig?: Record<string, unknown>;
   resourceStatus?: string;
+  // TASK-302 Stream D Phase E.2 — row version for optimistic concurrency.
+  // The server stamps `ETag: "<version>"` on every Department response,
+  // and `If-Match` is required on every PATCH.
+  version?: number;
 }
 
 export interface CreateDepartmentInput {
@@ -41,12 +45,19 @@ export interface UpdateDepartmentInput {
   revisitPromptId?: string;
   promptConfig?: Record<string, unknown>;
   resourceStatus?: string;
+  // TASK-302 Stream D Phase E.2 — required CAS predicate (echoed from
+  // the prior GET). The controller folds the `If-Match` header value
+  // over this when both are present.
+  expectedVersion: number;
 }
 
 export interface UpdatePromptConfigInput {
   preSummaryPromptId?: string;
   newPatientPromptId?: string;
   revisitPromptId?: string;
+  // TASK-302 Stream D Phase E.2 — required CAS predicate (echoed from
+  // the prior GET of the Department).
+  expectedVersion: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +129,11 @@ export function useCreateDepartment() {
 export function useUpdateDepartment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: UpdateDepartmentInput & { id: string }) => adminClient.patch<Department>(`/admin/departments/${id}`, input),
+    // TASK-302 Stream D Phase E.2 — `ifMatch` is forwarded as the
+    // RFC 7232 `If-Match: "<version>"` request header; the API folds
+    // its value over the body-field `expectedVersion`.
+    mutationFn: ({ id, ifMatch, ...input }: UpdateDepartmentInput & { id: string; ifMatch?: string }) =>
+      adminClient.patch<Department>(`/admin/departments/${id}`, input, ifMatch ? { ifMatch } : undefined),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all });
       qc.invalidateQueries({ queryKey: keys.detail(variables.id) });
@@ -129,8 +144,8 @@ export function useUpdateDepartment() {
 export function useUpdateDepartmentPromptConfig() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: UpdatePromptConfigInput & { id: string }) =>
-      adminClient.patch<Department>(`/admin/departments/${id}/prompt-config`, input),
+    mutationFn: ({ id, ifMatch, ...input }: UpdatePromptConfigInput & { id: string; ifMatch?: string }) =>
+      adminClient.patch<Department>(`/admin/departments/${id}/prompt-config`, input, ifMatch ? { ifMatch } : undefined),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all });
       qc.invalidateQueries({ queryKey: keys.detail(variables.id) });
@@ -204,9 +219,10 @@ export function useCreateTenantDepartment(tenantId: string) {
 export function useUpdateTenantDepartment(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: UpdateDepartmentInput & { id: string }) =>
+    mutationFn: ({ id, ifMatch, ...input }: UpdateDepartmentInput & { id: string; ifMatch?: string }) =>
       adminClient.patch<Department>(`/admin/departments/${id}`, input, {
         tenantId,
+        ...(ifMatch ? { ifMatch } : {}),
       }),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: tenantKeys.all(tenantId) });
@@ -221,8 +237,11 @@ export function useUpdateTenantDepartment(tenantId: string) {
 export function useUpdateTenantDepartmentPromptConfig(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: UpdatePromptConfigInput & { id: string }) =>
-      adminClient.patch<Department>(`/admin/departments/${id}/prompt-config`, input, { tenantId }),
+    mutationFn: ({ id, ifMatch, ...input }: UpdatePromptConfigInput & { id: string; ifMatch?: string }) =>
+      adminClient.patch<Department>(`/admin/departments/${id}/prompt-config`, input, {
+        tenantId,
+        ...(ifMatch ? { ifMatch } : {}),
+      }),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: tenantKeys.all(tenantId) });
       qc.invalidateQueries({ queryKey: keys.all });

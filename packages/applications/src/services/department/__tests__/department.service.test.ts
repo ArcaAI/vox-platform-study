@@ -29,6 +29,10 @@ const mockDepartmentRepository = {
     findChildren: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    // TASK-302 Stream D Phase E.2 — `update()` and `updatePromptConfig()` now
+    // write via Compare-And-Set (`updateWithVersion`). The legacy `.update()`
+    // remains on the mock for assertions that confirm it is NOT called.
+    updateWithVersion: vi.fn(),
 };
 
 // Helper to create mock department entity
@@ -43,6 +47,7 @@ const createMockDepartmentEntity = (overrides: Partial<{
     resourceStatus: string;
     createdAt: Date;
     updatedAt: Date;
+    version: number;
 }> = {}) => ({
     id: overrides.id ?? 'department-id-1',
     tenantId: overrides.tenantId ?? 'tenant-1',
@@ -54,6 +59,9 @@ const createMockDepartmentEntity = (overrides: Partial<{
     resourceStatus: overrides.resourceStatus ?? 'ENABLED',
     createdAt: overrides.createdAt ?? new Date('2026-01-29T10:00:00Z'),
     updatedAt: overrides.updatedAt ?? new Date('2026-01-29T10:00:00Z'),
+    // TASK-302 Stream D Phase E.2 — every Department row carries a
+    // server-owned `_version` after the B.5 BaseEntity getter + E.2.1 mapper.
+    version: overrides.version ?? 1,
 });
 
 // Mock DepartmentFactory
@@ -500,6 +508,79 @@ describe('DepartmentService', () => {
         });
     });
 
+    describe('update', () => {
+        it('routes through updateWithVersion using request.expectedVersion (TASK-302 Stream D Phase E.2)', async () => {
+            const department = createMockDepartmentEntityWithChanges({
+                id: 'dept-1',
+                hasChanges: true,
+                changes: { name: 'Renamed' },
+                version: 4,
+            });
+            mockDepartmentRepository.findById.mockResolvedValue(department);
+            mockDepartmentRepository.updateWithVersion.mockResolvedValue({ ...department, version: 5 });
+
+            const result = await service.update('dept-1', { name: 'Renamed', expectedVersion: 4 } as any);
+
+            expect(result.id).toBe('dept-1');
+            expect(mockDepartmentRepository.updateWithVersion).toHaveBeenCalledWith('dept-1', department, 4);
+            // CAS-only — the legacy non-versioned write MUST NOT fire.
+            expect(mockDepartmentRepository.update).not.toHaveBeenCalled();
+        });
+
+        it('emits ResourceUpdated SysEvent with previousVersion + newVersion (TASK-302 Stream D Phase E.2)', async () => {
+            const department = createMockDepartmentEntityWithChanges({
+                id: 'dept-1',
+                hasChanges: true,
+                changes: { name: 'Renamed' },
+                version: 9,
+            });
+            mockDepartmentRepository.findById.mockResolvedValue(department);
+            mockDepartmentRepository.updateWithVersion.mockResolvedValue({ ...department, version: 10 });
+
+            await service.update('dept-1', { name: 'Renamed', expectedVersion: 9 } as any);
+
+            // Same audit shape as Phase C.8 / E.1: the SysEvent carries the
+            // pre- and post-write versions so downstream observers can
+            // correlate the change with the row's prior state.
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceUpdated,
+                expect.objectContaining({
+                    resourceId: 'dept-1',
+                    data: expect.objectContaining({
+                        previousVersion: 9,
+                        newVersion: 10,
+                    }),
+                }),
+            );
+        });
+
+        it('propagates OptimisticConcurrencyException on version drift (TASK-302 Stream D Phase E.2)', async () => {
+            const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+            const department = createMockDepartmentEntityWithChanges({
+                id: 'dept-1',
+                hasChanges: true,
+                changes: { name: 'X' },
+                version: 4,
+            });
+            mockDepartmentRepository.findById.mockResolvedValue(department);
+            const occErr = new OptimisticConcurrencyException('Department', 'dept-1', {
+                expectedVersion: 4,
+                currentVersion: 5,
+            });
+            mockDepartmentRepository.updateWithVersion.mockRejectedValue(occErr);
+
+            await expect(
+                service.update('dept-1', { name: 'X', expectedVersion: 4 } as any),
+            ).rejects.toBe(occErr);
+            // Failed CAS — no audit event emitted (only successful writes
+            // make it into the audit log).
+            const updatedBroadcasts = mockEventEmitter.emit.mock.calls.filter(
+                ([eventName]: [string]) => eventName === SysEventType.ResourceUpdated,
+            );
+            expect(updatedBroadcasts).toHaveLength(0);
+        });
+    });
+
     describe('updatePromptConfig', () => {
         it('should throw NotFoundException when department not found', async () => {
             mockDepartmentRepository.findById.mockResolvedValue(null);
@@ -507,12 +588,14 @@ describe('DepartmentService', () => {
             await expect(
                 service.updatePromptConfig('non-existent-id', {
                     preSummaryPromptId: 'prompt-1',
-                })
+                    expectedVersion: 1,
+                } as any)
             ).rejects.toThrow(NotFoundException);
             await expect(
                 service.updatePromptConfig('non-existent-id', {
                     preSummaryPromptId: 'prompt-1',
-                })
+                    expectedVersion: 1,
+                } as any)
             ).rejects.toThrow('Department non-existent-id not found');
         });
 
@@ -523,55 +606,73 @@ describe('DepartmentService', () => {
             const { ArgumentInvalidException } = await import('@arcaai/exceptions');
 
             await expect(
-                service.updatePromptConfig('dept-1', {})
+                service.updatePromptConfig('dept-1', { expectedVersion: 1 } as any)
             ).rejects.toThrow(ArgumentInvalidException);
             await expect(
-                service.updatePromptConfig('dept-1', {})
+                service.updatePromptConfig('dept-1', { expectedVersion: 1 } as any)
             ).rejects.toThrow('No changes to write to.');
         });
 
-        it('should update prompt config and return updated department', async () => {
+        it('should update prompt config via updateWithVersion (TASK-302 Stream D Phase E.2)', async () => {
             const department = createMockDepartmentEntityWithChanges({
                 hasChanges: true,
                 changes: { preSummaryPromptId: 'pre-1', newPatientPromptId: 'np-1' },
+                version: 7,
             });
             mockDepartmentRepository.findById.mockResolvedValue(department);
             const updatedDept = createMockDepartmentEntity({
                 id: 'dept-1',
                 code: 'CARD',
                 name: 'Cardiology',
+                version: 8,
             });
-            mockDepartmentRepository.update.mockResolvedValue(updatedDept);
+            mockDepartmentRepository.updateWithVersion.mockResolvedValue(updatedDept);
 
             const result = await service.updatePromptConfig('dept-1', {
                 preSummaryPromptId: 'pre-1',
                 newPatientPromptId: 'np-1',
-            });
+                expectedVersion: 7,
+            } as any);
 
             expect(result).toBeDefined();
             expect(result.id).toBe('dept-1');
-            expect(mockDepartmentRepository.update).toHaveBeenCalledWith('dept-1', department);
+            // CAS path with the version snapshot from the request.
+            expect(mockDepartmentRepository.updateWithVersion).toHaveBeenCalledWith('dept-1', department, 7);
+            expect(mockDepartmentRepository.update).not.toHaveBeenCalled();
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
                 SysEventType.ResourceUpdated,
                 expect.objectContaining({
                     resourceId: 'dept-1',
-                    data: { preSummaryPromptId: 'pre-1', newPatientPromptId: 'np-1' },
+                    data: expect.objectContaining({
+                        preSummaryPromptId: 'pre-1',
+                        newPatientPromptId: 'np-1',
+                        previousVersion: 7,
+                        newVersion: 8,
+                    }),
                 })
             );
         });
     });
 });
 
-// Helper for updatePromptConfig tests - entity with change tracking
+// Helper for update / updatePromptConfig tests — entity with change
+// tracking, version, and the BaseEntity-style `toObject()` shim the
+// service depends on for audit logging.
 function createMockDepartmentEntityWithChanges(overrides: {
+    id?: string;
     hasChanges?: boolean;
     changes?: Record<string, unknown>;
+    version?: number;
 } = {}) {
-    const base = createMockDepartmentEntity();
-    return {
+    const base = createMockDepartmentEntity({ id: overrides.id, version: overrides.version });
+    const entity = {
         ...base,
         hasChanges: overrides.hasChanges ?? true,
         changes: overrides.changes ?? {},
+        toObject() {
+            return { ...base, hasChanges: this.hasChanges, changes: this.changes };
+        },
     };
+    return entity;
 }
 

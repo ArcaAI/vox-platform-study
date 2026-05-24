@@ -112,4 +112,66 @@ describe('DepartmentController', () => {
             expect(result).toEqual([]);
         });
     });
+
+    // TASK-302 Stream D Phase E.2 — update() now requires `@RequiresIfMatch()`
+    // and the param decorator fires 428 in HTTP land if the header is
+    // missing. These unit tests cover the controller-internal logic of
+    // folding the header value into the body-field `expectedVersion`.
+    describe('PATCH /admin/departments/:id (update) — If-Match handling (TASK-302 Stream D Phase E.2)', () => {
+        it('folds the If-Match header into the body-field expectedVersion (header wins)', async () => {
+            mockService.update.mockResolvedValue(createMockDepartmentEntity({ version: 8 }));
+
+            // Body says version 99 (stale); header carries 7. Header MUST
+            // override.
+            await controller.update('dept-1', { name: 'Renamed', expectedVersion: 99 } as any, 7);
+
+            expect(mockService.update).toHaveBeenCalledWith('dept-1', expect.objectContaining({
+                name: 'Renamed',
+                expectedVersion: 7,
+            }));
+        });
+
+        it('preserves the body-field expectedVersion when header is absent (service-to-service fallback)', async () => {
+            mockService.update.mockResolvedValue(createMockDepartmentEntity({ version: 8 }));
+
+            await controller.update('dept-1', { name: 'Renamed', expectedVersion: 5 } as any, undefined);
+
+            expect(mockService.update).toHaveBeenCalledWith('dept-1', expect.objectContaining({
+                name: 'Renamed',
+                expectedVersion: 5,
+            }));
+        });
+    });
+
+    describe('PATCH /admin/departments/:id/prompt-config (updatePromptConfig) — If-Match handling (TASK-302 Stream D Phase E.2)', () => {
+        it('folds the If-Match header into the body-field expectedVersion (header wins)', async () => {
+            mockService.updatePromptConfig.mockResolvedValue(createMockDepartmentEntity({ version: 8 }));
+
+            await controller.updatePromptConfig(
+                'dept-1',
+                { preSummaryPromptId: 'p-1', expectedVersion: 99 } as any,
+                7,
+            );
+
+            expect(mockService.updatePromptConfig).toHaveBeenCalledWith('dept-1', expect.objectContaining({
+                preSummaryPromptId: 'p-1',
+                expectedVersion: 7,
+            }));
+        });
+
+        it('preserves the body-field expectedVersion when header is absent (service-to-service fallback)', async () => {
+            mockService.updatePromptConfig.mockResolvedValue(createMockDepartmentEntity({ version: 8 }));
+
+            await controller.updatePromptConfig(
+                'dept-1',
+                { preSummaryPromptId: 'p-1', expectedVersion: 5 } as any,
+                undefined,
+            );
+
+            expect(mockService.updatePromptConfig).toHaveBeenCalledWith('dept-1', expect.objectContaining({
+                preSummaryPromptId: 'p-1',
+                expectedVersion: 5,
+            }));
+        });
+    });
 });

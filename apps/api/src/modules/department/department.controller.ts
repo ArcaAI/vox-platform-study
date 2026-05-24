@@ -7,8 +7,10 @@ import {
   HttpMethod,
 } from '@arcaai/applications';
 import { Controller, Body, Param, Inject, Query } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize, CanManage } from '../../decorators';
+import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
+// TASK-302 Stream D Phase E.2 — `@RequiresIfMatch()` + `@ExpectedVersion()`
+// gate the OCC-enforced PATCH routes on this controller.
+import { ApiEndpoint, Authorize, CanManage, RequiresIfMatch, ExpectedVersion } from '../../decorators';
 
 @ApiBearerAuth()
 @ApiTags('admin-departments')
@@ -89,10 +91,40 @@ export class DepartmentController {
     path: ':id',
     by: ['id'],
   })
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Update department',
+    description:
+      'Updates one department row. Optimistic concurrency is enforced (TASK-302 Stream D Phase E.2): ' +
+      'the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set ' +
+      "against the row's `_version`. When the header is present, its value overrides the " +
+      'body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; ' +
+      'missing header is `428 Precondition Required`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
   @ApiParam({ name: 'id', description: 'Department ID', type: String })
   @ApiResponse({ status: 404, description: 'Department not found' })
-  async update(@Param('id') id: string, @Body() request: UpdateDepartmentRequest): Promise<DepartmentResponse> {
-    return this.departmentService.update(id, request);
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async update(
+    @Param('id') id: string,
+    @Body() request: UpdateDepartmentRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<DepartmentResponse> {
+    // TASK-302 Stream D Phase E.2 — header takes precedence over body
+    // when both are present. On a `@RequiresIfMatch()` route the param
+    // decorator fired 428 if the header was missing, so the fallback
+    // only fires in unit tests / off-route service-to-service traffic.
+    const effectiveRequest: UpdateDepartmentRequest =
+      expectedFromHeader !== undefined
+        ? { ...request, expectedVersion: expectedFromHeader }
+        : request;
+    return this.departmentService.update(id, effectiveRequest);
   }
 
   @ApiEndpoint({
@@ -103,10 +135,27 @@ export class DepartmentController {
     append: '(prompt config)',
   })
   @Authorize(['manage', 'Department'])
+  @RequiresIfMatch()
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
   @ApiParam({ name: 'id', description: 'Department ID', type: String })
   @ApiResponse({ status: 404, description: 'Department not found' })
-  async updatePromptConfig(@Param('id') id: string, @Body() request: UpdateDepartmentPromptConfigRequest): Promise<DepartmentResponse> {
-    return this.departmentService.updatePromptConfig(id, request);
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async updatePromptConfig(
+    @Param('id') id: string,
+    @Body() request: UpdateDepartmentPromptConfigRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<DepartmentResponse> {
+    const effectiveRequest: UpdateDepartmentPromptConfigRequest =
+      expectedFromHeader !== undefined
+        ? { ...request, expectedVersion: expectedFromHeader }
+        : request;
+    return this.departmentService.updatePromptConfig(id, effectiveRequest);
   }
 
   @ApiEndpoint({
