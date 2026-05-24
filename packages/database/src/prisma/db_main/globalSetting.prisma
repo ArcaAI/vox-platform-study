@@ -14,6 +14,12 @@ model GlobalSetting {
     key          String
     defaultValue String?
     value        String
+    // TASK-302 Phase 4 — Vault-Transit-encrypted ciphertext for secrets.
+    // Nullable so existing non-secret rows continue to read `value`. Phase 4C
+    // populates these on write; Phase 4D (user-gated) removes the plaintext
+    // `value` column for migrated secrets after a one-release readback window.
+    encryptedValue Bytes?
+    keyVersion     Int?
     dataType     ValueType @default(String)
     namespace    String?
 
