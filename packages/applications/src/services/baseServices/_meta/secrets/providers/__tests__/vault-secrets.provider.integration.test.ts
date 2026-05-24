@@ -99,4 +99,43 @@ describe.skipIf(!enabled)('VaultSecretsProvider (integration)', () => {
     expect(h).toMatchObject({ ok: true, provider: 'vault' });
     expect(h.latencyMs).toBeGreaterThanOrEqual(0);
   });
+
+  // Phase 6 Task 6.1 (TASK-302 Stream B) — Transit rotation round-trip.
+  //
+  // Verifies the production-critical invariant: after rotating the
+  // hope-globalsetting Transit key, ciphertexts produced with the
+  // PREVIOUS key version still decrypt successfully. This is the
+  // single most important assurance for the Phase 6 rotation worker
+  // because if min_decryption_version drops historical versions, every
+  // encrypted GlobalSetting row goes dark.
+  //
+  // The test produces a v_N ciphertext, rotates the key, produces a
+  // v_(N+1) ciphertext, then decrypts both. Asserts:
+  //   - the second ciphertext's version is strictly greater
+  //   - both ciphertexts decrypt to their original plaintext
+  it('historical ciphertexts decrypt after transit key rotation', async () => {
+    const p = new VaultSecretsProvider({
+      addr: VAULT_ADDR,
+      roleId,
+      wrappedSecretId: mintWrappedSecretId(),
+      kvMount: 'secret',
+      kvPrefix: 'hope',
+      transitMount: 'transit',
+      transitKey: 'hope-globalsetting',
+    });
+    await p.boot();
+
+    const ct1 = await p.encrypt(Buffer.from('payload-pre-rotate'));
+    const versionBefore = parseInt(ct1.split(':')[1].slice(1), 10);
+
+    vaultExec('write -f transit/keys/hope-globalsetting/rotate');
+
+    const ct2 = await p.encrypt(Buffer.from('payload-post-rotate'));
+    const versionAfter = parseInt(ct2.split(':')[1].slice(1), 10);
+
+    expect(versionAfter).toBeGreaterThan(versionBefore);
+
+    expect((await p.decrypt(ct1)).toString('utf8')).toBe('payload-pre-rotate');
+    expect((await p.decrypt(ct2)).toString('utf8')).toBe('payload-post-rotate');
+  });
 });
