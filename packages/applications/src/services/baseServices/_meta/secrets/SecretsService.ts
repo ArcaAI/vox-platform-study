@@ -116,6 +116,37 @@ export class SecretsService {
     return out;
   }
 
+  /**
+   * Boot hook: delegate to provider.boot() if the provider implements
+   * one (VaultSecretsProvider does; Env/InMemory/AWS/Azure do not), then
+   * warm up the cache for the listed keys so the first request after
+   * app.listen() does not pay a Vault round-trip.
+   *
+   * Missing warmup keys are tolerated (logged at WARN) so a single
+   * misconfigured key doesn't block boot.
+   */
+  async boot(opts: { warmupKeys?: string[] } = {}): Promise<void> {
+    const providerBoot = (
+      this.provider as unknown as { boot?: () => Promise<void> }
+    ).boot;
+    if (typeof providerBoot === 'function') {
+      await providerBoot.call(this.provider);
+    }
+    if (opts.warmupKeys && opts.warmupKeys.length > 0) {
+      const results = await Promise.allSettled(
+        opts.warmupKeys.map((k) => this.getSecret(k)),
+      );
+      const failed = results
+        .map((r, i) => (r.status === 'rejected' ? opts.warmupKeys![i] : null))
+        .filter((k): k is string => k !== null);
+      if (failed.length > 0) {
+        this.logger.warn(
+          `SecretsService.boot(): warmup miss for ${failed.length}/${opts.warmupKeys.length} key(s): ${failed.join(', ')}`,
+        );
+      }
+    }
+  }
+
   invalidate(key: string): void {
     this.cache.delete(key);
   }

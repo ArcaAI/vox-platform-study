@@ -88,6 +88,46 @@ describe('SecretsService (cache + TTL)', () => {
   });
 });
 
+describe('SecretsService.boot()', () => {
+  it('calls provider.boot() if defined', async () => {
+    const provider = new InMemorySecretsProvider({ JWT_SECRET_KEY: 'v' });
+    let bootCalled = false;
+    (provider as unknown as { boot: () => Promise<void> }).boot = async () => {
+      bootCalled = true;
+    };
+    const service = new SecretsService(provider, { defaultTtlSec: 300 });
+    await service.boot();
+    expect(bootCalled).toBe(true);
+  });
+
+  it('skips boot delegation when provider does not implement boot', async () => {
+    const provider = new InMemorySecretsProvider({ K: 'v' });
+    const service = new SecretsService(provider, { defaultTtlSec: 300 });
+    await expect(service.boot()).resolves.toBeUndefined();
+  });
+
+  it('warms up the cache so first read does not hit the provider', async () => {
+    const provider = new InMemorySecretsProvider({
+      JWT_SECRET_KEY: 'jwt',
+      SESSION_SECRET_KEY: 'ses',
+    });
+    const service = new SecretsService(provider, { defaultTtlSec: 300 });
+    await service.boot({ warmupKeys: ['JWT_SECRET_KEY', 'SESSION_SECRET_KEY'] });
+    const spy = vi.spyOn(provider, 'getSecret');
+    await service.getSecret('JWT_SECRET_KEY');
+    await service.getSecret('SESSION_SECRET_KEY');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('boot() does not fail when a warmup key is missing from the provider', async () => {
+    const provider = new InMemorySecretsProvider({ JWT_SECRET_KEY: 'v' });
+    const service = new SecretsService(provider, { defaultTtlSec: 300 });
+    await expect(
+      service.boot({ warmupKeys: ['JWT_SECRET_KEY', 'NOPE'] }),
+    ).resolves.toBeUndefined();
+  });
+});
+
 describe('SecretsService Redis Pub/Sub invalidation', () => {
   it('clears one key on "arca:secrets:invalidate" message {key}', async () => {
     const provider = new InMemorySecretsProvider({ K: 'v', K2: 'v2' });
