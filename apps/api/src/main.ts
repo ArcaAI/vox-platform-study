@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { auditAdminRoutePermissions } from './bootstrap/admin-route-permission-audit';
 import { GracefulShutdownService } from './services';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import session = require('express-session');
@@ -218,7 +219,19 @@ async function bootstrap() {
     }),
   );
 
-  app.useGlobalPipes(new ValidationPipe({ transform: true }));
+  // Phase 0 Item 1 (TASK-302 Stream A) — strict input validation.
+  // Stage 2 (current): whitelist + forbidNonWhitelisted + forbidUnknownValues.
+  // Closes the JWT_SECRET_KEY mass-assignment exploit chain at the HTTP
+  // boundary by rejecting any DTO key not declared on the target class.
+  // Backed by the explicit-allowlist refactor in TenantService (Item 2).
+  app.useGlobalPipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      forbidUnknownValues: true,
+    }),
+  );
 
   // Enable shutdown hooks for graceful termination
   // This activates onModuleDestroy, beforeApplicationShutdown, and onApplicationShutdown hooks
@@ -302,6 +315,12 @@ async function bootstrap() {
     },
     'Bootstrap',
   );
+
+  // Phase 0 Item 3 (TASK-302 Stream A) — refuse to start if any admin
+  // route lacks an explicit permission decorator. Throws an Error that
+  // propagates out of bootstrap() and terminates the process before
+  // any request can be served.
+  auditAdminRoutePermissions(app);
 
   await app.listen(port);
 
