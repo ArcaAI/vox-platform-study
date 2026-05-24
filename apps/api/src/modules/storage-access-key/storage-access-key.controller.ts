@@ -6,12 +6,13 @@ import {
 } from '@arcaai/applications';
 import { Controller, Body, Param, Inject, Delete, Get, Post } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { Authorize, CanRead, CanCreate, CanDelete } from '../../decorators';
+import { CanCreate, CanDelete, CanManage, CanRead } from '../../decorators';
 
 @ApiBearerAuth()
 @ApiTags('tenant-storage-keys')
 @Controller('admin/tenants/storage/keys')
-@Authorize()
+// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
+@CanManage('Tenant')
 export class StorageAccessKeyController {
   constructor(
     @Inject(IStorageAccessKeyService)

@@ -13,12 +13,14 @@ import {
 import { Body, Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { ApiEndpoint, CanCreate, CanRead, CanUpdate, CanDelete } from '../../decorators';
+import { ApiEndpoint, CanCreate, CanManage, CanRead, CanUpdate, CanDelete } from '../../decorators';
 import { CreateApiKeyResponse, ApiKeyUsageResponse } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('admin-api-keys')
 @Controller('admin/api-keys')
+// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
+@CanManage('ApiKey')
 export class ApiKeyController {
   constructor(
     @Inject(IApiKeyService)
