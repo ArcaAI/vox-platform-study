@@ -5,6 +5,7 @@ import { WsAdapter } from '@nestjs/platform-ws';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { auditAdminRoutePermissions } from './bootstrap/admin-route-permission-audit';
+import { ETagInterceptor } from './interceptors';
 import { GracefulShutdownService } from './services';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import session = require('express-session');
@@ -232,6 +233,13 @@ async function bootstrap() {
       forbidUnknownValues: true,
     }),
   );
+
+  // TASK-302 Stream D Phase D (D.1) — render RFC 7232 strong `ETag`
+  // headers from `body.version`. Non-versioned routes pass through
+  // unchanged (the interceptor is zero-cost when there's no version
+  // field). The `If-Match` round-trip on PATCH is enforced by
+  // `@RequiresIfMatch()` + `@ExpectedVersion()` (D.2).
+  app.useGlobalInterceptors(new ETagInterceptor());
 
   // Enable shutdown hooks for graceful termination
   // This activates onModuleDestroy, beforeApplicationShutdown, and onApplicationShutdown hooks
