@@ -24,6 +24,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { UpdateTenantConfigRequest } from './dto/updateTenantConfigRequest';
 import { ITenantBucketService } from '../tenant-bucket/ITenantBucketService';
 import { GLOBAL_TENANT_KEY, SUPER_ADMIN_ROLE, isUuidIdentifier } from './constants';
+import { scrubLockedForAudit } from './scrubbing';
 
 /**
  * Service for managing tenants and their configurations
@@ -528,9 +529,11 @@ export class TenantService extends BaseService implements ITenantService {
       updatedConfigs.push(updatedConfig);
     }
 
+    // Phase 0 Item 4 (TASK-302 Stream A) — scrub @Secret fields when locked.
+    // Per-entity decision: a mixed batch emits a partially-scrubbed array.
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceIds: updatedConfigs.map((config) => config.id),
-      data: updatedConfigs.map((config) => config.toObject()),
+      data: updatedConfigs.map((config) => scrubLockedForAudit(config)),
     });
 
     return new FetchResponse<GlobalSettingEntity>({
