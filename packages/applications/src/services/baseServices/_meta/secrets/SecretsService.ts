@@ -224,4 +224,44 @@ export class SecretsService {
   health(): Promise<SecretsHealth> {
     return this.provider.health();
   }
+
+  /**
+   * Phase 4 Task 4.5 (TASK-302 Stream B) — proxy to provider.encrypt() when
+   * the underlying provider implements Vault Transit. We deliberately do
+   * NOT widen ISecretsProvider with encrypt/decrypt because the cloud
+   * provider stubs (Env/InMemory/AWS/Azure) and the Vault provider have
+   * different secrets-engine surfaces, and the type union would force
+   * every consumer to handle "unsupported by this provider" everywhere.
+   *
+   * Instead we keep encrypt/decrypt as a *capability check* at runtime:
+   *   - SECRETS_PROVIDER=vault → provider.encrypt exists → delegates.
+   *   - SECRETS_PROVIDER=env|aws|azure|in-memory → throws fail-fast.
+   *
+   * The error message intentionally does NOT include the plaintext or
+   * the ciphertext, so a misconfigured prod node that hits this guard
+   * cannot accidentally surface either material in a log line.
+   */
+  async encrypt(plaintext: Buffer): Promise<string> {
+    const maybe = this.provider as unknown as {
+      encrypt?: (b: Buffer) => Promise<string>;
+    };
+    if (typeof maybe.encrypt !== 'function') {
+      throw new Error(
+        'SecretsService.encrypt() requires Vault provider (SECRETS_PROVIDER=vault); current provider has no transit support',
+      );
+    }
+    return maybe.encrypt(plaintext);
+  }
+
+  async decrypt(ciphertext: string): Promise<Buffer> {
+    const maybe = this.provider as unknown as {
+      decrypt?: (s: string) => Promise<Buffer>;
+    };
+    if (typeof maybe.decrypt !== 'function') {
+      throw new Error(
+        'SecretsService.decrypt() requires Vault provider (SECRETS_PROVIDER=vault); current provider has no transit support',
+      );
+    }
+    return maybe.decrypt(ciphertext);
+  }
 }
