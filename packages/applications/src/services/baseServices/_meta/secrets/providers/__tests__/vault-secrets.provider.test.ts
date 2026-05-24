@@ -91,13 +91,42 @@ describe('VaultSecretsProvider.boot()', () => {
     const p = new VaultSecretsProvider(
       cfg({ secretId: undefined, wrappedSecretId: 'wrap.token' }),
     );
-    (p as unknown as { client: unknown }).client = {
+    const mockClient: Record<string, unknown> & { token: string } = {
+      token: '',
       unwrap: mockUnwrap,
       approleLogin: mockLogin,
     };
+    (p as unknown as { client: unknown }).client = mockClient;
     await p.boot();
-    expect(mockUnwrap).toHaveBeenCalledWith({ token: 'wrap.token' });
+    // Unwrap is called with no args; the wrap token is set as the client's
+    // auth token for the duration of the call (then cleared).
+    expect(mockUnwrap).toHaveBeenCalledWith();
     expect(mockLogin).toHaveBeenCalledWith({ role_id: 'rid', secret_id: 'real-sid' });
+    // After boot the client carries the AppRole client_token, not the wrap.
+    expect(mockClient.token).toBe('hvs.xxx');
+  });
+
+  it('temporarily sets client.token to the wrap token during unwrap', async () => {
+    // Verifies the contract: during the unwrap call the client is
+    // authenticated AS the wrap token. We capture client.token inside
+    // the unwrap mock to assert this without observable side-effects.
+    let tokenDuringUnwrap = '';
+    const mockClient: Record<string, unknown> & { token: string } = {
+      token: '',
+      unwrap: vi.fn(async () => {
+        tokenDuringUnwrap = mockClient.token;
+        return { data: { secret_id: 'real-sid' } };
+      }),
+      approleLogin: vi.fn().mockResolvedValue({
+        auth: { client_token: 'hvs.session', lease_duration: 60, renewable: true },
+      }),
+    };
+    const p = new VaultSecretsProvider(
+      cfg({ secretId: undefined, wrappedSecretId: 'wrap.token' }),
+    );
+    (p as unknown as { client: unknown }).client = mockClient;
+    await p.boot();
+    expect(tokenDuringUnwrap).toBe('wrap.token');
   });
 
   it('uses raw secret_id without unwrap when wrappedSecretId is absent', async () => {
