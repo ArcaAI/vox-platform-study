@@ -48,6 +48,9 @@ const mockGlobalSettingRepository = {
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    // TASK-302 Stream D Phase C — updateTenantConfigs now writes via
+    // Compare-And-Set; the locked guard runs *before* the CAS call.
+    updateWithVersion: vi.fn(),
 };
 
 const mockDepartmentRepository = { findAll: vi.fn(), count: vi.fn() };
@@ -249,10 +252,12 @@ describe('TenantService — locked-field runtime plumbing (TASK-258 Agent D)', (
             mockGlobalSettingRepository.findById.mockResolvedValue(lockedSetting);
 
             await expect(
-                service.updateTenantConfigs('tenant-id-1', [{ id: lockedSetting.id, value: 'whisper-large' }]),
+                service.updateTenantConfigs('tenant-id-1', [
+                    { id: lockedSetting.id, value: 'whisper-large', expectedVersion: 1 } as never,
+                ]),
             ).rejects.toThrow(/locked/i);
 
-            expect(mockGlobalSettingRepository.update).not.toHaveBeenCalled();
+            expect(mockGlobalSettingRepository.updateWithVersion).not.toHaveBeenCalled();
         });
 
         it('permits updating a locked=true row when caller has SUPER_ADMIN role', async () => {
@@ -267,17 +272,22 @@ describe('TenantService — locked-field runtime plumbing (TASK-258 Agent D)', (
                 locked: true,
             });
             mockGlobalSettingRepository.findById.mockResolvedValue(lockedSetting);
-            mockGlobalSettingRepository.update.mockImplementation(async (_id: string, entity: GlobalSettingEntity) => entity);
+            mockGlobalSettingRepository.updateWithVersion.mockImplementation(
+                async (_id: string, entity: GlobalSettingEntity) => entity,
+            );
 
             const result = await service.updateTenantConfigs('tenant-id-1', [
-                { id: lockedSetting.id, value: 'new' },
+                { id: lockedSetting.id, value: 'new', expectedVersion: 1 } as never,
             ]);
 
             expect(result.data).toHaveLength(1);
-            expect(mockGlobalSettingRepository.update).toHaveBeenCalledTimes(1);
-            const persistedEntity = mockGlobalSettingRepository.update.mock.calls[0][1] as GlobalSettingEntity;
+            expect(mockGlobalSettingRepository.updateWithVersion).toHaveBeenCalledTimes(1);
+            const callArgs = mockGlobalSettingRepository.updateWithVersion.mock.calls[0];
+            const persistedEntity = callArgs[1] as GlobalSettingEntity;
             expect(persistedEntity.locked).toBe(true);
             expect(persistedEntity.value).toBe('new');
+            // The expectedVersion is the third positional argument.
+            expect(callArgs[2]).toBe(1);
         });
     });
 

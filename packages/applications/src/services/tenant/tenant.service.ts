@@ -520,7 +520,16 @@ export class TenantService extends BaseService implements ITenantService {
         continue;
       }
 
-      const updatedConfig = await this.globalSettingRepository.update(existingConfig.id, existingConfig);
+      // TASK-302 Stream D Phase C (C.3) — Compare-And-Set against `_version`.
+      // The `OptimisticConcurrencyException` propagates straight out so the
+      // HTTP layer (Phase D ExceptionFilter) can render `412 Precondition
+      // Failed` with `{ currentVersion, yourVersion }`. The transaction
+      // wrapper added in C.4 turns the multi-row case into all-or-nothing.
+      const updatedConfig = await this.globalSettingRepository.updateWithVersion(
+        existingConfig.id,
+        existingConfig,
+        config.expectedVersion,
+      );
 
       if (!updatedConfig) {
         throw new InternalServerErrorException(`Failed to update GlobalSettingEntity with id: ${config.id}`);
