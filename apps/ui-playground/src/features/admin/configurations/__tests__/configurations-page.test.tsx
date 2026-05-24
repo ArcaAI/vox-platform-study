@@ -82,6 +82,39 @@ vi.mock('@/components/layout/main', () => ({
     Main: ({ children }: any) => <main>{children}</main>,
 }));
 
+// TASK-302 Stream D Phase D.5 — the global vitest config stubs
+// `@arcaai/vox` to `export default {}`. Override here with a real
+// `ConfigConflictError` class so the page's `instanceof` check works
+// in tests. The class is structurally identical to the SDK's; the SDK
+// version is pinned by `useGlobalSettings.optimistic-locking.test.ts`.
+vi.mock('@arcaai/vox', () => {
+    class ConfigConflictError extends Error {
+        readonly code = 'CONFIG_CONFLICT';
+        constructor(
+            public readonly settingId: string,
+            public readonly expectedVersion: number,
+            public readonly currentVersion: number,
+        ) {
+            super(
+                `Setting ${settingId} was changed by someone else ` +
+                    `(yourVersion=${expectedVersion}, currentVersion=${currentVersion}).`,
+            );
+            this.name = 'ConfigConflictError';
+        }
+    }
+    return { ConfigConflictError };
+});
+
+vi.mock('@arcaai/ui/dialog', () => ({
+    Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
+        open ? <div role="dialog">{children}</div> : null,
+    DialogContent: ({ children }: any) => <div>{children}</div>,
+    DialogHeader: ({ children }: any) => <div>{children}</div>,
+    DialogFooter: ({ children }: any) => <div>{children}</div>,
+    DialogTitle: ({ children }: any) => <h2>{children}</h2>,
+    DialogDescription: ({ children }: any) => <p>{children}</p>,
+}));
+
 // ── Store mocks ─────────────────────────────────────────────────────
 
 let mockRoles: string[] = ['SUPER_ADMIN'];
@@ -105,9 +138,9 @@ const mockTenants = [
 ];
 
 const mockConfigs = [
-    { id: 'cfg-1', name: 'STT Provider', key: 'stt-provider', value: 'local', dataType: 'STRING', namespace: 'stt' },
-    { id: 'cfg-2', name: 'Noise Suppression', key: 'noise-suppression', value: 'true', dataType: 'BOOLEAN', namespace: 'audio' },
-    { id: 'cfg-3', name: 'Pipeline Config', key: 'pipeline-config', value: '{"chunkSize": 4096}', dataType: 'JSON', namespace: 'pipeline' },
+    { id: 'cfg-1', name: 'STT Provider', key: 'stt-provider', value: 'local', dataType: 'STRING', namespace: 'stt', version: 1 },
+    { id: 'cfg-2', name: 'Noise Suppression', key: 'noise-suppression', value: 'true', dataType: 'BOOLEAN', namespace: 'audio', version: 1 },
+    { id: 'cfg-3', name: 'Pipeline Config', key: 'pipeline-config', value: '{"chunkSize": 4096}', dataType: 'JSON', namespace: 'pipeline', version: 1 },
 ];
 
 const mockMutateTenantConfigs = vi.fn();
@@ -131,10 +164,15 @@ vi.mock('../../api/tenants', () => ({
     }),
     useUpdateTenantConfigs: () => ({
         mutate: mockMutateTenantConfigs,
+        // TASK-302 Stream D Phase D.5 — the page now `await`s the mutation
+        // so it can branch on 412 conflicts. Expose `mutateAsync` as the
+        // same spy so assertions on call shape still pass.
+        mutateAsync: mockMutateTenantConfigs,
         isPending: false,
     }),
     useUpdateMyTenantConfigs: () => ({
         mutate: mockMutateMyConfigs,
+        mutateAsync: mockMutateMyConfigs,
         isPending: false,
     }),
 }));
@@ -347,7 +385,8 @@ describe('ConfigurationManagementPage', () => {
 
             expect(mockMutateTenantConfigs).toHaveBeenCalledWith({
                 identifier: expect.any(String),
-                configs: [{ id: 'cfg-1', value: 'remote' }],
+                ifMatch: '"1"',
+                configs: [{ id: 'cfg-1', value: 'remote', expectedVersion: 1 }],
             });
         });
 
@@ -365,9 +404,109 @@ describe('ConfigurationManagementPage', () => {
             const saveBtn = screen.getAllByRole('button').find((b) => b.textContent === 'Save')!;
             fireEvent.click(saveBtn);
 
-            expect(mockMutateMyConfigs).toHaveBeenCalledWith([
-                { id: 'cfg-1', value: 'remote' },
-            ]);
+            expect(mockMutateMyConfigs).toHaveBeenCalledWith({
+                ifMatch: '"1"',
+                configs: [{ id: 'cfg-1', value: 'remote', expectedVersion: 1 }],
+            });
+        });
+    });
+
+    describe('OCC conflict handling (TASK-302 Stream D Phase D.5)', () => {
+        // The page wraps the save in try/catch and converts the
+        // server's `412 Precondition Failed` into a
+        // `ConfigConflictError`, which mounts the conflict modal.
+        // These tests pin that conversion + modal-mount contract
+        // end-to-end (mutation -> AdminApiError -> modal in DOM).
+        it('shows the conflict modal when the server returns 412', async () => {
+            const { AdminApiError } = await import('../../api/admin-client');
+            mockMutateTenantConfigs.mockRejectedValueOnce(
+                new AdminApiError('Resource changed', 412, {
+                    code: 'OCC_CONFLICT',
+                    message: 'Resource changed',
+                    metadata: { expectedVersion: 1, currentVersion: 4 },
+                }),
+            );
+            renderPage();
+
+            fireEvent.click(screen.getByTestId('item-cfg-1'));
+            await waitFor(() => {
+                const input = screen.getByDisplayValue('local');
+                fireEvent.change(input, { target: { value: 'remote' } });
+            });
+
+            const saveBtn = screen.getAllByRole('button').find((b) => b.textContent === 'Save')!;
+            fireEvent.click(saveBtn);
+
+            await waitFor(() => {
+                expect(screen.getByRole('dialog')).toBeInTheDocument();
+                expect(screen.getByText(/changed by someone else/i)).toBeInTheDocument();
+            });
+
+            // The modal copy must surface the server's `currentVersion`
+            // (4), not the client's stale snapshot (1). Otherwise the
+            // admin learns nothing actionable.
+            const desc = screen.getByText(/version 1/i);
+            expect(desc.textContent).toMatch(/version is 4/i);
+        });
+
+        it('does NOT show the conflict modal for non-412 errors (rethrows)', async () => {
+            // Validation / 5xx errors must NOT route through the OCC
+            // modal — they have their own UX (toast / boundary). This
+            // test pins the discriminator: only 412 → modal.
+            const { AdminApiError } = await import('../../api/admin-client');
+            mockMutateTenantConfigs.mockRejectedValueOnce(
+                new AdminApiError('Invalid body', 400, { code: 'VALIDATION_ERROR' }),
+            );
+            // Silence the rethrow — react's unhandled-rejection
+            // listener would otherwise log noise into the test output.
+            const onUnhandled = vi.fn();
+            window.addEventListener('unhandledrejection', onUnhandled);
+            try {
+                renderPage();
+                fireEvent.click(screen.getByTestId('item-cfg-1'));
+                await waitFor(() => {
+                    const input = screen.getByDisplayValue('local');
+                    fireEvent.change(input, { target: { value: 'remote' } });
+                });
+                const saveBtn = screen.getAllByRole('button').find((b) => b.textContent === 'Save')!;
+                fireEvent.click(saveBtn);
+
+                // Give the rejected mutation time to settle.
+                await new Promise((r) => setTimeout(r, 50));
+
+                expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            } finally {
+                window.removeEventListener('unhandledrejection', onUnhandled);
+            }
+        });
+
+        it('refuses to save a row that has no version (defensive)', async () => {
+            // Without a version, the page cannot build the CAS body or
+            // the `If-Match` header — surface a draft error rather
+            // than send a malformed PATCH that the server would reject
+            // ambiguously.
+            const originalConfigs = mockConfigs.slice();
+            // Mutate in place so the existing API mock returns the
+            // versionless row; restore after the test.
+            (mockConfigs[0] as any).version = undefined;
+            try {
+                renderPage();
+                fireEvent.click(screen.getByTestId('item-cfg-1'));
+                await waitFor(() => {
+                    const input = screen.getByDisplayValue('local');
+                    fireEvent.change(input, { target: { value: 'remote' } });
+                });
+                const saveBtn = screen.getAllByRole('button').find((b) => b.textContent === 'Save')!;
+                fireEvent.click(saveBtn);
+
+                expect(mockMutateTenantConfigs).not.toHaveBeenCalled();
+                expect(mockMutateMyConfigs).not.toHaveBeenCalled();
+                expect(screen.getByText(/missing a version/i)).toBeInTheDocument();
+            } finally {
+                // Restore so subsequent tests aren't affected.
+                mockConfigs.splice(0, mockConfigs.length, ...originalConfigs);
+                (mockConfigs[0] as any).version = 1;
+            }
         });
     });
 

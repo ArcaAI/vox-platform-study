@@ -4,8 +4,10 @@ import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Input } from '@arcaai/ui/input';
 import { MultiColumnLayout, type MultiColumnConfig, type MultiColumnContentConfig, type MultiColumnState } from '@arcaai/ui/multi-column-layout';
+import { ConfigConflictError } from '@arcaai/vox';
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import { AdminApiError } from '../api/admin-client';
 import {
   useMyTenantConfigs,
   useTenantConfigs,
@@ -15,6 +17,7 @@ import {
   type Tenant,
   type TenantConfig,
 } from '../api/tenants';
+import { ConfigConflictModal } from './conflict-modal';
 
 function tryFormatJsonString(input: string): string {
   try {
@@ -103,6 +106,12 @@ export default function ConfigurationManagementPage() {
   const [selectedConfigId, setSelectedConfigId] = useState('');
   const [draftValue, setDraftValue] = useState('');
   const [draftError, setDraftError] = useState<string | null>(null);
+  // TASK-302 Stream D Phase D.5 — surface 412 OCC conflicts to the admin
+  // via the conflict-modal stub. We intentionally keep this state local
+  // to the page (vs hoisting into the auth store) because the conflict
+  // is per-config-row and resolves either by Refresh or Cancel — both
+  // of which are tied to the editor's draft, not the global session.
+  const [conflictErr, setConflictErr] = useState<ConfigConflictError | null>(null);
 
   const {
     data: tenantsPages,
@@ -206,7 +215,34 @@ export default function ConfigurationManagementPage() {
     setDraftError(null);
   }, [currentValue, isJsonType, selectedConfig]);
 
-  const handleSave = () => {
+  // TASK-302 Stream D Phase D.5 — converts a 412 AdminApiError into a
+  // structured ConfigConflictError so the conflict modal can render.
+  // We don't import the SDK's `useGlobalSettings` here because the
+  // admin page already has its own tanstack-query wrappers; this
+  // adapter keeps both layers honest without duplicating endpoints.
+  const handleConfigError = (err: unknown, settingId: string, expectedVersion: number) => {
+    if (err instanceof AdminApiError && err.status === 412) {
+      // Server's `OptimisticConcurrencyExceptionFilter` returns
+      // `{ code, message, metadata: { expectedVersion, currentVersion } }`;
+      // lift `currentVersion` so the modal can show the actual gap.
+      const metadata = (err.body as { metadata?: { currentVersion?: number } } | null)?.metadata;
+      const currentVersion = typeof metadata?.currentVersion === 'number' ? metadata.currentVersion : expectedVersion + 1;
+      setConflictErr(new ConfigConflictError(settingId, expectedVersion, currentVersion));
+      return;
+    }
+    // Anything else (validation, 5xx, network) surfaces as a draft
+    // error in the editor so the admin sees something actionable.
+    // We deliberately do NOT rethrow into the React event loop —
+    // that would surface as an unhandled rejection (because tanstack
+    // mutations don't bubble through the route's error boundary).
+    if (err instanceof AdminApiError) {
+      setDraftError(`Save failed (${err.status}): ${err.message}`);
+    } else {
+      setDraftError('Save failed. Please try again.');
+    }
+  };
+
+  const handleSave = async () => {
     if (!selectedConfig) return;
     if (isJsonDataType(selectedConfig.dataType)) {
       if (currentValue.trim().length > 0 && !isValidJsonString(currentValue)) {
@@ -214,14 +250,36 @@ export default function ConfigurationManagementPage() {
         return;
       }
     }
-    if (isSuperOrGlobalAdmin) {
-      updateTenantConfigs.mutate({
-        identifier: effectiveTenantIdentifier,
-        configs: [{ id: selectedConfig.id, value: normalizedCurrentValue }],
-      });
+    // TASK-302 Stream D Phase D.5 — capture the version we were
+    // editing before issuing the PATCH. The server's CAS uses this
+    // value via both `If-Match` (header) and `expectedVersion` (body);
+    // the controller's header-takes-precedence fold ensures they
+    // agree (cf. D.3 my-tenant.controller).
+    const editingVersion = selectedConfig.version;
+    if (typeof editingVersion !== 'number') {
+      // Defensive: a row without a server-returned version cannot run
+      // OCC. Refuse to save rather than send a malformed PATCH that
+      // would 400 on the body or 428 on the header. (Should not happen
+      // post-Phase B.6 unless the API was rolled back.)
+      setDraftError('Configuration is missing a version. Refresh and try again.');
       return;
     }
-    updateMyTenantConfigs.mutate([{ id: selectedConfig.id, value: normalizedCurrentValue }]);
+    const ifMatch = `"${editingVersion}"`;
+    const row = { id: selectedConfig.id, value: normalizedCurrentValue, expectedVersion: editingVersion };
+
+    try {
+      if (isSuperOrGlobalAdmin) {
+        await updateTenantConfigs.mutateAsync({
+          identifier: effectiveTenantIdentifier,
+          configs: [row],
+          ifMatch,
+        });
+      } else {
+        await updateMyTenantConfigs.mutateAsync({ configs: [row], ifMatch });
+      }
+    } catch (err) {
+      handleConfigError(err, selectedConfig.id, editingVersion);
+    }
   };
 
   const tenantColumn: MultiColumnConfig<Tenant> = {
@@ -388,6 +446,19 @@ export default function ConfigurationManagementPage() {
         columns={[tenantColumn, configColumn, detailColumn]}
         columnStates={[tenantState, configState, detailState]}
         height="calc(100vh - 12rem)"
+      />
+      <ConfigConflictModal
+        error={conflictErr}
+        onRefresh={() => {
+          // Refetch the active list so `selectedConfig.version` picks
+          // up the server's latest, then clear the modal. We do NOT
+          // reset the user's draftValue — they likely still want to
+          // re-apply their edit; the next save will use the new
+          // version and (usually) succeed.
+          void activeConfigsQuery.refetch();
+          setConflictErr(null);
+        }}
+        onDismiss={() => setConflictErr(null)}
       />
     </Main>
   );
