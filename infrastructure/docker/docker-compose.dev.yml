@@ -82,6 +82,7 @@ services:
       VAULT_DEV_ROOT_TOKEN: ${VAULT_DEV_ROOT_TOKEN:-root}
     volumes:
       - ./configs/vault/dev-init.sh:/vault/init/dev-init.sh:ro
+      - ./configs/vault/policies:/vault/init/policies:ro
       - vault-data:/vault/file
     entrypoint: ["/vault/init/dev-init.sh"]
 

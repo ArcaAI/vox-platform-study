@@ -35,4 +35,21 @@ vault secrets enable -path=database database 2>/dev/null || true
 echo "[vault-init] enabling file audit device"
 vault audit enable file file_path=/vault/file/vault-audit.log 2>/dev/null || true
 
+echo "[vault-init] enabling AppRole auth"
+vault auth enable approle 2>/dev/null || true
+
+echo "[vault-init] writing hope-app policy"
+vault policy write hope-app /vault/init/policies/hope-app.hcl
+
+echo "[vault-init] creating hope-app role"
+vault write auth/approle/role/hope-app \
+  token_policies="hope-app" \
+  token_ttl=1h \
+  token_max_ttl=24h \
+  secret_id_ttl=24h \
+  secret_id_num_uses=1
+
+echo "[vault-init] role_id (committable):"
+vault read -field=role_id auth/approle/role/hope-app/role-id
+
 echo "[vault-init] OK"
