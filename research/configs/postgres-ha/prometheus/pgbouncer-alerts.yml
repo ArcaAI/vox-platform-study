@@ -1,0 +1,66 @@
+# pgbouncer alert rules — TASK-302 Stream C Phase 2A.
+#
+# Thresholds are tuned for HOPE's projected scale (≤ 50 tenants by 2027)
+# and the default_pool_size=50 / min_pool_size=5 configuration in
+# docker-compose.yml. See Phase 1 validation report §6 for the rubric.
+
+groups:
+  - name: pgbouncer.rules
+    rules:
+      # ── Page ──────────────────────────────────────────────────────────
+      - alert: PgBouncerMaxWaitHigh
+        expr: max(pgbouncer_pools_client_maxwait_seconds{cluster="hope-prod"}) > 1
+        for: 30s
+        labels:
+          severity: page
+          team: platform
+        annotations:
+          summary: 'PgBouncer maxwait > 1 s for ≥ 30 s'
+          description: |
+            A client has been waiting for a pooled backend for more than
+            1 second. Either the pool is undersized (raise
+            DEFAULT_POOL_SIZE) or a slow query is pinning a backend.
+            Inspect SHOW POOLS / pg_stat_activity to identify the
+            offender.
+
+      # ── Warning ───────────────────────────────────────────────────────
+      - alert: PgBouncerClientWaiting
+        expr: max(pgbouncer_pools_client_waiting_connections{cluster="hope-prod"}) > 0
+        for: 1m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: 'PgBouncer cl_waiting > 0 for ≥ 1 m'
+          description: |
+            Clients are queueing for backends sustained for 1 minute or
+            more. If this persists, raise DEFAULT_POOL_SIZE or
+            investigate slow transactions.
+
+      - alert: PgBouncerPoolSaturated
+        expr: |
+          max(pgbouncer_pools_server_active_connections{cluster="hope-prod"})
+            / 50 > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: 'PgBouncer pool > 90 % saturated for 5 m'
+          description: |
+            sv_active is sustaining > 90 % of DEFAULT_POOL_SIZE (50).
+            Pre-emptively raise the pool or add a new HA node before
+            cl_waiting starts climbing.
+
+      - alert: PgBouncerExporterDown
+        expr: up{job="pgbouncer"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: 'pgbouncer_exporter is not scraping'
+          description: |
+            One or more pgbouncer_exporter targets have been unreachable
+            for ≥ 2 minutes. Check the `pgbouncer-exporter` container
+            and the `hope_metrics` user credentials.

@@ -162,3 +162,28 @@ services:
         condition: service_healthy
     profiles:
       - monitoring
+
+  # ── Prometheus pgbouncer_exporter (TASK-302 Stream C Phase 2A) ──
+  # Exposes pgbouncer pool stats (sv_active, cl_waiting, maxwait, etc.)
+  # for the Grafana dashboard (community ID 13353 or hand-crafted).
+  # Connects to the special `pgbouncer` admin database, which exposes
+  # SHOW STATS / SHOW POOLS to users listed in `stats_users`.
+  pgbouncer-exporter:
+    image: prometheuscommunity/pgbouncer-exporter:v0.10.0
+    container_name: pgbouncer-exporter
+    hostname: pgbouncer-exporter-${NODE_NAME}
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PGBOUNCER_EXPORTER_HOST: 127.0.0.1
+      PGBOUNCER_EXPORTER_PORT: 9127
+      # `hope_metrics` must be listed in pgbouncer's `stats_users`. The
+      # password is provisioned via PGBOUNCER_PASSWORD when AUTH_TYPE is
+      # scram-sha-256; see deploy-vm500-502-postgres-ha.md §10.
+      DATA_SOURCE_NAME: "postgres://hope_metrics:${METRICS_PASSWORD}@127.0.0.1:6432/pgbouncer?sslmode=disable"
+    # No `depends_on: pgbouncer` because pgbouncer lives in a separate
+    # profile; the exporter retries until pgbouncer is reachable. In a
+    # production deployment, start with `--profile pgbouncer --profile
+    # monitoring` to enable both.
+    profiles:
+      - monitoring
