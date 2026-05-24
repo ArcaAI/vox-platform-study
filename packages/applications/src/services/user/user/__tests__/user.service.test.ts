@@ -411,21 +411,20 @@ describe('UserService', () => {
             expect(result.page).toBe(1);
         });
 
-        it('should filter by UserRoleAssignments with tenantId', async () => {
+        it('should filter by UserRoleAssignments with tenantId excluding soft-deleted assignments', async () => {
             mockUserRepository.findAll.mockResolvedValue([]);
             mockUserRepository.count.mockResolvedValue(0);
 
             await service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 'tenant-1' });
 
+            const expectedWhere = {
+                UserRoleAssignments: { some: { tenantId: 'tenant-1', resourceStatus: { not: 'DELETED' } } },
+            };
             expect(mockUserRepository.findAll).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    where: { UserRoleAssignments: { some: { tenantId: 'tenant-1' } } },
-                })
+                expect.objectContaining({ where: expectedWhere })
             );
             expect(mockUserRepository.count).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    where: { UserRoleAssignments: { some: { tenantId: 'tenant-1' } } },
-                })
+                expect.objectContaining({ where: expectedWhere })
             );
         });
 
