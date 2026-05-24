@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import Decimal from 'decimal.js';
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTaggedEntity, IBaseTaggedEntity } from '../../../common';
+import { BaseTaggedEntity, IBaseTaggedEntity, Secret } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
@@ -72,6 +72,10 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
     );
   }
 
+  // Phase 0 Item 4 (TASK-302 Stream A) — @Secret marks this field for
+  // audit-log scrubbing when the parent row is locked. See:
+  //   packages/applications/src/services/tenant/scrubbing.ts
+  @Secret()
   get defaultValue(): IGlobalSettingEntity['defaultValue'] {
     return this._defaultValue;
   }
@@ -83,6 +87,9 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
     );
   }
 
+  // Phase 0 Item 4 (TASK-302 Stream A) — @Secret marks this field for
+  // audit-log scrubbing when the parent row is locked.
+  @Secret()
   get value(): IGlobalSettingEntity['value'] {
     return this._value;
   }
