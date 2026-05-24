@@ -321,5 +321,73 @@ App-side unwrapping happens once in `SecretsService.boot()` (see Plan Phase 2B T
 
 ---
 
-<!-- Sections 3, 4, 8, 10, 11, 14, 16, 17 deferred to SRE (out of plan scope). -->
+## 16. Manual secret rotation procedure
+
+TASK-302 Phase 6 Task 6.2 (Stream B).
+
+Static secrets (`JWT_SECRET_KEY`, `OIDC_CLIENT_SECRET`, `API_KEY_PEPPER`,
+`SESSION_SECRET_KEY`, `SMR_SERVICE_TOKEN`, `S3_ACCESS_KEY`,
+`S3_SECRET_KEY`, `MQTT_PASS`, `REDIS_PASS`) rotate via kv-v2 versioning.
+Old version stays decryptable; new version is what new logins use.
+Overlap window: 5 minutes (configurable per secret).
+
+The rotation worker (`apps/api/src/workers/vault-rotation.worker.module.ts`,
+Phase 6 Task 6.5) tails the Vault audit log on its leader pod and
+publishes an invalidation event to Redis Pub/Sub channel
+`arca:secrets:invalidate` on every `update`/`create` against
+`secret/data/hope/*`. **The steps below describe the manual override
+when the worker is paused or you need to force-evict without waiting
+for the audit log tail.**
+
+```bash
+# 1. Write a new version of the secret.
+vault kv put secret/hope/JWT_SECRET_KEY value="$(openssl rand -hex 32)"
+
+# 2. Publish invalidation event to evict the in-memory caches on every
+#    HOPE API pod. (The rotation worker does this automatically once it
+#    reads the audit-log line, but for an immediate sync we publish
+#    by hand here.)
+redis-cli -h 10.10.1.121 -a "$REDIS_PASS" PUBLISH arca:secrets:invalidate \
+  '{"key":"JWT_SECRET_KEY"}'
+
+# 3. Wait for in-flight tokens to drain. For JWT_SECRET_KEY this is
+#    JWT_EXPIRES_IN (default 1h). For symmetric secrets without a
+#    grace window (e.g. API_KEY_PEPPER), schedule the rotation
+#    during a maintenance window.
+sleep 300
+
+# 4. Trim kv-v2 history if you want to age out the previous version
+#    (kv-v2 defaults to keeping unlimited versions; HOPE bounds to 3).
+vault kv metadata patch -max-versions=3 secret/hope/JWT_SECRET_KEY
+```
+
+### Rotation matrix (policy-driven)
+
+| Key                   | Cadence   | Overlap | Notes |
+|-----------------------|-----------|---------|-------|
+| `JWT_SECRET_KEY`      | 90 days   | 1h      | Drains naturally via JWT_EXPIRES_IN. |
+| `OIDC_CLIENT_SECRET`  | 90 days   | n/a     | Coordinate with IdP — schedule a maintenance window. |
+| `API_KEY_PEPPER`      | 180 days  | n/a     | API keys are stored hashed-with-pepper, so a pepper rotation forces every API key holder to re-pair. **Bigger change** — coordinate. |
+| `SESSION_SECRET_KEY`  | 90 days   | n/a     | Forces re-login. |
+| `SMR_SERVICE_TOKEN`   | 90 days   | n/a     | Shared between API and SMR Python service. Rotate both simultaneously. |
+| `S3_ACCESS_KEY/SECRET`| 365 days  | n/a     | Bound to provider IAM lifecycle. |
+
+### Transit-key rotation (envelope-encrypted secrets)
+
+For the `hope-globalsetting` Transit key (rotates the encryption key,
+NOT the static secret values):
+
+```bash
+vault write -f transit/keys/hope-globalsetting/rotate
+```
+
+`min_decryption_version=1` (set at Phase 4 Task 4.4 init) ensures
+historical ciphertexts continue to decrypt under the previous key
+version. Verified by the integration test
+`vault-secrets.provider.integration.test.ts > historical ciphertexts
+decrypt after transit key rotation` (Phase 6 Task 6.1).
+
+---
+
+<!-- Sections 3, 4, 8, 10, 11, 14, 17 deferred to SRE (out of plan scope). -->
 
