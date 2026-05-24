@@ -1,5 +1,5 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsArray, Matches, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsArray, IsInt, IsOptional, IsString, Matches, MaxLength, Min, MinLength } from 'class-validator';
 
 export class UpdatePipelineRequest {
   @ApiPropertyOptional({
@@ -48,4 +48,17 @@ export class UpdatePipelineRequest {
   @IsString({ each: true })
   @IsOptional()
   tags?: string[];
+
+  // TASK-302 Stream D Phase E.4 — required CAS predicate (echoed from
+  // the prior GET). The controller folds the `If-Match` header over
+  // this when both are present; missing both yields `428 Precondition
+  // Required` (on `@RequiresIfMatch()` routes).
+  @ApiProperty({
+    description:
+      'Current version of the row (from the prior GET, e.g. via the `ETag` header). The PATCH fails with `412 Precondition Failed` if the version drifted.',
+    example: 7,
+  })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
 }

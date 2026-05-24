@@ -7,8 +7,8 @@ import {
   UpdatePipelineRequest,
 } from '@arcaai/applications';
 import { BadRequestException, Body, Controller, HttpCode, Param, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize } from '../../decorators';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 import { AssignTenantRequest, AssignTenantResponse, ValidateYamlRequest, ValidateYamlResponse, resolveYaml } from './dto';
 
 /**
@@ -80,11 +80,41 @@ export class AudioPipelineController {
     path: ':id',
     by: ['id'],
   })
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Update an ASR pipeline',
+    description:
+      'Updates one AsrPipeline row. Optimistic concurrency is enforced ' +
+      "(TASK-302 Stream D Phase E.4): the `If-Match` header (RFC 7232) is " +
+      "REQUIRED, and the server runs a Compare-And-Set against the row's " +
+      "`_version` column. When the header is present, its value overrides the " +
+      'body-field `expectedVersion`. On version drift the response is `412 ' +
+      'Precondition Failed`; missing header is `428 Precondition Required`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the row version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
   @ApiParam({ name: 'id', description: 'Pipeline ID', type: String })
   @ApiResponse({ status: 400, description: 'Bad request - invalid YAML or duplicate slug' })
   @ApiResponse({ status: 404, description: 'Pipeline not found' })
-  async update(@Param('id') id: string, @Body() request: UpdatePipelineRequest): Promise<PipelineResponse> {
-    return this.pipelineService.update(id, request);
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async update(
+    @Param('id') id: string,
+    @Body() request: UpdatePipelineRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<PipelineResponse> {
+    // TASK-302 Stream D Phase E.4 — header takes precedence over body
+    // when both are present. On a `@RequiresIfMatch()` route the param
+    // decorator fired 428 if the header was missing.
+    const effectiveRequest: UpdatePipelineRequest =
+      expectedFromHeader !== undefined
+        ? { ...request, expectedVersion: expectedFromHeader }
+        : request;
+    return this.pipelineService.update(id, effectiveRequest);
   }
 
   @ApiEndpoint({

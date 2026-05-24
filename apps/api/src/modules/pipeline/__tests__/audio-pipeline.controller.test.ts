@@ -122,3 +122,52 @@ describe('AudioPipelineController assignTenant — TASK-298 D-7', () => {
     await expect(controller.assignTenant('p-1', { tenantId: '   ' } as any)).rejects.toThrow(BadRequestException);
   });
 });
+
+// =============================================================================
+// TASK-302 Stream D Phase E.4 — optimistic concurrency on PATCH
+// =============================================================================
+describe('AudioPipelineController update — TASK-302 Stream D Phase E.4', () => {
+  const buildController = () => {
+    const update = vi.fn();
+    const svc = { update } as any;
+    return { controller: new AudioPipelineController(svc), update };
+  };
+
+  it('forwards request unchanged when If-Match header is absent (body wins)', async () => {
+    // In unit context the `RequiresIfMatchGuard` does not run; the
+    // `@ExpectedVersion()` decorator therefore resolves to `undefined`
+    // and the controller must pass the body through verbatim. The
+    // global guard enforces 428 at the route level — that is covered by
+    // dedicated decorator/guard tests, not here.
+    const { controller, update } = buildController();
+    update.mockResolvedValue({ id: 'p-1', name: 'Updated', version: 8 });
+
+    await controller.update('p-1', { name: 'Updated', expectedVersion: 7 } as any, undefined);
+
+    expect(update).toHaveBeenCalledWith('p-1', { name: 'Updated', expectedVersion: 7 });
+  });
+
+  it('folds the If-Match header into the body-field expectedVersion (header wins)', async () => {
+    const { controller, update } = buildController();
+    update.mockResolvedValue({ id: 'p-1', name: 'Updated', version: 8 });
+
+    await controller.update('p-1', { name: 'Updated', expectedVersion: 99 } as any, 7);
+
+    expect(update).toHaveBeenCalledWith(
+      'p-1',
+      expect.objectContaining({
+        name: 'Updated',
+        expectedVersion: 7,
+      }),
+    );
+  });
+
+  it('returns the service result (including the bumped version) verbatim', async () => {
+    const { controller, update } = buildController();
+    update.mockResolvedValue({ id: 'p-1', name: 'Updated', version: 8 });
+
+    const result = await controller.update('p-1', { name: 'Updated', expectedVersion: 7 } as any, undefined);
+
+    expect(result).toEqual(expect.objectContaining({ id: 'p-1', version: 8 }));
+  });
+});
