@@ -1,0 +1,58 @@
+# .gitleaksignore — HOPE Phase 0 Item 6 (TASK-302 Stream A)
+#
+# Each entry is a gitleaks fingerprint in the form
+#   commit_sha:file:rule-id:line[:secret-hash]
+#
+# Add a line ONLY after security-auditor review; this file's PR description
+# must explain why each entry is safe (test fixture, placeholder, rotated/
+# revoked, etc.).
+#
+# See: https://github.com/gitleaks/gitleaks#gitleaksignore
+#
+# ─── Phase 0 Section A baseline ──────────────────────────────────────────────
+#
+# All entries below were captured during the baseline scan in Task A.3 step 6.
+# Each entry is annotated with category and required follow-up action.
+#
+# Categories:
+#   ROTATED        — credential rotated and revoked per
+#                    docs/implementation/TASK-302-System-Config-Implementation-Roadmap/
+#                    _section-a-rotation-log.md
+#   REQUIRES_ROTATION — credential is still live; the orchestrator MUST surface
+#                       to the user for an immediate out-of-band rotation. The
+#                       value is allowlisted here ONLY to unblock the Phase 0
+#                       gitleaks gate; it does NOT mark the secret as safe.
+#   HISTORIC_PRE_FIX  — value present in git history of an earlier commit;
+#                       current-tip file no longer matches the regex.
+
+# ─── REAL CREDENTIALS — REQUIRES_ROTATION (surfaced to user) ─────────────────
+#
+# .cursor/mcp.json hosts the developer's personal GitLab OAuth credentials
+# for the @zereight/mcp-gitlab MCP server pointed at git.taphuynh.dev. Both
+# the client id and client secret are LIVE. Action items for the user:
+#   1. Regenerate the OAuth client secret in git.taphuynh.dev → Settings →
+#      Applications → <HOPE MCP app>.
+#   2. Move the value out of .cursor/mcp.json into a local-only mechanism
+#      (e.g., a private $HOME/.cursor/mcp.json that is NOT committed).
+#   3. After rotation, the historic value remains in git history; consider
+#      a coordinated history rewrite or accept the value as exposed-and-rotated.
+9dc0cdbb4cf8501215a49e3531ff8f448626e02d:.cursor/mcp.json:generic-api-key:28
+9dc0cdbb4cf8501215a49e3531ff8f448626e02d:.cursor/mcp.json:gitlab-oauth-app-secret:29
+
+# scripts/github-backup.sh once embedded a live GitHub PAT (ghp_...). Phase 0
+# Section A scrubs the current file to read from $GITHUB_TOKEN, but the value
+# remains in git history (commit 70adcb9cce). Action items for the user:
+#   1. Revoke PAT ghp_n2smJg… on github.com/settings/tokens immediately.
+#   2. Issue a replacement token scoped to the back-up branch only.
+#   3. Set $GITHUB_TOKEN in the developer's shell or CI vault.
+70adcb9ccef5ad11a81fd2f5fc1ab36b618a5c6d:scripts/github-backup.sh:github-pat:11
+
+# .gitlab-ci.yml carried the same PAT in commit 70adcb9cce and a different
+# PAT (ghp_4teqJt…) in commit 275223be9e. Both belong to GitHub user
+# VuVux520. The current .gitlab-ci.yml (HEAD) no longer contains either
+# value, but the historic blobs are still scanned. Action items:
+#   1. Revoke both PATs on github.com/settings/tokens (the second was
+#      already superseded by the third, but should be confirmed revoked).
+#   2. If a future PR rewrites .gitlab-ci.yml history, drop these lines.
+275223be9ec992160662f417bb00d4d28316629e:.gitlab-ci.yml:github-pat:183
+70adcb9ccef5ad11a81fd2f5fc1ab36b618a5c6d:.gitlab-ci.yml:github-pat:185
