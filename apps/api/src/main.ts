@@ -231,9 +231,12 @@ async function bootstrap() {
   loggingService.info('Secrets warmed up', { keyCount: 11 }, 'Bootstrap');
 
   // Session configuration (debug logging removed - session config is sensitive)
+  // TASK-302 Phase 3 Task 3.2: SESSION_SECRET_KEY now comes from
+  // SecretsService (warmed above) instead of process.env.
+  const sessionSecret = await secretsService.getSecret('SESSION_SECRET_KEY');
   app.use(
     session({
-      secret: process.env.SESSION_SECRET_KEY || 'a-very-secret-key',
+      secret: sessionSecret,
       resave: false,
       saveUninitialized: false,
       cookie: {
