@@ -36,11 +36,24 @@ const mockGlobalSettingRepository = {
   count: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  // TASK-302 Stream D Phase C — write path migrated to Compare-And-Set;
+  // the mass-assignment guard runs BEFORE the CAS, so dropping unauthorized
+  // fields is still proved end-to-end here.
+  updateWithVersion: vi.fn(),
 };
 const mockDepartmentRepository = { findAll: vi.fn(), count: vi.fn() };
 const mockPromptTemplateRepository = { findAll: vi.fn(), count: vi.fn() };
 const mockAsrPipelineRepository = { findAll: vi.fn(), count: vi.fn() };
-const mockDatabaseService = { getClient: vi.fn() };
+// TASK-302 Stream D Phase C (C.4) — `updateTenantConfigs` wraps writes in
+// `databaseService.baseClient.$transaction(callback)`. The stub invokes the
+// callback with a sentinel tx client so the loop executes.
+const mockTxClient = { __tx: true } as const;
+const mockDatabaseService = {
+    getClient: vi.fn(),
+    baseClient: {
+        $transaction: vi.fn().mockImplementation(async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient)),
+    },
+};
 const mockTenantBucketService = { provisionSystemBuckets: vi.fn() };
 
 const createMockTenantEntity = (overrides: { id?: string; key?: string } = {}) => ({
@@ -153,12 +166,15 @@ describe('Phase 0 Item 2 — TenantService.updateTenantConfigs must NOT apply un
     });
     mockTenantRepository.findFirst.mockResolvedValue(tenant);
     mockGlobalSettingRepository.findById.mockResolvedValue(setting);
-    mockGlobalSettingRepository.update.mockImplementation((_id: string, entity: MockSetting) => Promise.resolve(entity));
+    mockGlobalSettingRepository.updateWithVersion.mockImplementation(
+      (_id: string, entity: MockSetting) => Promise.resolve(entity),
+    );
 
     const evilPayload = {
       id: 'cfg-1',
       value: 'es',
       description: 'Updated description',
+      expectedVersion: 1,
       key: 'JWT_SECRET_KEY',
       tenantId: 'attacker-tenant',
       locked: true,
@@ -185,10 +201,12 @@ describe('Phase 0 Item 2 — TenantService.updateTenantConfigs must NOT apply un
     });
     mockTenantRepository.findFirst.mockResolvedValue(tenant);
     mockGlobalSettingRepository.findById.mockResolvedValue(setting);
-    mockGlobalSettingRepository.update.mockImplementation((_id: string, entity: MockSetting) => Promise.resolve(entity));
+    mockGlobalSettingRepository.updateWithVersion.mockImplementation(
+      (_id: string, entity: MockSetting) => Promise.resolve(entity),
+    );
 
     await service.updateTenantConfigs('tenant-123', [
-      { id: 'cfg-2', value: 'fr', description: 'new' } as any,
+      { id: 'cfg-2', value: 'fr', description: 'new', expectedVersion: 1 } as any,
     ]);
 
     expect(setting.value).toBe('fr');

@@ -35,13 +35,24 @@ const gsRepo = {
   count: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  // TASK-302 Stream D Phase C — TenantService.updateTenantConfigs now routes
+  // through Compare-And-Set via `updateWithVersion`. Audit-scrub still happens
+  // post-write, so these fixtures wire the new repo method.
+  updateWithVersion: vi.fn(),
 };
 const deps = { findAll: vi.fn(), count: vi.fn() };
 const ptemps = { findAll: vi.fn(), count: vi.fn() };
 const pipes = { findAll: vi.fn(), count: vi.fn() };
+// TASK-302 Stream D Phase C (C.4) — `updateTenantConfigs` wraps writes in
+// `databaseService.baseClient.$transaction(callback)`. The stub invokes the
+// callback with a sentinel tx client so the loop executes.
+const mockTxClient = { __tx: true } as const;
 const db = {
   getClient: vi.fn(),
   client: { userRoleAssignment: { findMany: vi.fn() } },
+  baseClient: {
+    $transaction: vi.fn().mockImplementation(async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient)),
+  },
 };
 const buckets = { provisionSystemBuckets: vi.fn() };
 
@@ -88,10 +99,10 @@ describe('TenantService — audit-log secret scrubbing (Phase 0 Item 4)', () => 
       locked: true,
     });
     gsRepo.findById.mockResolvedValue(locked);
-    gsRepo.update.mockImplementation(async (_id, entity) => entity);
+    gsRepo.updateWithVersion.mockImplementation(async (_id, entity) => entity);
 
     await service.updateTenantConfigs('tenant-1', [
-      { id: locked.id, value: 'new-secret' } as never,
+      { id: locked.id, value: 'new-secret', expectedVersion: 1 } as never,
     ]);
 
     const emit = events.emit.mock.calls.find((c) => c[0] === SysEventType.ResourceUpdated);
@@ -121,10 +132,10 @@ describe('TenantService — audit-log secret scrubbing (Phase 0 Item 4)', () => 
       locked: false,
     });
     gsRepo.findById.mockResolvedValue(unlocked);
-    gsRepo.update.mockImplementation(async (_id, entity) => entity);
+    gsRepo.updateWithVersion.mockImplementation(async (_id, entity) => entity);
 
     await service.updateTenantConfigs('tenant-1', [
-      { id: unlocked.id, value: 'true' } as never,
+      { id: unlocked.id, value: 'true', expectedVersion: 1 } as never,
     ]);
 
     const emit = events.emit.mock.calls.find((c) => c[0] === SysEventType.ResourceUpdated);

@@ -3,7 +3,7 @@ import { Prisma, PrismaClient, modelHasSoftDelete } from '@arcaai/database';
 import { formatFindAllProps, formatCountProps, QueryBuilder, BaseEntity, BaseMapper, EntityId, CoreUnitOfWorkService } from '../common';
 import { ICountProps, IFindAllProps, IRepository } from '../interfaces';
 
-import { DataCreationException, DataNotFoundException } from '@arcaai/exceptions';
+import { DataCreationException, DataNotFoundException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { ResourceStatusType } from '../enums';
 
 // Type for the database context - can be extended client or transaction client
@@ -128,6 +128,101 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     return this._mapper.toDomainEntity(model);
   }
 
+  /**
+   * Compare-and-set update against the `_version` column.
+   *
+   * Issues `prisma.<model>.updateMany({ where: { id, version: expectedVersion },
+   * data: { ...changes, version: { increment: 1 } } })`. PostgreSQL emits the
+   * predicate verbatim; if no row matches we disambiguate "row gone" vs
+   * "version drifted" by re-reading and throwing the correct exception.
+   *
+   * Safe under transaction-mode pooling — no row lock is taken.
+   *
+   * When `tx` is provided, the CAS predicate and the post-failure re-read
+   * are both issued through the interactive Prisma transaction client; the
+   * subsequent `findById` for the success-return shape is also routed via
+   * `tx`. This lets callers (e.g. `TenantService.updateTenantConfigs` C.4)
+   * compose a multi-row CAS batch inside a single Postgres transaction so
+   * a mid-batch conflict rolls every prior row back via standard SQL
+   * rollback semantics. When `tx` is omitted, behaviour is identical to
+   * before C.4 — the cached extended client is used.
+   *
+   * @throws OptimisticConcurrencyException when the row exists but its
+   *   version is no longer `expectedVersion`
+   * @throws DataNotFoundException when the row no longer exists
+   *
+   * @see TASK-302 Stream D Phase B (CAS), Phase C C.4 (transactional batch)
+   * @see https://github.com/prisma/prisma/issues/10207 (MySQL-only caveat)
+   */
+  public async updateWithVersion(
+    id: EntityId,
+    entity: DomainEntity,
+    expectedVersion: number,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tx?: Prisma.TransactionClient | any,
+  ): Promise<DomainEntity> {
+    const changes = this._mapper.toPersistenceChanges(entity);
+
+    // `version` is database-owned. Even if a buggy caller put it in the
+    // change set, we strip it here as defense in depth on top of the
+    // mapper $toPersistence handler and applyChangesToEntity filter.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+    const { version: _v, ...safeChanges } = changes as Record<string, any>;
+
+    // When a transaction client is supplied, route writes and the
+    // disambiguating re-read through it; otherwise fall back to the
+    // cached extended client (`this.db`).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const model: any = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
+
+    const result = await model.updateMany({
+      where: { id, version: expectedVersion },
+      data: { ...safeChanges, version: { increment: 1 } },
+    });
+
+    if (result.count === 0) {
+      const current = await model.findUnique({
+        where: { id },
+        select: { version: true },
+      });
+      if (!current) {
+        throw new DataNotFoundException(this._modelName, id);
+      }
+      throw new OptimisticConcurrencyException(this._modelName, id, {
+        expectedVersion,
+        currentVersion: current.version,
+      });
+    }
+
+    // Read the freshly-bumped row through the same context so callers
+    // inside `$transaction` see the in-flight write rather than the
+    // snapshot of the outer connection.
+    return this.findByIdInContext(id, tx);
+  }
+
+  /**
+   * Variant of `findById` that uses the supplied transaction client when
+   * one is provided. Kept private to the CAS path because no other call
+   * site needs it today; promote to a generic helper if and when a second
+   * caller appears.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async findByIdInContext(id: EntityId, tx?: Prisma.TransactionClient | any): Promise<DomainEntity> {
+    if (!tx) {
+      return this.findById(id);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const model: any = (tx as Record<string, any>)[this._modelName];
+    const found = await model.findUnique({
+      where: { id },
+      include: this._includes,
+    });
+    if (!found) {
+      throw new DataNotFoundException(this._modelName, id);
+    }
+    return this._mapper.toDomainEntity(found);
+  }
+
   public async delete(id: EntityId): Promise<DomainEntity> {
     const model = await this.db.delete({
       where: { id },
@@ -163,6 +258,11 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
         resourceStatus: ResourceStatusType.DELETED,
         resourceStatusUpdatedAt: new Date(),
         ...(updatedBy && { resourceStatusUpdatedBy: updatedBy }),
+        // TASK-302 Stream D Phase B (B.8) — soft-delete is a real state change.
+        // Bumping `_version` prevents a stale reader at v(n) from successfully
+        // calling `updateWithVersion(…, n)` after another admin soft-deleted
+        // the row, which would resurrect deleted PHI (compliance / SOC2 risk).
+        version: { increment: 1 },
       },
       include: this._includes,
     });
@@ -187,6 +287,9 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
         resourceStatus: ResourceStatusType.ENABLED,
         resourceStatusUpdatedAt: new Date(),
         ...(updatedBy && { resourceStatusUpdatedBy: updatedBy }),
+        // TASK-302 Stream D Phase B (B.8) — restore is the inverse state
+        // change and must also bump so OCC tracks the resurrection cleanly.
+        version: { increment: 1 },
       },
       include: this._includes,
     });

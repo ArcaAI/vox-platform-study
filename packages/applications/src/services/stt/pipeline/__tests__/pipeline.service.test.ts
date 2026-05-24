@@ -67,6 +67,7 @@ function createBehavioralPipelineEntity(overrides: {
     resourceStatus?: string;
     createdBy?: string | null;
     tags?: string[];
+    version?: number;
 } = {}) {
     // Internal mutable state
     let _name = overrides.name ?? 'Test Pipeline';
@@ -81,6 +82,9 @@ function createBehavioralPipelineEntity(overrides: {
         tenantId: overrides.tenantId ?? 'tenant-1',
         createdBy: overrides.createdBy ?? 'user-123',
         tags: overrides.tags ?? ['test'],
+        // TASK-302 Stream D Phase E.4 — `_version` is required for the
+        // CAS write path. Default = first-write (1); override per test.
+        version: overrides.version ?? 1,
 
         // Getters for mutable state
         get name() { return _name; },
@@ -182,6 +186,10 @@ const mockPipelineRepository = {
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    // TASK-302 Stream D Phase E.4 — `update()` now writes via CAS. The
+    // legacy `update` stays on the mock so we can assert it is NOT
+    // called from the OCC-migrated path.
+    updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
     isSlugUnique: vi.fn(),
 };
@@ -270,12 +278,14 @@ describe('PipelineService', () => {
     });
 
     describe('update', () => {
-        it('should update an existing pipeline and verify state changes', async () => {
-            const existingPipeline = createBehavioralPipelineEntity({ id: 'pipeline-1', name: 'Old Name' });
+        it('should update an existing pipeline via updateWithVersion and verify state changes (TASK-302 Stream D Phase E.4)', async () => {
+            const existingPipeline = createBehavioralPipelineEntity({ id: 'pipeline-1', name: 'Old Name', version: 4 });
             mockPipelineRepository.findById.mockResolvedValue(existingPipeline);
-            mockPipelineRepository.update.mockImplementation(async (_id: any, entity: any) => entity);
+            mockPipelineRepository.updateWithVersion.mockImplementation(
+                async (_id: any, entity: any) => ({ ...entity, version: 5 }),
+            );
 
-            const result = await service.update('pipeline-1', { name: 'Updated Pipeline' });
+            const result = await service.update('pipeline-1', { name: 'Updated Pipeline', expectedVersion: 4 } as any);
 
             // BEHAVIORAL VERIFICATION on entity
             expect(existingPipeline.name).toBe('Updated Pipeline');
@@ -283,12 +293,23 @@ describe('PipelineService', () => {
 
             // DTO VERIFICATION
             expect(result.name).toBe('Updated Pipeline');
+            expect(result.version).toBe(5);
 
+            // OCC contract — CAS write fires with the supplied expectedVersion,
+            // legacy non-CAS write does NOT fire.
+            expect(mockPipelineRepository.updateWithVersion).toHaveBeenCalledWith('pipeline-1', existingPipeline, 4);
+            expect(mockPipelineRepository.update).not.toHaveBeenCalled();
+
+            // Audit event carries both versions (matches C.8 / E.1 / E.2 / E.3).
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
                 SysEventType.ResourceUpdated,
                 expect.objectContaining({
                     resourceId: 'pipeline-1',
-                })
+                    data: expect.objectContaining({
+                        previousVersion: 4,
+                        newVersion: 5,
+                    }),
+                }),
             );
         });
 
@@ -296,7 +317,7 @@ describe('PipelineService', () => {
             mockPipelineRepository.findById.mockResolvedValue(null);
 
             await expect(
-                service.update('non-existent-id', { name: 'Updated' })
+                service.update('non-existent-id', { name: 'Updated', expectedVersion: 1 } as any)
             ).rejects.toThrow(NotFoundException);
         });
 
@@ -309,7 +330,7 @@ describe('PipelineService', () => {
             mockPipelineRepository.isSlugUnique.mockResolvedValue(false);
 
             await expect(
-                service.update('pipeline-1', { slug: 'taken-slug' })
+                service.update('pipeline-1', { slug: 'taken-slug', expectedVersion: 1 } as any)
             ).rejects.toThrow(BadRequestException);
         });
 
@@ -318,8 +339,34 @@ describe('PipelineService', () => {
             mockPipelineRepository.findById.mockResolvedValue(existingPipeline);
 
             await expect(
-                service.update('pipeline-1', { configYaml: 'invalid yaml' })
+                service.update('pipeline-1', { configYaml: 'invalid yaml', expectedVersion: 1 } as any)
             ).rejects.toThrow(BadRequestException);
+        });
+
+        it('propagates OptimisticConcurrencyException from the repository CAS write (TASK-302 Stream D Phase E.4)', async () => {
+            // The OptimisticConcurrencyException class lives in
+            // `@arcaai/exceptions`; we import lazily to avoid pulling the
+            // package into the module-level imports of this test file.
+            const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+            const existingPipeline = createBehavioralPipelineEntity({ id: 'pipeline-1', version: 9 });
+            mockPipelineRepository.findById.mockResolvedValue(existingPipeline);
+            mockPipelineRepository.updateWithVersion.mockRejectedValue(
+                new OptimisticConcurrencyException('AsrPipeline', 'pipeline-1', {
+                    expectedVersion: 9,
+                    currentVersion: 10,
+                }),
+            );
+
+            await expect(
+                service.update('pipeline-1', { name: 'Stale', expectedVersion: 9 } as any),
+            ).rejects.toThrow(OptimisticConcurrencyException);
+
+            // Audit MUST NOT broadcast on a failed CAS write — observers
+            // would otherwise see updates that never landed.
+            expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+                SysEventType.ResourceUpdated,
+                expect.anything(),
+            );
         });
     });
 
@@ -557,12 +604,16 @@ models:
             });
 
             // Use behavioral mock for subsequent operations
-            pipeline = createBehavioralPipelineEntity({ id: pipeline.id });
+            pipeline = createBehavioralPipelineEntity({ id: pipeline.id, version: 1 });
             mockPipelineRepository.findById.mockResolvedValue(pipeline);
+            // TASK-302 Stream D Phase E.4 — `update()` writes via CAS;
+            // `delete()` still uses the legacy non-versioned `update()`.
+            // Set BOTH so the lifecycle test exercises the full path.
+            mockPipelineRepository.updateWithVersion.mockImplementation(async (_id: any, entity: any) => entity);
             mockPipelineRepository.update.mockImplementation(async (_id: any, entity: any) => entity);
 
-            // Update
-            await service.update(pipeline.id, { name: 'Updated Pipeline' });
+            // Update — CAS write with expectedVersion=1
+            await service.update(pipeline.id, { name: 'Updated Pipeline', expectedVersion: 1 } as any);
             expect(pipeline.name).toBe('Updated Pipeline');
             expect(pipeline.hasChanges).toBe(true);
 

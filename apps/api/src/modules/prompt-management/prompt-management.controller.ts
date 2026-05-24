@@ -9,8 +9,10 @@ import {
   HttpMethod,
 } from '@arcaai/applications';
 import { Body, Controller, Get, HttpCode, Inject, NotFoundException, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize } from '../../decorators';
+import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+// TASK-302 Stream D Phase E.3 — `@RequiresIfMatch()` + `@ExpectedVersion()`
+// gate the OCC-enforced PATCH route below.
+import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion } from '../../decorators';
 import { PaginatedPromptTemplateResponse, PromptUsageStatsResponse } from './dto';
 
 @ApiBearerAuth()
@@ -86,10 +88,41 @@ export class PromptManagementController {
     by: ['id'],
   })
   @Authorize(['update', 'PromptTemplate'])
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Update prompt template',
+    description:
+      'Updates one prompt template row. Optimistic concurrency is enforced ' +
+      "(TASK-302 Stream D Phase E.3): the `If-Match` header (RFC 7232) is " +
+      "REQUIRED, and the server runs a Compare-And-Set against the row's " +
+      '`_version` column (distinct from `currentVersionNumber`, the PromptVersion ' +
+      "history counter). When the header is present, its value overrides the " +
+      'body-field `expectedVersion`. On version drift the response is `412 ' +
+      'Precondition Failed`; missing header is `428 Precondition Required`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the row version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
   @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
   @ApiResponse({ status: 404, description: 'Template not found' })
-  async update(@Param('id') id: string, @Body() request: UpdatePromptTemplateRequest): Promise<PromptTemplateResponse> {
-    return this.promptService.updatePromptTemplate(id, request);
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async update(
+    @Param('id') id: string,
+    @Body() request: UpdatePromptTemplateRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<PromptTemplateResponse> {
+    // TASK-302 Stream D Phase E.3 — header takes precedence over body
+    // when both are present. On a `@RequiresIfMatch()` route the param
+    // decorator fired 428 if the header was missing.
+    const effectiveRequest: UpdatePromptTemplateRequest =
+      expectedFromHeader !== undefined
+        ? { ...request, expectedVersion: expectedFromHeader }
+        : request;
+    return this.promptService.updatePromptTemplate(id, effectiveRequest);
   }
 
   @ApiEndpoint({
@@ -158,10 +191,20 @@ export class PromptManagementController {
     const version = await svc.getVersion(id, versionNumber);
     if (!version) throw new NotFoundException(`Version ${versionNumber} not found for template ${id}`);
 
+    // TASK-302 Stream D Phase E.3 — `updatePromptTemplate` now requires
+    // `expectedVersion`. This route is a server-driven rollback (no
+    // user-supplied If-Match) so we read the template's current
+    // `_version` and pass it. A concurrent edit between this read and
+    // the CAS write surfaces as `412 Precondition Failed`, which is
+    // the correct behavior — the operator should retry.
+    const currentTemplate = await this.promptService.getPromptTemplate(id);
+    if (!currentTemplate) throw new NotFoundException(`Prompt template ${id} not found`);
+
     return this.promptService.updatePromptTemplate(id, {
       content: version.content,
       variables: version.variables,
       changeReason: `Activated version ${versionNumber}`,
+      expectedVersion: currentTemplate.version,
     } as UpdatePromptTemplateRequest);
   }
 

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsOptional, IsObject } from 'class-validator';
+import { IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
 import { BaseRequest } from '../../../common';
 import { JsonValue } from '@arcaai/domains';
 
@@ -39,4 +39,18 @@ export class UpdateWebhookRequest extends BaseRequest {
   @IsObject()
   @IsOptional()
   subscriptionMetadata?: JsonValue;
+
+  // TASK-302 Stream D Phase E.5 — required CAS predicate (echoed from
+  // the prior GET). The controller (when one is wired) folds the
+  // `If-Match` header value over this when both are present; missing
+  // both yields `428 Precondition Required` on `@RequiresIfMatch()`
+  // routes.
+  @ApiProperty({
+    description:
+      'Current version of the row (from the prior GET, e.g. via the `ETag` header). The PATCH fails with `412 Precondition Failed` if the version drifted.',
+    example: 7,
+  })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
 }

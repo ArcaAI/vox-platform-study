@@ -26,6 +26,14 @@ export interface PromptTemplate {
   currentVersionNumber: number;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Row's optimistic-concurrency version (TASK-302 Stream D Phase E.3) —
+   * `_version` in the database. Distinct from `currentVersionNumber`
+   * which is the human-meaningful PromptVersion history counter. Echo
+   * this back via the `If-Match` header (or the body's `expectedVersion`)
+   * on the next `PATCH` so the server can run a Compare-And-Set.
+   */
+  version?: number;
 }
 
 /**
@@ -97,6 +105,13 @@ export interface UpdatePromptInput {
   variables?: PromptVariable[];
   tags?: string[];
   changeReason?: string;
+  /**
+   * Optimistic-concurrency token (TASK-302 Stream D Phase E.3) — should
+   * match the `version` the SDK read from the prior `get()`. The server
+   * fails with `412 Precondition Failed` when the row drifted. When the
+   * caller uses `If-Match` instead, the header wins.
+   */
+  expectedVersion?: number;
 }
 
 /**

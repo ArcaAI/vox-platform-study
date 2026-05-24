@@ -31,6 +31,13 @@ export interface Pipeline {
   configYaml?: string;
   tags?: string[];
   resourceStatus?: string;
+  /**
+   * Row's optimistic-concurrency version (TASK-302 Stream D Phase E.4) —
+   * `_version` in the database. Echo back via the `If-Match` header (or
+   * the body's `expectedVersion`) on the next PATCH so the server can
+   * run a Compare-And-Set.
+   */
+  version?: number;
   [key: string]: unknown;
 }
 
@@ -48,6 +55,13 @@ export interface UpdatePipelineInput {
   configYaml?: string;
   description?: string;
   tags?: string[];
+  /**
+   * Optimistic-concurrency token (TASK-302 Stream D Phase E.4) — should
+   * match the `version` the SDK read from the prior `get()`. The server
+   * fails with `412 Precondition Failed` when the row drifted. When the
+   * caller uses `If-Match` instead, the header wins.
+   */
+  expectedVersion?: number;
 }
 
 export interface PipelineValidationResult {

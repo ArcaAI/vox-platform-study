@@ -1,5 +1,5 @@
-import { IsString, IsOptional, IsArray, MaxLength, IsIn } from 'class-validator';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsOptional, IsArray, IsInt, MaxLength, Min, IsIn } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ResourceStatusType } from '@arcaai/domains';
 
 export class UpdatePromptTemplateRequest {
@@ -40,4 +40,26 @@ export class UpdatePromptTemplateRequest {
   @IsOptional()
   @IsIn([ResourceStatusType.ENABLED, ResourceStatusType.DISABLED])
   resourceStatus?: ResourceStatusType;
+
+  /**
+   * Optimistic-concurrency token (TASK-302 Stream D Phase E.3).
+   *
+   * Required. The client must read the row first, then echo back the
+   * `version` it observed. The service issues a Compare-And-Set
+   * (`promptTemplateRepository.updateWithVersion`) and fails with
+   * `OptimisticConcurrencyException` → HTTP 412 Precondition Failed
+   * if `_version` has drifted under the client between read and write.
+   *
+   * **Important**: this `expectedVersion` is the OCC token for the
+   * `PromptTemplate` row's `_version` column — it is NOT the
+   * human-meaningful version number tracked in the `PromptVersion`
+   * sibling table. Do not conflate.
+   */
+  @ApiProperty({
+    description: 'Current row version of the PromptTemplate row (from the prior GET). The PATCH fails with 412 if the version drifted.',
+    example: 7,
+  })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
 }

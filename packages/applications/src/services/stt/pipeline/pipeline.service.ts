@@ -64,7 +64,13 @@ export class PipelineService extends BaseService implements IPipelineService {
   }
 
   /**
-   * Update an existing pipeline
+   * Update an existing pipeline.
+   *
+   * TASK-302 Stream D Phase E.4 — OCC migration. Writes via Compare-And-Set
+   * against the row's `_version` column. The DTO's `expectedVersion` (or
+   * the controller's `If-Match`-folded value) is the CAS predicate; on
+   * version drift the repository raises `OptimisticConcurrencyException`,
+   * which the `ExceptionInterceptor` maps to `412 Precondition Failed`.
    */
   async update(id: string, dto: UpdatePipelineRequest): Promise<PipelineResponse> {
     const tenantId = this.tenantId;
@@ -79,7 +85,6 @@ export class PipelineService extends BaseService implements IPipelineService {
       throw new NotFoundException(`Pipeline ${id} not found`);
     }
 
-    // Check slug uniqueness if changing
     if (dto.slug && dto.slug !== existing.slug) {
       const isUnique = await this.pipelineRepository.isSlugUnique(tenantId, dto.slug, id);
       if (!isUnique) {
@@ -87,7 +92,6 @@ export class PipelineService extends BaseService implements IPipelineService {
       }
     }
 
-    // Validate YAML if changing
     if (dto.configYaml) {
       const validation = await this.validateYaml(dto.configYaml);
       if (!validation.valid) {
@@ -95,7 +99,6 @@ export class PipelineService extends BaseService implements IPipelineService {
       }
     }
 
-    // Apply updates
     if (dto.name !== undefined) existing.name = dto.name;
     if (dto.slug !== undefined) existing.slug = dto.slug;
     if (dto.description !== undefined) existing.description = dto.description;
@@ -103,11 +106,20 @@ export class PipelineService extends BaseService implements IPipelineService {
     if (dto.tags !== undefined) existing.tags = dto.tags;
     existing.updatedBy = userId ?? null;
 
-    const updated = await this.pipelineRepository.update(id, existing);
+    // Snapshot the pre-write `_version` BEFORE the CAS bumps it (audit
+    // correlation mirrors C.8 / E.1 / E.2 / E.3).
+    const previousVersion = existing.version;
+
+    const updated = await this.pipelineRepository.updateWithVersion(id, existing, dto.expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
-      data: { slug: updated.slug, name: updated.name },
+      data: {
+        slug: updated.slug,
+        name: updated.name,
+        previousVersion,
+        newVersion: updated.version,
+      },
     });
 
     return PipelineDtoMapper.toResponse(updated);
