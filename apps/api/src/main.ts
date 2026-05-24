@@ -219,13 +219,16 @@ async function bootstrap() {
   );
 
   // Phase 0 Item 1 (TASK-302 Stream A) — strict input validation.
-  // Stage 1 (this commit): whitelist:true strips unknown fields without
-  // throwing. After a 24h staging soak with no `dropped-field` warnings,
-  // stage 2 commit adds forbidNonWhitelisted + forbidUnknownValues.
+  // Stage 2 (current): whitelist + forbidNonWhitelisted + forbidUnknownValues.
+  // Closes the JWT_SECRET_KEY mass-assignment exploit chain at the HTTP
+  // boundary by rejecting any DTO key not declared on the target class.
+  // Backed by the explicit-allowlist refactor in TenantService (Item 2).
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
       whitelist: true,
+      forbidNonWhitelisted: true,
+      forbidUnknownValues: true,
     }),
   );
 
