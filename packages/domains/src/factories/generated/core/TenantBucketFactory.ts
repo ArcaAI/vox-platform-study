@@ -4,14 +4,17 @@ import { generateId } from '../../../utils';
 
 export const SYSTEM_BUCKET_SLUGS = {
   AUDIO: 'audio',
+  ATTACHMENTS: 'attachments',
 } as const;
 
 const SYSTEM_BUCKET_DESCRIPTIONS: Record<string, string> = {
   [SYSTEM_BUCKET_SLUGS.AUDIO]: 'Tenant audio storage (streaming and batch jobs)',
+  [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: 'Tenant attachment storage (consultation files)',
 };
 
 const SYSTEM_BUCKET_PATH_PATTERNS: Record<string, string> = {
   [SYSTEM_BUCKET_SLUGS.AUDIO]: '{yyyy}/{MM}',
+  [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: '{yyyy}/{MM}/{dd}',
 };
 
 function sanitizeBucketName(input: string): string {
@@ -24,7 +27,8 @@ function sanitizeBucketName(input: string): string {
 
 function buildBucketName(tenantKey: string, slug: string): string {
   const sanitizedKey = sanitizeBucketName(tenantKey);
-  return `hope-audio-${sanitizedKey}`;
+  const sanitizedSlug = sanitizeBucketName(slug);
+  return `hope-${sanitizedSlug}-${sanitizedKey}`;
 }
 
 export class TenantBucketFactory {
@@ -70,6 +74,7 @@ export class TenantBucketFactory {
   static CreateDefaultSystemBuckets(tenantId: string, tenantKey: string, createdBy?: string): TenantBucketEntity[] {
     return [
       this.CreateSystemBucket(tenantId, tenantKey, SYSTEM_BUCKET_SLUGS.AUDIO, undefined, createdBy),
+      this.CreateSystemBucket(tenantId, tenantKey, SYSTEM_BUCKET_SLUGS.ATTACHMENTS, undefined, createdBy),
     ];
   }
 }

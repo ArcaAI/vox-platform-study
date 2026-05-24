@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UserRoleAssignmentService } from '../userRoleAssignment.service';
 import { SysEventType, ResourceStatusType } from '@arcaai/domains';
+import { DataNotFoundException } from '@arcaai/exceptions';
 
 // Mock ClsService - represents the request context
 const mockClsService = {
@@ -146,6 +147,11 @@ describe('UserRoleAssignmentService', () => {
             mockUserRoleAssignmentRepository as any,
             mockEventEmitter as any,
             mockClsService as any
+        );
+
+        // Default: no soft-deleted record exists, so create proceeds normally
+        mockUserRoleAssignmentRepository.findFirst.mockRejectedValue(
+            new DataNotFoundException('UserRoleAssignment', 'not-found')
         );
     });
 
