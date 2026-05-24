@@ -114,7 +114,13 @@ test-packages:
     - pnpm turbo build --filter=@arcaai/exceptions
     - pnpm turbo build --filter=@arcaai/logger
     - pnpm turbo build --filter=@arcaai/domains
-    - pnpm turbo test --filter=@arcaai/logger --filter=@arcaai/utils --filter=@arcaai/pipeline
+    # TASK-302 Stream D Phase B (B.4) — `@arcaai/domains` is included so the
+    # permanent Postgres regression guard for optimistic-locking CAS runs in
+    # CI. DATABASE_URL is supplied via *test-env-vars; when set the
+    # `updateWithVersion.postgres.test.ts` file exercises a live Postgres and
+    # asserts the `_version` predicate is emitted verbatim by the driver
+    # (defense against Prisma #10207 / #28840 on a future driver migration).
+    - pnpm turbo test --filter=@arcaai/logger --filter=@arcaai/utils --filter=@arcaai/pipeline --filter=@arcaai/domains
   rules:
     - if: $SKIP_TESTS == "true"
       when: never

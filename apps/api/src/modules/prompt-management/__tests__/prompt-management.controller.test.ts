@@ -175,11 +175,15 @@ describe('PromptManagementController', () => {
     });
 
     describe('PATCH /prompt-templates/:id (update)', () => {
-        it('should call service.updatePromptTemplate with id and body', async () => {
-            const body = { content: 'Updated content', changeReason: 'Fix typo' };
+        it('should call service.updatePromptTemplate with id and body (no If-Match header → body wins)', async () => {
+            // TASK-302 Stream D Phase E.3 — when `@ExpectedVersion()` resolves
+            // to `undefined` (header missing on a non-`@RequiresIfMatch()`
+            // route, or in this unit test where the guard does not run), the
+            // controller forwards the request unchanged.
+            const body = { content: 'Updated content', changeReason: 'Fix typo', expectedVersion: 5 };
             mockService.updatePromptTemplate.mockResolvedValue(fakeTemplateEntity);
 
-            await controller.update('tpl-1', body as any);
+            await controller.update('tpl-1', body as any, undefined);
 
             expect(mockService.updatePromptTemplate).toHaveBeenCalledWith('tpl-1', body);
         });
@@ -187,10 +191,31 @@ describe('PromptManagementController', () => {
         it('should return the updated template', async () => {
             mockService.updatePromptTemplate.mockResolvedValue(fakeTemplateEntity);
 
-            const result = await controller.update('tpl-1', { content: 'Updated' } as any);
+            const result = await controller.update('tpl-1', { content: 'Updated', expectedVersion: 1 } as any, undefined);
 
             expect(result).toBeDefined();
             expect(result.name).toBe('SOAP Summary');
+        });
+
+        it('folds the If-Match header into the body-field expectedVersion (header wins) (TASK-302 Stream D Phase E.3)', async () => {
+            // Mirrors the tenant/department/global-setting controllers: when
+            // the client sets `If-Match: "7"`, the parser hands us `7` and
+            // it must take precedence over any body-supplied value.
+            mockService.updatePromptTemplate.mockResolvedValue(fakeTemplateEntity);
+
+            await controller.update(
+                'tpl-1',
+                { content: 'Updated', expectedVersion: 99 } as any,
+                7,
+            );
+
+            expect(mockService.updatePromptTemplate).toHaveBeenCalledWith(
+                'tpl-1',
+                expect.objectContaining({
+                    content: 'Updated',
+                    expectedVersion: 7,
+                }),
+            );
         });
     });
 
@@ -252,17 +277,25 @@ describe('PromptManagementController', () => {
     });
 
     describe('POST /prompt-templates/:id/versions/:versionNumber/activate (activateVersion)', () => {
-        it('should get the version content and update the template', async () => {
+        it('should get the version content and update the template, passing expectedVersion from the current template (TASK-302 Stream D Phase E.3)', async () => {
+            // TASK-302 Stream D Phase E.3 — `activateVersion` is a
+            // server-driven rollback (no user-supplied If-Match). The
+            // controller now re-reads the current template to capture its
+            // `_version` and forwards it as `expectedVersion` so the CAS
+            // write still has a valid predicate.
             mockService.getVersion.mockResolvedValue(fakeVersionEntity);
+            mockService.getPromptTemplate.mockResolvedValue({ ...fakeTemplateEntity, version: 13 });
             mockService.updatePromptTemplate.mockResolvedValue(fakeTemplateEntity);
 
             await controller.activateVersion('tpl-1', 1);
 
             expect(mockService.getVersion).toHaveBeenCalledWith('tpl-1', 1);
+            expect(mockService.getPromptTemplate).toHaveBeenCalledWith('tpl-1');
             expect(mockService.updatePromptTemplate).toHaveBeenCalledWith('tpl-1', {
                 content: fakeVersionEntity.content,
                 variables: fakeVersionEntity.variables,
                 changeReason: 'Activated version 1',
+                expectedVersion: 13,
             });
         });
 
@@ -270,6 +303,17 @@ describe('PromptManagementController', () => {
             mockService.getVersion.mockResolvedValue(null);
 
             await expect(controller.activateVersion('tpl-1', 99)).rejects.toThrow();
+        });
+
+        it('should throw NotFoundException when the template itself is gone between getVersion and CAS read (TASK-302 Stream D Phase E.3)', async () => {
+            // Defensive — if the template was hard-deleted between the
+            // version lookup and our re-read for `_version`, surface as 404
+            // rather than risk passing `undefined` into the CAS write.
+            mockService.getVersion.mockResolvedValue(fakeVersionEntity);
+            mockService.getPromptTemplate.mockResolvedValue(null);
+
+            await expect(controller.activateVersion('tpl-1', 1)).rejects.toThrow();
+            expect(mockService.updatePromptTemplate).not.toHaveBeenCalled();
         });
     });
 

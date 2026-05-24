@@ -234,6 +234,65 @@ describe('MyTenantController', () => {
             expect(tenantService.fetchByCodeName).not.toHaveBeenCalled();
             expect(tenantService.updateTenantConfigs).not.toHaveBeenCalled();
         });
+
+        // TASK-302 Stream D Phase D (D.3.2) — the controller is annotated
+        // with `@RequiresIfMatch()`, so under real HTTP traffic
+        // `expectedFromHeader` is GUARANTEED to be a positive integer (the
+        // 428 fires in the param decorator if it would have been undefined).
+        // These unit tests cover the controller-internal logic of folding
+        // the header value into each row's `expectedVersion`.
+        it('TASK-302 Stream D Phase D — folds If-Match header value into each row\'s expectedVersion', async () => {
+            tenantService = createMockTenantService();
+            clsService = createMockClsService('tenant-uuid-789');
+
+            tenantService.updateTenantConfigs.mockResolvedValue({
+                data: [],
+                count: 0,
+                limit: 100,
+                page: 1,
+            });
+
+            controller = new MyTenantController(tenantService as any, clsService as any);
+            const configs = [
+                { id: 'cfg-1', value: 'th', expectedVersion: 99 },
+                { id: 'cfg-2', value: 'en', expectedVersion: 99 },
+            ];
+
+            // Header carries 7 — it MUST override every row's body-field 99.
+            await controller.updateMyConfig(configs as any, 7);
+
+            expect(tenantService.updateTenantConfigs).toHaveBeenCalledWith(
+                'tenant-uuid-789',
+                [
+                    { id: 'cfg-1', value: 'th', expectedVersion: 7 },
+                    { id: 'cfg-2', value: 'en', expectedVersion: 7 },
+                ],
+            );
+        });
+
+        it('TASK-302 Stream D Phase D — preserves body-field expectedVersion when header is absent (service-to-service fallback)', async () => {
+            // This path only fires off-route (i.e., a non-@RequiresIfMatch
+            // route would let `expectedFromHeader = undefined` reach the
+            // handler). Once `@RequiresIfMatch()` is on, the 428 fires
+            // before the handler runs, so in production traffic this
+            // branch is unreachable. Unit-testing it nonetheless documents
+            // the controller's invariant.
+            tenantService = createMockTenantService();
+            clsService = createMockClsService('tenant-uuid-789');
+
+            tenantService.updateTenantConfigs.mockResolvedValue({ data: [], count: 0, limit: 100, page: 1 });
+
+            controller = new MyTenantController(tenantService as any, clsService as any);
+            const configs = [
+                { id: 'cfg-1', value: 'th', expectedVersion: 5 },
+                { id: 'cfg-2', value: 'en', expectedVersion: 12 },
+            ];
+
+            await controller.updateMyConfig(configs as any, undefined);
+
+            // Per-row body-field values preserved when header is absent.
+            expect(tenantService.updateTenantConfigs).toHaveBeenCalledWith('tenant-uuid-789', configs);
+        });
     });
 
     describe('OpenAPI/Swagger metadata', () => {

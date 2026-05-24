@@ -18,6 +18,10 @@ export interface AudioPipeline {
   updatedAt: string;
   createdBy?: string | null;
   updatedBy?: string | null;
+  // TASK-302 Stream D Phase E.4 — row version for optimistic concurrency.
+  // The server stamps `ETag: "<version>"` on every AsrPipeline response
+  // and `If-Match` is required on every PATCH.
+  version?: number;
 }
 
 export interface PaginatedAudioPipelines {
@@ -42,6 +46,10 @@ export interface UpdateAudioPipelineInput {
   description?: string;
   configYaml?: string;
   tags?: string[];
+  // TASK-302 Stream D Phase E.4 — required CAS predicate (echoed from
+  // the prior GET). The controller folds the `If-Match` header value
+  // over this when both are present.
+  expectedVersion: number;
 }
 
 export interface YamlValidationResult {
@@ -102,10 +110,18 @@ export function useCreateAudioPipeline(tenantId: string) {
 export function useUpdateAudioPipeline(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: UpdateAudioPipelineInput & { id: string }) =>
-      adminClient.patch<AudioPipeline>(`/admin/audio/pipelines/${id}`, input, {
-        tenantId,
-      }),
+    // TASK-302 Stream D Phase E.4 — `ifMatch` is forwarded as the RFC 7232
+    // `If-Match: "<version>"` request header; the API folds its value
+    // over the body-field `expectedVersion`. The PATCH route is
+    // `@RequiresIfMatch()` so callers MUST supply `ifMatch` (or rely on
+    // `expectedVersion` as the body fallback before deploy ordering
+    // catches up).
+    mutationFn: ({ id, ifMatch, ...input }: UpdateAudioPipelineInput & { id: string; ifMatch?: string }) =>
+      adminClient.patch<AudioPipeline>(
+        `/admin/audio/pipelines/${id}`,
+        input,
+        ifMatch ? { tenantId, ifMatch } : { tenantId },
+      ),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: audioPipelineKeys.all(tenantId) });
       qc.invalidateQueries({

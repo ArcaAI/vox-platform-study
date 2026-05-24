@@ -12,8 +12,14 @@ import {
   UpdateTenantConfigRequest,
 } from '@arcaai/applications';
 import { Controller, Body, Param, Get, Inject, Query } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { ApiEndpoint, CanManage } from '../../decorators';
+// TASK-302 Stream D Phase E.1 — `@RequiresIfMatch()` route marker +
+// `@ExpectedVersion()` param decorator. The route guard fires 428 when
+// the header is missing; the param decorator returns the parsed version
+// when present (or `undefined` when this route is NOT marked, leaving
+// the body-field as the service's source of truth).
+import { RequiresIfMatch, ExpectedVersion } from '../../decorators';
 import { TenantUsageResponse } from './dto';
 
 @ApiBearerAuth()
@@ -103,10 +109,44 @@ export class TenantController {
     path: ':id',
     by: ['id'],
   })
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Update tenant',
+    description:
+      'Updates one tenant row. Optimistic concurrency is enforced (TASK-302 Stream D Phase E.1): ' +
+      'the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set ' +
+      "against the row's `_version`. When the header is present, its value overrides the " +
+      'body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; ' +
+      'missing header is `428 Precondition Required`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description:
+      'RFC 7232 strong validator carrying the version the client read (e.g. `"7"`). ' +
+      "The server CAS'es against this value; if `_version` has drifted, a `412 " +
+      'Precondition Failed` is returned with the current version in the response body.',
+    required: true,
+    example: '"7"',
+  })
   @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
-  async update(@Param('id') id: string, @Body() request: UpdateTenantRequest): Promise<TenantResponse> {
-    const result = await this.tenantService.update(id, request);
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async update(
+    @Param('id') id: string,
+    @Body() request: UpdateTenantRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<TenantResponse> {
+    // TASK-302 Stream D Phase E.1 — header takes precedence over body
+    // when both are present. On a `@RequiresIfMatch()` route, the param
+    // decorator already fired 428 if the header would have been
+    // undefined, so the fallback below is only reachable in tests /
+    // off-route service-to-service traffic.
+    const effectiveRequest: UpdateTenantRequest =
+      expectedFromHeader !== undefined
+        ? { ...request, expectedVersion: expectedFromHeader }
+        : request;
+    const result = await this.tenantService.update(id, effectiveRequest);
     return TenantDtoMapper.ToResponse(result);
   }
 

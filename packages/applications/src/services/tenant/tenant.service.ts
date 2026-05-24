@@ -338,24 +338,54 @@ export class TenantService extends BaseService implements ITenantService {
   /**
    * Updates a tenant
    * @param id - The tenant ID
-   * @param request - The update request containing changes
+   * @param request - The update request containing changes (including
+   *   the mandatory `expectedVersion` carried from the prior GET — see
+   *   TASK-302 Stream D Phase E.1 / `UpdateTenantRequest`).
    * @returns Promise resolving to the updated tenant
    * @throws ArgumentInvalidException if no changes are detected
+   * @throws OptimisticConcurrencyException if the row's `_version` drifted
+   *   under us (CAS predicate matched zero rows). The HTTP layer renders
+   *   this as `412 Precondition Failed` via the Phase D ExceptionFilter.
+   *
+   * @see TASK-302 Stream D Phase E.1 — Tenant OCC migration
    */
   async update(id: EntityId, request: UpdateTenantRequest): Promise<TenantEntity> {
     const tenant = await this.tenantRepository.findById(id);
 
     const previousData = tenant.toObject();
-    this.updateEntity(tenant, request);
+    // `expectedVersion` is the CAS predicate input only — keep it out of
+    // `updateEntity` so it is never written onto the entity or staged for
+    // persistence. The DTO declares it but the entity has no such setter
+    // (the `_version` getter is read-only per B.5).
+    const { expectedVersion, ...editableRequest } = request;
+    this.updateEntity(tenant, editableRequest as UpdateTenantRequest);
 
     if (!tenant.hasChanges) {
       throw new ArgumentInvalidException(`No changes to write to.`);
     }
-    const updatedTenant = await this.tenantRepository.update(id, tenant);
+
+    // Snapshot the row's pre-write version BEFORE the CAS bumps it. After
+    // `updateWithVersion` returns, `tenant.version` (round-tripped from the
+    // DB) will already be the new version. Mirrors the pattern used by
+    // `updateTenantConfigs` after C.8.
+    const previousVersion = tenant.version;
+
+    // TASK-302 Stream D Phase E.1 — Compare-And-Set against `_version`.
+    // The repository wraps `prisma.tenant.updateMany` in a predicate that
+    // requires `_version === expectedVersion`; a mismatch surfaces as
+    // `OptimisticConcurrencyException`. We deliberately drop the legacy
+    // `tenantRepository.update(id, tenant)` write path, which bypassed OCC.
+    const updatedTenant = await this.tenantRepository.updateWithVersion(id, tenant, expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updatedTenant.id,
-      data: tenant.changes,
+      data: {
+        ...tenant.changes,
+        // Carry the version transition so audit consumers can correlate the
+        // change with the row's prior state (same shape as C.8).
+        previousVersion,
+        newVersion: updatedTenant.version,
+      },
       previousData,
     });
     return updatedTenant;
@@ -479,61 +509,113 @@ export class TenantService extends BaseService implements ITenantService {
       throw new ForbiddenException(`Tenant '${GLOBAL_TENANT_KEY}' holds system defaults and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
     }
 
-    const updatedConfigs: GlobalSettingEntity[] = [];
+    // TASK-302 Stream D Phase C (C.4) — all-or-nothing via Prisma's
+    // interactive transaction. Each per-row CAS is issued through the
+    // tx client; if any row's `_version` drifted (or any other failure
+    // bubbles out of the callback) the SQL transaction is automatically
+    // rolled back, including the already-applied earlier rows. The
+    // success-only `broadcastSysEvent(ResourceUpdated)` lives OUTSIDE
+    // the callback so a rolled-back batch produces no audit entry that
+    // would mislead downstream observers.
+    //
+    // Note: we deliberately do NOT route through `CoreUnitOfWorkService`
+    // because its `startTransaction()` issues `$transaction(async (tx) => tx)`
+    // which commits the transaction before any subsequent caller can use
+    // the tx client — i.e., the existing UoW pattern is non-functional.
+    // Using `databaseService.baseClient.$transaction(callback)` directly
+    // is the canonical Prisma idiom and delivers actual atomicity.
+    // TASK-302 Stream D Phase C (C.8) — snapshot each row's `_version`
+    // BEFORE the CAS so the post-write audit-log SysEvent can carry the
+    // exact transition (previousVersion -> newVersion). Investigators then
+    // reconstruct history via `metadata->>'newVersion'` without re-deriving
+    // from timestamps (Research §7). Index aligns with `results` below.
+    const previousVersions: number[] = [];
 
-    for (const config of request) {
-      const existingConfig = await this.globalSettingRepository.findById(config.id);
+    const updatedConfigs: GlobalSettingEntity[] = await this.databaseService.baseClient.$transaction(async (tx) => {
+      const results: GlobalSettingEntity[] = [];
+      for (const config of request) {
+        const existingConfig = await this.globalSettingRepository.findById(config.id);
 
-      if (!existingConfig) {
-        throw new ArgumentInvalidException(`Config with id ${config.id} not found`);
+        if (!existingConfig) {
+          throw new ArgumentInvalidException(`Config with id ${config.id} not found`);
+        }
+
+        if (existingConfig.tenantId !== tenant.id) {
+          throw new ArgumentInvalidException(`Config ${config.id} does not belong to tenant ${tenant.id}`);
+        }
+
+        if (existingConfig.locked === true && !isSuperAdmin) {
+          throw new ForbiddenException(`Setting '${existingConfig.key}' is locked and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
+        }
+
+        if (config.value !== undefined) {
+          await this.validateSmrConfigValue(existingConfig.key, config.value, tenant.id);
+        }
+
+        // Phase 0 Item 2 (TASK-302 Stream A) — explicit allowlist.
+        // NEVER spread `config` directly into `updateEntity`: that path
+        // assigns every key on the entity (mass-assignment) and lets a
+        // caller smuggle `key`, `tenantId`, `locked`, `defaultValue` into
+        // a GlobalSettingEntity even if the HTTP ValidationPipe is
+        // bypassed. Only `value` and `description` are mutable here.
+        const changes: { value?: string; description?: string } = {};
+        if (config.value !== undefined) {
+          changes.value = config.value;
+        }
+        if (config.description !== undefined) {
+          changes.description = config.description;
+        }
+        this.updateEntity(existingConfig, changes);
+
+        // C.8 — snapshot the pre-write version BEFORE the CAS bumps the
+        // entity's `_version`. The repo round-trips the bumped version,
+        // so reading `existingConfig.version` AFTER the CAS would emit
+        // `previousVersion === newVersion` and break audit correlation.
+        const previousVersion = existingConfig.version;
+
+        if (!existingConfig.hasChanges) {
+          results.push(existingConfig);
+          previousVersions.push(previousVersion);
+          continue;
+        }
+
+        // TASK-302 Stream D Phase C (C.3) — Compare-And-Set against `_version`.
+        // The `OptimisticConcurrencyException` propagates straight out of
+        // the callback, aborting the outer `$transaction` (C.4 atomicity).
+        // The HTTP layer (Phase D ExceptionFilter) renders `412 Precondition
+        // Failed` with `{ currentVersion, yourVersion }`.
+        const updatedConfig = await this.globalSettingRepository.updateWithVersion(
+          existingConfig.id,
+          existingConfig,
+          config.expectedVersion,
+          tx,
+        );
+
+        if (!updatedConfig) {
+          throw new InternalServerErrorException(`Failed to update GlobalSettingEntity with id: ${config.id}`);
+        }
+
+        results.push(updatedConfig);
+        previousVersions.push(previousVersion);
       }
-
-      if (existingConfig.tenantId !== tenant.id) {
-        throw new ArgumentInvalidException(`Config ${config.id} does not belong to tenant ${tenant.id}`);
-      }
-
-      if (existingConfig.locked === true && !isSuperAdmin) {
-        throw new ForbiddenException(`Setting '${existingConfig.key}' is locked and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
-      }
-
-      if (config.value !== undefined) {
-        await this.validateSmrConfigValue(existingConfig.key, config.value, tenant.id);
-      }
-
-      // Phase 0 Item 2 (TASK-302 Stream A) — explicit allowlist.
-      // NEVER spread `config` directly into `updateEntity`: that path
-      // assigns every key on the entity (mass-assignment) and lets a
-      // caller smuggle `key`, `tenantId`, `locked`, `defaultValue` into
-      // a GlobalSettingEntity even if the HTTP ValidationPipe is
-      // bypassed. Only `value` and `description` are mutable here.
-      const changes: { value?: string; description?: string } = {};
-      if (config.value !== undefined) {
-        changes.value = config.value;
-      }
-      if (config.description !== undefined) {
-        changes.description = config.description;
-      }
-      this.updateEntity(existingConfig, changes);
-
-      if (!existingConfig.hasChanges) {
-        updatedConfigs.push(existingConfig);
-        continue;
-      }
-
-      const updatedConfig = await this.globalSettingRepository.update(existingConfig.id, existingConfig);
-
-      if (!updatedConfig) {
-        throw new InternalServerErrorException(`Failed to update GlobalSettingEntity with id: ${config.id}`);
-      }
-
-      updatedConfigs.push(updatedConfig);
-    }
+      return results;
+    });
 
     // Phase 0 Item 4 (TASK-302 Stream A) — scrub @Secret fields when locked.
     // Per-entity decision: a mixed batch emits a partially-scrubbed array.
+    // C.4 — broadcast lives OUTSIDE the transaction so a rolled-back batch
+    // produces no `Resource.Updated` audit entry.
+    // C.8 — carry the per-row version transition so audit consumers can
+    // correlate the change with the row's prior state. Merging happens AFTER
+    // `scrubLockedForAudit` so the (potentially frozen) scrubbed object's
+    // metadata fields are appended via spread, not in-place mutation.
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceIds: updatedConfigs.map((config) => config.id),
-      data: updatedConfigs.map((config) => scrubLockedForAudit(config)),
+      data: updatedConfigs.map((config, i) => ({
+        ...scrubLockedForAudit(config),
+        previousVersion: previousVersions[i],
+        newVersion: config.version,
+      })),
     });
 
     return new FetchResponse<GlobalSettingEntity>({

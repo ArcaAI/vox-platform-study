@@ -10,7 +10,8 @@
     "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
     "dev": "tsc --watch",
     "lint": "ESLINT_USE_FLAT_CONFIG=false eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@arcaai/database": "workspace:*",

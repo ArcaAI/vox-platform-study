@@ -298,15 +298,19 @@ describe('Tenant API hooks', () => {
       );
 
       const payload: UpdateTenantConfigItem[] = [
-        { id: 'cfg-001', value: 'fr' },
+        { id: 'cfg-001', value: 'fr', expectedVersion: 1 },
       ];
 
-      result.current.mutate({ identifier: TENANT_ID, configs: payload });
+      result.current.mutate({ identifier: TENANT_ID, configs: payload, ifMatch: '"1"' });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      // TASK-302 Stream D Phase D.5 — the mutation now forwards an
+      // `If-Match` header through `RequestOptions` when supplied. The
+      // body shape remains the row array; only the wrapper changed.
       expect(mockPatch).toHaveBeenCalledWith(
         `/admin/tenants/configs/${TENANT_ID}`,
         payload,
+        { ifMatch: '"1"' },
       );
     });
 
@@ -319,17 +323,18 @@ describe('Tenant API hooks', () => {
       );
 
       const payload: UpdateTenantConfigItem[] = [
-        { id: 'cfg-001', value: 'updated', description: 'New desc' },
+        { id: 'cfg-001', value: 'updated', description: 'New desc', expectedVersion: 1 },
       ];
 
-      result.current.mutate({ identifier: TENANT_ID, configs: payload });
+      result.current.mutate({ identifier: TENANT_ID, configs: payload, ifMatch: '"1"' });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(mockPatch).toHaveBeenCalledWith(
         expect.any(String),
         expect.arrayContaining([
-          expect.objectContaining({ description: 'New desc' }),
+          expect.objectContaining({ description: 'New desc', expectedVersion: 1 }),
         ]),
+        { ifMatch: '"1"' },
       );
     });
 
@@ -343,7 +348,7 @@ describe('Tenant API hooks', () => {
 
       result.current.mutate({
         identifier: TENANT_ID,
-        configs: [{ id: 'cfg-001', value: 'bad' }],
+        configs: [{ id: 'cfg-001', value: 'bad', expectedVersion: 1 }],
       });
 
       await waitFor(() => expect(result.current.isError).toBe(true));
@@ -365,13 +370,13 @@ describe('Tenant API hooks', () => {
       );
 
       const payload: UpdateTenantConfigItem[] = [
-        { id: 'cfg-001', value: 'ja' },
+        { id: 'cfg-001', value: 'ja', expectedVersion: 1 },
       ];
 
-      result.current.mutate(payload);
+      result.current.mutate({ configs: payload, ifMatch: '"1"' });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mockPatch).toHaveBeenCalledWith('/tenant/me/config', payload);
+      expect(mockPatch).toHaveBeenCalledWith('/tenant/me/config', payload, { ifMatch: '"1"' });
     });
 
     it('should propagate API errors', async () => {
@@ -382,7 +387,7 @@ describe('Tenant API hooks', () => {
         { wrapper: createWrapper() },
       );
 
-      result.current.mutate([{ id: 'cfg-001', value: 'bad' }]);
+      result.current.mutate({ configs: [{ id: 'cfg-001', value: 'bad', expectedVersion: 1 }] });
 
       await waitFor(() => expect(result.current.isError).toBe(true));
       expect(result.current.error?.message).toBe('Forbidden');

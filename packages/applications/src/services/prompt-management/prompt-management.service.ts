@@ -133,6 +133,22 @@ export class PromptManagementService extends BaseService implements IPromptManag
     return PromptManagementDtoMapper.toTemplateResponse(saved);
   }
 
+  /**
+   * Update a prompt template.
+   *
+   * TASK-302 Stream D Phase E.3 — write path is now Compare-And-Set
+   * against the row's `_version` column. The `expectedVersion` carried
+   * on the DTO is the CAS predicate input. The `@RequiresIfMatch()`
+   * HTTP route folds the `If-Match` header value over the body-field
+   * at the controller.
+   *
+   * **Important**: the `_version` column is the OCC token; the
+   * `currentVersionNumber` field on `PromptTemplate` (bumped by
+   * `incrementVersion()`) is the human-meaningful PromptVersion
+   * counter — they are distinct concepts.
+   *
+   * @throws OptimisticConcurrencyException — version drift; HTTP 412.
+   */
   async updatePromptTemplate(id: string, dto: UpdatePromptTemplateRequest): Promise<PromptTemplateResponse> {
     const userId = this.requestUserId;
 
@@ -177,11 +193,22 @@ export class PromptManagementService extends BaseService implements IPromptManag
       throw new ArgumentInvalidException('No changes to write to.');
     }
 
-    const updated = await this.promptTemplateRepository.update(id, template);
+    // Snapshot pre-write `_version` BEFORE the CAS bumps it (audit
+    // correlation mirrors C.8 / E.1 / E.2).
+    const previousVersion = template.version;
+
+    // TASK-302 Stream D Phase E.3 — Compare-And-Set against `_version`.
+    // `expectedVersion` is the CAS predicate input only; it never
+    // reaches the entity (the `_version` getter is read-only per B.5).
+    const updated = await this.promptTemplateRepository.updateWithVersion(id, template, dto.expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
-      data: { changeReason: dto.changeReason },
+      data: {
+        changeReason: dto.changeReason,
+        previousVersion,
+        newVersion: updated.version,
+      },
     });
 
     return PromptManagementDtoMapper.toTemplateResponse(updated);
@@ -281,9 +308,14 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   async assignToDepartment(dto: AssignDepartmentPromptRequest): Promise<DepartmentResponse> {
+    // TASK-302 Stream D Phase E.2 — `updatePromptConfig` now enforces OCC,
+    // so the caller MUST carry the Department row's `expectedVersion`.
+    // Cross-service callers (e.g. the prompt-management UI) read the
+    // Department first and echo back its version on this DTO.
     return this.departmentService.updatePromptConfig(dto.departmentId, {
       newPatientPromptId: dto.newPatientPromptId,
       revisitPromptId: dto.revisitPromptId,
+      expectedVersion: dto.expectedVersion,
     });
   }
 

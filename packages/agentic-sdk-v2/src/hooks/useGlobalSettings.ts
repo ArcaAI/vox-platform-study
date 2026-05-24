@@ -9,8 +9,29 @@ import { useApiOperation } from './useApiOperation';
 import { extractArray } from '../utils/responseUtils';
 import { appendPagination } from '../utils/urlUtils';
 import { GLOBAL_SETTINGS_ENDPOINTS } from '../core/constants';
+import { ConfigConflictError } from '../types/settings';
 import type { GlobalSetting, CreateGlobalSettingInput, UpdateGlobalSettingInput } from '../types/settings';
 import type { PaginationParams } from '../types/common';
+import { AgenticError } from '../types/common';
+
+/**
+ * Per-setting `ETag` cache for TASK-302 Stream D Phase D optimistic locking.
+ *
+ * Map from `settingId` -> raw `ETag` header value (e.g. `"7"`, including
+ * the RFC 7232 double quotes). The cache is module-level (not React state)
+ * because:
+ *   - the lifetime spans renders — a `get` followed by a `useEffect`-driven
+ *     `update` must share the token;
+ *   - it's a pure functional dependency of the server's strong-validator
+ *     contract — there's no UI to derive from it;
+ *   - mounting multiple `useGlobalSettings()` consumers on the same page
+ *     must observe the same token (otherwise the second consumer would
+ *     send a stale value).
+ *
+ * Entries are bumped on every successful update and invalidated on conflict;
+ * `get(id)` overwrites with the latest server token.
+ */
+const etagCache = new Map<string, string>();
 
 export interface UseGlobalSettingsReturn {
   settings: GlobalSetting[];
@@ -63,8 +84,20 @@ export function useGlobalSettings(): UseGlobalSettingsReturn {
     [execute],
   );
 
+  // TASK-302 Stream D Phase D — `get` now also captures the `ETag`
+  // response header so a follow-up `update(id, ...)` can replay it as
+  // `If-Match`. Without this, every `update` would either 428 (header
+  // missing on a `@RequiresIfMatch()` route) or race with concurrent
+  // editors.
   const get = useCallback(
-    (id: string) => execute<GlobalSetting>('get', (client) => client.get<GlobalSetting>(GLOBAL_SETTINGS_ENDPOINTS.GET(id))),
+    (id: string) =>
+      execute<GlobalSetting>('get', async (client) => {
+        const { body, etag } = await client.getWithEtag<GlobalSetting>(GLOBAL_SETTINGS_ENDPOINTS.GET(id));
+        if (etag) {
+          etagCache.set(id, etag);
+        }
+        return body;
+      }),
     [execute],
   );
 
@@ -78,12 +111,56 @@ export function useGlobalSettings(): UseGlobalSettingsReturn {
     [execute],
   );
 
+  // TASK-302 Stream D Phase D — `update` replays the cached ETag as
+  // `If-Match`. On `412 Precondition Failed`, the generic AgenticError
+  // is transformed into a structured `ConfigConflictError` so callers
+  // can `instanceof`-check and surface the conflict modal (D.5) instead
+  // of a generic "something went wrong."
   const update = useCallback(
     (id: string, input: UpdateGlobalSettingInput) =>
       execute<GlobalSetting>('update', async (client) => {
-        const data = await client.patch<GlobalSetting>(GLOBAL_SETTINGS_ENDPOINTS.UPDATE(id), input);
-        setSettings((prev) => prev.map((s) => (s.id === id ? data : s)));
-        return data;
+        const etag = etagCache.get(id);
+        if (!etag) {
+          // Refuse to issue a no-If-Match PATCH — that would 428 against
+          // a `@RequiresIfMatch()` route and surface as a confusing
+          // AgenticError. Forcing a get() first keeps the OCC contract
+          // honest end-to-end.
+          throw new Error(
+            `No ETag cached for setting ${id}. Call get(${id}) before update() so the SDK can replay the strong validator.`,
+          );
+        }
+        try {
+          const data = await client.patchWithIfMatch<GlobalSetting>(GLOBAL_SETTINGS_ENDPOINTS.UPDATE(id), input, etag);
+          // Refresh the cached token from the response body's `version`.
+          // The server bumps `_version` by exactly 1 on success; encoding
+          // it here means a follow-up update() without an intervening
+          // get() still works.
+          if (typeof data.version === 'number') {
+            etagCache.set(id, `"${data.version}"`);
+          }
+          setSettings((prev) => prev.map((s) => (s.id === id ? data : s)));
+          return data;
+        } catch (err) {
+          // The AgenticClient surfaces 412 as `AgenticError({ context: {
+          // status: 412, currentVersion } })`. Transform to the
+          // structured ConfigConflictError and invalidate the cache so
+          // a follow-up update() requires a fresh get() (prevents
+          // blind re-application of a stale value).
+          if (err instanceof AgenticError) {
+            const status = (err.context as Record<string, unknown> | undefined)?.status;
+            const currentVersion = (err.context as Record<string, unknown> | undefined)?.currentVersion;
+            if (status === 412) {
+              etagCache.delete(id);
+              const expectedVersion = Number.parseInt(etag.replace(/"/g, ''), 10);
+              throw new ConfigConflictError(
+                id,
+                expectedVersion,
+                typeof currentVersion === 'number' ? currentVersion : expectedVersion + 1,
+              );
+            }
+          }
+          throw err;
+        }
       }),
     [execute],
   );

@@ -8,9 +8,9 @@ import {
   UpdateTenantConfigRequest,
 } from '@arcaai/applications';
 import { Controller, Get, Patch, Body, Inject, BadRequestException } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiHeader } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize } from '../../decorators';
+import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
 @ApiBearerAuth()
 @ApiTags('tenant')
@@ -60,12 +60,51 @@ export class MyTenantController {
    * fallback for super-admins).
    */
   @Patch('me/config')
-  @ApiOperation({ summary: 'Update current tenant configuration' })
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Update current tenant configuration',
+    description:
+      'Updates one or more configuration values for the caller\'s tenant. ' +
+      'Optimistic concurrency is enforced (TASK-302 Stream D): the `If-Match` ' +
+      'header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set ' +
+      'against the row\'s `_version`. When the header is present, its value ' +
+      'is applied as the `expectedVersion` for EVERY row in the request — ' +
+      'the SDK should set `If-Match: "<min(versions)>"` (the most conservative ' +
+      'choice) for bulk updates, OR omit per-row body fields and rely on the ' +
+      'header alone for single-row updates. The body-field `expectedVersion` ' +
+      'remains required by the DTO as the documented fallback for service-to-' +
+      'service callers, but the header takes precedence when set.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description:
+      'RFC 7232 strong validator carrying the version the client read (e.g. `"7"`). ' +
+      'The server CAS\'es against this value; if `_version` has drifted, a `412 ' +
+      'Precondition Failed` is returned with the current version in the response body. ' +
+      'If absent on this route, the response is `428 Precondition Required`.',
+    required: true,
+    example: '"7"',
+  })
   @ApiResponse({ status: 200, description: 'Tenant configuration updated successfully', type: PaginatedTenantConfigResponse })
-  @ApiResponse({ status: 400, description: 'Bad request - no tenant context' })
-  async updateMyConfig(@Body() configs: UpdateTenantConfigRequest[]): Promise<PaginatedTenantConfigResponse> {
+  @ApiResponse({ status: 400, description: 'Bad request — no tenant context, invalid body, or malformed If-Match.' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async updateMyConfig(
+    @Body() configs: UpdateTenantConfigRequest[],
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<PaginatedTenantConfigResponse> {
     const tenantId = this.resolveTenantId();
-    const result = await this.tenantService.updateTenantConfigs(tenantId, configs);
+    // TASK-302 Stream D Phase D (D.3.2) — when the `If-Match` header is
+    // present, it overrides each row's body-field `expectedVersion`. The
+    // SDK is expected to set the header even for bulk updates (using the
+    // minimum row version is the conservative choice); the body-field
+    // path stays in service-to-service traffic. On a `@RequiresIfMatch()`
+    // route, `expectedFromHeader` is guaranteed to be a number — the
+    // 428 fired in the param decorator if it would have been undefined.
+    const effectiveConfigs = expectedFromHeader !== undefined
+      ? configs.map((c) => ({ ...c, expectedVersion: expectedFromHeader }))
+      : configs;
+    const result = await this.tenantService.updateTenantConfigs(tenantId, effectiveConfigs);
     return GlobalSettingDtoMapper.ToPaginatedResponse(result) as PaginatedTenantConfigResponse;
   }
 
