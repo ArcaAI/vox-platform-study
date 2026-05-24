@@ -6,7 +6,7 @@
  */
 
 import type { TranscriptionResult, TranscriptionTimestamp, ComputeDevice, LanguageLocale } from '../types/index.js';
-import { getLanguageCode } from '../types/index.js';
+import { getLanguageCode, STTError, STTErrorCode } from '../types/index.js';
 import type { EngineConfig, TranscribeOptions } from './types.js';
 import { BaseEngine } from './BaseEngine.js';
 import { isWebGPUSupported, isWebAssemblySupported } from '../utils/browserSupport.js';
@@ -131,6 +131,7 @@ export class WhisperEngine extends BaseEngine {
     try {
       const language = options?.language ?? this.config.language;
       const returnTimestamps = options?.returnTimestamps ?? this.config.returnTimestamps;
+      const task = options?.task ?? this.config.task;
 
       // English-only models (.en suffix) reject `language` and `task` parameters.
       // Only pass language for multilingual models.
@@ -139,12 +140,26 @@ export class WhisperEngine extends BaseEngine {
       const isEnglishOnlyModel = modelId.endsWith('.en');
       const allowAutoLanguage = Boolean(this.config.codeSwitching) || language.toLowerCase() === 'auto';
 
+      // TASK-300 L-2: English-only checkpoints cannot translate.
+      if (task === 'translate' && isEnglishOnlyModel) {
+        throw new STTError(
+          STTErrorCode.NOT_SUPPORTED,
+          `English-only Whisper models cannot translate (model: ${modelId}). Use a multilingual checkpoint (e.g. Xenova/whisper-small).`,
+        );
+      }
+
       const transcribeOptions: Record<string, unknown> = {
         return_timestamps: returnTimestamps,
       };
 
       if (!isEnglishOnlyModel && !allowAutoLanguage) {
         transcribeOptions.language = this.normalizeLanguage(language);
+      }
+
+      // TASK-300 L-2: only forward `task` when explicitly requested; the
+      // multilingual checkpoints default to `task=transcribe` server-side.
+      if (task !== undefined && !isEnglishOnlyModel) {
+        transcribeOptions.task = task;
       }
 
       // Add chunking for longer audio

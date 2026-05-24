@@ -1,4 +1,4 @@
-import { IActiveUserContext, IAppSettingsService, IAuthService, IUserService, createJwt } from '@arcaai/applications';
+import { IActiveUserContext, IAppSettingsService, IAuthService, IJwtRevocationService, IUserService, createJwt } from '@arcaai/applications';
 import {
   CoreDatabaseService,
   ResourceStatusType,
@@ -7,7 +7,19 @@ import {
   UserRepository,
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
-import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Inject, Post, Request, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  Post,
+  Request,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import * as bcrypt from 'bcryptjs';
@@ -48,6 +60,7 @@ export class AuthController {
     private readonly tenantRepository: TenantRepository,
     private readonly clsService: ClsService<IActiveUserContext>,
     private readonly streamTicketService: StreamTicketService,
+    @Inject(IJwtRevocationService) private readonly jwtRevocationService: IJwtRevocationService,
   ) {}
 
   @Post('login')
@@ -343,7 +356,11 @@ export class AuthController {
 
     const targetPermissions = await this.getUserPermissions(targetRoles);
 
-    const tenantAssignment = await this.databaseService.client.userRoleAssignment.findFirst({
+    // TASK-295 H-3: resolve the impersonation tenant from the target user's
+    // ENABLED userRoleAssignments. Caller may pin a specific tenant via
+    // `targetTenantId`; otherwise we pick the oldest assignment for backward
+    // compatibility with the previous behavior.
+    const targetAssignments = await this.databaseService.client.userRoleAssignment.findMany({
       where: {
         userId: targetUser.id,
         resourceStatus: ResourceStatusType.ENABLED,
@@ -352,10 +369,36 @@ export class AuthController {
       select: { tenantId: true },
       orderBy: { createdAt: 'asc' },
     });
-    const resolvedTenantId = tenantAssignment?.tenantId ?? '';
+
+    const targetTenantIds = Array.from(
+      new Set(targetAssignments.map((row) => row.tenantId).filter((id): id is string => typeof id === 'string' && id.length > 0)),
+    );
+
+    let resolvedTenantId: string;
+    if (request.targetTenantId) {
+      if (!targetTenantIds.includes(request.targetTenantId)) {
+        throw new BadRequestException('Target user is not assigned to the requested tenant');
+      }
+      resolvedTenantId = request.targetTenantId;
+    } else {
+      resolvedTenantId = targetTenantIds[0] ?? '';
+    }
 
     if (!resolvedTenantId) {
       throw new BadRequestException('Target user has no tenant assignment. Assign the user to a tenant before impersonating.');
+    }
+
+    // TASK-295 C-1: tenant admins must not impersonate users outside their
+    // own tenant. SUPER_ADMIN remains unrestricted (cross-tenant impersonation
+    // is part of the business requirement for global admins).
+    if (!isSuperAdmin) {
+      const adminTenantId = adminUser.tenantId;
+      if (!adminTenantId) {
+        throw new BadRequestException('Tenant admin missing tenant context');
+      }
+      if (adminTenantId !== resolvedTenantId) {
+        throw new ForbiddenException('Tenant admin cannot impersonate users outside their own tenant');
+      }
     }
 
     const jwtSecretKey = this.appSettingsService.getValueWithDefault('JWT_SECRET_KEY', 'default-jwt-secret-key-change-in-production');
@@ -476,6 +519,10 @@ export class AuthController {
       userId: user.id,
       tenantId,
       scope: body.scope,
+      // TASK-295 SEC-A5-6 / M-8: carry the impersonatedBy claim through the
+      // ticket so the SSE/WS request restored from the ticket can fire the
+      // ImpersonationAuditInterceptor and produce a HIPAA-compliant audit row.
+      impersonatedBy: user.impersonatedBy ?? null,
     });
     return {
       ticket: issued.ticket,
@@ -490,18 +537,34 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Revoke the current impersonation token' })
   @ApiResponse({ status: 200, description: 'Impersonation token revoked', type: RevokeImpersonationResponse })
+  @ApiResponse({ status: 400, description: 'Caller is not currently impersonating' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async revokeImpersonation(@Request() req: any): Promise<RevokeImpersonationResponse> {
     const user = this.clsService.get('user');
-    if (user) {
-      await this.authService.trackAuthentication(user.id, {
-        ip: req.ip || '127.0.0.1',
-        userAgent: req.headers['user-agent'] || 'Unknown',
-        endpoint: '/auth/revoke-impersonation',
-        method: 'POST',
-      });
+    if (!user) {
+      throw new UnauthorizedException('User not found in context');
     }
+
+    // TASK-295 L-3: only an actively-impersonated token may be revoked.
+    if (!user.impersonatedBy) {
+      throw new BadRequestException('Not currently impersonating');
+    }
+
+    // TASK-295 C-4: actually revoke the JWT by adding its jti to the
+    // Redis-backed revocation set. JwtStrategy.validate consults this set
+    // on every subsequent request so the revoked token fails at the very
+    // next request.
+    if (user.jti) {
+      await this.jwtRevocationService.revoke(user.jti, user.exp);
+    }
+
+    await this.authService.trackAuthentication(user.id, {
+      ip: req.ip || '127.0.0.1',
+      userAgent: req.headers['user-agent'] || 'Unknown',
+      endpoint: '/auth/revoke-impersonation',
+      method: 'POST',
+    });
     return { success: true };
   }
 

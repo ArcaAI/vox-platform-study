@@ -59,4 +59,25 @@ export class PromptTemplateRepository extends Repository<PromptTemplateEntity, P
       sort: [{ name: 'asc' }],
     });
   }
+
+  /**
+   * Find all USER_PERSONAL templates owned by a given user inside a department, within a tenant.
+   * Used by PromptManagementService.listMyPersonalForDepartment (TASK-294 DEF-C2 W5B-7).
+   */
+  async findMyPersonalForDepartment(
+    tenantId: string,
+    ownerUserId: string,
+    departmentId: string,
+  ): Promise<PromptTemplateEntity[]> {
+    return this.findAll({
+      filters: {
+        tenantId,
+        ownerUserId,
+        departmentId,
+        scope: 'USER_PERSONAL',
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      sort: [{ name: 'asc' }],
+    });
+  }
 }

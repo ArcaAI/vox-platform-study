@@ -20,9 +20,12 @@ const createEntity = (overrides: Partial<IPromptTemplateEntity> = {}) =>
     variables: { name: 'string' },
     currentVersionNumber: 1,
     departmentId: 'dept-1',
+    scope: 'TENANT_DEFAULT',
+    ownerUserId: null,
     tags: ['tag1'],
     Versions: null,
     Department: null,
+    Owner: null,
     createdBy: 'user-1',
     updatedBy: null,
     createdAt: new Date(),
@@ -132,5 +135,38 @@ describe('PromptTemplateEntity', () => {
   it('should handle empty string for name', () => {
     const entity = createEntity({ name: '' });
     expect(entity.name).toBe('');
+  });
+
+  // ─── TASK-294 DEF-C1: scope + ownerUserId ─────────────────────────────
+
+  it('should default scope to TENANT_DEFAULT when omitted', () => {
+    const entity = createEntity({ scope: undefined, ownerUserId: undefined });
+    expect(entity.scope).toBe('TENANT_DEFAULT');
+    expect(entity.ownerUserId).toBeNull();
+  });
+
+  it('should accept USER_PERSONAL scope with ownerUserId in constructor', () => {
+    const entity = createEntity({ scope: 'USER_PERSONAL', ownerUserId: 'user-42' });
+    expect(entity.scope).toBe('USER_PERSONAL');
+    expect(entity.ownerUserId).toBe('user-42');
+  });
+
+  it('should accept DEPARTMENT_DEFAULT scope in constructor', () => {
+    const entity = createEntity({ scope: 'DEPARTMENT_DEFAULT' });
+    expect(entity.scope).toBe('DEPARTMENT_DEFAULT');
+  });
+
+  it('should track scope change via setter', () => {
+    const entity = createEntity();
+    entity.scope = 'USER_PERSONAL';
+    expect(entity.hasChanges).toBe(true);
+    expect(entity.changes.scope).toBe('USER_PERSONAL');
+  });
+
+  it('should track ownerUserId change via setter', () => {
+    const entity = createEntity();
+    entity.ownerUserId = 'user-99';
+    expect(entity.hasChanges).toBe(true);
+    expect(entity.changes.ownerUserId).toBe('user-99');
   });
 });

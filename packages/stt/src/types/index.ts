@@ -29,6 +29,18 @@ export type ComputeDevice = 'webgpu' | 'wasm' | 'auto';
  */
 export type STTProviderType = 'local' | 'remote';
 
+/**
+ * Whisper inference task.
+ *
+ * - `'transcribe'` (default) — return the spoken text in the source language.
+ * - `'translate'` — translate from the source language **to English**. The
+ *   model itself decides the source language; only the **output** is English.
+ *   English-only Whisper checkpoints (model IDs ending with `.en`) cannot
+ *   translate and will be rejected with `STTError(NOT_SUPPORTED)` at the
+ *   engine layer. See TASK-300 L-2.
+ */
+export type WhisperTask = 'transcribe' | 'translate';
+
 // ============================================================================
 // Language Types
 // ============================================================================
@@ -187,6 +199,19 @@ export interface STTFeatureFlags {
    * @default true
    */
   quantized?: boolean;
+
+  /**
+   * Whisper inference task.
+   *
+   * - `'transcribe'` (default) — return the spoken text in the source language.
+   * - `'translate'` — translate from the source language to English. Requires
+   *   a multilingual Whisper model. English-only checkpoints (model IDs
+   *   ending with `.en`) reject this with `STTError(NOT_SUPPORTED)`.
+   *
+   * @default 'transcribe'
+   * @see TASK-300 L-2
+   */
+  task?: WhisperTask;
 }
 
 /**
@@ -201,6 +226,7 @@ export const DEFAULT_FEATURE_FLAGS: Required<Omit<STTFeatureFlags, 'modelId'>> =
   vadGate: false,
   device: 'auto',
   quantized: true,
+  task: 'transcribe',
 };
 
 // ============================================================================
@@ -790,6 +816,23 @@ export interface LocalProviderConfig extends ProviderConfig {
    * Progress callback.
    */
   onProgress?: (progress: ModelLoadProgress) => void;
+
+  /**
+   * TASK-296 C-2: optional reserved-speaker slot for the enrolled doctor.
+   *
+   * When set, `LocalSpeakerDiarizer` pins the FIRST allocated speaker slot
+   * to `reservedSpeakerId` instead of the default `speaker-1`. This is a
+   * short-term workaround for the 40-d MFCC (local) vs 256-d backend
+   * embedding model mismatch — long-term unification onto a single ONNX
+   * speaker-embedding model is tracked in the TASK-293 master roadmap
+   * (W5D / P2-7).
+   */
+  voiceProfile?: {
+    /** Server-side voice profile id (UUID). */
+    id: string;
+    /** Display name / stable id to pin to the first speaker slot. */
+    reservedSpeakerId: string;
+  };
 }
 
 /**

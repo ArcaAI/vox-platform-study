@@ -328,6 +328,32 @@ For most web applications, `tiny` or `base` models are recommended for good real
 | Safari 17.4+ | WASM only | Full | AudioWorklet supported |
 | Edge 113+ | Full | Full | Chromium-based |
 
+### Multi-threaded ONNX Runtime (COOP/COEP) — TASK-300 L-9
+
+The Whisper worker enables ONNX Runtime's multi-threaded WASM backend (via
+`ort.env.wasm.numThreads = min(8, navigator.hardwareConcurrency)`) **only**
+when the host page is cross-origin-isolated. Threaded inference depends on
+`SharedArrayBuffer`, which the browser exposes solely to isolated contexts.
+
+To opt in, the page that loads `@arcaai/stt` must be served with:
+
+```http
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+(Or `credentialless` for COEP if you load third-party assets without CORP
+headers — Chrome 96+, Firefox 110+.) Verify in DevTools by checking
+`window.crossOriginIsolated === true`.
+
+Without these headers the worker silently falls back to single-threaded
+inference. This is the safe default — promoting `numThreads` without
+isolation triggers an immediate `Error: Out of memory` from ORT.
+
+The thread count is clamped at 8 because ORT's Whisper inference sees
+diminishing returns past that point and can starve the rest of the page on
+large CPUs. The same gating applies to `@arcaai/vad` (Silero VAD via ORT).
+
 Check browser support programmatically:
 
 ```typescript

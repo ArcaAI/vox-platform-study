@@ -32,4 +32,14 @@ export class GenerateSummaryRequest {
   @IsOptional()
   @IsObject()
   options?: Record<string, unknown>;
+
+  /**
+   * TASK-299 D-10 — Idempotency-Key for safe POST retries / double-clicks.
+   * When supplied, the backend Redis-dedupes by `(tenantId, userId, key)`
+   * and returns the prior `jobId` on collision (HTTP 200).
+   */
+  @ApiPropertyOptional({ description: 'Idempotency key (UUID) — duplicate POSTs return the prior jobId.' })
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string;
 }

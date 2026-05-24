@@ -232,31 +232,49 @@ describe('SharedConnectionManager', () => {
       manager.dispose();
     });
 
-    it('should append auth token to SSE URL', () => {
+    it('TASK-297 C-SSE-1: appends a stream ticket (not a JWT) to the SSE URL', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
 
       manager.subscribeSSE('job-1', {
         url: 'https://api.example.com/jobs/1/stream',
-        authToken: 'my-jwt-token',
+        ticket: 'st_2a4f',
       });
 
       expect(createdEventSources[0].url).toBe(
-        'https://api.example.com/jobs/1/stream?token=my-jwt-token',
+        'https://api.example.com/jobs/1/stream?ticket=st_2a4f',
       );
       manager.dispose();
     });
 
-    it('should append auth token with & when URL already has query params', () => {
+    it('TASK-297 C-SSE-1: appends ticket with & when URL already has query params', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
 
       manager.subscribeSSE('job-1', {
         url: 'https://api.example.com/jobs/1/stream?format=json',
-        authToken: 'my-jwt-token',
+        ticket: 'st_2a4f',
       });
 
       expect(createdEventSources[0].url).toBe(
-        'https://api.example.com/jobs/1/stream?format=json&token=my-jwt-token',
+        'https://api.example.com/jobs/1/stream?format=json&ticket=st_2a4f',
       );
+      manager.dispose();
+    });
+
+    it('TASK-297 C-SSE-1: never embeds a JWT-shaped value in the SSE URL', () => {
+      const manager = new SharedConnectionManager(undefined, mockLogger);
+
+      // Even if a caller foolishly passes a JWT-looking string as the
+      // ticket, it goes into `?ticket=`, never `?token=`. Real callers
+      // must mint a server-side ticket via `POST /auth/stream-ticket`.
+      manager.subscribeSSE('job-1', {
+        url: 'https://api.example.com/jobs/1/stream',
+        ticket: 'eyJhbGciOiJIUzI1NiJ9.payload.sig',
+      });
+
+      const builtUrl = createdEventSources[0].url;
+      expect(builtUrl).not.toContain('?token=');
+      expect(builtUrl).not.toContain('&token=');
+      expect(builtUrl).toContain('?ticket=');
       manager.dispose();
     });
 

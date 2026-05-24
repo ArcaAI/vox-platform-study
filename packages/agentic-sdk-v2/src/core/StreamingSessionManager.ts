@@ -138,7 +138,7 @@ export class StreamingSessionManager {
    *   ws.send(JSON.stringify({ type: 'auth', token }));
    */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Kept for API compatibility; token sent via first WS message.
-  getWebSocketUrl(_token: string): string | null {
+  getWebSocketUrl(_token?: string): string | null {
     if (!this.sessionId || !this.sessionResponse) {
       return null;
     }
@@ -152,8 +152,45 @@ export class StreamingSessionManager {
     const params = new URLSearchParams({
       sessionId: this.sessionId,
     });
+    // TASK-298 D-1: append the one-shot stream ticket as a query param so
+    // the gateway can authenticate the upgrade request without exposing the
+    // JWT in URL logs.
+    if (this.sessionResponse.ticket) {
+      params.set('ticket', this.sessionResponse.ticket);
+    }
 
     return `${wsOrigin}${wsPath}?${params.toString()}`;
+  }
+
+  /**
+   * TASK-298 D-18: Mint a fresh stream ticket for the current session.
+   * Used by `SttV2WebSocketClient.attemptReconnect` to swap the consumed
+   * ticket with a new one before reopening the WebSocket.
+   *
+   * @throws if no session exists or the backend returns an error.
+   */
+  async refreshTicket(): Promise<string> {
+    if (!this.sessionId || !this.sessionResponse) {
+      throw new Error('No active streaming session — cannot refresh ticket.');
+    }
+
+    this.logger?.debug('Refreshing stream ticket for reconnect', {
+      operation: 'refreshTicket',
+      component: 'StreamingSessionManager',
+      attributes: { sessionId: this.sessionId },
+    });
+
+    const response = await this.apiClient.post<{
+      ticket: string;
+      ticketExpiresAt: number;
+    }>(STT_V2_ENDPOINTS.REFRESH_TICKET(this.sessionId), {});
+
+    this.sessionResponse = {
+      ...this.sessionResponse,
+      ticket: response.ticket,
+      ticketExpiresAt: response.ticketExpiresAt,
+    };
+    return response.ticket;
   }
 
   /**

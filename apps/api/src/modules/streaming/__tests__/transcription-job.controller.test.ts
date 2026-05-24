@@ -1,5 +1,8 @@
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { Observable, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CreateStreamSessionRequest, TranscribeFileRequest } from '../dto';
 import { TranscriptionJobController } from '../transcription-job.controller';
 
 const createMockJobService = () => ({
@@ -40,6 +43,25 @@ const createMockTenantBucketService = () => ({
     getBucketByName: vi.fn(),
 });
 
+const createMockPipelineService = () => ({
+    // Default: pipeline exists and belongs to caller's tenant.
+    getById: vi.fn().mockImplementation(async (id: string) => ({
+        id,
+        tenantId: 'tenant-1',
+        name: 'Default Pipeline',
+        slug: id,
+    })),
+});
+
+const createMockStreamTicketService = () => ({
+    issueTicket: vi.fn().mockResolvedValue({
+        ticket: 'minted-ticket-1',
+        expiresAt: Date.now() + 30_000,
+        scope: 'stt_session:placeholder',
+    }),
+    consumeTicket: vi.fn(),
+});
+
 describe('TranscriptionJobController', () => {
     let controller: TranscriptionJobController;
     let mockJobService: ReturnType<typeof createMockJobService>;
@@ -48,6 +70,8 @@ describe('TranscriptionJobController', () => {
     let mockCls: ReturnType<typeof createMockCls>;
     let mockS3Service: ReturnType<typeof createMockS3Service>;
     let mockTenantBucketService: ReturnType<typeof createMockTenantBucketService>;
+    let mockPipelineService: ReturnType<typeof createMockPipelineService>;
+    let mockStreamTicketService: ReturnType<typeof createMockStreamTicketService>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -57,6 +81,8 @@ describe('TranscriptionJobController', () => {
         mockCls = createMockCls();
         mockS3Service = createMockS3Service();
         mockTenantBucketService = createMockTenantBucketService();
+        mockPipelineService = createMockPipelineService();
+        mockStreamTicketService = createMockStreamTicketService();
         controller = new TranscriptionJobController(
             mockJobService as any,
             mockRealtimeService as any,
@@ -64,6 +90,8 @@ describe('TranscriptionJobController', () => {
             mockCls as any,
             mockS3Service as any,
             mockTenantBucketService as any,
+            mockPipelineService as any,
+            mockStreamTicketService as any,
         );
     });
 
@@ -186,7 +214,7 @@ describe('TranscriptionJobController', () => {
 
             const result = await controller.createStreamSession({
                 pipelineId: 'pipe-1',
-            });
+            } as any);
 
             expect(mockSessionService.createSession).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -200,6 +228,42 @@ describe('TranscriptionJobController', () => {
                 wsUrl: '/ws/stt-v2/stream',
                 maxConcurrent: 5,
                 currentActive: 1,
+            });
+        });
+
+        // TASK-298 D-2 — cross-tenant pipelineId guard.
+        it('throws NotFoundException when pipelineId is not in caller tenant (D-2)', async () => {
+            mockPipelineService.getById.mockResolvedValueOnce(null);
+
+            await expect(
+                controller.createStreamSession({ pipelineId: 'pipe-foreign' } as any),
+            ).rejects.toThrow(/Pipeline pipe-foreign not found/);
+            expect(mockSessionService.createSession).not.toHaveBeenCalled();
+        });
+
+        // TASK-298 D-1 — ticket minting.
+        it('mints a stream ticket scoped to stt_session:<sessionId> and returns it (D-1)', async () => {
+            mockSessionService.createSession.mockResolvedValue({
+                sessionId: 'sess-mint',
+                status: 'active',
+                maxConcurrent: 5,
+                currentActive: 1,
+                voiceProfileSeeded: true,
+            });
+
+            const result = await controller.createStreamSession({ pipelineId: 'pipe-1' } as any);
+
+            expect(mockStreamTicketService.issueTicket).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    userId: 'user-1',
+                    tenantId: 'tenant-1',
+                    scope: 'stt_session:sess-mint',
+                }),
+            );
+            expect(result).toMatchObject({
+                ticket: 'minted-ticket-1',
+                ticketExpiresAt: expect.any(Number),
+                voiceProfileSeeded: true,
             });
         });
 
@@ -245,8 +309,90 @@ describe('TranscriptionJobController', () => {
             mockSessionService.createSession.mockResolvedValue(null);
 
             await expect(
-                controller.createStreamSession({ pipelineId: 'pipe-1' }),
+                controller.createStreamSession({ pipelineId: 'pipe-1' } as any),
             ).rejects.toThrow();
+        });
+    });
+
+    // =========================================================================
+    // TASK-298 D-18 — refresh-ticket endpoint
+    // =========================================================================
+    describe('POST /stream/session/:sessionId/refresh-ticket (D-18)', () => {
+        it('mints a new ticket scoped to the existing session', async () => {
+            mockStreamTicketService.issueTicket.mockResolvedValueOnce({
+                ticket: 'fresh-ticket',
+                expiresAt: 1_700_000_000_000,
+                scope: 'stt_session:sess-refresh',
+            });
+
+            const result = await controller.refreshStreamTicket('sess-refresh');
+
+            expect(mockStreamTicketService.issueTicket).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    userId: 'user-1',
+                    tenantId: 'tenant-1',
+                    scope: 'stt_session:sess-refresh',
+                }),
+            );
+            expect(result).toEqual({ ticket: 'fresh-ticket', ticketExpiresAt: 1_700_000_000_000 });
+        });
+
+        it('rejects empty sessionId', async () => {
+            await expect(controller.refreshStreamTicket('   ')).rejects.toThrow(/sessionId is required/);
+        });
+    });
+
+    // =========================================================================
+    // TASK-298 D-19 — pipelineId shape validation
+    // =========================================================================
+    describe('CreateStreamSessionRequest.pipelineId shape validation (D-19)', () => {
+        const validPipelineIds = [
+            'general-consult',
+            'cardio2',
+            'a',
+            'f47ac10b-58cc-4372-a567-0e02b2c3d479', // UUID
+            'F47AC10B-58CC-4372-A567-0E02B2C3D479', // upper UUID
+            'p-1',
+        ];
+        const invalidPipelineIds = [
+            '../../etc/passwd',
+            'pipe; DROP TABLE users',
+            "1' OR '1'='1",
+            'spaces here',
+            '',
+            '-leading-dash',
+        ];
+
+        for (const id of validPipelineIds) {
+            it(`accepts valid pipelineId ${JSON.stringify(id)}`, async () => {
+                const dto = plainToInstance(CreateStreamSessionRequest, { pipelineId: id });
+                const errors = await validate(dto);
+                expect(errors).toHaveLength(0);
+            });
+        }
+
+        for (const id of invalidPipelineIds) {
+            it(`rejects invalid pipelineId ${JSON.stringify(id)}`, async () => {
+                const dto = plainToInstance(CreateStreamSessionRequest, { pipelineId: id });
+                const errors = await validate(dto);
+                expect(errors.length).toBeGreaterThan(0);
+            });
+        }
+    });
+
+    describe('TranscribeFileRequest.pipelineId shape validation (D-19)', () => {
+        it('rejects pipelineId with path traversal', async () => {
+            const dto = plainToInstance(TranscribeFileRequest, { pipelineId: '../bad' });
+            const errors = await validate(dto);
+            expect(errors.length).toBeGreaterThan(0);
+        });
+
+        it('accepts a UUID pipelineId', async () => {
+            const dto = plainToInstance(TranscribeFileRequest, {
+                pipelineId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+            });
+            const errors = await validate(dto);
+            expect(errors).toHaveLength(0);
         });
     });
 

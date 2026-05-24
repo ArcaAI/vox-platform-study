@@ -1,4 +1,5 @@
 import {
+  PipelineServiceModule,
   S3ServiceModule,
   StreamingSessionServiceModule,
   TenantBucketServiceModule,
@@ -25,6 +26,7 @@ import { TranscriptionJobController } from './transcription-job.controller';
     TenantServiceModule,
     TenantBucketServiceModule,
     S3ServiceModule,
+    PipelineServiceModule,
     CoreDatabaseModule,
   ],
   controllers: [TranscriptionJobController, SmrProxyController],

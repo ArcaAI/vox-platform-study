@@ -7,6 +7,7 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "react-server": "./dist/react-server-stub.mjs",
       "import": {
         "types": "./dist/index.d.mts",
         "default": "./dist/index.mjs"
@@ -54,8 +55,8 @@
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
     "eventemitter3": "^5.0.4",
-    "onnxruntime-common": "1.22.0-dev.20250409-89f8206ba4",
-    "onnxruntime-web": "1.22.0-dev.20250409-89f8206ba4"
+    "onnxruntime-common": "1.24.3",
+    "onnxruntime-web": "1.24.3"
   },
   "peerDependencies": {
     "@arcaai/room": "workspace:*",

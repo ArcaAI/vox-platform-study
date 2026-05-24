@@ -109,6 +109,12 @@ export interface AgenticState {
   configManager: ConfigManager | null;
   resolvedConfig: AppConfig | null;
   configReady: boolean;
+  /**
+   * TASK-297 DEF-C6 — true after the provider has successfully preloaded
+   * `/auth/me` (and therefore knows `authUser`, `tenantId`, `departmentId`).
+   * Always false before the first `/auth/me` resolves.
+   */
+  profileReady: boolean;
 }
 
 // =============================================================================
@@ -202,9 +208,13 @@ export interface AgenticActions {
   updateRuntimeConfig: (patch: { logLevel?: string }) => void;
 
   // Three-tier config management (TASK-244)
-  setConfigManager: (manager: ConfigManager) => void;
-  setResolvedConfig: (config: AppConfig) => void;
+  setConfigManager: (manager: ConfigManager | null) => void;
+  setResolvedConfig: (config: AppConfig | null) => void;
   setConfigReady: (ready: boolean) => void;
+  /** TASK-297 DEF-C6 — provider toggles after `/auth/me` resolves. */
+  setProfileReady: (ready: boolean) => void;
+  /** TASK-297 DEF-H6 — allow provider to re-create manager keyed on user. */
+  setPersonalizationManager: (manager: PersonalizationManager | null) => void;
 }
 
 // =============================================================================
@@ -285,6 +295,8 @@ const initialState: AgenticState = {
   configManager: null,
   resolvedConfig: null,
   configReady: false,
+  // TASK-297 DEF-C6 — flips true once `/auth/me` has resolved.
+  profileReady: false,
 };
 
 // =============================================================================
@@ -452,15 +464,48 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
   setConfigManager: (manager) => set({ configManager: manager }),
   setResolvedConfig: (config) => set({ resolvedConfig: config }),
   setConfigReady: (ready) => set({ configReady: ready }),
+  setProfileReady: (ready) => set({ profileReady: ready }),
+  setPersonalizationManager: (manager) => set({ personalizationManager: manager }),
 
   clearOnLogout: () => {
     if (typeof window !== 'undefined') {
       try {
+        // Legacy global keys (kept for backward-compat cleanup).
         localStorage.removeItem('arcaai-preferences');
         localStorage.removeItem('arcaai-selected-models');
-        localStorage.removeItem('arcaai-session-state');
+        // TASK-297 DEF-H1 — remove every per-user/per-tenant namespaced key.
+        const removable: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('arcaai-user-preferences/')) removable.push(k);
+        }
+        for (const k of removable) localStorage.removeItem(k);
       } catch {
         /* SSR or restricted storage */
+      }
+
+      // TASK-297 DEF-H1 + DEF-H6 — clear the IDB record holding user
+      // preferences. Fire-and-forget; failures are swallowed (storage may
+      // be unavailable in SSR / private mode).
+      try {
+        if (typeof indexedDB !== 'undefined') {
+          const open = indexedDB.open('arcaai-config');
+          open.onsuccess = () => {
+            const db = open.result;
+            try {
+              if (db.objectStoreNames.contains('user-preferences')) {
+                const tx = db.transaction('user-preferences', 'readwrite');
+                tx.objectStore('user-preferences').clear();
+              }
+            } catch {
+              /* schema mismatch — ignore */
+            } finally {
+              db.close();
+            }
+          };
+        }
+      } catch {
+        /* IDB unavailable */
       }
     }
     set({
@@ -484,6 +529,15 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
       globalError: null,
       activeStream: null,
       activeAudioContext: null,
+      // TASK-297 DEF-H6 — drop personalization tier so next mount rebuilds
+      // a fresh ConfigManager / PersonalizationManager keyed to the new user.
+      preferences: {},
+      tenantConfig: null,
+      resolvedConfig: null,
+      configReady: false,
+      profileReady: false,
+      configManager: null,
+      personalizationManager: null,
     });
   },
 }));
@@ -572,3 +626,21 @@ export const selectTenantConfig = (state: AgenticState) => state.tenantConfig;
 export const selectConfigManager = (state: AgenticState) => state.configManager;
 export const selectResolvedConfig = (state: AgenticState) => state.resolvedConfig;
 export const selectConfigReady = (state: AgenticState) => state.configReady;
+/** TASK-297 DEF-C6 — true after `/auth/me` resolves. */
+export const selectProfileReady = (state: AgenticState) => state.profileReady;
+/** TASK-297 DEF-H6 — selector for the personalization manager instance. */
+export const selectPersonalizationManager = (state: AgenticState) => state.personalizationManager;
+/** TASK-297 — selector for in-flight authenticated user. */
+export const selectAuthUser = (state: AgenticState) => state.authUser;
+/** TASK-297 — selector for the impersonated user (or null). */
+export const selectAuthImpersonatedUser = (state: AgenticState) => state.authImpersonatedUser;
+/** TASK-297 — selector for the model registry (used by useArcaConfig). */
+export const selectModelRegistry = (state: AgenticState) => state.modelRegistry;
+/** TASK-297 — selector for model registry version (forces memoization on selection). */
+export const selectModelRegistryVersion = (state: AgenticState) => state.modelRegistryVersion;
+/** TASK-297 DEF-H3 — selector for shared context items. */
+export const selectSharedContext = (state: AgenticState) => state.sharedContext;
+/** TASK-297 DEF-H3 — selector for the current context loading state. */
+export const selectContextLoading = (state: AgenticState) => state.contextLoading;
+/** TASK-297 DEF-H3 — selector for the current context error. */
+export const selectContextError = (state: AgenticState) => state.contextError;

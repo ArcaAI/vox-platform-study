@@ -8,7 +8,7 @@ import {
 } from '@arcaai/domains';
 import { InternalServerErrorException } from '@arcaai/exceptions';
 import { HttpService } from '@nestjs/axios';
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { firstValueFrom } from 'rxjs';
@@ -55,6 +55,13 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
       throw new InternalServerErrorException('Failed to create voice profile');
     }
 
+    // TASK-296 C-1: auto-activate the freshly enrolled profile if the user has none active yet.
+    const existingActive = await this.voiceProfileRepository.findActiveByUserId(request.userId);
+    if (!existingActive) {
+      await this.voiceProfileRepository.activateById(created.id);
+      created.isActive = true;
+    }
+
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: created.id,
       createdAt: created.createdAt,
@@ -69,7 +76,7 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
   }
 
   async activate(profileId: EntityId): Promise<void> {
-    const profile = await this.voiceProfileRepository.findById(profileId);
+    const profile = await this.assertOwnership(profileId);
 
     await this.voiceProfileRepository.deactivateAllForUser(profile.userId);
     await this.voiceProfileRepository.activateById(profileId);
@@ -81,7 +88,7 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
   }
 
   async deactivate(profileId: EntityId): Promise<void> {
-    const profile = await this.voiceProfileRepository.findById(profileId);
+    const profile = await this.assertOwnership(profileId);
 
     await this.voiceProfileRepository.deactivateAllForUser(profile.userId);
 
@@ -92,6 +99,7 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
   }
 
   async deleteById(profileId: EntityId): Promise<UserVoiceProfileEntity> {
+    await this.assertOwnership(profileId);
     const deleted = await this.voiceProfileRepository.softDelete(profileId);
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
@@ -100,6 +108,19 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
     });
 
     return deleted;
+  }
+
+  /**
+   * TASK-296 C-3: enforce that the current CLS user owns the targeted profile.
+   * Defence-in-depth for biometric PHI mutations. Loaded once and returned so
+   * callers can reuse the entity (avoids an extra round-trip).
+   */
+  private async assertOwnership(profileId: EntityId): Promise<UserVoiceProfileEntity> {
+    const profile = await this.voiceProfileRepository.findById(profileId);
+    if (profile.userId !== this.requestUser?.id) {
+      throw new ForbiddenException('Voice profile does not belong to current user');
+    }
+    return profile;
   }
 
   private async extractEmbeddings(audioBuffers: Buffer[]): Promise<ExtractionResponse> {

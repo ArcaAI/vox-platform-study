@@ -56,7 +56,9 @@ describe('SmrProxyController', () => {
 
     mockClsService.get.mockImplementation((key: string) => {
       if (key === 'tenantId') return 'tenant-1';
-      if (key === 'user') return { roles: [] };
+      // TASK-299 D-12 — user id must be present so the ownership check
+      // can pass for legacy fixtures that expect the happy path.
+      if (key === 'user') return { id: 'user-1', roles: [] };
       return undefined;
     });
 
@@ -819,6 +821,8 @@ describe('SmrProxyController', () => {
       mockDnaStyleRepo.findById.mockResolvedValue({
         id: 'dna-1',
         styleText: 'Use concise, formal medical language with standard abbreviations.',
+        doctorId: 'user-1',
+        tenantId: 'tenant-1',
       });
 
       mockHttpService.axiosRef.post.mockResolvedValue({
@@ -950,6 +954,8 @@ describe('SmrProxyController', () => {
       mockDnaStyleRepo.findById.mockResolvedValue({
         id: 'dna-combo',
         styleText: 'Use bullet points and short sentences.',
+        doctorId: 'user-1',
+        tenantId: 'tenant-1',
       });
 
       mockHttpService.axiosRef.post.mockResolvedValue({
@@ -969,6 +975,81 @@ describe('SmrProxyController', () => {
       expect(systemPrompt).toContain('specialist');
       expect(systemPrompt).toContain('bullet points');
       expect(systemPrompt).toContain('new patient visit');
+    });
+
+    // TASK-299 D-12 — Cross-doctor `dnaStyleId` ownership.
+    describe('TASK-299 D-12 — DNA writing-style ownership', () => {
+      it('throws ForbiddenException when dna_writing_style_id belongs to a different doctor', async () => {
+        mockDnaStyleRepo.findById.mockResolvedValue({
+          id: 'dna-other',
+          styleText: 'Other doctor style',
+          doctorId: 'doctor-other',
+          tenantId: 'tenant-1',
+        });
+
+        await expect(
+          controller.generateAssembled({
+            type: 'summary',
+            message: 'Patient transcript',
+            dna_writing_style_id: 'dna-other',
+          }),
+        ).rejects.toThrow(ForbiddenException);
+
+        expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
+      });
+
+      it('throws ForbiddenException when dna_writing_style_id belongs to a different tenant', async () => {
+        mockDnaStyleRepo.findById.mockResolvedValue({
+          id: 'dna-foreign-tenant',
+          styleText: 'Other tenant style',
+          doctorId: 'user-1',
+          tenantId: 'tenant-other',
+        });
+
+        await expect(
+          controller.generateAssembled({
+            type: 'summary',
+            message: 'Patient transcript',
+            dna_writing_style_id: 'dna-foreign-tenant',
+          }),
+        ).rejects.toThrow(ForbiddenException);
+
+        expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
+      });
+
+      it('throws NotFoundException when dna_writing_style_id does not resolve', async () => {
+        mockDnaStyleRepo.findById.mockResolvedValue(null);
+
+        await expect(
+          controller.generateAssembled({
+            type: 'summary',
+            message: 'Patient transcript',
+            dna_writing_style_id: 'dna-missing',
+          }),
+        ).rejects.toThrow(NotFoundException);
+
+        expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
+      });
+
+      it('allows DNA style owned by the current doctor', async () => {
+        mockDnaStyleRepo.findById.mockResolvedValue({
+          id: 'dna-owned',
+          styleText: 'My style',
+          doctorId: 'user-1',
+          tenantId: 'tenant-1',
+        });
+        mockHttpService.axiosRef.post.mockResolvedValue({
+          data: { task_id: 'ok', status: 'completed', content: 'ok' },
+        });
+
+        await expect(
+          controller.generateAssembled({
+            type: 'summary',
+            message: 'Patient transcript',
+            dna_writing_style_id: 'dna-owned',
+          }),
+        ).resolves.toBeDefined();
+      });
     });
   });
 });

@@ -128,6 +128,12 @@ export class SimpleCrossTabSync {
   // broadcast / handleIncoming / isUsingSharedWorkerHmac call so the
   // constructor stays side-effect-free beyond opening the BroadcastChannel.
   private hmacKey: CrossTabHmacKeyManager | null = null;
+  /**
+   * TASK-297 DEF-M1 — channel creation may need to compute a SHA-256 hash
+   * of the consultation key when no tenantId is set. The hash work is async,
+   * so we expose a promise so callers (tests, broadcast) can await it.
+   */
+  private channelReady: Promise<void> = Promise.resolve();
 
   constructor(config: { patientId: string; doctorId: string; appointmentDate: string }, options: SimpleCrossTabSyncOptions = {}) {
     this.tabId = `tab_${crypto.randomUUID()}`;
@@ -137,8 +143,18 @@ export class SimpleCrossTabSync {
 
     this.isSupported = typeof BroadcastChannel !== 'undefined';
     if (this.isSupported) {
-      this.openChannel();
+      this.channelReady = this.openChannel();
     }
+  }
+
+  /**
+   * TASK-297 DEF-M1 — await the asynchronous channel creation (needed when
+   * the fallback name requires SHA-256 hashing of the consultation key).
+   * Returns immediately once the channel is open. Tests call this before
+   * spying on `(sync as any).channel.postMessage`.
+   */
+  whenReady(): Promise<void> {
+    return this.channelReady;
   }
 
   // ---------------------------------------------------------------------------
@@ -154,7 +170,11 @@ export class SimpleCrossTabSync {
   }
 
   isAvailable(): boolean {
-    return this.isSupported && this.channel !== null;
+    // TASK-297 DEF-M1 — `channel` may still be null between construction and
+    // the async channelName resolution. Treat capability (isSupported) as
+    // the truthful answer; consumers awaiting full readiness should call
+    // `whenReady()`.
+    return this.isSupported;
   }
 
   /**
@@ -186,7 +206,7 @@ export class SimpleCrossTabSync {
       this.channel = null;
     }
     if (this.isSupported) {
-      this.openChannel();
+      this.channelReady = this.openChannel();
     }
   }
 
@@ -230,11 +250,21 @@ export class SimpleCrossTabSync {
   // Internals
   // ---------------------------------------------------------------------------
 
-  private channelName(): string {
-    // W0-5: NEVER bare `agentic` — must include tenant id (preferred) or the
-    // consultation key as a session-scoped fallback.
-    const suffix = this.tenantId && this.tenantId.length > 0 ? this.tenantId : this.consultationKey;
-    return `agentic.${suffix}`;
+  /**
+   * Build the channel name.
+   *
+   * - With `tenantId` → synchronous `agentic.<tenantId>`.
+   * - Without `tenantId` → `agentic.<sha256-first8-hex>` of the consultation
+   *   key (TASK-297 DEF-M1). The hash is async; openChannel awaits it. This
+   *   prevents the raw `patientId_doctorId_appointmentDate` triple — which
+   *   is PHI — from appearing in DevTools / BroadcastChannel inspectors.
+   */
+  private async channelName(): Promise<string> {
+    if (this.tenantId && this.tenantId.length > 0) {
+      return `agentic.${this.tenantId}`;
+    }
+    const hash = await sha256First8Hex(this.consultationKey);
+    return `agentic.${hash}`;
   }
 
   private ensureHmacKey(): CrossTabHmacKeyManager {
@@ -244,7 +274,7 @@ export class SimpleCrossTabSync {
     return this.hmacKey;
   }
 
-  private openChannel(): void {
+  private async openChannel(): Promise<void> {
     try {
       // TASK-280: When SharedWorker is unavailable the manager falls back
       // to the per-session module singleton owned by CrossTabHmacKeyManager.
@@ -256,11 +286,9 @@ export class SimpleCrossTabSync {
         __ensureFallbackSecretForTests();
       }
 
-      const ch = new BroadcastChannel(this.channelName());
+      const name = await this.channelName();
+      const ch = new BroadcastChannel(name);
       ch.onmessage = (event: MessageEvent) => {
-        // The handler returns void but the body runs an async verify step.
-        // Errors are swallowed and logged — receivers must never throw past
-        // the event boundary or they crash the BroadcastChannel.
         void this.handleIncoming(event.data);
       };
       this.channel = ch;
@@ -321,6 +349,8 @@ export class SimpleCrossTabSync {
   }
 
   private async broadcast(type: CrossTabEventType, data: unknown): Promise<void> {
+    // TASK-297 DEF-M1 — wait for the (potentially async) channel name hash.
+    await this.channelReady;
     if (!this.channel) return;
 
     const payload: CrossTabPayload = {
@@ -360,6 +390,28 @@ export class SimpleCrossTabSync {
     return () => {
       this.listeners.get(type)?.delete(callback);
     };
+  }
+}
+
+// =============================================================================
+// Hash helper (TASK-297 DEF-M1)
+// =============================================================================
+
+/**
+ * SHA-256 of `input` (UTF-8) → hex of the first 8 bytes (16 hex chars).
+ * Used as the BroadcastChannel name suffix when no `tenantId` is present.
+ * Returns `'fallback'` if Web Crypto is unavailable (degraded test envs).
+ */
+async function sha256First8Hex(input: string): Promise<string> {
+  try {
+    const data = new TextEncoder().encode(input);
+    const buf = await crypto.subtle.digest('SHA-256', data);
+    const bytes = new Uint8Array(buf, 0, 8);
+    let hex = '';
+    for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+    return hex;
+  } catch {
+    return 'fallback';
   }
 }
 

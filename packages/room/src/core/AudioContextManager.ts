@@ -7,7 +7,26 @@
 
 import { getAudioContextConstructor, isBrowser } from '../utils/browserSupport.js';
 import { RoomError, RoomErrorCode, type RoomOptions } from '../types/index.js';
-import { RoomResumeTimeoutError } from './RoomErrors.js';
+import { RoomResumeTimeoutError, RoomSampleRateMismatchError } from './RoomErrors.js';
+
+/**
+ * TASK-300 L-1: optional sample-rate enforcement for {@link AudioContextManager.acquire}.
+ *
+ * Downstream processors hard-code the audio sample rate they were designed
+ * for (RNNoise → 48 000 Hz; Silero VAD → 16 000 Hz with internal resampling).
+ * If the host AudioContext runs at a different rate, those processors
+ * silently degrade in quality. Use these options to opt into a strict
+ * (throw) or warn-only enforcement at acquire-time.
+ *
+ * - `requireSampleRate` — when set, `acquire()` will compare the context's
+ *   `sampleRate` against this value.
+ * - `allowMismatch` (default `false`) — when `true`, a mismatch logs
+ *   `console.warn` instead of throwing.
+ */
+export interface AudioContextAcquireOptions {
+  requireSampleRate?: number;
+  allowMismatch?: boolean;
+}
 
 /**
  * Default timeout (in milliseconds) for {@link AudioContextManager.resume}
@@ -115,7 +134,7 @@ export class AudioContextManager {
    *
    * @returns Promise that resolves when the AudioContext is ready
    */
-  async acquire(): Promise<AudioContext> {
+  async acquire(opts: AudioContextAcquireOptions = {}): Promise<AudioContext> {
     // Cancel any pending deferred close — keeps the existing context alive
     // across StrictMode mount → cleanup → re-mount cycles.
     this.pendingClose = false;
@@ -125,6 +144,7 @@ export class AudioContextManager {
     if (this.options.audioContext) {
       this.audioContext = this.options.audioContext;
       await this.ensureResumed();
+      this.enforceSampleRate(this.audioContext, opts);
       return this.audioContext;
     }
 
@@ -136,7 +156,34 @@ export class AudioContextManager {
     // Ensure the context is resumed
     await this.ensureResumed();
 
+    this.enforceSampleRate(this.audioContext, opts);
     return this.audioContext;
+  }
+
+  /**
+   * TASK-300 L-1: validate the active context's `sampleRate` against the
+   * caller's requirement.
+   *
+   * - No-op when {@link AudioContextAcquireOptions.requireSampleRate} is
+   *   unset (preserves backwards compatibility).
+   * - Throws {@link RoomSampleRateMismatchError} on mismatch by default.
+   * - When `allowMismatch: true`, logs `console.warn` instead and resolves.
+   */
+  private enforceSampleRate(ctx: AudioContext, opts: AudioContextAcquireOptions): void {
+    if (opts.requireSampleRate === undefined) return;
+    if (ctx.sampleRate === opts.requireSampleRate) return;
+
+    const message =
+      `AudioContext sampleRate is ${ctx.sampleRate} Hz but the caller required ` +
+      `${opts.requireSampleRate} Hz. Downstream processors (e.g. @arcaai/noise-filter) ` +
+      `assume a fixed rate and will produce audible artefacts otherwise.`;
+
+    if (opts.allowMismatch) {
+      console.warn(`[AudioContextManager] ${message}`);
+      return;
+    }
+
+    throw new RoomSampleRateMismatchError(message);
   }
 
   /**

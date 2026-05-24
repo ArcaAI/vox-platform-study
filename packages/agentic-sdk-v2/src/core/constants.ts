@@ -251,6 +251,12 @@ export const STT_V2_ENDPOINTS = {
   CREATE_SESSION: '/audio/transcription-jobs/stream/session',
   /** Close/delete a streaming session */
   CLOSE_SESSION: (sessionId: string) => `/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}`,
+  /**
+   * Refresh the one-shot stream ticket for a live session (TASK-298 D-18).
+   * SDK calls this from `SttV2WebSocketClient.attemptReconnect` because the
+   * previous ticket is consumed by the gateway on the first WS open.
+   */
+  REFRESH_TICKET: (sessionId: string) => `/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}/refresh-ticket`,
   /** WebSocket path for real-time audio streaming (absolute, not API-prefixed) */
   WS_STREAM: '/ws/stt-v2/stream',
   /** Create a generic transcription job */
@@ -346,12 +352,15 @@ export const DEFAULT_TIMEOUT = 30000;
 export const DEFAULT_SYNC_INTERVAL = 60000;
 
 /**
- * Local storage keys
+ * Local storage keys.
+ *
+ * TASK-297 DEF-L1 — `SESSION_STATE` removed; it was unused dead code.
+ * Per-user namespacing (DEF-H1) is applied at the call site in
+ * `AgenticProvider.tsx` rather than as a fixed constant.
  */
 export const STORAGE_KEYS = {
   PREFERENCES: 'arcaai-preferences',
   SELECTED_MODELS: 'arcaai-selected-models',
-  SESSION_STATE: 'arcaai-session-state',
 } as const;
 
 // =============================================================================
@@ -596,6 +605,8 @@ export const VOICE_EMBEDDING_ENDPOINTS = {
   enroll: '/voice-profile/enroll',
   list: '/voice-profile',
   delete: (profileId: string) => `/voice-profile/${encodeURIComponent(profileId)}`,
+  activate: (profileId: string) => `/voice-profile/${encodeURIComponent(profileId)}/activate`,
+  deactivate: (profileId: string) => `/voice-profile/${encodeURIComponent(profileId)}/deactivate`,
 } as const;
 
 /**

@@ -656,13 +656,9 @@ describe('VADProcessor silence-triggered reset (TASK-271 H-1)', () => {
 // TASK-271 H-2 — sliding-window probability stats (memory bounded)
 // ============================================================================
 
-describe('VADProcessor sliding-window stats (TASK-271 H-2)', () => {
-  it('uses a fixed Float32Array(300) ring buffer for averageSpeechProbability', () => {
-    const processor = new VADProcessor();
-    const internals = processor as unknown as { probWindow: Float32Array; PROB_WINDOW_SIZE: number };
-    expect(internals.probWindow).toBeInstanceOf(Float32Array);
-    expect(internals.probWindow.length).toBe(300);
-  });
+describe('VADProcessor sliding-window stats (TASK-271 H-2 / TASK-300 L-4)', () => {
+  // L-4 upgraded the window from 300 → 1024 frames (~32.8 s @ 31.25 fps).
+  // Size assertion lives in the L-4 describe block below.
 
   it('does not grow memory as frame count exceeds the window size', async () => {
     const processor = new VADProcessor({ silenceResetMs: 0 });
@@ -679,7 +675,7 @@ describe('VADProcessor sliding-window stats (TASK-271 H-2)', () => {
     }
 
     const internals = processor as unknown as { probWindow: Float32Array };
-    expect(internals.probWindow.length).toBe(300);
+    expect(internals.probWindow.length).toBe(1024);
 
     expect(processor.getStats().framesProcessed).toBe(10_000);
   });
@@ -694,10 +690,10 @@ describe('VADProcessor sliding-window stats (TASK-271 H-2)', () => {
     ) => void;
     const frame = new Float32Array(512);
 
-    for (let i = 0; i < 500; i++) {
+    for (let i = 0; i < 2000; i++) {
       onFrameProcessed({ isSpeech: 0.1, notSpeech: 0.9 }, frame);
     }
-    for (let i = 0; i < 300; i++) {
+    for (let i = 0; i < 1024; i++) {
       onFrameProcessed({ isSpeech: 0.9, notSpeech: 0.1 }, frame);
     }
 
@@ -722,6 +718,210 @@ describe('VADProcessor sliding-window stats (TASK-271 H-2)', () => {
     processor.resetStats();
 
     expect(processor.getStats().averageSpeechProbability).toBe(0);
+  });
+});
+
+// ============================================================================
+// TASK-300 L-3 — VADProcessor.restart() alias + threshold hot-reload
+// ============================================================================
+
+describe('VADProcessor.restart() (TASK-300 L-3)', () => {
+  it('is exposed as a public API', () => {
+    const processor = new VADProcessor();
+    expect(typeof (processor as unknown as { restart: () => Promise<void> }).restart).toBe('function');
+  });
+
+  it('rebuilds the MicVAD instance (LSTM hidden-state reset)', async () => {
+    const processor = new VADProcessor();
+    await asInternal(processor).init(makeInitOpts());
+
+    expect(micVADCalls).toHaveLength(1);
+    const firstInstance = micVADCalls[0]!.instance;
+
+    await (processor as unknown as { restart: () => Promise<void> }).restart();
+
+    expect(micVADCalls).toHaveLength(2);
+    expect(micVADCalls[1]!.instance).not.toBe(firstInstance);
+    expect(firstInstance.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a no-op when not initialized (does not throw)', async () => {
+    const processor = new VADProcessor();
+    await expect((processor as unknown as { restart: () => Promise<void> }).restart()).resolves.toBeUndefined();
+    expect(micVADCalls).toHaveLength(0);
+  });
+});
+
+describe('VADProcessor threshold hot-reload triggers restart (TASK-300 L-3)', () => {
+  it('updateThresholds restarts MicVAD with the new thresholds applied', async () => {
+    const processor = new VADProcessor({
+      positiveSpeechThreshold: 0.5,
+      negativeSpeechThreshold: 0.35,
+    });
+    await asInternal(processor).init(makeInitOpts());
+
+    expect(micVADCalls).toHaveLength(1);
+
+    await processor.updateThresholds(0.72, 0.48);
+
+    expect(micVADCalls).toHaveLength(2);
+    const secondOpts = micVADCalls[1]!.options as {
+      positiveSpeechThreshold: number;
+      negativeSpeechThreshold: number;
+    };
+    expect(secondOpts.positiveSpeechThreshold).toBe(0.72);
+    expect(secondOpts.negativeSpeechThreshold).toBe(0.48);
+  });
+
+  it('updateOptions with threshold changes routes through restart (single rebuild)', async () => {
+    const processor = new VADProcessor({
+      positiveSpeechThreshold: 0.5,
+      negativeSpeechThreshold: 0.35,
+    });
+    await asInternal(processor).init(makeInitOpts());
+    expect(micVADCalls).toHaveLength(1);
+
+    await processor.updateOptions({
+      positiveSpeechThreshold: 0.6,
+      negativeSpeechThreshold: 0.4,
+    });
+
+    expect(micVADCalls).toHaveLength(2);
+  });
+
+  it('does NOT restart when thresholds are unchanged (no-op fast path)', async () => {
+    const processor = new VADProcessor({
+      positiveSpeechThreshold: 0.5,
+      negativeSpeechThreshold: 0.35,
+    });
+    await asInternal(processor).init(makeInitOpts());
+    expect(micVADCalls).toHaveLength(1);
+
+    await processor.updateThresholds(0.5, 0.35);
+
+    expect(micVADCalls).toHaveLength(1);
+  });
+
+  it('does NOT throw when updateThresholds is called before init (deferred until init)', async () => {
+    const processor = new VADProcessor();
+    await expect(processor.updateThresholds(0.7, 0.4)).resolves.toBeUndefined();
+    const opts = processor.getOptions();
+    expect(opts.positiveSpeechThreshold).toBe(0.7);
+    expect(opts.negativeSpeechThreshold).toBe(0.4);
+  });
+});
+
+// ============================================================================
+// TASK-300 L-4 — sliding window upgraded to 1024 frames (~32.8s @ 31.25 fps)
+// ============================================================================
+
+describe('VADProcessor sliding-window @ 1024 frames (TASK-300 L-4)', () => {
+  it('uses a Float32Array(1024) ring buffer', () => {
+    const processor = new VADProcessor();
+    const internals = processor as unknown as { probWindow: Float32Array; PROB_WINDOW_SIZE: number };
+    expect(internals.probWindow).toBeInstanceOf(Float32Array);
+    expect(internals.probWindow.length).toBe(1024);
+    expect(internals.PROB_WINDOW_SIZE).toBe(1024);
+  });
+
+  it('averageSpeechProbability is computed across at most the last 1024 frames', async () => {
+    const processor = new VADProcessor({ silenceResetMs: 0 });
+    await asInternal(processor).init(makeInitOpts());
+
+    const onFrameProcessed = micVADCalls[0]!.options.onFrameProcessed as (
+      probs: { isSpeech: number; notSpeech: number },
+      frame: Float32Array,
+    ) => void;
+    const frame = new Float32Array(512);
+
+    for (let i = 0; i < 2000; i++) {
+      onFrameProcessed({ isSpeech: 0.1, notSpeech: 0.9 }, frame);
+    }
+    for (let i = 0; i < 1024; i++) {
+      onFrameProcessed({ isSpeech: 0.9, notSpeech: 0.1 }, frame);
+    }
+
+    expect(processor.getStats().averageSpeechProbability).toBeCloseTo(0.9, 5);
+  });
+});
+
+// ============================================================================
+// TASK-300 L-10 — VAD numThreads gating on crossOriginIsolated
+// ============================================================================
+
+describe('VADProcessor numThreads gating (TASK-300 L-10)', () => {
+  let originalCrossOriginIsolated: boolean | undefined;
+  let originalHardwareConcurrency: number;
+  let ortMock: {
+    env: {
+      wasm: { numThreads?: number; proxy?: boolean; wasmPaths?: string };
+    };
+  };
+
+  beforeEach(() => {
+    originalCrossOriginIsolated = (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated;
+    originalHardwareConcurrency = globalThis.navigator?.hardwareConcurrency;
+
+    ortMock = { env: { wasm: {} } };
+    (globalThis as unknown as { ort?: typeof ortMock }).ort = ortMock;
+  });
+
+  afterEach(() => {
+    if (originalCrossOriginIsolated === undefined) {
+      // @ts-expect-error - cleanup
+      delete (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated;
+    } else {
+      (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated = originalCrossOriginIsolated;
+    }
+    if (originalHardwareConcurrency !== undefined) {
+      Object.defineProperty(globalThis.navigator, 'hardwareConcurrency', {
+        value: originalHardwareConcurrency,
+        configurable: true,
+      });
+    }
+    // @ts-expect-error - cleanup
+    delete (globalThis as { ort?: unknown }).ort;
+  });
+
+  it('promotes ort.env.wasm.numThreads when crossOriginIsolated is true', async () => {
+    (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated = true;
+    Object.defineProperty(globalThis.navigator, 'hardwareConcurrency', {
+      value: 4,
+      configurable: true,
+    });
+
+    const processor = new VADProcessor();
+    await asInternal(processor).init(makeInitOpts());
+
+    expect(ortMock.env.wasm.numThreads).toBe(4);
+  });
+
+  it('keeps numThreads at 1 when crossOriginIsolated is false', async () => {
+    (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated = false;
+    Object.defineProperty(globalThis.navigator, 'hardwareConcurrency', {
+      value: 4,
+      configurable: true,
+    });
+
+    const processor = new VADProcessor();
+    await asInternal(processor).init(makeInitOpts());
+
+    expect(ortMock.env.wasm.numThreads).toBe(1);
+  });
+
+  it('clamps numThreads to a safe maximum (<= 8) on high-core hosts', async () => {
+    (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated = true;
+    Object.defineProperty(globalThis.navigator, 'hardwareConcurrency', {
+      value: 128,
+      configurable: true,
+    });
+
+    const processor = new VADProcessor();
+    await asInternal(processor).init(makeInitOpts());
+
+    const n = ortMock.env.wasm.numThreads ?? -1;
+    expect(n).toBeGreaterThan(1);
+    expect(n).toBeLessThanOrEqual(8);
   });
 });
 

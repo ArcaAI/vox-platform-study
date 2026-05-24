@@ -114,11 +114,28 @@ export class PipelineService extends BaseService implements IPipelineService {
   }
 
   /**
-   * Get pipeline by ID
+   * Get pipeline by ID — tenant-scoped (TASK-298 D-9).
+   *
+   * Returns `null` when:
+   *   • The pipeline does not exist, OR
+   *   • The pipeline belongs to a different tenant.
+   *
+   * The cross-tenant case returns `null` (NOT a 403) so the API surface
+   * looks identical to "not found" — this prevents existence-leak via the
+   * presence/absence of an authorization error.
    */
   async getById(id: string): Promise<PipelineResponse | null> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
     const pipeline = await this.pipelineRepository.findById(id);
     if (!pipeline) return null;
+
+    if (pipeline.tenantId !== tenantId) {
+      return null;
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: pipeline.id,

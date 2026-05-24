@@ -12,10 +12,13 @@
  * ```typescript
  * const manager = new SharedConnectionManager('/workers/shared-connection.js');
  *
- * // Subscribe to an SSE stream (shared across tabs)
+ * // Subscribe to an SSE stream (shared across tabs).
+ * // TASK-297 C-SSE-1: pass a short-lived ticket from POST /auth/stream-ticket
+ * // — never a raw JWT.
  * manager.subscribeSSE('job-123', {
  *   url: 'https://api.example.com/jobs/123/stream',
- *   authToken: 'jwt-token',
+ *   ticket: 'st_2a4f...',
+ *   userId: 'user-77', // TASK-297 H-SSE-5 — dedup key includes userId
  *   autoReconnect: true,
  * });
  *
@@ -143,9 +146,16 @@ export class SharedConnectionManager {
     }
   }
 
-  unsubscribeSSE(id: string): void {
+  unsubscribeSSE(id: string, userId?: string): void {
     if (this.isUsingSharedWorker()) {
-      this.postMessage({ type: 'unsubscribe_sse', id });
+      // TASK-297 H-SSE-5 — forward the userId so the worker only collapses
+      // the matching `(id, userId)` slot. When userId is omitted, the worker
+      // unsubscribes the port from every (id, *) slot.
+      this.postMessage({
+        type: 'unsubscribe_sse',
+        id,
+        payload: userId !== undefined ? { userId } : undefined,
+      });
     } else {
       const fb = this.fallbackSSE.get(id);
       if (fb) {
@@ -359,10 +369,14 @@ export class SharedConnectionManager {
   // =========================================================================
 
   private createFallbackSSE(id: string, sub: SSESubscription): void {
+    // TASK-297 C-SSE-1 — mirror the SharedWorker behaviour and never embed
+    // raw JWTs in the URL. Use a short-lived `?ticket=` minted via
+    // `POST /auth/stream-ticket` instead. The legacy `authToken` field
+    // was removed from `SSESubscription`.
     let url = sub.url;
-    if (sub.authToken) {
+    if (sub.ticket) {
       const separator = url.includes('?') ? '&' : '?';
-      url = `${url}${separator}token=${encodeURIComponent(sub.authToken)}`;
+      url = `${url}${separator}ticket=${encodeURIComponent(sub.ticket)}`;
     }
 
     const es = new EventSource(url);

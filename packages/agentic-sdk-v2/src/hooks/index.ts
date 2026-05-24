@@ -67,9 +67,17 @@ export { useGlobalSettings, type UseGlobalSettingsReturn } from './useGlobalSett
 // User settings hook (TASK-034 WS-H)
 export { useUserSettings, type UseUserSettingsReturn } from './useUserSettings';
 
-// Voice embedding hook (TASK-265 W0-7 — voice-profile rewrite)
+// Voice embedding hook (TASK-265 W0-7 — voice-profile rewrite; TASK-296 C-1/H-1/H-3/H-7)
 export { useVoiceEmbedding, type UseVoiceEmbeddingReturn } from './useVoiceEmbedding';
-export type { VoiceProfile, EnrollFiles } from './useVoiceEmbedding';
+export type { VoiceProfile, EnrollFiles, EnrollOptions } from './useVoiceEmbedding';
+
+// Voice enrollment status helper + checker interface (TASK-296 C-4; consumed by TASK-300)
+export {
+  useVoiceEnrollmentStatus,
+  createVoiceEnrollmentChecker,
+  type UseVoiceEnrollmentStatusReturn,
+  type VoiceEnrollmentChecker,
+} from './useVoiceEnrollmentStatus';
 
 // Tenant management hook (TASK-218)
 export { useTenants, type UseTenantsReturn } from './useTenants';

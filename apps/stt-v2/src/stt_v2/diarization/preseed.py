@@ -14,6 +14,13 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+_FAILURE_RESULT: dict[str, object] = {
+    "success": False,
+    "profile_id": None,
+    "model_id": None,
+}
+
+
 async def preseed_speaker(
     tracker: Any,
     consultation_id: str | None,
@@ -21,7 +28,7 @@ async def preseed_speaker(
     tenant_id: str | None = None,
     log_context: str | None = None,
     user_id: str | None = None,
-) -> None:
+) -> dict[str, object]:
     """Pre-seed a SpeakerTracker with the consultation doctor's voice profile.
 
     Looks up the consultation doctor and their active voice embedding from the
@@ -33,7 +40,15 @@ async def preseed_speaker(
     immediately (display name is still resolved from the consultation when
     available).
 
-    Non-fatal: any DB error or missing profile is logged and silently skipped.
+    Non-fatal: any DB error or missing profile is logged and the helper
+    returns a structured failure dict (TASK-296 backend-echo contract).
+
+    Returns:
+        A dict shaped ``{"success": bool, "profile_id": str | None,
+        "model_id": str | None}`` so SessionManager / BatchTranscriptionService
+        can echo a ``voiceProfileSeeded`` event back to the SDK regardless of
+        outcome. ``profile_id`` and ``model_id`` may be ``None`` even on
+        success if the best-effort metadata lookup fails.
 
     Args:
         tracker: SpeakerTracker instance to pre-register the speaker into.
@@ -49,6 +64,7 @@ async def preseed_speaker(
             get_user_display_name,
             get_user_identity,
             get_voice_embedding,
+            get_voice_profile_metadata,
         )
 
         resolved_user_id = user_id
@@ -76,9 +92,9 @@ async def preseed_speaker(
                 consultation_id,
                 label,
             )
-            return
+            return dict(_FAILURE_RESULT)
 
-        embedding = await get_voice_embedding(resolved_user_id)
+        embedding = await get_voice_embedding(resolved_user_id, tenant_id)
         if not embedding:
             logger.warning(
                 "No active voice profile for user %s (consultation %s / %s), skipping pre-seed",
@@ -86,7 +102,21 @@ async def preseed_speaker(
                 consultation_id,
                 label,
             )
-            return
+            return dict(_FAILURE_RESULT)
+
+        try:
+            metadata = await get_voice_profile_metadata(resolved_user_id, tenant_id)
+        except Exception:
+            logger.warning(
+                "Voice profile metadata lookup failed for user %s (%s); continuing",
+                resolved_user_id,
+                label,
+                exc_info=True,
+            )
+            metadata = None
+
+        profile_id: str | None = metadata.get("profile_id") if metadata else None  # type: ignore[assignment]
+        model_id: str | None = metadata.get("model_id") if metadata else None  # type: ignore[assignment]
 
         logger.info(
             "Pre-seed: resolved user=%s display_name=%r embedding_dim=%d (%s)",
@@ -105,12 +135,18 @@ async def preseed_speaker(
                 speaker_id,
                 label,
             )
-        else:
-            logger.warning(
-                "Pre-seed skipped for consultation %s: tracker at capacity (%s)",
-                consultation_id,
-                label,
-            )
+            return {
+                "success": True,
+                "profile_id": profile_id,
+                "model_id": model_id,
+            }
+
+        logger.warning(
+            "Pre-seed skipped for consultation %s: tracker at capacity (%s)",
+            consultation_id,
+            label,
+        )
+        return dict(_FAILURE_RESULT)
     except Exception:
         logger.warning(
             "Failed to pre-seed speaker from consultation %s (%s)",
@@ -118,3 +154,4 @@ async def preseed_speaker(
             label,
             exc_info=True,
         )
+        return dict(_FAILURE_RESULT)

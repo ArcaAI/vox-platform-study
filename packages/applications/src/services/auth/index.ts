@@ -6,6 +6,7 @@ export * from './auth.service.module';
 export * from './auth.service';
 export * from './createJwt';
 export * from './jwt.strategy';
+export * from './jwt-revocation.service';
 export * from './oidc.strategy';
 export * from './session.serializer';
 

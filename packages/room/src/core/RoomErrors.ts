@@ -30,6 +30,13 @@ export const RoomMediaErrorCode = {
   MicConstraintsUnsupported: 'mic_constraints_unsupported',
   MicResumeTimeout: 'mic_resume_timeout',
   MicUnknown: 'mic_unknown',
+  /**
+   * TASK-300 L-1: thrown by {@link AudioContextManager.acquire} when the
+   * caller passes `requireSampleRate` and the context's `sampleRate` does
+   * not match. Suppressed (logged via `console.warn`) when
+   * `allowMismatch: true`.
+   */
+  SampleRateMismatch: 'sample_rate_mismatch',
 } as const;
 
 export type RoomMediaErrorCodeValue = (typeof RoomMediaErrorCode)[keyof typeof RoomMediaErrorCode];
@@ -144,6 +151,28 @@ export class RoomResumeTimeoutError extends RoomError {
     super(RoomErrorCode.AUDIO_CONTEXT_SUSPENDED, message, cause);
     this.name = 'RoomResumeTimeoutError';
     assignMediaCode(this, RoomMediaErrorCode.MicResumeTimeout);
+  }
+}
+
+// ============================================================================
+// Sample-rate mismatch (TASK-300 L-1)
+// ============================================================================
+
+/**
+ * Thrown by {@link AudioContextManager.acquire} when the caller specifies
+ * `requireSampleRate` and the active `AudioContext.sampleRate` does not
+ * match. The `code` property is `'sample_rate_mismatch'`.
+ *
+ * Most commonly observed on macOS when the system audio device is locked
+ * to 44 100 Hz but the caller requested 48 000 Hz to satisfy RNNoise.
+ *
+ * Pass `{ allowMismatch: true }` to downgrade this to a `console.warn`.
+ */
+export class RoomSampleRateMismatchError extends RoomError {
+  constructor(message = 'AudioContext sampleRate does not match required value', cause?: Error) {
+    super(RoomErrorCode.NOT_SUPPORTED, message, cause);
+    this.name = 'RoomSampleRateMismatchError';
+    assignMediaCode(this, RoomMediaErrorCode.SampleRateMismatch);
   }
 }
 

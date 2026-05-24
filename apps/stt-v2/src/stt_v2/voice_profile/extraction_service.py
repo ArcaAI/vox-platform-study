@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 
 MAX_SAMPLE_DURATION_SEC = 15.0
 MAX_SAMPLES = 3
+# TASK-296 H-8: minimum acceptable pairwise cosine similarity between per-sample
+# embeddings. Below this, we assume a different speaker recorded one of the
+# samples and reject the enrollment with a 400 error.
+MIN_CROSS_SAMPLE_SIMILARITY = 0.6
 
 
 @dataclass
@@ -58,6 +62,16 @@ class ExtractionService:
         if not embeddings:
             raise ValueError("No valid embeddings extracted from samples")
 
+        if len(embeddings) > 1:
+            min_sim = _min_pairwise_cosine(embeddings)
+            if min_sim < MIN_CROSS_SAMPLE_SIMILARITY:
+                raise ValueError(
+                    "Voice samples are inconsistent "
+                    f"(min pairwise similarity {min_sim:.2f} < "
+                    f"{MIN_CROSS_SAMPLE_SIMILARITY:.2f}). "
+                    "Please re-record all samples from the same speaker."
+                )
+
         centroid = np.mean(np.stack(embeddings), axis=0)
         norm = np.linalg.norm(centroid)
         if norm > 1e-10:
@@ -74,3 +88,23 @@ class ExtractionService:
             embedding=centroid.tolist(),
             model_id=model_id,
         )
+
+
+def _min_pairwise_cosine(embeddings: list[np.ndarray]) -> float:
+    """Return the minimum pairwise cosine similarity across ``embeddings``.
+
+    Embeddings are L2-normalized before the dot product so the value is in
+    ``[-1, 1]``. ``min(...)`` is taken across the upper-triangular pairs.
+    """
+    normed: list[np.ndarray] = []
+    for vec in embeddings:
+        norm = float(np.linalg.norm(vec))
+        normed.append(vec / norm if norm > 1e-10 else vec)
+
+    min_sim = 1.0
+    for i in range(len(normed)):
+        for j in range(i + 1, len(normed)):
+            sim = float(np.dot(normed[i], normed[j]))
+            if sim < min_sim:
+                min_sim = sim
+    return min_sim

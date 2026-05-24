@@ -1,4 +1,5 @@
 import { ResourceStatusType, SysEventType } from '@arcaai/domains';
+import { ForbiddenException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { VoiceProfileService } from '../voiceProfile.service';
 
@@ -160,6 +161,50 @@ describe('VoiceProfileService', () => {
         service.enroll({ userId: 'user-id-1', audioBuffers: [audioBuffer] }),
       ).rejects.toThrow();
     });
+
+    // TASK-296 C-1: auto-activate the first enrolled profile.
+    it('auto-activates the newly created profile when the user has no active profile yet', async () => {
+      const { of } = await import('rxjs');
+      mockHttpService.post.mockReturnValue(
+        of({ data: { embedding: Array(256).fill(0.1), model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM' } }),
+      );
+
+      const created = createMockVoiceProfileEntity({ id: 'vp-new', userId: 'user-id-1', isActive: false });
+      mockVoiceProfileRepository.createWithEmbedding.mockResolvedValue(created);
+      mockVoiceProfileRepository.findActiveByUserId.mockResolvedValue(null);
+      mockVoiceProfileRepository.activateById.mockResolvedValue(undefined);
+
+      const result = await service.enroll({
+        userId: 'user-id-1',
+        audioBuffers: [Buffer.from('fake-audio-data')],
+      });
+
+      expect(mockVoiceProfileRepository.findActiveByUserId).toHaveBeenCalledWith('user-id-1');
+      expect(mockVoiceProfileRepository.activateById).toHaveBeenCalledWith('vp-new');
+      expect(result.isActive).toBe(true);
+    });
+
+    it('does NOT auto-activate when the user already has an active profile', async () => {
+      const { of } = await import('rxjs');
+      mockHttpService.post.mockReturnValue(
+        of({ data: { embedding: Array(256).fill(0.1), model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM' } }),
+      );
+
+      const created = createMockVoiceProfileEntity({ id: 'vp-new', userId: 'user-id-1', isActive: false });
+      mockVoiceProfileRepository.createWithEmbedding.mockResolvedValue(created);
+      mockVoiceProfileRepository.findActiveByUserId.mockResolvedValue(
+        createMockVoiceProfileEntity({ id: 'vp-existing', userId: 'user-id-1', isActive: true }),
+      );
+
+      const result = await service.enroll({
+        userId: 'user-id-1',
+        audioBuffers: [Buffer.from('fake-audio-data')],
+      });
+
+      expect(mockVoiceProfileRepository.findActiveByUserId).toHaveBeenCalledWith('user-id-1');
+      expect(mockVoiceProfileRepository.activateById).not.toHaveBeenCalled();
+      expect(result.isActive).toBe(false);
+    });
   });
 
   // =========================================================================
@@ -211,6 +256,16 @@ describe('VoiceProfileService', () => {
         }),
       );
     });
+
+    // TASK-296 C-3: IDOR.
+    it('throws ForbiddenException when the profile belongs to another user', async () => {
+      const mockProfile = createMockVoiceProfileEntity({ id: 'vp-1', userId: 'someone-else' });
+      mockVoiceProfileRepository.findById.mockResolvedValue(mockProfile);
+
+      await expect(service.activate('vp-1')).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockVoiceProfileRepository.deactivateAllForUser).not.toHaveBeenCalled();
+      expect(mockVoiceProfileRepository.activateById).not.toHaveBeenCalled();
+    });
   });
 
   // =========================================================================
@@ -219,14 +274,22 @@ describe('VoiceProfileService', () => {
 
   describe('deactivate', () => {
     it('should deactivate a voice profile', async () => {
-      const mockProfile = createMockVoiceProfileEntity({ id: 'vp-1', isActive: true });
+      const mockProfile = createMockVoiceProfileEntity({ id: 'vp-1', userId: 'user-id-1', isActive: true });
       mockVoiceProfileRepository.findById.mockResolvedValue(mockProfile);
       mockVoiceProfileRepository.deactivateAllForUser.mockResolvedValue(undefined);
 
       await service.deactivate('vp-1');
 
-      // Deactivates just this profile's user's profiles (simpler: deactivateAll then don't activate)
       expect(mockVoiceProfileRepository.findById).toHaveBeenCalledWith('vp-1');
+    });
+
+    // TASK-296 C-3: IDOR.
+    it('throws ForbiddenException when the profile belongs to another user', async () => {
+      const mockProfile = createMockVoiceProfileEntity({ id: 'vp-1', userId: 'someone-else' });
+      mockVoiceProfileRepository.findById.mockResolvedValue(mockProfile);
+
+      await expect(service.deactivate('vp-1')).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockVoiceProfileRepository.deactivateAllForUser).not.toHaveBeenCalled();
     });
   });
 
@@ -235,12 +298,15 @@ describe('VoiceProfileService', () => {
   // =========================================================================
 
   describe('deleteById', () => {
-    it('should soft-delete a voice profile', async () => {
-      const mockProfile = createMockVoiceProfileEntity({ id: 'vp-1' });
-      mockVoiceProfileRepository.softDelete.mockResolvedValue(mockProfile);
+    it('should soft-delete a voice profile when the caller owns it', async () => {
+      const ownedProfile = createMockVoiceProfileEntity({ id: 'vp-1', userId: 'user-id-1' });
+      mockVoiceProfileRepository.findById.mockResolvedValue(ownedProfile);
+      const deleted = createMockVoiceProfileEntity({ id: 'vp-1', userId: 'user-id-1' });
+      mockVoiceProfileRepository.softDelete.mockResolvedValue(deleted);
 
       const result = await service.deleteById('vp-1');
 
+      expect(mockVoiceProfileRepository.findById).toHaveBeenCalledWith('vp-1');
       expect(mockVoiceProfileRepository.softDelete).toHaveBeenCalledWith('vp-1');
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(
         SysEventType.ResourceDeleted,
@@ -248,7 +314,16 @@ describe('VoiceProfileService', () => {
           resourceId: 'vp-1',
         }),
       );
-      expect(result).toBe(mockProfile);
+      expect(result).toBe(deleted);
+    });
+
+    // TASK-296 C-3: IDOR.
+    it('throws ForbiddenException when the profile belongs to another user', async () => {
+      const mockProfile = createMockVoiceProfileEntity({ id: 'vp-1', userId: 'someone-else' });
+      mockVoiceProfileRepository.findById.mockResolvedValue(mockProfile);
+
+      await expect(service.deleteById('vp-1')).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockVoiceProfileRepository.softDelete).not.toHaveBeenCalled();
     });
   });
 });

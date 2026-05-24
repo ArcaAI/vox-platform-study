@@ -96,4 +96,43 @@ export class SecureStorage {
   removeItem(key: string): void {
     localStorage.removeItem(key);
   }
+
+  /**
+   * TASK-296 H-1: cross-session helpers for caches keyed by a stable
+   * passphrase (e.g. `vox-vp-${userId}-${tenantId}`). `create()` uses a
+   * random salt per instance, so a SecureStorage created in one session
+   * cannot decrypt items written in another. These helpers persist the
+   * salt with the payload and re-derive the key on read.
+   */
+  static async getItemWithPassphrase(storageKey: string, passphrase: string): Promise<string | null> {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+    try {
+      const { s, iv, d } = JSON.parse(raw) as { s: string; iv: string; d: string };
+      if (!s || !iv || !d) return null;
+      const salt = fromBase64(s);
+      const key = await deriveKey(passphrase, salt);
+      const decrypted = await crypto.subtle.decrypt({ name: ALGORITHM, iv: fromBase64(iv) }, key, fromBase64(d));
+      return new TextDecoder().decode(decrypted);
+    } catch {
+      return null;
+    }
+  }
+
+  static async setItemWithPassphrase(storageKey: string, passphrase: string, value: string): Promise<void> {
+    const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
+    const key = await deriveKey(passphrase, salt);
+    const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+    const encrypted = await crypto.subtle.encrypt(
+      { name: ALGORITHM, iv },
+      key,
+      new TextEncoder().encode(value),
+    );
+    const payload = JSON.stringify({
+      s: toBase64(salt),
+      iv: toBase64(iv),
+      d: toBase64(encrypted),
+    });
+    localStorage.setItem(storageKey, payload);
+  }
 }

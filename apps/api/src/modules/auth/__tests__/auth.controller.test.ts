@@ -113,6 +113,8 @@ function buildController(overrides: {
     roleRepository?: any;
     tenantRepository?: any;
     clsService?: any;
+    streamTicketService?: any;
+    jwtRevocationService?: any;
 } = {}) {
     return new AuthController(
         (overrides.userService ?? createMockUserService()) as any,
@@ -124,6 +126,8 @@ function buildController(overrides: {
         (overrides.roleRepository ?? {}) as any,
         (overrides.tenantRepository ?? createMockTenantRepository()) as any,
         (overrides.clsService ?? createMockClsService()) as any,
+        (overrides.streamTicketService ?? { issueTicket: vi.fn(), consumeTicket: vi.fn() }) as any,
+        (overrides.jwtRevocationService ?? { revoke: vi.fn(), isRevoked: vi.fn().mockResolvedValue(false) }) as any,
     );
 }
 

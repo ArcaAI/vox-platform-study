@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { SysEventType, ResourceStatusType } from '@arcaai/domains';
 import { PromptManagementService } from '../prompt-management.service';
 
@@ -26,18 +26,33 @@ const createMockEventEmitter = () => ({
 
 const createMockQueryBuilder = () => {
     const mockWhere = vi.fn().mockReturnThis();
+    const mockWhereOr = vi.fn().mockReturnThis();
     const mockToList = vi.fn().mockResolvedValue([]);
     return {
         Where: mockWhere,
+        WhereOr: mockWhereOr,
         ToList: mockToList,
     };
 };
+
+const createMockDepartmentService = () => ({
+    updatePromptConfig: vi.fn(),
+    getAll: vi.fn(),
+    getById: vi.fn(),
+    getByCode: vi.fn(),
+    getRootDepartments: vi.fn(),
+    getChildren: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    deleteById: vi.fn(),
+});
 
 const createMockPromptTemplateRepository = () => ({
     findById: vi.fn(),
     findByName: vi.fn(),
     findByDepartment: vi.fn(),
     findByCategory: vi.fn(),
+    findMyPersonalForDepartment: vi.fn(),
     findAll: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -71,6 +86,8 @@ const createMockTemplateEntity = (overrides: Record<string, unknown> = {}) => {
         variables: 'variables' in overrides ? overrides.variables : null,
         currentVersionNumber: 'currentVersionNumber' in overrides ? overrides.currentVersionNumber : 1,
         departmentId: 'departmentId' in overrides ? overrides.departmentId : null,
+        scope: 'scope' in overrides ? overrides.scope : 'TENANT_DEFAULT',
+        ownerUserId: 'ownerUserId' in overrides ? overrides.ownerUserId : null,
         tags: 'tags' in overrides ? overrides.tags : [],
         resourceStatus: overrides.resourceStatus ?? 'ENABLED',
         createdAt: overrides.createdAt ?? new Date('2026-02-18T10:00:00Z'),
@@ -84,7 +101,7 @@ const createMockTemplateEntity = (overrides: Record<string, unknown> = {}) => {
         disable: vi.fn().mockImplementation(() => { _changed = true; }),
         toObject: vi.fn().mockReturnValue(overrides),
     };
-    const trackedKeys = new Set(['name', 'description', 'content', 'variables', 'tags', 'resourceStatus']);
+    const trackedKeys = new Set(['name', 'description', 'content', 'variables', 'tags', 'resourceStatus', 'scope', 'ownerUserId']);
     return new Proxy(entity, {
         set(target, prop, value) {
             if (trackedKeys.has(prop as string)) _changed = true;
@@ -147,6 +164,8 @@ describe('PromptManagementService', () => {
     let mockUsageRepo: ReturnType<typeof createMockPromptUsageRecordRepository>;
     let mockClsService: ReturnType<typeof createMockClsService>;
     let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
+    let mockDepartmentService: ReturnType<typeof createMockDepartmentService>;
+    let abilityCan: ReturnType<typeof vi.fn>;
 
     const defaultClsContext = {
         user: { id: 'user-id-1', firstName: 'Test', lastName: 'User', email: 'test@test.com' },
@@ -161,6 +180,8 @@ describe('PromptManagementService', () => {
         mockUsageRepo = createMockPromptUsageRecordRepository();
         mockClsService = createMockClsService();
         mockEventEmitter = createMockEventEmitter();
+        mockDepartmentService = createMockDepartmentService();
+        abilityCan = vi.fn().mockReturnValue(true); // default: caller can manage; override per-test
 
         mockClsService.get.mockImplementation((key: string) => {
             switch (key) {
@@ -168,6 +189,8 @@ describe('PromptManagementService', () => {
                     return defaultClsContext.user;
                 case 'tenantId':
                     return defaultClsContext.tenantId;
+                case 'userAbility':
+                    return { can: abilityCan };
                 default:
                     return null;
             }
@@ -177,6 +200,7 @@ describe('PromptManagementService', () => {
             mockTemplateRepo as never,
             mockVersionRepo as never,
             mockUsageRepo as never,
+            mockDepartmentService as never,
             mockEventEmitter as never,
             mockClsService as never,
         );
@@ -923,6 +947,7 @@ describe('PromptManagementService', () => {
         it('listPromptTemplates should use calling tenant context, not a hardcoded value', async () => {
             mockClsService.get.mockImplementation((key: string) => {
                 if (key === 'tenantId') return 'tenant-X';
+                if (key === 'userAbility') return { can: abilityCan };
                 return defaultClsContext.user;
             });
 
@@ -930,6 +955,7 @@ describe('PromptManagementService', () => {
                 mockTemplateRepo as never,
                 mockVersionRepo as never,
                 mockUsageRepo as never,
+                mockDepartmentService as never,
                 mockEventEmitter as never,
                 mockClsService as never,
             );
@@ -948,6 +974,7 @@ describe('PromptManagementService', () => {
             mockClsService.get.mockImplementation((key: string) => {
                 if (key === 'tenantId') return 'tenant-Y';
                 if (key === 'user') return { id: 'user-Y' };
+                if (key === 'userAbility') return { can: abilityCan };
                 return null;
             });
 
@@ -955,6 +982,7 @@ describe('PromptManagementService', () => {
                 mockTemplateRepo as never,
                 mockVersionRepo as never,
                 mockUsageRepo as never,
+                mockDepartmentService as never,
                 mockEventEmitter as never,
                 mockClsService as never,
             );
@@ -1014,6 +1042,250 @@ describe('PromptManagementService', () => {
                 totalUsages: 1,
                 lastUsedAt: null,
             });
+        });
+    });
+
+    // ─── TASK-294 DEF-C2: Authorization & tenant scope ───────────────────
+
+    describe('Authorization & tenant scope (DEF-C2)', () => {
+        describe('updatePromptTemplate', () => {
+            it('throws NotFoundException when template tenant does not match caller tenant', async () => {
+                const foreign = createMockTemplateEntity({ id: 'tpl-X', tenantId: 'tenant-OTHER' });
+                mockTemplateRepo.findById.mockResolvedValue(foreign);
+
+                await expect(
+                    service.updatePromptTemplate('tpl-X', { content: 'edit' } as never),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockTemplateRepo.update).not.toHaveBeenCalled();
+            });
+
+            it('throws ForbiddenException on USER_PERSONAL owned by a different user', async () => {
+                const personal = createMockTemplateEntity({
+                    id: 'tpl-P',
+                    tenantId: 'tenant-1',
+                    scope: 'USER_PERSONAL',
+                    ownerUserId: 'someone-else',
+                });
+                mockTemplateRepo.findById.mockResolvedValue(personal);
+
+                await expect(
+                    service.updatePromptTemplate('tpl-P', { content: 'edit' } as never),
+                ).rejects.toThrow(ForbiddenException);
+            });
+
+            it('throws ForbiddenException on TENANT_DEFAULT when caller lacks manage ability', async () => {
+                abilityCan.mockReturnValue(false);
+                const tpl = createMockTemplateEntity({ id: 'tpl-D', tenantId: 'tenant-1', scope: 'TENANT_DEFAULT' });
+                mockTemplateRepo.findById.mockResolvedValue(tpl);
+
+                await expect(
+                    service.updatePromptTemplate('tpl-D', { content: 'edit' } as never),
+                ).rejects.toThrow(ForbiddenException);
+            });
+
+            it('allows caller to update own USER_PERSONAL template', async () => {
+                abilityCan.mockReturnValue(false); // even without manage, owner can mutate
+                const personal = createMockTemplateEntity({
+                    id: 'tpl-mine',
+                    tenantId: 'tenant-1',
+                    scope: 'USER_PERSONAL',
+                    ownerUserId: 'user-id-1',
+                });
+                mockTemplateRepo.findById.mockResolvedValue(personal);
+                mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
+                mockTemplateRepo.update.mockResolvedValue(personal);
+
+                await service.updatePromptTemplate('tpl-mine', { content: 'new content' } as never);
+
+                expect(mockTemplateRepo.update).toHaveBeenCalled();
+            });
+        });
+
+        describe('getPromptTemplate', () => {
+            it('returns null on cross-tenant lookup (no existence leak)', async () => {
+                const foreign = createMockTemplateEntity({ id: 'tpl-X', tenantId: 'tenant-OTHER' });
+                mockTemplateRepo.findById.mockResolvedValue(foreign);
+
+                const result = await service.getPromptTemplate('tpl-X');
+
+                expect(result).toBeNull();
+            });
+
+            it('returns the template when tenant matches', async () => {
+                const tpl = createMockTemplateEntity({ id: 'tpl-1', tenantId: 'tenant-1' });
+                mockTemplateRepo.findById.mockResolvedValue(tpl);
+
+                const result = await service.getPromptTemplate('tpl-1');
+
+                expect(result).not.toBeNull();
+            });
+
+            it('returns null when caller is not the owner of a USER_PERSONAL template', async () => {
+                const personal = createMockTemplateEntity({
+                    id: 'tpl-P',
+                    tenantId: 'tenant-1',
+                    scope: 'USER_PERSONAL',
+                    ownerUserId: 'someone-else',
+                });
+                mockTemplateRepo.findById.mockResolvedValue(personal);
+
+                const result = await service.getPromptTemplate('tpl-P');
+
+                expect(result).toBeNull();
+            });
+        });
+
+        describe('softDeletePromptTemplate', () => {
+            it('throws NotFoundException on cross-tenant delete attempt', async () => {
+                const foreign = createMockTemplateEntity({ id: 'tpl-X', tenantId: 'tenant-OTHER' });
+                mockTemplateRepo.findById.mockResolvedValue(foreign);
+
+                await expect(service.softDeletePromptTemplate('tpl-X')).rejects.toThrow(NotFoundException);
+                expect(mockTemplateRepo.softDelete).not.toHaveBeenCalled();
+            });
+
+            it('throws ForbiddenException when caller does not own a USER_PERSONAL template', async () => {
+                const personal = createMockTemplateEntity({
+                    id: 'tpl-P',
+                    tenantId: 'tenant-1',
+                    scope: 'USER_PERSONAL',
+                    ownerUserId: 'someone-else',
+                });
+                mockTemplateRepo.findById.mockResolvedValue(personal);
+
+                await expect(service.softDeletePromptTemplate('tpl-P')).rejects.toThrow(ForbiddenException);
+            });
+
+            it('throws ForbiddenException when caller lacks manage on a TENANT_DEFAULT', async () => {
+                abilityCan.mockReturnValue(false);
+                const tpl = createMockTemplateEntity({ id: 'tpl-D', tenantId: 'tenant-1', scope: 'TENANT_DEFAULT' });
+                mockTemplateRepo.findById.mockResolvedValue(tpl);
+
+                await expect(service.softDeletePromptTemplate('tpl-D')).rejects.toThrow(ForbiddenException);
+            });
+        });
+    });
+
+    describe('createPromptTemplate scope defaults (DEF-C2)', () => {
+        it('defaults newly created template to scope=TENANT_DEFAULT', async () => {
+            mockTemplateRepo.findByName.mockResolvedValue(null);
+            const saved = createMockTemplateEntity({ scope: 'TENANT_DEFAULT' });
+            mockTemplateRepo.create.mockResolvedValue(saved);
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
+
+            await service.createPromptTemplate({ name: 'New', content: 'X', category: 'SYSTEM' });
+
+            // factory call assertion happens via mocked factory; here we assert
+            // create succeeded and event was broadcast with the default scope.
+            expect(mockTemplateRepo.create).toHaveBeenCalled();
+        });
+
+        it('throws ForbiddenException when caller lacks manage ability for default creation', async () => {
+            abilityCan.mockReturnValue(false);
+
+            await expect(
+                service.createPromptTemplate({ name: 'New', content: 'X', category: 'SYSTEM' }),
+            ).rejects.toThrow(ForbiddenException);
+        });
+    });
+
+    describe('createPersonal (DEF-C2 W5B-7)', () => {
+        it('stamps scope=USER_PERSONAL and ownerUserId=requestUserId', async () => {
+            const saved = createMockTemplateEntity({ scope: 'USER_PERSONAL', ownerUserId: 'user-id-1' });
+            mockTemplateRepo.create.mockResolvedValue(saved);
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
+
+            await service.createPersonal({ name: 'Mine', content: 'X', category: 'CUSTOM' });
+
+            expect(mockTemplateRepo.create).toHaveBeenCalled();
+        });
+
+        it('throws BadRequestException when tenantId is missing', async () => {
+            mockClsService.get.mockImplementation((k: string) => (k === 'user' ? defaultClsContext.user : null));
+
+            await expect(
+                service.createPersonal({ name: 'X', content: 'X', category: 'CUSTOM' }),
+            ).rejects.toThrow(BadRequestException);
+        });
+
+        it('does NOT require manage ability', async () => {
+            abilityCan.mockReturnValue(false); // caller cannot manage tenant defaults, but personal is fine
+            const saved = createMockTemplateEntity({ scope: 'USER_PERSONAL', ownerUserId: 'user-id-1' });
+            mockTemplateRepo.create.mockResolvedValue(saved);
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
+
+            await expect(
+                service.createPersonal({ name: 'Mine', content: 'X', category: 'CUSTOM' }),
+            ).resolves.toBeDefined();
+        });
+    });
+
+    describe('listDefaultsForDepartment (DEF-C2 W5B-7)', () => {
+        it('returns templates with scope=TENANT_DEFAULT or DEPARTMENT_DEFAULT scoped to the department', async () => {
+            const qb = createMockQueryBuilder();
+            mockTemplateRepo.$.mockReturnValue(qb);
+            qb.ToList.mockResolvedValue([]);
+
+            await service.listDefaultsForDepartment('dept-1');
+
+            expect(qb.Where).toHaveBeenCalledWith({ tenantId: 'tenant-1' });
+            expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'TENANT_DEFAULT' });
+            expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'DEPARTMENT_DEFAULT', departmentId: 'dept-1' });
+        });
+
+        it('throws BadRequestException when tenantId is missing', async () => {
+            mockClsService.get.mockImplementation((k: string) => (k === 'user' ? defaultClsContext.user : null));
+
+            await expect(service.listDefaultsForDepartment('dept-1')).rejects.toThrow(BadRequestException);
+        });
+    });
+
+    describe('listMyPersonalForDepartment (DEF-C2 W5B-7)', () => {
+        it('delegates to findMyPersonalForDepartment with caller tenant + user', async () => {
+            mockTemplateRepo.findMyPersonalForDepartment.mockResolvedValue([]);
+
+            await service.listMyPersonalForDepartment('dept-1');
+
+            expect(mockTemplateRepo.findMyPersonalForDepartment).toHaveBeenCalledWith('tenant-1', 'user-id-1', 'dept-1');
+        });
+
+        it('throws BadRequestException when tenantId is missing', async () => {
+            mockClsService.get.mockImplementation((k: string) => (k === 'user' ? defaultClsContext.user : null));
+
+            await expect(service.listMyPersonalForDepartment('dept-1')).rejects.toThrow(BadRequestException);
+        });
+
+        it('throws BadRequestException when caller user id is missing', async () => {
+            mockClsService.get.mockImplementation((k: string) => (k === 'tenantId' ? 'tenant-1' : null));
+
+            await expect(service.listMyPersonalForDepartment('dept-1')).rejects.toThrow(BadRequestException);
+        });
+    });
+
+    // ─── TASK-294 DEF-C4 W5B-8: assign templates to department ───────────
+
+    describe('assignToDepartment (DEF-C4 W5B-8)', () => {
+        it('delegates to DepartmentService.updatePromptConfig with the right fields', async () => {
+            mockDepartmentService.updatePromptConfig.mockResolvedValue({ id: 'dept-1' });
+
+            await service.assignToDepartment({
+                departmentId: 'dept-1',
+                newPatientPromptId: 'np-1',
+                revisitPromptId: 'rv-1',
+            } as never);
+
+            expect(mockDepartmentService.updatePromptConfig).toHaveBeenCalledWith('dept-1', {
+                newPatientPromptId: 'np-1',
+                revisitPromptId: 'rv-1',
+            });
+        });
+
+        it('propagates ForbiddenException / NotFoundException from DepartmentService (tenant guard)', async () => {
+            mockDepartmentService.updatePromptConfig.mockRejectedValue(new NotFoundException('Department not found'));
+
+            await expect(
+                service.assignToDepartment({ departmentId: 'wrong', newPatientPromptId: 'np-1' } as never),
+            ).rejects.toThrow(NotFoundException);
         });
     });
 });

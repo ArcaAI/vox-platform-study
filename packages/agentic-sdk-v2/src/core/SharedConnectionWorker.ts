@@ -42,7 +42,23 @@ export type WorkerMessageType =
 
 export interface SSESubscription {
   url: string;
-  authToken?: string;
+  /**
+   * TASK-297 C-SSE-1 — short-lived stream ticket minted by the API via
+   * `POST /auth/stream-ticket`. Passed as `?ticket=<…>` on the SSE URL.
+   *
+   * The legacy `authToken` field embedded a raw JWT into the URL, which:
+   *   - leaked the JWT into webserver / proxy access logs,
+   *   - leaked it into `Referer` headers if the SSE backend ever redirected,
+   *   - persisted it in browser history / DevTools network panel.
+   * It has been removed.
+   */
+  ticket?: string;
+  /**
+   * TASK-297 H-SSE-5 — owner user id (the user that minted the ticket).
+   * SSE deduplication keys on `(id, userId)` so we never share an
+   * upstream connection across distinct user contexts.
+   */
+  userId?: string;
   autoReconnect?: boolean;
 }
 
@@ -55,6 +71,8 @@ interface ManagedSSE {
   eventSource: EventSource;
   subscribers: Set<MessagePort>;
   url: string;
+  /** TASK-297 H-SSE-5 — owner user id for the upstream connection. */
+  userId?: string;
 }
 
 interface ManagedWS {
@@ -87,18 +105,38 @@ function broadcastToAll(message: WorkerMessage): void {
   }
 }
 
+/**
+ * TASK-297 H-SSE-5 — Compose the SSE dedup key from `(id, userId)`.
+ * Two tabs may share an upstream EventSource only when both their ids
+ * and their owner user ids match.
+ */
+function sseDedupKey(id: string, userId: string | undefined): string {
+  return `${id}::${userId ?? 'anon'}`;
+}
+
 function handleSSESubscribe(port: MessagePort, id: string, sub: SSESubscription): void {
-  const existing = sseConnections.get(id);
+  const dedupKey = sseDedupKey(id, sub.userId);
+  const existing = sseConnections.get(dedupKey);
   if (existing) {
+    // TASK-297 H-SSE-5 — refuse to share when user id mismatches.
+    if (existing.userId !== sub.userId) {
+      port.postMessage({
+        type: 'sse_error',
+        id,
+        payload: { reason: 'USER_MISMATCH', expected: existing.userId, got: sub.userId },
+      });
+      return;
+    }
     existing.subscribers.add(port);
     port.postMessage({ type: 'connection_count', id, payload: { count: existing.subscribers.size } });
     return;
   }
 
+  // TASK-297 C-SSE-1 — append a stream ticket (NOT a JWT) when provided.
   let url = sub.url;
-  if (sub.authToken) {
+  if (sub.ticket) {
     const separator = url.includes('?') ? '&' : '?';
-    url = `${url}${separator}token=${encodeURIComponent(sub.authToken)}`;
+    url = `${url}${separator}ticket=${encodeURIComponent(sub.ticket)}`;
   }
 
   const es = new EventSource(url);
@@ -106,6 +144,7 @@ function handleSSESubscribe(port: MessagePort, id: string, sub: SSESubscription)
     eventSource: es,
     subscribers: new Set([port]),
     url: sub.url,
+    userId: sub.userId,
   };
 
   es.onopen = () => {
@@ -136,19 +175,32 @@ function handleSSESubscribe(port: MessagePort, id: string, sub: SSESubscription)
     });
   }
 
-  sseConnections.set(id, managed);
+  sseConnections.set(dedupKey, managed);
   port.postMessage({ type: 'connection_count', id, payload: { count: 1 } });
 }
 
-function handleSSEUnsubscribe(port: MessagePort, id: string): void {
-  const managed = sseConnections.get(id);
-  if (!managed) return;
-
-  managed.subscribers.delete(port);
-
-  if (managed.subscribers.size === 0) {
-    managed.eventSource.close();
-    sseConnections.delete(id);
+function handleSSEUnsubscribe(port: MessagePort, id: string, userId?: string): void {
+  // TASK-297 H-SSE-5 — caller may supply userId; if absent, scan every
+  // entry sharing the base id and remove the port from each.
+  if (userId !== undefined) {
+    const dedupKey = sseDedupKey(id, userId);
+    const managed = sseConnections.get(dedupKey);
+    if (!managed) return;
+    managed.subscribers.delete(port);
+    if (managed.subscribers.size === 0) {
+      managed.eventSource.close();
+      sseConnections.delete(dedupKey);
+    }
+    return;
+  }
+  const matchPrefix = `${id}::`;
+  for (const [key, managed] of sseConnections) {
+    if (!key.startsWith(matchPrefix)) continue;
+    managed.subscribers.delete(port);
+    if (managed.subscribers.size === 0) {
+      managed.eventSource.close();
+      sseConnections.delete(key);
+    }
   }
 }
 
@@ -227,11 +279,11 @@ function handleWSSend(id: string, data: unknown): void {
 function handlePortDisconnect(port: MessagePort): void {
   allPorts.delete(port);
 
-  for (const [id, managed] of sseConnections) {
+  for (const [dedupKey, managed] of sseConnections) {
     managed.subscribers.delete(port);
     if (managed.subscribers.size === 0) {
       managed.eventSource.close();
-      sseConnections.delete(id);
+      sseConnections.delete(dedupKey);
     }
   }
 
@@ -252,7 +304,13 @@ function handleMessage(port: MessagePort, msg: WorkerMessage): void {
       if (msg.id && msg.payload) handleSSESubscribe(port, msg.id, msg.payload as SSESubscription);
       break;
     case 'unsubscribe_sse':
-      if (msg.id) handleSSEUnsubscribe(port, msg.id);
+      if (msg.id) {
+        const u =
+          msg.payload && typeof msg.payload === 'object' && 'userId' in msg.payload
+            ? ((msg.payload as { userId?: string }).userId ?? undefined)
+            : undefined;
+        handleSSEUnsubscribe(port, msg.id, u);
+      }
       break;
     case 'subscribe_ws':
       if (msg.id && msg.payload) handleWSSubscribe(port, msg.id, msg.payload as WSSubscription);

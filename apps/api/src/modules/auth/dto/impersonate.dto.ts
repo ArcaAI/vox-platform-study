@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
 export class ImpersonateRequest {
   @ApiProperty({
@@ -9,6 +9,22 @@ export class ImpersonateRequest {
   @IsString()
   @IsNotEmpty({ message: 'Target user ID is required' })
   targetUserId: string;
+
+  /**
+   * TASK-295 H-3: optional tenant the admin wants to impersonate the target
+   * "as". Must be one of the target user's enabled `UserRoleAssignment.tenantId`
+   * values. For non-SUPER_ADMIN callers it MUST equal the admin's own tenant.
+   * If omitted, the controller picks the first enabled assignment for backward
+   * compatibility.
+   */
+  @ApiProperty({
+    description:
+      "Optional tenantId to scope the impersonation to. Must be one of the target user's enabled tenant assignments. For tenant admins it must match their own tenant.",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  targetTenantId?: string;
 }
 
 export class ImpersonateUserResponse {

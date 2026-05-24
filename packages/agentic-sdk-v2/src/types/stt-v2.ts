@@ -106,6 +106,21 @@ export interface StreamingSessionResponse {
   currentActive: number;
   /** WebSocket URL path for connecting */
   wsUrl: string;
+  /**
+   * One-shot stream ticket (TASK-298 D-1). The SDK appends `?ticket=<value>`
+   * to the WebSocket URL; the API gateway consumes it on first WS open and
+   * the ticket becomes invalid afterwards. Optional for backward compat with
+   * older API revisions that haven't shipped the ticket field yet.
+   */
+  ticket?: string;
+  /** Epoch milliseconds when the stream ticket expires (TASK-298 D-1). */
+  ticketExpiresAt?: number;
+  /**
+   * Whether the speaker voice profile was successfully preseeded (TASK-296
+   * preseed contract). Surfaced so the SDK can short-circuit an extra
+   * voice-enrollment-status round-trip.
+   */
+  voiceProfileSeeded?: boolean;
 }
 
 /**
@@ -148,10 +163,23 @@ export interface WsCloseMessage {
 }
 
 /**
+ * Resume handshake sent by the client immediately after a reconnect
+ * (TASK-298 D-17). The server uses `lastSeq` to decide whether to replay
+ * buffered transcripts or respond with `resume_failed`.
+ */
+export interface WsResumeRequest {
+  type: 'resume';
+  /** Session that was previously authenticated on this WS. */
+  sessionId: string;
+  /** Highest transcript `seq` the client successfully observed. 0 = fresh start. */
+  lastSeq: number;
+}
+
+/**
  * Union of all client-to-server WebSocket messages.
  * Note: Binary PCM buffers can also be sent directly (not represented here).
  */
-export type WsClientMessage = WsAudioFrame | WsStopMessage | WsCloseMessage;
+export type WsClientMessage = WsAudioFrame | WsStopMessage | WsCloseMessage | WsResumeRequest;
 
 // =============================================================================
 // WebSocket Protocol Types (Server → Client)
@@ -172,6 +200,12 @@ export interface WsTranscriptResult {
   endTime: number;
   /** Whether this is a final (committed) transcript */
   isFinal: boolean;
+  /**
+   * Monotonic server-assigned sequence number (TASK-298 D-17). Used by the
+   * client to track `lastReceivedSeq` for the resume handshake. Optional for
+   * backward compat with older servers that don't tag transcripts.
+   */
+  seq?: number;
   /** English translation for code-switching output, if available */
   englishText?: string;
   /** Speaker identifier from diarization, if available */
@@ -227,9 +261,34 @@ export interface WsErrorMessage {
 }
 
 /**
+ * Server acknowledgement that a resume handshake was accepted (TASK-298 D-17).
+ * After this message the server replays any buffered transcripts whose
+ * `seq > lastSeq`.
+ */
+export interface WsResumedMessage {
+  type: 'resumed';
+  sessionId: string;
+  /** First seq the server is about to replay. */
+  fromSeq: number;
+}
+
+/**
+ * Server response when it cannot satisfy the resume request (TASK-298 D-17).
+ * Typical reasons: requested `lastSeq` is older than the bounded buffer,
+ * the session is unknown, or the session belongs to a different client.
+ */
+export interface WsResumeFailedMessage {
+  type: 'resume_failed';
+  sessionId: string;
+  reason: 'buffer_overflow' | 'unknown_session';
+  /** Lowest seq the server still has in its buffer, if known. */
+  minAvailableSeq?: number;
+}
+
+/**
  * Union of all server-to-client WebSocket messages.
  */
-export type WsServerMessage = WsTranscriptResult | WsStatusMessage | WsErrorMessage;
+export type WsServerMessage = WsTranscriptResult | WsStatusMessage | WsErrorMessage | WsResumedMessage | WsResumeFailedMessage;
 
 // =============================================================================
 // Transcription Job Types

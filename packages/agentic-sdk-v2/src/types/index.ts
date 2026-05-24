@@ -126,6 +126,8 @@ export { DEFAULT_AUDIO_PLUGIN_STATES, DEFAULT_AUDIO_STATE } from './audio';
 export type {
   // SUM-01: Async summary job types
   AsyncJobResponse,
+  // TASK-299 D-17: widened comprehensive summary options
+  ComprehensiveSummaryGenerationOptions,
   ComprehensiveSummaryOptions,
   // SUM-02: Comprehensive summary types
   ComprehensiveSummaryResponse,

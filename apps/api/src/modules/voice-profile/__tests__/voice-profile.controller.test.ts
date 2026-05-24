@@ -118,4 +118,49 @@ describe('VoiceProfileController', () => {
       expect(result).toHaveProperty('id', 'vp-1');
     });
   });
+
+  // TASK-296 C-3: CASL permission tuples per method (no more empty @Authorize()).
+  describe('CASL permission tuples', () => {
+    const REQUIRED_PERMISSIONS_KEY = 'required_permissions';
+
+    it('enroll requires ["create", "UserVoiceProfile"]', () => {
+      const permissions = Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        VoiceProfileController.prototype.enroll,
+      );
+      expect(permissions).toEqual([{ action: 'create', subject: 'UserVoiceProfile' }]);
+    });
+
+    it('list requires ["read", "UserVoiceProfile"]', () => {
+      const permissions = Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        VoiceProfileController.prototype.list,
+      );
+      expect(permissions).toEqual([{ action: 'read', subject: 'UserVoiceProfile' }]);
+    });
+
+    it('activate requires ["update", "UserVoiceProfile"]', () => {
+      const permissions = Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        VoiceProfileController.prototype.activate,
+      );
+      expect(permissions).toEqual([{ action: 'update', subject: 'UserVoiceProfile' }]);
+    });
+
+    it('deactivate requires ["update", "UserVoiceProfile"]', () => {
+      const permissions = Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        VoiceProfileController.prototype.deactivate,
+      );
+      expect(permissions).toEqual([{ action: 'update', subject: 'UserVoiceProfile' }]);
+    });
+
+    it('deleteById requires ["delete", "UserVoiceProfile"]', () => {
+      const permissions = Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        VoiceProfileController.prototype.deleteById,
+      );
+      expect(permissions).toEqual([{ action: 'delete', subject: 'UserVoiceProfile' }]);
+    });
+  });
 });

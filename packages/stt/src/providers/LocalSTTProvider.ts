@@ -116,6 +116,9 @@ export class LocalSTTProvider extends BaseSTTProvider {
     this.diarizer = new LocalSpeakerDiarizer({
       enabled: config.diarization,
       maxSpeakers: config.numSpeakers,
+      ...(config.voiceProfile?.reservedSpeakerId
+        ? { reservedSpeakerId: config.voiceProfile.reservedSpeakerId }
+        : {}),
     });
 
     this.initialized = true;

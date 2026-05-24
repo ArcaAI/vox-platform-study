@@ -17,7 +17,15 @@
  * @see SDK-206 Gap Analysis — ASR-R-03
  */
 
-import type { WsAudioFrame, WsErrorMessage, WsStatusMessage, WsTranscriptResult } from '../types/stt-v2';
+import type {
+  WsAudioFrame,
+  WsErrorMessage,
+  WsResumeFailedMessage,
+  WsResumeRequest,
+  WsResumedMessage,
+  WsStatusMessage,
+  WsTranscriptResult,
+} from '../types/stt-v2';
 import type { ISDKLogger } from './logger';
 
 interface DebugTranscriptEntry {
@@ -62,6 +70,31 @@ export interface WsReconnectOptions {
   baseDelayMs?: number;
   /** Maximum delay in ms between reconnection attempts (default: 30000) */
   maxDelayMs?: number;
+  /**
+   * Callback invoked before each reconnect attempt (TASK-298 D-18). Must
+   * return a new single-use stream ticket. The previous ticket is consumed
+   * by the gateway on the first WS open, so reconnects MUST mint a fresh
+   * ticket. When the callback returns null / throws, the attempt is aborted.
+   */
+  refreshTicket?: () => Promise<string>;
+}
+
+/**
+ * Bounded queue + backpressure configuration (TASK-298 D-15 / M-WS-6).
+ *
+ * Without these limits, `audioQueue.length` and `ws.bufferedAmount` would
+ * grow unboundedly under network pressure. We drop oldest frames once the
+ * queue exceeds `maxQueueSize` and skip sending while `bufferedAmount`
+ * exceeds `bufferedAmountHighWatermark`.
+ */
+export interface WsBackpressureOptions {
+  /** Maximum number of audio frames buffered locally before the oldest is dropped. */
+  maxQueueSize?: number;
+  /**
+   * Bytes threshold for `ws.bufferedAmount`. When exceeded, the next
+   * `sendAudioFrame` call drops the frame and emits a backpressure event.
+   */
+  bufferedAmountHighWatermark?: number;
 }
 
 /**
@@ -82,6 +115,11 @@ export interface WsReconnectOptions {
  * ```
  */
 export class SttV2WebSocketClient {
+  /** Default bounded queue size (TASK-298 D-15). */
+  static readonly DEFAULT_MAX_QUEUE_SIZE = 200;
+  /** Default bufferedAmount watermark — 1 MiB (TASK-298 D-15). */
+  static readonly DEFAULT_BUFFERED_AMOUNT_HIGH_WATERMARK = 1 * 1024 * 1024;
+
   private ws: WebSocket | null = null;
   private logger?: ISDKLogger;
   private _debugMode: boolean;
@@ -93,9 +131,17 @@ export class SttV2WebSocketClient {
   private onDisconnectCb?: () => void;
   private onReconnectCb?: (attempt: number) => void;
   private onReconnectFailedCb?: () => void;
+  /** Emitted whenever a frame is dropped due to backpressure (TASK-298 D-15). */
+  private onBackpressureDropCb?: (reason: 'queue_full' | 'buffered_amount_high') => void;
 
   /** Reconnection configuration */
-  private reconnectOptions: Required<WsReconnectOptions>;
+  private reconnectOptions: Required<Omit<WsReconnectOptions, 'refreshTicket'>> & {
+    refreshTicket: (() => Promise<string>) | null;
+  };
+  /** Backpressure configuration (TASK-298 D-15). */
+  private backpressureOptions: Required<WsBackpressureOptions>;
+  /** Number of frames dropped since last connect (D-15). */
+  private droppedFrameCount = 0;
   /** Number of reconnection attempts since last successful connect */
   private reconnectAttempts = 0;
   /** Last URL used for connect (needed for reconnection) */
@@ -108,8 +154,18 @@ export class SttV2WebSocketClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /** Whether we are currently in a reconnect cycle */
   private isReconnecting = false;
+  /**
+   * Highest transcript `seq` the client has received (TASK-298 D-17). Sent
+   * as `lastSeq` in the resume handshake on every reconnect.
+   */
+  private lastReceivedSeq = 0;
+  /**
+   * Session id captured from the URL on first connect; used as the
+   * `sessionId` field in the resume handshake.
+   */
+  private currentSessionId: string | null = null;
 
-  constructor(logger?: ISDKLogger, reconnect?: WsReconnectOptions, debugMode?: boolean) {
+  constructor(logger?: ISDKLogger, reconnect?: WsReconnectOptions, debugMode?: boolean, backpressure?: WsBackpressureOptions) {
     this.logger = logger;
     this._debugMode = debugMode ?? false;
     this.reconnectOptions = {
@@ -117,6 +173,11 @@ export class SttV2WebSocketClient {
       maxAttempts: reconnect?.maxAttempts ?? 5,
       baseDelayMs: reconnect?.baseDelayMs ?? 1000,
       maxDelayMs: reconnect?.maxDelayMs ?? 30_000,
+      refreshTicket: reconnect?.refreshTicket ?? null,
+    };
+    this.backpressureOptions = {
+      maxQueueSize: backpressure?.maxQueueSize ?? SttV2WebSocketClient.DEFAULT_MAX_QUEUE_SIZE,
+      bufferedAmountHighWatermark: backpressure?.bufferedAmountHighWatermark ?? SttV2WebSocketClient.DEFAULT_BUFFERED_AMOUNT_HIGH_WATERMARK,
     };
   }
 
@@ -179,6 +240,9 @@ export class SttV2WebSocketClient {
           this.ws = ws;
           this.lastUrl = url;
           this.lastConnectOptions = options;
+          this.currentSessionId = SttV2WebSocketClient.parseSessionId(url) ?? this.currentSessionId;
+          this.droppedFrameCount = 0;
+          const wasReconnecting = this.isReconnecting;
           if (!this.isReconnecting) {
             this.reconnectAttempts = 0;
           }
@@ -188,6 +252,9 @@ export class SttV2WebSocketClient {
             component: 'SttV2WebSocketClient',
             success: true,
           });
+          if (wasReconnecting && this.currentSessionId) {
+            this.sendResumeHandshake(ws, this.currentSessionId, this.lastReceivedSeq);
+          }
           resolve();
         }
       };
@@ -231,22 +298,53 @@ export class SttV2WebSocketClient {
 
   /**
    * Send raw PCM audio buffer (Int16 LE, mono).
+   *
+   * TASK-298 D-15: drops the frame and emits a backpressure event when
+   * `ws.bufferedAmount` exceeds the configured high-watermark. Returns
+   * `false` when the frame was dropped, `true` otherwise.
    */
-  sendAudioFrame(buffer: ArrayBuffer): void {
+  sendAudioFrame(buffer: ArrayBuffer): boolean {
     this.requireConnection();
+    if (this.shouldDropForBufferedAmount()) {
+      this.dropFrameDueToBackpressure('buffered_amount_high');
+      return false;
+    }
     this.ws!.send(buffer);
+    return true;
   }
 
   /**
    * Send JSON-encoded audio frame.
+   *
+   * TASK-298 D-15: same backpressure policy as `sendAudioFrame`.
    */
-  sendAudioFrameJson(seq: number, data: string, microphoneId?: string): void {
+  sendAudioFrameJson(seq: number, data: string, microphoneId?: string): boolean {
     this.requireConnection();
+    if (this.shouldDropForBufferedAmount()) {
+      this.dropFrameDueToBackpressure('buffered_amount_high');
+      return false;
+    }
     const frame: WsAudioFrame = { type: 'audio', seq, data };
     if (microphoneId) {
       frame.microphoneId = microphoneId;
     }
     this.ws!.send(JSON.stringify(frame));
+    return true;
+  }
+
+  /** Count of frames dropped due to backpressure since last connect (D-15). */
+  getDroppedFrameCount(): number {
+    return this.droppedFrameCount;
+  }
+
+  /** Highest transcript `seq` received from the server (D-17). */
+  getLastReceivedSeq(): number {
+    return this.lastReceivedSeq;
+  }
+
+  /** Register a callback invoked when a frame is dropped due to backpressure (D-15). */
+  onBackpressureDrop(cb: (reason: 'queue_full' | 'buffered_amount_high') => void): void {
+    this.onBackpressureDropCb = cb;
   }
 
   /**
@@ -397,12 +495,31 @@ export class SttV2WebSocketClient {
 
     this.onReconnectCb?.(this.reconnectAttempts);
 
-    this.reconnectTimer = setTimeout(() => {
+    this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
 
       if (this.intentionalDisconnect) return;
 
-      this.connect(this.lastUrl!, this.lastConnectOptions).catch((error) => {
+      let reconnectUrl = this.lastUrl!;
+      if (this.reconnectOptions.refreshTicket) {
+        try {
+          const freshTicket = await this.reconnectOptions.refreshTicket();
+          reconnectUrl = SttV2WebSocketClient.replaceTicketParam(reconnectUrl, freshTicket);
+          this.lastUrl = reconnectUrl;
+        } catch (err) {
+          this.logger?.error('Failed to refresh stream ticket — aborting reconnect (TASK-298 D-18)', {
+            operation: 'attemptReconnect',
+            component: 'SttV2WebSocketClient',
+            error: err as Error,
+            attributes: { attempt: this.reconnectAttempts },
+          });
+          this.isReconnecting = false;
+          this.onReconnectFailedCb?.();
+          return;
+        }
+      }
+
+      this.connect(reconnectUrl, this.lastConnectOptions).catch((error) => {
         this.logger?.warn('WebSocket reconnection attempt failed', {
           operation: 'attemptReconnect',
           component: 'SttV2WebSocketClient',
@@ -460,12 +577,13 @@ export class SttV2WebSocketClient {
       isFinal,
     };
 
-    const englishText =
-      typeof msg.englishText === 'string'
-        ? msg.englishText
-        : typeof msg.english_text === 'string'
-          ? msg.english_text
-          : undefined;
+    // TASK-298 D-17: capture server-assigned monotonic sequence number so
+    // the client can resume after a reconnect.
+    if (typeof msg.seq === 'number' && Number.isFinite(msg.seq)) {
+      normalized.seq = msg.seq;
+    }
+
+    const englishText = typeof msg.englishText === 'string' ? msg.englishText : typeof msg.english_text === 'string' ? msg.english_text : undefined;
     if (englishText && englishText.trim().length > 0) {
       normalized.englishText = englishText;
     }
@@ -603,9 +721,41 @@ export class SttV2WebSocketClient {
               };
               debugLogTranscript(this.logger, 'SttV2WebSocket', entry);
             }
+            // TASK-298 D-17: track the highest seen seq.
+            if (typeof transcript.seq === 'number' && transcript.seq > this.lastReceivedSeq) {
+              this.lastReceivedSeq = transcript.seq;
+            }
             this.onTranscriptCb?.(transcript);
           }
           break;
+        case 'resumed': {
+          const resumed = msg as unknown as WsResumedMessage;
+          this.logger?.info('Server accepted resume handshake', {
+            operation: 'handleMessage',
+            component: 'SttV2WebSocketClient',
+            attributes: { fromSeq: resumed.fromSeq, sessionId: resumed.sessionId },
+          });
+          break;
+        }
+        case 'resume_failed': {
+          const failed = msg as unknown as WsResumeFailedMessage;
+          this.logger?.warn('Server rejected resume handshake — transcript history lost', {
+            operation: 'handleMessage',
+            component: 'SttV2WebSocketClient',
+            attributes: {
+              reason: failed.reason,
+              minAvailableSeq: failed.minAvailableSeq,
+              sessionId: failed.sessionId,
+            },
+          });
+          this.lastReceivedSeq = 0;
+          this.onWsErrorCb?.({
+            type: 'error',
+            code: 'RESUME_FAILED',
+            message: `Server rejected resume handshake: ${failed.reason}`,
+          });
+          break;
+        }
         case 'status':
           if (!SttV2WebSocketClient.isValidStatus(msg)) {
             this.logger?.warn('Invalid status message — missing required fields', {
@@ -640,6 +790,86 @@ export class SttV2WebSocketClient {
         operation: 'handleMessage',
         component: 'SttV2WebSocketClient',
         error: error as Error,
+      });
+    }
+  }
+
+  // =========================================================================
+  // TASK-298 D-15 / D-17 / D-18 helpers
+  // =========================================================================
+
+  /**
+   * D-15: Decide whether to drop the next outbound frame because the WS
+   * buffer is over the high-watermark. Reading `bufferedAmount` on closed
+   * sockets throws on some platforms, so we guard against that.
+   */
+  private shouldDropForBufferedAmount(): boolean {
+    if (!this.ws) return false;
+    const buffered = (this.ws as { bufferedAmount?: number }).bufferedAmount ?? 0;
+    return buffered >= this.backpressureOptions.bufferedAmountHighWatermark;
+  }
+
+  private dropFrameDueToBackpressure(reason: 'queue_full' | 'buffered_amount_high'): void {
+    this.droppedFrameCount++;
+    this.logger?.warn('Dropping audio frame due to backpressure (TASK-298 D-15)', {
+      operation: 'sendAudioFrame',
+      component: 'SttV2WebSocketClient',
+      attributes: {
+        reason,
+        bufferedAmount: (this.ws as { bufferedAmount?: number } | null)?.bufferedAmount,
+        droppedFrameCount: this.droppedFrameCount,
+        highWatermark: this.backpressureOptions.bufferedAmountHighWatermark,
+      },
+    });
+    this.onBackpressureDropCb?.(reason);
+  }
+
+  /** Extract `sessionId` query param from a WS URL (D-17). */
+  private static parseSessionId(url: string): string | null {
+    try {
+      const parsed = new URL(url);
+      return parsed.searchParams.get('sessionId');
+    } catch {
+      const match = url.match(/[?&]sessionId=([^&]+)/);
+      return match?.[1] ? decodeURIComponent(match[1]) : null;
+    }
+  }
+
+  /**
+   * Replace (or insert) the `ticket=...` query param in a WS URL with a
+   * freshly-issued value. Used on reconnect (D-18). The previous ticket is
+   * one-shot consumed on the gateway, so reusing the URL verbatim would
+   * cause a 4401 close.
+   */
+  private static replaceTicketParam(url: string, ticket: string): string {
+    try {
+      const parsed = new URL(url);
+      parsed.searchParams.set('ticket', ticket);
+      return parsed.toString();
+    } catch {
+      if (/[?&]ticket=[^&]*/.test(url)) {
+        return url.replace(/([?&])ticket=[^&]*/, `$1ticket=${encodeURIComponent(ticket)}`);
+      }
+      const sep = url.includes('?') ? '&' : '?';
+      return `${url}${sep}ticket=${encodeURIComponent(ticket)}`;
+    }
+  }
+
+  /** Send the JSON resume handshake immediately after a reconnect (D-17). */
+  private sendResumeHandshake(ws: WebSocket, sessionId: string, lastSeq: number): void {
+    const handshake: WsResumeRequest = { type: 'resume', sessionId, lastSeq };
+    try {
+      ws.send(JSON.stringify(handshake));
+      this.logger?.debug('Sent resume handshake to server (TASK-298 D-17)', {
+        operation: 'sendResumeHandshake',
+        component: 'SttV2WebSocketClient',
+        attributes: { sessionId, lastSeq },
+      });
+    } catch (err) {
+      this.logger?.warn('Failed to send resume handshake', {
+        operation: 'sendResumeHandshake',
+        component: 'SttV2WebSocketClient',
+        error: err as Error,
       });
     }
   }

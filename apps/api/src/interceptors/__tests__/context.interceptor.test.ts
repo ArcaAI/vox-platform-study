@@ -136,6 +136,97 @@ describe('ContextInterceptor', () => {
         });
     });
 
+    describe('x-tenant-id header handling (SEC-J / TASK-295 C-2)', () => {
+        beforeEach(async () => {
+            vi.clearAllMocks();
+            vi.resetModules();
+
+            mockClsService = {
+                // Default to no JWT-derived tenantId in CLS.
+                get: vi.fn().mockReturnValue(undefined),
+                set: vi.fn(),
+                getId: vi.fn().mockReturnValue('test-request-id'),
+            };
+            const { ContextInterceptor } = await import('../context.interceptor');
+            interceptor = new ContextInterceptor(mockClsService);
+        });
+
+        it('must NOT call clsService.set("tenantId", header) when x-tenant-id header is present', async () => {
+            const context = createMockContext({
+                headers: { 'x-tenant-id': 'attacker-tenant' },
+            });
+            const handler = createMockHandler();
+
+            const result$ = interceptor.intercept(context, handler);
+            await firstValueFrom(result$);
+
+            const tenantSetCalls = mockClsService.set.mock.calls.filter(
+                (call: unknown[]) => call[0] === 'tenantId',
+            );
+            expect(tenantSetCalls).toHaveLength(0);
+        });
+
+        it('must NOT call clsService.set("tenantId", ...) at all (JWT strategy owns tenantId now)', async () => {
+            const context = createMockContext({ headers: {} });
+            const handler = createMockHandler();
+
+            const result$ = interceptor.intercept(context, handler);
+            await firstValueFrom(result$);
+
+            const tenantSetCalls = mockClsService.set.mock.calls.filter(
+                (call: unknown[]) => call[0] === 'tenantId',
+            );
+            expect(tenantSetCalls).toHaveLength(0);
+        });
+
+        it('logs a warn when x-tenant-id diverges from the JWT-derived tenantId', async () => {
+            // CLS user already populated by JwtStrategy with a different tenant.
+            mockClsService.get = vi.fn((key: string) => {
+                if (key === 'user') return { tenantId: 'tenant-A' };
+                return undefined;
+            });
+            const { ContextInterceptor } = await import('../context.interceptor');
+            interceptor = new ContextInterceptor(mockClsService);
+            const warnSpy = vi.spyOn(interceptor['logger'], 'warn');
+
+            const context = createMockContext({
+                headers: { 'x-tenant-id': 'tenant-B' },
+            });
+            const handler = createMockHandler();
+
+            const result$ = interceptor.intercept(context, handler);
+            await firstValueFrom(result$);
+
+            expect(warnSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    message: expect.stringContaining('x-tenant-id'),
+                    tenantIdHeader: 'tenant-B',
+                    jwtTenantId: 'tenant-A',
+                }),
+            );
+        });
+
+        it('does NOT warn when x-tenant-id matches the JWT-derived tenantId', async () => {
+            mockClsService.get = vi.fn((key: string) => {
+                if (key === 'user') return { tenantId: 'tenant-A' };
+                return undefined;
+            });
+            const { ContextInterceptor } = await import('../context.interceptor');
+            interceptor = new ContextInterceptor(mockClsService);
+            const warnSpy = vi.spyOn(interceptor['logger'], 'warn');
+
+            const context = createMockContext({
+                headers: { 'x-tenant-id': 'tenant-A' },
+            });
+            const handler = createMockHandler();
+
+            const result$ = interceptor.intercept(context, handler);
+            await firstValueFrom(result$);
+
+            expect(warnSpy).not.toHaveBeenCalled();
+        });
+    });
+
     describe('OTel trace context propagation', () => {
         const mockTraceId = 'abc123def456789012345678abcdef01';
         const mockSpanId = '1234567890abcdef';

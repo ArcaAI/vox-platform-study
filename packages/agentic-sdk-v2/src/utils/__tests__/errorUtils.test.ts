@@ -14,6 +14,7 @@ import {
   isRetriableError,
   withRetry,
   classifyHttpError,
+  classifySmrError,
 } from '../errorUtils';
 import type { RetryOptions } from '../errorUtils';
 import { AgenticError } from '../../types';
@@ -502,6 +503,59 @@ describe('errorUtils', () => {
     it('should map non-error status (200, 0) → API_ERROR (defensive)', () => {
       expect(classifyHttpError(200)).toBe('API_ERROR');
       expect(classifyHttpError(0)).toBe('API_ERROR');
+    });
+  });
+
+  // TASK-299 D-18 — Map SMR errors → AgenticErrorCode.
+  describe('classifySmrError', () => {
+    it('maps SMR `model_not_found` → NOT_FOUND regardless of status', () => {
+      expect(classifySmrError({ error_code: 'model_not_found' }, 500)).toBe('NOT_FOUND');
+    });
+
+    it('maps SMR `provider_unavailable` / `provider_timeout` → API_ERROR', () => {
+      expect(classifySmrError({ error_code: 'provider_unavailable' })).toBe('API_ERROR');
+      expect(classifySmrError({ error_code: 'provider_timeout' })).toBe('API_ERROR');
+    });
+
+    it('maps SMR `context_too_long` / `invalid_request` → VALIDATION_ERROR', () => {
+      expect(classifySmrError({ error_code: 'context_too_long' })).toBe('VALIDATION_ERROR');
+      expect(classifySmrError({ error_code: 'invalid_request' })).toBe('VALIDATION_ERROR');
+      expect(classifySmrError({ error_code: 'validation_error' })).toBe('VALIDATION_ERROR');
+    });
+
+    it('maps SMR `auth_required` / `unauthorized` → AUTHENTICATION_ERROR', () => {
+      expect(classifySmrError({ error_code: 'auth_required' })).toBe('AUTHENTICATION_ERROR');
+      expect(classifySmrError({ error_code: 'unauthorized' })).toBe('AUTHENTICATION_ERROR');
+    });
+
+    it('maps SMR `forbidden` → FORBIDDEN', () => {
+      expect(classifySmrError({ error_code: 'forbidden' })).toBe('FORBIDDEN');
+    });
+
+    it('maps SMR `rate_limited` / `too_many_requests` → RATE_LIMITED', () => {
+      expect(classifySmrError({ error_code: 'rate_limited' })).toBe('RATE_LIMITED');
+      expect(classifySmrError({ error_code: 'too_many_requests' })).toBe('RATE_LIMITED');
+    });
+
+    it('maps SMR `task_cancelled` → API_ERROR (caller still inspects local AbortSignal)', () => {
+      expect(classifySmrError({ error_code: 'task_cancelled' })).toBe('API_ERROR');
+    });
+
+    it('falls back to HTTP-status classification when error_code is missing', () => {
+      expect(classifySmrError({ detail: 'oops' }, 404)).toBe('NOT_FOUND');
+      expect(classifySmrError({ detail: 'oops' }, 429)).toBe('RATE_LIMITED');
+      expect(classifySmrError({ detail: 'oops' }, 503)).toBe('API_ERROR');
+    });
+
+    it('handles null / undefined payload safely', () => {
+      expect(classifySmrError(undefined)).toBe('API_ERROR');
+      expect(classifySmrError(null)).toBe('API_ERROR');
+      expect(classifySmrError(undefined, 401)).toBe('AUTHENTICATION_ERROR');
+    });
+
+    it('treats error_code case-insensitively', () => {
+      expect(classifySmrError({ error_code: 'MODEL_NOT_FOUND' })).toBe('NOT_FOUND');
+      expect(classifySmrError({ error_code: 'Forbidden' })).toBe('FORBIDDEN');
     });
   });
 });

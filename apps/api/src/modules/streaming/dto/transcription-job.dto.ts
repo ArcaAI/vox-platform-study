@@ -1,8 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 
 export const AUDIO_BUCKET = 'hope-audio';
 export const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+
+/**
+ * TASK-298 D-19 — `pipelineId` shape validation.
+ *
+ * Accepts either:
+ *   • Slug (lowercase alphanumeric + dashes, must start alphanumeric): `general-consult`, `cardio2`
+ *   • UUID v4 (case-insensitive): `f47ac10b-58cc-4372-a567-0e02b2c3d479`
+ *
+ * Rejects arbitrary strings, paths, SQL fragments, and the bare hyphen
+ * `-` (regex requires a leading [A-Za-z0-9]).
+ */
+export const PIPELINE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]*$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 export const ALLOWED_AUDIO_MIMES = new Set([
   'audio/wav',
@@ -20,9 +32,12 @@ export const ALLOWED_AUDIO_MIMES = new Set([
 ]);
 
 export class TranscribeFileRequest {
-  @ApiProperty({ description: 'Pipeline ID to use for transcription' })
+  @ApiProperty({ description: 'Pipeline ID (slug or UUID) to use for transcription' })
   @IsString()
   @IsNotEmpty()
+  @Matches(PIPELINE_ID_PATTERN, {
+    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (TASK-298 D-19)',
+  })
   pipelineId!: string;
 
   @ApiPropertyOptional({ description: 'Associated consultation ID' })
@@ -37,9 +52,12 @@ export class TranscribeFileRequest {
 }
 
 export class CreateStreamSessionRequest {
-  @ApiProperty({ description: 'Pipeline ID to use for streaming' })
+  @ApiProperty({ description: 'Pipeline ID (slug or UUID) to use for streaming' })
   @IsString()
   @IsNotEmpty()
+  @Matches(PIPELINE_ID_PATTERN, {
+    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (TASK-298 D-19)',
+  })
   pipelineId!: string;
 
   @ApiPropertyOptional({ description: 'Associated consultation ID' })
@@ -73,6 +91,29 @@ export class StreamSessionResponse {
 
   @ApiProperty({ description: 'Currently active sessions' })
   currentActive!: number;
+
+  /**
+   * TASK-298 D-1 — one-shot stream ticket the SDK appends to the WebSocket URL.
+   * The gateway consumes the ticket on first WS open; subsequent connects must
+   * mint a fresh ticket via `POST /stream/session/:id/refresh-ticket`.
+   */
+  @ApiProperty({ description: 'Single-use stream ticket for WS handshake (TASK-298 D-1)' })
+  @IsString()
+  ticket!: string;
+
+  @ApiProperty({ description: 'Epoch milliseconds when the ticket expires (TASK-298 D-1)' })
+  @IsNumber()
+  ticketExpiresAt!: number;
+
+  /**
+   * TASK-296 contract — true when the speaker voice profile was preseeded into
+   * STT-V2 during session creation. Surfaced so the SDK can short-circuit a
+   * follow-up `voice-enrollment-status` request.
+   */
+  @ApiPropertyOptional({ description: 'Whether the speaker voice profile was preseeded (TASK-296)' })
+  @IsBoolean()
+  @IsOptional()
+  voiceProfileSeeded?: boolean;
 }
 
 export class BatchTranscribeResponse {

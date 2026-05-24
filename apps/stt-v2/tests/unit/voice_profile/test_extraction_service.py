@@ -92,6 +92,93 @@ class TestExtractionServiceSpeechValidation:
             await extraction_service.extract([audio, audio, audio, audio], sample_rate=16000)
 
 
+class TestExtractionServiceCrossSampleConsistency:
+    """TASK-296 H-8: enforce cross-sample speaker consistency.
+
+    When more than 1 sample is provided, the embeddings extracted from each
+    sample must be pairwise similar (cosine >= 0.6) — otherwise a different
+    speaker likely recorded a sample and we MUST reject the enrollment.
+    """
+
+    def _consistent_service_with_constant_vector(self, vec: np.ndarray):
+        """Build an ExtractionService whose embedding_service returns the same vector for every sample."""
+        emb_service = AsyncMock()
+        emb_service.is_loaded = True
+
+        async def fake_extract(samples, sample_rate=16000, start_time=0.0, end_time=None):
+            from stt_v2.diarization.dto import SpeakerEmbedding
+            return SpeakerEmbedding(
+                embedding=vec.tolist(),
+                segment_start=start_time,
+                segment_end=end_time or len(samples) / sample_rate,
+            )
+
+        emb_service.extract_from_samples = AsyncMock(side_effect=fake_extract)
+        return ExtractionService(embedding_service=emb_service, vad_service=MagicMock())
+
+    def _per_sample_vectors_service(self, vectors: list[np.ndarray]):
+        """Build a service that yields the given vectors in order for each sample."""
+        emb_service = AsyncMock()
+        emb_service.is_loaded = True
+
+        iterator = iter(vectors)
+
+        async def fake_extract(samples, sample_rate=16000, start_time=0.0, end_time=None):
+            from stt_v2.diarization.dto import SpeakerEmbedding
+            vec = next(iterator)
+            return SpeakerEmbedding(
+                embedding=vec.tolist(),
+                segment_start=start_time,
+                segment_end=end_time or len(samples) / sample_rate,
+            )
+
+        emb_service.extract_from_samples = AsyncMock(side_effect=fake_extract)
+        return ExtractionService(embedding_service=emb_service, vad_service=MagicMock())
+
+    @pytest.mark.asyncio
+    async def test_accepts_two_consistent_samples_above_threshold(self):
+        rng = np.random.RandomState(7)
+        base = rng.randn(256).astype(np.float32)
+        base = base / np.linalg.norm(base)
+        service = self._consistent_service_with_constant_vector(base)
+        audio = _make_audio_samples(5.0)
+        result = await service.extract([audio, audio], sample_rate=16000)
+        assert isinstance(result, ExtractionResult)
+
+    @pytest.mark.asyncio
+    async def test_accepts_three_consistent_samples_above_threshold(self):
+        rng = np.random.RandomState(11)
+        base = rng.randn(256).astype(np.float32)
+        base = base / np.linalg.norm(base)
+        service = self._consistent_service_with_constant_vector(base)
+        audio = _make_audio_samples(5.0)
+        result = await service.extract([audio, audio, audio], sample_rate=16000)
+        assert isinstance(result, ExtractionResult)
+
+    @pytest.mark.asyncio
+    async def test_rejects_inconsistent_samples_below_threshold(self):
+        rng = np.random.RandomState(13)
+        v1 = rng.randn(256).astype(np.float32)
+        v1 = v1 / np.linalg.norm(v1)
+        v2 = rng.randn(256).astype(np.float32)
+        v2 = v2 / np.linalg.norm(v2)
+        service = self._per_sample_vectors_service([v1, v2])
+
+        audio = _make_audio_samples(5.0)
+        with pytest.raises(ValueError, match=r"(?i)inconsistent|similarity"):
+            await service.extract([audio, audio], sample_rate=16000)
+
+    @pytest.mark.asyncio
+    async def test_skip_consistency_check_for_single_sample(self):
+        rng = np.random.RandomState(17)
+        base = rng.randn(256).astype(np.float32)
+        base = base / np.linalg.norm(base)
+        service = self._consistent_service_with_constant_vector(base)
+        audio = _make_audio_samples(5.0)
+        result = await service.extract([audio], sample_rate=16000)
+        assert isinstance(result, ExtractionResult)
+
+
 class TestExtractionServiceOutput:
     """Tests for extraction output format."""
 

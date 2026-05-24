@@ -104,6 +104,55 @@ export function classifyHttpError(status: number): AgenticErrorCode {
   return 'API_ERROR';
 }
 
+/**
+ * TASK-299 D-18 — Map an SMR (`apps/smr`) error payload to an
+ * `AgenticErrorCode`. The backend SMR proxy returns errors shaped as
+ * `{ detail?, message?, error_code? }`; this helper picks the
+ * `error_code` first (when present) and falls back to HTTP-status
+ * classification. We intentionally do NOT throw if the inputs are
+ * missing — `UNKNOWN_ERROR` is a safe default.
+ *
+ * SMR `error_code` taxonomy (`apps/smr/app/errors.py`):
+ *   - `model_not_found`         → `NOT_FOUND`
+ *   - `provider_unavailable`    → `API_ERROR`
+ *   - `provider_timeout`        → `API_ERROR`
+ *   - `context_too_long`        → `VALIDATION_ERROR`
+ *   - `invalid_request`         → `VALIDATION_ERROR`
+ *   - `auth_required`           → `AUTHENTICATION_ERROR`
+ *   - `forbidden`               → `FORBIDDEN`
+ *   - `rate_limited`            → `RATE_LIMITED`
+ *   - `task_cancelled`          → `API_ERROR` (caller should also inspect cancellation locally)
+ *   - everything else           → fall through to HTTP-status classification.
+ */
+export function classifySmrError(
+  payload: { error_code?: string; detail?: string; message?: string } | null | undefined,
+  status?: number,
+): AgenticErrorCode {
+  const code = payload?.error_code?.toLowerCase();
+  switch (code) {
+    case 'model_not_found':
+      return 'NOT_FOUND';
+    case 'provider_unavailable':
+    case 'provider_timeout':
+    case 'task_cancelled':
+      return 'API_ERROR';
+    case 'context_too_long':
+    case 'invalid_request':
+    case 'validation_error':
+      return 'VALIDATION_ERROR';
+    case 'auth_required':
+    case 'unauthorized':
+      return 'AUTHENTICATION_ERROR';
+    case 'forbidden':
+      return 'FORBIDDEN';
+    case 'rate_limited':
+    case 'too_many_requests':
+      return 'RATE_LIMITED';
+    default:
+      return typeof status === 'number' ? classifyHttpError(status) : 'API_ERROR';
+  }
+}
+
 // =============================================================================
 // Retry Utility (extracted from useArca — HOOK-07)
 // =============================================================================

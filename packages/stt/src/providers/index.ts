@@ -14,5 +14,14 @@ export { BaseSTTProvider } from './BaseSTTProvider.js';
 export { LocalSTTProvider } from './LocalSTTProvider.js';
 export { RemoteSTTProvider } from './BackendSTTProvider.js';
 
+// TASK-298 D-4 — pipeline-aware streaming provider.
+export {
+  StreamingBackendSTTProvider,
+  type StreamingRemoteProviderConfig,
+  type StreamingSessionLike,
+  type StreamingWsClientLike,
+  type StreamingTranscriptPayload,
+} from './StreamingBackendSTTProvider.js';
+
 // Backward compatibility alias
 export { RemoteSTTProvider as BackendSTTProvider } from './BackendSTTProvider.js';

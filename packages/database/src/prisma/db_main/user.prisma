@@ -94,6 +94,7 @@ model User {
     DoctorDnaReports      DnaWritingStyleReport[] @relation("DoctorDnaReports")
     ApiKeys               ApiKey[]                @relation("_User_ApiKeys")
     VoiceProfiles         UserVoiceProfile[]      @relation("_User_VoiceProfiles")
+    OwnedPromptTemplates  PromptTemplate[]        @relation("_User_OwnedPromptTemplates")
 
     // indexing
     @@index([username], name: "User_username_idx")

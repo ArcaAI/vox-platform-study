@@ -16,6 +16,23 @@ import type { ISDKLogger } from './logger';
 export type PreferencesChangeCallback = (preferences: UserPreferences) => void;
 
 /**
+ * TASK-297 DEF-H4 — minimal ConfigManager surface the PersonalizationManager
+ * forwards user-editable preference writes into. Kept structurally compatible
+ * with `ConfigManager` so the real instance can be passed straight in.
+ */
+export interface PersonalizationConfigManager {
+  setUserValue(path: string, value: unknown): boolean;
+}
+
+/**
+ * TASK-297 DEF-H4 — map of `UserPreferences` field → `ConfigManager` dot-path.
+ * Only fields with a `CONFIG_PERMISSIONS['user']` entry are forwarded.
+ */
+const PERSONALIZATION_FORWARDS: Readonly<Record<string, string>> = {
+  language: 'ui.language',
+};
+
+/**
  * Manages user preferences with local/backend/hybrid storage.
  *
  * Supports three storage modes:
@@ -49,6 +66,14 @@ export class PersonalizationManager {
   private lastSyncAt?: Date;
   private isSyncing = false;
   private logger?: ISDKLogger;
+  /**
+   * TASK-297 H-4 — when true, `updatePreferences` mutates in-memory only:
+   * it does NOT call `saveLocal()` or `syncToBackend()`. Wired from
+   * `useAuth.impersonate` (true) / `useAuth.endImpersonation` (false).
+   */
+  private impersonationReadOnly = false;
+  /** TASK-297 DEF-H4 — optional cascade sink. */
+  private configManager?: PersonalizationConfigManager;
 
   constructor(config: PersonalizationConfig, apiClient: AgenticClient, logger?: ISDKLogger) {
     this.config = config;
@@ -134,8 +159,22 @@ export class PersonalizationManager {
       attributes: {
         updatedKeys: Object.keys(updates),
         storage: this.config.storage,
+        impersonationReadOnly: this.impersonationReadOnly,
       },
     });
+
+    // TASK-297 DEF-H4 — forward overlapping user-editable fields into the
+    // cascade so the resolved config tracks the personalization edit.
+    this.forwardToConfigManager(updates);
+
+    // TASK-297 H-4 — under impersonation, the admin's preference edits must
+    // NOT touch the impersonated user's IDB record nor sync to the backend.
+    // We still notify in-memory listeners so the UI reflects the change.
+    if (this.impersonationReadOnly) {
+      timer?.end(true, { attributes: { impersonationReadOnly: true } });
+      this.notifyListeners();
+      return;
+    }
 
     if (this.config.storage !== 'backend') {
       this.saveLocal();
@@ -266,7 +305,8 @@ export class PersonalizationManager {
         localConfig: this.preferences.localConfig,
         custom: this.preferences.custom,
       };
-      await this.apiClient.post(PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES, payload);
+      // TASK-297 DEF-H2 — backend handler is `@Patch()`; using POST returns 405.
+      await this.apiClient.patch(PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES, payload);
       this.lastSyncAt = new Date();
       timer?.end(true);
     } catch (error) {
@@ -469,6 +509,53 @@ export class PersonalizationManager {
           operation: 'notifyListeners',
           component: 'PersonalizationManager',
           error: error as Error,
+        });
+      }
+    }
+  }
+
+  /**
+   * TASK-297 H-4 — gate persistence/sync while impersonating.
+   * When `flag === true`, subsequent `updatePreferences` calls update
+   * `this.preferences` and `notifyListeners()` only; they do NOT call
+   * `saveLocal()` or `syncToBackend()`.
+   */
+  setImpersonationReadOnly(flag: boolean): void {
+    this.impersonationReadOnly = flag;
+    this.logger?.info('PersonalizationManager impersonation read-only flag toggled', {
+      operation: 'setImpersonationReadOnly',
+      component: 'PersonalizationManager',
+      attributes: { impersonationReadOnly: flag },
+    });
+  }
+
+  isImpersonationReadOnly(): boolean {
+    return this.impersonationReadOnly;
+  }
+
+  /**
+   * TASK-297 DEF-H4 — wire a ConfigManager sink so that user-editable
+   * fields written via `updatePreferences` are forwarded into the 4-tier
+   * cascade. Safe to call multiple times (replaces the previous sink).
+   */
+  setConfigManager(cfg: PersonalizationConfigManager | undefined): void {
+    this.configManager = cfg;
+  }
+
+  private forwardToConfigManager(updates: UserPreferencesUpdate): void {
+    if (!this.configManager) return;
+    for (const [field, path] of Object.entries(PERSONALIZATION_FORWARDS)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic lookup against UserPreferencesUpdate.
+      const value = (updates as any)[field];
+      if (value === undefined) continue;
+      try {
+        this.configManager.setUserValue(path, value);
+      } catch (err) {
+        this.logger?.warn('Failed to forward preference into ConfigManager', {
+          operation: 'forwardToConfigManager',
+          component: 'PersonalizationManager',
+          error: err as Error,
+          attributes: { field, path },
         });
       }
     }

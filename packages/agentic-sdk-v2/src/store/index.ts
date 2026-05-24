@@ -38,4 +38,13 @@ export {
   selectConfigManager,
   selectResolvedConfig,
   selectConfigReady,
+  selectProfileReady,
+  selectPersonalizationManager,
+  selectAuthUser,
+  selectAuthImpersonatedUser,
+  selectModelRegistry,
+  selectModelRegistryVersion,
+  selectSharedContext,
+  selectContextLoading,
+  selectContextError,
 } from './agenticStore';

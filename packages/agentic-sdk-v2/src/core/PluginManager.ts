@@ -23,6 +23,28 @@ import type { ISDKLogger } from './logger';
 import { TranscriptionPipeline, createTranscriptionPipeline } from './TranscriptionPipeline';
 import { KnowledgePipeline, createKnowledgePipeline } from './KnowledgePipeline';
 import type { AgenticClient } from './AgenticClient';
+import { StreamingSessionManager } from './StreamingSessionManager';
+import { SttV2WebSocketClient } from './SttV2WebSocketClient';
+
+/**
+ * Runtime audio start options forwarded by `useArcaAudio.startAudio(...)`.
+ *
+ * TASK-298 D-4 — the SDK consumer chooses `pipelineId` (and the active
+ * consultation) per-capture rather than statically in `AudioPluginConfig`.
+ * `PluginManager.setRuntimeOptions` stores these so the next call to
+ * `initialize(track, audioContext)` can build the streaming transport for
+ * the STT stage.
+ */
+export interface PluginManagerRuntimeOptions {
+  /** Backend ASR pipeline UUID or slug. Triggers the streaming-aware path. */
+  pipelineId?: string;
+  /** Optional consultation id to associate with the streaming session. */
+  consultationId?: string;
+  /** Optional language override (forwarded to createSession). */
+  language?: string;
+  /** Optional microphone identifier surfaced in transcripts. */
+  microphoneId?: string;
+}
 
 /**
  * NER extraction result for callbacks
@@ -109,6 +131,9 @@ export class PluginManager {
   private knowledgePipeline: KnowledgePipeline | null = null;
   private apiClient?: AgenticClient;
 
+  // TASK-298 D-4 — per-capture runtime options (set via setRuntimeOptions).
+  private runtimeOptions: PluginManagerRuntimeOptions = {};
+
   constructor(config: AudioPluginConfig = {}, logger?: ISDKLogger, apiClient?: AgenticClient, debugMode?: boolean) {
     this.config = config;
     this.logger = logger;
@@ -131,6 +156,27 @@ export class PluginManager {
    */
   getTranscriptionPipeline(): TranscriptionPipeline | null {
     return this.transcriptionPipeline;
+  }
+
+  /**
+   * TASK-298 D-4 — Record the per-capture runtime options. Must be called
+   * BEFORE `initialize(track, audioContext)` for the streaming transport
+   * to be built. Subsequent calls overwrite previous options.
+   */
+  setRuntimeOptions(opts: PluginManagerRuntimeOptions): void {
+    this.runtimeOptions = { ...opts };
+  }
+
+  /**
+   * Clear any per-capture runtime options. Called automatically on destroy.
+   */
+  clearRuntimeOptions(): void {
+    this.runtimeOptions = {};
+  }
+
+  /** Visible for diagnostics / testing. */
+  getRuntimeOptions(): Readonly<PluginManagerRuntimeOptions> {
+    return this.runtimeOptions;
   }
 
   /**
@@ -433,6 +479,12 @@ export class PluginManager {
     const vadConfig = this.getConfig<VADPluginConfig>('vad');
     const sttConfig = this.getConfig<STTPluginConfig>('stt');
 
+    // TASK-298 D-4 — the runtime pipelineId (from `startAudio({pipelineId})`)
+    // takes precedence over the static plugin config; the streaming transport
+    // is only built when we have BOTH an apiClient and a pipelineId.
+    const effectivePipelineId = this.runtimeOptions.pipelineId ?? sttConfig.pipelineId;
+    const streamingTransport = this.buildStreamingTransport(sttConfig, effectivePipelineId);
+
     return {
       debugMode: this._debugMode,
       noiseFilter: {
@@ -451,15 +503,59 @@ export class PluginManager {
         enabled: sttConfig.enabled ?? false,
         location: sttConfig.provider === 'local' ? 'browser' : sttConfig.provider === 'backend' ? 'backend' : 'auto',
         provider: sttConfig.provider ?? DEFAULT_STT_CONFIG.provider,
-        language: sttConfig.language ?? DEFAULT_STT_CONFIG.language,
+        language: this.runtimeOptions.language ?? sttConfig.language ?? DEFAULT_STT_CONFIG.language,
         modelId: sttConfig.modelId,
         sttSocket: sttConfig.sttSocket,
-        pipelineId: sttConfig.pipelineId,
+        pipelineId: effectivePipelineId,
         diarization: sttConfig.diarization ?? false,
         numSpeakers: sttConfig.numSpeakers ?? 2,
         returnTimestamps: sttConfig.returnTimestamps ?? 'word',
         codeSwitching: sttConfig.codeSwitching ?? false,
+        ...(streamingTransport ? { streamingTransport } : {}),
       },
+    };
+  }
+
+  /**
+   * TASK-298 D-4 — Build the streaming transport (StreamingSessionManager
+   * + SttV2WebSocketClient) when the runtime config asks for a pipeline.
+   *
+   * The transport is `unknown` in `TranscriptionPipelineConfig.stt` to keep
+   * `@arcaai/vox/types/pipeline.ts` free of an `@arcaai/stt` dependency;
+   * `TranscriptionPipeline` narrows it to `STTStreamingTransport` at use.
+   *
+   * Visible (public, not private) so the surrounding hook tests can assert
+   * the wiring without dipping into private state.
+   */
+  buildStreamingTransport(sttConfig: STTPluginConfig, pipelineId: string | undefined): unknown {
+    if (!pipelineId) return undefined;
+    if (!this.apiClient) {
+      this.logger?.warn('Cannot build streaming transport without an apiClient', {
+        operation: 'buildStreamingTransport',
+        component: 'PluginManager',
+      });
+      return undefined;
+    }
+    const provider = sttConfig.provider ?? DEFAULT_STT_CONFIG.provider;
+    if (provider === 'local') {
+      return undefined;
+    }
+
+    const sessionManager = new StreamingSessionManager(this.apiClient, this.logger);
+    const wsClient = new SttV2WebSocketClient(
+      this.logger,
+      {
+        enabled: true,
+        refreshTicket: async () => sessionManager.refreshTicket(),
+      },
+      this._debugMode,
+    );
+
+    return {
+      sessionManager,
+      wsClient,
+      pipelineId,
+      consultationId: this.runtimeOptions.consultationId,
     };
   }
 

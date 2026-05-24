@@ -1,5 +1,5 @@
 /**
- * useArcaConfig Hook Tests (M-001 — selectModel re-render fix)
+ * useArcaConfig Hook Tests (M-001 — selectModel re-render fix; TASK-297 DEF-H3/C6).
  *
  * @vitest-environment jsdom
  */
@@ -15,6 +15,18 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
     const actual = await importOriginal<typeof import('../../store/agenticStore')>();
     return { ...actual, useAgenticStore: vi.fn() };
 });
+
+/**
+ * TASK-297 DEF-H3 — `useArcaConfig` now reads via selector subscriptions
+ * (`useAgenticStore(selectX)`). The vitest mock must therefore apply each
+ * selector to the mock state, mirroring real Zustand behaviour.
+ */
+function bindStore(mockFn: ReturnType<typeof vi.fn>, state: Record<string, unknown>): void {
+    mockFn.mockImplementation((selectorOrUndefined?: (s: any) => unknown) => {
+        if (typeof selectorOrUndefined === 'function') return selectorOrUndefined(state);
+        return state;
+    });
+}
 
 function createMockModelRegistry() {
     const models = new Map([
@@ -63,8 +75,13 @@ describe('useArcaConfig — selectModel (M-001)', () => {
             }),
             updatePreferences: vi.fn(),
             setPreferences: vi.fn(),
+            // TASK-297 DEF-C6 — mutations require configReady to be true.
+            configReady: true,
+            configManager: null,
+            resolvedConfig: null,
+            tenantConfig: null,
         };
-        (useAgenticStore as any).mockReturnValue(mockStore);
+        bindStore(useAgenticStore as any, mockStore);
     });
 
     afterEach(() => {
@@ -80,9 +97,7 @@ describe('useArcaConfig — selectModel (M-001)', () => {
             result.current.selectModel('stt', 'whisper-base');
         });
 
-        // After selectModel, the store version should have incremented
-        // and the mock should return updated values on next render
-        (useAgenticStore as any).mockReturnValue(mockStore);
+        bindStore(useAgenticStore as any, mockStore);
         rerender();
 
         expect(result.current.models.selected.stt).toBe('whisper-base');
@@ -97,7 +112,7 @@ describe('useArcaConfig — selectModel (M-001)', () => {
             result.current.selectModel('stt', 'whisper-base');
         });
 
-        (useAgenticStore as any).mockReturnValue(mockStore);
+        bindStore(useAgenticStore as any, mockStore);
         rerender();
 
         expect(result.current.models.selected).toEqual({ stt: 'whisper-base' });
@@ -105,11 +120,10 @@ describe('useArcaConfig — selectModel (M-001)', () => {
 
     it('selectModel should be a no-op when modelRegistry is null', () => {
         mockStore.modelRegistry = null;
-        (useAgenticStore as any).mockReturnValue(mockStore);
+        bindStore(useAgenticStore as any, mockStore);
 
         const { result } = renderHook(() => useArcaConfig());
 
-        // Should not throw
         act(() => {
             result.current.selectModel('stt', 'whisper-base');
         });
@@ -151,7 +165,7 @@ describe('useArcaConfig — selectModel (M-001)', () => {
     describe('models memo', () => {
         it('should return empty arrays when modelRegistry is null', () => {
             mockStore.modelRegistry = null;
-            (useAgenticStore as any).mockReturnValue(mockStore);
+            bindStore(useAgenticStore as any, mockStore);
 
             const { result } = renderHook(() => useArcaConfig());
 
@@ -206,7 +220,7 @@ describe('useArcaConfig — TASK-244 three-tier config', () => {
             configReady: true,
             tenantConfig: null,
         };
-        (useAgenticStore as any).mockReturnValue(mockStore);
+        bindStore(useAgenticStore as any, mockStore);
     });
 
     afterEach(() => {
@@ -237,7 +251,7 @@ describe('useArcaConfig — TASK-244 three-tier config', () => {
 
     it('isLocked should return true when configManager is null', () => {
         mockStore.configManager = null;
-        (useAgenticStore as any).mockReturnValue(mockStore);
+        bindStore(useAgenticStore as any, mockStore);
         const { result } = renderHook(() => useArcaConfig());
         expect(result.current.isLocked('audio.noiseSuppression')).toBe(true);
     });
@@ -263,7 +277,7 @@ describe('useArcaConfig — TASK-244 three-tier config', () => {
 
     it('setUserPreference should return false when configManager is null', () => {
         mockStore.configManager = null;
-        (useAgenticStore as any).mockReturnValue(mockStore);
+        bindStore(useAgenticStore as any, mockStore);
         const { result } = renderHook(() => useArcaConfig());
         let success: boolean = true;
         act(() => {
@@ -282,25 +296,98 @@ describe('useArcaConfig — TASK-244 three-tier config', () => {
 
     it('resetUserPreferences should be no-op when configManager is null', () => {
         mockStore.configManager = null;
-        (useAgenticStore as any).mockReturnValue(mockStore);
+        bindStore(useAgenticStore as any, mockStore);
         const { result } = renderHook(() => useArcaConfig());
         act(() => {
             result.current.resetUserPreferences();
         });
-        // Should not throw
     });
 
     it('configReady should reflect false when store says false', () => {
         mockStore.configReady = false;
-        (useAgenticStore as any).mockReturnValue(mockStore);
+        bindStore(useAgenticStore as any, mockStore);
         const { result } = renderHook(() => useArcaConfig());
         expect(result.current.configReady).toBe(false);
     });
 
     it('resolvedConfig should be null when store has no config', () => {
         mockStore.resolvedConfig = null;
-        (useAgenticStore as any).mockReturnValue(mockStore);
+        bindStore(useAgenticStore as any, mockStore);
         const { result } = renderHook(() => useArcaConfig());
         expect(result.current.resolvedConfig).toBeNull();
+    });
+});
+
+// =============================================================================
+// TASK-297 DEF-C6 — mutations throw CONFIG_NOT_READY before profile preload.
+// =============================================================================
+
+describe('useArcaConfig — TASK-297 DEF-C6 readiness gate', () => {
+    let mockStore: any;
+
+    beforeEach(() => {
+        mockStore = {
+            apiClient: null,
+            logger: null,
+            preferences: {},
+            personalizationManager: { updatePreferences: vi.fn(), reset: vi.fn(), getPreferences: vi.fn(() => ({})) },
+            modelRegistry: { getModelsByType: vi.fn(() => []), getSelected: vi.fn(() => ({})), selectModel: vi.fn() },
+            modelRegistryVersion: 0,
+            incrementModelRegistryVersion: vi.fn(),
+            updatePreferences: vi.fn(),
+            setPreferences: vi.fn(),
+            configManager: {
+                canUserEdit: vi.fn(() => true),
+                setUserValue: vi.fn(() => true),
+                clearUserPreferences: vi.fn(),
+            },
+            resolvedConfig: null,
+            tenantConfig: null,
+            // CRITICAL: configReady is false here.
+            configReady: false,
+        };
+        bindStore(useAgenticStore as any, mockStore);
+    });
+
+    afterEach(() => vi.clearAllMocks());
+
+    it('update() throws AgenticError(CONFIG_NOT_READY) before profile preload', async () => {
+        const { result } = renderHook(() => useArcaConfig());
+        await expect(result.current.update({ language: 'th' })).rejects.toMatchObject({
+            code: 'CONFIG_NOT_READY',
+        });
+    });
+
+    it('reset() throws AgenticError(CONFIG_NOT_READY) before profile preload', async () => {
+        const { result } = renderHook(() => useArcaConfig());
+        await expect(result.current.reset()).rejects.toMatchObject({ code: 'CONFIG_NOT_READY' });
+    });
+
+    it('selectModel() throws AgenticError(CONFIG_NOT_READY) before profile preload', () => {
+        const { result } = renderHook(() => useArcaConfig());
+        expect(() => result.current.selectModel('stt', 'whisper-base')).toThrowError(
+            /CONFIG_NOT_READY|configReady/i,
+        );
+    });
+
+    it('setUserPreference() throws AgenticError(CONFIG_NOT_READY) before profile preload', () => {
+        const { result } = renderHook(() => useArcaConfig());
+        expect(() => result.current.setUserPreference('stt.language', 'th')).toThrowError(
+            /CONFIG_NOT_READY|configReady/i,
+        );
+    });
+
+    it('resetUserPreferences() throws AgenticError(CONFIG_NOT_READY) before profile preload', () => {
+        const { result } = renderHook(() => useArcaConfig());
+        expect(() => result.current.resetUserPreferences()).toThrowError(
+            /CONFIG_NOT_READY|configReady/i,
+        );
+    });
+
+    it('isLocked() and read-only fields are accessible even when configReady=false', () => {
+        const { result } = renderHook(() => useArcaConfig());
+        expect(result.current.configReady).toBe(false);
+        expect(typeof result.current.isLocked).toBe('function');
+        expect(result.current.isLocked('any.path')).toBe(false);
     });
 });

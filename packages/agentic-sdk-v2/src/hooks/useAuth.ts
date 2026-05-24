@@ -182,6 +182,10 @@ export function useAuth(): UseAuthReturn {
           apiClient.updateAccessToken(data.token);
         }
 
+        // TASK-297 H-4 — gate PersonalizationManager so admin edits during
+        // impersonation stay in-memory only (no IDB write, no PATCH).
+        store.personalizationManager?.setImpersonationReadOnly?.(true);
+
         timer?.end(true);
         return data;
       } catch (err) {
@@ -218,6 +222,9 @@ export function useAuth(): UseAuthReturn {
 
     store.setImpersonatedUser(null);
     store.setOriginalUser(null);
+    // TASK-297 H-4 — restore PersonalizationManager to read-write mode now
+    // that the admin has resumed their own identity.
+    store.personalizationManager?.setImpersonationReadOnly?.(false);
     logger?.info('Impersonation session ended, admin identity restored');
   }, [apiClient, store, logger]);
 

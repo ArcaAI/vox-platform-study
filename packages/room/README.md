@@ -93,6 +93,43 @@ track.on('audioLevelUpdate', (info) => {
 await room.disconnect();
 ```
 
+## Sample-rate enforcement (TASK-300 L-1)
+
+Several downstream processors hard-code a specific audio sample rate. RNNoise
+(via `@arcaai/noise-filter`) requires **48 000 Hz**; Silero VAD operates
+internally at 16 000 Hz with resampling. If the host AudioContext runs at a
+different rate (common on macOS, which often locks the device output to
+44 100 Hz) those processors will silently degrade in quality.
+
+`AudioContextManager.acquire(opts)` accepts opt-in enforcement:
+
+```ts
+import { AudioContextManager, RoomSampleRateMismatchError } from '@arcaai/room';
+
+const manager = AudioContextManager.getInstance({ sampleRate: 48000 });
+
+try {
+  // Strict: throws RoomSampleRateMismatchError when sampleRate !== 48000
+  await manager.acquire({ requireSampleRate: 48000 });
+} catch (err) {
+  if (err instanceof RoomSampleRateMismatchError) {
+    // Hardware did not honour the 48 kHz request; either fall back to
+    // device-default processors or accept the mismatch explicitly.
+    await manager.acquire({ requireSampleRate: 48000, allowMismatch: true });
+  }
+}
+```
+
+| `requireSampleRate` | `allowMismatch` | Behaviour on mismatch |
+|---|---|---|
+| unset | — | no-op (backwards-compatible default) |
+| `48000` | `false` (default) | throws `RoomSampleRateMismatchError` (`code: 'sample_rate_mismatch'`) |
+| `48000` | `true` | logs `console.warn` and resolves with the context |
+
+Pass `{ allowMismatch: true }` only when the integrator has explicitly accepted
+the quality trade-off — RNNoise's output ring buffer is calibrated for 48 kHz
+frame timing and will produce audible artefacts at other rates.
+
 ## API Reference
 
 ### Components

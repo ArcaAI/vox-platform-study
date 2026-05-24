@@ -43,6 +43,13 @@ export class AgenticClient {
 
   private rateLimitConfig?: { maxRequests: number; windowMs: number };
   private requestTimestamps: number[] = [];
+  /**
+   * TASK-297 L-1 (transports) — hard cap on `requestTimestamps` so a long-
+   * running tab that never trips the rate limit cannot grow this array
+   * unbounded. We keep at most this many recent timestamps; the rate
+   * limiter still filters by window for correctness.
+   */
+  private static readonly MAX_REQUEST_TIMESTAMPS = 1024;
   private onUnauthorizedHandler?: () => Promise<boolean>;
   private inflightRefresh: Promise<boolean> | null = null;
 
@@ -74,6 +81,12 @@ export class AgenticClient {
 
     this.requestTimestamps = this.requestTimestamps.filter((ts) => now - ts < windowMs);
 
+    // TASK-297 L-1 (transports) — also bound the array size so even an
+    // adversarial / mis-configured window can't grow it unbounded.
+    if (this.requestTimestamps.length > AgenticClient.MAX_REQUEST_TIMESTAMPS) {
+      this.requestTimestamps = this.requestTimestamps.slice(-AgenticClient.MAX_REQUEST_TIMESTAMPS);
+    }
+
     if (this.requestTimestamps.length >= maxRequests) {
       throw new AgenticError('RATE_LIMITED', 'Client-side rate limit exceeded', {
         context: { maxRequests, windowMs, currentCount: this.requestTimestamps.length },
@@ -81,6 +94,17 @@ export class AgenticClient {
     }
 
     this.requestTimestamps.push(now);
+  }
+
+  /**
+   * TASK-297 H-6 (transports) — endpoints whose 401 must NOT trigger an
+   * automatic refresh. These either ARE the auth flow (login, refresh,
+   * stream-ticket, impersonate) or would loop forever if we retried.
+   */
+  private static readonly REFRESH_SKIP_ENDPOINTS: readonly string[] = ['/auth/refresh', '/auth/login', '/auth/stream-ticket', '/auth/impersonate'];
+
+  private static shouldSkipRefresh(endpoint: string): boolean {
+    return AgenticClient.REFRESH_SKIP_ENDPOINTS.some((skip) => endpoint.includes(skip));
   }
 
   private static validateBody(body: unknown): void {
@@ -240,7 +264,9 @@ export class AgenticClient {
           },
         });
 
-        if (response.status === 401 && !isRetry && this.onUnauthorizedHandler && !endpoint.includes(AgenticClient.AUTH_REFRESH_ENDPOINT)) {
+        // TASK-297 H-6 (transports) — broaden the 401 skip-list so we don't
+        // attempt a refresh for endpoints that ARE part of the auth flow.
+        if (response.status === 401 && !isRetry && this.onUnauthorizedHandler && !AgenticClient.shouldSkipRefresh(endpoint)) {
           try {
             const refreshed = await this.deduplicatedRefresh();
             if (refreshed) {
@@ -390,7 +416,14 @@ export class AgenticClient {
    * Omits Content-Type header so the browser sets the multipart boundary.
    * Auth headers (X-API-Key, X-Tenant-ID, correlation) are included.
    */
-  async postFormData<T>(endpoint: string, formData: FormData, options?: { signal?: AbortSignal }): Promise<T> {
+  async postFormData<T>(
+    endpoint: string,
+    formData: FormData,
+    options?: { signal?: AbortSignal },
+    // TASK-297 M-7 (transports) — flag used by the auto-retry path so we
+    // don't loop forever when the post-refresh response is still 401.
+    isRetry = false,
+  ): Promise<T> {
     const requestId = `req_${++this.requestCount}_${Date.now()}`;
     const spanId = generateSpanId();
     const startTime = performance.now();
@@ -461,6 +494,20 @@ export class AgenticClient {
         const errorData = await response.json().catch(() => ({}));
         const errorCode = classifyHttpError(response.status);
         const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+
+        // TASK-297 M-7 (transports) — postFormData now respects the same
+        // 401-refresh contract as `request()`, so multipart uploads (voice
+        // enrollment etc.) don't fail outright on transient token expiry.
+        if (response.status === 401 && !isRetry && this.onUnauthorizedHandler && !AgenticClient.shouldSkipRefresh(endpoint)) {
+          try {
+            const refreshed = await this.deduplicatedRefresh();
+            if (refreshed) {
+              return this.postFormData<T>(endpoint, formData, options, true);
+            }
+          } catch {
+            // Fall through to throw the original 401.
+          }
+        }
 
         throw new AgenticError(errorCode, errorMessage, {
           context: { status: response.status, endpoint, requestId },

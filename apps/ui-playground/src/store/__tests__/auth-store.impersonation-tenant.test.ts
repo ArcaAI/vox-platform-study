@@ -69,11 +69,12 @@ describe('useAuthStore — impersonation sets tenantId', () => {
         expect(useAuthStore.getState().tenantId).toBe(originalTenantId);
     });
 
-    it('should persist the impersonation tenantId to localStorage', () => {
+    it('should persist the impersonation tenantId to sessionStorage (TASK-295 H-1)', () => {
         useAuthStore.getState().setCredentialsAuth('admin-token', mockAdminUser, ADMIN_TENANT);
         useAuthStore.getState().startImpersonation(mockDoctorUser, 'imp-token', DOCTOR_TENANT_ID);
 
-        const stored = JSON.parse(localStorage.getItem('arcavox.auth') ?? '{}');
+        // TASK-295 H-1: auth state now persists to sessionStorage, not localStorage.
+        const stored = JSON.parse(sessionStorage.getItem('arcavox.auth') ?? '{}');
         expect(stored.state.tenantId).toBe(DOCTOR_TENANT_ID);
     });
 });

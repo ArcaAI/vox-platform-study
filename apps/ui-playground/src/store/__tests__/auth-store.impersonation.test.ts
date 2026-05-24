@@ -82,14 +82,18 @@ describe('useAuthStore — impersonation', () => {
         });
     });
 
-    describe('persistence across refresh', () => {
-        it('should persist impersonation state to localStorage', () => {
+    describe('persistence across refresh (TASK-295 H-1 inverted contract)', () => {
+        it('does NOT persist impersonation state — it lives only in tab-scoped memory', () => {
             useAuthStore.getState().setCredentialsAuth('admin-token', mockAdminUser, TENANT_UUID);
             useAuthStore.getState().startImpersonation(mockDoctorUser, 'impersonation-token');
 
-            const stored = JSON.parse(localStorage.getItem('arcavox.auth') ?? '{}');
-            expect(stored.state.impersonatedUser).toEqual(mockDoctorUser);
-            expect(stored.state.impersonationToken).toBe('impersonation-token');
+            // TASK-295 H-1: impersonation fields are excluded from `partialize`,
+            // and storage moved to sessionStorage. localStorage MUST NOT contain
+            // the impersonation token.
+            expect(localStorage.getItem('arcavox.auth')).toBeNull();
+            const stored = JSON.parse(sessionStorage.getItem('arcavox.auth') ?? '{}');
+            expect(stored.state?.impersonatedUser).toBeUndefined();
+            expect(stored.state?.impersonationToken).toBeUndefined();
         });
     });
 });

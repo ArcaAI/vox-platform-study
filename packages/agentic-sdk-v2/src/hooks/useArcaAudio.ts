@@ -60,6 +60,15 @@ export function useArcaAudio() {
         store.setAudioLanguage(options.language);
       }
 
+      // TASK-298 D-4 — forward per-capture options to the plugin manager
+      // BEFORE initialize so the streaming transport can be built for the
+      // STT stage when a `pipelineId` is provided.
+      pluginManager.setRuntimeOptions?.({
+        pipelineId: options?.pipelineId,
+        consultationId: consultation?.id,
+        language: options?.language,
+      });
+
       const timer = logger?.startOperation('startAudio', {
         component: 'useArcaAudio',
         sdk: { consultationId: consultation?.id },
@@ -216,6 +225,7 @@ export function useArcaAudio() {
     });
 
     await pluginManager.destroy();
+    pluginManager.clearRuntimeOptions?.();
 
     const { activeStream } = store;
     if (activeStream) {

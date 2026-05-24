@@ -98,4 +98,26 @@ describe('PromptTemplateFactory', () => {
     expect(entity.createdAt).toBe(customDate);
     expect(entity.updatedAt).toBe(customDate);
   });
+
+  // ─── TASK-294 DEF-C1: scope + ownerUserId defaults ────────────────────
+
+  it('should default scope to TENANT_DEFAULT and ownerUserId to null', () => {
+    const entity = PromptTemplateFactory.CreatePromptTemplate({});
+    expect(entity.scope).toBe('TENANT_DEFAULT');
+    expect(entity.ownerUserId).toBeNull();
+  });
+
+  it('should honor explicit USER_PERSONAL scope with ownerUserId', () => {
+    const entity = PromptTemplateFactory.CreatePromptTemplate({
+      scope: 'USER_PERSONAL',
+      ownerUserId: 'user-7',
+    });
+    expect(entity.scope).toBe('USER_PERSONAL');
+    expect(entity.ownerUserId).toBe('user-7');
+  });
+
+  it('should honor explicit DEPARTMENT_DEFAULT scope', () => {
+    const entity = PromptTemplateFactory.CreatePromptTemplate({ scope: 'DEPARTMENT_DEFAULT' });
+    expect(entity.scope).toBe('DEPARTMENT_DEFAULT');
+  });
 });

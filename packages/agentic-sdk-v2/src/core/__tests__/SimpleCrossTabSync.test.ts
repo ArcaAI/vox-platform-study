@@ -269,6 +269,8 @@ describe('SimpleCrossTabSync', () => {
 
     it('wraps every postMessage in a {payload, hmac} envelope', async () => {
       const sync = new SimpleCrossTabSync(baseConsultation);
+      // TASK-297 DEF-M1 — channel construction is async without tenantId.
+      await sync.whenReady();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test introspection.
       const channel = (sync as any).channel as MockBroadcastChannel;
       const spy = vi.spyOn(channel, 'postMessage');
@@ -290,6 +292,8 @@ describe('SimpleCrossTabSync', () => {
       const warn = vi.fn();
       const logger = { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn(), fatal: vi.fn(), trace: vi.fn() };
       const sync = new SimpleCrossTabSync(baseConsultation, { logger });
+      // TASK-297 DEF-M1 — channel construction is async without tenantId.
+      await sync.whenReady();
       const listener = vi.fn();
       sync.onContextAdded(listener);
 
@@ -313,6 +317,8 @@ describe('SimpleCrossTabSync', () => {
 
       const sender = new SimpleCrossTabSync(baseConsultation);
       const receiver = new SimpleCrossTabSync(baseConsultation, { logger });
+      // TASK-297 DEF-M1 — channel construction is async without tenantId.
+      await Promise.all([sender.whenReady(), receiver.whenReady()]);
       const listener = vi.fn();
       receiver.onContextAdded(listener);
 
@@ -430,21 +436,51 @@ describe('SimpleCrossTabSync', () => {
       return ch.name;
     }
 
-    it('uses `agentic.<tenantId>` when a tenantId is provided', () => {
+    it('uses `agentic.<tenantId>` when a tenantId is provided', async () => {
       const sync = new SimpleCrossTabSync(baseConsultation, { tenantId: 'tenant-A' });
+      await sync.whenReady();
       expect(lastChannelName()).toBe('agentic.tenant-A');
       sync.close();
     });
 
-    it('falls back to `agentic.<consultationKey>` when tenantId is not provided', () => {
+    it('TASK-297 DEF-M1: falls back to `agentic.<sha256-first8-hex>` when tenantId is missing (no raw PHI in channel name)', async () => {
       const sync = new SimpleCrossTabSync(baseConsultation);
-      expect(lastChannelName()).toBe(`agentic.${sync.getConsultationKey()}`);
+      await sync.whenReady();
+      const name = lastChannelName();
+      // Format: `agentic.` + 16 hex chars (first 8 bytes of SHA-256).
+      expect(name).toMatch(/^agentic\.[0-9a-f]{16}$/);
+      // The raw consultation key — patientId / doctorId / appointmentDate —
+      // must NOT appear anywhere in the channel name.
+      expect(name).not.toContain(baseConsultation.patientId);
+      expect(name).not.toContain(baseConsultation.doctorId);
+      expect(name).not.toContain(baseConsultation.appointmentDate);
       sync.close();
     });
 
-    it('never uses the bare `agentic` channel name', () => {
+    it('TASK-297 DEF-M1: produces a stable hash for the same consultation key', async () => {
+      const a = new SimpleCrossTabSync(baseConsultation);
+      const b = new SimpleCrossTabSync(baseConsultation);
+      await Promise.all([a.whenReady(), b.whenReady()]);
+      const names = MockBroadcastChannel.instances.slice(-2).map((ch) => ch.name);
+      expect(names[0]).toBe(names[1]);
+      a.close();
+      b.close();
+    });
+
+    it('TASK-297 DEF-M1: produces distinct hashes for different consultation keys', async () => {
+      const a = new SimpleCrossTabSync(baseConsultation);
+      const b = new SimpleCrossTabSync({ ...baseConsultation, patientId: 'patient-OTHER' });
+      await Promise.all([a.whenReady(), b.whenReady()]);
+      const names = MockBroadcastChannel.instances.slice(-2).map((ch) => ch.name);
+      expect(names[0]).not.toBe(names[1]);
+      a.close();
+      b.close();
+    });
+
+    it('never uses the bare `agentic` channel name', async () => {
       const a = new SimpleCrossTabSync(baseConsultation, { tenantId: 't1' });
       const b = new SimpleCrossTabSync(baseConsultation);
+      await Promise.all([a.whenReady(), b.whenReady()]);
       for (const ch of MockBroadcastChannel.instances) {
         expect(ch.name).not.toBe('agentic');
       }
@@ -466,12 +502,14 @@ describe('SimpleCrossTabSync', () => {
       s2.close();
     });
 
-    it('setTenantId() closes the old channel and opens a new one named for the new tenant', () => {
+    it('setTenantId() closes the old channel and opens a new one named for the new tenant', async () => {
       const sync = new SimpleCrossTabSync(baseConsultation, { tenantId: 'tenant-A' });
+      await sync.whenReady();
       const before = MockBroadcastChannel.instances.length;
       const oldChannel = MockBroadcastChannel.instances[before - 1];
 
       sync.setTenantId('tenant-B');
+      await sync.whenReady();
 
       expect(oldChannel.closed).toBe(true);
       const after = MockBroadcastChannel.instances.length;
@@ -481,8 +519,9 @@ describe('SimpleCrossTabSync', () => {
       sync.close();
     });
 
-    it('setTenantId() is a no-op when called with the current tenantId', () => {
+    it('setTenantId() is a no-op when called with the current tenantId', async () => {
       const sync = new SimpleCrossTabSync(baseConsultation, { tenantId: 'tenant-A' });
+      await sync.whenReady();
       const beforeCount = MockBroadcastChannel.instances.length;
       sync.setTenantId('tenant-A');
       expect(MockBroadcastChannel.instances.length).toBe(beforeCount);
@@ -632,6 +671,8 @@ describe('SimpleCrossTabSync', () => {
       const logger = { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn(), fatal: vi.fn(), trace: vi.fn() };
       const sender = new SimpleCrossTabSync(baseConsultation);
       const receiver = new SimpleCrossTabSync(baseConsultation, { logger });
+      // TASK-297 DEF-M1 — channel construction is async without tenantId.
+      await Promise.all([sender.whenReady(), receiver.whenReady()]);
       const listener = vi.fn();
       receiver.onContextAdded(listener);
 

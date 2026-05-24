@@ -12,6 +12,14 @@ enum PromptTemplateCategory {
     @@schema("core")
 }
 
+enum PromptTemplateScope {
+    TENANT_DEFAULT
+    DEPARTMENT_DEFAULT
+    USER_PERSONAL
+
+    @@schema("core")
+}
+
 model PromptTemplate {
     // Meta fields
     metaData Json?  @map("_metadata") @db.JsonB
@@ -35,6 +43,11 @@ model PromptTemplate {
     departmentId String?
     Department   Department? @relation(fields: [departmentId], references: [id])
 
+    // Scope discriminator (TASK-294 DEF-C1): tenant default vs department default vs user-personal overlay
+    scope       PromptTemplateScope @default(TENANT_DEFAULT)
+    ownerUserId String?
+    Owner       User?               @relation("_User_OwnedPromptTemplates", fields: [ownerUserId], references: [id])
+
     // Resource status + Audit
     resourceStatus          ResourceStatusType @default(ENABLED)
     resourceStatusUpdatedAt DateTime?
@@ -52,11 +65,14 @@ model PromptTemplate {
 
     // Constraints
     @@unique([tenantId, name])
+    @@unique([tenantId, departmentId, ownerUserId, name], name: "PromptTemplate_scope_unique")
 
     // Indexes
     @@index([tenantId], name: "PromptTemplate_tenantId_idx")
     @@index([departmentId], name: "PromptTemplate_departmentId_idx")
     @@index([category], name: "PromptTemplate_category_idx")
+    @@index([tenantId, scope], name: "PromptTemplate_tenantId_scope_idx")
+    @@index([ownerUserId], name: "PromptTemplate_ownerUserId_idx")
     @@schema("core")
 }
 

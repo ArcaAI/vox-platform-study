@@ -287,8 +287,12 @@ class SessionManager:
             session = StreamSession(metadata=metadata, redis=self._redis)
             await session.force_persist()
 
-            # Load pipeline config for VAD and ASR model wiring
-            pipeline_config = await self._load_pipeline_config(pipeline_id)
+            # Load pipeline config for VAD and ASR model wiring.
+            # TASK-298 D-3 — pass tenant_id so STT-V2 refuses to load
+            # a pipeline owned by a different tenant (defense in depth).
+            pipeline_config = await self._load_pipeline_config(
+                pipeline_id, tenant_id=tenant_id
+            )
 
             if language is not None and pipeline_config:
                 pipeline_config.inference.language = language
@@ -634,11 +638,15 @@ class SessionManager:
     # ------------------------------------------------------------------
 
     async def _load_pipeline_config(
-        self, pipeline_id: str
+        self, pipeline_id: str, tenant_id: str | None = None
     ) -> Any:
         """Load pipeline spec from the pipeline reader.
 
         Returns the ``PipelineSpec`` if found.
+
+        TASK-298 D-3 — forwards ``tenant_id`` to the config reader so the
+        SQL query rejects pipelines belonging to other tenants. The API
+        gateway already enforces D-2; this is the defense-in-depth layer.
 
         Raises
         ------
@@ -648,7 +656,7 @@ class SessionManager:
         from stt_v2.pipeline.config_reader import get_pipeline_reader
 
         reader = get_pipeline_reader()
-        pipeline = await reader.get_pipeline(pipeline_id)
+        pipeline = await reader.get_pipeline(pipeline_id, tenant_id=tenant_id)
         if pipeline is None:
             raise RuntimeError(
                 f"Pipeline '{pipeline_id}' not found — cannot create streaming session"
@@ -1712,9 +1720,11 @@ class SessionManager:
 
                     session = StreamSession(metadata=meta, redis=self._redis)
 
-                    # Load pipeline config and models for recovered session
+                    # Load pipeline config and models for recovered session.
+                    # TASK-298 D-3 — propagate the session's tenant so a
+                    # crash-restart still applies the tenant filter.
                     pipeline_config = await self._load_pipeline_config(
-                        meta.pipeline_id
+                        meta.pipeline_id, tenant_id=meta.tenant_id
                     )
 
                     # Load VAD service

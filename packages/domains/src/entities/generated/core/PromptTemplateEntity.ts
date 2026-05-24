@@ -7,6 +7,8 @@ import * as Entities from '../../../entities';
 import { ResourceStatusType } from '../../../enums';
 import type { PromptVersionEntity } from './PromptVersionEntity';
 
+export type PromptTemplateScope = 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL';
+
 export interface IPromptTemplateEntity extends IBaseTaggedEntity {
   name?: string | null;
   description?: string | null;
@@ -15,8 +17,11 @@ export interface IPromptTemplateEntity extends IBaseTaggedEntity {
   variables?: Record<string, unknown> | null;
   currentVersionNumber?: number | null;
   departmentId?: string | null;
+  scope?: PromptTemplateScope | null;
+  ownerUserId?: string | null;
   Versions?: PromptVersionEntity[] | null;
   Department?: Entities.DepartmentEntity | null;
+  Owner?: Entities.UserEntity | null;
 }
 
 export class PromptTemplateEntity extends BaseTaggedEntity {
@@ -27,8 +32,11 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
   private _variables?: IPromptTemplateEntity['variables'];
   private _currentVersionNumber?: IPromptTemplateEntity['currentVersionNumber'];
   private _departmentId?: IPromptTemplateEntity['departmentId'];
+  private _scope?: IPromptTemplateEntity['scope'];
+  private _ownerUserId?: IPromptTemplateEntity['ownerUserId'];
   private _Versions?: IPromptTemplateEntity['Versions'];
   private _Department?: IPromptTemplateEntity['Department'];
+  private _Owner?: IPromptTemplateEntity['Owner'];
 
   constructor(init: IPromptTemplateEntity) {
     super(init);
@@ -39,8 +47,11 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
     this._variables = init.variables;
     this._currentVersionNumber = init.currentVersionNumber;
     this._departmentId = init.departmentId;
+    this._scope = init.scope ?? 'TENANT_DEFAULT';
+    this._ownerUserId = init.ownerUserId ?? null;
     this._Versions = init.Versions;
     this._Department = init.Department;
+    this._Owner = init.Owner ?? null;
   }
 
   get name(): IPromptTemplateEntity['name'] {
@@ -99,6 +110,22 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
     this.setProperty('departmentId', value);
   }
 
+  get scope(): IPromptTemplateEntity['scope'] {
+    return this._scope;
+  }
+
+  set scope(value: IPromptTemplateEntity['scope']) {
+    this.setProperty('scope', value);
+  }
+
+  get ownerUserId(): IPromptTemplateEntity['ownerUserId'] {
+    return this._ownerUserId;
+  }
+
+  set ownerUserId(value: IPromptTemplateEntity['ownerUserId']) {
+    this.setProperty('ownerUserId', value);
+  }
+
   get Versions(): IPromptTemplateEntity['Versions'] {
     return this._Versions;
   }
@@ -113,6 +140,14 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
 
   set Department(value: IPromptTemplateEntity['Department']) {
     this.setProperty('Department', value);
+  }
+
+  get Owner(): IPromptTemplateEntity['Owner'] {
+    return this._Owner;
+  }
+
+  set Owner(value: IPromptTemplateEntity['Owner']) {
+    this.setProperty('Owner', value);
   }
 
   public isActive(): boolean {
