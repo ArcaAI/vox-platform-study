@@ -11,6 +11,11 @@ export * from './DnaUsageRecordRepository';
 export * from './DnaWritingStyleReportRepository';
 export * from './DnaWritingStyleVersionRepository';
 export * from './GlobalSettingRepository';
+// TASK-302 Phase 4 — sibling file that patches GlobalSettingRepository
+// prototype with encryptValueIntoEntity / decryptValueFromEntity /
+// findByIdWithDecryptedValue. Importing here ensures the augmentation
+// runs at module load (no separate import needed in consumer code).
+export * from './GlobalSettingRepository.encryption';
 export * from './MediaRepository';
 export * from './NamedEntityRepository';
 export * from './NotificationRepository';

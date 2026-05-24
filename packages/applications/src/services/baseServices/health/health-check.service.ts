@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit, Inject } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Inject, Optional } from '@nestjs/common';
 import {
   HealthCheckService as TerminusHealthCheckService,
   HealthIndicatorResult,
@@ -9,6 +9,7 @@ import {
   MemoryHealthIndicator,
 } from '@nestjs/terminus';
 import { IAppSettingsService } from '../_meta/appSettings';
+import { SecretsHealthIndicator } from '../_meta/secrets';
 import { IHealthCheckService } from './IHealthCheckService';
 
 @Injectable()
@@ -22,6 +23,10 @@ export class HealthCheckService implements IHealthCheckService, OnModuleInit {
     private readonly diskHealthIndicator: DiskHealthIndicator,
     private readonly memoryHealthIndicator: MemoryHealthIndicator,
     @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
+    // SecretsHealthIndicator is provided by the @Global SecretsModule
+    // (TASK-302 Phase 2C). Optional so test modules that do not import
+    // SecretsModule still resolve.
+    @Optional() private readonly secretsHealthIndicator?: SecretsHealthIndicator,
   ) {
     this.logger.log({
       message: 'Service created',
@@ -40,10 +45,20 @@ export class HealthCheckService implements IHealthCheckService, OnModuleInit {
       });
     });
 
+    // Register the SecretsHealthIndicator so /readiness reflects the
+    // backing secrets provider's state (sealed/unreachable -> 503).
+    if (this.secretsHealthIndicator) {
+      const secretsIndicator = this.secretsHealthIndicator;
+      this.registerHealthIndicator('secrets', () =>
+        secretsIndicator.isHealthy('secrets'),
+      );
+    }
+
     this.logger.log({
       message: 'Service initialized',
       service: HealthCheckService.name,
       endpointCount: Object.keys(healthCheckEndpoints).length,
+      secretsIndicator: !!this.secretsHealthIndicator,
     });
   }
 

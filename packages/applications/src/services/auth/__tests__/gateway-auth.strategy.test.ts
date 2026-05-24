@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UnauthorizedException } from '@nestjs/common';
 
-const mockAppSettingsService = {
-    getValueWithDefault: vi.fn().mockReturnValue('test-gateway-jwt-secret'),
+const mockSecretsService = {
+    getSecretSync: vi.fn().mockReturnValue('test-gateway-jwt-secret'),
 };
 
 const mockAuthService = {
@@ -34,7 +34,7 @@ import { GatewayJwtStrategy } from '../gateway-auth.strategy';
 
 function createStrategy(): GatewayJwtStrategy {
     return new GatewayJwtStrategy(
-        mockAppSettingsService as any,
+        mockSecretsService as any,
         mockAuthService as any,
     );
 }

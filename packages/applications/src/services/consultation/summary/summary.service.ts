@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, Optional, BadRequestException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
@@ -23,6 +23,7 @@ import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-v2-genera
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
+import { SecretsService } from '../../baseServices/_meta/secrets';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 
 @Injectable()
@@ -42,6 +43,11 @@ export class SummaryService extends BaseService implements ISummaryService {
     protected override readonly clsService: ClsService<IActiveUserContext>,
     private readonly contextItemVersionRepository: ContextItemVersionRepository,
     private readonly promptAssemblyService: PromptAssemblyService,
+    // Optional so existing test fixtures (and any future test that
+    // constructs SummaryService directly) compile without supplying a
+    // mock. When unset we behave exactly like the pre-migration code
+    // when env var SMR_SERVICE_TOKEN was unset: no X-Service-Token header.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -445,11 +451,11 @@ export class SummaryService extends BaseService implements ISummaryService {
   }> {
     try {
       const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, payload.options, payload.context);
+      const smrServiceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
       const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, smrPayload, {
         headers: {
           'Content-Type': 'application/json',
-          // eslint-disable-next-line turbo/no-undeclared-env-vars
-          'X-Service-Token': process.env.SMR_SERVICE_TOKEN || '',
+          'X-Service-Token': smrServiceToken,
         },
       });
       return mapSmrGenerateResponse(response.data);

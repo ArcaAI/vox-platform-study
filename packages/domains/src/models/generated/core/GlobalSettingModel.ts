@@ -13,6 +13,9 @@ export class GlobalSetting extends BaseTenantDataModel {
   public key: string;
   public defaultValue: string | null;
   public value: string;
+  // TASK-302 Phase 4 — Vault-Transit-encrypted ciphertext + Transit key version.
+  public encryptedValue: Uint8Array | null;
+  public keyVersion: number | null;
   public locked: boolean;
   public dataType: Enums.ValueType;
   public namespace: string | null;
@@ -28,6 +31,8 @@ export class GlobalSetting extends BaseTenantDataModel {
     this.key = data.key;
     this.defaultValue = data.defaultValue;
     this.value = data.value;
+    this.encryptedValue = data.encryptedValue;
+    this.keyVersion = data.keyVersion;
     this.locked = data.locked;
     this.dataType = data.dataType;
     this.namespace = data.namespace;

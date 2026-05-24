@@ -22,6 +22,16 @@ export class GlobalSettingEntityMapper extends BaseMapper<Entities.GlobalSetting
 }
 
 export const GlobalSettingEntityMapperHandlers = createMapperHandlers<Entities.GlobalSettingEntity, Models.GlobalSetting>({
-  $toPersistence: {},
-  $toDomain: {},
+  $toPersistence: {
+    // TASK-302 Phase 4 — bypass the generic auto-mapper for binary ciphertext.
+    // BaseEntity.toObject() calls convertEntityValue() which walks Object.keys
+    // on objects, which destructively destructures Buffer/Uint8Array into a
+    // plain `{0: byte, 1: byte, …}` map (losing the typed-array constructor).
+    // Returning the underlying typed array directly from the entity getter
+    // preserves the buffer for the Prisma write path (Bytes column).
+    encryptedValue: (entity) => entity.encryptedValue ?? null,
+  },
+  $toDomain: {
+    encryptedValue: (model) => model.encryptedValue ?? null,
+  },
 });

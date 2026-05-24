@@ -14,6 +14,24 @@ import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import { S3Service } from '../s3.service';
 import type { IAppSettingsService } from '../../../_meta/';
 
+// TASK-302 Phase 3 Task 3.9 — S3 secrets now flow through SecretsService.
+// All existing tests construct S3Service with just AppSettings, so we
+// provide a default getSecretSync mock that returns the standard test
+// keys. Individual tests can override this to verify cache-miss behavior.
+const buildDefaultSecretsMock = () => ({
+    getSecretSync: vi.fn((key: string) => {
+        if (key === 'S3_ACCESS_KEY') return 'test-access-key';
+        if (key === 'S3_SECRET_KEY') return 'test-secret-key';
+        return undefined;
+    }),
+});
+function makeService(
+    appSettings: IAppSettingsService,
+    secrets: { getSecretSync: (k: string) => string | undefined } = buildDefaultSecretsMock(),
+): S3Service {
+    return new S3Service(appSettings, secrets as any);
+}
+
 // Create mock S3 client that will be shared across tests
 let mockS3ClientInstance: any = { send: vi.fn() };
 
@@ -102,7 +120,7 @@ describe('S3Service', () => {
         mockS3ClientInstance.send = mockS3Client.send;
 
         mockAppSettingsService = createMockAppSettingsService();
-        service = new S3Service(mockAppSettingsService);
+        service = makeService(mockAppSettingsService);
     });
 
     afterEach(() => {
@@ -135,7 +153,7 @@ describe('S3Service', () => {
                     return { isInitialized: initCount > 3 };
                 }),
             } as unknown as IAppSettingsService;
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             // Should not throw when AppSettings eventually initializes
             await expect(service.onModuleInit()).resolves.not.toThrow();
@@ -149,7 +167,7 @@ describe('S3Service', () => {
                     S3_SECRET_KEY: '',
                 },
             });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             await service.onModuleInit();
 
@@ -164,7 +182,7 @@ describe('S3Service', () => {
                     S3_SECRET_KEY: 'minioadmin',
                 },
             });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             await service.onModuleInit();
 
@@ -184,7 +202,7 @@ describe('S3Service', () => {
 
         it('should return empty string when AppSettings not initialized', () => {
             mockAppSettingsService = createMockAppSettingsService({ isInitialized: false });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             const bucketName = service.getPublicBucketName();
 
@@ -203,7 +221,7 @@ describe('S3Service', () => {
 
         it('should return empty string when AppSettings not initialized', () => {
             mockAppSettingsService = createMockAppSettingsService({ isInitialized: false });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             const bucketName = service.getPrivateBucketName();
 
@@ -220,7 +238,7 @@ describe('S3Service', () => {
 
         it('should return false when AppSettings not initialized', async () => {
             mockAppSettingsService = createMockAppSettingsService({ isInitialized: false });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             const isConfigured = await service.isConfigured();
 
@@ -231,7 +249,7 @@ describe('S3Service', () => {
             mockAppSettingsService = createMockAppSettingsService({
                 settings: {},
             });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             const isConfigured = await service.isConfigured();
 
@@ -509,7 +527,7 @@ describe('S3Service', () => {
 
         it('should return false when AppSettings not initialized', () => {
             mockAppSettingsService = createMockAppSettingsService({ isInitialized: false });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             const isMinIO = service.isMinIOConfigured();
 
@@ -529,7 +547,7 @@ describe('S3Service', () => {
 
         it('should return isMinIO false when not configured', () => {
             mockAppSettingsService = createMockAppSettingsService({ isInitialized: false });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             const info = service.getMinIOInfo();
 
@@ -566,7 +584,7 @@ describe('S3Service', () => {
                     S3_SECRET_KEY: 'test',
                 },
             });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             await service.onModuleInit();
 
@@ -581,7 +599,7 @@ describe('S3Service', () => {
                     S3_SECRET_KEY: 'test',
                 },
             });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             await service.onModuleInit();
 
@@ -596,7 +614,7 @@ describe('S3Service', () => {
                     S3_SECRET_KEY: 'test',
                 },
             });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             await service.onModuleInit();
 
@@ -611,7 +629,7 @@ describe('S3Service', () => {
                     S3_SECRET_KEY: 'test',
                 },
             });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             await service.onModuleInit();
 
@@ -696,7 +714,7 @@ describe('S3Service', () => {
                     S3_SECRET_KEY: 'test',
                 },
             });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             // Initialization should handle missing config gracefully
             await service.onModuleInit();
@@ -710,7 +728,7 @@ describe('S3Service', () => {
                     S3_SECRET_KEY: 'test',
                 },
             });
-            service = new S3Service(mockAppSettingsService);
+            service = makeService(mockAppSettingsService);
 
             // Should handle invalid URL gracefully
             await service.onModuleInit();

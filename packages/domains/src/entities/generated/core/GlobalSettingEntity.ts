@@ -14,6 +14,10 @@ export interface IGlobalSettingEntity extends IBaseTaggedEntity {
   key: string;
   defaultValue?: string | null;
   value: string;
+  // TASK-302 Phase 4 — envelope-encrypted ciphertext + Transit key version.
+  // Both nullable; populated only for secret rows that have been migrated.
+  encryptedValue?: Buffer | null;
+  keyVersion?: number | null;
   locked: boolean;
   dataType: Enums.ValueType;
   namespace?: string | null;
@@ -25,6 +29,8 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
   private _key: IGlobalSettingEntity['key'];
   private _defaultValue?: IGlobalSettingEntity['defaultValue'];
   private _value: IGlobalSettingEntity['value'];
+  private _encryptedValue?: IGlobalSettingEntity['encryptedValue'];
+  private _keyVersion?: IGlobalSettingEntity['keyVersion'];
   private _locked: IGlobalSettingEntity['locked'];
   private _dataType: IGlobalSettingEntity['dataType'];
   private _namespace?: IGlobalSettingEntity['namespace'];
@@ -36,6 +42,8 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
     this._key = init.key;
     this._defaultValue = init.defaultValue;
     this._value = init.value;
+    this._encryptedValue = init.encryptedValue;
+    this._keyVersion = init.keyVersion;
     this._locked = init.locked;
     this._dataType = init.dataType;
     this._namespace = init.namespace;
@@ -96,6 +104,28 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
 
   set value(value: IGlobalSettingEntity['value']) {
     this.setProperty('value', value);
+  }
+
+  // TASK-302 Phase 4 — Vault-Transit-encrypted ciphertext. @Secret() guards
+  // it from audit-log surfaces (defense-in-depth: even though ciphertext is
+  // not directly readable, audit-log entries that leak ciphertext + the
+  // associated keyVersion materially help an attacker correlate
+  // confidential rows).
+  @Secret()
+  get encryptedValue(): IGlobalSettingEntity['encryptedValue'] {
+    return this._encryptedValue;
+  }
+
+  set encryptedValue(value: IGlobalSettingEntity['encryptedValue']) {
+    this.setProperty('encryptedValue', value);
+  }
+
+  get keyVersion(): IGlobalSettingEntity['keyVersion'] {
+    return this._keyVersion;
+  }
+
+  set keyVersion(value: IGlobalSettingEntity['keyVersion']) {
+    this.setProperty('keyVersion', value);
   }
 
   get locked(): IGlobalSettingEntity['locked'] {

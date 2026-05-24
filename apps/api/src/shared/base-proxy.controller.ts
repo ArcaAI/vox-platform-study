@@ -1,4 +1,5 @@
 import { Logger, Req, Res } from '@nestjs/common';
+import { SecretsService } from '@arcaai/applications';
 import { Request, Response } from 'express';
 import { type IncomingMessage, ServerResponse } from 'http';
 import type { Socket } from 'net';
@@ -17,6 +18,16 @@ const EXPECTED_NETWORK_ERRORS = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOU
 
 export abstract class BaseProxyController {
   abstract readonly config: ProxyControllerConfig;
+  /**
+   * Optional SecretsService accessor. Subclasses that proxy SMR (or any
+   * upstream needing a service token) inject SecretsService and expose
+   * it here so the synchronous `on.proxyReq` hook can read the
+   * cache-warmed token via `getSecretSync`. Subclasses that don't need
+   * a token leave this undefined.
+   */
+  protected get secrets(): SecretsService | undefined {
+    return undefined;
+  }
 
   protected readonly logger = new Logger(this.constructor.name);
 
@@ -49,8 +60,11 @@ export abstract class BaseProxyController {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (fixRequestBody as any)(proxyReq, req, res);
 
-            // eslint-disable-next-line turbo/no-undeclared-env-vars
-            const serviceToken = process.env.SMR_SERVICE_TOKEN;
+            // TASK-302 Phase 3 Task 3.4 — read SMR token from SecretsService
+            // cache (warmed at bootstrap). Sync lookup because on.proxyReq
+            // cannot await. Cold cache -> no header (same fail-open behavior
+            // we had when env var was unset).
+            const serviceToken = this.secrets?.getSecretSync('SMR_SERVICE_TOKEN');
             if (serviceToken) {
               proxyReq.setHeader('X-Service-Token', serviceToken);
             }
