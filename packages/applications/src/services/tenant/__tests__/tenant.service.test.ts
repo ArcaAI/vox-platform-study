@@ -43,6 +43,10 @@ const mockGlobalSettingRepository = {
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    // TASK-302 Stream D Phase C — updateTenantConfigs now writes via
+    // Compare-And-Set; tests below still set up `.update` for back-compat
+    // assertions but the live write path uses `updateWithVersion`.
+    updateWithVersion: vi.fn(),
 };
 
 // Mock DepartmentRepository
@@ -1054,7 +1058,7 @@ describe('TenantService', () => {
                 changes: { value: 'lm-studio' },
             });
             mockGlobalSettingRepository.findById.mockResolvedValue(providerSetting);
-            mockGlobalSettingRepository.update.mockResolvedValue(providerSetting);
+            mockGlobalSettingRepository.updateWithVersion.mockResolvedValue(providerSetting);
 
             const catalogSetting = createMockGlobalSettingEntity({
                 id: 'catalog-id',
@@ -1065,7 +1069,7 @@ describe('TenantService', () => {
             mockGlobalSettingRepository.findAll.mockResolvedValue([catalogSetting]);
 
             const result = await service.updateTenantConfigs('tenant-123', [
-                { id: 'smr-provider-id', value: 'lm-studio' },
+                { id: 'smr-provider-id', value: 'lm-studio', expectedVersion: 1 } as never,
             ]);
 
             expect(result.data).toHaveLength(1);
@@ -1273,14 +1277,14 @@ describe('TenantService', () => {
                 changes: { value: 'new' },
             });
             mockGlobalSettingRepository.findById.mockResolvedValue(lockedConfig);
-            mockGlobalSettingRepository.update.mockResolvedValue(lockedConfig);
+            mockGlobalSettingRepository.updateWithVersion.mockResolvedValue(lockedConfig);
 
             const result = await service.updateTenantConfigs('tenant-123', [
-                { id: 'cfg-1', value: 'new' },
+                { id: 'cfg-1', value: 'new', expectedVersion: 1 } as never,
             ]);
 
             expect(result.data).toHaveLength(1);
-            expect(mockGlobalSettingRepository.update).toHaveBeenCalled();
+            expect(mockGlobalSettingRepository.updateWithVersion).toHaveBeenCalled();
         });
 
         it('throws ForbiddenException when non-SUPER_ADMIN targets the __GLOBAL__ tenant', async () => {
@@ -1308,10 +1312,10 @@ describe('TenantService', () => {
                 changes: { value: 'en' },
             });
             mockGlobalSettingRepository.findById.mockResolvedValue(cfg);
-            mockGlobalSettingRepository.update.mockResolvedValue(cfg);
+            mockGlobalSettingRepository.updateWithVersion.mockResolvedValue(cfg);
 
             const result = await service.updateTenantConfigs('__GLOBAL__', [
-                { id: 'cfg-1', value: 'en' },
+                { id: 'cfg-1', value: 'en', expectedVersion: 1 } as never,
             ]);
 
             expect(result.data).toHaveLength(1);
@@ -1421,6 +1425,89 @@ describe('TenantService', () => {
             });
 
             expect((result.data[0] as any).value).toBe('super-secret');
+        });
+    });
+
+    // ──────────────────────────────────────────────────────────────────────
+    // TASK-302 Stream D Phase C — Optimistic Concurrency on updateTenantConfigs
+    // ──────────────────────────────────────────────────────────────────────
+    describe('updateTenantConfigs — optimistic concurrency (TASK-302 Stream D Phase C)', () => {
+        it('calls updateWithVersion (not update) when expectedVersion is supplied', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const setting = createMockGlobalSettingEntity({
+                id: 'gs-1',
+                tenantId: 'tenant-1',
+                locked: false,
+                hasChanges: true,
+            });
+            (setting as any).version = 5;
+            mockGlobalSettingRepository.findById.mockResolvedValueOnce(setting);
+
+            const updateWithVersion = vi.fn().mockResolvedValueOnce(setting);
+            (mockGlobalSettingRepository as any).updateWithVersion = updateWithVersion;
+
+            await service.updateTenantConfigs('tenant-1', [
+                { id: 'gs-1', value: 'new', expectedVersion: 5 } as any,
+            ]);
+
+            expect(updateWithVersion).toHaveBeenCalledWith('gs-1', setting, 5);
+            expect(mockGlobalSettingRepository.update).not.toHaveBeenCalled();
+        });
+
+        it('propagates OptimisticConcurrencyException when expectedVersion drifted', async () => {
+            const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const setting = createMockGlobalSettingEntity({
+                id: 'gs-1',
+                tenantId: 'tenant-1',
+                locked: false,
+                hasChanges: true,
+            });
+            (setting as any).version = 5;
+            mockGlobalSettingRepository.findById.mockResolvedValueOnce(setting);
+
+            (mockGlobalSettingRepository as any).updateWithVersion = vi.fn().mockRejectedValueOnce(
+                new OptimisticConcurrencyException('GlobalSetting', 'gs-1', {
+                    expectedVersion: 5,
+                    currentVersion: 6,
+                }),
+            );
+
+            await expect(
+                service.updateTenantConfigs('tenant-1', [
+                    { id: 'gs-1', value: 'new', expectedVersion: 5 } as any,
+                ]),
+            ).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+        });
+
+        it('does NOT call updateWithVersion when the entity has no buffered changes (allowlist no-op)', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const setting = createMockGlobalSettingEntity({
+                id: 'gs-1',
+                tenantId: 'tenant-1',
+                locked: false,
+                hasChanges: false, // entity report no changes after allowlist merge
+            });
+            (setting as any).version = 5;
+            mockGlobalSettingRepository.findById.mockResolvedValueOnce(setting);
+
+            const updateWithVersion = vi.fn();
+            (mockGlobalSettingRepository as any).updateWithVersion = updateWithVersion;
+
+            await service.updateTenantConfigs('tenant-1', [
+                { id: 'gs-1', value: 'unchanged', expectedVersion: 5 } as any,
+            ]);
+
+            expect(updateWithVersion).not.toHaveBeenCalled();
         });
     });
 });
