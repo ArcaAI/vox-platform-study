@@ -225,12 +225,56 @@ No Critical or Important issues. Minor items already tracked:
 
 ---
 
-## 11. Next steps (for the orchestrator)
+## 11. Final Code Review Gate (self-review)
 
-1. Confirm Gate 2A verdict and unblock Phase 3 preparation.
-2. Phase 3 prep tasks (this stream) — runbook, rollback procedure,
-   scheduled smoke job — see plan §3.
-3. Production cutover itself is **out of this stream's scope**;
-   orchestrator coordinates the deploy.
-4. Re-run `pnpm pgbv:test` against staging-grade hardware as part of
-   Phase 3 prep; append the resulting numbers to §8 of this report.
+Self-conducted per plan §"Final Code Review Gate" after all
+in-stream-scope work (Phases 0, 1, 2A, and Phase 3 prep) landed.
+Per execution rule #4, the production cutover itself is excluded;
+the orchestrator coordinates it. Items marked "deploy-gated" are
+ready but cannot be verified until the orchestrator schedules the
+staging or production deploy.
+
+| Checklist item | Status | Evidence |
+|---|---|---|
+| Phase 0, 1, 2A, Phase 3 prep are all green | ✓ | 21 commits on `feat/task-302-stream-c` (newest `d6b60f0`); test/build/lint output captured per phase. |
+| HA blueprint, this plan, and the validation report are mutually consistent | ✓ | `research/configs/postgres-ha/docker-compose.yml`, `research/deployments/deploy-vm500-502-postgres-ha.md` §10, and this report all reference `edoburu/pgbouncer:v1.25.1-p0`, `MAX_PREPARED_STATEMENTS=200`, `SERVER_RESET_QUERY_ALWAYS=1`. No drift. |
+| All smoke tests pass against production | deploy-gated | `scripts/smoke-pgbouncer.sh` is ready; CI job `smoke-pgbouncer-staging` is wired; production verification awaits orchestrator. |
+| 24h post-cutover monitoring is clean | deploy-gated | Grafana dashboard + four Prometheus alert rules shipped (`b6da581`); monitoring activates on deploy. |
+| Rollback was rehearsed in staging | deploy-gated | Rehearsal procedure documented in `03-pgbouncer-cutover-runbook.md` §4.3 with explicit log template; execution awaits staging cutover. |
+| Security: TLS, `auth_file` permissions, no committed credentials | ✓ | `sslmode=require` in all examples; `auth_file` mode `0640` documented in runbook §0; `gitleaks detect` → 0 leaks over 427 commits / 150 MB. |
+| Commit messages follow project convention | ✓ | All 21 commits use Conventional-Commits `type(scope): summary`. |
+| Stream B Phase 5 (Vault DB creds) dependency note updated | ✓ | Plan §"Cross-stream Dependencies" already states Stream B Phase 5 is sequenced **after** this stream; Phase 2A is the steady-state precondition Stream B was waiting for. |
+
+**Open Minor items** (tracked, not blocking):
+
+- `tests/helpers/db.helper.ts` uses a non-LOCAL
+  `SET session_replication_role` pair. Test-only; never runs against
+  the production pooler. Tracked in
+  `03-pgbouncer-application-audit.md` for follow-up if/when E2E
+  tests are repointed at the pooler.
+- Plan named `edoburu/pgbouncer:1.25.0`; Docker Hub publishes
+  `v1.25.1-p0` as the latest 1.25.x. Substitution documented in
+  commit `dd5d8c3` and in HA blueprint §2.
+
+**Final Gate verdict (in-stream scope): PASS — stream ready to merge.**
+
+Two paths from here:
+
+1. **Merge back to main**: orchestrator merges `feat/task-302-stream-c`
+   onto its target branch. Stream B Phase 5 becomes unblocked.
+2. **Schedule staging cutover**: orchestrator picks a window and runs
+   `03-pgbouncer-cutover-runbook.md` §1; the runbook documents 7-day
+   soak, rollback rehearsal, and production cutover gates from there.
+
+---
+
+## 12. Next steps (for the orchestrator)
+
+1. Confirm Final Gate verdict (in-stream scope).
+2. Merge `feat/task-302-stream-c` to the integration target.
+3. Schedule staging cutover (`03-pgbouncer-cutover-runbook.md` §1)
+   when the window is right; soak for 7 days; rehearse rollback.
+4. Schedule production cutover (§5 of the runbook). 24 h monitoring,
+   then sign off in plan §"Change History".
+5. Notify Stream B Phase 5 that the PgBouncer steady-state precondition
+   is satisfied.
