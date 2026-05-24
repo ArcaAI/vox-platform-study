@@ -193,8 +193,44 @@ No Critical issues found. No Minor issues outstanding.
 
 ---
 
-## 10. Next steps (for the orchestrator)
+## 10. Phase 2A Code Review Gate (self-review)
 
-1. Confirm verdict and unblock Phase 2A.
-2. Phase 2A tasks (transaction-mode rollout) — see plan §2A.
-3. Re-run `pnpm pgbv:test` against staging-grade hardware as part of Phase 3 prep; append the resulting numbers to §8 of this report.
+Self-conducted per plan §2A.Gate checklist after all Phase 2A tasks
+landed. Evidence:
+
+| Checklist item | Status | Evidence |
+|---|---|---|
+| `research/configs/postgres-ha/docker-compose.yml` matches Task 2A.1.1 diff (image, pool sizes, new env block) | ✓ | commit `dd5d8c3`; image `edoburu/pgbouncer:v1.25.1-p0` (validated tag, not the `1.25.0` placeholder in the plan because that tag does not exist on Docker Hub) |
+| HA blueprint §2 (Component Versions) + §10 (Deploy PgBouncer) in sync | ✓ | commit `dd5d8c3`; §10 renamed "Optional" → "Transaction Mode"; effective config table added |
+| App-code audit ran clean; audit file committed | ✓ | commit `8a9e0f6`; 5 of 6 patterns zero hits; 1 Minor advisory (test-helper non-LOCAL SET — never runs against prod pooler) |
+| `prisma.config.ts` prefers `DIRECT_URL`; test passes | ✓ | commit `28da123`; 7/7 unit tests pass; `pnpm exec prisma --version` still loads config OK; `pnpm build --filter @arcaai/database` green |
+| `.env.example` + `apps/api/README.md` document both URLs | ✓ | commit `f1b2ab0` |
+| `pgbouncer_exporter` service + Prometheus scrape + alerts + Grafana dashboard | ✓ | commit `b6da581`; YAML + JSON all validate; service block renders under `--profile pgbouncer --profile monitoring` |
+| Smoke script is executable + CI-runnable | ✓ | commit `0103d18`; `zsh -n scripts/smoke-pgbouncer.sh` syntax-clean; `smoke-pgbouncer-staging` CI job validates |
+| No new lint or build errors | ✓ | ReadLints across all edited files: clean; `pnpm build --filter @arcaai/database`: green |
+| Security: no plaintext credentials, gitleaks clean | ✓ | `gitleaks detect`: 0 leaks over 425 commits, ~150 MB scanned; `AUTH_TYPE=scram-sha-256`; `sslmode=require` in all examples; `METRICS_PASSWORD` is a `CHANGE_ME` placeholder |
+| Validation-rig regression: full suite still 19/19 with Phase 2A changes | ✓ | `pnpm pgbv:test`: Tests 19 passed (19), 3.86s |
+
+No Critical or Important issues. Minor items already tracked:
+
+- Phase 2A.2.1 audit advisory: `tests/helpers/db.helper.ts` uses
+  non-LOCAL `SET session_replication_role`. Documented in
+  `03-pgbouncer-application-audit.md`; not blocking because the helper
+  never runs against the production pooler. Follow-up if/when E2E tests
+  are ever pointed at the pooler.
+- Plan's `edoburu/pgbouncer:1.25.0` tag was substituted with
+  `v1.25.1-p0` (validated tag). Documented in commit `dd5d8c3`.
+
+**Gate 2A verdict: PASS — proceed to Phase 3 (preparation tasks only).**
+
+---
+
+## 11. Next steps (for the orchestrator)
+
+1. Confirm Gate 2A verdict and unblock Phase 3 preparation.
+2. Phase 3 prep tasks (this stream) — runbook, rollback procedure,
+   scheduled smoke job — see plan §3.
+3. Production cutover itself is **out of this stream's scope**;
+   orchestrator coordinates the deploy.
+4. Re-run `pnpm pgbv:test` against staging-grade hardware as part of
+   Phase 3 prep; append the resulting numbers to §8 of this report.
