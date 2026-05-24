@@ -124,6 +124,54 @@ export class SecretsService {
     this.cache.clear();
   }
 
+  /**
+   * Channel used by all cluster nodes to broadcast cache evictions when a
+   * secret is rotated (Phase 6 rotation worker publishes here).
+   *
+   * Payloads:
+   *   { key: '<KEY>' }   - evict one key
+   *   { all: true }      - evict all keys
+   */
+  static readonly INVALIDATION_CHANNEL = 'arca:secrets:invalidate';
+
+  /**
+   * Attach an ioredis subscriber (or shaped-compatible client) so this
+   * SecretsService participates in cluster-wide cache eviction. Typed as
+   * a structural minimum so unit tests do not need to spin up Redis.
+   */
+  attachRedisSubscriber(sub: {
+    subscribe: (
+      channel: string,
+      cb: (err: Error | null, count: number) => void,
+    ) => void;
+    on: (event: 'message', handler: (channel: string, raw: string) => void) => void;
+  }): void {
+    sub.subscribe(SecretsService.INVALIDATION_CHANNEL, (err) => {
+      if (err) {
+        this.logger.error(
+          `Failed to subscribe to ${SecretsService.INVALIDATION_CHANNEL}: ${err.message}`,
+        );
+      }
+    });
+    sub.on('message', (channel: string, raw: string) => {
+      if (channel !== SecretsService.INVALIDATION_CHANNEL) return;
+      let msg: { key?: string; all?: boolean } | undefined;
+      try {
+        msg = JSON.parse(raw) as { key?: string; all?: boolean };
+      } catch {
+        this.logger.warn(
+          `Bad ${SecretsService.INVALIDATION_CHANNEL} payload (ignored): ${raw.slice(0, 64)}`,
+        );
+        return;
+      }
+      if (msg?.all) {
+        this.invalidateAll();
+      } else if (msg?.key) {
+        this.invalidate(msg.key);
+      }
+    });
+  }
+
   health(): Promise<SecretsHealth> {
     return this.provider.health();
   }
