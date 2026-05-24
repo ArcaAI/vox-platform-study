@@ -1,6 +1,6 @@
 import { ApiErrorResponse, IClsContext } from '@arcaai/applications';
 import { PrismaClientKnownRequestError, PrismaClientValidationError } from '@arcaai/database';
-import { BaseException } from '@arcaai/exceptions';
+import { BaseException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { BadRequestException, CallHandler, ExecutionContext, HttpException, HttpStatus, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { Observable, throwError } from 'rxjs';
@@ -105,6 +105,29 @@ export class ExceptionInterceptor implements NestInterceptor {
               }),
             );
           }
+        }
+
+        // TASK-302 Stream D Phase C (C.5) — Compare-And-Set conflicts map to
+        // RFC 7232 `412 Precondition Failed`. This branch MUST run before the
+        // generic `BaseException` branch below because OCC extends BaseException
+        // and the generic branch would otherwise misclassify it as a 500.
+        // The body shape is `err.toJSON()`, which carries `code:
+        // 'PERSISTENCE.CONCURRENCY_CONFLICT'` and
+        // `metadata: { expectedVersion, currentVersion }` — both consumed by
+        // the SDK's conflict handler (Phase D.4) and the UI's conflict modal
+        // (Phase D.5).
+        if (err instanceof OptimisticConcurrencyException) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const metadata = err.metadata as { expectedVersion?: number; currentVersion?: number } | undefined;
+          this.logger.debug({
+            message: 'Optimistic concurrency conflict',
+            ...baseContext,
+            correlationId: err.correlationId,
+            expectedVersion: metadata?.expectedVersion,
+            currentVersion: metadata?.currentVersion,
+          });
+
+          return throwError(() => new HttpException(err.toJSON(), HttpStatus.PRECONDITION_FAILED));
         }
 
         if (err instanceof BaseException) {
