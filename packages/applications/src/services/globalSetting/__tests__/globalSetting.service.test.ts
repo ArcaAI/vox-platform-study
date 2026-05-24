@@ -33,12 +33,16 @@ const mockEventEmitter = {
 };
 
 // Mock GlobalSettingRepository
+// TASK-302 Stream D Phase C (C.7) — `update` migrated to `updateWithVersion`
+// for Compare-And-Set semantics; mock both so legacy tests still wire while
+// the new behaviour can be asserted on the new method.
 const mockGlobalSettingRepository = {
     findById: vi.fn(),
     findAll: vi.fn(),
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
 };
 
@@ -487,19 +491,23 @@ describe('GlobalSettingService', () => {
     });
 
     describe('update', () => {
-        it('should update global setting successfully', async () => {
+        it('should update global setting successfully via updateWithVersion (TASK-302 Stream D Phase C C.7)', async () => {
             const existingSetting = createMockGlobalSettingEntity({
                 id: 'setting-123',
                 hasChanges: true,
                 changes: { value: 'updated-value' },
             });
+            (existingSetting as any).version = 5;
             mockGlobalSettingRepository.findById.mockResolvedValue(existingSetting);
-            mockGlobalSettingRepository.update.mockResolvedValue(existingSetting);
+            mockGlobalSettingRepository.updateWithVersion.mockResolvedValue(existingSetting);
 
-            const result = await service.update('setting-123', { value: 'updated-value' });
+            const result = await service.update('setting-123', { value: 'updated-value', expectedVersion: 5 } as any);
 
             expect(result.id).toBe('setting-123');
-            expect(mockGlobalSettingRepository.update).toHaveBeenCalledWith('setting-123', existingSetting);
+            // C.7 — `update` issues a Compare-And-Set against the client's
+            // expectedVersion. Legacy non-versioned `update` must NOT be called.
+            expect(mockGlobalSettingRepository.updateWithVersion).toHaveBeenCalledWith('setting-123', existingSetting, 5);
+            expect(mockGlobalSettingRepository.update).not.toHaveBeenCalled();
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
                 SysEventType.ResourceUpdated,
                 expect.objectContaining({
@@ -516,47 +524,84 @@ describe('GlobalSettingService', () => {
             mockGlobalSettingRepository.findById.mockResolvedValue(existingSetting);
 
             await expect(
-                service.update('setting-123', { value: 'same-value' })
+                service.update('setting-123', { value: 'same-value', expectedVersion: 1 } as any)
             ).rejects.toThrow('No changes to write to');
+            // ArgumentInvalidException fires BEFORE the CAS, so the repo must
+            // not have been touched.
+            expect(mockGlobalSettingRepository.updateWithVersion).not.toHaveBeenCalled();
         });
 
-        it('should broadcast ResourceUpdated event with changes and previous data', async () => {
+        it('should broadcast ResourceUpdated event with previousVersion + newVersion (TASK-302 Stream D Phase C C.7/C.8)', async () => {
             const existingSetting = createMockGlobalSettingEntity({
                 id: 'setting-123',
                 hasChanges: true,
                 changes: { name: 'Updated Name' },
             });
+            (existingSetting as any).version = 7;
+            const persistedSetting = createMockGlobalSettingEntity({
+                id: 'setting-123',
+                hasChanges: true,
+                changes: { name: 'Updated Name' },
+            });
+            (persistedSetting as any).version = 8; // bumped by CAS
             mockGlobalSettingRepository.findById.mockResolvedValue(existingSetting);
-            mockGlobalSettingRepository.update.mockResolvedValue(existingSetting);
+            mockGlobalSettingRepository.updateWithVersion.mockResolvedValue(persistedSetting);
 
-            await service.update('setting-123', { name: 'Updated Name' });
+            await service.update('setting-123', { name: 'Updated Name', expectedVersion: 7 } as any);
 
+            // C.8 — the audit-log SysEvent must carry both the pre-write and
+            // post-write versions so downstream observers can correlate.
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
                 SysEventType.ResourceUpdated,
                 expect.objectContaining({
                     resourceId: 'setting-123',
-                    data: { name: 'Updated Name' },
+                    data: expect.objectContaining({
+                        previousVersion: 7,
+                        newVersion: 8,
+                    }),
                     previousData: expect.any(Object),
                 })
             );
         });
 
-        it('should update multiple fields at once', async () => {
+        it('propagates OptimisticConcurrencyException when expectedVersion drifted (TASK-302 Stream D Phase C C.7)', async () => {
+            const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+            const existingSetting = createMockGlobalSettingEntity({
+                id: 'setting-123',
+                hasChanges: true,
+            });
+            (existingSetting as any).version = 5;
+            mockGlobalSettingRepository.findById.mockResolvedValue(existingSetting);
+            mockGlobalSettingRepository.updateWithVersion.mockRejectedValue(
+                new OptimisticConcurrencyException('GlobalSetting', 'setting-123', {
+                    expectedVersion: 5,
+                    currentVersion: 6,
+                }),
+            );
+
+            await expect(
+                service.update('setting-123', { value: 'new-value', expectedVersion: 5 } as any),
+            ).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+        });
+
+        it('should update multiple fields at once via updateWithVersion', async () => {
             const existingSetting = createMockGlobalSettingEntity({
                 id: 'setting-123',
                 hasChanges: true,
                 changes: { name: 'Updated Name', value: 'updated-value', description: 'Updated description' },
             });
+            (existingSetting as any).version = 3;
             mockGlobalSettingRepository.findById.mockResolvedValue(existingSetting);
-            mockGlobalSettingRepository.update.mockResolvedValue(existingSetting);
+            mockGlobalSettingRepository.updateWithVersion.mockResolvedValue(existingSetting);
 
             await service.update('setting-123', {
                 name: 'Updated Name',
                 value: 'updated-value',
                 description: 'Updated description',
-            });
+                expectedVersion: 3,
+            } as any);
 
-            expect(mockGlobalSettingRepository.update).toHaveBeenCalled();
+            expect(mockGlobalSettingRepository.updateWithVersion).toHaveBeenCalled();
         });
     });
 
@@ -703,10 +748,11 @@ describe('GlobalSettingService', () => {
                 id: 'setting-123',
                 hasChanges: true,
             });
+            (existingSetting as any).version = 1;
             mockGlobalSettingRepository.findById.mockResolvedValue(existingSetting);
-            mockGlobalSettingRepository.update.mockRejectedValue(new Error('Update failed'));
+            mockGlobalSettingRepository.updateWithVersion.mockRejectedValue(new Error('Update failed'));
 
-            await expect(service.update('setting-123', { value: 'new-value' })).rejects.toThrow('Update failed');
+            await expect(service.update('setting-123', { value: 'new-value', expectedVersion: 1 } as any)).rejects.toThrow('Update failed');
         });
 
         it('should propagate repository errors on softDelete', async () => {
