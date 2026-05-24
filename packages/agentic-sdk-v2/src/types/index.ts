@@ -266,3 +266,14 @@ export type { ComponentCheck, ComponentStatus, HealthStatus, ServiceHealthStatus
 
 // Voice embedding types (TASK-265 W0-7 — voice-profile rewrite)
 export type { VoiceProfile, EnrollFiles } from '../hooks/useVoiceEmbedding';
+
+// Settings types + OCC error (TASK-302 Stream D Phase D.4)
+export type {
+  CreateGlobalSettingInput,
+  CreateUserSettingInput,
+  GlobalSetting,
+  UpdateGlobalSettingInput,
+  UpdateUserSettingInput,
+  UserSetting,
+} from './settings';
+export { ConfigConflictError } from './settings';

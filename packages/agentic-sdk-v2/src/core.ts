@@ -299,6 +299,19 @@ export { AgenticError, DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from './types';
 
 export type { AuthUser, ImpersonateResponse, LoginResponse } from './types/auth';
 
+// Settings + OCC error (TASK-302 Stream D Phase D.4) — exported here so
+// admin-UI consumers can `instanceof ConfigConflictError` without
+// pulling in audio/STT plugin code.
+export type {
+  CreateGlobalSettingInput,
+  CreateUserSettingInput,
+  GlobalSetting,
+  UpdateGlobalSettingInput,
+  UpdateUserSettingInput,
+  UserSetting,
+} from './types';
+export { ConfigConflictError } from './types';
+
 // =============================================================================
 // Constants - Endpoint Definitions
 // =============================================================================

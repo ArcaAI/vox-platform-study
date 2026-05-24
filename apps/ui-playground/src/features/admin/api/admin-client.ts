@@ -15,6 +15,15 @@ export class AdminApiError extends Error {
 
 export interface RequestOptions {
   tenantId?: string;
+  /**
+   * RFC 7232 `If-Match` header carrying a strong validator (e.g. `"7"`).
+   * Added in TASK-302 Stream D Phase D.5 so config-editor mutations can
+   * satisfy `@RequiresIfMatch()` routes. Passing the wrong value yields
+   * `412 Precondition Failed`; omitting it on a required route yields
+   * `428 Precondition Required` — both surface to the caller as
+   * `AdminApiError` with the appropriate `status`.
+   */
+  ifMatch?: string;
 }
 
 function getEffectiveToken(): string {
@@ -40,6 +49,10 @@ function getHeaders(options?: RequestOptions): HeadersInit {
   const effectiveTenant = options?.tenantId ?? tenantId;
   if (effectiveTenant) {
     headers['X-Tenant-Id'] = effectiveTenant;
+  }
+
+  if (options?.ifMatch) {
+    headers['If-Match'] = options.ifMatch;
   }
 
   return headers;

@@ -83,6 +83,11 @@ function makeTenantConfig(overrides?: Partial<TenantConfig>): TenantConfig {
     namespace: 'general',
     tenantId: TENANT_ID,
     tenantCode: 'TEST',
+    // TASK-302 Stream D Phase D.5 — every config must carry a version so
+    // the editor can build the CAS body + `If-Match` header. The default
+    // is the first-write version (1); per-test overrides can stress the
+    // conflict path.
+    version: 1,
     ...overrides,
   };
 }
@@ -132,10 +137,15 @@ vi.mock('../../api/tenants', async () => {
     })),
     useUpdateTenantConfigs: vi.fn(() => ({
       mutate: mockMutateTenantConfigs,
+      // TASK-302 Stream D Phase D.5 — the page now uses `mutateAsync`
+      // so it can await the result and branch on 412 conflicts. Mirror
+      // the mock for both APIs to preserve the legacy assertions.
+      mutateAsync: mockMutateTenantConfigs,
       isPending: false,
     })),
     useUpdateMyTenantConfigs: vi.fn(() => ({
       mutate: mockMutateMyTenantConfigs,
+      mutateAsync: mockMutateMyTenantConfigs,
       isPending: false,
     })),
   };
@@ -388,8 +398,13 @@ describe('ConfigurationManagementPage', () => {
       expect(mockMutateTenantConfigs).toHaveBeenCalledWith(
         expect.objectContaining({
           identifier: expect.any(String),
+          // TASK-302 Stream D Phase D.5 — payload now carries the
+          // server's strong validator (If-Match: "<version>") AND the
+          // per-row expectedVersion for the CAS body. Both derived
+          // from `selectedConfig.version`.
+          ifMatch: '"1"',
           configs: expect.arrayContaining([
-            expect.objectContaining({ id: 'cfg-01', value: 'de' }),
+            expect.objectContaining({ id: 'cfg-01', value: 'de', expectedVersion: 1 }),
           ]),
         }),
       );
@@ -410,8 +425,13 @@ describe('ConfigurationManagementPage', () => {
 
       expect(mockMutateTenantConfigs).toHaveBeenCalledWith(
         expect.objectContaining({
+          ifMatch: '"1"',
           configs: expect.arrayContaining([
-            expect.objectContaining({ id: 'cfg-03', value: '{"timeout":45,"enabled":true}' }),
+            expect.objectContaining({
+              id: 'cfg-03',
+              value: '{"timeout":45,"enabled":true}',
+              expectedVersion: 1,
+            }),
           ]),
         }),
       );
@@ -441,9 +461,12 @@ describe('ConfigurationManagementPage', () => {
 
       expect(mockMutateMyTenantConfigs).toHaveBeenCalledTimes(1);
       expect(mockMutateMyTenantConfigs).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({ id: 'cfg-01', value: 'ja' }),
-        ]),
+        expect.objectContaining({
+          ifMatch: '"1"',
+          configs: expect.arrayContaining([
+            expect.objectContaining({ id: 'cfg-01', value: 'ja', expectedVersion: 1 }),
+          ]),
+        }),
       );
       expect(mockMutateTenantConfigs).not.toHaveBeenCalled();
     });
@@ -487,8 +510,9 @@ describe('ConfigurationManagementPage', () => {
 
       expect(mockMutateTenantConfigs).toHaveBeenCalledWith(
         expect.objectContaining({
+          ifMatch: '"1"',
           configs: expect.arrayContaining([
-            expect.objectContaining({ id: 'cfg-02', value: 'false' }),
+            expect.objectContaining({ id: 'cfg-02', value: 'false', expectedVersion: 1 }),
           ]),
         }),
       );

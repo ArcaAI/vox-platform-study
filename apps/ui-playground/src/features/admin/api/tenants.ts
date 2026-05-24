@@ -29,6 +29,15 @@ export interface TenantConfig {
   description?: string | null;
   key: string;
   defaultValue?: string | null;
+  /**
+   * Row version surfaced by the API after TASK-302 Stream D Phase B.6.
+   * Optional on the wire because legacy callers (and unversioned rows
+   * during the rollout window) may omit it. The PATCH path will fail
+   * with `428 Precondition Required` if the corresponding `If-Match`
+   * header is missing, so the editor MUST capture this value on GET
+   * and surface it on save.
+   */
+  version?: number;
   value: string;
   dataType?: string;
   namespace?: string | null;
@@ -56,6 +65,15 @@ export interface UpdateTenantConfigItem {
   id: string;
   value: string;
   description?: string;
+  /**
+   * Row-version snapshot the editor was looking at when the user pressed
+   * Save. Required by the API DTO after TASK-302 Stream D Phase C.1; the
+   * server runs a Compare-And-Set against the stored `_version` and
+   * returns `412 Precondition Failed` on drift. Keep this in sync with
+   * `If-Match` (the header takes precedence on the same call — see
+   * `useUpdateMyTenantConfigs` for the wiring).
+   */
+  expectedVersion: number;
 }
 
 export interface UpdateTenantConfigsInput {
@@ -210,8 +228,20 @@ export function useDeleteTenant() {
 export function useUpdateTenantConfigs() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ identifier, configs }: { identifier: string; configs: UpdateTenantConfigItem[] }) =>
-      adminClient.patch<PaginatedResponse<TenantConfig>>(`/admin/tenants/configs/${identifier}`, configs),
+    mutationFn: ({
+      identifier,
+      configs,
+      ifMatch,
+    }: {
+      identifier: string;
+      configs: UpdateTenantConfigItem[];
+      ifMatch?: string;
+    }) =>
+      adminClient.patch<PaginatedResponse<TenantConfig>>(
+        `/admin/tenants/configs/${identifier}`,
+        configs,
+        ifMatch ? { ifMatch } : undefined,
+      ),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({
         queryKey: keys.configs(variables.identifier),
@@ -239,7 +269,12 @@ export function useMyTenantConfigs(options?: Omit<UseQueryOptions<PaginatedRespo
 export function useUpdateMyTenantConfigs() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (configs: UpdateTenantConfigItem[]) => adminClient.patch<PaginatedResponse<TenantConfig>>('/tenant/me/config', configs),
+    mutationFn: ({ configs, ifMatch }: { configs: UpdateTenantConfigItem[]; ifMatch?: string }) =>
+      adminClient.patch<PaginatedResponse<TenantConfig>>(
+        '/tenant/me/config',
+        configs,
+        ifMatch ? { ifMatch } : undefined,
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: myTenantKeys.config });
     },
