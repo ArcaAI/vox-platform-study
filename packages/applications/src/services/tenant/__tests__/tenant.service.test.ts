@@ -33,6 +33,11 @@ const mockTenantRepository = {
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    // TASK-302 Stream D Phase E.1 — `update()` now writes via Compare-And-Set
+    // (`updateWithVersion`). Existing tests below still reference `.update`
+    // for legacy assertions (kept for paranoia); the live write path uses
+    // `updateWithVersion`.
+    updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
 };
 
@@ -103,6 +108,7 @@ const createMockTenantEntity = (overrides: Partial<{
     deletedAt: Date | null;
     hasChanges: boolean;
     changes: Record<string, unknown>;
+    version: number;
 }> = {}) => {
     const entity = {
         id: overrides.id ?? 'tenant-id-1',
@@ -117,6 +123,11 @@ const createMockTenantEntity = (overrides: Partial<{
         deletedAt: overrides.deletedAt ?? null,
         hasChanges: overrides.hasChanges ?? false,
         changes: overrides.changes ?? {},
+        // TASK-302 Stream D Phase E.1 — every tenant row carries a server-owned
+        // `_version` after the B.5 BaseEntity getter + B.6 mapper. The default
+        // is the first-write version (1); per-test overrides exercise the CAS
+        // bump path.
+        version: overrides.version ?? 1,
         enable: vi.fn(),
         disable: vi.fn(),
         toObject: vi.fn(),
@@ -619,40 +630,78 @@ describe('TenantService', () => {
     });
 
     describe('update', () => {
-        it('should update tenant successfully and return updated entity', async () => {
+        it('should update tenant successfully via updateWithVersion (TASK-302 Stream D Phase E.1)', async () => {
             const existingTenant = createMockTenantEntity({
                 id: 'tenant-123',
                 name: 'Old Name',
                 hasChanges: true,
                 changes: { name: 'Updated Tenant' },
+                version: 5,
             });
             mockTenantRepository.findById.mockResolvedValue(existingTenant);
-            mockTenantRepository.update.mockResolvedValue(existingTenant);
+            mockTenantRepository.updateWithVersion.mockResolvedValue({ ...existingTenant, version: 6 });
 
-            const result = await service.update('tenant-123', { name: 'Updated Tenant' });
+            const result = await service.update('tenant-123', { name: 'Updated Tenant', expectedVersion: 5 } as any);
 
             expect(result.id).toBe('tenant-123');
-            expect(mockTenantRepository.update).toHaveBeenCalledWith('tenant-123', existingTenant);
+            // CAS path: assert updateWithVersion was called with the
+            // expected version snapshot. The legacy `.update` MUST NOT
+            // be invoked — it bypasses OCC.
+            expect(mockTenantRepository.updateWithVersion).toHaveBeenCalledWith('tenant-123', existingTenant, 5);
+            expect(mockTenantRepository.update).not.toHaveBeenCalled();
         });
 
-        it('should emit ResourceUpdated event with changes and previous data', async () => {
+        it('should emit ResourceUpdated event with changes, previousVersion + newVersion (TASK-302 Stream D Phase E.1)', async () => {
             const existingTenant = createMockTenantEntity({
                 id: 'tenant-123',
                 hasChanges: true,
                 changes: { name: 'Updated Tenant' },
+                version: 9,
             });
             mockTenantRepository.findById.mockResolvedValue(existingTenant);
-            mockTenantRepository.update.mockResolvedValue(existingTenant);
+            mockTenantRepository.updateWithVersion.mockResolvedValue({ ...existingTenant, version: 10 });
 
-            await service.update('tenant-123', { name: 'Updated Tenant' });
+            await service.update('tenant-123', { name: 'Updated Tenant', expectedVersion: 9 } as any);
 
+            // The audit event must carry both versions so the history
+            // trail correlates with the CAS bump. Same shape as the
+            // GlobalSetting / TenantConfig audit-log fix from C.8.
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
                 SysEventType.ResourceUpdated,
                 expect.objectContaining({
                     resourceId: 'tenant-123',
-                    data: { name: 'Updated Tenant' },
-                })
+                    data: expect.objectContaining({
+                        previousVersion: 9,
+                        newVersion: 10,
+                    }),
+                }),
             );
+        });
+
+        it('should propagate OptimisticConcurrencyException on version drift (TASK-302 Stream D Phase E.1)', async () => {
+            const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+            const existingTenant = createMockTenantEntity({
+                id: 'tenant-123',
+                hasChanges: true,
+                changes: { name: 'X' },
+                version: 4,
+            });
+            mockTenantRepository.findById.mockResolvedValue(existingTenant);
+            const occErr = new OptimisticConcurrencyException('Tenant', 'tenant-123', {
+                expectedVersion: 4,
+                currentVersion: 5,
+            });
+            mockTenantRepository.updateWithVersion.mockRejectedValue(occErr);
+
+            await expect(
+                service.update('tenant-123', { name: 'X', expectedVersion: 4 } as any),
+            ).rejects.toBe(occErr);
+            // No event is emitted on a failed CAS — the audit log only
+            // records successful writes.
+            const updatedBroadcasts = mockEventEmitter.emit.mock.calls.filter(
+                ([eventName]) => eventName === SysEventType.ResourceUpdated,
+            );
+            expect(updatedBroadcasts).toHaveLength(0);
         });
 
         it('should throw ArgumentInvalidException when no changes detected', async () => {
@@ -663,7 +712,7 @@ describe('TenantService', () => {
             mockTenantRepository.findById.mockResolvedValue(existingTenant);
 
             await expect(
-                service.update('tenant-123', { name: 'Same Name' })
+                service.update('tenant-123', { name: 'Same Name', expectedVersion: 1 } as any)
             ).rejects.toThrow('No changes to write to');
         });
 
@@ -674,14 +723,15 @@ describe('TenantService', () => {
                 changes: { name: 'New Name', description: 'New Description' },
             });
             mockTenantRepository.findById.mockResolvedValue(existingTenant);
-            mockTenantRepository.update.mockResolvedValue(existingTenant);
+            mockTenantRepository.updateWithVersion.mockResolvedValue(existingTenant);
 
             await service.update('tenant-123', {
                 name: 'New Name',
                 description: 'New Description',
-            });
+                expectedVersion: 1,
+            } as any);
 
-            expect(mockTenantRepository.update).toHaveBeenCalled();
+            expect(mockTenantRepository.updateWithVersion).toHaveBeenCalled();
         });
 
         it('should update resourceStatus to DISABLED', async () => {
@@ -692,7 +742,7 @@ describe('TenantService', () => {
                 changes: { resourceStatus: ResourceStatusType.DISABLED },
             });
             mockTenantRepository.findById.mockResolvedValue(existingTenant);
-            mockTenantRepository.update.mockResolvedValue(
+            mockTenantRepository.updateWithVersion.mockResolvedValue(
                 createMockTenantEntity({
                     id: 'tenant-123',
                     resourceStatus: ResourceStatusType.DISABLED,
@@ -701,9 +751,10 @@ describe('TenantService', () => {
 
             const result = await service.update('tenant-123', {
                 resourceStatus: ResourceStatusType.DISABLED,
-            });
+                expectedVersion: 1,
+            } as any);
 
-            expect(mockTenantRepository.update).toHaveBeenCalledWith('tenant-123', existingTenant);
+            expect(mockTenantRepository.updateWithVersion).toHaveBeenCalledWith('tenant-123', existingTenant, 1);
             expect(result.resourceStatus).toBe(ResourceStatusType.DISABLED);
         });
 
@@ -715,7 +766,7 @@ describe('TenantService', () => {
                 changes: { resourceStatus: ResourceStatusType.ENABLED },
             });
             mockTenantRepository.findById.mockResolvedValue(existingTenant);
-            mockTenantRepository.update.mockResolvedValue(
+            mockTenantRepository.updateWithVersion.mockResolvedValue(
                 createMockTenantEntity({
                     id: 'tenant-123',
                     resourceStatus: ResourceStatusType.ENABLED,
@@ -724,7 +775,8 @@ describe('TenantService', () => {
 
             const result = await service.update('tenant-123', {
                 resourceStatus: ResourceStatusType.ENABLED,
-            });
+                expectedVersion: 1,
+            } as any);
 
             expect(result.resourceStatus).toBe(ResourceStatusType.ENABLED);
         });
@@ -736,7 +788,7 @@ describe('TenantService', () => {
                 changes: { name: 'New Name', resourceStatus: ResourceStatusType.DISABLED },
             });
             mockTenantRepository.findById.mockResolvedValue(existingTenant);
-            mockTenantRepository.update.mockResolvedValue(
+            mockTenantRepository.updateWithVersion.mockResolvedValue(
                 createMockTenantEntity({
                     id: 'tenant-123',
                     name: 'New Name',
@@ -747,7 +799,8 @@ describe('TenantService', () => {
             const result = await service.update('tenant-123', {
                 name: 'New Name',
                 resourceStatus: ResourceStatusType.DISABLED,
-            });
+                expectedVersion: 1,
+            } as any);
 
             expect(result.name).toBe('New Name');
             expect(result.resourceStatus).toBe(ResourceStatusType.DISABLED);
