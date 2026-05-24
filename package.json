@@ -55,6 +55,7 @@
         "pgbv:show:stats": "PGPASSWORD=hope_app_local psql -h 127.0.0.1 -p 6532 -U hope_app -d pgbouncer -c 'SHOW STATS;'",
         "pgbv:push": "dotenv -e packages/database/tests/pgbouncer-validation/.env -- pnpm --filter @arcaai/database db:push",
         "pgbv:test": "dotenv -e packages/database/tests/pgbouncer-validation/.env -- vitest run --config packages/database/tests/pgbouncer-validation/vitest.config.ts",
+        "pgbv:pgbench": "bash packages/database/tests/pgbouncer-validation/pgbench/run-baseline.sh",
         "------------ CODE GENERATION ------------": "",
         "gen:prisma": "pnpm --filter @arcaai/tools prisma-commander",
         "gen:model": "pnpm --filter @arcaai/tools generate-data-model",
