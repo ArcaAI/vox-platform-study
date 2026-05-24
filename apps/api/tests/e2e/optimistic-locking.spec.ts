@@ -187,6 +187,82 @@ test.describe(`Optimistic locking — PATCH /admin/tenants/configs/${TENANT_KEY}
   });
 });
 
+// TASK-302 Stream D Phase D (D.3) — once `@RequiresIfMatch()` is applied to
+// the my-tenant config PATCH route, an inbound request without the
+// `If-Match` header must return `428 Precondition Required` (RFC 6585).
+// The body-field `expectedVersion` is NOT a substitute here — that's the
+// service-to-service fallback for routes that don't opt into the header
+// contract; once a route opts in, the header is mandatory.
+test.describe(`@RequiresIfMatch contract — PATCH /tenant/me/config (TASK-302 Stream D Phase D)`, () => {
+  let superAdminToken: string;
+
+  test.beforeAll(async ({ request }) => {
+    const { superAdminToken: token } = await loginSeededUsers(request);
+    expect(token).toBeTruthy();
+    superAdminToken = token!;
+  });
+
+  test('PATCH without If-Match returns 428 Precondition Required', async ({ request }) => {
+    // Body shape is irrelevant — the 428 fires in the param-decorator
+    // pipeline BEFORE the controller body runs. Any authenticated request
+    // without `If-Match` to a `@RequiresIfMatch()`-annotated route must
+    // 428, regardless of whether `expectedVersion` is in the body.
+    const res = await request.patch('/api/v1/tenant/me/config', {
+      headers: { Authorization: `Bearer ${superAdminToken}` },
+      data: [{ id: 'placeholder-id-doesnt-matter', value: 'x', expectedVersion: 1 }],
+    });
+    expect(res.status()).toBe(428);
+
+    // The body must carry `code: 'HTTP.PRECONDITION_REQUIRED'` so SDKs
+    // can distinguish "you forgot the header" (update the SDK) from a
+    // generic 4xx. RFC 6585 lets us communicate this precisely.
+    const body = await res.json();
+    expect(body.code).toBe('HTTP.PRECONDITION_REQUIRED');
+  });
+
+  test('PATCH with valid If-Match passes the header gate (reaches handler)', async ({ request }) => {
+    // We're not asserting success here — only that the 428 gate is
+    // bypassed when the header is present. Whatever 4xx/2xx happens next
+    // (tenant context, locked-row check, OCC conflict) is OUT of scope
+    // for D.3 — those are exercised by the C.5/C.6 e2e and the D.3.2
+    // header-takes-precedence test below.
+    const res = await request.patch('/api/v1/tenant/me/config', {
+      headers: {
+        Authorization: `Bearer ${superAdminToken}`,
+        'If-Match': '"1"',
+      },
+      data: [{ id: 'placeholder-id-doesnt-matter', value: 'x', expectedVersion: 1 }],
+    });
+    // Must NOT be 428. (Any other status is fine — what matters here is
+    // that the header gate let us through.)
+    expect(res.status()).not.toBe(428);
+  });
+
+  test('PATCH with malformed If-Match (no quotes) returns 400', async ({ request }) => {
+    const res = await request.patch('/api/v1/tenant/me/config', {
+      headers: {
+        Authorization: `Bearer ${superAdminToken}`,
+        'If-Match': '7',
+      },
+      data: [{ id: 'placeholder-id-doesnt-matter', value: 'x', expectedVersion: 1 }],
+    });
+    expect(res.status()).toBe(400);
+  });
+
+  test('PATCH with weak If-Match (W/"7") returns 400', async ({ request }) => {
+    // RFC 7232 §2.3.2: weak comparators are not allowed for `If-Match`.
+    // The extractor rejects them as 400.
+    const res = await request.patch('/api/v1/tenant/me/config', {
+      headers: {
+        Authorization: `Bearer ${superAdminToken}`,
+        'If-Match': 'W/"7"',
+      },
+      data: [{ id: 'placeholder-id-doesnt-matter', value: 'x', expectedVersion: 1 }],
+    });
+    expect(res.status()).toBe(400);
+  });
+});
+
 // `playwrightRequest` is intentionally imported to keep the type re-export
 // in front of any code that uses it for `newContext()`; some bundlers
 // tree-shake the second-tier export otherwise.
