@@ -25,9 +25,7 @@ describe.skipIf(!enabled)(
 
     beforeAll(async () => {
       const { PrismaPg } = await import('@prisma/adapter-pg');
-      const { PrismaClient } = await import(
-        '@arcaai/database/client'
-      );
+      const { PrismaClient } = await import('@arcaai/database');
 
       // The "plain" client used for the racing-writers proof. We deliberately
       // avoid the soft-delete-extended singleton because `findUnique` (used
