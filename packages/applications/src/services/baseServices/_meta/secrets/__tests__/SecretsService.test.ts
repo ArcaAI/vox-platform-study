@@ -153,6 +153,65 @@ describe('SecretsService.boot()', () => {
   });
 });
 
+describe('SecretsService.encrypt/decrypt (Phase 4 Task 4.5)', () => {
+  it('throws a guard error when the underlying provider has no encrypt()', async () => {
+    const provider = new InMemorySecretsProvider({});
+    const service = new SecretsService(provider, {});
+    await expect(service.encrypt(Buffer.from('x'))).rejects.toThrow(/requires vault/i);
+  });
+
+  it('throws a guard error when the underlying provider has no decrypt()', async () => {
+    const provider = new InMemorySecretsProvider({});
+    const service = new SecretsService(provider, {});
+    await expect(service.decrypt('vault:v1:cccc')).rejects.toThrow(/requires vault/i);
+  });
+
+  it('delegates encrypt() to the Vault provider when one is wired in', async () => {
+    // Structural fake — anything with .encrypt + .getSecret + .health
+    // satisfies the SecretsService's expectations.
+    const fakeVault = {
+      encrypt: vi.fn(async (b: Buffer) => `vault:v1:${b.toString('base64')}`),
+      getSecret: vi.fn(),
+      getSecrets: vi.fn(),
+      health: vi.fn(),
+    } as unknown as InMemorySecretsProvider;
+    const service = new SecretsService(fakeVault, {});
+    const ct = await service.encrypt(Buffer.from('hello'));
+    expect(ct).toBe('vault:v1:aGVsbG8=');
+    expect((fakeVault as unknown as { encrypt: unknown }).encrypt).toHaveBeenCalledTimes(1);
+  });
+
+  it('delegates decrypt() to the Vault provider when one is wired in', async () => {
+    const fakeVault = {
+      decrypt: vi.fn(async (ct: string) => Buffer.from(ct.split(':').pop()!, 'base64')),
+      getSecret: vi.fn(),
+      getSecrets: vi.fn(),
+      health: vi.fn(),
+    } as unknown as InMemorySecretsProvider;
+    const service = new SecretsService(fakeVault, {});
+    const pt = await service.decrypt('vault:v1:aGVsbG8=');
+    expect(pt.toString('utf8')).toBe('hello');
+    expect((fakeVault as unknown as { decrypt: unknown }).decrypt).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not leak the plaintext or ciphertext into the guard error message', async () => {
+    const provider = new InMemorySecretsProvider({});
+    const service = new SecretsService(provider, {});
+    const verySecret = 'super-secret-plaintext-DO-NOT-LEAK';
+    const veryCiphertext = 'vault:v1:DEAD-BEEF-CIPHER-DO-NOT-LEAK';
+    try {
+      await service.encrypt(Buffer.from(verySecret));
+    } catch (e) {
+      expect((e as Error).message).not.toContain(verySecret);
+    }
+    try {
+      await service.decrypt(veryCiphertext);
+    } catch (e) {
+      expect((e as Error).message).not.toContain(veryCiphertext);
+    }
+  });
+});
+
 describe('SecretsService Redis Pub/Sub invalidation', () => {
   it('clears one key on "arca:secrets:invalidate" message {key}', async () => {
     const provider = new InMemorySecretsProvider({ K: 'v', K2: 'v2' });
