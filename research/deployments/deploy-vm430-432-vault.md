@@ -214,4 +214,40 @@ Note: Vault returns `200` for active, `429` for performance standby, `473` for D
 
 ---
 
-<REMAINING SECTIONS TO BE FILLED PER TASKS 1.12–1.14>
+## 12. Audit log persistence + rotation
+
+Enable file audit device (run once on active node, replicates via Raft):
+
+```bash
+vault audit enable file file_path=/var/log/vault/audit.log
+vault audit list
+# Expected: file/   file   n/a   File-based audit log device
+```
+
+Logrotate (each node):
+
+```bash
+sudo tee /etc/logrotate.d/vault > /dev/null <<'EOF'
+/var/log/vault/audit.log {
+  daily
+  rotate 90
+  compress
+  delaycompress
+  missingok
+  notifempty
+  create 0600 vault vault
+  postrotate
+    /usr/bin/killall -HUP vault 2>/dev/null || true
+  endscript
+}
+EOF
+
+sudo logrotate -d /etc/logrotate.d/vault
+# Expected: dry-run output without errors
+```
+
+Disk-fill alert (Prometheus + node_exporter): `node_filesystem_avail_bytes{mountpoint="/var/log"} / node_filesystem_size_bytes{mountpoint="/var/log"} < 0.15` → warn; `< 0.05` → page.
+
+---
+
+<REMAINING SECTIONS TO BE FILLED PER TASKS 1.13–1.14>
