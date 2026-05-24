@@ -22,13 +22,14 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Delete, HttpCode, HttpStatus, Inject, Param, Post, Query, Get, Patch } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize } from '../../decorators';
+import { ApiEndpoint, CanManage } from '../../decorators';
 import { UpdateUserStatusRequest, BulkDeleteUsersRequest } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('admin-users')
 @Controller('admin/users')
-@Authorize()
+// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
+@CanManage('User')
 export class UserController {
   constructor(
     @Inject(IUserService)

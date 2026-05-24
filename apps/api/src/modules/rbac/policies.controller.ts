@@ -40,6 +40,8 @@ import {
 @ApiTags('RBAC - Policies')
 @ApiBearerAuth()
 @Controller('admin/rbac/policies')
+// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
+@CanManage('Policy')
 export class PoliciesController {
   private readonly logger = new Logger(PoliciesController.name);
 
