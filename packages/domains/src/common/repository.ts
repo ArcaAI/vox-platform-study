@@ -3,7 +3,7 @@ import { Prisma, PrismaClient, modelHasSoftDelete } from '@arcaai/database';
 import { formatFindAllProps, formatCountProps, QueryBuilder, BaseEntity, BaseMapper, EntityId, CoreUnitOfWorkService } from '../common';
 import { ICountProps, IFindAllProps, IRepository } from '../interfaces';
 
-import { DataCreationException, DataNotFoundException } from '@arcaai/exceptions';
+import { DataCreationException, DataNotFoundException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { ResourceStatusType } from '../enums';
 
 // Type for the database context - can be extended client or transaction client
@@ -126,6 +126,58 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
       include: this._includes,
     });
     return this._mapper.toDomainEntity(model);
+  }
+
+  /**
+   * Compare-and-set update against the `_version` column.
+   *
+   * Issues `prisma.<model>.updateMany({ where: { id, version: expectedVersion },
+   * data: { ...changes, version: { increment: 1 } } })`. PostgreSQL emits the
+   * predicate verbatim; if no row matches we disambiguate "row gone" vs
+   * "version drifted" by re-reading and throwing the correct exception.
+   *
+   * Safe under transaction-mode pooling — no row lock is taken.
+   *
+   * @throws OptimisticConcurrencyException when the row exists but its
+   *   version is no longer `expectedVersion`
+   * @throws DataNotFoundException when the row no longer exists
+   *
+   * @see TASK-302 Stream D Phase B
+   * @see https://github.com/prisma/prisma/issues/10207 (MySQL-only caveat)
+   */
+  public async updateWithVersion(
+    id: EntityId,
+    entity: DomainEntity,
+    expectedVersion: number,
+  ): Promise<DomainEntity> {
+    const changes = this._mapper.toPersistenceChanges(entity);
+
+    // `version` is database-owned. Even if a buggy caller put it in the
+    // change set, we strip it here as defense in depth on top of the
+    // mapper $toPersistence handler and applyChangesToEntity filter.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+    const { version: _v, ...safeChanges } = changes as Record<string, any>;
+
+    const result = await this.db.updateMany({
+      where: { id, version: expectedVersion },
+      data: { ...safeChanges, version: { increment: 1 } },
+    });
+
+    if (result.count === 0) {
+      const current = await this.db.findUnique({
+        where: { id },
+        select: { version: true },
+      });
+      if (!current) {
+        throw new DataNotFoundException(this._modelName, id);
+      }
+      throw new OptimisticConcurrencyException(this._modelName, id, {
+        expectedVersion,
+        currentVersion: current.version,
+      });
+    }
+
+    return this.findById(id);
   }
 
   public async delete(id: EntityId): Promise<DomainEntity> {
