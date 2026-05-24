@@ -46,4 +46,56 @@
 - [ ] Cloudflare Tunnel updated to route `https://vault.taphuynh.dev` to HAProxy
 - [ ] 5 separate operators identified to hold Shamir key shares (any 3 required to unseal); shares stored in physical envelopes, not encrypted files
 
-<REMAINING SECTIONS TO BE FILLED PER TASKS 1.8–1.14>
+## 5. Install Vault (1.18) + systemd unit
+
+On EACH node (run as `hope` user with sudo):
+
+```bash
+wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
+  | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt update
+sudo apt install -y vault=1.18.*
+vault --version  # expect Vault v1.18.x
+
+sudo mkdir -p /opt/vault/data /etc/vault.d /var/log/vault
+sudo chown -R vault:vault /opt/vault /etc/vault.d /var/log/vault
+
+sudo tee /etc/systemd/system/vault.service > /dev/null <<'EOF'
+[Unit]
+Description=HashiCorp Vault
+Documentation=https://developer.hashicorp.com/vault/docs
+Requires=network-online.target
+After=network-online.target
+ConditionFileNotEmpty=/etc/vault.d/vault.hcl
+
+[Service]
+User=vault
+Group=vault
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+SecureBits=keep-caps
+AmbientCapabilities=CAP_IPC_LOCK
+CapabilityBoundingSet=CAP_SYSLOG CAP_IPC_LOCK
+NoNewPrivileges=yes
+ExecStart=/usr/bin/vault server -config=/etc/vault.d/vault.hcl
+ExecReload=/bin/kill -SIGHUP $MAINPID
+KillMode=process
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+LimitNOFILE=65536
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+```
+
+---
+
+<REMAINING SECTIONS TO BE FILLED PER TASKS 1.9–1.14>
