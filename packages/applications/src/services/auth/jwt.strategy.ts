@@ -3,20 +3,23 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ClsService } from 'nestjs-cls';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { IActiveUserContext } from '../../interfaces';
-import { IAppSettingsService } from '../baseServices/_meta/appSettings';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import { IJwtRevocationService } from './jwt-revocation.service';
 import { UserSession } from './dto';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
-    @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
+    @Inject(SecretsService) private readonly secretsService: SecretsService,
     private readonly clsService: ClsService<IActiveUserContext>,
     @Optional()
     @Inject(IJwtRevocationService)
     private readonly jwtRevocationService?: IJwtRevocationService,
   ) {
-    const jwtSecret = appSettingsService.getValueWithDefault('JWT_SECRET_KEY', 'default-jwt-secret-key-change-in-production');
+    // TASK-302 Phase 3 Task 3.6 — JWT secret now sourced from SecretsService
+    // (cache-warmed at bootstrap by main.ts). See gateway-auth.strategy.ts
+    // for the same pattern.
+    const jwtSecret = secretsService.getSecretSync('JWT_SECRET_KEY') ?? 'default-jwt-secret-key-change-in-production';
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),

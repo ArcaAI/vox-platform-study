@@ -6,8 +6,8 @@ const mockClsService = {
     get: vi.fn(),
 };
 
-const mockAppSettingsService = {
-    getValueWithDefault: vi.fn().mockReturnValue('test-jwt-secret'),
+const mockSecretsService = {
+    getSecretSync: vi.fn().mockReturnValue('test-jwt-secret'),
 };
 
 const mockJwtRevocationService = {
@@ -38,7 +38,7 @@ import { JwtStrategy } from '../jwt.strategy';
 
 function createStrategy(): JwtStrategy {
     return new JwtStrategy(
-        mockAppSettingsService as any,
+        mockSecretsService as any,
         mockClsService as any,
         mockJwtRevocationService as any,
     );
