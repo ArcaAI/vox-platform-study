@@ -26,6 +26,15 @@ export interface SecretsHealth {
   provider: string;
   /** Optional human-readable detail; never include secret material. */
   detail?: string;
+  /**
+   * TASK-302 Phase 5 Task 5.7 (Stream B) — stale-while-revalidate
+   * signal for DB lease rotation. `degraded=true` means at least one
+   * registered VaultLeaseRenewer has crossed its failure threshold;
+   * `ok` may still be true (cached credentials remain valid until
+   * expiry). Health endpoints surface this as a WARNING, not a
+   * failure, so already-connected pods keep serving traffic.
+   */
+  degraded?: boolean;
 }
 
 export interface ISecretsProvider {

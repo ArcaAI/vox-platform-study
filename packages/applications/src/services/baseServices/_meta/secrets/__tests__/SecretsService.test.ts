@@ -107,9 +107,9 @@ describe('SecretsService (cache + TTL)', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it('health() proxies to the provider', async () => {
+  it('health() proxies to the provider and reports degraded=false by default', async () => {
     const h = await service.health();
-    expect(h).toEqual({ ok: true, latencyMs: 0, provider: 'in-memory' });
+    expect(h).toEqual({ ok: true, latencyMs: 0, provider: 'in-memory', degraded: false });
   });
 });
 
@@ -209,6 +209,63 @@ describe('SecretsService.encrypt/decrypt (Phase 4 Task 4.5)', () => {
     } catch (e) {
       expect((e as Error).message).not.toContain(veryCiphertext);
     }
+  });
+});
+
+describe('SecretsService lease-renewer integration (Phase 5 Task 5.7)', () => {
+  it('reports degraded=false on health when no renewer is registered', async () => {
+    const provider = new InMemorySecretsProvider({});
+    const service = new SecretsService(provider, {});
+    const h = await service.health();
+    expect(h.degraded).toBe(false);
+  });
+
+  it('reports degraded=true on health when a registered renewer is degraded', async () => {
+    const provider = new InMemorySecretsProvider({});
+    const service = new SecretsService(provider, {});
+    service.setLeaseRenewer({
+      get degraded() {
+        return true;
+      },
+      get failureCount() {
+        return 3;
+      },
+    });
+    const h = await service.health();
+    expect(h.degraded).toBe(true);
+    expect(h.detail).toMatch(/lease.*renew/i);
+  });
+
+  it('does not downgrade ok=true when only the renewer is degraded (stale-while-revalidate)', async () => {
+    const provider = new InMemorySecretsProvider({});
+    const service = new SecretsService(provider, {});
+    service.setLeaseRenewer({
+      get degraded() {
+        return true;
+      },
+      get failureCount() {
+        return 3;
+      },
+    });
+    const h = await service.health();
+    expect(h.ok).toBe(true);
+    expect(h.degraded).toBe(true);
+  });
+
+  it('clearLeaseRenewer() removes the registered renewer', async () => {
+    const provider = new InMemorySecretsProvider({});
+    const service = new SecretsService(provider, {});
+    service.setLeaseRenewer({
+      get degraded() {
+        return true;
+      },
+      get failureCount() {
+        return 3;
+      },
+    });
+    service.clearLeaseRenewer();
+    const h = await service.health();
+    expect(h.degraded).toBe(false);
   });
 });
 
