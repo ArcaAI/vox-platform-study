@@ -86,4 +86,52 @@ vault write transit/keys/hope-globalsetting/config \
   deletion_allowed=false \
   exportable=false 2>/dev/null || true
 
+# TASK-302 Phase 5 Task 5.2 — Vault database secrets engine for short-
+# lived PostgreSQL credentials. The dev container points at host
+# PostgreSQL on docker.host.internal:5432; the SRE blueprint at
+# research/deployments/deploy-vm430-432-vault.md §15 documents the
+# production pointing (HAProxy R/W :5000).
+#
+# Pre-flight: the operator MUST have run
+#   packages/database/src/prisma/db_main/manual/vault-admin-bootstrap.sql
+# in the target PostgreSQL cluster ONCE per environment (Task 5.1).
+# That script creates the `vault_admin` (LOGIN, CREATEROLE) and
+# `hope_app_template` (NOLOGIN) roles.
+#
+# All commands swallow stderr+exit so a re-run on a partially-
+# initialised dev container does not break the boot sequence; failures
+# of the substantive config call surface in the `vault read` step
+# below.
+VAULT_DB_HOST="${VAULT_DB_HOST:-host.docker.internal}"
+VAULT_DB_PORT="${VAULT_DB_PORT:-5432}"
+VAULT_DB_NAME="${VAULT_DB_NAME:-hope_main}"
+VAULT_DB_ADMIN_USER="${VAULT_DB_ADMIN_USER:-vault_admin}"
+VAULT_DB_ADMIN_PASS="${VAULT_DB_ADMIN_PASS:-vault_admin_dev_pw}"
+
+echo "[vault-init] configuring database/config/hope-main"
+vault write database/config/hope-main \
+  plugin_name=postgresql-database-plugin \
+  allowed_roles="hope-app-role" \
+  connection_url='postgresql://{{username}}:{{password}}@'"${VAULT_DB_HOST}"':'"${VAULT_DB_PORT}"'/'"${VAULT_DB_NAME}"'?sslmode=disable' \
+  username="${VAULT_DB_ADMIN_USER}" \
+  password="${VAULT_DB_ADMIN_PASS}" 2>/dev/null || true
+
+# Role `hope-app-role` — issues short-lived PG users that inherit
+# privileges from hope_app_template (Task 5.1 SQL).
+# Capacity math (per plan §5 risk R6):
+#   max_open_connections per role × N pods × N nodes < PG max_connections
+#   defaults: 50/role × 3 nodes = 150 < 200 (PG default). With higher
+#   pod counts the operator must tune max_open_connections downward.
+#
+# TTL defaults: 1h / 24h max — keeps the lease-renewal storm modest
+# and bounds blast radius for a compromised credential.
+echo "[vault-init] creating database/roles/hope-app-role"
+vault write database/roles/hope-app-role \
+  db_name=hope-main \
+  creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' INHERIT IN ROLE hope_app_template;" \
+  revocation_statements="REVOKE ALL PRIVILEGES ON DATABASE hope_main FROM \"{{name}}\"; REASSIGN OWNED BY \"{{name}}\" TO hope_app_template; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+  default_ttl="1h" \
+  max_ttl="24h" \
+  max_open_connections=50 2>/dev/null || true
+
 echo "[vault-init] OK"
