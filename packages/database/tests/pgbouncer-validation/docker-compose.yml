@@ -1,0 +1,112 @@
+# packages/database/tests/pgbouncer-validation/docker-compose.yml
+#
+# Single-node PostgreSQL + PgBouncer (transaction mode) for Prisma 7
+# compatibility validation (TASK-302 Stream C Phase 1).
+#
+# Ports (test-isolated, distinct from dev/test infra):
+#   5532  → PostgreSQL (direct, mirrors DIRECT_URL)
+#   6532  → PgBouncer  (pooled, mirrors DATABASE_URL)
+#
+# Usage (zsh):
+#   pnpm pgbouncer-validation:up
+#   pnpm pgbouncer-validation:test
+#   pnpm pgbouncer-validation:down
+#
+# Notes
+# ─────
+# * PgBouncer image pinned to edoburu/pgbouncer:v1.25.1-p0 (latest 1.25.x at
+#   plan execution; the originally-spec'd 1.25.0 tag is not published —
+#   v1.25.1-p0 is the actual minimum >= 1.21 release that satisfies the
+#   max_prepared_statements constraint).
+# * The edoburu image consumes DATABASE_URL (URL form), not individual
+#   DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME vars. The plan's earlier
+#   alternative-form was a guess; this Compose uses the actual schema.
+# * SERVER_RESET_QUERY_ALWAYS=1 + SERVER_RESET_QUERY='DISCARD ALL' is the
+#   pair that forces DISCARD ALL between transactions in txn mode (R2 of
+#   the plan's risk table).
+
+name: hope-pgbouncer-validation
+
+networks:
+  pgbv-net:
+    driver: bridge
+
+volumes:
+  pg-data:
+
+services:
+  postgres:
+    image: timescale/timescaledb-ha:pg18-all
+    container_name: pgbv-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hope
+      POSTGRES_USER: hope_app
+      POSTGRES_PASSWORD: hope_app_local
+    command: >
+      postgres
+      -c max_connections=200
+      -c idle_in_transaction_session_timeout=30000
+      -c statement_timeout=60000
+      -c shared_buffers=128MB
+      -c work_mem=8MB
+      -c log_statement=none
+      -c log_min_duration_statement=500
+    ports:
+      - '5532:5432'
+    volumes:
+      - pg-data:/var/lib/postgresql
+    networks: [pgbv-net]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hope_app -d hope']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.1-p0
+    container_name: pgbv-pgbouncer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '6532:6432'
+    environment:
+      # ── upstream (URL form per the edoburu entrypoint schema) ──
+      DATABASE_URL: 'postgres://hope_app:hope_app_local@postgres:5432/hope'
+      # ── pool ──
+      POOL_MODE: transaction
+      DEFAULT_POOL_SIZE: 50
+      MIN_POOL_SIZE: 5
+      MAX_CLIENT_CONN: 500
+      RESERVE_POOL_SIZE: 10
+      RESERVE_POOL_TIMEOUT: 3
+      # ── transaction-mode Prisma 7 requirements (per plan §1.1) ──
+      MAX_PREPARED_STATEMENTS: 200
+      SERVER_RESET_QUERY: 'DISCARD ALL'
+      SERVER_RESET_QUERY_ALWAYS: 1
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,search_path
+      # ── auth ──
+      AUTH_TYPE: scram-sha-256
+      ADMIN_USERS: hope_app
+      STATS_USERS: hope_app
+      # ── listening ──
+      LISTEN_ADDR: 0.0.0.0
+      LISTEN_PORT: 6432
+      # ── logging ──
+      LOG_CONNECTIONS: 1
+      LOG_DISCONNECTIONS: 1
+      LOG_POOLER_ERRORS: 1
+      VERBOSE: 0
+    networks: [pgbv-net]
+    healthcheck:
+      # SHOW POOLS requires admin / stats privileges; ADMIN_USERS=hope_app above grants both.
+      test:
+        - CMD-SHELL
+        - 'PGPASSWORD=hope_app_local psql -h 127.0.0.1 -p 6432 -U hope_app -d pgbouncer -c "SHOW POOLS" >/dev/null 2>&1 || exit 1'
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
