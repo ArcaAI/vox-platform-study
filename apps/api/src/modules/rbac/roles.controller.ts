@@ -33,6 +33,8 @@ import { CreateRoleDto, UpdateRoleDto, AssignPolicyToRoleDto, RoleResponse, Pagi
 @ApiTags('RBAC - Roles')
 @ApiBearerAuth()
 @Controller('admin/rbac/roles')
+// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
+@CanManage('Role')
 export class RolesController {
   private readonly logger = new Logger(RolesController.name);
 

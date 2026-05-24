@@ -21,6 +21,9 @@ import { ApiEndpoint, CanRead, CanDelete } from '../../decorators';
 @ApiTags('admin-audit-logs')
 @ApiBearerAuth()
 @Controller('admin/audit-logs')
+// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
+// Read-only by design — auditors must never mutate audit data.
+@CanRead('AuditLog')
 export class AuditLogController {
   constructor(
     @Inject(IAuditLogService)

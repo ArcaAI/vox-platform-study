@@ -106,7 +106,12 @@
         "py:setup:gpu": "./scripts/setup-python-env.sh --gpu",
         "------------ CODE QUALITY ------------": "",
         "lint": "turbo run lint",
-        "format": "prettier --write \"**/*.{ts,tsx,md}\""
+        "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+        "------------ GIT HOOKS (Phase 0 Item 6, TASK-302) ------------": "",
+        "prepare": "simple-git-hooks || true"
+    },
+    "simple-git-hooks": {
+        "pre-commit": "./scripts/gitleaks-precommit.sh"
     },
     "workspaces": [
         "apps/*",
@@ -134,6 +139,7 @@
         "prettier": "^3.8.1",
         "prisma": "^7.5.0",
         "rollup": "^4.60.0",
+        "simple-git-hooks": "^2.11.1",
         "ts-node": "^10.9.2",
         "turbo": "^2.8.20",
         "typescript": "^5.9.3",
