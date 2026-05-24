@@ -250,4 +250,48 @@ Disk-fill alert (Prometheus + node_exporter): `node_filesystem_avail_bytes{mount
 
 ---
 
-<REMAINING SECTIONS TO BE FILLED PER TASKS 1.13–1.14>
+## 13. Raft snapshot backup + offline restore drill
+
+### Backup (cron on active node)
+
+```bash
+sudo tee /usr/local/bin/vault-snapshot.sh > /dev/null <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+export VAULT_ADDR=https://127.0.0.1:8200
+export VAULT_CACERT=/etc/vault.d/tls/vault-ca.crt
+TS=$(date -u +%Y%m%dT%H%M%SZ)
+OUT=/var/backups/vault/snapshot-${TS}.snap
+mkdir -p /var/backups/vault
+vault operator raft snapshot save "${OUT}"
+# Mirror to MinIO (pgbackrest-compatible offline backup target)
+/usr/local/bin/mc cp "${OUT}" minio/vault-backups/
+# Keep last 14 days locally
+find /var/backups/vault -name 'snapshot-*.snap' -mtime +14 -delete
+EOF
+sudo chmod +x /usr/local/bin/vault-snapshot.sh
+
+# cron: every 4 hours
+echo "0 */4 * * * vault /usr/local/bin/vault-snapshot.sh >> /var/log/vault/snapshot.log 2>&1" \
+  | sudo tee /etc/cron.d/vault-snapshot
+```
+
+### Restore drill (quarterly, on staging cluster only)
+
+```bash
+# 1. Bring up a fresh single-node Vault on staging VM
+# 2. Initialize it but DON'T unseal yet
+vault operator init -key-shares=1 -key-threshold=1 -format=json > /tmp/init-staging.json
+# 3. Unseal with the staging key (only 1 share needed)
+# 4. Restore the production snapshot
+vault operator raft snapshot restore -force /var/backups/vault/snapshot-<TS>.snap
+# 5. Re-unseal with PRODUCTION key shares (Shamir 3-of-5)
+# 6. Verify: vault kv get secret/hope/JWT_SECRET_KEY  -> should return the production value
+# 7. Tear down staging
+```
+
+Document outcome (success/failure, recovery time objective achieved) in `research/runbooks/vault-dr-drill-YYYY-MM.md` after each drill. **Quarterly cadence** is mandatory for SOC2; see Appendix B.2 of the migration plan.
+
+---
+
+<REMAINING SECTION TO BE FILLED PER TASK 1.14>
