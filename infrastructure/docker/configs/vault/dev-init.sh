@@ -14,8 +14,13 @@ export VAULT_TOKEN="${VAULT_DEV_ROOT_TOKEN:-root}"
 echo "[vault-init] waiting for Vault to be ready"
 until vault status >/dev/null 2>&1; do sleep 1; done
 
-echo "[vault-init] enabling kv-v2 at path 'secret'"
+# In Vault dev mode the `secret/` path is auto-mounted as kv v1. We need v2,
+# so first try `enable -version=2` (no-op if already v2) and also upgrade in
+# place via `kv enable-versioning` (idempotent; works whether the mount is
+# already v2 or still v1).
+echo "[vault-init] ensuring kv-v2 at path 'secret'"
 vault secrets enable -path=secret -version=2 kv-v2 2>/dev/null || true
+vault kv enable-versioning secret/ 2>/dev/null || true
 
 echo "[vault-init] enabling transit at path 'transit'"
 vault secrets enable -path=transit transit 2>/dev/null || true
@@ -23,8 +28,11 @@ vault secrets enable -path=transit transit 2>/dev/null || true
 echo "[vault-init] enabling database at path 'database'"
 vault secrets enable -path=database database 2>/dev/null || true
 
+# Audit device writes from the *vault server* process; the path must be
+# writable by the `vault` user inside the hope-vault container. /vault/file
+# is the existing dev-mode storage dir owned by vault:vault and persists
+# across container restarts via the vault-data volume.
 echo "[vault-init] enabling file audit device"
-mkdir -p /vault/audit
-vault audit enable file file_path=/vault/audit/vault-audit.log 2>/dev/null || true
+vault audit enable file file_path=/vault/file/vault-audit.log 2>/dev/null || true
 
 echo "[vault-init] OK"
