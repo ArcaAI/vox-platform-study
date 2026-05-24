@@ -294,4 +294,32 @@ Document outcome (success/failure, recovery time objective achieved) in `researc
 
 ---
 
-<REMAINING SECTION TO BE FILLED PER TASK 1.14>
+## 15. Application configuration (HOPE API)
+
+In staging/prod systemd units (`/etc/systemd/system/hope-api.service`), add:
+
+```
+Environment=SECRETS_PROVIDER=vault
+Environment=VAULT_ADDR=https://vault.taphuynh.dev
+Environment=VAULT_NAMESPACE=
+Environment=VAULT_ROLE_ID=<value committed in config-repo>
+EnvironmentFile=/run/hope/vault-wrapped-secret-id
+# The deployment pipeline writes /run/hope/vault-wrapped-secret-id at deploy time
+# with VAULT_WRAPPED_SECRET_ID=<60s-TTL response-wrapping token>
+```
+
+Deployment hook (called by `.gitlab/ci/deploy.yml` before `systemctl start hope-api`):
+
+```bash
+# On the SRE control plane (not in the app VM)
+WRAP_TOKEN=$(vault write -wrap-ttl=60s -f auth/approle/role/hope-app/secret-id -format=json | jq -r '.wrap_info.token')
+ssh hope@$APP_VM "echo VAULT_WRAPPED_SECRET_ID=${WRAP_TOKEN} | sudo tee /run/hope/vault-wrapped-secret-id"
+ssh hope@$APP_VM "sudo systemctl restart hope-api"
+```
+
+App-side unwrapping happens once in `SecretsService.boot()` (see Plan Phase 2B Task 2.9). After unwrapping, `/run/hope/vault-wrapped-secret-id` is deleted by the post-start hook so the wrap token never sits on disk longer than necessary.
+
+---
+
+<!-- Sections 3, 4, 8, 10, 11, 14, 16, 17 deferred to SRE (out of plan scope). -->
+
