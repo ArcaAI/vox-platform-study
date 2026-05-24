@@ -564,4 +564,33 @@ describe('BaseEntity', () => {
       expect(entity.deletedAt).toBeNull();
     });
   });
+
+  describe('version (TASK-302 Stream D Phase B)', () => {
+    it('defaults to 1 when not provided in init', () => {
+      const entity = createTestEntity();
+      expect(entity.version).toBe(1);
+    });
+
+    it('reads the version supplied in init', () => {
+      const entity = createTestEntity({ version: 7 });
+      expect(entity.version).toBe(7);
+    });
+
+    it('does not expose a public setter (DB-owned)', () => {
+      const entity = createTestEntity();
+      const descriptor = Object.getOwnPropertyDescriptor(
+        Object.getPrototypeOf(entity),
+        'version',
+      );
+      expect(descriptor?.set).toBeUndefined();
+    });
+
+    it('version is not tracked in entity.changes when internal field is poked', () => {
+      const entity = createTestEntity();
+      // even if a buggy caller force-pokes the internal:
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (entity as any)._version = 99;
+      expect(entity.hasChanges).toBe(false);
+    });
+  });
 });

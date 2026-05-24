@@ -38,6 +38,7 @@ export abstract class BaseEntity {
   private _resourceStatus: ResourceStatusType;
   private _resourceStatusUpdatedAt: Date | null;
   private _resourceStatusUpdatedBy: EntityId | null;
+  private _version: number;
   private _changes: Record<string, any> = {};
 
   constructor(init: IBaseEntity) {
@@ -49,6 +50,7 @@ export abstract class BaseEntity {
     this._resourceStatus = init.resourceStatus || ResourceStatusType.ENABLED;
     this._resourceStatusUpdatedAt = init.resourceStatusUpdatedAt || null;
     this._resourceStatusUpdatedBy = init.resourceStatusUpdatedBy || null;
+    this._version = init.version ?? 1;
   }
 
   get id(): EntityId {
@@ -85,6 +87,18 @@ export abstract class BaseEntity {
 
   get resourceStatusUpdatedBy(): EntityId | null {
     return this._resourceStatusUpdatedBy;
+  }
+
+  /**
+   * Monotonic version for optimistic concurrency control. Mapped to the
+   * `_version` column on every Prisma model. Database-owned — the only
+   * legitimate writer is `Repository<T>.updateWithVersion`. Exposed read-only
+   * so services and mappers can round-trip it.
+   *
+   * @see TASK-302 Stream D Phase B
+   */
+  get version(): number {
+    return this._version;
   }
 
   get archivedAt(): Date | null {
