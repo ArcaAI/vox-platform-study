@@ -241,10 +241,11 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
     try {
       const key = await uploadAttachment(audioFile);
       if (key) {
-        await context.addCaseNote(`Audio recording: ${audioFile.name}`, {
-          consultationId,
+        await addContextItem({
           type: 'AUDIO_RECORDING',
-          attachmentUrl: key,
+          content: `Audio recording: ${audioFile.name}`,
+          source: 'USER',
+          structuredData: { attachmentKey: key },
         });
         toast.success('Audio file uploaded successfully');
         setAudioFile(null);

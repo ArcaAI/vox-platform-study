@@ -139,7 +139,11 @@ export class StorageController {
     if (/[.]{2}|[/\\]/.test(fileKey)) {
       throw new BadRequestException('Invalid file key: path traversal not allowed');
     }
-    await this.s3Service.putFile(bucketName, fileKey, file.buffer, file.mimetype);
+
+    const tenantBucket = await this.tenantBucketService.getBucketBySlug(bucketName);
+    const resolvedBucketName = tenantBucket?.name ?? bucketName;
+
+    await this.s3Service.putFile(resolvedBucketName, fileKey, file.buffer, file.mimetype);
 
     const response: FileUploadResponse = {
       key: fileKey,
@@ -148,12 +152,12 @@ export class StorageController {
     };
 
     try {
-      const bucket = await this.tenantBucketService.getBucketByName(bucketName);
+      const bucket = tenantBucket ?? (await this.tenantBucketService.getBucketByName(resolvedBucketName));
       if (bucket) {
         const ext = fileKey.includes('.') ? fileKey.split('.').pop()! : '';
         const media = await this.mediaService.create({
           name: fileKey,
-          uri: `s3://${bucketName}/${fileKey}`,
+          uri: `s3://${resolvedBucketName}/${fileKey}`,
           extension: ext,
           mimeType: file.mimetype,
           size: file.size,

@@ -89,7 +89,7 @@ export class UserService extends BaseService implements IUserService {
     const { tenantId, limit, page } = props;
     // Prisma relational filter — DbFilters doesn't model `some`
     const tenantWhere = {
-      UserRoleAssignments: { some: { tenantId } },
+      UserRoleAssignments: { some: { tenantId, resourceStatus: { not: 'DELETED' } } },
     } as Record<string, unknown>;
 
     const users = await this.userRepository.findAll({
