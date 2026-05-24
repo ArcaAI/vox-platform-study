@@ -113,7 +113,7 @@ describe('TenantBucket Domain Layer', () => {
 
             expect(entity.id).toBeDefined();
             expect(entity.tenantId).toBe('tenant-1');
-            expect(entity.name).toBe('hope-audio-arcaai');
+            expect(entity.name).toBe('hope-reports-arcaai');
             expect(entity.slug).toBe('reports');
             expect(entity.bucketType).toBe(TenantBucketType.CUSTOM);
         });
@@ -124,12 +124,17 @@ describe('TenantBucket Domain Layer', () => {
 
             const buckets = TenantBucketFactory.CreateDefaultSystemBuckets('tenant-1', 'arcaai');
 
-            expect(buckets).toHaveLength(1);
+            expect(buckets).toHaveLength(2);
 
             const audioBucket = buckets[0];
             expect(audioBucket.slug).toBe('audio');
             expect(audioBucket.name).toBe('hope-audio-arcaai');
             expect(audioBucket.bucketType).toBe(TenantBucketType.SYSTEM);
+
+            const attachmentsBucket = buckets[1];
+            expect(attachmentsBucket.slug).toBe('attachments');
+            expect(attachmentsBucket.name).toBe('hope-attachments-arcaai');
+            expect(attachmentsBucket.bucketType).toBe(TenantBucketType.SYSTEM);
         });
 
         it('should sanitize tenant key in bucket name', async () => {
@@ -141,7 +146,7 @@ describe('TenantBucket Domain Layer', () => {
                 'documents',
             );
 
-            expect(entity.name).toBe('hope-audio-my-hospital-name');
+            expect(entity.name).toBe('hope-documents-my-hospital-name');
         });
     });
 

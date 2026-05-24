@@ -129,7 +129,7 @@ export function useStorage(): UseStorageReturn {
         const formData = new FormData();
         formData.append('file', file);
         if (key) formData.append('key', key);
-        const data = await client.post<StorageFile>(STORAGE_ENDPOINTS.UPLOAD_FILE(bucket), formData);
+        const data = await client.postFormData<StorageFile>(STORAGE_ENDPOINTS.UPLOAD_FILE(bucket), formData);
         setFiles((prev) => [...prev, data]);
         return data;
       }),
