@@ -31,6 +31,14 @@ export type {
   ExtendedCorePrismaClient
 } from './client.js';
 
+// TASK-302 Phase 5 Task 5.5 (Stream B) — Vault-backed PrismaClient.
+export { getPrismaClientWithVault, VaultPrismaClient } from './vault-client.js';
+export type {
+  DbCredential,
+  VaultDbSecretsLike,
+  VaultPrismaClientOpts,
+} from './vault-client.js';
+
 // Re-export types and enums from generated client (via auto-generated index)
 export * from './generated/core-prisma-client/client.js';
 
