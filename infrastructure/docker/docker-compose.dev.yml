@@ -65,6 +65,26 @@ services:
       retries: 5
       start_period: 15s
 
+  # Vault init sidecar - mounts engines + audit log on profile up
+  # Phase 1A Task 1.3 (TASK-302 Stream B). Runs once per `up`, exits 0.
+  vault-init:
+    container_name: hope-vault-init
+    image: hashicorp/vault:1.18
+    profiles: ["vault"]
+    networks:
+      - hope-network
+    depends_on:
+      vault:
+        condition: service_healthy
+    restart: 'no'
+    environment:
+      VAULT_ADDR: 'http://vault:8200'
+      VAULT_DEV_ROOT_TOKEN: ${VAULT_DEV_ROOT_TOKEN:-root}
+    volumes:
+      - ./configs/vault/dev-init.sh:/vault/init/dev-init.sh:ro
+      - vault-data:/vault/file
+    entrypoint: ["/vault/init/dev-init.sh"]
+
   # Qdrant - Vector Database
   qdrant:
     container_name: hope-qdrant
