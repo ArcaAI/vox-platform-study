@@ -351,7 +351,10 @@ describe('PipelineService', () => {
             const existingPipeline = createBehavioralPipelineEntity({ id: 'pipeline-1', version: 9 });
             mockPipelineRepository.findById.mockResolvedValue(existingPipeline);
             mockPipelineRepository.updateWithVersion.mockRejectedValue(
-                new OptimisticConcurrencyException('AsrPipeline', 'pipeline-1', 9),
+                new OptimisticConcurrencyException('AsrPipeline', 'pipeline-1', {
+                    expectedVersion: 9,
+                    currentVersion: 10,
+                }),
             );
 
             await expect(

@@ -563,7 +563,10 @@ describe('PromptManagementService', () => {
             const existing = createMockTemplateEntity({ version: 9 });
             mockTemplateRepo.findById.mockResolvedValue(existing);
             mockTemplateRepo.updateWithVersion.mockRejectedValue(
-                new OptimisticConcurrencyException('PromptTemplate', 'template-id-1', 9),
+                new OptimisticConcurrencyException('PromptTemplate', 'template-id-1', {
+                    expectedVersion: 9,
+                    currentVersion: 10,
+                }),
             );
 
             await expect(

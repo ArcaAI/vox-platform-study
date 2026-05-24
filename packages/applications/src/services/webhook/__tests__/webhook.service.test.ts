@@ -593,7 +593,10 @@ describe('WebhookService', () => {
             });
             mockWebhookRepository.findById.mockResolvedValue(existingWebhook);
             mockWebhookRepository.updateWithVersion.mockRejectedValue(
-                new OptimisticConcurrencyException('Webhook', 'webhook-123', 9),
+                new OptimisticConcurrencyException('Webhook', 'webhook-123', {
+                    expectedVersion: 9,
+                    currentVersion: 10,
+                }),
             );
 
             await expect(

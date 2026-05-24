@@ -6,6 +6,8 @@ import { ClsService } from 'nestjs-cls';
 import { Observable, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
+import { optimisticLockConflictTotal, routeLabel } from '../observability/metrics';
+
 @Injectable()
 export class ExceptionInterceptor implements NestInterceptor {
   private readonly logger = new Logger(ExceptionInterceptor.name);
@@ -123,9 +125,25 @@ export class ExceptionInterceptor implements NestInterceptor {
             message: 'Optimistic concurrency conflict',
             ...baseContext,
             correlationId: err.correlationId,
+            model: err.model,
+            entityId: err.entityId,
             expectedVersion: metadata?.expectedVersion,
             currentVersion: metadata?.currentVersion,
           });
+
+          // TASK-302 Stream D Phase E.6 — increment the OCC conflict counter
+          // BEFORE rethrowing as 412. Model + route labels are bounded
+          // (route comes from the templated Express path) so cardinality
+          // stays cheap. Failure to record the metric MUST NOT swallow the
+          // 412 — we wrap in try/catch and only debug-log a metric failure.
+          try {
+            optimisticLockConflictTotal.labels({ model: err.model, route: routeLabel(request ?? {}) }).inc();
+          } catch (metricErr) {
+            this.logger.debug({
+              message: 'Failed to record optimistic_lock_conflict_total',
+              error: metricErr instanceof Error ? metricErr.message : String(metricErr),
+            });
+          }
 
           return throwError(() => new HttpException(err.toJSON(), HttpStatus.PRECONDITION_FAILED));
         }
