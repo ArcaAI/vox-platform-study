@@ -212,6 +212,71 @@ describe('SecretsService.encrypt/decrypt (Phase 4 Task 4.5)', () => {
   });
 });
 
+describe('SecretsService.requestDbCredential (Phase 5 Task 5.3)', () => {
+  it('throws a guard error when the underlying provider has no issueDbCredential()', async () => {
+    const provider = new InMemorySecretsProvider({});
+    const service = new SecretsService(provider, {});
+    await expect(service.requestDbCredential('hope-app-role')).rejects.toThrow(/requires vault/i);
+  });
+
+  it('proxies to provider.issueDbCredential when wired to a Vault provider', async () => {
+    const fakeVault = {
+      issueDbCredential: vi.fn(async (role: string) => ({
+        username: `v-token-${role}-1`,
+        password: 'pw-redacted',
+        leaseId: `database/creds/${role}/abc`,
+        ttlSec: 3600,
+      })),
+      getSecret: vi.fn(),
+      getSecrets: vi.fn(),
+      health: vi.fn(),
+    } as unknown as InMemorySecretsProvider;
+    const service = new SecretsService(fakeVault, {});
+    const cred = await service.requestDbCredential('hope-app-role');
+    expect(cred.username).toBe('v-token-hope-app-role-1');
+    expect(cred.leaseId).toBe('database/creds/hope-app-role/abc');
+    expect(cred.ttlSec).toBe(3600);
+    expect(
+      (fakeVault as unknown as { issueDbCredential: unknown }).issueDbCredential,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache the issued credential (returns a fresh credential each call)', async () => {
+    let counter = 0;
+    const fakeVault = {
+      issueDbCredential: vi.fn(async (role: string) => {
+        counter += 1;
+        return {
+          username: `v-token-${role}-${counter}`,
+          password: `pw-${counter}`,
+          leaseId: `database/creds/${role}/${counter}`,
+          ttlSec: 3600,
+        };
+      }),
+      getSecret: vi.fn(),
+      getSecrets: vi.fn(),
+      health: vi.fn(),
+    } as unknown as InMemorySecretsProvider;
+    const service = new SecretsService(fakeVault, {});
+    const a = await service.requestDbCredential('hope-app-role');
+    const b = await service.requestDbCredential('hope-app-role');
+    expect(a.username).not.toBe(b.username);
+    expect(a.leaseId).not.toBe(b.leaseId);
+  });
+
+  it('does not leak the role name or password into the guard error message', async () => {
+    const provider = new InMemorySecretsProvider({});
+    const service = new SecretsService(provider, {});
+    try {
+      await service.requestDbCredential('hope-app-role');
+    } catch (e) {
+      const msg = (e as Error).message;
+      expect(msg.toLowerCase()).toContain('vault');
+      expect(msg).not.toContain('hope-app-role');
+    }
+  });
+});
+
 describe('SecretsService Redis Pub/Sub invalidation', () => {
   it('clears one key on "arca:secrets:invalidate" message {key}', async () => {
     const provider = new InMemorySecretsProvider({ K: 'v', K2: 'v2' });

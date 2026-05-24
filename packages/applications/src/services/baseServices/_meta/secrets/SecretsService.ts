@@ -264,4 +264,45 @@ export class SecretsService {
     }
     return maybe.decrypt(ciphertext);
   }
+
+  /**
+   * Phase 5 Task 5.3 (TASK-302 Stream B) — issue a short-lived DB
+   * credential from Vault's database secrets engine. Returns the
+   * triple `{ username, password, leaseId, ttlSec }`; the caller (the
+   * `@prisma/adapter-pg` password callback in `getPrismaClientWithVault`)
+   * uses the password on the very next connection and discards the
+   * triple. The credential is intentionally NOT cached here:
+   *
+   *   1. Caching would defeat the per-connection rotation pattern.
+   *   2. The renewer (Task 5.7) owns the lease lifecycle separately.
+   *   3. We must not persist DB credentials in process memory longer
+   *      than the connection that needs them (Gate 5 requirement).
+   *
+   * Capability check at runtime; throws fail-fast if the underlying
+   * provider does not implement issueDbCredential (env, in-memory,
+   * AWS Secrets Manager, Azure Key Vault all lack this). The error
+   * message deliberately omits the requested role name so a
+   * misconfigured pod doesn't surface the role into a log line.
+   */
+  async requestDbCredential(role: string): Promise<{
+    username: string;
+    password: string;
+    leaseId: string;
+    ttlSec: number;
+  }> {
+    const maybe = this.provider as unknown as {
+      issueDbCredential?: (r: string) => Promise<{
+        username: string;
+        password: string;
+        leaseId: string;
+        ttlSec: number;
+      }>;
+    };
+    if (typeof maybe.issueDbCredential !== 'function') {
+      throw new Error(
+        'SecretsService.requestDbCredential() requires Vault provider (SECRETS_PROVIDER=vault); current provider has no database-engine support',
+      );
+    }
+    return maybe.issueDbCredential(role);
+  }
 }
