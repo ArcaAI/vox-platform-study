@@ -61,16 +61,26 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
     return this._key;
   }
 
-  set key(value: IGlobalSettingEntity['key']) {
-    this.setProperty('key', value);
+  // Phase 0 Item 2 (TASK-302 Stream A) — immutable post-construction.
+  // Constructor / mapper write `_key` directly via init payload; setters
+  // are the only mutation surface and they MUST refuse all writes. Any
+  // attempted assignment from mass-assignment, applyChangesToEntity, or
+  // ad-hoc service code is a defense-in-depth red flag.
+  set key(_value: IGlobalSettingEntity['key']) {
+    throw new BusinessException(
+      'Phase 0 Item 2 (TASK-302): GlobalSettingEntity.key is immutable post-construction.',
+    );
   }
 
   get defaultValue(): IGlobalSettingEntity['defaultValue'] {
     return this._defaultValue;
   }
 
-  set defaultValue(value: IGlobalSettingEntity['defaultValue']) {
-    this.setProperty('defaultValue', value);
+  // Phase 0 Item 2 (TASK-302 Stream A) — immutable post-construction.
+  set defaultValue(_value: IGlobalSettingEntity['defaultValue']) {
+    throw new BusinessException(
+      'Phase 0 Item 2 (TASK-302): GlobalSettingEntity.defaultValue is immutable post-construction.',
+    );
   }
 
   get value(): IGlobalSettingEntity['value'] {
@@ -85,8 +95,25 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
     return this._locked;
   }
 
-  set locked(value: IGlobalSettingEntity['locked']) {
-    this.setProperty('locked', value);
+  // Phase 0 Item 2 (TASK-302 Stream A) — immutable post-construction.
+  set locked(_value: IGlobalSettingEntity['locked']) {
+    throw new BusinessException(
+      'Phase 0 Item 2 (TASK-302): GlobalSettingEntity.locked is immutable post-construction.',
+    );
+  }
+
+  // Phase 0 Item 2 (TASK-302 Stream A) — override BaseTenantEntity.tenantId
+  // setter so that a smuggled tenantId in an update payload cannot reassign
+  // the row to a different tenant. Construction-time tenantId is set via
+  // the BaseTenantEntity constructor, which bypasses this override.
+  override set tenantId(_value: IGlobalSettingEntity['tenantId']) {
+    throw new BusinessException(
+      'Phase 0 Item 2 (TASK-302): GlobalSettingEntity.tenantId is immutable post-construction.',
+    );
+  }
+
+  override get tenantId(): IGlobalSettingEntity['tenantId'] {
+    return super.tenantId;
   }
 
   get parsedValue(): any {
