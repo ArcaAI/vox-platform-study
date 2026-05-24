@@ -26,7 +26,7 @@ interface VaultClientLike {
   approleLogin(options: { role_id: string; secret_id: string }): Promise<{
     auth: { client_token: string; lease_duration: number; renewable: boolean };
   }>;
-  unwrap(options: { token: string }): Promise<{
+  unwrap(options?: { token?: string }): Promise<{
     data: Record<string, unknown>;
     request_id?: string;
     lease_id?: string;
@@ -104,8 +104,20 @@ export class VaultSecretsProvider implements ISecretsProvider {
   async boot(): Promise<void> {
     let secretId = this.config.secretId;
     if (this.config.wrappedSecretId) {
-      const unwrapped = await this.client.unwrap({ token: this.config.wrappedSecretId });
-      secretId = (unwrapped?.data as { secret_id?: string })?.secret_id;
+      // Vault's /sys/wrapping/unwrap requires the caller to be authenticated
+      // AS the wrap token (the wrap token doubles as a one-shot auth). We
+      // swap the wrap token in as the client's auth, call unwrap with no
+      // body (passing the same token in body decrements use-count twice
+      // and Vault rejects the second lookup), then clear it. The AppRole
+      // login below establishes the real session token.
+      const previousToken = this.client.token;
+      this.client.token = this.config.wrappedSecretId;
+      try {
+        const unwrapped = await this.client.unwrap();
+        secretId = (unwrapped?.data as { secret_id?: string })?.secret_id;
+      } finally {
+        this.client.token = previousToken;
+      }
     }
     if (!secretId) {
       throw new Error('VaultSecretsProvider.boot(): no secret_id available after unwrap');
