@@ -1240,6 +1240,57 @@ For internal homelab traffic on a private VLAN, TLS is optional. To enable later
 4. Update `pg_hba.conf` to use `hostssl` instead of `host`
 5. Enable TLS on etcd peer and client connections
 
+### 13.4 Defensive Statement / Idle Timeouts (TASK-302 Stream C Phase 0)
+
+A misbehaving client that opens a transaction and never commits — or issues a
+runaway query — can pin a backend forever. With PgBouncer fronting the
+cluster (Phase 2A/2B of TASK-302 Stream C), one such leak can starve the
+entire pool. To bound the blast radius, the Patroni bootstrap config
+([`patroni/entrypoint.sh`](../configs/postgres-ha/patroni/entrypoint.sh) and
+the [`patroni/patroni.yml`](../configs/postgres-ha/patroni/patroni.yml)
+reference copy) sets two GUCs in both `bootstrap.dcs.postgresql.parameters`
+and `postgresql.parameters`:
+
+| GUC                                       | Value     | Effect                                                              |
+| ----------------------------------------- | --------- | ------------------------------------------------------------------- |
+| `idle_in_transaction_session_timeout`     | `30000`   | Aborts any backend idle inside a transaction for >30 s              |
+| `statement_timeout`                       | `60000`   | Aborts any single statement that runs for >60 s                     |
+
+These are conservative defaults sized for HOPE's typical OLTP workload.
+Long-running ETL / migrations either run via the un-pooled `DIRECT_URL`
+(Prisma Migrate) or override the timeout for their session via
+`SET LOCAL statement_timeout = 0` inside an explicit transaction.
+
+**Applying on a live cluster** (Patroni rewrites `postgresql.conf` and
+reloads the cluster without a restart):
+
+```bash
+docker exec -it patroni patronictl -c /home/postgres/postgres.yml edit-config \
+  --set postgresql.parameters.idle_in_transaction_session_timeout=30000 \
+  --set postgresql.parameters.statement_timeout=60000 \
+  --force
+```
+
+**Verifying on the primary** (port 5000 is the HAProxy R/W VIP):
+
+```bash
+psql -h 10.10.1.250 -p 5000 -U hope_app -d hope -c \
+  "SHOW idle_in_transaction_session_timeout; SHOW statement_timeout;"
+# Expected:
+#   idle_in_transaction_session_timeout
+#   -------------------------------------
+#    30s
+#  (1 row)
+#
+#   statement_timeout
+#  -------------------
+#    1min
+#  (1 row)
+```
+
+If either value comes back as `0` (no limit), the runtime apply did not stick
+— check `patronictl show-config` and re-run with `--force` if necessary.
+
 ---
 
 ## 14. Verify the Cluster
