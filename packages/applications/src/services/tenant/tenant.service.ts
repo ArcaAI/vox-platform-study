@@ -494,6 +494,13 @@ export class TenantService extends BaseService implements ITenantService {
     // the tx client — i.e., the existing UoW pattern is non-functional.
     // Using `databaseService.baseClient.$transaction(callback)` directly
     // is the canonical Prisma idiom and delivers actual atomicity.
+    // TASK-302 Stream D Phase C (C.8) — snapshot each row's `_version`
+    // BEFORE the CAS so the post-write audit-log SysEvent can carry the
+    // exact transition (previousVersion -> newVersion). Investigators then
+    // reconstruct history via `metadata->>'newVersion'` without re-deriving
+    // from timestamps (Research §7). Index aligns with `results` below.
+    const previousVersions: number[] = [];
+
     const updatedConfigs: GlobalSettingEntity[] = await this.databaseService.baseClient.$transaction(async (tx) => {
       const results: GlobalSettingEntity[] = [];
       for (const config of request) {
@@ -530,8 +537,15 @@ export class TenantService extends BaseService implements ITenantService {
         }
         this.updateEntity(existingConfig, changes);
 
+        // C.8 — snapshot the pre-write version BEFORE the CAS bumps the
+        // entity's `_version`. The repo round-trips the bumped version,
+        // so reading `existingConfig.version` AFTER the CAS would emit
+        // `previousVersion === newVersion` and break audit correlation.
+        const previousVersion = existingConfig.version;
+
         if (!existingConfig.hasChanges) {
           results.push(existingConfig);
+          previousVersions.push(previousVersion);
           continue;
         }
 
@@ -552,6 +566,7 @@ export class TenantService extends BaseService implements ITenantService {
         }
 
         results.push(updatedConfig);
+        previousVersions.push(previousVersion);
       }
       return results;
     });
@@ -560,9 +575,17 @@ export class TenantService extends BaseService implements ITenantService {
     // Per-entity decision: a mixed batch emits a partially-scrubbed array.
     // C.4 — broadcast lives OUTSIDE the transaction so a rolled-back batch
     // produces no `Resource.Updated` audit entry.
+    // C.8 — carry the per-row version transition so audit consumers can
+    // correlate the change with the row's prior state. Merging happens AFTER
+    // `scrubLockedForAudit` so the (potentially frozen) scrubbed object's
+    // metadata fields are appended via spread, not in-place mutation.
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceIds: updatedConfigs.map((config) => config.id),
-      data: updatedConfigs.map((config) => scrubLockedForAudit(config)),
+      data: updatedConfigs.map((config, i) => ({
+        ...scrubLockedForAudit(config),
+        previousVersion: previousVersions[i],
+        newVersion: config.version,
+      })),
     });
 
     return new FetchResponse<GlobalSettingEntity>({
