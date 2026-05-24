@@ -460,6 +460,7 @@ describe('StreamingSessionManager', () => {
     it('should DELETE the session on the server when closing an active session', async () => {
       const sessionResponse: StreamingSessionResponse = {
         sessionId: 'session-cleanup',
+        status: 'active',
         wsUrl: '/ws/stt-v2/stream',
         maxConcurrent: 5,
         currentActive: 1,
@@ -487,6 +488,7 @@ describe('StreamingSessionManager', () => {
     it('should still reset local state even if server DELETE fails', async () => {
       const sessionResponse: StreamingSessionResponse = {
         sessionId: 'session-fail',
+        status: 'active',
         wsUrl: '/ws/stt-v2/stream',
         maxConcurrent: 5,
         currentActive: 1,

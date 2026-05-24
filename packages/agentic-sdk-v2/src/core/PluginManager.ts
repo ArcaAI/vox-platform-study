@@ -677,7 +677,7 @@ export class PluginManager {
           component: 'PluginManager',
           attributes: { processorName: name },
         });
-        await processor.restart({ track, audioContext });
+        await processor.restart({ kind: 'audio', track, audioContext });
       }
       timer?.end(true, { attributes: { processorCount: this.processors.size } });
     } catch (error) {

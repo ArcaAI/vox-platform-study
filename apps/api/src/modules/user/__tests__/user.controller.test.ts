@@ -24,8 +24,9 @@ const createMockUserSettingsService = () => ({
 });
 
 const createMockUserRoleAssignmentService = () => ({
-    assignRole: vi.fn(),
-    removeRole: vi.fn(),
+    create: vi.fn(),
+    deleteById: vi.fn(),
+    fetchAll: vi.fn(),
     fetchAllByUserId: vi.fn(),
 });
 
@@ -67,6 +68,26 @@ const fakeApiKeyEntity = {
 
 const fakeApiKeyFetchResponse = {
     data: [fakeApiKeyEntity],
+    count: 1,
+    limit: 10,
+    page: 1,
+};
+
+const fakeUserRoleAssignmentEntity = {
+    id: 'ura-1',
+    userId: 'user-1',
+    roleId: 'role-1',
+    tenantId: 'tenant-1',
+    createdBy: 'admin-1',
+    updatedBy: null,
+    createdAt: new Date('2026-01-29T10:00:00Z'),
+    updatedAt: new Date('2026-01-29T10:00:00Z'),
+    deletedAt: null,
+    resourceStatus: 'ENABLED',
+};
+
+const fakeUserRoleAssignmentFetchResponse = {
+    data: [fakeUserRoleAssignmentEntity],
     count: 1,
     limit: 10,
     page: 1,
@@ -249,6 +270,87 @@ describe('UserController', () => {
 
             expect(result).toEqual([]);
             expect(mockUserService.deleteById).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('GET /admin/users/:id/roles (fetchUserRoleAssignments)', () => {
+        it('should call userRoleAssignmentService.fetchAllByUserId with userId and query params', async () => {
+            mockUserRoleAssignmentService.fetchAllByUserId.mockResolvedValue(fakeUserRoleAssignmentFetchResponse);
+
+            await controller.fetchUserRoleAssignments('user-1', { page: 1, pageSize: 10 } as any);
+
+            expect(mockUserRoleAssignmentService.fetchAllByUserId).toHaveBeenCalledWith(
+                expect.objectContaining({ page: 1, pageSize: 10, userId: 'user-1' }),
+            );
+            expect(mockUserRoleAssignmentService.fetchAllByUserId).toHaveBeenCalledTimes(1);
+        });
+
+        it('should return a paginated UserRoleAssignmentResponse mapped from service result', async () => {
+            mockUserRoleAssignmentService.fetchAllByUserId.mockResolvedValue(fakeUserRoleAssignmentFetchResponse);
+
+            const result = await controller.fetchUserRoleAssignments('user-1', { page: 1, pageSize: 10 } as any);
+
+            expect(result).toBeDefined();
+            expect(result.data).toBeDefined();
+            expect(result.data).toHaveLength(1);
+            expect(result.data[0].userId).toBe('user-1');
+            expect(result.data[0].roleId).toBe('role-1');
+            expect(result.count).toBe(1);
+        });
+
+        it('should NOT call fetchAll (which ignores userId)', async () => {
+            mockUserRoleAssignmentService.fetchAllByUserId.mockResolvedValue(fakeUserRoleAssignmentFetchResponse);
+
+            await controller.fetchUserRoleAssignments('user-1', { page: 1 } as any);
+
+            expect(mockUserRoleAssignmentService.fetchAll).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('POST /admin/users/:id/roles (assignRole)', () => {
+        it('should call userRoleAssignmentService.create with body merged with userId', async () => {
+            const body = { roleId: 'role-1' };
+            mockUserRoleAssignmentService.create.mockResolvedValue(fakeUserRoleAssignmentEntity);
+
+            await controller.assignRole('user-1', body as any);
+
+            expect(mockUserRoleAssignmentService.create).toHaveBeenCalledWith({ roleId: 'role-1', userId: 'user-1' });
+            expect(mockUserRoleAssignmentService.create).toHaveBeenCalledTimes(1);
+        });
+
+        it('should return a mapped UserRoleAssignmentResponse', async () => {
+            mockUserRoleAssignmentService.create.mockResolvedValue(fakeUserRoleAssignmentEntity);
+
+            const result = await controller.assignRole('user-1', { roleId: 'role-1' } as any);
+
+            expect(result).toBeDefined();
+            expect(result.userId).toBe('user-1');
+            expect(result.roleId).toBe('role-1');
+        });
+
+        it('should propagate errors thrown by the service', async () => {
+            mockUserRoleAssignmentService.create.mockRejectedValue(new Error('Conflict'));
+
+            await expect(controller.assignRole('user-1', { roleId: 'role-1' } as any)).rejects.toThrow('Conflict');
+        });
+    });
+
+    describe('DELETE /admin/users/:id/roles/:assignmentId (removeRole)', () => {
+        it('should call userRoleAssignmentService.deleteById with assignmentId', async () => {
+            mockUserRoleAssignmentService.deleteById.mockResolvedValue(undefined);
+
+            await controller.removeRole('assignment-1');
+
+            expect(mockUserRoleAssignmentService.deleteById).toHaveBeenCalledWith('assignment-1');
+            expect(mockUserRoleAssignmentService.deleteById).toHaveBeenCalledTimes(1);
+        });
+
+        it('should return void (no response body)', async () => {
+            mockUserRoleAssignmentService.deleteById.mockResolvedValue(undefined);
+
+            const result = await controller.removeRole('assignment-1');
+
+            expect(result).toBeUndefined();
         });
     });
 

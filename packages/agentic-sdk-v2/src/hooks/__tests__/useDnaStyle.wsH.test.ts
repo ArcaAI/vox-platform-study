@@ -153,10 +153,8 @@ describe('useDnaStyle — WS-H enhancements', () => {
             const { result } = renderHook(() => useDnaStyle());
 
             await act(async () => {
-                await result.current.generate({
-                    departmentId: 'dept-1',
-                    promptTemplateId: 'prompt-tmpl-1',
-                });
+                const input = { departmentId: 'dept-1', promptTemplateId: 'prompt-tmpl-1' };
+                await result.current.generate(input);
             });
 
             expect(mockPost).toHaveBeenCalledWith(

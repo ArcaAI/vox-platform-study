@@ -85,7 +85,7 @@ describe('Pipeline Integration', () => {
       // Simulate pipeline execution
       let result: unknown = new Float32Array([0.1, 0.2, 0.3]);
       for (const stage of stages) {
-        result = await stage.process(result as Float32Array);
+        result = await (stage.process as (input: unknown) => Promise<unknown>)(result);
       }
 
       expect(processedStages).toEqual(['noise-filter', 'vad', 'stt']);

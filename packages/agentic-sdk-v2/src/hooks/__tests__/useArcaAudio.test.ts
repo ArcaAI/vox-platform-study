@@ -60,7 +60,7 @@ vi.mock('../../store', () => {
 });
 
 describe('useArcaAudio', () => {
-  let mockStore: ReturnType<typeof useAgenticStore>;
+  let mockStore: any;
 
   beforeEach(() => {
     vi.clearAllMocks();

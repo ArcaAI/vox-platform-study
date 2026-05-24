@@ -148,7 +148,7 @@ describe('useArca — WS-H: listConsultations', () => {
         });
 
         it('should throw when apiClient is not available', async () => {
-            mockStore.apiClient = null;
+            (mockStore as { apiClient: unknown }).apiClient = null;
             (useAgenticStore as any).mockImplementation((selector?: any) => {
                 if (typeof selector === 'function') return selector(mockStore);
                 return mockStore;

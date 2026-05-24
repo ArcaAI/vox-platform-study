@@ -112,12 +112,12 @@ describe('PersonalizationManager', () => {
     describe('get', () => {
         it('should return specific preference value', () => {
             const manager = new PersonalizationManager(
-                { storage: 'local', defaults: { language: 'en', theme: 'light' } },
+                { storage: 'local', defaults: { language: 'en', theme: 'light' } as any },
                 mockApiClient
             );
 
             expect(manager.get('language')).toBe('en');
-            expect(manager.get('theme')).toBe('light');
+            expect((manager.get as any)('theme')).toBe('light');
         });
     });
 
@@ -220,17 +220,17 @@ describe('PersonalizationManager', () => {
 
     describe('reset', () => {
         it('should reset to defaults', async () => {
-            const defaults = { language: 'en', theme: 'light' };
+            const defaults = { language: 'en', theme: 'light' } as any;
             const manager = new PersonalizationManager(
                 { storage: 'local', defaults },
                 mockApiClient
             );
 
-            await manager.updatePreferences({ language: 'th', custom: 'value' });
+            await manager.updatePreferences({ language: 'th', custom: { v: 'value' } });
             await manager.reset();
 
             expect(manager.get('language')).toBe('en');
-            expect(manager.get('theme')).toBe('light');
+            expect((manager.get as any)('theme')).toBe('light');
         });
 
         it('should remove extra keys not in defaults (BUG-06)', async () => {
@@ -372,7 +372,7 @@ describe('PersonalizationManager', () => {
             );
 
             manager.startSync();
-            await manager.updatePreferences({ test: 'value' });
+            await manager.updatePreferences({ test: 'value' } as any);
 
             // First call is from updatePreferences
             expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -421,12 +421,12 @@ describe('PersonalizationManager', () => {
             const listener = vi.fn();
 
             const unsubscribe = manager.onChange(listener);
-            await manager.updatePreferences({ test: '1' });
+            await manager.updatePreferences({ test: '1' } as any);
 
             expect(listener).toHaveBeenCalledTimes(1);
 
             unsubscribe();
-            await manager.updatePreferences({ test: '2' });
+            await manager.updatePreferences({ test: '2' } as any);
 
             expect(listener).toHaveBeenCalledTimes(1);
         });
@@ -445,7 +445,7 @@ describe('PersonalizationManager', () => {
             manager.onChange(badListener);
             manager.onChange(goodListener);
 
-            await manager.updatePreferences({ test: 'value' });
+            await manager.updatePreferences({ test: 'value' } as any);
 
             expect(mockLogger.error).toHaveBeenCalledWith(
                 'Preference change listener error',

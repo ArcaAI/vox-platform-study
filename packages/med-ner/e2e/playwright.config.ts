@@ -12,7 +12,7 @@ export default defineConfig({
     timeout: 30000,
   },
   use: {
-    baseURL: 'http://localhost:8080',
+    baseURL: 'http://127.0.0.1:8080',
     trace: 'on-first-retry',
     video: 'on-first-retry',
   },
@@ -43,8 +43,17 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npx http-server ./e2e/fixtures -p 8080 -c-1 --cors',
-    url: 'http://localhost:8080',
+    // TASK-281 — hybrid_wrapper: a tiny ESM wrapper around `http-server`'s
+    // programmatic API that injects COOP/COEP headers (required for
+    // SharedArrayBuffer / worker-mode) and serves the package root so the
+    // fixture's `/dist/...` bundle imports resolve.
+    //
+    // Playwright defaults `cwd` to the config-file directory (`e2e/`), so
+    // we explicitly hop up one level to the package root before invoking
+    // the wrapper (which expects to be launched as `node e2e/serve.mjs`).
+    command: 'node e2e/serve.mjs',
+    cwd: '..',
+    url: 'http://127.0.0.1:8080/e2e/fixtures/index.html',
     reuseExistingServer: !process.env.CI,
     timeout: 60000,
   },

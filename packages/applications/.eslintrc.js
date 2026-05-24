@@ -6,5 +6,5 @@ module.exports = {
     parserOptions: {
         project: true,
     },
-    ignorePatterns: ["dist/", ".turbo/", "node_modules/", "**/__tests__/", "**/*.test.ts"],
+    ignorePatterns: ["dist/", ".turbo/", "node_modules/", "**/__tests__/", "**/*.test.ts", "vitest.config.ts"],
 };

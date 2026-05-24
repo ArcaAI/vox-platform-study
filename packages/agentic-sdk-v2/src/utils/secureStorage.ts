@@ -17,8 +17,8 @@ const IV_LENGTH = 12;
 const SALT_LENGTH = 16;
 const KEY_ITERATIONS = 100_000;
 
-function toBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
+function toBase64(buffer: ArrayBuffer | Uint8Array): string {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) {
     binary += String.fromCharCode(bytes[i]);
@@ -26,7 +26,7 @@ function toBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-function fromBase64(base64: string): Uint8Array {
+function fromBase64(base64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
@@ -35,7 +35,7 @@ function fromBase64(base64: string): Uint8Array {
   return bytes;
 }
 
-async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
+async function deriveKey(passphrase: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
 
@@ -50,9 +50,9 @@ async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKe
 
 export class SecureStorage {
   private key: CryptoKey;
-  private salt: Uint8Array;
+  private salt: Uint8Array<ArrayBuffer>;
 
-  private constructor(key: CryptoKey, salt: Uint8Array) {
+  private constructor(key: CryptoKey, salt: Uint8Array<ArrayBuffer>) {
     this.key = key;
     this.salt = salt;
   }

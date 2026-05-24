@@ -416,13 +416,25 @@
 
   <!-- Load the library -->
   <script type="module">
-    // Import from local build
+    // TASK-281 — paths are absolute from the served package root
+    // (see `e2e/serve.mjs`). The bundle and its sibling worker live at
+    // `packages/med-ner/dist/`, which is reachable from the page at
+    // `/dist/...`.
+    //
+    // TASK-289 — the fixture loads the fully-bundled E2E variant at
+    // `/dist/e2e/index.js` (not the consumer-facing `/dist/index.js`).
+    // The consumer bundle ships bare-specifier imports (`react`,
+    // `@huggingface/transformers`) so downstream bundlers can dedupe and
+    // tree-shake; raw browser module loaders cannot resolve those, which
+    // would abort this `<script type="module">` block on parse. The E2E
+    // build inlines them via `noExternal`. See `tsup.config.ts` output #3
+    // and `docs/implementation/TASK-289-MedNER-E2E-Bare-Specifiers/`.
     import {
       createMedNER,
       getMedNERBrowserSupport,
       highlightEntities,
       MedicalEntityType,
-    } from './dist/index.js';
+    } from '/dist/e2e/index.js';
 
     // State
     let processor = null;
@@ -514,7 +526,7 @@
           threshold: parseFloat(thresholdSlider.value) / 100,
           enableStats: true,
           workerFactory: () =>
-            new Worker(new URL('./dist/workers/medner.worker.js', import.meta.url), {
+            new Worker(new URL('/dist/workers/medner.worker.js', import.meta.url), {
               type: 'module',
             }),
           onProgress: (progress) => {

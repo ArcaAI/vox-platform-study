@@ -5,7 +5,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OTelTransport } from '../transports/otel.transport';
-import type { LogEntry, OTelTransportConfig } from '../types';
+import type { LogEntry, OTelTransportConfig, LogLevel } from '../types';
+
+// `level` is an untyped runtime extension carried over from the original
+// transport contract (see `otel.transport.ts`). Tests still exercise it,
+// so widen the config type locally.
+type TestOTelConfig = OTelTransportConfig & { level?: LogLevel };
 
 // Mock fetch
 const mockFetch = vi.fn();
@@ -13,7 +18,7 @@ globalThis.fetch = mockFetch;
 
 describe('OTelTransport', () => {
   let transport: OTelTransport;
-  let config: OTelTransportConfig;
+  let config: TestOTelConfig;
 
   const createLogEntry = (overrides?: Partial<LogEntry>): LogEntry => ({
     timestamp: Date.now(),
@@ -94,7 +99,7 @@ describe('OTelTransport', () => {
     });
 
     it('should filter logs below configured level', async () => {
-      const warnTransport = new OTelTransport({ ...config, level: 'warn' });
+      const warnTransport = new OTelTransport({ ...config, level: 'warn' } as OTelTransportConfig);
       await warnTransport.initialize();
 
       warnTransport.log(createLogEntry({ level: 'info' }));
@@ -176,7 +181,7 @@ describe('OTelTransport', () => {
         vi.clearAllMocks();
         mockFetch.mockResolvedValue({ ok: true, text: () => Promise.resolve('') });
 
-        const lowLevelTransport = new OTelTransport({ ...config, level: 'trace' });
+        const lowLevelTransport = new OTelTransport({ ...config, level: 'trace' } as OTelTransportConfig);
         await lowLevelTransport.initialize();
         lowLevelTransport.log(createLogEntry({ level: levels[i] }));
         await lowLevelTransport.flush();
@@ -559,7 +564,7 @@ describe('OTelTransport', () => {
         enabled: true,
         endpoint: 'http://localhost:4318',
         level: 'info',
-      });
+      } as OTelTransportConfig);
 
       await t.initialize();
       t.log(createLogEntry({ level: 'info', message: 'should-drop' }));
@@ -575,7 +580,7 @@ describe('OTelTransport', () => {
         enabled: false,
         endpoint: 'http://localhost:4318',
         level: 'info',
-      });
+      } as OTelTransportConfig);
 
       await t.initialize();
       t.log(createLogEntry({ level: 'info' }));
@@ -591,7 +596,7 @@ describe('OTelTransport', () => {
         enabled: true,
         endpoint: '',
         level: 'info',
-      });
+      } as OTelTransportConfig);
 
       await t.initialize();
       t.log(createLogEntry({ level: 'info' }));
@@ -608,7 +613,7 @@ describe('OTelTransport', () => {
         enabled: true,
         endpoint: 'http://localhost:4318',
         level: 'debug',
-      });
+      } as OTelTransportConfig);
 
       await t.initialize();
       t.log(createLogEntry({ level: 'info', message: 'gated-on' }));
@@ -628,7 +633,7 @@ describe('OTelTransport', () => {
         enabled: true,
         endpoint: 'http://localhost:4318',
         level: 'info',
-      });
+      } as OTelTransportConfig);
 
       // Pre- and post-init log() calls must be a hard no-op. A misconfigured
       // production deploy must not be able to accumulate PHI in the buffer

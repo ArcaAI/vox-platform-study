@@ -7,7 +7,7 @@
  * 3. Changes during impersonation stay in-memory only
  * 4. On ending impersonation, the admin's original preferences are restored
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ConfigManager } from '../ConfigManager';
 
 describe('Impersonation Config Isolation (TASK-245)', () => {

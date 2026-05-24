@@ -55,7 +55,7 @@ describe('sessionUtils', () => {
         mockApiClient as any,
         mockStore as any,
         mockLogger as any,
-        { patientId: 'p-1', appointmentDate: '2026-02-21', doctorId: 'd-1' },
+        { patientId: 'p-1', appointmentDate: '2026-02-21' },
       );
 
       expect(result).toEqual(consultation);
@@ -74,7 +74,7 @@ describe('sessionUtils', () => {
         mockApiClient as any,
         mockStore as any,
         undefined,
-        { patientId: 'p-1', appointmentDate: '2026-02-21', doctorId: 'd-1' },
+        { patientId: 'p-1', appointmentDate: '2026-02-21' },
       );
 
       expect(mockStore.addContextItem).toHaveBeenCalledWith(items[0]);
@@ -89,7 +89,7 @@ describe('sessionUtils', () => {
           mockApiClient as any,
           mockStore as any,
           undefined,
-          { patientId: 'p-1', appointmentDate: '2026-02-21', doctorId: 'd-1' },
+          { patientId: 'p-1', appointmentDate: '2026-02-21' },
         ),
       ).rejects.toThrow('Network error');
 

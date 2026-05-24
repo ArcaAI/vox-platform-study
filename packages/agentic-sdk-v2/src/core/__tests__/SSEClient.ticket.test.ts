@@ -71,13 +71,13 @@ const originalEventSource = globalThis.EventSource;
 const originalLocalStorage = globalThis.localStorage;
 const originalSessionStorage = globalThis.sessionStorage;
 let lastMockES: MockEventSource | null = null;
-let eventSourceCtorSpy: ReturnType<typeof vi.fn>;
+let eventSourceCtorSpy: ReturnType<typeof vi.fn<(url: string, init?: EventSourceInit) => void>>;
 let lsSetItemSpy: ReturnType<typeof vi.fn>;
 let ssSetItemSpy: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   lastMockES = null;
-  eventSourceCtorSpy = vi.fn();
+  eventSourceCtorSpy = vi.fn<(url: string, init?: EventSourceInit) => void>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).EventSource = class extends MockEventSource {
     constructor(url: string, init?: EventSourceInit) {

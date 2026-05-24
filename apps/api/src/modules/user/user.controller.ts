@@ -18,6 +18,7 @@ import {
   UserRoleAssignmentResponse,
   UserRoleAssignmentDtoMapper,
   CreateUserRoleAssignmentRequest,
+  PaginatedUserRoleAssignmentResponse,
 } from '@arcaai/applications';
 import { Body, Controller, Delete, HttpCode, HttpStatus, Inject, Param, Post, Query, Get, Patch } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
@@ -197,6 +198,24 @@ export class UserController {
   ): Promise<UserSettingsResponse> {
     const updated = await this.userSettingsService.upsertByUserKeyNamespace(id, namespace, key, request);
     return UserSettingsDtoMapper.ToResponse(updated);
+  }
+
+  @ApiEndpoint({
+    returnedModel: UserRoleAssignmentResponse,
+    path: ':id/roles',
+    by: ['userId'],
+    multi: true,
+  })
+  @ApiParam({ name: 'id', description: 'User ID', type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  @ApiResponse({ status: 200, description: 'Role assignments listed', type: PaginatedUserRoleAssignmentResponse })
+  async fetchUserRoleAssignments(@Param('id') id: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedUserRoleAssignmentResponse> {
+    const result = await this.userRoleAssignmentService.fetchAllByUserId({
+      ...queryParams,
+      userId: id,
+    });
+    return UserRoleAssignmentDtoMapper.ToPaginatedResponse(result);
   }
 
   @Post(':id/roles')

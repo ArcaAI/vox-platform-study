@@ -3,7 +3,7 @@ import { defineConfig } from 'tsup';
 /**
  * @arcaai/med-ner build configuration.
  *
- * Two outputs:
+ * Three outputs:
  *   1. Main bundle (`src/index.ts`) — the public API consumed on the main
  *      thread. Marked `"use client"` for Next.js App Router compatibility.
  *   2. Worker bundle (`src/workers/medner.worker.ts`) — a standalone ESM
@@ -11,6 +11,17 @@ import { defineConfig } from 'tsup';
  *      `new Worker(new URL('@arcaai/med-ner/dist/workers/medner.worker.js', import.meta.url), { type: 'module' })`.
  *      The worker bundles `@huggingface/transformers` because workers run
  *      in isolation and cannot share imports with the main thread.
+ *   3. E2E bundle (`src/index.ts` → `dist/e2e/index.js`) — TASK-289.
+ *      A fully-bundled, browser-resolvable variant of the public API used
+ *      only by the Playwright fixture at `e2e/fixtures/index.html`. The
+ *      consumer-facing main bundle (output #1) intentionally leaves
+ *      `react` / `@huggingface/transformers` as bare-specifier imports so
+ *      downstream bundlers (Next.js, Vite) can dedupe and tree-shake. Those
+ *      bare specifiers cannot be resolved by a raw browser `<script
+ *      type="module">` loader, which is exactly what the Playwright fixture
+ *      uses. Output #3 inlines them via `noExternal` so the fixture can
+ *      load `/dist/e2e/index.js` directly with no importmap and no CDN.
+ *      Excluded from the published package via `package.json#files`.
  */
 export default defineConfig([
   {
@@ -42,6 +53,21 @@ export default defineConfig([
     clean: false,
     treeshake: true,
     noExternal: ['@huggingface/transformers'],
+    esbuildOptions(options) {
+      options.platform = 'browser';
+      options.conditions = ['browser', 'module', 'import', 'default'];
+    },
+  },
+  {
+    entry: { 'e2e/index': 'src/index.ts' },
+    format: ['esm'],
+    dts: false,
+    splitting: false,
+    sourcemap: true,
+    clean: false,
+    treeshake: true,
+    external: ['@arcaai/room'],
+    noExternal: ['react', 'react-dom', '@huggingface/transformers'],
     esbuildOptions(options) {
       options.platform = 'browser';
       options.conditions = ['browser', 'module', 'import', 'default'];

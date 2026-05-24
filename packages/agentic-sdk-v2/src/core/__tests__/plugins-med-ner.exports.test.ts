@@ -14,7 +14,7 @@ vi.mock('@arcaai/med-ner', () => ({
 
 describe('plugins/med-ner entry point', () => {
   it('should export useMedNER from the dedicated entry point', async () => {
-    const medNerPlugins = await import('../../plugins-med-ner');
+    const medNerPlugins = await import('../../plugins-med-ner.js');
     expect(medNerPlugins).toHaveProperty('useMedNER');
     expect(typeof medNerPlugins.useMedNER).toBe('function');
   });
@@ -22,7 +22,7 @@ describe('plugins/med-ner entry point', () => {
 
 describe('plugins entry point (med-ner isolation)', () => {
   it('should NOT export useMedNER from the main plugins entry point', async () => {
-    const plugins = await import('../../plugins');
+    const plugins = await import('../../plugins.js');
     expect(plugins).not.toHaveProperty('useMedNER');
   });
 });

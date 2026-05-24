@@ -112,11 +112,11 @@ class MockEventSource {
 
 const originalEventSource = globalThis.EventSource;
 let lastMockES: MockEventSource | null = null;
-let eventSourceConstructorSpy: ReturnType<typeof vi.fn>;
+let eventSourceConstructorSpy: ReturnType<typeof vi.fn<(url: string, init?: EventSourceInit) => void>>;
 
 beforeEach(() => {
   lastMockES = null;
-  eventSourceConstructorSpy = vi.fn();
+  eventSourceConstructorSpy = vi.fn<(url: string, init?: EventSourceInit) => void>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).EventSource = class extends MockEventSource {
     constructor(url: string, init?: EventSourceInit) {

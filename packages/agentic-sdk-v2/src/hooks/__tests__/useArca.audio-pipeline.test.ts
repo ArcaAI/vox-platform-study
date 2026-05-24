@@ -61,8 +61,8 @@ function createMockPluginManager(overrides: Record<string, any> = {}) {
       stt: { isActive: true, isInitialized: true, provider: 'auto' },
     })),
     setEnabled: vi.fn().mockResolvedValue(undefined),
-    getTranscriptionPipeline: vi.fn(() => null),
-    getKnowledgePipeline: vi.fn(() => null),
+    getTranscriptionPipeline: vi.fn<() => { state: { isReady: boolean }; process: ReturnType<typeof vi.fn> } | null>(() => null),
+    getKnowledgePipeline: vi.fn<() => { state: { isReady: boolean }; process: ReturnType<typeof vi.fn> } | null>(() => null),
     ...overrides,
   };
 }

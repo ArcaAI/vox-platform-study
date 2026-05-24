@@ -32,7 +32,7 @@ import type { SDKLogger } from '../core/logger';
 // State Interface
 // =============================================================================
 
-interface AgenticState {
+export interface AgenticState {
   // Initialization
   initialized: boolean;
   config: AgenticConfig | null;
@@ -115,7 +115,7 @@ interface AgenticState {
 // Actions Interface
 // =============================================================================
 
-interface AgenticActions {
+export interface AgenticActions {
   // Initialization
   initialize: (
     config: AgenticConfig,

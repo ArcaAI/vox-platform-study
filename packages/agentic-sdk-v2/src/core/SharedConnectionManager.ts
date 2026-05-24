@@ -76,7 +76,7 @@ export class SharedConnectionManager {
   private fallbackSSE = new Map<string, FallbackSSE>();
   private fallbackWS = new Map<string, FallbackWS>();
 
-  constructor(workerUrl?: string, logger?: ISDKLogger) {
+  constructor(workerUrl?: string | URL, logger?: ISDKLogger) {
     this.logger = logger;
     this.useSharedWorker = typeof SharedWorker !== 'undefined';
 
