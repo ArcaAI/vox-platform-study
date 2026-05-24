@@ -43,9 +43,16 @@ const gsRepo = {
 const deps = { findAll: vi.fn(), count: vi.fn() };
 const ptemps = { findAll: vi.fn(), count: vi.fn() };
 const pipes = { findAll: vi.fn(), count: vi.fn() };
+// TASK-302 Stream D Phase C (C.4) — `updateTenantConfigs` wraps writes in
+// `databaseService.baseClient.$transaction(callback)`. The stub invokes the
+// callback with a sentinel tx client so the loop executes.
+const mockTxClient = { __tx: true } as const;
 const db = {
   getClient: vi.fn(),
   client: { userRoleAssignment: { findMany: vi.fn() } },
+  baseClient: {
+    $transaction: vi.fn().mockImplementation(async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient)),
+  },
 };
 const buckets = { provisionSystemBuckets: vi.fn() };
 

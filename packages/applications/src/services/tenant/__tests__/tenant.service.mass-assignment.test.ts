@@ -44,7 +44,16 @@ const mockGlobalSettingRepository = {
 const mockDepartmentRepository = { findAll: vi.fn(), count: vi.fn() };
 const mockPromptTemplateRepository = { findAll: vi.fn(), count: vi.fn() };
 const mockAsrPipelineRepository = { findAll: vi.fn(), count: vi.fn() };
-const mockDatabaseService = { getClient: vi.fn() };
+// TASK-302 Stream D Phase C (C.4) — `updateTenantConfigs` wraps writes in
+// `databaseService.baseClient.$transaction(callback)`. The stub invokes the
+// callback with a sentinel tx client so the loop executes.
+const mockTxClient = { __tx: true } as const;
+const mockDatabaseService = {
+    getClient: vi.fn(),
+    baseClient: {
+        $transaction: vi.fn().mockImplementation(async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient)),
+    },
+};
 const mockTenantBucketService = { provisionSystemBuckets: vi.fn() };
 
 const createMockTenantEntity = (overrides: { id?: string; key?: string } = {}) => ({
