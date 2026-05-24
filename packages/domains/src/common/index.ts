@@ -4,6 +4,7 @@ export * from './domainEvent';
 export * from './queryBuilder';
 export * from './repository.helpers';
 export * from './repository';
+export * from './secret.decorator';
 export * from './singleton';
 export * from './toObject';
 export * from './toRawObject';
