@@ -31,6 +31,11 @@ export interface PromptTemplate {
   resourceStatus?: string;
   createdAt: string;
   updatedAt: string;
+  // TASK-302 Stream D Phase E.3 — row's optimistic-concurrency version
+  // (`_version` in the DB). Distinct from `currentVersionNumber`, the
+  // PromptVersion history counter. Echo this back via `If-Match` or
+  // `expectedVersion` on the next PATCH.
+  version?: number;
   [key: string]: unknown;
 }
 
@@ -69,6 +74,10 @@ export interface UpdatePromptInput {
   tags?: string[];
   changeReason?: string;
   resourceStatus?: string;
+  // TASK-302 Stream D Phase E.3 — required CAS predicate (echoed from
+  // the prior GET). The API folds the `If-Match` header over this when
+  // both are present.
+  expectedVersion: number;
 }
 
 export type DepartmentPromptField = 'newPatientPromptId' | 'revisitPromptId' | 'summaryPromptId' | 'preSummaryPromptId';
@@ -212,8 +221,18 @@ export function useCreatePrompt(tenantId: string) {
 export function useUpdatePrompt(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: UpdatePromptInput & { id: string }) =>
-      adminClient.patch<PromptTemplate>(`/prompt-templates/${id}`, input, { tenantId }),
+    // TASK-302 Stream D Phase E.3 — `ifMatch` is forwarded as the RFC 7232
+    // `If-Match: "<version>"` request header; the API folds its value
+    // over the body-field `expectedVersion`. The route is
+    // `@RequiresIfMatch()` so callers MUST supply `ifMatch` (or rely on
+    // `expectedVersion` as the body fallback before the header guard
+    // lands in CI).
+    mutationFn: ({ id, ifMatch, ...input }: UpdatePromptInput & { id: string; ifMatch?: string }) =>
+      adminClient.patch<PromptTemplate>(
+        `/prompt-templates/${id}`,
+        input,
+        ifMatch ? { tenantId, ifMatch } : { tenantId },
+      ),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all(tenantId) });
       qc.invalidateQueries({ queryKey: keys.detail(tenantId, variables.id) });
@@ -235,8 +254,16 @@ export function useDeletePrompt(tenantId: string) {
 export function useTogglePromptStatus(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, resourceStatus }: { id: string; resourceStatus: string }) =>
-      adminClient.patch<PromptTemplate>(`/prompt-templates/${id}`, { resourceStatus }, { tenantId }),
+    // TASK-302 Stream D Phase E.3 — same `@RequiresIfMatch()` PATCH route
+    // as `useUpdatePrompt`. The caller must supply `expectedVersion` and
+    // (in production) `ifMatch`. Toggle is a status-only mutation that
+    // still bumps `_version` like any other write.
+    mutationFn: ({ id, resourceStatus, expectedVersion, ifMatch }: { id: string; resourceStatus: string; expectedVersion: number; ifMatch?: string }) =>
+      adminClient.patch<PromptTemplate>(
+        `/prompt-templates/${id}`,
+        { resourceStatus, expectedVersion },
+        ifMatch ? { tenantId, ifMatch } : { tenantId },
+      ),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all(tenantId) });
       qc.invalidateQueries({ queryKey: keys.detail(tenantId, variables.id) });
