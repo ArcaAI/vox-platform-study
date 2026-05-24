@@ -22,7 +22,7 @@
 7. [Deploy etcd Cluster](#7-deploy-etcd-cluster)
 8. [Deploy Patroni + TimescaleDB Cluster](#8-deploy-patroni--timescaledb-cluster)
 9. [Deploy HAProxy + Keepalived](#9-deploy-haproxy--keepalived)
-10. [Deploy PgBouncer (Optional)](#10-deploy-pgbouncer-optional)
+10. [Deploy PgBouncer (Transaction Mode)](#10-deploy-pgbouncer-transaction-mode)
 11. [Deploy Monitoring (postgres_exporter)](#11-deploy-monitoring-postgres_exporter)
 12. [Backup with pgBackRest](#12-backup-with-pgbackrest)
 13. [Security Hardening](#13-security-hardening)
@@ -110,7 +110,7 @@ Three Ubuntu 24.04 VMs, each running the full stack co-located. A floating VIP p
 | pgBackRest        | 2.54.x     | Bundled in `timescale/timescaledb-ha` image     |
 | etcd              | 3.5.21     | `quay.io/coreos/etcd:v3.5.21`                   |
 | HAProxy           | 3.1        | `haproxy:3.1-alpine`                            |
-| PgBouncer         | 1.23.1     | `edoburu/pgbouncer:1.23.1`                      |
+| PgBouncer         | 1.25.1-p0  | `edoburu/pgbouncer:v1.25.1-p0`                  |
 | Keepalived        | 2.x        | apt package (host-level)                        |
 | postgres_exporter | 0.16.0     | `prometheuscommunity/postgres-exporter:v0.16.0` |
 
@@ -768,9 +768,28 @@ psql -h 10.10.1.250 -p 5000 -U postgres -c "SELECT 1;"
 
 ---
 
-## 10. Deploy PgBouncer (Optional)
+## 10. Deploy PgBouncer (Transaction Mode)
 
-PgBouncer is configured in [`docker-compose.yml`](../configs/postgres-ha/docker-compose.yml) under the `pgbouncer` profile. Start on **all 3 nodes**:
+PgBouncer is configured in [`docker-compose.yml`](../configs/postgres-ha/docker-compose.yml) under the `pgbouncer` profile and is **mandatory** for HOPE production (no longer optional). It runs in **transaction pooling mode** with the settings validated by [TASK-302 Stream C Phase 1](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-validation-report.md).
+
+> ⚠️ **Do not change transaction-mode settings without re-running the validation rig** at `packages/database/tests/pgbouncer-validation/`. Critical guarantees (RLS GUC isolation, prepared-statement safety, `DISCARD ALL` between transactions) depend on the exact combination of `POOL_MODE=transaction`, `MAX_PREPARED_STATEMENTS=200`, and `SERVER_RESET_QUERY_ALWAYS=1`. See [`03-pgbouncer-rollout.md`](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md) Phase 2A for the rollout plan.
+
+### Effective configuration (Phase 2A)
+
+| Setting | Value | Why |
+|---|---|---|
+| `POOL_MODE` | `transaction` | Maximum backend reuse; safe for Prisma 7 with the conditions below |
+| `MAX_CLIENT_CONN` | `500` | Tuned per validation rig (pgbench 50-client baseline + 10× headroom) |
+| `DEFAULT_POOL_SIZE` | `50` | ≤ 50 tenants by 2027; matches `max_connections=200` × 25% safety |
+| `MIN_POOL_SIZE` | `5` | Pre-warmed idle backends per pool to avoid cold-start latency |
+| `RESERVE_POOL_SIZE` | `10` | Absorb deploy spikes (was 5) |
+| `MAX_PREPARED_STATEMENTS` | `200` | **Required** for Prisma's named prepared statements in txn mode (PgBouncer ≥ 1.21) |
+| `SERVER_RESET_QUERY` | `DISCARD ALL` | Explicit; mirrors the default to ensure no GUC leak across transactions |
+| `SERVER_RESET_QUERY_ALWAYS` | `1` | Force `DISCARD ALL` even in txn mode (default is 0) |
+| `IGNORE_STARTUP_PARAMETERS` | `extra_float_digits,search_path` | Prisma sends both; harmless when ignored |
+| `AUTH_TYPE` | `scram-sha-256` | Matches PG hashing (Patroni init seeds `scram-sha-256`) |
+
+Start on **all 3 nodes**:
 
 ```bash
 docker compose --profile pgbouncer up -d
@@ -780,10 +799,23 @@ Verify:
 
 ```bash
 # Connect through PgBouncer
-psql -h 10.10.1.200 -p 6432 -U postgres -c "SELECT 1;"
+psql -h 10.10.1.200 -p 6432 -U hope_app -c "SELECT 1;"
 
-# Check PgBouncer stats
-psql -h 10.10.1.200 -p 6432 -U postgres -d pgbouncer -c "SHOW POOLS;"
+# Check PgBouncer stats (confirm pool_mode=transaction)
+psql -h 10.10.1.200 -p 6432 -U hope_admin -d pgbouncer -c "SHOW POOLS;"
+psql -h 10.10.1.200 -p 6432 -U hope_admin -d pgbouncer -c "SHOW CONFIG;" | grep -E 'pool_mode|max_prepared|server_reset'
+```
+
+### Application URLs
+
+Production app config must split connections:
+
+```bash
+# Pooled (port 6432) — runtime queries through pgbouncer
+DATABASE_URL=postgresql://hope_app:****@10.10.1.250:6432/hope?sslmode=require&schema=core
+
+# Direct (port 5000 HAProxy R/W) — migrations only; preserves Prisma Migrate advisory locks
+DIRECT_URL=postgresql://hope_app:****@10.10.1.250:5000/hope?sslmode=require&schema=core
 ```
 
 ---
@@ -1457,7 +1489,7 @@ Reverse of startup:
 | -------------------------------------- | --------------------------------------------------------- |
 | **Read/Write (via VIP)**               | `postgresql://hope_app:password@10.10.1.250:5000/hope`    |
 | **Read-Only (via VIP)**                | `postgresql://hope_reader:password@10.10.1.250:5001/hope` |
-| **Read/Write (via PgBouncer on VIP)**  | `postgresql://hope_app:password@10.10.1.250:6432/hope`    |
+| **Read/Write (via PgBouncer on VIP)**  | `postgresql://hope_app:password@10.10.1.250:6432/hope?sslmode=require&schema=core` (set as `DATABASE_URL` — pooled, transaction mode) |
 | **Direct to primary (bypass HAProxy)** | `postgresql://postgres:password@10.10.1.200:5432/hope`    |
 
 ### For Prisma (HOPE Project)
@@ -1470,7 +1502,7 @@ DATABASE_URL="postgresql://hope_app:password@10.10.1.250:5000/hope?schema=public
 
 ### For NestJS API (apps/api)
 
-The API Gateway connects through the VIP. Prisma handles connection pooling, so PgBouncer is optional if you use Prisma exclusively.
+The API Gateway connects through the VIP. PgBouncer is **mandatory** for production: runtime queries go through the pooler at port `6432` (transaction mode, validated by TASK-302 Stream C Phase 1), while migrations bypass the pooler and use the direct HAProxy R/W port `5000` via `DIRECT_URL`. See §10 above and [`03-pgbouncer-rollout.md`](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md) for the full rationale.
 
 ---
 
