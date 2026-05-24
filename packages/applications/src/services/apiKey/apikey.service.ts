@@ -10,12 +10,13 @@ import {
   SysEventType,
 } from '@arcaai/domains';
 import { ArgumentInvalidException, InternalServerErrorException, NotFoundException } from '@arcaai/exceptions';
-import { ForbiddenException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash, createHmac, randomBytes } from 'crypto';
 import { ClsService } from 'nestjs-cls';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import { CreateApiKeyResult, IApiKeyService } from './IApiKeyService';
 import { CreateApiKeyRequest, UpdateApiKeyRequest } from './dto';
 
@@ -68,6 +69,11 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     private readonly apiKeyRepository: ApiKeyRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-302 Phase 3 Task 3.3 — API_KEY_PEPPER now arrives via the
+    // SecretsService (cache-warmed at boot). Optional so legacy test
+    // fixtures that construct ApiKeyService directly still work (they
+    // get plain SHA-256 with no pepper, matching the existing fallback).
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.ApiKey);
   }
@@ -90,16 +96,31 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   }
 
   /**
-   * Hash an API key using SHA-256.
-   * This is a one-way hash — the original key cannot be recovered.
+   * Hash an API key using SHA-256, optionally peppered with HMAC.
+   *
+   * Pure function: takes the pepper as an explicit parameter instead of
+   * reading process.env. The instance-method counterpart `hashKeyForStorage`
+   * resolves the pepper from SecretsService (TASK-302 Phase 3 Task 3.3).
+   * Kept static so direct callers (tests, future tools) can compute a
+   * hash deterministically given a known pepper.
    */
-  static hashKey(rawKey: string): string {
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
-    const pepper = process.env.API_KEY_PEPPER;
+  static hashKey(rawKey: string, pepper?: string): string {
     if (pepper) {
       return createHmac('sha256', pepper).update(rawKey).digest('hex');
     }
     return createHash('sha256').update(rawKey).digest('hex');
+  }
+
+  /**
+   * Instance-method wrapper around the static hashKey. Resolves
+   * API_KEY_PEPPER from SecretsService (cache-warmed at boot). When
+   * SecretsService is not provided (legacy tests), falls back to plain
+   * SHA-256 — same behavior as the pre-migration static method when
+   * env was unset.
+   */
+  async hashKeyForStorage(rawKey: string): Promise<string> {
+    const pepper = (await this.secretsService?.getSecretOptional('API_KEY_PEPPER')) ?? undefined;
+    return ApiKeyService.hashKey(rawKey, pepper);
   }
 
   /**
@@ -197,7 +218,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     }
 
     const rawKey = ApiKeyService.generateRawKey(keyType);
-    const keyHash = ApiKeyService.hashKey(rawKey);
+    const keyHash = await this.hashKeyForStorage(rawKey);
     const keyPrefix = ApiKeyService.extractPrefix(rawKey);
     const keyChecksum = ApiKeyService.extractChecksum(rawKey);
 
@@ -488,7 +509,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
     const keyType = oldKey.keyType ?? ApiKeyType.SDK;
     const rawKey = ApiKeyService.generateRawKey(keyType);
-    const keyHash = ApiKeyService.hashKey(rawKey);
+    const keyHash = await this.hashKeyForStorage(rawKey);
     const keyPrefix = ApiKeyService.extractPrefix(rawKey);
     const keyChecksum = ApiKeyService.extractChecksum(rawKey);
 
@@ -547,7 +568,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    * Find API key by hashing the provided key and looking up the hash.
    */
   async getByKeyHash(rawKey: string): Promise<ApiKeyEntity | null> {
-    const keyHash = ApiKeyService.hashKey(rawKey);
+    const keyHash = await this.hashKeyForStorage(rawKey);
 
     try {
       return await this.apiKeyRepository.findFirst({

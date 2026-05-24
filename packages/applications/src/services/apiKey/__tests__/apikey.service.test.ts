@@ -198,12 +198,9 @@ describe('ApiKeyService', () => {
                 }
             });
 
-            it('should hash a key using SHA-256', () => {
+            it('should hash a key using plain SHA-256 when no pepper is supplied', () => {
                 const rawKey = 'hope_sk_a5c5e56x54c4437fbd6ce7dee9xxxx_631238';
-                const pepper = process.env.API_KEY_PEPPER;
-                const expectedHash = pepper
-                    ? createHmac('sha256', pepper).update(rawKey).digest('hex')
-                    : createHash('sha256').update(rawKey).digest('hex');
+                const expectedHash = createHash('sha256').update(rawKey).digest('hex');
 
                 const result = ApiKeyService.hashKey(rawKey);
 
@@ -241,19 +238,20 @@ describe('ApiKeyService', () => {
                 }
             });
 
-            it('should use HMAC-SHA256 when API_KEY_PEPPER is set', () => {
-                process.env.API_KEY_PEPPER = 'test-pepper-secret';
+            it('should use HMAC-SHA256 when a pepper is passed', () => {
                 const rawKey = 'hope_sk_testkey_123456';
 
-                const result = ApiKeyService.hashKey(rawKey);
+                const result = ApiKeyService.hashKey(rawKey, 'test-pepper-secret');
 
                 const plainHash = createHash('sha256').update(rawKey).digest('hex');
                 expect(result).not.toBe(plainHash);
                 expect(result).toHaveLength(64);
+                expect(result).toBe(
+                    createHmac('sha256', 'test-pepper-secret').update(rawKey).digest('hex'),
+                );
             });
 
-            it('should fall back to plain SHA-256 when pepper is not set', () => {
-                delete process.env.API_KEY_PEPPER;
+            it('should fall back to plain SHA-256 when pepper is undefined', () => {
                 const rawKey = 'hope_sk_testkey_123456';
 
                 const result = ApiKeyService.hashKey(rawKey);
@@ -263,11 +261,10 @@ describe('ApiKeyService', () => {
             });
 
             it('should produce consistent HMAC hashes with same pepper', () => {
-                process.env.API_KEY_PEPPER = 'consistent-pepper';
                 const rawKey = 'hope_sk_testkey_123456';
 
-                const hash1 = ApiKeyService.hashKey(rawKey);
-                const hash2 = ApiKeyService.hashKey(rawKey);
+                const hash1 = ApiKeyService.hashKey(rawKey, 'consistent-pepper');
+                const hash2 = ApiKeyService.hashKey(rawKey, 'consistent-pepper');
 
                 expect(hash1).toBe(hash2);
             });
@@ -275,11 +272,8 @@ describe('ApiKeyService', () => {
             it('should produce different hashes with different peppers', () => {
                 const rawKey = 'hope_sk_testkey_123456';
 
-                process.env.API_KEY_PEPPER = 'pepper-one';
-                const hash1 = ApiKeyService.hashKey(rawKey);
-
-                process.env.API_KEY_PEPPER = 'pepper-two';
-                const hash2 = ApiKeyService.hashKey(rawKey);
+                const hash1 = ApiKeyService.hashKey(rawKey, 'pepper-one');
+                const hash2 = ApiKeyService.hashKey(rawKey, 'pepper-two');
 
                 expect(hash1).not.toBe(hash2);
             });
