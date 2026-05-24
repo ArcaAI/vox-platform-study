@@ -1,4 +1,5 @@
 export * from './context.interceptor';
+export * from './etag.interceptor';
 export * from './exception.interceptor';
 export * from './impersonation-audit.interceptor';
 export * from './maintenance.interceptor';
