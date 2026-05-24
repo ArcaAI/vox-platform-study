@@ -120,13 +120,13 @@ describe('agenticStore', () => {
     });
 
     describe('context actions', () => {
-        const mockContextItem: ContextItem = {
+        const mockContextItem = {
             id: 'item-1',
             consultationId: 'consultation-1',
             type: 'transcription',
             content: 'Test content',
             createdAt: new Date().toISOString(),
-        };
+        } as unknown as ContextItem;
 
         it('should set context items', () => {
             const items = [mockContextItem];
@@ -230,20 +230,20 @@ describe('agenticStore', () => {
         it('should set audio plugins', () => {
             const plugins = { noiseFilter: true, vad: true, stt: false };
 
-            useAgenticStore.getState().setAudioPlugins(plugins);
+            useAgenticStore.getState().setAudioPlugins(plugins as unknown as Parameters<ReturnType<typeof useAgenticStore.getState>['setAudioPlugins']>[0]);
 
             expect(useAgenticStore.getState().audioPlugins).toEqual(plugins);
         });
     });
 
     describe('summary actions', () => {
-        const mockSummary: SummaryResponse = {
+        const mockSummary = {
             id: 'summary-1',
             consultationId: 'consultation-1',
             type: 'summary',
             content: 'Test summary',
             createdAt: new Date().toISOString(),
-        };
+        } as unknown as SummaryResponse;
 
         it('should set summaries', () => {
             useAgenticStore.getState().setSummaries([mockSummary]);
@@ -274,7 +274,7 @@ describe('agenticStore', () => {
 
     describe('preferences actions', () => {
         it('should set preferences', () => {
-            const preferences = { theme: 'dark', language: 'en' };
+            const preferences = { theme: 'dark', language: 'en' } as Record<string, unknown>;
 
             useAgenticStore.getState().setPreferences(preferences);
 
@@ -282,7 +282,7 @@ describe('agenticStore', () => {
         });
 
         it('should update preferences partially', () => {
-            useAgenticStore.getState().setPreferences({ theme: 'light' });
+            useAgenticStore.getState().setPreferences({ theme: 'light' } as Record<string, unknown>);
             useAgenticStore.getState().updatePreferences({ language: 'es' });
 
             expect(useAgenticStore.getState().preferences).toEqual({
@@ -322,29 +322,29 @@ describe('agenticStore', () => {
     });
 
     describe('selectors', () => {
-        const transcription: ContextItem = {
+        const transcription = {
             id: '1',
             consultationId: 'c1',
             type: 'transcription',
             content: 'Transcription',
             createdAt: new Date().toISOString(),
-        };
+        } as unknown as ContextItem;
 
-        const caseNote: ContextItem = {
+        const caseNote = {
             id: '2',
             consultationId: 'c1',
             type: 'case_note',
             content: 'Case note',
             createdAt: new Date().toISOString(),
-        };
+        } as unknown as ContextItem;
 
-        const summaryItem: ContextItem = {
+        const summaryItem = {
             id: '3',
             consultationId: 'c1',
             type: 'summary',
             content: 'Summary',
             createdAt: new Date().toISOString(),
-        };
+        } as unknown as ContextItem;
 
         beforeEach(() => {
             useAgenticStore.getState().setContextItems([transcription, caseNote, summaryItem]);
@@ -375,20 +375,20 @@ describe('agenticStore', () => {
         });
 
         it('selectLatestSummary should return latest summary', () => {
-            const summary1: SummaryResponse = {
+            const summary1 = {
                 id: 's1',
                 consultationId: 'c1',
                 type: 'summary',
                 content: 'First',
                 createdAt: new Date().toISOString(),
-            };
-            const summary2: SummaryResponse = {
+            } as unknown as SummaryResponse;
+            const summary2 = {
                 id: 's2',
                 consultationId: 'c1',
                 type: 'summary',
                 content: 'Second',
                 createdAt: new Date().toISOString(),
-            };
+            } as unknown as SummaryResponse;
 
             useAgenticStore.getState().setSummaries([summary1, summary2]);
 
@@ -399,13 +399,13 @@ describe('agenticStore', () => {
         });
 
         it('selectLatestPreSummary should return latest pre-summary', () => {
-            const preSummary: SummaryResponse = {
+            const preSummary = {
                 id: 'ps1',
                 consultationId: 'c1',
                 type: 'pre_summary',
                 content: 'Pre-summary',
                 createdAt: new Date().toISOString(),
-            };
+            } as unknown as SummaryResponse;
 
             useAgenticStore.getState().setSummaries([preSummary]);
 
@@ -423,13 +423,13 @@ describe('agenticStore', () => {
         });
 
         it('selectLatestPreSummary should return null when no pre-summaries exist', () => {
-            const onlySummary: SummaryResponse = {
+            const onlySummary = {
                 id: 'only-s',
                 consultationId: 'c1',
                 type: 'summary',
                 content: 'Only summary',
                 createdAt: new Date().toISOString(),
-            } as SummaryResponse;
+            } as unknown as SummaryResponse;
 
             useAgenticStore.getState().setSummaries([onlySummary]);
 
@@ -438,20 +438,20 @@ describe('agenticStore', () => {
         });
 
         it('selectLatestPreSummary should return last when multiple pre-summaries exist', () => {
-            const ps1: SummaryResponse = {
+            const ps1 = {
                 id: 'ps1',
                 consultationId: 'c1',
                 type: 'pre_summary',
                 content: 'First pre',
                 createdAt: new Date().toISOString(),
-            } as SummaryResponse;
-            const ps2: SummaryResponse = {
+            } as unknown as SummaryResponse;
+            const ps2 = {
                 id: 'ps2',
                 consultationId: 'c1',
                 type: 'pre_summary',
                 content: 'Second pre',
                 createdAt: new Date().toISOString(),
-            } as SummaryResponse;
+            } as unknown as SummaryResponse;
 
             useAgenticStore.getState().setSummaries([ps1, ps2]);
 
@@ -459,13 +459,13 @@ describe('agenticStore', () => {
         });
 
         it('selectSummaryItems should include both summary and pre_summary types', () => {
-            const preSummaryItem: ContextItem = {
+            const preSummaryItem = {
                 id: '4',
                 consultationId: 'c1',
                 type: 'pre_summary',
                 content: 'Pre-summary',
                 createdAt: new Date().toISOString(),
-            };
+            } as unknown as ContextItem;
             useAgenticStore.getState().addContextItem(preSummaryItem);
 
             const state = useAgenticStore.getState();
@@ -537,12 +537,12 @@ describe('agenticStore', () => {
         });
 
         it('setTranscriptionPipelineState should update the state', () => {
-            const pipelineState: PipelineStateInfo = {
+            const pipelineState = {
                 status: 'running',
                 currentStage: 'vad',
                 progress: 50,
                 isReady: true,
-            } as PipelineStateInfo;
+            } as unknown as PipelineStateInfo;
 
             useAgenticStore.getState().setTranscriptionPipelineState(pipelineState);
 
@@ -553,11 +553,11 @@ describe('agenticStore', () => {
         });
 
         it('setKnowledgePipelineState should update the state', () => {
-            const pipelineState: PipelineStateInfo = {
+            const pipelineState = {
                 status: 'idle',
                 progress: 0,
                 isReady: true,
-            } as PipelineStateInfo;
+            } as unknown as PipelineStateInfo;
 
             useAgenticStore.getState().setKnowledgePipelineState(pipelineState);
 
@@ -567,11 +567,11 @@ describe('agenticStore', () => {
         });
 
         it('should clear pipeline state when set to null', () => {
-            const running: PipelineStateInfo = {
+            const running = {
                 status: 'running',
                 progress: 75,
                 isReady: true,
-            } as PipelineStateInfo;
+            } as unknown as PipelineStateInfo;
 
             useAgenticStore.getState().setTranscriptionPipelineState(running);
             expect(selectTranscriptionPipelineState(useAgenticStore.getState())).not.toBeNull();
@@ -583,31 +583,31 @@ describe('agenticStore', () => {
 
     describe('setSummaries action', () => {
         it('should replace all existing summaries', () => {
-            const s1: SummaryResponse = {
+            const s1 = {
                 id: 'old-1',
                 consultationId: 'c1',
                 type: 'summary',
                 content: 'Old',
                 createdAt: new Date().toISOString(),
-            } as SummaryResponse;
+            } as unknown as SummaryResponse;
 
             useAgenticStore.getState().setSummaries([s1]);
             expect(useAgenticStore.getState().summaries).toHaveLength(1);
 
-            const s2: SummaryResponse = {
+            const s2 = {
                 id: 'new-1',
                 consultationId: 'c1',
                 type: 'pre_summary',
                 content: 'New 1',
                 createdAt: new Date().toISOString(),
-            } as SummaryResponse;
-            const s3: SummaryResponse = {
+            } as unknown as SummaryResponse;
+            const s3 = {
                 id: 'new-2',
                 consultationId: 'c1',
                 type: 'summary',
                 content: 'New 2',
                 createdAt: new Date().toISOString(),
-            } as SummaryResponse;
+            } as unknown as SummaryResponse;
 
             useAgenticStore.getState().setSummaries([s2, s3]);
 
@@ -624,7 +624,7 @@ describe('agenticStore', () => {
                 type: 'summary',
                 content: 'C',
                 createdAt: new Date().toISOString(),
-            } as SummaryResponse;
+            } as unknown as SummaryResponse;
 
             useAgenticStore.getState().setSummaries([s1]);
             useAgenticStore.getState().setSummaries([]);
@@ -682,20 +682,20 @@ describe('agenticStore', () => {
 
     describe('context edge cases', () => {
         it('updateContextItem should not modify items with different IDs', () => {
-            const item1: ContextItem = {
+            const item1 = {
                 id: 'a',
                 consultationId: 'c1',
                 type: 'transcription',
                 content: 'Original A',
                 createdAt: new Date().toISOString(),
-            };
-            const item2: ContextItem = {
+            } as unknown as ContextItem;
+            const item2 = {
                 id: 'b',
                 consultationId: 'c1',
                 type: 'case_note',
                 content: 'Original B',
                 createdAt: new Date().toISOString(),
-            };
+            } as unknown as ContextItem;
 
             useAgenticStore.getState().setContextItems([item1, item2]);
             useAgenticStore.getState().updateContextItem('a', { content: 'Updated A' });
@@ -706,13 +706,13 @@ describe('agenticStore', () => {
         });
 
         it('removeContextItem with non-existent ID should not change array', () => {
-            const item: ContextItem = {
+            const item = {
                 id: 'keep-me',
                 consultationId: 'c1',
                 type: 'transcription',
                 content: 'Stay',
                 createdAt: new Date().toISOString(),
-            };
+            } as unknown as ContextItem;
 
             useAgenticStore.getState().setContextItems([item]);
             useAgenticStore.getState().removeContextItem('does-not-exist');
@@ -775,13 +775,13 @@ describe('agenticStore', () => {
     });
 
     describe('addSummary deduplication (BUG-12)', () => {
-        const baseSummary: SummaryResponse = {
+        const baseSummary = {
             id: 'summary-dedup',
             consultationId: 'c1',
             type: 'summary',
             content: 'Original',
             createdAt: new Date().toISOString(),
-        };
+        } as unknown as SummaryResponse;
 
         it('should not duplicate when adding summary with same id', () => {
             useAgenticStore.getState().addSummary(baseSummary);
@@ -826,13 +826,13 @@ describe('agenticStore', () => {
 
     describe('addContextItem deduplication (BUG-12)', () => {
         it('should not duplicate context items with the same id', () => {
-            const item: ContextItem = {
+            const item = {
                 id: 'ctx-1',
                 consultationId: 'c1',
                 type: 'transcription',
                 content: 'Original',
                 createdAt: new Date().toISOString(),
-            };
+            } as unknown as ContextItem;
 
             useAgenticStore.getState().addContextItem(item);
             useAgenticStore.getState().addContextItem({ ...item, content: 'Updated' });
@@ -926,7 +926,7 @@ describe('agenticStore', () => {
                 type: 'transcription',
                 content: 'test',
                 timestamp: Date.now(),
-            });
+            } as unknown as ContextItem);
 
             useAgenticStore.getState().clearOnLogout();
 

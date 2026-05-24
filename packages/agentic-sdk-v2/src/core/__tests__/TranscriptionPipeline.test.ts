@@ -153,7 +153,7 @@ describe('TranscriptionPipeline', () => {
       const pipeline = new TranscriptionPipeline(
         {
           noiseFilter: { enabled: true, location: 'browser' },
-          vad: { enabled: false, location: 'skip' },
+          vad: { enabled: false, location: 'browser' },
           stt: { enabled: false, location: 'skip' },
         },
         mockLogger
@@ -237,7 +237,8 @@ describe('TranscriptionPipeline', () => {
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
-      const vadOptions = vi.mocked(createVAD).mock.calls.at(-1)?.[0] as Record<string, number>;
+      const vadCalls = vi.mocked(createVAD).mock.calls;
+      const vadOptions = vadCalls[vadCalls.length - 1]?.[0] as Record<string, number>;
       expect(vadOptions.positiveSpeechThreshold).toBe(0.7);
       expect(vadOptions.negativeSpeechThreshold).toBeCloseTo(0.55, 5);
       expect(vadOptions.minSpeechMs).toBe(320);
@@ -441,7 +442,7 @@ describe('TranscriptionPipeline', () => {
       );
 
       pipeline.updateConfig({
-        noiseFilter: { level: 'high' },
+        noiseFilter: { level: 'high' } as TranscriptionPipelineConfig['noiseFilter'],
       });
 
       const config = pipeline.getConfig();

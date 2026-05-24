@@ -3,23 +3,23 @@
  */
 
 export default class EventEmitter {
-  private listeners: Map<string, Set<Function>> = new Map();
+  private _listeners: Map<string, Set<Function>> = new Map();
 
   on(event: string, listener: Function): this {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, new Set());
+    if (!this._listeners.has(event)) {
+      this._listeners.set(event, new Set());
     }
-    this.listeners.get(event)!.add(listener);
+    this._listeners.get(event)!.add(listener);
     return this;
   }
 
   off(event: string, listener: Function): this {
-    this.listeners.get(event)?.delete(listener);
+    this._listeners.get(event)?.delete(listener);
     return this;
   }
 
   emit(event: string, ...args: unknown[]): boolean {
-    const eventListeners = this.listeners.get(event);
+    const eventListeners = this._listeners.get(event);
     if (!eventListeners || eventListeners.size === 0) {
       return false;
     }
@@ -39,18 +39,18 @@ export default class EventEmitter {
 
   removeAllListeners(event?: string): this {
     if (event) {
-      this.listeners.delete(event);
+      this._listeners.delete(event);
     } else {
-      this.listeners.clear();
+      this._listeners.clear();
     }
     return this;
   }
 
   listenerCount(event: string): number {
-    return this.listeners.get(event)?.size ?? 0;
+    return this._listeners.get(event)?.size ?? 0;
   }
 
   listeners(event: string): Function[] {
-    return Array.from(this.listeners.get(event) ?? []);
+    return Array.from(this._listeners.get(event) ?? []);
   }
 }

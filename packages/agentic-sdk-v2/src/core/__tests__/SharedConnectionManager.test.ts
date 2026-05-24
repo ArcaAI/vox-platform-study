@@ -155,6 +155,70 @@ describe('SharedConnectionManager', () => {
     });
   });
 
+  describe('workerUrl type — accepts both string and URL (cosmetic follow-up to TASK-280)', () => {
+    let originalSharedWorker: typeof globalThis.SharedWorker | undefined;
+    let capturedUrls: Array<string | URL>;
+
+    beforeEach(() => {
+      capturedUrls = [];
+      originalSharedWorker = (globalThis as { SharedWorker?: typeof globalThis.SharedWorker })
+        .SharedWorker;
+
+      class MockSharedWorker {
+        port: {
+          onmessage: ((ev: MessageEvent) => void) | null;
+          start: () => void;
+          postMessage: (data: unknown) => void;
+          close: () => void;
+        };
+
+        constructor(scriptURL: string | URL, _options?: WorkerOptions) {
+          capturedUrls.push(scriptURL);
+          this.port = {
+            onmessage: null,
+            start: () => undefined,
+            postMessage: () => undefined,
+            close: () => undefined,
+          };
+        }
+      }
+
+      (globalThis as unknown as { SharedWorker: typeof MockSharedWorker }).SharedWorker =
+        MockSharedWorker;
+    });
+
+    afterEach(() => {
+      if (originalSharedWorker === undefined) {
+        delete (globalThis as { SharedWorker?: typeof globalThis.SharedWorker }).SharedWorker;
+      } else {
+        (globalThis as { SharedWorker?: typeof globalThis.SharedWorker }).SharedWorker =
+          originalSharedWorker;
+      }
+    });
+
+    it('forwards a URL instance verbatim to new SharedWorker(...)', () => {
+      const workerUrl = new URL('http://localhost/worker.js');
+
+      const manager = new SharedConnectionManager(workerUrl, mockLogger);
+
+      expect(capturedUrls).toHaveLength(1);
+      expect(capturedUrls[0]).toBeInstanceOf(URL);
+      expect((capturedUrls[0] as URL).href).toBe('http://localhost/worker.js');
+      expect(manager.isUsingSharedWorker()).toBe(true);
+      manager.dispose();
+    });
+
+    it('forwards a string verbatim to new SharedWorker(...) (regression-pin)', () => {
+      const manager = new SharedConnectionManager('http://localhost/worker.js', mockLogger);
+
+      expect(capturedUrls).toHaveLength(1);
+      expect(typeof capturedUrls[0]).toBe('string');
+      expect(capturedUrls[0]).toBe('http://localhost/worker.js');
+      expect(manager.isUsingSharedWorker()).toBe(true);
+      manager.dispose();
+    });
+  });
+
   describe('SSE fallback mode', () => {
     it('should create an EventSource when subscribing to SSE', async () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);

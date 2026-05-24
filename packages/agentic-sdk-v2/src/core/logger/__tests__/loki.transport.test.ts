@@ -5,7 +5,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { LokiTransport } from '../transports/loki.transport';
-import type { LogEntry, LokiTransportConfig } from '../types';
+import type { LogEntry, LokiTransportConfig, LogLevel } from '../types';
+
+// `level` is an untyped runtime extension carried over from the original
+// transport contract (see `loki.transport.ts`). Tests still exercise it,
+// so widen the config type locally.
+type TestLokiConfig = LokiTransportConfig & { level?: LogLevel };
 
 // Mock fetch
 const mockFetch = vi.fn();
@@ -13,7 +18,7 @@ globalThis.fetch = mockFetch;
 
 describe('LokiTransport', () => {
   let transport: LokiTransport;
-  let config: LokiTransportConfig;
+  let config: TestLokiConfig;
 
   const createLogEntry = (overrides?: Partial<LogEntry>): LogEntry => ({
     timestamp: Date.now(),
@@ -95,7 +100,7 @@ describe('LokiTransport', () => {
     });
 
     it('should filter logs below configured level', async () => {
-      const warnTransport = new LokiTransport({ ...config, level: 'warn' });
+      const warnTransport = new LokiTransport({ ...config, level: 'warn' } as LokiTransportConfig);
       await warnTransport.initialize();
 
       warnTransport.log(createLogEntry({ level: 'info' }));
@@ -328,6 +333,8 @@ describe('LokiTransport', () => {
           resource: {
             serviceName: 'test-service',
             environment: 'production',
+            sdkName: '@arcaai/vox',
+            sdkVersion: '0.0.0-test',
           },
         })
       );
@@ -345,6 +352,8 @@ describe('LokiTransport', () => {
         createLogEntry({
           resource: {
             serviceName: 'my-service',
+            sdkName: '@arcaai/vox',
+            sdkVersion: '0.0.0-test',
           },
         })
       );
@@ -397,7 +406,7 @@ describe('LokiTransport', () => {
         enabled: true,
         url: 'http://localhost:3100',
         level: 'info',
-      });
+      } as LokiTransportConfig);
 
       await t.initialize();
       t.log(createLogEntry({ level: 'info', message: 'should-drop' }));
@@ -413,7 +422,7 @@ describe('LokiTransport', () => {
         enabled: false,
         url: 'http://localhost:3100',
         level: 'info',
-      });
+      } as LokiTransportConfig);
 
       await t.initialize();
       t.log(createLogEntry({ level: 'info' }));
@@ -429,7 +438,7 @@ describe('LokiTransport', () => {
         enabled: true,
         url: '',
         level: 'info',
-      });
+      } as LokiTransportConfig);
 
       await t.initialize();
       t.log(createLogEntry({ level: 'info' }));
@@ -446,7 +455,7 @@ describe('LokiTransport', () => {
         enabled: true,
         url: 'http://localhost:3100',
         level: 'debug',
-      });
+      } as LokiTransportConfig);
 
       await t.initialize();
       t.log(createLogEntry({ level: 'info', message: 'gated-on' }));
@@ -466,7 +475,7 @@ describe('LokiTransport', () => {
         enabled: true,
         url: 'http://localhost:3100',
         level: 'info',
-      });
+      } as LokiTransportConfig);
 
       // Pre- and post-init log() calls must be a hard no-op. A misconfigured
       // production deploy must not be able to accumulate PHI in the buffer

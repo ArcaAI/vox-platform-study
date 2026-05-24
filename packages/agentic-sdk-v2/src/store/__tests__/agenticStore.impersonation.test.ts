@@ -13,19 +13,19 @@ import { useAgenticStore } from '../agenticStore';
 
 describe('TASK-264 W0-3: store impersonation token removed', () => {
   it('state object should NOT contain `authOriginalToken` field', () => {
-    const state = useAgenticStore.getState() as Record<string, unknown>;
+    const state = useAgenticStore.getState() as unknown as Record<string, unknown>;
     expect('authOriginalToken' in state).toBe(false);
   });
 
   it('store actions object should NOT contain `setOriginalToken`', () => {
-    const state = useAgenticStore.getState() as Record<string, unknown>;
+    const state = useAgenticStore.getState() as unknown as Record<string, unknown>;
     expect('setOriginalToken' in state).toBe(false);
   });
 
   it('clearSensitiveData should not throw and should clear only remaining auth fields', () => {
     const state = useAgenticStore.getState();
     expect(() => state.clearSensitiveData()).not.toThrow();
-    const after = useAgenticStore.getState() as Record<string, unknown>;
+    const after = useAgenticStore.getState() as unknown as Record<string, unknown>;
     expect(after.authUser).toBeNull();
     expect(after.authIsAuthenticated).toBe(false);
     expect(after.authImpersonatedUser).toBeNull();

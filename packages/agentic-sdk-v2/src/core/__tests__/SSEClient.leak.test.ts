@@ -39,6 +39,7 @@ interface InstrumentedEventSource extends EventSource {
   __removeCalls: Array<[string, EventListener]>;
   __closed: boolean;
   __listenerCount: () => number;
+  simulateOpen: () => void;
 }
 
 const created: InstrumentedEventSource[] = [];

@@ -856,7 +856,7 @@ describe('useArca API — withRetry', () => {
   });
 
   it('should retry on retriable errors and eventually succeed', async () => {
-    const { AgenticError } = await import('../../types');
+    const { AgenticError } = await import('../../types/index.js');
     let callCount = 0;
 
     const fn = async () => {
@@ -877,7 +877,7 @@ describe('useArca API — withRetry', () => {
   });
 
   it('should throw immediately for non-retriable errors', async () => {
-    const { AgenticError } = await import('../../types');
+    const { AgenticError } = await import('../../types/index.js');
 
     const fn = async () => {
       throw new AgenticError('AUTHENTICATION_ERROR', 'unauthorized');

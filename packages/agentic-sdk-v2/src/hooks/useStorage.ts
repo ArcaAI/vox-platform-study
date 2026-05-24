@@ -89,7 +89,7 @@ export function useStorage(): UseStorageReturn {
     (name: string, type?: string) =>
       execute<CreateBucketResult>('createBucket', async (client) => {
         const data = await client.post<CreateBucketResult>(STORAGE_ENDPOINTS.CREATE_BUCKET, { name, type: type ?? 'private' });
-        setBuckets((prev) => [...prev, { name, ...data }]);
+        setBuckets((prev) => [...prev, { ...data }]);
         return data;
       }),
     [execute],

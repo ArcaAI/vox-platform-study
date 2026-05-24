@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 
 describe('hooks/index exports', () => {
     it('should export all new hooks as functions', async () => {
-        const hooks = await import('../hooks/index');
+        const hooks = await import('../hooks/index.js');
         expect(typeof hooks.useUsers).toBe('function');
         expect(typeof hooks.useRoles).toBe('function');
         expect(typeof hooks.useApiKeys).toBe('function');
@@ -23,7 +23,7 @@ describe('hooks/index exports', () => {
     });
 
     it('should export existing hooks as functions', async () => {
-        const hooks = await import('../hooks/index');
+        const hooks = await import('../hooks/index.js');
         expect(typeof hooks.useArca).toBe('function');
         expect(typeof hooks.useArcaSession).toBe('function');
         expect(typeof hooks.useArcaConfig).toBe('function');
@@ -35,7 +35,7 @@ describe('hooks/index exports', () => {
 
 describe('core.ts exports', () => {
     it('should export all new hooks as functions from core', async () => {
-        const core = await import('../core');
+        const core = await import('../core.js');
         expect(typeof core.useUsers).toBe('function');
         expect(typeof core.useRoles).toBe('function');
         expect(typeof core.useApiKeys).toBe('function');
@@ -47,7 +47,7 @@ describe('core.ts exports', () => {
     });
 
     it('should export endpoint constants as objects with expected keys from core', async () => {
-        const core = await import('../core');
+        const core = await import('../core.js');
         expect(typeof core.USER_ENDPOINTS).toBe('object');
         expect(core.USER_ENDPOINTS).toHaveProperty('LIST');
         expect(core.USER_ENDPOINTS).toHaveProperty('GET');
@@ -76,14 +76,14 @@ describe('core.ts exports', () => {
     });
 
     it('should export AgenticProvider as a function from core', async () => {
-        const core = await import('../core');
+        const core = await import('../core.js');
         expect(typeof core.AgenticProvider).toBe('function');
     });
 });
 
 describe('types/index exports', () => {
     it('should export isTerminalStatus as a function that classifies statuses', async () => {
-        const types = await import('../types/index');
+        const types = await import('../types/index.js');
         expect(typeof types.isTerminalStatus).toBe('function');
         expect(types.isTerminalStatus('completed')).toBe(true);
         expect(types.isTerminalStatus('failed')).toBe(true);
@@ -94,7 +94,7 @@ describe('types/index exports', () => {
     });
 
     it('should export existing type utilities with correct types', async () => {
-        const types = await import('../types/index');
+        const types = await import('../types/index.js');
         expect(typeof types.AgenticError).toBe('function');
         expect(typeof types.DEFAULT_AUDIO_STATE).toBe('object');
         expect(typeof types.DEFAULT_MODELS).toBe('object');

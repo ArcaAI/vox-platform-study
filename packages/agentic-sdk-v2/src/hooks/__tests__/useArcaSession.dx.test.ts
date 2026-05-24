@@ -21,7 +21,7 @@ vi.mock('../../core/SimpleCrossTabSync', () => ({
 }));
 
 const mockStoreDefaults = {
-  consultation: null,
+  consultation: null as Record<string, unknown> | null,
   contextItems: [],
   sessionLoading: false,
   sessionError: null,

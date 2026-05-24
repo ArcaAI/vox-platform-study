@@ -22,33 +22,33 @@ vi.mock('@arcaai/noise-filter', () => ({
 
 describe('Plugin Exports', () => {
   it('should export useVAD', async () => {
-    const plugins = await import('../../plugins');
+    const plugins = await import('../../plugins.js');
     expect(plugins).toHaveProperty('useVAD');
   });
 
   it('should export useSTT', async () => {
-    const plugins = await import('../../plugins');
+    const plugins = await import('../../plugins.js');
     expect(plugins).toHaveProperty('useSTT');
   });
 
   it('should export useNoiseFilter', async () => {
-    const plugins = await import('../../plugins');
+    const plugins = await import('../../plugins.js');
     expect(plugins).toHaveProperty('useNoiseFilter');
   });
 
   it('should export PluginManager', async () => {
-    const plugins = await import('../../plugins');
+    const plugins = await import('../../plugins.js');
     expect(plugins).toHaveProperty('PluginManager');
   });
 
   it('should export pipeline classes', async () => {
-    const plugins = await import('../../plugins');
+    const plugins = await import('../../plugins.js');
     expect(plugins).toHaveProperty('TranscriptionPipeline');
     expect(plugins).toHaveProperty('KnowledgePipeline');
   });
 
   it('should NOT export useMedNER (moved to plugins/med-ner)', async () => {
-    const plugins = await import('../../plugins');
+    const plugins = await import('../../plugins.js');
     expect(plugins).not.toHaveProperty('useMedNER');
   });
 });

@@ -20,7 +20,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
 let mockSSEInstance: any;
 // TASK-274 fu-useConsultationJob — capture constructor args so we can assert
 // the migrated `(scope, apiClient, logger)` signature is honoured.
-let sseConstructorSpy: ReturnType<typeof vi.fn>;
+let sseConstructorSpy: ReturnType<typeof vi.fn<(...args: unknown[]) => void>>;
 
 vi.mock('../../core/SSEClient', () => {
     const MockSSEClient = function (this: any, ...args: unknown[]) {
@@ -45,7 +45,7 @@ describe('useConsultationJob', () => {
         mockGet.mockReset();
         mockDelete.mockReset();
         mockPatch.mockReset();
-        sseConstructorSpy = vi.fn();
+        sseConstructorSpy = vi.fn<(...args: unknown[]) => void>();
 
         mockSSEInstance = {
             connect: vi.fn(),

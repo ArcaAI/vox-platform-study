@@ -5,7 +5,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { HighlightTransport } from '../transports/highlight.transport';
-import type { LogEntry, HighlightTransportConfig } from '../types';
+import type { LogEntry, HighlightTransportConfig, LogLevel } from '../types';
+
+// `level` is an untyped runtime extension carried over from the original
+// transport contract (see `highlight.transport.ts`). Tests still exercise it,
+// so widen the config type locally.
+type TestHighlightConfig = HighlightTransportConfig & { level?: LogLevel };
 
 const mockH = {
   init: vi.fn(),
@@ -23,7 +28,7 @@ vi.mock('highlight.run', () => ({ H: mockH }));
 
 describe('HighlightTransport', () => {
   let transport: HighlightTransport;
-  let config: HighlightTransportConfig;
+  let config: TestHighlightConfig;
   let spies: typeof mockH;
 
   const createLogEntry = (overrides?: Partial<LogEntry>): LogEntry => ({
@@ -76,7 +81,7 @@ describe('HighlightTransport', () => {
     });
 
     it('should use provided level from config', async () => {
-      const t = new HighlightTransport({ ...config, level: 'warn' });
+      const t = new HighlightTransport({ ...config, level: 'warn' } as HighlightTransportConfig);
       await initTransport(t);
       const infoEntry = createLogEntry({ level: 'info' });
       t.log(infoEntry);
@@ -110,7 +115,6 @@ describe('HighlightTransport', () => {
       delete globalThis.window;
       await transport.initialize();
       expect(spies.init).not.toHaveBeenCalled();
-      // @ts-expect-error restore
       globalThis.window = origWindow;
     });
 
@@ -289,7 +293,7 @@ describe('HighlightTransport', () => {
       ['error', 'error'],
       ['fatal', 'fatal'],
     ] as const)('should map %s level correctly', async (level, expected) => {
-      const t = new HighlightTransport({ ...config, level: 'trace' });
+      const t = new HighlightTransport({ ...config, level: 'trace' } as HighlightTransportConfig);
       await initTransport(t);
       vi.clearAllMocks();
       resetMocks();
@@ -351,7 +355,7 @@ describe('HighlightTransport', () => {
         enabled: true,
         projectId: 'real-project',
         level: 'info',
-      });
+      } as HighlightTransportConfig);
 
       await initTransport(t);
       expect(spies.init).not.toHaveBeenCalled();
@@ -366,7 +370,7 @@ describe('HighlightTransport', () => {
         enabled: false,
         projectId: 'real-project',
         level: 'info',
-      });
+      } as HighlightTransportConfig);
 
       await initTransport(t);
       expect(spies.init).not.toHaveBeenCalled();
@@ -381,7 +385,7 @@ describe('HighlightTransport', () => {
         enabled: true,
         projectId: '',
         level: 'info',
-      });
+      } as HighlightTransportConfig);
 
       await initTransport(t);
       expect(spies.init).not.toHaveBeenCalled();
@@ -396,7 +400,7 @@ describe('HighlightTransport', () => {
         enabled: true,
         projectId: 'real-project',
         level: 'debug',
-      });
+      } as HighlightTransportConfig);
 
       await initTransport(t);
       expect(spies.init).toHaveBeenCalledWith('real-project', expect.any(Object));
@@ -422,7 +426,7 @@ describe('HighlightTransport', () => {
         enabled: true,
         projectId: 'real-project',
         level: 'info',
-      });
+      } as HighlightTransportConfig);
 
       // Pre-init log: in a gated-off transport this must be a hard no-op,
       // not queued in memory. Otherwise a misconfigured production deploy

@@ -298,6 +298,7 @@ export type { AuthUser, ImpersonateResponse, LoginResponse } from './types/auth'
 // =============================================================================
 
 export {
+  ADMIN_USER_ROLES_ENDPOINTS,
   API_KEY_ENDPOINTS,
   AUDIT_LOG_ENDPOINTS,
   AUTH_ENDPOINTS,

@@ -7,7 +7,7 @@
 
 import { EventEmitter } from 'eventemitter3';
 import type { BaseProcessor } from '@arcaai/room';
-import { debugLogConfig, debugLogTranscript, type DebugTranscriptEntry } from '@arcaai/room';
+import { ProcessorEvent, debugLogConfig, debugLogTranscript, type DebugTranscriptEntry } from '@arcaai/room';
 import type { TranscriptionPipelineConfig, TranscriptionPipelineInput, PipelineStateInfo, TranscriptionPipelineEvents } from '../types/pipeline';
 import type { TranscriptionResult, VADEvent } from '../types/audio';
 import { DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG } from '../types/pipeline';
@@ -593,7 +593,7 @@ export class TranscriptionPipeline {
   private setupProcessorEventHandlers(stage: ProcessorStage): void {
     if (!stage.processor) return;
 
-    stage.processor.on('data', (rawPayload: unknown) => {
+    stage.processor.on(ProcessorEvent.Data, (rawPayload) => {
       const payload = rawPayload as { type: string; data: unknown; timestamp: number };
 
       switch (stage.name) {
@@ -606,8 +606,8 @@ export class TranscriptionPipeline {
       }
     });
 
-    stage.processor.on('error', (error: { error: Error }) => {
-      this.emit('error', { error: error.error, stage: stage.name });
+    stage.processor.on(ProcessorEvent.Error, (errorPayload) => {
+      this.emit('error', { error: errorPayload.error, stage: stage.name });
     });
   }
 
@@ -647,7 +647,7 @@ export class TranscriptionPipeline {
       } | null;
       const supportsSegmentTranscription = sttProcessor?.getProviderType?.() === 'local' && typeof sttProcessor?.transcribeSegment === 'function';
 
-      if (supportsSegmentTranscription && data.audio && data.audio.length > 0) {
+      if (supportsSegmentTranscription && data.audio && data.audio.length > 0 && sttProcessor?.transcribeSegment) {
         sttProcessor
           .transcribeSegment(data.audio)
           .then((result) => {

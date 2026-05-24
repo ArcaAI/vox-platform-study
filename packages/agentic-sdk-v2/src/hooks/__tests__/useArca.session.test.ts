@@ -188,7 +188,7 @@ describe('HOOK-01: useArca.session interface shape', () => {
 
   it('should NOT expose old lifecycle methods (create, startRevisit, end, pause, resume)', () => {
     const { result } = renderHook(() => useArca());
-    const session = result.current.session as Record<string, unknown>;
+    const session = result.current.session as unknown as Record<string, unknown>;
     expect(session.create).toBeUndefined();
     expect(session.startRevisit).toBeUndefined();
     expect(session.end).toBeUndefined();

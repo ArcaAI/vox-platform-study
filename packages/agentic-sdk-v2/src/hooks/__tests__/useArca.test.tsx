@@ -300,7 +300,7 @@ describe('useArca', () => {
   describe('NER-L-02: auto-NER on transcription callback', () => {
     function setupAutoNERMocks(overrides?: {
       knowledgePipelineState?: { isReady: boolean };
-      knowledgePipeline?: unknown;
+      knowledgePipeline?: { process: ReturnType<typeof vi.fn>; state: { isReady: boolean } } | null;
       processResult?: unknown;
       processError?: Error;
     }) {

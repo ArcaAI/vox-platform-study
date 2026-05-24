@@ -140,7 +140,7 @@ describe('HOOK-03/SUM-06: DNA methods have no backend', () => {
 
   it('UseArcaSummary should NOT expose loadDNAStyle', () => {
     const { result } = renderHook(() => useArca());
-    const summary = result.current.summary as Record<string, unknown>;
+    const summary = result.current.summary as unknown as Record<string, unknown>;
     expect(summary.loadDNAStyle).toBeUndefined();
   });
 
@@ -617,7 +617,7 @@ describe('WS-5: summary versioning enhancements', () => {
         .mockResolvedValueOnce({ content: 'hello universe' });
       const { result } = renderHook(() => useArca());
 
-      let diff: { stats: { additions: number; deletions: number } };
+      let diff!: { stats: { additions: number; deletions: number } };
       await act(async () => {
         diff = await result.current.summary.compareSummaryVersions('ctx-1', 1, 2);
       });

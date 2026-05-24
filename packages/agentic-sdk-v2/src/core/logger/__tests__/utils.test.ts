@@ -95,7 +95,12 @@ describe('SDK Logger utils', () => {
 
         it('should handle error cause chain', () => {
             const cause = new Error('Root cause');
-            const error = new Error('Wrapper error', { cause });
+            // The ES2022 `cause` Error option is not in the package's `lib`,
+            // but `serializeError` reads `.cause` off the instance regardless.
+            const error = new (Error as new (msg: string, options?: { cause?: unknown }) => Error)(
+                'Wrapper error',
+                { cause },
+            );
 
             const serialized = serializeError(error);
 
@@ -337,7 +342,7 @@ describe('SDK Logger utils', () => {
         it('should merge simple objects', () => {
             const target = { a: 1 };
             const source = { b: 2 };
-            const result = deepMerge(target, source);
+            const result = deepMerge<Record<string, unknown>>(target, source);
 
             expect(result).toEqual({ a: 1, b: 2 });
         });
@@ -345,7 +350,7 @@ describe('SDK Logger utils', () => {
         it('should merge nested objects', () => {
             const target = { a: { b: 1 } };
             const source = { a: { c: 2 } };
-            const result = deepMerge(target, source);
+            const result = deepMerge<Record<string, unknown>>(target, source);
 
             expect(result).toEqual({ a: { b: 1, c: 2 } });
         });
@@ -362,7 +367,7 @@ describe('SDK Logger utils', () => {
             const target = { a: 1 };
             const source1 = { b: 2 };
             const source2 = { c: 3 };
-            const result = deepMerge(target, source1, source2);
+            const result = deepMerge<Record<string, unknown>>(target, source1, source2);
 
             expect(result).toEqual({ a: 1, b: 2, c: 3 });
         });

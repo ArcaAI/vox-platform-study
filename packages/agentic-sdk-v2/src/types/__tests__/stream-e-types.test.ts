@@ -19,7 +19,7 @@ import { describe, it, expect } from 'vitest';
 
 describe('SUM-01: async summary job types', () => {
   it('should define AsyncJobResponse interface', async () => {
-    const types = await import('../summary');
+    const types = await import('../summary.js');
     const sample: import('../summary').AsyncJobResponse = {
       jobId: 'job-1',
       status: 'pending',
