@@ -7,3 +7,4 @@ export * from './providers/aws-secrets-manager.provider';
 export * from './providers/azure-keyvault.provider';
 export * from './providers/vault-secrets.provider';
 export * from './SecretsService';
+export * from './secrets.module';
