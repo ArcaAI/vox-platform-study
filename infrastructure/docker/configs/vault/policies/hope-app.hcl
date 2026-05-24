@@ -24,6 +24,18 @@ path "database/creds/hope-app-role" {
   capabilities = ["read"]
 }
 
+# Lease renewal/revoke for the dynamic DB credentials issued above
+# (Phase 5 Task 5.7 — VaultLeaseRenewer). The path is global rather than
+# lease-scoped because Vault does not template lease_id segments; we
+# rely on the API server to reject renew calls for leases the caller
+# did not originally request (lease ownership is checked server-side).
+path "sys/leases/renew" {
+  capabilities = ["update"]
+}
+path "sys/leases/revoke" {
+  capabilities = ["update"]
+}
+
 # Health probe endpoint
 path "sys/health" {
   capabilities = ["read"]
