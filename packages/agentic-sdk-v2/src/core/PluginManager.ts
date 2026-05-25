@@ -17,6 +17,7 @@ import type {
   VADEvent,
   TranscriptionPipelineConfig,
   KnowledgePipelineConfig,
+  UserPreferences,
 } from '../types';
 import { DEFAULT_NOISE_FILTER_CONFIG, DEFAULT_VAD_CONFIG, DEFAULT_STT_CONFIG, DEFAULT_NER_CONFIG } from './constants';
 import type { ISDKLogger } from './logger';
@@ -134,6 +135,13 @@ export class PluginManager {
   // TASK-298 D-4 — per-capture runtime options (set via setRuntimeOptions).
   private runtimeOptions: PluginManagerRuntimeOptions = {};
 
+  // TASK-304 Wave 2 W2-SDK-1 → W2-SDK-7 — latest UserPreferences snapshot
+  // injected from `PersonalizationManager`. Read at `getTranscriptionPipelineConfig`
+  // time to override the static `AudioPluginConfig` (so local-workflow settings
+  // persist end-to-end) and, when the pipeline is already running, to propagate
+  // live deltas via `propagateUserPreferenceDelta`.
+  private userPreferences?: UserPreferences;
+
   constructor(config: AudioPluginConfig = {}, logger?: ISDKLogger, apiClient?: AgenticClient, debugMode?: boolean) {
     this.config = config;
     this.logger = logger;
@@ -177,6 +185,43 @@ export class PluginManager {
   /** Visible for diagnostics / testing. */
   getRuntimeOptions(): Readonly<PluginManagerRuntimeOptions> {
     return this.runtimeOptions;
+  }
+
+  /**
+   * TASK-304 Wave 2 — inject the latest `UserPreferences` snapshot.
+   *
+   * Called by `AgenticProvider` whenever `PersonalizationManager.onChange` fires,
+   * and once after `loadFromBackend()` resolves. The next call to
+   * `getTranscriptionPipelineConfig()` will fold the preferences into the
+   * resolved pipeline config, and (if an audio pipeline is already running)
+   * the relevant deltas are pushed to the live processors via
+   * `propagateUserPreferenceDelta`.
+   *
+   * Pass `undefined` to clear the override and revert to the static config.
+   */
+  setUserPreferences(prefs: UserPreferences | undefined): void {
+    const previous = this.userPreferences;
+    this.userPreferences = prefs ? { ...prefs } : undefined;
+    this.logger?.debug('PluginManager user preferences updated', {
+      operation: 'setUserPreferences',
+      component: 'PluginManager',
+      attributes: {
+        hasPreferences: !!prefs,
+        hasLocalConfig: !!prefs?.localConfig,
+        hasActiveVoiceProfile: !!prefs?.activeVoiceProfile,
+      },
+    });
+
+    // Push live deltas only if a pipeline is already running; otherwise the
+    // next `initialize()` call picks them up via `getTranscriptionPipelineConfig`.
+    if (this.transcriptionPipeline) {
+      void this.propagateUserPreferenceDelta(previous, this.userPreferences);
+    }
+  }
+
+  /** Visible for diagnostics / testing. */
+  getUserPreferences(): Readonly<UserPreferences> | undefined {
+    return this.userPreferences;
   }
 
   /**
@@ -473,6 +518,16 @@ export class PluginManager {
   /**
    * Build transcription pipeline config from audio plugin config.
    * Public to allow inspection (e.g., for testing or advanced configuration).
+   *
+   * TASK-304 Wave 2 — when `setUserPreferences()` has been called, the user's
+   * persisted `UserPreferences.localConfig` and `activeVoiceProfile` override
+   * the static `AudioPluginConfig`. Precedence (highest → lowest):
+   *
+   *   runtimeOptions > userPreferences > AudioPluginConfig > package defaults
+   *
+   * Runtime options stay highest because they reflect per-capture choices
+   * (`startAudio({pipelineId, language})`); user preferences sit one tier
+   * below because they reflect the doctor's persisted settings.
    */
   getTranscriptionPipelineConfig(): TranscriptionPipelineConfig {
     const noiseFilterConfig = this.getConfig<NoiseFilterPluginConfig>('noiseFilter');
@@ -485,17 +540,40 @@ export class PluginManager {
     const effectivePipelineId = this.runtimeOptions.pipelineId ?? sttConfig.pipelineId;
     const streamingTransport = this.buildStreamingTransport(sttConfig, effectivePipelineId);
 
+    // TASK-304 Wave 2 — pull user-persisted overrides.
+    const prefs = this.userPreferences;
+    const localConfig = prefs?.localConfig;
+    const activeVoiceProfile = prefs?.activeVoiceProfile;
+    const voiceProfilePrefs = localConfig?.voiceProfile;
+
+    // Compose the STT `voiceProfile` payload. Each field is independently
+    // optional so we can carry partial state — e.g. threshold tweak before
+    // the doctor has enrolled, or activated profile without custom threshold.
+    const hasVoiceProfileData =
+      !!activeVoiceProfile?.id ||
+      typeof voiceProfilePrefs?.similarityThreshold === 'number';
+    const voiceProfile = hasVoiceProfileData
+      ? {
+          ...(activeVoiceProfile?.id
+            ? { id: activeVoiceProfile.id, reservedSpeakerId: 'doctor' as const }
+            : {}),
+          ...(typeof voiceProfilePrefs?.similarityThreshold === 'number'
+            ? { similarityThreshold: voiceProfilePrefs.similarityThreshold }
+            : {}),
+        }
+      : undefined;
+
     return {
       debugMode: this._debugMode,
       noiseFilter: {
         enabled: noiseFilterConfig.enabled ?? false,
         location: noiseFilterConfig.enabled ? 'browser' : 'skip',
-        level: noiseFilterConfig.level ?? DEFAULT_NOISE_FILTER_CONFIG.level,
+        level: localConfig?.noiseCancellation?.level ?? noiseFilterConfig.level ?? DEFAULT_NOISE_FILTER_CONFIG.level,
       },
       vad: {
         enabled: vadConfig.enabled ?? false,
         location: 'browser',
-        sensitivity: vadConfig.sensitivity ?? DEFAULT_VAD_CONFIG.sensitivity,
+        sensitivity: localConfig?.vad?.sensitivity ?? vadConfig.sensitivity ?? DEFAULT_VAD_CONFIG.sensitivity,
         minSpeechDuration: vadConfig.minSpeechDuration ?? DEFAULT_VAD_CONFIG.minSpeechDuration,
         minSilenceDuration: vadConfig.minSilenceDuration ?? DEFAULT_VAD_CONFIG.minSilenceDuration,
       },
@@ -503,17 +581,117 @@ export class PluginManager {
         enabled: sttConfig.enabled ?? false,
         location: sttConfig.provider === 'local' ? 'browser' : sttConfig.provider === 'backend' ? 'backend' : 'auto',
         provider: sttConfig.provider ?? DEFAULT_STT_CONFIG.provider,
-        language: this.runtimeOptions.language ?? sttConfig.language ?? DEFAULT_STT_CONFIG.language,
-        modelId: sttConfig.modelId,
+        language: this.runtimeOptions.language ?? prefs?.language ?? sttConfig.language ?? DEFAULT_STT_CONFIG.language,
+        modelId: localConfig?.stt?.modelId ?? sttConfig.modelId,
         sttSocket: sttConfig.sttSocket,
         pipelineId: effectivePipelineId,
-        diarization: sttConfig.diarization ?? false,
+        diarization: localConfig?.diarization?.enabled ?? sttConfig.diarization ?? false,
         numSpeakers: sttConfig.numSpeakers ?? 2,
         returnTimestamps: sttConfig.returnTimestamps ?? 'word',
         codeSwitching: sttConfig.codeSwitching ?? false,
         ...(streamingTransport ? { streamingTransport } : {}),
+        ...(voiceProfile ? { voiceProfile } : {}),
       },
     };
+  }
+
+  /**
+   * TASK-304 Wave 2 W2-SDK-7 — propagate user-preference deltas to the live
+   * pipeline. Only fields whose runtime processor supports a live `updateOptions`
+   * / `setLanguage` / `setReservedSpeakerId` hop are dispatched; fields that
+   * require a full re-init (e.g. STT modelId, diarization toggle) are left to
+   * the next `initialize()` call so we do not surprise the caller mid-capture.
+   *
+   * The implementation is defensive — every processor lookup is guarded and
+   * every dispatch is wrapped, because the pipeline can be in any of its
+   * transient states (initializing, running, stopping) when a preference
+   * change lands.
+   */
+  private async propagateUserPreferenceDelta(
+    previous: UserPreferences | undefined,
+    next: UserPreferences | undefined,
+  ): Promise<void> {
+    const pipeline = this.transcriptionPipeline;
+    if (!pipeline) return;
+
+    const prevLocal = previous?.localConfig;
+    const nextLocal = next?.localConfig;
+
+    // Noise cancellation level → NoiseFilterProcessor.updateOptions
+    const nextLevel = nextLocal?.noiseCancellation?.level;
+    const prevLevel = prevLocal?.noiseCancellation?.level;
+    if (nextLevel && nextLevel !== prevLevel) {
+      const proc = pipeline.getProcessor('noiseFilter') as
+        | { updateOptions?: (opts: { noiseCancellationLevel: 'low' | 'medium' | 'high' }) => Promise<void> | void }
+        | null;
+      try {
+        await proc?.updateOptions?.({ noiseCancellationLevel: nextLevel });
+      } catch (error) {
+        this.logger?.warn('Failed to propagate noise level delta', {
+          operation: 'propagateUserPreferenceDelta',
+          component: 'PluginManager',
+          error: error as Error,
+        });
+      }
+    }
+
+    // VAD sensitivity → VADProcessor.updateThresholds
+    const nextSensitivity = nextLocal?.vad?.sensitivity;
+    const prevSensitivity = prevLocal?.vad?.sensitivity;
+    if (typeof nextSensitivity === 'number' && nextSensitivity !== prevSensitivity) {
+      const proc = pipeline.getProcessor('vad') as
+        | { updateThresholds?: (opts: { positiveSpeechThreshold: number; negativeSpeechThreshold: number }) => void | Promise<void> }
+        | null;
+      try {
+        // Mirror TranscriptionPipeline.getVADNegativeThreshold: 0.7× the positive threshold.
+        const negative = Math.max(0, nextSensitivity * 0.7);
+        await proc?.updateThresholds?.({ positiveSpeechThreshold: nextSensitivity, negativeSpeechThreshold: negative });
+      } catch (error) {
+        this.logger?.warn('Failed to propagate VAD sensitivity delta', {
+          operation: 'propagateUserPreferenceDelta',
+          component: 'PluginManager',
+          error: error as Error,
+        });
+      }
+    }
+
+    // Top-level language → STTProcessor.setLanguage
+    const nextLanguage = next?.language;
+    const prevLanguage = previous?.language;
+    if (nextLanguage && nextLanguage !== prevLanguage) {
+      const proc = pipeline.getProcessor('stt') as
+        | { setLanguage?: (lang: string) => Promise<void> | void }
+        | null;
+      try {
+        await proc?.setLanguage?.(nextLanguage);
+      } catch (error) {
+        this.logger?.warn('Failed to propagate language delta', {
+          operation: 'propagateUserPreferenceDelta',
+          component: 'PluginManager',
+          error: error as Error,
+        });
+      }
+    }
+
+    // Active voice profile → STT LocalSpeakerDiarizer.setReservedSpeakerId (best
+    // effort: the diarizer only honours this before the first segment, but the
+    // call is still safe to fire on every change).
+    const nextProfileId = next?.activeVoiceProfile?.id;
+    const prevProfileId = previous?.activeVoiceProfile?.id;
+    if (nextProfileId && nextProfileId !== prevProfileId) {
+      const proc = pipeline.getProcessor('stt') as
+        | { setReservedSpeakerId?: (id: string | undefined) => void }
+        | null;
+      try {
+        proc?.setReservedSpeakerId?.('doctor');
+      } catch (error) {
+        this.logger?.warn('Failed to propagate voice profile delta', {
+          operation: 'propagateUserPreferenceDelta',
+          component: 'PluginManager',
+          error: error as Error,
+        });
+      }
+    }
   }
 
   /**
