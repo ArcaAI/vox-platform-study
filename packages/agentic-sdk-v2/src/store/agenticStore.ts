@@ -484,18 +484,22 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
         /* SSR or restricted storage */
       }
 
-      // TASK-297 DEF-H1 + DEF-H6 — clear the IDB record holding user
-      // preferences. Fire-and-forget; failures are swallowed (storage may
-      // be unavailable in SSR / private mode).
+      // TASK-297 DEF-H1 + DEF-H6 — clear the IDB records holding user
+      // preferences and (TASK-304 Wave 2D) personalization. Fire-and-forget;
+      // failures are swallowed (storage may be unavailable in SSR / private
+      // mode). We open without specifying a version so we attach to whatever
+      // schema this browser already has — `configDB.ts` owns upgrades.
       try {
         if (typeof indexedDB !== 'undefined') {
           const open = indexedDB.open('arcaai-config');
           open.onsuccess = () => {
             const db = open.result;
             try {
-              if (db.objectStoreNames.contains('user-preferences')) {
-                const tx = db.transaction('user-preferences', 'readwrite');
-                tx.objectStore('user-preferences').clear();
+              for (const storeName of ['user-preferences', 'personalization']) {
+                if (db.objectStoreNames.contains(storeName)) {
+                  const tx = db.transaction(storeName, 'readwrite');
+                  tx.objectStore(storeName).clear();
+                }
               }
             } catch {
               /* schema mismatch — ignore */

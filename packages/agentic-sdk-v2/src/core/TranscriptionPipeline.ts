@@ -172,6 +172,12 @@ export class TranscriptionPipeline {
           throw new Error('stt.sttSocket or stt.streamingTransport is required when STT provider resolves to backend/remote');
         }
 
+        // TASK-304 Wave 2 — forward the voice-profile and Whisper task that
+        // `PluginManager.getTranscriptionPipelineConfig()` resolved from the
+        // user's preferences. These are local-only; the remote path ignores
+        // them (`STTProcessor.initializeRemoteProvider` does not read either).
+        const voiceProfile = this.config.stt.voiceProfile;
+        const sttTask = this.config.stt.task;
         const processor = createSTT({
           ...(runtimeProvider === 'remote' && sttSocket ? { sttSocket } : {}),
           audio: {
@@ -185,7 +191,19 @@ export class TranscriptionPipeline {
             returnTimestamps: this.config.stt.returnTimestamps ?? 'word',
             codeSwitching: this.config.stt.codeSwitching ?? false,
             vadGate: useVadGate,
+            ...(sttTask ? { task: sttTask } : {}),
           },
+          ...(voiceProfile && (voiceProfile.id || typeof voiceProfile.similarityThreshold === 'number')
+            ? {
+                voiceProfile: {
+                  ...(voiceProfile.id ? { id: voiceProfile.id } : {}),
+                  ...(voiceProfile.reservedSpeakerId ? { reservedSpeakerId: voiceProfile.reservedSpeakerId } : {}),
+                  ...(typeof voiceProfile.similarityThreshold === 'number'
+                    ? { similarityThreshold: voiceProfile.similarityThreshold }
+                    : {}),
+                },
+              }
+            : {}),
           debugMode: this.config.debugMode,
         });
 

@@ -14,6 +14,29 @@ import { createMockLogger, mockFetch, createMockResponse, createMockErrorRespons
 // Shared storage object that persists across mock reassignments
 const storageData: Record<string, string> = {};
 
+// TASK-304 Wave 2D — in-memory stand-in for the `arcaai-config` IDB
+// `personalization` store. Tests below seed/read it to verify the
+// cache-layer behaviour without spinning up a real IndexedDB.
+const idbStore = new Map<string, unknown>();
+
+vi.mock('../configDB', () => ({
+  ARCAAI_CONFIG_DB_NAME: 'arcaai-config',
+  ARCAAI_CONFIG_DB_VERSION: 2,
+  USER_PREFERENCES_STORE: 'user-preferences',
+  PERSONALIZATION_STORE: 'personalization',
+  openConfigDB: vi.fn(),
+  configDBGet: vi.fn(async (_store: string, key: string) => idbStore.get(key)),
+  configDBSet: vi.fn(async (_store: string, key: string, value: unknown) => {
+    idbStore.set(key, value);
+  }),
+  configDBDelete: vi.fn(async (_store: string, key: string) => {
+    idbStore.delete(key);
+  }),
+  configDBClear: vi.fn(async () => {
+    idbStore.clear();
+  }),
+}));
+
 describe('PersonalizationManager', () => {
     let mockApiClient: AgenticClient;
     let mockLogger: ReturnType<typeof createMockLogger>;
@@ -24,6 +47,7 @@ describe('PersonalizationManager', () => {
     beforeEach(() => {
         // Clear storage data
         Object.keys(storageData).forEach(key => delete storageData[key]);
+        idbStore.clear();
 
         mockLogger = createMockLogger();
         mockApiClient = new AgenticClient(
@@ -65,15 +89,17 @@ describe('PersonalizationManager', () => {
             expect(manager.getPreferences()).toEqual({ language: 'en' });
         });
 
-        it('should load from localStorage', () => {
-            // Set localStorage before creating the manager (note: key uses hyphen not underscore)
-            storageData['arcaai-preferences'] = JSON.stringify({ theme: 'dark' });
+        it('should hydrate cached preferences from the IDB personalization store', async () => {
+            // TASK-304 Wave 2D — cache lives in IDB, not localStorage.
+            idbStore.set('arcaai-personalization', { theme: 'dark' });
 
             const manager = new PersonalizationManager(
                 { storage: 'local', defaults: { language: 'en' } },
                 mockApiClient,
                 mockLogger
             );
+
+            await manager.hydrate();
 
             expect(manager.getPreferences()).toEqual({ language: 'en', theme: 'dark' });
         });
@@ -122,7 +148,7 @@ describe('PersonalizationManager', () => {
     });
 
     describe('updatePreferences', () => {
-        it('should update preferences locally', async () => {
+        it('should update preferences locally and write the IDB cache snapshot', async () => {
             const manager = new PersonalizationManager(
                 { storage: 'local', defaults: {} },
                 mockApiClient,
@@ -132,7 +158,7 @@ describe('PersonalizationManager', () => {
             await manager.updatePreferences({ language: 'th' });
 
             expect(manager.get('language')).toBe('th');
-            expect(storageData['arcaai-preferences']).toContain('th');
+            expect(idbStore.get('arcaai-personalization')).toEqual({ language: 'th' });
         });
 
         it('should sync to backend in backend mode', async () => {
@@ -586,7 +612,7 @@ describe('PersonalizationManager', () => {
             expect(prefs.localConfig?.stt?.modelId).toBe('whisper-large-v3');
         });
 
-        it('should persist workflow preferences to localStorage', async () => {
+        it('should persist workflow preferences to the IDB cache', async () => {
             const manager = new PersonalizationManager(
                 { storage: 'local', defaults: {} },
                 mockApiClient
@@ -600,13 +626,16 @@ describe('PersonalizationManager', () => {
                 },
             });
 
-            const stored = JSON.parse(storageData['arcaai-preferences']);
+            const stored = idbStore.get('arcaai-personalization') as {
+                workflowMode?: string;
+                localConfig?: { stt?: { modelId?: string } };
+            };
             expect(stored.workflowMode).toBe('local');
-            expect(stored.localConfig.stt.modelId).toBe('whisper-large-v3');
+            expect(stored.localConfig?.stt?.modelId).toBe('whisper-large-v3');
         });
 
-        it('should load workflow preferences from localStorage on init', () => {
-            storageData['arcaai-preferences'] = JSON.stringify({
+        it('should load workflow preferences from the IDB cache on hydrate', async () => {
+            idbStore.set('arcaai-personalization', {
                 workflowMode: 'remote',
                 language: 'th',
             });
@@ -615,6 +644,8 @@ describe('PersonalizationManager', () => {
                 { storage: 'local', defaults: {} },
                 mockApiClient
             );
+
+            await manager.hydrate();
 
             expect(manager.get('workflowMode')).toBe('remote');
             expect(manager.get('language')).toBe('th');
@@ -864,8 +895,9 @@ describe('PersonalizationManager', () => {
     });
 
     describe('edge cases', () => {
-        it('should handle corrupt localStorage JSON gracefully', () => {
-            storageData['arcaai-preferences'] = 'not-valid-json{{{';
+        it('should handle IDB hydrate failures gracefully and keep defaults', async () => {
+            const cfgDB = await import('../configDB');
+            vi.mocked(cfgDB.configDBGet).mockRejectedValueOnce(new Error('IDB closed'));
 
             const manager = new PersonalizationManager(
                 { storage: 'local', defaults: { language: 'en' } },
@@ -873,9 +905,11 @@ describe('PersonalizationManager', () => {
                 mockLogger
             );
 
+            await manager.hydrate();
+
             expect(manager.get('language')).toBe('en');
             expect(mockLogger.warn).toHaveBeenCalledWith(
-                'Failed to load preferences from local storage',
+                'Failed to hydrate preferences from cache',
                 expect.any(Object)
             );
         });
@@ -976,7 +1010,7 @@ describe('PersonalizationManager', () => {
             expect(storageData['arcaai-preferences']).toBeUndefined();
         });
 
-        it('should save to localStorage in hybrid mode after loadFromBackend', async () => {
+        it('should save to the IDB cache in hybrid mode after loadFromBackend', async () => {
             mockFetch.mockResolvedValueOnce(
                 createMockResponse({ language: 'ja', workflowMode: 'remote' })
             );
@@ -989,7 +1023,10 @@ describe('PersonalizationManager', () => {
 
             await manager.loadFromBackend();
 
-            const stored = JSON.parse(storageData['arcaai-preferences']);
+            const stored = idbStore.get('arcaai-personalization') as {
+                language?: string;
+                workflowMode?: string;
+            };
             expect(stored.language).toBe('ja');
             expect(stored.workflowMode).toBe('remote');
         });

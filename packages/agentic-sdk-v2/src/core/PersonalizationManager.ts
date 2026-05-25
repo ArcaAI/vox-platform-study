@@ -7,8 +7,17 @@
 import type { PersonalizationConfig, UserPreferences, UserPreferencesUpdate } from '../types';
 import { AgenticError } from '../types';
 import type { AgenticClient } from './AgenticClient';
-import { STORAGE_KEYS, PERSONALIZATION_ENDPOINTS, DEFAULT_SYNC_INTERVAL } from './constants';
+import { PERSONALIZATION_ENDPOINTS, DEFAULT_SYNC_INTERVAL } from './constants';
+import { configDBGet, configDBSet, PERSONALIZATION_STORE } from './configDB';
 import type { ISDKLogger } from './logger';
+
+/**
+ * TASK-304 Wave 2D — IDB cache key inside the shared `arcaai-config` DB.
+ * Single global key (matches the legacy `arcaai-preferences` localStorage
+ * key's scope); per-user namespacing is intentionally NOT introduced here
+ * because the source of truth for user-scoped data is the backend.
+ */
+const PERSONALIZATION_CACHE_KEY = 'arcaai-personalization';
 
 /**
  * Personalization change callback
@@ -80,17 +89,10 @@ export class PersonalizationManager {
     this.apiClient = apiClient;
     this.logger = logger;
 
-    // Initialize with defaults, then load from local storage
+    // TASK-304 Wave 2D — constructor stays synchronous; the IDB hydrate
+    // step is exposed as the async `hydrate()` method so AgenticProvider
+    // can await it before forwarding preferences to PluginManager.
     this.preferences = { ...config.defaults };
-    const localPrefs = this.loadLocal();
-    if (localPrefs) {
-      this.preferences = { ...this.preferences, ...localPrefs };
-      this.logger?.debug('Loaded preferences from local storage', {
-        operation: 'loadLocal',
-        component: 'PersonalizationManager',
-        attributes: { preferenceKeys: Object.keys(localPrefs) },
-      });
-    }
 
     this.logger?.debug('PersonalizationManager initialized', {
       operation: 'constructor',
@@ -101,6 +103,40 @@ export class PersonalizationManager {
         syncInterval: config.syncInterval,
       },
     });
+  }
+
+  /**
+   * Hydrate the in-memory preferences from the IDB cache.
+   *
+   * Safe to call multiple times. Failures are logged at `warn` level and
+   * leave the existing in-memory state intact, so the SDK can still
+   * proceed against backend defaults if storage is unavailable.
+   *
+   * TASK-304 Wave 2D — replaces the sync `localStorage` read used by
+   * earlier versions; legacy `arcaai-preferences` localStorage data is
+   * intentionally NOT migrated (user choice: `ignore-old-data`).
+   */
+  async hydrate(): Promise<void> {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const cached = await configDBGet<UserPreferences>(PERSONALIZATION_STORE, PERSONALIZATION_CACHE_KEY);
+      if (!cached) return;
+
+      this.preferences = { ...this.preferences, ...cached };
+      this.logger?.debug('Loaded preferences from IDB cache', {
+        operation: 'hydrate',
+        component: 'PersonalizationManager',
+        attributes: { preferenceKeys: Object.keys(cached) },
+      });
+      this.notifyListeners();
+    } catch (error) {
+      this.logger?.warn('Failed to hydrate preferences from cache', {
+        operation: 'hydrate',
+        component: 'PersonalizationManager',
+        error: error as Error,
+      });
+    }
   }
 
   /**
@@ -177,7 +213,7 @@ export class PersonalizationManager {
     }
 
     if (this.config.storage !== 'backend') {
-      this.saveLocal();
+      await this.saveLocal();
     }
 
     if (this.config.storage === 'backend' || this.config.storage === 'hybrid') {
@@ -218,7 +254,7 @@ export class PersonalizationManager {
     this.preferences = { ...(this.config.defaults || {}) };
 
     if (this.config.storage !== 'backend') {
-      this.saveLocal();
+      await this.saveLocal();
     }
 
     if (this.config.storage === 'backend' || this.config.storage === 'hybrid') {
@@ -240,38 +276,26 @@ export class PersonalizationManager {
   }
 
   /**
-   * Load preferences from local storage
+   * Persist preferences to the IDB cache (best-effort).
+   *
+   * Wraps the `configDBSet` call so callers can `await` without worrying
+   * about quota/SSR/private-mode failures: any error is logged at `warn`
+   * level and swallowed — the in-memory state and backend sync are the
+   * source of truth.
+   *
+   * TASK-304 Wave 2D — replaces `localStorage.setItem`.
    */
-  private loadLocal(): UserPreferences | null {
-    if (typeof window === 'undefined') return null;
-
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.PREFERENCES);
-      return stored ? JSON.parse(stored) : null;
-    } catch (error) {
-      this.logger?.warn('Failed to load preferences from local storage', {
-        operation: 'loadLocal',
-        component: 'PersonalizationManager',
-        error: error as Error,
-      });
-      return null;
-    }
-  }
-
-  /**
-   * Save preferences to local storage
-   */
-  private saveLocal(): void {
+  private async saveLocal(): Promise<void> {
     if (typeof window === 'undefined') return;
 
     try {
-      localStorage.setItem(STORAGE_KEYS.PREFERENCES, JSON.stringify(this.preferences));
-      this.logger?.trace('Saved preferences to local storage', {
+      await configDBSet(PERSONALIZATION_STORE, PERSONALIZATION_CACHE_KEY, this.preferences);
+      this.logger?.trace('Saved preferences to IDB cache', {
         operation: 'saveLocal',
         component: 'PersonalizationManager',
       });
     } catch (error) {
-      this.logger?.warn('Failed to save preferences to local storage', {
+      this.logger?.warn('Failed to save preferences to IDB cache', {
         operation: 'saveLocal',
         component: 'PersonalizationManager',
         error: error as Error,
@@ -365,7 +389,7 @@ export class PersonalizationManager {
         }
 
         if (this.config.storage === 'hybrid') {
-          this.saveLocal();
+          await this.saveLocal();
         }
 
         this.lastSyncAt = new Date();

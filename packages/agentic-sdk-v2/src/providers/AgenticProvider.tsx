@@ -31,20 +31,15 @@ import { createSDKLogger, type SDKLogger, type ISDKLogger } from '../core/logger
 import { useAgenticStore } from '../store';
 import { DEFAULT_AUDIO_CONFIG, DEFAULT_PERSONALIZATION_CONFIG } from '../types';
 import { AUTH_ENDPOINTS, DEPARTMENT_ENDPOINTS } from '../core/constants';
+// TASK-304 Wave 2D — single source of truth for the `arcaai-config` IDB
+// schema (now v2 with `user-preferences` and `personalization` stores).
+import { configDBGet, configDBSet, USER_PREFERENCES_STORE } from '../core/configDB';
 
 // =============================================================================
-// IndexedDB persistence helpers (TASK-244 / Task 1.5; namespaced in TASK-297 DEF-H1)
+// IndexedDB persistence helpers (TASK-244 / Task 1.5; namespaced in TASK-297 DEF-H1;
+// schema delegated to `core/configDB` in TASK-304 Wave 2D)
 // =============================================================================
 
-const IDB_DB_NAME = 'arcaai-config';
-/**
- * TASK-297 DEF-H1 — the original store name was 'preferences'. We rename
- * to `user-preferences` so the IDB store this provider writes to matches
- * the one `agenticStore.clearOnLogout` opens to wipe state. The legacy
- * store is left untouched on existing browsers; new mounts simply use
- * the new store.
- */
-const IDB_STORE_NAME = 'user-preferences';
 const LS_NAMESPACE_PREFIX = 'arcaai-user-preferences/';
 
 /**
@@ -64,40 +59,6 @@ function makeLsKey(namespace: string): string {
   return `${LS_NAMESPACE_PREFIX}${namespace}`;
 }
 
-function openConfigDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(IDB_DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(IDB_STORE_NAME)) {
-        db.createObjectStore(IDB_STORE_NAME);
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function idbGet<T>(key: string): Promise<T | undefined> {
-  const db = await openConfigDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(IDB_STORE_NAME, 'readonly');
-    const req = tx.objectStore(IDB_STORE_NAME).get(key);
-    req.onsuccess = () => resolve(req.result as T | undefined);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function idbSet(key: string, value: unknown): Promise<void> {
-  const db = await openConfigDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
-    tx.objectStore(IDB_STORE_NAME).put(value, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
 /**
  * Build a load function bound to a namespace ref. The ref is read every
  * time so a single ConfigManager instance can follow a user-id change.
@@ -106,7 +67,7 @@ function makeLoadUserPreferencesFromStorage(nsRef: { current: string }) {
   return async function loadUserPreferencesFromStorage(): Promise<DeepPartial<AppConfig> | null> {
     const ns = nsRef.current;
     try {
-      const prefs = await idbGet<DeepPartial<AppConfig>>(makeIdbKey(ns));
+      const prefs = await configDBGet<DeepPartial<AppConfig>>(USER_PREFERENCES_STORE, makeIdbKey(ns));
       if (prefs) return prefs;
     } catch {
       // IDB unavailable — fall through to localStorage.
@@ -125,7 +86,7 @@ function makePersistUserPreferencesToStorage(nsRef: { current: string }) {
   return async function persistUserPreferencesToStorage(prefs: DeepPartial<AppConfig>): Promise<void> {
     const ns = nsRef.current;
     try {
-      await idbSet(makeIdbKey(ns), prefs);
+      await configDBSet(USER_PREFERENCES_STORE, makeIdbKey(ns), prefs);
     } catch {
       try {
         localStorage.setItem(makeLsKey(ns), JSON.stringify(prefs));
@@ -225,6 +186,26 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     const personalizationConfig = cfg.personalization ?? DEFAULT_PERSONALIZATION_CONFIG;
     const personalizationManager = new PersonalizationManager(personalizationConfig, apiClient, logger.child('PersonalizationManager'));
 
+    // TASK-304 Wave 2D — hydrate the IDB cache asynchronously. We don't
+    // await here so the rest of init (which is mostly synchronous) is
+    // unblocked; the onChange listener wired below picks up the merged
+    // snapshot once hydration completes, and we explicitly push it into
+    // PluginManager as soon as it lands.
+    personalizationManager
+      .hydrate()
+      .then(() => {
+        const cached = personalizationManager.getPreferences();
+        store.setPreferences(cached);
+        pluginManager.setUserPreferences(cached);
+      })
+      .catch((error) => {
+        providerLogger.warn('Personalization IDB hydrate failed', {
+          operation: 'hydratePersonalization',
+          component: 'AgenticProvider',
+          error: error as Error,
+        });
+      });
+
     const modelRegistry = new ModelRegistry(cfg.models ?? {}, apiClient, logger.child('ModelRegistry'));
 
     store.initialize(cfg, apiClient, pluginManager, personalizationManager, modelRegistry, logger);
@@ -267,7 +248,12 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
       personalizationManager
         .loadFromBackend()
         .then(() => {
-          store.setPreferences(personalizationManager.getPreferences());
+          const loaded = personalizationManager.getPreferences();
+          store.setPreferences(loaded);
+          // TASK-304 Wave 2 W2-SDK-7 — refresh the PluginManager snapshot once
+          // the DB-side preferences land so any pipeline built after this
+          // moment uses the user's saved local-STT config.
+          pluginManager.setUserPreferences(loaded);
           loadOp.end(true);
         })
         .catch((error) => {
@@ -434,8 +420,15 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
       });
     });
 
+    // TASK-304 Wave 2 W2-SDK-7 — push user preferences (localConfig +
+    // activeVoiceProfile) into PluginManager so the next pipeline build picks
+    // them up and a running pipeline receives the delta live (language /
+    // noise level / VAD sensitivity / reserved speaker).
+    pluginManager.setUserPreferences(personalizationManager.getPreferences());
+
     const unsubscribe = personalizationManager.onChange((prefs) => {
       store.setPreferences(prefs);
+      pluginManager.setUserPreferences(prefs);
       providerLogger.debug('Preferences updated', {
         operation: 'preferencesChange',
         attributes: { preferenceKeys: Object.keys(prefs) },
