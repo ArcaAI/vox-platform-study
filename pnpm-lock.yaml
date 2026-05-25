@@ -623,6 +623,9 @@ importers:
       '@arcaai/vad':
         specifier: workspace:*
         version: link:../vad
+      '@ricky0123/vad-web':
+        specifier: ^0.0.30
+        version: 0.0.30
       deepmerge-ts:
         specifier: ^7.1.5
         version: 7.1.5
@@ -635,6 +638,9 @@ importers:
       highlight.run:
         specifier: ^9.0.0
         version: 9.27.1
+      onnxruntime-common:
+        specifier: 1.24.3
+        version: 1.24.3
       onnxruntime-web:
         specifier: 1.24.3
         version: 1.24.3
