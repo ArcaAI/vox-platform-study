@@ -104,6 +104,8 @@ export class LocalSTTProvider extends BaseSTTProvider {
       returnTimestamps: config.returnTimestamps,
       codeSwitching: config.codeSwitching,
       onProgress: config.onProgress,
+      // TASK-304 Wave 2 W2-STT-3: forward the default Whisper task into the engine.
+      ...(config.task ? { task: config.task } : {}),
     });
 
     // Initialize buffer manager
@@ -116,6 +118,8 @@ export class LocalSTTProvider extends BaseSTTProvider {
     this.diarizer = new LocalSpeakerDiarizer({
       enabled: config.diarization,
       maxSpeakers: config.numSpeakers,
+      // TASK-304 Wave 2 W2-STT-4: forward the user-tuned similarity threshold.
+      ...(typeof config.voiceProfile?.similarityThreshold === 'number' ? { similarityThreshold: config.voiceProfile.similarityThreshold } : {}),
       ...(config.voiceProfile?.reservedSpeakerId
         ? { reservedSpeakerId: config.voiceProfile.reservedSpeakerId }
         : {}),

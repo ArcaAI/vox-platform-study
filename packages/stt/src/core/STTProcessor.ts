@@ -362,31 +362,56 @@ export class STTProcessor extends BaseProcessor {
   /**
    * Update language dynamically.
    *
-   * TASK-304: previously this only logged a warning for the local provider.
+   * TASK-304 Wave 1: previously this only logged a warning for the local provider.
    * Whisper bakes the language into the inference pipeline, so a true language change
-   * requires re-initializing the provider with the new locale. We now do that here
-   * (the local cache key includes `language` so a hot pool entry will be reused if
-   * the user toggles back to a previous language within the same session).
-   * The remote provider is stateless w.r.t. language — it picks the locale up on
-   * the next session establishment.
+   * requires re-initializing the provider with the new locale. The local cache key
+   * includes `language` so a hot pool entry will be reused if the user toggles back
+   * to a previously-used language within the same session. The remote provider is
+   * stateless w.r.t. language — it picks the locale up on the next session
+   * establishment.
+   *
+   * TASK-304 Wave 2 W2-STT-2 + W2-STT-6: capture the previous language and provider
+   * BEFORE mutating state so we can (a) restore on reinit failure — otherwise the
+   * short-circuit guard at the top of this method blocks a retry with the same value
+   * — and (b) pool / destroy the old provider after a successful swap so it does not
+   * leak as an orphaned listener target.
    */
   async setLanguage(language: LanguageLocale): Promise<void> {
     if (!this.options.audio) {
       this.options.audio = { ...DEFAULT_AUDIO_CONFIG };
     }
     if (this.options.audio.language === language) return;
+
+    const previousLanguage = this.options.audio.language;
+    const previousProvider = this.provider;
+    const previousCacheKey = this.localProviderCacheKey;
     this.options.audio.language = language;
 
     if (this.provider && this.resolvedProviderType === 'local') {
-      // Reinitialize the local provider with the new language. We deliberately do
-      // NOT stop/start here: callers that are mid-session keep their AudioContext
-      // and pipeline wiring; only the provider engine is rebuilt. The static
-      // local-provider pool keyed on `(modelId, language, device, quantized, ...)`
-      // means switching back to a previously-used language is cheap.
       try {
         await this.initializeLocalProvider();
+        this.localProviderCacheKey = this.getLocalProviderCacheKey();
+        // W2-STT-6: now that the new provider is installed, retire the old one.
+        // Pool it under the previous cache key so a quick toggle back is cheap; if
+        // for any reason we cannot pool, fall back to a full destroy.
+        if (previousProvider && previousProvider !== this.provider && previousProvider instanceof LocalSTTProvider) {
+          if (previousCacheKey) {
+            STTProcessor.localProviderPool.set(previousCacheKey, previousProvider);
+            await STTProcessor.evictLocalProvidersExcept(this.localProviderCacheKey);
+          } else {
+            try {
+              await previousProvider.stop();
+            } finally {
+              await previousProvider.destroy();
+            }
+          }
+        }
       } catch (error) {
-        // Restore old language so the next setLanguage() retry doesn't short-circuit.
+        // W2-STT-2: restore both the language and the provider reference so the
+        // caller can retry with the same locale once the underlying issue clears.
+        this.options.audio.language = previousLanguage;
+        this.provider = previousProvider;
+        this.localProviderCacheKey = previousCacheKey;
         const message = error instanceof Error ? error.message : 'Unknown error';
         throw new STTError(
           STTErrorCode.INVALID_CONFIG,
@@ -505,6 +530,9 @@ export class STTProcessor extends BaseProcessor {
       vadGate: features.vadGate ?? false,
       diarization: features.diarization ?? false,
       numSpeakers: features.numSpeakers ?? 2,
+      // TASK-304 Wave 2 W2-STT-3: `task` must shape the pool key, otherwise a
+      // transcribe-warm provider gets reused for a translate request.
+      task: features.task ?? 'transcribe',
     });
   }
 
@@ -536,8 +564,14 @@ export class STTProcessor extends BaseProcessor {
       codeSwitching: features.codeSwitching ?? false,
       diarization: features.diarization ?? false,
       numSpeakers: features.numSpeakers ?? 2,
+      // TASK-304 Wave 2 W2-STT-3: forward the default Whisper task baked into the engine.
+      task: features.task ?? 'transcribe',
       prompt: this.options.prompt,
       onProgress: this.options.onModelProgress,
+      // TASK-304 Wave 2 W2-STT-4 + W2-SDK-1/2: forward the resolved voice profile so the
+      // LocalSpeakerDiarizer can both pin the doctor's reserved-speaker slot and honour
+      // the user-tuned similarity threshold.
+      ...(this.options.voiceProfile ? { voiceProfile: this.options.voiceProfile } : {}),
     };
 
     this.bindLocalProviderCallbacks(provider);
