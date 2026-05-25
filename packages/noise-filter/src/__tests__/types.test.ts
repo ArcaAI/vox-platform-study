@@ -59,6 +59,25 @@ describe('DEFAULT_NOISE_FILTER_OPTIONS', () => {
 
     expect(DEFAULT_NOISE_FILTER_OPTIONS.noiseCancellation).toBe(true);
   });
+
+  // TASK-304 (MED-9): defaults are now frozen so accidental mutation throws in strict mode
+  // and is silently ignored in sloppy mode. Either way, the canonical value never changes.
+  it('is frozen via Object.freeze() (TASK-304 MED-9)', () => {
+    expect(Object.isFrozen(DEFAULT_NOISE_FILTER_OPTIONS)).toBe(true);
+  });
+
+  it('does not allow mutation of properties on the frozen defaults', () => {
+    const original = DEFAULT_NOISE_FILTER_OPTIONS.noiseCancellationLevel;
+    // Assignment is a silent no-op in sloppy mode, throws in strict mode. Either way,
+    // the canonical value must remain unchanged.
+    try {
+      // @ts-expect-error - intentional violation to verify runtime freezing
+      DEFAULT_NOISE_FILTER_OPTIONS.noiseCancellationLevel = 'high';
+    } catch {
+      // strict mode TypeError is expected
+    }
+    expect(DEFAULT_NOISE_FILTER_OPTIONS.noiseCancellationLevel).toBe(original);
+  });
 });
 
 describe('NoiseFilterErrorCode', () => {

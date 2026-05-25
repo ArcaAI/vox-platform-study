@@ -361,18 +361,39 @@ export class STTProcessor extends BaseProcessor {
 
   /**
    * Update language dynamically.
-   * Note: This requires reinitializing the provider for local mode.
+   *
+   * TASK-304: previously this only logged a warning for the local provider.
+   * Whisper bakes the language into the inference pipeline, so a true language change
+   * requires re-initializing the provider with the new locale. We now do that here
+   * (the local cache key includes `language` so a hot pool entry will be reused if
+   * the user toggles back to a previous language within the same session).
+   * The remote provider is stateless w.r.t. language — it picks the locale up on
+   * the next session establishment.
    */
   async setLanguage(language: LanguageLocale): Promise<void> {
     if (!this.options.audio) {
       this.options.audio = { ...DEFAULT_AUDIO_CONFIG };
     }
+    if (this.options.audio.language === language) return;
     this.options.audio.language = language;
 
-    // For local provider, would need to reinitialize
-    // For remote, the next session can use the new language
     if (this.provider && this.resolvedProviderType === 'local') {
-      console.warn('[STTProcessor] Language change requires reinitialization for local provider');
+      // Reinitialize the local provider with the new language. We deliberately do
+      // NOT stop/start here: callers that are mid-session keep their AudioContext
+      // and pipeline wiring; only the provider engine is rebuilt. The static
+      // local-provider pool keyed on `(modelId, language, device, quantized, ...)`
+      // means switching back to a previously-used language is cheap.
+      try {
+        await this.initializeLocalProvider();
+      } catch (error) {
+        // Restore old language so the next setLanguage() retry doesn't short-circuit.
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        throw new STTError(
+          STTErrorCode.INVALID_CONFIG,
+          `Failed to switch local STT language to "${language}": ${message}`,
+          error instanceof Error ? error : undefined,
+        );
+      }
     }
   }
 

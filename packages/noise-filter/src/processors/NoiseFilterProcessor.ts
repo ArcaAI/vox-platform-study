@@ -306,8 +306,17 @@ export class NoiseFilterProcessor extends BaseProcessor {
 
   /**
    * Start periodic stats emission.
+   *
+   * TASK-304 (MED-10): idempotent — if a previous interval is still running we clear
+   * it before starting the new one. Without this guard, repeated
+   * `updateOptions({ enableStats: true })` calls would leak `setInterval` handles
+   * (the old timer keeps running, never garbage-collected).
    */
   private startStatsEmission(): void {
+    if (this.statsInterval) {
+      clearInterval(this.statsInterval);
+      this.statsInterval = null;
+    }
     this.statsInterval = setInterval(() => {
       if (this.workletNode) {
         this.workletNode.port.postMessage({ type: 'getStats' });
