@@ -376,6 +376,23 @@ export interface DiarizationLocalConfig {
 }
 
 /**
+ * Voice profile preferences for the local workflow.
+ *
+ * The activated voice profile itself lives in `UserVoiceProfile` on the backend (the canonical
+ * source of truth for `isActive`). This config captures behavioural preferences AROUND voice
+ * profiles -- things the doctor can toggle from the SDK without re-enrolling. The currently
+ * active profile is exposed as `UserPreferences.activeVoiceProfile` (read-only).
+ */
+export interface VoiceProfileLocalConfig {
+  /** When a new enrollment succeeds and no profile is currently active, auto-activate it. */
+  autoActivateLatest?: boolean;
+  /** Local diarizer cosine-similarity threshold for matching a known speaker (0-1, default 0.97). */
+  similarityThreshold?: number;
+  /** Whether to anchor the local diarizer to the user's active voice profile when one exists. */
+  useBackendAnchor?: boolean;
+}
+
+/**
  * Local workflow configuration.
  * Doctor selects individual models for each pipeline stage.
  */
@@ -394,6 +411,23 @@ export interface LocalWorkflowConfig {
   voiceEmbedding: VoiceEmbeddingLocalConfig;
   /** Audio silence detection model */
   audioSilence: AudioSilenceLocalConfig;
+  /** Voice profile preferences (active profile lives in UserVoiceProfile) */
+  voiceProfile: VoiceProfileLocalConfig;
+}
+
+/**
+ * Active voice profile summary, resolved from `UserVoiceProfile.isActive` on the backend.
+ * Read-only -- mutations go through the voice profile endpoints (enroll/activate/deactivate).
+ */
+export interface ActiveVoiceProfileSummary {
+  /** Voice profile ID (references UserVoiceProfile) */
+  id: string;
+  /** Optional doctor-supplied label */
+  label?: string;
+  /** STT embedding model that produced the profile */
+  modelId?: string;
+  /** Profile creation timestamp (ISO-8601) */
+  createdAt: string;
 }
 
 /**
@@ -430,6 +464,12 @@ export interface UserPreferences {
   localConfig?: Partial<LocalWorkflowConfig>;
   /** Read-only remote pipeline info (resolved from admin config, not settable by doctors) */
   remoteConfig?: RemoteConfigResponse;
+  /**
+   * Read-only summary of the currently active voice profile, resolved from
+   * `UserVoiceProfile.isActive` at read time. Mutations go through the voice profile
+   * endpoints (`enroll`, `activate`, `deactivate`) -- this field is informational only.
+   */
+  activeVoiceProfile?: ActiveVoiceProfileSummary;
   /** Custom preferences (extensible) */
   custom?: Record<string, unknown>;
 }
@@ -461,6 +501,11 @@ export const DEFAULT_LOCAL_CONFIG: LocalWorkflowConfig = {
   diarization: { enabled: false, autoEnroll: false },
   voiceEmbedding: { modelId: '' },
   audioSilence: { modelId: '' },
+  voiceProfile: {
+    autoActivateLatest: true,
+    similarityThreshold: 0.97,
+    useBackendAnchor: true,
+  },
 };
 
 /**
