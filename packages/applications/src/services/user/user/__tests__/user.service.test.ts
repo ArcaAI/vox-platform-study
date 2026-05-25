@@ -418,7 +418,7 @@ describe('UserService', () => {
             await service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 'tenant-1' });
 
             const expectedWhere = {
-                UserRoleAssignments: { some: { tenantId: 'tenant-1', resourceStatus: { not: 'DELETED' } } },
+                UserRoleAssignments: { some: { tenantId: 'tenant-1', resourceStatus: { not: ResourceStatusType.DELETED } } },
             };
             expect(mockUserRepository.findAll).toHaveBeenCalledWith(
                 expect.objectContaining({ where: expectedWhere })

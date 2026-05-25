@@ -33,12 +33,20 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
       throw new ArgumentInvalidException('userId and roleId are required');
     }
 
+    // Resolve the tenant scope of the (userId, roleId) assignment we may need
+    // to restore. Order matches the eventual create-path semantics: explicit
+    // request body wins, then the caller's CLS tenant context, then `null`
+    // which Prisma translates to `WHERE tenantId IS NULL` (a global/system
+    // assignment). Falling back to a hardcoded platform-tenant UUID would
+    // mismatch globally-scoped soft-deleted rows.
+    const lookupTenantId = request.tenantId ?? this.tenantId ?? null;
+
     try {
       const existing = await this.userRoleAssignmentRepository.findFirst({
         where: {
           userId: request.userId,
           roleId: request.roleId,
-          tenantId: request.tenantId ?? '50000000-0000-0000-0000-000000000000',
+          tenantId: lookupTenantId,
           resourceStatus: ResourceStatusType.DELETED,
         },
       });
