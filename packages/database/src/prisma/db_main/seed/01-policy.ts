@@ -208,6 +208,8 @@ export const DEFAULT_POLICIES = [
             { action: ['read', 'update'], subject: 'UserProfile', conditions: { userId: '${user.id}' } },
             // Own settings
             { action: 'manage', subject: 'UserSettings', conditions: { userId: '${user.id}' } },
+            // Own voice profile (biometric data — user-owned only, not exposed to tenant admins)
+            { action: 'manage', subject: 'UserVoiceProfile', conditions: { userId: '${user.id}' } },
             // Own media shares
             { action: ['read', 'list'], subject: 'UserMedia', conditions: { userId: '${user.id}' } },
             { action: 'create', subject: 'UserMedia' },
