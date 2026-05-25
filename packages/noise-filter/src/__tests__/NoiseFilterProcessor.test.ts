@@ -211,6 +211,45 @@ describe('NoiseFilterProcessor', () => {
       const newOptions = processor.getOptions();
       expect(newOptions).toEqual(originalOptions);
     });
+
+    // TASK-304 MED-10: repeated enableStats updates must not leak setInterval handles.
+    it('does not leak setInterval handles when enableStats is toggled on repeatedly', async () => {
+      const setSpy = vi.spyOn(globalThis, 'setInterval');
+      const clearSpy = vi.spyOn(globalThis, 'clearInterval');
+
+      try {
+        // First enable: 1 setInterval, 0 clearInterval
+        await processor.updateOptions({ enableStats: true });
+        const setCallsAfterFirst = setSpy.mock.calls.length;
+        expect(setCallsAfterFirst).toBeGreaterThanOrEqual(1);
+
+        // Re-enable while already enabled: should clear the previous timer
+        // before starting a new one (was: leaks the previous one)
+        await processor.updateOptions({ enableStats: true });
+
+        const setCallsAfterSecond = setSpy.mock.calls.length;
+        const clearCallsAfterSecond = clearSpy.mock.calls.length;
+
+        // Every additional startStatsEmission() must be preceded by a clearInterval.
+        expect(setCallsAfterSecond - setCallsAfterFirst).toBe(1);
+        expect(clearCallsAfterSecond).toBeGreaterThanOrEqual(1);
+      } finally {
+        setSpy.mockRestore();
+        clearSpy.mockRestore();
+      }
+    });
+
+    it('clears the prior timer when statsInterval is updated while enabled', async () => {
+      const clearSpy = vi.spyOn(globalThis, 'clearInterval');
+      try {
+        await processor.updateOptions({ enableStats: true });
+        const before = clearSpy.mock.calls.length;
+        await processor.updateOptions({ statsInterval: 250 });
+        expect(clearSpy.mock.calls.length).toBeGreaterThan(before);
+      } finally {
+        clearSpy.mockRestore();
+      }
+    });
   });
 
   describe('destroy', () => {

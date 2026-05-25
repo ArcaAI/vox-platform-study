@@ -46,6 +46,34 @@ class LocalConfigResponseDto {
     enabled: boolean;
     autoEnroll: boolean;
   };
+
+  @ApiPropertyOptional({
+    description:
+      'Voice profile preferences (active profile lives in UserVoiceProfile). User-controlled.',
+  })
+  voiceProfile?: {
+    autoActivateLatest?: boolean;
+    similarityThreshold?: number;
+    useBackendAnchor?: boolean;
+  };
+}
+
+/**
+ * Active voice profile summary, resolved from `UserVoiceProfile.isActive` at read time.
+ * Read-only -- mutations go through `VoiceProfileService.activate / deactivate / enroll`.
+ */
+class ActiveVoiceProfileDto {
+  @ApiProperty({ description: 'Voice profile ID (references UserVoiceProfile)' })
+  id!: string;
+
+  @ApiPropertyOptional({ description: 'Optional doctor-supplied label' })
+  label?: string;
+
+  @ApiPropertyOptional({ description: 'STT embedding model that produced the profile' })
+  modelId?: string;
+
+  @ApiProperty({ description: 'Profile creation timestamp (ISO-8601)' })
+  createdAt!: string;
 }
 
 /**
@@ -78,6 +106,13 @@ export class UserPreferencesResponse {
     type: RemoteConfigResponseDto,
   })
   remoteConfig?: RemoteConfigResponseDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Read-only summary of the currently active voice profile (resolved from UserVoiceProfile at read time)',
+    type: ActiveVoiceProfileDto,
+  })
+  activeVoiceProfile?: ActiveVoiceProfileDto;
 
   @ApiPropertyOptional({
     description: 'Custom preferences (extensible)',

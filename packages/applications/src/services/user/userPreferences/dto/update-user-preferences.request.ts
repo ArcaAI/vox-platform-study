@@ -63,6 +63,42 @@ export class DiarizationConfigDto {
   autoEnroll?: boolean;
 }
 
+/**
+ * Voice profile preferences for the local workflow.
+ *
+ * The activated voice profile itself lives in `UserVoiceProfile` (single source of truth
+ * for `isActive`). This DTO captures behavioural preferences AROUND voice profiles --
+ * things the doctor can toggle from the SDK without re-enrolling.
+ */
+export class VoiceProfileConfigDto {
+  @ApiPropertyOptional({
+    description:
+      'When a new enrollment succeeds and no profile is currently active, auto-activate it.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  autoActivateLatest?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Local diarizer cosine-similarity threshold for matching a known speaker (0-1)',
+    minimum: 0,
+    maximum: 1,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  similarityThreshold?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether to anchor the local diarizer to the user\'s active voice profile (when one exists).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  useBackendAnchor?: boolean;
+}
+
 export class LocalWorkflowConfigDto {
   @ApiPropertyOptional({ description: 'Noise cancellation configuration', type: NoiseCancellationConfigDto })
   @IsOptional()
@@ -93,6 +129,15 @@ export class LocalWorkflowConfigDto {
   @ValidateNested()
   @Type(() => DiarizationConfigDto)
   diarization?: DiarizationConfigDto;
+
+  @ApiPropertyOptional({
+    description: 'Voice profile preferences (active profile lives in UserVoiceProfile)',
+    type: VoiceProfileConfigDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => VoiceProfileConfigDto)
+  voiceProfile?: VoiceProfileConfigDto;
 }
 
 /**

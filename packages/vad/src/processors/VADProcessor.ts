@@ -370,6 +370,12 @@ export class VADProcessor extends BaseProcessor {
 
   /**
    * Handle speech end event.
+   *
+   * The underlying `@ricky0123/vad-web` library only exposes `preSpeechPadMs` and
+   * `redemptionMs`; it does not have a true `postSpeechPadMs`. TASK-304: when callers
+   * set `postSpeechPadMs > 0` we append that many milliseconds of zero-valued samples
+   * to the end of the buffer so the published option produces the documented effect
+   * (extra room for downstream chunking / boundary alignment).
    */
   private handleSpeechEnd(audio: Float32Array): void {
     const endTime = Date.now();
@@ -378,11 +384,13 @@ export class VADProcessor extends BaseProcessor {
     this.stats.speechSegmentsDetected++;
     this.stats.currentSpeechDuration = 0;
 
+    const paddedAudio = this.appendPostSpeechPad(audio);
+
     const streamStartSec = (this.speechStartTime - this.streamStartWallClock) / 1000;
     const streamEndSec = (endTime - this.streamStartWallClock) / 1000;
 
     const payload: VADSpeechEndPayload = {
-      audio,
+      audio: paddedAudio,
       segmentNumber: this.stats.speechSegmentsDetected,
       startTime: this.speechStartTime,
       endTime,
@@ -399,7 +407,23 @@ export class VADProcessor extends BaseProcessor {
     this.emitData('vad-speech-end', payload);
 
     // Call callback
-    this.callbacks.onSpeechEnd?.(audio);
+    this.callbacks.onSpeechEnd?.(paddedAudio);
+  }
+
+  /**
+   * TASK-304: forward the public `postSpeechPadMs` option by zero-padding the
+   * speech buffer. Returns the original buffer when the option is unset or 0
+   * to avoid an unnecessary allocation.
+   */
+  private appendPostSpeechPad(audio: Float32Array): Float32Array {
+    const padMs = this.options.postSpeechPadMs;
+    if (!padMs || padMs <= 0) return audio;
+    const padSamples = Math.floor((padMs / 1000) * this.options.sampleRate);
+    if (padSamples <= 0) return audio;
+    const padded = new Float32Array(audio.length + padSamples);
+    padded.set(audio, 0);
+    // Float32Array is zero-initialized by spec — no explicit fill needed for the tail.
+    return padded;
   }
 
   /**
@@ -601,6 +625,18 @@ export class VADProcessor extends BaseProcessor {
    * @param negativeSpeechThreshold - New negative threshold
    */
   async updateThresholds(positiveSpeechThreshold: number, negativeSpeechThreshold: number): Promise<void> {
+    // TASK-304: guard against nonsensical values reaching the VAD inference loop.
+    // The library treats thresholds in [0, 1] and assumes `positive >= negative`;
+    // violating either invariant silently degrades detection.
+    this.validateThreshold('positiveSpeechThreshold', positiveSpeechThreshold);
+    this.validateThreshold('negativeSpeechThreshold', negativeSpeechThreshold);
+    if (positiveSpeechThreshold < negativeSpeechThreshold) {
+      throw new VADError(
+        VADErrorCode.INVALID_CONFIG,
+        `positiveSpeechThreshold (${positiveSpeechThreshold}) must be >= negativeSpeechThreshold (${negativeSpeechThreshold})`,
+      );
+    }
+
     const changed =
       this.options.positiveSpeechThreshold !== positiveSpeechThreshold ||
       this.options.negativeSpeechThreshold !== negativeSpeechThreshold;
@@ -610,6 +646,15 @@ export class VADProcessor extends BaseProcessor {
 
     if (changed && this.micVAD) {
       await this.restart();
+    }
+  }
+
+  private validateThreshold(name: string, value: number): void {
+    if (!Number.isFinite(value) || value < 0 || value > 1) {
+      throw new VADError(
+        VADErrorCode.INVALID_CONFIG,
+        `${name} must be a finite number in [0, 1], got ${value}`,
+      );
     }
   }
 
