@@ -91,8 +91,12 @@ export interface NoiseFilterOptions {
 
 /**
  * Default options for NoiseFilterProcessor.
+ *
+ * TASK-304 (MED-9): frozen at module-load time so consumers cannot accidentally
+ * mutate the shared defaults and break every other NoiseFilterProcessor that
+ * relies on `Object.assign({}, DEFAULT_NOISE_FILTER_OPTIONS, options)` semantics.
  */
-export const DEFAULT_NOISE_FILTER_OPTIONS: Required<Omit<NoiseFilterOptions, 'wasmPath' | 'debugMode'>> = {
+export const DEFAULT_NOISE_FILTER_OPTIONS: Readonly<Required<Omit<NoiseFilterOptions, 'wasmPath' | 'debugMode'>>> = Object.freeze({
   noiseCancellation: true,
   noiseCancellationLevel: 'medium',
   echoCancellation: true,
@@ -101,7 +105,7 @@ export const DEFAULT_NOISE_FILTER_OPTIONS: Required<Omit<NoiseFilterOptions, 'wa
   sampleRate: 48000,
   enableStats: false,
   statsInterval: 1000,
-};
+});
 
 // ============================================================================
 // Noise Filter Statistics

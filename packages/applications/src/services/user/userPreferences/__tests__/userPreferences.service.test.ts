@@ -43,6 +43,14 @@ const mockAsrPipelineRepository = {
     findBySlug: vi.fn(),
 };
 
+const mockVoiceProfileRepository = {
+    findActiveByUserId: vi.fn(),
+    findAllByUserId: vi.fn(),
+    activateById: vi.fn(),
+    deactivateAllForUser: vi.fn(),
+    createWithEmbedding: vi.fn(),
+};
+
 const createMockEntity = (overrides: Partial<{
     id: string;
     userId: string;
@@ -110,6 +118,7 @@ describe('UserPreferencesService', () => {
         mockUserSettingsRepository.findByUserKeyNamespace.mockResolvedValue(null);
         mockAppSettingsService.getValueFromCache.mockReturnValue(null);
         mockAsrPipelineRepository.findById.mockResolvedValue(null);
+        mockVoiceProfileRepository.findActiveByUserId.mockResolvedValue(null);
 
         service = new UserPreferencesService(
             mockUserSettingsRepository as any,
@@ -117,6 +126,7 @@ describe('UserPreferencesService', () => {
             mockAppSettingsService as any,
             mockClsService as any,
             mockEventEmitter as any,
+            mockVoiceProfileRepository as any,
         );
     });
 
@@ -820,6 +830,169 @@ describe('UserPreferencesService', () => {
             const result = await service.getPreferences();
 
             expect(result.localConfig?.vad?.sensitivity).toBeNaN();
+        });
+    });
+
+    describe('active voice profile resolution', () => {
+        it('should resolve activeVoiceProfile from UserVoiceProfileRepository when one is active', async () => {
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
+            mockVoiceProfileRepository.findActiveByUserId.mockResolvedValue({
+                id: 'profile-abc',
+                userId: 'user-id-1',
+                isActive: true,
+                label: 'Dr. Smith',
+                modelId: 'ecapa-tdnn-v1',
+                createdAt: new Date('2026-04-01T10:00:00Z'),
+            });
+
+            const result = await service.getPreferences();
+
+            expect(mockVoiceProfileRepository.findActiveByUserId).toHaveBeenCalledWith('user-id-1');
+            expect(result.activeVoiceProfile).toEqual({
+                id: 'profile-abc',
+                label: 'Dr. Smith',
+                modelId: 'ecapa-tdnn-v1',
+                createdAt: '2026-04-01T10:00:00.000Z',
+            });
+        });
+
+        it('should return undefined activeVoiceProfile when user has none active', async () => {
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
+            mockVoiceProfileRepository.findActiveByUserId.mockResolvedValue(null);
+
+            const result = await service.getPreferences();
+
+            expect(result.activeVoiceProfile).toBeUndefined();
+        });
+
+        it('should map null label/modelId to undefined', async () => {
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
+            mockVoiceProfileRepository.findActiveByUserId.mockResolvedValue({
+                id: 'profile-min',
+                userId: 'user-id-1',
+                isActive: true,
+                label: null,
+                modelId: null,
+                createdAt: new Date('2026-04-02T00:00:00Z'),
+            });
+
+            const result = await service.getPreferences();
+
+            expect(result.activeVoiceProfile).toEqual({
+                id: 'profile-min',
+                label: undefined,
+                modelId: undefined,
+                createdAt: '2026-04-02T00:00:00.000Z',
+            });
+        });
+
+        it('should swallow repository errors and return undefined activeVoiceProfile', async () => {
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
+            mockVoiceProfileRepository.findActiveByUserId.mockRejectedValue(
+                new Error('DB unavailable'),
+            );
+
+            const result = await service.getPreferences();
+
+            expect(result.activeVoiceProfile).toBeUndefined();
+            // Other fields should still resolve normally
+            expect(result.updatedAt).toBeDefined();
+        });
+
+        it('should return undefined activeVoiceProfile when voice profile repository is not provided', async () => {
+            const serviceWithoutRepo = new UserPreferencesService(
+                mockUserSettingsRepository as any,
+                mockAsrPipelineRepository as any,
+                mockAppSettingsService as any,
+                mockClsService as any,
+                mockEventEmitter as any,
+            );
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
+
+            const result = await serviceWithoutRepo.getPreferences();
+
+            expect(result.activeVoiceProfile).toBeUndefined();
+        });
+    });
+
+    describe('voiceProfile sub-config in localConfig', () => {
+        it('should persist voiceProfile preferences inside localConfig JSON', async () => {
+            mockUserSettingsRepository.findByUserKeyNamespace.mockResolvedValue(null);
+            mockUserSettingsRepository.create.mockImplementation((entity: any) => entity);
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
+
+            const voiceProfile = {
+                autoActivateLatest: true,
+                similarityThreshold: 0.85,
+                useBackendAnchor: true,
+            };
+
+            await service.updatePreferences({ localConfig: { voiceProfile } } as any);
+
+            expect(mockUserSettingsRepository.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    key: 'localConfig',
+                    value: JSON.stringify({ voiceProfile }),
+                    dataType: ValueType.Json,
+                }),
+            );
+        });
+
+        it('should deep merge voiceProfile preferences with existing localConfig', async () => {
+            const existingConfig = {
+                stt: { modelId: 'whisper-medium' },
+                voiceProfile: { similarityThreshold: 0.97 },
+            };
+            mockUserSettingsRepository.findByUserKeyNamespace.mockImplementation(
+                (_userId: string, key: string) => {
+                    if (key === 'localConfig') {
+                        return Promise.resolve(
+                            createMockEntity({
+                                id: 'existing-cfg',
+                                key: 'localConfig',
+                                value: JSON.stringify(existingConfig),
+                                dataType: ValueType.Json,
+                            }),
+                        );
+                    }
+                    return Promise.resolve(null);
+                },
+            );
+            mockUserSettingsRepository.update.mockImplementation((_id: string, entity: any) => entity);
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
+
+            await service.updatePreferences({
+                localConfig: { voiceProfile: { autoActivateLatest: true } } as any,
+            });
+
+            const stored = JSON.parse(
+                (mockUserSettingsRepository.update.mock.calls[0][1] as any).value,
+            );
+            expect(stored).toEqual({
+                stt: { modelId: 'whisper-medium' },
+                voiceProfile: { similarityThreshold: 0.97, autoActivateLatest: true },
+            });
+        });
+
+        it('should round-trip voiceProfile preferences through getPreferences', async () => {
+            const localConfig = {
+                voiceProfile: {
+                    autoActivateLatest: false,
+                    similarityThreshold: 0.92,
+                    useBackendAnchor: false,
+                },
+            };
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([
+                createMockEntity({
+                    key: 'localConfig',
+                    value: JSON.stringify(localConfig),
+                    dataType: ValueType.Json,
+                }),
+            ]);
+
+            const result = await service.getPreferences();
+
+            expect(result.localConfig).toEqual(localConfig);
         });
     });
 

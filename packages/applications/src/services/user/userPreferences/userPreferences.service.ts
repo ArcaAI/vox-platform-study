@@ -1,7 +1,15 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { UserSettingsRepository, UserSettingsFactory, AsrPipelineRepository, ValueType, ResourceType, SysEventType } from '@arcaai/domains';
+import {
+  UserSettingsRepository,
+  UserSettingsFactory,
+  AsrPipelineRepository,
+  UserVoiceProfileRepository,
+  ValueType,
+  ResourceType,
+  SysEventType,
+} from '@arcaai/domains';
 import { IUserPreferencesService } from './IUserPreferencesService';
 import { UserPreferencesResponse, UpdateUserPreferencesRequest } from './dto';
 import { IActiveUserContext } from '../../../interfaces';
@@ -62,6 +70,11 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
     @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     protected override readonly eventEmitter: EventEmitter2,
+    /**
+     * Optional because some test contexts construct this service without the voice-profile
+     * dependency. In production wiring it is always provided by `UserPreferencesServiceModule`.
+     */
+    @Optional() private readonly voiceProfileRepository?: UserVoiceProfileRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.UserSettings);
   }
@@ -144,6 +157,9 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
 
     // Resolve read-only remoteConfig from admin settings
     response.remoteConfig = await this.resolveRemoteConfig(userId);
+
+    // Resolve read-only activeVoiceProfile from UserVoiceProfile
+    response.activeVoiceProfile = await this.resolveActiveVoiceProfile(userId);
 
     return response;
   }
@@ -260,6 +276,34 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
     } catch {
       this.logger.warn(`Failed to resolve pipeline name for ID: ${pipelineId}`);
       return null;
+    }
+  }
+
+  /**
+   * Resolve the user's currently active voice profile from `UserVoiceProfile.isActive`.
+   *
+   * Treating voice samples as user settings: the profile itself stays in the dedicated
+   * domain table (single source of truth for `isActive`), but its summary surfaces here
+   * so that the SDK can read both workflow settings and the active voice sample in a
+   * single round-trip and cache them together in IndexedDB.
+   */
+  private async resolveActiveVoiceProfile(
+    userId: string,
+  ): Promise<UserPreferencesResponse['activeVoiceProfile']> {
+    if (!this.voiceProfileRepository) return undefined;
+
+    try {
+      const profile = await this.voiceProfileRepository.findActiveByUserId(userId);
+      if (!profile) return undefined;
+      return {
+        id: profile.id,
+        label: profile.label ?? undefined,
+        modelId: profile.modelId ?? undefined,
+        createdAt: (profile.createdAt ?? new Date()).toISOString(),
+      };
+    } catch (error) {
+      this.logger.warn(`Failed to resolve active voice profile for user ${userId}: ${(error as Error).message}`);
+      return undefined;
     }
   }
 

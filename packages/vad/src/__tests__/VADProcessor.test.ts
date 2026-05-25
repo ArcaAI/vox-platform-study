@@ -273,6 +273,102 @@ describe('VADProcessor', () => {
       expect(options.positiveSpeechThreshold).toBe(0.7);
       expect(options.negativeSpeechThreshold).toBe(0.4);
     });
+
+    // TASK-304: validation guards for threshold ranges
+    it('rejects positiveSpeechThreshold below 0', async () => {
+      const processor = new VADProcessor();
+      await expect(processor.updateThresholds(-0.1, 0.3)).rejects.toThrow(VADError);
+    });
+
+    it('rejects positiveSpeechThreshold above 1', async () => {
+      const processor = new VADProcessor();
+      await expect(processor.updateThresholds(1.5, 0.3)).rejects.toThrow(VADError);
+    });
+
+    it('rejects negativeSpeechThreshold below 0', async () => {
+      const processor = new VADProcessor();
+      await expect(processor.updateThresholds(0.5, -0.1)).rejects.toThrow(VADError);
+    });
+
+    it('rejects NaN thresholds', async () => {
+      const processor = new VADProcessor();
+      await expect(processor.updateThresholds(NaN, 0.3)).rejects.toThrow(VADError);
+      await expect(processor.updateThresholds(0.5, NaN)).rejects.toThrow(VADError);
+    });
+
+    it('rejects positive < negative (invariant violation)', async () => {
+      const processor = new VADProcessor();
+      await expect(processor.updateThresholds(0.3, 0.7)).rejects.toThrow(/must be >= negativeSpeechThreshold/);
+    });
+
+    it('accepts equal positive and negative (boundary allowed)', async () => {
+      const processor = new VADProcessor();
+      await expect(processor.updateThresholds(0.5, 0.5)).resolves.toBeUndefined();
+    });
+
+    it('leaves options unchanged when validation fails', async () => {
+      const processor = new VADProcessor({
+        positiveSpeechThreshold: 0.6,
+        negativeSpeechThreshold: 0.4,
+      });
+
+      await expect(processor.updateThresholds(2, 0.3)).rejects.toThrow(VADError);
+
+      const opts = processor.getOptions();
+      expect(opts.positiveSpeechThreshold).toBe(0.6);
+      expect(opts.negativeSpeechThreshold).toBe(0.4);
+    });
+  });
+
+  // TASK-304: postSpeechPadMs forwarded via zero-pad in handleSpeechEnd
+  describe('postSpeechPadMs (TASK-304)', () => {
+    function withSpeechEndStub(padMs: number, sampleRate: number) {
+      const processor = new VADProcessor({
+        postSpeechPadMs: padMs,
+        sampleRate,
+      });
+      const captured: Float32Array[] = [];
+      (processor as unknown as { callbacks: { onSpeechEnd?: (a: Float32Array) => void } }).callbacks.onSpeechEnd = (a: Float32Array) => {
+        captured.push(a);
+      };
+      return { processor, captured };
+    }
+
+    it('appends padMs * sampleRate zeros to the buffer when padMs > 0', () => {
+      const { processor, captured } = withSpeechEndStub(100, 16000); // 100ms @ 16kHz = 1600 samples
+      const input = new Float32Array([0.1, 0.2, 0.3]);
+
+      (processor as unknown as { handleSpeechEnd: (a: Float32Array) => void }).handleSpeechEnd(input);
+
+      expect(captured.length).toBe(1);
+      const padded = captured[0]!;
+      expect(padded.length).toBe(3 + 1600);
+      // Original samples preserved at the start
+      expect(padded[0]).toBeCloseTo(0.1, 5);
+      expect(padded[1]).toBeCloseTo(0.2, 5);
+      expect(padded[2]).toBeCloseTo(0.3, 5);
+      // Tail is zero-filled
+      expect(padded[3]).toBe(0);
+      expect(padded[1602]).toBe(0);
+    });
+
+    it('returns the original buffer when padMs is 0 (no allocation)', () => {
+      const { processor, captured } = withSpeechEndStub(0, 16000);
+      const input = new Float32Array([0.1, 0.2, 0.3]);
+
+      (processor as unknown as { handleSpeechEnd: (a: Float32Array) => void }).handleSpeechEnd(input);
+
+      expect(captured[0]).toBe(input); // exact reference equality — no copy
+    });
+
+    it('returns the original buffer when padMs is negative', () => {
+      const { processor, captured } = withSpeechEndStub(-50, 16000);
+      const input = new Float32Array([0.1, 0.2]);
+
+      (processor as unknown as { handleSpeechEnd: (a: Float32Array) => void }).handleSpeechEnd(input);
+
+      expect(captured[0]).toBe(input);
+    });
   });
 
   describe('updateOptions', () => {
