@@ -206,7 +206,7 @@ describe('MyTenantController', () => {
 
             controller = new MyTenantController(tenantService as any, clsService as any);
             const configs = [{ id: 'cfg-1', value: 'th' }];
-            const result = await controller.updateMyConfig(configs as any);
+            const result = await controller.updateMyConfig(configs as any, undefined);
 
             expect(clsService.get).toHaveBeenCalledWith('tenantId');
             expect(tenantService.updateTenantConfigs).toHaveBeenCalledWith('tenant-uuid-789', configs);
@@ -219,7 +219,7 @@ describe('MyTenantController', () => {
 
             controller = new MyTenantController(tenantService as any, clsService as any);
 
-            await expect(controller.updateMyConfig([] as any)).rejects.toThrow(BadRequestException);
+            await expect(controller.updateMyConfig([] as any, undefined)).rejects.toThrow(BadRequestException);
             expect(tenantService.updateTenantConfigs).not.toHaveBeenCalled();
         });
 
@@ -230,7 +230,7 @@ describe('MyTenantController', () => {
             controller = new MyTenantController(tenantService as any, clsService as any);
             const configs = [{ id: 'cfg-1', value: 'th' }];
 
-            await expect(controller.updateMyConfig(configs as any)).rejects.toThrow(BadRequestException);
+            await expect(controller.updateMyConfig(configs as any, undefined)).rejects.toThrow(BadRequestException);
             expect(tenantService.fetchByCodeName).not.toHaveBeenCalled();
             expect(tenantService.updateTenantConfigs).not.toHaveBeenCalled();
         });
