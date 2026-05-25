@@ -454,6 +454,22 @@ export class NoiseFilterProcessor extends BaseProcessor {
    * @param options - New options to merge
    */
   async updateOptions(options: Partial<NoiseFilterOptions>): Promise<void> {
+    // TASK-304 Wave 2 W2-NF-1: previously the `noiseCancellation` toggle was silently
+    // dropped — the field was stored in `this.options` but never reached the worklet
+    // / fallback processor, so audio kept being filtered (or kept passing through).
+    // Dispatch the setEnabled message exactly the same way `onEnable` / `onDisable`
+    // would, but without touching the BaseProcessor `_enabled` flag (that controls
+    // the entire processor stage; this controls the noise-cancellation feature only).
+    if (options.noiseCancellation !== undefined) {
+      this.options.noiseCancellation = options.noiseCancellation;
+      if (this.workletNode) {
+        this.workletNode.port.postMessage({ type: 'setEnabled', enabled: options.noiseCancellation });
+      }
+      if (this.rnnoiseProcessor) {
+        this.rnnoiseProcessor.setEnabled(options.noiseCancellation);
+      }
+    }
+
     if (options.noiseCancellationLevel !== undefined) {
       await this.setNoiseLevel(options.noiseCancellationLevel);
     }

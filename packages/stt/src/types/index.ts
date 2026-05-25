@@ -265,6 +265,27 @@ export interface STTOptions {
   prompt?: string;
 
   /**
+   * TASK-304 Wave 2 — optional voice-profile context for the local diarizer.
+   *
+   * `id` is the server-side `UserVoiceProfile.id` (carried for telemetry /
+   * logging). `reservedSpeakerId` pins the first allocated speaker slot in
+   * `LocalSpeakerDiarizer` to a stable doctor label. `similarityThreshold`
+   * tunes the MFCC centroid matching threshold (range `[0, 1]`, lower =
+   * more permissive).
+   *
+   * Set by the SDK from `UserPreferences.activeVoiceProfile` +
+   * `UserPreferences.localConfig.voiceProfile`. All fields are optional so the
+   * SDK can express partial state (e.g. threshold tweak before enrollment).
+   *
+   * @see TASK-296 C-2, TASK-304 Wave 2 W2-STT-4 / W2-SDK-1 / W2-SDK-2
+   */
+  voiceProfile?: {
+    id?: string;
+    reservedSpeakerId?: string;
+    similarityThreshold?: number;
+  };
+
+  /**
    * Enable debug mode for verbose console logging of configuration and transcripts.
    * @default false
    */
@@ -818,20 +839,46 @@ export interface LocalProviderConfig extends ProviderConfig {
   onProgress?: (progress: ModelLoadProgress) => void;
 
   /**
-   * TASK-296 C-2: optional reserved-speaker slot for the enrolled doctor.
+   * TASK-304 Wave 2 W2-STT-3 — default Whisper task baked into the engine
+   * for this provider instance. Forwarded into `EngineConfig.task` at
+   * `LocalSTTProvider.init()` time. Per-call `TranscribeOptions.task`
+   * still wins; this field exists so the provider pool key can distinguish
+   * a transcribe-warm provider from a translate-warm provider.
    *
-   * When set, `LocalSpeakerDiarizer` pins the FIRST allocated speaker slot
-   * to `reservedSpeakerId` instead of the default `speaker-1`. This is a
-   * short-term workaround for the 40-d MFCC (local) vs 256-d backend
-   * embedding model mismatch — long-term unification onto a single ONNX
-   * speaker-embedding model is tracked in the TASK-293 master roadmap
-   * (W5D / P2-7).
+   * @see TASK-300 L-2 for the engine-level field
+   * @default 'transcribe'
+   */
+  task?: WhisperTask;
+
+  /**
+   * TASK-296 C-2 + TASK-304 Wave 2 W2-STT-4: optional reserved-speaker slot
+   * for the enrolled doctor.
+   *
+   * When `reservedSpeakerId` is set, `LocalSpeakerDiarizer` pins the FIRST
+   * allocated speaker slot to that id instead of the default `speaker-1`.
+   * `similarityThreshold` (Wave 2) lets the user tune the cosine-similarity
+   * threshold used by the MFCC centroid matcher; lower means more permissive
+   * matching to the doctor's profile (default `0.97`).
+   *
+   * The 40-d MFCC (local) vs 256-d backend embedding mismatch means the
+   * acoustic anchor itself cannot yet be shared — long-term unification
+   * onto a single ONNX speaker-embedding model is tracked in the TASK-293
+   * master roadmap (W5D / P2-7).
    */
   voiceProfile?: {
-    /** Server-side voice profile id (UUID). */
-    id: string;
-    /** Display name / stable id to pin to the first speaker slot. */
-    reservedSpeakerId: string;
+    /** Server-side voice profile id (UUID). Optional so the SDK can carry a
+     * threshold-only preference even before the doctor enrolls. */
+    id?: string;
+    /** Display name / stable id to pin to the first speaker slot. Optional;
+     * when absent the diarizer keeps its default `speaker-1` slot label. */
+    reservedSpeakerId?: string;
+    /**
+     * Cosine-similarity threshold used by the local MFCC diarizer when
+     * matching an incoming utterance to an existing speaker centroid.
+     * Range `[0, 1]`. Lower values are more permissive.
+     * @default 0.97 (see `LocalSpeakerDiarizer.DEFAULT_SIMILARITY_THRESHOLD`)
+     */
+    similarityThreshold?: number;
   };
 }
 

@@ -124,6 +124,28 @@ export interface TranscriptionPipelineConfig {
      * `TranscriptionPipeline` narrows it to `STTStreamingTransport` at use.
      */
     streamingTransport?: unknown;
+    /**
+     * TASK-304 Wave 2 W2-SDK-1 / W2-SDK-2 — voice-profile context resolved from
+     * `UserPreferences.activeVoiceProfile` + `UserPreferences.localConfig.voiceProfile`.
+     *
+     * `id` is the server-side `UserVoiceProfile.id`; `reservedSpeakerId` is the
+     * stable label pinned to the diarizer's first slot. `similarityThreshold`
+     * tunes the MFCC centroid matcher (range `[0, 1]`, lower = more permissive).
+     *
+     * The fields are individually optional so the SDK can express partial state
+     * (e.g. doctor tuned the threshold but has not enrolled yet).
+     */
+    voiceProfile?: {
+      id?: string;
+      reservedSpeakerId?: string;
+      similarityThreshold?: number;
+    };
+    /**
+     * TASK-304 Wave 2 W2-SDK-6 — Whisper task selector for the local engine
+     * (`'transcribe' | 'translate'`). The local STT processor includes this
+     * in its provider cache key.
+     */
+    task?: 'transcribe' | 'translate';
   };
 }
 

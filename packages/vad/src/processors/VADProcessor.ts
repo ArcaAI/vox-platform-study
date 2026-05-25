@@ -507,8 +507,18 @@ export class VADProcessor extends BaseProcessor {
 
   /**
    * Start periodic stats emission.
+   *
+   * TASK-304 Wave 2 W2-VAD-1: idempotent — if a previous interval is still running,
+   * clear it before starting a new one. Without this guard, repeated
+   * `updateOptions({ enableStats: true })` calls leak `setInterval` handles (the
+   * old timer keeps running, never garbage-collected). Analog of the NoiseFilter
+   * MED-10 fix landed in TASK-304 Wave 1.
    */
   private startStatsEmission(): void {
+    if (this.statsInterval) {
+      clearInterval(this.statsInterval);
+      this.statsInterval = null;
+    }
     this.statsInterval = setInterval(() => {
       this.stats.timestamp = Date.now();
       this.emitData('vad-stats', this.stats);
