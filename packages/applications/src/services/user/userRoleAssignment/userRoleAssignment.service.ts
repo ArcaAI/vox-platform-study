@@ -3,13 +3,14 @@ import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ResourceType,
+  ResourceStatusType,
   SysEventType,
   EntityId,
   UserRoleAssignmentEntity,
   UserRoleAssignmentFactory,
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
-import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
+import { InternalServerErrorException, ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
 import { IUserRoleAssignmentService } from './IUserRoleAssignmentService';
 import { CreateUserRoleAssignmentRequest, UpdateUserRoleAssignmentRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../../common';
@@ -31,6 +32,27 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
     if (!request.userId || !request.roleId) {
       throw new ArgumentInvalidException('userId and roleId are required');
     }
+
+    try {
+      const existing = await this.userRoleAssignmentRepository.findFirst({
+        where: {
+          userId: request.userId,
+          roleId: request.roleId,
+          tenantId: request.tenantId ?? '50000000-0000-0000-0000-000000000000',
+          resourceStatus: ResourceStatusType.DELETED,
+        },
+      });
+      const restored = await this.userRoleAssignmentRepository.restore(existing.id, this.requestUser?.id);
+      this.broadcastSysEvent(SysEventType.ResourceCreated, {
+        resourceId: restored.id,
+        createdAt: restored.createdAt,
+        data: restored.toObject() as object,
+      });
+      return restored;
+    } catch (e) {
+      if (!(e instanceof DataNotFoundException)) throw e;
+    }
+
     const newUserRoleAssignment = UserRoleAssignmentFactory.CreateUserRoleAssignment({
       ...request,
       userId: request.userId,
