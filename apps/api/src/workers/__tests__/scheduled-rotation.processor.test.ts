@@ -8,7 +8,7 @@ describe('ScheduledRotationProcessor.processOnce (Phase 6 Task 6.6)', () => {
       publish: vi.fn(async () => 1),
     };
     const vaultPut = vi.fn(async (key: string, _value: string) => ({ keyVersion: 7 }));
-    const auditAppend = vi.fn(async () => {});
+    const auditAppend = vi.fn(async (_entry: Record<string, unknown>) => {});
     const newSecret = vi.fn(() => 'redacted-new-value');
     const now = new Date('2026-05-25T00:00:00Z').getTime();
 

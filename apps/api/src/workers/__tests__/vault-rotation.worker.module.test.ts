@@ -19,7 +19,12 @@ function makePub() {
 }
 
 function makeLeader({ acquire = true }: { acquire?: boolean } = {}) {
-  const set = vi.fn(async () => (acquire ? 'OK' : null));
+  // Typed signature matches the redis SET ... NX EX <seconds> usage in the
+  // worker; without it `mock.calls[i]` is inferred as an empty tuple and the
+  // tests can't index args[0..4].
+  const set = vi.fn(async (_key: string, _value: string, _ex: 'EX', _ttl: number, _nx: 'NX') =>
+    acquire ? 'OK' : null,
+  );
   const get = vi.fn(async () => 'self-pod');
   const expire = vi.fn(async () => 1);
   const evalFn = vi.fn(async () => 1);
