@@ -33,6 +33,7 @@ const mockUserRoleAssignmentRepository = {
     findAll: vi.fn(),
     count: vi.fn(),
     create: vi.fn(),
+    restore: vi.fn(),
     update: vi.fn(),
     softDelete: vi.fn()
 };
@@ -205,6 +206,140 @@ describe('UserRoleAssignmentService', () => {
             });
 
             expect(mockUserRoleAssignmentRepository.create).toHaveBeenCalled();
+        });
+
+        it('should restore a soft-deleted assignment instead of creating a duplicate when (userId, roleId, tenantId) matches', async () => {
+            // A previously soft-deleted assignment exists for this (user, role, tenant).
+            const deletedAssignment = createMockUserRoleAssignmentEntity({
+                id: 'previously-deleted-id',
+                userId: 'user-id-1',
+                roleId: 'role-id-1',
+                tenantId: 'tenant-1',
+                resourceStatus: ResourceStatusType.DELETED
+            });
+            const restoredAssignment = createMockUserRoleAssignmentEntity({
+                id: 'previously-deleted-id',
+                userId: 'user-id-1',
+                roleId: 'role-id-1',
+                tenantId: 'tenant-1',
+                resourceStatus: ResourceStatusType.ENABLED,
+                updatedBy: 'current-user-id'
+            });
+            mockUserRoleAssignmentRepository.findFirst.mockResolvedValue(
+                deletedAssignment
+            );
+            mockUserRoleAssignmentRepository.restore.mockResolvedValue(
+                restoredAssignment
+            );
+
+            const result = await service.create({
+                userId: 'user-id-1',
+                roleId: 'role-id-1',
+                tenantId: 'tenant-1'
+            });
+
+            expect(result.id).toBe('previously-deleted-id');
+            expect(mockUserRoleAssignmentRepository.findFirst).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    where: expect.objectContaining({
+                        userId: 'user-id-1',
+                        roleId: 'role-id-1',
+                        tenantId: 'tenant-1',
+                        resourceStatus: ResourceStatusType.DELETED
+                    })
+                })
+            );
+            expect(mockUserRoleAssignmentRepository.restore).toHaveBeenCalledWith(
+                'previously-deleted-id',
+                'current-user-id'
+            );
+            // Restore must not double-create.
+            expect(mockUserRoleAssignmentRepository.create).not.toHaveBeenCalled();
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceCreated,
+                expect.objectContaining({
+                    resourceId: 'previously-deleted-id'
+                })
+            );
+        });
+
+        it('should fall back to CLS tenant when request omits tenantId for the soft-delete lookup', async () => {
+            // findFirst stays at the default rejection (no soft-deleted record),
+            // we only care about WHICH tenantId the service queries with.
+            const newAssignment = createMockUserRoleAssignmentEntity({
+                id: 'new-user-role-assignment-id'
+            });
+            mockUserRoleAssignmentRepository.create.mockResolvedValue(
+                newAssignment
+            );
+
+            await service.create({
+                userId: 'user-id-1',
+                roleId: 'role-id-1'
+                // tenantId intentionally omitted — CLS tenantId is 'tenant-1'
+            });
+
+            expect(mockUserRoleAssignmentRepository.findFirst).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    where: expect.objectContaining({
+                        tenantId: 'tenant-1',
+                        resourceStatus: ResourceStatusType.DELETED
+                    })
+                })
+            );
+        });
+
+        it('should use null tenantId in the soft-delete lookup when neither request nor CLS provide one', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'user') {
+                    return {
+                        id: 'current-user-id',
+                        firstName: 'Test',
+                        lastName: 'User',
+                        email: 'test@example.com'
+                    };
+                }
+                // No tenant context for this call.
+                return null;
+            });
+
+            const newAssignment = createMockUserRoleAssignmentEntity({
+                id: 'new-user-role-assignment-id'
+            });
+            mockUserRoleAssignmentRepository.create.mockResolvedValue(
+                newAssignment
+            );
+
+            await service.create({
+                userId: 'user-id-1',
+                roleId: 'role-id-1'
+            });
+
+            expect(mockUserRoleAssignmentRepository.findFirst).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    where: expect.objectContaining({
+                        tenantId: null,
+                        resourceStatus: ResourceStatusType.DELETED
+                    })
+                })
+            );
+        });
+
+        it('should propagate non-DataNotFound errors from the soft-delete lookup without attempting a create', async () => {
+            mockUserRoleAssignmentRepository.findFirst.mockRejectedValue(
+                new Error('Database connection failed')
+            );
+
+            await expect(
+                service.create({
+                    userId: 'user-id-1',
+                    roleId: 'role-id-1',
+                    tenantId: 'tenant-1'
+                })
+            ).rejects.toThrow('Database connection failed');
+
+            expect(mockUserRoleAssignmentRepository.restore).not.toHaveBeenCalled();
+            expect(mockUserRoleAssignmentRepository.create).not.toHaveBeenCalled();
         });
     });
 

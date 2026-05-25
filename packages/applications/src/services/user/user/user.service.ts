@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ResourceType, SysEventType, EntityId, UserEntity, UserFactory, UserRepository } from '@arcaai/domains';
+import { ResourceType, ResourceStatusType, SysEventType, EntityId, UserEntity, UserFactory, UserRepository } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException, NotFoundException } from '@arcaai/exceptions';
 import { IUserService } from './IUserService';
 import { CreateOAuthUserRequest, CreateUserRequest, UpdateUserRequest } from './dto';
@@ -87,9 +87,11 @@ export class UserService extends BaseService implements IUserService {
 
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<UserEntity>> {
     const { tenantId, limit, page } = props;
-    // Prisma relational filter — DbFilters doesn't model `some`
+    // Prisma relational filter — DbFilters doesn't model `some`. The
+    // `resourceStatus: { not: DELETED }` clause excludes users whose only
+    // membership in this tenant is via a soft-deleted UserRoleAssignment.
     const tenantWhere = {
-      UserRoleAssignments: { some: { tenantId, resourceStatus: { not: 'DELETED' } } },
+      UserRoleAssignments: { some: { tenantId, resourceStatus: { not: ResourceStatusType.DELETED } } },
     } as Record<string, unknown>;
 
     const users = await this.userRepository.findAll({

@@ -105,6 +105,16 @@ vi.mock('@arcaai/domains', async (importOriginal) => {
                     createdAt: new Date(),
                     updatedAt: new Date(),
                 },
+                {
+                    id: 'new-system-attachments',
+                    tenantId,
+                    name: `hope-attachments-${tenantKey}`,
+                    slug: 'attachments',
+                    bucketType: BUCKET_TYPE_SYSTEM,
+                    isSystemBucket: true,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                },
             ]),
         },
     };
@@ -169,7 +179,7 @@ describe('TenantBucketService', () => {
     });
 
     describe('provisionSystemBuckets', () => {
-        it('should create system bucket for a new tenant', async () => {
+        it('should create all default system buckets for a new tenant', async () => {
             const mockTenant = { id: 'tenant-1', key: 'arcaai', name: 'ArcaAI' };
             mockTenantRepository.findById.mockResolvedValue(mockTenant);
             mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([]);
@@ -178,16 +188,40 @@ describe('TenantBucketService', () => {
 
             const result = await service.provisionSystemBuckets('tenant-1');
 
+            // TenantBucketFactory.CreateDefaultSystemBuckets currently returns
+            // [audio, attachments] — keep the assertion in lock-step with that
+            // list (rather than hard-coding 2) so adding a future system slug
+            // only requires updating the factory, not this test.
+            expect(result).toHaveLength(2);
+            expect(result.map((b) => b.slug).sort()).toEqual(['attachments', 'audio']);
+            expect(mockTenantBucketRepository.create).toHaveBeenCalledTimes(2);
+            expect(mockS3Service.createBucket).toHaveBeenCalledTimes(2);
+        });
+
+        it('should only provision missing system buckets when some already exist', async () => {
+            const mockTenant = { id: 'tenant-1', key: 'arcaai', name: 'ArcaAI' };
+            mockTenantRepository.findById.mockResolvedValue(mockTenant);
+            // `audio` is already provisioned — only `attachments` should be created.
+            mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([
+                createMockBucketEntity({ slug: 'audio' }),
+            ]);
+            mockTenantBucketRepository.create.mockImplementation((entity: any) => entity);
+            mockS3Service.createBucket.mockResolvedValue(undefined);
+
+            const result = await service.provisionSystemBuckets('tenant-1');
+
             expect(result).toHaveLength(1);
+            expect(result[0].slug).toBe('attachments');
             expect(mockTenantBucketRepository.create).toHaveBeenCalledTimes(1);
             expect(mockS3Service.createBucket).toHaveBeenCalledTimes(1);
         });
 
-        it('should skip provisioning if system buckets already exist', async () => {
+        it('should skip provisioning when all system buckets already exist', async () => {
             const mockTenant = { id: 'tenant-1', key: 'arcaai', name: 'ArcaAI' };
             mockTenantRepository.findById.mockResolvedValue(mockTenant);
             mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([
                 createMockBucketEntity({ slug: 'audio' }),
+                createMockBucketEntity({ slug: 'attachments' }),
             ]);
 
             const result = await service.provisionSystemBuckets('tenant-1');
@@ -442,7 +476,8 @@ describe('TenantBucketService', () => {
 
             await service.provisionSystemBuckets('tenant-1');
 
-            expect(mockS3Service.setBucketPolicy).toHaveBeenCalledTimes(1);
+            // One setBucketPolicy call per system bucket (currently 2: audio + attachments).
+            expect(mockS3Service.setBucketPolicy).toHaveBeenCalledTimes(2);
             expect(mockS3Service.setBucketPolicy).toHaveBeenCalledWith(
                 expect.any(String),
                 expect.objectContaining({
@@ -462,8 +497,8 @@ describe('TenantBucketService', () => {
 
             const result = await service.provisionSystemBuckets('tenant-1');
 
-            expect(result).toHaveLength(1);
-            expect(mockTenantBucketRepository.create).toHaveBeenCalledTimes(1);
+            expect(result).toHaveLength(2);
+            expect(mockTenantBucketRepository.create).toHaveBeenCalledTimes(2);
         });
     });
 });
