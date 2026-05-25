@@ -177,8 +177,7 @@ export function applySoftDeleteFilter(args: { where?: Record<string, unknown> })
  * exact same extension config — keeping soft-delete semantics
  * identical across env-mode and vault-mode pods.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function applySoftDeleteExtension<T extends { $extends: any }>(prisma: T) {
+export function applySoftDeleteExtension(prisma: PrismaClient) {
   return prisma.$extends({
     name: 'softDeleteFilter',
     query: {
