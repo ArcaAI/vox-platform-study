@@ -69,6 +69,30 @@ const externalDependencies = [
   // Node.js-only packages that shouldn't be in browser bundles
   'onnxruntime-node',
   'sharp',
+  // TASK-303: ONNX Runtime Web + Silero VAD engine MUST stay external.
+  //
+  // `@ricky0123/vad-web@0.0.30` is a CJS-only package whose internal modules
+  // do `require("onnxruntime-web")`. If we let tsup inline that CJS source
+  // into vox's ESM bundle, esbuild emits a `__require()` stub for the
+  // externalized `onnxruntime-web` import (sync CJS require → async ESM
+  // import is not a valid transform). The stub throws
+  // `Dynamic require of "onnxruntime-web" is not supported` at runtime in
+  // browsers (where `require` is undefined).
+  //
+  // Solution: keep `@ricky0123/vad-web` external so the consumer's bundler
+  // (Vite via @rollup/plugin-commonjs, webpack via its CJS interop) handles
+  // the CJS→ESM conversion correctly. `onnxruntime-web` and
+  // `onnxruntime-common` are listed explicitly (defensive: they are already
+  // external by default because they live in `dependencies`, but the explicit
+  // listing protects against accidental `noExternal` regressions and
+  // documents the intent for future maintainers).
+  //
+  // ORT-web ships ESM in `onnxruntime-web@1.24.3/dist/esm/` plus WASM glue
+  // `.mjs` files loaded via dynamic `import()`. It MUST stay external —
+  // bundling it produces a 30MB+ artifact AND breaks WASM runtime discovery.
+  '@ricky0123/vad-web',
+  'onnxruntime-web',
+  'onnxruntime-common',
 ];
 
 // Plugin packages - external for core build, bundled for plugins build
