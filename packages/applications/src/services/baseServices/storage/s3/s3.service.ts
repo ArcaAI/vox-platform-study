@@ -487,7 +487,9 @@ export class S3Service implements IS3Service, OnModuleInit {
         message: 'Error listing files from S3',
         bucket: bucketName,
         path,
-        error: error instanceof Error ? error.message : String(error),
+        error: error instanceof AggregateError
+          ? error.errors.map((e: unknown) => (e instanceof Error ? e.message : String(e))).join('; ')
+          : error instanceof Error ? error.message : String(error),
       });
       this.debugLog(error);
       throw error;
