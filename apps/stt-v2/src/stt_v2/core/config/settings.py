@@ -171,6 +171,19 @@ class Settings(BaseSettings):
         description="Device for pyannote inference (auto, cuda, cpu)",
     )
 
+    # Voice profile enrollment
+    voice_profile_min_similarity: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Minimum acceptable pairwise cosine similarity between per-sample "
+            "embeddings during enrollment. Below this, the enrollment is rejected "
+            "as inconsistent. Lower this (~0.3) for dev with consumer-grade "
+            "microphones; keep >=0.6 in production."
+        ),
+    )
+
     # Worker settings
     worker_threads: int = Field(
         default=4,

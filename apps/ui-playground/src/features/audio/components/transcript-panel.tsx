@@ -1,8 +1,11 @@
 import { recordSpeakerObservation, resolveSpeakerLabel } from '@/features/audio/lib/speaker-profiles';
 import { upsertTranscriptEntry } from '@/features/audio/lib/transcript-state';
+import { encodeWavBlob } from '@/features/audio/lib/wav-encoder';
+import { useVoiceProfiles } from '@/features/voice-profile/api/voice-profiles';
 import { useRealtimeTranscription } from '@/hooks/use-realtime-transcription';
 import { cn } from '@/lib/utils';
 import { useAudioStore, type MicrophoneSource, type TranscriptEntry, type WordTimestamp } from '@/store/audio-store';
+import { useAuthStore } from '@/store/auth-store';
 import { usePlaygroundStore } from '@/store/playground-store';
 import { RoomProvider, useAudioTrack } from '@arcaai/room';
 import type { TranscriptionResult, TranscriptionTimestamp } from '@arcaai/stt';
@@ -173,11 +176,33 @@ function useTranscriptSegmentPlayback() {
 
   const playSegment = useCallback(
     async (entry: TranscriptEntry) => {
-      if (entry.end <= entry.start) return;
+      if (entry.end <= entry.start && !entry.audioUrl) return;
 
       setReplayError(null);
       stopPlayback();
 
+      // TASK-304 Wave 3 hotfix: per-segment WAV URL wins. Each local-AI segment
+      // ships its own audio (the exact Float32Array the VAD handed us), so we
+      // can play the whole thing without seek math and without depending on
+      // the parallel MediaRecorder blob's (unreliable, partial) timeline.
+      if (entry.audioUrl) {
+        try {
+          const audio = new Audio(entry.audioUrl);
+          audioElementRef.current = audio;
+          audio.onended = () => {
+            setActiveSegmentId(null);
+          };
+          setActiveSegmentId(entry.id);
+          await audio.play();
+        } catch (error) {
+          setActiveSegmentId(null);
+          setReplayError(error instanceof Error ? error.message : 'Unable to replay this segment.');
+        }
+        return;
+      }
+
+      // Fallback: BackendSocketTranscript still only has the MediaRecorder
+      // whole-session blob; keep the original seek-by-time path for that mode.
       let playbackUrl = stableRecordingUrlRef.current;
       let usingTemporarySnapshot = false;
 
@@ -626,6 +651,26 @@ function LocalAITranscriptInner({ onRetry }: { onRetry?: () => void }) {
   const segmentPlayback = useTranscriptSegmentPlayback();
   const vadGatedMode = vadEnabled;
 
+  // TASK-304 Wave 3 hotfix — pull the doctor's enrolled voice profile + the
+  // effective user identity so we can pin the diarizer's first slot.
+  // Priority for the visible label: active profile's `label` (user-supplied
+  // at enrollment), then the impersonated/auth username, then "Doctor".
+  // The same string also acts as the diarizer's reservedSpeakerId so the
+  // transcript badge reads naturally without an extra lookup.
+  const { data: voiceProfiles } = useVoiceProfiles();
+  const impersonatedUsername = useAuthStore((s) => s.impersonatedUser?.username ?? null);
+  const authUsername = useAuthStore((s) => s.user?.username ?? null);
+  const activeVoiceProfile = useMemo(() => voiceProfiles?.find((p) => p.isActive), [voiceProfiles]);
+  const resolvedSpeakerLabel = useMemo(() => {
+    const profileLabel = activeVoiceProfile?.label?.trim();
+    if (profileLabel) return profileLabel;
+    const impersonated = impersonatedUsername?.trim();
+    if (impersonated) return impersonated;
+    const own = authUsername?.trim();
+    if (own) return own;
+    return 'Doctor';
+  }, [activeVoiceProfile, impersonatedUsername, authUsername]);
+
   const micSources = sources.filter((s): s is MicrophoneSource => s.type === 'microphone');
 
   const { track, isCapturing, startCapture, stopCapture } = useAudioTrack({
@@ -660,7 +705,7 @@ function LocalAITranscriptInner({ onRetry }: { onRetry?: () => void }) {
     setVadSpeechProbability(probability);
   }, []);
 
-  const appendFinalEntry = useCallback((result: TranscriptionResult, segmentStartSec: number, segmentEndSec: number) => {
+  const appendFinalEntry = useCallback((result: TranscriptionResult, segmentStartSec: number, segmentEndSec: number, audioUrl?: string) => {
     const enriched = result as ExtendedTranscriptionResult;
     transcriptIdRef.current += 1;
     segmentCounterRef.current += 1;
@@ -696,6 +741,7 @@ function LocalAITranscriptInner({ onRetry }: { onRetry?: () => void }) {
       duration,
       inference,
       wordTimestamps: toWordTimestamps(result.timestamps, segmentStartSec),
+      audioUrl,
     };
     setTranscriptEntries((prev) => upsertTranscriptEntry(prev, entry));
   }, []);
@@ -721,6 +767,14 @@ function LocalAITranscriptInner({ onRetry }: { onRetry?: () => void }) {
         codeSwitching: codeSwitchingEnabled,
         vadGate: vadGatedMode,
       },
+      // TASK-304 Wave 3 hotfix: forward the enrolled voice profile so the
+      // local diarizer pins its first allocated slot to a doctor-friendly id.
+      // Without this the first detected speaker is mis-labelled "speaker-1"
+      // (or omitted entirely if the segment is too short for MFCC features),
+      // which the user perceived as "no speaker label". `useSTT` now folds
+      // `voiceProfile.id` / `reservedSpeakerId` into its config fingerprint
+      // so a late-arriving profile cleanly reinitialises the processor.
+      voiceProfile: activeVoiceProfile?.id ? { id: activeVoiceProfile.id, reservedSpeakerId: resolvedSpeakerLabel } : undefined,
       onTranscription: (result: TranscriptionResult) => {
         if (vadGatedMode) {
           return;
@@ -751,7 +805,18 @@ function LocalAITranscriptInner({ onRetry }: { onRetry?: () => void }) {
         setTranscriptEntries((prev) => upsertTranscriptEntry(prev, entry));
       },
     }),
-    [track, resolvedLanguage, whisperModel, diarizationEnabled, codeSwitchingEnabled, vadGatedMode, appendFinalEntry, debugMode],
+    [
+      track,
+      resolvedLanguage,
+      whisperModel,
+      diarizationEnabled,
+      codeSwitchingEnabled,
+      vadGatedMode,
+      appendFinalEntry,
+      debugMode,
+      activeVoiceProfile?.id,
+      resolvedSpeakerLabel,
+    ],
   );
 
   const {
@@ -790,6 +855,18 @@ function LocalAITranscriptInner({ onRetry }: { onRetry?: () => void }) {
     setVadSpeechProbability(0);
   }, []);
 
+  // TASK-304 Wave 3 hotfix — per-segment WAV URLs we hand out via TranscriptEntry.
+  // Tracked here so handleClear / unmount can revoke them; entries themselves stay
+  // immutable snapshots of the moment they were appended.
+  const segmentAudioUrlsRef = useRef<string[]>([]);
+
+  const revokeAllSegmentAudioUrls = useCallback(() => {
+    for (const url of segmentAudioUrlsRef.current) {
+      URL.revokeObjectURL(url);
+    }
+    segmentAudioUrlsRef.current = [];
+  }, []);
+
   const enqueueSpeechSegment = useCallback(
     (audio: Float32Array, segmentStartSec: number, segmentEndSec: number, captureSessionId: number) => {
       const chunks = splitSpeechSegmentForRealtime(audio);
@@ -805,7 +882,19 @@ function LocalAITranscriptInner({ onRetry }: { onRetry?: () => void }) {
             }
             const chunkStartSec = segmentStartSec + chunk.offsetSec;
             const chunkEndSec = Math.min(segmentEndSec, chunkStartSec + chunk.audio.length / LOCAL_AUDIO_SAMPLE_RATE);
-            appendFinalEntry(result, chunkStartSec, Math.max(chunkStartSec + 0.2, chunkEndSec));
+            // TASK-304 Wave 3 hotfix: encode the exact VAD chunk we just
+            // transcribed as a stand-alone WAV blob. The transcript entry
+            // owns this URL for replay — no clock drift, no partial WebM
+            // duration surprises.
+            let audioUrl: string | undefined;
+            try {
+              const { blob } = encodeWavBlob(chunk.audio, LOCAL_AUDIO_SAMPLE_RATE);
+              audioUrl = URL.createObjectURL(blob);
+              segmentAudioUrlsRef.current.push(audioUrl);
+            } catch (encodeError) {
+              console.warn('[TranscriptPanel] WAV encoding failed; replay falls back to MediaRecorder.', encodeError);
+            }
+            appendFinalEntry(result, chunkStartSec, Math.max(chunkStartSec + 0.2, chunkEndSec), audioUrl);
           })
           .catch((error) => {
             console.error('[TranscriptPanel] VAD-gated transcription failed:', error);
@@ -946,8 +1035,18 @@ function LocalAITranscriptInner({ onRetry }: { onRetry?: () => void }) {
     setVadSegmentCount(0);
     transcriptionQueueRef.current = Promise.resolve();
     captureSessionRef.current += 1;
+    revokeAllSegmentAudioUrls();
     segmentPlayback.clearRecording();
-  }, [isCapturing, segmentPlayback.clearRecording]);
+  }, [isCapturing, revokeAllSegmentAudioUrls, segmentPlayback.clearRecording]);
+
+  // TASK-304 Wave 3 hotfix — release per-segment WAV blob URLs on unmount.
+  // The `useTranscriptSegmentPlayback` cleanup already handles its MediaRecorder
+  // resources; this complements it for the segment-owned URLs.
+  useEffect(() => {
+    return () => {
+      revokeAllSegmentAudioUrls();
+    };
+  }, [revokeAllSegmentAudioUrls]);
 
   const finalCount = transcriptEntries.filter((t) => t.isFinal).length;
   const wordCount = transcriptEntries.filter((t) => t.isFinal).reduce((acc, t) => acc + t.text.split(/\s+/).filter(Boolean).length, 0);

@@ -179,6 +179,117 @@ class TestExtractionServiceCrossSampleConsistency:
         assert isinstance(result, ExtractionResult)
 
 
+class TestExtractionServiceDimensionGuard:
+    """Defense-in-depth: reject embeddings whose dimension does not match the
+    database column. Without this, a mis-configured DIARIZATION_HF_MODEL_ID
+    (e.g. ``pyannote/embedding`` → 512-d) silently flows all the way to the
+    pgvector cast and produces a cryptic ``Code: 22000`` Prisma error.
+    """
+
+    def _service_returning_dim(self, dim: int):
+        emb_service = AsyncMock()
+        emb_service.is_loaded = True
+
+        async def fake_extract(samples, sample_rate=16000, start_time=0.0, end_time=None):
+            from stt_v2.diarization.dto import SpeakerEmbedding
+
+            vec = np.random.RandomState(0).randn(dim).astype(np.float32)
+            vec = vec / np.linalg.norm(vec)
+            return SpeakerEmbedding(
+                embedding=vec.tolist(),
+                segment_start=start_time,
+                segment_end=end_time or len(samples) / sample_rate,
+            )
+
+        emb_service.extract_from_samples = AsyncMock(side_effect=fake_extract)
+        emb_service._hf_model_id = "pyannote/embedding"  # for nicer error message
+        return ExtractionService(embedding_service=emb_service, vad_service=MagicMock())
+
+    @pytest.mark.asyncio
+    async def test_rejects_wrong_dimension_512_when_db_expects_256(self):
+        service = self._service_returning_dim(512)
+        audio = _make_audio_samples(5.0)
+        with pytest.raises(ValueError, match=r"(?i)dimension|expected 256.*got 512|512.*256"):
+            await service.extract([audio], sample_rate=16000)
+
+    @pytest.mark.asyncio
+    async def test_error_message_mentions_model_id(self):
+        service = self._service_returning_dim(512)
+        audio = _make_audio_samples(5.0)
+        with pytest.raises(ValueError, match=r"pyannote/embedding"):
+            await service.extract([audio], sample_rate=16000)
+
+    @pytest.mark.asyncio
+    async def test_accepts_correct_256_dimension(self):
+        service = self._service_returning_dim(256)
+        audio = _make_audio_samples(5.0)
+        result = await service.extract([audio], sample_rate=16000)
+        assert len(result.embedding) == 256
+
+
+class TestExtractionServiceConfigurableThreshold:
+    """The cross-sample similarity threshold is read from settings so dev
+    environments with consumer-grade microphones can lower it without code
+    changes. Production keeps the strict 0.6 default.
+    """
+
+    def _per_sample_vectors_service(self, vectors: list[np.ndarray]):
+        emb_service = AsyncMock()
+        emb_service.is_loaded = True
+        iterator = iter(vectors)
+
+        async def fake_extract(samples, sample_rate=16000, start_time=0.0, end_time=None):
+            from stt_v2.diarization.dto import SpeakerEmbedding
+
+            vec = next(iterator)
+            return SpeakerEmbedding(
+                embedding=vec.tolist(),
+                segment_start=start_time,
+                segment_end=end_time or len(samples) / sample_rate,
+            )
+
+        emb_service.extract_from_samples = AsyncMock(side_effect=fake_extract)
+        return emb_service
+
+    @pytest.mark.asyncio
+    async def test_lowered_threshold_accepts_samples_above_new_min(self):
+        rng = np.random.RandomState(13)
+        v1 = rng.randn(256).astype(np.float32)
+        v1 = v1 / np.linalg.norm(v1)
+        v2 = rng.randn(256).astype(np.float32)
+        v2 = v2 / np.linalg.norm(v2)
+
+        emb_service = self._per_sample_vectors_service([v1, v2])
+        service = ExtractionService(
+            embedding_service=emb_service,
+            vad_service=MagicMock(),
+            min_cross_sample_similarity=-1.0,
+        )
+
+        audio = _make_audio_samples(5.0)
+        result = await service.extract([audio, audio], sample_rate=16000)
+        assert isinstance(result, ExtractionResult)
+
+    @pytest.mark.asyncio
+    async def test_raised_threshold_rejects_borderline_samples(self):
+        rng = np.random.RandomState(13)
+        v1 = rng.randn(256).astype(np.float32)
+        v1 = v1 / np.linalg.norm(v1)
+        v2 = rng.randn(256).astype(np.float32)
+        v2 = v2 / np.linalg.norm(v2)
+
+        emb_service = self._per_sample_vectors_service([v1, v2])
+        service = ExtractionService(
+            embedding_service=emb_service,
+            vad_service=MagicMock(),
+            min_cross_sample_similarity=0.999,
+        )
+
+        audio = _make_audio_samples(5.0)
+        with pytest.raises(ValueError, match=r"(?i)inconsistent|similarity"):
+            await service.extract([audio, audio], sample_rate=16000)
+
+
 class TestExtractionServiceOutput:
     """Tests for extraction output format."""
 

@@ -549,13 +549,20 @@ export class PluginManager {
     // Compose the STT `voiceProfile` payload. Each field is independently
     // optional so we can carry partial state — e.g. threshold tweak before
     // the doctor has enrolled, or activated profile without custom threshold.
+    //
+    // TASK-304 Wave 3 hotfix: resolve the reserved-speaker id from the profile's
+    // user-supplied label when present (e.g. "Dr. Alice") and fall back to a
+    // display-friendly "Doctor" instead of the lowercase magic constant — the
+    // value flows through `LocalSpeakerDiarizer` straight to the transcript UI
+    // badge, so a humane string matters.
     const hasVoiceProfileData =
       !!activeVoiceProfile?.id ||
       typeof voiceProfilePrefs?.similarityThreshold === 'number';
+    const resolvedReservedSpeakerId = PluginManager.resolveReservedSpeakerId(activeVoiceProfile?.label);
     const voiceProfile = hasVoiceProfileData
       ? {
           ...(activeVoiceProfile?.id
-            ? { id: activeVoiceProfile.id, reservedSpeakerId: 'doctor' as const }
+            ? { id: activeVoiceProfile.id, reservedSpeakerId: resolvedReservedSpeakerId }
             : {}),
           ...(typeof voiceProfilePrefs?.similarityThreshold === 'number'
             ? { similarityThreshold: voiceProfilePrefs.similarityThreshold }
@@ -675,7 +682,9 @@ export class PluginManager {
 
     // Active voice profile → STT LocalSpeakerDiarizer.setReservedSpeakerId (best
     // effort: the diarizer only honours this before the first segment, but the
-    // call is still safe to fire on every change).
+    // call is still safe to fire on every change). TASK-304 Wave 3 hotfix:
+    // route via the same label-resolution helper used by the static config path
+    // so the live delta and the next pipeline build agree on the speaker label.
     const nextProfileId = next?.activeVoiceProfile?.id;
     const prevProfileId = previous?.activeVoiceProfile?.id;
     if (nextProfileId && nextProfileId !== prevProfileId) {
@@ -683,7 +692,7 @@ export class PluginManager {
         | { setReservedSpeakerId?: (id: string | undefined) => void }
         | null;
       try {
-        proc?.setReservedSpeakerId?.('doctor');
+        proc?.setReservedSpeakerId?.(PluginManager.resolveReservedSpeakerId(next?.activeVoiceProfile?.label));
       } catch (error) {
         this.logger?.warn('Failed to propagate voice profile delta', {
           operation: 'propagateUserPreferenceDelta',
@@ -692,6 +701,21 @@ export class PluginManager {
         });
       }
     }
+  }
+
+  /**
+   * TASK-304 Wave 3 hotfix — resolve the speaker label that the local diarizer
+   * pins to its first slot. The user-supplied `UserVoiceProfile.label` wins
+   * when non-empty (e.g. "Dr. Alice"); otherwise we fall back to a
+   * display-friendly "Doctor" so the transcript UI badge reads naturally.
+   *
+   * Kept as a static helper to keep the resolution rule in one place — both
+   * the pipeline-config path (`getTranscriptionPipelineConfig`) and the live
+   * delta path (`propagateUserPreferenceDelta`) call through here.
+   */
+  private static resolveReservedSpeakerId(label: string | undefined): string {
+    const trimmed = typeof label === 'string' ? label.trim() : '';
+    return trimmed.length > 0 ? trimmed : 'Doctor';
   }
 
   /**

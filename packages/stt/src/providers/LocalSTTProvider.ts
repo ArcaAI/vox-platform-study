@@ -293,6 +293,22 @@ export class LocalSTTProvider extends BaseSTTProvider {
     return this.bufferManager;
   }
 
+  /**
+   * TASK-304 Wave 3 hotfix — forward a late-arriving reserved-speaker id to the
+   * internal `LocalSpeakerDiarizer`. Used by `STTProcessor.setReservedSpeakerId`,
+   * which is in turn invoked by `PluginManager.propagateUserPreferenceDelta`
+   * when `UserPreferences.activeVoiceProfile` changes after the pipeline is
+   * already running.
+   *
+   * No-op if init() has not yet constructed a diarizer. The diarizer itself
+   * only honours the new id while no profiles have been allocated (first speech
+   * segment locks the slot) — callers are responsible for invoking this before
+   * the user starts speaking when correctness matters.
+   */
+  setReservedSpeakerId(id: string | undefined): void {
+    this.diarizer?.setReservedSpeakerId(id);
+  }
+
   private applyLocalDiarization(result: TranscriptionResult, audio: Float32Array): TranscriptionResult {
     if (!this.config?.diarization || !this.diarizer) {
       return result;

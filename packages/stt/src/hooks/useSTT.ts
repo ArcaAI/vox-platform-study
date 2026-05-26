@@ -192,6 +192,14 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
         codeSwitching: sttOptions.features?.codeSwitching,
         vadGate: sttOptions.features?.vadGate,
         returnTimestamps: sttOptions.features?.returnTimestamps,
+        // TASK-304 Wave 3 hotfix: include the voice-profile identity in the
+        // fingerprint so a late-arriving `activeVoiceProfile` (e.g. backend
+        // preferences resolving after the user already mounted the panel)
+        // triggers a clean processor reinit. Otherwise the diarizer keeps
+        // running with `reservedSpeakerId = undefined` and the first
+        // detected speaker is mis-labelled as `speaker-1`.
+        voiceProfileId: sttOptions.voiceProfile?.id,
+        voiceProfileReserved: sttOptions.voiceProfile?.reservedSpeakerId,
       }),
     [
       sttOptions.features?.modelId,
@@ -201,6 +209,8 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
       sttOptions.features?.vadGate,
       sttOptions.features?.returnTimestamps,
       sttOptions.audio?.language,
+      sttOptions.voiceProfile?.id,
+      sttOptions.voiceProfile?.reservedSpeakerId,
     ],
   );
 

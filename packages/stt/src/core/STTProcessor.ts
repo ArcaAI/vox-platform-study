@@ -422,6 +422,26 @@ export class STTProcessor extends BaseProcessor {
     }
   }
 
+  /**
+   * TASK-304 Wave 3 hotfix — forward a late-arriving reserved-speaker id to the
+   * underlying local provider's diarizer. Used by
+   * `PluginManager.propagateUserPreferenceDelta` so the SDK can pin the doctor's
+   * slot after `UserPreferences.activeVoiceProfile` changes without rebuilding
+   * the provider.
+   *
+   * No-op when the resolved provider is remote (no local diarizer to update),
+   * when no provider has been initialized yet, or when the live provider lacks
+   * the optional `setReservedSpeakerId` hook (defensive — should be present on
+   * any current `LocalSTTProvider`).
+   */
+  setReservedSpeakerId(id: string | undefined): void {
+    if (!this.provider || this.resolvedProviderType !== 'local') {
+      return;
+    }
+    const provider = this.provider as unknown as { setReservedSpeakerId?: (id: string | undefined) => void };
+    provider.setReservedSpeakerId?.(id);
+  }
+
   // =========================================================================
   // Private Methods
   // =========================================================================
