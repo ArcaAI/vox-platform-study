@@ -99,7 +99,7 @@ describe('PluginManager — Wave 2 (TASK-304 Wave 2)', () => {
   });
 
   describe('activeVoiceProfile wire-up', () => {
-    it('forwards activeVoiceProfile.id + reservedSpeakerId="doctor" into stt.voiceProfile', () => {
+    it('forwards activeVoiceProfile.id + a doctor-friendly reservedSpeakerId into stt.voiceProfile', () => {
       manager.setUserPreferences({
         activeVoiceProfile: {
           id: 'profile-uuid-9',
@@ -110,7 +110,35 @@ describe('PluginManager — Wave 2 (TASK-304 Wave 2)', () => {
       const cfg = manager.getTranscriptionPipelineConfig();
       expect(cfg.stt.voiceProfile).toBeDefined();
       expect(cfg.stt.voiceProfile?.id).toBe('profile-uuid-9');
-      expect(cfg.stt.voiceProfile?.reservedSpeakerId).toBe('doctor');
+      // TASK-304 Wave 3 hotfix: when no profile label is available, fall back to
+      // "Doctor" (display-friendly) rather than the lowercase magic constant.
+      expect(cfg.stt.voiceProfile?.reservedSpeakerId).toBe('Doctor');
+    });
+
+    it('prefers the profile-supplied label over the "Doctor" fallback', () => {
+      manager.setUserPreferences({
+        activeVoiceProfile: {
+          id: 'profile-uuid-9',
+          label: 'Dr. Alice',
+          createdAt: '2026-05-01T00:00:00Z',
+        },
+      });
+
+      const cfg = manager.getTranscriptionPipelineConfig();
+      expect(cfg.stt.voiceProfile?.reservedSpeakerId).toBe('Dr. Alice');
+    });
+
+    it('trims whitespace and falls back to "Doctor" for blank labels', () => {
+      manager.setUserPreferences({
+        activeVoiceProfile: {
+          id: 'profile-uuid-9',
+          label: '   ',
+          createdAt: '2026-05-01T00:00:00Z',
+        },
+      });
+
+      const cfg = manager.getTranscriptionPipelineConfig();
+      expect(cfg.stt.voiceProfile?.reservedSpeakerId).toBe('Doctor');
     });
 
     it('forwards localConfig.voiceProfile.similarityThreshold alongside the active profile', () => {

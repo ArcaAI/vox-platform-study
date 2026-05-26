@@ -8,8 +8,17 @@ import {
 } from '@arcaai/domains';
 import { InternalServerErrorException } from '@arcaai/exceptions';
 import { HttpService } from '@nestjs/axios';
-import { ForbiddenException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { isAxiosError } from 'axios';
 import { ClsService } from 'nestjs-cls';
 import { firstValueFrom } from 'rxjs';
 import { BaseService } from '../../../common';
@@ -22,6 +31,12 @@ interface ExtractionResponse {
   embedding: number[];
   model_id: string;
 }
+
+// Must match the ``vector(N)`` dimension of ``core."UserVoiceProfile"."embedding"``
+// in the Prisma migration. Changing this requires a coordinated DB migration
+// AND a matching change to ``EXPECTED_EMBEDDING_DIM`` in
+// ``apps/stt-v2/src/stt_v2/voice_profile/extraction_service.py``.
+const EXPECTED_EMBEDDING_DIM = 256;
 
 @Injectable()
 export class VoiceProfileService extends BaseService implements IVoiceProfileService {
@@ -41,6 +56,21 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
 
   async enroll(request: EnrollVoiceProfileRequest): Promise<UserVoiceProfileEntity> {
     const extraction = await this.extractEmbeddings(request.audioBuffers);
+
+    if (extraction.embedding.length !== EXPECTED_EMBEDDING_DIM) {
+      this.logger.warn({
+        message: 'Voice profile embedding dimension mismatch',
+        received: extraction.embedding.length,
+        expected: EXPECTED_EMBEDDING_DIM,
+        modelId: extraction.model_id,
+      });
+      throw new BadRequestException(
+        `Embedding dimension mismatch: STT-v2 model '${extraction.model_id}' returned ` +
+          `${extraction.embedding.length}-d but database expects ${EXPECTED_EMBEDDING_DIM}-d. ` +
+          `Set DIARIZATION_HF_MODEL_ID to a ${EXPECTED_EMBEDDING_DIM}-d model ` +
+          `(e.g. 'pyannote/wespeaker-voxceleb-resnet34-LM').`,
+      );
+    }
 
     const entity = UserVoiceProfileFactory.CreateUserVoiceProfile({
       userId: request.userId,
@@ -131,16 +161,63 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
       formData.append('files', blob, `sample-${i}.wav`);
     }
 
-    const { data } = await firstValueFrom(
-      this.httpService.post<ExtractionResponse>(
-        `${this.sttBaseUrl}/internal/voice-profile/extract`,
-        formData,
-        {
-          timeout: 60000,
-        },
-      ),
-    );
+    try {
+      const { data } = await firstValueFrom(
+        this.httpService.post<ExtractionResponse>(
+          `${this.sttBaseUrl}/internal/voice-profile/extract`,
+          formData,
+          {
+            timeout: 60000,
+          },
+        ),
+      );
+      return data;
+    } catch (error: unknown) {
+      throw this.translateExtractionError(error);
+    }
+  }
 
-    return data;
+  /**
+   * Translate a failed STT-v2 `/internal/voice-profile/extract` call into a
+   * meaningful HTTP exception so the UI surfaces the real reason instead of an
+   * opaque 500/AxiosError dump.
+   *
+   * STT-v2 returns `{ detail: string }` for 4xx/5xx (FastAPI default). We map:
+   *   - network failure (no response)        → 503 ServiceUnavailable
+   *   - 400 with `detail`                    → 400 BadRequest(detail)
+   *   - 503 with `detail`                    → 503 ServiceUnavailable(detail)
+   *   - everything else                      → 500 InternalServerError
+   */
+  private translateExtractionError(error: unknown): Error {
+    if (!isAxiosError(error)) {
+      this.logger.error({ message: 'Voice profile extraction failed (non-axios)', error });
+      return new InternalServerErrorException('Voice profile extraction failed');
+    }
+
+    const status = error.response?.status;
+    const detail = (error.response?.data as { detail?: string } | undefined)?.detail;
+
+    this.logger.warn({
+      message: 'Voice profile extraction failed',
+      status,
+      detail,
+      code: error.code,
+      url: error.config?.url,
+    });
+
+    if (!error.response) {
+      return new ServiceUnavailableException(
+        'Voice profile extraction service is unavailable. Please try again later.',
+      );
+    }
+    if (status === 400 && detail) {
+      return new BadRequestException(detail);
+    }
+    if (status === 503) {
+      return new ServiceUnavailableException(
+        detail ?? 'Voice profile extraction service is unavailable',
+      );
+    }
+    return new InternalServerErrorException('Voice profile extraction failed');
   }
 }

@@ -1,7 +1,29 @@
+import { InternalServerErrorException } from '@arcaai/exceptions';
 import { ResourceStatusType, SysEventType } from '@arcaai/domains';
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { AxiosError, AxiosHeaders } from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { VoiceProfileService } from '../voiceProfile.service';
+
+function makeAxiosError(status: number | undefined, body: unknown, code?: string): AxiosError {
+  const headers = new AxiosHeaders();
+  const err = new AxiosError(
+    status ? `Request failed with status code ${status}` : 'Network Error',
+    code,
+    { headers } as never,
+    {},
+    status
+      ? {
+          status,
+          statusText: '',
+          headers,
+          config: { headers } as never,
+          data: body,
+        }
+      : undefined,
+  );
+  return err;
+}
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -160,6 +182,108 @@ describe('VoiceProfileService', () => {
       await expect(
         service.enroll({ userId: 'user-id-1', audioBuffers: [audioBuffer] }),
       ).rejects.toThrow();
+    });
+
+    // TASK-304 follow-up: translate STT-v2 errors into friendly HTTP exceptions
+    // so the UI surfaces the real cause instead of an opaque 500/AxiosError dump.
+    describe('extractEmbeddings error translation', () => {
+      it('maps STT-v2 400 with {detail} to BadRequestException carrying the detail', async () => {
+        const { throwError } = await import('rxjs');
+        const axiosErr = makeAxiosError(400, { detail: 'Sample 1 exceeds 15.0s (got 33.6s)' }, 'ERR_BAD_REQUEST');
+        mockHttpService.post.mockReturnValue(throwError(() => axiosErr));
+
+        await expect(
+          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
+        ).rejects.toMatchObject({
+          constructor: BadRequestException,
+          message: 'Sample 1 exceeds 15.0s (got 33.6s)',
+        });
+        expect(mockVoiceProfileRepository.createWithEmbedding).not.toHaveBeenCalled();
+      });
+
+      it('maps STT-v2 503 to ServiceUnavailableException carrying the detail', async () => {
+        const { throwError } = await import('rxjs');
+        const axiosErr = makeAxiosError(503, { detail: 'Embedding service not available' });
+        mockHttpService.post.mockReturnValue(throwError(() => axiosErr));
+
+        await expect(
+          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
+        ).rejects.toMatchObject({
+          constructor: ServiceUnavailableException,
+          message: 'Embedding service not available',
+        });
+      });
+
+      it('maps ECONNREFUSED (no response) to ServiceUnavailableException with a friendly message', async () => {
+        const { throwError } = await import('rxjs');
+        const axiosErr = makeAxiosError(undefined, undefined, 'ECONNREFUSED');
+        mockHttpService.post.mockReturnValue(throwError(() => axiosErr));
+
+        await expect(
+          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
+        ).rejects.toMatchObject({
+          constructor: ServiceUnavailableException,
+          message: expect.stringMatching(/voice profile extraction service is unavailable/i),
+        });
+      });
+
+      it('maps unknown non-axios errors to InternalServerErrorException', async () => {
+        const { throwError } = await import('rxjs');
+        mockHttpService.post.mockReturnValue(throwError(() => new Error('boom')));
+
+        await expect(
+          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
+        ).rejects.toBeInstanceOf(InternalServerErrorException);
+      });
+    });
+
+    // Defense-in-depth: if STT-v2 ever returns a vector whose length does not
+    // match the DB column ``vector(256)``, fail BEFORE the raw-SQL insert
+    // instead of letting pgvector throw a cryptic 22000 error.
+    describe('embedding dimension guard', () => {
+      it('rejects 512-d embedding with a clear BadRequest BEFORE hitting the DB', async () => {
+        const { of } = await import('rxjs');
+        mockHttpService.post.mockReturnValue(
+          of({ data: { embedding: Array(512).fill(0.1), model_id: 'pyannote/embedding' } }),
+        );
+
+        await expect(
+          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
+        ).rejects.toMatchObject({
+          constructor: BadRequestException,
+          message: expect.stringMatching(/512.*256|256.*512|dimension/i),
+        });
+
+        expect(mockVoiceProfileRepository.createWithEmbedding).not.toHaveBeenCalled();
+      });
+
+      it('includes the offending model id in the error message', async () => {
+        const { of } = await import('rxjs');
+        mockHttpService.post.mockReturnValue(
+          of({ data: { embedding: Array(192).fill(0.1), model_id: 'some/other-model' } }),
+        );
+
+        await expect(
+          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
+        ).rejects.toMatchObject({
+          message: expect.stringContaining('some/other-model'),
+        });
+      });
+
+      it('accepts the correct 256-d embedding', async () => {
+        const { of } = await import('rxjs');
+        mockHttpService.post.mockReturnValue(
+          of({ data: { embedding: Array(256).fill(0.1), model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM' } }),
+        );
+        const created = createMockVoiceProfileEntity({ id: 'vp-ok', userId: 'user-id-1' });
+        mockVoiceProfileRepository.createWithEmbedding.mockResolvedValue(created);
+        mockVoiceProfileRepository.findActiveByUserId.mockResolvedValue(null);
+
+        await expect(
+          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
+        ).resolves.toBeDefined();
+        expect(mockVoiceProfileRepository.createWithEmbedding).toHaveBeenCalled();
+      });
     });
 
     // TASK-296 C-1: auto-activate the first enrolled profile.

@@ -16,10 +16,9 @@ logger = logging.getLogger(__name__)
 
 MAX_SAMPLE_DURATION_SEC = 15.0
 MAX_SAMPLES = 3
-# TASK-296 H-8: minimum acceptable pairwise cosine similarity between per-sample
-# embeddings. Below this, we assume a different speaker recorded one of the
-# samples and reject the enrollment with a 400 error.
-MIN_CROSS_SAMPLE_SIMILARITY = 0.6
+# Must match the ``vector(N)`` dimension of ``core."UserVoiceProfile"."embedding"``
+# in the Prisma migration. Changing this requires a coordinated DB migration.
+EXPECTED_EMBEDDING_DIM = 256
 
 
 @dataclass
@@ -31,9 +30,28 @@ class ExtractionResult:
 class ExtractionService:
     """Extract the best speaker embedding from multiple audio samples."""
 
-    def __init__(self, embedding_service, vad_service) -> None:
+    def __init__(
+        self,
+        embedding_service,
+        vad_service,
+        *,
+        min_cross_sample_similarity: float | None = None,
+        expected_embedding_dim: int | None = None,
+    ) -> None:
         self._embedding_service = embedding_service
         self._vad_service = vad_service
+
+        if min_cross_sample_similarity is None:
+            from ..core.config.settings import get_settings
+
+            min_cross_sample_similarity = get_settings().voice_profile_min_similarity
+        self._min_cross_sample_similarity = min_cross_sample_similarity
+
+        self._expected_embedding_dim = (
+            expected_embedding_dim
+            if expected_embedding_dim is not None
+            else EXPECTED_EMBEDDING_DIM
+        )
 
     async def extract(
         self,
@@ -64,11 +82,11 @@ class ExtractionService:
 
         if len(embeddings) > 1:
             min_sim = _min_pairwise_cosine(embeddings)
-            if min_sim < MIN_CROSS_SAMPLE_SIMILARITY:
+            if min_sim < self._min_cross_sample_similarity:
                 raise ValueError(
                     "Voice samples are inconsistent "
                     f"(min pairwise similarity {min_sim:.2f} < "
-                    f"{MIN_CROSS_SAMPLE_SIMILARITY:.2f}). "
+                    f"{self._min_cross_sample_similarity:.2f}). "
                     "Please re-record all samples from the same speaker."
                 )
 
@@ -83,6 +101,17 @@ class ExtractionService:
         else:
             from ..core.config.settings import get_settings
             model_id = get_settings().diarization_hf_model_id
+
+        if len(centroid) != self._expected_embedding_dim:
+            raise ValueError(
+                f"Embedding dimension mismatch: model '{model_id}' produced "
+                f"{len(centroid)}-d embedding but database expects "
+                f"{self._expected_embedding_dim}-d. "
+                f"Set DIARIZATION_HF_MODEL_ID to a model that outputs "
+                f"{self._expected_embedding_dim}-d embeddings (e.g. "
+                f"'pyannote/wespeaker-voxceleb-resnet34-LM') or run a migration "
+                f"to alter the UserVoiceProfile.embedding column."
+            )
 
         return ExtractionResult(
             embedding=centroid.tolist(),

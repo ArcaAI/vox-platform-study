@@ -39,6 +39,20 @@ export interface TranscriptEntry {
   duration: number;
   inference: number;
   wordTimestamps?: WordTimestamp[];
+  /**
+   * TASK-304 Wave 3 hotfix — per-segment replay audio (Blob URL).
+   *
+   * When present, the playback panel uses this URL directly via `new Audio(url)`
+   * instead of seeking into the parallel `MediaRecorder` (webm) blob. The VAD
+   * already hands us the exact Float32Array for each segment in `onSpeechEnd`;
+   * encoding it as a stand-alone WAV gives the `<audio>` element accurate
+   * duration metadata, avoiding the few-ms playback truncation caused by
+   * partial WebM blobs reporting `audio.duration === Infinity`.
+   *
+   * Owner of the URL is the `useTranscriptSegmentPlayback` hook; it must call
+   * `URL.revokeObjectURL` when the entry is cleared or the component unmounts.
+   */
+  audioUrl?: string;
 }
 
 export type AudioSourceType = 'microphone' | 'file';
