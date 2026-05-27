@@ -12,7 +12,7 @@ import {
 import { IConsultationService } from './IConsultationService';
 import { OpenConsultationRequest, ConsultationResponse, PaginatedConsultationResponse } from './dto';
 import { ConsultationDtoMapper } from './consultation.dto.mapper';
-import { BaseService, assertParentInScope, assertUserBelongsToTenant } from '../../../common';
+import { BaseService, assertEqualTenants, assertParentInScope, assertUserBelongsToTenant } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 
 /**
@@ -179,10 +179,21 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
   /**
    * Get consultation by ID with context
+   *
+   * TASK-306 P2.1 (audit C-1 / AC-8) — defense-in-depth: the Prisma
+   * `tenantScope` extension already filters foreign-tenant rows on
+   * `findWithContext`, but an explicit service-layer assert provides a
+   * second line so the method still refuses to leak data if the
+   * extension is ever bypassed (raw query, platform-admin path, stale
+   * CLS in a background job). `assertEqualTenants` throws a generic
+   * `NotFoundException('Resource not found')` on mismatch — no model /
+   * id echo — and `BadRequestException` when CLS has no tenant.
    */
   async getById(id: string): Promise<ConsultationResponse | null> {
     const consultation = await this.consultationRepository.findWithContext(id);
     if (!consultation) return null;
+
+    assertEqualTenants(consultation, { tenantId: this.tenantId });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: consultation.id,

@@ -1094,4 +1094,87 @@ describe('ConsultationService', () => {
             });
         });
     });
+
+    // ============================================================
+    // TASK-306 P2.1 (audit C-1 / AC-8) — Consultation read-paths
+    // defense-in-depth.
+    //
+    // The three read methods (`getById`, `getByIdWithRelations`,
+    // `getConsultationChain`) today rely SOLELY on the Prisma
+    // `tenantScope` extension to filter foreign-tenant rows. If a
+    // future PR ever bypasses the extension (raw query, platform-
+    // admin path, mocked CLS in a test, background job with stale
+    // CLS) the methods silently return foreign-tenant data.
+    //
+    // Service-layer assertions after the repo call provide an
+    // EXPLICIT second line of defence: a generic
+    // `NotFoundException('Resource not found')` on tenant mismatch
+    // and `BadRequestException` when the caller has no CLS tenant.
+    //
+    // These tests mock the repository to RETURN foreign-tenant rows
+    // (simulating an extension bypass) so the cross-tenant negatives
+    // are red today and green after the service-layer guard lands.
+    // ============================================================
+    describe('TASK-306 P2.1 — Consultation read-paths defense-in-depth', () => {
+        describe('getById', () => {
+            it('returns DTO when the fetched entity tenant matches caller CLS tenant (sanity)', async () => {
+                const consultation = createMockConsultationEntity({
+                    id: 'consultation-id-1',
+                    tenantId: 'tenant-1',
+                });
+                mockConsultationRepository.findWithContext.mockResolvedValue(consultation);
+
+                const result = await service.getById('consultation-id-1');
+
+                expect(result).not.toBeNull();
+                expect(result?.id).toBe('consultation-id-1');
+                expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                    SysEventType.ResourceViewed,
+                    expect.objectContaining({ resourceId: 'consultation-id-1' }),
+                );
+            });
+
+            it('throws NotFoundException with generic message when the fetched entity belongs to another tenant', async () => {
+                const foreign = createMockConsultationEntity({
+                    id: 'consultation-id-foreign',
+                    tenantId: 'tenant-OTHER',
+                });
+                mockConsultationRepository.findWithContext.mockResolvedValue(foreign);
+
+                await expect(
+                    service.getById('consultation-id-foreign'),
+                ).rejects.toThrow(NotFoundException);
+                await expect(
+                    service.getById('consultation-id-foreign'),
+                ).rejects.toThrow('Resource not found');
+
+                // Guard must short-circuit BEFORE the SysEvent broadcast: the
+                // caller never sees a `ResourceViewed` event for a row they
+                // should not be aware of.
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('throws fail-closed when CLS tenantId is missing and the repo returns a row', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'tenantId') return null;
+                    if (key === 'user') return { id: 'user-id-1' };
+                    return null;
+                });
+                const consultation = createMockConsultationEntity({
+                    id: 'consultation-id-1',
+                    tenantId: 'tenant-1',
+                });
+                mockConsultationRepository.findWithContext.mockResolvedValue(consultation);
+
+                // `assertEqualTenants` raises BadRequestException when either
+                // side's tenantId is missing — background / unprovisioned
+                // contexts must fail closed rather than leak the row.
+                await expect(
+                    service.getById('consultation-id-1'),
+                ).rejects.toThrow(BadRequestException);
+
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+        });
+    });
 });
