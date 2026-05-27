@@ -1226,5 +1226,46 @@ describe('ResourceSubscriptionService', () => {
                 expect(mockResourceSubscriptionRepository.update).toHaveBeenCalled();
             });
         });
+
+        describe('deleteById (5.3.11)', () => {
+            it('soft-deletes the subscription when it belongs to the caller tenant', async () => {
+                const sameTenantSub = createMockResourceSubscriptionEntity({
+                    id: 'sub-same',
+                    tenantId: 'tenant-1',
+                });
+                mockResourceSubscriptionRepository.findById.mockResolvedValue(sameTenantSub);
+                mockResourceSubscriptionRepository.softDelete.mockResolvedValue(sameTenantSub);
+
+                const result = await service.deleteById('sub-same');
+                expect(result.id).toBe('sub-same');
+                expect(mockResourceSubscriptionRepository.softDelete).toHaveBeenCalledWith('sub-same');
+            });
+
+            it('throws NotFoundException for a non-SUPER_ADMIN caller deleting another tenant\'s subscription, with no softDelete', async () => {
+                const crossTenantSub = createMockResourceSubscriptionEntity({
+                    id: 'sub-foreign',
+                    tenantId: 'tenant-2',
+                });
+                mockResourceSubscriptionRepository.findById.mockResolvedValue(crossTenantSub);
+
+                await expect(service.deleteById('sub-foreign')).rejects.toThrow(NotFoundException);
+                expect(mockResourceSubscriptionRepository.softDelete).not.toHaveBeenCalled();
+            });
+
+            it('allows a SUPER_ADMIN to delete a subscription owned by another tenant (admin bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const crossTenantSub = createMockResourceSubscriptionEntity({
+                    id: 'sub-foreign',
+                    tenantId: 'tenant-2',
+                });
+                mockResourceSubscriptionRepository.softDelete.mockResolvedValue(crossTenantSub);
+
+                const result = await service.deleteById('sub-foreign');
+                expect(result.id).toBe('sub-foreign');
+                expect(mockResourceSubscriptionRepository.softDelete).toHaveBeenCalledWith('sub-foreign');
+                // SUPER_ADMIN bypass skips the pre-load `findById` (mirrors W5.3.5)
+                expect(mockResourceSubscriptionRepository.findById).not.toHaveBeenCalled();
+            });
+        });
     });
 });

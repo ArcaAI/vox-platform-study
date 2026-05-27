@@ -258,7 +258,26 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
     return updatedResourceSubscription;
   }
 
+  /**
+   * TASK-306 P2.4 (audit M-3 / AC-6) — gated delete with the DEF-C3
+   * "no existence leak" + load-then-assert pattern. Pre-guard,
+   * `deleteById` issued `softDelete(id)` directly with no tenant
+   * load, so a Tenant-A admin could erase any subscription in the
+   * platform. We now:
+   *   1. For non-SUPER_ADMIN: `findById` first, then assert tenant
+   *      scope. Cross-tenant access throws `NotFoundException`
+   *      (404) BEFORE any softDelete is issued — no mutation side
+   *      effect, no existence leak.
+   *   2. For SUPER_ADMIN: skip the pre-load and call `softDelete`
+   *      directly (mirrors `WebhookService.deleteById` from
+   *      W5.3.5 — keeps the SUPER_ADMIN write path one round-trip).
+   */
   async deleteById(id: EntityId): Promise<ResourceSubscriptionEntity> {
+    if (!this.isSuperAdmin()) {
+      const existing = await this.resourceSubscriptionRepository.findById(id);
+      assertEqualTenants(existing, { tenantId: this.tenantId });
+    }
+
     const resourceSubscription = await this.resourceSubscriptionRepository.softDelete(id);
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
