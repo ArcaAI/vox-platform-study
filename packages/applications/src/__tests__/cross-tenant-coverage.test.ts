@@ -29,8 +29,8 @@
  * we are still inside one or more matching describes. The walker is
  * intentionally text-based (no AST) so it stays test-runtime cheap.
  */
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -136,6 +136,23 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     // marker (fetchAllByTenantId CLS gate). Bumped 10 → 13.
     minTests: 13,
     marker: /TASK-305 D\.5|Multi-tenant scoping|TASK-306/,
+  },
+  /*
+   * Surfaced by the TASK-306 W5.5.6 FS-introspection (NEW-7 / F-4):
+   * `prompt-management.service.test.ts` exercises cross-tenant
+   * isolation under two describes — `Cross-Tenant Isolation` (the
+   * pre-TASK-305 informal convention) and `Authorization & tenant
+   * scope (DEF-C2)` (the TASK-294 DEF-C2 convention). Both were never
+   * registered in this allow-list before; the introspection harden
+   * exposed the gap. Marker captures both describes; floor is the
+   * conservative current count of the DEF-C2 block (10) so any
+   * future deletion of either describe is caught.
+   */
+  {
+    name: 'prompt-management',
+    file: 'services/prompt-management/__tests__/prompt-management.service.test.ts',
+    minTests: 10,
+    marker: /Cross-Tenant Isolation|DEF-C2|TASK-306/,
   },
   {
     name: 'user/userRoleAssignment',
@@ -286,6 +303,92 @@ function readSource(relativePath: string): string {
   return readFileSync(full, 'utf8');
 }
 
+/*
+ * TASK-306 W5.5.6 / NEW-7 / F-4 — FS-introspection harden.
+ *
+ * Before this commit `SERVICE_COVERAGE` was a hand-maintained allow-list.
+ * A new cross-tenant test added in a service that had no entry (or a
+ * service that gained its FIRST cross-tenant negative test in a later
+ * wave) would never trip CI — the gap was structural. NEW-7 / F-4
+ * called that out; W5.5 promotes the fix in-scope.
+ *
+ * The harden walks `packages/applications/src/services/` end-to-end,
+ * picks every `<name>.service.test.ts` file whose CONTENTS reference at
+ * least one of the narrow set of cross-tenant signals below
+ * (TENANT_SCOPED_DETECTION), and asserts that each such file is
+ * registered in `SERVICE_COVERAGE`. The reverse direction is asserted
+ * too — every `SERVICE_COVERAGE` entry must point to a file that
+ * actually exists on disk.
+ *
+ * The detection set is intentionally narrower than the user-spec list
+ * (which included a bare `tenantId` matcher). A bare `tenantId` match
+ * has too many false positives — services that incidentally mention
+ * tenantId in setup code (logger setup, JWT issuance, AppSettings
+ * boot) would flood the gap list. The narrower set targets the
+ * actual guard helpers exposed by `packages/applications/src/common/
+ * tenant-guards.ts` (TASK-305 W1.2), the cross-tenant test describe
+ * conventions (`TASK-305 D.x`, `TASK-306`, `Multi-tenant scoping`,
+ * `Cross-Tenant Isolation`, `cross-aggregate tenant`), and the
+ * legacy `DEF-C2` block convention from TASK-294. A file matches if
+ * ANY of these tokens appears anywhere in its source.
+ */
+const TENANT_SCOPED_DETECTION =
+  /assertEqualTenants|assertParentInScope|assertUserBelongsToTenant|assertCrossAggregateRefsInTenant|resolveEffectiveTenantId|TASK-305 D\.|TASK-306|Multi-tenant scoping|Cross-Tenant Isolation|cross-aggregate tenant|DEF-C2/;
+
+/**
+ * Recursively walk `dir`, collecting absolute paths of files whose
+ * BASENAME matches `pattern`. Sync FS — these tests run in-process and
+ * the directory tree is small (~70 files), so adding `fast-glob` as a
+ * dep would be overkill.
+ */
+function findFiles(dir: string, pattern: RegExp, results: string[] = []): string[] {
+  let entries: ReturnType<typeof readdirSync>;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+  for (const entry of entries) {
+    const full = resolve(dir, entry.name);
+    if (entry.isDirectory()) {
+      findFiles(full, pattern, results);
+    } else if (pattern.test(entry.name)) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
+/**
+ * Returns the set of `services/**` test files (relative to
+ * `APPLICATIONS_SRC`) whose source contains AT LEAST ONE of the
+ * tenant-scoped detection tokens. Sorted so failure diffs are stable.
+ */
+function detectTenantScopedTestFiles(servicesDir: string): string[] {
+  const allTestFiles = findFiles(servicesDir, /\.service\.test\.ts$/);
+  const tenantScoped: string[] = [];
+  for (const file of allTestFiles) {
+    const source = readFileSync(file, 'utf8');
+    if (TENANT_SCOPED_DETECTION.test(source)) {
+      tenantScoped.push(relative(APPLICATIONS_SRC, file));
+    }
+  }
+  return tenantScoped.sort();
+}
+
+/**
+ * Returns the set of `SERVICE_COVERAGE` files that are NOT covered
+ * given `tenantScopedFiles`. Pure function — used both by the live
+ * assertion and the meta-test below.
+ */
+function findUncoveredFiles(
+  tenantScopedFiles: readonly string[],
+  serviceCoverage: readonly { file: string }[],
+): string[] {
+  const covered = new Set(serviceCoverage.map((entry) => entry.file));
+  return tenantScopedFiles.filter((file) => !covered.has(file));
+}
+
 describe('Cross-tenant test coverage aggregator (TASK-305 E.2/E.3)', () => {
   describe('E.2 — service-layer inline cross-tenant tests', () => {
     it.each(SERVICE_COVERAGE)(
@@ -333,5 +436,103 @@ describe('Cross-tenant test coverage aggregator (TASK-305 E.2/E.3)', () => {
       });
     `;
     expect(countItInMatchingDescribes(sample, /TASK-305 D\.x/)).toBe(0);
+  });
+
+  /*
+   * TASK-306 W5.5.6 / NEW-7 / F-4 — FS-introspection harden. See the
+   * block comment on `TENANT_SCOPED_DETECTION` above for the design
+   * rationale. The live assertion walks the real filesystem; the
+   * two meta-tests below pin the detection algorithm itself against
+   * fixtures so a refactor of `findUncoveredFiles` cannot silently
+   * regress.
+   */
+  describe('TASK-306 W5.5.6 — aggregator FS-introspection (NEW-7 / F-4)', () => {
+    it('every tenant-scoped service test file is registered in SERVICE_COVERAGE', () => {
+      const servicesDir = resolve(APPLICATIONS_SRC, 'services');
+      const detected = detectTenantScopedTestFiles(servicesDir);
+      const uncovered = findUncoveredFiles(detected, SERVICE_COVERAGE);
+
+      // If this assertion fires, a service test file added a cross-tenant
+      // test (or one of the tenant-guard helper calls) but its file is
+      // not yet in SERVICE_COVERAGE. Add an entry with the appropriate
+      // marker + minTests floor — see the existing entries for the
+      // pattern. This is exactly the gap NEW-7 / F-4 was tracking.
+      expect(uncovered).toEqual([]);
+    });
+
+    it('every SERVICE_COVERAGE entry points to a file that exists on disk', () => {
+      const missing = SERVICE_COVERAGE.filter(
+        (entry) => !existsSync(resolve(APPLICATIONS_SRC, entry.file)),
+      ).map((entry) => entry.file);
+      expect(missing).toEqual([]);
+    });
+
+    it('detects gaps when SERVICE_COVERAGE is missing an entry (meta-test on findUncoveredFiles)', () => {
+      // Pure-function fixture: NO real filesystem touch, NO real
+      // SERVICE_COVERAGE inspection. This proves the gap-detection
+      // logic itself is correct — i.e. if a real tenant-scoped file
+      // exists and SERVICE_COVERAGE omits it, `findUncoveredFiles`
+      // returns its path verbatim.
+      const fakeTenantScopedFiles = [
+        'services/foo/__tests__/foo.service.test.ts',
+        'services/bar/__tests__/bar.service.test.ts',
+        'services/baz/__tests__/baz.service.test.ts',
+      ];
+      const fakeServiceCoverage = [
+        { file: 'services/foo/__tests__/foo.service.test.ts' },
+        // bar.service.test.ts intentionally missing — the meta-test
+        // proves the algorithm surfaces it.
+        { file: 'services/baz/__tests__/baz.service.test.ts' },
+      ];
+
+      const missing = findUncoveredFiles(fakeTenantScopedFiles, fakeServiceCoverage);
+
+      expect(missing).toEqual(['services/bar/__tests__/bar.service.test.ts']);
+    });
+
+    it('returns no gaps when every tenant-scoped file is covered (meta-test happy path)', () => {
+      const fakeTenantScopedFiles = [
+        'services/foo/__tests__/foo.service.test.ts',
+        'services/bar/__tests__/bar.service.test.ts',
+      ];
+      const fakeServiceCoverage = [
+        { file: 'services/foo/__tests__/foo.service.test.ts' },
+        { file: 'services/bar/__tests__/bar.service.test.ts' },
+        // An extra unrelated entry should NOT count as a gap.
+        { file: 'services/baz/__tests__/baz.service.test.ts' },
+      ];
+
+      expect(findUncoveredFiles(fakeTenantScopedFiles, fakeServiceCoverage)).toEqual([]);
+    });
+
+    it('TENANT_SCOPED_DETECTION matches each guard token (meta-test on the detection regex)', () => {
+      // The detection regex is the contract between the FS walker and
+      // the SERVICE_COVERAGE allow-list. Pinning each token
+      // individually catches a refactor that accidentally drops one.
+      const tokens = [
+        'assertEqualTenants',
+        'assertParentInScope',
+        'assertUserBelongsToTenant',
+        'assertCrossAggregateRefsInTenant',
+        'resolveEffectiveTenantId',
+        'TASK-305 D.7',
+        'TASK-306 P2.1',
+        'Multi-tenant scoping',
+        'Cross-Tenant Isolation',
+        'cross-aggregate tenant',
+        'DEF-C2',
+      ];
+      for (const token of tokens) {
+        expect(
+          TENANT_SCOPED_DETECTION.test(`some surrounding source code ${token} more code`),
+        ).toBe(true);
+      }
+      // And a negative — pure casual `tenantId` mention should NOT
+      // flag the file (it'd produce too many false positives, e.g.
+      // logger / appSettings setup blocks).
+      expect(
+        TENANT_SCOPED_DETECTION.test(`const tenantId = "tenant-1";`),
+      ).toBe(false);
+    });
   });
 });
