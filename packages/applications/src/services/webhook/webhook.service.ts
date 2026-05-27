@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ResourceType, SysEventType, EntityId, WebhookEntity, WebhookFactory, WebhookRepository } from '@arcaai/domains';
@@ -85,9 +85,22 @@ export class WebhookService extends BaseService implements IWebhookService {
     });
   }
 
+  /**
+   * TASK-306 P2.3 (audit M-2 / AC-5 + AC-7) — refuse cross-tenant list
+   * reads driven by the DTO `tenantId`. Pre-guard, any caller could
+   * enumerate another tenant's webhooks by supplying a foreign
+   * `tenantId`. SUPER_ADMIN bypasses for admin-tooling cross-tenant
+   * listing (mirrors the W5.1.5 Notification + ApiKey
+   * `fetchAllByTenantId` posture).
+   */
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<WebhookEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { tenantId, limit, page, search } = props;
+
+    if (tenantId !== this.tenantId && !this.isSuperAdmin()) {
+      throw new NotFoundException('Resource not found');
+    }
+
     const webhooks = await this.webhookRepository.findAll({
       ...withFormattedPaginatedProps(props),
       where: {

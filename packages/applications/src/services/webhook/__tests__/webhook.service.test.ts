@@ -579,6 +579,41 @@ describe('WebhookService', () => {
                 expect(mockWebhookRepository.softDelete).toHaveBeenCalledWith('webhook-foreign');
             });
         });
+
+        describe('fetchAllByTenantId (5.3.6)', () => {
+            it('returns rows when the DTO tenantId matches the caller CLS tenant', async () => {
+                const webhooks = [createMockWebhookEntity({ id: 'webhook-1', tenantId: 'tenant-1' })];
+                mockWebhookRepository.findAll.mockResolvedValue(webhooks);
+                mockWebhookRepository.count.mockResolvedValue(1);
+
+                const result = await service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 'tenant-1' });
+
+                expect(result.data).toHaveLength(1);
+                expect(result.data[0].tenantId).toBe('tenant-1');
+            });
+
+            it('throws NotFoundException for cross-tenant non-admin reads', async () => {
+                const { NotFoundException } = await import('@nestjs/common');
+
+                await expect(
+                    service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 'tenant-2' }),
+                ).rejects.toThrow(NotFoundException);
+                // Guard short-circuits BEFORE hitting the repository.
+                expect(mockWebhookRepository.findAll).not.toHaveBeenCalled();
+            });
+
+            it('returns rows for a cross-tenant SUPER_ADMIN read (bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const webhooks = [createMockWebhookEntity({ id: 'webhook-x', tenantId: 'tenant-2' })];
+                mockWebhookRepository.findAll.mockResolvedValue(webhooks);
+                mockWebhookRepository.count.mockResolvedValue(1);
+
+                const result = await service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 'tenant-2' });
+
+                expect(result.data).toHaveLength(1);
+                expect(result.data[0].tenantId).toBe('tenant-2');
+            });
+        });
     });
 
     describe('fetchAll', () => {
@@ -682,13 +717,18 @@ describe('WebhookService', () => {
         });
 
         it('should return empty result when no webhooks match tenant', async () => {
+            // TASK-306 P2.3 (5.3.6) — `fetchAllByTenantId` now refuses
+            // cross-tenant reads. Align this empty-result probe with the
+            // CLS default (`tenant-1`) so the new guard does not
+            // short-circuit and the assertion still validates the
+            // "no rows" branch the original test was protecting.
             mockWebhookRepository.findAll.mockResolvedValue([]);
             mockWebhookRepository.count.mockResolvedValue(0);
 
             const result = await service.fetchAllByTenantId({
                 limit: 10,
                 page: 1,
-                tenantId: 'non-existent-tenant',
+                tenantId: 'tenant-1',
             });
 
             expect(result.data).toHaveLength(0);
