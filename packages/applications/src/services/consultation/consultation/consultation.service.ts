@@ -188,8 +188,17 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * CLS in a background job). `assertEqualTenants` throws a generic
    * `NotFoundException('Resource not found')` on mismatch — no model /
    * id echo — and `BadRequestException` when CLS has no tenant.
+   *
+   * TASK-306 W5.7.7 (306-F5) — the missing-CLS check is hoisted to the
+   * top of the method so unprovisioned background calls fail closed
+   * BEFORE the repo round-trip, matching the `getConsultationChain`
+   * convention.
    */
   async getById(id: string): Promise<ConsultationResponse | null> {
+    if (!this.tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
     const consultation = await this.consultationRepository.findWithContext(id);
     if (!consultation) return null;
 
@@ -212,8 +221,17 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * an explicit second line on PHI relations so an extension bypass or
    * stale-CLS background call still fails closed with a generic
    * `NotFoundException('Resource not found')`.
+   *
+   * TASK-306 W5.7.7 (306-F5) — the missing-CLS check is hoisted to the
+   * top of the method (same posture as `getById`); the relations join
+   * is more expensive than a single-row read, so the saved round-trip
+   * is even more useful here.
    */
   async getByIdWithRelations(id: string): Promise<ConsultationResponse | null> {
+    if (!this.tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
     const consultation = await this.consultationRepository.findWithRelations(id);
     if (!consultation) return null;
 

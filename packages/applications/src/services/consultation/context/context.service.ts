@@ -415,6 +415,42 @@ export class ContextService extends BaseService implements IContextService {
    * When scope=single, only returns entities from the specified consultation.
    */
   async getAggregateNamedEntities(consultationId: string, scope: 'single' | 'chain'): Promise<AggregateNerResponse> {
+    // TASK-306 W5.7.8 (306-F11) — for scope=single, verify the root
+    // consultation lives in the caller's CLS tenant before doing any
+    // work. The Prisma `tenantScope` extension already scopes the
+    // downstream per-id reads to empty for a foreign-tenant root, so
+    // PHI never leaks via `entities` / `sources`, but the
+    // `ResourceViewed` broadcast at the end of this method would still
+    // fire with the foreign `consultationId` in the payload — a minor
+    // signal that distinguishes "valid same-tenant id with no data"
+    // from "foreign-tenant id (extension-scoped to empty)".
+    //
+    // scope=chain is unaffected — `resolveLinkedConsultationIds` already
+    // returns [] for foreign-tenant roots (W5.4 contract), and the
+    // existing `consultationIds.length === 0` early-return below skips
+    // the broadcast in that branch.
+    //
+    // The `this.tenantId` guard intentionally falls through when CLS is
+    // missing: `getAggregateNamedEntities` has no top-level CLS-required
+    // check today (unlike the W5.7.7-hoisted Consultation read paths),
+    // and this fix is narrowly scoped to the broadcast-side-channel on
+    // cross-tenant ids. Hardening the no-CLS posture for this method
+    // (e.g. throwing instead of falling through) is deferred to a
+    // separate ticket.
+    if (scope === 'single' && this.tenantId) {
+      const root = await this.consultationRepository.findById(consultationId);
+      if (!root || root.tenantId !== this.tenantId) {
+        return {
+          consultationId,
+          scope,
+          entities: {},
+          totalCount: 0,
+          countByClass: {},
+          sources: [],
+        };
+      }
+    }
+
     // Resolve which consultations to include
     let consultationIds: string[];
     if (scope === 'chain') {

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ResourceType, SysEventType, EntityId, WebhookEntity, WebhookFactory, WebhookRepository } from '@arcaai/domains';
@@ -11,6 +11,8 @@ import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 
 @Injectable()
 export class WebhookService extends BaseService implements IWebhookService {
+  private readonly logger = new Logger(WebhookService.name);
+
   constructor(
     private readonly webhookRepository: WebhookRepository,
     protected override readonly eventEmitter: EventEmitter2,
@@ -256,11 +258,26 @@ export class WebhookService extends BaseService implements IWebhookService {
    * throwing `ForbiddenException`; webhooks are less sensitive than PHI
    * notification dispatch and the README W5.1.4 verification contract
    * mandates "row created with tenant-A" on silent coercion.
+   *
+   * TASK-306 W5.7.6 (306-F2) — emit a `logger.warn` ONLY on the
+   * cross-tenant-coercion branch (non-SUPER_ADMIN passing a foreign
+   * tenantId). Persistence is correct either way, but the warn gives
+   * SOC the only signal that distinguishes a properly-formed request
+   * from a foreign-tenant DTO. Same-tenant and tenantId-omitted writes
+   * stay silent (benign / expected); SUPER_ADMIN cross-tenant writes
+   * are explicitly allowed and also stay silent.
    */
   private resolveEffectiveTenantId(requestTenantId?: string): string {
     if (this.isSuperAdmin() && requestTenantId) return requestTenantId;
     const cls = this.tenantId;
     if (!cls) throw new BadRequestException('Tenant context required');
+    if (requestTenantId && requestTenantId !== cls) {
+      this.logger.warn('Webhook cross-tenant attempt coerced to CLS', {
+        requestedTenantId: requestTenantId,
+        callerTenantId: cls,
+        userId: this.requestUser?.id,
+      });
+    }
     return cls;
   }
 
