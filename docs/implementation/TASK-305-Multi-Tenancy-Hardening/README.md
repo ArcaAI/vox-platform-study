@@ -1,0 +1,408 @@
+# TASK-305 — Multi-Tenancy Hardening
+
+| Field | Value |
+|---|---|
+| **Ticket** | TASK-305-Multi-Tenancy-Hardening |
+| **Created** | 2026-05-26 |
+| **Updated** | 2026-05-26 |
+| **Status** | `Pending` — awaiting plan approval |
+| **Classification** | Refactor + bugfix (security/compliance) |
+| **Priority** | High — HIPAA §164.312(a)(1), GDPR Art.32, SOC2 CC6.1 gap |
+| **Prior context** | `docs/multi-tenancy-audit/01..05` (5 review docs, 2026-05-25) |
+| **Companion ticket** | TASK-302 (PgBouncer + Vault role split — owns the RLS rollout for the remaining 24 tenant-scoped tables) |
+
+---
+
+## 1. Requirement Analysis
+
+### 1.1 Description
+
+Close the data-layer multi-tenancy gaps identified in the 2026-05-25 audit, scoped to what Prisma 7 can express natively. Where Prisma cannot model a constraint cleanly (cross-aggregate equality, User-tenant membership), enforce in NestJS service layer.
+
+### 1.2 User-confirmed scope rules
+
+1. **NO foreign-key transformation** on `tenantId` (no `@relation` back to `Tenant`). Skip B2 entirely — the audit's recommended `FOREIGN KEY (tenantId) REFERENCES core.Tenant(id)` is rejected because it bloats every Prisma model with a relation field for marginal benefit (Prisma 7's `$extends` + RLS gives stronger guarantees without the model noise).
+2. **DROP the sentinel default fully**. The `'50000000-0000-0000-0000-000000000000'` default on `tenantId` is removed everywhere — not just PHI tables (audit's "bare-minimum" path was 6 tables; we go to all 30 tenant-scoped models).
+3. **Prisma-native first; NestJS for the rest.** Anything Prisma 7 can express (column nullability, defaults, scoped unique constraints, composite indexes, client extensions, raw SQL migrations including RLS) goes in the schema layer. Cross-aggregate tenant equality and User-tenant membership checks live in NestJS service-layer.
+
+### 1.3 Business context
+
+The 5-doc audit verdict: **tenant isolation at the data layer is NOT reliable**. 0 RLS, 0 FKs back to `Tenant`, sentinel default on 27 models, 13 nullable `tenantId` fields, no tenant-aware Prisma extension. Any forgotten `where: { tenantId }` clause = cross-tenant PHI leak. HIPAA / SOC2 auditors treat this as a control-failure baseline.
+
+### 1.4 Acceptance criteria
+
+| # | Criterion | Verification |
+|---|----|----|
+| AC-1 | Zero tenant-scoped models have `@default(...)` on `tenantId` | `rg '@default\("[0-9a-f-]{8,}"\)' packages/database/src/prisma/db_main/*.prisma \| rg -v 'tenant.prisma\|seed' \| rg 'tenantId'` returns no matches |
+| AC-2 | Zero tenant-scoped models have `tenantId String?` (nullable) | `rg 'tenantId\s+String\?' packages/database/src/prisma/db_main/*.prisma` returns no matches |
+| AC-3 | A reserved `system` Tenant row (UUID `00000000-0000-0000-0000-000000000000`) exists and absorbs former nullable/sentinel rows | Seed test passes; migration back-fill verifies row exists |
+| AC-4 | Tenant-scoped `@unique` columns are tenant-scoped (`@@unique([tenantId, X])`) where the resource is owned per tenant | Schema diff approved |
+| AC-5 | Composite indexes lead with `tenantId` on hot query paths | `Consultation/ContextItem/NamedEntity` schema diff approved |
+| AC-6 | A `tenantScope` Prisma `$extends` extension exists, composes with `softDeleteExtension`, and is the **default** export of `@arcaai/database` | `getExtendedPrismaClient()` returns the composed client |
+| AC-7 | `getPrismaClient` (unscoped) is renamed `getPlatformAdminPrismaClient_Unscoped` and lint-guarded to allow-list directories | ESLint rule + dependency-cruiser config present |
+| AC-8 | `findUnique` divergence in `softDeleteFilter` is fixed | Regression test passes |
+| AC-9 | PostgreSQL RLS enabled + FORCE-ed on the 7 PHI tables with full SELECT/INSERT/UPDATE/DELETE policies | RLS migrations applied; existing `tests/pgbouncer-validation/02-rls-guc-leak.test.ts` extended and green |
+| AC-10 | NestJS services assert parent-child tenant equality and User-tenant membership for all PHI-bearing creates | Cross-tenant negative tests pass for `consultation`, `context`, `notification`, `apikey`, `dna-writing-style` services |
+| AC-11 | Cursor rule `02-database-prisma.mdc` no longer mandates the sentinel default | Rule diff approved |
+
+### 1.5 Decisions locked in (audit choices)
+
+| Decision | Choice | Rationale |
+|---|----|---|
+| `null tenantId` semantics | **Reserve a `system` Tenant row** (UUID `00000000-…`) and back-fill nullable rows to it | Audit § B4 recommended; single concept; works cleanly with RLS (`current_setting('app.tenant_id') = '00000000…'` for platform-admin contexts) |
+| Tenant FK | **Skip** | User directive |
+| RLS scope in this ticket | **7 PHI tables** (Consultation, ContextItem, AudioRecording, SummaryMeta, NamedEntity, ContextItemVersion, AuditLog) | High-value bare-minimum; TASK-302 Phase 2 owns the remaining 24 |
+| `User.username`, `User.externalId` global uniques | **Keep global** | User identity is global by design (B6); cross-tenant identity is a feature |
+| `StorageAccessKey.accessKeyId @unique` | **Keep global** | Used as S3-SDK identifier; naturally global |
+| `StorageAccessKey.bucketIds String[]` (C3) | **Out of scope** | Independent refactor; not a multi-tenancy fix |
+| `User.password / secret1 / secret2` naming (C4/C5) | **Out of scope** | Separate security review |
+| `User` model split into `User` + `TenantUser` (B6) | **Out of scope** | Architectural decision; tracked separately |
+| Drop `MODELS_WITHOUT_SOFT_DELETE` extras / soft-delete contract changes | **Out of scope** | Independent contract |
+
+---
+
+## 2. Current State Evaluation
+
+### 2.1 Affected files / inventory
+
+| Layer | Count | Notes |
+|---|--|----|
+| Prisma model files | 19 in `packages/database/src/prisma/db_main/*.prisma` | 30 tenant-scoped models; 27 with sentinel default; 13 nullable |
+| Prisma client / extension | 1 (`packages/database/src/client.ts`) | Soft-delete extension lives here; tenant extension goes alongside |
+| Prisma migrations | New: 4-5 migration folders | Drop defaults; NOT NULL + back-fill; scoped uniques + composite indexes; RLS enable + policies |
+| Domain factories | 16 in `packages/domains/src/factories/generated/core/` | All fall back to `tenantId: props.tenantId ?? ''` — codegen template change |
+| Domain base entity | 1 (`packages/domains/src/common/baseEntity/base.tenantEntity.ts`) | Public setter + no-op validate — both must change |
+| NestJS service files | ~12 services | Cross-aggregate / User membership checks |
+| Cursor rules | 1 (`02-database-prisma.mdc`) | Drop sentinel default guidance |
+| ESLint / dep-cruiser | 1 each | Allow-list for unscoped client import |
+| Seed | 1 new + 1 modified | New `system` Tenant row; existing `01-policy.ts` already references `${context.tenantId}` |
+| Tests | ~20 new (cross-tenant negatives) + extension unit tests | One per service × one per blocking method |
+
+### 2.2 Key prior-art to reuse
+
+| Pattern | Source | Use |
+|----|-----|---|
+| "No existence leak" cross-tenant assert | `DepartmentService.getById:175`, `PromptManagementService:220,326`, `Stt.PipelineService:148`, `TenantBucketService:64,110,252`, `StorageAccessKeyService:50` | Copy this exact 3-line pattern to ConsultationService, ContextService, NotificationService, etc. |
+| Soft-delete `$extends` shape | `packages/database/src/client.ts:180-221` | Mirror for tenantScope extension |
+| PgBouncer + RLS leak test | `packages/database/tests/pgbouncer-validation/__tests__/02-rls-guc-leak.test.ts`, `07-concurrent-rls.test.ts` | Extend with policies for the 7 PHI tables |
+| Encrypted audit-scrub test | `packages/applications/src/services/tenant/__tests__/tenant.service.audit-scrub-encrypted.test.ts` | Template for cross-tenant negative tests |
+| `$transaction(callback)` correct usage | `TenantService.updateTenantConfigs:503-521` | Pattern for `SET LOCAL app.tenant_id` wrapping |
+
+### 2.3 Dependencies on TASK-302
+
+| Phase here | Depends on TASK-302 milestone | Status |
+|----|-----|---|
+| Phase C (RLS rollout) | DB role split (`hope_tenant_user` NOSUPERUSER NOBYPASSRLS / `hope_platform_admin` BYPASSRLS) | Tracked in TASK-302; partial |
+| Phase C (RLS rollout) | PgBouncer `transaction` pool mode decision + `set_config(..., true)` rule | Tracked in TASK-302 Phase 2 |
+| Phase B (extension) | `nestjs-cls` `tenantId` storage | In place via `app.module.ts:108-116` |
+
+If TASK-302 milestones slip, Phase C lands as a follow-up; Phases A/B/D are independent.
+
+---
+
+## 3. Implementation Plan
+
+> **Approval gate** — this section must be confirmed before any code is written. The phases are sequenced so each is independently shippable (one PR per phase). Estimated total effort: **~9-12 engineer-days** including tests and cross-tenant test suite.
+
+### Phase A — Schema hardening (Prisma-native)
+
+**Goal**: drop sentinel defaults; make `tenantId` `NOT NULL` everywhere; scope unique constraints; add composite indexes; reserve the `system` Tenant row. No domain/service code yet — just the schema substrate + the codegen contract.
+
+**Estimate**: 1.5–2 engineer-days.
+
+| # | Task | Verify | Size |
+|---|------|----|----|
+| A.1 | Add `system` Tenant seed: `Tenant { id: '00000000-0000-0000-0000-000000000000', name: 'system', key: 'system' }` in `packages/database/src/prisma/db_main/seed/05-tenant.ts` (or wherever Tenant seeds live) | `pnpm db:seed` populates the row; migration test inserts it idempotently | S |
+| A.2 | Write back-fill SQL: `UPDATE core."X" SET "tenantId" = '00000000-…' WHERE "tenantId" IS NULL OR "tenantId" = '50000000-…'` for each tenant-scoped table (audit + count rows per table first) | Pre-migration row-count vs. post; CI flag if mismatch | M |
+| A.3 | For 27 models: remove `@default("50000000-…")` on `tenantId` | Schema diff; affected files | M |
+| A.4 | For 13 nullable models: change `tenantId String?` → `tenantId String` | Schema diff; affected files | S |
+| A.5 | Composite uniques: `Webhook.name @unique` → `@@unique([tenantId, name])` (rename constraint to `Webhook_tenantId_name_unique`) | Schema diff; `Webhook` migration SQL | S |
+| A.6 | Composite uniques: `Tag` — add `@@unique([tenantId, resourceTypeName, resourceId, tagKey])` and `@@index([tenantId, resourceTypeName, resourceId])` (no prior unique) | Schema diff | S |
+| A.7 | Replace single-column tenant-leading indexes with composites where audit § C1 calls them out: `Consultation`: `@@index([doctorId])` → `@@index([tenantId, doctorId])`; `@@index([departmentId])` → `@@index([tenantId, departmentId])`; same for `ContextItem`, `NamedEntity`, `SummaryMeta`, `AudioRecording` | Schema diff; review with planner output | M |
+| A.8 | Generate migration `20260527000000_multi_tenancy_phase_a` containing back-fill + ALTER COLUMN SET NOT NULL + DROP DEFAULT + scoped uniques + composite indexes (single migration; transactional) | `prisma migrate dev` succeeds locally; SQL reviewed | M |
+| A.9 | Update cursor rule `.cursor/rules/02-database-prisma.mdc` § "Standard Model Field Ordering": change step 2 from `tenantId with default "50000000-…"` → `tenantId String (NOT NULL, no default) — provided by the factory or repository scope` | Rule diff | S |
+| A.10 | Codegen template change: in domain factories codegen, drop `?? ''` fallback on `tenantId`; make signature require `tenantId: string` (non-optional, non-null) | 16 factories regenerated; signature changed | M |
+| A.11 | Regenerate domain layer (`packages/domains/src/factories/generated/core/*.ts`, `entities/generated/core/*.ts`, `mappers/generated/core/*.ts`, `models/generated/core/*.ts`, `repositories/generated/core/*.ts`) | `pnpm build --filter @arcaai/domains` succeeds | M |
+| A.12 | Fix every call-site that omits or passes `undefined` for `tenantId` (likely BullMQ processors, tests, seeds) | `pnpm build` succeeds across the monorepo; `pnpm typecheck` clean | M |
+| A.13 | `BaseTenantEntity` hardening: make `set tenantId` `protected`; remove `set Tenant` (or make `protected`); `validate()` throws if `tenantId` is empty | Unit test pins behavior | S |
+
+**Phase-A gate**:
+- [ ] All migrations apply cleanly to a fresh DB and to the staging DB
+- [ ] `pnpm build`, `pnpm typecheck`, `pnpm lint` pass for the whole monorepo
+- [ ] Zero `??\s*''` occurrences for `tenantId` across `packages/domains` and `packages/applications`
+- [ ] Cursor rule diff merged
+- [ ] PR description includes back-fill row counts (pre vs post)
+
+---
+
+### Phase B — Tenant-aware Prisma `$extends` (Prisma-native)
+
+**Goal**: ship a Prisma 7 client extension that injects `tenantId` from `nestjs-cls` AsyncLocalStorage on every read and asserts equality on every write. Make it the default. Restrict the unscoped client.
+
+**Estimate**: 2–3 engineer-days.
+
+| # | Task | Verify | Size |
+|---|------|----|----|
+| B.1 | New file `packages/database/src/extensions/tenant-scope.ts` exporting `applyTenantScopeExtension(prisma)` (mirroring `applySoftDeleteExtension`) | Module compiles; exported from `client.ts` | M |
+| B.2 | Inside the extension, define an allow-list of tenant-scoped Prisma model names (Pascal + camel) — initially the 30 models from the audit | Unit test enumerates the list | S |
+| B.3 | For `findFirst / findMany / findUnique / count / aggregate / groupBy` on allow-listed models: merge `where: { tenantId: ctxTenantId }` (preserving caller's other filters). Reject if `ctxTenantId` is null/undefined and not in `BYPASS` context | Unit test: missing CLS → throws; mismatched CLS → returns zero | M |
+| B.4 | For `create / createMany / upsert`: ensure `data.tenantId === ctxTenantId`; auto-inject when missing | Unit test: cross-tenant `create` → throws `ForbiddenError` | M |
+| B.5 | For `update / updateMany / delete / deleteMany`: merge `where` with `tenantId: ctxTenantId`; reject `data.tenantId` mutations | Unit test: cross-tenant `update` → 0 rows; explicit `data.tenantId` mutation → throws | M |
+| B.6 | Wrap `$transaction` (callback form): call `SELECT set_config('app.tenant_id', $1, true)` (`true` = LOCAL) as the first statement of every transaction | Integration test: `set_config` row present in `pg_stat_statements`; existing PgBouncer leak test extended | M |
+| B.7 | Provide a `BYPASS` mechanism: `withTenantBypass(() => …)` that uses `cls.runWith({ tenantBypass: true })`. Allowed in migrations and platform-admin routes only | Unit test: bypass path returns all-tenant rows | S |
+| B.8 | Compose: `createExtendedPrismaClient()` returns `prisma.$extends(softDelete).$extends(tenantScope)` (order matters — tenant first means soft-delete sees a tenant-filtered table) | Integration test pins the chain | S |
+| B.9 | Rename in `client.ts`: `getPrismaClient` → `getPlatformAdminPrismaClient_Unscoped`; add JSDoc warning; keep an alias re-export with `@deprecated` for one release window | Symbol diff | S |
+| B.10 | Update `index.ts` exports; update every importer in the monorepo (migrations, seed, admin routes — small allow-list) | `pnpm build` clean | M |
+| B.11 | Add ESLint custom rule (or `dependency-cruiser` config) banning `getPlatformAdminPrismaClient_Unscoped` import outside an allow-list: `packages/database/src/prisma/db_main/seed/**`, `apps/api/src/modules/admin/**` (specific platform-admin endpoints), `packages/database/src/migrations-runner.ts` | Lint fails on test fixture importing from a non-allowed path | M |
+| B.12 | **Fix `findUnique` divergence** in `softDeleteExtension` (`client.ts:197-199`): call `applySoftDeleteFilter(args)` if `modelHasSoftDelete(model)`. Add regression test (`__tests__/client.softDelete.findUnique.test.ts`) | Regression test confirms `findUnique({ where: { id, resourceStatus: 'DELETED' } })` no longer leaks | S |
+
+**Phase-B gate**:
+- [ ] `tenantScope` extension test suite green (≥ 10 cases)
+- [ ] All existing repository tests still pass with the extension wired in
+- [ ] Lint rule for unscoped client import passes locally and in CI
+- [ ] `findUnique` regression test added and green
+- [ ] No new `.eslintrc-disable` for the new rule outside the documented allow-list
+
+---
+
+### Phase C — PostgreSQL RLS on PHI tables (Prisma raw migrations)
+
+**Goal**: enable `ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` with full per-operation policies on the 7 PHI tables. Hand off the remaining 24 tables to TASK-302 Phase 2.
+
+**Estimate**: 2–3 engineer-days (depends on TASK-302 role-split being green).
+
+| # | Task | Verify | Size |
+|---|------|----|----|
+| C.1 | Verify TASK-302 milestone: `hope_tenant_user` role exists with `NOSUPERUSER, NOBYPASSRLS`; `hope_platform_admin` exists with `BYPASSRLS`; Vault dynamic creds inherit `hope_tenant_user`. If not present, block Phase C; otherwise continue | Manual psql verification + TASK-302 cross-reference | — |
+| C.2 | New migration `20260601000000_enable_rls_phi_tables/migration.sql`. For each of the 7 PHI tables (`Consultation`, `ContextItem`, `AudioRecording`, `SummaryMeta`, `NamedEntity`, `ContextItemVersion`, `AuditLog`): `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` | Migration SQL reviewed; runs against staging DB | M |
+| C.3 | Same migration: per table, four policies — `tenant_select`, `tenant_insert WITH CHECK`, `tenant_update USING + WITH CHECK`, `tenant_delete USING`. Predicate: `"tenantId" = current_setting('app.tenant_id', true)::text` (use text, not uuid cast — sentinel removed but Prisma generates text for `String`) | Policy bodies reviewed | M |
+| C.4 | Same migration: lock down `AuditLog` per audit § C2 — `REVOKE UPDATE, DELETE ON core."AuditLog" FROM hope_tenant_user`; document a `platform_audit_admin` role used by compliance officers (created here, granted SELECT only) | SQL reviewed; runbook updated | S |
+| C.5 | Extend `packages/database/tests/pgbouncer-validation/__tests__/02-rls-guc-leak.test.ts` to cover the 7 PHI tables (4 ops × 7 tables = 28 new assertions) | `pnpm test --filter pgbouncer-validation` green | M |
+| C.6 | Add `pgbouncer-validation/__tests__/08-rls-phi-tables.test.ts` covering each PHI table's policies directly (independent of the GUC-leak test which is leak-focused) | Test green | M |
+| C.7 | Update `vault-admin-bootstrap.sql` (or add a manual SQL companion) to grant `SELECT, INSERT, UPDATE, DELETE` on the 7 tables to `hope_tenant_user`; document the `hope_platform_admin` BYPASSRLS contract | Bootstrap SQL diff reviewed | S |
+| C.8 | Update `docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md` with a back-reference to TASK-305 RLS scope (7 tables) and the handoff for the remaining 24 | Cross-doc link present | S |
+
+**Phase-C gate**:
+- [ ] All RLS policies present and `FORCE`-d (`SELECT * FROM pg_policies WHERE schemaname = 'core'`)
+- [ ] PgBouncer leak suite green
+- [ ] Smoke test: `psql` as `hope_tenant_user` without `SET LOCAL app.tenant_id` returns **zero rows** on each PHI table (silent isolation)
+- [ ] Smoke test: `psql` as `hope_tenant_user` with `SET LOCAL app.tenant_id = '<tenant-A>'` returns only tenant-A rows
+- [ ] Smoke test: `UPDATE … SET tenantId = '<other>'` on a tenant-A row throws via `WITH CHECK` (cross-tenant transfer blocked)
+
+---
+
+### Phase D — NestJS service-layer guards (where Prisma can't enforce)
+
+**Goal**: enforce the constraints Prisma cannot model cleanly — cross-aggregate tenant equality (parent.tenantId vs child.tenantId) and User-tenant membership (consultation.doctorId must have UserRoleAssignment in consultation.tenantId).
+
+**Estimate**: 2–3 engineer-days.
+
+| # | Task | Verify | Size |
+|---|------|----|----|
+| D.1 | Create shared helper `packages/applications/src/services/common/tenant-guards.ts` exporting `assertEqualTenants(parent, child)`, `assertUserBelongsToTenant(userRoleAssignmentRepo, userId, tenantId)`, `assertParentInScope(repo, parentId, callerTenantId)` | Helper unit tests | S |
+| D.2 | `consultation.service.ts`: in `createConsultation` and `createRevisit`, call `assertUserBelongsToTenant(doctorId, this.tenantId)` and (for revisit) `assertEqualTenants(parent, request)` | Service unit tests: cross-tenant doctor → NotFound; cross-tenant parent → NotFound | M |
+| D.3 | `consultation.service.ts`: in `getById`, `getByIdWithRelations`, `getConsultationChain`, mirror the `DepartmentService` pattern — `if (entity.tenantId !== this.tenantId) throw NotFoundException` | Unit tests | M |
+| D.4 | `context.service.ts`: in every method that loads `ContextItem` or `Consultation` by id, add the same equality check. For `findSharedContext(consultationIds)`, ensure every id resolves within `this.tenantId` (or strip from result) | Unit tests | M |
+| D.5 | `notification.service.ts`, `apikey.service.ts`, `dna-writing-style.service.ts`: at create / fetch time, call `assertUserBelongsToTenant` for any User reference | Unit tests | M |
+| D.6 | `department.service.ts`: in `create/update`, when `parentDepartmentId` set, call `assertEqualTenants(parent, child)` | Unit test | S |
+| D.7 | `userRoleAssignment.service.ts`: in `create`, force `request.tenantId = this.tenantId` (or throw `ForbiddenException` if mismatch) — closes audit § C6 | Unit test: cross-tenant POST → 403 | S |
+| D.8 | `auditLog.service.ts` + `authorization-audit.service.ts`: inject `this.tenantId` into the default `where` of `fetchAll / fetchAllByResource / fetchAllCreatedByUser / fetchById / deleteById / getAuthorizationHistory / getRecentDenials`. Skip injection only when the caller has `SUPER_ADMIN` role (CLS) | Unit test: non-super-admin fetch returns only own-tenant rows | M |
+| D.9 | BullMQ + `OnEvent` rebinding: `SummaryProcessor`, `NerProcessor`, `PreSummaryProcessor`, `ComprehensiveSummaryProcessor`, `ConsultationEventHandler`, `AuditLogProcessor` — wrap the handler body in `cls.run({ tenantId: job.data.tenantId, … }, () => handle())` so `BaseService.tenantId` is populated and the Phase-B extension's CLS lookup sees the right context. Also assert `entity.tenantId === job.data.tenantId` after `findById` to catch poisoned jobs | Unit + integration tests | M |
+| D.10 | Repository hardening: remove `Repository.rawQueryUnsafe` and `Repository.$bulk` from public surface (rename to `_internalRawUnsafe` and move behind a `PlatformAdminRepository` base class used only by allow-listed services) | Build clean; lint rule added | M |
+
+**Phase-D gate**:
+- [ ] All cross-aggregate / User-membership tests green
+- [ ] `tenant-guards.ts` helper has ≥ 95% line coverage
+- [ ] BullMQ processors test fixture: poisoned job (tenantId mismatch) → dead-letter, not silent write
+- [ ] Audit-log fetch suite: non-super-admin → tenant-scoped result; super-admin → all-tenant result
+- [ ] `rg 'rawQueryUnsafe\|\\$bulk' packages/applications/` returns no matches
+
+---
+
+### Phase E — Cross-tenant negative test suite + documentation
+
+**Goal**: pin the desired behavior so future regressions surface in CI.
+
+**Estimate**: 1.5–2 engineer-days.
+
+| # | Task | Verify | Size |
+|---|------|----|----|
+| E.1 | Test scaffold `tests/cross-tenant/fixtures.ts` creating tenant-A and tenant-B sessions + seed data | Fixture compiles; used by all new tests | S |
+| E.2 | One negative test per tenant-scoped service (≈ 15 tests): "tenant A token reading tenant B id returns NotFoundException; mutating tenant B id is no-op or throws" | Vitest run green | M |
+| E.3 | One negative test per BullMQ processor (≈ 6 tests): "job with tenantId mismatch hits the assert and goes to DLQ; does not write the wrong tenant" | Vitest run green | M |
+| E.4 | Extend `tests/pgbouncer-validation` per Phase C.5/C.6 (covered above; this row is the documentation cross-link) | — | — |
+| E.5 | Update `packages/database/README.md`: section "Tenant scoping & RLS posture" (what the extension does, when to use the unscoped client, RLS rollout status, sample `SET LOCAL`) | README diff | S |
+| E.6 | Update `docs/technical-architecture-overview.md`: add chapter "Multi-tenancy enforcement layers" with the 3-layer model (schema NOT NULL + scoped uniques → Prisma extension → RLS) and the user-decision log from § 1.5 | Doc diff | S |
+| E.7 | Create `docs/multi-tenancy-audit/06-implementation-summary.md` capturing which audit findings shipped here vs. which were deferred / out-of-scope (FK transformation, User split, secrets refactor, bucketIds refactor) | Doc present; links from each audit doc | S |
+| E.8 | Update this `README.md` § 5 Implementation Summary with files changed, migrations, deviations | This README updated | S |
+
+**Phase-E gate**:
+- [ ] All new tests green in CI
+- [ ] Docs reviewed by compliance officer (or product lead) and signed off
+- [ ] Audit § 6 summary doc is the canonical record of what was done
+
+---
+
+## 4. Testing strategy
+
+### 4.1 Test types and ownership
+
+| Test type | Where | Phase |
+|----|-----|---|
+| Schema migration tests | `packages/database/tests/` | A |
+| Extension unit tests | `packages/database/src/extensions/__tests__/` | B |
+| Soft-delete `findUnique` regression | `packages/database/src/__tests__/client.softDelete.findUnique.test.ts` | B |
+| RLS policy SQL tests | `packages/database/tests/pgbouncer-validation/__tests__/` | C |
+| Service-layer cross-tenant negatives | `packages/applications/src/services/**/__tests__/cross-tenant.*.test.ts` | D + E |
+| BullMQ processor cross-tenant negatives | `packages/applications/src/services/**/__tests__/processor-cross-tenant.test.ts` | D + E |
+| Integration test for `$transaction` `SET LOCAL` | `packages/database/tests/pgbouncer-validation/__tests__/09-set-local-tx.test.ts` | B + C |
+
+### 4.2 TDD ordering per phase
+
+Strict Red-Green-Refactor:
+- Phase A: write the migration-back-fill verification test first (RED), then the schema change (GREEN)
+- Phase B: write the cross-tenant create-throws test first (RED), then the extension code (GREEN)
+- Phase C: write the `psql` policy assertion test first (RED), then the RLS migration (GREEN)
+- Phase D: write the cross-tenant negative service test first (RED), then add the guard (GREEN)
+- Phase E: tests ARE the deliverable
+
+### 4.3 Manual verification checklist (each phase)
+
+| # | Step |
+|---|---|
+| 1 | `pnpm build` (whole monorepo) — clean |
+| 2 | `pnpm typecheck` — clean |
+| 3 | `pnpm lint` — clean |
+| 4 | `pnpm test:unit` — green |
+| 5 | `pnpm test:integration` (where present) — green |
+| 6 | `pnpm test:e2e` (apps/api) — green |
+| 7 | `pnpm db:migrate` on a fresh DB — applies cleanly |
+| 8 | Capture row-count diff for back-fill migrations and paste into the PR |
+
+---
+
+## 5. Files to create / modify (consolidated)
+
+### Create
+
+```
+packages/database/src/extensions/tenant-scope.ts
+packages/database/src/extensions/__tests__/tenant-scope.test.ts
+packages/database/src/__tests__/client.softDelete.findUnique.test.ts
+packages/database/src/prisma/db_main/migrations/20260527000000_multi_tenancy_phase_a/migration.sql
+packages/database/src/prisma/db_main/migrations/20260601000000_enable_rls_phi_tables/migration.sql
+packages/database/src/prisma/db_main/migrations/20260605000000_lockdown_auditlog/migration.sql
+packages/database/src/prisma/db_main/seed/05-system-tenant.ts        (or equivalent)
+packages/database/tests/pgbouncer-validation/__tests__/08-rls-phi-tables.test.ts
+packages/database/tests/pgbouncer-validation/__tests__/09-set-local-tx.test.ts
+packages/applications/src/services/common/tenant-guards.ts
+packages/applications/src/services/common/__tests__/tenant-guards.test.ts
+docs/multi-tenancy-audit/06-implementation-summary.md
+tests/cross-tenant/fixtures.ts
+tests/cross-tenant/<one per service>.test.ts                          (~15 files)
+```
+
+### Modify
+
+```
+packages/database/src/prisma/db_main/*.prisma                         (19 files)
+packages/database/src/client.ts
+packages/database/src/index.ts
+packages/database/src/prisma/db_main/manual/vault-admin-bootstrap.sql
+packages/domains/src/factories/generated/core/*.ts                    (16 factories — via codegen)
+packages/domains/src/common/baseEntity/base.tenantEntity.ts
+packages/applications/src/services/consultation/consultation/consultation.service.ts
+packages/applications/src/services/consultation/context/context.service.ts
+packages/applications/src/services/auditLog/auditLog.service.ts
+packages/applications/src/services/audit/authorization-audit.service.ts
+packages/applications/src/services/user/userRoleAssignment/userRoleAssignment.service.ts
+packages/applications/src/services/notification/notification.service.ts
+packages/applications/src/services/apikey/apikey.service.ts
+packages/applications/src/services/dna-writing-style/dna-writing-style.service.ts
+packages/applications/src/services/department/department.service.ts
+packages/applications/src/services/consultation/jobs/processors/*.processor.ts  (6 files)
+packages/domains/src/common/repository.ts                             (rawQueryUnsafe move)
+.cursor/rules/02-database-prisma.mdc
+eslint.config.mjs                                                     (+ dep-cruiser if used)
+docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md
+docs/technical-architecture-overview.md
+packages/database/README.md
+```
+
+---
+
+## 6. Dependencies
+
+| Dependency | Where | Status |
+|---|---|---|
+| TASK-302 Phase 2: `hope_tenant_user` role (`NOSUPERUSER NOBYPASSRLS`) + `hope_platform_admin` (`BYPASSRLS`) | Phase C of this ticket | Tracked, partial |
+| TASK-302 Phase 2: PgBouncer `transaction` mode with `server_reset_query = DISCARD ALL` (or session mode with documented connection cap) | Phase C | Tracked |
+| `nestjs-cls` mounted at API edge (`app.module.ts:108-116`) | Phase B (extension reads from CLS) | In place |
+| Existing PgBouncer leak harness (`packages/database/tests/pgbouncer-validation/`) | Phase C | In place |
+| Existing soft-delete extension shape (`packages/database/src/client.ts:180-221`) | Phase B template | In place |
+
+---
+
+## 7. Risks & mitigations
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| `SET` (session-scope) used somewhere instead of `SET LOCAL` (txn-scope) under PgBouncer transaction mode → cross-request tenant leak | HIGH | Phase B.6 wraps `$transaction` only; Phase C.5/C.6 leak-tests gate the PR; `pgbouncer.org/config.html` rule documented in `02-database-prisma.mdc` |
+| Back-fill mis-attributes orphan rows to `system` Tenant (loss of provenance) | MEDIUM | Phase A.2 dumps a CSV of every back-filled row before migration; CI requires the CSV to be reviewed; rollback playbook in `_section-d-backfill-proposal.md` style |
+| Compile fan-out: tightening factories breaks ~30 call sites; we miss one | MEDIUM | Phase A.10–A.12 strict TypeScript checks; `pnpm typecheck` in CI; Vitest replays for each affected service |
+| RLS performance regression on PHI tables (Consultation has 8 indexes already; adding policies adds a planner filter) | MEDIUM | Phase A.7 pre-emptively adds `[tenantId, X]` composites; pgvector/STT vector indexes unchanged; benchmark before/after on staging |
+| `getPlatformAdminPrismaClient_Unscoped` rename breaks a downstream we missed | LOW | Phase B.9 keeps `@deprecated` alias for one release; lint warns at import site |
+| `User` model has no tenantId — User-membership check via `UserRoleAssignment` is O(1) but allocates a query per write | LOW | Cache assignment lookups in CLS for the request lifetime; reduces to 1 lookup per consultation create |
+| `system` Tenant row's RLS policy semantics — does a SUPER_ADMIN context see system rows + their own tenant rows? | LOW | Phase C policy bodies handle by allowing `current_setting('app.tenant_id')` to be `'00000000-…'` OR by using the `BYPASS` mechanism for super-admin routes |
+
+---
+
+## 8. Out of scope (and tracked elsewhere)
+
+| Audit item | Status | Where it goes |
+|---|----|---|
+| B2 — FK from tenant-scoped tables → `Tenant` (`@relation`) | **Excluded per user directive** | n/a — not pursued |
+| B6 — User model split (`User` + `TenantUser`) | Deferred | Separate architectural ticket |
+| C3 — `StorageAccessKey.bucketIds String[]` array → m:n join | Deferred | Independent refactor ticket |
+| C4 / C5 — `User.password`, `User.secret1`, `User.secret2` naming + encryption | Deferred | Security review ticket |
+| C9 — `TranscriptionJob.consultationId/contextItemId/mediaId` plain-string FKs | Deferred (user directive applies — no FK transformation) | Service-level cross-tenant assert in Phase D covers the read-side risk |
+| RLS rollout to the remaining 24 tenant-scoped tables | Handed off | TASK-302 Phase 2 / Phase 3 |
+| SDK side (audit doc 05) — module-level Zustand singleton, IDB key scoping, WS dedup | **Out of scope** of TASK-305 | Separate SDK ticket (TASK-306 candidate) |
+| API side (audit doc 04) — refresh-token forgery, opt-in auth guard, placeholder JWT secret | **Out of scope** of TASK-305 | Separate API security ticket (TASK-307 candidate) |
+
+---
+
+## 9. Success criteria (final gate)
+
+- [ ] All AC-1 .. AC-11 met with evidence pasted into the PR
+- [ ] All Phase gates green
+- [ ] No new lint errors anywhere in the monorepo
+- [ ] All migrations applied cleanly to staging
+- [ ] PgBouncer RLS leak suite green
+- [ ] Cross-tenant negative test suite green (≥ 20 tests)
+- [ ] `docs/multi-tenancy-audit/06-implementation-summary.md` written and links from each audit doc
+- [ ] `TASK-302` cross-ref updated with the 7-table RLS handoff
+- [ ] Code reviewer subagent (`code-reviewer`) signs off on the final diff
+- [ ] Compliance / product lead signs off on the AC delta
+
+---
+
+## 10. Open questions for the user
+
+These do not block plan approval — they can be answered during execution. Listed here so they don't get lost.
+
+1. **`system` Tenant row's RLS behavior** — should a request running under the platform-admin role see (a) only system-tenant rows when `app.tenant_id = '00000000-…'`, or (b) all rows via the `BYPASS` mechanism? The plan codes path (b) by default (platform admin uses `BYPASS`, regular `system` tenant context sees system rows only); confirm before Phase C.
+2. **`pnpm typecheck` script name** — the plan assumes this exists at the monorepo root. If the actual script is different (`turbo run typecheck`?), the Phase-A.12 verification line needs updating.
+3. **`MaintenanceMode` interceptor and tenant context** — should maintenance mode be per-tenant (single tenant in maintenance) or global? Out of scope of this ticket, but adjacent. Flag for follow-up.
+
+---
+
+## 5. Implementation Summary *(filled in at completion)*
+
+*Pending plan approval.*
+
+## 6. Change History
+
+| Date | Description | Files modified |
+|---|----|----|
+| 2026-05-26 | Initial plan drafted; awaiting approval | `docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md` |
