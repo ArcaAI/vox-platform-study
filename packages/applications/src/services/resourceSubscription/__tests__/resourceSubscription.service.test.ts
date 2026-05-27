@@ -44,10 +44,15 @@ const mockResourceSubscriptionRepository = {
 /**
  * Helper to create mock resource subscription entity with complete structure.
  * Mocks should be indistinguishable from real entities to catch structural issues.
+ *
+ * TASK-306 P2.4 — `tenantId` added so the new W5.3 tenant-guard sweep
+ * tests can exercise same-tenant / cross-tenant branches. Defaults to
+ * `tenant-1` to match the CLS default in `beforeEach`.
  */
 const createMockResourceSubscriptionEntity = (
     overrides: Partial<{
         id: string;
+        tenantId: string;
         resourceId: string;
         resourceTypeName: ResourceType;
         subscriptionType: ResourceSubscriptionType;
@@ -64,6 +69,7 @@ const createMockResourceSubscriptionEntity = (
 ) => {
     const entity = {
         id: overrides.id ?? 'subscription-id-1',
+        tenantId: overrides.tenantId ?? 'tenant-1',
         resourceId: overrides.resourceId ?? 'resource-123',
         resourceTypeName: overrides.resourceTypeName ?? ResourceType.Consultation,
         subscriptionType: overrides.subscriptionType ?? ResourceSubscriptionType.SUBSCRIBER,
@@ -85,6 +91,7 @@ const createMockResourceSubscriptionEntity = (
     // toObject returns complete entity structure (matching real entity behavior)
     entity.toObject.mockReturnValue({
         id: entity.id,
+        tenantId: entity.tenantId,
         resourceId: entity.resourceId,
         resourceTypeName: entity.resourceTypeName,
         subscriptionType: entity.subscriptionType,
@@ -990,6 +997,83 @@ describe('ResourceSubscriptionService', () => {
             // Read operations should still work without user context
             const result = await service.fetchById('sub-123');
             expect(result.id).toBe('sub-123');
+        });
+    });
+
+    /**
+     * TASK-306 P2.4 (audit M-3 / AC-6) — `ResourceSubscriptionService` was
+     * previously tenant-blind on every read/write surface (the existing
+     * `create` already required CLS context but did not check anything
+     * else). This block exercises the full sweep across 5 methods:
+     *   - 5.3.7 fetchAll: inject `{ tenantId: this.tenantId }` filter
+     *     (SUPER_ADMIN bypass)
+     *   - 5.3.8 fetchAllByResource: same shape — inject tenantId
+     *     alongside resourceId / resourceTypeName
+     *   - 5.3.9 fetchById: load-then-assert via assertEqualTenants
+     *   - 5.3.10 update: assert tenant after the pre-write findById
+     *   - 5.3.11 deleteById: load + assert + softDelete
+     *
+     * The service did NOT previously have an `isSuperAdmin()` helper —
+     * the W5.3.7 commit adds one mirroring the
+     * `NotificationService.isSuperAdmin` strict-default convention.
+     *
+     * CLS default in `beforeEach` is `tenant-1`. Tests use `tenant-2`
+     * for cross-tenant probes. The local `setRequestUserRoles` helper
+     * re-installs the CLS mock with the requested role list.
+     */
+    describe('TASK-306 P2.4 — ResourceSubscription tenant-guard sweep', () => {
+        const setRequestUserRoles = (roles: string[] | undefined) => {
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user':
+                        return {
+                            id: 'current-user-id',
+                            firstName: 'Test',
+                            lastName: 'User',
+                            email: 'test@example.com',
+                            roles,
+                        };
+                    case 'tenantId':
+                        return 'tenant-1';
+                    case 'tenantCode':
+                        return 'TENANT_1';
+                    case 'correlationId':
+                        return 'corr-123';
+                    case 'requestIp':
+                        return '192.168.1.1';
+                    default:
+                        return null;
+                }
+            });
+        };
+
+        describe('fetchAll (5.3.7)', () => {
+            it('injects the CLS tenantId into the findAll + count where clauses for non-SUPER_ADMIN callers', async () => {
+                mockResourceSubscriptionRepository.findAll.mockResolvedValue([]);
+                mockResourceSubscriptionRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ limit: 10, page: 1 });
+
+                expect(mockResourceSubscriptionRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({ where: expect.objectContaining({ tenantId: 'tenant-1' }) }),
+                );
+                expect(mockResourceSubscriptionRepository.count).toHaveBeenCalledWith(
+                    expect.objectContaining({ where: expect.objectContaining({ tenantId: 'tenant-1' }) }),
+                );
+            });
+
+            it('omits the tenant filter when the caller is a SUPER_ADMIN (cross-tenant list)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                mockResourceSubscriptionRepository.findAll.mockResolvedValue([]);
+                mockResourceSubscriptionRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ limit: 10, page: 1 });
+
+                const findAllArgs = mockResourceSubscriptionRepository.findAll.mock.calls[0][0];
+                const countArgs = mockResourceSubscriptionRepository.count.mock.calls[0][0];
+                expect(findAllArgs.where?.tenantId).toBeUndefined();
+                expect(countArgs.where?.tenantId).toBeUndefined();
+            });
         });
     });
 });

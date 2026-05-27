@@ -18,6 +18,7 @@ import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, wi
 import { IActiveUserContext } from '../../interfaces';
 import { InternalServerErrorException, ArgumentInvalidException, ArgumentNotProvidedException, UnauthorizedException } from '@arcaai/exceptions';
 import { BadRequestException } from '@nestjs/common';
+import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 
 @Injectable()
 export class ResourceSubscriptionService extends BaseService implements IResourceSubscriptionService {
@@ -57,11 +58,27 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
     return resourceSubscription;
   }
 
+  /**
+   * TASK-306 P2.4 (audit M-3 / AC-6) — list endpoint scoped to the
+   * caller's tenant. Non-SUPER_ADMIN callers see only their own tenant's
+   * subscriptions; SUPER_ADMIN bypasses the filter so cross-tenant
+   * administration tooling can list every subscription in the platform.
+   * Mirrors the W3.2 NotificationService.fetchAll posture.
+   */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<ResourceSubscriptionEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { limit, page, search } = props;
-    const resourceSubscriptions = await this.resourceSubscriptionRepository.findAll(withFormattedPaginatedProps(props));
-    const count = await this.resourceSubscriptionRepository.count(withFormattedCountProps(props));
+    const baseWhere = this.isSuperAdmin() ? {} : { tenantId: this.tenantId };
+    const paginatedProps = withFormattedPaginatedProps(props);
+    const countProps = withFormattedCountProps(props);
+    const resourceSubscriptions = await this.resourceSubscriptionRepository.findAll({
+      ...paginatedProps,
+      where: { ...paginatedProps.where, ...baseWhere },
+    });
+    const count = await this.resourceSubscriptionRepository.count({
+      ...countProps,
+      where: { ...countProps.where, ...baseWhere },
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {
@@ -74,6 +91,17 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
       limit,
       page,
     });
+  }
+
+  /**
+   * True when the active request user carries the `SUPER_ADMIN` role.
+   * Falls back to `false` whenever the role list is missing so the most
+   * restrictive policy applies. Mirrors the strict-default helper used
+   * by `NotificationService`, `WebhookService`, and `TenantService`.
+   */
+  private isSuperAdmin(): boolean {
+    const roles = this.requestUser?.roles;
+    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
   }
 
   async fetchAllByResource(
