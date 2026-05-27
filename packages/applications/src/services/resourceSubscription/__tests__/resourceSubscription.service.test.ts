@@ -329,6 +329,11 @@ describe('ResourceSubscriptionService', () => {
             expect(mockResourceSubscriptionRepository.findAll).toHaveBeenCalledWith(
                 expect.objectContaining({
                     where: {
+                        // TASK-306 P2.4 / 5.3.8 — fetchAllByResource now
+                        // injects `tenantId` alongside the resource predicate
+                        // when the caller is not SUPER_ADMIN. The CLS default
+                        // for this suite is `tenant-1`.
+                        tenantId: 'tenant-1',
                         resourceId: 'resource-123',
                         resourceTypeName: ResourceType.Consultation,
                     },
@@ -1073,6 +1078,60 @@ describe('ResourceSubscriptionService', () => {
                 const countArgs = mockResourceSubscriptionRepository.count.mock.calls[0][0];
                 expect(findAllArgs.where?.tenantId).toBeUndefined();
                 expect(countArgs.where?.tenantId).toBeUndefined();
+            });
+        });
+
+        describe('fetchAllByResource (5.3.8)', () => {
+            it('injects the CLS tenantId alongside resourceId / resourceTypeName for non-SUPER_ADMIN callers', async () => {
+                mockResourceSubscriptionRepository.findAll.mockResolvedValue([]);
+                mockResourceSubscriptionRepository.count.mockResolvedValue(0);
+
+                await service.fetchAllByResource({
+                    limit: 10,
+                    page: 1,
+                    resourceTypeName: ResourceType.Consultation,
+                    resourceId: 'resource-123',
+                });
+
+                expect(mockResourceSubscriptionRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: expect.objectContaining({
+                            tenantId: 'tenant-1',
+                            resourceId: 'resource-123',
+                            resourceTypeName: ResourceType.Consultation,
+                        }),
+                    }),
+                );
+                expect(mockResourceSubscriptionRepository.count).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: expect.objectContaining({
+                            tenantId: 'tenant-1',
+                            resourceId: 'resource-123',
+                            resourceTypeName: ResourceType.Consultation,
+                        }),
+                    }),
+                );
+            });
+
+            it('omits the tenant filter for SUPER_ADMIN callers (cross-tenant resource lookup)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                mockResourceSubscriptionRepository.findAll.mockResolvedValue([]);
+                mockResourceSubscriptionRepository.count.mockResolvedValue(0);
+
+                await service.fetchAllByResource({
+                    limit: 10,
+                    page: 1,
+                    resourceTypeName: ResourceType.Consultation,
+                    resourceId: 'resource-123',
+                });
+
+                const findAllArgs = mockResourceSubscriptionRepository.findAll.mock.calls[0][0];
+                const countArgs = mockResourceSubscriptionRepository.count.mock.calls[0][0];
+                expect(findAllArgs.where?.tenantId).toBeUndefined();
+                expect(countArgs.where?.tenantId).toBeUndefined();
+                // The resource scoping itself must still be enforced.
+                expect(findAllArgs.where?.resourceId).toBe('resource-123');
+                expect(findAllArgs.where?.resourceTypeName).toBe(ResourceType.Consultation);
             });
         });
     });
