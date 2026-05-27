@@ -64,6 +64,27 @@ const createMockPromptResolutionService = () => ({
     ),
 });
 
+// Mock ClsService — TASK-305 D.9 follow-up. EventEmitter2 async handlers
+// run in their own microtask context that does NOT inherit the caller's
+// AsyncLocalStorage scope, so the handler must explicitly re-establish CLS.
+// This mock runs the cls.run callback inline so existing tests stay
+// synchronous and exposes spies for the new D.9 assertions.
+const createMockClsService = () => {
+    const store = new Map<string, unknown>();
+    return {
+        run: vi.fn((...args: unknown[]) => {
+            const callback = (args.length === 1 ? args[0] : args[1]) as () => unknown;
+            return callback();
+        }),
+        set: vi.fn((key: string, value: unknown) => {
+            store.set(key, value);
+        }),
+        get: vi.fn((key?: string) =>
+            key === undefined ? Object.fromEntries(store) : store.get(key),
+        ),
+    };
+};
+
 // =============================================================================
 // Test Helpers
 // =============================================================================
@@ -115,6 +136,7 @@ describe('ConsultationEventHandler', () => {
     let mockConsultationRepository: ReturnType<typeof createMockConsultationRepository>;
     let mockPromptResolutionService: ReturnType<typeof createMockPromptResolutionService>;
     let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
+    let mockClsService: ReturnType<typeof createMockClsService>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -123,12 +145,14 @@ describe('ConsultationEventHandler', () => {
         mockConsultationRepository = createMockConsultationRepository();
         mockPromptResolutionService = createMockPromptResolutionService();
         mockEventEmitter = createMockEventEmitter();
+        mockClsService = createMockClsService();
 
         handler = new ConsultationEventHandler(
             mockJobService as any,
             mockConsultationRepository as any,
             mockPromptResolutionService as any,
             mockEventEmitter as any,
+            mockClsService as any,
         );
     });
 
@@ -753,6 +777,144 @@ describe('ConsultationEventHandler', () => {
 
             expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
             expect(mockJobService.createNerJob).not.toHaveBeenCalled();
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+        });
+    });
+
+    // =========================================================================
+    // TASK-305 D.9 follow-up — CLS rebind + fail-closed guard
+    //
+    // EventEmitter2 async handlers run in their own microtask context that
+    // does NOT inherit the caller's AsyncLocalStorage scope. Without these
+    // guards, the consultationRepository.findById call inside each handler
+    // hits the tenantScope extension's "no CLS = super-admin pass-through"
+    // branch and silently bypasses tenant scoping. Each handler must
+    // explicitly re-establish CLS from the payload.
+    //
+    // Fail-closed posture: log + early return (NOT throw), because
+    // @OnEvent({ async: true }) handlers swallow throws and a throw here
+    // would surface as an unhandled rejection.
+    // =========================================================================
+
+    describe('CLS rebind + fail-closed (TASK-305 D.9 follow-up)', () => {
+        it('handleTranscriptionCreated wraps work in cls.run with tenantId + user set', async () => {
+            const setOrder: Array<[string, unknown]> = [];
+            mockClsService.set.mockImplementation((key: string, value: unknown) => {
+                setOrder.push([key, value]);
+            });
+
+            const payload = makeTranscriptionPayload({
+                tenantId: 'tenant-A',
+                userId: 'doctor-A',
+            });
+
+            await handler.handleTranscriptionCreated(payload);
+
+            expect(mockClsService.run).toHaveBeenCalledTimes(1);
+
+            const keys = setOrder.map(([k]) => k);
+            expect(keys).toContain('tenantId');
+            expect(keys).toContain('user');
+
+            const tenantEntry = setOrder.find(([k]) => k === 'tenantId');
+            expect(tenantEntry?.[1]).toBe('tenant-A');
+
+            const userEntry = setOrder.find(([k]) => k === 'user');
+            expect(userEntry?.[1]).toMatchObject({
+                id: 'doctor-A',
+                tenantId: 'tenant-A',
+                roles: [],
+                permissions: [],
+            });
+
+            expect(mockConsultationRepository.findById).toHaveBeenCalled();
+        });
+
+        it('handleSummaryGenerated wraps work in cls.run with tenantId + user set', async () => {
+            const setOrder: Array<[string, unknown]> = [];
+            mockClsService.set.mockImplementation((key: string, value: unknown) => {
+                setOrder.push([key, value]);
+            });
+
+            const payload = makeSummaryPayload({
+                tenantId: 'tenant-B',
+                userId: 'doctor-B',
+            });
+
+            await handler.handleSummaryGenerated(payload);
+
+            expect(mockClsService.run).toHaveBeenCalledTimes(1);
+
+            const keys = setOrder.map(([k]) => k);
+            expect(keys).toContain('tenantId');
+            expect(keys).toContain('user');
+
+            const tenantEntry = setOrder.find(([k]) => k === 'tenantId');
+            expect(tenantEntry?.[1]).toBe('tenant-B');
+
+            const userEntry = setOrder.find(([k]) => k === 'user');
+            expect(userEntry?.[1]).toMatchObject({
+                id: 'doctor-B',
+                tenantId: 'tenant-B',
+                roles: [],
+                permissions: [],
+            });
+        });
+
+        it('handleNerExtracted wraps work in cls.run with tenantId + user set', async () => {
+            const setOrder: Array<[string, unknown]> = [];
+            mockClsService.set.mockImplementation((key: string, value: unknown) => {
+                setOrder.push([key, value]);
+            });
+
+            const payload = makeNerPayload({
+                tenantId: 'tenant-C',
+                userId: 'doctor-C',
+            });
+
+            await handler.handleNerExtracted(payload);
+
+            expect(mockClsService.run).toHaveBeenCalledTimes(1);
+
+            const keys = setOrder.map(([k]) => k);
+            expect(keys).toContain('tenantId');
+            expect(keys).toContain('user');
+
+            const tenantEntry = setOrder.find(([k]) => k === 'tenantId');
+            expect(tenantEntry?.[1]).toBe('tenant-C');
+
+            const userEntry = setOrder.find(([k]) => k === 'user');
+            expect(userEntry?.[1]).toMatchObject({
+                id: 'doctor-C',
+                tenantId: 'tenant-C',
+                roles: [],
+                permissions: [],
+            });
+        });
+
+        it('handleTranscriptionCreated logs+returns when payload.tenantId is missing', async () => {
+            const payload = makeTranscriptionPayload({ tenantId: '' });
+
+            await handler.handleTranscriptionCreated(payload);
+
+            expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
+            expect(mockConsultationRepository.findById).not.toHaveBeenCalled();
+        });
+
+        it('handleSummaryGenerated logs+returns when payload.tenantId is missing', async () => {
+            const payload = makeSummaryPayload({ tenantId: '' });
+
+            await handler.handleSummaryGenerated(payload);
+
+            expect(mockJobService.createNerJob).not.toHaveBeenCalled();
+            expect(mockConsultationRepository.findById).not.toHaveBeenCalled();
+        });
+
+        it('handleNerExtracted logs+returns when payload.tenantId is missing', async () => {
+            const payload = makeNerPayload({ tenantId: '' });
+
+            await handler.handleNerExtracted(payload);
+
             expect(mockEventEmitter.emit).not.toHaveBeenCalled();
         });
     });
