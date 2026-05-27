@@ -1219,5 +1219,79 @@ describe('ConsultationService', () => {
                 expect(mockEventEmitter.emit).not.toHaveBeenCalled();
             });
         });
+
+        describe('getConsultationChain', () => {
+            it('returns all rows when the entire chain lives in the caller tenant', async () => {
+                const chain = [
+                    createMockConsultationEntity({ id: 'parent-id', tenantId: 'tenant-1' }),
+                    createMockConsultationEntity({ id: 'child-1', tenantId: 'tenant-1', parentConsultationId: 'parent-id' }),
+                    createMockConsultationEntity({ id: 'child-2', tenantId: 'tenant-1', parentConsultationId: 'parent-id' }),
+                ];
+                mockConsultationRepository.findConsultationChain.mockResolvedValue(chain);
+
+                const result = await service.getConsultationChain('parent-id');
+
+                expect(result).toHaveLength(3);
+                expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                    SysEventType.ResourceViewed,
+                    expect.objectContaining({ data: { consultationId: 'parent-id', chainCount: 3 } }),
+                );
+            });
+
+            it('filters out foreign-tenant rows when the chain straddles tenants', async () => {
+                const chain = [
+                    createMockConsultationEntity({ id: 'parent-id', tenantId: 'tenant-1' }),
+                    createMockConsultationEntity({ id: 'foreign-child', tenantId: 'tenant-OTHER', parentConsultationId: 'parent-id' }),
+                ];
+                mockConsultationRepository.findConsultationChain.mockResolvedValue(chain);
+
+                const result = await service.getConsultationChain('parent-id');
+
+                // Only the own-tenant row survives the filter; the caller
+                // never learns the foreign row exists.
+                expect(result).toHaveLength(1);
+                expect(result[0].id).toBe('parent-id');
+                expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                    SysEventType.ResourceViewed,
+                    expect.objectContaining({ data: { consultationId: 'parent-id', chainCount: 1 } }),
+                );
+            });
+
+            it('throws NotFoundException when EVERY returned chain row is foreign-tenant', async () => {
+                // Repo returns a non-empty chain but ALL rows live in other
+                // tenants. Returning [] here would leak existence by absence
+                // (caller learns "chain exists but nothing visible"), so the
+                // service must throw the generic NotFoundException instead.
+                const chain = [
+                    createMockConsultationEntity({ id: 'foreign-parent', tenantId: 'tenant-OTHER' }),
+                    createMockConsultationEntity({ id: 'foreign-child', tenantId: 'tenant-OTHER-2', parentConsultationId: 'foreign-parent' }),
+                ];
+                mockConsultationRepository.findConsultationChain.mockResolvedValue(chain);
+
+                await expect(
+                    service.getConsultationChain('foreign-parent'),
+                ).rejects.toThrow(NotFoundException);
+                await expect(
+                    service.getConsultationChain('foreign-parent'),
+                ).rejects.toThrow('Resource not found');
+
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('throws fail-closed when CLS tenantId is missing', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'tenantId') return null;
+                    if (key === 'user') return { id: 'user-id-1' };
+                    return null;
+                });
+
+                await expect(
+                    service.getConsultationChain('any-id'),
+                ).rejects.toThrow(BadRequestException);
+
+                // Fail-closed must short-circuit BEFORE the repo round-trip.
+                expect(mockConsultationRepository.findConsultationChain).not.toHaveBeenCalled();
+            });
+        });
     });
 });
