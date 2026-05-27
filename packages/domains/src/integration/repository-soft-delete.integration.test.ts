@@ -18,7 +18,8 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { getPrismaClient, getExtendedPrismaClient, CorePrismaClient } from '@arcaai/database';
+// eslint-disable-next-line no-restricted-imports -- TASK-305 B.4 allow-list: integration test fixture, tenant context not yet established
+import { getPlatformAdminPrismaClient_Unscoped, getExtendedPrismaClient, CorePrismaClient } from '@arcaai/database';
 import { DepartmentRepository } from '../repositories/generated/core/DepartmentRepository';
 import { DepartmentFactory } from '../factories/generated/core/DepartmentFactory';
 import { ResourceStatusType } from '../enums';
@@ -48,7 +49,7 @@ describe('Repository Soft-Delete Integration Tests', () => {
   beforeAll(async () => {
     const unitOfWork = createUnitOfWorkStub();
     departmentRepository = new DepartmentRepository(unitOfWork as any);
-    basePrisma = getPrismaClient();
+    basePrisma = getPlatformAdminPrismaClient_Unscoped();
 
     await basePrisma.$connect();
   });
