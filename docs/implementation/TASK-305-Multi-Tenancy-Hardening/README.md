@@ -5,7 +5,7 @@
 | **Ticket** | TASK-305-Multi-Tenancy-Hardening |
 | **Created** | 2026-05-26 |
 | **Updated** | 2026-05-27 |
-| **Status** | `In Progress` — Wave 1 + Wave 2 (Phase A + B + D.6) merged |
+| **Status** | `Completed` (Phases A, B, D, E) — Phase C (RLS) deferred to TASK-302 |
 | **Classification** | Refactor + bugfix (security/compliance) |
 | **Priority** | High — HIPAA §164.312(a)(1), GDPR Art.32, SOC2 CC6.1 gap |
 | **Prior context** | `docs/multi-tenancy-audit/01..05` (5 review docs, 2026-05-25) |
@@ -397,9 +397,89 @@ These do not block plan approval — they can be answered during execution. List
 
 ---
 
-## 5. Implementation Summary *(filled in at completion)*
+## 5. Implementation Summary
 
-*Pending plan approval.*
+> Canonical record: [`docs/multi-tenancy-audit/06-implementation-summary.md`](../../multi-tenancy-audit/06-implementation-summary.md).
+> This section is the executive roll-up; the audit-findings table and per-merge SHA log live in the canonical doc.
+
+### What shipped (5 phases, 11 sub-tasks merged)
+
+| Phase | Sub-tasks merged | Highlights |
+|---|---|---|
+| **A** — Schema hardening | A.1-A.13 (W2.A) | Drop sentinel `@default` on 27 models; flip 11 nullable `tenantId` → NOT NULL; scoped uniques on `Webhook(tenantId, name)` + `Tag(tenantId, resourceType, resourceId, tagKey)`; 14 composite `[tenantId, X]` indexes; reserved `system` Tenant seed; idempotent back-fill migration; 24 factories drop `?? ''` fallback; `BaseTenantEntity` setter `protected`; `validate()` throws on empty `tenantId`. |
+| **B** — Tenant-scope Prisma extension | B.1-B.12 (W1.1, W2.B) | `applyTenantScopeExtension` with 27-model allow-list, all 16 Prisma ops hooked, bidirectional mismatch detection; composed AFTER `applySoftDeleteExtension`; `getPrismaClient` → `getPlatformAdminPrismaClient_Unscoped` rename; ESLint `no-restricted-imports` rule with 8-site allow-list; `ClsTenantContextProvider` wires `nestjs-cls`; soft-delete `findUnique` regression fixed (W1.1). |
+| **C** — RLS rollout | — | **DEFERRED** to TASK-302 (PgBouncer + Vault `hope_tenant_user NOSUPERUSER NOBYPASSRLS` role split). Application layer (B + D) already enforces the invariant; RLS is defence-in-depth. |
+| **D** — Service-layer guards | D.1-D.10 (W1.2, W1.3, W1.4, W1.5, W2.D6, W3.1, W3.2, W3.3, W3.3 follow-up) | Tenant-guard helper (3 functions, 26 unit tests). Cross-aggregate + User-membership checks across `Consultation`, `Context`, `Summary`, `ChainSummary`, `Department`, `Notification`, `ApiKey`, `DnaWritingStyle`. `UserRoleAssignment.create` pins CLS `tenantId` (closes audit C-6 BLOCKER). `AuditLog` + `AuthorizationAudit` inject CLS `tenantId` on every fetch (SUPER_ADMIN audit-read bypass only). 6/6 BullMQ processors + `@OnEvent` handlers rebind CLS from job/event payload, fail-closed when `tenantId` missing. `Repository.rawQueryUnsafe` + `$bulk` removed from public surface. |
+| **E** — Tests + docs (Wave 4 / this PR) | E.1, E.2, E.3, E.5, E.6, E.7, E.8 | Cross-tenant fixture scaffold at repo root with 6 shape-pinning tests. Cross-tenant coverage aggregator (`packages/applications/src/__tests__/cross-tenant-coverage.test.ts`) introspecting 11 service files + 6 processor/handler files (19 assertions total). README + technical-architecture-overview + audit summary doc + plan close-out. |
+
+### File / migration / test deltas (vs. Wave-0 baseline)
+
+| Metric | Before TASK-305 | After Wave 4 |
+|---|---|---|
+| Tenant-scoped models with sentinel default | 27 | **0** |
+| Tenant-scoped models with nullable `tenantId` | 13 | **2** (`User`, `UserMedia` — global by design) |
+| Scoped-unique constraints | 4 | **6** (added `Webhook(tenantId, name)`, `Tag(tenantId, …)`) |
+| Composite `[tenantId, X]` indexes added | — | **14** |
+| Prisma extensions | 1 (soft-delete) | **2** (soft-delete + tenant-scope) |
+| ESLint guards on unscoped client | 0 | **1** (8-site allow-list) |
+| Cross-tenant tests (services + processors) | 0 | **114** (introspected by aggregator) |
+| Total new tests added (across phases) | — | **139** = 114 inline + 6 fixture + 19 aggregator |
+| Migration files added | — | **1** (`20*_task_305_phase_a_*.sql`) |
+| Tenant-guard helper LOC | 0 | ~170 LOC + 26 unit tests |
+
+### Audit findings closed
+
+Full table in [`06-implementation-summary.md`](../../multi-tenancy-audit/06-implementation-summary.md) § 2. Roll-up:
+
+| Status | Count | Codes (abridged) |
+|---|---|---|
+| **CLOSED** | **12** | B3, B4, B5 (partial), B7, B8, B9, B10, B12, C1, C6, C8, D8. |
+| **DEFERRED** | **4** | B1 (RLS), C2 (AuditLog lockdown), C10 (Tenant deactivation), D9 (vault NOBYPASSRLS) — all converge on Phase C / TASK-302. |
+| **OUT-OF-SCOPE** | **20** | B2 (FK transformation — user directive), B6 (User split — architectural), B11 (PgBouncer — TASK-302), C3, C4, C5, C7, C9, C11, C12, D1-D7, D10-D12. |
+
+### Architecture documents updated
+
+| File | Section | Purpose |
+|---|---|---|
+| [`packages/database/README.md`](../../../packages/database/README.md) | "Tenant scoping & RLS posture (TASK-305)" | Layer-by-layer breakdown with file paths, ESLint allow-list table (8 sites), RLS rollout status, sample CLS payload + `SET LOCAL` template. |
+| [`docs/technical-architecture-overview.md`](../../technical-architecture-overview.md) | "Multi-tenancy enforcement layers" | New top-level cross-cutting architectural doc seeded with the multi-tenancy chapter — ASCII flow diagram, per-layer summary, decision log, open items. |
+| [`docs/multi-tenancy-audit/06-implementation-summary.md`](../../multi-tenancy-audit/06-implementation-summary.md) | new doc | Canonical record (this section is the executive summary; 06 is the detail). |
+| `docs/multi-tenancy-audit/01-…05-…` | header | One-line status-update banner pointing each audit doc to 06. |
+
+### Deviations from the original plan
+
+1. **E.2 / E.3 location**: cross-tenant tests landed INLINE in each
+   service's existing `__tests__/*.service.test.ts` file (W1-W3) rather
+   than in the spec's `cross-tenant.*.test.ts` per-service convention.
+   The coverage aggregator (`cross-tenant-coverage.test.ts`) pins the
+   inline approach so future regressions trip CI.
+2. **Phase C**: not shipped. Deferred to TASK-302 (per §1.5 +
+   `02-prisma-schema-review.md` § B1 risk register). Application-layer
+   isolation invariant is fully closed by Phase B + D.
+3. **B2 (FK to Tenant)**: deliberately not pursued. User directive in
+   §1.5 — would bloat every Prisma model with a relation field for
+   marginal benefit given the extension + (future) RLS combination.
+4. **B5 — `User.username` / `User.externalId`**: kept global per
+   §1.5; cross-tenant identity is a deliberate feature.
+   `TenantBucket.name` kept global (S3 naming convention).
+   `StorageAccessKey.accessKeyId` kept global (S3 SDK identifier).
+
+### Tracked follow-ups (§6.7)
+
+These are NOT blocking TASK-305 completion. They're recorded so they
+don't get lost:
+
+1. `User`/`UserMedia` should not extend `BaseTenantEntity` — introduce `BaseGlobalEntity`.
+2. Pre-flight duplicate checks on `Tag` + `Webhook` before applying Phase A migration to staging/prod.
+3. Drop redundant single-column `@@index([tenantId])` superseded by composites.
+4. `UnitOfWork.transactionClient` + `tenant.service.ts:534` still use unscoped `baseClient`; should switch to `databaseService.client.$transaction(callback)`.
+5. `CoreDataModel` wildcard re-export — ESLint `importNames` doesn't follow wildcard.
+6. **CLOSED** — D.9 6/6 queue/event CLS rebind shipped.
+7. `NotificationService` SUPER_ADMIN posture inconsistency vs. `DnaWritingStyleService`.
+8. Pre-existing `fetchAllByTenantId` gaps on `Notification` / `ApiKey` / `DnaWritingStyle.listReports`.
+9. Housekeeping: delete or rename `auditLog.processor.spec.ts` (silently dead `.spec.ts` in `__tests__/`).
+10. `WorkerSession` soft typing — replace `as unknown as UserSession` casts.
+11. Mark B3 / B4 / B5 / C-6 / C-7 / C-8 entries in `02-prisma-schema-review.md` as "Closed" (cosmetic — already captured in 06).
 
 ## 6. Implementation Summary (rolling)
 
@@ -455,6 +535,7 @@ These do not block plan approval — they can be answered during execution. List
 9. **Housekeeping (NEW from D.9 follow-up review)** — `packages/applications/src/services/auditLog/__tests__/auditLog.processor.spec.ts` is silently dead (vitest/typecheck/eslint all skip `.spec.ts` in `__tests__/`). Should be deleted or renamed to `.test.ts` and merged with the new `auditLog.processor.test.ts`.
 10. **Soft typing (NEW from W3.3 + D.9 reviews)** — `as unknown as UserSession` cast pattern reused 8× in queue/event processors. `UserSession` requires `email: string` (non-optional) which queue workers don't have. Introduce a `WorkerSession` subtype or `Partial<UserSession>` to clean up.
 11. **Documentation** — Mark `docs/multi-tenancy-audit/02-prisma-schema-review.md` B3 / B4 / B5 entries as "Closed (TASK-305 W2.A)" and C-7 / C-4 entries as "Closed (TASK-305 W2.D6 / D.7 / D.8)" in a doc-only commit. (Some of this is covered in Phase E.7.)
+12. **Aggregator FS-introspection (NEW from W4 review)** — `packages/applications/src/__tests__/cross-tenant-coverage.test.ts` currently uses hardcoded `SERVICE_COVERAGE` / `PROCESSOR_COVERAGE` arrays. A new tenant-scoped service added in a future PR (with cross-tenant tests) would NOT be flagged by the aggregator unless someone remembers to append to the allow-list. Add a meta-test that globs `packages/applications/src/services/**/__tests__/*.service.test.ts`, filters to files referencing `tenantId`, and asserts each is covered by `SERVICE_COVERAGE`.
 
 ---
 
@@ -468,3 +549,4 @@ These do not block plan approval — they can be answered during execution. List
 | 2026-05-27 | Plan README committed to `fix/2605-review` (had been untracked since planning) + W1.1 follow-up: integration test assertions updated to match new `findUnique` soft-delete behavior | `docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md`, `packages/database/src/integration/soft-delete.integration.test.ts` |
 | 2026-05-27 | Wave 3 partial — W3.1 (D.2/D.3/D.4 consultation+context+summary), W3.3 (D.9 4 of 6 processors), D.9 follow-up (AuditLogProcessor + ConsultationEventHandler) merged. W3.2 (D.5 notification/apikey/dna) implemented + reviewer in flight. Phase A follow-up (2 latent typecheck fixes) merged. | `packages/applications/src/services/consultation/`, `packages/applications/src/services/auditLog/auditLog.processor.ts`, `packages/applications/src/services/resourceSubscription/resourceSubscription.service.ts`, see §6 W3 table |
 | 2026-05-27 | Wave 3 complete — W3.2 (D.5) merged. All §D.* service-layer cross-tenant guards in place; §D.9 6/6 queue/event handlers rebound. Phase C (RLS) deferred — depends on TASK-302 (PgBouncer/Vault). Plan ready for Wave 4 (Phase E: test suite + final docs). | `packages/applications/src/services/{notification,apiKey,dna-writing-style}/`, `docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md` |
+| 2026-05-27 | Wave 4 (Phase E) merged — E.1 fixture scaffold, E.2/E.3 coverage aggregator (114 inline cross-tenant tests pinned), E.5 database README tenant-scoping section, E.6 technical-architecture-overview.md multi-tenancy chapter (new doc), E.7 `06-implementation-summary.md` (audit findings table + per-merge SHA log), E.8 plan README §5 close-out. Status flipped to **Completed (A, B, D, E)** / Phase C deferred. | `tests/cross-tenant/`, `packages/applications/src/__tests__/cross-tenant-coverage.test.ts`, `packages/database/README.md`, `docs/technical-architecture-overview.md`, `docs/multi-tenancy-audit/{01-05}.md` headers, `docs/multi-tenancy-audit/06-implementation-summary.md`, this README |
