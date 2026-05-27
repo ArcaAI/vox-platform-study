@@ -24,7 +24,7 @@ model ApiKey {
     id       String @id @default(uuid(7))
 
     // Multi-tenant fields
-    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // Core API key fields
     keyName         String       // Human readable name for the key

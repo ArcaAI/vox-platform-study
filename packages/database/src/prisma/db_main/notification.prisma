@@ -5,7 +5,7 @@ model Notification {
     id       String @id @default(uuid(7))
 
     // multi tenant fields
-    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // core fields
     title           String
@@ -47,7 +47,7 @@ model ResourceSubscription {
     id       String @id @default(uuid(7))
 
     // multi tenant fields
-    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // core fields
     resourceId           String?

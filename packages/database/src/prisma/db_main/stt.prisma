@@ -16,7 +16,7 @@ model AsrPipeline {
     id       String @id @default(uuid(7))
 
     // Multi-tenant (system-wide or tenant-specific)
-    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // Core fields
     name        String   // e.g., "whisper-large-v3-medical"
@@ -62,7 +62,7 @@ model AiModel {
     id       String @id @default(uuid(7))
 
     // Multi-tenant
-    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // Core identification
     name        String // e.g., "Whisper Large V3"
@@ -130,7 +130,7 @@ model TranscriptionJob {
     id       String @id @default(uuid(7))
 
     // Multi-tenant
-    tenantId String @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // Job type
     jobType TranscriptionJobType // BATCH, STREAMING
