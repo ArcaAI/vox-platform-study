@@ -114,6 +114,27 @@ const createMockJobMetrics = () => ({
     recordSmrCallDuration: vi.fn(),
 });
 
+// Mock ClsService — TASK-305 D.9. See summary.processor.test.ts for the
+// rationale.
+const createMockClsService = () => {
+    const store = new Map<string, unknown>();
+    const mock = {
+        run: vi.fn((...args: unknown[]) => {
+            const callback = (args.length === 1 ? args[0] : args[1]) as () => unknown;
+            return callback();
+        }),
+        runWith: vi.fn((seed: Record<string, unknown>, callback: () => unknown) => {
+            for (const [k, v] of Object.entries(seed)) store.set(k, v);
+            return callback();
+        }),
+        set: vi.fn((key: string, value: unknown) => { store.set(key, value); }),
+        get: vi.fn((key?: string) => (key === undefined ? Object.fromEntries(store) : store.get(key))),
+        has: vi.fn((key: string) => store.has(key)),
+        isActive: vi.fn(() => true),
+    };
+    return mock;
+};
+
 // ============================================
 // Test Helpers
 // ============================================
@@ -177,6 +198,7 @@ function createProcessor() {
     const configService = createMockConfigService();
     const promptResolutionService = createMockPromptResolutionService();
     const jobMetrics = createMockJobMetrics();
+    const clsService = createMockClsService();
 
     const promptAssemblyService = createMockPromptAssemblyService();
 
@@ -192,6 +214,7 @@ function createProcessor() {
         promptResolutionService as any,
         promptAssemblyService as any,
         jobMetrics as any,
+        clsService as any,
     );
 
     return {
@@ -207,6 +230,7 @@ function createProcessor() {
         promptResolutionService,
         promptAssemblyService,
         jobMetrics,
+        clsService,
     };
 }
 
@@ -380,6 +404,7 @@ describe('ComprehensiveSummaryProcessor', () => {
                 mocks.promptResolutionService as any,
                 mocks.promptAssemblyService as any,
                 mocks.jobMetrics as any,
+                mocks.clsService as any,
             );
 
             const consultation = createConsultation();
@@ -884,6 +909,78 @@ describe('ComprehensiveSummaryProcessor', () => {
             expect(mocks.jobService.notifyProgress).toHaveBeenCalledTimes(5);
             expect(mocks.jobService.notifyComplete).toHaveBeenCalledTimes(1);
             expect(mocks.jobService.notifyFailed).not.toHaveBeenCalled();
+        });
+    });
+
+    // ===========================================================================
+    // TASK-305 D.9 — CLS rebind + tenant assert + fail-closed guard
+    // ===========================================================================
+
+    describe('CLS rebind + tenant assert (TASK-305 D.9)', () => {
+        const setupSuccessfulJob = (consultationOverrides: Record<string, unknown> = {}) => {
+            const consultation = createConsultation(consultationOverrides);
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.chainSummaryService.resolveLinkedConsultations.mockResolvedValue([consultation]);
+            mocks.chainSummaryService.gatherSections.mockResolvedValue([createSection()]);
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Comprehensive summary' },
+            });
+        };
+
+        it('wraps process() in cls.run with tenantId + user set before any work runs', async () => {
+            setupSuccessfulJob({ tenantId: 'tenant-A' });
+            const setOrder: Array<[string, unknown]> = [];
+            mocks.clsService.set.mockImplementation((key: string, value: unknown) => {
+                setOrder.push([key, value]);
+            });
+
+            await mocks.processor.process(
+                createMockJob(createDefaultPayload({
+                    tenantId: 'tenant-A',
+                    userId: 'user-A',
+                    request: { includeNER: false },
+                })),
+            );
+
+            expect(mocks.clsService.run).toHaveBeenCalledTimes(1);
+            const keys = setOrder.map(([k]) => k);
+            expect(keys).toContain('tenantId');
+            expect(keys).toContain('user');
+            const tenantEntry = setOrder.find(([k]) => k === 'tenantId');
+            expect(tenantEntry?.[1]).toBe('tenant-A');
+            const userEntry = setOrder.find(([k]) => k === 'user');
+            expect(userEntry?.[1]).toMatchObject({ id: 'user-A', tenantId: 'tenant-A' });
+        });
+
+        it('throws fail-closed when job.data.tenantId is missing', async () => {
+            const payload = {
+                jobId: 'job-no-tenant',
+                consultationId: 'consultation-A',
+                userId: 'user-1',
+                request: { includeNER: false },
+            } as unknown as GenerateComprehensiveSummaryJobPayload;
+
+            await expect(
+                mocks.processor.process(createMockJob(payload)),
+            ).rejects.toThrow(/tenantId/i);
+            expect(mocks.consultationRepo.findById).not.toHaveBeenCalled();
+        });
+
+        it('throws when loaded consultation.tenantId differs from job.data.tenantId', async () => {
+            setupSuccessfulJob({ tenantId: 'tenant-OTHER' });
+
+            await expect(
+                mocks.processor.process(
+                    createMockJob(createDefaultPayload({
+                        tenantId: 'tenant-A',
+                        userId: 'user-A',
+                        request: { includeNER: false },
+                    })),
+                ),
+            ).rejects.toThrow();
+
+            expect(mocks.contextItemRepo.create).not.toHaveBeenCalled();
+            expect(mocks.jobService.notifyFailed).toHaveBeenCalled();
         });
     });
 });

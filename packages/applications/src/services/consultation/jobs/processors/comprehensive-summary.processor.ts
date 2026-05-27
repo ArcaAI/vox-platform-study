@@ -3,6 +3,7 @@ import { Inject, Logger, Optional } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
+import { ClsService } from 'nestjs-cls';
 import {
   JobQueue,
   ContextItemRepository,
@@ -20,6 +21,9 @@ import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
+import { UserSession } from '../../../auth/dto';
+import { IActiveUserContext } from '../../../../interfaces';
+import { assertEqualTenants } from '../../../../common';
 
 /**
  * BullMQ processor for async comprehensive summary generation.
@@ -52,6 +56,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     private readonly promptResolutionService: PromptResolutionService,
     private readonly promptAssemblyService: PromptAssemblyService,
     private readonly jobMetrics: JobMetricsService,
+    private readonly cls: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super();
@@ -60,145 +65,158 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
 
   async process(job: Job<GenerateComprehensiveSummaryJobPayload>): Promise<ComprehensiveSummaryJobResult> {
     const { jobId, consultationId, tenantId, userId, request } = job.data;
-    const endTimer = this.jobMetrics.recordJobStart(JobQueue.GenerateComprehensiveSummary);
-    const waitMs = Date.now() - job.timestamp;
-    this.jobMetrics.recordWaitingDuration(JobQueue.GenerateComprehensiveSummary, waitMs / 1000);
+    // TASK-305 D.9.3 — fail-closed when tenantId is missing.
+    if (!tenantId) {
+      throw new Error(`Job ${jobId ?? job.id} is missing required tenantId`);
+    }
+    // TASK-305 D.9.1 — rebind tenantId + user into a fresh CLS scope so the
+    // Phase B tenantScope Prisma extension sees the correct context.
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      this.cls.set('user', { id: userId, tenantId, roles: [], permissions: [] } as unknown as UserSession);
 
-    this.logger.log({
-      message: 'Processing comprehensive summary job',
-      jobId,
-      consultationId,
-    });
-
-    try {
-      // Step 1: Resolve linked consultations (10%)
-      await this.jobService.notifyProgress(jobId, 10, 'Resolving linked consultations');
-
-      const consultation = await this.consultationRepository.findById(consultationId);
-      if (!consultation) {
-        throw new Error(`Consultation ${consultationId} not found`);
-      }
-
-      const linkedConsultations = await this.chainSummaryService.resolveLinkedConsultations(consultation);
-      if (linkedConsultations.length === 0) {
-        throw new Error('No linked consultations found for comprehensive summary');
-      }
-
-      const allConsultationIds = linkedConsultations.map((c) => c.id);
+      const endTimer = this.jobMetrics.recordJobStart(JobQueue.GenerateComprehensiveSummary);
+      const waitMs = Date.now() - job.timestamp;
+      this.jobMetrics.recordWaitingDuration(JobQueue.GenerateComprehensiveSummary, waitMs / 1000);
 
       this.logger.log({
-        message: 'Resolved linked consultations',
+        message: 'Processing comprehensive summary job',
         jobId,
-        linkedCount: linkedConsultations.length,
+        consultationId,
       });
 
-      // Step 2: Gather sections from chain (25%)
-      await this.jobService.notifyProgress(jobId, 25, 'Gathering content from linked consultations');
+      try {
+        // Step 1: Resolve linked consultations (10%)
+        await this.jobService.notifyProgress(jobId, 10, 'Resolving linked consultations');
 
-      const sections = await this.chainSummaryService.gatherSections(linkedConsultations);
-      if (sections.length === 0) {
-        throw new Error('No content available across linked consultations');
-      }
+        const consultation = await this.consultationRepository.findById(consultationId);
+        if (!consultation) {
+          throw new Error(`Consultation ${consultationId} not found`);
+        }
+        // TASK-305 D.9.2 — defense in depth against a poisoned / stale payload.
+        assertEqualTenants(consultation, { tenantId });
 
-      // Step 3: Gather NER entities (40%)
-      let aggregatedEntities:
-        | Record<
-            string,
-            Array<{
-              text: string;
-              confidence?: number;
-              sourceConsultationId: string;
-            }>
-          >
-        | undefined;
+        const linkedConsultations = await this.chainSummaryService.resolveLinkedConsultations(consultation);
+        if (linkedConsultations.length === 0) {
+          throw new Error('No linked consultations found for comprehensive summary');
+        }
 
-      if (request.includeNER !== false) {
-        await this.jobService.notifyProgress(jobId, 40, 'Gathering named entities');
-        aggregatedEntities = await this.chainSummaryService.gatherNamedEntities(allConsultationIds);
-      }
+        const allConsultationIds = linkedConsultations.map((c) => c.id);
 
-      // Resolve prompt config if template not explicitly provided (TASK-025)
-      // DNA style is per-doctor and resolved separately — not part of prompt resolution.
-      let resolvedRequest = request;
-      if (!request.template) {
-        const resolved = await this.promptResolutionService.resolve({
-          departmentId: consultation.departmentId ?? undefined,
-          explicitTemplate: request.template,
+        this.logger.log({
+          message: 'Resolved linked consultations',
+          jobId,
+          linkedCount: linkedConsultations.length,
         });
-        resolvedRequest = {
-          ...request,
-          template: resolved.template || 'comprehensive',
-        };
-      }
 
-      // Step 4: Call SMR service (60%)
-      await this.jobService.notifyProgress(jobId, 60, 'Generating comprehensive summary with AI');
+        // Step 2: Gather sections from chain (25%)
+        await this.jobService.notifyProgress(jobId, 25, 'Gathering content from linked consultations');
 
-      const smrResponse = await this.callSmrService(consultation, sections, aggregatedEntities, resolvedRequest, jobId);
+        const sections = await this.chainSummaryService.gatherSections(linkedConsultations);
+        if (sections.length === 0) {
+          throw new Error('No content available across linked consultations');
+        }
 
-      // Step 5: Save results (85%)
-      await this.jobService.notifyProgress(jobId, 85, 'Saving results');
+        // Step 3: Gather NER entities (40%)
+        let aggregatedEntities:
+          | Record<
+              string,
+              Array<{
+                text: string;
+                confidence?: number;
+                sourceConsultationId: string;
+              }>
+            >
+          | undefined;
 
-      const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, resolvedRequest.dnaStyleId, userId);
+        if (request.includeNER !== false) {
+          await this.jobService.notifyProgress(jobId, 40, 'Gathering named entities');
+          aggregatedEntities = await this.chainSummaryService.gatherNamedEntities(allConsultationIds);
+        }
 
-      const savedContext = await this.contextItemRepository.create(contextItem);
+        // Resolve prompt config if template not explicitly provided (TASK-025)
+        // DNA style is per-doctor and resolved separately — not part of prompt resolution.
+        let resolvedRequest = request;
+        if (!request.template) {
+          const resolved = await this.promptResolutionService.resolve({
+            departmentId: consultation.departmentId ?? undefined,
+            explicitTemplate: request.template,
+          });
+          resolvedRequest = {
+            ...request,
+            template: resolved.template || 'comprehensive',
+          };
+        }
 
-      const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
-        tenantId,
-        contextItemId: savedContext.id,
-        aiModelId: smrResponse.modelName,
-        processingTimeMs: smrResponse.processingTimeMs,
-        inputTokens: smrResponse.inputTokens,
-        outputTokens: smrResponse.outputTokens,
-      });
-      await this.summaryMetaRepository.create(summaryMeta);
+        // Step 4: Call SMR service (60%)
+        await this.jobService.notifyProgress(jobId, 60, 'Generating comprehensive summary with AI');
 
-      // Step 6: Complete (100%)
-      const result: ComprehensiveSummaryJobResult = {
-        contextItemId: savedContext.id,
-        content: savedContext.content ?? '',
-        sourceConsultationIds: allConsultationIds,
-        sectionCount: sections.length,
-        summaryMeta: {
+        const smrResponse = await this.callSmrService(consultation, sections, aggregatedEntities, resolvedRequest, jobId);
+
+        // Step 5: Save results (85%)
+        await this.jobService.notifyProgress(jobId, 85, 'Saving results');
+
+        const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, resolvedRequest.dnaStyleId, userId);
+
+        const savedContext = await this.contextItemRepository.create(contextItem);
+
+        const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
+          tenantId,
+          contextItemId: savedContext.id,
           aiModelId: smrResponse.modelName,
           processingTimeMs: smrResponse.processingTimeMs,
           inputTokens: smrResponse.inputTokens,
           outputTokens: smrResponse.outputTokens,
-        },
-        namedEntities: aggregatedEntities,
-      };
+        });
+        await this.summaryMetaRepository.create(summaryMeta);
 
-      await this.jobService.notifyComplete(jobId, result);
+        // Step 6: Complete (100%)
+        const result: ComprehensiveSummaryJobResult = {
+          contextItemId: savedContext.id,
+          content: savedContext.content ?? '',
+          sourceConsultationIds: allConsultationIds,
+          sectionCount: sections.length,
+          summaryMeta: {
+            aiModelId: smrResponse.modelName,
+            processingTimeMs: smrResponse.processingTimeMs,
+            inputTokens: smrResponse.inputTokens,
+            outputTokens: smrResponse.outputTokens,
+          },
+          namedEntities: aggregatedEntities,
+        };
 
-      const duration = endTimer();
-      this.jobMetrics.recordJobComplete(JobQueue.GenerateComprehensiveSummary, 'ComprehensiveSummaryProcessor', duration);
+        await this.jobService.notifyComplete(jobId, result);
 
-      this.logger.log({
-        message: 'Comprehensive summary job completed',
-        jobId,
-        contextItemId: savedContext.id,
-        sectionCount: sections.length,
-        sourceConsultationCount: allConsultationIds.length,
-        processingTimeMs: smrResponse.processingTimeMs,
-      });
+        const duration = endTimer();
+        this.jobMetrics.recordJobComplete(JobQueue.GenerateComprehensiveSummary, 'ComprehensiveSummaryProcessor', duration);
 
-      return result;
-    } catch (error) {
-      endTimer();
-      this.jobMetrics.recordJobFailed(
-        JobQueue.GenerateComprehensiveSummary,
-        'ComprehensiveSummaryProcessor',
-        error instanceof Error ? error.constructor.name : 'UnknownError',
-      );
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error({
-        message: 'Comprehensive summary job failed',
-        jobId,
-        error: errorMessage,
-      });
-      await this.jobService.notifyFailed(jobId, errorMessage);
-      throw error;
-    }
+        this.logger.log({
+          message: 'Comprehensive summary job completed',
+          jobId,
+          contextItemId: savedContext.id,
+          sectionCount: sections.length,
+          sourceConsultationCount: allConsultationIds.length,
+          processingTimeMs: smrResponse.processingTimeMs,
+        });
+
+        return result;
+      } catch (error) {
+        endTimer();
+        this.jobMetrics.recordJobFailed(
+          JobQueue.GenerateComprehensiveSummary,
+          'ComprehensiveSummaryProcessor',
+          error instanceof Error ? error.constructor.name : 'UnknownError',
+        );
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error({
+          message: 'Comprehensive summary job failed',
+          jobId,
+          error: errorMessage,
+        });
+        await this.jobService.notifyFailed(jobId, errorMessage);
+        throw error;
+      }
+    });
   }
 
   private async callSmrService(
