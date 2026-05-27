@@ -1,11 +1,18 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ConsultationRepository, ConsultationFactory, ResourceType, SysEventType } from '@arcaai/domains';
+import {
+  ConsultationRepository,
+  ConsultationFactory,
+  DepartmentRepository,
+  ResourceType,
+  SysEventType,
+  UserRoleAssignmentRepository,
+} from '@arcaai/domains';
 import { IConsultationService } from './IConsultationService';
 import { OpenConsultationRequest, ConsultationResponse, PaginatedConsultationResponse } from './dto';
 import { ConsultationDtoMapper } from './consultation.dto.mapper';
-import { BaseService } from '../../../common';
+import { BaseService, assertParentInScope, assertUserBelongsToTenant } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 
 /**
@@ -17,10 +24,49 @@ import { IActiveUserContext } from '../../../interfaces';
 export class ConsultationService extends BaseService implements IConsultationService {
   constructor(
     private readonly consultationRepository: ConsultationRepository,
+    private readonly departmentRepository: DepartmentRepository,
+    private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
+  }
+
+  /**
+   * TASK-305 D.2 (audit C-1 / C-2 / C-4) — assert every cross-aggregate
+   * reference on a Consultation write lives in the caller's tenant before
+   * any factory or repository call runs:
+   *
+   *   - `doctorId`           — User must hold an ENABLED UserRoleAssignment
+   *                            in `tenantId` (defense vs. audit C-1).
+   *   - `departmentId`       — Department row must be tenant-scoped to
+   *                            `tenantId` (defense vs. audit C-2).
+   *   - `parentConsultationId` — Parent Consultation must live in the same
+   *                              tenant (defense vs. audit C-4 / B-3).
+   *
+   * All helpers route failures through `NotFoundException` to avoid leaking
+   * the existence of a cross-tenant resource. SUPER_ADMIN is intentionally
+   * NOT bypassed — assigning consultations to users / departments / parents
+   * outside the tenant would produce a structurally invalid aggregate
+   * regardless of caller role (mirrors the D.6 DepartmentService rule).
+   */
+  private async assertCrossAggregateRefsInTenant(
+    tenantId: string,
+    refs: {
+      doctorId: string;
+      departmentId?: string | null;
+      parentConsultationId?: string | null;
+    },
+  ): Promise<void> {
+    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, refs.doctorId, tenantId);
+
+    if (refs.departmentId) {
+      await assertParentInScope(this.departmentRepository, refs.departmentId, tenantId);
+    }
+
+    if (refs.parentConsultationId) {
+      await assertParentInScope(this.consultationRepository, refs.parentConsultationId, tenantId);
+    }
   }
 
   /**
@@ -36,6 +82,12 @@ export class ConsultationService extends BaseService implements IConsultationSer
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
+
+    await this.assertCrossAggregateRefsInTenant(tenantId, {
+      doctorId,
+      departmentId: request.departmentId,
+      parentConsultationId: request.parentConsultationId,
+    });
 
     // Use today's date if not provided
     const appointmentDate = request.appointmentDate ? new Date(request.appointmentDate) : new Date(new Date().toISOString().split('T')[0]); // Today, no time
@@ -91,11 +143,15 @@ export class ConsultationService extends BaseService implements IConsultationSer
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // Verify parent consultation exists
-    const parent = await this.consultationRepository.findById(parentConsultationId);
-    if (!parent) {
-      throw new BadRequestException(`Parent consultation ${parentConsultationId} not found`);
-    }
+    // TASK-305 D.2 — verify all cross-aggregate refs (parent, department,
+    // doctor) live in the caller's tenant before any factory call. The
+    // helper throws NotFoundException on miss / cross-tenant to keep this
+    // behaviour indistinguishable from "resource does not exist".
+    await this.assertCrossAggregateRefsInTenant(tenantId, {
+      doctorId,
+      departmentId: request.departmentId,
+      parentConsultationId,
+    });
 
     const appointmentDate = request.appointmentDate ? new Date(request.appointmentDate) : new Date(new Date().toISOString().split('T')[0]);
 
