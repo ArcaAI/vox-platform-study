@@ -507,7 +507,7 @@ describe('ContextService', () => {
         });
 
         it('should throw BadRequestException when content is missing for non-media types', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
 
             await expect(
                 service.addContext('consultation-1', { type: ContextItemType.TRANSCRIPT })
@@ -518,7 +518,7 @@ describe('ContextService', () => {
         });
 
         it('should throw BadRequestException when content is empty string for non-media types', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
 
             await expect(
                 service.addContext('consultation-1', {
@@ -529,7 +529,7 @@ describe('ContextService', () => {
         });
 
         it('should allow null content for AUDIO_RECORDING type', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newContextItem = createMockContextItemEntity({
                 id: 'new-audio-id',
                 type: ContextItemType.AUDIO_RECORDING,
@@ -546,7 +546,7 @@ describe('ContextService', () => {
         });
 
         it('should allow null content for ATTACHMENT type', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newContextItem = createMockContextItemEntity({
                 id: 'new-attachment-id',
                 type: ContextItemType.ATTACHMENT,
@@ -563,7 +563,7 @@ describe('ContextService', () => {
         });
 
         it('should create context item for transcript type with content', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newContextItem = createMockContextItemEntity({
                 id: 'new-context-item-id',
                 type: ContextItemType.TRANSCRIPT,
@@ -587,7 +587,7 @@ describe('ContextService', () => {
         });
 
         it('should create context item for worknote type', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newContextItem = createMockContextItemEntity({
                 id: 'new-worknote-id',
                 type: ContextItemType.WORKNOTE,
@@ -603,7 +603,7 @@ describe('ContextService', () => {
         });
 
         it('should create context item for case note type', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newContextItem = createMockContextItemEntity({
                 id: 'new-case-note-id',
                 type: ContextItemType.CASE_NOTE,
@@ -618,7 +618,7 @@ describe('ContextService', () => {
         });
 
         it('should create context item for RAW_SUMMARY type with AI source', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newContextItem = createMockContextItemEntity({
                 id: 'new-summary-id',
                 type: ContextItemType.RAW_SUMMARY,
@@ -637,7 +637,7 @@ describe('ContextService', () => {
         });
 
         it('should create context item for MODIFIED_SUMMARY type', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newContextItem = createMockContextItemEntity({
                 id: 'new-modified-summary-id',
                 type: ContextItemType.MODIFIED_SUMMARY,
@@ -655,7 +655,7 @@ describe('ContextService', () => {
         });
 
         it('should use default source when not provided', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newContextItem = createMockContextItemEntity({ source: ContextItemSource.USER });
             mockContextItemRepository.create.mockResolvedValue(newContextItem);
             await service.addContext('consultation-1', {
@@ -667,7 +667,7 @@ describe('ContextService', () => {
         });
 
         it('should include dnaWritingStyleId when provided', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newContextItem = createMockContextItemEntity({
                 dnaWritingStyleId: 'dna-style-123',
             });
@@ -682,7 +682,7 @@ describe('ContextService', () => {
         });
 
         it('should handle very long content', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const longContent = 'A'.repeat(100000); // 100KB of content
             const newContextItem = createMockContextItemEntity({
                 id: 'new-long-content-id',
@@ -698,7 +698,7 @@ describe('ContextService', () => {
         });
 
         it('should handle content with special characters', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const specialContent = '日本語テスト 🏥 <script>alert("xss")</script> "quotes" \'apostrophe\'';
             const newContextItem = createMockContextItemEntity({
                 id: 'new-special-content-id',
@@ -719,7 +719,7 @@ describe('ContextService', () => {
                 if (key === 'user') return null;
                 return null;
             });
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newContextItem = createMockContextItemEntity({ id: 'new-id' });
             mockContextItemRepository.create.mockResolvedValue(newContextItem);
             const result = await service.addContext('consultation-1', {
@@ -953,7 +953,7 @@ describe('ContextService', () => {
         });
 
         it('should create audio recording and container', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             mockContextItemRepository.findAudioRecordings.mockResolvedValue([]);
             const newContainer = createMockContextItemEntity({
                 id: 'new-audio-container-id',
@@ -978,7 +978,7 @@ describe('ContextService', () => {
         });
 
         it('should emit ResourceCreated event after creating audio recording', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             mockContextItemRepository.findAudioRecordings.mockResolvedValue([]);
             const newContainer = createMockContextItemEntity({
                 id: 'new-audio-container-id',
@@ -1012,7 +1012,7 @@ describe('ContextService', () => {
         });
 
         it('should use existing audio container if present', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const existingContainer = createMockContextItemEntity({
                 id: 'existing-container-id',
                 type: ContextItemType.AUDIO_RECORDING,
@@ -1126,7 +1126,7 @@ describe('ContextService', () => {
         });
 
         it('should create raw summary with metadata', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newSummary = createMockContextItemEntity({
                 id: 'new-summary-id',
                 type: ContextItemType.RAW_SUMMARY,
@@ -1861,7 +1861,7 @@ describe('ContextService', () => {
 
     describe('addTranscript', () => {
         it('should create transcript context item', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newTranscript = createMockContextItemEntity({
                 id: 'new-transcript-id',
                 type: 'TRANSCRIPT' as any,
@@ -1876,7 +1876,7 @@ describe('ContextService', () => {
 
     describe('addTranscription', () => {
         it('should create transcription (alias for addTranscript)', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newTranscription = createMockContextItemEntity({
                 id: 'new-transcription-id',
                 type: 'TRANSCRIPT' as any,
@@ -1890,7 +1890,7 @@ describe('ContextService', () => {
 
     describe('addCaseNote', () => {
         it('should create case note context item', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newCaseNote = createMockContextItemEntity({
                 id: 'new-case-note-id',
                 type: 'CASE_NOTE' as any,
@@ -1904,7 +1904,7 @@ describe('ContextService', () => {
 
     describe('addWorknote', () => {
         it('should create worknote context item', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newWorknote = createMockContextItemEntity({
                 id: 'new-worknote-id',
                 type: 'WORKNOTE' as any,
@@ -1922,7 +1922,7 @@ describe('ContextService', () => {
 
     describe('addPreSummary', () => {
         it('should create pre-summary context item', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newPreSummary = createMockContextItemEntity({
                 id: 'new-pre-summary-id',
                 type: 'PRE_SUMMARY' as any,
@@ -1942,7 +1942,7 @@ describe('ContextService', () => {
         });
 
         it('should create pre-summary with dnaWritingStyleId', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newPreSummary = createMockContextItemEntity({
                 id: 'new-pre-summary-id',
                 type: 'PRE_SUMMARY' as any,
@@ -2082,7 +2082,7 @@ describe('ContextService', () => {
 
     describe('addContext with PRE_SUMMARY', () => {
         it('should create PRE_SUMMARY context item via addContext', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newPreSummary = createMockContextItemEntity({
                 id: 'new-pre-summary-id',
                 type: 'PRE_SUMMARY' as any,
@@ -2108,7 +2108,7 @@ describe('ContextService', () => {
         });
 
         it('should create PRE_SUMMARY with SummaryMeta', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newPreSummary = createMockContextItemEntity({
                 id: 'new-pre-summary-id',
                 type: 'PRE_SUMMARY' as any,
@@ -3208,6 +3208,167 @@ describe('ContextService', () => {
             const result = await service.getAggregateNamedEntities('consultation-a', 'single');
 
             expect(result.entities.MEDICATION[0].createdAt).toBe('2026-02-17T14:30:00.000Z');
+        });
+    });
+
+    // ============================================================
+    // TASK-305 D.3 — Cross-aggregate tenant isolation for ContextService
+    //
+    // The ContextItem aggregate owns three cross-aggregate references the
+    // multi-tenancy audit (C-3) flagged as leak vectors:
+    //   - consultationId            (parent Consultation, on every create)
+    //   - contextItemId             (parent ContextItem, on update / NER add)
+    //   - caseNoteIds / preSummaryIds /
+    //     previousSummaryIds        (ContextItem chains stored on SummaryMeta)
+    //
+    // Each must be asserted in the caller's tenant before any factory or
+    // repository call runs. Failures route through `assertParentInScope`,
+    // which throws `NotFoundException` (no existence leak).
+    // ============================================================
+    describe('TASK-305 D.3 — cross-aggregate tenant checks', () => {
+        describe('addContext', () => {
+            it('throws NotFoundException when parent consultation belongs to another tenant', async () => {
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-other',
+                    tenantId: 'tenant-OTHER',
+                });
+
+                await expect(
+                    service.addContext('consultation-other', {
+                        type: ContextItemType.TRANSCRIPT,
+                        content: 'cross-tenant attempt',
+                    }),
+                ).rejects.toThrow(NotFoundException);
+                await expect(
+                    service.addContext('consultation-other', {
+                        type: ContextItemType.TRANSCRIPT,
+                        content: 'cross-tenant attempt',
+                    }),
+                ).rejects.toThrow('Resource not found');
+
+                expect(mockContextItemRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException when parent consultation does not exist (no existence leak)', async () => {
+                mockConsultationRepository.findById.mockResolvedValue(null);
+
+                await expect(
+                    service.addContext('no-such-consultation', {
+                        type: ContextItemType.TRANSCRIPT,
+                        content: 'x',
+                    }),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockContextItemRepository.create).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('updateContext', () => {
+            it('throws NotFoundException when context item belongs to another tenant', async () => {
+                mockContextItemRepository.findById.mockResolvedValue(
+                    createMockContextItemEntity({
+                        id: 'ctx-other',
+                        tenantId: 'tenant-OTHER',
+                    }),
+                );
+
+                await expect(
+                    service.updateContext('ctx-other', { content: 'tampered' }),
+                ).rejects.toThrow(NotFoundException);
+                await expect(
+                    service.updateContext('ctx-other', { content: 'tampered' }),
+                ).rejects.toThrow('Resource not found');
+
+                expect(mockContextItemRepository.update).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('addAudioRecording', () => {
+            it('throws NotFoundException when parent consultation belongs to another tenant', async () => {
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-other',
+                    tenantId: 'tenant-OTHER',
+                });
+
+                await expect(
+                    service.addAudioRecording('consultation-other', {
+                        mediaId: 'm-1',
+                    }),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockAudioRecordingRepository.create).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('addRawSummary', () => {
+            it('throws NotFoundException when parent consultation belongs to another tenant', async () => {
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-other',
+                    tenantId: 'tenant-OTHER',
+                });
+
+                await expect(
+                    service.addRawSummary('consultation-other', {
+                        content: 'cross-tenant summary',
+                    }),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockContextItemRepository.create).not.toHaveBeenCalled();
+                expect(mockSummaryMetaRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException when any caseNoteIds entry lives in another tenant', async () => {
+                // Parent consultation passes the in-tenant check.
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-1',
+                    tenantId: 'tenant-1',
+                });
+                // First case note in-tenant; second cross-tenant → reject.
+                mockContextItemRepository.findById
+                    .mockResolvedValueOnce(createMockContextItemEntity({ id: 'note-good', tenantId: 'tenant-1' }))
+                    .mockResolvedValueOnce(createMockContextItemEntity({ id: 'note-bad', tenantId: 'tenant-OTHER' }));
+
+                await expect(
+                    service.addRawSummary('consultation-1', {
+                        content: 'summary',
+                        caseNoteIds: ['note-good', 'note-bad'],
+                    }),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockSummaryMetaRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException when any previousSummaryIds entry lives in another tenant', async () => {
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-1',
+                    tenantId: 'tenant-1',
+                });
+                mockContextItemRepository.findById.mockResolvedValueOnce(
+                    createMockContextItemEntity({ id: 'prev-bad', tenantId: 'tenant-OTHER' }),
+                );
+
+                await expect(
+                    service.addRawSummary('consultation-1', {
+                        content: 'summary',
+                        previousSummaryIds: ['prev-bad'],
+                    }),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockSummaryMetaRepository.create).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('addNamedEntities', () => {
+            it('throws NotFoundException when parent context item belongs to another tenant', async () => {
+                mockContextItemRepository.findById.mockResolvedValue(
+                    createMockContextItemEntity({
+                        id: 'ctx-other',
+                        tenantId: 'tenant-OTHER',
+                    }),
+                );
+
+                await expect(
+                    service.addNamedEntities('ctx-other', {
+                        entities: [{ text: 'Aspirin', className: 'MEDICATION' }],
+                    }),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockNamedEntityRepository.create).not.toHaveBeenCalled();
+            });
         });
     });
 });
