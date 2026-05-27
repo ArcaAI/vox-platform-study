@@ -3,12 +3,18 @@ import { AuditLogFactory, AuditLogRepository, JobQueue } from '@arcaai/domains';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import { ClsService } from 'nestjs-cls';
+import { UserSession } from '../auth/dto';
+import { IActiveUserContext } from '../../interfaces';
 
 @Processor(JobQueue.AuditLog)
 export class AuditLogProcessor extends WorkerHost {
   private readonly logger = new Logger(AuditLogProcessor.name);
 
-  constructor(private readonly auditLogRepository: AuditLogRepository) {
+  constructor(
+    private readonly auditLogRepository: AuditLogRepository,
+    private readonly cls: ClsService<IActiveUserContext>,
+  ) {
     super();
   }
 
@@ -25,18 +31,46 @@ export class AuditLogProcessor extends WorkerHost {
       tenantId,
     } = job.data;
 
-    const entity = AuditLogFactory.CreateAuditLog({
-      action,
-      responsibleUserId,
-      responsibleIp,
-      resourceId,
-      resourceType,
-      data: data ?? {},
-      previousData: previousData ?? {},
-      correlationId,
-      tenantId,
-    });
+    // TASK-305 D.9.3 follow-up — fail-closed when tenantId is missing.
+    // Guards against legacy queue entries that predate the multi-tenancy
+    // hardening contract. BullMQ will retry per `attempts` then DLQ.
+    if (!tenantId) {
+      throw new Error('AuditLogProcessor: job.data.tenantId is required');
+    }
 
-    await this.auditLogRepository.create(entity);
+    // TASK-305 D.9.1 follow-up — Worker processes run OUTSIDE the API edge
+    // ClsModule middleware. Rebind tenantId + user into a fresh CLS scope so
+    // the Phase B tenantScope Prisma extension sees the correct context
+    // (otherwise its "no CLS = super-admin pass-through" branch silently
+    // bypasses scoping). Empty roles array — queue workers never have
+    // SUPER_ADMIN bypass.
+    //
+    // No `assertEqualTenants` here: this processor only WRITES (never loads
+    // an entity by id), so there is nothing to assert against. The factory's
+    // required `tenantId` parameter + the fail-closed guard above are the
+    // sufficient invariants.
+    await this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      this.cls.set('user', {
+        id: responsibleUserId ?? 'system-audit',
+        tenantId,
+        roles: [],
+        permissions: [],
+      } as unknown as UserSession);
+
+      const entity = AuditLogFactory.CreateAuditLog({
+        action,
+        responsibleUserId,
+        responsibleIp,
+        resourceId,
+        resourceType,
+        data: data ?? {},
+        previousData: previousData ?? {},
+        correlationId,
+        tenantId,
+      });
+
+      await this.auditLogRepository.create(entity);
+    });
   }
 }
