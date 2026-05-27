@@ -15,8 +15,9 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+// eslint-disable-next-line no-restricted-imports -- TASK-305 B.4 allow-list: integration test fixture, tenant context not yet established
 import {
-  getPrismaClient,
+  getPlatformAdminPrismaClient_Unscoped,
   getExtendedPrismaClient,
   createNewPrismaClient,
   createNewExtendedPrismaClient,
@@ -35,7 +36,7 @@ describe('Database E2E Integration Tests', () => {
   let extendedPrisma: ExtendedCorePrismaClient;
 
   beforeAll(async () => {
-    basePrisma = getPrismaClient();
+    basePrisma = getPlatformAdminPrismaClient_Unscoped();
     extendedPrisma = getExtendedPrismaClient();
     await basePrisma.$connect();
   });
@@ -66,8 +67,8 @@ describe('Database E2E Integration Tests', () => {
 
   describe('Singleton Pattern Tests', () => {
     it('should return the same base client instance', () => {
-      const client1 = getPrismaClient();
-      const client2 = getPrismaClient();
+      const client1 = getPlatformAdminPrismaClient_Unscoped();
+      const client2 = getPlatformAdminPrismaClient_Unscoped();
       expect(client1).toBe(client2);
     });
 

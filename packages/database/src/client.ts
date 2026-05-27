@@ -18,6 +18,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 // This respects NODE_ENV to load the correct .env file
 import './env.js';
 import { Prisma, PrismaClient } from './generated/core-prisma-client/client.js';
+import { applyTenantScopeExtension, resolveTenantContext } from './extensions/tenant-scope.js';
 
 // Re-export types and enums from the generated client
 export * from './generated/core-prisma-client/client.js';
@@ -223,9 +224,28 @@ export function applySoftDeleteExtension(prisma: PrismaClient) {
   });
 }
 
+/**
+ * Compose the soft-delete + tenant-scope extensions on top of a raw
+ * PrismaClient. Order matters: Prisma walks the chain outermost-first,
+ * so applying tenant-scope LAST means its handlers run FIRST — they
+ * merge `tenantId` into `args.where` before the soft-delete handler
+ * adds `resourceStatus: { not: 'DELETED' }`. The final query the
+ * Prisma engine sees carries BOTH filters in a single pass, matching
+ * the audit's "defence-in-depth" recommendation
+ * (`docs/multi-tenancy-audit/02-prisma-schema-review.md` §B7).
+ *
+ * The tenant-scope extension reads from `resolveTenantContext()` —
+ * which returns the host-registered provider (NestJS wires
+ * `TenantContextProvider` from `apps/api/src/database/`) or a
+ * permissive fallback for CLI / seed / migration paths.
+ */
 function createExtendedPrismaClient() {
   const prisma = createPrismaClient();
-  return applySoftDeleteExtension(prisma);
+  const softDeleted = applySoftDeleteExtension(prisma);
+  return applyTenantScopeExtension(softDeleted as unknown as PrismaClient, {
+    getTenantId: () => resolveTenantContext().tenantId,
+    isSuperAdmin: () => resolveTenantContext().isSuperAdmin,
+  });
 }
 
 // Export types
@@ -237,9 +257,26 @@ let prismaInstance: CorePrismaClient | null = null;
 let extendedPrismaInstance: ExtendedCorePrismaClient | null = null;
 
 /**
- * Get or create the base Prisma Client instance (singleton)
+ * Get or create the **unscoped, platform-admin** Prisma Client singleton.
+ *
+ * ⚠️ DANGER — this client BYPASSES the tenant-scope `$extends` and the
+ * soft-delete filter. Importing it from a NestJS service is almost
+ * certainly a multi-tenancy bug; an ESLint guard (TASK-305 B.5) blocks
+ * the import everywhere except the explicit allow-list:
+ *
+ *   - `packages/database/src/prisma/db_main/seed/**`
+ *   - `packages/database/scripts/**`
+ *   - migration runners (`tests/migration/**` once it exists)
+ *   - the legacy `baseClient` getter on
+ *     `packages/domains/src/common/databaseServices/core/core.database.service.ts`
+ *     (transitional; tracked for removal in a follow-up ticket)
+ *
+ * For every other call site use {@link getExtendedPrismaClient} which
+ * returns the composed (soft-delete + tenant-scope) client.
+ *
+ * @see docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md
  */
-export function getPrismaClient(): CorePrismaClient {
+export function getPlatformAdminPrismaClient_Unscoped(): CorePrismaClient {
   if (!prismaInstance) {
     prismaInstance = createPrismaClient();
   }
@@ -247,7 +284,11 @@ export function getPrismaClient(): CorePrismaClient {
 }
 
 /**
- * Get or create the extended Prisma Client instance with soft-delete filtering (singleton)
+ * Get or create the extended Prisma Client singleton (default).
+ *
+ * Composes soft-delete filtering (`applySoftDeleteExtension`) with
+ * tenant-scope injection (`applyTenantScopeExtension`). Every NestJS
+ * service / repository / controller should use this client.
  */
 export function getExtendedPrismaClient(): ExtendedCorePrismaClient {
   if (!extendedPrismaInstance) {
@@ -257,18 +298,20 @@ export function getExtendedPrismaClient(): ExtendedCorePrismaClient {
 }
 
 /**
- * Create a new Prisma Client instance (for cases where you need a fresh connection)
+ * Create a new raw Prisma Client instance (no extensions, fresh
+ * connection pool). Used by tests that need isolated state.
  */
 export function createNewPrismaClient(): CorePrismaClient {
   return createPrismaClient();
 }
 
 /**
- * Create a new extended Prisma Client instance
+ * Create a new extended Prisma Client instance (composed soft-delete
+ * + tenant-scope, fresh connection pool).
  */
 export function createNewExtendedPrismaClient(): ExtendedCorePrismaClient {
   return createExtendedPrismaClient();
 }
 
-// Default export - the extended client with soft-delete filtering
+// Default export - the composed (soft-delete + tenant-scope) client
 export default getExtendedPrismaClient;

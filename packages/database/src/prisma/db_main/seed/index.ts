@@ -1,6 +1,7 @@
 // Environment is loaded by the parent module or dotenv-cli
 // No need to import dotenv/config here as it would override test env vars
-import { getPrismaClient } from '../../../client';
+// eslint-disable-next-line no-restricted-imports -- TASK-305 B.4 allow-list: seed scripts legitimately bypass tenant-scope
+import { getPlatformAdminPrismaClient_Unscoped } from '../../../client';
 import { seedPolicy } from './01-policy';
 import { seedApiKey } from './02-apikey';
 import { seedRole } from './03-role';
@@ -56,7 +57,7 @@ import { seedUser } from './91-user';
  *  12. Audit Log
  */
 export const seed = async () => {
-    const client = getPrismaClient();
+    const client = getPlatformAdminPrismaClient_Unscoped();
 
     try {
         console.log('Starting database seeding...\n');

@@ -33,7 +33,8 @@
 //   1 — runtime error (Vault transit error, DB error, etc)
 //   2 — bad invocation (missing flags / wrong SECRETS_PROVIDER)
 
-import { getPrismaClient } from '../src/client.js';
+// eslint-disable-next-line no-restricted-imports -- TASK-305 B.4 allow-list: scripts/ legitimately bypass tenant-scope for back-fill / admin tasks
+import { getPlatformAdminPrismaClient_Unscoped } from '../src/client.js';
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 import vault from 'node-vault';
 
@@ -146,7 +147,7 @@ async function main(): Promise<void> {
   const client = vault({ apiVersion: 'v1', endpoint: process.env.VAULT_ADDR }) as unknown as VaultClientLike;
   await authenticateVaultClient(client);
 
-  const prisma = getPrismaClient();
+  const prisma = getPlatformAdminPrismaClient_Unscoped();
   try {
     const rows = await prisma.globalSetting.findMany({
       where: {
