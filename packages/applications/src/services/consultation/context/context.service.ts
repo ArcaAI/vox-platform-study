@@ -777,6 +777,28 @@ export class ContextService extends BaseService implements IContextService {
    * Combines two strategies and deduplicates:
    * 1. Chain-based — follows parentConsultationId links
    * 2. Date-based — all consultations for the same (tenantId, patientId, appointmentDate)
+   *
+   * TASK-306 P2.5 / AC-9 — Audit surface for array-input ContextItem reads.
+   *
+   * Three public methods consume the consultation-ID array returned by this
+   * helper and pass it as `ids: string[]` to ContextItemRepository methods:
+   *
+   *   - `getSharedContext(consultationId)`        → findSharedContext(allIds)
+   *   - `getSharedCaseNotes(consultationId)`      → findCaseNotesFromChain(allIds)
+   *   - `getAggregateNamedEntities(consultationId, scope)`
+   *       (scope=chain branch via consultationIds[]; scope=single uses [consultationId])
+   *
+   * The Prisma `tenantScope` extension scopes every repo call that flows
+   * through `findMany`/`findFirst`/`findById`/etc., so single-id paths are
+   * already covered. The defense-in-depth concern here is
+   * `findConsultationChain`: if `parentConsultationId` was ever set
+   * cross-tenant by a buggy write pre-TASK-305-W3.1 (or if the extension
+   * is bypassed), the chain array could include foreign-tenant ids.
+   * Filter the chain to the caller's CLS tenant BEFORE the downstream
+   * repository calls. SUPER_ADMIN bypass is intentionally NOT applied
+   * here — these methods compose tenant-scoped per-item data on a hot
+   * PHI read path; any cross-tenant visibility for platform admins must
+   * be exposed via an explicit method, not a side effect of this helper.
    */
   private async resolveLinkedConsultationIds(consultationId: string): Promise<string[]> {
     const consultation = await this.consultationRepository.findById(consultationId);
