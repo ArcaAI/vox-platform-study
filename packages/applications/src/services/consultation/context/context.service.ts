@@ -804,19 +804,36 @@ export class ContextService extends BaseService implements IContextService {
     const consultation = await this.consultationRepository.findById(consultationId);
     if (!consultation) return [];
 
-    // Strategy 1: Chain-based (existing behaviour)
-    const chain = await this.consultationRepository.findConsultationChain(consultationId);
-    const chainIds = new Set(chain.map((c) => c.id));
+    // Defense-in-depth: caller's CLS tenant. Even though `findById`
+    // above is tenant-scoped by the Prisma extension and returns null
+    // on foreign-tenant, we still need to anchor the downstream filter
+    // to a known-safe tenantId. Fail closed (return []) on missing CLS
+    // or foreign-tenant root — both are hot read paths where throwing
+    // would be over-eager.
+    const callerTenantId = this.tenantId;
+    if (!callerTenantId) return [];
+    if (consultation.tenantId !== callerTenantId) return [];
 
-    // Strategy 2: Date-based (new — same patient, same day, any department)
+    // Strategy 1: Chain-based — filtered to caller tenant to defend
+    // against pre-W3.1 parentConsultationId poisoning / a defeated
+    // extension that returns cross-tenant rows.
+    const chain = await this.consultationRepository.findConsultationChain(consultationId);
+    const chainIds = chain.filter((c) => c.tenantId === callerTenantId).map((c) => c.id);
+
+    // Strategy 2: Date-based (same patient, same day, any department).
+    // Pass `callerTenantId` (from CLS) rather than `consultation.tenantId`
+    // so the contract is self-evident even if `consultation.tenantId`
+    // is stale from a poisoned write. Filter the response defensively
+    // for the same reason.
     const sameDayConsultations = await this.consultationRepository.findByPatientAndDate(
-      consultation.tenantId,
+      callerTenantId,
       consultation.patientId,
       consultation.appointmentDate,
     );
-    const sameDayIds = sameDayConsultations.map((c) => c.id);
+    const sameDayIds = sameDayConsultations
+      .filter((c) => c.tenantId === callerTenantId)
+      .map((c) => c.id);
 
-    // Merge and deduplicate
     return [...new Set([...chainIds, ...sameDayIds])];
   }
 

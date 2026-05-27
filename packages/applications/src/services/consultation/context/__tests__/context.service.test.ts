@@ -1597,15 +1597,15 @@ describe('ContextService', () => {
         it('should return shared context combining chain + same-day strategies', async () => {
             mockConsultationRepository.findById.mockResolvedValue(mockConsultation);
             const chain = [
-                { id: 'parent-id' },
-                { id: 'consultation-1' },
+                { id: 'parent-id', tenantId: 'tenant-1' },
+                { id: 'consultation-1', tenantId: 'tenant-1' },
             ];
             mockConsultationRepository.findConsultationChain.mockResolvedValue(chain);
             // Same-day returns chain consultations plus an unlinked one from another department
             mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
-                { id: 'parent-id' },
-                { id: 'consultation-1' },
-                { id: 'unlinked-dept-b' },
+                { id: 'parent-id', tenantId: 'tenant-1' },
+                { id: 'consultation-1', tenantId: 'tenant-1' },
+                { id: 'unlinked-dept-b', tenantId: 'tenant-1' },
             ]);
             const sharedItems = [
                 createMockContextItemEntity({ consultationId: 'parent-id' }),
@@ -1636,12 +1636,12 @@ describe('ContextService', () => {
             mockConsultationRepository.findById.mockResolvedValue(mockConsultation);
             // Chain has only the current consultation (no parent link)
             mockConsultationRepository.findConsultationChain.mockResolvedValue([
-                { id: 'consultation-1' },
+                { id: 'consultation-1', tenantId: 'tenant-1' },
             ]);
             // Same-day has a consultation from Doctor B in another department
             mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
-                { id: 'consultation-1' },
-                { id: 'doctor-b-consultation' },
+                { id: 'consultation-1', tenantId: 'tenant-1' },
+                { id: 'doctor-b-consultation', tenantId: 'tenant-1' },
             ]);
             const sharedItems = [
                 createMockContextItemEntity({ consultationId: 'consultation-1' }),
@@ -1672,8 +1672,8 @@ describe('ContextService', () => {
             mockConsultationRepository.findById.mockResolvedValue(mockConsultation);
             mockConsultationRepository.findConsultationChain.mockResolvedValue([]);
             mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
-                { id: 'consultation-1' },
-                { id: 'other-dept' },
+                { id: 'consultation-1', tenantId: 'tenant-1' },
+                { id: 'other-dept', tenantId: 'tenant-1' },
             ]);
             const items = [
                 createMockContextItemEntity({ consultationId: 'other-dept' }),
@@ -1691,11 +1691,11 @@ describe('ContextService', () => {
         it('should broadcast SysEvent with correct merged counts', async () => {
             mockConsultationRepository.findById.mockResolvedValue(mockConsultation);
             mockConsultationRepository.findConsultationChain.mockResolvedValue([
-                { id: 'consultation-1' },
+                { id: 'consultation-1', tenantId: 'tenant-1' },
             ]);
             mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
-                { id: 'consultation-1' },
-                { id: 'other-dept' },
+                { id: 'consultation-1', tenantId: 'tenant-1' },
+                { id: 'other-dept', tenantId: 'tenant-1' },
             ]);
             const items = [
                 createMockContextItemEntity({ consultationId: 'consultation-1' }),
@@ -1722,8 +1722,8 @@ describe('ContextService', () => {
             mockConsultationRepository.findById.mockResolvedValue(mockConsultation);
             // Both strategies return the same set of consultations
             const sameConsultations = [
-                { id: 'parent-id' },
-                { id: 'consultation-1' },
+                { id: 'parent-id', tenantId: 'tenant-1' },
+                { id: 'consultation-1', tenantId: 'tenant-1' },
             ];
             mockConsultationRepository.findConsultationChain.mockResolvedValue(sameConsultations);
             mockConsultationRepository.findByPatientAndDate.mockResolvedValue(sameConsultations);
@@ -2010,16 +2010,16 @@ describe('ContextService', () => {
         it('should return case notes combining chain + same-day strategies', async () => {
             mockConsultationRepository.findById.mockResolvedValue(mockConsultation);
             const chain = [
-                { id: 'parent-id' },
-                { id: 'consultation-1' },
-                { id: 'child-2' },
+                { id: 'parent-id', tenantId: 'tenant-1' },
+                { id: 'consultation-1', tenantId: 'tenant-1' },
+                { id: 'child-2', tenantId: 'tenant-1' },
             ];
             mockConsultationRepository.findConsultationChain.mockResolvedValue(chain);
             mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
-                { id: 'parent-id' },
-                { id: 'consultation-1' },
-                { id: 'child-2' },
-                { id: 'unlinked-dept-c' },
+                { id: 'parent-id', tenantId: 'tenant-1' },
+                { id: 'consultation-1', tenantId: 'tenant-1' },
+                { id: 'child-2', tenantId: 'tenant-1' },
+                { id: 'unlinked-dept-c', tenantId: 'tenant-1' },
             ]);
             const sharedCaseNotes = [
                 createMockContextItemEntity({
@@ -2066,8 +2066,8 @@ describe('ContextService', () => {
 
         it('should return empty array when no case notes in chain or same-day', async () => {
             mockConsultationRepository.findById.mockResolvedValue(mockConsultation);
-            mockConsultationRepository.findConsultationChain.mockResolvedValue([{ id: 'consultation-1' }]);
-            mockConsultationRepository.findByPatientAndDate.mockResolvedValue([{ id: 'consultation-1' }]);
+            mockConsultationRepository.findConsultationChain.mockResolvedValue([{ id: 'consultation-1', tenantId: 'tenant-1' }]);
+            mockConsultationRepository.findByPatientAndDate.mockResolvedValue([{ id: 'consultation-1', tenantId: 'tenant-1' }]);
             mockContextItemRepository.findCaseNotesFromChain.mockResolvedValue([]);
 
             const result = await service.getSharedCaseNotes('consultation-1');
@@ -2311,12 +2311,16 @@ describe('ContextService', () => {
 
         const setupChainResolution = () => {
             mockConsultationRepository.findById.mockResolvedValue(mockConsultationA);
+            // TASK-306 P2.5 — chain/sameDay rows MUST carry `tenantId` so
+            // the new in-tenant filter in `resolveLinkedConsultationIds`
+            // accepts them. Pre-fix mocks omitted the field; today's
+            // service code filters such rows out.
             mockConsultationRepository.findConsultationChain.mockResolvedValue([
-                { id: 'consultation-a' },
+                { id: 'consultation-a', tenantId: 'tenant-1' },
             ]);
             mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
-                { id: 'consultation-a' },
-                { id: 'consultation-b' },
+                { id: 'consultation-a', tenantId: 'tenant-1' },
+                { id: 'consultation-b', tenantId: 'tenant-1' },
             ]);
         };
 
@@ -3368,6 +3372,267 @@ describe('ContextService', () => {
                     }),
                 ).rejects.toThrow(NotFoundException);
                 expect(mockNamedEntityRepository.create).not.toHaveBeenCalled();
+            });
+        });
+    });
+
+    // ============================================================
+    // TASK-306 P2.5 / AC-9 — ContextItem array-input defense-in-depth.
+    //
+    // The three public read paths that consume the consultation-ID
+    // array resolved by `resolveLinkedConsultationIds` and pass it to
+    // an `ids: string[]` repository method:
+    //   - `getSharedContext`        → findSharedContext(allIds)
+    //   - `getSharedCaseNotes`      → findCaseNotesFromChain(allIds)
+    //   - `getAggregateNamedEntities('chain')` via the same helper
+    //
+    // These tests simulate the defense-in-depth scenarios called out
+    // in the W5.4.1 audit comment:
+    //   - root returned cross-tenant (extension defeated upstream)
+    //   - chain straddles tenants (parentConsultationId poisoning)
+    //   - missing CLS tenant (background-worker context, must
+    //     fail closed to [] without an exception on this hot read path)
+    //
+    // For each test, mocks return cross-tenant rows directly to drive
+    // the negative path; the post-fix expectation is that the
+    // downstream repo call either is skipped entirely or receives the
+    // filtered (own-tenant only) id array.
+    // ============================================================
+    describe('TASK-306 P2.5 — ContextItem array-input defense-in-depth', () => {
+        const inTenantRoot = {
+            id: 'consultation-1',
+            tenantId: 'tenant-1',
+            patientId: 'patient-1',
+            appointmentDate: new Date('2026-02-17'),
+        };
+
+        describe('getSharedContext', () => {
+            it('returns items when the entire chain belongs to caller tenant (sanity)', async () => {
+                mockConsultationRepository.findById.mockResolvedValue(inTenantRoot);
+                mockConsultationRepository.findConsultationChain.mockResolvedValue([
+                    { id: 'consultation-1', tenantId: 'tenant-1' },
+                    { id: 'parent-id', tenantId: 'tenant-1' },
+                ]);
+                mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
+                    { id: 'consultation-1', tenantId: 'tenant-1' },
+                ]);
+                const sharedItems = [createMockContextItemEntity({ consultationId: 'consultation-1' })];
+                mockContextItemRepository.findSharedContext.mockResolvedValue(sharedItems);
+
+                const result = await service.getSharedContext('consultation-1');
+
+                expect(result).toHaveLength(1);
+                const passedIds = mockContextItemRepository.findSharedContext.mock.calls[0][0] as string[];
+                expect(passedIds).toContain('consultation-1');
+                expect(passedIds).toContain('parent-id');
+                expect(mockConsultationRepository.findByPatientAndDate).toHaveBeenCalledWith(
+                    'tenant-1',
+                    'patient-1',
+                    inTenantRoot.appointmentDate,
+                );
+            });
+
+            it('returns [] when findById returns a foreign-tenant root (simulated defeated extension)', async () => {
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-foreign',
+                    tenantId: 'tenant-OTHER',
+                    patientId: 'patient-1',
+                    appointmentDate: new Date('2026-02-17'),
+                });
+                mockConsultationRepository.findConsultationChain.mockResolvedValue([
+                    { id: 'consultation-foreign', tenantId: 'tenant-OTHER' },
+                ]);
+                mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
+                    { id: 'consultation-foreign', tenantId: 'tenant-OTHER' },
+                ]);
+                mockContextItemRepository.findSharedContext.mockResolvedValue([
+                    createMockContextItemEntity({
+                        consultationId: 'consultation-foreign',
+                        tenantId: 'tenant-OTHER',
+                    }),
+                ]);
+
+                const result = await service.getSharedContext('consultation-foreign');
+
+                expect(result).toEqual([]);
+                expect(mockContextItemRepository.findSharedContext).not.toHaveBeenCalled();
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('filters poisoned chain rows to caller tenant before passing ids downstream', async () => {
+                mockConsultationRepository.findById.mockResolvedValue(inTenantRoot);
+                mockConsultationRepository.findConsultationChain.mockResolvedValue([
+                    { id: 'consultation-1', tenantId: 'tenant-1' },
+                    { id: 'child-foreign', tenantId: 'tenant-OTHER' },
+                ]);
+                mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
+                    { id: 'consultation-1', tenantId: 'tenant-1' },
+                ]);
+                const sharedItems = [createMockContextItemEntity({ consultationId: 'consultation-1' })];
+                mockContextItemRepository.findSharedContext.mockResolvedValue(sharedItems);
+
+                const result = await service.getSharedContext('consultation-1');
+
+                expect(result).toHaveLength(1);
+                const passedIds = mockContextItemRepository.findSharedContext.mock.calls[0][0] as string[];
+                expect(passedIds).toContain('consultation-1');
+                expect(passedIds).not.toContain('child-foreign');
+            });
+
+            it('keeps only own-tenant ids when chain is entirely foreign except for the same-day root', async () => {
+                mockConsultationRepository.findById.mockResolvedValue(inTenantRoot);
+                mockConsultationRepository.findConsultationChain.mockResolvedValue([
+                    { id: 'child-foreign', tenantId: 'tenant-OTHER' },
+                ]);
+                mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
+                    { id: 'consultation-1', tenantId: 'tenant-1' },
+                ]);
+                const sharedItems = [createMockContextItemEntity({ consultationId: 'consultation-1' })];
+                mockContextItemRepository.findSharedContext.mockResolvedValue(sharedItems);
+
+                const result = await service.getSharedContext('consultation-1');
+
+                expect(result).toHaveLength(1);
+                const passedIds = mockContextItemRepository.findSharedContext.mock.calls[0][0] as string[];
+                expect(passedIds).toEqual(['consultation-1']);
+                expect(passedIds).not.toContain('child-foreign');
+            });
+
+            it('returns [] when CLS tenantId is missing (hot read path: leak-by-absence is acceptable)', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'tenantId') return null;
+                    if (key === 'user') return { id: 'user-id-1' };
+                    return null;
+                });
+                mockConsultationRepository.findById.mockResolvedValue(inTenantRoot);
+                mockConsultationRepository.findConsultationChain.mockResolvedValue([
+                    { id: 'consultation-1', tenantId: 'tenant-1' },
+                ]);
+                mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
+                    { id: 'consultation-1', tenantId: 'tenant-1' },
+                ]);
+
+                const result = await service.getSharedContext('consultation-1');
+
+                expect(result).toEqual([]);
+                expect(mockContextItemRepository.findSharedContext).not.toHaveBeenCalled();
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('getSharedCaseNotes', () => {
+            it('returns case notes when the entire chain belongs to caller tenant (sanity)', async () => {
+                mockConsultationRepository.findById.mockResolvedValue(inTenantRoot);
+                mockConsultationRepository.findConsultationChain.mockResolvedValue([
+                    { id: 'consultation-1', tenantId: 'tenant-1' },
+                ]);
+                mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
+                    { id: 'consultation-1', tenantId: 'tenant-1' },
+                ]);
+                const sharedCaseNotes = [
+                    createMockContextItemEntity({
+                        id: 'case-note-1',
+                        consultationId: 'consultation-1',
+                        type: 'CASE_NOTE' as any,
+                    }),
+                ];
+                mockContextItemRepository.findCaseNotesFromChain.mockResolvedValue(sharedCaseNotes);
+
+                const result = await service.getSharedCaseNotes('consultation-1');
+
+                expect(result).toHaveLength(1);
+                const passedIds = mockContextItemRepository.findCaseNotesFromChain.mock.calls[0][0] as string[];
+                expect(passedIds).toContain('consultation-1');
+            });
+
+            it('filters poisoned chain rows to caller tenant before findCaseNotesFromChain', async () => {
+                mockConsultationRepository.findById.mockResolvedValue(inTenantRoot);
+                mockConsultationRepository.findConsultationChain.mockResolvedValue([
+                    { id: 'consultation-1', tenantId: 'tenant-1' },
+                    { id: 'child-foreign', tenantId: 'tenant-OTHER' },
+                ]);
+                mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
+                    { id: 'consultation-1', tenantId: 'tenant-1' },
+                ]);
+                mockContextItemRepository.findCaseNotesFromChain.mockResolvedValue([]);
+
+                await service.getSharedCaseNotes('consultation-1');
+
+                const passedIds = mockContextItemRepository.findCaseNotesFromChain.mock.calls[0][0] as string[];
+                expect(passedIds).toContain('consultation-1');
+                expect(passedIds).not.toContain('child-foreign');
+            });
+        });
+
+        describe('getAggregateNamedEntities', () => {
+            it('scope=chain — filters poisoned chain ids before downstream consultation/per-id fetches', async () => {
+                mockConsultationRepository.findById.mockResolvedValue({
+                    ...inTenantRoot,
+                    id: 'consultation-a',
+                });
+                mockConsultationRepository.findConsultationChain.mockResolvedValue([
+                    { id: 'consultation-a', tenantId: 'tenant-1' },
+                    { id: 'consultation-foreign', tenantId: 'tenant-OTHER' },
+                ]);
+                mockConsultationRepository.findByPatientAndDate.mockResolvedValue([
+                    { id: 'consultation-a', tenantId: 'tenant-1' },
+                ]);
+                mockConsultationRepository.findWithRelations.mockResolvedValueOnce({
+                    id: 'consultation-a',
+                    tenantId: 'tenant-1',
+                    patientId: 'patient-1',
+                    appointmentDate: new Date('2026-02-17'),
+                    doctorId: 'doctor-a-id',
+                    departmentId: 'dept-gen',
+                    Doctor: {
+                        username: 'dr.smith',
+                        UserProfile: { firstName: 'John', lastName: 'Smith' },
+                    },
+                    Department: { name: 'General' },
+                });
+                mockContextItemRepository.findSummaries.mockResolvedValue([]);
+                mockContextItemRepository.findTranscripts.mockResolvedValue([]);
+
+                await service.getAggregateNamedEntities('consultation-a', 'chain');
+
+                expect(mockConsultationRepository.findWithRelations).toHaveBeenCalledWith('consultation-a');
+                expect(mockConsultationRepository.findWithRelations).not.toHaveBeenCalledWith('consultation-foreign');
+                expect(mockConsultationRepository.findWithRelations).toHaveBeenCalledTimes(1);
+                expect(mockContextItemRepository.findSummaries).toHaveBeenCalledWith('consultation-a');
+                expect(mockContextItemRepository.findSummaries).not.toHaveBeenCalledWith('consultation-foreign');
+            });
+
+            it('scope=single — extension-scoped findWithRelations + per-id loops return empty for foreign-tenant id', async () => {
+                // scope=single bypasses `resolveLinkedConsultationIds`;
+                // the W5.4.1 audit-surface comment documents that single-id
+                // paths are already covered by the Prisma `tenantScope`
+                // extension. This test pins that contract: when the
+                // extension scopes the per-id reads to empty (as it does
+                // for a foreign-tenant id), the service returns an empty
+                // response without surfacing foreign data.
+                //
+                // NOTE: explicit `mockReset` on the per-id repos to drain
+                // any `mockResolvedValueOnce` queue left over from the
+                // upstream `getAggregateNamedEntities` test suite —
+                // `vi.clearAllMocks()` in `beforeEach` clears call
+                // history but NOT the implementation queue, so without
+                // this reset a prior queued response can bleed through.
+                mockConsultationRepository.findWithRelations.mockReset();
+                mockContextItemRepository.findSummaries.mockReset();
+                mockContextItemRepository.findTranscripts.mockReset();
+                mockNamedEntityRepository.findByContextItem.mockReset();
+                mockConsultationRepository.findWithRelations.mockResolvedValue(null);
+                mockContextItemRepository.findSummaries.mockResolvedValue([]);
+                mockContextItemRepository.findTranscripts.mockResolvedValue([]);
+                mockNamedEntityRepository.findByContextItem.mockResolvedValue([]);
+
+                const result = await service.getAggregateNamedEntities('consultation-foreign', 'single');
+
+                expect(result.totalCount).toBe(0);
+                expect(result.entities).toEqual({});
+                expect(result.sources).toEqual([]);
+                expect(mockConsultationRepository.findConsultationChain).not.toHaveBeenCalled();
+                expect(mockConsultationRepository.findByPatientAndDate).not.toHaveBeenCalled();
             });
         });
     });
