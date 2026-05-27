@@ -13,8 +13,8 @@
  * - Audit event logging
  */
 
-import { ApiKeyStatus, ApiKeyType, AuditAction, SysEventType } from '@arcaai/domains';
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { ApiKeyStatus, ApiKeyType, AuditAction, ResourceStatusType, SysEventType } from '@arcaai/domains';
+import { BadRequestException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { createHash, createHmac } from 'crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiKeyService } from '../apikey.service';
@@ -45,6 +45,12 @@ const mockApiKeyRepository = {
     update: vi.fn(),
     softDelete: vi.fn(),
     db: mockPrismaDelegate,
+};
+
+// TASK-305 D.5.2 — UserRoleAssignment repository is required for the
+// `assertUserBelongsToTenant` guard run during `create`.
+const mockUserRoleAssignmentRepository = {
+    findFirst: vi.fn(),
 };
 
 // Helper to create mock API key entity
@@ -117,6 +123,10 @@ describe('ApiKeyService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        // The "should not throw when event emission fails" test installs a
+        // throwing implementation on `emit`. `clearAllMocks` only resets call
+        // history, so we explicitly reset the impl here to keep tests isolated.
+        mockEventEmitter.emit.mockReset();
 
         // Default: return valid user from CLS
         mockClsService.get.mockImplementation((key: string) => {
@@ -134,9 +144,20 @@ describe('ApiKeyService', () => {
             }
         });
 
+        // TASK-305 D.5.2 — default to a permissive in-tenant role-assignment so
+        // legacy create-tests (which don't care about the new guard) keep
+        // passing.
+        mockUserRoleAssignmentRepository.findFirst.mockResolvedValue({
+            id: 'ura-1',
+            userId: 'current-user-id',
+            tenantId: 'tenant-1',
+            resourceStatus: ResourceStatusType.ENABLED,
+        });
+
         // Create service instance with mocks
         service = new ApiKeyService(
             mockApiKeyRepository as any,
+            mockUserRoleAssignmentRepository as any,
             mockEventEmitter as any,
             mockClsService as any,
         );
@@ -420,6 +441,7 @@ describe('ApiKeyService', () => {
 
             const svc = new ApiKeyService(
                 mockApiKeyRepository as any,
+                mockUserRoleAssignmentRepository as any,
                 mockEventEmitter as any,
                 mockClsService as any,
             );
@@ -442,6 +464,7 @@ describe('ApiKeyService', () => {
 
             const svc = new ApiKeyService(
                 mockApiKeyRepository as any,
+                mockUserRoleAssignmentRepository as any,
                 mockEventEmitter as any,
                 mockClsService as any,
             );
@@ -464,6 +487,7 @@ describe('ApiKeyService', () => {
 
             const svc = new ApiKeyService(
                 mockApiKeyRepository as any,
+                mockUserRoleAssignmentRepository as any,
                 mockEventEmitter as any,
                 mockClsService as any,
             );
@@ -507,6 +531,7 @@ describe('ApiKeyService', () => {
 
             const svc = new ApiKeyService(
                 mockApiKeyRepository as any,
+                mockUserRoleAssignmentRepository as any,
                 mockEventEmitter as any,
                 mockClsService as any,
             );
@@ -529,6 +554,7 @@ describe('ApiKeyService', () => {
 
             const svc = new ApiKeyService(
                 mockApiKeyRepository as any,
+                mockUserRoleAssignmentRepository as any,
                 mockEventEmitter as any,
                 mockClsService as any,
             );
@@ -609,7 +635,8 @@ describe('ApiKeyService', () => {
 
             expect(result.data).toHaveLength(1);
             expect(mockApiKeyRepository.findAll).toHaveBeenCalledWith(
-                expect.objectContaining({ where: { userId: 'user-abc' } }),
+                // TASK-305 D.5.2 — `where` now also carries the caller's CLS tenantId.
+                expect.objectContaining({ where: { userId: 'user-abc', tenantId: 'tenant-1' } }),
             );
         });
 
@@ -624,7 +651,8 @@ describe('ApiKeyService', () => {
             } as any);
 
             expect(mockApiKeyRepository.count).toHaveBeenCalledWith(
-                expect.objectContaining({ where: { userId: 'user-abc' } }),
+                // TASK-305 D.5.2 — count `where` also carries the caller's CLS tenantId.
+                expect.objectContaining({ where: { userId: 'user-abc', tenantId: 'tenant-1' } }),
             );
         });
 
@@ -1553,6 +1581,232 @@ describe('ApiKeyService', () => {
         it('should return null when URL has no query params', () => {
             const request = { headers: {}, url: '/ws' };
             expect(service.extractApiKeyFromWebSocket(request)).toBeNull();
+        });
+    });
+
+    /**
+     * TASK-305 D.5.2 — Multi-tenant isolation for ApiKeyService.
+     *
+     * Audit C-8 / M-1 — ApiKey carries `userId` (FK to User, no tenantId on
+     * User) and `tenantId` directly. Without service-layer guards:
+     *  - A Tenant-A admin could pass `request.tenantId = 'tenant-B'` and
+     *    create a key that authenticates against another tenant's data.
+     *  - A Tenant-A admin could read/update/revoke/rotate any key id (the
+     *    base `findById` carries no tenant predicate).
+     *  - The caller's `userId` may not actually be a member of the tenant
+     *    that they're scoping the key to (D.7-pattern privilege escalation).
+     *
+     * Mirrors the D.7 (UserRoleAssignment) write-side and D.8 (AuditLog)
+     * read-side patterns. SUPER_ADMIN bypasses both DTO-pin and user-membership
+     * guards on writes (legitimate cross-tenant support flow), and bypasses
+     * read-side scoping.
+     */
+    describe('Multi-tenant scoping (TASK-305 D.5.2)', () => {
+        describe('create', () => {
+            it('rejects when DTO tenantId differs from CLS and caller is not SUPER_ADMIN', async () => {
+                await expect(
+                    service.create({
+                        keyName: 'Cross-tenant attempt',
+                        keyType: ApiKeyType.SDK,
+                        tenantId: 'tenant-other',
+                    } as any),
+                ).rejects.toThrow(ForbiddenException);
+                expect(mockApiKeyRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('rejects when caller userId has no enabled assignment in the effective tenant', async () => {
+                mockUserRoleAssignmentRepository.findFirst.mockResolvedValue(null);
+
+                await expect(
+                    service.create({
+                        keyName: 'No assignment',
+                        keyType: ApiKeyType.SDK,
+                    } as any),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockApiKeyRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('SERVICE_ACCOUNT keys do not require a UserRoleAssignment lookup', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'user') return { id: 'current-user-id' };
+                    if (key === 'tenantId') return null;
+                    return null;
+                });
+                const svc = new ApiKeyService(
+                    mockApiKeyRepository as any,
+                    mockUserRoleAssignmentRepository as any,
+                    mockEventEmitter as any,
+                    mockClsService as any,
+                );
+                const createdEntity = createMockApiKeyEntity({ id: 'sa-key' });
+                mockApiKeyRepository.create.mockResolvedValue(createdEntity);
+
+                await svc.create({
+                    keyName: 'Service Account',
+                    keyType: ApiKeyType.SERVICE_ACCOUNT,
+                    scopes: ['stt:transcription:read'],
+                } as any);
+
+                expect(mockUserRoleAssignmentRepository.findFirst).not.toHaveBeenCalled();
+            });
+
+            it('SUPER_ADMIN can override DTO tenantId and bypass the user-membership check', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'user') return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                    if (key === 'tenantId') return 'tenant-1';
+                    return null;
+                });
+                const svc = new ApiKeyService(
+                    mockApiKeyRepository as any,
+                    mockUserRoleAssignmentRepository as any,
+                    mockEventEmitter as any,
+                    mockClsService as any,
+                );
+                mockUserRoleAssignmentRepository.findFirst.mockResolvedValue(null); // No assignment in tenant-other.
+                const createdEntity = createMockApiKeyEntity({
+                    id: 'super-admin-key',
+                    tenantId: 'tenant-other',
+                });
+                mockApiKeyRepository.create.mockResolvedValue(createdEntity);
+
+                await svc.create({
+                    keyName: 'Cross-tenant by super admin',
+                    keyType: ApiKeyType.SDK,
+                    tenantId: 'tenant-other',
+                } as any);
+
+                const factoryArgs = mockApiKeyRepository.create.mock.calls[0][0];
+                expect(factoryArgs.tenantId).toBe('tenant-other');
+            });
+
+            it('uses CLS tenantId when DTO omits tenantId', async () => {
+                const createdEntity = createMockApiKeyEntity();
+                mockApiKeyRepository.create.mockResolvedValue(createdEntity);
+
+                await service.create({ keyName: 'Pinned via CLS' } as any);
+
+                const factoryArgs = mockApiKeyRepository.create.mock.calls[0][0];
+                expect(factoryArgs.tenantId).toBe('tenant-1');
+            });
+        });
+
+        describe('fetchAll', () => {
+            it('injects caller tenantId into repository where clause', async () => {
+                mockApiKeyRepository.findAll.mockResolvedValue([]);
+                mockApiKeyRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ limit: 10, page: 1 });
+
+                expect(mockApiKeyRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: expect.objectContaining({ tenantId: 'tenant-1' }),
+                    }),
+                );
+            });
+
+            it('does NOT inject tenantId for SUPER_ADMIN caller', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
+                    if (key === 'tenantId') return 'tenant-1';
+                    return null;
+                });
+                mockApiKeyRepository.findAll.mockResolvedValue([]);
+                mockApiKeyRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ limit: 10, page: 1 });
+
+                const findAllArgs = mockApiKeyRepository.findAll.mock.calls[0][0];
+                expect(findAllArgs.where?.tenantId).toBeUndefined();
+            });
+        });
+
+        describe('fetchAllByUserId', () => {
+            it('merges caller tenantId with the userId filter', async () => {
+                mockApiKeyRepository.findAll.mockResolvedValue([]);
+                mockApiKeyRepository.count.mockResolvedValue(0);
+
+                await service.fetchAllByUserId({ limit: 10, page: 1, userId: 'user-x' });
+
+                expect(mockApiKeyRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: { userId: 'user-x', tenantId: 'tenant-1' },
+                    }),
+                );
+            });
+        });
+
+        describe('fetchById', () => {
+            it('throws NotFoundException when key belongs to a different tenant', async () => {
+                const foreign = createMockApiKeyEntity({ id: 'foreign-key', tenantId: 'tenant-2' });
+                mockApiKeyRepository.findById.mockResolvedValue(foreign);
+
+                await expect(service.fetchById('foreign-key')).rejects.toThrow(NotFoundException);
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('returns the entity for SUPER_ADMIN reading a cross-tenant row', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
+                    if (key === 'tenantId') return 'tenant-1';
+                    return null;
+                });
+                const foreign = createMockApiKeyEntity({ id: 'foreign-key', tenantId: 'tenant-2' });
+                mockApiKeyRepository.findById.mockResolvedValue(foreign);
+
+                const result = await service.fetchById('foreign-key');
+
+                expect(result.id).toBe('foreign-key');
+            });
+        });
+
+        describe('update', () => {
+            it('throws NotFoundException for a cross-tenant key id', async () => {
+                const foreign = createMockApiKeyEntity({ id: 'foreign-key', tenantId: 'tenant-2' });
+                mockApiKeyRepository.findById.mockResolvedValue(foreign);
+
+                await expect(
+                    service.update('foreign-key', { keyName: 'Renamed' } as any),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockApiKeyRepository.update).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('deleteById', () => {
+            it('throws NotFoundException for a cross-tenant key id', async () => {
+                const foreign = createMockApiKeyEntity({ id: 'foreign-key', tenantId: 'tenant-2' });
+                mockApiKeyRepository.findById.mockResolvedValue(foreign);
+
+                await expect(service.deleteById('foreign-key')).rejects.toThrow(NotFoundException);
+                expect(mockApiKeyRepository.softDelete).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('revokeKey', () => {
+            it('throws NotFoundException for a cross-tenant key id', async () => {
+                const foreign = createMockApiKeyEntity({
+                    id: 'foreign-key',
+                    tenantId: 'tenant-2',
+                    keyStatus: ApiKeyStatus.ACTIVE,
+                });
+                mockApiKeyRepository.findById.mockResolvedValue(foreign);
+
+                await expect(service.revokeKey('foreign-key')).rejects.toThrow(NotFoundException);
+                expect(mockApiKeyRepository.update).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('rotateKey', () => {
+            it('throws NotFoundException for a cross-tenant key id', async () => {
+                const foreign = createMockApiKeyEntity({
+                    id: 'foreign-key',
+                    tenantId: 'tenant-2',
+                    keyStatus: ApiKeyStatus.ACTIVE,
+                });
+                mockApiKeyRepository.findById.mockResolvedValue(foreign);
+
+                await expect(service.rotateKey('foreign-key')).rejects.toThrow(NotFoundException);
+                expect(mockApiKeyRepository.create).not.toHaveBeenCalled();
+            });
         });
     });
 });

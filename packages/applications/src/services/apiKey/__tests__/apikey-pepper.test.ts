@@ -18,10 +18,13 @@ describe('apikey.service.ts — API_KEY_PEPPER migration', () => {
   });
 
   it('hashKeyForStorage resolves the pepper via SecretsService', async () => {
+    // TASK-305 D.5.2 added `userRoleAssignmentRepository` at constructor
+    // position 2; the SecretsService param shifted from position 4 to 5.
     const mockSecrets = {
       getSecretOptional: vi.fn().mockResolvedValue('integration-test-pepper'),
-    } as unknown as ConstructorParameters<typeof ApiKeyService>[3];
+    } as unknown as ConstructorParameters<typeof ApiKeyService>[4];
     const service = new ApiKeyService(
+      {} as never,
       {} as never,
       { emit: vi.fn() } as never,
       { get: vi.fn(), set: vi.fn() } as never,
@@ -36,6 +39,7 @@ describe('apikey.service.ts — API_KEY_PEPPER migration', () => {
 
   it('hashKeyForStorage falls back to plain SHA-256 when SecretsService is absent', async () => {
     const service = new ApiKeyService(
+      {} as never,
       {} as never,
       { emit: vi.fn() } as never,
       { get: vi.fn(), set: vi.fn() } as never,

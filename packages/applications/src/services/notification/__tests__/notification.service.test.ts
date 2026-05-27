@@ -11,8 +11,9 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { NotificationService } from '../notification.service';
-import { SysEventType, ResourceStatusType, NotificationType } from '@arcaai/domains';
+import { SysEventType, ResourceStatusType, NotificationType, ResourceStatusType as RST } from '@arcaai/domains';
 
 // Mock ClsService - represents the request context
 const mockClsService = {
@@ -33,6 +34,15 @@ const mockNotificationRepository = {
     create: vi.fn(),
     update: vi.fn(),
     softDelete: vi.fn(),
+};
+
+// TASK-305 D.5.1 — required for tenant guards on `targetUserId` and `resourceSubscriptionId`.
+const mockUserRoleAssignmentRepository = {
+    findFirst: vi.fn(),
+};
+
+const mockResourceSubscriptionRepository = {
+    findById: vi.fn(),
 };
 
 /**
@@ -151,9 +161,25 @@ describe('NotificationService', () => {
             }
         });
 
+        // TASK-305 D.5.1 — guard helpers always need both repos to resolve. The
+        // default behaviour is a permissive in-tenant assignment so legacy
+        // tests continue to pass.
+        mockUserRoleAssignmentRepository.findFirst.mockResolvedValue({
+            id: 'ura-1',
+            userId: 'user-1',
+            tenantId: 'tenant-1',
+            resourceStatus: RST.ENABLED,
+        });
+        mockResourceSubscriptionRepository.findById.mockResolvedValue({
+            id: 'sub-123',
+            tenantId: 'tenant-1',
+        });
+
         // Create service instance with mocks
         service = new NotificationService(
             mockNotificationRepository as any,
+            mockUserRoleAssignmentRepository as any,
+            mockResourceSubscriptionRepository as any,
             mockEventEmitter as any,
             mockClsService as any,
         );
@@ -448,7 +474,9 @@ describe('NotificationService', () => {
             expect(result.data[0].createdBy).toBe('creator-id');
             expect(mockNotificationRepository.findAll).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    where: { createdBy: 'creator-id' },
+                    // TASK-305 D.5.1 — `where` is now scoped to the caller's
+                    // CLS tenantId (tenant-1) in addition to the createdBy filter.
+                    where: { createdBy: 'creator-id', tenantId: 'tenant-1' },
                 })
             );
         });
@@ -616,23 +644,25 @@ describe('NotificationService', () => {
     });
 
     describe('edge cases', () => {
-        it('should handle service creation without user context', async () => {
+        it('rejects creation when CLS has neither user nor tenant context', async () => {
+            // TASK-305 D.5.1 — pre-D.5 this happily wrote a notification with
+            // a DTO-supplied tenantId and no caller. After D.5 we fail closed:
+            // a non-SUPER_ADMIN call with mismatched DTO/CLS tenant is a
+            // privilege-escalation attempt.
             mockClsService.get.mockImplementation((key: string) => {
                 if (key === 'user') return null;
                 return null;
             });
 
-            const newNotification = createMockNotificationEntity({ id: 'new-notification-id' });
-            mockNotificationRepository.create.mockResolvedValue(newNotification);
-
-            const result = await service.create({
-                tenantId: 'tenant-1',
-                targetUserId: 'user-1',
-                title: 'New Notification',
-                type: NotificationType.INFO,
-            });
-
-            expect(result.id).toBe('new-notification-id');
+            await expect(
+                service.create({
+                    tenantId: 'tenant-1',
+                    targetUserId: 'user-1',
+                    title: 'New Notification',
+                    type: NotificationType.INFO,
+                }),
+            ).rejects.toThrow(ForbiddenException);
+            expect(mockNotificationRepository.create).not.toHaveBeenCalled();
         });
 
         it('should handle empty search results gracefully', async () => {
@@ -721,6 +751,301 @@ describe('NotificationService', () => {
             });
 
             expect(result.message).toBe(longMessage);
+        });
+    });
+
+    /**
+     * TASK-305 D.5.1 — Multi-tenant isolation for NotificationService.
+     *
+     * Audit C-5 / B10 — Notifications carry `targetUserId` (FK to User, no
+     * tenantId on User) and `resourceSubscriptionId` (FK to ResourceSubscription,
+     * a tenant-scoped resource). Without service-layer guards, a Tenant-A admin
+     * could route a notification to a user that has no role-assignment in
+     * Tenant A, or anchor it to a Tenant-B ResourceSubscription — both leak
+     * data across the tenant boundary.
+     *
+     * Read-side audit-log pattern (D.8): `fetchAll` / `fetchAllCreatedByUser`
+     * inject CLS `tenantId`; `fetchById` / `update` / `deleteById` load and
+     * assert `entity.tenantId === this.tenantId`, throwing `NotFoundException`
+     * (never `Forbidden`) on mismatch. SUPER_ADMIN bypasses the read-side
+     * scope but NOT the write-side `targetUserId` membership check.
+     */
+    describe('Multi-tenant scoping (TASK-305 D.5.1)', () => {
+        describe('create', () => {
+            it('rejects when caller has no CLS tenantId and is not SUPER_ADMIN', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'user') return { id: 'doctor-1', roles: ['Doctor'] };
+                    if (key === 'tenantId') return null;
+                    return null;
+                });
+                const svc = new NotificationService(
+                    mockNotificationRepository as any,
+                    mockUserRoleAssignmentRepository as any,
+                    mockResourceSubscriptionRepository as any,
+                    mockEventEmitter as any,
+                    mockClsService as any,
+                );
+
+                await expect(
+                    svc.create({
+                        targetUserId: 'user-1',
+                        title: 'No Tenant',
+                        type: NotificationType.INFO,
+                    } as any),
+                ).rejects.toThrow(BadRequestException);
+                expect(mockNotificationRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('rejects when DTO tenantId differs from CLS and caller is not SUPER_ADMIN', async () => {
+                await expect(
+                    service.create({
+                        tenantId: 'tenant-other',
+                        targetUserId: 'user-1',
+                        title: 'Cross-tenant attempt',
+                        type: NotificationType.INFO,
+                    }),
+                ).rejects.toThrow(ForbiddenException);
+                expect(mockNotificationRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('uses CLS tenantId when DTO omits tenantId', async () => {
+                const newNotification = createMockNotificationEntity({ id: 'n1', tenantId: 'tenant-1' });
+                mockNotificationRepository.create.mockResolvedValue(newNotification);
+
+                await service.create({
+                    targetUserId: 'user-1',
+                    title: 'CLS pinned',
+                    type: NotificationType.INFO,
+                } as any);
+
+                const factoryArgs = mockNotificationRepository.create.mock.calls[0][0];
+                expect(factoryArgs.tenantId).toBe('tenant-1');
+            });
+
+            it('rejects when targetUserId has no UserRoleAssignment in the effective tenant', async () => {
+                mockUserRoleAssignmentRepository.findFirst.mockResolvedValue(null);
+
+                await expect(
+                    service.create({
+                        tenantId: 'tenant-1',
+                        targetUserId: 'foreign-user',
+                        title: 'Cross-tenant target',
+                        type: NotificationType.INFO,
+                    }),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockNotificationRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('does NOT bypass targetUser membership check for SUPER_ADMIN (data-leak guard)', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'user') return { id: 'super-admin-1', roles: ['SUPER_ADMIN'] };
+                    if (key === 'tenantId') return 'tenant-1';
+                    return null;
+                });
+                const superSvc = new NotificationService(
+                    mockNotificationRepository as any,
+                    mockUserRoleAssignmentRepository as any,
+                    mockResourceSubscriptionRepository as any,
+                    mockEventEmitter as any,
+                    mockClsService as any,
+                );
+                mockUserRoleAssignmentRepository.findFirst.mockResolvedValue(null);
+
+                await expect(
+                    superSvc.create({
+                        tenantId: 'tenant-1',
+                        targetUserId: 'foreign-user',
+                        title: 'Even super admin cannot leak',
+                        type: NotificationType.INFO,
+                    }),
+                ).rejects.toThrow(NotFoundException);
+            });
+
+            it('rejects when resourceSubscriptionId belongs to a different tenant', async () => {
+                mockResourceSubscriptionRepository.findById.mockResolvedValue({
+                    id: 'sub-other',
+                    tenantId: 'tenant-2',
+                });
+
+                await expect(
+                    service.create({
+                        tenantId: 'tenant-1',
+                        targetUserId: 'user-1',
+                        title: 'Foreign anchor',
+                        type: NotificationType.INFO,
+                        resourceSubscriptionId: 'sub-other',
+                    }),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockNotificationRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('allows SUPER_ADMIN to override DTO tenantId for cross-tenant dispatch', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'user') return { id: 'super-admin-1', roles: ['SUPER_ADMIN'] };
+                    if (key === 'tenantId') return 'tenant-1';
+                    return null;
+                });
+                const superSvc = new NotificationService(
+                    mockNotificationRepository as any,
+                    mockUserRoleAssignmentRepository as any,
+                    mockResourceSubscriptionRepository as any,
+                    mockEventEmitter as any,
+                    mockClsService as any,
+                );
+                mockUserRoleAssignmentRepository.findFirst.mockResolvedValue({
+                    id: 'ura-2',
+                    userId: 'user-2',
+                    tenantId: 'tenant-2',
+                    resourceStatus: RST.ENABLED,
+                });
+                const newNotification = createMockNotificationEntity({ id: 'n2', tenantId: 'tenant-2' });
+                mockNotificationRepository.create.mockResolvedValue(newNotification);
+
+                await superSvc.create({
+                    tenantId: 'tenant-2',
+                    targetUserId: 'user-2',
+                    title: 'Cross-tenant by super admin',
+                    type: NotificationType.INFO,
+                });
+
+                const factoryArgs = mockNotificationRepository.create.mock.calls[0][0];
+                expect(factoryArgs.tenantId).toBe('tenant-2');
+                expect(mockUserRoleAssignmentRepository.findFirst).toHaveBeenCalledWith({
+                    where: expect.objectContaining({
+                        userId: 'user-2',
+                        tenantId: 'tenant-2',
+                        resourceStatus: RST.ENABLED,
+                    }),
+                });
+            });
+        });
+
+        describe('fetchAll', () => {
+            it('injects caller tenantId into repository where clause', async () => {
+                mockNotificationRepository.findAll.mockResolvedValue([]);
+                mockNotificationRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ limit: 10, page: 1 });
+
+                expect(mockNotificationRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: expect.objectContaining({ tenantId: 'tenant-1' }),
+                    }),
+                );
+                expect(mockNotificationRepository.count).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: expect.objectContaining({ tenantId: 'tenant-1' }),
+                    }),
+                );
+            });
+
+            it('does NOT inject tenantId for SUPER_ADMIN caller', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
+                    if (key === 'tenantId') return 'tenant-1';
+                    return null;
+                });
+                mockNotificationRepository.findAll.mockResolvedValue([]);
+                mockNotificationRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ limit: 10, page: 1 });
+
+                const findAllArgs = mockNotificationRepository.findAll.mock.calls[0][0];
+                expect(findAllArgs.where?.tenantId).toBeUndefined();
+            });
+        });
+
+        describe('fetchAllCreatedByUser', () => {
+            it('merges caller tenantId with the createdBy filter', async () => {
+                mockNotificationRepository.findAll.mockResolvedValue([]);
+                mockNotificationRepository.count.mockResolvedValue(0);
+
+                await service.fetchAllCreatedByUser({ limit: 10, page: 1, userId: 'creator-1' });
+
+                expect(mockNotificationRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: { createdBy: 'creator-1', tenantId: 'tenant-1' },
+                    }),
+                );
+            });
+        });
+
+        describe('fetchById', () => {
+            it('throws NotFoundException when notification belongs to a different tenant', async () => {
+                const foreign = createMockNotificationEntity({
+                    id: 'foreign-notification',
+                    tenantId: 'tenant-2',
+                });
+                mockNotificationRepository.findById.mockResolvedValue(foreign);
+
+                await expect(service.fetchById('foreign-notification')).rejects.toThrow(NotFoundException);
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('returns the entity for SUPER_ADMIN reading a cross-tenant row', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
+                    if (key === 'tenantId') return 'tenant-1';
+                    return null;
+                });
+                const foreign = createMockNotificationEntity({
+                    id: 'foreign-notification',
+                    tenantId: 'tenant-2',
+                });
+                mockNotificationRepository.findById.mockResolvedValue(foreign);
+
+                const result = await service.fetchById('foreign-notification');
+
+                expect(result.id).toBe('foreign-notification');
+            });
+        });
+
+        describe('update', () => {
+            it('throws NotFoundException when target row is in a different tenant', async () => {
+                const foreign = createMockNotificationEntity({
+                    id: 'foreign-notification',
+                    tenantId: 'tenant-2',
+                    hasChanges: false,
+                });
+                mockNotificationRepository.findById.mockResolvedValue(foreign);
+
+                await expect(
+                    service.update('foreign-notification', { read: true }),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockNotificationRepository.update).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('deleteById', () => {
+            it('throws NotFoundException when the row belongs to a different tenant', async () => {
+                const foreign = createMockNotificationEntity({
+                    id: 'foreign-notification',
+                    tenantId: 'tenant-2',
+                });
+                mockNotificationRepository.findById.mockResolvedValue(foreign);
+
+                await expect(service.deleteById('foreign-notification')).rejects.toThrow(NotFoundException);
+                expect(mockNotificationRepository.softDelete).not.toHaveBeenCalled();
+            });
+
+            it('soft-deletes for SUPER_ADMIN even on a cross-tenant row', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
+                    if (key === 'tenantId') return 'tenant-1';
+                    return null;
+                });
+                const foreign = createMockNotificationEntity({
+                    id: 'foreign-notification',
+                    tenantId: 'tenant-2',
+                });
+                mockNotificationRepository.findById.mockResolvedValue(foreign);
+                mockNotificationRepository.softDelete.mockResolvedValue(foreign);
+
+                const result = await service.deleteById('foreign-notification');
+
+                expect(result.id).toBe('foreign-notification');
+                expect(mockNotificationRepository.softDelete).toHaveBeenCalledWith('foreign-notification');
+            });
         });
     });
 });
