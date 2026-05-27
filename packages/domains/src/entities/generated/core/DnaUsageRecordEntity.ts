@@ -68,5 +68,4 @@ export class DnaUsageRecordEntity extends BaseTenantEntity {
     this.setProperty('departmentId', value);
   }
 
-  public override validate(): void {}
 }

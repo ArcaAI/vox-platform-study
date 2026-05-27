@@ -65,6 +65,4 @@ export abstract class BaseTaggedEntity extends BaseTenantEntity {
     }
     return this._tags.includes(tag.id);
   }
-
-  public override validate(): void {}
 }
