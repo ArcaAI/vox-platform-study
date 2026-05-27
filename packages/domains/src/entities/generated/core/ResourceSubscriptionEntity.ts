@@ -95,6 +95,7 @@ export class ResourceSubscriptionEntity extends BaseTaggedEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (this._subscriptionType === undefined || this._subscriptionType === null) {
       throw new BusinessException('Resource subscription subscriptionType is required.');
     }

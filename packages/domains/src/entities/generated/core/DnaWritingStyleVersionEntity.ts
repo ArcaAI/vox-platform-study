@@ -91,5 +91,4 @@ export class DnaWritingStyleVersionEntity extends BaseTenantEntity {
     this.setProperty('DnaWritingStyleReport', value);
   }
 
-  public override validate(): void {}
 }

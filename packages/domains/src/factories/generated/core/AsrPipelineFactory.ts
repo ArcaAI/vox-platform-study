@@ -12,7 +12,7 @@ export interface CreateAsrPipelineProps extends BaseEntityFactoryCreateProps {
   slug: IAsrPipelineEntity['slug'];
   description?: IAsrPipelineEntity['description'];
   configYaml: IAsrPipelineEntity['configYaml'];
-  tenantId?: IAsrPipelineEntity['tenantId'];
+  tenantId: IAsrPipelineEntity['tenantId'];
   tags?: IAsrPipelineEntity['tags'];
 
   createdAt?: IAsrPipelineEntity['createdAt'];
@@ -41,7 +41,7 @@ export class AsrPipelineFactory {
       slug: props.slug,
       description: props.description ?? null,
       configYaml: props.configYaml,
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
       tags: props.tags ?? [],
     });
   }

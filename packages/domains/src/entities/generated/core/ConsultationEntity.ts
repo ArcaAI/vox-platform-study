@@ -157,6 +157,7 @@ export class ConsultationEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (!this._patientId) {
       throw new BusinessException('Patient ID is required');
     }

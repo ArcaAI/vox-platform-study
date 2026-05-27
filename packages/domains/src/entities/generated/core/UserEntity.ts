@@ -46,7 +46,16 @@ export class UserEntity extends BaseTaggedEntity {
   private _UserMedias?: IUserEntity['UserMedias'];
 
   constructor(init: IUserEntity) {
-    super(init);
+    // UserEntity is intentionally global — there is no `tenantId` column on
+    // core.User (IUserEntity uses `Omit<IBaseTaggedEntity, 'tenantId'>`).
+    // A user's tenant membership lives on UserRoleAssignment, not on the
+    // user row itself. We pass an explicit placeholder so the
+    // BaseTenantEntity constructor (which requires tenantId per TASK-305
+    // A.7) type-checks. The placeholder is never persisted because no
+    // column exists, and UserEntity's own validate() override does NOT call
+    // super.validate(), so the base "non-empty tenantId" guard never runs
+    // against this placeholder.
+    super({ ...init, tenantId: '' });
     this._username = init.username;
     this._password = init.password;
     this._lastLoginAt = init.lastLoginAt;

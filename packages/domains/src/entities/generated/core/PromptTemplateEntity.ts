@@ -159,5 +159,4 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
     this.setProperty('currentVersionNumber', current + 1);
   }
 
-  public override validate(): void {}
 }

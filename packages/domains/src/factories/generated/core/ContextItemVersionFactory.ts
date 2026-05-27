@@ -16,7 +16,7 @@ export interface CreateContextItemVersionProps extends BaseEntityFactoryCreatePr
   changedBy?: IContextItemVersionEntity['changedBy'];
   changeSource?: IContextItemVersionEntity['changeSource'];
   fieldChanges?: IContextItemVersionEntity['fieldChanges'];
-  tenantId?: IContextItemVersionEntity['tenantId'];
+  tenantId: IContextItemVersionEntity['tenantId'];
 
   createdAt?: IContextItemVersionEntity['createdAt'];
 }
@@ -46,7 +46,7 @@ export class ContextItemVersionFactory {
       changedBy: props.changedBy ?? null,
       changeSource: props.changeSource ?? 'manual',
       fieldChanges: props.fieldChanges ?? null,
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
     });
   }
 

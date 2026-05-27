@@ -313,6 +313,7 @@ export class ContextItemEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (!this._consultationId) {
       throw new BusinessException('Consultation ID is required');
     }

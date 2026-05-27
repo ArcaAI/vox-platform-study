@@ -21,7 +21,7 @@ export interface CreateAuditLogProps extends BaseEntityFactoryCreateProps {
   data: IAuditLogEntity['data'];
   previousData: IAuditLogEntity['previousData'];
   metadata?: IAuditLogEntity['metadata'];
-  tenantId?: IAuditLogEntity['tenantId'];
+  tenantId: IAuditLogEntity['tenantId'];
   Tenant?: IAuditLogEntity['Tenant'];
 
   createdAt?: IAuditLogEntity['createdAt'];
@@ -56,7 +56,7 @@ export class AuditLogFactory {
       data: props.data,
       previousData: props.previousData,
       metadata: props.metadata ?? null,
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
       Tenant: props.Tenant ?? null,
     });
   }

@@ -68,5 +68,4 @@ export class PromptUsageRecordEntity extends BaseTenantEntity {
     this.setProperty('departmentId', value);
   }
 
-  public override validate(): void {}
 }

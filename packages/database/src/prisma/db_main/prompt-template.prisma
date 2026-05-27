@@ -27,7 +27,7 @@ model PromptTemplate {
     id       String @id @default(uuid(7))
 
     // Multi-tenant
-    tenantId String @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // Template content
     name        String
@@ -83,7 +83,7 @@ model PromptVersion {
     id       String @id @default(uuid(7))
 
     // Multi-tenant
-    tenantId String @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // Parent template
     promptTemplateId String

@@ -17,7 +17,7 @@ export interface CreateSummaryMetaProps extends BaseEntityFactoryCreateProps {
   preSummaryIds?: ISummaryMetaEntity['preSummaryIds'];
   previousSummaryIds?: ISummaryMetaEntity['previousSummaryIds'];
   generatedAt?: ISummaryMetaEntity['generatedAt'];
-  tenantId?: ISummaryMetaEntity['tenantId'];
+  tenantId: ISummaryMetaEntity['tenantId'];
 
   createdAt?: ISummaryMetaEntity['createdAt'];
 }
@@ -49,7 +49,7 @@ export class SummaryMetaFactory {
       preSummaryIds: props.preSummaryIds ?? [],
       previousSummaryIds: props.previousSummaryIds ?? [],
       generatedAt: props.generatedAt ?? null,
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
     });
   }
 

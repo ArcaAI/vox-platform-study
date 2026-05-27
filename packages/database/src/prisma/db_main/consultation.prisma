@@ -8,7 +8,7 @@ model Consultation {
     id       String @id @default(uuid(7))
 
     // Multi-tenant
-    tenantId String @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // Patient (external system - no FK)
     patientId       String
@@ -46,10 +46,12 @@ model Consultation {
     @@index([tenantId], name: "Consultation_tenantId_idx")
     @@index([patientId], name: "Consultation_patientId_idx")
     @@index([appointmentDate], name: "Consultation_appointmentDate_idx")
-    @@index([doctorId], name: "Consultation_doctorId_idx")
-    @@index([departmentId], name: "Consultation_departmentId_idx")
     @@index([parentConsultationId], name: "Consultation_parentId_idx")
-    // Composite for common query pattern
+    // Composite tenant-leading indexes (TASK-305 A.4) — replace single-column
+    // doctorId/departmentId indexes so the planner picks tenantId+X for every
+    // tenant-scoped fetch (which is every fetch under RLS).
+    @@index([tenantId, doctorId], name: "Consultation_tenant_doctor_idx")
+    @@index([tenantId, departmentId], name: "Consultation_tenant_department_idx")
     @@index([tenantId, patientId, appointmentDate], name: "Consultation_tenant_patient_date_idx")
     @@schema("core")
 }
@@ -65,7 +67,7 @@ model ContextItem {
     id       String @id @default(uuid(7))
 
     // Multi-tenant
-    tenantId String @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // Parent consultation
     consultationId String
@@ -114,6 +116,8 @@ model ContextItem {
     // Composite for common queries
     @@index([consultationId, type], name: "ContextItem_consultation_type_idx")
     @@index([tenantId, type, createdAt], name: "ContextItem_tenant_type_created_idx")
+    // TASK-305 A.4 — tenant-leading composite for per-consultation reads
+    @@index([tenantId, consultationId, type], name: "ContextItem_tenant_consultation_type_idx")
     @@schema("core")
 }
 
@@ -128,7 +132,7 @@ model AudioRecording {
     id       String @id @default(uuid(7))
 
     // Multi-tenant
-    tenantId String @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // Parent context item (type should be AUDIO_RECORDING)
     contextItemId String
@@ -159,6 +163,9 @@ model AudioRecording {
     @@index([contextItemId], name: "AudioRecording_contextItemId_idx")
     @@index([mediaId], name: "AudioRecording_mediaId_idx")
     @@index([contextItemId, sequenceNumber], name: "AudioRecording_sequence_idx")
+    // TASK-305 A.4 — tenant-leading composite for per-contextItem reads.
+    // (AudioRecording is keyed off ContextItem, not Consultation directly.)
+    @@index([tenantId, contextItemId], name: "AudioRecording_tenant_contextItem_idx")
     @@schema("core")
 }
 
@@ -172,7 +179,7 @@ model SummaryMeta {
     id String @id @default(uuid(7))
 
     // Multi-tenant
-    tenantId String @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // Parent context item (1:1 relationship)
     contextItemId String      @unique
@@ -207,6 +214,8 @@ model SummaryMeta {
     @@index([contextItemId], name: "SummaryMeta_contextItemId_idx")
     @@index([aiModelId], name: "SummaryMeta_aiModelId_idx")
     @@index([generatedAt], name: "SummaryMeta_generatedAt_idx")
+    // TASK-305 A.4 — tenant-leading composite for per-contextItem reads.
+    @@index([tenantId, contextItemId], name: "SummaryMeta_tenant_contextItem_idx")
     @@schema("core")
 }
 
@@ -220,7 +229,7 @@ model NamedEntity {
     id String @id @default(uuid(7))
 
     // Multi-tenant
-    tenantId String @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // Parent context item (typically linked to TRANSCRIPT or RAW_SUMMARY)
     contextItemId String
@@ -258,6 +267,8 @@ model NamedEntity {
     @@index([text], name: "NamedEntity_text_idx")
     @@index([confidence], name: "NamedEntity_confidence_idx")
     @@index([contextItemId, className], name: "NamedEntity_item_class_idx")
+    // TASK-305 A.4 — tenant-leading composite for entity-class lookups.
+    @@index([tenantId, contextItemId, className], name: "NamedEntity_tenant_item_class_idx")
     @@schema("core")
 }
 
@@ -272,7 +283,7 @@ model ContextItemVersion {
     id       String @id @default(uuid(7))
 
     // Multi-tenant
-    tenantId String @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // Parent context item
     contextItemId String

@@ -8,6 +8,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AiModelFactory, CreateAiModelProps } from '../AiModelFactory';
 import { AiModelSource, AiModelFormat, AiModelDownloadStatus, ModelCategory, ModelTaskType, ModelType } from '../../../../enums';
 
+// TASK-305 A.6: tenantId is now required at the factory layer.
+const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
 // Mock the generateId function
 vi.mock('../../../../utils', () => ({
   generateId: vi.fn(() => 'generated-uuid-7'),
@@ -20,6 +23,7 @@ describe('AiModelFactory', () => {
 
   describe('CreateAiModel', () => {
     const baseProps: CreateAiModelProps = {
+      tenantId: TEST_TENANT_ID,
       name: 'Whisper Large V3',
       slug: 'whisper-large-v3',
       category: ModelCategory.AUDIO,
@@ -142,12 +146,6 @@ describe('AiModelFactory', () => {
       expect(model.tenantId).toBe('tenant-123');
     });
 
-    it('should default tenantId to empty string', () => {
-      const model = AiModelFactory.CreateAiModel(baseProps);
-
-      expect(model.tenantId).toBe('');
-    });
-
     it('should set optional tags', () => {
       const model = AiModelFactory.CreateAiModel({
         ...baseProps,
@@ -196,6 +194,7 @@ describe('AiModelFactory', () => {
 
   describe('CreateAsrModel', () => {
     const asrProps = {
+      tenantId: TEST_TENANT_ID,
       name: 'Whisper Tiny',
       slug: 'whisper-tiny',
       modelType: ModelType.BASE_MODEL,
@@ -243,6 +242,7 @@ describe('AiModelFactory', () => {
 
   describe('CreateVadModel', () => {
     const vadProps = {
+      tenantId: TEST_TENANT_ID,
       name: 'Silero VAD V4',
       slug: 'silero-vad-v4',
       modelType: ModelType.BASE_MODEL,
@@ -327,6 +327,7 @@ describe('AiModelFactory', () => {
   describe('entity state after creation', () => {
     it('should create entity with no changes tracked', () => {
       const model = AiModelFactory.CreateAiModel({
+        tenantId: TEST_TENANT_ID,
         name: 'Test Model',
         slug: 'test-model',
         category: ModelCategory.AUDIO,
@@ -343,6 +344,7 @@ describe('AiModelFactory', () => {
 
     it('should create entity that can start download', () => {
       const model = AiModelFactory.CreateAiModel({
+        tenantId: TEST_TENANT_ID,
         name: 'Test Model',
         slug: 'test-model',
         category: ModelCategory.AUDIO,
@@ -362,6 +364,7 @@ describe('AiModelFactory', () => {
   describe('different model sources and formats', () => {
     it('should support HUGGINGFACE source', () => {
       const model = AiModelFactory.CreateAiModel({
+        tenantId: TEST_TENANT_ID,
         name: 'HF Model',
         slug: 'hf-model',
         category: ModelCategory.AUDIO,
@@ -377,6 +380,7 @@ describe('AiModelFactory', () => {
 
     it('should support MLFLOW source', () => {
       const model = AiModelFactory.CreateAiModel({
+        tenantId: TEST_TENANT_ID,
         name: 'MLFlow Model',
         slug: 'mlflow-model',
         category: ModelCategory.AUDIO,
@@ -392,6 +396,7 @@ describe('AiModelFactory', () => {
 
     it('should support ONNX format', () => {
       const model = AiModelFactory.CreateAiModel({
+        tenantId: TEST_TENANT_ID,
         name: 'ONNX Model',
         slug: 'onnx-model',
         category: ModelCategory.AUDIO,
@@ -407,6 +412,7 @@ describe('AiModelFactory', () => {
 
     it('should support NEMO format', () => {
       const model = AiModelFactory.CreateAiModel({
+        tenantId: TEST_TENANT_ID,
         name: 'NeMo Model',
         slug: 'nemo-model',
         category: ModelCategory.AUDIO,

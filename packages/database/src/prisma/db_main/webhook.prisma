@@ -5,10 +5,10 @@ model Webhook {
     id       String @id @default(uuid(7))
 
     // multi tenant fields
-    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // core fields
-    name                 String  @unique
+    name                 String
     url                  String
     hashedSecret         String?
     resourceTypeName     String
@@ -33,7 +33,7 @@ model Webhook {
     WebhookRunHistorys WebhookRunHistory[] @relation("_Webhook_RunHistory")
 
     // indexing
-    @@index([tenantId], name: "Webhook_tenantId_index")
+    @@unique([tenantId, name], name: "Webhook_tenantId_name_unique")
     @@schema("core")
 }
 
