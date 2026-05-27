@@ -10,7 +10,7 @@
 | **Implementation complete** | 2026-05-27 (W5.5 merged at `ec67a0d4`) |
 | **Documentation closed out** | 2026-05-27 (W5.6) |
 | **Engineer-hours (actual / estimated)** | ≈ 13 / 14 |
-| **Wave merge SHAs** | W5.1 `78e7b354`, W5.2 `66b1d579`, W5.3 `60d9d798`, W5.4 `969e49df`, W5.5 `ec67a0d4`, W5.6 `<pending merge>` |
+| **Wave merge SHAs** | W5.1 `78e7b354`, W5.2 `66b1d579`, W5.3 `60d9d798`, W5.4 `969e49df`, W5.5 `ec67a0d4`, W5.6 `82b3b9e4` |
 | **Approach** | 5 sequential implementation waves + 1 documentation wave per the `executing-plans` skill — fresh implementation subagent per wave + mandatory code-reviewer subagent between waves + `--no-ff` merges back to `fix/2605-review`. All 5 reviews returned **APPROVED-WITH-MINOR-NITS** (0 critical, 0 important issues across all 5 sequential reviews) |
 | **Predecessor** | TASK-305 (Multi-Tenancy Hardening — Phases A, B, D, E) — see [`06-implementation-summary.md`](./06-implementation-summary.md) |
 | **Companion** | TASK-302 (PgBouncer + Vault — owns the RLS Phase C deferred from TASK-305 and from this ticket as F-1) |
@@ -148,7 +148,7 @@ Remaining (not yet ticketed): **306-F1..306-F8, 306-F11..306-F14** (12 nits).
 | 3 | **W5.3** Tenant + Webhook + ResourceSubscription sweep | `task-306/w5-tenant-sweep` | 13 (12 plan + 1 TASK-258 alignment) | 34 | APPROVED-WITH-MINOR-NITS (2 nits: 306-F8, 306-F9) | `60d9d798` |
 | 4 | **W5.4** ContextItem array-input validation | `task-306/w5-context-arrays` | 3 | 9 | APPROVED-WITH-MINOR-NITS (2 nits: 306-F10, 306-F11) | `969e49df` |
 | 5 | **W5.5** Hygiene bundle + aggregator FS-introspection | `task-306/w5-hygiene` | 7 | 25 | APPROVED-WITH-MINOR-NITS (3 nits: 306-F12..306-F14; 306-F9 + 306-F10 folded in) | `ec67a0d4` |
-| 6 | **W5.6** Documentation close-out | `task-306/w5-docs` | 5 (5.6.1–5.6.5) | 0 (doc-only) | (this wave) | `<pending merge>` |
+| 6 | **W5.6** Documentation close-out | `task-306/w5-docs` | 5 (5.6.1–5.6.5) | 0 (doc-only) | (this wave) | `82b3b9e4` |
 
 Per-wave methodology (uniform across all 5 implementation waves):
 
