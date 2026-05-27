@@ -1272,8 +1272,9 @@ describe('AuthorizationAuditService', () => {
                 tenantId: 'tenant-b',
             });
 
-            // logToDatabase is fire-and-forget; wait for the async write.
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            // logToDatabase is fire-and-forget; vi.waitFor polls until the
+            // async write lands — robust against slow CI runners (306-F1).
+            await vi.waitFor(() => expect(mockPrismaClient.auditLog.create).toHaveBeenCalled());
 
             expect(mockPrismaClient.auditLog.create).toHaveBeenCalledTimes(1);
             const createCall = mockPrismaClient.auditLog.create.mock.calls[0][0];
@@ -1295,7 +1296,7 @@ describe('AuthorizationAuditService', () => {
                 tenantId: 'tenant-from-job',
             });
 
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            await vi.waitFor(() => expect(mockPrismaClient.auditLog.create).toHaveBeenCalled());
 
             expect(mockPrismaClient.auditLog.create).toHaveBeenCalledTimes(1);
             const createCall = mockPrismaClient.auditLog.create.mock.calls[0][0];
@@ -1316,12 +1317,12 @@ describe('AuthorizationAuditService', () => {
                 // No tenantId.
             });
 
-            await new Promise((resolve) => setTimeout(resolve, 10));
-
-            expect(mockPrismaClient.auditLog.create).not.toHaveBeenCalled();
             // The per-instance MockLogger.warn captured the skip diagnostic.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const loggerWarn = (serviceNoCls as any).logger.warn as ReturnType<typeof vi.fn>;
+            await vi.waitFor(() => expect(loggerWarn).toHaveBeenCalled());
+
+            expect(mockPrismaClient.auditLog.create).not.toHaveBeenCalled();
             expect(loggerWarn).toHaveBeenCalledWith(
                 expect.stringContaining('AUTH_AUDIT_NO_TENANT'),
                 expect.objectContaining({
