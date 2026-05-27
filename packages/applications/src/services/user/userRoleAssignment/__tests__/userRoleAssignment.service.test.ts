@@ -11,8 +11,9 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ForbiddenException } from '@nestjs/common';
 import { UserRoleAssignmentService } from '../userRoleAssignment.service';
-import { SysEventType, ResourceStatusType } from '@arcaai/domains';
+import { SysEventType, ResourceStatusType, UserRoleAssignmentFactory } from '@arcaai/domains';
 import { DataNotFoundException } from '@arcaai/exceptions';
 
 // Mock ClsService - represents the request context
@@ -340,6 +341,146 @@ describe('UserRoleAssignmentService', () => {
 
             expect(mockUserRoleAssignmentRepository.restore).not.toHaveBeenCalled();
             expect(mockUserRoleAssignmentRepository.create).not.toHaveBeenCalled();
+        });
+
+        // TASK-305 D.7 — tenant pinning on create (audit C-6)
+        // The caller's CLS tenantId is the only trusted source; request.tenantId
+        // must never be allowed to silently widen tenant scope for non-super-admins.
+        describe('tenantId pinning (TASK-305 D.7)', () => {
+            it('should pin tenantId to CLS context when request omits tenantId (non-super-admin caller)', async () => {
+                // CLS tenantId is 'tenant-1' from default beforeEach setup.
+                const newAssignment = createMockUserRoleAssignmentEntity({
+                    id: 'new-user-role-assignment-id',
+                    tenantId: 'tenant-1'
+                });
+                mockUserRoleAssignmentRepository.create.mockResolvedValue(
+                    newAssignment
+                );
+
+                await service.create({
+                    userId: 'user-id-1',
+                    roleId: 'role-id-1'
+                    // tenantId intentionally omitted
+                });
+
+                // Factory MUST receive the pinned CLS tenantId, not undefined.
+                expect(
+                    UserRoleAssignmentFactory.CreateUserRoleAssignment
+                ).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        userId: 'user-id-1',
+                        roleId: 'role-id-1',
+                        tenantId: 'tenant-1',
+                        createdBy: 'current-user-id'
+                    })
+                );
+            });
+
+            it('should accept explicit request.tenantId when it matches CLS tenantId (non-super-admin caller)', async () => {
+                const newAssignment = createMockUserRoleAssignmentEntity({
+                    id: 'new-user-role-assignment-id',
+                    tenantId: 'tenant-1'
+                });
+                mockUserRoleAssignmentRepository.create.mockResolvedValue(
+                    newAssignment
+                );
+
+                await service.create({
+                    userId: 'user-id-1',
+                    roleId: 'role-id-1',
+                    tenantId: 'tenant-1' // explicit match against CLS 'tenant-1'
+                });
+
+                expect(
+                    UserRoleAssignmentFactory.CreateUserRoleAssignment
+                ).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        userId: 'user-id-1',
+                        roleId: 'role-id-1',
+                        tenantId: 'tenant-1'
+                    })
+                );
+                expect(mockUserRoleAssignmentRepository.create).toHaveBeenCalled();
+            });
+
+            it('should throw ForbiddenException when request.tenantId differs from CLS tenantId for a non-super-admin caller (audit C-6 attack vector)', async () => {
+                // CLS tenantId is 'tenant-1' (Tenant A); attacker tries to create an
+                // assignment in 'tenant-2' (Tenant B). Default user mock has no roles
+                // -> not a super-admin -> must be rejected.
+                await expect(
+                    service.create({
+                        userId: 'victim-user-id',
+                        roleId: 'SUPER_ADMIN',
+                        tenantId: 'tenant-2'
+                    })
+                ).rejects.toBeInstanceOf(ForbiddenException);
+
+                // Defense-in-depth: nothing on the create path may have run.
+                expect(
+                    UserRoleAssignmentFactory.CreateUserRoleAssignment
+                ).not.toHaveBeenCalled();
+                expect(mockUserRoleAssignmentRepository.create).not.toHaveBeenCalled();
+                expect(mockUserRoleAssignmentRepository.restore).not.toHaveBeenCalled();
+            });
+
+            it('should allow cross-tenant create when request.tenantId differs from CLS tenantId AND caller is SUPER_ADMIN', async () => {
+                // Super-admin escape hatch: bootstrap/onboarding flows legitimately
+                // need to create assignments scoped to a tenant other than the
+                // admin's own CLS context.
+                mockClsService.get.mockImplementation((key: string) => {
+                    switch (key) {
+                        case 'user':
+                            return {
+                                id: 'current-user-id',
+                                firstName: 'Super',
+                                lastName: 'Admin',
+                                email: 'super@example.com',
+                                roles: ['SUPER_ADMIN']
+                            };
+                        case 'tenantId':
+                            return 'tenant-1';
+                        case 'tenantCode':
+                            return 'TENANT_1';
+                        case 'correlationId':
+                            return 'corr-123';
+                        case 'requestIp':
+                            return '192.168.1.1';
+                        default:
+                            return null;
+                    }
+                });
+                // Re-create the service so the new CLS impl is picked up via getters.
+                service = new UserRoleAssignmentService(
+                    mockUserRoleAssignmentRepository as any,
+                    mockEventEmitter as any,
+                    mockClsService as any
+                );
+
+                const newAssignment = createMockUserRoleAssignmentEntity({
+                    id: 'new-user-role-assignment-id',
+                    tenantId: 'tenant-2'
+                });
+                mockUserRoleAssignmentRepository.create.mockResolvedValue(
+                    newAssignment
+                );
+
+                await service.create({
+                    userId: 'user-in-tenant-2',
+                    roleId: 'role-id-1',
+                    tenantId: 'tenant-2'
+                });
+
+                expect(
+                    UserRoleAssignmentFactory.CreateUserRoleAssignment
+                ).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        userId: 'user-in-tenant-2',
+                        roleId: 'role-id-1',
+                        tenantId: 'tenant-2'
+                    })
+                );
+                expect(mockUserRoleAssignmentRepository.create).toHaveBeenCalled();
+            });
         });
     });
 
