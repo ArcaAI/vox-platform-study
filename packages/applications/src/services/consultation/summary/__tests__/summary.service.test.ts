@@ -601,7 +601,7 @@ describe('SummaryService', () => {
                 mockPromptAssemblyService as any,
             );
 
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
             mockContextItemRepository.findTranscripts.mockResolvedValue([
                 { content: 'transcript text' },
             ]);
@@ -719,7 +719,7 @@ describe('SummaryService', () => {
                 mockPromptAssemblyService as any,
             );
 
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
             mockContextItemRepository.findTranscripts.mockResolvedValue([
                 { content: 'transcript' },
             ]);
@@ -776,7 +776,7 @@ describe('SummaryService', () => {
         });
 
         it('should call SMR service at /api/v1/generate', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
             mockContextItemRepository.findCaseNotes.mockResolvedValue([
                 { content: 'Historical case note content' },
             ]);
@@ -849,7 +849,7 @@ describe('SummaryService', () => {
                 mockPromptAssemblyService as any,
             );
 
-            mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1' });
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
             mockContextItemRepository.findTranscripts.mockResolvedValue([
                 { content: 'transcript' },
             ]);
@@ -1265,6 +1265,101 @@ describe('SummaryService', () => {
                 'ai_regeneration',
                 undefined,
             );
+        });
+    });
+
+    // ============================================================
+    // TASK-305 D.4 — Cross-aggregate tenant isolation for SummaryService
+    //
+    // The summary pipeline takes either `consultationId` (generate*) or
+    // `contextItemId` (update/approve/extract) — both reference aggregates
+    // that may be tenant-scoped to a foreign tenant. Audit C-1 / C-3 / M-7.
+    //
+    // All cross-aggregate checks throw `NotFoundException` (no existence
+    // leak); legitimate misses produce the same error shape as cross-tenant
+    // probes.
+    // ============================================================
+    describe('TASK-305 D.4 — cross-aggregate tenant checks', () => {
+        describe('generatePreSummary', () => {
+            it('throws NotFoundException when parent consultation belongs to another tenant', async () => {
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'c-other',
+                    tenantId: 'tenant-OTHER',
+                });
+
+                await expect(
+                    service.generatePreSummary('c-other', {} as any),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
+                expect(mockContextItemRepository.create).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('generateSummary', () => {
+            it('throws NotFoundException when parent consultation belongs to another tenant', async () => {
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'c-other',
+                    tenantId: 'tenant-OTHER',
+                });
+
+                await expect(
+                    service.generateSummary('c-other', { transcription: 'x' } as any),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
+                expect(mockContextItemRepository.create).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('updateSummary', () => {
+            it('throws NotFoundException when target context item belongs to another tenant', async () => {
+                mockContextItemRepository.findById.mockResolvedValue(
+                    createMockContextItem({
+                        id: 'ctx-other',
+                        tenantId: 'tenant-OTHER',
+                        isSummary: true,
+                    }),
+                );
+
+                await expect(
+                    service.updateSummary('ctx-other', { content: 'tampered' } as any),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockContextItemRepository.update).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('approveSummary', () => {
+            it('throws NotFoundException when target context item belongs to another tenant', async () => {
+                mockContextItemRepository.findById.mockResolvedValue(
+                    createMockContextItem({
+                        id: 'ctx-other',
+                        tenantId: 'tenant-OTHER',
+                        isFinalSummary: true,
+                    }),
+                );
+
+                await expect(
+                    service.approveSummary('ctx-other'),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockContextItemRepository.update).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('extractEntities', () => {
+            it('throws NotFoundException when target context item belongs to another tenant', async () => {
+                mockContextItemRepository.findById.mockResolvedValue(
+                    createMockContextItem({
+                        id: 'ctx-other',
+                        tenantId: 'tenant-OTHER',
+                        content: 'cross-tenant content',
+                    }),
+                );
+
+                await expect(
+                    service.extractEntities('ctx-other'),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
+                expect(mockNamedEntityRepository.create).not.toHaveBeenCalled();
+            });
         });
     });
 });
