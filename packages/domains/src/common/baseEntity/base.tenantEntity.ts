@@ -8,15 +8,19 @@ import { EntityId } from './base.entity';
 import { BaseAggregate, BaseAggregateProps } from './base.aggregate';
 
 /**
- * Hardened by TASK-305 Phase A (multi-tenancy hardening):
+ * Hardened by TASK-305 Phase A (multi-tenancy hardening) and TASK-306 P1.1:
  * - `tenantId` is REQUIRED on construction; the field can no longer be
  *   silently left null/undefined (matches the schema-level NOT NULL).
  * - The `tenantId` setter is `protected`, so external code can no longer
  *   overwrite a tenant scope. Entities/factories/mappers — and only those —
  *   may rewrite it.
- * - The `Tenant` setter throws if assigned `null`; we never silently clear
- *   the tenant relation. Use a dedicated lifecycle method (e.g. an entity
- *   reparenting helper) if a transfer is ever genuinely needed.
+ * - The `Tenant` relation setter is `protected` too (TASK-306 P1.1 closes
+ *   audit C-7 finale); external callers cannot overwrite the relation —
+ *   only subclasses (factories, mappers, lifecycle methods) may. The
+ *   setter additionally throws if assigned `null`/`undefined`, so we never
+ *   silently clear the tenant relation. Use a dedicated lifecycle method
+ *   (e.g. an entity reparenting helper) if a transfer is ever genuinely
+ *   needed.
  * - `validate()` is a mandatory runtime backstop — see the method comment.
  */
 export interface IBaseTenantEntity extends BaseAggregateProps {
@@ -50,7 +54,13 @@ export abstract class BaseTenantEntity extends BaseAggregate {
     return this._Tenant;
   }
 
-  set Tenant(tenant: TenantEntity) {
+  /**
+   * Mutation surface is `protected` (TASK-306 P1.1, audit C-7 finale) — only
+   * subclasses (entity factories / mappers / lifecycle methods) may overwrite
+   * the tenant relation. External callers cannot, by design; mirroring the
+   * `tenantId` setter guard from TASK-305 A.7.
+   */
+  protected set Tenant(tenant: TenantEntity) {
     if (tenant === null || tenant === undefined) {
       throw new BadRequestException(
         `${this.constructor.name}: Tenant cannot be unset — assign a concrete TenantEntity, or use a dedicated lifecycle method instead of writing null.`,

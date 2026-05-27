@@ -211,4 +211,55 @@ describe('BaseTenantEntity (TASK-305 A.7)', () => {
       expect(init.id).toBe('entity-2');
     });
   });
+
+  /**
+   * TASK-306 P1.1 (audit C-7 finale) — `set Tenant(...)` is `protected`,
+   * matching the `tenantId` setter hardening from TASK-305 A.7. External
+   * callers can no longer overwrite the tenant relation of a live entity;
+   * only subclasses (entity factories, mappers, lifecycle methods) may.
+   */
+  describe('TASK-306 P1.1 — Tenant relation setter is protected', () => {
+    it('TS prevents external assignment (compile-time guard)', () => {
+      const entity = new TestTenantEntity(makeInit());
+      const fakeTenant: FakeTenantEntity = {
+        id: '00000000-0000-0000-0000-000000000099',
+      };
+
+      // The cast goes through `never` so the right-hand side is assignable
+      // to the setter's `TenantEntity` parameter — that pins the ONLY
+      // compile-time error to the protected-access guard, not a type
+      // mismatch. (`never` is the bottom type, assignable to anything.)
+      // @ts-expect-error — `Tenant` setter is `protected` per TASK-306 P1.1
+      // (audit C-7 finale). External assignment must not compile, mirroring
+      // the `tenantId` setter guard above. This `@ts-expect-error` itself
+      // fails the build if the line below ever stops being a type error.
+      entity.Tenant = fakeTenant as never;
+
+      // The assignment above is erased by TS at emit time, so the line
+      // actually runs at runtime — touch the getter so the read is observed
+      // by linters as a deliberate side-effect verification, not dead code.
+      void entity.Tenant;
+    });
+
+    it('subclasses can still rewrite Tenant via internal helpers', () => {
+      class TestTenantEntityWithTenantRewrite extends BaseTenantEntity {
+        rewriteTenantRelation(tenant: FakeTenantEntity): void {
+          // Inside the class hierarchy, the protected setter is reachable.
+          // Cast goes through `never` because the real TenantEntity cannot be
+          // imported here (circular barrel) and the structural stand-in
+          // `FakeTenantEntity` is not assignable to the setter's parameter.
+          this.Tenant = tenant as never;
+        }
+      }
+
+      const entity = new TestTenantEntityWithTenantRewrite(makeInit());
+      const NEW_TENANT_ID = '00000000-0000-0000-0000-000000000099';
+      const fakeTenant: FakeTenantEntity = { id: NEW_TENANT_ID };
+
+      entity.rewriteTenantRelation(fakeTenant);
+
+      expect(entity.Tenant).toBe(fakeTenant);
+      expect(entity.tenantId).toBe(NEW_TENANT_ID);
+    });
+  });
 });

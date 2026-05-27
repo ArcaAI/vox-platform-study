@@ -113,7 +113,10 @@ describe('AuthorizationAuditService', () => {
                 data: expect.objectContaining({
                     eventType: 'AUTHORIZATION',
                     responsibleUserId: 'user-123',
-                    tenantId: 'tenant-1',
+                    // TASK-306 P1.2 — persisted `tenantId` is now CLS-derived
+                    // (`tenant-a` from `beforeEach`), not the caller-supplied
+                    // `entry.tenantId` (`tenant-1`).
+                    tenantId: 'tenant-a',
                     action: 'READ', // Action is uppercased to match AuditAction enum
                     resourceType: 'User',
                     resourceId: 'resource-456',
@@ -586,6 +589,11 @@ describe('AuthorizationAuditService', () => {
                 allowed: true,
                 endpoint: '/api/users',
                 method: 'GET',
+                // TASK-306 P1.2 — `serviceWithoutCache` is constructed without
+                // CLS; supply `entry.tenantId` so the back-compat fallback
+                // satisfies the NOT NULL `tenantId` guard introduced in P1.2
+                // and the DB write proceeds (test verifies Redis bypass).
+                tenantId: 'tenant-background',
             };
             mockPrismaClient.auditLog.create.mockResolvedValue({ id: 'audit-1' });
 
@@ -626,7 +634,9 @@ describe('AuthorizationAuditService', () => {
             expect(createCall.data).toMatchObject({
                 eventType: 'AUTHORIZATION',
                 responsibleUserId: 'user-123',
-                tenantId: 'tenant-1',
+                // TASK-306 P1.2 — persisted `tenantId` is CLS-derived
+                // (`tenant-a`), not the caller-supplied `entry.tenantId`.
+                tenantId: 'tenant-a',
                 action: 'READ', // Action is uppercased to match AuditAction enum
                 resourceType: 'User',
                 resourceId: 'resource-456',
@@ -1225,6 +1235,101 @@ describe('AuthorizationAuditService', () => {
                 // the existing AuditLog-model-missing fallback path intact.
                 expect(callWhere.tenantId).toBeNull();
             });
+        });
+    });
+
+    /**
+     * TASK-306 P1.2 (audit C-7 finale / NEW-1 / HIPAA §164.312(b)) — derive
+     * the persisted audit row's `tenantId` from CLS, NOT from the caller-
+     * supplied `entry.tenantId`. Caller-supplied is allowed only as a
+     * back-compat fallback when no CLS context is wired (background jobs).
+     * When neither source resolves a tenant, the write is SKIPPED with a
+     * warning — audit rows with NULL tenantId would violate the schema
+     * NOT NULL constraint introduced by TASK-305 Phase A.
+     */
+    describe('TASK-306 P1.2 — logToDatabase uses CLS tenantId', () => {
+        const baseEntry: Omit<AuthorizationAuditEntry, 'timestamp'> = {
+            userId: 'user-attacker',
+            action: 'read',
+            subject: 'Consultation',
+            resourceId: 'consultation-99',
+            allowed: true,
+            endpoint: '/api/consultations/99',
+            method: 'GET',
+            ipAddress: '10.0.0.42',
+            userAgent: 'curl/8.0.0',
+        };
+
+        it('persists the row with CLS tenantId when CLS is set, ignoring entry.tenantId', async () => {
+            // CLS default (beforeEach) returns `tenant-a`. The entry attempts to
+            // attribute the row to `tenant-b` — without the guard a Tenant-A
+            // caller could mis-attribute audit rows to Tenant B, breaking the
+            // HIPAA §164.312(b) audit-integrity contract.
+            mockPrismaClient.auditLog.create.mockResolvedValue({ id: 'audit-x' });
+
+            await service.logAuthorizationDecision({
+                ...baseEntry,
+                tenantId: 'tenant-b',
+            });
+
+            // logToDatabase is fire-and-forget; wait for the async write.
+            await new Promise((resolve) => setTimeout(resolve, 10));
+
+            expect(mockPrismaClient.auditLog.create).toHaveBeenCalledTimes(1);
+            const createCall = mockPrismaClient.auditLog.create.mock.calls[0][0];
+            expect(createCall.data.tenantId).toBe('tenant-a');
+        });
+
+        it('falls back to entry.tenantId when no CLS is wired (back-compat for background jobs)', async () => {
+            // Constructed without the CLS arg — mirrors background jobs /
+            // legacy boot paths that never had a CLS context. The `entry.tenantId`
+            // becomes the source of truth in this back-compat mode.
+            const serviceNoCls = new AuthorizationAuditService(
+                mockDatabaseService as any,
+                mockCacheService as any,
+            );
+            mockPrismaClient.auditLog.create.mockResolvedValue({ id: 'audit-y' });
+
+            await serviceNoCls.logAuthorizationDecision({
+                ...baseEntry,
+                tenantId: 'tenant-from-job',
+            });
+
+            await new Promise((resolve) => setTimeout(resolve, 10));
+
+            expect(mockPrismaClient.auditLog.create).toHaveBeenCalledTimes(1);
+            const createCall = mockPrismaClient.auditLog.create.mock.calls[0][0];
+            expect(createCall.data.tenantId).toBe('tenant-from-job');
+        });
+
+        it('skips the write and warns when neither CLS nor entry.tenantId resolves', async () => {
+            // No CLS, no entry.tenantId — the write would violate the schema
+            // NOT NULL on tenantId, so the service skips it and emits a
+            // diagnostic so the gap surfaces in logs.
+            const serviceNoCls = new AuthorizationAuditService(
+                mockDatabaseService as any,
+                mockCacheService as any,
+            );
+
+            await serviceNoCls.logAuthorizationDecision({
+                ...baseEntry,
+                // No tenantId.
+            });
+
+            await new Promise((resolve) => setTimeout(resolve, 10));
+
+            expect(mockPrismaClient.auditLog.create).not.toHaveBeenCalled();
+            // The per-instance MockLogger.warn captured the skip diagnostic.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const loggerWarn = (serviceNoCls as any).logger.warn as ReturnType<typeof vi.fn>;
+            expect(loggerWarn).toHaveBeenCalledWith(
+                expect.stringContaining('AUTH_AUDIT_NO_TENANT'),
+                expect.objectContaining({
+                    userId: 'user-attacker',
+                    action: 'read',
+                    subject: 'Consultation',
+                }),
+            );
         });
     });
 });

@@ -604,20 +604,95 @@ describe('ApiKeyService', () => {
 
     describe('fetchAllByTenantId', () => {
         it('should filter by tenantId', async () => {
-            const keys = [createMockApiKeyEntity({ tenantId: 'tenant-abc' })];
+            // TASK-306 P1.5 — `fetchAllByTenantId` now refuses cross-tenant
+            // reads driven by the DTO. Align the existing "happy-path" probe
+            // with the CLS default (`tenant-1`) so the new guard does not
+            // short-circuit. Cross-tenant + SUPER_ADMIN coverage lives in the
+            // dedicated `TASK-306 P1.5` block below.
+            const keys = [createMockApiKeyEntity({ tenantId: 'tenant-1' })];
             mockApiKeyRepository.findAll.mockResolvedValue(keys);
             mockApiKeyRepository.count.mockResolvedValue(1);
 
             const result = await service.fetchAllByTenantId({
-                tenantId: 'tenant-abc',
+                tenantId: 'tenant-1',
                 page: 1,
                 limit: 10,
             } as any);
 
             expect(result.data).toHaveLength(1);
             expect(mockApiKeyRepository.findAll).toHaveBeenCalledWith(
-                expect.objectContaining({ where: { tenantId: 'tenant-abc' } }),
+                expect.objectContaining({ where: { tenantId: 'tenant-1' } }),
             );
+        });
+    });
+
+    /**
+     * TASK-306 P1.5 (audit AC-7 / NEW-4) — `ApiKeyService.fetchAllByTenantId`
+     * previously trusted the caller-supplied DTO `tenantId` without
+     * comparing it to CLS. A Tenant-A admin could enumerate Tenant-B API
+     * keys by passing a foreign `tenantId`. The new guard short-circuits
+     * with `NotFoundException` on a non-super-admin mismatch; SUPER_ADMIN
+     * retains the cross-tenant bypass for admin tooling.
+     */
+    describe('TASK-306 P1.5 — fetchAllByTenantId tenant-scoped', () => {
+        const setRequestUserRoles = (roles: string[] | undefined) => {
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user':
+                        return { id: 'current-user-id', roles };
+                    case 'tenantId':
+                        return 'tenant-1';
+                    case 'correlationId':
+                        return 'corr-123';
+                    case 'requestIp':
+                        return '192.168.1.1';
+                    default:
+                        return null;
+                }
+            });
+        };
+
+        it('returns rows when the DTO tenantId matches the caller CLS tenant', async () => {
+            const keys = [createMockApiKeyEntity({ tenantId: 'tenant-1' })];
+            mockApiKeyRepository.findAll.mockResolvedValue(keys);
+            mockApiKeyRepository.count.mockResolvedValue(1);
+
+            const result = await service.fetchAllByTenantId({
+                tenantId: 'tenant-1',
+                page: 1,
+                limit: 10,
+            } as any);
+
+            expect(result.data).toHaveLength(1);
+        });
+
+        it('throws NotFoundException for cross-tenant non-admin reads', async () => {
+            const { NotFoundException } = await import('@nestjs/common');
+
+            await expect(
+                service.fetchAllByTenantId({
+                    tenantId: 'tenant-B',
+                    page: 1,
+                    limit: 10,
+                } as any),
+            ).rejects.toThrow(NotFoundException);
+            // Guard short-circuits BEFORE hitting the repository.
+            expect(mockApiKeyRepository.findAll).not.toHaveBeenCalled();
+        });
+
+        it('returns rows for a cross-tenant SUPER_ADMIN read (bypass)', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const keys = [createMockApiKeyEntity({ tenantId: 'tenant-B' })];
+            mockApiKeyRepository.findAll.mockResolvedValue(keys);
+            mockApiKeyRepository.count.mockResolvedValue(1);
+
+            const result = await service.fetchAllByTenantId({
+                tenantId: 'tenant-B',
+                page: 1,
+                limit: 10,
+            } as any);
+
+            expect(result.data).toHaveLength(1);
         });
     });
 
