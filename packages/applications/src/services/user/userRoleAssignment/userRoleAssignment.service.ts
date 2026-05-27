@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -15,6 +15,7 @@ import { IUserRoleAssignmentService } from './IUserRoleAssignmentService';
 import { CreateUserRoleAssignmentRequest, UpdateUserRoleAssignmentRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { SUPER_ADMIN_ROLE } from '../../tenant/constants';
 
 // TODO: Implement this
 
@@ -33,20 +34,32 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
       throw new ArgumentInvalidException('userId and roleId are required');
     }
 
-    // Resolve the tenant scope of the (userId, roleId) assignment we may need
-    // to restore. Order matches the eventual create-path semantics: explicit
-    // request body wins, then the caller's CLS tenant context, then `null`
-    // which Prisma translates to `WHERE tenantId IS NULL` (a global/system
-    // assignment). Falling back to a hardcoded platform-tenant UUID would
-    // mismatch globally-scoped soft-deleted rows.
-    const lookupTenantId = request.tenantId ?? this.tenantId ?? null;
+    // TASK-305 D.7 (audit C-6) — pin the working tenantId to the caller's CLS
+    // context. The only legitimate cross-tenant create is when the caller
+    // explicitly passes `request.tenantId` AND holds the SUPER_ADMIN role
+    // (used by onboarding/bootstrap flows). Otherwise an explicit mismatch
+    // is a privilege-escalation attempt and must be rejected before any
+    // repository or factory call runs.
+    const callerTenantId = this.tenantId ?? null;
+    const requestedTenantId = request.tenantId;
+    const isExplicitCrossTenant = requestedTenantId !== undefined && requestedTenantId !== null && requestedTenantId !== callerTenantId;
+
+    let effectiveTenantId: string | null;
+    if (isExplicitCrossTenant) {
+      if (!this.isSuperAdmin()) {
+        throw new ForbiddenException('Cross-tenant assignment is not permitted');
+      }
+      effectiveTenantId = requestedTenantId;
+    } else {
+      effectiveTenantId = callerTenantId;
+    }
 
     try {
       const existing = await this.userRoleAssignmentRepository.findFirst({
         where: {
           userId: request.userId,
           roleId: request.roleId,
-          tenantId: lookupTenantId,
+          tenantId: effectiveTenantId,
           resourceStatus: ResourceStatusType.DELETED,
         },
       });
@@ -63,6 +76,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
 
     const newUserRoleAssignment = UserRoleAssignmentFactory.CreateUserRoleAssignment({
       ...request,
+      tenantId: effectiveTenantId,
       userId: request.userId,
       roleId: request.roleId,
       createdBy: this.requestUser?.id,
@@ -80,6 +94,17 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
       data: userRoleAssignment.toObject() as object,
     });
     return userRoleAssignment;
+  }
+
+  /**
+   * True when the active request user carries the `SUPER_ADMIN` role.
+   * Mirrors the pattern in `TenantService.isSuperAdmin()` — falls back to
+   * `false` whenever the CLS context is missing or the role list is
+   * undefined, so the strictest behaviour applies by default.
+   */
+  private isSuperAdmin(): boolean {
+    const roles = this.requestUser?.roles;
+    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
   }
 
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<UserRoleAssignmentEntity>> {
