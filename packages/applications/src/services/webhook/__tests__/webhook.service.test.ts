@@ -298,6 +298,97 @@ describe('WebhookService', () => {
         });
     });
 
+    /**
+     * TASK-306 P1.4 (audit M-2 / NEW-2 / AC-5 partial) — `WebhookService.create`
+     * previously persisted the caller-supplied `request.tenantId` as-is, so a
+     * Tenant-A user could create webhooks attributed to Tenant-B by simply
+     * setting the DTO field. The new `resolveEffectiveTenantId` helper mirrors
+     * the W3.2 NotificationService pattern at the structural level:
+     *   - Non-SUPER_ADMIN: silently pin to CLS `tenantId` (ignore the DTO field)
+     *   - SUPER_ADMIN: honor `request.tenantId` for cross-tenant impersonation
+     *     (admin UI flows / migration tooling)
+     *   - Both branches throw `BadRequestException` if no tenant context resolves
+     *
+     * NOTE: this differs from NotificationService semantically — Notification
+     * THROWS ForbiddenException on a non-super-admin explicit mismatch (PHI
+     * dispatch is more sensitive). Webhook follows the README W5.1.4 verification
+     * contract ("row created with tenant-A") which mandates silent pinning.
+     */
+    describe('TASK-306 P1.4 — create resolves effective tenantId', () => {
+        // Helper mirrors the NotificationService / TenantService test convention:
+        // re-installs the CLS mock so the active user carries the given roles
+        // without leaking state into sibling tests (each `beforeEach` wipes it).
+        const setRequestUserRoles = (roles: string[] | undefined) => {
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user':
+                        return {
+                            id: 'current-user-id',
+                            firstName: 'Test',
+                            lastName: 'User',
+                            email: 'test@example.com',
+                            roles,
+                        };
+                    case 'tenantId':
+                        return 'tenant-1';
+                    case 'tenantCode':
+                        return 'TENANT_1';
+                    case 'correlationId':
+                        return 'corr-123';
+                    case 'requestIp':
+                        return '192.168.1.1';
+                    default:
+                        return null;
+                }
+            });
+        };
+
+        it('pins tenantId to CLS when a non-SUPER_ADMIN caller passes a cross-tenant request.tenantId', async () => {
+            const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
+            mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
+
+            await service.create({
+                tenantId: 'tenant-B',
+                name: 'Sneaky Webhook',
+                url: 'https://example.com/webhook',
+                resourceTypeName: 'User',
+            });
+
+            const factoryInput = mockWebhookRepository.create.mock.calls[0][0];
+            expect(factoryInput.tenantId).toBe('tenant-1');
+        });
+
+        it('pins tenantId to CLS when a non-SUPER_ADMIN caller omits request.tenantId', async () => {
+            const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
+            mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
+
+            await service.create({
+                name: 'No-Tenant Webhook',
+                url: 'https://example.com/webhook',
+                resourceTypeName: 'User',
+            } as never);
+
+            const factoryInput = mockWebhookRepository.create.mock.calls[0][0];
+            expect(factoryInput.tenantId).toBe('tenant-1');
+        });
+
+        it('honors request.tenantId for SUPER_ADMIN callers (cross-tenant impersonation)', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-B' });
+            mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
+
+            await service.create({
+                tenantId: 'tenant-B',
+                name: 'Cross-Tenant Webhook',
+                url: 'https://example.com/webhook',
+                resourceTypeName: 'User',
+            });
+
+            const factoryInput = mockWebhookRepository.create.mock.calls[0][0];
+            expect(factoryInput.tenantId).toBe('tenant-B');
+        });
+    });
+
     describe('fetchAll', () => {
         it('should return paginated webhooks with correct pagination metadata', async () => {
             const webhooks = [
@@ -649,9 +740,20 @@ describe('WebhookService', () => {
 
     describe('edge cases', () => {
         it('should handle service creation without user context', async () => {
+            // TASK-306 P1.4 — `create` now requires a CLS `tenantId` (or DTO
+            // tenantId via SUPER_ADMIN). Preserve the original test intent
+            // ("no user") by still surfacing a valid tenantId from CLS — the
+            // missing-tenant edge case is independently covered by the
+            // helper test below.
             mockClsService.get.mockImplementation((key: string) => {
-                if (key === 'user') return null;
-                return null;
+                switch (key) {
+                    case 'user':
+                        return null;
+                    case 'tenantId':
+                        return 'tenant-1';
+                    default:
+                        return null;
+                }
             });
 
             const newWebhook = createMockWebhookEntity({ id: 'new-webhook-id' });
