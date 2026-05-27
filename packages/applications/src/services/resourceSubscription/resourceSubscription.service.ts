@@ -17,6 +17,7 @@ import {
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { InternalServerErrorException, ArgumentInvalidException, ArgumentNotProvidedException, UnauthorizedException } from '@arcaai/exceptions';
+import { BadRequestException } from '@nestjs/common';
 
 @Injectable()
 export class ResourceSubscriptionService extends BaseService implements IResourceSubscriptionService {
@@ -29,6 +30,9 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
   }
 
   async create(request: CreateResourceSubscriptionRequest): Promise<ResourceSubscriptionEntity> {
+    if (!this.tenantId) {
+      throw new BadRequestException('Tenant context required to create a resource subscription');
+    }
     const newResourceSubscription = ResourceSubscriptionFactory.CreateResourceSubscription({
       resourceId: request.resourceId,
       resourceTypeName: request.resourceTypeName as ResourceType,
@@ -36,6 +40,7 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
       resourceStatus: request.resourceStatus,
       targetUserId: request.targetUserId,
       createdBy: this.requestUser?.id,
+      tenantId: this.tenantId,
     });
 
     const resourceSubscription = await this.resourceSubscriptionRepository.create(newResourceSubscription);
