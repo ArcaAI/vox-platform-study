@@ -80,6 +80,29 @@ const createMockJobMetrics = () => ({
     recordSmrCallDuration: vi.fn(),
 });
 
+// Mock ClsService — TASK-305 D.9. Real nestjs-cls.ClsService.run executes the
+// callback inside a fresh AsyncLocalStorage scope; the mock just runs it
+// inline so existing tests stay synchronous, while exposing the underlying
+// `run`/`set`/`get` spies the new D.9 tests use to verify CLS rebinding.
+const createMockClsService = () => {
+    const store = new Map<string, unknown>();
+    const mock = {
+        run: vi.fn((...args: unknown[]) => {
+            const callback = (args.length === 1 ? args[0] : args[1]) as () => unknown;
+            return callback();
+        }),
+        runWith: vi.fn((seed: Record<string, unknown>, callback: () => unknown) => {
+            for (const [k, v] of Object.entries(seed)) store.set(k, v);
+            return callback();
+        }),
+        set: vi.fn((key: string, value: unknown) => { store.set(key, value); }),
+        get: vi.fn((key?: string) => (key === undefined ? Object.fromEntries(store) : store.get(key))),
+        has: vi.fn((key: string) => store.has(key)),
+        isActive: vi.fn(() => true),
+    };
+    return mock;
+};
+
 // Helper to create mock job
 const createMockJob = (data: GenerateSummaryJobPayload): Job<GenerateSummaryJobPayload> =>
     ({
@@ -121,6 +144,7 @@ describe('SummaryProcessor', () => {
     let mockPromptResolutionService: ReturnType<typeof createMockPromptResolutionService>;
     let mockPromptAssemblyService: ReturnType<typeof createMockPromptAssemblyService>;
     let mockJobMetrics: ReturnType<typeof createMockJobMetrics>;
+    let mockClsService: ReturnType<typeof createMockClsService>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -134,6 +158,7 @@ describe('SummaryProcessor', () => {
         mockPromptResolutionService = createMockPromptResolutionService();
         mockPromptAssemblyService = createMockPromptAssemblyService();
         mockJobMetrics = createMockJobMetrics();
+        mockClsService = createMockClsService();
 
         processor = new SummaryProcessor(
             mockJobService as any,
@@ -145,6 +170,7 @@ describe('SummaryProcessor', () => {
             mockPromptResolutionService as any,
             mockPromptAssemblyService as any,
             mockJobMetrics as any,
+            mockClsService as any,
         );
     });
 
@@ -660,6 +686,7 @@ describe('SummaryProcessor', () => {
                 mockPromptResolutionService as any,
                 mockPromptAssemblyService as any,
                 mockJobMetrics as any,
+                mockClsService as any,
             );
 
             mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
@@ -1213,6 +1240,92 @@ Assessment: "Alert" & oriented × 3
                     departmentId: 'dept-hema-001',
                 }),
             );
+        });
+    });
+
+    // ===========================================================================
+    // TASK-305 D.9 — CLS rebind + tenant assert + fail-closed guard
+    //
+    // Workers run OUTSIDE the API edge ClsModule middleware that the
+    // Phase B tenantScope extension reads from. Without these guards the
+    // extension hits its "no CLS = super-admin pass-through" branch and
+    // every Prisma op silently bypasses tenant scoping.
+    // ===========================================================================
+
+    describe('CLS rebind + tenant assert (TASK-305 D.9)', () => {
+        const setupSuccessfulJob = (consultationOverrides: Record<string, unknown> = {}) => {
+            mockConsultationRepository.findById.mockResolvedValue(
+                createMockConsultation(consultationOverrides),
+            );
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'transcript content' }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Generated summary', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'summary-ctx-001',
+                content: 'Generated summary',
+            });
+        };
+
+        it('wraps process() in cls.run with tenantId + user set before any work runs', async () => {
+            setupSuccessfulJob({ tenantId: 'tenant-A' });
+            const setOrder: Array<[string, unknown]> = [];
+            mockClsService.set.mockImplementation((key: string, value: unknown) => {
+                setOrder.push([key, value]);
+            });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-cls-1',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-A',
+                userId: 'user-A',
+                request: {},
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockClsService.run).toHaveBeenCalledTimes(1);
+            const keys = setOrder.map(([k]) => k);
+            expect(keys).toContain('tenantId');
+            expect(keys).toContain('user');
+            const tenantEntry = setOrder.find(([k]) => k === 'tenantId');
+            expect(tenantEntry?.[1]).toBe('tenant-A');
+            const userEntry = setOrder.find(([k]) => k === 'user');
+            expect(userEntry?.[1]).toMatchObject({ id: 'user-A', tenantId: 'tenant-A' });
+        });
+
+        it('throws fail-closed when job.data.tenantId is missing', async () => {
+            const payload = {
+                jobId: 'job-no-tenant',
+                consultationId: 'consultation-123',
+                userId: 'user-1',
+                request: {},
+                // tenantId intentionally omitted (legacy / poisoned job)
+            } as unknown as GenerateSummaryJobPayload;
+
+            await expect(processor.process(createMockJob(payload))).rejects.toThrow(
+                /tenantId/i,
+            );
+            expect(mockConsultationRepository.findById).not.toHaveBeenCalled();
+        });
+
+        it('throws when loaded consultation.tenantId differs from job.data.tenantId', async () => {
+            setupSuccessfulJob({ tenantId: 'tenant-OTHER' });
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-mismatch',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-A',
+                userId: 'user-A',
+                request: {},
+            };
+
+            await expect(processor.process(createMockJob(payload))).rejects.toThrow();
+            // Make sure we never reached the write side.
+            expect(mockContextItemRepository.create).not.toHaveBeenCalled();
+            expect(mockJobService.notifyFailed).toHaveBeenCalled();
         });
     });
 });

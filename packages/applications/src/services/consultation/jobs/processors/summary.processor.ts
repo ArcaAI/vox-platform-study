@@ -4,6 +4,7 @@ import { Job } from 'bullmq';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ClsService } from 'nestjs-cls';
 import { JobQueue, ContextItemRepository, ConsultationRepository, ContextItemFactory } from '@arcaai/domains';
 import { IConsultationJobService } from '../consultation-job.service';
 import { GenerateSummaryJobPayload, SummaryJobResult } from '../dto';
@@ -13,6 +14,9 @@ import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
+import { UserSession } from '../../../auth/dto';
+import { IActiveUserContext } from '../../../../interfaces';
+import { assertEqualTenants } from '../../../../common';
 
 @Processor(JobQueue.GenerateSummary)
 export class SummaryProcessor extends WorkerHost {
@@ -29,6 +33,7 @@ export class SummaryProcessor extends WorkerHost {
     private readonly promptResolutionService: PromptResolutionService,
     private readonly promptAssemblyService: PromptAssemblyService,
     private readonly jobMetrics: JobMetricsService,
+    private readonly cls: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super();
@@ -37,153 +42,170 @@ export class SummaryProcessor extends WorkerHost {
 
   async process(job: Job<GenerateSummaryJobPayload>): Promise<SummaryJobResult> {
     const { jobId, consultationId, tenantId, userId } = job.data;
-    let request = job.data.request;
-    const endTimer = this.jobMetrics.recordJobStart(JobQueue.GenerateSummary);
-    const waitMs = Date.now() - job.timestamp;
-    this.jobMetrics.recordWaitingDuration(JobQueue.GenerateSummary, waitMs / 1000);
+    // TASK-305 D.9.3 — fail-closed when tenantId is missing. Guards against
+    // legacy queue entries that predate the multi-tenancy hardening contract.
+    if (!tenantId) {
+      throw new Error(`Job ${jobId ?? job.id} is missing required tenantId`);
+    }
+    // TASK-305 D.9.1 — Worker processes run outside the API edge ClsModule
+    // middleware. Rebind tenantId + user into a fresh CLS scope so the Phase B
+    // tenantScope Prisma extension sees the correct context (otherwise its
+    // "no CLS = super-admin pass-through" branch silently bypasses scoping).
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      this.cls.set('user', { id: userId, tenantId, roles: [], permissions: [] } as unknown as UserSession);
 
-    this.logger.log({
-      message: 'Processing summary job',
-      jobId,
-      consultationId,
-    });
+      let request = job.data.request;
+      const endTimer = this.jobMetrics.recordJobStart(JobQueue.GenerateSummary);
+      const waitMs = Date.now() - job.timestamp;
+      this.jobMetrics.recordWaitingDuration(JobQueue.GenerateSummary, waitMs / 1000);
 
-    try {
-      // Step 1: Gathering context (10%)
-      await this.jobService.notifyProgress(jobId, 10, 'Gathering context');
+      this.logger.log({
+        message: 'Processing summary job',
+        jobId,
+        consultationId,
+      });
 
-      const consultation = await this.consultationRepository.findById(consultationId);
-      if (!consultation) {
-        throw new Error(`Consultation ${consultationId} not found`);
-      }
+      try {
+        // Step 1: Gathering context (10%)
+        await this.jobService.notifyProgress(jobId, 10, 'Gathering context');
 
-      // Resolve prompt config if template not explicitly provided (GAP-3)
-      // DNA style is per-doctor and resolved separately — not part of prompt resolution (TASK-025).
-      if (!request.template) {
-        const resolved = await this.promptResolutionService.resolve({
+        const consultation = await this.consultationRepository.findById(consultationId);
+        if (!consultation) {
+          throw new Error(`Consultation ${consultationId} not found`);
+        }
+        // TASK-305 D.9.2 — defense in depth against a poisoned / stale job
+        // payload whose tenantId no longer matches the persisted record.
+        assertEqualTenants(consultation, { tenantId });
+
+        // Resolve prompt config if template not explicitly provided (GAP-3)
+        // DNA style is per-doctor and resolved separately — not part of prompt resolution (TASK-025).
+        if (!request.template) {
+          const resolved = await this.promptResolutionService.resolve({
+            departmentId: consultation.departmentId ?? undefined,
+            explicitTemplate: request.template,
+          });
+
+          if (!request.template) {
+            request = { ...request, template: resolved.template };
+          }
+
+          this.logger.debug({
+            message: 'Prompt config resolved for summary job',
+            jobId,
+            resolvedFrom: resolved.resolvedFrom,
+            dnaStyleId: request.dnaStyleId,
+            template: request.template,
+          });
+        }
+
+        // Get content from selected context items or all transcriptions
+        let content = '';
+        if (request.contextItemIds?.length) {
+          const contextItems = await Promise.all(request.contextItemIds.map((id) => this.contextItemRepository.findById(id)));
+          content = contextItems
+            .filter(Boolean)
+            .map((c) => c!.content)
+            .join('\n\n');
+        } else {
+          // Get all transcripts for this consultation
+          const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
+          content = transcripts.map((c) => c.content).join('\n\n');
+        }
+
+        if (!content.trim()) {
+          throw new Error('No content available for summary generation');
+        }
+
+        const latestPreSummary = await this.contextItemRepository.findLatestPreSummary(consultationId);
+        const assembledPrompt = await this.promptAssemblyService.assemble({
           departmentId: consultation.departmentId ?? undefined,
+          promptType: consultation.parentConsultationId ? 'revisit' : 'new-patient',
+          transcript: content,
+          conversationLanguage: this.resolveConversationLanguage(request.options),
+          dnaStyleId: request.dnaStyleId,
+          preSummaryText: latestPreSummary?.content ?? undefined,
           explicitTemplate: request.template,
         });
 
-        if (!request.template) {
-          request = { ...request, template: resolved.template };
-        }
+        // Step 2: Calling AI service (30%)
+        await this.jobService.notifyProgress(jobId, 30, 'Generating summary with AI');
 
-        this.logger.debug({
-          message: 'Prompt config resolved for summary job',
+        const smrResponse = await this.callSmrService(
+          assembledPrompt,
+          {
+            ...request,
+            options: {
+              ...request.options,
+              promptResolvedFrom: assembledPrompt.resolvedFrom,
+              promptHyperparameters: assembledPrompt.hyperparameters,
+            },
+          },
           jobId,
-          resolvedFrom: resolved.resolvedFrom,
+        );
+
+        // Step 3: Saving results (70%)
+        await this.jobService.notifyProgress(jobId, 70, 'Saving results');
+
+        const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId);
+
+        const savedContext = await this.contextItemRepository.create(contextItem);
+
+        // Step 4: Complete (100%)
+        const result: SummaryJobResult = {
+          contextItemId: savedContext.id,
+          content: savedContext.content,
+          summaryMeta: {
+            aiModelId: smrResponse.modelName,
+            processingTimeMs: smrResponse.processingTimeMs,
+            inputTokens: smrResponse.inputTokens,
+            outputTokens: smrResponse.outputTokens,
+          },
+        };
+
+        await this.jobService.notifyComplete(jobId, result);
+
+        // Emit SummaryGenerated event for auto-pipeline (GAP-1)
+        const isAutoGenerated = job.data.request.options?.autoGenerated === true;
+        this.eventEmitter.emit(ConsultationPipelineEvent.SummaryGenerated, {
+          consultationId,
+          tenantId,
+          userId,
+          timestamp: new Date().toISOString(),
+          correlationId: job.data.request.options?.correlationId as string | undefined,
+          contextItemId: savedContext.id,
+          jobId,
           dnaStyleId: request.dnaStyleId,
           template: request.template,
-        });
-      }
+          isAutoGenerated,
+          summaryMeta: result.summaryMeta,
+        } satisfies SummaryGeneratedPayload);
 
-      // Get content from selected context items or all transcriptions
-      let content = '';
-      if (request.contextItemIds?.length) {
-        const contextItems = await Promise.all(request.contextItemIds.map((id) => this.contextItemRepository.findById(id)));
-        content = contextItems
-          .filter(Boolean)
-          .map((c) => c!.content)
-          .join('\n\n');
-      } else {
-        // Get all transcripts for this consultation
-        const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
-        content = transcripts.map((c) => c.content).join('\n\n');
-      }
+        const duration = endTimer();
+        this.jobMetrics.recordJobComplete(JobQueue.GenerateSummary, 'SummaryProcessor', duration);
 
-      if (!content.trim()) {
-        throw new Error('No content available for summary generation');
-      }
-
-      const latestPreSummary = await this.contextItemRepository.findLatestPreSummary(consultationId);
-      const assembledPrompt = await this.promptAssemblyService.assemble({
-        departmentId: consultation.departmentId ?? undefined,
-        promptType: consultation.parentConsultationId ? 'revisit' : 'new-patient',
-        transcript: content,
-        conversationLanguage: this.resolveConversationLanguage(request.options),
-        dnaStyleId: request.dnaStyleId,
-        preSummaryText: latestPreSummary?.content ?? undefined,
-        explicitTemplate: request.template,
-      });
-
-      // Step 2: Calling AI service (30%)
-      await this.jobService.notifyProgress(jobId, 30, 'Generating summary with AI');
-
-      const smrResponse = await this.callSmrService(
-        assembledPrompt,
-        {
-          ...request,
-          options: {
-            ...request.options,
-            promptResolvedFrom: assembledPrompt.resolvedFrom,
-            promptHyperparameters: assembledPrompt.hyperparameters,
-          },
-        },
-        jobId,
-      );
-
-      // Step 3: Saving results (70%)
-      await this.jobService.notifyProgress(jobId, 70, 'Saving results');
-
-      const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId);
-
-      const savedContext = await this.contextItemRepository.create(contextItem);
-
-      // Step 4: Complete (100%)
-      const result: SummaryJobResult = {
-        contextItemId: savedContext.id,
-        content: savedContext.content,
-        summaryMeta: {
-          aiModelId: smrResponse.modelName,
+        this.logger.log({
+          message: 'Summary job completed',
+          jobId,
+          contextItemId: savedContext.id,
           processingTimeMs: smrResponse.processingTimeMs,
-          inputTokens: smrResponse.inputTokens,
-          outputTokens: smrResponse.outputTokens,
-        },
-      };
+          isAutoGenerated,
+        });
 
-      await this.jobService.notifyComplete(jobId, result);
-
-      // Emit SummaryGenerated event for auto-pipeline (GAP-1)
-      const isAutoGenerated = job.data.request.options?.autoGenerated === true;
-      this.eventEmitter.emit(ConsultationPipelineEvent.SummaryGenerated, {
-        consultationId,
-        tenantId,
-        userId,
-        timestamp: new Date().toISOString(),
-        correlationId: job.data.request.options?.correlationId as string | undefined,
-        contextItemId: savedContext.id,
-        jobId,
-        dnaStyleId: request.dnaStyleId,
-        template: request.template,
-        isAutoGenerated,
-        summaryMeta: result.summaryMeta,
-      } satisfies SummaryGeneratedPayload);
-
-      const duration = endTimer();
-      this.jobMetrics.recordJobComplete(JobQueue.GenerateSummary, 'SummaryProcessor', duration);
-
-      this.logger.log({
-        message: 'Summary job completed',
-        jobId,
-        contextItemId: savedContext.id,
-        processingTimeMs: smrResponse.processingTimeMs,
-        isAutoGenerated,
-      });
-
-      return result;
-    } catch (error) {
-      endTimer();
-      this.jobMetrics.recordJobFailed(JobQueue.GenerateSummary, 'SummaryProcessor', error instanceof Error ? error.constructor.name : 'UnknownError');
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error({
-        message: 'Summary job failed',
-        jobId,
-        error: errorMessage,
-      });
-      await this.jobService.notifyFailed(jobId, errorMessage);
-      throw error;
-    }
+        return result;
+      } catch (error) {
+        endTimer();
+        this.jobMetrics.recordJobFailed(JobQueue.GenerateSummary, 'SummaryProcessor', error instanceof Error ? error.constructor.name : 'UnknownError');
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error({
+          message: 'Summary job failed',
+          jobId,
+          error: errorMessage,
+        });
+        await this.jobService.notifyFailed(jobId, errorMessage);
+        throw error;
+      }
+    });
   }
 
   private async callSmrService(
