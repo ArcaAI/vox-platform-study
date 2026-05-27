@@ -1094,4 +1094,204 @@ describe('ConsultationService', () => {
             });
         });
     });
+
+    // ============================================================
+    // TASK-306 P2.1 (audit C-1 / AC-8) — Consultation read-paths
+    // defense-in-depth.
+    //
+    // The three read methods (`getById`, `getByIdWithRelations`,
+    // `getConsultationChain`) today rely SOLELY on the Prisma
+    // `tenantScope` extension to filter foreign-tenant rows. If a
+    // future PR ever bypasses the extension (raw query, platform-
+    // admin path, mocked CLS in a test, background job with stale
+    // CLS) the methods silently return foreign-tenant data.
+    //
+    // Service-layer assertions after the repo call provide an
+    // EXPLICIT second line of defence: a generic
+    // `NotFoundException('Resource not found')` on tenant mismatch
+    // and `BadRequestException` when the caller has no CLS tenant.
+    //
+    // These tests mock the repository to RETURN foreign-tenant rows
+    // (simulating an extension bypass) so the cross-tenant negatives
+    // are red today and green after the service-layer guard lands.
+    // ============================================================
+    describe('TASK-306 P2.1 — Consultation read-paths defense-in-depth', () => {
+        describe('getById', () => {
+            it('returns DTO when the fetched entity tenant matches caller CLS tenant (sanity)', async () => {
+                const consultation = createMockConsultationEntity({
+                    id: 'consultation-id-1',
+                    tenantId: 'tenant-1',
+                });
+                mockConsultationRepository.findWithContext.mockResolvedValue(consultation);
+
+                const result = await service.getById('consultation-id-1');
+
+                expect(result).not.toBeNull();
+                expect(result?.id).toBe('consultation-id-1');
+                expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                    SysEventType.ResourceViewed,
+                    expect.objectContaining({ resourceId: 'consultation-id-1' }),
+                );
+            });
+
+            it('throws NotFoundException with generic message when the fetched entity belongs to another tenant', async () => {
+                const foreign = createMockConsultationEntity({
+                    id: 'consultation-id-foreign',
+                    tenantId: 'tenant-OTHER',
+                });
+                mockConsultationRepository.findWithContext.mockResolvedValue(foreign);
+
+                await expect(
+                    service.getById('consultation-id-foreign'),
+                ).rejects.toThrow(NotFoundException);
+                await expect(
+                    service.getById('consultation-id-foreign'),
+                ).rejects.toThrow('Resource not found');
+
+                // Guard must short-circuit BEFORE the SysEvent broadcast: the
+                // caller never sees a `ResourceViewed` event for a row they
+                // should not be aware of.
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('throws fail-closed when CLS tenantId is missing and the repo returns a row', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'tenantId') return null;
+                    if (key === 'user') return { id: 'user-id-1' };
+                    return null;
+                });
+                const consultation = createMockConsultationEntity({
+                    id: 'consultation-id-1',
+                    tenantId: 'tenant-1',
+                });
+                mockConsultationRepository.findWithContext.mockResolvedValue(consultation);
+
+                // `assertEqualTenants` raises BadRequestException when either
+                // side's tenantId is missing — background / unprovisioned
+                // contexts must fail closed rather than leak the row.
+                await expect(
+                    service.getById('consultation-id-1'),
+                ).rejects.toThrow(BadRequestException);
+
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('getByIdWithRelations', () => {
+            it('throws NotFoundException with generic message when the fetched entity belongs to another tenant', async () => {
+                const foreign = createMockConsultationEntity({
+                    id: 'consultation-id-foreign',
+                    tenantId: 'tenant-OTHER',
+                    Doctor: { id: 'doctor-x', UserProfile: { firstName: 'A', lastName: 'B' } },
+                    Department: { id: 'dept-x', code: 'X', name: 'X' },
+                });
+                mockConsultationRepository.findWithRelations.mockResolvedValue(foreign);
+
+                await expect(
+                    service.getByIdWithRelations('consultation-id-foreign'),
+                ).rejects.toThrow(NotFoundException);
+                await expect(
+                    service.getByIdWithRelations('consultation-id-foreign'),
+                ).rejects.toThrow('Resource not found');
+
+                // Guard must short-circuit BEFORE the SysEvent broadcast so
+                // the caller never sees a `ResourceViewed` for relations
+                // they should not be aware of.
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('throws fail-closed when CLS tenantId is missing and the repo returns a row', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'tenantId') return null;
+                    if (key === 'user') return { id: 'user-id-1' };
+                    return null;
+                });
+                const consultation = createMockConsultationEntity({
+                    id: 'consultation-id-1',
+                    tenantId: 'tenant-1',
+                });
+                mockConsultationRepository.findWithRelations.mockResolvedValue(consultation);
+
+                await expect(
+                    service.getByIdWithRelations('consultation-id-1'),
+                ).rejects.toThrow(BadRequestException);
+
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('getConsultationChain', () => {
+            it('returns all rows when the entire chain lives in the caller tenant', async () => {
+                const chain = [
+                    createMockConsultationEntity({ id: 'parent-id', tenantId: 'tenant-1' }),
+                    createMockConsultationEntity({ id: 'child-1', tenantId: 'tenant-1', parentConsultationId: 'parent-id' }),
+                    createMockConsultationEntity({ id: 'child-2', tenantId: 'tenant-1', parentConsultationId: 'parent-id' }),
+                ];
+                mockConsultationRepository.findConsultationChain.mockResolvedValue(chain);
+
+                const result = await service.getConsultationChain('parent-id');
+
+                expect(result).toHaveLength(3);
+                expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                    SysEventType.ResourceViewed,
+                    expect.objectContaining({ data: { consultationId: 'parent-id', chainCount: 3 } }),
+                );
+            });
+
+            it('filters out foreign-tenant rows when the chain straddles tenants', async () => {
+                const chain = [
+                    createMockConsultationEntity({ id: 'parent-id', tenantId: 'tenant-1' }),
+                    createMockConsultationEntity({ id: 'foreign-child', tenantId: 'tenant-OTHER', parentConsultationId: 'parent-id' }),
+                ];
+                mockConsultationRepository.findConsultationChain.mockResolvedValue(chain);
+
+                const result = await service.getConsultationChain('parent-id');
+
+                // Only the own-tenant row survives the filter; the caller
+                // never learns the foreign row exists.
+                expect(result).toHaveLength(1);
+                expect(result[0].id).toBe('parent-id');
+                expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                    SysEventType.ResourceViewed,
+                    expect.objectContaining({ data: { consultationId: 'parent-id', chainCount: 1 } }),
+                );
+            });
+
+            it('throws NotFoundException when EVERY returned chain row is foreign-tenant', async () => {
+                // Repo returns a non-empty chain but ALL rows live in other
+                // tenants. Returning [] here would leak existence by absence
+                // (caller learns "chain exists but nothing visible"), so the
+                // service must throw the generic NotFoundException instead.
+                const chain = [
+                    createMockConsultationEntity({ id: 'foreign-parent', tenantId: 'tenant-OTHER' }),
+                    createMockConsultationEntity({ id: 'foreign-child', tenantId: 'tenant-OTHER-2', parentConsultationId: 'foreign-parent' }),
+                ];
+                mockConsultationRepository.findConsultationChain.mockResolvedValue(chain);
+
+                await expect(
+                    service.getConsultationChain('foreign-parent'),
+                ).rejects.toThrow(NotFoundException);
+                await expect(
+                    service.getConsultationChain('foreign-parent'),
+                ).rejects.toThrow('Resource not found');
+
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('throws fail-closed when CLS tenantId is missing', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'tenantId') return null;
+                    if (key === 'user') return { id: 'user-id-1' };
+                    return null;
+                });
+
+                await expect(
+                    service.getConsultationChain('any-id'),
+                ).rejects.toThrow(BadRequestException);
+
+                // Fail-closed must short-circuit BEFORE the repo round-trip.
+                expect(mockConsultationRepository.findConsultationChain).not.toHaveBeenCalled();
+            });
+        });
+    });
 });

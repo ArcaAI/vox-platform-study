@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -12,7 +12,7 @@ import {
 import { IConsultationService } from './IConsultationService';
 import { OpenConsultationRequest, ConsultationResponse, PaginatedConsultationResponse } from './dto';
 import { ConsultationDtoMapper } from './consultation.dto.mapper';
-import { BaseService, assertParentInScope, assertUserBelongsToTenant } from '../../../common';
+import { BaseService, assertEqualTenants, assertParentInScope, assertUserBelongsToTenant } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 
 /**
@@ -179,10 +179,21 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
   /**
    * Get consultation by ID with context
+   *
+   * TASK-306 P2.1 (audit C-1 / AC-8) — defense-in-depth: the Prisma
+   * `tenantScope` extension already filters foreign-tenant rows on
+   * `findWithContext`, but an explicit service-layer assert provides a
+   * second line so the method still refuses to leak data if the
+   * extension is ever bypassed (raw query, platform-admin path, stale
+   * CLS in a background job). `assertEqualTenants` throws a generic
+   * `NotFoundException('Resource not found')` on mismatch — no model /
+   * id echo — and `BadRequestException` when CLS has no tenant.
    */
   async getById(id: string): Promise<ConsultationResponse | null> {
     const consultation = await this.consultationRepository.findWithContext(id);
     if (!consultation) return null;
+
+    assertEqualTenants(consultation, { tenantId: this.tenantId });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: consultation.id,
@@ -194,10 +205,19 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
   /**
    * Get consultation by ID with all relations (Doctor, Department, Context)
+   *
+   * TASK-306 P2.1 (audit C-1 / AC-8) — defense-in-depth: same posture as
+   * `getById`. The Prisma `tenantScope` extension filters foreign-tenant
+   * rows on `findWithRelations`, but the service-layer assert provides
+   * an explicit second line on PHI relations so an extension bypass or
+   * stale-CLS background call still fails closed with a generic
+   * `NotFoundException('Resource not found')`.
    */
   async getByIdWithRelations(id: string): Promise<ConsultationResponse | null> {
     const consultation = await this.consultationRepository.findWithRelations(id);
     if (!consultation) return null;
+
+    assertEqualTenants(consultation, { tenantId: this.tenantId });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: consultation.id,
@@ -249,15 +269,40 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
   /**
    * Get consultation chain (parent + all children)
+   *
+   * TASK-306 P2.1 (audit C-1 / AC-8) — defense-in-depth: unlike the two
+   * single-id reads, the chain query joins by `parentConsultationId` and
+   * can in principle return rows from multiple tenants if the FK was
+   * ever poisoned cross-tenant (or the Prisma extension is bypassed).
+   *
+   * The service therefore:
+   *   1. Fails closed when CLS has no tenant (no background reads).
+   *   2. Filters the returned chain to the caller's tenant BEFORE
+   *      mapping to DTO so foreign-tenant rows are never serialised.
+   *   3. Throws `NotFoundException` when the repo did return rows but
+   *      NONE belong to the caller — returning `[]` in that case would
+   *      leak existence by absence (caller learns the chain root is
+   *      visible to *someone*, just not them).
    */
   async getConsultationChain(consultationId: string): Promise<ConsultationResponse[]> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
     const consultations = await this.consultationRepository.findConsultationChain(consultationId);
 
+    const inTenant = consultations.filter((c) => c.tenantId === tenantId);
+
+    if (consultations.length > 0 && inTenant.length === 0) {
+      throw new NotFoundException('Resource not found');
+    }
+
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      data: { consultationId, chainCount: consultations.length },
+      data: { consultationId, chainCount: inTenant.length },
     });
 
-    return consultations.map((c) => ConsultationDtoMapper.toResponse(c));
+    return inTenant.map((c) => ConsultationDtoMapper.toResponse(c));
   }
 
   /**
