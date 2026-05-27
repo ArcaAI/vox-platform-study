@@ -1161,6 +1161,17 @@ describe('ResourceSubscriptionService', () => {
 
                 await expect(service.fetchById('sub-foreign')).rejects.toThrow(NotFoundException);
                 await expect(service.fetchById('sub-foreign')).rejects.toThrow('Resource not found');
+
+                // TASK-306 306-F8 — pin "no audit-log leak on denied read":
+                // the assertEqualTenants throw must short-circuit BEFORE the
+                // ResourceViewed broadcast. Structurally guaranteed by the
+                // guard's throw position, but the explicit negative-assertion
+                // makes the contract self-evident at the test level (matches
+                // the existing update/deleteById denial-test pattern).
+                expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+                    SysEventType.ResourceViewed,
+                    expect.anything(),
+                );
             });
 
             it('allows a SUPER_ADMIN to read a subscription owned by another tenant (admin bypass)', async () => {
