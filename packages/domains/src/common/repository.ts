@@ -300,10 +300,6 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     return await this.db.query(query);
   }
 
-  public async rawQueryUnsafe(query: string): Promise<unknown> {
-    return await this.db.queryRawUnsafe(query);
-  }
-
   public async runQuery(query: QueryBuilder<DatabaseModel>): Promise<DomainEntity | DomainEntity[] | null> {
     const builtQuery = query.Build();
     return await this.db.findMany(builtQuery);
@@ -315,11 +311,6 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
 
   public $(): QueryBuilder<DatabaseModel> {
     return this.query();
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public $bulk(txns: any[]): Promise<void> {
-    return this.db.transaction(txns);
   }
 }
 

@@ -84,8 +84,6 @@ const mockDb = {
   update: vi.fn(),
   delete: vi.fn(),
   query: vi.fn(),
-  queryRawUnsafe: vi.fn(),
-  transaction: vi.fn(),
 };
 
 // Mock unit of work service
@@ -467,27 +465,6 @@ describe('Repository', () => {
       await repository.rawQuery('SELECT * FROM test');
 
       expect(mockDb.query).toHaveBeenCalledWith('SELECT * FROM test');
-    });
-
-    it('should execute raw unsafe query', async () => {
-      mockDb.queryRawUnsafe.mockResolvedValue([{ id: '1' }]);
-
-      await repository.rawQueryUnsafe('SELECT * FROM test WHERE id = 1');
-
-      expect(mockDb.queryRawUnsafe).toHaveBeenCalledWith(
-        'SELECT * FROM test WHERE id = 1'
-      );
-    });
-  });
-
-  describe('bulk operations', () => {
-    it('should execute bulk transactions', async () => {
-      const transactions = [{ type: 'create' }, { type: 'update' }];
-      mockDb.transaction.mockResolvedValue(undefined);
-
-      await repository.$bulk(transactions);
-
-      expect(mockDb.transaction).toHaveBeenCalledWith(transactions);
     });
   });
 
