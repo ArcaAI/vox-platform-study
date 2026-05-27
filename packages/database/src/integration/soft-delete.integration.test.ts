@@ -175,29 +175,35 @@ describe('Soft-Delete Integration Tests', () => {
       });
     });
 
-    describe('findUnique behavior (documented limitation)', () => {
-      it('should return DELETED records (no soft-delete filter on findUnique)', async () => {
+    describe('findUnique behavior (soft-delete aware as of TASK-305 B.12)', () => {
+      it('should NOT return DELETED records (findUnique now applies soft-delete filter)', async () => {
         const deleted = await createTestDepartment('DEPT-DELETED', 'Deleted Department', 'DELETED');
 
-        // findUnique does NOT apply soft-delete filter
         const result = await extendedPrisma.department.findUnique({
           where: { id: deleted.id },
         });
 
-        // This is expected behavior - findUnique returns the record regardless of status
+        expect(result).toBeNull();
+      });
+
+      it('should return DELETED records when caller opts in via explicit resourceStatus', async () => {
+        const deleted = await createTestDepartment('DEPT-DELETED', 'Deleted Department', 'DELETED');
+
+        const result = await extendedPrisma.department.findUnique({
+          where: { id: deleted.id, resourceStatus: 'DELETED' },
+        });
+
         expect(result).not.toBeNull();
         expect(result?.resourceStatus).toBe('DELETED');
       });
 
-      it('should use findFirst for soft-delete aware unique lookups', async () => {
+      it('findFirst with unique field continues to apply soft-delete filter (parity)', async () => {
         const deleted = await createTestDepartment('DEPT-DELETED', 'Deleted Department', 'DELETED');
 
-        // Use findFirst with unique field for soft-delete filtering
         const result = await extendedPrisma.department.findFirst({
           where: { id: deleted.id },
         });
 
-        // findFirst applies soft-delete filter
         expect(result).toBeNull();
       });
     });
