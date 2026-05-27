@@ -7,6 +7,30 @@ import { CorePrisma, CoreDatabaseService } from '@arcaai/domains';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DatabaseContext = any;
 
+/**
+ * TASK-306 W5.5.3 — `transactionClient` caller sweep result
+ * --------------------------------------------------------
+ * After the W5.5.2 fix added the canonical `runInTransaction(work)`
+ * method, an `rg "transactionClient" packages/applications/src
+ * packages/domains/src` sweep returned ONLY hits inside the unit-of-work
+ * implementation itself (its private field, the CLS key constant, its
+ * tests). NO production caller exists that uses the
+ * `startTransaction/endTransaction/transactionClient` wrapper pattern —
+ * the proven production transactional flow is
+ * `this.databaseService.baseClient.$transaction(callback)` invoked
+ * directly (see `TenantService` TASK-302 D.4 for the canonical example).
+ *
+ * The two integration-test stubs that reference `startTransaction` /
+ * `endTransaction` at
+ * `packages/domains/src/integration/repository-soft-delete.integration.test.ts:40-41`
+ * are mock implementations of the IUnitOfWork shape; they are not call
+ * sites and do not need migration.
+ *
+ * Net: the W5.5.3 sweep was a verification — no migration was required,
+ * which is the success state per the plan README (Wave 5.5 verify
+ * gate "rg 'baseClient\\.\\$transaction' packages/applications returns
+ * only documented exceptions").
+ */
 @Injectable()
 export class CoreUnitOfWorkService {
   private readonly TRANSACTION_CLIENT_KEY = 'coreTransactionClient';
