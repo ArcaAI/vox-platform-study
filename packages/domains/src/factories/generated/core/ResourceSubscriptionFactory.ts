@@ -15,7 +15,7 @@ export interface CreateResourceSubscriptionProps extends BaseEntityFactoryCreate
   subscriptionMetadata?: IResourceSubscriptionEntity['subscriptionMetadata'];
   Subscribers?: IResourceSubscriptionEntity['Subscribers'];
   Notifications?: IResourceSubscriptionEntity['Notifications'];
-  tenantId?: IResourceSubscriptionEntity['tenantId'];
+  tenantId: IResourceSubscriptionEntity['tenantId'];
   Tenant?: IResourceSubscriptionEntity['Tenant'];
   tags?: IResourceSubscriptionEntity['tags'];
   Tags?: IResourceSubscriptionEntity['Tags'];
@@ -46,7 +46,7 @@ export class ResourceSubscriptionFactory {
       subscriptionMetadata: props.subscriptionMetadata ?? null,
       Subscribers: props.Subscribers ?? [],
       Notifications: props.Notifications ?? [],
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
       Tenant: props.Tenant ?? null,
       tags: props.tags ?? [],
       Tags: props.Tags ?? [],

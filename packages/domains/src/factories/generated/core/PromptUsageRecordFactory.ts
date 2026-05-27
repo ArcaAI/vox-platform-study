@@ -11,7 +11,7 @@ export interface CreatePromptUsageRecordProps extends BaseEntityFactoryCreatePro
   consultationId?: string | null;
   doctorId?: string | null;
   departmentId?: string | null;
-  tenantId?: string;
+  tenantId: string;
   createdAt?: Date;
   updatedAt?: Date;
   createdBy?: string | null;
@@ -28,7 +28,7 @@ export class PromptUsageRecordFactory {
       updatedAt: props.updatedAt || now,
       createdBy: props.createdBy ?? null,
       updatedBy: props.updatedBy ?? null,
-      tenantId: props.tenantId ?? '50000000-0000-0000-0000-000000000000',
+      tenantId: props.tenantId,
       promptTemplateId: props.promptTemplateId ?? null,
       promptVersionNumber: props.promptVersionNumber ?? null,
       consultationId: props.consultationId ?? null,

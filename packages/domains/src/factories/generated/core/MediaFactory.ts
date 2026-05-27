@@ -15,7 +15,7 @@ export interface CreateMediaProps extends BaseEntityFactoryCreateProps {
   size: IMediaEntity['size'];
   hash: IMediaEntity['hash'];
   UserMedias?: IMediaEntity['UserMedias'];
-  tenantId?: IMediaEntity['tenantId'];
+  tenantId: IMediaEntity['tenantId'];
   Tenant?: IMediaEntity['Tenant'];
   tags?: IMediaEntity['tags'];
   Tags?: IMediaEntity['Tags'];
@@ -46,7 +46,7 @@ export class MediaFactory {
       size: props.size,
       hash: props.hash,
       UserMedias: props.UserMedias ?? [],
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
       Tenant: props.Tenant ?? null,
       tags: props.tags ?? [],
       Tags: props.Tags ?? [],

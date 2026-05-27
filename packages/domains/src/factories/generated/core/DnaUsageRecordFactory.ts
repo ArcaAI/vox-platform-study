@@ -11,7 +11,7 @@ export interface CreateDnaUsageRecordProps extends BaseEntityFactoryCreateProps 
   dnaVersionNumber?: number | null;
   consultationId?: string | null;
   departmentId?: string | null;
-  tenantId?: string;
+  tenantId: string;
   createdAt?: Date;
   updatedAt?: Date;
   createdBy?: string | null;
@@ -28,7 +28,7 @@ export class DnaUsageRecordFactory {
       updatedAt: props.updatedAt || now,
       createdBy: props.createdBy ?? null,
       updatedBy: props.updatedBy ?? null,
-      tenantId: props.tenantId ?? '50000000-0000-0000-0000-000000000000',
+      tenantId: props.tenantId,
       doctorId: props.doctorId ?? null,
       dnaReportId: props.dnaReportId ?? null,
       dnaVersionNumber: props.dnaVersionNumber ?? null,

@@ -27,7 +27,7 @@ export interface CreateApiKeyProps extends BaseEntityFactoryCreateProps {
   description?: IApiKeyEntity['description'];
   environment?: IApiKeyEntity['environment'];
   userId?: IApiKeyEntity['userId'];
-  tenantId?: IApiKeyEntity['tenantId'];
+  tenantId: IApiKeyEntity['tenantId'];
   Tenant?: IApiKeyEntity['Tenant'];
 
   createdAt?: IApiKeyEntity['createdAt'];
@@ -68,7 +68,7 @@ export class ApiKeyFactory {
       description: props.description ?? null,
       environment: props.environment ?? null,
       userId: props.userId ?? null,
-      tenantId: props.tenantId ?? null,
+      tenantId: props.tenantId,
       Tenant: props.Tenant ?? null,
     });
   }

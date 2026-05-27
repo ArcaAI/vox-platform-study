@@ -20,7 +20,7 @@ export interface CreateAiModelProps extends BaseEntityFactoryCreateProps {
   format: IAiModelEntity['format'];
   memorySizeMb?: IAiModelEntity['memorySizeMb'];
   computeType?: IAiModelEntity['computeType'];
-  tenantId?: IAiModelEntity['tenantId'];
+  tenantId: IAiModelEntity['tenantId'];
   tags?: IAiModelEntity['tags'];
 
   createdAt?: IAiModelEntity['createdAt'];
@@ -62,7 +62,7 @@ export class AiModelFactory {
       downloadedAt: null,
       fileSizeMb: null,
       checksum: null,
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
       tags: props.tags ?? [],
     });
   }

@@ -16,7 +16,7 @@ export interface CreateAudioRecordingProps extends BaseEntityFactoryCreateProps 
   language?: IAudioRecordingEntity['language'];
   sequenceNumber?: IAudioRecordingEntity['sequenceNumber'];
   recordedAt?: IAudioRecordingEntity['recordedAt'];
-  tenantId?: IAudioRecordingEntity['tenantId'];
+  tenantId: IAudioRecordingEntity['tenantId'];
 
   createdAt?: IAudioRecordingEntity['createdAt'];
 }
@@ -47,7 +47,7 @@ export class AudioRecordingFactory {
       language: props.language ?? null,
       sequenceNumber: props.sequenceNumber ?? 1,
       recordedAt: props.recordedAt ?? null,
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
     });
   }
 
