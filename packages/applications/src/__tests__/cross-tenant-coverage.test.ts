@@ -68,14 +68,18 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
   {
     name: 'audit/authorization-audit',
     file: 'services/audit/__tests__/authorization-audit.service.test.ts',
-    minTests: 5,
-    marker: /TASK-305 D\.8|Multi-tenant scoping/,
+    // TASK-306 P1.2 added 3 new it() blocks under the `TASK-306 P1.2`
+    // marker (CLS-derived tenantId on logToDatabase). Bumped 5 → 8.
+    minTests: 8,
+    marker: /TASK-305 D\.8|Multi-tenant scoping|TASK-306/,
   },
   {
     name: 'apiKey',
     file: 'services/apiKey/__tests__/apikey.service.test.ts',
-    minTests: 10,
-    marker: /TASK-305 D\.5|Multi-tenant scoping/,
+    // TASK-306 P1.5 added 3 new it() blocks under the `TASK-306 P1.5`
+    // marker (fetchAllByTenantId CLS gate). Bumped 10 → 13.
+    minTests: 13,
+    marker: /TASK-305 D\.5|Multi-tenant scoping|TASK-306/,
   },
   {
     name: 'consultation/consultation',
@@ -116,14 +120,40 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
   {
     name: 'notification',
     file: 'services/notification/__tests__/notification.service.test.ts',
-    minTests: 10,
-    marker: /TASK-305 D\.5|Multi-tenant scoping/,
+    // TASK-306 P1.5 added 3 new it() blocks under the `TASK-306 P1.5`
+    // marker (fetchAllByTenantId CLS gate). Bumped 10 → 13.
+    minTests: 13,
+    marker: /TASK-305 D\.5|Multi-tenant scoping|TASK-306/,
   },
   {
     name: 'user/userRoleAssignment',
     file: 'services/user/userRoleAssignment/__tests__/userRoleAssignment.service.test.ts',
     minTests: 3,
     marker: /TASK-305 D\.7|tenantId pinning/i,
+  },
+  /*
+   * TASK-306 W5.1 — two services that previously had no cross-tenant
+   * aggregator entry. Each tracks its own `describe('TASK-306 P1.x ...')`
+   * block via a `TASK-306` marker so a future delete of the block trips
+   * CI (mirrors the W5.5.6 anti-regression intent).
+   */
+  {
+    name: 'tenant',
+    file: 'services/tenant/__tests__/tenant.service.test.ts',
+    // TASK-306 P1.3 added 6 it() blocks (3 per method: fetchById +
+    // fetchByCodeName, same-tenant / cross-tenant non-admin /
+    // cross-tenant SUPER_ADMIN).
+    minTests: 6,
+    marker: /TASK-306 P1\.3/,
+  },
+  {
+    name: 'webhook',
+    file: 'services/webhook/__tests__/webhook.service.test.ts',
+    // TASK-306 P1.4 added 3 it() blocks under the
+    // `resolveEffectiveTenantId` describe (non-admin cross-tenant pin,
+    // non-admin no-DTO pin, SUPER_ADMIN cross-tenant honor).
+    minTests: 3,
+    marker: /TASK-306 P1\.4/,
   },
 ];
 
