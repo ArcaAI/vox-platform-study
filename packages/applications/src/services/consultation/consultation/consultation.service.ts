@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -269,15 +269,40 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
   /**
    * Get consultation chain (parent + all children)
+   *
+   * TASK-306 P2.1 (audit C-1 / AC-8) — defense-in-depth: unlike the two
+   * single-id reads, the chain query joins by `parentConsultationId` and
+   * can in principle return rows from multiple tenants if the FK was
+   * ever poisoned cross-tenant (or the Prisma extension is bypassed).
+   *
+   * The service therefore:
+   *   1. Fails closed when CLS has no tenant (no background reads).
+   *   2. Filters the returned chain to the caller's tenant BEFORE
+   *      mapping to DTO so foreign-tenant rows are never serialised.
+   *   3. Throws `NotFoundException` when the repo did return rows but
+   *      NONE belong to the caller — returning `[]` in that case would
+   *      leak existence by absence (caller learns the chain root is
+   *      visible to *someone*, just not them).
    */
   async getConsultationChain(consultationId: string): Promise<ConsultationResponse[]> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
     const consultations = await this.consultationRepository.findConsultationChain(consultationId);
 
+    const inTenant = consultations.filter((c) => c.tenantId === tenantId);
+
+    if (consultations.length > 0 && inTenant.length === 0) {
+      throw new NotFoundException('Resource not found');
+    }
+
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      data: { consultationId, chainCount: consultations.length },
+      data: { consultationId, chainCount: inTenant.length },
     });
 
-    return consultations.map((c) => ConsultationDtoMapper.toResponse(c));
+    return inTenant.map((c) => ConsultationDtoMapper.toResponse(c));
   }
 
   /**
