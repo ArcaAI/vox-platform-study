@@ -51,9 +51,13 @@ const mockAuditLogRepository = {
  * Creates a complete mock AuditLogEntity matching the real entity structure.
  * Includes all fields to prevent incomplete mock anti-pattern.
  * Updated to include new fields: eventType, success (for high-performance querying)
+ *
+ * TASK-305 D.8: `tenantId` defaults to 'tenant-1' to match the CLS mock context,
+ * so existing tests that load entities by id pass the new ownership assertion.
  */
 const createMockAuditLogEntity = (overrides: Partial<{
     id: string;
+    tenantId: string | null;
     responsibleUserId: string | null;
     responsibleIp: string | null;
     resourceType: ResourceType;
@@ -72,6 +76,7 @@ const createMockAuditLogEntity = (overrides: Partial<{
 }> = {}) => {
     const entity = {
         id: overrides.id ?? 'audit-log-id-1',
+        tenantId: overrides.tenantId !== undefined ? overrides.tenantId : 'tenant-1',
         responsibleUserId: overrides.responsibleUserId ?? 'user-123',
         responsibleIp: overrides.responsibleIp ?? '192.168.1.1',
         resourceType: overrides.resourceType ?? ResourceType.User,
@@ -219,10 +224,10 @@ describe('AuditLogService', () => {
             expect(result.data).toHaveLength(1);
             expect(mockAuditLogRepository.findAll).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    where: {
+                    where: expect.objectContaining({
                         resourceId: 'user-123',
                         resourceType: 'User',
-                    },
+                    }),
                 })
             );
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
@@ -252,10 +257,10 @@ describe('AuditLogService', () => {
             expect(mockAuditLogRepository.count).toHaveBeenCalledWith(
                 expect.objectContaining({
                     search: 'test',
-                    where: {
+                    where: expect.objectContaining({
                         resourceId: 'cons-123',
                         resourceType: 'Consultation',
-                    },
+                    }),
                 })
             );
         });
@@ -276,9 +281,9 @@ describe('AuditLogService', () => {
             expect(result.data).toHaveLength(1);
             expect(mockAuditLogRepository.findAll).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    where: {
+                    where: expect.objectContaining({
                         responsibleUserId: 'creator-id',
-                    },
+                    }),
                 })
             );
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
@@ -323,6 +328,7 @@ describe('AuditLogService', () => {
     describe('deleteById', () => {
         it('should soft delete audit log successfully', async () => {
             const deletedAuditLog = createMockAuditLogEntity({ id: 'audit-123' });
+            mockAuditLogRepository.findById.mockResolvedValue(deletedAuditLog);
             mockAuditLogRepository.softDelete.mockResolvedValue(deletedAuditLog);
 
             const result = await service.deleteById('audit-123');
@@ -335,6 +341,246 @@ describe('AuditLogService', () => {
                     resourceId: 'audit-123',
                 })
             );
+        });
+    });
+
+    /**
+     * TASK-305 D.8 — Multi-tenant isolation for AuditLogService
+     *
+     * Audit finding C-5 (HIPAA §164.312(b)): fetch methods were tenant-blind,
+     * letting a Tenant-A admin enumerate every tenant's audit log.
+     *
+     * All fetch methods MUST inject `this.tenantId` from CLS into the repository
+     * `where` clause; `fetchById`/`deleteById` MUST throw `NotFoundException`
+     * (never `Forbidden` — that would leak existence) when the loaded entity's
+     * tenant does not match the caller. Only `SUPER_ADMIN` may bypass.
+     */
+    describe('Multi-tenant scoping (TASK-305 D.8)', () => {
+        describe('fetchAll', () => {
+            it('should inject caller tenantId into repository where clause', async () => {
+                mockAuditLogRepository.findAll.mockResolvedValue([]);
+                mockAuditLogRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ limit: 10, page: 1 });
+
+                expect(mockAuditLogRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: expect.objectContaining({ tenantId: 'tenant-1' }),
+                    })
+                );
+                expect(mockAuditLogRepository.count).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: expect.objectContaining({ tenantId: 'tenant-1' }),
+                    })
+                );
+            });
+
+            it('should NOT inject tenantId for SUPER_ADMIN caller', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    switch (key) {
+                        case 'user': return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                        case 'tenantId': return 'tenant-1';
+                        case 'correlationId': return 'corr-123';
+                        case 'requestIp': return '192.168.1.1';
+                        default: return null;
+                    }
+                });
+                mockAuditLogRepository.findAll.mockResolvedValue([]);
+                mockAuditLogRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ limit: 10, page: 1 });
+
+                const findAllCall = mockAuditLogRepository.findAll.mock.calls[0][0];
+                expect(findAllCall.where?.tenantId).toBeUndefined();
+                const countCall = mockAuditLogRepository.count.mock.calls[0][0];
+                expect(countCall.where?.tenantId).toBeUndefined();
+            });
+        });
+
+        describe('fetchAllByResource', () => {
+            it('should merge tenantId with existing resource filter', async () => {
+                mockAuditLogRepository.findAll.mockResolvedValue([]);
+                mockAuditLogRepository.count.mockResolvedValue(0);
+
+                await service.fetchAllByResource({
+                    limit: 10,
+                    page: 1,
+                    resourceType: 'User',
+                    resourceId: 'user-123',
+                });
+
+                expect(mockAuditLogRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: {
+                            resourceId: 'user-123',
+                            resourceType: 'User',
+                            tenantId: 'tenant-1',
+                        },
+                    })
+                );
+            });
+
+            it('should NOT inject tenantId for SUPER_ADMIN caller (cross-tenant resource lookup)', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    switch (key) {
+                        case 'user': return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                        case 'tenantId': return 'tenant-1';
+                        default: return null;
+                    }
+                });
+                mockAuditLogRepository.findAll.mockResolvedValue([]);
+                mockAuditLogRepository.count.mockResolvedValue(0);
+
+                await service.fetchAllByResource({
+                    limit: 10,
+                    page: 1,
+                    resourceType: 'User',
+                    resourceId: 'user-123',
+                });
+
+                const findAllCall = mockAuditLogRepository.findAll.mock.calls[0][0];
+                expect(findAllCall.where?.tenantId).toBeUndefined();
+                expect(findAllCall.where).toEqual({
+                    resourceId: 'user-123',
+                    resourceType: 'User',
+                });
+            });
+        });
+
+        describe('fetchAllCreatedByUser', () => {
+            it('should merge tenantId with existing user filter', async () => {
+                mockAuditLogRepository.findAll.mockResolvedValue([]);
+                mockAuditLogRepository.count.mockResolvedValue(0);
+
+                await service.fetchAllCreatedByUser({
+                    limit: 10,
+                    page: 1,
+                    userId: 'creator-id',
+                });
+
+                expect(mockAuditLogRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: {
+                            responsibleUserId: 'creator-id',
+                            tenantId: 'tenant-1',
+                        },
+                    })
+                );
+            });
+        });
+
+        describe('fetchById', () => {
+            it('should throw NotFoundException when audit log belongs to a different tenant', async () => {
+                const foreignAuditLog = createMockAuditLogEntity({
+                    id: 'audit-from-tenant-2',
+                    tenantId: 'tenant-2',
+                });
+                mockAuditLogRepository.findById.mockResolvedValue(foreignAuditLog);
+
+                await expect(service.fetchById('audit-from-tenant-2')).rejects.toThrow(
+                    'AuditLog audit-from-tenant-2 not found',
+                );
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('should NOT broadcast ResourceViewed when ownership check fails', async () => {
+                const foreignAuditLog = createMockAuditLogEntity({
+                    id: 'audit-from-tenant-2',
+                    tenantId: 'tenant-2',
+                });
+                mockAuditLogRepository.findById.mockResolvedValue(foreignAuditLog);
+
+                await expect(service.fetchById('audit-from-tenant-2')).rejects.toThrow();
+
+                expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+                    SysEventType.ResourceViewed,
+                    expect.anything(),
+                );
+            });
+
+            it('should return the audit log when SUPER_ADMIN reads a cross-tenant entry', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    switch (key) {
+                        case 'user': return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                        case 'tenantId': return 'tenant-1';
+                        default: return null;
+                    }
+                });
+                const foreignAuditLog = createMockAuditLogEntity({
+                    id: 'audit-from-tenant-2',
+                    tenantId: 'tenant-2',
+                });
+                mockAuditLogRepository.findById.mockResolvedValue(foreignAuditLog);
+
+                const result = await service.fetchById('audit-from-tenant-2');
+
+                expect(result.id).toBe('audit-from-tenant-2');
+            });
+        });
+
+        describe('deleteById', () => {
+            it('should throw NotFoundException when audit log belongs to a different tenant', async () => {
+                const foreignAuditLog = createMockAuditLogEntity({
+                    id: 'audit-from-tenant-2',
+                    tenantId: 'tenant-2',
+                });
+                mockAuditLogRepository.findById.mockResolvedValue(foreignAuditLog);
+
+                await expect(service.deleteById('audit-from-tenant-2')).rejects.toThrow(
+                    'AuditLog audit-from-tenant-2 not found',
+                );
+                expect(mockAuditLogRepository.softDelete).not.toHaveBeenCalled();
+            });
+
+            it('should NOT call softDelete when ownership check fails', async () => {
+                const foreignAuditLog = createMockAuditLogEntity({
+                    id: 'audit-from-tenant-2',
+                    tenantId: 'tenant-2',
+                });
+                mockAuditLogRepository.findById.mockResolvedValue(foreignAuditLog);
+
+                await expect(service.deleteById('audit-from-tenant-2')).rejects.toThrow();
+
+                expect(mockAuditLogRepository.softDelete).not.toHaveBeenCalled();
+            });
+
+            it('should soft delete when SUPER_ADMIN deletes a cross-tenant entry', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    switch (key) {
+                        case 'user': return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                        case 'tenantId': return 'tenant-1';
+                        default: return null;
+                    }
+                });
+                const foreignAuditLog = createMockAuditLogEntity({
+                    id: 'audit-from-tenant-2',
+                    tenantId: 'tenant-2',
+                });
+                mockAuditLogRepository.findById.mockResolvedValue(foreignAuditLog);
+                mockAuditLogRepository.softDelete.mockResolvedValue(foreignAuditLog);
+
+                const result = await service.deleteById('audit-from-tenant-2');
+
+                expect(result.id).toBe('audit-from-tenant-2');
+                expect(mockAuditLogRepository.softDelete).toHaveBeenCalledWith('audit-from-tenant-2');
+            });
+        });
+
+        describe('Missing tenant context', () => {
+            it('should throw NotFoundException on fetchAll when caller has no tenantId and is not SUPER_ADMIN', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    switch (key) {
+                        case 'user': return { id: 'user-no-tenant', roles: ['Doctor'] };
+                        case 'tenantId': return null;
+                        default: return null;
+                    }
+                });
+
+                await expect(service.fetchAll({ limit: 10, page: 1 })).rejects.toThrow(
+                    'AuditLog scope unavailable',
+                );
+                expect(mockAuditLogRepository.findAll).not.toHaveBeenCalled();
+            });
         });
     });
 
@@ -611,6 +857,10 @@ describe('AuditLogService', () => {
         });
 
         it('should propagate repository errors on softDelete', async () => {
+            // deleteById first loads via findById (for tenant ownership check),
+            // then calls softDelete. Mock findById to succeed so the failure surfaces
+            // from softDelete itself.
+            mockAuditLogRepository.findById.mockResolvedValue(createMockAuditLogEntity({ id: 'audit-123' }));
             mockAuditLogRepository.softDelete.mockRejectedValue(new Error('Delete failed'));
 
             await expect(service.deleteById('audit-123')).rejects.toThrow('Delete failed');
