@@ -6,7 +6,7 @@ import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { IDepartmentService } from './IDepartmentService';
 import { DepartmentResponse, CreateDepartmentRequest, UpdateDepartmentRequest, UpdateDepartmentPromptConfigRequest } from './dto';
 import { DepartmentDtoMapper } from './department.dto.mapper';
-import { BaseService } from '../../common';
+import { BaseService, assertParentInScope } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 
 @Injectable()
@@ -123,12 +123,14 @@ export class DepartmentService extends BaseService implements IDepartmentService
       }
     }
 
-    // Verify parent exists if provided
+    // TASK-305 D.6 (audit C-7) — verify the parent both exists AND lives
+    // in the caller's tenant. `assertParentInScope` throws
+    // `NotFoundException` (not `ForbiddenException`) on tenant mismatch
+    // to avoid leaking the existence of a cross-tenant parent. SUPER_ADMIN
+    // is intentionally NOT bypassed: a cross-tenant parent would produce
+    // a malformed tree regardless of caller role.
     if (dto.parentDepartmentId) {
-      const parent = await this.departmentRepository.findById(dto.parentDepartmentId);
-      if (!parent) {
-        throw new NotFoundException(`Parent department ${dto.parentDepartmentId} not found`);
-      }
+      await assertParentInScope(this.departmentRepository, dto.parentDepartmentId, tenantId);
     }
 
     const department = DepartmentFactory.CreateDepartment({
@@ -185,16 +187,14 @@ export class DepartmentService extends BaseService implements IDepartmentService
       }
     }
 
-    // Verify new parent exists if provided
+    // TASK-305 D.6 (audit C-7) — same cross-tenant guard as `create`. The
+    // self-parent circular-reference check stays as-is; only the existence
+    // check is replaced with the tenant-aware helper.
     if (dto.parentDepartmentId !== undefined && dto.parentDepartmentId !== null) {
-      // Prevent circular reference
       if (dto.parentDepartmentId === id) {
         throw new BadRequestException('Department cannot be its own parent');
       }
-      const parent = await this.departmentRepository.findById(dto.parentDepartmentId);
-      if (!parent) {
-        throw new NotFoundException(`Parent department ${dto.parentDepartmentId} not found`);
-      }
+      await assertParentInScope(this.departmentRepository, dto.parentDepartmentId, tenantId);
     }
 
     // Track changes for audit

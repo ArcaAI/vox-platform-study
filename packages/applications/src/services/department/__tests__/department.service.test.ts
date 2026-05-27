@@ -412,12 +412,16 @@ describe('DepartmentService', () => {
                     parentDepartmentId: 'non-existent-parent',
                 })
             ).rejects.toThrow(NotFoundException);
+            // TASK-305 D.6 — the `assertParentInScope` helper deliberately
+            // emits a generic message so the caller cannot distinguish
+            // "parent missing" from "parent in another tenant" (no
+            // existence leak across tenant boundaries).
             await expect(
                 service.create({
                     name: 'Child Department',
                     parentDepartmentId: 'non-existent-parent',
                 })
-            ).rejects.toThrow('Parent department non-existent-parent not found');
+            ).rejects.toThrow('Resource not found');
         });
 
         it('should create root department without code', async () => {
@@ -651,6 +655,170 @@ describe('DepartmentService', () => {
                     }),
                 })
             );
+        });
+    });
+
+    /**
+     * TASK-305 D.6 — Department parent must live in the caller's tenant.
+     *
+     * Audit C-7: without this check a tenant can chain a department
+     * under a parent owned by a different tenant, building a malformed
+     * cross-tenant tree. Both `create` and `update` now route the
+     * parent lookup through `assertParentInScope`, which throws
+     * `NotFoundException` (not `ForbiddenException`) on tenant mismatch
+     * to avoid leaking the parent's existence.
+     *
+     * SUPER_ADMIN is intentionally NOT bypassed here (unlike D.7's
+     * cross-tenant role assignment): a cross-tenant parent would
+     * produce a malformed tree regardless of the caller's role, so the
+     * guard is unconditional.
+     */
+    describe('TASK-305 D.6 — cross-tenant parent check', () => {
+        describe('create', () => {
+            it('rejects parent owned by another tenant with NotFoundException (no existence leak)', async () => {
+                mockDepartmentRepository.findByCode.mockResolvedValue(null);
+                const foreignParent = createMockDepartmentEntity({
+                    id: 'parent-other-tenant',
+                    tenantId: 'tenant-2', // caller's CLS tenant is 'tenant-1'
+                });
+                mockDepartmentRepository.findById.mockResolvedValue(foreignParent);
+
+                await expect(
+                    service.create({
+                        name: 'Child Department',
+                        parentDepartmentId: 'parent-other-tenant',
+                    })
+                ).rejects.toThrow(NotFoundException);
+                await expect(
+                    service.create({
+                        name: 'Child Department',
+                        parentDepartmentId: 'parent-other-tenant',
+                    })
+                ).rejects.toThrow('Resource not found');
+
+                expect(mockDepartmentRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('rejects cross-tenant parent even when caller is SUPER_ADMIN (no bypass)', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    switch (key) {
+                        case 'user':
+                            return { id: 'super-1', roles: ['SUPER_ADMIN'] };
+                        case 'tenantId':
+                            return 'tenant-1';
+                        default:
+                            return null;
+                    }
+                });
+                mockDepartmentRepository.findByCode.mockResolvedValue(null);
+                const foreignParent = createMockDepartmentEntity({
+                    id: 'parent-other-tenant',
+                    tenantId: 'tenant-2',
+                });
+                mockDepartmentRepository.findById.mockResolvedValue(foreignParent);
+
+                await expect(
+                    service.create({
+                        name: 'Child Department',
+                        parentDepartmentId: 'parent-other-tenant',
+                    })
+                ).rejects.toThrow(NotFoundException);
+                expect(mockDepartmentRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('accepts parent owned by the same tenant', async () => {
+                mockDepartmentRepository.findByCode.mockResolvedValue(null);
+                const sameTenantParent = createMockDepartmentEntity({
+                    id: 'parent-same-tenant',
+                    tenantId: 'tenant-1',
+                });
+                mockDepartmentRepository.findById.mockResolvedValue(sameTenantParent);
+                const newDepartment = createMockDepartmentEntity({
+                    id: 'new-department-id',
+                    name: 'Child Department',
+                    parentDepartmentId: 'parent-same-tenant',
+                    isRootDepartment: false,
+                });
+                mockDepartmentRepository.create.mockResolvedValue(newDepartment);
+
+                const result = await service.create({
+                    name: 'Child Department',
+                    parentDepartmentId: 'parent-same-tenant',
+                });
+
+                expect(result.id).toBe('new-department-id');
+                expect(mockDepartmentRepository.findById).toHaveBeenCalledWith('parent-same-tenant');
+                expect(mockDepartmentRepository.create).toHaveBeenCalled();
+            });
+
+            it('does not look up a parent when parentDepartmentId is omitted', async () => {
+                mockDepartmentRepository.findByCode.mockResolvedValue(null);
+                const newDepartment = createMockDepartmentEntity({
+                    id: 'new-department-id',
+                    name: 'Root Department',
+                });
+                mockDepartmentRepository.create.mockResolvedValue(newDepartment);
+
+                await service.create({ name: 'Root Department' });
+
+                expect(mockDepartmentRepository.findById).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('update', () => {
+            it('rejects a new parent owned by another tenant with NotFoundException', async () => {
+                const department = createMockDepartmentEntityWithChanges({
+                    id: 'dept-1',
+                    hasChanges: true,
+                    changes: { parentDepartmentId: 'parent-other-tenant' },
+                    version: 3,
+                });
+                const foreignParent = createMockDepartmentEntity({
+                    id: 'parent-other-tenant',
+                    tenantId: 'tenant-2',
+                });
+                // First findById -> the target department itself (in tenant-1).
+                // Second findById -> the requested parent (in tenant-2).
+                mockDepartmentRepository.findById
+                    .mockResolvedValueOnce(department)
+                    .mockResolvedValueOnce(foreignParent);
+
+                await expect(
+                    service.update('dept-1', {
+                        parentDepartmentId: 'parent-other-tenant',
+                        expectedVersion: 3,
+                    } as any)
+                ).rejects.toThrow(NotFoundException);
+                expect(mockDepartmentRepository.updateWithVersion).not.toHaveBeenCalled();
+            });
+
+            it('accepts a new parent owned by the same tenant', async () => {
+                const department = createMockDepartmentEntityWithChanges({
+                    id: 'dept-1',
+                    hasChanges: true,
+                    changes: { parentDepartmentId: 'parent-same-tenant' },
+                    version: 3,
+                });
+                const sameTenantParent = createMockDepartmentEntity({
+                    id: 'parent-same-tenant',
+                    tenantId: 'tenant-1',
+                });
+                mockDepartmentRepository.findById
+                    .mockResolvedValueOnce(department)
+                    .mockResolvedValueOnce(sameTenantParent);
+                mockDepartmentRepository.updateWithVersion.mockResolvedValue({
+                    ...department,
+                    version: 4,
+                });
+
+                const result = await service.update('dept-1', {
+                    parentDepartmentId: 'parent-same-tenant',
+                    expectedVersion: 3,
+                } as any);
+
+                expect(result.id).toBe('dept-1');
+                expect(mockDepartmentRepository.updateWithVersion).toHaveBeenCalled();
+            });
         });
     });
 });
