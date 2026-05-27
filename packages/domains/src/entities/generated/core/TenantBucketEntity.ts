@@ -70,6 +70,7 @@ export class TenantBucketEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (!this._name) {
       throw new Error('Bucket name is required');
     }

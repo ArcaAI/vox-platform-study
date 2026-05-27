@@ -144,6 +144,7 @@ export class AsrPipelineEntity extends BaseTaggedEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (!this._name || this._name.trim().length === 0) {
       throw new BusinessException('Pipeline name is required');
     }

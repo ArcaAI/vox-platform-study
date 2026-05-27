@@ -95,6 +95,7 @@ export class WebhookEntity extends BaseTaggedEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (!this._name || this._name.trim().length === 0) {
       throw new BusinessException('Webhook name is required.');
     }
