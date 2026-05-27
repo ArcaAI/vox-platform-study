@@ -206,7 +206,22 @@ export class WebhookService extends BaseService implements IWebhookService {
     return updatedWebhook;
   }
 
+  /**
+   * TASK-306 P2.3 (audit M-2 / AC-5) — load-then-assert before the
+   * soft-delete write. Pre-guard, `softDelete(id)` ran directly with no
+   * tenant check, so a Tenant-A user with knowledge of a foreign id
+   * could delete another tenant's webhook. The new pre-load+assert
+   * surfaces NotFoundException on cross-tenant ids so the foreign row
+   * is never marked deleted. SUPER_ADMIN bypasses the pre-load (saves
+   * a round-trip for admin tooling that legitimately deletes across
+   * tenants).
+   */
   async deleteById(id: EntityId): Promise<WebhookEntity> {
+    if (!this.isSuperAdmin()) {
+      const existing = await this.webhookRepository.findById(id);
+      assertEqualTenants(existing, { tenantId: this.tenantId });
+    }
+
     const webhook = await this.webhookRepository.softDelete(id);
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {

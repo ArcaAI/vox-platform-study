@@ -545,6 +545,40 @@ describe('WebhookService', () => {
                 expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalled();
             });
         });
+
+        describe('deleteById (5.3.5)', () => {
+            it('deletes when the loaded webhook belongs to the caller (same-tenant)', async () => {
+                const webhook = createMockWebhookEntity({ id: 'webhook-1', tenantId: 'tenant-1' });
+                mockWebhookRepository.findById.mockResolvedValue(webhook);
+                mockWebhookRepository.softDelete.mockResolvedValue({ ...webhook, deletedAt: new Date() });
+
+                const result = await service.deleteById('webhook-1');
+
+                expect(result.id).toBe('webhook-1');
+                expect(mockWebhookRepository.softDelete).toHaveBeenCalledWith('webhook-1');
+            });
+
+            it('throws NotFoundException + does not soft-delete for cross-tenant non-admin requests', async () => {
+                const { NotFoundException } = await import('@nestjs/common');
+                const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2' });
+                mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
+
+                await expect(service.deleteById('webhook-foreign')).rejects.toThrow(NotFoundException);
+                // Guard short-circuits BEFORE the soft-delete fires.
+                expect(mockWebhookRepository.softDelete).not.toHaveBeenCalled();
+            });
+
+            it('deletes a cross-tenant webhook when the caller is a SUPER_ADMIN (admin bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2' });
+                mockWebhookRepository.softDelete.mockResolvedValue({ ...otherWebhook, deletedAt: new Date() });
+
+                const result = await service.deleteById('webhook-foreign');
+
+                expect(result.id).toBe('webhook-foreign');
+                expect(mockWebhookRepository.softDelete).toHaveBeenCalledWith('webhook-foreign');
+            });
+        });
     });
 
     describe('fetchAll', () => {
