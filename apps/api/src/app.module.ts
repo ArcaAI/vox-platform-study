@@ -21,6 +21,7 @@ import { uuidv7 } from 'uuidv7';
 import { JwtAuthGuard } from './guards';
 import { ContextInterceptor, ExceptionInterceptor, ImpersonationAuditInterceptor, MaintenanceInterceptor, MetricsInterceptor } from './interceptors';
 import { GracefulShutdownModule } from './services';
+import { TenantContextProviderModule } from './database/tenant-context.provider';
 import { VaultPrismaFactoryModule } from './vault-prisma.module';
 import { VaultRotationWorkerModule } from './workers/vault-rotation.worker.module';
 
@@ -133,6 +134,11 @@ const common = [
   // Self-guards via SECRETS_PROVIDER=vault + VAULT_AUDIT_LOG_PATH +
   // Redis leader-lock, so it's safe to import unconditionally.
   VaultRotationWorkerModule,
+  // TASK-305 Phase B.7 — Wires ClsService → tenantScopeFilter Prisma
+  // extension at app bootstrap. Until this module is loaded, the
+  // extension treats every query as super-admin pass-through (the
+  // safe default for CLI / seed scripts that run without CLS).
+  TenantContextProviderModule,
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

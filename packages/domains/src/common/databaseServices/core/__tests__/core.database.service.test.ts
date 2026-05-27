@@ -21,7 +21,7 @@ const mockExtendedPrismaClient = {
 };
 
 vi.mock('@arcaai/database', () => ({
-  getPrismaClient: vi.fn(() => mockPrismaClient),
+  getPlatformAdminPrismaClient_Unscoped: vi.fn(() => mockPrismaClient),
   getExtendedPrismaClient: vi.fn(() => mockExtendedPrismaClient),
 }));
 
@@ -46,12 +46,12 @@ describe('CoreDatabaseService', () => {
     });
 
     it('should use shared Prisma client from @arcaai/database', async () => {
-      const { getPrismaClient, getExtendedPrismaClient } = await import('@arcaai/database');
+      const { getPlatformAdminPrismaClient_Unscoped, getExtendedPrismaClient } = await import('@arcaai/database');
 
       // Creating a new service should use the shared clients
       new CoreDatabaseService();
 
-      expect(getPrismaClient).toHaveBeenCalled();
+      expect(getPlatformAdminPrismaClient_Unscoped).toHaveBeenCalled();
       expect(getExtendedPrismaClient).toHaveBeenCalled();
     });
   });
@@ -163,7 +163,7 @@ describe('CoreDatabaseService — Vault-backed prisma factory (Phase 5 Task 5.6)
     vi.clearAllMocks();
   });
 
-  it('uses the injected VAULT_PRISMA_FACTORY when present and skips the static getPrismaClient', async () => {
+  it('uses the injected VAULT_PRISMA_FACTORY when present and skips the static getPlatformAdminPrismaClient_Unscoped', async () => {
     const vaultPrisma = {
       $connect: vi.fn().mockResolvedValue(undefined),
       $disconnect: vi.fn().mockResolvedValue(undefined),
@@ -234,13 +234,13 @@ describe('CoreDatabaseService — Vault-backed prisma factory (Phase 5 Task 5.6)
       disconnect: vi.fn().mockResolvedValue(undefined),
     }));
 
-    const { getPrismaClient, getExtendedPrismaClient } = await import('@arcaai/database');
+    const { getPlatformAdminPrismaClient_Unscoped, getExtendedPrismaClient } = await import('@arcaai/database');
 
     const { CoreDatabaseService } = await import('../core.database.service');
     const svc = new CoreDatabaseService(vaultFactory as never);
     await svc.onModuleInit();
 
-    expect(getPrismaClient).not.toHaveBeenCalled();
+    expect(getPlatformAdminPrismaClient_Unscoped).not.toHaveBeenCalled();
     expect(getExtendedPrismaClient).not.toHaveBeenCalled();
   });
 });

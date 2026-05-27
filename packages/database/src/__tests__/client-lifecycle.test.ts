@@ -109,13 +109,13 @@ describe('Singleton Pattern', () => {
     process.env = originalEnv;
   });
 
-  describe('getPrismaClient', () => {
+  describe('getPlatformAdminPrismaClient_Unscoped', () => {
     it('should return the same instance on multiple calls', async () => {
       const clientModule = await import('../client');
 
-      const first = clientModule.getPrismaClient();
-      const second = clientModule.getPrismaClient();
-      const third = clientModule.getPrismaClient();
+      const first = clientModule.getPlatformAdminPrismaClient_Unscoped();
+      const second = clientModule.getPlatformAdminPrismaClient_Unscoped();
+      const third = clientModule.getPlatformAdminPrismaClient_Unscoped();
 
       expect(first).toBe(second);
       expect(second).toBe(third);
@@ -253,9 +253,14 @@ describe('Exports', () => {
     process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
   });
 
-  it('should export getPrismaClient function', async () => {
+  it('should export getPlatformAdminPrismaClient_Unscoped function', async () => {
     const clientModule = await import('../client');
-    expect(typeof clientModule.getPrismaClient).toBe('function');
+    expect(typeof clientModule.getPlatformAdminPrismaClient_Unscoped).toBe('function');
+  });
+
+  it('should NOT export the legacy getPrismaClient name (renamed in TASK-305 B.2)', async () => {
+    const clientModule = await import('../client');
+    expect((clientModule as unknown as Record<string, unknown>).getPrismaClient).toBeUndefined();
   });
 
   it('should export getExtendedPrismaClient function', async () => {

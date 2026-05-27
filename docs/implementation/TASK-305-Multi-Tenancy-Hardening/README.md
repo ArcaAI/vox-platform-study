@@ -4,8 +4,8 @@
 |---|---|
 | **Ticket** | TASK-305-Multi-Tenancy-Hardening |
 | **Created** | 2026-05-26 |
-| **Updated** | 2026-05-26 |
-| **Status** | `Pending` — awaiting plan approval |
+| **Updated** | 2026-05-27 |
+| **Status** | `In Progress` — Wave 1 + Wave 2 (Phase A + B + D.6) merged |
 | **Classification** | Refactor + bugfix (security/compliance) |
 | **Priority** | High — HIPAA §164.312(a)(1), GDPR Art.32, SOC2 CC6.1 gap |
 | **Prior context** | `docs/multi-tenancy-audit/01..05` (5 review docs, 2026-05-25) |
@@ -401,8 +401,52 @@ These do not block plan approval — they can be answered during execution. List
 
 *Pending plan approval.*
 
-## 6. Change History
+## 6. Implementation Summary (rolling)
+
+### Wave 1 — quick fixes + service-layer guards (all 5 merged into `fix/2605-review`)
+
+| Sub-task | Branch | Merge | Verdict | Highlights |
+|---|---|---|---|---|
+| W1.1 — B.12 soft-delete `findUnique` fix + A.9 cursor rule | `task-305/w1-quickwins` | `df3a214` | APPROVED | `findUnique` now applies `applySoftDeleteFilter`; cursor rule drops sentinel default guidance |
+| W1.2 — D.1 `tenant-guards` helper | `task-305/w1-tenant-guards` | `afacbf4` | APPROVED | `assertEqualTenants` / `assertUserBelongsToTenant` / `assertParentInScope` in `packages/applications/src/common/tenant-guards.ts`; 26 unit tests |
+| W1.3 — D.7 `userRoleAssignment.create` pins `tenantId` to CLS | `task-305/w1-userrole-fix` | `f9a4fcc` | APPROVED | Closes audit C-6 BLOCKER (cross-tenant role assignment); SUPER_ADMIN bypass preserved |
+| W1.4 — D.8 `AuditLog` + `AuthorizationAudit` tenant scoping | `task-305/w1-auditlog-scoping` | `6fef53b` | APPROVED | All `fetch*` / `delete*` inject CLS `tenantId`; closes HIPAA §164.312(b) gap; 20 new cross-tenant negative tests |
+| W1.5 — D.10 remove unsafe `rawQueryUnsafe` + `$bulk` from `Repository` | `task-305/w1-repo-cleanup` | `74eb315` | APPROVED | Zero external consumers (grep-verified); shrinks `IRepository` public surface |
+
+### Wave 2 — schema + tenant-scope extension + cross-aggregate guard (3 in parallel, all merged)
+
+| Sub-task | Branch | Merge | Verdict | Highlights |
+|---|---|---|---|---|
+| W2.D6 — Department parent cross-tenant check | `task-305/w2-d6-department` | `1907862` | APPROVED-WITH-MINOR-NITS | `create`/`update` route `parentDepartmentId` through `assertParentInScope`; SUPER_ADMIN does NOT bypass (structural correctness); +6 tests |
+| W2.A — Phase A schema hardening (A.1-A.9) | `task-305/w2-phase-a` | `fb05891` | APPROVED-WITH-FOLLOWUP | 13 `.prisma` files: drop sentinel `@default`, 11 nullable→NOT NULL, scoped uniques on `Tag`/`Webhook`, 14 composite `[tenantId, X]` indexes; new `SYSTEM_TENANT_ID` seed; idempotent back-fill migration; 24 factories drop `?? ''` fallback; `BaseTenantEntity` setter `protected`, `validate()` throws on empty; `super.validate()` chained in 21 subclasses; +12 domain tests |
+| W2.B — Tenant-scope `$extends` + rename + lint guard | `task-305/w2-phase-b` | (this merge) | APPROVED-WITH-FOLLOWUP | New `packages/database/src/extensions/tenant-scope.ts` (27-model allow-list, all 16 Prisma ops hooked, bidirectional mismatch detection); composed on top of soft-delete; `getPrismaClient` → `getPlatformAdminPrismaClient_Unscoped` with 8-site ESLint allow-list; `ClsTenantContextProvider` wires `nestjs-cls`; +48 unit tests, +6 provider tests |
+
+### Cumulative test deltas (vs Wave-0 baseline)
+
+| Package | Before | After Wave 2 |
+|---|---|---|
+| `@arcaai/domains` | 1019 / 2 skipped / 9 todo | **1031 / 2 skipped / 9 todo** |
+| `@arcaai/applications` | 4082 / 4 skipped | **4108 / 4 skipped** (+26 from W1 + W2 cross-tenant tests) |
+| `@arcaai/database` (unit) | 525 / 10 files | **573 / 12 files** (+48 ext + composition) |
+| `apps/api` | 1157 / 59 files | **1163 / 60 files** (+6 provider tests) |
+
+### Tracked follow-ups (NOT blocking Wave 2 merge, scheduled separately)
+
+1. **Architectural** — `User` / `UserMedia` should not extend `BaseTenantEntity` (current `tenantId: ''` placeholder is documented but re-introduces a sentinel-by-empty-string pattern). Recommend introducing `BaseGlobalEntity` or extending `BaseAggregate` directly.
+2. **Operational** — Before applying the Phase A migration to staging/prod, run pre-flight duplicate checks on `Tag (tenantId, resourceTypeName, resourceId, tagKey)` and `Webhook (tenantId, name)` — back-fill may consolidate previously-NULL rows into the system tenant and trip the new uniques.
+3. **Index hygiene** — Drop redundant single-column `@@index([tenantId])` declarations where superseded by composites leading with `tenantId`. ~13 indexes affected; pure write-throughput optimization.
+4. **`.baseClient` audit** — `UnitOfWork.transactionClient` (2 sites in `packages/domains` and `packages/applications`) + `tenant.service.ts:534` still go through the unscoped `baseClient`. UnitOfWork should switch to `databaseService.client.$transaction(callback)` — Prisma 7 carries `$extends` into the `tx` parameter.
+5. **`CoreDataModel` wildcard re-export removal** — `core.database.types.ts` re-exports `getPlatformAdminPrismaClient_Unscoped` via `export * as CoreDataModel from '@arcaai/database'`. No consumers today; the ESLint rule's `importNames` doesn't follow wildcard re-exports, so it's a latent footgun. Remove in a follow-up commit.
+6. **Phase D.9 BullMQ wrapper** — Until queue processors do `cls.run({ tenantId, user, roles }, work)`, they hit the extension's "no CLS = super-admin pass-through" path. Plan Phase D.9 is the gating fix; tracked.
+7. **Documentation** — Mark `docs/multi-tenancy-audit/02-prisma-schema-review.md` B3 / B4 / B5 entries as "Closed (TASK-305 W2.A)" and C-7 / C-4 entries as "Closed (TASK-305 W2.D6 / D.7 / D.8)" in a doc-only commit.
+
+---
+
+## 7. Change History
 
 | Date | Description | Files modified |
 |---|----|----|
 | 2026-05-26 | Initial plan drafted; awaiting approval | `docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md` |
+| 2026-05-27 | Wave 1 merged — 5 sub-tasks (W1.1 quickwins, W1.2 tenant-guards, W1.3 userRole pin, W1.4 audit-log scoping, W1.5 repo cleanup) | `packages/database/`, `packages/applications/`, `packages/domains/`, `.cursor/rules/02-database-prisma.mdc` |
+| 2026-05-27 | Wave 2 merged — Phase A (schema hardening) + Phase B (tenant-scope extension) + D.6 (department parent check). Implementation Summary added (§6). | See per-task table in §6 |
+| 2026-05-27 | Plan README committed to `fix/2605-review` (had been untracked since planning) + W1.1 follow-up: integration test assertions updated to match new `findUnique` soft-delete behavior | `docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md`, `packages/database/src/integration/soft-delete.integration.test.ts` |

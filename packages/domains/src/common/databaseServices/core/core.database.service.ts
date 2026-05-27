@@ -1,5 +1,6 @@
 import type { ExtendedCorePrismaClient, CorePrismaClient } from '@arcaai/database';
-import { getExtendedPrismaClient, getPrismaClient } from '@arcaai/database';
+// eslint-disable-next-line no-restricted-imports -- TASK-305 B.4: this is the legitimate base-client owner; consumers should default to .client (extended).
+import { getExtendedPrismaClient, getPlatformAdminPrismaClient_Unscoped } from '@arcaai/database';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 
 /**
@@ -78,7 +79,7 @@ export class CoreDatabaseService implements OnModuleInit, OnModuleDestroy {
       // Env-mode: eagerly resolve the shared singletons so synchronous
       // getters (`.client`, `.baseClient`) are usable before
       // `onModuleInit` runs (existing behavior the test suite relies on).
-      this.prisma = getPrismaClient();
+      this.prisma = getPlatformAdminPrismaClient_Unscoped();
       this.extendedPrisma = getExtendedPrismaClient();
     }
     this.logger.log(
@@ -105,11 +106,18 @@ export class CoreDatabaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Get the base Prisma Client instance (without extensions)
-   * Use this when you need to bypass soft-delete filtering, such as:
-   * - Querying deleted records for admin purposes
-   * - Restoring soft-deleted records
-   * - Performing hard deletes
+   * Get the base Prisma Client instance (without extensions).
+   *
+   * ⚠️ TASK-305 Phase B: this client BYPASSES both the soft-delete and
+   * the tenant-scope `$extends`. Prefer `.client` for routine queries.
+   * Use `baseClient` only for legitimate platform-admin paths:
+   *   - Querying or restoring soft-deleted records
+   *   - Performing hard deletes
+   *   - Cross-tenant maintenance tooling
+   *
+   * Consumers reaching for `baseClient` should leave a JSDoc note that
+   * justifies why tenant-scope is being bypassed; reviewers should
+   * scrutinise every new call site for B.4-class violations.
    */
   get baseClient(): CorePrismaClient {
     return this.prisma;
