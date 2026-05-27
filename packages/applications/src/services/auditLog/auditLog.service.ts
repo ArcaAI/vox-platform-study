@@ -326,6 +326,11 @@ export class AuditLogService extends BaseService implements IAuditLogService {
         previousData: {},
         metadata: null,
         createdBy: null,
+        // TASK-305 A.8 follow-up: factory requires tenantId. CLS tenantId is normally set by auth
+        // middleware before this @OnEvent handler fires; for the rare LOGIN-edge case where CLS
+        // isn't established yet (true pre-auth path), fall back to the system tenant — LOGIN/
+        // IMPERSONATION audits are platform-level events per the cursor rule.
+        tenantId: this.tenantId ?? '00000000-0000-0000-0000-000000000000',
       });
       await this.auditLogRepository.create(auditLog);
 
