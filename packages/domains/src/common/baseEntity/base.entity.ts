@@ -279,14 +279,45 @@ export abstract class BaseEntity {
     return this;
   }
 
+  /**
+   * Identity check for entities. Two entities are equal when:
+   *
+   *  - They share the same `id`, AND
+   *  - If BOTH are `BaseTenantEntity` subclasses, they ALSO share the
+   *    same `tenantId` (TASK-306 P3.4 / AC-13 / audit L-4 — tenant is
+   *    part of the entity's identity, not just metadata).
+   *
+   * The tenant detection is intentionally duck-typed via `'_tenantId'
+   * in other`: importing `BaseTenantEntity` here would create a
+   * parent-child import cycle (BaseTenantEntity extends BaseAggregate
+   * extends BaseEntity). TypeScript's `private` modifier compiles to a
+   * plain runtime property, so `_tenantId` is always present on
+   * `BaseTenantEntity` instances and absent on every other
+   * `BaseEntity` subclass — making the `in` check a safe structural
+   * proxy for `instanceof BaseTenantEntity`. Note this also drops the
+   * pre-W5.5.5 `constructor !== this.constructor` strict-class check;
+   * that check excluded "comparing a tenant entity with a non-tenant
+   * entity of same id" cases that AC-13 explicitly requires to fall
+   * through to id-only equality.
+   */
   public equals(object: BaseEntity | null): boolean {
-    if (object == null || object.constructor !== this.constructor) {
+    if (object == null) {
       return false;
     }
     if (this === object) {
       return true;
     }
-    return object.id === this.id;
+    if (object.id !== this.id) {
+      return false;
+    }
+    const thisHasTenant = '_tenantId' in this;
+    const otherHasTenant = '_tenantId' in (object as object);
+    if (thisHasTenant && otherHasTenant) {
+      const thisTenantId = (this as unknown as { tenantId: EntityId }).tenantId;
+      const otherTenantId = (object as unknown as { tenantId: EntityId }).tenantId;
+      return thisTenantId === otherTenantId;
+    }
+    return true;
   }
 
   /**
