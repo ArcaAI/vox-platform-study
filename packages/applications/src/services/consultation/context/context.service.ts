@@ -17,10 +17,10 @@ import {
   SummaryMetaRepository,
   SysEventType,
 } from '@arcaai/domains';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { BaseService } from '../../../common';
+import { BaseService, assertParentInScope } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IContextService } from './IContextService';
 import { ContextDtoMapper } from './context.dto.mapper';
@@ -72,11 +72,12 @@ export class ContextService extends BaseService implements IContextService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // Verify consultation exists
-    const consultation = await this.consultationRepository.findById(consultationId);
-    if (!consultation) {
-      throw new NotFoundException(`Consultation ${consultationId} not found`);
-    }
+    // TASK-305 D.3 (audit C-3) — verify the parent consultation lives in
+    // the caller's tenant. `assertParentInScope` throws
+    // `NotFoundException` for both missing-parent and cross-tenant cases
+    // so the response never reveals the existence of a foreign-tenant
+    // consultation.
+    await assertParentInScope(this.consultationRepository, consultationId, tenantId);
 
     // Validate content for non-media types
     const isMediaType = request.type === ContextItemType.AUDIO_RECORDING || request.type === ContextItemType.ATTACHMENT;
@@ -121,10 +122,14 @@ export class ContextService extends BaseService implements IContextService {
    * is created AFTER applying the update so it captures the new state.
    */
   async updateContext(contextItemId: string, request: UpdateContextRequest): Promise<ContextItemResponse> {
-    const contextItem = await this.contextItemRepository.findById(contextItemId);
-    if (!contextItem) {
-      throw new NotFoundException(`Context item ${contextItemId} not found`);
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
     }
+
+    // TASK-305 D.3 (audit C-3) — verify the ContextItem being mutated
+    // belongs to the caller's tenant before any version snapshot / update.
+    const contextItem = await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
 
     const userId = this.requestUserId ?? 'system';
 
@@ -184,11 +189,9 @@ export class ContextService extends BaseService implements IContextService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // Verify consultation exists
-    const consultation = await this.consultationRepository.findById(consultationId);
-    if (!consultation) {
-      throw new NotFoundException(`Consultation ${consultationId} not found`);
-    }
+    // TASK-305 D.3 (audit C-3) — verify the parent consultation lives in
+    // the caller's tenant before any AudioRecording / container write.
+    await assertParentInScope(this.consultationRepository, consultationId, tenantId);
 
     // Find or create audio recording container
     const audioContainer = await this.findOrCreateAudioContainer(consultationId, tenantId, userId);
@@ -257,11 +260,15 @@ export class ContextService extends BaseService implements IContextService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // Verify consultation exists
-    const consultation = await this.consultationRepository.findById(consultationId);
-    if (!consultation) {
-      throw new NotFoundException(`Consultation ${consultationId} not found`);
-    }
+    // TASK-305 D.3 (audit C-3) — verify parent consultation lives in the
+    // caller's tenant, then verify every ContextItem id captured in the
+    // SummaryMeta context arrays. A poisoned `previousSummaryIds`
+    // entry pointing into another tenant would otherwise be persisted
+    // verbatim and later regurgitated as "context" by chain summarisers.
+    await assertParentInScope(this.consultationRepository, consultationId, tenantId);
+    await this.assertContextItemsInTenant(tenantId, request.caseNoteIds);
+    await this.assertContextItemsInTenant(tenantId, request.preSummaryIds);
+    await this.assertContextItemsInTenant(tenantId, request.previousSummaryIds);
 
     // Create summary context item
     const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, request.content, request.dnaWritingStyleId, userId ?? 'system');
@@ -333,11 +340,12 @@ export class ContextService extends BaseService implements IContextService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // Verify context item exists
-    const contextItem = await this.contextItemRepository.findById(contextItemId);
-    if (!contextItem) {
-      throw new NotFoundException(`Context item ${contextItemId} not found`);
-    }
+    // TASK-305 D.3 (audit C-3) — verify the parent ContextItem belongs to
+    // the caller's tenant before any NER row is written. Without this
+    // check a cross-tenant `contextItemId` would be stamped with the
+    // CALLER's tenantId on the new NamedEntity rows, silently moving
+    // PHI provenance across the tenancy boundary.
+    await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
 
     const results: NamedEntityResponse[] = [];
 
@@ -820,6 +828,23 @@ export class ContextService extends BaseService implements IContextService {
       return [profile.firstName, profile.lastName].filter(Boolean).join(' ');
     }
     return consultation.Doctor.username ?? undefined;
+  }
+
+  /**
+   * TASK-305 D.3 (audit C-3) — validate every ContextItem id in the given
+   * list lives in `tenantId`. Used to scrub the metadata arrays on
+   * `addRawSummary` (`caseNoteIds`, `preSummaryIds`, `previousSummaryIds`)
+   * which would otherwise persist cross-tenant pointers into SummaryMeta.
+   *
+   * Skips when the list is empty / undefined. Uses a sequential `for...of`
+   * so we fail fast on the first cross-tenant id without spawning
+   * unnecessary parallel reads on the hot summary-create path.
+   */
+  private async assertContextItemsInTenant(tenantId: string, ids?: string[] | null): Promise<void> {
+    if (!ids || ids.length === 0) return;
+    for (const id of ids) {
+      await assertParentInScope(this.contextItemRepository, id, tenantId);
+    }
   }
 
   /**
