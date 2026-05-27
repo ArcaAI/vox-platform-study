@@ -161,9 +161,28 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
 
   /**
    * Log to database
+   *
+   * TASK-306 P1.2 (audit C-7 finale / NEW-1 / HIPAA §164.312(b)) — derive
+   * the persisted row's `tenantId` from CLS, NOT from the caller-supplied
+   * `entry.tenantId`. The caller-supplied value is allowed only as a back-
+   * compat fallback when no CLS context is wired (background jobs, legacy
+   * boot paths). When neither source resolves a tenant, the write is
+   * SKIPPED with a warning — audit rows with NULL tenantId would violate
+   * the schema NOT NULL constraint introduced in TASK-305 Phase A.
    */
   private async logToDatabase(entry: AuthorizationAuditEntry): Promise<void> {
     const prisma = this.databaseService.client;
+
+    const clsTenantId = this.cls?.get('tenantId');
+    const tenantId = clsTenantId ?? entry.tenantId ?? null;
+    if (!tenantId) {
+      this.logger.warn('AUTH_AUDIT_NO_TENANT — skipping database write', {
+        userId: entry.userId,
+        action: entry.action,
+        subject: entry.subject,
+      });
+      return;
+    }
 
     // Check if AuditLog model exists (it might not be migrated yet)
     try {
@@ -172,7 +191,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
         data: {
           eventType: 'AUTHORIZATION',
           responsibleUserId: entry.userId,
-          tenantId: entry.tenantId,
+          tenantId,
           action: entry.action.toUpperCase(), // Ensure action matches AuditAction enum
           resourceType: entry.subject,
           resourceId: entry.resourceId,

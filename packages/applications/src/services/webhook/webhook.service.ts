@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ResourceType, SysEventType, EntityId, WebhookEntity, WebhookFactory, WebhookRepository } from '@arcaai/domains';
@@ -7,8 +7,7 @@ import { IWebhookService } from './IWebhookService';
 import { CreateWebhookRequest, UpdateWebhookRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
-
-// TODO: Implement this
+import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 
 @Injectable()
 export class WebhookService extends BaseService implements IWebhookService {
@@ -20,10 +19,19 @@ export class WebhookService extends BaseService implements IWebhookService {
     super(eventEmitter, clsService, ResourceType.Webhook);
   }
 
+  /**
+   * TASK-306 P1.4 (audit M-2 / NEW-2 / AC-5 partial) — non-SUPER_ADMIN
+   * callers can no longer attribute a webhook to another tenant via the
+   * DTO. Effective tenant is resolved through `resolveEffectiveTenantId`,
+   * which silently pins to CLS for regular users and honors
+   * `request.tenantId` only for SUPER_ADMIN (cross-tenant impersonation
+   * flows, e.g. admin UI / migration tooling).
+   */
   async create(request: CreateWebhookRequest): Promise<WebhookEntity> {
+    const effectiveTenantId = this.resolveEffectiveTenantId(request.tenantId);
     const newWebhook = WebhookFactory.CreateWebhook({
       ...request,
-      tenantId: request.tenantId,
+      tenantId: effectiveTenantId,
       createdBy: this.requestUser?.id,
     });
 
@@ -174,5 +182,36 @@ export class WebhookService extends BaseService implements IWebhookService {
       data: webhook.toObject() as object,
     });
     return webhook;
+  }
+
+  /**
+   * Resolve the tenantId to use for a write. Non-SUPER_ADMIN callers are
+   * silently pinned to CLS; SUPER_ADMIN may override via `request.tenantId`
+   * for cross-tenant impersonation. Throws `BadRequestException` if no
+   * tenant context resolves (caller has no CLS AND no DTO `tenantId`
+   * after the super-admin branch).
+   *
+   * Differs from `NotificationService.resolveEffectiveTenantId` only in
+   * that a non-super-admin mismatch is silently coerced instead of
+   * throwing `ForbiddenException`; webhooks are less sensitive than PHI
+   * notification dispatch and the README W5.1.4 verification contract
+   * mandates "row created with tenant-A" on silent coercion.
+   */
+  private resolveEffectiveTenantId(requestTenantId?: string): string {
+    if (this.isSuperAdmin() && requestTenantId) return requestTenantId;
+    const cls = this.tenantId;
+    if (!cls) throw new BadRequestException('Tenant context required');
+    return cls;
+  }
+
+  /**
+   * True when the active request user carries the SUPER_ADMIN role.
+   * Mirrors the strict-default helper used by `TenantService` and
+   * `AuthorizationAuditService` — falls back to `false` whenever the role
+   * list is missing so the most restrictive policy applies.
+   */
+  private isSuperAdmin(): boolean {
+    const roles = this.requestUser?.roles;
+    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
   }
 }
