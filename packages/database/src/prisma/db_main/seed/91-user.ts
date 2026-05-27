@@ -7,6 +7,7 @@ import {
     SEED_CUSTOMER_TENANT_IDS,
     SEED_USER_IDS,
     SEED_DEPARTMENT_IDS,
+    SYSTEM_TENANT_ID,
 } from './00-constants';
 
 /**
@@ -18,7 +19,9 @@ import {
  * - username: Unique login identifier
  * - password: Hashed password (default: password123)
  * - roleNames: Array of role names to assign
- * - tenantId: Tenant scope (null = global)
+ * - tenantId: Tenant scope (use SYSTEM_TENANT_ID for platform-wide users
+ *             such as the System service account or SUPER_ADMIN; per
+ *             TASK-305 Phase A, NULL is no longer accepted)
  * - profile: User profile information
  */
 
@@ -64,7 +67,7 @@ export const seedUser = async (client: CorePrismaClient) => {
             password: null,
             isServiceAccount: true,
             roleNames: ['SERVICE_ACCOUNT'],
-            tenantId: null,
+            tenantId: SYSTEM_TENANT_ID,
             profile: {
                 firstName: 'System',
                 lastName: 'Account',
@@ -85,7 +88,7 @@ export const seedUser = async (client: CorePrismaClient) => {
             password: defaultPassword,
             isServiceAccount: false,
             roleNames: ['SUPER_ADMIN'],
-            tenantId: null, // Global access across all tenants
+            tenantId: SYSTEM_TENANT_ID, // Platform-wide access (system tenant per TASK-305 A.2)
             profile: {
                 firstName: 'Super',
                 lastName: 'Admin',
