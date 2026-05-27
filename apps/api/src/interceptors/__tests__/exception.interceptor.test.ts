@@ -16,7 +16,7 @@ import { firstValueFrom, throwError } from 'rxjs';
 import { Counter } from 'prom-client';
 
 import { ExceptionInterceptor } from '../exception.interceptor';
-import { OptimisticConcurrencyException, BaseException } from '@arcaai/exceptions';
+import { DataNotFoundException, OptimisticConcurrencyException, BaseException } from '@arcaai/exceptions';
 import { optimisticLockConflictTotal } from '../../observability/metrics';
 
 describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412 (TASK-302 Stream D Phase C C.5)', () => {
@@ -122,6 +122,85 @@ describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412 (TASK-3
     }
     expect(caught).toBeInstanceOf(HttpException);
     expect(caught?.getStatus()).toBe(HttpStatus.INTERNAL_SERVER_ERROR); // 500 — the generic branch still works
+  });
+
+  /*
+   * TASK-306 P3.3 / AC-12 / audit M-8 — `DataNotFoundException` MUST
+   * pass through this interceptor UNWRAPPED so the global
+   * `DataNotFoundExceptionFilter` (registered as `APP_FILTER` in
+   * `app.module.ts`) catches the ORIGINAL exception and maps it to a
+   * generic `404 { message: "Resource not found" }`. If the
+   * interceptor wraps it as the legacy `HttpException(err.toJSON(),
+   * 500)` branch did pre-W5.5.4, the filter never sees the
+   * `DataNotFoundException` (it sees an HttpException) and the model
+   * name + row id leak to the response body.
+   *
+   * This branch is structurally analogous to the OCC pre-empt branch
+   * above and MUST stay ordered before the generic `BaseException`
+   * branch.
+   */
+  describe('TASK-306 P3.3 — DataNotFoundException pass-through (audit M-8)', () => {
+    it('rethrows the ORIGINAL DataNotFoundException (not an HttpException)', async () => {
+      const dnf = new DataNotFoundException('User', 'user-sensitive-id');
+
+      let caught: unknown;
+      try {
+        await firstValueFrom(
+          interceptor.intercept(createMockContext(), createErrorHandler(dnf)),
+        );
+      } catch (e) {
+        caught = e;
+      }
+
+      expect(caught).toBeInstanceOf(DataNotFoundException);
+      expect(caught).not.toBeInstanceOf(HttpException);
+      // The exception MUST be the same reference so the global filter
+      // can decode the original model + id for server-side logging.
+      expect(caught).toBe(dnf);
+    });
+
+    it('does NOT wrap as 500 via the generic BaseException branch', async () => {
+      // Sanity-pin: DataNotFoundException IS a BaseException at runtime;
+      // without the pass-through branch the generic branch below would
+      // wrap it as HttpException(500). Verify the order is correct.
+      const dnf = new DataNotFoundException('ApiKey', 'apikey-1');
+
+      let caught: unknown;
+      try {
+        await firstValueFrom(
+          interceptor.intercept(createMockContext(), createErrorHandler(dnf)),
+        );
+      } catch (e) {
+        caught = e;
+      }
+
+      expect(caught).not.toBeInstanceOf(HttpException);
+      // No mutation to the original message — the global filter is the
+      // one that strips model + id from the response.
+      expect((caught as DataNotFoundException).message).toContain('ApiKey');
+      expect((caught as DataNotFoundException).message).toContain('apikey-1');
+    });
+
+    it('logs at debug level (a 404 read is not an error condition)', async () => {
+      const dnf = new DataNotFoundException('Tenant', 'tenant-42');
+      const debugSpy = vi.spyOn((interceptor as any).logger, 'debug').mockImplementation(() => undefined);
+      const warnSpy = vi.spyOn((interceptor as any).logger, 'warn').mockImplementation(() => undefined);
+      const errorSpy = vi.spyOn((interceptor as any).logger, 'error').mockImplementation(() => undefined);
+
+      try {
+        await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(dnf)));
+      } catch {
+        /* expected */
+      }
+
+      expect(debugSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'DataNotFoundException — passing through to global filter',
+        }),
+      );
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
   });
 });
 
