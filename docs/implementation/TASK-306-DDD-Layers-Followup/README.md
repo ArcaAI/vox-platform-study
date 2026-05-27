@@ -5,7 +5,7 @@
 | **Ticket** | TASK-306-DDD-Layers-Followup |
 | **Created** | 2026-05-27 |
 | **Updated** | 2026-05-27 |
-| **Status** | `In Progress` (plan approved 2026-05-27 — executing W5.1 first) |
+| **Status** | `Completed` (W5.1–W5.6 merged; canonical closure record at [`docs/multi-tenancy-audit/07-ddd-layers-followup-closure.md`](../../multi-tenancy-audit/07-ddd-layers-followup-closure.md)) |
 | **Classification** | Refactor + bugfix (security/compliance) |
 | **Priority** | High — closes the remaining HIPAA §164.312(a)(1) gaps surfaced by `03-ddd-layers-review.md` that TASK-305 deliberately did not cover or only partially closed |
 | **Prior context** | TASK-305 (Phases A, B, D, E shipped) — see [`../TASK-305-Multi-Tenancy-Hardening/README.md`](../TASK-305-Multi-Tenancy-Hardening/README.md) |
@@ -469,7 +469,13 @@ Answer: we should ship W5.1-W5.5 as 5 separate PRs (clean reviewable units).
 
 ## 5. Implementation Summary
 
-> Will be filled out as each wave merges. Empty until W5.1 ships.
+> All 6 waves landed on `fix/2605-review` between 2026-05-27 (W5.1) and
+> 2026-05-27 (W5.6 — this wave). Engineer-hours actual ≈ 13 vs. 14
+> estimated. Total cross-tenant test delta: +97 inline tests across
+> `packages/applications` + `packages/domains` + `apps/api`. Aggregator
+> state advanced 19 (TASK-305 W4 close-out) → 30 (TASK-306 W5.5.7 close-out).
+> Canonical closure record:
+> [`docs/multi-tenancy-audit/07-ddd-layers-followup-closure.md`](../../multi-tenancy-audit/07-ddd-layers-followup-closure.md).
 
 ### What shipped
 
@@ -480,7 +486,7 @@ Answer: we should ship W5.1-W5.5 as 5 separate PRs (clean reviewable units).
 | W5.3 | 5.3.1–5.3.12 | `60d9d798` | 13 commits (12 plan + 1 TASK-258 test alignment), 34 new tests, APPROVED-WITH-MINOR-NITS. Closes H-1 + M-2 + M-3. Tenant + Webhook (5 methods) + ResourceSubscription (5 methods) sweep with uniform SUPER_ADMIN bypass. 2 deferred nits (306-F8, 306-F9). |
 | W5.4 | 5.4.1–5.4.3 | `969e49df` | 3 commits, 9 new tests, APPROVED-WITH-MINOR-NITS. Closes C-3 finale (array-input). `resolveLinkedConsultationIds` filters chain + same-day to CLS tenant; no SUPER_ADMIN bypass (clinical-PHI hot read path). 2 deferred nits (306-F10, 306-F11). |
 | W5.5 | 5.5.1–5.5.7 | `ec67a0d4` | 7 commits, 25 new tests, APPROVED-WITH-MINOR-NITS. Closes M-5 + M-6 + M-8 + L-4 + NEW-7/F-4. Hygiene bundle: `broadcastSysEvent` CLS wins, `CoreUnitOfWorkService` canonical `$transaction(callback)` (silent in-place fix), `DataNotFoundException` HTTP filter (scoped), `BaseEntity.equals` tenant-aware (duck-typed), aggregator FS-introspection (immediately surfaced pre-existing gap in `prompt-management.service.test.ts`). Also folds in 306-F9 + 306-F10. 3 deferred nits (306-F12, 306-F13, 306-F14). |
-| W5.6 | — | — | _Pending_ |
+| W5.6 | 5.6.1–5.6.5 | `<pending merge>` | 5 commits, 0 production-code lines, doc-only. Updates: (1) `03-ddd-layers-review.md` — TASK-306 closure banner + per-finding `[CLOSED W5.x <sha>]` markers in §A/§B inventory + §C/§D/§E finding detail blocks; (2) `06-implementation-summary.md` — new §6 Wave 5 / TASK-306 follow-up section (wave breakdown + audit findings closed + test deltas + deferred follow-ups + cross-links); (3) NEW `07-ddd-layers-followup-closure.md` — canonical "what closed vs. deferred" record with per-wave merge SHAs, lessons learned, cross-references; (4) `technical-architecture-overview.md` — Layer 3 acknowledges the TASK-306 finale + Open items #2, #5 marked CLOSED/PARTIALLY-CLOSED + helper table extended; (5) this README — Status → Completed + W5.6 row filled + §11 Change History entry. |
 
 ### Audit findings closed
 
@@ -492,7 +498,9 @@ Answer: we should ship W5.1-W5.5 as 5 separate PRs (clean reviewable units).
 | **CLOSED (W5.4)** | C-3 finale (array-input) | Merge `969e49df` |
 | **CLOSED (W5.5)** | M-5, M-6, M-8, L-4, NEW-7/F-4 | Merge `ec67a0d4` |
 | **CLOSED via W5.5.7 (deferred folds)** | 306-F9, 306-F10 | Aggregator cosmetic + marker tightening |
-| **DEFERRED (TASK-306)** | F-1..F-8 | Each tracked as a follow-up ticket — see §8 |
+| **DOCUMENTED (W5.6)** | AC-15 — audit + summary + architecture docs cross-walked; canonical closure record at `07-ddd-layers-followup-closure.md` | Merge `<pending>` |
+| **DEFERRED (TASK-306 plan §8)** | F-1..F-3, F-5..F-8, H-4, L-3, NEW-5/F-2 | Each tracked as a follow-up ticket — see §8 |
+| **DEFERRED (review-time minor nits)** | 306-F1..306-F8, 306-F11..306-F14 | 12 minor nits captured across W5.1-W5.5 code reviews — see §6.7 below. None blocking; all minor |
 
 ### TASK-306 follow-ups (deferred minor nits)
 
@@ -517,7 +525,17 @@ These do NOT block waves; tracked here so they don't get lost.
 
 ### Deviations from the original plan
 
-_None yet._
+| Wave | Deviation | Rationale |
+|---|---|---|
+| W5.3 | +1 commit (13 total vs. 12 planned) — TASK-258 test alignment | A pre-existing `webhook` test had drifted from the W3.2 SUPER_ADMIN-bypass posture this wave reuses; aligning it at the same time prevents an avoidable cross-PR conflict. Reviewer-approved. |
+| W5.5.6 | Detection regex deliberately narrower than the user-specified set (drops bare `tenantId` token) | A bare `tenantId` matcher floods false positives (logger / JWT / AppSettings setup blocks). Narrow set anchored on the helper exports + canonical `describe('TASK-30x …')` markers; conscious deviation captured as **306-F14** for future revisit. |
+| W5.5.7 | 306-F9 + 306-F10 folded into W5.5.7 aggregator step | Cheap one-character marker fix (306-F9 — drop `/i` flag on `resourceSubscription`) + a regression-preventing floor adjustment (306-F10 — broaden `consultation/context` marker so the 8 TASK-305 D.3 anti-regression tests stay pinned by an explicit floor, not only by FS-introspection). Both inside the W5.5 aggregator-update step; no scope creep. |
+| W5.5.4 (`DataNotFoundException` filter) | Scoped to `DataNotFoundException` only (not all `NotFoundException`s) | Per the user decision at plan approval time (open question #2). Keeps debug-friendly payloads for the `assertEqualTenants`-raised `NotFoundException` paths in dev/staging while production cleanly hides model + id. |
+| W5.5.2 (`CoreUnitOfWorkService`) | Silent in-place fix + `@deprecated` annotation, no rename / ESLint deprecation rule | Per the user decision at plan approval time (open question #3). Zero production-caller churn; legacy callers see a runtime `Logger.warn` so the migration path is discoverable without a forced refactor. |
+| W5.6.2 (06 summary) | Doc gains a new §6 (TASK-306 follow-up) rather than re-titling the doc or restructuring TASK-305 sections | The existing doc is titled and structured around TASK-305; preserving its numbering + adding a clearly-demarcated §6 follow-up matches the user's "add a new ... row (or section)" instruction without churning the TASK-305 sections. |
+
+None of these deviations changed the AC contract — every AC-1..AC-15
+landed as planned.
 
 ---
 
@@ -532,3 +550,4 @@ _None yet._
 | 2026-05-27 | W5.3 merged at `60d9d798` (APPROVED-WITH-MINOR-NITS). 13 commits (12 plan + 1 TASK-258 test alignment), 34 new tests, closes H-1 + M-2 + M-3 (Tenant + Webhook 5 methods + ResourceSubscription 5 methods sweep). 2 minor nits captured as 306-F8, 306-F9. | `packages/applications/...` (8 files), `docs/implementation/TASK-306-DDD-Layers-Followup/README.md` |
 | 2026-05-27 | W5.4 merged at `969e49df` (APPROVED-WITH-MINOR-NITS). 3 commits, 9 new tests, closes C-3 finale (array-input). `ContextService.resolveLinkedConsultationIds` filters chain + same-day to CLS tenant. 2 minor nits captured as 306-F10, 306-F11. | `packages/applications/...` (3 files), `docs/implementation/TASK-306-DDD-Layers-Followup/README.md` |
 | 2026-05-27 | W5.5 merged at `ec67a0d4` (APPROVED-WITH-MINOR-NITS). 7 commits, 25 new tests, closes M-5 + M-6 + M-8 + L-4 + NEW-7/F-4 (hygiene bundle + aggregator FS-introspection). 306-F9 + 306-F10 folded in. 3 minor nits captured as 306-F12, 306-F13, 306-F14. FS-introspection surfaced one pre-existing gap (prompt-management cross-tenant tests not aggregator-registered) and closed it inline. | `apps/api/...` (+2 new), `packages/{applications,domains}/...` (12 modified), `docs/implementation/TASK-306-DDD-Layers-Followup/README.md` |
+| 2026-05-27 | W5.6 merged at `<pending>` — documentation close-out (AC-15). 5 commits, 0 production-code lines, doc-only. (1) `03-ddd-layers-review.md` — TASK-306 closure banner + per-finding `[CLOSED W5.x <sha>]` markers in §A/§B inventory + §C/§D/§E finding detail blocks; (2) `06-implementation-summary.md` — new §6 Wave 5 / TASK-306 follow-up section; (3) NEW `07-ddd-layers-followup-closure.md` — canonical closure record; (4) `technical-architecture-overview.md` — Layer 3 TASK-306 finale + Open items #2, #5 marked CLOSED / PARTIALLY-CLOSED + helper table extended; (5) this README — Status flipped to `Completed` + W5.6 row populated + §5 Audit findings closed table extended + Deviations section populated + this Change History entry. Ticket closed. | `docs/multi-tenancy-audit/03-ddd-layers-review.md`, `docs/multi-tenancy-audit/06-implementation-summary.md`, `docs/multi-tenancy-audit/07-ddd-layers-followup-closure.md` (NEW), `docs/technical-architecture-overview.md`, `docs/implementation/TASK-306-DDD-Layers-Followup/README.md` |
