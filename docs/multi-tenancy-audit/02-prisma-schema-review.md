@@ -1,5 +1,7 @@
 # Prisma Schema & Database-Layer Multi-Tenancy Audit
 
+> **Status update (2026-05-27)**: see [06-implementation-summary.md](./06-implementation-summary.md) for what was closed by TASK-305.
+
 | Field | Value |
 |---|---|
 | **Scope** | `packages/database/` schema, migrations, Prisma client, RLS posture, PgBouncer config |

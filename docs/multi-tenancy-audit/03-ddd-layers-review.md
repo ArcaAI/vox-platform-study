@@ -1,5 +1,7 @@
 # DDD Layers — Multi-Tenancy Code Review
 
+> **Status update (2026-05-27)**: see [06-implementation-summary.md](./06-implementation-summary.md) for what was closed by TASK-305.
+
 **Reviewer**: `code-reviewer` subagent
 **Date**: 2026-05-25
 **Scope**: `packages/domains/` + `packages/applications/` (read-only)
