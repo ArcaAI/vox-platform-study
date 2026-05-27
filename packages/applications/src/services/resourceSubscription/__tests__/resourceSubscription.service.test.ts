@@ -1176,5 +1176,55 @@ describe('ResourceSubscriptionService', () => {
                 expect(result.tenantId).toBe('tenant-2');
             });
         });
+
+        describe('update (5.3.10)', () => {
+            it('updates the subscription when it belongs to the caller tenant', async () => {
+                const sameTenantSub = createMockResourceSubscriptionEntity({
+                    id: 'sub-same',
+                    tenantId: 'tenant-1',
+                    hasChanges: true,
+                    changes: { resourceStatus: ResourceStatusType.DISABLED },
+                });
+                mockResourceSubscriptionRepository.findById.mockResolvedValue(sameTenantSub);
+                mockResourceSubscriptionRepository.update.mockResolvedValue(sameTenantSub);
+
+                const result = await service.update('sub-same', {
+                    resourceStatus: ResourceStatusType.DISABLED,
+                });
+                expect(result.id).toBe('sub-same');
+                expect(mockResourceSubscriptionRepository.update).toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException for a non-SUPER_ADMIN caller updating another tenant\'s subscription, with no mutation', async () => {
+                const crossTenantSub = createMockResourceSubscriptionEntity({
+                    id: 'sub-foreign',
+                    tenantId: 'tenant-2',
+                });
+                mockResourceSubscriptionRepository.findById.mockResolvedValue(crossTenantSub);
+
+                await expect(
+                    service.update('sub-foreign', { resourceStatus: ResourceStatusType.DISABLED }),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockResourceSubscriptionRepository.update).not.toHaveBeenCalled();
+            });
+
+            it('allows a SUPER_ADMIN to update a subscription owned by another tenant (admin bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const crossTenantSub = createMockResourceSubscriptionEntity({
+                    id: 'sub-foreign',
+                    tenantId: 'tenant-2',
+                    hasChanges: true,
+                    changes: { resourceStatus: ResourceStatusType.DISABLED },
+                });
+                mockResourceSubscriptionRepository.findById.mockResolvedValue(crossTenantSub);
+                mockResourceSubscriptionRepository.update.mockResolvedValue(crossTenantSub);
+
+                const result = await service.update('sub-foreign', {
+                    resourceStatus: ResourceStatusType.DISABLED,
+                });
+                expect(result.id).toBe('sub-foreign');
+                expect(mockResourceSubscriptionRepository.update).toHaveBeenCalled();
+            });
+        });
     });
 });
