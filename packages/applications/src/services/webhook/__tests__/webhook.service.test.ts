@@ -490,6 +490,61 @@ describe('WebhookService', () => {
                 expect(result.tenantId).toBe('tenant-2');
             });
         });
+
+        describe('update (5.3.4)', () => {
+            it('updates when the loaded webhook belongs to the caller (same-tenant)', async () => {
+                const webhook = createMockWebhookEntity({
+                    id: 'webhook-1',
+                    tenantId: 'tenant-1',
+                    hasChanges: true,
+                    changes: { name: 'Updated' },
+                    version: 4,
+                });
+                mockWebhookRepository.findById.mockResolvedValue(webhook);
+                mockWebhookRepository.updateWithVersion.mockResolvedValue({ ...webhook, version: 5 });
+
+                const result = await service.update('webhook-1', { name: 'Updated', expectedVersion: 4 } as never);
+
+                expect(result.id).toBe('webhook-1');
+                expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException + does not mutate for cross-tenant non-admin updates', async () => {
+                const { NotFoundException } = await import('@nestjs/common');
+                const otherWebhook = createMockWebhookEntity({
+                    id: 'webhook-foreign',
+                    tenantId: 'tenant-2',
+                    hasChanges: true,
+                    changes: { name: 'Updated' },
+                    version: 4,
+                });
+                mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
+
+                await expect(
+                    service.update('webhook-foreign', { name: 'Updated', expectedVersion: 4 } as never),
+                ).rejects.toThrow(NotFoundException);
+                // Guard short-circuits BEFORE the CAS write fires.
+                expect(mockWebhookRepository.updateWithVersion).not.toHaveBeenCalled();
+            });
+
+            it('updates a cross-tenant webhook when the caller is a SUPER_ADMIN (admin bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const otherWebhook = createMockWebhookEntity({
+                    id: 'webhook-foreign',
+                    tenantId: 'tenant-2',
+                    hasChanges: true,
+                    changes: { name: 'Updated' },
+                    version: 4,
+                });
+                mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
+                mockWebhookRepository.updateWithVersion.mockResolvedValue({ ...otherWebhook, version: 5 });
+
+                const result = await service.update('webhook-foreign', { name: 'Updated', expectedVersion: 4 } as never);
+
+                expect(result.id).toBe('webhook-foreign');
+                expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalled();
+            });
+        });
     });
 
     describe('fetchAll', () => {
