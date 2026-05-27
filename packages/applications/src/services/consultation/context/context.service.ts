@@ -429,6 +429,14 @@ export class ContextService extends BaseService implements IContextService {
     // returns [] for foreign-tenant roots (W5.4 contract), and the
     // existing `consultationIds.length === 0` early-return below skips
     // the broadcast in that branch.
+    //
+    // The `this.tenantId` guard intentionally falls through when CLS is
+    // missing: `getAggregateNamedEntities` has no top-level CLS-required
+    // check today (unlike the W5.7.7-hoisted Consultation read paths),
+    // and this fix is narrowly scoped to the broadcast-side-channel on
+    // cross-tenant ids. Hardening the no-CLS posture for this method
+    // (e.g. throwing instead of falling through) is deferred to a
+    // separate ticket.
     if (scope === 'single' && this.tenantId) {
       const root = await this.consultationRepository.findById(consultationId);
       if (!root || root.tenantId !== this.tenantId) {

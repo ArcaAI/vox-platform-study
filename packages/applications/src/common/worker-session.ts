@@ -1,6 +1,23 @@
 import { UserSession } from '../services';
 
 /**
+ * Closed set of worker-session source labels. Adding a new BullMQ
+ * processor or `@OnEvent` handler that needs a CLS rebind also
+ * requires adding its label here — this makes the audit-log
+ * `<kind>@system.local` namespace centrally enumerable and lets
+ * the type checker catch typos at the callsite.
+ */
+export type WorkerSessionKind =
+  | 'audit'
+  | 'summary'
+  | 'pre-summary'
+  | 'ner'
+  | 'comprehensive-summary'
+  | 'transcription-created-event'
+  | 'summary-generated-event'
+  | 'ner-extracted-event';
+
+/**
  * Init shape for `createWorkerSession`.
  *
  * @see createWorkerSession for the full TSDoc on why this factory exists.
@@ -22,12 +39,13 @@ export interface WorkerSessionInit {
   tenantId: string;
 
   /**
-   * Short, descriptive label for the worker class (e.g. `'audit'`,
-   * `'summary'`, `'ner'`, `'transcription-event'`). Becomes the
+   * Short, descriptive label for the worker class — becomes the
    * local-part of the synthetic sentinel email so SOC can grep
    * audit-log rows by worker source.
+   *
+   * Closed set; see `WorkerSessionKind` above for the enumeration.
    */
-  kind: string;
+  kind: WorkerSessionKind;
 }
 
 /**
