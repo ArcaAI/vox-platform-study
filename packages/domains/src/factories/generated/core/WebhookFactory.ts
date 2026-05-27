@@ -15,7 +15,7 @@ export interface CreateWebhookProps extends BaseEntityFactoryCreateProps {
   resourceId?: IWebhookEntity['resourceId'];
   subscriptionMetadata?: IWebhookEntity['subscriptionMetadata'];
   WebhookRunHistorys?: IWebhookEntity['WebhookRunHistorys'];
-  tenantId?: IWebhookEntity['tenantId'];
+  tenantId: IWebhookEntity['tenantId'];
   Tenant?: IWebhookEntity['Tenant'];
   tags?: IWebhookEntity['tags'];
   Tags?: IWebhookEntity['Tags'];
@@ -46,7 +46,7 @@ export class WebhookFactory {
       resourceId: props.resourceId ?? '',
       subscriptionMetadata: props.subscriptionMetadata ?? null,
       WebhookRunHistorys: props.WebhookRunHistorys ?? [],
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
       Tenant: props.Tenant ?? null,
       tags: props.tags ?? [],
       Tags: props.Tags ?? [],

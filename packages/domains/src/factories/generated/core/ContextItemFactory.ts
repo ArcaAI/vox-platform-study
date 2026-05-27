@@ -15,7 +15,7 @@ export interface CreateContextItemProps extends BaseEntityFactoryCreateProps {
   content?: IContextItemEntity['content'];
   dnaWritingStyleId?: IContextItemEntity['dnaWritingStyleId'];
   qdrantSynced?: IContextItemEntity['qdrantSynced'];
-  tenantId?: IContextItemEntity['tenantId'];
+  tenantId: IContextItemEntity['tenantId'];
 
   createdAt?: IContextItemEntity['createdAt'];
   updatedAt?: IContextItemEntity['updatedAt'];
@@ -47,7 +47,7 @@ export class ContextItemFactory {
       dnaWritingStyleId: props.dnaWritingStyleId ?? null,
       qdrantSynced: props.qdrantSynced ?? false,
       qdrantSyncedAt: null,
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
     });
   }
 

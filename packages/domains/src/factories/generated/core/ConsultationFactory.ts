@@ -14,7 +14,7 @@ export interface CreateConsultationProps extends BaseEntityFactoryCreateProps {
   departmentId?: IConsultationEntity['departmentId'];
   parentConsultationId?: IConsultationEntity['parentConsultationId'];
   metadata?: IConsultationEntity['metadata'];
-  tenantId?: IConsultationEntity['tenantId'];
+  tenantId: IConsultationEntity['tenantId'];
 
   createdAt?: IConsultationEntity['createdAt'];
   updatedAt?: IConsultationEntity['updatedAt'];
@@ -46,7 +46,7 @@ export class ConsultationFactory {
       departmentId: props.departmentId ?? null,
       parentConsultationId: props.parentConsultationId ?? null,
       metadata: props.metadata ?? null,
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
     });
   }
 

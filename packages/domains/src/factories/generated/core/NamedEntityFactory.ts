@@ -18,7 +18,7 @@ export interface CreateNamedEntityProps extends BaseEntityFactoryCreateProps {
   aiModelVersion?: INamedEntityEntity['aiModelVersion'];
   processingTimeMs?: INamedEntityEntity['processingTimeMs'];
   metadata?: INamedEntityEntity['metadata'];
-  tenantId?: INamedEntityEntity['tenantId'];
+  tenantId: INamedEntityEntity['tenantId'];
 
   createdAt?: INamedEntityEntity['createdAt'];
 }
@@ -50,7 +50,7 @@ export class NamedEntityFactory {
       aiModelVersion: props.aiModelVersion ?? null,
       processingTimeMs: props.processingTimeMs ?? null,
       metadata: props.metadata ?? null,
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
     });
   }
 
