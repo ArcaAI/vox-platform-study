@@ -1,5 +1,7 @@
 # Multi-Tenancy SaaS Best Practices — Research Report (2025–2026)
 
+> **Status update (2026-05-27)**: see [06-implementation-summary.md](./06-implementation-summary.md) for what was closed by TASK-305.
+
 **Target system**: HOPE (Healthcare AI Services)
 **Stack**: Turborepo + pnpm monorepo · NestJS 11 API Gateway · FastAPI Python services (TTS/SMR/NLP/STT) · PostgreSQL 14+ via Prisma 7 · Redis 7+ · React 19 + Vite 7 · `@arcaai/vox` SDK · Docker Compose + systemd + PgBouncer
 **Compliance context**: HIPAA, GDPR, SOC 2, ISO 27001 (healthcare PHI)

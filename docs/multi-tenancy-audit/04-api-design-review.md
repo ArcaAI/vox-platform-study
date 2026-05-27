@@ -1,5 +1,7 @@
 # 04 — API Gateway Multi-Tenancy Review (`apps/api`)
 
+> **Status update (2026-05-27)**: see [06-implementation-summary.md](./06-implementation-summary.md) for what was closed by TASK-305.
+
 **Reviewer:** code-reviewer subagent
 **Date:** 2026-05-25
 **Scope:** `apps/api/src/**` — controllers, modules, guards, interceptors, filters, decorators, gateways, OpenAPI config, and the cross-cutting auth/authorization wiring in `packages/applications/src/{auth,authorization}/**`.

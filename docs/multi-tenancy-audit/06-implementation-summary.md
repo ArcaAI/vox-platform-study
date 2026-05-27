@@ -1,0 +1,225 @@
+# 06 — TASK-305 Multi-Tenancy Hardening: Implementation Summary
+
+| Field | Value |
+|---|---|
+| **Status** | **Completed** (Phases A, B, D, E) — **Deferred** (Phase C / RLS) |
+| **Completed** | 2026-05-27 |
+| **Deferred** | Phase C → blocked on TASK-302 (PgBouncer + Vault role split) |
+| **Plan** | [`docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md`](../implementation/TASK-305-Multi-Tenancy-Hardening/README.md) |
+| **Audit driver** | [`02-prisma-schema-review.md`](./02-prisma-schema-review.md) |
+
+This is the canonical record of what TASK-305 actually shipped vs.
+what the audit recommended. Every finding code in the audit is
+accounted for below — `CLOSED`, `DEFERRED`, or `OUT-OF-SCOPE` — with
+the merge SHA (or rationale) attached.
+
+---
+
+## 1. What shipped
+
+| Phase | What | Where |
+|---|---|---|
+| **A — Schema hardening** | Drop sentinel default on 27 models; flip 11 nullable `tenantId` → NOT NULL; scoped uniques on `Webhook(tenantId, name)` and `Tag(tenantId, resourceType, resourceId, tagKey)`; 14 composite `[tenantId, X]` indexes; reserved `system` Tenant seed; idempotent back-fill migration. Domain factories drop `?? ''` fallback; `BaseTenantEntity.validate()` throws on empty `tenantId`. | `packages/database/src/prisma/db_main/*.prisma`, `packages/domains/src/**` |
+| **B — Tenant-scope Prisma extension** | `applyTenantScopeExtension(prisma, options)` with 27-model allow-list, all 16 Prisma ops hooked, bidirectional mismatch detection, composed AFTER `applySoftDeleteExtension`. `getPrismaClient` → `getPlatformAdminPrismaClient_Unscoped` rename with ESLint allow-list rule. `ClsTenantContextProvider` wires `nestjs-cls` into the extension. `findUnique` soft-delete divergence fixed (W1.1). | `packages/database/src/extensions/tenant-scope.ts`, `apps/api/src/database/tenant-context.provider.ts`, `packages/config-eslint/base.js` |
+| **D — Service-layer guards** | `tenant-guards.ts` helper (`assertEqualTenants` / `assertUserBelongsToTenant` / `assertParentInScope`). Cross-aggregate checks across `Consultation`/`Context`/`Summary`/`ChainSummary`/`Department`/`Notification`/`ApiKey`/`DnaWritingStyle`. User-membership assertions on every PHI-bearing create. `userRoleAssignment.create` pins `tenantId` to CLS. `auditLog.service` + `authorization-audit.service` inject CLS `tenantId` into every fetch (SUPER_ADMIN bypass for cross-tenant audit reads only). BullMQ + `@OnEvent` CLS rebind across 6 processors/handlers with fail-closed semantics. `Repository.rawQueryUnsafe` and `$bulk` removed from the public surface. | `packages/applications/src/common/tenant-guards.ts`, `packages/applications/src/services/**`, `packages/domains/src/common/repository.ts` |
+| **E — Cross-tenant test suite + docs** | `tests/cross-tenant/fixtures.ts` + example shape-pinning test (6 cases). `cross-tenant-coverage.test.ts` aggregator that introspects 11 service test files + 6 processor/handler test files (17 coverage assertions + 2 meta tests, 19 total). README + technical-architecture-overview + this summary. Plan README closed out. | `tests/cross-tenant/`, `packages/applications/src/__tests__/cross-tenant-coverage.test.ts`, `packages/database/README.md`, `docs/technical-architecture-overview.md`, this file |
+
+### Wave breakdown (merge SHAs)
+
+| Wave | Commit / Merge | What |
+|---|---|---|
+| W1.1 | `df3a214` | B.12 soft-delete `findUnique` fix + A.9 cursor rule |
+| W1.2 | `afacbf4` | D.1 `tenant-guards.ts` helper (26 unit tests) |
+| W1.3 | `f9a4fcc` | D.7 `userRoleAssignment.create` pins CLS tenantId |
+| W1.4 | `6fef53b` | D.8 `AuditLog` + `AuthorizationAudit` tenant scoping (20 cross-tenant tests) |
+| W1.5 | `74eb315` | D.10 remove unsafe `rawQueryUnsafe` + `$bulk` |
+| W2.D6 | `1907862` | D.6 Department parent cross-tenant check |
+| W2.A | `fb05891` | Phase A schema hardening (A.1-A.9) |
+| W2.B | `a839fb8` | Phase B tenant-scope extension + rename + ESLint guard |
+| W2 follow-up | `2bfc125` | A.8 latent typecheck fixes (auditLog + resourceSubscription) |
+| W3.1 | `9d1921d` | D.2/D.3/D.4 Consultation + Context + Summary cross-aggregate checks |
+| W3.2 | `9028759` | D.5 Notification + ApiKey + DnaWritingStyle cross-tenant guards |
+| W3.3 | `21115ed` | D.9 BullMQ processors CLS rebind (4 of 6) |
+| W3.3 follow-up | `1839163` | D.9 AuditLogProcessor + ConsultationEventHandler CLS rebind (6 of 6) |
+| W4 / E.1 | `e24ddbbb` | Phase E.1 cross-tenant fixture + example test |
+| W4 / E.2-3 | `a006416e` | Phase E.2/E.3 cross-tenant coverage aggregator |
+| W4 / E.5 | `2acfc2a8` | Phase E.5 packages/database/README.md tenant scoping section |
+| W4 / E.6 | `c6624b47` | Phase E.6 docs/technical-architecture-overview.md multi-tenancy chapter |
+| W4 / E.7-8 | (this commit) | Phase E.7 implementation summary + E.8 plan close-out |
+
+---
+
+## 2. Audit findings — closed / deferred / out-of-scope
+
+Mapped against [`02-prisma-schema-review.md`](./02-prisma-schema-review.md).
+The audit defines **B1-B12** (Critical/HIGH), **C1-C12** (Medium), and
+**D1-D12** (Low/Hygiene) — 36 findings in total. No "M*" findings
+exist in the audit; that prefix in the Phase E spec was a misnomer.
+
+### B-series — Critical / HIGH
+
+| Code | Severity | Title | Status | Closed by | Notes |
+|---|---|---|---|---|---|
+| B1 | BLOCKER | No RLS exists in any migration | **DEFERRED** | — | Plan §3.3 Phase C drafted; blocked on TASK-302 (`hope_tenant_user NOSUPERUSER NOBYPASSRLS` role split). Application-layer extension (B7) + service guards together provide isolation today. |
+| B2 | BLOCKER | Zero FKs from tenant-scoped tables to `Tenant` | **OUT-OF-SCOPE** | — | User directive in plan §1.5: rejected to avoid bloating every Prisma model with a relation field. Tenant-deletion semantics will be handled by Phase C + application cascade. |
+| B3 | BLOCKER | `'50000000-…'` sentinel default on 27 models | **CLOSED** | W2.A `fb05891` | All 27 defaults removed in Phase A migration; `BaseTenantEntity.validate()` now throws on empty `tenantId`. |
+| B4 | HIGH | `tenantId` nullable on 13 models | **CLOSED** | W2.A `fb05891` | 11 models flipped to NOT NULL with back-fill to the reserved `system` Tenant. `User`/`UserMedia`/`UserProfile`/`UserSettings`/`UserVoiceProfile` remain non-tenant-scoped by design (B6). |
+| B5 | HIGH | Global uniques that should be tenant-scoped | **PARTIALLY CLOSED** | W2.A `fb05891` | `Webhook(tenantId, name)` and `Tag(tenantId, resourceTypeName, resourceId, tagKey)` scoped. `TenantBucket.name`, `StorageAccessKey.accessKeyId`, `User.externalId`, `User.username` kept global per plan §1.5 (S3 / SSO / identity conventions). |
+| B6 | HIGH | `User` model has no tenantId — users global by design | **OUT-OF-SCOPE** | — | Plan §1.5: architectural decision deferred to a separate ticket. The User-membership invariant is enforced by `assertUserBelongsToTenant` at every PHI-bearing create. Follow-up #1 tracks the `BaseGlobalEntity` extraction. |
+| B7 | HIGH | No tenant-aware Prisma extension | **CLOSED** | W2.B `a839fb8` | `applyTenantScopeExtension` ships; composed on top of soft-delete; CLS-driven; bidirectional mismatch detection. |
+| B8 | HIGH | Raw `getPrismaClient()` reachable from app code | **CLOSED** | W2.B `a839fb8` | Renamed to `getPlatformAdminPrismaClient_Unscoped`; ESLint `no-restricted-imports` rule with 8-site allow-list (`packages/config-eslint/base.js`). |
+| B9 | HIGH | Child rows' `tenantId` never cross-checked vs. parent | **CLOSED** | W3.1 `9d1921d`, W3.2 `9028759` | `assertEqualTenants` + `assertParentInScope` invoked at every cross-aggregate write site (`Consultation`, `Context`, `Summary`, `Chain`, `Notification`, `ApiKey`, `DnaWritingStyle`). |
+| B10 | HIGH | `Consultation.doctorId` FK doesn't enforce tenant membership | **CLOSED** | W3.1 `9d1921d`, W3.2 `9028759` | `assertUserBelongsToTenant` invoked at every `Consultation`/`Notification`/`ApiKey`/`DnaWritingStyle` create. |
+| B11 | HIGH (latent) | PgBouncer config + transaction-mode `SET LOCAL` semantics | **OUT-OF-SCOPE** | — | TASK-302 ownership. Phase C `$transaction` wrapper drafted but parked. |
+| B12 | HIGH (hygiene) | Soft-delete `findUnique` bypasses the filter | **CLOSED** | W1.1 `df3a214` | `applySoftDeleteFilter` now applied on `findUnique`; regression test pins the contract. |
+
+### C-series — Medium
+
+| Code | Severity | Title | Status | Closed by | Notes |
+|---|---|---|---|---|---|
+| C1 | MED | Single-column non-`tenantId`-leading composite indexes on `Consultation`/`ContextItem`/`NamedEntity` | **CLOSED** | W2.A `fb05891` | 14 composite `[tenantId, X]` indexes added across `Consultation`/`ContextItem`/`NamedEntity`/`SummaryMeta`/`AudioRecording`. |
+| C2 | MED | `AuditLog` mutable — no append-only constraint | **DEFERRED** | (partial: W1.4 `6fef53b`) | Application-layer tenant scoping on `fetch*`/`delete*` shipped (W1.4 D.8). DB-level `REVOKE UPDATE, DELETE` and `platform_audit_admin` role planned for Phase C. |
+| C3 | MED | `StorageAccessKey.bucketIds String[]` — denormalised text array | **OUT-OF-SCOPE** | — | Plan §1.5: independent refactor (not a multi-tenancy fix). |
+| C4 | MED | `User.secret1`/`secret2` plaintext-ish | **OUT-OF-SCOPE** | — | Plan §1.5: separate security review. |
+| C5 | MED | `User.password` naming — no `passwordHash`/`Algorithm`/`Salt` discriminator | **OUT-OF-SCOPE** | — | Plan §1.5: separate security review. |
+| C6 | MED | `Department.parentDepartmentId` self-reference not tenant-checked | **CLOSED** | W2.D6 `1907862` | `assertParentInScope(parentDepartment, child)` invoked on every `create`/`update`. SUPER_ADMIN does NOT bypass (structural correctness). |
+| C7 | MED | `UserVoiceProfile.embedding` `vector(256)` no pgvector index | **OUT-OF-SCOPE** | — | Performance optimization, not a multi-tenancy issue. Separate ML ticket. |
+| C8 | MED | `Tag` has no unique/index | **CLOSED** | W2.A `fb05891` | `@@unique([tenantId, resourceTypeName, resourceId, tagKey])` + matching index added in Phase A. |
+| C9 | MED | `TranscriptionJob.consultationId/contextItemId/mediaId` plain-string FKs | **OUT-OF-SCOPE** | — | Plan §1.5: user-directive applies (no FK transformation). Read-side cross-tenant risk covered by Phase D service guards. |
+| C10 | MED | `Tenant` deactivation behaviour undefined | **DEFERRED** | — | Separate ticket — needs product decision on whether `Tenant.resourceStatus = DISABLED` blocks RLS reads or only application-level writes. |
+| C11 | MED | Migration uses no `NOT VALID` constraints | **OUT-OF-SCOPE** | — | Documentation note, no schema change required. |
+| C12 | MED | `prisma.config.ts` `DIRECT_URL == DATABASE_URL` in dev | **OUT-OF-SCOPE** | — | Dev-only convention. Production envs already use distinct URLs (`client.ts:50-56`). |
+
+### D-series — Low / Hygiene
+
+| Code | Severity | Title | Status | Closed by | Notes |
+|---|---|---|---|---|---|
+| D1 | LOW | `AuditAction` enum missing `EXPORT` etc. — add in single migration | **OUT-OF-SCOPE** | — | Schema-evolution hygiene; not a tenancy issue. |
+| D2 | LOW | `ResourceType` enum kept in manual sync with models | **OUT-OF-SCOPE** | — | Codegen drift surface; independent ticket. |
+| D3 | LOW | `metaData Json?` no schema constraint | **OUT-OF-SCOPE** | — | Application-layer validation concern. |
+| D4 | LOW | `ApiKey.usageCount Int` overflow risk | **OUT-OF-SCOPE** | — | Separate data-model ticket. |
+| D5 | LOW | `Notification.tags` lacks `@default([])` | **OUT-OF-SCOPE** | — | Cosmetic inconsistency. |
+| D6 | LOW | `WebhookRunHistory` no indexes (PK only) | **OUT-OF-SCOPE** | — | Performance, not isolation. |
+| D7 | LOW | Boilerplate duplication across models | **OUT-OF-SCOPE** | — | Codegen / Prisma 7 `type` composition (preview). |
+| D8 | LOW | `media.prisma:8` nullable `tenantId` despite NOT NULL FK relations | **CLOSED** | W2.A `fb05891` | `Media.tenantId` flipped to NOT NULL with the rest of B4. |
+| D9 | LOW | `vault-admin-bootstrap.sql` no explicit `NOBYPASSRLS` | **DEFERRED** | — | Phase C / TASK-302. |
+| D10 | LOW | `seed/01-policy.ts` template-literal tenant scoping un-tested | **OUT-OF-SCOPE** | — | CASL policy hygiene; separate ticket. |
+| D11 | LOW | `tag.prisma` `createdBy` lacks `@default("60000000-…")` placeholder | **OUT-OF-SCOPE** | — | Trivial inconsistency; not blocking. |
+| D12 | LOW | `User.lastLoginAt`/`lastActiveAt` write-amplification | **OUT-OF-SCOPE** | — | Separate `UserActivity` table proposal. |
+
+### Roll-up
+
+| Status | Count | Notes |
+|---|---|---|
+| **CLOSED** | **12** | B3, B4, B5 (partial), B7, B8, B9, B10, B12, C1, C6, C8, D8. (W1.1 = B12; not counted twice.) |
+| **DEFERRED** | **4** | B1 (RLS), C2 (AuditLog lockdown), C10 (Tenant deactivation), D9 (vault NOBYPASSRLS) — all converge on Phase C / TASK-302. |
+| **OUT-OF-SCOPE** | **20** | User-directive items (B2), separate-review items (B6, B11), hygiene items (C3, C4, C5, C7, C9, C11, C12, D1-D7, D10-D12). |
+
+(B5 is counted once under CLOSED because the scoped half shipped; the
+kept-global half was a user decision, not a deferral.)
+
+---
+
+## 3. Test coverage (cross-tenant)
+
+The aggregator at
+[`packages/applications/src/__tests__/cross-tenant-coverage.test.ts`](../../packages/applications/src/__tests__/cross-tenant-coverage.test.ts)
+introspects each tracked test file and counts the `it(...)` blocks
+nested under the canonical `describe('TASK-305 D.x …')` /
+`describe('Multi-tenant scoping …')` / `describe('CLS rebind …')`
+markers. Coverage at TASK-305 close-out:
+
+### Service-layer (E.2)
+
+| Service | Test file | `it()` count | Audit codes closed |
+|---|---|---|---|
+| `auditLog` | `services/auditLog/__tests__/auditLog.service.test.ts` | 12 | D.8 (B1 partial, C2 partial) |
+| `audit/authorization-audit` | `services/audit/__tests__/authorization-audit.service.test.ts` | 8 | D.8 |
+| `apiKey` | `services/apiKey/__tests__/apikey.service.test.ts` | 14 | D.5 (B9, B10) |
+| `consultation/consultation` | `services/consultation/consultation/__tests__/consultation.service.test.ts` | 9 | D.2 (B9, B10, C6 across aggregate) |
+| `consultation/context` | `services/consultation/context/__tests__/context.service.test.ts` | 8 | D.3 (B9) |
+| `consultation/summary` | `services/consultation/summary/__tests__/summary.service.test.ts` | 5 | D.4 (B9) |
+| `consultation/summary/chain-summary` | `services/consultation/summary/__tests__/chain-summary.service.test.ts` | 2 | D.4 (B9, chain) |
+| `department` | `services/department/__tests__/department.service.test.ts` | 6 | D.6 (C6) |
+| `dna-writing-style` | `services/dna-writing-style/__tests__/dna-writing-style.service.test.ts` | 10 | D.5 (B9, B10) |
+| `notification` | `services/notification/__tests__/notification.service.test.ts` | 15 | D.5 (B9, B10) |
+| `user/userRoleAssignment` | `services/user/userRoleAssignment/__tests__/userRoleAssignment.service.test.ts` | 4 | D.7 (audit BLOCKER on `UserRoleAssignment`) |
+
+**Subtotal**: 93 inline cross-tenant service tests.
+
+### Queue + event-handler (E.3)
+
+| Component | Test file | `it()` count | Audit codes closed |
+|---|---|---|---|
+| `summary.processor` | `services/consultation/jobs/__tests__/summary.processor.test.ts` | 3 | D.9 (B7 + B9 in queue context) |
+| `pre-summary.processor` | `services/consultation/jobs/__tests__/pre-summary.processor.test.ts` | 3 | D.9 |
+| `comprehensive-summary.processor` | `services/consultation/jobs/__tests__/comprehensive-summary.processor.test.ts` | 3 | D.9 |
+| `ner.processor` | `services/consultation/jobs/__tests__/ner.processor.test.ts` | 3 | D.9 |
+| `auditLog.processor` | `services/auditLog/__tests__/auditLog.processor.test.ts` | 3 | D.9 (write-only — no `assertEqualTenants`) |
+| `consultation-event.handler` | `services/consultation/events/__tests__/consultation-event.handler.test.ts` | 6 | D.9 (`@OnEvent` CLS rebind + fail-closed) |
+
+**Subtotal**: 21 inline CLS-rebind / fail-closed tests.
+
+### Aggregator total
+
+**93 + 21 = 114** cross-tenant tests pinned by the aggregator. Plus
+**6** fixture shape-pinning tests in `tests/cross-tenant/example.test.ts`
+(repo root). Plus **19** aggregator-level tests (17 coverage
+assertions + 2 introspection-helper sanity tests).
+
+The aggregator itself fails CI if any expected service / processor
+file is missing, any marker `describe` block is removed, or any
+inline count drops below the W3-reported floors.
+
+---
+
+## 4. Decision log — what was NOT done, and why
+
+- **FK columns from `tenantId` → `Tenant`** — rejected by user (plan
+  §1.5 / B2). Would create a relation field on every tenant-scoped
+  Prisma model for marginal benefit. The extension + (future) RLS
+  cover the same isolation invariant without the model noise.
+- **`User`/`UserMedia` as global entities** — deferred. Today they
+  extend `BaseTenantEntity` with `tenantId: ''` placeholder. The
+  proper fix is `BaseGlobalEntity` (or `BaseAggregate` directly).
+  Plan §6.7 follow-up #1.
+- **RLS policies (Phase C)** — deferred. Depends on TASK-302
+  (PgBouncer + Vault `hope_tenant_user` role split). Application
+  layer already enforces the same invariant; RLS is defence-in-depth.
+- **`CoreDataModel` wildcard re-export removal** — deferred. The
+  ESLint rule's `importNames` doesn't follow wildcard re-exports,
+  making `core.database.types.ts` a latent footgun (no current
+  consumers). Plan §6.7 follow-up #5.
+- **`NotificationService` SUPER_ADMIN posture inconsistency** — the
+  service permits SUPER_ADMIN cross-tenant access while the parallel
+  DNA service refuses. Reviewer-flagged (W3.2). Plan §6.7 follow-up #7.
+- **`fetchAllByTenantId` pre-existing gaps** —
+  `NotificationService.fetchAllByTenantId`,
+  `ApiKeyService.fetchAllByTenantId`,
+  `DnaWritingStyleService.listReports` accept caller-supplied
+  `tenantId` with no CLS comparison. Predates TASK-305. Plan §6.7
+  follow-up #8.
+- **`auditLog.processor.spec.ts` dead-file cleanup** — vitest/eslint
+  skip `.spec.ts` inside `__tests__/`; the file is silently dead.
+  Housekeeping ticket. Plan §6.7 follow-up #9.
+- **`WorkerSession` soft typing** — `as unknown as UserSession` reused
+  8× in queue/event processors. Style cleanup. Plan §6.7 follow-up #10.
+- **B4 nullable removal for `User*` family** — deliberately not
+  changed; `User` model is global by design (B6). The
+  `assertUserBelongsToTenant` guard at every PHI-bearing create is the
+  invariant equivalent.
+
+---
+
+## 5. Cross-links
+
+- Plan: [`docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md`](../implementation/TASK-305-Multi-Tenancy-Hardening/README.md)
+- Original audit: [`02-prisma-schema-review.md`](./02-prisma-schema-review.md)
+- Sibling audit docs: [`01-research-best-practices.md`](./01-research-best-practices.md), [`03-ddd-layers-review.md`](./03-ddd-layers-review.md), [`04-api-design-review.md`](./04-api-design-review.md), [`05-vox-sdk-review.md`](./05-vox-sdk-review.md)
+- Tenant guards: [`packages/applications/src/common/tenant-guards.ts`](../../packages/applications/src/common/tenant-guards.ts)
+- Prisma extension: [`packages/database/src/extensions/tenant-scope.ts`](../../packages/database/src/extensions/tenant-scope.ts)
+- CLS provider: [`apps/api/src/database/tenant-context.provider.ts`](../../apps/api/src/database/tenant-context.provider.ts)
+- Architecture overview: [`docs/technical-architecture-overview.md`](../technical-architecture-overview.md) § Multi-tenancy enforcement layers
+- DB README: [`packages/database/README.md`](../../packages/database/README.md) § Tenant scoping & RLS posture
+- Cross-tenant fixture: [`tests/cross-tenant/fixtures.ts`](../../tests/cross-tenant/fixtures.ts)
+- Coverage aggregator: [`packages/applications/src/__tests__/cross-tenant-coverage.test.ts`](../../packages/applications/src/__tests__/cross-tenant-coverage.test.ts)
