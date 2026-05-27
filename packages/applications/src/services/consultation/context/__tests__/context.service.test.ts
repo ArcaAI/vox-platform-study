@@ -3635,5 +3635,99 @@ describe('ContextService', () => {
                 expect(mockConsultationRepository.findByPatientAndDate).not.toHaveBeenCalled();
             });
         });
+
+        /**
+         * TASK-306 W5.7.8 (306-F11) — scope=single broadcast gate.
+         *
+         * Pre-W5.7.8, `getAggregateNamedEntities(consultationId, 'single')`
+         * passed `[consultationId]` straight to the downstream
+         * pipeline. The Prisma `tenantScope` extension scopes the
+         * per-id reads to empty for a foreign-tenant `consultationId`
+         * (so no PHI leaks via `entities` / `sources`), but the
+         * `ResourceViewed` broadcast at the end of the method STILL
+         * fired with the foreign `consultationId` in the payload — a
+         * minor side-channel signal that a Tenant-A user "viewed"
+         * Tenant-B's id.
+         *
+         * The fix pre-fetches the root consultation and short-circuits
+         * with an empty response (and NO broadcast) when the root is
+         * absent or foreign-tenant. scope=chain is unaffected — its
+         * existing early-return at `consultationIds.length === 0`
+         * already skips the broadcast on the
+         * `resolveLinkedConsultationIds === []` cross-tenant case
+         * (W5.4 contract).
+         */
+        describe('TASK-306 W5.7.8 — getAggregateNamedEntities scope=single broadcast gate', () => {
+            it('does NOT broadcast ResourceViewed when scope=single and consultationId is foreign-tenant', async () => {
+                mockConsultationRepository.findWithRelations.mockReset();
+                mockContextItemRepository.findSummaries.mockReset();
+                mockContextItemRepository.findTranscripts.mockReset();
+                mockNamedEntityRepository.findByContextItem.mockReset();
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-foreign',
+                    tenantId: 'tenant-OTHER',
+                    patientId: 'patient-foreign',
+                    appointmentDate: new Date('2026-02-17'),
+                });
+
+                const result = await service.getAggregateNamedEntities('consultation-foreign', 'single');
+
+                expect(result).toEqual(
+                    expect.objectContaining({
+                        consultationId: 'consultation-foreign',
+                        scope: 'single',
+                        entities: {},
+                        totalCount: 0,
+                        countByClass: {},
+                        sources: [],
+                    }),
+                );
+                expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+                    SysEventType.ResourceViewed,
+                    expect.anything(),
+                );
+                // Short-circuit must happen BEFORE the downstream fetches.
+                expect(mockConsultationRepository.findWithRelations).not.toHaveBeenCalled();
+                expect(mockContextItemRepository.findSummaries).not.toHaveBeenCalled();
+            });
+
+            it('broadcasts ResourceViewed when scope=single and consultationId is same-tenant (sanity)', async () => {
+                mockConsultationRepository.findWithRelations.mockReset();
+                mockContextItemRepository.findSummaries.mockReset();
+                mockContextItemRepository.findTranscripts.mockReset();
+                mockNamedEntityRepository.findByContextItem.mockReset();
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-a',
+                    tenantId: 'tenant-1',
+                    patientId: 'patient-1',
+                    appointmentDate: new Date('2026-02-17'),
+                });
+                mockConsultationRepository.findWithRelations.mockResolvedValue({
+                    id: 'consultation-a',
+                    tenantId: 'tenant-1',
+                    patientId: 'patient-1',
+                    appointmentDate: new Date('2026-02-17'),
+                    doctorId: 'doctor-a-id',
+                    departmentId: 'dept-gen',
+                    Doctor: { username: 'dr.smith', UserProfile: { firstName: 'John', lastName: 'Smith' } },
+                    Department: { name: 'General' },
+                });
+                mockContextItemRepository.findSummaries.mockResolvedValue([]);
+                mockContextItemRepository.findTranscripts.mockResolvedValue([]);
+                mockNamedEntityRepository.findByContextItem.mockResolvedValue([]);
+
+                await service.getAggregateNamedEntities('consultation-a', 'single');
+
+                expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                    SysEventType.ResourceViewed,
+                    expect.objectContaining({
+                        data: expect.objectContaining({
+                            consultationId: 'consultation-a',
+                            scope: 'single',
+                        }),
+                    }),
+                );
+            });
+        });
     });
 });
