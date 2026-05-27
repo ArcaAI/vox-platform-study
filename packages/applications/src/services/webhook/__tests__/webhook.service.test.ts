@@ -460,6 +460,36 @@ describe('WebhookService', () => {
                 expect(countArgs.where?.tenantId).toBeUndefined();
             });
         });
+
+        describe('fetchById (5.3.3)', () => {
+            it('returns the webhook when the loaded row belongs to the caller (same-tenant)', async () => {
+                const webhook = createMockWebhookEntity({ id: 'webhook-1', tenantId: 'tenant-1' });
+                mockWebhookRepository.findById.mockResolvedValue(webhook);
+
+                const result = await service.fetchById('webhook-1');
+
+                expect(result.id).toBe('webhook-1');
+            });
+
+            it('throws NotFoundException for cross-tenant non-admin reads', async () => {
+                const { NotFoundException } = await import('@nestjs/common');
+                const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2' });
+                mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
+
+                await expect(service.fetchById('webhook-foreign')).rejects.toThrow(NotFoundException);
+            });
+
+            it('returns the cross-tenant webhook when the caller is a SUPER_ADMIN (admin bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2' });
+                mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
+
+                const result = await service.fetchById('webhook-foreign');
+
+                expect(result.id).toBe('webhook-foreign');
+                expect(result.tenantId).toBe('tenant-2');
+            });
+        });
     });
 
     describe('fetchAll', () => {

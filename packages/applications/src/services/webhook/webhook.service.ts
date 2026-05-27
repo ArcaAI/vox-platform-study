@@ -5,7 +5,7 @@ import { ResourceType, SysEventType, EntityId, WebhookEntity, WebhookFactory, We
 import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
 import { IWebhookService } from './IWebhookService';
 import { CreateWebhookRequest, UpdateWebhookRequest } from './dto';
-import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
+import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 
@@ -145,8 +145,17 @@ export class WebhookService extends BaseService implements IWebhookService {
     });
   }
 
+  /**
+   * TASK-306 P2.3 (audit M-2 / AC-5) — load-then-assert. Throw
+   * `NotFoundException` (never `ForbiddenException`) on a cross-tenant
+   * id so the API does not reveal that the row exists in another
+   * tenant. SUPER_ADMIN bypasses for admin tooling.
+   */
   async fetchById(id: EntityId): Promise<WebhookEntity> {
     const webhook = await this.webhookRepository.findById(id);
+    if (!this.isSuperAdmin()) {
+      assertEqualTenants(webhook, { tenantId: this.tenantId });
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: webhook.id,
