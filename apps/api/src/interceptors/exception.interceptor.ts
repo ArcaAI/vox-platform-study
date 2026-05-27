@@ -1,6 +1,6 @@
 import { ApiErrorResponse, IClsContext } from '@arcaai/applications';
 import { PrismaClientKnownRequestError, PrismaClientValidationError } from '@arcaai/database';
-import { BaseException, OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { BaseException, DataNotFoundException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { BadRequestException, CallHandler, ExecutionContext, HttpException, HttpStatus, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { Observable, throwError } from 'rxjs';
@@ -146,6 +146,27 @@ export class ExceptionInterceptor implements NestInterceptor {
           }
 
           return throwError(() => new HttpException(err.toJSON(), HttpStatus.PRECONDITION_FAILED));
+        }
+
+        // TASK-306 P3.3 / AC-12 / audit M-8 — `DataNotFoundException`
+        // (thrown by `Repository<T>.findById` and friends) MUST pass
+        // through unwrapped so the global `DataNotFoundExceptionFilter`
+        // (registered as `APP_FILTER` in `app.module.ts`) can map it to
+        // a generic `404 { message: "Resource not found" }`. If we
+        // wrap it here as the legacy `HttpException(err.toJSON(), 500)`
+        // branch below does, the filter never sees the original
+        // `DataNotFoundException` and the response leaks the model
+        // name + row id in the body. This branch MUST run before the
+        // generic `BaseException` branch (which OCC also pre-empts for
+        // the same reason).
+        if (err instanceof DataNotFoundException) {
+          this.logger.debug({
+            message: 'DataNotFoundException — passing through to global filter',
+            ...baseContext,
+            correlationId: err.correlationId,
+            exceptionMessage: err.message,
+          });
+          return throwError(() => err);
         }
 
         if (err instanceof BaseException) {
