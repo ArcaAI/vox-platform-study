@@ -93,17 +93,20 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
   {
     name: 'consultation/context',
     file: 'services/consultation/context/__tests__/context.service.test.ts',
-    // TASK-306 P2.5 / W5.4.2 added 9 new it() blocks under the
-    // `TASK-306 P2.5 — ContextItem array-input defense-in-depth`
-    // marker (5 getSharedContext + 2 getSharedCaseNotes + 2
-    // getAggregateNamedEntities). Marker broadened from
-    // `/TASK-305 D\.3|cross-aggregate tenant/i` → `/TASK-306/` to
-    // align with the W5.3.12 convention (drop `/i`, single-token
-    // anchor). The TASK-305 D.3 block stays in the test file as
-    // anti-regression coverage but is now pinned by the W5.5.6
-    // FS-introspection harden rather than an explicit floor here.
-    minTests: 9,
-    marker: /TASK-306/,
+    // TASK-306 W5.5.7 / 306-F10 fold-in. Pre-W5.5.7 the marker had
+    // been narrowed from `/TASK-305 D\.3|cross-aggregate tenant/i`
+    // → `/TASK-306/` (W5.4.2 / W5.3.12 single-token convention).
+    // The narrowing left the 8 TASK-305 D.3 cross-aggregate tenant
+    // tests pinned only by the W5.5.6 FS-introspection — fine for
+    // existence, but the explicit floor only tracked the 9 TASK-306
+    // P2.5 tests. 306-F10 broadens the marker back to a 3-token
+    // pattern (matching the `consultation/consultation` entry above)
+    // so the floor explicitly tracks BOTH cross-tenant test blocks
+    // in the file. Floor bumped 9 → 17 (= 8 TASK-305 D.3 + 9 TASK-306
+    // P2.5). Verified by counting it() blocks against the broad
+    // marker before commit.
+    minTests: 17,
+    marker: /TASK-305 D\.3|cross-aggregate tenant|TASK-306/i,
   },
   {
     name: 'consultation/summary',
@@ -213,8 +216,41 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
   {
     name: 'resourceSubscription',
     file: 'services/resourceSubscription/__tests__/resourceSubscription.service.test.ts',
+    // TASK-306 W5.5.7 / 306-F9 fold-in (cosmetic): dropped the `/i`
+    // flag from the marker. `TASK-306` is always written upper-case
+    // in describe titles per the W5.3.12 convention; the `/i` flag
+    // was a copy-paste from the older `/cross-aggregate tenant/i`
+    // shape and serves no purpose here.
     minTests: 13,
-    marker: /TASK-306/i,
+    marker: /TASK-306/,
+  },
+  /*
+   * TASK-306 W5.5.7 — W5.5 base-layer additions.
+   *
+   * These entries point OUTSIDE `services/` (one in `common/`, one in
+   * `services/baseServices/`) so the W5.5.6 FS-introspection walker
+   * does not auto-discover them — but the cross-tenant assertions
+   * they hold are central to the multi-tenancy contract, so the
+   * aggregator pins them explicitly:
+   *
+   *   - `base.service` (W5.5.1 / audit M-5): `broadcastSysEvent` CLS
+   *     wins on tenantId. Floor 3 per spec — actual count is 4 and
+   *     can grow; floor catches a 2-test regression.
+   *   - `core.unitOfWork` (W5.5.2 / audit M-6): the new
+   *     `runInTransaction` canonical `$transaction(callback)`
+   *     contract. Floor 3 per spec — actual count is 4.
+   */
+  {
+    name: 'common/base.service',
+    file: 'common/__tests__/base.service.test.ts',
+    minTests: 3,
+    marker: /TASK-306/,
+  },
+  {
+    name: 'baseServices/core.unitOfWork',
+    file: 'services/baseServices/unitsOfWork/__tests__/core.unitOfWork.test.ts',
+    minTests: 3,
+    marker: /TASK-306/,
   },
 ];
 
