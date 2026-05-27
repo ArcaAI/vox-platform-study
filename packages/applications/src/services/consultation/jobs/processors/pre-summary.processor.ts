@@ -3,6 +3,7 @@ import { Inject, Logger, Optional } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
+import { ClsService } from 'nestjs-cls';
 import { JobQueue, ContextItemRepository, ConsultationRepository, ContextItemFactory, ContextItemType } from '@arcaai/domains';
 import { IConsultationJobService } from '../consultation-job.service';
 import { GeneratePreSummaryJobPayload, PreSummaryJobResult } from '../dto';
@@ -11,6 +12,9 @@ import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
+import { UserSession } from '../../../auth/dto';
+import { IActiveUserContext } from '../../../../interfaces';
+import { assertEqualTenants } from '../../../../common';
 
 @Processor(JobQueue.GeneratePreSummary)
 export class PreSummaryProcessor extends WorkerHost {
@@ -26,6 +30,7 @@ export class PreSummaryProcessor extends WorkerHost {
     private readonly promptResolutionService: PromptResolutionService,
     private readonly promptAssemblyService: PromptAssemblyService,
     private readonly jobMetrics: JobMetricsService,
+    private readonly cls: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super();
@@ -34,131 +39,144 @@ export class PreSummaryProcessor extends WorkerHost {
 
   async process(job: Job<GeneratePreSummaryJobPayload>): Promise<PreSummaryJobResult> {
     const { jobId, consultationId, tenantId, userId } = job.data;
-    const request = job.data.request;
-    const endTimer = this.jobMetrics.recordJobStart(JobQueue.GeneratePreSummary);
-    const waitMs = Date.now() - job.timestamp;
-    this.jobMetrics.recordWaitingDuration(JobQueue.GeneratePreSummary, waitMs / 1000);
+    // TASK-305 D.9.3 — fail-closed when tenantId is missing.
+    if (!tenantId) {
+      throw new Error(`Job ${jobId ?? job.id} is missing required tenantId`);
+    }
+    // TASK-305 D.9.1 — rebind tenantId + user into a fresh CLS scope so the
+    // Phase B tenantScope Prisma extension sees the correct context.
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      this.cls.set('user', { id: userId, tenantId, roles: [], permissions: [] } as unknown as UserSession);
 
-    this.logger.log({
-      message: 'Processing pre-summary job',
-      jobId,
-      consultationId,
-    });
-
-    try {
-      // Step 1: Gathering case notes (10%)
-      await this.jobService.notifyProgress(jobId, 10, 'Gathering case notes');
-
-      const consultation = await this.consultationRepository.findById(consultationId);
-      if (!consultation) {
-        throw new Error(`Consultation ${consultationId} not found`);
-      }
-
-      // Resolve prompt config for pre-summary (GAP-3)
-      // DNA style is per-doctor and resolved separately — not part of prompt resolution (TASK-025).
-      const resolved = await this.promptResolutionService.resolve({
-        departmentId: consultation.departmentId ?? undefined,
-        promptType: 'pre-summary',
-      });
-
-      this.logger.debug({
-        message: 'Prompt config resolved for pre-summary job',
-        jobId,
-        resolvedFrom: resolved.resolvedFrom,
-        template: resolved.template,
-      });
-
-      // Get case notes from the consultation chain
-      let content = '';
-      if (request.caseNoteIds?.length) {
-        // Use specific case notes
-        const caseNotes = await Promise.all(request.caseNoteIds.map((id) => this.contextItemRepository.findById(id)));
-        content = caseNotes
-          .filter(Boolean)
-          .map((c) => c!.content)
-          .join('\n\n');
-      } else {
-        // Get all case notes from the consultation
-        const caseNotes = await this.contextItemRepository.findByConsultation(consultationId, { type: ContextItemType.CASE_NOTE });
-        content = caseNotes.map((c) => c.content).join('\n\n');
-      }
-
-      if (!content.trim()) {
-        throw new Error('No case notes available for pre-summary generation');
-      }
-
-      const assembledPrompt = await this.promptAssemblyService.assemble({
-        departmentId: consultation.departmentId ?? undefined,
-        promptType: 'pre-summary',
-        transcript: content,
-        conversationLanguage: this.resolveConversationLanguage(request.options),
-        dnaStyleId: request.dnaStyleId,
-      });
-
-      // Step 2: Calling AI service (30%)
-      await this.jobService.notifyProgress(jobId, 30, 'Generating pre-summary with AI');
-
-      const smrResponse = await this.callSmrService(
-        assembledPrompt,
-        {
-          ...request,
-          options: {
-            ...request.options,
-            promptResolvedFrom: assembledPrompt.resolvedFrom,
-            promptHyperparameters: assembledPrompt.hyperparameters,
-          },
-        },
-        jobId,
-      );
-
-      // Step 3: Saving results (70%)
-      await this.jobService.notifyProgress(jobId, 70, 'Saving results');
-
-      const contextItem = ContextItemFactory.CreatePreSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId);
-
-      const savedContext = await this.contextItemRepository.create(contextItem);
-
-      // Step 4: Complete (100%)
-      const result: PreSummaryJobResult = {
-        contextItemId: savedContext.id,
-        content: savedContext.content,
-        summaryMeta: {
-          aiModelId: smrResponse.modelName,
-          processingTimeMs: smrResponse.processingTimeMs,
-          inputTokens: smrResponse.inputTokens,
-          outputTokens: smrResponse.outputTokens,
-        },
-      };
-
-      await this.jobService.notifyComplete(jobId, result);
-
-      const duration = endTimer();
-      this.jobMetrics.recordJobComplete(JobQueue.GeneratePreSummary, 'PreSummaryProcessor', duration);
+      const request = job.data.request;
+      const endTimer = this.jobMetrics.recordJobStart(JobQueue.GeneratePreSummary);
+      const waitMs = Date.now() - job.timestamp;
+      this.jobMetrics.recordWaitingDuration(JobQueue.GeneratePreSummary, waitMs / 1000);
 
       this.logger.log({
-        message: 'Pre-summary job completed',
+        message: 'Processing pre-summary job',
         jobId,
-        contextItemId: savedContext.id,
-        processingTimeMs: smrResponse.processingTimeMs,
+        consultationId,
       });
 
-      return result;
-    } catch (error) {
-      endTimer();
-      this.jobMetrics.recordJobFailed(
-        JobQueue.GeneratePreSummary,
-        'PreSummaryProcessor',
-        error instanceof Error ? error.constructor.name : 'UnknownError',
-      );
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error({
-        message: 'Pre-summary job failed',
-        jobId,
-        error: errorMessage,
-      });
-      await this.jobService.notifyFailed(jobId, errorMessage);
-      throw error;
-    }
+      try {
+        // Step 1: Gathering case notes (10%)
+        await this.jobService.notifyProgress(jobId, 10, 'Gathering case notes');
+
+        const consultation = await this.consultationRepository.findById(consultationId);
+        if (!consultation) {
+          throw new Error(`Consultation ${consultationId} not found`);
+        }
+        // TASK-305 D.9.2 — defense in depth against a poisoned / stale payload.
+        assertEqualTenants(consultation, { tenantId });
+
+        // Resolve prompt config for pre-summary (GAP-3)
+        // DNA style is per-doctor and resolved separately — not part of prompt resolution (TASK-025).
+        const resolved = await this.promptResolutionService.resolve({
+          departmentId: consultation.departmentId ?? undefined,
+          promptType: 'pre-summary',
+        });
+
+        this.logger.debug({
+          message: 'Prompt config resolved for pre-summary job',
+          jobId,
+          resolvedFrom: resolved.resolvedFrom,
+          template: resolved.template,
+        });
+
+        // Get case notes from the consultation chain
+        let content = '';
+        if (request.caseNoteIds?.length) {
+          // Use specific case notes
+          const caseNotes = await Promise.all(request.caseNoteIds.map((id) => this.contextItemRepository.findById(id)));
+          content = caseNotes
+            .filter(Boolean)
+            .map((c) => c!.content)
+            .join('\n\n');
+        } else {
+          // Get all case notes from the consultation
+          const caseNotes = await this.contextItemRepository.findByConsultation(consultationId, { type: ContextItemType.CASE_NOTE });
+          content = caseNotes.map((c) => c.content).join('\n\n');
+        }
+
+        if (!content.trim()) {
+          throw new Error('No case notes available for pre-summary generation');
+        }
+
+        const assembledPrompt = await this.promptAssemblyService.assemble({
+          departmentId: consultation.departmentId ?? undefined,
+          promptType: 'pre-summary',
+          transcript: content,
+          conversationLanguage: this.resolveConversationLanguage(request.options),
+          dnaStyleId: request.dnaStyleId,
+        });
+
+        // Step 2: Calling AI service (30%)
+        await this.jobService.notifyProgress(jobId, 30, 'Generating pre-summary with AI');
+
+        const smrResponse = await this.callSmrService(
+          assembledPrompt,
+          {
+            ...request,
+            options: {
+              ...request.options,
+              promptResolvedFrom: assembledPrompt.resolvedFrom,
+              promptHyperparameters: assembledPrompt.hyperparameters,
+            },
+          },
+          jobId,
+        );
+
+        // Step 3: Saving results (70%)
+        await this.jobService.notifyProgress(jobId, 70, 'Saving results');
+
+        const contextItem = ContextItemFactory.CreatePreSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId);
+
+        const savedContext = await this.contextItemRepository.create(contextItem);
+
+        // Step 4: Complete (100%)
+        const result: PreSummaryJobResult = {
+          contextItemId: savedContext.id,
+          content: savedContext.content,
+          summaryMeta: {
+            aiModelId: smrResponse.modelName,
+            processingTimeMs: smrResponse.processingTimeMs,
+            inputTokens: smrResponse.inputTokens,
+            outputTokens: smrResponse.outputTokens,
+          },
+        };
+
+        await this.jobService.notifyComplete(jobId, result);
+
+        const duration = endTimer();
+        this.jobMetrics.recordJobComplete(JobQueue.GeneratePreSummary, 'PreSummaryProcessor', duration);
+
+        this.logger.log({
+          message: 'Pre-summary job completed',
+          jobId,
+          contextItemId: savedContext.id,
+          processingTimeMs: smrResponse.processingTimeMs,
+        });
+
+        return result;
+      } catch (error) {
+        endTimer();
+        this.jobMetrics.recordJobFailed(
+          JobQueue.GeneratePreSummary,
+          'PreSummaryProcessor',
+          error instanceof Error ? error.constructor.name : 'UnknownError',
+        );
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error({
+          message: 'Pre-summary job failed',
+          jobId,
+          error: errorMessage,
+        });
+        await this.jobService.notifyFailed(jobId, errorMessage);
+        throw error;
+      }
+    });
   }
 
   private async callSmrService(

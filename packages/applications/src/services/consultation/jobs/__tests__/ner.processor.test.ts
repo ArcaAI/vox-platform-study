@@ -78,6 +78,27 @@ const createMockEventEmitter = () => ({
     emit: vi.fn(),
 });
 
+// Mock ClsService — TASK-305 D.9. See summary.processor.test.ts for the
+// rationale.
+const createMockClsService = () => {
+    const store = new Map<string, unknown>();
+    const mock = {
+        run: vi.fn((...args: unknown[]) => {
+            const callback = (args.length === 1 ? args[0] : args[1]) as () => unknown;
+            return callback();
+        }),
+        runWith: vi.fn((seed: Record<string, unknown>, callback: () => unknown) => {
+            for (const [k, v] of Object.entries(seed)) store.set(k, v);
+            return callback();
+        }),
+        set: vi.fn((key: string, value: unknown) => { store.set(key, value); }),
+        get: vi.fn((key?: string) => (key === undefined ? Object.fromEntries(store) : store.get(key))),
+        has: vi.fn((key: string) => store.has(key)),
+        isActive: vi.fn(() => true),
+    };
+    return mock;
+};
+
 // Helper to create mock job
 const createMockJob = (data: ExtractNerJobPayload): Job<ExtractNerJobPayload> =>
     ({
@@ -155,6 +176,7 @@ describe('NerProcessor', () => {
     let mockHttpService: ReturnType<typeof createMockHttpService>;
     let mockConfigService: ReturnType<typeof createMockConfigService>;
     let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
+    let mockClsService: ReturnType<typeof createMockClsService>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -165,6 +187,7 @@ describe('NerProcessor', () => {
         mockHttpService = createMockHttpService();
         mockConfigService = createMockConfigService();
         mockEventEmitter = createMockEventEmitter();
+        mockClsService = createMockClsService();
 
         processor = new NerProcessor(
             mockJobService as any,
@@ -173,6 +196,7 @@ describe('NerProcessor', () => {
             mockHttpService as any,
             mockConfigService as any,
             mockEventEmitter as any,
+            mockClsService as any,
         );
     });
 
@@ -637,6 +661,7 @@ describe('NerProcessor', () => {
                 mockHttpService as any,
                 configServiceWithoutUrl as any,
                 mockEventEmitter as any,
+                mockClsService as any,
             );
 
             mockContextItemRepository.findById.mockResolvedValue(
@@ -1051,7 +1076,7 @@ Chinese: 發燒 (fever)
             ];
 
             mockContextItemRepository.findById.mockResolvedValue(
-                createMockContextItem({ content: medicalContent }),
+                createMockContextItem({ content: medicalContent, tenantId: 'tenant-medical' }),
             );
             mockHttpService.axiosRef.post.mockResolvedValue({
                 data: createRealisticNlpResponse(expectedEntities),
@@ -1275,6 +1300,78 @@ Chinese: 發燒 (fever)
             const ts = pipelineCall![1].timestamp;
             expect(ts).toBeDefined();
             expect(new Date(ts).toISOString()).toBe(ts);
+        });
+    });
+
+    // ===========================================================================
+    // TASK-305 D.9 — CLS rebind + tenant assert + fail-closed guard
+    // ===========================================================================
+
+    describe('CLS rebind + tenant assert (TASK-305 D.9)', () => {
+        const setupSuccessfulJob = (contextItemOverrides: Record<string, unknown> = {}) => {
+            mockContextItemRepository.findById.mockResolvedValue(
+                createMockContextItem({ content: 'medical content', ...contextItemOverrides }),
+            );
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { entities: [] },
+            });
+        };
+
+        it('wraps process() in cls.run with tenantId + user set before any work runs', async () => {
+            setupSuccessfulJob({ tenantId: 'tenant-A' });
+            const setOrder: Array<[string, unknown]> = [];
+            mockClsService.set.mockImplementation((key: string, value: unknown) => {
+                setOrder.push([key, value]);
+            });
+
+            const payload: ExtractNerJobPayload = {
+                jobId: 'job-cls-1',
+                contextItemId: 'ctx-item-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-A',
+                userId: 'user-A',
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockClsService.run).toHaveBeenCalledTimes(1);
+            const keys = setOrder.map(([k]) => k);
+            expect(keys).toContain('tenantId');
+            expect(keys).toContain('user');
+            const tenantEntry = setOrder.find(([k]) => k === 'tenantId');
+            expect(tenantEntry?.[1]).toBe('tenant-A');
+            const userEntry = setOrder.find(([k]) => k === 'user');
+            expect(userEntry?.[1]).toMatchObject({ id: 'user-A', tenantId: 'tenant-A' });
+        });
+
+        it('throws fail-closed when job.data.tenantId is missing', async () => {
+            const payload = {
+                jobId: 'job-no-tenant',
+                contextItemId: 'ctx-item-123',
+                consultationId: 'consultation-123',
+                userId: 'user-1',
+            } as unknown as ExtractNerJobPayload;
+
+            await expect(processor.process(createMockJob(payload))).rejects.toThrow(
+                /tenantId/i,
+            );
+            expect(mockContextItemRepository.findById).not.toHaveBeenCalled();
+        });
+
+        it('throws when loaded contextItem.tenantId differs from job.data.tenantId', async () => {
+            setupSuccessfulJob({ tenantId: 'tenant-OTHER' });
+
+            const payload: ExtractNerJobPayload = {
+                jobId: 'job-mismatch',
+                contextItemId: 'ctx-item-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-A',
+                userId: 'user-A',
+            };
+
+            await expect(processor.process(createMockJob(payload))).rejects.toThrow();
+            expect(mockNamedEntityRepository.create).not.toHaveBeenCalled();
+            expect(mockJobService.notifyFailed).toHaveBeenCalled();
         });
     });
 });
