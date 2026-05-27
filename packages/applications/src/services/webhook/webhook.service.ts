@@ -49,12 +49,28 @@ export class WebhookService extends BaseService implements IWebhookService {
     return webhook;
   }
 
+  /**
+   * TASK-306 P2.3 (audit M-2 / AC-5) — list endpoint scoped to the
+   * caller's tenant. Non-SUPER_ADMIN callers see only their own tenant's
+   * webhooks; SUPER_ADMIN bypasses the filter so cross-tenant
+   * administration tooling can list every webhook in the platform.
+   * Mirrors the W3.2 NotificationService.fetchAll posture.
+   */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<WebhookEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { limit, page, search } = props;
-    const webhooks = await this.webhookRepository.findAll(withFormattedPaginatedProps(props));
+    const baseWhere = this.isSuperAdmin() ? {} : { tenantId: this.tenantId };
+    const paginatedProps = withFormattedPaginatedProps(props);
+    const countProps = withFormattedCountProps(props);
+    const webhooks = await this.webhookRepository.findAll({
+      ...paginatedProps,
+      where: { ...paginatedProps.where, ...baseWhere },
+    });
 
-    const count = await this.webhookRepository.count(withFormattedCountProps(props));
+    const count = await this.webhookRepository.count({
+      ...countProps,
+      where: { ...countProps.where, ...baseWhere },
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {

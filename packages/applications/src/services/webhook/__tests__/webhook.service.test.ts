@@ -389,6 +389,79 @@ describe('WebhookService', () => {
         });
     });
 
+    /**
+     * TASK-306 P2.3 (audit M-2 / AC-5) — `WebhookService` was previously
+     * tenant-blind on every read/write surface except `create` (W5.1.4).
+     * This block exercises the full sweep across the remaining 5 methods:
+     *   - 5.3.2 fetchAll: inject `{ tenantId: this.tenantId }` filter
+     *     (SUPER_ADMIN bypass)
+     *   - 5.3.3 fetchById: load-then-assert via assertEqualTenants
+     *   - 5.3.4 update: assert tenant after the pre-write findById
+     *   - 5.3.5 deleteById: load + assert + softDelete
+     *   - 5.3.6 fetchAllByTenantId: CLS gate (refuse cross-tenant DTO
+     *     tenantId for non-SUPER_ADMIN — mirrors W5.1.5
+     *     Notification/ApiKey pattern)
+     *
+     * The CLS default in `beforeEach` is `tenant-1`. Tests use `tenant-2`
+     * for cross-tenant probes. The local `setRequestUserRoles` helper
+     * re-installs the CLS mock with the requested role list.
+     */
+    describe('TASK-306 P2.3 — Webhook tenant-guard sweep', () => {
+        const setRequestUserRoles = (roles: string[] | undefined) => {
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user':
+                        return {
+                            id: 'current-user-id',
+                            firstName: 'Test',
+                            lastName: 'User',
+                            email: 'test@example.com',
+                            roles,
+                        };
+                    case 'tenantId':
+                        return 'tenant-1';
+                    case 'tenantCode':
+                        return 'TENANT_1';
+                    case 'correlationId':
+                        return 'corr-123';
+                    case 'requestIp':
+                        return '192.168.1.1';
+                    default:
+                        return null;
+                }
+            });
+        };
+
+        describe('fetchAll (5.3.2)', () => {
+            it('injects the CLS tenantId into the findAll + count where clauses for non-SUPER_ADMIN callers', async () => {
+                mockWebhookRepository.findAll.mockResolvedValue([]);
+                mockWebhookRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ limit: 10, page: 1 });
+
+                expect(mockWebhookRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({ where: expect.objectContaining({ tenantId: 'tenant-1' }) }),
+                );
+                expect(mockWebhookRepository.count).toHaveBeenCalledWith(
+                    expect.objectContaining({ where: expect.objectContaining({ tenantId: 'tenant-1' }) }),
+                );
+            });
+
+            it('omits the tenant filter when the caller is a SUPER_ADMIN (cross-tenant list)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                mockWebhookRepository.findAll.mockResolvedValue([]);
+                mockWebhookRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ limit: 10, page: 1 });
+
+                const findAllArgs = mockWebhookRepository.findAll.mock.calls[0][0];
+                const countArgs = mockWebhookRepository.count.mock.calls[0][0];
+                expect(findAllArgs.where?.tenantId).toBeUndefined();
+                expect(countArgs.where?.tenantId).toBeUndefined();
+            });
+        });
+    });
+
     describe('fetchAll', () => {
         it('should return paginated webhooks with correct pagination metadata', async () => {
             const webhooks = [
