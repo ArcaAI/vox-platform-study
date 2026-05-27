@@ -274,6 +274,48 @@ Each of NEW-1..NEW-4 + NEW-6 is closed by this ticket. NEW-5 is deferred to F-2 
 
 ---
 
+### Wave 5.7 — Voluntary housekeeping pass (post-completion)
+
+**Goal**: close 10 review-time minor nits (306-F1, F2, F3, F5, F6, F7, F8, F11, F13, F15) + 3 actionable §8 carryovers (F-5 dead file, F-6 WorkerSession typing, F-8 CoreDataModel wildcard re-export). No AC contract change.
+
+**Estimate**: ~2 engineer-hours.
+
+**Branch**: `task-306/w5-housekeeping`
+
+| # | Task | File | Verify | Source |
+|---|---|---|---|---|
+| 5.7.1 | **306-F1** — replace `setTimeout(10)` with `vi.waitFor(...)` in 3 `TASK-306 P1.2` audit-log tests | `packages/applications/src/services/audit/__tests__/authorization-audit.service.test.ts` | Tests pass without timing-flake risk | W5.1 review |
+| 5.7.2 | **306-F3** — drop unnecessary `as never` cast in W5.1.4 "omits request.tenantId" webhook test | `packages/applications/src/services/webhook/__tests__/webhook.service.test.ts` | Test compiles + passes without cast | W5.1 review |
+| 5.7.3 | **306-F6** — add explicit empty-chain test under `describe('TASK-306 P2.1 — getConsultationChain', ...)` | `packages/applications/src/services/consultation/consultation/__tests__/consultation.service.test.ts` | Test pins empty-chain → `[]` (vs. all-foreign-chain → throw) | W5.2 review |
+| 5.7.4 | **306-F7** — drop or annotate duplicate `getById` "sanity" test as a deliberate regression-pin | same file as 5.7.3 | Annotated with `TASK-306 P2.1 regression-pin` comment | W5.2 review |
+| 5.7.5 | **306-F8** — add explicit `expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceViewed, ...)` on cross-tenant `fetchById` denial tests | `packages/applications/src/services/{webhook,resourceSubscription}/__tests__/...test.ts` | Tests pin "no audit-log leak on denied read" contract self-evidently | W5.3 review |
+| 5.7.6 | **306-F2** — add `this.logger.warn('Webhook cross-tenant attempt coerced to CLS', { ... })` inside `WebhookService.resolveEffectiveTenantId` for SOC observability on silent coercion | `packages/applications/src/services/webhook/webhook.service.ts` | Unit test pins the warn call on non-super-admin cross-tenant attempt | W5.1 review |
+| 5.7.7 | **306-F5** — hoist `if (!this.tenantId) throw BadRequestException` to top of Consultation `getById` / `getByIdWithRelations` (mirrors `getConsultationChain` convention) | `packages/applications/src/services/consultation/consultation/consultation.service.ts` | Tests pin: no repo round-trip on missing-CLS background calls | W5.2 review |
+| 5.7.8 | **306-F11** — gate `ResourceViewed` broadcast in `ContextService.getAggregateNamedEntities(scope='single')` on cross-tenant id | `packages/applications/src/services/consultation/context/context.service.ts` | Test pins: foreign-tenant id in scope=single → no broadcast | W5.4 review |
+| 5.7.9 | **306-F13** — annotate orphan `UnitOfWorkService<T>` at `packages/domains/src/common/unitOfWork.service.ts` with `@deprecated` + comment warning future writers (do NOT delete unless explicitly approved) | same | Annotation visible in TSDoc | W5.5 review |
+| 5.7.10 | **§8 F-5** — `auditLog.processor.spec.ts` dead file: either rename to `.test.ts` and fix the 3 pre-existing failures, OR delete with rationale (file is silently skipped today). Investigate first. | `packages/applications/src/services/auditLog/__tests__/auditLog.processor.spec.ts` | Either tests run + pass, or file removed with commit-body rationale | TASK-305 §6.7 #9 |
+| 5.7.11 | **§8 F-6** — define proper `WorkerSession` type so the `as unknown as UserSession` cast pattern (repeated 8× across queue/event processors) is unnecessary | search `as unknown as UserSession` across `packages/applications` | grep returns 0 hits | TASK-305 §6.7 #10 |
+| 5.7.12 | **§8 F-8** — `CoreDataModel` wildcard re-export removal — either delete the `export * as CoreDataModel` (zero current consumers verified) or convert to explicit named exports | `packages/database/src/core.database.types.ts` (or wherever it lives) | `rg "CoreDataModel"` shows no wildcard re-export | TASK-305 §6.7 #5 |
+| 5.7.13 | **306-F15** — W5.6 doc-nav cosmetics: (a) verify `06-impl-summary.md` W5.6 row says `§5` (was fixed in placeholder-fill, double-check); (b) remove duplicate `## 5.` heading in plan README; (c) closure-banner NEW-1/2/6 alias compaction | `docs/multi-tenancy-audit/06-implementation-summary.md`, `docs/implementation/TASK-306-DDD-Layers-Followup/README.md`, `docs/multi-tenancy-audit/03-ddd-layers-review.md` | Markdown lint clean; cross-doc consistent | W5.6 review |
+
+**Explicitly OUT OF SCOPE for W5.7** (require user approval / product decisions / architectural review):
+- §8 F-7 — DROP redundant single-column `@@index([tenantId])` — schema migration with `DROP INDEX`; user-rule requires explicit approval before generating destructive SQL
+- 306-F12 — `BaseEntity.equals` strict-class check — architectural design decision
+- §8 F-2 / NEW-5 — `DnaWritingStyleService.listReports` GLOBAL_ADMIN bypass — product decision
+- §8 F-3 — `NotificationService` SUPER_ADMIN posture — product decision
+- §8 H-4 — `BaseGlobalEntity` architecture — separate architectural ticket
+- §8 F-1 — PostgreSQL RLS — TASK-302 Phase 2
+- §8 L-3 — JWT revocation Redis key tenant prefix — backlog
+
+**W5.7 gate**:
+- [ ] All 13 sub-tasks closed (each with TDD where applicable)
+- [ ] Full @arcaai/applications + @arcaai/domains test suites at or above W5.6 baseline
+- [ ] Aggregator floors preserved (no marker/floor downgrades)
+- [ ] No new `as any` / ESLint disables
+- [ ] Surgical changes only — no drive-by refactoring
+
+---
+
 ### Wave 5.6 — Documentation close-out (final PR)
 
 **Goal**: pin the AC delta in audit + summary docs.
@@ -487,6 +529,7 @@ Answer: we should ship W5.1-W5.5 as 5 separate PRs (clean reviewable units).
 | W5.4 | 5.4.1–5.4.3 | `969e49df` | 3 commits, 9 new tests, APPROVED-WITH-MINOR-NITS. Closes C-3 finale (array-input). `resolveLinkedConsultationIds` filters chain + same-day to CLS tenant; no SUPER_ADMIN bypass (clinical-PHI hot read path). 2 deferred nits (306-F10, 306-F11). |
 | W5.5 | 5.5.1–5.5.7 | `ec67a0d4` | 7 commits, 25 new tests, APPROVED-WITH-MINOR-NITS. Closes M-5 + M-6 + M-8 + L-4 + NEW-7/F-4. Hygiene bundle: `broadcastSysEvent` CLS wins, `CoreUnitOfWorkService` canonical `$transaction(callback)` (silent in-place fix), `DataNotFoundException` HTTP filter (scoped), `BaseEntity.equals` tenant-aware (duck-typed), aggregator FS-introspection (immediately surfaced pre-existing gap in `prompt-management.service.test.ts`). Also folds in 306-F9 + 306-F10. 3 deferred nits (306-F12, 306-F13, 306-F14). |
 | W5.6 | 5.6.1–5.6.5 | `82b3b9e4` | 5 commits, 0 production-code lines, doc-only. Updates: (1) `03-ddd-layers-review.md` — TASK-306 closure banner + per-finding `[CLOSED W5.x <sha>]` markers in §A/§B inventory + §C/§D/§E finding detail blocks; (2) `06-implementation-summary.md` — new §6 Wave 5 / TASK-306 follow-up section (wave breakdown + audit findings closed + test deltas + deferred follow-ups + cross-links); (3) NEW `07-ddd-layers-followup-closure.md` — canonical "what closed vs. deferred" record with per-wave merge SHAs, lessons learned, cross-references; (4) `technical-architecture-overview.md` — Layer 3 acknowledges the TASK-306 finale + Open items #2, #5 marked CLOSED/PARTIALLY-CLOSED + helper table extended; (5) this README — Status → Completed + W5.6 row filled + §11 Change History entry. APPROVED-WITH-MINOR-NITS — 5 cosmetic doc-nav nits captured as 306-F15. |
+| W5.7 | 5.7.1–5.7.13 | _pending merge_ | **Voluntary housekeeping pass** (post-completion). Closes 10 review-time minor nits (306-F1, F2, F3, F5, F6, F7, F8, F11, F13, F15) + 3 §8 carryovers (F-5 dead file, F-6 WorkerSession typing, F-8 CoreDataModel wildcard re-export). Branch: `task-306/w5-housekeeping`. AC contract unchanged. |
 
 ### Audit findings closed
 
