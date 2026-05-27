@@ -5,10 +5,10 @@
  */
 
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConsultationService } from '../consultation.service';
 import { ConsultationDtoMapper } from '../consultation.dto.mapper';
-import { SysEventType } from '@arcaai/domains';
+import { SysEventType, ResourceStatusType } from '@arcaai/domains';
 
 // Mock ClsService
 const mockClsService = {
@@ -31,9 +31,22 @@ const mockConsultationRepository = {
     findPaginatedWithRelations: vi.fn(),
     findByPatientAndDate: vi.fn(),
     findConsultationChain: vi.fn(),
+    findPaginatedWithSharedAccess: vi.fn(),
+    countWithSharedAccess: vi.fn(),
+    findDistinctPatientIds: vi.fn(),
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+};
+
+// TASK-305 D.2 — DepartmentRepository for cross-aggregate tenant check
+const mockDepartmentRepository = {
+    findById: vi.fn(),
+};
+
+// TASK-305 D.2 — UserRoleAssignmentRepository for doctor-in-tenant check
+const mockUserRoleAssignmentRepository = {
+    findFirst: vi.fn(),
 };
 
 // Helper to create mock consultation entity
@@ -114,9 +127,24 @@ describe('ConsultationService', () => {
         // Default: findWithRelations returns null (callers override as needed)
         mockConsultationRepository.findWithRelations.mockResolvedValue(null);
 
+        // TASK-305 D.2 — defaults that pass the tenant guard checks. Cross-tenant
+        // negative tests override these per-test.
+        mockUserRoleAssignmentRepository.findFirst.mockResolvedValue({
+            id: 'ura-1',
+            userId: 'doctor-1',
+            tenantId: 'tenant-1',
+            resourceStatus: ResourceStatusType.ENABLED,
+        });
+        mockDepartmentRepository.findById.mockResolvedValue({
+            id: 'dept-1',
+            tenantId: 'tenant-1',
+        });
+
         // Create service instance with mocks
         service = new ConsultationService(
             mockConsultationRepository as any,
+            mockDepartmentRepository as any,
+            mockUserRoleAssignmentRepository as any,
             mockEventEmitter as any,
             mockClsService as any,
         );
@@ -224,6 +252,10 @@ describe('ConsultationService', () => {
 
         it('should set parentConsultationId when provided', async () => {
             mockConsultationRepository.findByUniqueKey.mockResolvedValue(null);
+            // TASK-305 D.2 — parent must be resolvable and live in caller's tenant.
+            mockConsultationRepository.findById.mockResolvedValue(
+                createMockConsultationEntity({ id: 'parent-consultation-id' }),
+            );
             const newConsultation = createMockConsultationEntity({
                 parentConsultationId: 'parent-consultation-id',
             });
@@ -342,15 +374,20 @@ describe('ConsultationService', () => {
             ).rejects.toThrow(BadRequestException);
         });
 
-        it('should throw BadRequestException when parent consultation not found', async () => {
+        // TASK-305 D.2 — the "parent not found" path is now routed through
+        // `assertParentInScope`, which throws `NotFoundException` (no
+        // existence leak) instead of `BadRequestException`. This is a
+        // behaviour change vs. the previous error type, but it is required
+        // to make missing-vs-cross-tenant indistinguishable.
+        it('should throw NotFoundException when parent consultation not found', async () => {
             mockConsultationRepository.findById.mockResolvedValue(null);
 
             await expect(
                 service.createRevisit({ patientId: 'patient-1' }, 'doctor-1', 'non-existent-id')
-            ).rejects.toThrow(BadRequestException);
+            ).rejects.toThrow(NotFoundException);
             await expect(
                 service.createRevisit({ patientId: 'patient-1' }, 'doctor-1', 'non-existent-id')
-            ).rejects.toThrow('Parent consultation non-existent-id not found');
+            ).rejects.toThrow('Resource not found');
         });
 
         it('should create revisit consultation when parent exists', async () => {
@@ -864,6 +901,197 @@ describe('ConsultationService', () => {
             await expect(
                 service.getByPatientAndDatePaginated('patient-1', '2026-02-17', 1, 20),
             ).rejects.toThrow(BadRequestException);
+        });
+    });
+
+    // ============================================================
+    // TASK-305 D.2 — Cross-aggregate tenant isolation
+    //
+    // The Consultation aggregate owns three cross-aggregate references
+    // that the multi-tenancy audit flagged as leak vectors:
+    //   - parentConsultationId  (audit C-4 / B-3 — revisits + chains)
+    //   - departmentId          (audit C-2 — Department lives in Department aggregate)
+    //   - doctorId              (audit C-1 — User membership via UserRoleAssignment)
+    //
+    // Each must be asserted in the caller's tenant before any create.
+    // Failures route through `assertParentInScope` /
+    // `assertUserBelongsToTenant`, which return `NotFoundException`
+    // (never `ForbiddenException`) so the response never reveals the
+    // existence of a cross-tenant resource.
+    // ============================================================
+    describe('TASK-305 D.2 — cross-aggregate tenant checks', () => {
+        describe('getOrCreate', () => {
+            it('throws NotFoundException when doctorId has no role-assignment in caller tenant', async () => {
+                mockConsultationRepository.findByUniqueKey.mockResolvedValue(null);
+                mockUserRoleAssignmentRepository.findFirst.mockResolvedValue(null);
+
+                await expect(
+                    service.getOrCreate({ patientId: 'patient-1' }, 'cross-tenant-doctor'),
+                ).rejects.toThrow(NotFoundException);
+                await expect(
+                    service.getOrCreate({ patientId: 'patient-1' }, 'cross-tenant-doctor'),
+                ).rejects.toThrow('Resource not found');
+
+                expect(mockUserRoleAssignmentRepository.findFirst).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: expect.objectContaining({
+                            userId: 'cross-tenant-doctor',
+                            tenantId: 'tenant-1',
+                            resourceStatus: ResourceStatusType.ENABLED,
+                        }),
+                    }),
+                );
+                expect(mockConsultationRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException when departmentId belongs to another tenant', async () => {
+                mockConsultationRepository.findByUniqueKey.mockResolvedValue(null);
+                mockDepartmentRepository.findById.mockResolvedValue({
+                    id: 'dept-other',
+                    tenantId: 'tenant-OTHER',
+                });
+
+                await expect(
+                    service.getOrCreate(
+                        { patientId: 'patient-1', departmentId: 'dept-other' },
+                        'doctor-1',
+                    ),
+                ).rejects.toThrow(NotFoundException);
+                await expect(
+                    service.getOrCreate(
+                        { patientId: 'patient-1', departmentId: 'dept-other' },
+                        'doctor-1',
+                    ),
+                ).rejects.toThrow('Resource not found');
+
+                expect(mockConsultationRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException when departmentId does not exist (no existence leak)', async () => {
+                mockConsultationRepository.findByUniqueKey.mockResolvedValue(null);
+                mockDepartmentRepository.findById.mockResolvedValue(null);
+
+                await expect(
+                    service.getOrCreate(
+                        { patientId: 'patient-1', departmentId: 'no-such-dept' },
+                        'doctor-1',
+                    ),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockConsultationRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException when parentConsultationId belongs to another tenant', async () => {
+                mockConsultationRepository.findByUniqueKey.mockResolvedValue(null);
+                mockConsultationRepository.findById.mockResolvedValue(
+                    createMockConsultationEntity({
+                        id: 'parent-other',
+                        tenantId: 'tenant-OTHER',
+                    }),
+                );
+
+                await expect(
+                    service.getOrCreate(
+                        { patientId: 'patient-1', parentConsultationId: 'parent-other' },
+                        'doctor-1',
+                    ),
+                ).rejects.toThrow(NotFoundException);
+                await expect(
+                    service.getOrCreate(
+                        { patientId: 'patient-1', parentConsultationId: 'parent-other' },
+                        'doctor-1',
+                    ),
+                ).rejects.toThrow('Resource not found');
+
+                expect(mockConsultationRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException when parentConsultationId does not exist (no existence leak)', async () => {
+                mockConsultationRepository.findByUniqueKey.mockResolvedValue(null);
+                mockConsultationRepository.findById.mockResolvedValue(null);
+
+                await expect(
+                    service.getOrCreate(
+                        { patientId: 'patient-1', parentConsultationId: 'no-such-parent' },
+                        'doctor-1',
+                    ),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockConsultationRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('does not call parent / department checks when those refs are absent', async () => {
+                mockConsultationRepository.findByUniqueKey.mockResolvedValue(null);
+                const newConsultation = createMockConsultationEntity();
+                mockConsultationRepository.create.mockResolvedValue(newConsultation);
+
+                await service.getOrCreate({ patientId: 'patient-1' }, 'doctor-1');
+
+                expect(mockDepartmentRepository.findById).not.toHaveBeenCalled();
+                expect(mockConsultationRepository.findById).not.toHaveBeenCalled();
+                expect(mockUserRoleAssignmentRepository.findFirst).toHaveBeenCalledOnce();
+            });
+        });
+
+        describe('createRevisit', () => {
+            it('throws NotFoundException when doctorId has no role-assignment in caller tenant', async () => {
+                mockConsultationRepository.findById.mockResolvedValue(
+                    createMockConsultationEntity({ id: 'parent-id' }),
+                );
+                mockUserRoleAssignmentRepository.findFirst.mockResolvedValue(null);
+
+                await expect(
+                    service.createRevisit(
+                        { patientId: 'patient-1' },
+                        'cross-tenant-doctor',
+                        'parent-id',
+                    ),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockConsultationRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException when departmentId belongs to another tenant', async () => {
+                mockConsultationRepository.findById.mockResolvedValue(
+                    createMockConsultationEntity({ id: 'parent-id' }),
+                );
+                mockDepartmentRepository.findById.mockResolvedValue({
+                    id: 'dept-other',
+                    tenantId: 'tenant-OTHER',
+                });
+
+                await expect(
+                    service.createRevisit(
+                        { patientId: 'patient-1', departmentId: 'dept-other' },
+                        'doctor-1',
+                        'parent-id',
+                    ),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockConsultationRepository.create).not.toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException when parentConsultationId belongs to another tenant (audit C-4)', async () => {
+                mockConsultationRepository.findById.mockResolvedValue(
+                    createMockConsultationEntity({
+                        id: 'parent-other',
+                        tenantId: 'tenant-OTHER',
+                    }),
+                );
+
+                await expect(
+                    service.createRevisit(
+                        { patientId: 'patient-1' },
+                        'doctor-1',
+                        'parent-other',
+                    ),
+                ).rejects.toThrow(NotFoundException);
+                await expect(
+                    service.createRevisit(
+                        { patientId: 'patient-1' },
+                        'doctor-1',
+                        'parent-other',
+                    ),
+                ).rejects.toThrow('Resource not found');
+
+                expect(mockConsultationRepository.create).not.toHaveBeenCalled();
+            });
         });
     });
 });
