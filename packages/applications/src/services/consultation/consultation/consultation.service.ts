@@ -205,10 +205,19 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
   /**
    * Get consultation by ID with all relations (Doctor, Department, Context)
+   *
+   * TASK-306 P2.1 (audit C-1 / AC-8) — defense-in-depth: same posture as
+   * `getById`. The Prisma `tenantScope` extension filters foreign-tenant
+   * rows on `findWithRelations`, but the service-layer assert provides
+   * an explicit second line on PHI relations so an extension bypass or
+   * stale-CLS background call still fails closed with a generic
+   * `NotFoundException('Resource not found')`.
    */
   async getByIdWithRelations(id: string): Promise<ConsultationResponse | null> {
     const consultation = await this.consultationRepository.findWithRelations(id);
     if (!consultation) return null;
+
+    assertEqualTenants(consultation, { tenantId: this.tenantId });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: consultation.id,

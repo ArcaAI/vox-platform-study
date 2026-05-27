@@ -1176,5 +1176,48 @@ describe('ConsultationService', () => {
                 expect(mockEventEmitter.emit).not.toHaveBeenCalled();
             });
         });
+
+        describe('getByIdWithRelations', () => {
+            it('throws NotFoundException with generic message when the fetched entity belongs to another tenant', async () => {
+                const foreign = createMockConsultationEntity({
+                    id: 'consultation-id-foreign',
+                    tenantId: 'tenant-OTHER',
+                    Doctor: { id: 'doctor-x', UserProfile: { firstName: 'A', lastName: 'B' } },
+                    Department: { id: 'dept-x', code: 'X', name: 'X' },
+                });
+                mockConsultationRepository.findWithRelations.mockResolvedValue(foreign);
+
+                await expect(
+                    service.getByIdWithRelations('consultation-id-foreign'),
+                ).rejects.toThrow(NotFoundException);
+                await expect(
+                    service.getByIdWithRelations('consultation-id-foreign'),
+                ).rejects.toThrow('Resource not found');
+
+                // Guard must short-circuit BEFORE the SysEvent broadcast so
+                // the caller never sees a `ResourceViewed` for relations
+                // they should not be aware of.
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('throws fail-closed when CLS tenantId is missing and the repo returns a row', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'tenantId') return null;
+                    if (key === 'user') return { id: 'user-id-1' };
+                    return null;
+                });
+                const consultation = createMockConsultationEntity({
+                    id: 'consultation-id-1',
+                    tenantId: 'tenant-1',
+                });
+                mockConsultationRepository.findWithRelations.mockResolvedValue(consultation);
+
+                await expect(
+                    service.getByIdWithRelations('consultation-id-1'),
+                ).rejects.toThrow(BadRequestException);
+
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+        });
     });
 });
