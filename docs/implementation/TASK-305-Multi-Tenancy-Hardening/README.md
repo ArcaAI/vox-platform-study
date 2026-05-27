@@ -419,7 +419,7 @@ These do not block plan approval — they can be answered during execution. List
 | Tenant-scoped models with sentinel default | 27 | **0** |
 | Tenant-scoped models with nullable `tenantId` | 13 | **2** (`User`, `UserMedia` — global by design) |
 | Scoped-unique constraints | 4 | **6** (added `Webhook(tenantId, name)`, `Tag(tenantId, …)`) |
-| Composite `[tenantId, X]` indexes | 1 | **15** |
+| Composite `[tenantId, X]` indexes added | — | **14** |
 | Prisma extensions | 1 (soft-delete) | **2** (soft-delete + tenant-scope) |
 | ESLint guards on unscoped client | 0 | **1** (8-site allow-list) |
 | Cross-tenant tests (services + processors) | 0 | **114** (introspected by aggregator) |
@@ -433,9 +433,9 @@ Full table in [`06-implementation-summary.md`](../../multi-tenancy-audit/06-impl
 
 | Status | Count | Codes (abridged) |
 |---|---|---|
-| **CLOSED** | **15** | B3, B4, B5 (partial), B7, B8, B9, B10, B12, C1, C6, C8, D8 (+ derivatives) |
+| **CLOSED** | **12** | B3, B4, B5 (partial), B7, B8, B9, B10, B12, C1, C6, C8, D8. |
 | **DEFERRED** | **4** | B1 (RLS), C2 (AuditLog lockdown), C10 (Tenant deactivation), D9 (vault NOBYPASSRLS) — all converge on Phase C / TASK-302. |
-| **OUT-OF-SCOPE** | **17** | B2 (FK transformation — user directive), B6 (User split — architectural), B11 (PgBouncer — TASK-302), C3-C5/C9/C11-C12, D1-D7, D10-D12. |
+| **OUT-OF-SCOPE** | **20** | B2 (FK transformation — user directive), B6 (User split — architectural), B11 (PgBouncer — TASK-302), C3, C4, C5, C7, C9, C11, C12, D1-D7, D10-D12. |
 
 ### Architecture documents updated
 
@@ -535,6 +535,7 @@ don't get lost:
 9. **Housekeeping (NEW from D.9 follow-up review)** — `packages/applications/src/services/auditLog/__tests__/auditLog.processor.spec.ts` is silently dead (vitest/typecheck/eslint all skip `.spec.ts` in `__tests__/`). Should be deleted or renamed to `.test.ts` and merged with the new `auditLog.processor.test.ts`.
 10. **Soft typing (NEW from W3.3 + D.9 reviews)** — `as unknown as UserSession` cast pattern reused 8× in queue/event processors. `UserSession` requires `email: string` (non-optional) which queue workers don't have. Introduce a `WorkerSession` subtype or `Partial<UserSession>` to clean up.
 11. **Documentation** — Mark `docs/multi-tenancy-audit/02-prisma-schema-review.md` B3 / B4 / B5 entries as "Closed (TASK-305 W2.A)" and C-7 / C-4 entries as "Closed (TASK-305 W2.D6 / D.7 / D.8)" in a doc-only commit. (Some of this is covered in Phase E.7.)
+12. **Aggregator FS-introspection (NEW from W4 review)** — `packages/applications/src/__tests__/cross-tenant-coverage.test.ts` currently uses hardcoded `SERVICE_COVERAGE` / `PROCESSOR_COVERAGE` arrays. A new tenant-scoped service added in a future PR (with cross-tenant tests) would NOT be flagged by the aggregator unless someone remembers to append to the allow-list. Add a meta-test that globs `packages/applications/src/services/**/__tests__/*.service.test.ts`, filters to files referencing `tenantId`, and asserts each is covered by `SERVICE_COVERAGE`.
 
 ---
 

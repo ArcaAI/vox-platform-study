@@ -111,9 +111,9 @@ exist in the audit; that prefix in the Phase E spec was a misnomer.
 
 | Status | Count | Notes |
 |---|---|---|
-| **CLOSED** | **15** | B3, B4, B5 (partial), B7, B8, B9, B10, B12, C1, C6, C8, D8, plus the W1.1 quick wins. |
+| **CLOSED** | **12** | B3, B4, B5 (partial), B7, B8, B9, B10, B12, C1, C6, C8, D8. (W1.1 = B12; not counted twice.) |
 | **DEFERRED** | **4** | B1 (RLS), C2 (AuditLog lockdown), C10 (Tenant deactivation), D9 (vault NOBYPASSRLS) — all converge on Phase C / TASK-302. |
-| **OUT-OF-SCOPE** | **17** | User-directive items (B2, C3, C9), separate-review items (B6, B11, C4, C5), hygiene items (D1-D7, D10-D12), and dev-only items (C7, C11, C12). |
+| **OUT-OF-SCOPE** | **20** | User-directive items (B2), separate-review items (B6, B11), hygiene items (C3, C4, C5, C7, C9, C11, C12, D1-D7, D10-D12). |
 
 (B5 is counted once under CLOSED because the scoped half shipped; the
 kept-global half was a user decision, not a deferral.)
