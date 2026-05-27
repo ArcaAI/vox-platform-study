@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -301,12 +301,25 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * Fetches a tenant by ID
+   * Fetches a tenant by ID.
+   *
+   * TASK-306 P1.3 (audit H-3 / NEW-6 / AC-3) — short-circuits with
+   * `NotFoundException` when the resolved row's id does not match the
+   * CLS-supplied caller `tenantId`, except for SUPER_ADMIN callers, who
+   * remain authorized for cross-tenant reads (admin UI tenant pickers).
+   * Pre-guard, ANY tenant could be read by primary key, allowing
+   * tenant-record enumeration across the tenant boundary.
+   *
    * @param id - The tenant ID
    * @returns Promise resolving to the tenant entity
+   * @throws NotFoundException when the caller is not authorized to read the row
    */
   async fetchById(id: EntityId): Promise<TenantEntity> {
     const tenant = await this.tenantRepository.findById(id);
+
+    if (tenant.id !== this.tenantId && !this.isSuperAdmin()) {
+      throw new NotFoundException('Resource not found');
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: tenant.id,
@@ -316,9 +329,15 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * Fetches tenants by code name
-   * @param props - Query parameters including code name, pagination and search
-   * @returns Promise resolving to paginated tenant response
+   * Fetches a tenant by code-name (`key`).
+   *
+   * TASK-306 P1.3 (audit H-3 / NEW-6 / AC-3) — mirrors the `fetchById`
+   * tenant-scope guard so a caller cannot enumerate another tenant by
+   * code-name. SUPER_ADMIN callers retain the cross-tenant bypass.
+   *
+   * @param codeName - The tenant code-name (matches the `key` column)
+   * @returns Promise resolving to the tenant entity
+   * @throws NotFoundException when the caller is not authorized to read the row
    */
   async fetchByCodeName(codeName: string): Promise<TenantEntity> {
     const tenant = await this.tenantRepository.findFirst({
@@ -326,6 +345,11 @@ export class TenantService extends BaseService implements ITenantService {
         key: codeName,
       },
     });
+
+    if (tenant.id !== this.tenantId && !this.isSuperAdmin()) {
+      throw new NotFoundException('Resource not found');
+    }
+
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {
         key: codeName,

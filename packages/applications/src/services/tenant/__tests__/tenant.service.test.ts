@@ -564,26 +564,31 @@ describe('TenantService', () => {
     });
 
     describe('fetchById', () => {
+        // TASK-306 P1.3 — the CLS `tenantId` is `tenant-1` (see `beforeEach`).
+        // Happy-path tests therefore set the fetched row's id to `tenant-1`
+        // so the new tenant-scope guard does not short-circuit them; the
+        // cross-tenant + SUPER_ADMIN coverage lives in the dedicated
+        // `TASK-306 P1.3 — fetchById/fetchByCodeName tenant-scoped` block.
         it('should return tenant by ID with complete data', async () => {
             const tenant = createMockTenantEntity({
-                id: 'tenant-123',
+                id: 'tenant-1',
                 name: 'Test Tenant',
                 key: 'TEST_KEY',
             });
             mockTenantRepository.findById.mockResolvedValue(tenant);
 
-            const result = await service.fetchById('tenant-123');
+            const result = await service.fetchById('tenant-1');
 
-            expect(result.id).toBe('tenant-123');
+            expect(result.id).toBe('tenant-1');
             expect(result.name).toBe('Test Tenant');
             expect(result.key).toBe('TEST_KEY');
         });
 
         it('should emit ResourceViewed event with tenant data', async () => {
-            const tenant = createMockTenantEntity({ id: 'tenant-123' });
+            const tenant = createMockTenantEntity({ id: 'tenant-1' });
             mockTenantRepository.findById.mockResolvedValue(tenant);
 
-            await service.fetchById('tenant-123');
+            await service.fetchById('tenant-1');
 
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
                 SysEventType.ResourceViewed,
@@ -601,13 +606,17 @@ describe('TenantService', () => {
     });
 
     describe('fetchByCodeName', () => {
+        // TASK-306 P1.3 — happy-path tests use the CLS tenant id (`tenant-1`)
+        // so the new tenant-scope guard does not short-circuit them; the
+        // cross-tenant + SUPER_ADMIN coverage lives in the dedicated
+        // `TASK-306 P1.3 — fetchById/fetchByCodeName tenant-scoped` block.
         it('should return tenant by code name', async () => {
-            const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'MY_CODE' });
+            const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'MY_CODE' });
             mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
             const result = await service.fetchByCodeName('MY_CODE');
 
-            expect(result.id).toBe('tenant-123');
+            expect(result.id).toBe('tenant-1');
             expect(result.key).toBe('MY_CODE');
             expect(mockTenantRepository.findFirst).toHaveBeenCalledWith({
                 where: { key: 'MY_CODE' },
@@ -615,7 +624,7 @@ describe('TenantService', () => {
         });
 
         it('should emit ResourceViewed event with code name', async () => {
-            const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'MY_CODE' });
+            const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'MY_CODE' });
             mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
             await service.fetchByCodeName('MY_CODE');
@@ -623,9 +632,82 @@ describe('TenantService', () => {
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
                 SysEventType.ResourceViewed,
                 expect.objectContaining({
-                    data: { key: 'MY_CODE', id: 'tenant-123' },
+                    data: { key: 'MY_CODE', id: 'tenant-1' },
                 })
             );
+        });
+    });
+
+    /**
+     * TASK-306 P1.3 (audit H-3 / NEW-6 / AC-3) — `fetchById` and
+     * `fetchByCodeName` previously returned ANY tenant row by primary key
+     * or code-name without checking the caller's identity. A Tenant-A user
+     * could enumerate Tenant-B's tenant record. The new guard short-circuits
+     * with `NotFoundException` whenever the resolved row's id does not match
+     * the CLS-supplied `tenantId`, except for SUPER_ADMIN callers, who
+     * remain authorized for cross-tenant reads (admin UI tenant pickers).
+     *
+     * The CLS default in `beforeEach` is `tenant-1`. Tests use `tenant-2`
+     * as the "other tenant" target. Tests use the existing `setRequestUserRoles`
+     * helper (defined later in the file) to opt into SUPER_ADMIN context.
+     */
+    describe('TASK-306 P1.3 — fetchById/fetchByCodeName tenant-scoped', () => {
+        describe('fetchById', () => {
+            it('returns the tenant when the caller owns it (id matches CLS)', async () => {
+                const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
+                mockTenantRepository.findById.mockResolvedValue(tenant);
+
+                const result = await service.fetchById('tenant-1');
+
+                expect(result.id).toBe('tenant-1');
+            });
+
+            it('throws NotFoundException when the caller is not a SUPER_ADMIN and the resolved tenant belongs to another tenant', async () => {
+                const { NotFoundException } = await import('@nestjs/common');
+                const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
+                mockTenantRepository.findById.mockResolvedValue(otherTenant);
+
+                await expect(service.fetchById('tenant-2')).rejects.toThrow(NotFoundException);
+            });
+
+            it('returns the cross-tenant row when the caller is a SUPER_ADMIN (admin UI bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
+                mockTenantRepository.findById.mockResolvedValue(otherTenant);
+
+                const result = await service.fetchById('tenant-2');
+
+                expect(result.id).toBe('tenant-2');
+            });
+        });
+
+        describe('fetchByCodeName', () => {
+            it('returns the tenant when the resolved row belongs to the caller', async () => {
+                const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
+                mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+                const result = await service.fetchByCodeName('TENANT_1');
+
+                expect(result.id).toBe('tenant-1');
+            });
+
+            it('throws NotFoundException when the caller is not a SUPER_ADMIN and the resolved tenant belongs to another tenant', async () => {
+                const { NotFoundException } = await import('@nestjs/common');
+                const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
+                mockTenantRepository.findFirst.mockResolvedValue(otherTenant);
+
+                await expect(service.fetchByCodeName('TENANT_2')).rejects.toThrow(NotFoundException);
+            });
+
+            it('returns the cross-tenant row when the caller is a SUPER_ADMIN', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
+                mockTenantRepository.findFirst.mockResolvedValue(otherTenant);
+
+                const result = await service.fetchByCodeName('TENANT_2');
+
+                expect(result.id).toBe('tenant-2');
+            });
         });
     });
 
