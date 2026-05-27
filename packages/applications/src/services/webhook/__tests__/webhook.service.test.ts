@@ -429,7 +429,7 @@ describe('WebhookService', () => {
         };
 
         it('logs a warn when a non-SUPER_ADMIN passes a foreign tenantId (silent coercion observability)', async () => {
-            const warnSpy = vi.spyOn((service as unknown as { logger: { warn: (...args: unknown[]) => void } }).logger, 'warn');
+            const warnSpy = vi.spyOn(service['logger'], 'warn');
             const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
             mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
 
@@ -451,7 +451,7 @@ describe('WebhookService', () => {
         });
 
         it('does NOT log a warn when a non-SUPER_ADMIN omits request.tenantId (benign happy path)', async () => {
-            const warnSpy = vi.spyOn((service as unknown as { logger: { warn: (...args: unknown[]) => void } }).logger, 'warn');
+            const warnSpy = vi.spyOn(service['logger'], 'warn');
             const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
             mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
 
@@ -466,7 +466,7 @@ describe('WebhookService', () => {
 
         it('does NOT log a warn when a SUPER_ADMIN cross-tenant creates (explicit allow)', async () => {
             setRequestUserRoles(['SUPER_ADMIN']);
-            const warnSpy = vi.spyOn((service as unknown as { logger: { warn: (...args: unknown[]) => void } }).logger, 'warn');
+            const warnSpy = vi.spyOn(service['logger'], 'warn');
             const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-B' });
             mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
 
