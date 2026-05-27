@@ -444,17 +444,101 @@ describe('NotificationService', () => {
         });
 
         it('should return empty result when no notifications match tenant', async () => {
+            // TASK-306 P1.5 — `fetchAllByTenantId` now refuses cross-tenant
+            // reads. Align this empty-result probe with the CLS default
+            // (`tenant-1`) so the new guard does not short-circuit and the
+            // assertion still validates the "no rows" branch the original
+            // test was protecting.
             mockNotificationRepository.findAll.mockResolvedValue([]);
             mockNotificationRepository.count.mockResolvedValue(0);
 
             const result = await service.fetchAllByTenantId({
                 limit: 10,
                 page: 1,
-                tenantId: 'non-existent-tenant',
+                tenantId: 'tenant-1',
             });
 
             expect(result.data).toHaveLength(0);
             expect(result.count).toBe(0);
+        });
+    });
+
+    /**
+     * TASK-306 P1.5 (audit AC-7 / NEW-3) — `fetchAllByTenantId` previously
+     * trusted the caller-supplied `tenantId` from the DTO without comparing
+     * to CLS. A Tenant-A admin could list Tenant-B notifications by passing
+     * `tenantId: 'tenant-B'`. The new guard short-circuits with
+     * `NotFoundException` (no existence leak) when the DTO `tenantId` does
+     * not match the CLS-supplied caller `tenantId`, except for SUPER_ADMIN
+     * callers, who retain the cross-tenant bypass (admin tooling).
+     */
+    describe('TASK-306 P1.5 — fetchAllByTenantId tenant-scoped', () => {
+        const setRequestUserRoles = (roles: string[] | undefined) => {
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user':
+                        return {
+                            id: 'current-user-id',
+                            firstName: 'Test',
+                            lastName: 'User',
+                            email: 'test@example.com',
+                            roles,
+                        };
+                    case 'tenantId':
+                        return 'tenant-1';
+                    case 'tenantCode':
+                        return 'TENANT_1';
+                    case 'correlationId':
+                        return 'corr-123';
+                    case 'requestIp':
+                        return '192.168.1.1';
+                    default:
+                        return null;
+                }
+            });
+        };
+
+        it('returns rows when the DTO tenantId matches the caller CLS tenant', async () => {
+            const notifications = [createMockNotificationEntity({ id: 'notification-1', tenantId: 'tenant-1' })];
+            mockNotificationRepository.findAll.mockResolvedValue(notifications);
+            mockNotificationRepository.count.mockResolvedValue(1);
+
+            const result = await service.fetchAllByTenantId({
+                limit: 10,
+                page: 1,
+                tenantId: 'tenant-1',
+            });
+
+            expect(result.data).toHaveLength(1);
+            expect(result.data[0].tenantId).toBe('tenant-1');
+        });
+
+        it('throws NotFoundException for cross-tenant non-admin reads', async () => {
+            await expect(
+                service.fetchAllByTenantId({
+                    limit: 10,
+                    page: 1,
+                    tenantId: 'tenant-B',
+                }),
+            ).rejects.toThrow(NotFoundException);
+            // Guard short-circuits BEFORE hitting the repository.
+            expect(mockNotificationRepository.findAll).not.toHaveBeenCalled();
+        });
+
+        it('returns rows for a cross-tenant SUPER_ADMIN read (bypass)', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const notifications = [createMockNotificationEntity({ id: 'notification-x', tenantId: 'tenant-B' })];
+            mockNotificationRepository.findAll.mockResolvedValue(notifications);
+            mockNotificationRepository.count.mockResolvedValue(1);
+
+            const result = await service.fetchAllByTenantId({
+                limit: 10,
+                page: 1,
+                tenantId: 'tenant-B',
+            });
+
+            expect(result.data).toHaveLength(1);
+            expect(result.data[0].tenantId).toBe('tenant-B');
         });
     });
 

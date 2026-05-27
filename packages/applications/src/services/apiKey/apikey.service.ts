@@ -341,10 +341,20 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
   /**
    * Fetch all API keys scoped to a specific tenant.
+   *
+   * TASK-306 P1.5 (audit AC-7 / NEW-4) — refuse cross-tenant list reads
+   * driven by the DTO `tenantId`. Pre-guard, a Tenant-A admin could
+   * enumerate Tenant-B API keys by passing a foreign `tenantId`.
+   * SUPER_ADMIN bypasses for admin-tooling cross-tenant listing.
    */
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<ApiKeyEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { tenantId, limit, page, search } = props;
+
+    if (tenantId !== this.tenantId && !this.isSuperAdmin()) {
+      throw new NotFoundException('Resource not found');
+    }
+
     const apiKeys = await this.apiKeyRepository.findAll({
       ...withFormattedPaginatedProps(props),
       where: { tenantId },

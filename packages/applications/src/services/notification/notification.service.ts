@@ -112,9 +112,20 @@ export class NotificationService extends BaseService implements INotificationSer
     });
   }
 
+  /**
+   * TASK-306 P1.5 (audit AC-7 / NEW-3) — refuse cross-tenant list reads
+   * driven by the DTO `tenantId`. Pre-guard, any caller could enumerate
+   * another tenant's notifications by supplying a foreign `tenantId`.
+   * SUPER_ADMIN bypasses for admin-tooling cross-tenant listing.
+   */
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<NotificationEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { tenantId, limit, page, search } = props;
+
+    if (tenantId !== this.tenantId && !this.isSuperAdmin()) {
+      throw new NotFoundException('Resource not found');
+    }
+
     const notifications = await this.notificationRepository.findAll({
       ...withFormattedPaginatedProps(props),
       where: {
