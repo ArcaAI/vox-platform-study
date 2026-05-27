@@ -8,6 +8,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AsrPipelineFactory, CreateAsrPipelineProps } from '../AsrPipelineFactory';
 import { ResourceStatusType } from '../../../../enums';
 
+// TASK-305 A.6: tenantId is now required at the factory layer.
+const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
 // Mock the generateId function
 vi.mock('../../../../utils', () => ({
   generateId: vi.fn(() => 'generated-uuid-7'),
@@ -48,6 +51,7 @@ describe('AsrPipelineFactory', () => {
 
   describe('CreateAsrPipeline', () => {
     const baseProps: CreateAsrPipelineProps = {
+      tenantId: TEST_TENANT_ID,
       name: 'Medical Transcription Pipeline',
       slug: 'medical-transcription',
       configYaml: validConfigYaml,
@@ -100,19 +104,13 @@ describe('AsrPipelineFactory', () => {
       expect(pipeline.description).toBeNull();
     });
 
-    it('should set optional tenantId', () => {
+    it('should accept an explicit tenantId', () => {
       const pipeline = AsrPipelineFactory.CreateAsrPipeline({
         ...baseProps,
         tenantId: 'tenant-123',
       });
 
       expect(pipeline.tenantId).toBe('tenant-123');
-    });
-
-    it('should default tenantId to empty string', () => {
-      const pipeline = AsrPipelineFactory.CreateAsrPipeline(baseProps);
-
-      expect(pipeline.tenantId).toBe('');
     });
 
     it('should set optional tags', () => {
@@ -168,6 +166,7 @@ describe('AsrPipelineFactory', () => {
 
     it('should create entity with minimal YAML config', () => {
       const pipeline = AsrPipelineFactory.CreateAsrPipeline({
+        tenantId: TEST_TENANT_ID,
         name: 'Minimal Pipeline',
         slug: 'minimal-pipeline',
         configYaml: minimalConfigYaml,
@@ -231,6 +230,7 @@ describe('AsrPipelineFactory', () => {
   describe('entity state after creation', () => {
     it('should create entity with no changes tracked', () => {
       const pipeline = AsrPipelineFactory.CreateAsrPipeline({
+        tenantId: TEST_TENANT_ID,
         name: 'Test Pipeline',
         slug: 'test-pipeline',
         configYaml: validConfigYaml,
@@ -242,6 +242,7 @@ describe('AsrPipelineFactory', () => {
 
     it('should create entity with ENABLED resource status', () => {
       const pipeline = AsrPipelineFactory.CreateAsrPipeline({
+        tenantId: TEST_TENANT_ID,
         name: 'Test Pipeline',
         slug: 'test-pipeline',
         configYaml: validConfigYaml,
@@ -253,6 +254,7 @@ describe('AsrPipelineFactory', () => {
 
     it('should create entity that can be disabled', () => {
       const pipeline = AsrPipelineFactory.CreateAsrPipeline({
+        tenantId: TEST_TENANT_ID,
         name: 'Test Pipeline',
         slug: 'test-pipeline',
         configYaml: validConfigYaml,
@@ -268,6 +270,7 @@ describe('AsrPipelineFactory', () => {
   describe('model slug extraction from created pipeline', () => {
     it('should extract model slugs from config YAML', () => {
       const pipeline = AsrPipelineFactory.CreateAsrPipeline({
+        tenantId: TEST_TENANT_ID,
         name: 'Test Pipeline',
         slug: 'test-pipeline',
         configYaml: validConfigYaml,
@@ -281,6 +284,7 @@ describe('AsrPipelineFactory', () => {
 
     it('should get ASR model slug', () => {
       const pipeline = AsrPipelineFactory.CreateAsrPipeline({
+        tenantId: TEST_TENANT_ID,
         name: 'Test Pipeline',
         slug: 'test-pipeline',
         configYaml: validConfigYaml,
@@ -291,6 +295,7 @@ describe('AsrPipelineFactory', () => {
 
     it('should get VAD model slug', () => {
       const pipeline = AsrPipelineFactory.CreateAsrPipeline({
+        tenantId: TEST_TENANT_ID,
         name: 'Test Pipeline',
         slug: 'test-pipeline',
         configYaml: validConfigYaml,
@@ -325,6 +330,7 @@ describe('AsrPipelineFactory', () => {
 
     it('should create a minimal pipeline', () => {
       const pipeline = AsrPipelineFactory.CreateAsrPipeline({
+        tenantId: TEST_TENANT_ID,
         name: 'Minimal',
         slug: 'minimal',
         configYaml: minimalConfigYaml,
@@ -334,7 +340,7 @@ describe('AsrPipelineFactory', () => {
       expect(pipeline.slug).toBe('minimal');
       expect(pipeline.description).toBeNull();
       expect(pipeline.tags).toEqual([]);
-      expect(pipeline.tenantId).toBe('');
+      expect(pipeline.tenantId).toBe(TEST_TENANT_ID);
       expect(() => pipeline.validate()).not.toThrow();
     });
   });

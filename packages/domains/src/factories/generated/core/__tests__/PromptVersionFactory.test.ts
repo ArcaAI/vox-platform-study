@@ -7,6 +7,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PromptVersionFactory } from '../PromptVersionFactory';
 
+// TASK-305 A.6: tenantId is now required at the factory layer.
+const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
 vi.mock('../../../../utils', () => ({
   generateId: vi.fn(() => 'generated-uuid-7'),
 }));
@@ -17,12 +20,12 @@ describe('PromptVersionFactory', () => {
   });
 
   it('should create entity with generated UUID7 id', () => {
-    const entity = PromptVersionFactory.CreatePromptVersion({});
+    const entity = PromptVersionFactory.CreatePromptVersion({ tenantId: TEST_TENANT_ID });
     expect(entity.id).toBe('generated-uuid-7');
   });
 
   it('should set default values for optional fields', () => {
-    const entity = PromptVersionFactory.CreatePromptVersion({});
+    const entity = PromptVersionFactory.CreatePromptVersion({ tenantId: TEST_TENANT_ID });
     expect(entity.promptTemplateId).toBeNull();
     expect(entity.versionNumber).toBeNull();
     expect(entity.content).toBeNull();
@@ -33,6 +36,7 @@ describe('PromptVersionFactory', () => {
 
   it('should not overwrite provided values', () => {
     const entity = PromptVersionFactory.CreatePromptVersion({
+      tenantId: TEST_TENANT_ID,
       promptTemplateId: 'template-123',
       versionNumber: 2,
       content: 'version content',
@@ -49,14 +53,9 @@ describe('PromptVersionFactory', () => {
   });
 
   it('should set timestamps', () => {
-    const entity = PromptVersionFactory.CreatePromptVersion({});
+    const entity = PromptVersionFactory.CreatePromptVersion({ tenantId: TEST_TENANT_ID });
     expect(entity.createdAt).toBeInstanceOf(Date);
     expect(entity.updatedAt).toBeInstanceOf(Date);
-  });
-
-  it('should default tenantId to standard UUID', () => {
-    const entity = PromptVersionFactory.CreatePromptVersion({});
-    expect(entity.tenantId).toBe('50000000-0000-0000-0000-000000000000');
   });
 
   it('should set tenantId when provided', () => {
@@ -65,19 +64,20 @@ describe('PromptVersionFactory', () => {
   });
 
   it('should default createdBy and updatedBy to null', () => {
-    const entity = PromptVersionFactory.CreatePromptVersion({});
+    const entity = PromptVersionFactory.CreatePromptVersion({ tenantId: TEST_TENANT_ID });
     expect(entity.createdBy).toBeNull();
     expect(entity.updatedBy).toBeNull();
   });
 
   it('should create entity that passes validation', () => {
-    const entity = PromptVersionFactory.CreatePromptVersion({});
+    const entity = PromptVersionFactory.CreatePromptVersion({ tenantId: TEST_TENANT_ID });
     expect(() => entity.validate()).not.toThrow();
   });
 
   it('should use provided createdAt and updatedAt when supplied', () => {
     const customDate = new Date('2025-01-15T00:00:00.000Z');
     const entity = PromptVersionFactory.CreatePromptVersion({
+      tenantId: TEST_TENANT_ID,
       createdAt: customDate,
       updatedAt: customDate,
     });
