@@ -8,9 +8,11 @@
  * model + `IUserRoleAssignmentEntity` interface):
  *   - userId: non-empty trimmed string
  *   - roleId: non-empty trimmed string
- *   - tenantId: OPTIONAL — `null` represents a global assignment that
- *     applies across all tenants (see `policy.engine.ts:236`). validate()
- *     must therefore accept `null`/`undefined` tenantId without throwing.
+ *   - tenantId: REQUIRED (TASK-305 Phase A — schema is NOT NULL,
+ *     validate() refuses empty/null/undefined). The pre-W1.3 "global
+ *     assignment via null tenantId" pattern is gone; platform-wide
+ *     role assignments (SUPER_ADMIN, system service account) belong
+ *     to SYSTEM_TENANT_ID now.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -58,20 +60,28 @@ describe('UserRoleAssignmentEntity.validate()', () => {
       expect(() => entity.validate()).not.toThrow('Method not implemented.');
     });
 
-    it('should accept null tenantId (global assignment)', () => {
+    it('should reject null tenantId (TASK-305 Phase A — platform roles use SYSTEM_TENANT_ID)', () => {
+      // Pre-TASK-305 this case was a positive assertion ("global
+      // role assignments may omit tenantId"). The new contract
+      // requires every role assignment row to carry a concrete tenant
+      // (SYSTEM_TENANT_ID for platform-wide roles like SUPER_ADMIN).
       const entity = new UserRoleAssignmentEntity(
-        createValidInit({ tenantId: null }),
+        createValidInit({ tenantId: null as unknown as string }),
       );
 
-      expect(() => entity.validate()).not.toThrow();
+      expect(() => entity.validate()).toThrow(
+        /UserRoleAssignmentEntity is missing tenant context/,
+      );
     });
 
-    it('should accept undefined tenantId', () => {
+    it('should reject undefined tenantId (same rationale as null)', () => {
       const entity = new UserRoleAssignmentEntity(
-        createValidInit({ tenantId: undefined }),
+        createValidInit({ tenantId: undefined as unknown as string }),
       );
 
-      expect(() => entity.validate()).not.toThrow();
+      expect(() => entity.validate()).toThrow(
+        /UserRoleAssignmentEntity is missing tenant context/,
+      );
     });
   });
 

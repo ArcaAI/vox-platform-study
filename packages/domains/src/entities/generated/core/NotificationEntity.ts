@@ -128,6 +128,7 @@ export class NotificationEntity extends BaseTaggedEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (!this._title || this._title.trim().length === 0) {
       throw new BusinessException('Notification title is required.');
     }

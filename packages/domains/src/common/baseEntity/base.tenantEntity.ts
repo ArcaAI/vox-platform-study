@@ -1,6 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { TenantEntity } from '../../entities';
-import { EntityId, BaseAggregate, BaseAggregateProps } from '.';
+// Import siblings directly to avoid a circular barrel cycle at module
+// load (the `index.ts` barrel re-exports BaseTaggedEntity, which extends
+// BaseTenantEntity — going through the barrel here breaks single-file
+// test loads). TASK-305 A.9.
+import { EntityId } from './base.entity';
+import { BaseAggregate, BaseAggregateProps } from './base.aggregate';
 
 /**
  * Hardened by TASK-305 Phase A (multi-tenancy hardening):

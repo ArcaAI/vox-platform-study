@@ -408,6 +408,7 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (!this._pipelineId) {
       throw new BusinessException('Pipeline ID is required');
     }

@@ -227,6 +227,7 @@ export class ApiKeyEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (!this._keyName || this._keyName.trim().length === 0) {
       throw new BusinessException('API key name is required.');
     }

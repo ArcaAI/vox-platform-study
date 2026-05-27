@@ -114,6 +114,7 @@ export class StorageAccessKeyEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (!this._name) throw new Error('Key name is required');
     if (!this._accessKeyId) throw new Error('Access key ID is required');
     if (!this._secretAccessKey) throw new Error('Secret access key is required');
