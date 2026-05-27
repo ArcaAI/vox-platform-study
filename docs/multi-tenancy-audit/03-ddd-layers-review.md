@@ -4,7 +4,7 @@
 
 > **TASK-306 closure (2026-05-27):** Closed finding codes — C-1 (reads),
 > C-3 (arrays), C-7 (finale), H-1, H-3 (= NEW-6), H-8 (= NEW-1), M-2 (= NEW-2),
-> M-3, M-5, M-6, M-8, L-4 + NEW-1..NEW-4, NEW-6, NEW-7. Deferred to follow-up
+> M-3, M-5, M-6, M-8, L-4, NEW-3, NEW-4, NEW-7. Deferred to follow-up
 > tickets: NEW-5 (F-2 — DnaWritingStyle GLOBAL_ADMIN bypass), F-1 (RLS),
 > F-3 (SUPER_ADMIN posture consistency), F-5..F-8 (housekeeping +
 > minor observability nits — see `docs/implementation/TASK-306-DDD-Layers-Followup/README.md` §8).
