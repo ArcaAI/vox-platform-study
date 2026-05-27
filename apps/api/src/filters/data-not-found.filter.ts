@@ -1,0 +1,68 @@
+import { ArgumentsHost, Catch, ExceptionFilter, HttpStatus, Logger } from '@nestjs/common';
+import { Request, Response } from 'express';
+import { DataNotFoundException } from '@arcaai/exceptions';
+
+/**
+ * Maps `DataNotFoundException` (thrown by `Repository<T>.findById` /
+ * `findByIdInContext` and similar fetch paths) to a generic HTTP 404
+ * `{ statusCode: 404, message: "Resource not found" }` response.
+ *
+ * Why this exists — TASK-306 P3.3 / AC-12 / audit M-8:
+ *
+ * The native `DataNotFoundException.message` is
+ *   `[DB] User with ID user-123 could not be found.`
+ *
+ * Without this filter the message would be echoed verbatim to the HTTP
+ * response (the `ExceptionInterceptor.BaseException` branch wraps it
+ * as a 500 with `err.toJSON()`, which serializes the message + the
+ * cause + the model name + the entity id). That leaks two pieces of
+ * tenant-catalogue / existence-leak signal to ANY authenticated
+ * caller:
+ *
+ *   1. The model name (e.g. `User`, `ApiKey`, `Webhook`) — confirms
+ *      the API surfaces that backing entity, useful for an enumeration
+ *      attacker.
+ *   2. The row id passed by the caller — confirms whether a specific id
+ *      exists at all (returning 500 with the literal id is functionally
+ *      a 200 disguised as an error).
+ *
+ * Scope (user-locked, §10 Q2 of the plan README): this filter is
+ * scoped ONLY to `DataNotFoundException`. The W5.1.3 + W5.2 + W5.3
+ * cross-tenant `assertEqualTenants` guards already throw
+ * `NotFoundException("Resource not found")` directly with the
+ * generic body — those do NOT need filter wrapping.
+ *
+ * Production mode (`NODE_ENV=production`) ALWAYS emits the generic
+ * body. Per the plan README §5.5.4 fallback option, the dev-mode echo
+ * was intentionally skipped — "generic-always is the safer default".
+ */
+@Catch(DataNotFoundException)
+export class DataNotFoundExceptionFilter implements ExceptionFilter<DataNotFoundException> {
+  private readonly logger = new Logger(DataNotFoundExceptionFilter.name);
+
+  catch(exception: DataNotFoundException, host: ArgumentsHost): void {
+    const ctx = host.switchToHttp();
+    const request = ctx.getRequest<Request>();
+    const response = ctx.getResponse<Response>();
+
+    // Observability — log the rich exception detail server-side so SOC
+    // can still distinguish enumeration-pattern requests, while the
+    // client gets only the generic body.
+    this.logger.debug({
+      message: 'DataNotFoundException mapped to 404',
+      // The native message carries the model + id; safe to log server-side.
+      exceptionMessage: exception.message,
+      exceptionCode: exception.code,
+      correlationId: exception.correlationId,
+      method: request?.method,
+      path: request?.url,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      requestId: (request as any)?.requestId,
+    });
+
+    response.status(HttpStatus.NOT_FOUND).json({
+      statusCode: HttpStatus.NOT_FOUND,
+      message: 'Resource not found',
+    });
+  }
+}

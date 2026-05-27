@@ -12,12 +12,13 @@ import {
 } from '@arcaai/applications';
 import { JobQueue } from '@arcaai/domains';
 import { Global, Module } from '@nestjs/common';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { RequiresIfMatchGuard } from './decorators/requiresIfMatch.guard';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ClsModule } from 'nestjs-cls';
 import { uuidv7 } from 'uuidv7';
+import { DataNotFoundExceptionFilter } from './filters';
 import { JwtAuthGuard } from './guards';
 import { ContextInterceptor, ExceptionInterceptor, ImpersonationAuditInterceptor, MaintenanceInterceptor, MetricsInterceptor } from './interceptors';
 import { GracefulShutdownModule } from './services';
@@ -80,6 +81,22 @@ const guards = [
   {
     provide: APP_GUARD,
     useClass: RequiresIfMatchGuard,
+  },
+];
+
+// TASK-306 W5.5.4 / P3.3 / AC-12 (closes audit M-8) — global exception
+// filter that maps `DataNotFoundException` (thrown by
+// `Repository<T>.findById` and friends) to a generic
+// `404 { message: "Resource not found" }` response, dropping the model
+// name + row id from the body. Scoped ONLY to `DataNotFoundException`
+// per the user-locked decision in plan README §10 Q2: the W5.1.3 /
+// W5.2 / W5.3 service-layer guards already throw
+// `NotFoundException("Resource not found")` directly with the right
+// message and need no filter wrapping.
+const filters = [
+  {
+    provide: APP_FILTER,
+    useClass: DataNotFoundExceptionFilter,
   },
 ];
 
@@ -174,6 +191,6 @@ if (enableStudio) {
 
 @Module({
   imports: [...common, ...featureModules],
-  providers: [...interceptors, ...guards],
+  providers: [...interceptors, ...guards, ...filters],
 })
 export class AppModule {}

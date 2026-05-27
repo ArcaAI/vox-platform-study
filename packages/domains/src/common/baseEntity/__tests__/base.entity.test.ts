@@ -6,6 +6,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BaseEntity, IBaseEntity, EntityId } from '../base.entity';
+import { BaseTenantEntity, IBaseTenantEntity } from '../base.tenantEntity';
 // Import directly from file to avoid circular dependency through barrel exports
 import { ResourceStatusType } from '../../../enums/generated/ResourceStatusType';
 
@@ -280,6 +281,88 @@ describe('BaseEntity', () => {
       const entity = createTestEntity();
 
       expect(entity.equals(null)).toBe(false);
+    });
+  });
+
+  /*
+   * TASK-306 P3.4 / AC-13 / audit L-4.
+   *
+   * Before this ticket `BaseEntity.equals(other)` compared `id` only —
+   * meaning two `BaseTenantEntity` instances with the same row id but
+   * DIFFERENT `tenantId` would be reported as equal. That breaks any
+   * collection-membership check (e.g. `entities.find((e) => e.equals(x))`
+   * or `cache.has(entity)`) that holds entities from multiple tenants in
+   * the same buffer (an unusual case, but the post-merge cache + the
+   * cross-aggregate "linked consultations" array surfaces both qualify).
+   *
+   * Fix: when BOTH sides are `BaseTenantEntity` subclasses, additionally
+   * require `tenantId` equality. Otherwise fall through to the existing
+   * id-only contract so non-tenant entities (and mixed comparisons) keep
+   * working.
+   */
+  describe('TASK-306 P3.4 — equals is tenant-aware for BaseTenantEntity', () => {
+    // Concrete BaseTenantEntity subclass — inherits the base
+    // `validate()` tenant-context guard without modification. Lives
+    // INSIDE the test scope to avoid circular imports through any
+    // barrel.
+    class TestTenantEntity extends BaseTenantEntity {
+      constructor(init: IBaseTenantEntity) {
+        super(init);
+      }
+    }
+
+    function createTenantEntity(overrides: Partial<IBaseTenantEntity> = {}): TestTenantEntity {
+      return new TestTenantEntity({
+        id: 'entity-1',
+        tenantId: 'tenant-A',
+        createdBy: null,
+        updatedBy: null,
+        createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-01'),
+        ...overrides,
+      });
+    }
+
+    it('returns true when two tenant entities share id AND tenantId', () => {
+      const a = createTenantEntity({ id: 'shared-id', tenantId: 'tenant-A' });
+      const b = createTenantEntity({ id: 'shared-id', tenantId: 'tenant-A' });
+
+      expect(a.equals(b)).toBe(true);
+    });
+
+    it('returns false when two tenant entities share id but differ in tenantId', () => {
+      const a = createTenantEntity({ id: 'shared-id', tenantId: 'tenant-A' });
+      const b = createTenantEntity({ id: 'shared-id', tenantId: 'tenant-B' });
+
+      expect(a.equals(b)).toBe(false);
+      // Symmetry — order should not matter.
+      expect(b.equals(a)).toBe(false);
+    });
+
+    it('preserves the id-only contract for two non-tenant entities (no behavioural regression)', () => {
+      const a = createTestEntity({ id: 'shared-id' });
+      const b = createTestEntity({ id: 'shared-id', name: 'Different Name' });
+
+      expect(a.equals(b)).toBe(true);
+    });
+
+    it('falls through to id-only equality when only one side is a tenant entity (graceful)', () => {
+      // Comparing a TenantEntity with a non-tenant TestEntity that
+      // shares the same `id`. The tenant assertion only fires when
+      // BOTH sides carry a `_tenantId`; here only the left does, so
+      // we fall through to id-only equality (true).
+      const tenant = createTenantEntity({ id: 'shared-id', tenantId: 'tenant-A' });
+      const nonTenant = createTestEntity({ id: 'shared-id' });
+
+      expect(tenant.equals(nonTenant)).toBe(true);
+      expect(nonTenant.equals(tenant)).toBe(true);
+    });
+
+    it('returns false when ids differ regardless of tenantId', () => {
+      const a = createTenantEntity({ id: 'id-1', tenantId: 'tenant-A' });
+      const b = createTenantEntity({ id: 'id-2', tenantId: 'tenant-A' });
+
+      expect(a.equals(b)).toBe(false);
     });
   });
 
