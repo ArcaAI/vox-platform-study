@@ -173,6 +173,7 @@ export class AudioRecordingEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (!this._contextItemId) {
       throw new BusinessException('Context item ID is required');
     }

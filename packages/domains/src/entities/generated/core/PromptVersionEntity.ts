@@ -91,5 +91,4 @@ export class PromptVersionEntity extends BaseTenantEntity {
     this.setProperty('PromptTemplate', value);
   }
 
-  public override validate(): void {}
 }

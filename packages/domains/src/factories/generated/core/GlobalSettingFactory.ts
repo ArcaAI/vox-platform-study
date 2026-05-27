@@ -18,7 +18,7 @@ export interface CreateGlobalSettingProps extends BaseEntityFactoryCreateProps {
   locked?: IGlobalSettingEntity['locked'];
   dataType: IGlobalSettingEntity['dataType'];
   namespace?: IGlobalSettingEntity['namespace'];
-  tenantId?: IGlobalSettingEntity['tenantId'];
+  tenantId: IGlobalSettingEntity['tenantId'];
   Tenant?: IGlobalSettingEntity['Tenant'];
   tags?: IGlobalSettingEntity['tags'];
   Tags?: IGlobalSettingEntity['Tags'];
@@ -52,7 +52,7 @@ export class GlobalSettingFactory {
       locked: props.locked ?? false,
       dataType: props.dataType,
       namespace: props.namespace ?? '',
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
       Tenant: props.Tenant ?? null,
       tags: props.tags ?? [],
       Tags: props.Tags ?? [],

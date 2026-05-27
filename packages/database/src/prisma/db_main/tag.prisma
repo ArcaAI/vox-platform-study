@@ -5,7 +5,7 @@ model Tag {
     id       String @id @default(uuid(7))
 
     // multi tenant fields
-    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // core fields
     resourceTypeName String?
@@ -32,5 +32,7 @@ model Tag {
     // relations
 
     // indexing
+    @@unique([tenantId, resourceTypeName, resourceId, tagKey], name: "Tag_tenantId_resource_key_unique")
+    @@index([tenantId, resourceTypeName, resourceId], name: "Tag_tenantId_resource_idx")
     @@schema("core")
 }

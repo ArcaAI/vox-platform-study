@@ -12,9 +12,13 @@ model UserRoleAssignment {
     id       String @id @default(uuid(7))
 
     // multi tenant fields
-    // null = global assignment (applies to all tenants)
-    // specific ID = tenant-scoped assignment
-    tenantId String? @default("50000000-0000-0000-0000-000000000000")
+    // Always tenant-scoped — use SYSTEM_TENANT_ID ('00000000-…') for
+    // platform-wide assignments (e.g. SUPER_ADMIN). NULL is no longer
+    // accepted: the previous `null = global` semantics relied on the
+    // `[userId,roleId,tenantId]` composite unique, which Postgres treats as
+    // "distinct" for NULL, allowing a global assignment to shadow a
+    // tenant-scoped one. See TASK-305 audit § B4.
+    tenantId String
 
     // core fields
     // Optional: Override/extend policies for this specific assignment

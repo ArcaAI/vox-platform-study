@@ -18,7 +18,7 @@ export interface CreateNotificationProps extends BaseEntityFactoryCreateProps {
   ResourceSubscription?: INotificationEntity['ResourceSubscription'];
   targetUserId: INotificationEntity['targetUserId'];
   TargetUser?: INotificationEntity['TargetUser'];
-  tenantId?: INotificationEntity['tenantId'];
+  tenantId: INotificationEntity['tenantId'];
   Tenant?: INotificationEntity['Tenant'];
   tags?: INotificationEntity['tags'];
   Tags?: INotificationEntity['Tags'];
@@ -52,7 +52,7 @@ export class NotificationFactory {
       ResourceSubscription: props.ResourceSubscription ?? null,
       targetUserId: props.targetUserId,
       TargetUser: props.TargetUser ?? null,
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
       Tenant: props.Tenant ?? null,
       tags: props.tags ?? [],
       Tags: props.Tags ?? [],

@@ -161,6 +161,7 @@ export class AuditLogEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (this._action === undefined || this._action === null) {
       throw new BusinessException('AuditLog action is required.');
     }

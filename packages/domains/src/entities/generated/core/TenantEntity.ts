@@ -20,7 +20,13 @@ export class TenantEntity extends BaseTaggedEntity {
   private _description?: ITenantEntity['description'];
 
   constructor(init: ITenantEntity) {
-    super(init);
+    // TenantEntity is its own tenant — no separate tenantId column exists on
+    // core.Tenant (the schema deliberately omits it; ITenantEntity uses
+    // `Omit<IBaseTaggedEntity, 'tenantId'>`). We pass `init.id` to satisfy
+    // the BaseTenantEntity contract that requires a tenantId (TASK-305 A.7).
+    // The override of validate() below intentionally does NOT call
+    // super.validate(); the tenantId === id invariant is enforced here.
+    super({ ...init, tenantId: init.id });
     this._name = init.name;
     this._key = init.key;
     this._description = init.description;

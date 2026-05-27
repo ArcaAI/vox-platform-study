@@ -15,7 +15,7 @@ export interface CreateTagProps extends BaseEntityFactoryCreateProps {
   description?: ITagEntity['description'];
   color?: ITagEntity['color'];
   icon?: ITagEntity['icon'];
-  tenantId?: ITagEntity['tenantId'];
+  tenantId: ITagEntity['tenantId'];
   Tenant?: ITagEntity['Tenant'];
 
   createdAt?: ITagEntity['createdAt'];
@@ -44,7 +44,7 @@ export class TagFactory {
       description: props.description ?? '',
       color: props.color ?? '',
       icon: props.icon ?? '',
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
       Tenant: props.Tenant ?? null,
     });
   }

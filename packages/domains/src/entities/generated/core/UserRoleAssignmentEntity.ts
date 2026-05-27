@@ -62,6 +62,7 @@ export class UserRoleAssignmentEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (!this._userId || this._userId.trim().length === 0) {
       throw new BusinessException('UserRoleAssignment userId is required.');
     }

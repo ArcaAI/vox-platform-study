@@ -11,7 +11,7 @@ export interface CreateDepartmentProps extends BaseEntityFactoryCreateProps {
   name?: IDepartmentEntity['name'];
   description?: IDepartmentEntity['description'];
   parentDepartmentId?: IDepartmentEntity['parentDepartmentId'];
-  tenantId?: IDepartmentEntity['tenantId'];
+  tenantId: IDepartmentEntity['tenantId'];
 
   // Prompt configuration (GAP-3)
   defaultSummaryTemplate?: IDepartmentEntity['defaultSummaryTemplate'];
@@ -46,7 +46,7 @@ export class DepartmentFactory {
       name: props.name ?? null,
       description: props.description ?? null,
       parentDepartmentId: props.parentDepartmentId ?? null,
-      tenantId: props.tenantId ?? '',
+      tenantId: props.tenantId,
 
       // Prompt configuration
       defaultSummaryTemplate: props.defaultSummaryTemplate ?? null,

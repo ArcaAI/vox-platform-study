@@ -95,6 +95,7 @@ export class TagEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
+    super.validate();
     if (!this._tagValue || this._tagValue.trim().length === 0) {
       throw new BusinessException('Tag tagValue is required.');
     }

@@ -12,7 +12,7 @@ export interface CreateUserRoleAssignmentProps extends BaseEntityFactoryCreatePr
   roleId: IUserRoleAssignmentEntity['roleId'];
   User?: IUserRoleAssignmentEntity['User'];
   Roles?: IUserRoleAssignmentEntity['Roles'];
-  tenantId?: IUserRoleAssignmentEntity['tenantId'];
+  tenantId: IUserRoleAssignmentEntity['tenantId'];
   Tenant?: IUserRoleAssignmentEntity['Tenant'];
 
   createdAt?: IUserRoleAssignmentEntity['createdAt'];
@@ -38,7 +38,7 @@ export class UserRoleAssignmentFactory {
       roleId: props.roleId,
       User: props.User ?? null,
       Roles: props.Roles ?? [],
-      tenantId: props.tenantId ?? null,
+      tenantId: props.tenantId,
       Tenant: props.Tenant ?? null,
     });
   }

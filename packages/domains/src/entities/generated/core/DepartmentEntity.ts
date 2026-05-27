@@ -168,6 +168,7 @@ export class DepartmentEntity extends BaseTenantEntity {
   }
 
   public override validate(): void {
+    super.validate();
     // code and name are now optional, no validation required
   }
 }
