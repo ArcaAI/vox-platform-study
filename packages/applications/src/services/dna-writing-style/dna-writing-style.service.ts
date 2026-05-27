@@ -13,11 +13,13 @@ import {
   ResourceType,
   ResourceStatusType,
   SysEventType,
+  UserRoleAssignmentRepository,
 } from '@arcaai/domains';
 import { IDnaWritingStyleService, DnaJobResponse } from './IDnaWritingStyleService';
 import { DnaReportResponse, DnaVersionResponse, GenerateDnaReportRequest, UpdateDnaReportRequest } from './dto';
 import { DnaWritingStyleDtoMapper } from './dna-writing-style.dto.mapper';
 import { BaseService } from '../../common';
+import { assertUserBelongsToTenant } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 
 export interface GenerateDnaReportJobPayload {
@@ -39,6 +41,10 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   constructor(
     private readonly dnaReportRepository: DnaWritingStyleReportRepository,
     private readonly dnaVersionRepository: DnaWritingStyleVersionRepository,
+    // TASK-305 D.5.3 (audit C-9) — needed by `assertUserBelongsToTenant` to
+    // verify a `doctorId` is a member of the caller's tenant before any
+    // DNA-style operation runs against PHI-derived artifacts.
+    private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
     @InjectQueue(JobQueue.GenerateDnaReport) private readonly dnaQueue: Queue,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
@@ -46,11 +52,20 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     super(eventEmitter, clsService, ResourceType.DnaWritingStyleReport);
   }
 
+  /**
+   * TASK-305 D.5.3 (audit C-9) — Queue a DNA-style generation job for a
+   * doctor. The doctor must be a role-assigned member of the caller's
+   * tenant; SUPER_ADMIN does NOT bypass this guard because writing-style
+   * artifacts are derived from PHI (transcripts, prior notes), and exposing
+   * them across tenants is itself a PHI leak.
+   */
   async generateDnaReport(doctorId: string, dto: GenerateDnaReportRequest): Promise<DnaJobResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
+
+    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, doctorId, tenantId);
 
     const userId = this.requestUserId ?? '';
     const jobId = uuidv7();
@@ -70,7 +85,18 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     return { jobId, status: 'PENDING' };
   }
 
+  /**
+   * TASK-305 D.5.3 (audit C-9) — `doctorId` must belong to the caller's
+   * tenant; we surface a `NotFoundException` (no existence leak) for any
+   * cross-tenant lookup attempt before the repository is consulted.
+   */
   async getDnaReport(doctorId: string): Promise<DnaReportResponse | null> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, doctorId, tenantId);
+
     const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
     if (!report) return null;
     return DnaWritingStyleDtoMapper.toReportResponse(report);
@@ -81,6 +107,13 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
 
     const report = await this.dnaReportRepository.findById(reportId);
     if (!report) throw new NotFoundException(`DNA report ${reportId} not found`);
+
+    // TASK-305 D.5.3 (audit C-9) — PHI guard. Even an admin caller using
+    // `bypassOwnershipCheck` (the per-doctor ownership escape) cannot reach
+    // across tenants, and even SUPER_ADMIN cannot — the writing style
+    // captures the doctor's voice/style derived from PHI.
+    this.assertReportInScope(report, reportId);
+
     if (!options?.bypassOwnershipCheck && report.doctorId !== userId) {
       throw new ForbiddenException("Cannot update another doctor's DNA report");
     }
@@ -127,7 +160,17 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     return DnaWritingStyleDtoMapper.toReportResponse(updated);
   }
 
+  /**
+   * TASK-305 D.5.3 (audit C-9) — load the parent report first, assert it
+   * belongs to the caller's tenant, and only then enumerate its versions.
+   * Without this, a Tenant-A admin could enumerate versions of a Tenant-B
+   * report by passing the foreign reportId.
+   */
   async getVersions(reportId: string): Promise<DnaVersionResponse[]> {
+    const report = await this.dnaReportRepository.findById(reportId);
+    if (!report) throw new NotFoundException(`DNA report ${reportId} not found`);
+    this.assertReportInScope(report, reportId);
+
     const versions = await this.dnaVersionRepository.findAll({
       filters: { dnaReportId: reportId },
       sort: [{ versionNumber: 'desc' }],
@@ -138,15 +181,38 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   async getVersionsForDoctor(reportId: string, doctorId: string): Promise<DnaVersionResponse[]> {
     const report = await this.dnaReportRepository.findById(reportId);
     if (!report) throw new NotFoundException(`DNA report ${reportId} not found`);
+    // TASK-305 D.5.3 — tenant scope is the structural guard. The doctorId
+    // ownership check below is the per-user escalation guard preserved from
+    // the existing flow.
+    this.assertReportInScope(report, reportId);
+
     if (report.doctorId !== doctorId) {
       throw new ForbiddenException("Cannot access another doctor's DNA report versions");
     }
-    return this.getVersions(reportId);
+    // Inline the version fetch to avoid a redundant `findById` round-trip.
+    const versions = await this.dnaVersionRepository.findAll({
+      filters: { dnaReportId: reportId },
+      sort: [{ versionNumber: 'desc' }],
+    });
+    return versions.map(DnaWritingStyleDtoMapper.toVersionResponse);
   }
 
   private isGlobalRole(): boolean {
     const roles = this.requestUser?.roles ?? [];
     return roles.some((r) => r === 'SUPER_ADMIN' || r === 'GLOBAL_ADMIN');
+  }
+
+  /**
+   * TASK-305 D.5.3 (audit C-9) — Assert the loaded report belongs to the
+   * caller's tenant. Throws `NotFoundException` (not `Forbidden`) so the API
+   * never reveals that a record exists for another tenant. Note: writing
+   * style is PHI-derived, so SUPER_ADMIN does NOT bypass this check.
+   */
+  private assertReportInScope(report: { tenantId?: string | null }, reportId: string): void {
+    const tenantId = this.tenantId;
+    if (!tenantId || report.tenantId !== tenantId) {
+      throw new NotFoundException(`DNA report ${reportId} not found`);
+    }
   }
 
   async listReports(filters?: { doctorId?: string; includeDisabled?: boolean }): Promise<DnaReportResponse[]> {

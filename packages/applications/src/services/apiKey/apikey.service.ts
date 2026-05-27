@@ -8,15 +8,18 @@ import {
   EntityId,
   ResourceType,
   SysEventType,
+  UserRoleAssignmentRepository,
 } from '@arcaai/domains';
-import { ArgumentInvalidException, InternalServerErrorException, NotFoundException } from '@arcaai/exceptions';
-import { ForbiddenException, Inject, Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
+import { ArgumentInvalidException, InternalServerErrorException } from '@arcaai/exceptions';
+import { ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash, createHmac, randomBytes } from 'crypto';
 import { ClsService } from 'nestjs-cls';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
+import { assertUserBelongsToTenant } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 import { CreateApiKeyResult, IApiKeyService } from './IApiKeyService';
 import { CreateApiKeyRequest, UpdateApiKeyRequest } from './dto';
 
@@ -67,6 +70,10 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
   constructor(
     private readonly apiKeyRepository: ApiKeyRepository,
+    // TASK-305 D.5.2 — needed by `assertUserBelongsToTenant` to enforce that
+    // the user the key is being issued for actually has a role-assignment in
+    // the effective tenant.
+    private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     // TASK-302 Phase 3 Task 3.3 — API_KEY_PEPPER now arrives via the
@@ -185,8 +192,25 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   async create(request: CreateApiKeyRequest): Promise<CreateApiKeyResult> {
     const keyType = request.keyType ?? ApiKeyType.SDK;
 
-    const tenantId = this.tenantId;
-    if (!tenantId && keyType !== ApiKeyType.SERVICE_ACCOUNT) {
+    // TASK-305 D.5.2 (audit C-8 / M-1) — pin the working tenantId to CLS
+    // unless the caller is SUPER_ADMIN and explicitly overrides via the DTO
+    // (legitimate cross-tenant support flow). Anyone else passing a different
+    // `request.tenantId` is attempting privilege escalation.
+    const callerTenantId = this.tenantId ?? null;
+    const requestedTenantId = request.tenantId;
+    const isExplicitCrossTenant = requestedTenantId !== undefined && requestedTenantId !== null && requestedTenantId !== callerTenantId;
+
+    let effectiveTenantId: string | null;
+    if (isExplicitCrossTenant) {
+      if (!this.isSuperAdmin()) {
+        throw new ForbiddenException('Cross-tenant API key creation is not permitted');
+      }
+      effectiveTenantId = requestedTenantId;
+    } else {
+      effectiveTenantId = callerTenantId;
+    }
+
+    if (!effectiveTenantId && keyType !== ApiKeyType.SERVICE_ACCOUNT) {
       throw new ArgumentInvalidException(
         'API keys must be created within a tenant context. ' + 'Only SERVICE_ACCOUNT keys can be created without a tenant.',
       );
@@ -197,6 +221,15 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       throw new ArgumentInvalidException(
         'API keys must be linked to the creating user. ' + 'Only SERVICE_ACCOUNT keys can be created without a user context.',
       );
+    }
+
+    // TASK-305 D.5.2 (audit C-8) — verify that the caller's userId actually
+    // has an enabled role-assignment in the tenant the key is scoped to. The
+    // SUPER_ADMIN bypass exists for cross-tenant support flows (super_admin
+    // is rarely a member of every tenant they administer). SERVICE_ACCOUNT
+    // keys skip the check because they may have no associated user at all.
+    if (userId && effectiveTenantId && keyType !== ApiKeyType.SERVICE_ACCOUNT && !this.isSuperAdmin()) {
+      await assertUserBelongsToTenant(this.userRoleAssignmentRepository, userId, effectiveTenantId);
     }
 
     // eslint-disable-next-line turbo/no-undeclared-env-vars
@@ -237,7 +270,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       description: request.description ?? null,
       environment: request.environment ?? null,
       userId,
-      tenantId: tenantId ?? null,
+      tenantId: effectiveTenantId ?? null,
       createdBy: userId,
     });
 
@@ -272,13 +305,25 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
   /**
    * Fetch all API keys with pagination.
+   *
+   * TASK-305 D.5.2 (audit M-1) — scoped to the caller's CLS tenantId so a
+   * Tenant-A admin cannot enumerate Tenant-B keys. SUPER_ADMIN bypasses.
    */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<ApiKeyEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { limit, page, search } = props;
-    const apiKeys = await this.apiKeyRepository.findAll(withFormattedPaginatedProps(props));
+    const tenantScopedWhere = this.buildTenantWhere();
 
-    const count = await this.apiKeyRepository.count(withFormattedCountProps(props));
+    const [apiKeys, count] = await Promise.all([
+      this.apiKeyRepository.findAll({
+        ...withFormattedPaginatedProps(props),
+        where: tenantScopedWhere,
+      }),
+      this.apiKeyRepository.count({
+        ...withFormattedCountProps(props),
+        where: tenantScopedWhere,
+      }),
+    ]);
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {
@@ -327,18 +372,25 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
   /**
    * Fetch all API keys belonging to a specific user.
+   *
+   * TASK-305 D.5.2 — `userId` filter is merged with the caller's CLS
+   * tenantId so a Tenant-A admin cannot enumerate keys belonging to that
+   * user in Tenant-B. SUPER_ADMIN bypasses.
    */
   async fetchAllByUserId(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<ApiKeyEntity>> {
     const { userId, limit, page } = props;
-    const apiKeys = await this.apiKeyRepository.findAll({
-      ...withFormattedPaginatedProps(props),
-      where: { userId },
-    });
+    const tenantScopedWhere = this.buildTenantWhere({ userId });
 
-    const count = await this.apiKeyRepository.count({
-      ...withFormattedCountProps(props),
-      where: { userId },
-    });
+    const [apiKeys, count] = await Promise.all([
+      this.apiKeyRepository.findAll({
+        ...withFormattedPaginatedProps(props),
+        where: tenantScopedWhere,
+      }),
+      this.apiKeyRepository.count({
+        ...withFormattedCountProps(props),
+        where: tenantScopedWhere,
+      }),
+    ]);
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {
@@ -357,9 +409,13 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
   /**
    * Fetch a single API key by ID.
+   *
+   * TASK-305 D.5.2 (audit M-1) — load-then-assert. Cross-tenant ids throw
+   * `NotFoundException` (never `Forbidden`) so existence is not leaked.
    */
   async fetchById(id: EntityId): Promise<ApiKeyEntity> {
     const apiKey = await this.apiKeyRepository.findById(id);
+    this.assertTenantOwnership(apiKey, id);
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: apiKey.id,
@@ -379,6 +435,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    */
   async update(id: EntityId, request: UpdateApiKeyRequest): Promise<ApiKeyEntity> {
     const apiKey = await this.apiKeyRepository.findById(id);
+    this.assertTenantOwnership(apiKey, id);
 
     const previousData = {
       keyName: apiKey.keyName,
@@ -426,8 +483,15 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
   /**
    * Soft-delete an API key.
+   *
+   * TASK-305 D.5.2 — load-then-assert-then-soft-delete so a Tenant-A admin
+   * cannot delete a Tenant-B key by id. Throws `NotFoundException` for
+   * cross-tenant ids.
    */
   async deleteById(id: EntityId): Promise<ApiKeyEntity> {
+    const existing = await this.apiKeyRepository.findById(id);
+    this.assertTenantOwnership(existing, id);
+
     const apiKey = await this.apiKeyRepository.softDelete(id);
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
@@ -454,6 +518,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    */
   async revokeKey(id: EntityId): Promise<ApiKeyEntity> {
     const apiKey = await this.apiKeyRepository.findById(id);
+    this.assertTenantOwnership(apiKey, id);
 
     if (apiKey.keyStatus === ApiKeyStatus.REVOKED) {
       throw new ArgumentInvalidException('API key is already revoked.');
@@ -500,6 +565,11 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     if (!oldKey) {
       throw new NotFoundException(`API key ${apiKeyId} not found`);
     }
+    // TASK-305 D.5.2 — block cross-tenant rotation. Without this a Tenant-A
+    // admin could mint a Tenant-B-tagged key by rotating one (the new key
+    // inherits `oldKey.tenantId`).
+    this.assertTenantOwnership(oldKey, apiKeyId);
+
     if (oldKey.keyStatus === ApiKeyStatus.REVOKED) {
       throw new ArgumentInvalidException('Cannot rotate a revoked API key');
     }
@@ -883,5 +953,48 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       result = (result << 8) | num;
     }
     return result >>> 0; // Ensure unsigned
+  }
+
+  /**
+   * True when the active request user carries the SUPER_ADMIN role. Mirrors
+   * the strict-default behaviour in `TenantService.isSuperAdmin()` and
+   * `AuditLogService` — falls back to `false` whenever the role list is
+   * missing.
+   */
+  private isSuperAdmin(): boolean {
+    const roles = this.requestUser?.roles;
+    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
+  }
+
+  /**
+   * TASK-305 D.5.2 — build a Prisma `where` clause that always scopes to the
+   * caller's CLS tenantId, unless the caller is SUPER_ADMIN. Throws
+   * `NotFoundException` when a non-super-admin caller has no tenantId in CLS
+   * so the query never widens to all tenants by accident (Prisma treats
+   * `tenantId: undefined` as "no filter"). Mirrors `AuditLogService.buildTenantWhere`.
+   */
+  private buildTenantWhere<T extends object>(extra?: T): T & { tenantId?: string } {
+    const base = extra ?? ({} as T);
+    if (this.isSuperAdmin()) {
+      return { ...base } as T & { tenantId?: string };
+    }
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new NotFoundException('API key scope unavailable');
+    }
+    return { ...base, tenantId } as T & { tenantId?: string };
+  }
+
+  /**
+   * TASK-305 D.5.2 (audit M-1) — assert the loaded entity belongs to the
+   * caller's tenant. SUPER_ADMIN bypasses. Throws `NotFoundException` (not
+   * `ForbiddenException`) so the API never reveals that a record exists for
+   * another tenant.
+   */
+  private assertTenantOwnership(apiKey: ApiKeyEntity, id: string): void {
+    if (this.isSuperAdmin()) return;
+    if (apiKey.tenantId !== this.tenantId) {
+      throw new NotFoundException(`API key ${id} not found`);
+    }
   }
 }

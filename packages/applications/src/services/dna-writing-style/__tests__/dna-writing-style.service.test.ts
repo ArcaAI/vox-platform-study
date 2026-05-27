@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
-import { JobQueue } from '@arcaai/domains';
+import { JobQueue, ResourceStatusType } from '@arcaai/domains';
 import { DnaWritingStyleService } from '../dna-writing-style.service';
 
 // ─── Mock Factories ─────────────────────────────────────────────────
@@ -44,6 +44,12 @@ const createMockDnaReportRepository = () => ({
 const createMockDnaVersionRepository = () => ({
     findAll: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
+});
+
+// TASK-305 D.5.3 — required for the `assertUserBelongsToTenant` guard run
+// during `generateDnaReport` and `getDnaReport`.
+const createMockUserRoleAssignmentRepository = () => ({
+    findFirst: vi.fn(),
 });
 
 const createMockQueue = () => ({
@@ -105,6 +111,7 @@ describe('DnaWritingStyleService', () => {
     let service: DnaWritingStyleService;
     let mockReportRepo: ReturnType<typeof createMockDnaReportRepository>;
     let mockVersionRepo: ReturnType<typeof createMockDnaVersionRepository>;
+    let mockUserRoleAssignmentRepo: ReturnType<typeof createMockUserRoleAssignmentRepository>;
     let mockQueue: ReturnType<typeof createMockQueue>;
     let mockClsService: ReturnType<typeof createMockClsService>;
     let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
@@ -114,6 +121,7 @@ describe('DnaWritingStyleService', () => {
 
         mockReportRepo = createMockDnaReportRepository();
         mockVersionRepo = createMockDnaVersionRepository();
+        mockUserRoleAssignmentRepo = createMockUserRoleAssignmentRepository();
         mockQueue = createMockQueue();
         mockClsService = createMockClsService();
         mockEventEmitter = createMockEventEmitter();
@@ -129,9 +137,20 @@ describe('DnaWritingStyleService', () => {
             }
         });
 
+        // TASK-305 D.5.3 — default to a permissive in-tenant assignment so
+        // legacy tests (which don't care about the new doctor-membership
+        // guard) keep passing.
+        mockUserRoleAssignmentRepo.findFirst.mockResolvedValue({
+            id: 'ura-doctor-1',
+            userId: 'doctor-id-1',
+            tenantId: 'tenant-1',
+            resourceStatus: ResourceStatusType.ENABLED,
+        });
+
         service = new DnaWritingStyleService(
             mockReportRepo as never,
             mockVersionRepo as never,
+            mockUserRoleAssignmentRepo as never,
             mockQueue as never,
             mockEventEmitter as never,
             mockClsService as never,
@@ -212,6 +231,7 @@ describe('DnaWritingStyleService', () => {
             const freshService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
@@ -327,6 +347,7 @@ describe('DnaWritingStyleService', () => {
             const freshService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
@@ -605,6 +626,15 @@ describe('DnaWritingStyleService', () => {
     // ─── getVersions ────────────────────────────────────────────
 
     describe('getVersions', () => {
+        // TASK-305 D.5.3 — `getVersions` now loads the parent report first to
+        // enforce the tenant scope, so each test must seed `findById` with a
+        // report in the caller's tenant.
+        beforeEach(() => {
+            mockReportRepo.findById.mockResolvedValue(
+                createMockReportEntity({ id: 'report-id-1', tenantId: 'tenant-1' }),
+            );
+        });
+
         it('should return all versions for a report sorted by version desc', async () => {
             mockVersionRepo.findAll.mockResolvedValue([
                 createMockVersionEntity({ versionNumber: 2 }),
@@ -788,6 +818,7 @@ describe('DnaWritingStyleService', () => {
             const freshService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
@@ -804,6 +835,7 @@ describe('DnaWritingStyleService', () => {
             const freshService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
@@ -822,6 +854,7 @@ describe('DnaWritingStyleService', () => {
             const superAdminService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
@@ -851,6 +884,7 @@ describe('DnaWritingStyleService', () => {
             const globalAdminService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
@@ -878,6 +912,7 @@ describe('DnaWritingStyleService', () => {
             const scopedSuperAdmin = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
@@ -902,6 +937,7 @@ describe('DnaWritingStyleService', () => {
             const doctorService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
@@ -920,6 +956,7 @@ describe('DnaWritingStyleService', () => {
             const tenantAdminService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
@@ -948,6 +985,7 @@ describe('DnaWritingStyleService', () => {
             const tenantBService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
@@ -973,16 +1011,168 @@ describe('DnaWritingStyleService', () => {
             const tenantCService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
             );
+            mockUserRoleAssignmentRepo.findFirst.mockResolvedValue({
+                id: 'ura-doctor-c',
+                userId: 'doctor-1',
+                tenantId: 'tenant-C',
+                resourceStatus: ResourceStatusType.ENABLED,
+            });
 
             await tenantCService.generateDnaReport('doctor-1', {});
 
             const [, payload] = mockQueue.add.mock.calls[0];
             expect(payload.tenantId).toBe('tenant-C');
             expect(payload.userId).toBe('user-tenant-C');
+        });
+    });
+
+    /**
+     * TASK-305 D.5.3 — Multi-tenant isolation for DnaWritingStyleService.
+     *
+     * Audit C-9 — DNA writing style is derived from a doctor's PHI (transcripts,
+     * summaries, prior notes). Allowing a Tenant-A admin to:
+     *   - generate or read a writing-style report for a doctor in Tenant-B,
+     *   - update or version a Tenant-B report by id,
+     *   - read versions of a Tenant-B report,
+     * leaks PHI-derived behavioural fingerprints across the tenant boundary.
+     *
+     * No SUPER_ADMIN bypass on the writing-style guards — even support flows
+     * cannot read another tenant's PHI-derived artifact.
+     */
+    describe('Multi-tenant scoping (TASK-305 D.5.3)', () => {
+        describe('generateDnaReport', () => {
+            it('rejects when doctorId has no role-assignment in the caller tenant', async () => {
+                mockUserRoleAssignmentRepo.findFirst.mockResolvedValue(null);
+
+                await expect(
+                    service.generateDnaReport('foreign-doctor', {}),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockQueue.add).not.toHaveBeenCalled();
+            });
+
+            it('does NOT bypass doctor-membership for SUPER_ADMIN (PHI guard)', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
+                    if (key === 'tenantId') return 'tenant-1';
+                    return null;
+                });
+                const superSvc = new DnaWritingStyleService(
+                    mockReportRepo as never,
+                    mockVersionRepo as never,
+                    mockUserRoleAssignmentRepo as never,
+                    mockQueue as never,
+                    mockEventEmitter as never,
+                    mockClsService as never,
+                );
+                mockUserRoleAssignmentRepo.findFirst.mockResolvedValue(null);
+
+                await expect(
+                    superSvc.generateDnaReport('foreign-doctor', {}),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockQueue.add).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('getDnaReport', () => {
+            it('rejects when doctorId has no role-assignment in the caller tenant', async () => {
+                mockUserRoleAssignmentRepo.findFirst.mockResolvedValue(null);
+
+                await expect(service.getDnaReport('foreign-doctor')).rejects.toThrow(NotFoundException);
+                expect(mockReportRepo.findLatestForDoctor).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('updateDnaReport', () => {
+            it('throws NotFoundException when report belongs to another tenant', async () => {
+                const foreignReport = createMockReportEntity({
+                    id: 'report-foreign',
+                    tenantId: 'tenant-2',
+                    doctorId: 'user-id-1',
+                });
+                mockReportRepo.findById.mockResolvedValue(foreignReport);
+
+                await expect(
+                    service.updateDnaReport('report-foreign', { styleText: 'cross-tenant' }),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockReportRepo.update).not.toHaveBeenCalled();
+            });
+
+            it('does NOT bypass tenant guard even with bypassOwnershipCheck=true', async () => {
+                const foreignReport = createMockReportEntity({
+                    id: 'report-foreign',
+                    tenantId: 'tenant-2',
+                    doctorId: 'user-id-1',
+                });
+                mockReportRepo.findById.mockResolvedValue(foreignReport);
+
+                await expect(
+                    service.updateDnaReport(
+                        'report-foreign',
+                        { styleText: 'admin update' },
+                        { bypassOwnershipCheck: true },
+                    ),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockReportRepo.update).not.toHaveBeenCalled();
+            });
+
+            it('does NOT bypass tenant guard for SUPER_ADMIN (PHI guard)', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
+                    if (key === 'tenantId') return 'tenant-1';
+                    return null;
+                });
+                const superSvc = new DnaWritingStyleService(
+                    mockReportRepo as never,
+                    mockVersionRepo as never,
+                    mockUserRoleAssignmentRepo as never,
+                    mockQueue as never,
+                    mockEventEmitter as never,
+                    mockClsService as never,
+                );
+                const foreignReport = createMockReportEntity({
+                    id: 'report-foreign',
+                    tenantId: 'tenant-2',
+                });
+                mockReportRepo.findById.mockResolvedValue(foreignReport);
+
+                await expect(
+                    superSvc.updateDnaReport('report-foreign', { styleText: 'x' }),
+                ).rejects.toThrow(NotFoundException);
+            });
+        });
+
+        describe('getVersions', () => {
+            it('throws NotFoundException when report belongs to another tenant', async () => {
+                const foreignReport = createMockReportEntity({
+                    id: 'report-foreign',
+                    tenantId: 'tenant-2',
+                });
+                mockReportRepo.findById.mockResolvedValue(foreignReport);
+
+                await expect(service.getVersions('report-foreign')).rejects.toThrow(NotFoundException);
+                expect(mockVersionRepo.findAll).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('getVersionsForDoctor', () => {
+            it('throws NotFoundException when report belongs to another tenant', async () => {
+                const foreignReport = createMockReportEntity({
+                    id: 'report-foreign',
+                    tenantId: 'tenant-2',
+                    doctorId: 'doctor-foreign',
+                });
+                mockReportRepo.findById.mockResolvedValue(foreignReport);
+
+                await expect(
+                    service.getVersionsForDoctor('report-foreign', 'doctor-foreign'),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockVersionRepo.findAll).not.toHaveBeenCalled();
+            });
         });
     });
 });
