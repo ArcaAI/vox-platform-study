@@ -8,7 +8,7 @@ model Department {
     id       String @id @default(uuid(7))
 
     // Multi-tenant
-    tenantId String @default("50000000-0000-0000-0000-000000000000")
+    tenantId String
 
     // Department info
     code        String?  // e.g., "CARD", "RAD", "LAB"
