@@ -464,6 +464,17 @@ export class TenantService extends BaseService implements ITenantService {
     const identifier = (tenantId ?? codeName) as string;
     const tenant = await this.resolveTenantByIdentifier(identifier);
 
+    // TASK-306 P2.2 (audit H-1 / AC-4) — caller-identity check. Non-SUPER_ADMIN
+    // callers are restricted to their CLS tenant; cross-tenant reads (including
+    // codeName lookups that resolve to another tenant) short-circuit with
+    // `NotFoundException` so the API does not leak the existence of foreign
+    // tenants' config rows. SUPER_ADMIN retains the cross-tenant bypass for
+    // admin UI tenant pickers + platform-metadata flows (mirrors the W5.1.3
+    // `fetchById` / `fetchByCodeName` posture).
+    if (tenant.id !== this.tenantId && !this.isSuperAdmin()) {
+      throw new NotFoundException('Resource not found');
+    }
+
     const paginatedProps = withFormattedPaginatedProps(props);
     const countProps = withFormattedCountProps(props);
 
