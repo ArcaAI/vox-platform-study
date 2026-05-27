@@ -195,7 +195,11 @@ export class SummaryProcessor extends WorkerHost {
         return result;
       } catch (error) {
         endTimer();
-        this.jobMetrics.recordJobFailed(JobQueue.GenerateSummary, 'SummaryProcessor', error instanceof Error ? error.constructor.name : 'UnknownError');
+        this.jobMetrics.recordJobFailed(
+          JobQueue.GenerateSummary,
+          'SummaryProcessor',
+          error instanceof Error ? error.constructor.name : 'UnknownError',
+        );
         const errorMessage = error instanceof Error ? error.message : String(error);
         this.logger.error({
           message: 'Summary job failed',
