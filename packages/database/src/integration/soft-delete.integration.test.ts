@@ -18,8 +18,9 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+// eslint-disable-next-line no-restricted-imports -- TASK-305 B.4 allow-list: integration test fixture, tenant context not yet established
 import {
-  getPrismaClient,
+  getPlatformAdminPrismaClient_Unscoped,
   getExtendedPrismaClient,
   CorePrismaClient,
   ExtendedCorePrismaClient,
@@ -35,7 +36,7 @@ describe('Soft-Delete Integration Tests', () => {
 
   beforeAll(async () => {
     // Get both client types
-    basePrisma = getPrismaClient();
+    basePrisma = getPlatformAdminPrismaClient_Unscoped();
     extendedPrisma = getExtendedPrismaClient();
 
     // Verify database connection
