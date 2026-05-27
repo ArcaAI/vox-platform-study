@@ -12,9 +12,8 @@ import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
-import { UserSession } from '../../../auth/dto';
 import { IActiveUserContext } from '../../../../interfaces';
-import { assertEqualTenants } from '../../../../common';
+import { assertEqualTenants, createWorkerSession } from '../../../../common';
 
 @Processor(JobQueue.GeneratePreSummary)
 export class PreSummaryProcessor extends WorkerHost {
@@ -47,7 +46,7 @@ export class PreSummaryProcessor extends WorkerHost {
     // Phase B tenantScope Prisma extension sees the correct context.
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      this.cls.set('user', { id: userId, tenantId, roles: [], permissions: [] } as unknown as UserSession);
+      this.cls.set('user', createWorkerSession({ userId, tenantId, kind: 'pre-summary' }));
 
       const request = job.data.request;
       const endTimer = this.jobMetrics.recordJobStart(JobQueue.GeneratePreSummary);

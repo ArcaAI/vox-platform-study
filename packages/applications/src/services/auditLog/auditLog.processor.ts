@@ -4,7 +4,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
-import { UserSession } from '../auth/dto';
+import { createWorkerSession } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 
 @Processor(JobQueue.AuditLog)
@@ -51,12 +51,7 @@ export class AuditLogProcessor extends WorkerHost {
     // sufficient invariants.
     await this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      this.cls.set('user', {
-        id: responsibleUserId ?? 'system-audit',
-        tenantId,
-        roles: [],
-        permissions: [],
-      } as unknown as UserSession);
+      this.cls.set('user', createWorkerSession({ userId: responsibleUserId, tenantId, kind: 'audit' }));
 
       const entity = AuditLogFactory.CreateAuditLog({
         action,
