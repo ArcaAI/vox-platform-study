@@ -14,10 +14,11 @@ import {
   ResourceStatusType,
   ResourceSubscriptionRepository,
 } from '@arcaai/domains';
-import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
+import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { InternalServerErrorException, ArgumentInvalidException, ArgumentNotProvidedException, UnauthorizedException } from '@arcaai/exceptions';
 import { BadRequestException } from '@nestjs/common';
+import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 
 @Injectable()
 export class ResourceSubscriptionService extends BaseService implements IResourceSubscriptionService {
@@ -57,11 +58,27 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
     return resourceSubscription;
   }
 
+  /**
+   * TASK-306 P2.4 (audit M-3 / AC-6) — list endpoint scoped to the
+   * caller's tenant. Non-SUPER_ADMIN callers see only their own tenant's
+   * subscriptions; SUPER_ADMIN bypasses the filter so cross-tenant
+   * administration tooling can list every subscription in the platform.
+   * Mirrors the W3.2 NotificationService.fetchAll posture.
+   */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<ResourceSubscriptionEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { limit, page, search } = props;
-    const resourceSubscriptions = await this.resourceSubscriptionRepository.findAll(withFormattedPaginatedProps(props));
-    const count = await this.resourceSubscriptionRepository.count(withFormattedCountProps(props));
+    const baseWhere = this.isSuperAdmin() ? {} : { tenantId: this.tenantId };
+    const paginatedProps = withFormattedPaginatedProps(props);
+    const countProps = withFormattedCountProps(props);
+    const resourceSubscriptions = await this.resourceSubscriptionRepository.findAll({
+      ...paginatedProps,
+      where: { ...paginatedProps.where, ...baseWhere },
+    });
+    const count = await this.resourceSubscriptionRepository.count({
+      ...countProps,
+      where: { ...countProps.where, ...baseWhere },
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {
@@ -76,6 +93,25 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
     });
   }
 
+  /**
+   * True when the active request user carries the `SUPER_ADMIN` role.
+   * Falls back to `false` whenever the role list is missing so the most
+   * restrictive policy applies. Mirrors the strict-default helper used
+   * by `NotificationService`, `WebhookService`, and `TenantService`.
+   */
+  private isSuperAdmin(): boolean {
+    const roles = this.requestUser?.roles;
+    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
+  }
+
+  /**
+   * TASK-306 P2.4 (audit M-3 / AC-6) — resource-scoped list endpoint
+   * with tenant injection. Non-SUPER_ADMIN callers see only their own
+   * tenant's subscriptions to the resource; SUPER_ADMIN bypasses the
+   * tenant filter so admin tooling can list every subscription on a
+   * cross-tenant resource. The resource scoping itself is enforced for
+   * everyone (no SUPER_ADMIN bypass for the resource predicate).
+   */
   async fetchAllByResource(
     props: PaginatedQuery & { resourceTypeName: string; resourceId: string },
   ): Promise<FetchResponse<ResourceSubscriptionEntity>> {
@@ -85,11 +121,14 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
       throw new ArgumentNotProvidedException(`Invalid arguments: resourceId: ${resourceId}, resourceTypeName: ${resourceTypeName}`);
     }
 
+    const baseWhere = this.isSuperAdmin() ? {} : { tenantId: this.tenantId };
+
     const resourceSubscriptions = await this.resourceSubscriptionRepository.findAll({
       page,
       limit,
       search,
       where: {
+        ...baseWhere,
         resourceId,
         resourceTypeName: resourceTypeName as ResourceType,
       },
@@ -98,6 +137,7 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
     const count = await this.resourceSubscriptionRepository.count({
       ...withFormattedCountProps(props),
       where: {
+        ...baseWhere,
         resourceId,
         resourceTypeName: resourceTypeName as ResourceType,
       },
@@ -129,8 +169,20 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
     return resourceSubscription;
   }
 
+  /**
+   * TASK-306 P2.4 (audit M-3 / AC-6) — single-entity read with the
+   * DEF-C3 "no existence leak" guard. Non-SUPER_ADMIN callers see a
+   * `NotFoundException` (404) when the row exists but belongs to
+   * another tenant — the same response shape the repository returns
+   * for a row that genuinely does not exist. SUPER_ADMIN bypasses
+   * the assertion so admin tooling can inspect any subscription.
+   */
   async fetchById(id: EntityId): Promise<ResourceSubscriptionEntity> {
     const resourceSubscription = await this.resourceSubscriptionRepository.findById(id);
+
+    if (!this.isSuperAdmin()) {
+      assertEqualTenants(resourceSubscription, { tenantId: this.tenantId });
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: resourceSubscription.id,
@@ -139,8 +191,20 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
     return resourceSubscription;
   }
 
+  /**
+   * TASK-306 P2.4 (audit M-3 / AC-6) — mutation gated by tenant
+   * ownership. We load the row first, then assert the tenant scope
+   * BEFORE applying any change, so cross-tenant `update` calls cannot
+   * mutate state and cannot be used as a probe (the response is a
+   * generic 404, identical to the missing-row case). SUPER_ADMIN
+   * bypasses the assertion for platform tooling.
+   */
   async update(id: EntityId, request: UpdateResourceSubscriptionRequest): Promise<ResourceSubscriptionEntity> {
     const resourceSubscription = await this.resourceSubscriptionRepository.findById(id);
+
+    if (!this.isSuperAdmin()) {
+      assertEqualTenants(resourceSubscription, { tenantId: this.tenantId });
+    }
 
     const previousData = resourceSubscription.toObject();
     await this.updateEntity(resourceSubscription, request, {
@@ -194,7 +258,26 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
     return updatedResourceSubscription;
   }
 
+  /**
+   * TASK-306 P2.4 (audit M-3 / AC-6) — gated delete with the DEF-C3
+   * "no existence leak" + load-then-assert pattern. Pre-guard,
+   * `deleteById` issued `softDelete(id)` directly with no tenant
+   * load, so a Tenant-A admin could erase any subscription in the
+   * platform. We now:
+   *   1. For non-SUPER_ADMIN: `findById` first, then assert tenant
+   *      scope. Cross-tenant access throws `NotFoundException`
+   *      (404) BEFORE any softDelete is issued — no mutation side
+   *      effect, no existence leak.
+   *   2. For SUPER_ADMIN: skip the pre-load and call `softDelete`
+   *      directly (mirrors `WebhookService.deleteById` from
+   *      W5.3.5 — keeps the SUPER_ADMIN write path one round-trip).
+   */
   async deleteById(id: EntityId): Promise<ResourceSubscriptionEntity> {
+    if (!this.isSuperAdmin()) {
+      const existing = await this.resourceSubscriptionRepository.findById(id);
+      assertEqualTenants(existing, { tenantId: this.tenantId });
+    }
+
     const resourceSubscription = await this.resourceSubscriptionRepository.softDelete(id);
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {

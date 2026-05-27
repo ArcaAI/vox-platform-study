@@ -303,18 +303,23 @@ describe('TenantService — locked-field runtime plumbing (TASK-258 Agent D)', (
     describe('fetchTenantConfigs — locked-value masking via real entity', () => {
         it('masks the value of locked=true rows when caller is non-SUPER_ADMIN', async () => {
             installCls(['DOCTOR']);
-            const tenant = createMockTenantEntity({ id: 'tenant-id-1' });
+            // TASK-306 W5.3.1 — pinned to the CLS tenant (`tenant-1`)
+            // so the new fetchTenantConfigs SUPER_ADMIN gate doesn't
+            // 404 a non-SUPER_ADMIN reading another tenant's configs.
+            // The locked-masking behavior under test is orthogonal to
+            // the cross-tenant guard.
+            const tenant = createMockTenantEntity({ id: 'tenant-1' });
             mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
             const configs = [
                 buildSetting({
-                    tenantId: 'tenant-id-1',
+                    tenantId: 'tenant-1',
                     key: 'public.setting',
                     value: 'visible',
                     locked: false,
                 }),
                 buildSetting({
-                    tenantId: 'tenant-id-1',
+                    tenantId: 'tenant-1',
                     key: 'secret.setting',
                     value: 'super-secret',
                     locked: true,
@@ -326,7 +331,7 @@ describe('TenantService — locked-field runtime plumbing (TASK-258 Agent D)', (
             const result = await service.fetchTenantConfigs({
                 limit: 10,
                 page: 1,
-                tenantId: 'tenant-id-1',
+                tenantId: 'tenant-1',
             });
 
             const byKey = Object.fromEntries(result.data.map((c) => [c.key, c.value]));

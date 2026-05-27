@@ -711,6 +711,110 @@ describe('TenantService', () => {
         });
     });
 
+    /**
+     * TASK-306 P2.2 (audit H-1 / AC-4) — `fetchTenantConfigs` previously
+     * resolved ANY tenant by id or code-name and returned the configs
+     * (with locked-row scrubbing applied for non-SUPER_ADMIN). A Tenant-A
+     * user could enumerate Tenant-B's settings list (key names + namespaces
+     * + dataType, with only `value` masked on locked rows). The new guard
+     * short-circuits with `NotFoundException` (no existence leak) when the
+     * resolved tenant id does not match the caller's CLS `tenantId`, except
+     * for SUPER_ADMIN callers who retain the cross-tenant bypass (admin UI
+     * tenant pickers + platform-metadata flows).
+     *
+     * CLS default in `beforeEach` is `tenant-1`. Tests use `tenant-2` as
+     * the "other tenant" target. The existing `setRequestUserRoles` helper
+     * (declared further down in this file) is used to opt into SUPER_ADMIN
+     * context.
+     */
+    describe('TASK-306 P2.2 — fetchTenantConfigs tenant-scoped', () => {
+        describe('by tenantId', () => {
+            it('returns configs when the caller owns the resolved tenant (id matches CLS)', async () => {
+                const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
+                mockTenantRepository.findFirst.mockResolvedValue(tenant);
+                const configs = [
+                    createMockGlobalSettingEntity({ id: 'cfg-1', tenantId: 'tenant-1', key: 'public', value: 'visible', locked: false }),
+                ];
+                mockGlobalSettingRepository.findAll.mockResolvedValue(configs);
+                mockGlobalSettingRepository.count.mockResolvedValue(1);
+
+                const result = await service.fetchTenantConfigs({ limit: 10, page: 1, tenantId: 'tenant-1' });
+
+                expect(result.data).toHaveLength(1);
+                expect(result.count).toBe(1);
+            });
+
+            it('throws NotFoundException when a non-SUPER_ADMIN caller targets another tenant by id', async () => {
+                const { NotFoundException } = await import('@nestjs/common');
+                const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
+                mockTenantRepository.findFirst.mockResolvedValue(otherTenant);
+
+                await expect(
+                    service.fetchTenantConfigs({ limit: 10, page: 1, tenantId: 'tenant-2' }),
+                ).rejects.toThrow(NotFoundException);
+                // Guard short-circuits BEFORE the global-setting repo is touched.
+                expect(mockGlobalSettingRepository.findAll).not.toHaveBeenCalled();
+                expect(mockGlobalSettingRepository.count).not.toHaveBeenCalled();
+            });
+
+            it('returns scrubbed configs when a SUPER_ADMIN caller targets another tenant by id (admin bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
+                mockTenantRepository.findFirst.mockResolvedValue(otherTenant);
+                const configs = [
+                    createMockGlobalSettingEntity({ id: 'cfg-1', tenantId: 'tenant-2', key: 'locked.secret', value: 'shhh', locked: true }),
+                ];
+                mockGlobalSettingRepository.findAll.mockResolvedValue(configs);
+                mockGlobalSettingRepository.count.mockResolvedValue(1);
+
+                const result = await service.fetchTenantConfigs({ limit: 10, page: 1, tenantId: 'tenant-2' });
+
+                expect(result.data).toHaveLength(1);
+                // SUPER_ADMIN sees the raw locked value (no scrubbing).
+                expect((result.data[0] as any).value).toBe('shhh');
+            });
+        });
+
+        describe('by codeName', () => {
+            it('returns configs when the caller owns the resolved tenant (codeName resolves to CLS tenant)', async () => {
+                const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
+                mockTenantRepository.findFirst.mockResolvedValue(tenant);
+                mockGlobalSettingRepository.findAll.mockResolvedValue([]);
+                mockGlobalSettingRepository.count.mockResolvedValue(0);
+
+                const result = await service.fetchTenantConfigs({ limit: 10, page: 1, codeName: 'TENANT_1' });
+
+                expect(result.data).toHaveLength(0);
+            });
+
+            it('throws NotFoundException when a non-SUPER_ADMIN caller targets another tenant by codeName', async () => {
+                const { NotFoundException } = await import('@nestjs/common');
+                const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
+                mockTenantRepository.findFirst.mockResolvedValue(otherTenant);
+
+                await expect(
+                    service.fetchTenantConfigs({ limit: 10, page: 1, codeName: 'TENANT_2' }),
+                ).rejects.toThrow(NotFoundException);
+                expect(mockGlobalSettingRepository.findAll).not.toHaveBeenCalled();
+            });
+
+            it('returns configs when a SUPER_ADMIN caller targets another tenant by codeName (admin bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
+                mockTenantRepository.findFirst.mockResolvedValue(otherTenant);
+                const configs = [
+                    createMockGlobalSettingEntity({ id: 'cfg-1', tenantId: 'tenant-2', key: 'public', value: 'visible', locked: false }),
+                ];
+                mockGlobalSettingRepository.findAll.mockResolvedValue(configs);
+                mockGlobalSettingRepository.count.mockResolvedValue(1);
+
+                const result = await service.fetchTenantConfigs({ limit: 10, page: 1, codeName: 'TENANT_2' });
+
+                expect(result.data).toHaveLength(1);
+            });
+        });
+    });
+
     describe('update', () => {
         it('should update tenant successfully via updateWithVersion (TASK-302 Stream D Phase E.1)', async () => {
             const existingTenant = createMockTenantEntity({
@@ -941,18 +1045,22 @@ describe('TenantService', () => {
         });
 
         it('should return all tenant configurations filtered by tenantId', async () => {
-            const tenant = createMockTenantEntity({ id: 'tenant-123' });
+            // TASK-306 P2.2 — `fetchTenantConfigs` now refuses cross-tenant
+            // reads for non-SUPER_ADMIN callers. Align this happy-path probe
+            // with the CLS default (`tenant-1`) so the new guard does not
+            // short-circuit and the assertion still validates the data flow.
+            const tenant = createMockTenantEntity({ id: 'tenant-1' });
             mockTenantRepository.findFirst.mockResolvedValue(tenant);
             const configs = [
                 createMockGlobalSettingEntity({
                     id: 'config-1',
-                    tenantId: 'tenant-123',
+                    tenantId: 'tenant-1',
                     key: 'setting.one',
                     value: 'value-1',
                 }),
                 createMockGlobalSettingEntity({
                     id: 'config-2',
-                    tenantId: 'tenant-123',
+                    tenantId: 'tenant-1',
                     key: 'setting.two',
                     value: 'value-2',
                 }),
@@ -963,7 +1071,7 @@ describe('TenantService', () => {
             const result = await service.fetchTenantConfigs({
                 limit: 10,
                 page: 1,
-                tenantId: 'tenant-123',
+                tenantId: 'tenant-1',
             });
 
             expect(result.data).toHaveLength(2);
@@ -971,14 +1079,15 @@ describe('TenantService', () => {
             expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith(
                 expect.objectContaining({
                     where: expect.objectContaining({
-                        tenantId: 'tenant-123',
+                        tenantId: 'tenant-1',
                     }),
                 })
             );
         });
 
         it('should fetch configs by tenant code name', async () => {
-            const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'MY_CODE' });
+            // TASK-306 P2.2 — align with CLS default tenant id.
+            const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'MY_CODE' });
             mockTenantRepository.findFirst.mockResolvedValue(tenant);
             mockGlobalSettingRepository.findAll.mockResolvedValue([]);
             mockGlobalSettingRepository.count.mockResolvedValue(0);
@@ -995,10 +1104,11 @@ describe('TenantService', () => {
         });
 
         it('should emit ResourceViewed event with config IDs', async () => {
-            const tenant = createMockTenantEntity({ id: 'tenant-123' });
+            // TASK-306 P2.2 — align with CLS default tenant id.
+            const tenant = createMockTenantEntity({ id: 'tenant-1' });
             mockTenantRepository.findFirst.mockResolvedValue(tenant);
             const configs = [
-                createMockGlobalSettingEntity({ id: 'config-1', tenantId: 'tenant-123' }),
+                createMockGlobalSettingEntity({ id: 'config-1', tenantId: 'tenant-1' }),
             ];
             mockGlobalSettingRepository.findAll.mockResolvedValue(configs);
             mockGlobalSettingRepository.count.mockResolvedValue(1);
@@ -1006,14 +1116,14 @@ describe('TenantService', () => {
             await service.fetchTenantConfigs({
                 limit: 10,
                 page: 1,
-                tenantId: 'tenant-123',
+                tenantId: 'tenant-1',
             });
 
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
                 SysEventType.ResourceViewed,
                 expect.objectContaining({
                     data: {
-                        tenantId: 'tenant-123',
+                        tenantId: 'tenant-1',
                         items: ['config-1'],
                     },
                 })
@@ -1468,6 +1578,11 @@ describe('TenantService', () => {
 
     describe('fetchTenantConfigs / updateTenantConfigs — identifier disambiguation (TASK-258 #7)', () => {
         it('looks up tenant by id when identifier is a UUID (fetchTenantConfigs)', async () => {
+            // TASK-306 P2.2 — the resolved tenant id deliberately differs from
+            // CLS to exercise the UUID-vs-key branch; gate via SUPER_ADMIN so
+            // the new cross-tenant short-circuit does not fire (the test is
+            // about identifier disambiguation, not access control).
+            setRequestUserRoles(['SUPER_ADMIN']);
             const tenant = createMockTenantEntity({ id: VALID_TENANT_UUID, key: 'CUSTOMER' });
             mockTenantRepository.findFirst.mockResolvedValue(tenant);
             mockGlobalSettingRepository.findAll.mockResolvedValue([]);
@@ -1481,6 +1596,8 @@ describe('TenantService', () => {
         });
 
         it('looks up tenant by key when identifier is a non-UUID string (fetchTenantConfigs)', async () => {
+            // TASK-306 P2.2 — see sibling test above; gate via SUPER_ADMIN.
+            setRequestUserRoles(['SUPER_ADMIN']);
             const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'CODE_NAME' });
             mockTenantRepository.findFirst.mockResolvedValue(tenant);
             mockGlobalSettingRepository.findAll.mockResolvedValue([]);
@@ -1511,21 +1628,25 @@ describe('TenantService', () => {
 
     describe('fetchTenantConfigs — locked value masking (TASK-258 #8)', () => {
         it('replaces value with empty string for locked rows when caller is non-SUPER_ADMIN', async () => {
+            // TASK-306 P2.2 — this test deliberately exercises the non-SUPER_ADMIN
+            // locked-value scrubbing branch, so SUPER_ADMIN bypass is off-limits.
+            // Align the resolved tenant id with CLS default (`tenant-1`) so the
+            // new cross-tenant guard does not short-circuit before the scrubber.
             setRequestUserRoles(['DOCTOR']);
-            const tenant = createMockTenantEntity({ id: 'tenant-123' });
+            const tenant = createMockTenantEntity({ id: 'tenant-1' });
             mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
             const configs = [
                 createMockGlobalSettingEntity({
                     id: 'cfg-1',
-                    tenantId: 'tenant-123',
+                    tenantId: 'tenant-1',
                     key: 'public.setting',
                     value: 'visible',
                     locked: false,
                 }),
                 createMockGlobalSettingEntity({
                     id: 'cfg-2',
-                    tenantId: 'tenant-123',
+                    tenantId: 'tenant-1',
                     key: 'secret.setting',
                     value: 'super-secret',
                     locked: true,
@@ -1537,7 +1658,7 @@ describe('TenantService', () => {
             const result = await service.fetchTenantConfigs({
                 limit: 10,
                 page: 1,
-                tenantId: 'tenant-123',
+                tenantId: 'tenant-1',
             });
 
             const byKey = Object.fromEntries(result.data.map((c: any) => [c.key, c.value]));
