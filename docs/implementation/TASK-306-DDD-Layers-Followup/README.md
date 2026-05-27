@@ -478,7 +478,7 @@ Answer: we should ship W5.1-W5.5 as 5 separate PRs (clean reviewable units).
 | W5.1 | 5.1.1–5.1.6 | `78e7b354` | 6 commits, 20 new tests, APPROVED-WITH-MINOR-NITS. Closes C-7 finale + H-3/NEW-6 + H-8/NEW-1 + NEW-2 + NEW-3 + NEW-4. 4 deferred nits captured in §6.7. |
 | W5.2 | 5.2.1–5.2.4 | `66b1d579` | 4 commits, 9 new tests, APPROVED-WITH-MINOR-NITS. Closes C-1 read-paths (defense-in-depth `assertEqualTenants` on `getById`/`getByIdWithRelations`/`getConsultationChain`). 3 deferred nits captured in §6.7. |
 | W5.3 | 5.3.1–5.3.12 | `60d9d798` | 13 commits (12 plan + 1 TASK-258 test alignment), 34 new tests, APPROVED-WITH-MINOR-NITS. Closes H-1 + M-2 + M-3. Tenant + Webhook (5 methods) + ResourceSubscription (5 methods) sweep with uniform SUPER_ADMIN bypass. 2 deferred nits (306-F8, 306-F9). |
-| W5.4 | — | — | _Pending_ |
+| W5.4 | 5.4.1–5.4.3 | `969e49df` | 3 commits, 9 new tests, APPROVED-WITH-MINOR-NITS. Closes C-3 finale (array-input). `resolveLinkedConsultationIds` filters chain + same-day to CLS tenant; no SUPER_ADMIN bypass (clinical-PHI hot read path). 2 deferred nits (306-F10, 306-F11). |
 | W5.5 | — | — | _Pending_ |
 | W5.6 | — | — | _Pending_ |
 
@@ -489,6 +489,7 @@ Answer: we should ship W5.1-W5.5 as 5 separate PRs (clean reviewable units).
 | **CLOSED (W5.1)** | C-7 finale, H-3/NEW-6, H-8/NEW-1, NEW-2, NEW-3, NEW-4 | Merge `78e7b354` |
 | **CLOSED (W5.2)** | C-1 read-paths | Merge `66b1d579` |
 | **CLOSED (W5.3)** | H-1, M-2, M-3 | Merge `60d9d798` |
+| **CLOSED (W5.4)** | C-3 finale (array-input) | Merge `969e49df` |
 | **DEFERRED (TASK-306)** | F-1..F-8 | Each tracked as a follow-up ticket — see §8 |
 
 ### TASK-306 follow-ups (deferred minor nits)
@@ -506,6 +507,8 @@ These do NOT block waves; tracked here so they don't get lost.
 | 306-F7 | W5.2 review | Drop or annotate the duplicate `getById` "sanity" test as a deliberate regression-pin |
 | 306-F8 | W5.3 review | Cross-tenant `fetchById` tests on Webhook + RS — add explicit `expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceViewed, ...)` assertion (structural guarantee already, but more self-evident with the negative-assertion) |
 | 306-F9 | W5.3 review | Drop unnecessary `i` flag on `/TASK-306/i` resourceSubscription aggregator marker for cosmetic consistency with tenant + webhook entries |
+| 306-F10 | W5.4 review | Aggregator: switch `consultation/context` marker from `/TASK-306/` to `/TASK-305 D\.3\|cross-aggregate tenant\|TASK-306/i` (3-token pattern matching W5.2 `consultation/consultation`) to preserve explicit floor on 8 TASK-305 D.3 anti-regression tests; W5.5.6 FS-introspection only validates file membership, not per-describe floors. Fold into W5.5 aggregator changes. |
+| 306-F11 | W5.4 review | `ContextService.getAggregateNamedEntities` `scope='single'` still emits `ResourceViewed` broadcast on foreign-tenant id (response is empty via extension scoping; no data leak, but the broadcast itself is a minor signal). Out of W5.4 scope; hygiene follow-up. |
 
 ### Deviations from the original plan
 
@@ -522,3 +525,4 @@ _None yet._
 | 2026-05-27 | W5.1 merged at `78e7b354` (APPROVED-WITH-MINOR-NITS). 6 commits, 20 new tests, closes C-7 finale + H-3/NEW-6 + H-8/NEW-1 + NEW-2 + NEW-3 + NEW-4. 4 minor nits captured as 306-F1..306-F4. | `packages/{domains,applications}/...` (13 files), `docs/implementation/TASK-306-DDD-Layers-Followup/README.md` |
 | 2026-05-27 | W5.2 merged at `66b1d579` (APPROVED-WITH-MINOR-NITS). 4 commits, 9 new tests, closes C-1 read-paths (defense-in-depth `assertEqualTenants` on Consultation read methods). 3 minor nits captured as 306-F5..306-F7. | `packages/applications/...` (3 files), `docs/implementation/TASK-306-DDD-Layers-Followup/README.md` |
 | 2026-05-27 | W5.3 merged at `60d9d798` (APPROVED-WITH-MINOR-NITS). 13 commits (12 plan + 1 TASK-258 test alignment), 34 new tests, closes H-1 + M-2 + M-3 (Tenant + Webhook 5 methods + ResourceSubscription 5 methods sweep). 2 minor nits captured as 306-F8, 306-F9. | `packages/applications/...` (8 files), `docs/implementation/TASK-306-DDD-Layers-Followup/README.md` |
+| 2026-05-27 | W5.4 merged at `969e49df` (APPROVED-WITH-MINOR-NITS). 3 commits, 9 new tests, closes C-3 finale (array-input). `ContextService.resolveLinkedConsultationIds` filters chain + same-day to CLS tenant. 2 minor nits captured as 306-F10, 306-F11. | `packages/applications/...` (3 files), `docs/implementation/TASK-306-DDD-Layers-Followup/README.md` |
