@@ -4,32 +4,61 @@
  * This package provides:
  * - Prisma Client with PostgreSQL adapter (Prisma 7)
  * - Soft-delete filtering via Client Extensions
+ * - Tenant-scope `$extends` (TASK-305 Phase B) composed on top of
+ *   soft-delete; pulled from a host-registered context provider.
  * - Database seeding utilities
  *
  * @example
- * // Import the extended client (with soft-delete filtering)
+ * // Import the composed client (soft-delete + tenant-scope). Default
+ * // path for every NestJS service / repository.
  * import { getExtendedPrismaClient } from '@arcaai/database';
  * const prisma = getExtendedPrismaClient();
  *
  * @example
- * // Import the base client
- * import { getPrismaClient } from '@arcaai/database';
- * const prisma = getPrismaClient();
- *
- * @example
  * // Import types
  * import type { CorePrismaClient, Prisma } from '@arcaai/database';
+ *
+ * @example
+ * // Register the tenant context provider (NestJS bootstrap)
+ * import { setTenantContextProvider } from '@arcaai/database';
+ * setTenantContextProvider(myClsBackedProvider);
+ *
+ * ⚠️ The unscoped client is exported as `getPlatformAdminPrismaClient_Unscoped`
+ * — the long name is deliberate; an ESLint rule limits its import to a
+ * documented allow-list (see TASK-305 §B.4).
  */
 
 // Re-export client utilities
 export {
-  applySoftDeleteExtension, createNewExtendedPrismaClient, createNewPrismaClient, getExtendedPrismaClient, getPrismaClient, modelHasSoftDelete, MODELS_WITHOUT_SOFT_DELETE, Prisma, PrismaClientInitializationError, PrismaClientKnownRequestError, PrismaClientRustPanicError, PrismaClientUnknownRequestError, PrismaClientValidationError
+  applySoftDeleteExtension,
+  createNewExtendedPrismaClient,
+  createNewPrismaClient,
+  getExtendedPrismaClient,
+  getPlatformAdminPrismaClient_Unscoped,
+  modelHasSoftDelete,
+  MODELS_WITHOUT_SOFT_DELETE,
+  Prisma,
+  PrismaClientInitializationError,
+  PrismaClientKnownRequestError,
+  PrismaClientRustPanicError,
+  PrismaClientUnknownRequestError,
+  PrismaClientValidationError,
 } from './client.js';
 
 export type {
   CorePrismaClient,
   ExtendedCorePrismaClient
 } from './client.js';
+
+// TASK-305 Phase B — tenant-scope extension surface.
+export {
+  applyTenantScopeExtension,
+  isTenantScopedModel,
+  resolveTenantContext,
+  setTenantContextProvider,
+  TENANT_SCOPED_MODELS,
+} from './extensions/tenant-scope.js';
+export type { TenantContextProvider } from './extensions/tenant-scope.js';
 
 // TASK-302 Phase 5 Task 5.5 (Stream B) — Vault-backed PrismaClient.
 export { getPrismaClientWithVault, VaultPrismaClient } from './vault-client.js';
