@@ -194,7 +194,10 @@ export function applySoftDeleteExtension(prisma: PrismaClient) {
           }
           return query(args);
         },
-        async findUnique({ args, query }: any) {
+        async findUnique({ model, args, query }: any) {
+          if (modelHasSoftDelete(model)) {
+            applySoftDeleteFilter(args);
+          }
           return query(args);
         },
         async count({ model, args, query }: any) {
