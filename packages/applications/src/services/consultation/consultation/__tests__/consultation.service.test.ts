@@ -1180,6 +1180,24 @@ describe('ConsultationService', () => {
 
                 expect(mockEventEmitter.emit).not.toHaveBeenCalled();
             });
+
+            it('throws BadRequestException without calling repo when CLS tenantId is missing (306-F5 hoist)', async () => {
+                // TASK-306 W5.7.7 (306-F5) — the hoisted CLS check short-
+                // circuits BEFORE the repo round-trip, matching the
+                // `getConsultationChain` convention. Saves a useless DB
+                // call on background / unprovisioned contexts that have
+                // no chance of returning a visible row.
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'tenantId') return null;
+                    if (key === 'user') return { id: 'user-id-1' };
+                    return null;
+                });
+
+                await expect(service.getById('any-id')).rejects.toThrow(BadRequestException);
+
+                expect(mockConsultationRepository.findWithContext).not.toHaveBeenCalled();
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
         });
 
         describe('getByIdWithRelations', () => {
@@ -1221,6 +1239,24 @@ describe('ConsultationService', () => {
                     service.getByIdWithRelations('consultation-id-1'),
                 ).rejects.toThrow(BadRequestException);
 
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('throws BadRequestException without calling repo when CLS tenantId is missing (306-F5 hoist)', async () => {
+                // TASK-306 W5.7.7 (306-F5) — sibling of the getById hoist
+                // test: the missing-CLS check now short-circuits BEFORE the
+                // relations round-trip (which is more expensive than a
+                // plain findById on Consultation given the Doctor /
+                // Department / Context joins).
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'tenantId') return null;
+                    if (key === 'user') return { id: 'user-id-1' };
+                    return null;
+                });
+
+                await expect(service.getByIdWithRelations('any-id')).rejects.toThrow(BadRequestException);
+
+                expect(mockConsultationRepository.findWithRelations).not.toHaveBeenCalled();
                 expect(mockEventEmitter.emit).not.toHaveBeenCalled();
             });
         });
