@@ -2,6 +2,20 @@
 
 > **Status update (2026-05-27)**: see [06-implementation-summary.md](./06-implementation-summary.md) for what was closed by TASK-305.
 
+> **TASK-306 closure (2026-05-27):** Closed finding codes — C-1 (reads),
+> C-3 (arrays), C-7 (finale), H-1, H-3 (= NEW-6), H-8 (= NEW-1), M-2 (= NEW-2),
+> M-3, M-5, M-6, M-8, L-4 + NEW-1..NEW-4, NEW-6, NEW-7. Deferred to follow-up
+> tickets: NEW-5 (F-2 — DnaWritingStyle GLOBAL_ADMIN bypass), F-1 (RLS),
+> F-3 (SUPER_ADMIN posture consistency), F-5..F-8 (housekeeping +
+> minor observability nits — see `docs/implementation/TASK-306-DDD-Layers-Followup/README.md` §8).
+> Wave merges: W5.1 `78e7b354`, W5.2 `66b1d579`, W5.3 `60d9d798`,
+> W5.4 `969e49df`, W5.5 `ec67a0d4`. Canonical closure record:
+> [`07-ddd-layers-followup-closure.md`](./07-ddd-layers-followup-closure.md).
+> In-line closure markers `[CLOSED W5.x <sha>]` appear next to each
+> closed code in §A / §B inventory tables and the §C / §D / §E
+> finding detail blocks below — finding descriptions are preserved
+> for historical lineage.
+
 **Reviewer**: `code-reviewer` subagent
 **Date**: 2026-05-25
 **Scope**: `packages/domains/` + `packages/applications/` (read-only)
@@ -38,10 +52,10 @@ Counts by severity:
 
 | Entity | `tenantId` required at ctor? | Factory enforces tenant? | Repo interface tenant-scoped? | Issues |
 | --- | --- | --- | --- | --- |
-| `ConsultationEntity` (PHI) | No — optional via `BaseTenantEntity` | **No** — `tenantId?` falls back to `''` | **No** — `findById`, `findConsultationChain`, `findWithRelations`, `findWithContext` take no tenant arg | BLOCKER C-1, C-2, C-4 |
-| `ContextItemEntity` (PHI: transcripts, summaries) | No | No — `tenantId?` → `''` | **No** — every method takes `consultationId` or `id`, never `tenantId`; `findSharedContext(ids[])` and `findCaseNotesFromChain(ids[])` accept arbitrary id lists | BLOCKER C-3 |
+| `ConsultationEntity` (PHI) | No — optional via `BaseTenantEntity` | **No** — `tenantId?` falls back to `''` | **No** — `findById`, `findConsultationChain`, `findWithRelations`, `findWithContext` take no tenant arg | BLOCKER C-1 [CLOSED W5.2 `66b1d579` — read-paths], C-2, C-4 |
+| `ContextItemEntity` (PHI: transcripts, summaries) | No | No — `tenantId?` → `''` | **No** — every method takes `consultationId` or `id`, never `tenantId`; `findSharedContext(ids[])` and `findCaseNotesFromChain(ids[])` accept arbitrary id lists | BLOCKER C-3 [CLOSED W5.4 `969e49df` — arrays] |
 | `AuditLogEntity` (HIPAA artifact) | No | No — `tenantId?` → `''` | **No** — `AuditLogRepository` is just `Repository<AuditLogEntity>` with no custom tenant-scoped methods | BLOCKER C-5 |
-| `TenantEntity` | n/a (this *is* the tenant) | n/a | `findById` open to any caller | HIGH H-3 |
+| `TenantEntity` | n/a (this *is* the tenant) | n/a | `findById` open to any caller | HIGH H-3 [CLOSED W5.1 `78e7b354`] |
 | `UserEntity` | No (multi-tenant via `UserRoleAssignment`) | No | `findById` open | HIGH H-4 |
 | `UserRoleAssignmentEntity` | No, optional | No | Open via `findById` | BLOCKER C-6 (privilege escalation) |
 | `MediaEntity` (PHI files) | No | No | Open via `findById` | HIGH H-5 |
@@ -50,12 +64,12 @@ Counts by severity:
 | `DepartmentEntity` | No (in entity) | No (in factory) | **Yes — verified in service** (`department.service.ts:175`) | OK |
 | `NotificationEntity` | No | No | Open | MEDIUM M-1 |
 | `TagEntity` | No | No | Open | MEDIUM M-2 |
-| `WebhookEntity` | No | No | Open | MEDIUM M-2 |
+| `WebhookEntity` | No | No | Open | MEDIUM M-2 [CLOSED W5.1 `78e7b354` + W5.3 `60d9d798`] |
 | `PromptTemplateEntity` | No | No | **Yes — verified in service** (`prompt-management.service.ts:220, 326`) | OK |
-| `GlobalSettingEntity` (per-tenant config + locked secrets) | No | No | Partially — `updateTenantConfigs` checks `existingConfig.tenantId !== tenant.id` but not vs caller’s CLS tenant | HIGH H-1 |
+| `GlobalSettingEntity` (per-tenant config + locked secrets) | No | No | Partially — `updateTenantConfigs` checks `existingConfig.tenantId !== tenant.id` but not vs caller’s CLS tenant | HIGH H-1 [CLOSED W5.3 `60d9d798`] |
 | `AsrPipelineEntity` | No | No | **Yes — verified in service** (`stt/pipeline/pipeline.service.ts:148`) | OK |
 | `TenantBucketEntity` | No | No | **Yes — verified in service** (`tenant-bucket.service.ts:64,110,252`) | OK |
-| `ResourceSubscriptionEntity` | No | No | Open | MEDIUM M-3 |
+| `ResourceSubscriptionEntity` | No | No | Open | MEDIUM M-3 [CLOSED W5.3 `60d9d798`] |
 | All other generated entities (Tag, Webhook, ApiKey, SummaryMeta, …) | No | No | Open via `findById` | MEDIUM M-1..M-4 |
 
 ### Cross-cutting domain-layer findings
@@ -77,13 +91,13 @@ Counts by severity:
 
 | Service | Tenant context source | Enforces scope? | Issues |
 | --- | --- | --- | --- |
-| `ConsultationService` | CLS (`this.tenantId`) | Partial — checks `if (!tenantId) throw` in `getOrCreate` / `createRevisit` / `getPatientHistory` / `listConsultations`, but `getById`, `getByIdWithRelations`, `getConsultationChain` skip the check entirely. | BLOCKER C-1, HIGH H-7 |
-| `ContextService` | CLS | Partial — verifies CLS present, but never verifies `consultation.tenantId === this.tenantId` after `findById`. | BLOCKER C-3 |
+| `ConsultationService` | CLS (`this.tenantId`) | Partial — checks `if (!tenantId) throw` in `getOrCreate` / `createRevisit` / `getPatientHistory` / `listConsultations`, but `getById`, `getByIdWithRelations`, `getConsultationChain` skip the check entirely. | BLOCKER C-1 [CLOSED W5.2 `66b1d579` — read-paths], HIGH H-7 |
+| `ContextService` | CLS | Partial — verifies CLS present, but never verifies `consultation.tenantId === this.tenantId` after `findById`. | BLOCKER C-3 [CLOSED W5.4 `969e49df` — arrays] |
 | `AuditLogService` | CLS but unused for scoping | **No** — `fetchAll`, `fetchAllByResource`, `fetchAllCreatedByUser`, `fetchById`, `deleteById` are tenant-blind. | BLOCKER C-5 |
-| `AuthorizationAuditService` | injected `tenantId` from caller param | **No** — bypasses repository via raw Prisma cast, `getAuthorizationHistory`/`getRecentDenials` query across tenants. | BLOCKER C-7 + HIGH H-8 |
+| `AuthorizationAuditService` | injected `tenantId` from caller param | **No** — bypasses repository via raw Prisma cast, `getAuthorizationHistory`/`getRecentDenials` query across tenants. | BLOCKER C-7 [CLOSED W5.1 `78e7b354` — finale] + HIGH H-8 [CLOSED W5.1 `78e7b354`] |
 | `UserService` | CLS | **No** for `fetchById`, `update`, `deleteById`; explicit-tenant for `fetchAllByTenantId`. | BLOCKER C-6 |
 | `UserRoleAssignmentService` | CLS | **No** — `fetchAll`, `fetchById`, `update`, `deleteById` are open; `create` accepts `request.tenantId` without comparing to `this.tenantId`. | BLOCKER C-6 (privilege escalation) |
-| `TenantService` | CLS + super-admin check | Partial — `fetchTenantConfigs` resolves *any* tenant id without comparing to caller; only super-admin check + locked-field masking. `update`/`deleteById` rely on guard. | HIGH H-1 |
+| `TenantService` | CLS + super-admin check | Partial — `fetchTenantConfigs` resolves *any* tenant id without comparing to caller; only super-admin check + locked-field masking. `update`/`deleteById` rely on guard. | HIGH H-1 [CLOSED W5.3 `60d9d798`] |
 | `DepartmentService` | CLS | **Yes** — explicit `if (department.tenantId !== tenantId) throw NotFound` (lines 175, 253, 295). ✅ |
 | `PromptManagementService` | CLS | **Yes** — explicit comparisons (lines 220, 326). ✅ |
 | `Stt PipelineService` | CLS | **Yes** — line 148. ✅ |
@@ -95,15 +109,15 @@ Counts by severity:
 | `NerProcessor` / `PreSummaryProcessor` / `ComprehensiveSummaryProcessor` | none | Same pattern — `findById` no tenant check. | HIGH H-7 |
 | `ConsultationEventHandler` (OnEvent) | none | `findById(consultationId)` no tenant check; emits next-step events with whatever `tenantId` came in the payload. | HIGH H-7 |
 | `TimelineService` / `ChainSummaryService` | CLS | Uses `consultation.tenantId` from blind `findById` to scope downstream queries — propagates the foreign tenant. | HIGH H-2 |
-| `NotificationService` / `WebhookService` / `ApiKeyService` | CLS | Standard `findById` pattern, no comparison after fetch. | MEDIUM M-1, M-4 |
+| `NotificationService` / `WebhookService` / `ApiKeyService` | CLS | Standard `findById` pattern, no comparison after fetch. | MEDIUM M-1, M-4 — `Notification.fetchAllByTenantId` + `ApiKey.fetchAllByTenantId` + `Webhook` full sweep [CLOSED W5.1 `78e7b354` + W5.3 `60d9d798` — see NEW-2..NEW-4] |
 | `JwtRevocationService` | none | Redis key `jwt-revoked:<jti>` — not tenant-prefixed (acceptable because `jti` is globally unique, but worth noting). | LOW L-3 |
-| `CoreUnitOfWorkService` | n/a | **Non-functional**: `startTransaction()` runs `$transaction(async (tx) => tx)` which commits immediately. Confirmed by tenant.service.ts comment lines 521-526. | MEDIUM M-6 |
+| `CoreUnitOfWorkService` | n/a | **Non-functional**: `startTransaction()` runs `$transaction(async (tx) => tx)` which commits immediately. Confirmed by tenant.service.ts comment lines 521-526. | MEDIUM M-6 [CLOSED W5.5 `ec67a0d4` — silent in-place fix + canonical `runInTransaction(callback)`] |
 
 ---
 
 ## C. Critical Findings (BLOCKER)
 
-### C-1. `ConsultationRepository` and `ConsultationService` allow cross-tenant PHI fetch by ID
+### C-1. `ConsultationRepository` and `ConsultationService` allow cross-tenant PHI fetch by ID [CLOSED W5.2 `66b1d579` — read-paths]
 
 **Files**:
 - `packages/domains/src/repositories/generated/core/ConsultationRepository.ts:76-117, 152-173`
@@ -199,7 +213,7 @@ return new AuditLogEntity({
 
 ---
 
-### C-3. `ContextItemRepository` accepts arbitrary `consultationId` / `id` arrays — cross-tenant PHI leakage
+### C-3. `ContextItemRepository` accepts arbitrary `consultationId` / `id` arrays — cross-tenant PHI leakage [CLOSED W5.4 `969e49df` — array-input via `ContextService.resolveLinkedConsultationIds`]
 
 **File**: `packages/domains/src/repositories/generated/core/ContextItemRepository.ts:23-435`
 
@@ -352,7 +366,7 @@ const newUserRoleAssignment = UserRoleAssignmentFactory.CreateUserRoleAssignment
 
 ---
 
-### C-7. `BaseTenantEntity.tenantId` has a public setter and validate() is a no-op
+### C-7. `BaseTenantEntity.tenantId` has a public setter and validate() is a no-op [CLOSED W5.1 `78e7b354` — finale: `set Tenant(...)` → `protected`]
 
 **File**: `packages/domains/src/common/baseEntity/base.tenantEntity.ts:9-36`
 
@@ -405,11 +419,11 @@ export abstract class BaseTenantEntity extends BaseAggregate {
 
 `findById(id)` → mutate → `softDelete(id)` without verifying `entity.tenantId === this.tenantId`. Same root cause as C-5. Per-service patch ≈ 20 minutes each.
 
-### M-2. `TagService` / `WebhookService` accept tag-id and webhook-id at create time without ownership check
+### M-2. `TagService` / `WebhookService` accept tag-id and webhook-id at create time without ownership check [CLOSED W5.1 `78e7b354` + W5.3 `60d9d798` — Webhook only; Tag deferred]
 
 Where the request includes `tagId` or `webhookId` (for tag-assignments and webhook-subscriptions), the service does not verify the linked tag/webhook belongs to the caller’s tenant before linking. (Same pattern as C-4.)
 
-### M-3. `ResourceSubscriptionService` lacks tenant scoping on fetch-by-id
+### M-3. `ResourceSubscriptionService` lacks tenant scoping on fetch-by-id [CLOSED W5.3 `60d9d798` — full 5-method DEF-C3 sweep]
 
 `findById(id)` with no follow-up tenant check. A user in Tenant A can read another tenant's subscription preferences (which include user emails and resource types).
 
@@ -417,11 +431,11 @@ Where the request includes `tagId` or `webhookId` (for tag-assignments and webho
 
 While `stt/pipeline/pipeline.service.ts:148` enforces the check on update, sibling methods (lookup-by-id, audit-list-by-id) do not. Inconsistent enforcement.
 
-### M-5. `SysEventService` / `AuditLogProcessor` trust event payload `tenantId` blindly
+### M-5. `SysEventService` / `AuditLogProcessor` trust event payload `tenantId` blindly [CLOSED W5.5 `ec67a0d4` — `BaseService.broadcastSysEvent` merge order: CLS wins]
 
 `broadcastSysEvent` spreads caller data **after** CLS defaults (`base.service.ts:46`) which means the caller can intentionally override `tenantId`. The downstream BullMQ processor never reconciles the payload's `tenantId` against the entity it loads. For HIPAA, audit-log tenantId should be derived from the entity, not the event payload.
 
-### M-6. `CoreUnitOfWorkService` is non-functional
+### M-6. `CoreUnitOfWorkService` is non-functional [CLOSED W5.5 `ec67a0d4` — silent in-place fix; canonical `runInTransaction(callback)` added; legacy methods `@deprecated`]
 
 `startTransaction()` issues `$transaction(async (tx) => tx)` which **commits before returning**. Every service that calls `unitOfWork.startTransaction()` and then runs multi-write operations is silently non-transactional. Multi-row writes that should atomically succeed/fail (e.g. cross-tenant transfer rollbacks) won’t roll back. `TenantService.updateTenantConfigs` works around it with `databaseService.baseClient.$transaction(callback)` directly, but most callers do not. Combined with C-7, partial writes across tenants are possible.
 
@@ -433,7 +447,7 @@ const consultation = await this.consultationRepository.findById(consultationId);
 
 The processor never asserts `consultation.tenantId === job.data.tenantId`. A poisoned job whose `consultationId` and `tenantId` don't match writes the resulting summary's `tenantId` to the wrong tenant.
 
-### M-8. `findById` throws `DataNotFoundException` carrying the tenant model name + raw id
+### M-8. `findById` throws `DataNotFoundException` carrying the tenant model name + raw id [CLOSED W5.5 `ec67a0d4` — HTTP filter scoped to `DataNotFoundException` → 404 generic in production]
 
 `packages/domains/src/common/repository.ts:86,97` includes `this._modelName` and `id` (or stringified props) in the exception. If exception messages leak to clients (HTTP 500 with stack trace), this is a minor information disclosure.
 
@@ -450,7 +464,7 @@ Tenant-agnostic bulk transaction primitive. No callers in `packages/applications
 ### L-3. JWT revocation Redis key not tenant-prefixed
 `jwt-revoked:<jti>` — `jti` is globally unique, so no collision risk in practice. For OpenTelemetry baggage / cross-tenant analytics, prefer `jwt-revoked:<tenantId>:<jti>`.
 
-### L-4. `BaseEntity.equals()` only compares `id`
+### L-4. `BaseEntity.equals()` only compares `id` [CLOSED W5.5 `ec67a0d4` — tenant-aware via duck-typing on `BaseTenantEntity` subclasses]
 Two entities with the same `id` from different tenants would compare equal. Compare on `(tenantId, id)` for `BaseTenantEntity` subclasses.
 
 ### L-5. Soft-delete is not tenant-aware

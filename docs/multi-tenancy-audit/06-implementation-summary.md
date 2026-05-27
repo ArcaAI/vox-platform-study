@@ -7,11 +7,14 @@
 | **Deferred** | Phase C → blocked on TASK-302 (PgBouncer + Vault role split) |
 | **Plan** | [`docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md`](../implementation/TASK-305-Multi-Tenancy-Hardening/README.md) |
 | **Audit driver** | [`02-prisma-schema-review.md`](./02-prisma-schema-review.md) |
+| **Follow-up** | TASK-306 (DDD-Layers Followup) — Completed 2026-05-27; see [§6 below](#6-wave-5--task-306--ddd-layers-followup-2026-05-27) and the canonical closure record at [`07-ddd-layers-followup-closure.md`](./07-ddd-layers-followup-closure.md). Audit cross-walk against [`03-ddd-layers-review.md`](./03-ddd-layers-review.md). |
 
 This is the canonical record of what TASK-305 actually shipped vs.
 what the audit recommended. Every finding code in the audit is
 accounted for below — `CLOSED`, `DEFERRED`, or `OUT-OF-SCOPE` — with
-the merge SHA (or rationale) attached.
+the merge SHA (or rationale) attached. The TASK-306 follow-up which
+closed the residual DDD-layers gaps (audit doc 03) is summarised in
+[§6 below](#6-wave-5--task-306--ddd-layers-followup-2026-05-27).
 
 ---
 
@@ -223,3 +226,109 @@ inline count drops below the W3-reported floors.
 - DB README: [`packages/database/README.md`](../../packages/database/README.md) § Tenant scoping & RLS posture
 - Cross-tenant fixture: [`tests/cross-tenant/fixtures.ts`](../../tests/cross-tenant/fixtures.ts)
 - Coverage aggregator: [`packages/applications/src/__tests__/cross-tenant-coverage.test.ts`](../../packages/applications/src/__tests__/cross-tenant-coverage.test.ts)
+
+---
+
+## 6. Wave 5 — TASK-306 — DDD-Layers Followup (2026-05-27)
+
+TASK-305 closed the schema-audit (`02-prisma-schema-review.md`) gaps.
+TASK-306 closes the DDD-layers-audit (`03-ddd-layers-review.md`)
+gaps that TASK-305 deliberately left **PARTIAL** or **OPEN**, plus 7
+issues surfaced by the post-TASK-305 verification pass on 2026-05-27
+(NEW-1..NEW-7). The canonical closure record is
+[`07-ddd-layers-followup-closure.md`](./07-ddd-layers-followup-closure.md);
+this section is the wave-by-wave summary in the same style as §1.
+
+| Field | Value |
+|---|---|
+| **Plan** | [`docs/implementation/TASK-306-DDD-Layers-Followup/README.md`](../implementation/TASK-306-DDD-Layers-Followup/README.md) |
+| **Audit driver** | [`03-ddd-layers-review.md`](./03-ddd-layers-review.md) |
+| **Status** | **Completed** (W5.1–W5.6) — engineer-hours ≈ 13 vs. 14 estimated |
+| **Approach** | 5 sequential waves per `executing-plans` skill — fresh implementation subagent per wave + mandatory code-reviewer subagent between waves; all 5 reviews returned **APPROVED-WITH-MINOR-NITS** (0 critical, 0 important) |
+
+### 6.1 Wave breakdown (merge SHAs)
+
+| Wave | Merge SHA | What |
+|---|---|---|
+| W5.1 | `78e7b354` | Surgical fixes bundle — 6 commits, 20 cross-tenant tests. Closes **C-7 finale** (`set Tenant(...)` → `protected`), **H-3 / NEW-6** (`TenantService.fetchById` + `fetchByCodeName` SUPER_ADMIN gate), **H-8 / NEW-1** (`AuthorizationAuditService.logToDatabase` CLS pin + fail-closed), **NEW-2** (`WebhookService.create` `resolveEffectiveTenantId`), **NEW-3 / NEW-4** (`Notification` + `ApiKey` `fetchAllByTenantId` CLS gate). |
+| W5.2 | `66b1d579` | Consultation read-paths defense-in-depth — 4 commits, 9 cross-tenant tests. Closes **C-1 reads** (`assertEqualTenants` on `getById` / `getByIdWithRelations` / `getConsultationChain`). |
+| W5.3 | `60d9d798` | Tenant + Webhook + ResourceSubscription sweep — 13 commits (12 plan + 1 TASK-258 test alignment), 34 cross-tenant tests. Closes **H-1** (`fetchTenantConfigs` SUPER_ADMIN gate), **M-2 / NEW-2** (Webhook 5-method tenant-guard sweep), **M-3** (ResourceSubscription 5-method tenant-guard sweep). |
+| W5.4 | `969e49df` | ContextItem array-input validation — 3 commits, 9 cross-tenant tests. Closes **C-3 finale** (`ContextService.resolveLinkedConsultationIds` filters chain + same-day to CLS tenant; no SUPER_ADMIN bypass on this clinical-PHI hot read path). |
+| W5.5 | `ec67a0d4` | Hygiene bundle + aggregator FS-introspection — 7 commits, 25 cross-tenant tests. Closes **M-5** (`BaseService.broadcastSysEvent` CLS-wins merge order), **M-6** (`CoreUnitOfWorkService` canonical `runInTransaction(callback)` — silent in-place fix), **M-8** (`DataNotFoundException` HTTP filter → 404 generic in production), **L-4** (`BaseEntity.equals` tenant-aware via duck-typing), **NEW-7 / F-4** (aggregator FS-introspection — surfaced + closed one pre-existing gap in `prompt-management.service.test.ts`). |
+| W5.6 | `<pending merge>` | Documentation close-out (this section + §6 of the plan README + the canonical [`07-ddd-layers-followup-closure.md`](./07-ddd-layers-followup-closure.md) + a TASK-306 update to [`technical-architecture-overview.md`](../technical-architecture-overview.md) § Multi-tenancy enforcement layers). Doc-only — 0 production-code lines touched. |
+
+### 6.2 Audit findings closed (from `03-ddd-layers-review.md`)
+
+| Code | Closure path | Wave | Merge SHA |
+|---|---|---|---|
+| **C-1** (reads) | `assertEqualTenants` on Consultation read methods + chain filter | W5.2 | `66b1d579` |
+| **C-3** (array-input) | `ContextService.resolveLinkedConsultationIds` filters to CLS tenant | W5.4 | `969e49df` |
+| **C-7** (finale) | `BaseTenantEntity.set Tenant(...)` → `protected` | W5.1 | `78e7b354` |
+| **H-1** | `TenantService.fetchTenantConfigs` SUPER_ADMIN gate | W5.3 | `60d9d798` |
+| **H-3 / NEW-6** | `TenantService.fetchById` + `fetchByCodeName` SUPER_ADMIN gate | W5.1 | `78e7b354` |
+| **H-8 / NEW-1** | `AuthorizationAuditService.logToDatabase` CLS pin + fail-closed | W5.1 | `78e7b354` |
+| **M-2 / NEW-2** | `WebhookService` 5-method tenant-guard sweep + `resolveEffectiveTenantId` on `create` | W5.1 + W5.3 | `78e7b354` + `60d9d798` |
+| **M-3** | `ResourceSubscriptionService` 5-method tenant-guard sweep | W5.3 | `60d9d798` |
+| **M-5** | `BaseService.broadcastSysEvent` CLS wins on `tenantId` | W5.5 | `ec67a0d4` |
+| **M-6** | `CoreUnitOfWorkService` canonical `runInTransaction(callback)` (silent in-place fix; legacy methods `@deprecated + Logger.warn`) | W5.5 | `ec67a0d4` |
+| **M-8** | HTTP exception filter mapping `DataNotFoundException` → 404 generic in production | W5.5 | `ec67a0d4` |
+| **L-4** | `BaseEntity.equals` tenant-aware via duck-typing on `BaseTenantEntity` subclasses | W5.5 | `ec67a0d4` |
+| **NEW-3 / NEW-4** | `Notification` + `ApiKey` `fetchAllByTenantId` CLS gate | W5.1 | `78e7b354` |
+| **NEW-7 / F-4** | Aggregator FS-introspection meta-test (surfaced 1 pre-existing gap → closed inline) | W5.5 | `ec67a0d4` |
+
+### 6.3 Test deltas (cross-tenant)
+
+97 new inline cross-tenant tests across `packages/applications` +
+`packages/domains` + `apps/api` (W5.1: 20, W5.2: 9, W5.3: 34, W5.4: 9,
+W5.5: 25).
+
+| Aggregator state | Service entries | Processor entries | Meta tests | Total |
+|---|---|---|---|---|
+| **Pre-TASK-305** | 0 | 0 | 0 | 0 |
+| **Post-TASK-305 (W4)** | 11 | 6 | 2 | **19** |
+| **Pre-W5.5 (TASK-306 W5.1 + W5.3)** | 14 | 6 | 2 | **22** |
+| **Post-TASK-306 (W5.5.7)** | 17 | 6 | 7 | **30** |
+
+Net new TASK-306 `SERVICE_COVERAGE` entries: 6 (`tenant`, `webhook`,
+`resourceSubscription`, `prompt-management`, `common/base.service`,
+`baseServices/core.unitOfWork`). Of those, `prompt-management` was a
+pre-existing gap surfaced by the W5.5.6 FS-introspection meta-test and
+closed inline.
+
+The TASK-305 floor (114 inline + 6 fixture + 19 aggregator-level) is
+preserved — every TASK-306 wave gate verified that no TASK-305 test
+count dropped.
+
+### 6.4 Deferred (TASK-306)
+
+Two classes of deferral. Neither is blocking; all tracked for
+follow-up tickets.
+
+#### 6.4.1 Original-plan deferrals (TASK-306 plan §8)
+
+| Code | Topic | Why deferred |
+|---|---|---|
+| **F-1** | PostgreSQL RLS (audit B1 / TASK-305 Phase C) | Schema-wide change requiring DBA review + PgBouncer + Vault role split — owned by TASK-302 |
+| **F-2 / NEW-5** | `DnaWritingStyleService.listReports` GLOBAL_ADMIN bypass | Product decision — is `GLOBAL_ADMIN` deliberately cross-tenant? |
+| **F-3** | `NotificationService` SUPER_ADMIN posture inconsistency | Product decision — tighten or audit-log |
+| **F-5** | `auditLog.processor.spec.ts` dead file (TASK-305 §6.7 #9) | Housekeeping — vitest/eslint skip `.spec.ts` in `__tests__/` |
+| **F-6** | `WorkerSession` soft typing (TASK-305 §6.7 #10) | Style cleanup — `as unknown as UserSession` reused 8× |
+| **F-7** | Drop redundant single-column `@@index([tenantId])` (TASK-305 §6.7 #3) | Write-throughput micro-opt — composite `[tenantId, X]` indexes cover the same workloads |
+| **F-8** | `CoreDataModel` wildcard re-export removal (TASK-305 §6.7 #5) | Latent footgun, zero current consumers — ESLint `importNames` doesn't follow wildcard re-exports |
+| **L-3** | JWT revocation Redis key not tenant-prefixed | Backlog only — `jti` is globally unique so no practical collision risk |
+| **H-4** | `User` / `UserMedia` blindly findById cross-tenant | Architectural — needs `BaseGlobalEntity` design (also tracked as TASK-305 §6.7 #1) |
+
+#### 6.4.2 Review-time minor nits (306-Fx)
+
+14 nits captured across W5.1–W5.5 code reviews. **306-F9 + 306-F10**
+were folded into W5.5.7 (aggregator marker cosmetics + broadening for
+the `consultation/context` floor). Remaining: **306-F1..306-F8,
+306-F11..306-F14** (12 nits — all minor, none blocking). Full list +
+descriptions in [TASK-306 plan README §6.7](../implementation/TASK-306-DDD-Layers-Followup/README.md#task-306-follow-ups-deferred-minor-nits).
+
+### 6.5 Cross-links (TASK-306 addendum)
+
+- TASK-306 plan: [`docs/implementation/TASK-306-DDD-Layers-Followup/README.md`](../implementation/TASK-306-DDD-Layers-Followup/README.md)
+- Canonical closure record: [`07-ddd-layers-followup-closure.md`](./07-ddd-layers-followup-closure.md)
+- Audit driver: [`03-ddd-layers-review.md`](./03-ddd-layers-review.md) (TASK-306 closure banner at top; per-finding `[CLOSED W5.x <sha>]` markers in §A/§B/§C/§D/§E)
+- Architecture overview: [`docs/technical-architecture-overview.md`](../technical-architecture-overview.md) § Multi-tenancy enforcement layers (TASK-306 finale noted in Layer 3)
