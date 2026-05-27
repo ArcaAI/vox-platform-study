@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException, Optional, BadRequestException } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, BadRequestException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
@@ -20,7 +20,7 @@ import { ISummaryService } from './ISummaryService';
 import { GenerateSummaryRequest, GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-v2-generate';
-import { BaseService } from '../../../common';
+import { BaseService, assertParentInScope } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { SecretsService } from '../../baseServices/_meta/secrets';
@@ -65,11 +65,11 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // Verify consultation exists
-    const consultation = await this.consultationRepository.findById(consultationId);
-    if (!consultation) {
-      throw new NotFoundException(`Consultation ${consultationId} not found`);
-    }
+    // TASK-305 D.4 (audit C-1 / C-3) — verify the parent Consultation
+    // belongs to the caller's tenant before invoking the (expensive) SMR
+    // call. `assertParentInScope` throws `NotFoundException` for both
+    // missing-parent and cross-tenant cases so no existence leak.
+    const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
 
     // Get case notes for summarization
     let caseNotes = await this.contextItemRepository.findCaseNotes(consultationId);
@@ -140,11 +140,13 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // Verify consultation exists
-    const consultation = await this.consultationRepository.findById(consultationId);
-    if (!consultation) {
-      throw new NotFoundException(`Consultation ${consultationId} not found`);
-    }
+    // TASK-305 D.4 (audit C-1 / C-3) — verify the parent Consultation
+    // belongs to the caller's tenant, then validate every explicit
+    // `contextItemIds` reference. Without the per-id check a cross-tenant
+    // id would be silently filtered into the SMR transcript and
+    // exfiltrated through the generated summary content.
+    const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
+    await this.assertContextItemsInTenant(tenantId, request.contextItemIds);
 
     // Get transcriptions if not provided
     let content = request.transcription;
@@ -221,10 +223,15 @@ export class SummaryService extends BaseService implements ISummaryService {
    * Update existing summary content
    */
   async updateSummary(contextItemId: string, request: UpdateSummaryRequest): Promise<SummaryResponse> {
-    const contextItem = await this.contextItemRepository.findById(contextItemId);
-    if (!contextItem) {
-      throw new NotFoundException(`Summary ${contextItemId} not found`);
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
     }
+
+    // TASK-305 D.4 (audit C-3) — assert the target summary lives in
+    // the caller's tenant before reading approvals / writing a new
+    // version. Missing or cross-tenant both surface as NotFound.
+    const contextItem = await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
 
     const approvals = await this.contextItemVersionRepository.getVersionsByChangeReason(contextItemId, 'approved');
     if (approvals.length > 0) {
@@ -277,10 +284,14 @@ export class SummaryService extends BaseService implements ISummaryService {
    * This avoids requiring new DB columns while still being enforceable.
    */
   async approveSummary(contextItemId: string): Promise<{ contextItemId: string; approvalStatus: string; approvedBy: string; approvedAt: string }> {
-    const contextItem = await this.contextItemRepository.findById(contextItemId);
-    if (!contextItem) {
-      throw new NotFoundException(`Summary ${contextItemId} not found`);
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
     }
+
+    // TASK-305 D.4 (audit C-3) — assert the target summary belongs to
+    // the caller's tenant before any approval / lock state mutates.
+    const contextItem = await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
 
     if (!contextItem.isFinalSummary) {
       throw new BadRequestException(`Context item ${contextItemId} is not a final summary`);
@@ -372,10 +383,11 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    const contextItem = await this.contextItemRepository.findById(contextItemId);
-    if (!contextItem) {
-      throw new NotFoundException(`Context item ${contextItemId} not found`);
-    }
+    // TASK-305 D.4 (audit C-3) — assert the target context item belongs
+    // to the caller's tenant before invoking the NLP service or
+    // persisting NamedEntity rows. A cross-tenant id would otherwise
+    // produce NER rows stamped with the CALLER's tenantId.
+    const contextItem = await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
 
     if (!contextItem.content?.trim()) {
       throw new BadRequestException('Context item has no content for entity extraction');
@@ -425,6 +437,22 @@ export class SummaryService extends BaseService implements ISummaryService {
         savedCount,
       },
     });
+  }
+
+  /**
+   * TASK-305 D.4 (audit C-3) — validate every ContextItem id in the given
+   * list belongs to `tenantId`. Used to scrub `generateSummary`'s
+   * `contextItemIds` array so a cross-tenant id cannot be silently filtered
+   * into the SMR transcript.
+   *
+   * Sequential `for...of` fails fast on the first cross-tenant id without
+   * spawning unnecessary parallel reads on the hot summary-generate path.
+   */
+  private async assertContextItemsInTenant(tenantId: string, ids?: string[] | null): Promise<void> {
+    if (!ids || ids.length === 0) return;
+    for (const id of ids) {
+      await assertParentInScope(this.contextItemRepository, id, tenantId);
+    }
   }
 
   private async callSmrService(payload: {

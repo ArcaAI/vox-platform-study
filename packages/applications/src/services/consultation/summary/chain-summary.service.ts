@@ -16,7 +16,7 @@ import {
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-v2-generate';
-import { BaseService } from '../../../common';
+import { BaseService, assertParentInScope } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { SecretsService } from '../../baseServices/_meta/secrets';
@@ -72,16 +72,26 @@ export class ChainSummaryService extends BaseService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    const consultation = await this.consultationRepository.findById(consultationId);
-    if (!consultation) {
-      throw new NotFoundException(`Consultation ${consultationId} not found`);
-    }
+    // TASK-305 D.4 (audit C-1 / C-3 / C-4) — verify the requesting
+    // Consultation belongs to the caller's tenant. `assertParentInScope`
+    // throws `NotFoundException` for both missing and cross-tenant so
+    // the response never leaks the existence of a foreign-tenant id.
+    const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
 
     // Step 1: Resolve all linked consultations (chain + same-day)
     const linkedConsultations = await this.resolveLinkedConsultations(consultation);
     if (linkedConsultations.length === 0) {
       throw new BadRequestException('No linked consultations found for comprehensive summary');
     }
+
+    // TASK-305 D.4 — `findConsultationChain` is NOT tenant-scoped at the
+    // repo layer, so a historically poisoned `parentConsultationId`
+    // pointer could pull a foreign-tenant consultation into the chain.
+    // Refuse to aggregate any chain entry whose tenantId drifts from the
+    // caller — same NotFound shape, no leak. (Same-day matches are
+    // already tenant-filtered by `findByPatientAndDate` so they cannot
+    // introduce drift on that branch, but the guard catches both.)
+    this.assertChainInTenant(tenantId, linkedConsultations);
 
     const allConsultationIds = linkedConsultations.map((c) => c.id);
 
@@ -352,6 +362,21 @@ export class ChainSummaryService extends BaseService {
   // =========================================================================
   // Private Methods
   // =========================================================================
+
+  /**
+   * TASK-305 D.4 (audit C-1 / C-3 / C-4) — refuse to aggregate any chain
+   * entry whose tenantId drifts from the caller. Throws `NotFoundException`
+   * (no existence leak) on the first cross-tenant entry. Pre-D.2 data
+   * could carry a poisoned `parentConsultationId` pointer into another
+   * tenant; this guard short-circuits before SMR is called.
+   */
+  private assertChainInTenant(tenantId: string, consultations: ConsultationEntity[]): void {
+    for (const c of consultations) {
+      if (c.tenantId !== tenantId) {
+        throw new NotFoundException('Resource not found');
+      }
+    }
+  }
 
   /**
    * Compose structured input for the SMR service.

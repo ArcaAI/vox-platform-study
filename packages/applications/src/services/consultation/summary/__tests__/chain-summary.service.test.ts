@@ -1067,4 +1067,56 @@ describe('ChainSummaryService', () => {
             expect(result.sectionCount).toBe(3); // Summary A + Summary B + Transcript C
         });
     });
+
+    // ============================================================
+    // TASK-305 D.4 — Cross-aggregate tenant isolation for ChainSummaryService
+    //
+    // The comprehensive-summary endpoint loads the requesting consultation
+    // by id AND traverses the full chain via `findConsultationChain`
+    // (which is NOT tenant-scoped at the repository layer). Without these
+    // guards a Tenant A doctor could submit a Tenant B consultation id and
+    // receive a multi-tenant comprehensive summary containing other-tenant
+    // PHI, OR submit a Tenant A id whose chain has been historically
+    // poisoned with a cross-tenant parent / child link.
+    // ============================================================
+    describe('TASK-305 D.4 — cross-aggregate tenant checks', () => {
+        it('throws NotFoundException when the requesting consultation belongs to another tenant', async () => {
+            mocks.consultationRepo.findById.mockResolvedValue(
+                createConsultation({ id: 'c-other', tenantId: 'tenant-OTHER' }),
+            );
+
+            await expect(
+                mocks.service.generateComprehensiveSummary('c-other', {} as any),
+            ).rejects.toThrow(NotFoundException);
+
+            expect(mocks.httpService.axiosRef.post).not.toHaveBeenCalled();
+            expect(mocks.contextItemRepo.create).not.toHaveBeenCalled();
+        });
+
+        it('throws NotFoundException when any consultation resolved in the chain belongs to another tenant', async () => {
+            // Requesting consultation passes the in-tenant check.
+            const requesting = createConsultation({ id: 'A' });
+            mocks.consultationRepo.findById.mockResolvedValue(requesting);
+
+            // Chain contains an in-tenant child PLUS a cross-tenant relative
+            // (e.g. legacy data where parentConsultationId points elsewhere).
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([
+                requesting,
+                createConsultation({ id: 'B', parentConsultationId: 'A' }),
+                createConsultation({
+                    id: 'C-cross',
+                    tenantId: 'tenant-OTHER',
+                    parentConsultationId: 'A',
+                }),
+            ]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([requesting]);
+
+            await expect(
+                mocks.service.generateComprehensiveSummary('A', {} as any),
+            ).rejects.toThrow(NotFoundException);
+
+            expect(mocks.httpService.axiosRef.post).not.toHaveBeenCalled();
+            expect(mocks.contextItemRepo.create).not.toHaveBeenCalled();
+        });
+    });
 });
