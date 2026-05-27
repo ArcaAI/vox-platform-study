@@ -427,7 +427,7 @@ These do not block plan approval — they can be answered during execution. List
 | Sub-task | Branch | Merge | Verdict | Highlights |
 |---|---|---|---|---|
 | W3.1 — D.2/D.3/D.4 Consultation + Context + Summary cross-aggregate checks | `task-305/w3-consultation-context-summary` | `9d1921d` | APPROVED | `ConsultationService` `getOrCreate`/`createRevisit` assert `parentConsultationId`/`departmentId`/`doctorId` in same tenant; `ContextService` 5 mutation paths assert parent + array fields (`caseNoteIds`, `preSummaryIds`, etc.) in tenant; `SummaryService` 5 mutations + `ChainSummaryService.generateComprehensiveSummary` assert chain. No SUPER_ADMIN bypass on PHI services. +24 cross-tenant tests. Closes audit C-1/C-2/C-3/C-4 + M-7. |
-| W3.2 — D.5 Notification + ApiKey + DnaWritingStyle | `task-305/w3-notification-apikey-dna` | *(pending reviewer)* | TBD | `NotificationService` recipient + resource same-tenant check; `ApiKeyService` user-belongs-to-tenant + DTO `tenantId` pinning (SUPER_ADMIN bypass allowed for cross-tenant issuance); `DnaWritingStyleService` doctor + report-chain assertion. +36 cross-tenant tests. Closes audit C-5/C-8/C-9 + B10 (partial) + M-1 (partial). |
+| W3.2 — D.5 Notification + ApiKey + DnaWritingStyle | `task-305/w3-notification-apikey-dna` | `9028759` | APPROVED-WITH-FOLLOWUP | `NotificationService` recipient + resource same-tenant check; `ApiKeyService` user-belongs-to-tenant + DTO `tenantId` pinning (SUPER_ADMIN bypass allowed for cross-tenant issuance); `DnaWritingStyleService` doctor + report assertion (STRICT no-SUPER_ADMIN-bypass — PHI). +36 cross-tenant tests. Closes audit C-5/C-8/C-9 + B10 (partial) + M-1 (partial). Reviewer flagged 2 follow-ups (see §6.7). |
 | W3.3 — D.9 BullMQ processors CLS rebind (4 of 6) | `task-305/w3-bullmq-cls-rebind` | `21115ed` | APPROVED-WITH-FOLLOWUP | `Summary`/`PreSummary`/`ComprehensiveSummary`/`Ner` processors wrap `process()` in `cls.run` with `tenantId` + `user` (`roles: []`, never SUPER_ADMIN); fail-closed throw if `job.data.tenantId` missing (BullMQ DLQ semantics); `assertEqualTenants` on loaded entity vs. job payload. +12 cross-tenant tests. Reviewer flagged 2 remaining handlers as follow-up. |
 | W3.3 follow-up — D.9 AuditLog + ConsultationEventHandler (6 of 6) | `task-305/w3-cls-rebind-followup` | `1839163` | APPROVED | `AuditLogProcessor`: same CLS rebind pattern, fail-closed throw, no `assertEqualTenants` (write-only). `ConsultationEventHandler`: 3 `@OnEvent({ async: true })` handlers wrap body in `cls.run` from `payload.tenantId`; fail-closed log + early `return` (not throw, because `@OnEvent` swallows). Prettier nit on `summary.processor.ts:198`. +9 tests. Closes the Phase B "no CLS = super-admin pass-through" gap for queue workers + event handlers. |
 
@@ -435,22 +435,26 @@ These do not block plan approval — they can be answered during execution. List
 
 ### Cumulative test deltas (vs Wave-0 baseline)
 
-| Package | Before | After Wave 3 (current, pending W3.2 merge) |
+| Package | Before | After Wave 3 (all merged) |
 |---|---|---|
 | `@arcaai/domains` | 1019 / 2 skipped / 9 todo | **1031 / 2 skipped / 9 todo** (unchanged from W2) |
-| `@arcaai/applications` | 4082 / 4 skipped | **4153 / 4 skipped** (+71 from W1 + W2 + W3.1 + W3.3 + D.9 follow-up; +36 more pending from W3.2) |
+| `@arcaai/applications` | 4082 / 4 skipped | **4190 / 4 skipped** (+108 from W1 + W2 + all of W3) |
 | `@arcaai/database` (unit) | 525 / 10 files | **573 / 12 files** (unchanged from W2) |
 | `apps/api` | 1157 / 59 files | **1163 / 60 files** (unchanged from W2) |
 
-### Tracked follow-ups (NOT blocking Wave 2 merge, scheduled separately)
+### Tracked follow-ups (NOT blocking Wave 3 merge, scheduled separately)
 
 1. **Architectural** — `User` / `UserMedia` should not extend `BaseTenantEntity` (current `tenantId: ''` placeholder is documented but re-introduces a sentinel-by-empty-string pattern). Recommend introducing `BaseGlobalEntity` or extending `BaseAggregate` directly.
 2. **Operational** — Before applying the Phase A migration to staging/prod, run pre-flight duplicate checks on `Tag (tenantId, resourceTypeName, resourceId, tagKey)` and `Webhook (tenantId, name)` — back-fill may consolidate previously-NULL rows into the system tenant and trip the new uniques.
 3. **Index hygiene** — Drop redundant single-column `@@index([tenantId])` declarations where superseded by composites leading with `tenantId`. ~13 indexes affected; pure write-throughput optimization.
 4. **`.baseClient` audit** — `UnitOfWork.transactionClient` (2 sites in `packages/domains` and `packages/applications`) + `tenant.service.ts:534` still go through the unscoped `baseClient`. UnitOfWork should switch to `databaseService.client.$transaction(callback)` — Prisma 7 carries `$extends` into the `tx` parameter.
 5. **`CoreDataModel` wildcard re-export removal** — `core.database.types.ts` re-exports `getPlatformAdminPrismaClient_Unscoped` via `export * as CoreDataModel from '@arcaai/database'`. No consumers today; the ESLint rule's `importNames` doesn't follow wildcard re-exports, so it's a latent footgun. Remove in a follow-up commit.
-6. **Phase D.9 BullMQ wrapper** — Until queue processors do `cls.run({ tenantId, user, roles }, work)`, they hit the extension's "no CLS = super-admin pass-through" path. Plan Phase D.9 is the gating fix; tracked.
-7. **Documentation** — Mark `docs/multi-tenancy-audit/02-prisma-schema-review.md` B3 / B4 / B5 entries as "Closed (TASK-305 W2.A)" and C-7 / C-4 entries as "Closed (TASK-305 W2.D6 / D.7 / D.8)" in a doc-only commit.
+6. **~~Phase D.9 BullMQ wrapper~~ — CLOSED (W3.3 + D.9 follow-up).** All 6 queue/event handlers now rebind CLS context.
+7. **NotificationService SUPER_ADMIN posture inconsistency (NEW from W3.2 review)** — `NotificationService.buildTenantWhere`/`assertTenantOwnership`/`resolveEffectiveTenantId` allow SUPER_ADMIN cross-tenant access while the parallel DNA service (also PHI-derived) explicitly refuses. Decide: (a) tighten Notification to match DNA's no-bypass posture, or (b) keep current behavior and add structured audit-log emission whenever SUPER_ADMIN crosses tenant for notifications.
+8. **Pre-existing `fetchAllByTenantId` gaps (NEW from W3.2 review)** — `NotificationService.fetchAllByTenantId` and `ApiKeyService.fetchAllByTenantId` accept arbitrary DTO `tenantId` with no CLS comparison. `DnaWritingStyleService.listReports` lets global-role callers with no CLS `tenantId` read all DNA reports across all tenants. Separate ticket — predates W3.2 work.
+9. **Housekeeping (NEW from D.9 follow-up review)** — `packages/applications/src/services/auditLog/__tests__/auditLog.processor.spec.ts` is silently dead (vitest/typecheck/eslint all skip `.spec.ts` in `__tests__/`). Should be deleted or renamed to `.test.ts` and merged with the new `auditLog.processor.test.ts`.
+10. **Soft typing (NEW from W3.3 + D.9 reviews)** — `as unknown as UserSession` cast pattern reused 8× in queue/event processors. `UserSession` requires `email: string` (non-optional) which queue workers don't have. Introduce a `WorkerSession` subtype or `Partial<UserSession>` to clean up.
+11. **Documentation** — Mark `docs/multi-tenancy-audit/02-prisma-schema-review.md` B3 / B4 / B5 entries as "Closed (TASK-305 W2.A)" and C-7 / C-4 entries as "Closed (TASK-305 W2.D6 / D.7 / D.8)" in a doc-only commit. (Some of this is covered in Phase E.7.)
 
 ---
 
@@ -463,3 +467,4 @@ These do not block plan approval — they can be answered during execution. List
 | 2026-05-27 | Wave 2 merged — Phase A (schema hardening) + Phase B (tenant-scope extension) + D.6 (department parent check). Implementation Summary added (§6). | See per-task table in §6 |
 | 2026-05-27 | Plan README committed to `fix/2605-review` (had been untracked since planning) + W1.1 follow-up: integration test assertions updated to match new `findUnique` soft-delete behavior | `docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md`, `packages/database/src/integration/soft-delete.integration.test.ts` |
 | 2026-05-27 | Wave 3 partial — W3.1 (D.2/D.3/D.4 consultation+context+summary), W3.3 (D.9 4 of 6 processors), D.9 follow-up (AuditLogProcessor + ConsultationEventHandler) merged. W3.2 (D.5 notification/apikey/dna) implemented + reviewer in flight. Phase A follow-up (2 latent typecheck fixes) merged. | `packages/applications/src/services/consultation/`, `packages/applications/src/services/auditLog/auditLog.processor.ts`, `packages/applications/src/services/resourceSubscription/resourceSubscription.service.ts`, see §6 W3 table |
+| 2026-05-27 | Wave 3 complete — W3.2 (D.5) merged. All §D.* service-layer cross-tenant guards in place; §D.9 6/6 queue/event handlers rebound. Phase C (RLS) deferred — depends on TASK-302 (PgBouncer/Vault). Plan ready for Wave 4 (Phase E: test suite + final docs). | `packages/applications/src/services/{notification,apiKey,dna-writing-style}/`, `docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md` |
