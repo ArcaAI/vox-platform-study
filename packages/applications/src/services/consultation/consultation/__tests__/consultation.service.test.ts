@@ -1117,6 +1117,11 @@ describe('ConsultationService', () => {
     // ============================================================
     describe('TASK-306 P2.1 — Consultation read-paths defense-in-depth', () => {
         describe('getById', () => {
+            // TASK-306 P2.1 regression-pin (306-F7) — intentional duplicate
+            // of the pre-W5.2 happy-path test. Kept under the P2.1 marker
+            // so the describe block is self-contained: deleting the
+            // pre-W5.2 happy-path test elsewhere must not silently delete
+            // the P2.1 marker's positive control.
             it('returns DTO when the fetched entity tenant matches caller CLS tenant (sanity)', async () => {
                 const consultation = createMockConsultationEntity({
                     id: 'consultation-id-1',
@@ -1221,6 +1226,24 @@ describe('ConsultationService', () => {
         });
 
         describe('getConsultationChain', () => {
+            it('returns [] when repo returns an empty chain (vs. all-foreign chain → throw)', async () => {
+                // TASK-306 306-F6 — pin the empty-vs-all-foreign distinction
+                // self-contained under the P2.1 marker. Empty repo result is
+                // a legitimate "no chain exists" case (return [], emit
+                // ResourceViewed with chainCount=0). Non-empty all-foreign is
+                // a leak attempt and MUST throw (see "throws … EVERY returned
+                // chain row is foreign-tenant" test below).
+                mockConsultationRepository.findConsultationChain.mockResolvedValue([]);
+
+                const result = await service.getConsultationChain('any-id');
+
+                expect(result).toEqual([]);
+                expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                    SysEventType.ResourceViewed,
+                    expect.objectContaining({ data: { consultationId: 'any-id', chainCount: 0 } }),
+                );
+            });
+
             it('returns all rows when the entire chain lives in the caller tenant', async () => {
                 const chain = [
                     createMockConsultationEntity({ id: 'parent-id', tenantId: 'tenant-1' }),
