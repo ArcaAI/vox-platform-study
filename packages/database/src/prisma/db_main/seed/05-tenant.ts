@@ -1,7 +1,15 @@
 import type { CorePrismaClient } from '../../../client';
-import { SEED_TENANT_ID, SEED_CUSTOMER_TENANT_IDS } from './00-constants';
+import { SEED_TENANT_ID, SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID } from './00-constants';
 
 export { SEED_TENANT_ID as DEFAULT_TENANT_ID } from './00-constants';
+
+const SYSTEM_TENANT = {
+    id: SYSTEM_TENANT_ID,
+    name: 'System',
+    key: '__SYSTEM__',
+    description:
+        'Reserved system tenant for platform-wide rows (policies, roles, system AI models). DO NOT use for customer data.',
+};
 
 const GLOBAL_TENANT = {
     id: SEED_TENANT_ID,
@@ -31,7 +39,7 @@ const CUSTOMER_TENANTS = [
     },
 ];
 
-export const ALL_TENANTS = [GLOBAL_TENANT, ...CUSTOMER_TENANTS];
+export const ALL_TENANTS = [SYSTEM_TENANT, GLOBAL_TENANT, ...CUSTOMER_TENANTS];
 
 export const seedTenant = async (client: CorePrismaClient) => {
     console.log('Seeding tenants...');
