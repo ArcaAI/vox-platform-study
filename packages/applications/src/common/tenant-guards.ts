@@ -1,0 +1,173 @@
+/**
+ * Tenant isolation guards — TASK-305 D.1 (Multi-Tenancy Hardening).
+ *
+ * Pure helpers that enforce tenant isolation on cross-aggregate writes
+ * (Consultation -> Department, ContextItem -> Consultation, ApiKey -> User,
+ * etc.). Throw `NotFoundException` on tenant mismatch — never
+ * `ForbiddenException` — to avoid leaking the existence of a cross-tenant
+ * resource. Mirrors the no-existence-leak rule already used in
+ * `DepartmentService.update`, `PromptManagementService.assertOwnedByTenant`,
+ * and `TenantBucketService`.
+ *
+ * NestJS exceptions (`@nestjs/common`) are used here to stay consistent with
+ * those existing services (the spec's `@arcaai/exceptions.BadRequestException`
+ * does not exist in this codebase; the existing tenant-leak callsites already
+ * use `@nestjs/common.NotFoundException` / `BadRequestException`).
+ */
+
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { DataNotFoundException } from '@arcaai/exceptions';
+import { ResourceStatusType, type UserRoleAssignmentRepository } from '@arcaai/domains';
+
+/**
+ * Assert that a child entity shares the same tenant as its parent.
+ *
+ * Use BEFORE any cross-aggregate write where a child row references a parent
+ * (e.g. `Consultation -> Department`, `ContextItem -> Consultation`,
+ * `Consultation.parentConsultationId -> Consultation` for revisits).
+ *
+ * Throws `NotFoundException` (not `ForbiddenException`) on tenant mismatch so
+ * the caller cannot infer the existence of a parent in another tenant.
+ *
+ * @example
+ *   const parent = await this.consultationRepository.findById(dto.parentId);
+ *   assertEqualTenants(parent, { tenantId: this.tenantId });
+ *
+ *   // Or when both sides are real entities:
+ *   assertEqualTenants(parentDepartment, childConsultation);
+ *
+ * @throws NotFoundException
+ *   - `parent` is null/undefined (treat as not-found, no existence leak)
+ *   - `parent.tenantId !== child.tenantId` (cross-tenant access, no leak)
+ * @throws BadRequestException
+ *   - `child` is null/undefined (caller bug)
+ *   - either side's `tenantId` is null/undefined/empty (caller bug or data
+ *     integrity — should never reach this branch in well-formed code)
+ */
+export function assertEqualTenants(
+  parent: { tenantId?: string | null } | null | undefined,
+  child: { tenantId?: string | null } | null | undefined,
+): void {
+  if (parent === null || parent === undefined) {
+    throw new NotFoundException('Resource not found');
+  }
+  if (child === null || child === undefined) {
+    throw new BadRequestException('Child reference is required');
+  }
+
+  const parentTenant = parent.tenantId;
+  if (parentTenant === null || parentTenant === undefined || parentTenant === '') {
+    throw new BadRequestException('Parent resource is missing tenant context');
+  }
+
+  const childTenant = child.tenantId;
+  if (childTenant === null || childTenant === undefined || childTenant === '') {
+    throw new BadRequestException('Child resource is missing tenant context');
+  }
+
+  if (parentTenant !== childTenant) {
+    // Message MUST NOT carry the parent's tenantId — that would leak the
+    // existence of a cross-tenant resource back to the caller.
+    throw new NotFoundException('Resource not found');
+  }
+}
+
+/**
+ * Assert that the given `userId` has an `ENABLED` UserRoleAssignment within
+ * the given `tenantId`. Use BEFORE creating any tenant-scoped row that
+ * references a `User` (e.g. `Consultation.doctorId`, `ApiKey.userId`,
+ * `Notification.targetUserId`).
+ *
+ * Closes audit B10 ("Consultation.doctorId FK does not enforce that the
+ * doctor has access to the consultation's tenant").
+ *
+ * Throws `NotFoundException` on missing assignment (no existence leak) and
+ * tolerates the repository's two failure shapes (returns `null` *or* throws
+ * `DataNotFoundException`) — `Repository.findFirst` throws today, but tests
+ * across the codebase mock it as returning `null`, so we handle both.
+ *
+ * @example
+ *   await assertUserBelongsToTenant(
+ *     this.userRoleAssignmentRepository,
+ *     request.doctorId,
+ *     this.tenantId,
+ *   );
+ *
+ * @throws BadRequestException — `userId` or `tenantId` is null/undefined/empty
+ * @throws NotFoundException — no enabled assignment exists (no leak)
+ */
+export async function assertUserBelongsToTenant(
+  userRoleAssignmentRepository: UserRoleAssignmentRepository,
+  userId: string,
+  tenantId: string,
+): Promise<void> {
+  if (userId === null || userId === undefined || userId === '') {
+    throw new BadRequestException('userId is required');
+  }
+  if (tenantId === null || tenantId === undefined || tenantId === '') {
+    throw new BadRequestException('tenantId is required');
+  }
+
+  let assignment: unknown;
+  try {
+    assignment = await userRoleAssignmentRepository.findFirst({
+      where: {
+        userId,
+        tenantId,
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+    });
+  } catch (err) {
+    if (err instanceof DataNotFoundException) {
+      throw new NotFoundException('Resource not found');
+    }
+    throw err;
+  }
+
+  if (assignment === null || assignment === undefined) {
+    throw new NotFoundException('Resource not found');
+  }
+}
+
+/**
+ * Load a parent by id from the given repository and assert its `tenantId`
+ * matches the caller's tenant. Returns the loaded parent on success;
+ * throws `NotFoundException` on miss or tenant mismatch.
+ *
+ * Sugar over `repo.findById(id) + assertEqualTenants(parent, { tenantId })`
+ * for the very common pattern at the top of a service write method.
+ *
+ * Tolerates both repository failure shapes (returns `null` *or* throws
+ * `DataNotFoundException`), mirroring `assertUserBelongsToTenant`.
+ *
+ * @example
+ *   const parent = await assertParentInScope(
+ *     this.consultationRepository,
+ *     dto.parentConsultationId,
+ *     this.tenantId,
+ *   );
+ *
+ * @throws NotFoundException — parent missing or in a different tenant
+ */
+export async function assertParentInScope<T extends { id: string; tenantId?: string | null }>(
+  repository: { findById(id: string): Promise<T | null> },
+  parentId: string,
+  callerTenantId: string,
+): Promise<T> {
+  let parent: T | null;
+  try {
+    parent = await repository.findById(parentId);
+  } catch (err) {
+    if (err instanceof DataNotFoundException) {
+      throw new NotFoundException('Resource not found');
+    }
+    throw err;
+  }
+
+  if (parent === null || parent === undefined) {
+    throw new NotFoundException('Resource not found');
+  }
+
+  assertEqualTenants(parent, { tenantId: callerTenantId });
+  return parent;
+}
