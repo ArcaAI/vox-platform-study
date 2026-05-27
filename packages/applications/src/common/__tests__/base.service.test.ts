@@ -224,6 +224,103 @@ describe('BaseService', () => {
     });
   });
 
+  /*
+   * TASK-306 P3.1 / AC-10 — `tenantId` is a security boundary, not a
+   * debug/audit convenience. The merge order in `broadcastSysEvent` must
+   * make the CLS-resolved tenantId WIN over any caller-supplied
+   * `payload.tenantId` so an upstream caller cannot misattribute events
+   * to a foreign tenant. Other CLS-context fields (`responsibleEntityId`,
+   * `responsibleIp`, `correlationId`) remain overridable to keep the
+   * background-process pattern (STT internal, cron jobs) working.
+   */
+  describe('TASK-306 P3.1 — broadcastSysEvent CLS wins on tenantId', () => {
+    it('uses CLS tenantId even when payload supplies a different tenantId', () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return 'tenant-A';
+        return null;
+      });
+
+      service.testBroadcastSysEvent('RESOURCE_CREATED' as SysEventType, {
+        tenantId: 'tenant-B',
+        other: 'x',
+      });
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'RESOURCE_CREATED',
+        expect.objectContaining({
+          tenantId: 'tenant-A',
+          other: 'x',
+        }),
+      );
+    });
+
+    it('uses CLS tenantId when payload omits tenantId', () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return 'tenant-A';
+        return null;
+      });
+
+      service.testBroadcastSysEvent('RESOURCE_CREATED' as SysEventType, {
+        other: 'x',
+      });
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'RESOURCE_CREATED',
+        expect.objectContaining({
+          tenantId: 'tenant-A',
+          other: 'x',
+        }),
+      );
+    });
+
+    it('emits tenantId=null when CLS is absent (does not silently accept payload tenantId)', () => {
+      mockClsService.get.mockReturnValue(null);
+
+      service.testBroadcastSysEvent('RESOURCE_CREATED' as SysEventType, {
+        tenantId: 'tenant-B',
+        other: 'x',
+      });
+
+      const [, payload] = (mockEventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls[0] as [string, Record<string, unknown>];
+      expect(payload.tenantId).toBeNull();
+      expect(payload.other).toBe('x');
+    });
+
+    it('still allows caller to override non-tenant CLS fields (background-process pattern)', () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        switch (key) {
+          case 'tenantId':
+            return 'tenant-A';
+          case 'user':
+            return { id: 'cls-user-id' };
+          case 'requestIp':
+            return '10.0.0.1';
+          case 'correlationId':
+            return 'cls-corr';
+          default:
+            return null;
+        }
+      });
+
+      service.testBroadcastSysEvent('RESOURCE_CREATED' as SysEventType, {
+        tenantId: 'tenant-B',
+        responsibleEntityId: 'payload-user-id',
+        responsibleIp: '192.168.99.99',
+        correlationId: 'payload-corr',
+      });
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'RESOURCE_CREATED',
+        expect.objectContaining({
+          tenantId: 'tenant-A',
+          responsibleEntityId: 'payload-user-id',
+          responsibleIp: '192.168.99.99',
+          correlationId: 'payload-corr',
+        }),
+      );
+    });
+  });
+
   describe('updateEntity', () => {
     it('should apply changes to entity', async () => {
       const entity = new MockEntity();
