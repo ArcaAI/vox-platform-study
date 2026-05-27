@@ -44,6 +44,4 @@ export interface IRepository<DomainEntity extends BaseEntity, DatabaseModel> {
   runQuery(query: QueryBuilder<DatabaseModel>): Promise<DomainEntity | DomainEntity[] | null>;
   query(): QueryBuilder<DatabaseModel>;
   $(): QueryBuilder<DatabaseModel>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  $bulk(txns: any[]): Promise<void>;
 }
