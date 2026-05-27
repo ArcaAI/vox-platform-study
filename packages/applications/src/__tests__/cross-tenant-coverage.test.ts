@@ -84,8 +84,11 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
   {
     name: 'consultation/consultation',
     file: 'services/consultation/consultation/__tests__/consultation.service.test.ts',
-    minTests: 5,
-    marker: /TASK-305 D\.2|cross-aggregate tenant/i,
+    // TASK-306 P2.1 added 9 new it() blocks under the `TASK-306 P2.1 —
+    // Consultation read-paths defense-in-depth` marker (3 getById +
+    // 2 getByIdWithRelations + 4 getConsultationChain). Bumped 5 → 14.
+    minTests: 14,
+    marker: /TASK-305 D\.2|cross-aggregate tenant|TASK-306/i,
   },
   {
     name: 'consultation/context',
