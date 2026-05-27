@@ -23,27 +23,31 @@ export abstract class BaseService implements IBaseService {
   /**
    * Broadcast a system event for audit logging, user activity tracking, and webhooks.
    *
-   * Context fields (responsibleEntityId, responsibleIp, correlationId, tenantId)
-   * are automatically populated from the CLS request context. However, if the caller
-   * explicitly provides any of these fields in the `data` parameter, the explicit
-   * values take precedence over the CLS context.
+   * Context fields (`responsibleEntityId`, `responsibleIp`, `correlationId`)
+   * default from the CLS request context but MAY be overridden by an explicit
+   * value in the `data` payload. This is critical for background/system
+   * processes where the CLS context may not contain the original user
+   * (e.g., STT internal service, cron jobs).
    *
-   * This is critical for background/system processes where CLS context may not
-   * contain the original user (e.g., STT internal service, cron jobs).
+   * `tenantId` is the one exception: it is ALWAYS sourced from the CLS
+   * request context and CANNOT be overridden by a caller-supplied
+   * `payload.tenantId`. Tenant attribution is a security boundary
+   * (HIPAA §164.312(a)(1) — TASK-306 P3.1 / AC-10, closes audit M-5);
+   * letting an upstream caller override it would let a foreign-tenant
+   * payload be misattributed to the active tenant context (or vice versa).
    *
    * @param type - The system event type
-   * @param data - Event payload. Explicit responsibleEntityId overrides CLS context.
+   * @param data - Event payload. Explicit responsibleEntityId/Ip/correlationId
+   *               override CLS context; an explicit `tenantId` is IGNORED.
    */
   broadcastSysEvent(type: SysEventType, data: Partial<SysEvent> | Partial<SendContactMessageEvent>): void {
     this.eventEmitter.emit(type, {
-      // CLS context defaults (can be overridden by explicit values in data)
       responsibleEntityId: this.requestUser?.id,
       responsibleIp: this.requestIp,
       resourceType: this.resourceType,
       correlationId: this.correlationId,
-      tenantId: this.tenantId,
-      // Caller data spread LAST so explicit values override CLS defaults
       ...data,
+      tenantId: this.tenantId,
     });
   }
 
