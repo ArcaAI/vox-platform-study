@@ -1,11 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ResourceType, SysEventType, EntityId, WebhookEntity, WebhookFactory, WebhookRepository } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
 import { IWebhookService } from './IWebhookService';
 import { CreateWebhookRequest, UpdateWebhookRequest } from './dto';
-import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
+import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 
@@ -49,12 +49,28 @@ export class WebhookService extends BaseService implements IWebhookService {
     return webhook;
   }
 
+  /**
+   * TASK-306 P2.3 (audit M-2 / AC-5) — list endpoint scoped to the
+   * caller's tenant. Non-SUPER_ADMIN callers see only their own tenant's
+   * webhooks; SUPER_ADMIN bypasses the filter so cross-tenant
+   * administration tooling can list every webhook in the platform.
+   * Mirrors the W3.2 NotificationService.fetchAll posture.
+   */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<WebhookEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { limit, page, search } = props;
-    const webhooks = await this.webhookRepository.findAll(withFormattedPaginatedProps(props));
+    const baseWhere = this.isSuperAdmin() ? {} : { tenantId: this.tenantId };
+    const paginatedProps = withFormattedPaginatedProps(props);
+    const countProps = withFormattedCountProps(props);
+    const webhooks = await this.webhookRepository.findAll({
+      ...paginatedProps,
+      where: { ...paginatedProps.where, ...baseWhere },
+    });
 
-    const count = await this.webhookRepository.count(withFormattedCountProps(props));
+    const count = await this.webhookRepository.count({
+      ...countProps,
+      where: { ...countProps.where, ...baseWhere },
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {
@@ -69,9 +85,22 @@ export class WebhookService extends BaseService implements IWebhookService {
     });
   }
 
+  /**
+   * TASK-306 P2.3 (audit M-2 / AC-5 + AC-7) — refuse cross-tenant list
+   * reads driven by the DTO `tenantId`. Pre-guard, any caller could
+   * enumerate another tenant's webhooks by supplying a foreign
+   * `tenantId`. SUPER_ADMIN bypasses for admin-tooling cross-tenant
+   * listing (mirrors the W5.1.5 Notification + ApiKey
+   * `fetchAllByTenantId` posture).
+   */
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<WebhookEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { tenantId, limit, page, search } = props;
+
+    if (tenantId !== this.tenantId && !this.isSuperAdmin()) {
+      throw new NotFoundException('Resource not found');
+    }
+
     const webhooks = await this.webhookRepository.findAll({
       ...withFormattedPaginatedProps(props),
       where: {
@@ -129,8 +158,17 @@ export class WebhookService extends BaseService implements IWebhookService {
     });
   }
 
+  /**
+   * TASK-306 P2.3 (audit M-2 / AC-5) — load-then-assert. Throw
+   * `NotFoundException` (never `ForbiddenException`) on a cross-tenant
+   * id so the API does not reveal that the row exists in another
+   * tenant. SUPER_ADMIN bypasses for admin tooling.
+   */
   async fetchById(id: EntityId): Promise<WebhookEntity> {
     const webhook = await this.webhookRepository.findById(id);
+    if (!this.isSuperAdmin()) {
+      assertEqualTenants(webhook, { tenantId: this.tenantId });
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: webhook.id,
@@ -151,6 +189,13 @@ export class WebhookService extends BaseService implements IWebhookService {
    */
   async update(id: EntityId, request: UpdateWebhookRequest): Promise<WebhookEntity> {
     const webhook = await this.webhookRepository.findById(id);
+    // TASK-306 P2.3 (audit M-2 / AC-5) — load-then-assert defense-in-depth.
+    // Throws NotFoundException on cross-tenant id BEFORE the CAS write
+    // fires, so a foreign webhook is never mutated. SUPER_ADMIN bypasses
+    // for admin tooling.
+    if (!this.isSuperAdmin()) {
+      assertEqualTenants(webhook, { tenantId: this.tenantId });
+    }
 
     const previousData = webhook.toObject();
     const { expectedVersion, ...editableRequest } = request;
@@ -174,7 +219,22 @@ export class WebhookService extends BaseService implements IWebhookService {
     return updatedWebhook;
   }
 
+  /**
+   * TASK-306 P2.3 (audit M-2 / AC-5) — load-then-assert before the
+   * soft-delete write. Pre-guard, `softDelete(id)` ran directly with no
+   * tenant check, so a Tenant-A user with knowledge of a foreign id
+   * could delete another tenant's webhook. The new pre-load+assert
+   * surfaces NotFoundException on cross-tenant ids so the foreign row
+   * is never marked deleted. SUPER_ADMIN bypasses the pre-load (saves
+   * a round-trip for admin tooling that legitimately deletes across
+   * tenants).
+   */
   async deleteById(id: EntityId): Promise<WebhookEntity> {
+    if (!this.isSuperAdmin()) {
+      const existing = await this.webhookRepository.findById(id);
+      assertEqualTenants(existing, { tenantId: this.tenantId });
+    }
+
     const webhook = await this.webhookRepository.softDelete(id);
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {

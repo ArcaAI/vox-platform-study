@@ -389,6 +389,233 @@ describe('WebhookService', () => {
         });
     });
 
+    /**
+     * TASK-306 P2.3 (audit M-2 / AC-5) — `WebhookService` was previously
+     * tenant-blind on every read/write surface except `create` (W5.1.4).
+     * This block exercises the full sweep across the remaining 5 methods:
+     *   - 5.3.2 fetchAll: inject `{ tenantId: this.tenantId }` filter
+     *     (SUPER_ADMIN bypass)
+     *   - 5.3.3 fetchById: load-then-assert via assertEqualTenants
+     *   - 5.3.4 update: assert tenant after the pre-write findById
+     *   - 5.3.5 deleteById: load + assert + softDelete
+     *   - 5.3.6 fetchAllByTenantId: CLS gate (refuse cross-tenant DTO
+     *     tenantId for non-SUPER_ADMIN — mirrors W5.1.5
+     *     Notification/ApiKey pattern)
+     *
+     * The CLS default in `beforeEach` is `tenant-1`. Tests use `tenant-2`
+     * for cross-tenant probes. The local `setRequestUserRoles` helper
+     * re-installs the CLS mock with the requested role list.
+     */
+    describe('TASK-306 P2.3 — Webhook tenant-guard sweep', () => {
+        const setRequestUserRoles = (roles: string[] | undefined) => {
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user':
+                        return {
+                            id: 'current-user-id',
+                            firstName: 'Test',
+                            lastName: 'User',
+                            email: 'test@example.com',
+                            roles,
+                        };
+                    case 'tenantId':
+                        return 'tenant-1';
+                    case 'tenantCode':
+                        return 'TENANT_1';
+                    case 'correlationId':
+                        return 'corr-123';
+                    case 'requestIp':
+                        return '192.168.1.1';
+                    default:
+                        return null;
+                }
+            });
+        };
+
+        describe('fetchAll (5.3.2)', () => {
+            it('injects the CLS tenantId into the findAll + count where clauses for non-SUPER_ADMIN callers', async () => {
+                mockWebhookRepository.findAll.mockResolvedValue([]);
+                mockWebhookRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ limit: 10, page: 1 });
+
+                expect(mockWebhookRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({ where: expect.objectContaining({ tenantId: 'tenant-1' }) }),
+                );
+                expect(mockWebhookRepository.count).toHaveBeenCalledWith(
+                    expect.objectContaining({ where: expect.objectContaining({ tenantId: 'tenant-1' }) }),
+                );
+            });
+
+            it('omits the tenant filter when the caller is a SUPER_ADMIN (cross-tenant list)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                mockWebhookRepository.findAll.mockResolvedValue([]);
+                mockWebhookRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ limit: 10, page: 1 });
+
+                const findAllArgs = mockWebhookRepository.findAll.mock.calls[0][0];
+                const countArgs = mockWebhookRepository.count.mock.calls[0][0];
+                expect(findAllArgs.where?.tenantId).toBeUndefined();
+                expect(countArgs.where?.tenantId).toBeUndefined();
+            });
+        });
+
+        describe('fetchById (5.3.3)', () => {
+            it('returns the webhook when the loaded row belongs to the caller (same-tenant)', async () => {
+                const webhook = createMockWebhookEntity({ id: 'webhook-1', tenantId: 'tenant-1' });
+                mockWebhookRepository.findById.mockResolvedValue(webhook);
+
+                const result = await service.fetchById('webhook-1');
+
+                expect(result.id).toBe('webhook-1');
+            });
+
+            it('throws NotFoundException for cross-tenant non-admin reads', async () => {
+                const { NotFoundException } = await import('@nestjs/common');
+                const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2' });
+                mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
+
+                await expect(service.fetchById('webhook-foreign')).rejects.toThrow(NotFoundException);
+            });
+
+            it('returns the cross-tenant webhook when the caller is a SUPER_ADMIN (admin bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2' });
+                mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
+
+                const result = await service.fetchById('webhook-foreign');
+
+                expect(result.id).toBe('webhook-foreign');
+                expect(result.tenantId).toBe('tenant-2');
+            });
+        });
+
+        describe('update (5.3.4)', () => {
+            it('updates when the loaded webhook belongs to the caller (same-tenant)', async () => {
+                const webhook = createMockWebhookEntity({
+                    id: 'webhook-1',
+                    tenantId: 'tenant-1',
+                    hasChanges: true,
+                    changes: { name: 'Updated' },
+                    version: 4,
+                });
+                mockWebhookRepository.findById.mockResolvedValue(webhook);
+                mockWebhookRepository.updateWithVersion.mockResolvedValue({ ...webhook, version: 5 });
+
+                const result = await service.update('webhook-1', { name: 'Updated', expectedVersion: 4 } as never);
+
+                expect(result.id).toBe('webhook-1');
+                expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException + does not mutate for cross-tenant non-admin updates', async () => {
+                const { NotFoundException } = await import('@nestjs/common');
+                const otherWebhook = createMockWebhookEntity({
+                    id: 'webhook-foreign',
+                    tenantId: 'tenant-2',
+                    hasChanges: true,
+                    changes: { name: 'Updated' },
+                    version: 4,
+                });
+                mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
+
+                await expect(
+                    service.update('webhook-foreign', { name: 'Updated', expectedVersion: 4 } as never),
+                ).rejects.toThrow(NotFoundException);
+                // Guard short-circuits BEFORE the CAS write fires.
+                expect(mockWebhookRepository.updateWithVersion).not.toHaveBeenCalled();
+            });
+
+            it('updates a cross-tenant webhook when the caller is a SUPER_ADMIN (admin bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const otherWebhook = createMockWebhookEntity({
+                    id: 'webhook-foreign',
+                    tenantId: 'tenant-2',
+                    hasChanges: true,
+                    changes: { name: 'Updated' },
+                    version: 4,
+                });
+                mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
+                mockWebhookRepository.updateWithVersion.mockResolvedValue({ ...otherWebhook, version: 5 });
+
+                const result = await service.update('webhook-foreign', { name: 'Updated', expectedVersion: 4 } as never);
+
+                expect(result.id).toBe('webhook-foreign');
+                expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalled();
+            });
+        });
+
+        describe('deleteById (5.3.5)', () => {
+            it('deletes when the loaded webhook belongs to the caller (same-tenant)', async () => {
+                const webhook = createMockWebhookEntity({ id: 'webhook-1', tenantId: 'tenant-1' });
+                mockWebhookRepository.findById.mockResolvedValue(webhook);
+                mockWebhookRepository.softDelete.mockResolvedValue({ ...webhook, deletedAt: new Date() });
+
+                const result = await service.deleteById('webhook-1');
+
+                expect(result.id).toBe('webhook-1');
+                expect(mockWebhookRepository.softDelete).toHaveBeenCalledWith('webhook-1');
+            });
+
+            it('throws NotFoundException + does not soft-delete for cross-tenant non-admin requests', async () => {
+                const { NotFoundException } = await import('@nestjs/common');
+                const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2' });
+                mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
+
+                await expect(service.deleteById('webhook-foreign')).rejects.toThrow(NotFoundException);
+                // Guard short-circuits BEFORE the soft-delete fires.
+                expect(mockWebhookRepository.softDelete).not.toHaveBeenCalled();
+            });
+
+            it('deletes a cross-tenant webhook when the caller is a SUPER_ADMIN (admin bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2' });
+                mockWebhookRepository.softDelete.mockResolvedValue({ ...otherWebhook, deletedAt: new Date() });
+
+                const result = await service.deleteById('webhook-foreign');
+
+                expect(result.id).toBe('webhook-foreign');
+                expect(mockWebhookRepository.softDelete).toHaveBeenCalledWith('webhook-foreign');
+            });
+        });
+
+        describe('fetchAllByTenantId (5.3.6)', () => {
+            it('returns rows when the DTO tenantId matches the caller CLS tenant', async () => {
+                const webhooks = [createMockWebhookEntity({ id: 'webhook-1', tenantId: 'tenant-1' })];
+                mockWebhookRepository.findAll.mockResolvedValue(webhooks);
+                mockWebhookRepository.count.mockResolvedValue(1);
+
+                const result = await service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 'tenant-1' });
+
+                expect(result.data).toHaveLength(1);
+                expect(result.data[0].tenantId).toBe('tenant-1');
+            });
+
+            it('throws NotFoundException for cross-tenant non-admin reads', async () => {
+                const { NotFoundException } = await import('@nestjs/common');
+
+                await expect(
+                    service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 'tenant-2' }),
+                ).rejects.toThrow(NotFoundException);
+                // Guard short-circuits BEFORE hitting the repository.
+                expect(mockWebhookRepository.findAll).not.toHaveBeenCalled();
+            });
+
+            it('returns rows for a cross-tenant SUPER_ADMIN read (bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const webhooks = [createMockWebhookEntity({ id: 'webhook-x', tenantId: 'tenant-2' })];
+                mockWebhookRepository.findAll.mockResolvedValue(webhooks);
+                mockWebhookRepository.count.mockResolvedValue(1);
+
+                const result = await service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 'tenant-2' });
+
+                expect(result.data).toHaveLength(1);
+                expect(result.data[0].tenantId).toBe('tenant-2');
+            });
+        });
+    });
+
     describe('fetchAll', () => {
         it('should return paginated webhooks with correct pagination metadata', async () => {
             const webhooks = [
@@ -490,13 +717,18 @@ describe('WebhookService', () => {
         });
 
         it('should return empty result when no webhooks match tenant', async () => {
+            // TASK-306 P2.3 (5.3.6) — `fetchAllByTenantId` now refuses
+            // cross-tenant reads. Align this empty-result probe with the
+            // CLS default (`tenant-1`) so the new guard does not
+            // short-circuit and the assertion still validates the
+            // "no rows" branch the original test was protecting.
             mockWebhookRepository.findAll.mockResolvedValue([]);
             mockWebhookRepository.count.mockResolvedValue(0);
 
             const result = await service.fetchAllByTenantId({
                 limit: 10,
                 page: 1,
-                tenantId: 'non-existent-tenant',
+                tenantId: 'tenant-1',
             });
 
             expect(result.data).toHaveLength(0);

@@ -135,10 +135,13 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     marker: /TASK-305 D\.7|tenantId pinning/i,
   },
   /*
-   * TASK-306 W5.1 — two services that previously had no cross-tenant
+   * TASK-306 W5.1 + W5.3 — services that previously had no cross-tenant
    * aggregator entry. Each tracks its own `describe('TASK-306 P1.x ...')`
-   * block via a `TASK-306` marker so a future delete of the block trips
-   * CI (mirrors the W5.5.6 anti-regression intent).
+   * / `describe('TASK-306 P2.x ...')` block via a `TASK-306` marker so a
+   * future delete of the block trips CI (mirrors the W5.5.6
+   * anti-regression intent). The marker is intentionally broad
+   * (`/TASK-306/`) so subsequent waves can extend the same coverage
+   * without churning this allow-list.
    */
   {
     name: 'tenant',
@@ -146,8 +149,10 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     // TASK-306 P1.3 added 6 it() blocks (3 per method: fetchById +
     // fetchByCodeName, same-tenant / cross-tenant non-admin /
     // cross-tenant SUPER_ADMIN).
-    minTests: 6,
-    marker: /TASK-306 P1\.3/,
+    // TASK-306 P2.2 / W5.3.1 added 6 more (same matrix for
+    // fetchTenantConfigs by tenantId + by codeName). 6 → 12.
+    minTests: 12,
+    marker: /TASK-306/,
   },
   {
     name: 'webhook',
@@ -155,8 +160,35 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     // TASK-306 P1.4 added 3 it() blocks under the
     // `resolveEffectiveTenantId` describe (non-admin cross-tenant pin,
     // non-admin no-DTO pin, SUPER_ADMIN cross-tenant honor).
-    minTests: 3,
-    marker: /TASK-306 P1\.4/,
+    // TASK-306 P2.3 / W5.3.2-5.3.6 added 14 more:
+    //   - fetchAll (5.3.2): 2 (CLS-injected filter, SUPER_ADMIN bypass)
+    //   - fetchById (5.3.3): 3 (same / cross 404 / SUPER_ADMIN)
+    //   - update (5.3.4): 3 (same / cross 404 / SUPER_ADMIN)
+    //   - deleteById (5.3.5): 3 (same / cross 404 / SUPER_ADMIN)
+    //   - fetchAllByTenantId (5.3.6): 3 (same / cross 404 / SUPER_ADMIN)
+    // 3 → 17.
+    minTests: 17,
+    marker: /TASK-306/,
+  },
+  /*
+   * TASK-306 W5.3 — ResourceSubscriptionService had no cross-tenant
+   * aggregator entry pre-W5.3 because the service was tenant-blind on
+   * every surface. W5.3.7-5.3.11 added a full DEF-C3 sweep across 5
+   * methods. All tests live under
+   * `describe('TASK-306 P2.4 — ResourceSubscription tenant-guard
+   * sweep')`. Floor counts:
+   *   - fetchAll (5.3.7): 2
+   *   - fetchAllByResource (5.3.8): 2
+   *   - fetchById (5.3.9): 3
+   *   - update (5.3.10): 3
+   *   - deleteById (5.3.11): 3
+   * Total ≥ 13.
+   */
+  {
+    name: 'resourceSubscription',
+    file: 'services/resourceSubscription/__tests__/resourceSubscription.service.test.ts',
+    minTests: 13,
+    marker: /TASK-306/i,
   },
 ];
 
