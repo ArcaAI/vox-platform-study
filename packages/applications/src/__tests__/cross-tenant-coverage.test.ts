@@ -93,8 +93,17 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
   {
     name: 'consultation/context',
     file: 'services/consultation/context/__tests__/context.service.test.ts',
-    minTests: 5,
-    marker: /TASK-305 D\.3|cross-aggregate tenant/i,
+    // TASK-306 P2.5 / W5.4.2 added 9 new it() blocks under the
+    // `TASK-306 P2.5 — ContextItem array-input defense-in-depth`
+    // marker (5 getSharedContext + 2 getSharedCaseNotes + 2
+    // getAggregateNamedEntities). Marker broadened from
+    // `/TASK-305 D\.3|cross-aggregate tenant/i` → `/TASK-306/` to
+    // align with the W5.3.12 convention (drop `/i`, single-token
+    // anchor). The TASK-305 D.3 block stays in the test file as
+    // anti-regression coverage but is now pinned by the W5.5.6
+    // FS-introspection harden rather than an explicit floor here.
+    minTests: 9,
+    marker: /TASK-306/,
   },
   {
     name: 'consultation/summary',

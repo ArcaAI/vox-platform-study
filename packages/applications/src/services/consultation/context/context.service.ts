@@ -777,24 +777,63 @@ export class ContextService extends BaseService implements IContextService {
    * Combines two strategies and deduplicates:
    * 1. Chain-based — follows parentConsultationId links
    * 2. Date-based — all consultations for the same (tenantId, patientId, appointmentDate)
+   *
+   * TASK-306 P2.5 / AC-9 — Audit surface for array-input ContextItem reads.
+   *
+   * Three public methods consume the consultation-ID array returned by this
+   * helper and pass it as `ids: string[]` to ContextItemRepository methods:
+   *
+   *   - `getSharedContext(consultationId)`        → findSharedContext(allIds)
+   *   - `getSharedCaseNotes(consultationId)`      → findCaseNotesFromChain(allIds)
+   *   - `getAggregateNamedEntities(consultationId, scope)`
+   *       (scope=chain branch via consultationIds[]; scope=single uses [consultationId])
+   *
+   * The Prisma `tenantScope` extension scopes every repo call that flows
+   * through `findMany`/`findFirst`/`findById`/etc., so single-id paths are
+   * already covered. The defense-in-depth concern here is
+   * `findConsultationChain`: if `parentConsultationId` was ever set
+   * cross-tenant by a buggy write pre-TASK-305-W3.1 (or if the extension
+   * is bypassed), the chain array could include foreign-tenant ids.
+   * Filter the chain to the caller's CLS tenant BEFORE the downstream
+   * repository calls. SUPER_ADMIN bypass is intentionally NOT applied
+   * here — these methods compose tenant-scoped per-item data on a hot
+   * PHI read path; any cross-tenant visibility for platform admins must
+   * be exposed via an explicit method, not a side effect of this helper.
    */
   private async resolveLinkedConsultationIds(consultationId: string): Promise<string[]> {
     const consultation = await this.consultationRepository.findById(consultationId);
     if (!consultation) return [];
 
-    // Strategy 1: Chain-based (existing behaviour)
-    const chain = await this.consultationRepository.findConsultationChain(consultationId);
-    const chainIds = new Set(chain.map((c) => c.id));
+    // Defense-in-depth: caller's CLS tenant. Even though `findById`
+    // above is tenant-scoped by the Prisma extension and returns null
+    // on foreign-tenant, we still need to anchor the downstream filter
+    // to a known-safe tenantId. Fail closed (return []) on missing CLS
+    // or foreign-tenant root — both are hot read paths where throwing
+    // would be over-eager.
+    const callerTenantId = this.tenantId;
+    if (!callerTenantId) return [];
+    if (consultation.tenantId !== callerTenantId) return [];
 
-    // Strategy 2: Date-based (new — same patient, same day, any department)
+    // Strategy 1: Chain-based — filtered to caller tenant to defend
+    // against pre-W3.1 parentConsultationId poisoning / a defeated
+    // extension that returns cross-tenant rows.
+    const chain = await this.consultationRepository.findConsultationChain(consultationId);
+    const chainIds = chain.filter((c) => c.tenantId === callerTenantId).map((c) => c.id);
+
+    // Strategy 2: Date-based (same patient, same day, any department).
+    // Pass `callerTenantId` (from CLS) rather than `consultation.tenantId`
+    // so the contract is self-evident even if `consultation.tenantId`
+    // is stale from a poisoned write. Filter the response defensively
+    // for the same reason.
     const sameDayConsultations = await this.consultationRepository.findByPatientAndDate(
-      consultation.tenantId,
+      callerTenantId,
       consultation.patientId,
       consultation.appointmentDate,
     );
-    const sameDayIds = sameDayConsultations.map((c) => c.id);
+    const sameDayIds = sameDayConsultations
+      .filter((c) => c.tenantId === callerTenantId)
+      .map((c) => c.id);
 
-    // Merge and deduplicate
     return [...new Set([...chainIds, ...sameDayIds])];
   }
 
