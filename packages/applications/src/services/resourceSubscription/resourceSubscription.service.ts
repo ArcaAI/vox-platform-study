@@ -104,6 +104,14 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
     return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
   }
 
+  /**
+   * TASK-306 P2.4 (audit M-3 / AC-6) — resource-scoped list endpoint
+   * with tenant injection. Non-SUPER_ADMIN callers see only their own
+   * tenant's subscriptions to the resource; SUPER_ADMIN bypasses the
+   * tenant filter so admin tooling can list every subscription on a
+   * cross-tenant resource. The resource scoping itself is enforced for
+   * everyone (no SUPER_ADMIN bypass for the resource predicate).
+   */
   async fetchAllByResource(
     props: PaginatedQuery & { resourceTypeName: string; resourceId: string },
   ): Promise<FetchResponse<ResourceSubscriptionEntity>> {
@@ -113,11 +121,14 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
       throw new ArgumentNotProvidedException(`Invalid arguments: resourceId: ${resourceId}, resourceTypeName: ${resourceTypeName}`);
     }
 
+    const baseWhere = this.isSuperAdmin() ? {} : { tenantId: this.tenantId };
+
     const resourceSubscriptions = await this.resourceSubscriptionRepository.findAll({
       page,
       limit,
       search,
       where: {
+        ...baseWhere,
         resourceId,
         resourceTypeName: resourceTypeName as ResourceType,
       },
@@ -126,6 +137,7 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
     const count = await this.resourceSubscriptionRepository.count({
       ...withFormattedCountProps(props),
       where: {
+        ...baseWhere,
         resourceId,
         resourceTypeName: resourceTypeName as ResourceType,
       },
