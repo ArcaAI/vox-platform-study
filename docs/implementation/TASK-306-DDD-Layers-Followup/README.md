@@ -509,7 +509,7 @@ Answer: we should ship W5.1-W5.5 as 5 separate PRs (clean reviewable units).
 
 ---
 
-## 5. Implementation Summary
+## Implementation Summary
 
 > All 6 waves landed on `fix/2605-review` between 2026-05-27 (W5.1) and
 > 2026-05-27 (W5.6 — this wave). Engineer-hours actual ≈ 13 vs. 14

@@ -1117,6 +1117,11 @@ describe('ConsultationService', () => {
     // ============================================================
     describe('TASK-306 P2.1 — Consultation read-paths defense-in-depth', () => {
         describe('getById', () => {
+            // TASK-306 P2.1 regression-pin (306-F7) — intentional duplicate
+            // of the pre-W5.2 happy-path test. Kept under the P2.1 marker
+            // so the describe block is self-contained: deleting the
+            // pre-W5.2 happy-path test elsewhere must not silently delete
+            // the P2.1 marker's positive control.
             it('returns DTO when the fetched entity tenant matches caller CLS tenant (sanity)', async () => {
                 const consultation = createMockConsultationEntity({
                     id: 'consultation-id-1',
@@ -1154,7 +1159,16 @@ describe('ConsultationService', () => {
                 expect(mockEventEmitter.emit).not.toHaveBeenCalled();
             });
 
-            it('throws fail-closed when CLS tenantId is missing and the repo returns a row', async () => {
+            it('throws fail-closed when CLS tenantId is missing and the repo returns a row (belt-and-suspenders for the post-fetch assertEqualTenants guard)', async () => {
+                // TASK-306 W5.7.7 (306-F5) note — after the hoisted CLS check
+                // landed in `getById`, this test's `findWithContext` mock
+                // is structurally unreachable: the hoist throws before the
+                // repo call. The test is retained as a defense-in-depth
+                // regression-pin for the post-fetch `assertEqualTenants`
+                // guard — if a future change ever removes or weakens the
+                // hoist, this test still catches the contract violation
+                // (missing CLS must throw, not return). DO NOT delete the
+                // mock; it documents that both layers fail closed.
                 mockClsService.get.mockImplementation((key: string) => {
                     if (key === 'tenantId') return null;
                     if (key === 'user') return { id: 'user-id-1' };
@@ -1166,13 +1180,28 @@ describe('ConsultationService', () => {
                 });
                 mockConsultationRepository.findWithContext.mockResolvedValue(consultation);
 
-                // `assertEqualTenants` raises BadRequestException when either
-                // side's tenantId is missing — background / unprovisioned
-                // contexts must fail closed rather than leak the row.
                 await expect(
                     service.getById('consultation-id-1'),
                 ).rejects.toThrow(BadRequestException);
 
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('throws BadRequestException without calling repo when CLS tenantId is missing (306-F5 hoist)', async () => {
+                // TASK-306 W5.7.7 (306-F5) — the hoisted CLS check short-
+                // circuits BEFORE the repo round-trip, matching the
+                // `getConsultationChain` convention. Saves a useless DB
+                // call on background / unprovisioned contexts that have
+                // no chance of returning a visible row.
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'tenantId') return null;
+                    if (key === 'user') return { id: 'user-id-1' };
+                    return null;
+                });
+
+                await expect(service.getById('any-id')).rejects.toThrow(BadRequestException);
+
+                expect(mockConsultationRepository.findWithContext).not.toHaveBeenCalled();
                 expect(mockEventEmitter.emit).not.toHaveBeenCalled();
             });
         });
@@ -1200,7 +1229,13 @@ describe('ConsultationService', () => {
                 expect(mockEventEmitter.emit).not.toHaveBeenCalled();
             });
 
-            it('throws fail-closed when CLS tenantId is missing and the repo returns a row', async () => {
+            it('throws fail-closed when CLS tenantId is missing and the repo returns a row (belt-and-suspenders for the post-fetch assertEqualTenants guard)', async () => {
+                // TASK-306 W5.7.7 (306-F5) note — sibling of the getById
+                // test's annotation above: the W5.7.7 hoist makes this
+                // `findWithRelations` mock unreachable, but the test is
+                // retained as a defense-in-depth regression-pin for the
+                // post-fetch `assertEqualTenants` guard. See the getById
+                // sibling test for the full rationale.
                 mockClsService.get.mockImplementation((key: string) => {
                     if (key === 'tenantId') return null;
                     if (key === 'user') return { id: 'user-id-1' };
@@ -1218,9 +1253,45 @@ describe('ConsultationService', () => {
 
                 expect(mockEventEmitter.emit).not.toHaveBeenCalled();
             });
+
+            it('throws BadRequestException without calling repo when CLS tenantId is missing (306-F5 hoist)', async () => {
+                // TASK-306 W5.7.7 (306-F5) — sibling of the getById hoist
+                // test: the missing-CLS check now short-circuits BEFORE the
+                // relations round-trip (which is more expensive than a
+                // plain findById on Consultation given the Doctor /
+                // Department / Context joins).
+                mockClsService.get.mockImplementation((key: string) => {
+                    if (key === 'tenantId') return null;
+                    if (key === 'user') return { id: 'user-id-1' };
+                    return null;
+                });
+
+                await expect(service.getByIdWithRelations('any-id')).rejects.toThrow(BadRequestException);
+
+                expect(mockConsultationRepository.findWithRelations).not.toHaveBeenCalled();
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
         });
 
         describe('getConsultationChain', () => {
+            it('returns [] when repo returns an empty chain (vs. all-foreign chain → throw)', async () => {
+                // TASK-306 306-F6 — pin the empty-vs-all-foreign distinction
+                // self-contained under the P2.1 marker. Empty repo result is
+                // a legitimate "no chain exists" case (return [], emit
+                // ResourceViewed with chainCount=0). Non-empty all-foreign is
+                // a leak attempt and MUST throw (see "throws … EVERY returned
+                // chain row is foreign-tenant" test below).
+                mockConsultationRepository.findConsultationChain.mockResolvedValue([]);
+
+                const result = await service.getConsultationChain('any-id');
+
+                expect(result).toEqual([]);
+                expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                    SysEventType.ResourceViewed,
+                    expect.objectContaining({ data: { consultationId: 'any-id', chainCount: 0 } }),
+                );
+            });
+
             it('returns all rows when the entire chain lives in the caller tenant', async () => {
                 const chain = [
                     createMockConsultationEntity({ id: 'parent-id', tenantId: 'tenant-1' }),

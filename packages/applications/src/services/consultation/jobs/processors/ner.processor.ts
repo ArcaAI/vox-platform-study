@@ -9,9 +9,8 @@ import { JobQueue, ContextItemRepository, NamedEntityRepository, NamedEntityFact
 import { IConsultationJobService } from '../consultation-job.service';
 import { ExtractNerJobPayload, NerJobResult } from '../dto';
 import { ConsultationPipelineEvent, NerExtractedPayload } from '../../events';
-import { UserSession } from '../../../auth/dto';
 import { IActiveUserContext } from '../../../../interfaces';
-import { assertEqualTenants } from '../../../../common';
+import { assertEqualTenants, createWorkerSession } from '../../../../common';
 
 @Processor(JobQueue.ExtractNamedEntities)
 export class NerProcessor extends WorkerHost {
@@ -41,7 +40,7 @@ export class NerProcessor extends WorkerHost {
     // Phase B tenantScope Prisma extension sees the correct context.
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      this.cls.set('user', { id: userId, tenantId, roles: [], permissions: [] } as unknown as UserSession);
+      this.cls.set('user', createWorkerSession({ userId, tenantId, kind: 'ner' }));
 
       this.logger.log({
         message: 'Processing NER job',

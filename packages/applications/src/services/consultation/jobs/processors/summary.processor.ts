@@ -14,9 +14,8 @@ import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
-import { UserSession } from '../../../auth/dto';
 import { IActiveUserContext } from '../../../../interfaces';
-import { assertEqualTenants } from '../../../../common';
+import { assertEqualTenants, createWorkerSession } from '../../../../common';
 
 @Processor(JobQueue.GenerateSummary)
 export class SummaryProcessor extends WorkerHost {
@@ -53,7 +52,7 @@ export class SummaryProcessor extends WorkerHost {
     // "no CLS = super-admin pass-through" branch silently bypasses scoping).
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      this.cls.set('user', { id: userId, tenantId, roles: [], permissions: [] } as unknown as UserSession);
+      this.cls.set('user', createWorkerSession({ userId, tenantId, kind: 'summary' }));
 
       let request = job.data.request;
       const endTimer = this.jobMetrics.recordJobStart(JobQueue.GenerateSummary);

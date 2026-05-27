@@ -366,7 +366,7 @@ describe('WebhookService', () => {
                 name: 'No-Tenant Webhook',
                 url: 'https://example.com/webhook',
                 resourceTypeName: 'User',
-            } as never);
+            });
 
             const factoryInput = mockWebhookRepository.create.mock.calls[0][0];
             expect(factoryInput.tenantId).toBe('tenant-1');
@@ -386,6 +386,98 @@ describe('WebhookService', () => {
 
             const factoryInput = mockWebhookRepository.create.mock.calls[0][0];
             expect(factoryInput.tenantId).toBe('tenant-B');
+        });
+    });
+
+    /**
+     * TASK-306 W5.7.6 (306-F2) — `WebhookService.resolveEffectiveTenantId`
+     * silently coerces a non-SUPER_ADMIN cross-tenant create attempt to
+     * the CLS tenant (the W5.1.4 contract). Persistence is correct, but
+     * SOC has no observability for the coercion event — a foreign-tenant
+     * DTO `tenantId` produces an identical persisted state to a properly-
+     * formed request, so audit logs cannot distinguish the two.
+     *
+     * The fix adds a one-shot `logger.warn` ONLY on the cross-tenant
+     * coercion branch. Same-tenant and tenantId-omitted writes stay
+     * silent (those are benign / expected); SUPER_ADMIN cross-tenant
+     * writes also stay silent (those are explicitly allowed).
+     */
+    describe('TASK-306 W5.7.6 — resolveEffectiveTenantId observability', () => {
+        const setRequestUserRoles = (roles: string[] | undefined) => {
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user':
+                        return {
+                            id: 'current-user-id',
+                            firstName: 'Test',
+                            lastName: 'User',
+                            email: 'test@example.com',
+                            roles,
+                        };
+                    case 'tenantId':
+                        return 'tenant-1';
+                    case 'tenantCode':
+                        return 'TENANT_1';
+                    case 'correlationId':
+                        return 'corr-123';
+                    case 'requestIp':
+                        return '192.168.1.1';
+                    default:
+                        return null;
+                }
+            });
+        };
+
+        it('logs a warn when a non-SUPER_ADMIN passes a foreign tenantId (silent coercion observability)', async () => {
+            const warnSpy = vi.spyOn(service['logger'], 'warn');
+            const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
+            mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
+
+            await service.create({
+                tenantId: 'tenant-OTHER',
+                name: 'Sneaky Webhook',
+                url: 'https://example.com/webhook',
+                resourceTypeName: 'User',
+            });
+
+            expect(warnSpy).toHaveBeenCalledWith(
+                'Webhook cross-tenant attempt coerced to CLS',
+                expect.objectContaining({
+                    requestedTenantId: 'tenant-OTHER',
+                    callerTenantId: 'tenant-1',
+                    userId: 'current-user-id',
+                }),
+            );
+        });
+
+        it('does NOT log a warn when a non-SUPER_ADMIN omits request.tenantId (benign happy path)', async () => {
+            const warnSpy = vi.spyOn(service['logger'], 'warn');
+            const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
+            mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
+
+            await service.create({
+                name: 'No-Tenant Webhook',
+                url: 'https://example.com/webhook',
+                resourceTypeName: 'User',
+            });
+
+            expect(warnSpy).not.toHaveBeenCalled();
+        });
+
+        it('does NOT log a warn when a SUPER_ADMIN cross-tenant creates (explicit allow)', async () => {
+            setRequestUserRoles(['SUPER_ADMIN']);
+            const warnSpy = vi.spyOn(service['logger'], 'warn');
+            const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-B' });
+            mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
+
+            await service.create({
+                tenantId: 'tenant-B',
+                name: 'Cross-Tenant Webhook',
+                url: 'https://example.com/webhook',
+                resourceTypeName: 'User',
+            });
+
+            expect(warnSpy).not.toHaveBeenCalled();
         });
     });
 
@@ -477,6 +569,17 @@ describe('WebhookService', () => {
                 mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
 
                 await expect(service.fetchById('webhook-foreign')).rejects.toThrow(NotFoundException);
+
+                // TASK-306 306-F8 — pin "no audit-log leak on denied read":
+                // the assertEqualTenants throw must short-circuit BEFORE the
+                // ResourceViewed broadcast. Structurally guaranteed by the
+                // guard's throw position, but the explicit negative-assertion
+                // makes the contract self-evident at the test level (matches
+                // the existing update/deleteById denial-test pattern).
+                expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+                    SysEventType.ResourceViewed,
+                    expect.anything(),
+                );
             });
 
             it('returns the cross-tenant webhook when the caller is a SUPER_ADMIN (admin bypass)', async () => {

@@ -22,7 +22,7 @@ import { ClsService } from 'nestjs-cls';
 import { ConsultationRepository } from '@arcaai/domains';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
 import { PromptResolutionService } from '../prompt/prompt-resolution.service';
-import { UserSession } from '../../auth/dto';
+import { createWorkerSession } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import {
   ConsultationPipelineEvent,
@@ -84,12 +84,7 @@ export class ConsultationEventHandler {
     // SUPER_ADMIN bypass.
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      this.cls.set('user', {
-        id: payload.userId ?? 'system',
-        tenantId,
-        roles: [],
-        permissions: [],
-      } as unknown as UserSession);
+      this.cls.set('user', createWorkerSession({ userId: payload.userId, tenantId, kind: 'transcription-created-event' }));
 
       this.logger.log({
         message: 'TranscriptionCreated event received',
@@ -196,12 +191,7 @@ export class ConsultationEventHandler {
     // TASK-305 D.9 follow-up — re-establish CLS for the @OnEvent microtask.
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      this.cls.set('user', {
-        id: payload.userId ?? 'system',
-        tenantId,
-        roles: [],
-        permissions: [],
-      } as unknown as UserSession);
+      this.cls.set('user', createWorkerSession({ userId: payload.userId, tenantId, kind: 'summary-generated-event' }));
 
       this.logger.log({
         message: 'SummaryGenerated event received',
@@ -298,12 +288,7 @@ export class ConsultationEventHandler {
     // TASK-305 D.9 follow-up — re-establish CLS for the @OnEvent microtask.
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      this.cls.set('user', {
-        id: payload.userId ?? 'system',
-        tenantId,
-        roles: [],
-        permissions: [],
-      } as unknown as UserSession);
+      this.cls.set('user', createWorkerSession({ userId: payload.userId, tenantId, kind: 'ner-extracted-event' }));
 
       this.logger.log({
         message: 'NerExtracted event received',
