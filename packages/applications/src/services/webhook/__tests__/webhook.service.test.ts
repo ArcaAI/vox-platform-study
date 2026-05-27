@@ -366,7 +366,7 @@ describe('WebhookService', () => {
                 name: 'No-Tenant Webhook',
                 url: 'https://example.com/webhook',
                 resourceTypeName: 'User',
-            } as never);
+            });
 
             const factoryInput = mockWebhookRepository.create.mock.calls[0][0];
             expect(factoryInput.tenantId).toBe('tenant-1');
