@@ -46,6 +46,13 @@ const mockCacheService = {
     setex: vi.fn(),
 };
 
+// Mock ClsService (CLS boundary) — kept here so tenant-scoping tests
+// (TASK-305 D.8) can opt-in by passing it to the constructor.
+const mockClsService = {
+    get: vi.fn(),
+    set: vi.fn(),
+};
+
 describe('AuthorizationAuditService', () => {
     let service: AuthorizationAuditService;
 
@@ -57,10 +64,22 @@ describe('AuthorizationAuditService', () => {
         mockCacheService.publish.mockResolvedValue(undefined);
         mockCacheService.setex.mockResolvedValue(undefined);
 
-        // Create service instance with mocks
+        // Default CLS context: Tenant A admin (no SUPER_ADMIN role)
+        mockClsService.get.mockImplementation((key: string) => {
+            switch (key) {
+                case 'tenantId': return 'tenant-a';
+                case 'user': return { id: 'admin-a', roles: ['TenantAdmin'] };
+                default: return null;
+            }
+        });
+
+        // Default service: constructed WITH the CLS mock so tenant scoping
+        // is enabled. The "service without Redis cache" describe block below
+        // continues to omit it (verifying the @Optional() boundary).
         service = new AuthorizationAuditService(
             mockDatabaseService as any,
             mockCacheService as any,
+            mockClsService as any,
         );
     });
 
@@ -1056,6 +1075,156 @@ describe('AuthorizationAuditService', () => {
             const result = await service.getAuthorizationHistory('user-xyz-789');
 
             expect(result[0].userId).toBe('user-xyz-789');
+        });
+    });
+
+    /**
+     * TASK-305 D.8 — Multi-tenant scoping for raw Prisma audit queries
+     *
+     * Audit finding C-5 (HIPAA §164.312(b)): `getAuthorizationHistory`,
+     * `getRecentDenials`, and `getDenialCount` bypassed `AuditLogRepository`
+     * via `(prisma as any).auditLog.findMany(...)` with NO tenant scoping,
+     * letting any caller query across all tenants. Methods MUST now inject
+     * `tenantId` from CLS into the `where` clause; only SUPER_ADMIN may bypass.
+     */
+    describe('Multi-tenant scoping (TASK-305 D.8)', () => {
+        describe('getAuthorizationHistory', () => {
+            it('should inject caller tenantId from CLS into the where clause', async () => {
+                mockPrismaClient.auditLog.findMany.mockResolvedValue([]);
+
+                await service.getAuthorizationHistory('user-123');
+
+                expect(mockPrismaClient.auditLog.findMany).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: expect.objectContaining({
+                            tenantId: 'tenant-a',
+                            responsibleUserId: 'user-123',
+                            eventType: 'AUTHORIZATION',
+                        }),
+                    })
+                );
+            });
+
+            it('should NOT inject tenantId for SUPER_ADMIN caller', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    switch (key) {
+                        case 'tenantId': return 'tenant-a';
+                        case 'user': return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                        default: return null;
+                    }
+                });
+                mockPrismaClient.auditLog.findMany.mockResolvedValue([]);
+
+                await service.getAuthorizationHistory('user-123');
+
+                const callWhere = mockPrismaClient.auditLog.findMany.mock.calls[0][0].where;
+                expect(callWhere.tenantId).toBeUndefined();
+                expect(callWhere).toEqual(expect.objectContaining({
+                    responsibleUserId: 'user-123',
+                    eventType: 'AUTHORIZATION',
+                }));
+            });
+
+            it('should NOT inject tenantId when no CLS context is wired (back-compat)', async () => {
+                const serviceNoCls = new AuthorizationAuditService(
+                    mockDatabaseService as any,
+                    mockCacheService as any,
+                );
+                mockPrismaClient.auditLog.findMany.mockResolvedValue([]);
+
+                await serviceNoCls.getAuthorizationHistory('user-123');
+
+                const callWhere = mockPrismaClient.auditLog.findMany.mock.calls[0][0].where;
+                expect(callWhere.tenantId).toBeUndefined();
+            });
+        });
+
+        describe('getRecentDenials', () => {
+            it('should inject caller tenantId from CLS into the where clause', async () => {
+                mockPrismaClient.auditLog.findMany.mockResolvedValue([]);
+
+                await service.getRecentDenials();
+
+                expect(mockPrismaClient.auditLog.findMany).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: expect.objectContaining({
+                            tenantId: 'tenant-a',
+                            eventType: 'AUTHORIZATION',
+                            success: false,
+                        }),
+                    })
+                );
+            });
+
+            it('should NOT inject tenantId for SUPER_ADMIN caller (cross-tenant denial query)', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    switch (key) {
+                        case 'tenantId': return 'tenant-a';
+                        case 'user': return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                        default: return null;
+                    }
+                });
+                mockPrismaClient.auditLog.findMany.mockResolvedValue([]);
+
+                await service.getRecentDenials();
+
+                const callWhere = mockPrismaClient.auditLog.findMany.mock.calls[0][0].where;
+                expect(callWhere.tenantId).toBeUndefined();
+            });
+        });
+
+        describe('getDenialCount', () => {
+            it('should propagate caller tenantId via getAuthorizationHistory', async () => {
+                mockPrismaClient.auditLog.findMany.mockResolvedValue([]);
+
+                await service.getDenialCount('user-123', 30);
+
+                const callWhere = mockPrismaClient.auditLog.findMany.mock.calls[0][0].where;
+                expect(callWhere.tenantId).toBe('tenant-a');
+                expect(callWhere.responsibleUserId).toBe('user-123');
+            });
+
+            it('should NOT scope by tenant for SUPER_ADMIN caller', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    switch (key) {
+                        case 'tenantId': return 'tenant-a';
+                        case 'user': return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                        default: return null;
+                    }
+                });
+                mockPrismaClient.auditLog.findMany.mockResolvedValue([]);
+
+                await service.getDenialCount('user-123');
+
+                const callWhere = mockPrismaClient.auditLog.findMany.mock.calls[0][0].where;
+                expect(callWhere.tenantId).toBeUndefined();
+            });
+        });
+
+        describe('Missing tenantId in CLS', () => {
+            it('should still inject undefined tenantId (Prisma treats as no filter — log only, no enforcement) — guarded only by SUPER_ADMIN path', async () => {
+                // When CLS has no tenantId AND caller is not SUPER_ADMIN we still
+                // refuse to widen the query to all tenants by leaving the
+                // explicit `tenantId: undefined` out of the where. This means
+                // Prisma matches every row. To prevent that, we filter on a
+                // sentinel `null` tenant so the query returns nothing.
+                mockClsService.get.mockImplementation((key: string) => {
+                    switch (key) {
+                        case 'tenantId': return null;
+                        case 'user': return { id: 'user-no-tenant', roles: ['Doctor'] };
+                        default: return null;
+                    }
+                });
+                mockPrismaClient.auditLog.findMany.mockResolvedValue([]);
+
+                await service.getAuthorizationHistory('user-123');
+
+                const callWhere = mockPrismaClient.auditLog.findMany.mock.calls[0][0].where;
+                // Either `tenantId: null` (filters nothing) or the call is skipped
+                // entirely. Our implementation chooses `tenantId: null` to keep
+                // the existing AuditLog-model-missing fallback path intact.
+                expect(callWhere.tenantId).toBeNull();
+            });
         });
     });
 });

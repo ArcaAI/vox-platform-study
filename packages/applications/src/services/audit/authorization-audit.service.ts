@@ -1,6 +1,9 @@
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
 import { CoreDatabaseService } from '@arcaai/domains';
 import { IRedisCacheService } from '../baseServices/redis';
+import { IActiveUserContext } from '../../interfaces';
+import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 
 /**
  * Authorization audit entry structure
@@ -104,6 +107,13 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
   constructor(
     private readonly databaseService: CoreDatabaseService,
     @Optional() @Inject(IRedisCacheService) private readonly cache?: IRedisCacheService,
+    /**
+     * TASK-305 D.8: CLS handle is `@Optional()` so the service can still be
+     * constructed from non-request contexts (background jobs, tests) without
+     * tenant scoping. In every HTTP request path NestJS injects the real
+     * `ClsService` and the read methods scope to the caller's tenant.
+     */
+    @Optional() private readonly cls?: ClsService<IActiveUserContext>,
   ) {
     this.logger.log('AuthorizationAuditService initialized');
   }
@@ -219,10 +229,15 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
   /**
    * Get authorization history for a user
    * Uses optimized index: AuditLog_event_user_time_idx (eventType, responsibleUserId, createdAt)
+   *
+   * TASK-305 D.8 (HIPAA §164.312(b)): scoped to the caller's CLS tenantId
+   * so a Tenant-A admin can never query Tenant-B authorization history.
+   * SUPER_ADMIN bypasses the filter.
    */
   async getAuthorizationHistory(userId: string, options: AuditHistoryOptions = {}): Promise<AuthorizationAuditEntry[]> {
     const prisma = this.databaseService.client;
     const { limit = 100, since, action, subject, allowed } = options;
+    const tenantScope = this.buildTenantScope();
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -230,6 +245,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
         where: {
           responsibleUserId: userId,
           eventType: 'AUTHORIZATION',
+          ...tenantScope,
           ...(since && { createdAt: { gte: since } }),
           ...(action && { action: action.toUpperCase() }),
           ...(subject && { resourceType: subject }),
@@ -268,12 +284,17 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
 
   /**
    * Get recent denied access attempts
+   *
+   * TASK-305 D.8 (HIPAA §164.312(b)): scoped to the caller's CLS tenantId
+   * so denial monitoring cannot fan-out across tenants. SUPER_ADMIN may
+   * query all tenants.
    */
   async getRecentDenials(options: AuditHistoryOptions = {}): Promise<AuthorizationAuditEntry[]> {
     const { limit = 50, since } = options;
 
     // Try to get from database
     const prisma = this.databaseService.client;
+    const tenantScope = this.buildTenantScope();
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -281,6 +302,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
         where: {
           eventType: 'AUTHORIZATION',
           success: false,
+          ...tenantScope,
           ...(since && { createdAt: { gte: since } }),
         },
         orderBy: { createdAt: 'desc' },
@@ -317,6 +339,10 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
   /**
    * Get denial count for a user in the last hour
    * Useful for detecting potential security issues
+   *
+   * TASK-305 D.8: tenant scoping is enforced via `getAuthorizationHistory`
+   * — denials are counted within the caller's tenant only (SUPER_ADMIN
+   * sees all tenants).
    */
   async getDenialCount(userId: string, windowMinutes: number = 60): Promise<number> {
     const since = new Date(Date.now() - windowMinutes * 60 * 1000);
@@ -325,5 +351,37 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
       allowed: false,
     });
     return denials.length;
+  }
+
+  /**
+   * Build the tenant slice of a Prisma `where` clause for raw audit-log
+   * queries (TASK-305 D.8).
+   *
+   * Behaviour:
+   * - When CLS is not wired in: returns `{}` (back-compat, system contexts).
+   * - When the caller carries SUPER_ADMIN: returns `{}` (cross-tenant access).
+   * - When the caller has a tenantId: returns `{ tenantId }`.
+   * - When the caller has CLS but no tenantId and is NOT super-admin:
+   *   returns `{ tenantId: null }` so the query never accidentally
+   *   widens to every tenant (Prisma treats `undefined` as no filter,
+   *   so we must use an explicit `null`).
+   */
+  private buildTenantScope(): { tenantId?: string | null } {
+    if (!this.cls) return {};
+    if (this.isSuperAdmin()) return {};
+    const tenantId = this.cls.get('tenantId');
+    if (tenantId) return { tenantId };
+    return { tenantId: null };
+  }
+
+  /**
+   * True when the active request user carries the SUPER_ADMIN role.
+   * Mirrors `TenantService.isSuperAdmin` so the bypass semantics stay
+   * consistent across services.
+   */
+  private isSuperAdmin(): boolean {
+    const user = this.cls?.get('user');
+    const roles = user?.roles;
+    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
   }
 }
