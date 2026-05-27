@@ -48,6 +48,7 @@ import {
     SEED_USER_IDS,
     SEED_POLICY_IDS,
     SEED_ROLE_IDS,
+    SYSTEM_TENANT_ID,
     SYSTEM_USER_ID,
 } from '../prisma/db_main/seed/00-constants';
 
@@ -763,9 +764,11 @@ describe('STT Seed Data', () => {
                 });
             });
 
-            it('should use default tenant ID for all models', () => {
+            it('should use system tenant ID for all platform-wide AI models', () => {
+                // System AI models are platform-wide seeds owned by the
+                // reserved system tenant (`00000000-…`), per TASK-305 Phase A.
                 DEFAULT_AI_MODELS.forEach((model) => {
-                    expect(model.tenantId).toBe(DEFAULT_TENANT_ID);
+                    expect(model.tenantId).toBe(SYSTEM_TENANT_ID);
                 });
             });
         });

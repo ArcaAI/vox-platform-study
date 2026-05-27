@@ -1,6 +1,6 @@
 import type { CorePrismaClient } from '../../../client';
 import { ValueType } from '../../../generated/core-prisma-client/client.js';
-import { SEED_TENANT_ID } from './00-constants';
+import { SYSTEM_TENANT_ID } from './00-constants';
 import { TEMPLATE_IDS } from './07-prompt-template';
 
 /**
@@ -11,11 +11,18 @@ import { TEMPLATE_IDS } from './07-prompt-template';
  * - ASR Pipelines
  * - Global Settings for STT configuration
  *
+ * These rows are PLATFORM-WIDE system seeds: every customer tenant inherits
+ * them; they are NOT customer data. Therefore they are owned by the reserved
+ * system tenant (`00000000-…`), introduced by TASK-305 Phase A.
+ *
  * See: docs/implementation/STT-001-STT-Service-V2-Architecture/README.md
  * See: docs/implementation/STT-002-Domain-Layer-Implementation/README.md
  */
 
-export const DEFAULT_TENANT_ID = SEED_TENANT_ID;
+// `DEFAULT_TENANT_ID` is kept as a local re-export so existing call sites
+// (e.g. internal helpers, tests) still compile, but the value now points at
+// the reserved system tenant.
+export const DEFAULT_TENANT_ID = SYSTEM_TENANT_ID;
 export { SYSTEM_USER_ID } from './00-constants';
 
 // =============================================================================

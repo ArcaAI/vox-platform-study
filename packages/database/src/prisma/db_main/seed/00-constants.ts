@@ -5,8 +5,10 @@
  * Every seed file imports from this module instead of declaring local constants.
  *
  * ID Prefix Convention:
- *   00000000-xxxx  →  Policies & Roles (RBAC)
- *   50000000-xxxx  →  Tenants
+ *   00000000-0000-0000-0000-000000000000  →  Reserved system tenant (platform-wide rows)
+ *   00000000-0000-0000-0000-XXXXXXXXXXXX  →  Roles (RBAC)
+ *   00000000-0000-0000-0001-XXXXXXXXXXXX  →  Policies (RBAC)
+ *   50000000-xxxx  →  Customer Tenants (Global, ArcaAI, 4bits, Mumbai)
  *   60000000-xxxx  →  API Keys + System User
  *   70000000-xxxx  →  Users (0001-0009 admin, 0010-0029 clinical, 0030+ service)
  *   70000000-xxxx  →  Departments (separate entity, same prefix range but dept block)
@@ -47,6 +49,20 @@ export const SYSTEM_USER_ID = '60000000-0000-0000-0000-000000000000';
 // TENANTS
 // =============================================================================
 
+/**
+ * Reserved system tenant — used as the `tenantId` owner for platform-wide rows
+ * (system policies, RBAC roles, system AI models / pipelines, system-wide
+ * settings) that are NOT customer data. Introduced by TASK-305 Phase A to
+ * replace the previous `tenantId IS NULL` / sentinel-default semantics.
+ *
+ * DO NOT use this tenant for any customer-facing data.
+ */
+export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Global customer tenant — pre-existing seed tenant. Kept for backward
+ * compatibility with existing tests and per-tenant default settings.
+ */
 export const SEED_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 
 export const SEED_CUSTOMER_TENANT_IDS = {
