@@ -176,6 +176,13 @@ export class WebhookService extends BaseService implements IWebhookService {
    */
   async update(id: EntityId, request: UpdateWebhookRequest): Promise<WebhookEntity> {
     const webhook = await this.webhookRepository.findById(id);
+    // TASK-306 P2.3 (audit M-2 / AC-5) — load-then-assert defense-in-depth.
+    // Throws NotFoundException on cross-tenant id BEFORE the CAS write
+    // fires, so a foreign webhook is never mutated. SUPER_ADMIN bypasses
+    // for admin tooling.
+    if (!this.isSuperAdmin()) {
+      assertEqualTenants(webhook, { tenantId: this.tenantId });
+    }
 
     const previousData = webhook.toObject();
     const { expectedVersion, ...editableRequest } = request;
