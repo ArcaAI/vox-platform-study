@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { NotFoundException } from '@nestjs/common';
 import { ResourceSubscriptionService } from '../resourceSubscription.service';
 import {
     SysEventType,
@@ -990,7 +991,13 @@ describe('ResourceSubscriptionService', () => {
             expect(mockClsService.get).toHaveBeenCalledWith('user');
         });
 
-        it('should handle missing user context gracefully for read operations', async () => {
+        it('rejects reads when CLS has neither user nor tenant context (TASK-306 P2.4 posture)', async () => {
+            // Pre-TASK-306 this returned the row regardless of caller context
+            // — a tenant-blind read that leaked subscriptions across tenants.
+            // The W5.3.9 `assertEqualTenants` guard now fails closed: when
+            // there is no caller tenant in CLS and the caller is not
+            // SUPER_ADMIN, the read is rejected (mirrors the TASK-305 D.5.1
+            // NotificationService policy for fail-closed CLS-less calls).
             mockClsService.get.mockImplementation((key: string) => {
                 if (key === 'user') return null;
                 return null;
@@ -999,9 +1006,7 @@ describe('ResourceSubscriptionService', () => {
             const subscription = createMockResourceSubscriptionEntity({ id: 'sub-123' });
             mockResourceSubscriptionRepository.findById.mockResolvedValue(subscription);
 
-            // Read operations should still work without user context
-            const result = await service.fetchById('sub-123');
-            expect(result.id).toBe('sub-123');
+            await expect(service.fetchById('sub-123')).rejects.toThrow();
         });
     });
 
@@ -1132,6 +1137,43 @@ describe('ResourceSubscriptionService', () => {
                 // The resource scoping itself must still be enforced.
                 expect(findAllArgs.where?.resourceId).toBe('resource-123');
                 expect(findAllArgs.where?.resourceTypeName).toBe(ResourceType.Consultation);
+            });
+        });
+
+        describe('fetchById (5.3.9)', () => {
+            it('returns the subscription when it belongs to the caller tenant', async () => {
+                const sameTenantSub = createMockResourceSubscriptionEntity({
+                    id: 'sub-same',
+                    tenantId: 'tenant-1',
+                });
+                mockResourceSubscriptionRepository.findById.mockResolvedValue(sameTenantSub);
+
+                const result = await service.fetchById('sub-same');
+                expect(result.id).toBe('sub-same');
+            });
+
+            it('throws NotFoundException when a non-SUPER_ADMIN caller requests a subscription owned by another tenant', async () => {
+                const crossTenantSub = createMockResourceSubscriptionEntity({
+                    id: 'sub-foreign',
+                    tenantId: 'tenant-2',
+                });
+                mockResourceSubscriptionRepository.findById.mockResolvedValue(crossTenantSub);
+
+                await expect(service.fetchById('sub-foreign')).rejects.toThrow(NotFoundException);
+                await expect(service.fetchById('sub-foreign')).rejects.toThrow('Resource not found');
+            });
+
+            it('allows a SUPER_ADMIN to read a subscription owned by another tenant (admin bypass)', async () => {
+                setRequestUserRoles(['SUPER_ADMIN']);
+                const crossTenantSub = createMockResourceSubscriptionEntity({
+                    id: 'sub-foreign',
+                    tenantId: 'tenant-2',
+                });
+                mockResourceSubscriptionRepository.findById.mockResolvedValue(crossTenantSub);
+
+                const result = await service.fetchById('sub-foreign');
+                expect(result.id).toBe('sub-foreign');
+                expect(result.tenantId).toBe('tenant-2');
             });
         });
     });

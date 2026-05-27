@@ -14,7 +14,7 @@ import {
   ResourceStatusType,
   ResourceSubscriptionRepository,
 } from '@arcaai/domains';
-import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
+import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { InternalServerErrorException, ArgumentInvalidException, ArgumentNotProvidedException, UnauthorizedException } from '@arcaai/exceptions';
 import { BadRequestException } from '@nestjs/common';
@@ -169,8 +169,20 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
     return resourceSubscription;
   }
 
+  /**
+   * TASK-306 P2.4 (audit M-3 / AC-6) — single-entity read with the
+   * DEF-C3 "no existence leak" guard. Non-SUPER_ADMIN callers see a
+   * `NotFoundException` (404) when the row exists but belongs to
+   * another tenant — the same response shape the repository returns
+   * for a row that genuinely does not exist. SUPER_ADMIN bypasses
+   * the assertion so admin tooling can inspect any subscription.
+   */
   async fetchById(id: EntityId): Promise<ResourceSubscriptionEntity> {
     const resourceSubscription = await this.resourceSubscriptionRepository.findById(id);
+
+    if (!this.isSuperAdmin()) {
+      assertEqualTenants(resourceSubscription, { tenantId: this.tenantId });
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: resourceSubscription.id,
