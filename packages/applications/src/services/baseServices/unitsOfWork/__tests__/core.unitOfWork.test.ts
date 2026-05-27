@@ -304,4 +304,102 @@ describe('CoreUnitOfWorkService', () => {
             expect(mockClsService.get).toHaveBeenCalledWith('coreTransactionClient');
         });
     });
+
+    /*
+     * TASK-306 P3.2 / AC-11 — `runInTransaction` is the canonical
+     * Prisma 7 transactional API. The legacy
+     * `startTransaction()/endTransaction()` wrapper cannot carry true
+     * transactional isolation through a non-callback signature (Prisma
+     * commits when the `$transaction` callback resolves), so we expose a
+     * new method that ALWAYS does `$transaction(callback)` and exposes
+     * the tx client to nested repository calls through CLS for the
+     * duration of `work`. Closes audit M-6 and matches the proven
+     * `databaseService.baseClient.$transaction(async (tx) => ...)`
+     * pattern already used by TenantService (TASK-302 D.4).
+     */
+    describe('TASK-306 P3.2 — runInTransaction canonical $transaction(callback)', () => {
+        function makeTransactionalMock() {
+            const committed: { key: string; value: string }[] = [];
+
+            mockDatabaseService.baseClient.$transaction.mockReset();
+            mockDatabaseService.baseClient.$transaction.mockImplementation(
+                async (callback: (tx: any) => Promise<any>) => {
+                    const pending: { key: string; value: string }[] = [];
+                    const tx = {
+                        insert: (key: string, value: string) => {
+                            pending.push({ key, value });
+                            return Promise.resolve();
+                        },
+                    };
+                    const result = await callback(tx);
+                    committed.push(...pending);
+                    return result;
+                },
+            );
+
+            return { committed };
+        }
+
+        it('commits both operations when the work callback resolves', async () => {
+            const { committed } = makeTransactionalMock();
+
+            const result = await service.runInTransaction(async (tx: any) => {
+                await tx.insert('k1', 'v1');
+                await tx.insert('k2', 'v2');
+                return 'ok';
+            });
+
+            expect(result).toBe('ok');
+            expect(committed).toEqual([
+                { key: 'k1', value: 'v1' },
+                { key: 'k2', value: 'v2' },
+            ]);
+        });
+
+        it('rolls back the first operation when the second operation throws', async () => {
+            const { committed } = makeTransactionalMock();
+
+            await expect(
+                service.runInTransaction(async (tx: any) => {
+                    await tx.insert('k1', 'v1');
+                    await tx.insert('k2', 'v2');
+                    throw new Error('mid-tx failure');
+                }),
+            ).rejects.toThrow('mid-tx failure');
+
+            expect(committed).toEqual([]);
+        });
+
+        it('exposes the tx client through CLS while the work is running', async () => {
+            let txInsideWork: any;
+            mockDatabaseService.baseClient.$transaction.mockReset();
+            const fakeTx = { _isTx: true };
+            mockDatabaseService.baseClient.$transaction.mockImplementation(
+                async (callback: (tx: any) => Promise<any>) => callback(fakeTx),
+            );
+
+            await service.runInTransaction(async (tx: any) => {
+                txInsideWork = service.getDatabaseService();
+                expect(tx).toBe(fakeTx);
+            });
+
+            expect(txInsideWork).toBe(fakeTx);
+            expect(service.getDatabaseService()).toBe(mockDatabaseService.client);
+        });
+
+        it('clears CLS even when work throws (no stale tx client leaked across calls)', async () => {
+            mockDatabaseService.baseClient.$transaction.mockReset();
+            mockDatabaseService.baseClient.$transaction.mockImplementation(
+                async (callback: (tx: any) => Promise<any>) => callback({}),
+            );
+
+            await expect(
+                service.runInTransaction(async () => {
+                    throw new Error('boom');
+                }),
+            ).rejects.toThrow('boom');
+
+            expect(service.getDatabaseService()).toBe(mockDatabaseService.client);
+        });
+    });
 });
