@@ -191,8 +191,20 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
     return resourceSubscription;
   }
 
+  /**
+   * TASK-306 P2.4 (audit M-3 / AC-6) — mutation gated by tenant
+   * ownership. We load the row first, then assert the tenant scope
+   * BEFORE applying any change, so cross-tenant `update` calls cannot
+   * mutate state and cannot be used as a probe (the response is a
+   * generic 404, identical to the missing-row case). SUPER_ADMIN
+   * bypasses the assertion for platform tooling.
+   */
   async update(id: EntityId, request: UpdateResourceSubscriptionRequest): Promise<ResourceSubscriptionEntity> {
     const resourceSubscription = await this.resourceSubscriptionRepository.findById(id);
+
+    if (!this.isSuperAdmin()) {
+      assertEqualTenants(resourceSubscription, { tenantId: this.tenantId });
+    }
 
     const previousData = resourceSubscription.toObject();
     await this.updateEntity(resourceSubscription, request, {
