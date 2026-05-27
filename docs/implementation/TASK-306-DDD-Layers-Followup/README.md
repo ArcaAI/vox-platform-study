@@ -475,7 +475,7 @@ Answer: we should ship W5.1-W5.5 as 5 separate PRs (clean reviewable units).
 
 | Wave | Sub-tasks | Merge SHA | Highlights |
 |---|---|---|---|
-| W5.1 | — | — | _Pending_ |
+| W5.1 | 5.1.1–5.1.6 | `78e7b354` | 6 commits, 20 new tests, APPROVED-WITH-MINOR-NITS. Closes C-7 finale + H-3/NEW-6 + H-8/NEW-1 + NEW-2 + NEW-3 + NEW-4. 4 deferred nits captured in §6.7. |
 | W5.2 | — | — | _Pending_ |
 | W5.3 | — | — | _Pending_ |
 | W5.4 | — | — | _Pending_ |
@@ -486,8 +486,19 @@ Answer: we should ship W5.1-W5.5 as 5 separate PRs (clean reviewable units).
 
 | Status | Codes | Notes |
 |---|---|---|
-| **CLOSED (TASK-306)** | _Pending_ | Will list as waves merge |
+| **CLOSED (W5.1)** | C-7 finale, H-3/NEW-6, H-8/NEW-1, NEW-2, NEW-3, NEW-4 | Merge `78e7b354` |
 | **DEFERRED (TASK-306)** | F-1..F-8 | Each tracked as a follow-up ticket — see §8 |
+
+### TASK-306 follow-ups (deferred minor nits)
+
+These do NOT block waves; tracked here so they don't get lost.
+
+| # | Source wave | Description |
+|---|---|---|
+| 306-F1 | W5.1 review | Replace `setTimeout(10)` with `vi.waitFor(...)` in three `TASK-306 P1.2` audit tests for CI flake-resistance |
+| 306-F2 | W5.1 review | Add `logger.warn('Webhook cross-tenant attempt coerced to CLS', { ... })` inside `WebhookService.resolveEffectiveTenantId` for SOC observability on silent coercion |
+| 306-F3 | W5.1 review | Drop unnecessary `as never` cast in W5.1.4 "omits request.tenantId" test |
+| 306-F4 | W5.1 review | Aggregator per-method floor pinning when W5.2–W5.5 add new `describe('TASK-306 …')` blocks (W5.5.6 handles this via FS-introspection) |
 
 ### Deviations from the original plan
 
@@ -501,3 +512,4 @@ _None yet._
 |---|---|---|
 | 2026-05-27 | Initial plan drafted post-TASK-305 verification cross-walk; awaiting approval | `docs/implementation/TASK-306-DDD-Layers-Followup/README.md` |
 | 2026-05-27 | Plan approved — user answers folded into body: W5.1.4 keeps `request.tenantId` with SUPER_ADMIN gate (impersonation flows); HTTP filter scoped to `DataNotFoundException` only (W5.5.4); `CoreUnitOfWorkService` silent in-place fix (W5.5.2); NEW-7 / F-4 aggregator hardening promoted in-scope (new W5.5.6); 5 separate PRs (one per wave); status flipped to `In Progress` | `docs/implementation/TASK-306-DDD-Layers-Followup/README.md` |
+| 2026-05-27 | W5.1 merged at `78e7b354` (APPROVED-WITH-MINOR-NITS). 6 commits, 20 new tests, closes C-7 finale + H-3/NEW-6 + H-8/NEW-1 + NEW-2 + NEW-3 + NEW-4. 4 minor nits captured as 306-F1..306-F4. | `packages/{domains,applications}/...` (13 files), `docs/implementation/TASK-306-DDD-Layers-Followup/README.md` |
