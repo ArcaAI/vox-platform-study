@@ -34,8 +34,6 @@ export function assertJwtSecretNotPlaceholder(secretsService: SecretsService): v
         ? 'JWT_SECRET_KEY is not warmed in SecretsService. Set a real secret in Vault / SecretsService before booting.'
         : 'JWT_SECRET_KEY resolved to the literal placeholder. Replace the development default with a real secret in Vault / SecretsService.',
     );
-    throw new Error(
-      'JWT_SECRET_KEY is the literal placeholder; refusing to boot. Set a real secret in Vault / SecretsService.',
-    );
+    throw new Error('JWT_SECRET_KEY is the literal placeholder; refusing to boot. Set a real secret in Vault / SecretsService.');
   }
 }
