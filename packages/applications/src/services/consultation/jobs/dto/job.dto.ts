@@ -80,6 +80,8 @@ export interface ConsultationJobStatus {
   createdAt: Date;
   startedAt?: Date;
   completedAt?: Date;
+  tenantId: string;
+  userId: string;
 }
 
 // =============================================================================
@@ -145,6 +147,12 @@ export class JobStatusResponse {
 
   @ApiPropertyOptional({ description: 'Job completion timestamp' })
   completedAt?: Date;
+
+  @ApiProperty({ description: 'Owning tenant id (TASK-307 W3 — ownership check carry-through)' })
+  tenantId: string;
+
+  @ApiProperty({ description: 'Owning user id (TASK-307 W3 — ownership check carry-through)' })
+  userId: string;
 }
 
 // =============================================================================

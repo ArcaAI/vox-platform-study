@@ -134,6 +134,8 @@ export class ConsultationJobService implements IConsultationJobService {
       consultationId,
       progress: 0,
       createdAt: new Date(),
+      tenantId,
+      userId,
     });
 
     await this.recordIdempotentJobId('pre-summary', tenantId, userId, idempotencyKey, jobId);
@@ -195,6 +197,8 @@ export class ConsultationJobService implements IConsultationJobService {
       consultationId,
       progress: 0,
       createdAt: new Date(),
+      tenantId,
+      userId,
     });
 
     await this.recordIdempotentJobId('summary', tenantId, userId, idempotencyKey, jobId);
@@ -256,6 +260,8 @@ export class ConsultationJobService implements IConsultationJobService {
       consultationId,
       progress: 0,
       createdAt: new Date(),
+      tenantId,
+      userId,
     });
 
     await this.recordIdempotentJobId('comprehensive', tenantId, userId, idempotencyKey, jobId);
@@ -318,6 +324,8 @@ export class ConsultationJobService implements IConsultationJobService {
       consultationId,
       progress: 0,
       createdAt: new Date(),
+      tenantId,
+      userId,
     });
 
     await this.recordIdempotentJobId('ner', tenantId, userId, idempotencyKey, jobId);
