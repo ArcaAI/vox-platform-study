@@ -42,11 +42,34 @@ export interface IRedisCacheService {
   delMany(keys: string[]): Promise<void>;
 
   /**
-   * Find keys matching a pattern
+   * Find keys matching a pattern.
+   *
+   * IMPORTANT: backed by Redis `KEYS`, which is O(N) and BLOCKS the
+   * server thread for the entire keyspace scan. Suitable for admin /
+   * dev tooling, NOT for production request paths. For hot paths use
+   * {@link scan} instead.
+   *
    * @param pattern - Key pattern (supports * wildcard)
    * @returns Array of matching keys
    */
   keys(pattern: string): Promise<string[]>;
+
+  /**
+   * Iteratively scan keys matching a pattern using non-blocking SCAN.
+   *
+   * Unlike {@link keys}, this does NOT block the Redis server: it walks
+   * the keyspace in `count`-sized chunks via the cursor protocol (returns
+   * once cursor wraps back to `0`). Drop-in shape-compatible replacement
+   * for hot-path uses of `keys()`.
+   *
+   * @param pattern - Key pattern (supports * wildcard)
+   * @param options - `count` is a Redis hint for the per-iteration batch
+   *                  size (default `200`). The server may return more or
+   *                  fewer items per round-trip; the total walks the
+   *                  whole keyspace regardless.
+   * @returns Array of matching keys
+   */
+  scan(pattern: string, options?: { count?: number }): Promise<string[]>;
 
   /**
    * Check if a key exists
@@ -384,7 +407,9 @@ export class RedisCacheService implements IRedisCacheService, OnModuleInit, OnMo
   }
 
   /**
-   * Find keys matching a pattern
+   * Find keys matching a pattern (KEYS — O(N), blocking).
+   *
+   * See the interface TSDoc: prefer {@link scan} for production paths.
    */
   async keys(pattern: string): Promise<string[]> {
     if (!this.isConnected()) {
@@ -396,6 +421,43 @@ export class RedisCacheService implements IRedisCacheService, OnModuleInit, OnMo
     } catch (error) {
       this.logger.error({
         message: 'Failed to find keys with pattern',
+        pattern,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  }
+
+  /**
+   * Iteratively scan keys matching a pattern using non-blocking SCAN.
+   *
+   * Walks the keyspace via the cursor protocol until cursor wraps to
+   * `'0'`. Returns the union of all matched keys, de-duplicated by Redis
+   * server semantics (SCAN may return the same key in multiple
+   * iterations across rehashes — we accept the upstream behaviour
+   * without further dedupe to keep the implementation surface tiny).
+   */
+  async scan(pattern: string, options?: { count?: number }): Promise<string[]> {
+    if (!this.isConnected()) {
+      return [];
+    }
+
+    const count = options?.count ?? 200;
+    const matches: string[] = [];
+    let cursor = '0';
+
+    try {
+      do {
+        const [next, keys] = await this.redis!.scan(cursor, 'MATCH', pattern, 'COUNT', count);
+        cursor = next;
+        if (keys.length > 0) {
+          matches.push(...keys);
+        }
+      } while (cursor !== '0');
+      return matches;
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to scan keys with pattern',
         pattern,
         error: error instanceof Error ? error.message : String(error),
       });

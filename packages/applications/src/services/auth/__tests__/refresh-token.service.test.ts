@@ -24,6 +24,7 @@ interface MockCache {
   del: ReturnType<typeof vi.fn>;
   delMany: ReturnType<typeof vi.fn>;
   keys: ReturnType<typeof vi.fn>;
+  scan: ReturnType<typeof vi.fn>;
   exists: ReturnType<typeof vi.fn>;
   publish: ReturnType<typeof vi.fn>;
   lpush: ReturnType<typeof vi.fn>;
@@ -36,11 +37,21 @@ interface MockCache {
 
 /**
  * Builds a stub `IRedisCacheService` whose `setex` / `get` / `del` /
- * `delMany` / `keys` collaborate on a single in-memory Map so the
+ * `delMany` / `scan` collaborate on a single in-memory Map so the
  * round-trip tests can mimic the real Redis behaviour.
+ *
+ * TASK-307 W7.A.1 — added `scan` alongside `keys` so the
+ * `revokeFamily` cursor walk has a working in-memory implementation
+ * after the migration off blocking `KEYS`. Both `keys` and `scan`
+ * return the same matches against the in-memory map; the test surface
+ * is identical (both end up calling `delMany` with the same key list).
  */
 function createMockCache(): { mock: MockCache; store: Map<string, string> } {
   const store = new Map<string, string>();
+  const matchPattern = (pattern: string): string[] => {
+    const re = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+    return Array.from(store.keys()).filter((k) => re.test(k));
+  };
   const mock: MockCache = {
     get: vi.fn(async (key: string) => store.get(key) ?? null),
     set: vi.fn(async (key: string, value: string) => {
@@ -55,10 +66,8 @@ function createMockCache(): { mock: MockCache; store: Map<string, string> } {
     delMany: vi.fn(async (keys: string[]) => {
       for (const key of keys) store.delete(key);
     }),
-    keys: vi.fn(async (pattern: string) => {
-      const re = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
-      return Array.from(store.keys()).filter((k) => re.test(k));
-    }),
+    keys: vi.fn(async (pattern: string) => matchPattern(pattern)),
+    scan: vi.fn(async (pattern: string) => matchPattern(pattern)),
     exists: vi.fn(async (key: string) => store.has(key)),
     publish: vi.fn(),
     lpush: vi.fn(),
