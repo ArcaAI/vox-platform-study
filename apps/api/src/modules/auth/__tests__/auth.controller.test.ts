@@ -113,6 +113,19 @@ const createTenant = (overrides: Partial<Record<string, any>> = {}) => ({
     ...overrides,
 });
 
+// TASK-307 W1.2: RefreshTokenService is the canonical refresh-token issuer
+// going forward. The default mock issues a synthetic opaque token + family
+// so every legacy login test keeps working without further wiring.
+const createMockRefreshTokenService = () => ({
+    issue: vi.fn(async ({ jti, family }: any) => ({
+        rawToken: `opaque-${jti}`,
+        family: family ?? `family-for-${jti}`,
+        expiresAt: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+    })),
+    consume: vi.fn(),
+    revokeFamily: vi.fn().mockResolvedValue(undefined),
+});
+
 function buildController(overrides: {
     userService?: any;
     authService?: any;
@@ -126,6 +139,7 @@ function buildController(overrides: {
     streamTicketService?: any;
     jwtRevocationService?: any;
     secretsService?: any;
+    refreshTokenService?: any;
 } = {}) {
     return new AuthController(
         (overrides.userService ?? createMockUserService()) as any,
@@ -140,6 +154,7 @@ function buildController(overrides: {
         (overrides.streamTicketService ?? { issueTicket: vi.fn(), consumeTicket: vi.fn() }) as any,
         (overrides.jwtRevocationService ?? { revoke: vi.fn(), isRevoked: vi.fn().mockResolvedValue(false) }) as any,
         (overrides.secretsService ?? createMockSecretsService()) as any,
+        (overrides.refreshTokenService ?? createMockRefreshTokenService()) as any,
     );
 }
 

@@ -16,6 +16,7 @@ import { IAppSettingsService } from '../baseServices/_meta/';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { UserServiceModule } from '../user/user/user.service.module';
 import { JwtRevocationService, IJwtRevocationService } from './jwt-revocation.service';
+import { RefreshTokenService, IRefreshTokenService } from './refresh-token.service';
 
 const logger = new Logger('AuthServiceModule');
 
@@ -112,6 +113,10 @@ const logger = new Logger('AuthServiceModule');
       provide: IJwtRevocationService,
       useClass: JwtRevocationService,
     },
+    {
+      provide: IRefreshTokenService,
+      useClass: RefreshTokenService,
+    },
   ],
   exports: [
     PassportModule,
@@ -121,6 +126,7 @@ const logger = new Logger('AuthServiceModule');
     JwtStrategy,
     GatewayJwtStrategy,
     IJwtRevocationService,
+    IRefreshTokenService,
   ],
 })
 export class AuthServiceModule {}
