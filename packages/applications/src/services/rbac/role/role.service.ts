@@ -60,10 +60,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     const where = {
       resourceStatus: ResourceStatusType.ENABLED,
       ...(search && {
-        OR: [
-          { name: { contains: search, mode: 'insensitive' as const } },
-          { description: { contains: search, mode: 'insensitive' as const } },
-        ],
+        OR: [{ name: { contains: search, mode: 'insensitive' as const } }, { description: { contains: search, mode: 'insensitive' as const } }],
       }),
     };
 
@@ -125,9 +122,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     }
 
     if (existing.isSystemRole) {
-      throw new BadRequestException(
-        `Cannot modify system role '${existing.name}'. System roles are protected from modification.`,
-      );
+      throw new BadRequestException(`Cannot modify system role '${existing.name}'. System roles are protected from modification.`);
     }
 
     if (request.parentRoleId !== undefined && request.parentRoleId !== null) {
@@ -163,9 +158,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     }
 
     if (existing.isSystemRole) {
-      throw new BadRequestException(
-        `Cannot modify system role '${existing.name}'. System roles are protected from modification.`,
-      );
+      throw new BadRequestException(`Cannot modify system role '${existing.name}'. System roles are protected from modification.`);
     }
 
     if (request.parentRoleId !== undefined && request.parentRoleId !== null) {
@@ -226,10 +219,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   async assignPolicy(roleId: string, policyId: string, dto: RbacRolePolicyAssignmentInput): Promise<void> {
     const user = this.requestUser;
 
-    const existing = (await this.rolePolicyRepository.findFirstByRoleAndPolicy(
-      roleId,
-      policyId,
-    )) as { id: string; priority: number } | null;
+    const existing = (await this.rolePolicyRepository.findFirstByRoleAndPolicy(roleId, policyId)) as { id: string; priority: number } | null;
 
     if (existing) {
       await this.rolePolicyRepository.reEnable(
