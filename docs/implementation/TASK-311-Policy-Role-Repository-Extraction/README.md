@@ -4,8 +4,8 @@
 |---|---|
 | **Ticket** | TASK-311-Policy-Role-Repository-Extraction |
 | **Created** | 2026-05-28 |
-| **Updated** | 2026-05-28 |
-| **Status** | `In Progress` |
+| **Updated** | 2026-05-28 (Phase 7 — Completed) |
+| **Status** | `Completed` |
 | **Classification** | Refactor (DDD alignment, no behaviour change) |
 | **Priority** | Low — pure architectural cleanup; current code is correct |
 | **Source** | TASK-307 §10.1 deferral W7.A.15 — closes the partial §H-9 closure from W6 |
@@ -234,3 +234,62 @@ The first three lines (8 matches) are in the **stale** `Permission`/`RolePermiss
 | 2026-05-28 | Phase 4 (AC-3) — `PolicyService` migrated to inject `PolicyRepository` instead of `CoreDatabaseService`; every `databaseService.client.policy.*` site now routes through the repo (and uses `PolicyFactory.buildCreateInput` / `buildUpdateInput` to shape the payload). `PolicyServiceModule` registers `PolicyRepository` as a provider per D-3 (CoreDatabaseModule untouched). Existing TASK-307 W6.2 service tests rewritten to mock the repo; behaviour preserved verbatim (audit events, log messages, exception messages, returned shapes all unchanged). `rg 'this\\.databaseService\\.client\\.policy\\b' packages/applications/` → 0 hits. `rg 'resourceType.*Permission' apps/ packages/ --type ts -c` → identical 14-match baseline (AC-5). `@arcaai/applications` suite: 4380 passing (4384 incl skipped); `@arcaai/api` build clean. | `packages/applications/src/services/rbac/policy/policy.service.ts`, `packages/applications/src/services/rbac/policy/policy.service.module.ts`, `packages/applications/src/services/rbac/policy/__tests__/policy.service.task307.test.ts` |
 | 2026-05-28 | Phase 5 (AC-4) — `RbacRoleService` migrated to inject `RbacRoleRepository` + `RolePolicyRepository` instead of `CoreDatabaseService`. The W6 static `ROLE_POLICIES_INCLUDE` constant moved into `RbacRoleEntityMapper` and is imported by the service. Every Prisma callsite now routes through a repository method (`findMany`/`count`/`findByIdWithPolicies`/`findByIdGuardSelect` for the three guard-pre-checks/`findParentRoleById`+`findParentRoleIdById` for cycle-walk/`update`/`softDelete`). Join-table mutations route through `RolePolicyRepository` (`findFirstByRoleAndPolicy`/`create`/`reEnable`/`softDeleteByRoleAndPolicy`). `RbacRoleFactory.buildCreateInput` / `buildUpdateInput` and `RolePolicyFactory.buildCreateInput` / `buildReEnableInput` shape every Prisma `data` payload. `RbacRoleServiceModule` registers both repositories (D-3). TASK-307 W6.3 tests rewritten against repo mocks; behaviour preserved verbatim (cycle detection, system-role guard, `ResourceType.RolePermission` event payloads, log messages all unchanged). `rg 'this\\.databaseService\\.client\\.(role\|rolePolicy)\\b' packages/applications/src/services/rbac/` → 0 hits. `@arcaai/applications` suite: 4380 passing; `@arcaai/api` build clean. | `packages/applications/src/services/rbac/role/role.service.ts`, `packages/applications/src/services/rbac/role/role.service.module.ts`, `packages/applications/src/services/rbac/role/__tests__/role.service.task307.test.ts` |
 | 2026-05-28 | Phase 6 (AC-8) — ESLint `no-service-direct-prisma` variant added to `packages/config-eslint/base.js`. Design decision **D-5**: implemented via ESLint's built-in `no-restricted-syntax` rule rather than extending the W6 `arcaai-internal` plugin, because the plugin lives in `packages/eslint-plugin-arcaai-internal/` which is OUTSIDE TASK-311's modifiable scope (the plugin is shared infra owned by W6). The AST selector — `MemberExpression[computed=false][property.name='client'][object.type='MemberExpression'][object.computed=false][object.property.name='databaseService']` — matches the same canonical `<...>.databaseService.client` chain that the W6 plugin's `isDirectPrismaAccess()` walker detects, so the lint behaviour is symmetric. Scope: `files: ['**/services/**/*.service.ts']`; `excludedFiles` carves out `audit/**`, `tenant/**`, `user/userRoleAssignment/**` (owned by sibling tickets TASK-308 / TASK-309 / TASK-310), and `baseServices/**` (permanently allowed — hosts the legitimate `CoreDatabaseService` plumbing). Escape hatch: standard `// eslint-disable-next-line no-restricted-syntax`. **Positive test**: synthetic violation under `services/rbac/__lint-fixture__/synthetic-violation.service.ts` triggered the rule at line 28:12 (1 warning, 0 errors due to the `only-warn` plugin — same downgrade as the W6 controller rule). **Negative test**: `policy.service.ts` + `role.service.ts` produce 0 lint diagnostics after autofix. **Safety test**: excluded files (`audit/`, `tenant/`, `user/userRoleAssignment/`) are NOT triggered, allowing sibling tickets to land their own extractions independently. Fixture deleted after gate capture. | `packages/config-eslint/base.js`, `packages/applications/src/services/rbac/policy/policy.service.ts`, `packages/applications/src/services/rbac/role/role.service.ts` (prettier auto-fixed) |
+| 2026-05-28 | Phase 7 — Final verification (see §6). Status → `Completed`. All 8 acceptance criteria satisfied. | `docs/implementation/TASK-311-Policy-Role-Repository-Extraction/README.md` |
+
+---
+
+## 6. Final verification evidence (Phase 7)
+
+### 6.1 Acceptance-criteria gate table
+
+| AC | Requirement | Result |
+|----|-----|----|
+| **AC-1** | Three new repositories under `packages/domains/src/repositories/` | ✅ `policy/PolicyRepository.ts`, `role/RbacRoleRepository.ts` (D-1 naming), `role-policy/RolePolicyRepository.ts` |
+| **AC-2** | Each has a factory + mapper matching the `UserRepository` pattern | ✅ Per-aggregate factory + mapper (D-2 layout); lightweight `@Injectable()` repo classes |
+| **AC-3** | `PolicyService` zero direct `CoreDatabaseService` access | ✅ `rg 'this\.databaseService\.client\.policy\b' packages/applications/src/services/rbac/` → **0 hits** |
+| **AC-4** | `RbacRoleService` zero direct `CoreDatabaseService` access | ✅ `rg 'this\.databaseService\.client\.(role\|rolePolicy)\b' packages/applications/src/services/rbac/` → **0 hits** |
+| **AC-5** | `ResourceType.Permission` SysEvent string preserved verbatim | ✅ `rg 'resourceType.*Permission' apps/ packages/ --type ts -c` → identical 14-match baseline |
+| **AC-6** | Soft-delete behaviour aligned (all `softDelete` paths go through repos) | ✅ All three services already soft-delete pre-refactor (§4.2); now encapsulated in `Repository.softDelete()`; `rg '\.delete\(' packages/applications/src/services/rbac/ --type ts` → 0 hits |
+| **AC-7** | Existing + new tests pass | ✅ See §6.2 |
+| **AC-8** | ESLint `no-service-direct-prisma` rule added | ✅ §6.3 (positive + negative + safety tests captured) |
+
+### 6.2 Build + test evidence (final pass)
+
+| Package | Command | Result |
+|---|----|----|
+| `@arcaai/domains` | `pnpm build --filter @arcaai/domains` | ✅ 4 tasks successful, 6.187s |
+| `@arcaai/domains` | `pnpm --filter @arcaai/domains test` | ✅ **1078 passing** / 2 skipped / 9 todo (75 files) |
+| `@arcaai/applications` | `pnpm build --filter @arcaai/applications` | ✅ 6 tasks successful, 8.944s |
+| `@arcaai/applications` | `pnpm --filter @arcaai/applications test` | ✅ **4380 passing** / 4 skipped (171 files) |
+| `@arcaai/api` | `pnpm build --filter @arcaai/api` | ✅ 7 tasks successful, 20.084s (regression — controllers untouched) |
+| `@arcaai/api` | `pnpm --filter @arcaai/api test` | ✅ **1325 passing** (72 files) — TASK-306 + TASK-307 W6 regression suite green |
+
+### 6.3 ESLint evidence
+
+**Positive (rule fires on `databaseService.client` in a service file)**:
+
+```
+packages/applications/src/services/rbac/__lint-fixture__/synthetic-violation.service.ts
+  28:12  warning  TASK-311 AC-8: services in @arcaai/applications must not access `this.databaseService.client` directly ...  no-restricted-syntax
+✖ 1 problem (0 errors, 1 warning)
+```
+
+(The downgrade from `error` → `warning` is the `only-warn` plugin pulled in by `library.js`; W6's controller rule has the same downgrade in this package.)
+
+**Negative (refactored services produce no AC-8 diagnostics)**:
+
+```
+$ eslint src/services/rbac/policy/policy.service.ts src/services/rbac/role/role.service.ts
+(no output)
+```
+
+**Safety (excluded sibling-ticket files still permitted to use `databaseService.client`)**:
+
+```
+$ eslint src/services/audit/authorization-audit.service.ts \
+         src/services/tenant/tenant.service.ts \
+         src/services/user/userRoleAssignment/userRoleAssignment.service.ts | grep no-restricted-syntax
+(no output — rule NOT triggered, sibling tickets unblocked)
+```
+
+The lint fixture was deleted from the worktree after the gate was captured; the rule remains wired in `base.js`.
