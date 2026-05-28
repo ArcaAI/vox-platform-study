@@ -21,16 +21,17 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     // TASK-302 Phase 3 Task 3.6 — JWT secret now sourced from SecretsService
     // (cache-warmed at bootstrap by main.ts). See gateway-auth.strategy.ts
     // for the same pattern.
-    const jwtSecret = secretsService.getSecretSync('JWT_SECRET_KEY') ?? JWT_SECRET_PLACEHOLDER;
-
-    // TASK-307 W2.1 (closes audit C-6) — refuse to start when the
-    // resolved JWT secret is the literal placeholder. Catches both:
-    // (a) the placeholder ever landing in Vault / SecretsService, and
-    // (b) a warmup miss falling through to the `??` default above. The
-    // thrown Error propagates out of NestFactory.create() and exits the
-    // process before any request can be served — same posture as
+    //
+    // TASK-307 W2.1 / W7.A.6 (closes audit C-6) — refuse to start when the
+    // resolved JWT secret is missing OR equals the literal placeholder.
+    // Catches both:
+    //   (a) the placeholder ever landing in Vault / SecretsService, and
+    //   (b) a warmup miss returning undefined (no implicit fallback).
+    // The thrown Error propagates out of NestFactory.create() and exits
+    // the process before any request can be served — same posture as
     // `auditAdminRoutePermissions` in apps/api/src/bootstrap.
-    if (jwtSecret === JWT_SECRET_PLACEHOLDER) {
+    const jwtSecret = secretsService.getSecretSync('JWT_SECRET_KEY');
+    if (!jwtSecret || jwtSecret === JWT_SECRET_PLACEHOLDER) {
       new Logger(JwtStrategy.name).error(
         'JWT_SECRET_KEY resolved to the literal placeholder. SecretsService either has no value warmed under this key, or the warmed value is the development default. Refusing to boot.',
       );
