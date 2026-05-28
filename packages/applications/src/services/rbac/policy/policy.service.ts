@@ -1,13 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import {
-  PolicyFactory,
-  PolicyRepository,
-  ResourceStatusType,
-  ResourceType,
-  SysEventType,
-} from '@arcaai/domains';
+import { PolicyFactory, PolicyRepository, ResourceStatusType, ResourceType, SysEventType } from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PolicyEngine, type PolicyRule } from '../../../authorization/policy.engine';
@@ -39,16 +33,7 @@ import {
 export class PolicyService extends BaseService implements IPolicyService {
   private readonly logger = new Logger(PolicyService.name);
 
-  private static readonly VALID_ACTIONS = [
-    'manage',
-    'create',
-    'read',
-    'list',
-    'update',
-    'delete',
-    'archive',
-    'export',
-  ];
+  private static readonly VALID_ACTIONS = ['manage', 'create', 'read', 'list', 'update', 'delete', 'archive', 'export'];
 
   private static readonly VALID_TEMPLATE_VARIABLES = ['user.id', 'user.tenantId', 'context.tenantId'];
 
@@ -126,10 +111,7 @@ export class PolicyService extends BaseService implements IPolicyService {
     const where = {
       resourceStatus: ResourceStatusType.ENABLED,
       ...(search && {
-        OR: [
-          { name: { contains: search, mode: 'insensitive' as const } },
-          { description: { contains: search, mode: 'insensitive' as const } },
-        ],
+        OR: [{ name: { contains: search, mode: 'insensitive' as const } }, { description: { contains: search, mode: 'insensitive' as const } }],
       }),
       ...(scope && { scope }),
     };
@@ -268,11 +250,7 @@ export class PolicyService extends BaseService implements IPolicyService {
     return { id, name: existing.name };
   }
 
-  private checkConditionsForVariables(
-    conditions: Record<string, unknown>,
-    ruleIndex: number,
-    warnings: string[],
-  ): void {
+  private checkConditionsForVariables(conditions: Record<string, unknown>, ruleIndex: number, warnings: string[]): void {
     const checkValue = (value: unknown, path: string) => {
       if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
         const varName = value.slice(2, -1);
