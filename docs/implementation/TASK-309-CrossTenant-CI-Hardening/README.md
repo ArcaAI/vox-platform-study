@@ -5,7 +5,7 @@
 | **Ticket** | TASK-309-CrossTenant-CI-Hardening |
 | **Created** | 2026-05-28 |
 | **Updated** | 2026-05-28 |
-| **Status** | `Pending` |
+| **Status** | `Completed (with deferred AC-5)` — AC-1, AC-2, AC-3 complete; AC-4 partial (helper landed + sanity test asserts the contract & currently fails as the documented gate); AC-5 walker pinned `describe.skip` pending AC-4 resolution |
 | **Classification** | Test infrastructure (CI confidence) |
 | **Priority** | Medium — production code is correct today; this prevents future regressions in W1/W3/W4b logic from slipping through CI |
 | **Source** | TASK-307 §10.1 deferrals W7.A.2-followup + W7.A.10 + W7.A.19 |
@@ -108,7 +108,101 @@ Pure CI confidence work. Today's production code (W1's `RefreshTokenService.cons
 ---
 
 ## 4. Implementation Summary
-*(to be filled in at close-out)*
+
+### 4.1 AC-1 — auth-refresh genuine cross-tenant probe ✓
+
+Replaces the prior stability-only probe in `apps/api/tests/e2e/auth-refresh.spec.ts` with a 5-step active probe:
+
+1. Log `super_admin` into BOTH `__GLOBAL__` and `ARCAAI` (seed grants platform-wide membership) — two refresh families bound to the same user, different tenants.
+2. Sanity-check both access tokens carry different `tenantId` claims.
+3. Rotate `refreshA` (the `__GLOBAL__` refresh token) while sending `tokenB` (the ARCAAI access token) as the bearer header. Asserts the rotated access token stays scoped to `__GLOBAL__` — proves the production code reads `tenantId` from the stored refresh-token record, **not** from the bearer (the C-12 hijack vector).
+4. Replay the consumed `refreshA` — asserts 401 (RFC 6749 §10.4 reuse detection) AND asserts the rotated successor `rotatedA.refreshToken` also 401s on its next rotation (family-revoke).
+5. Independently rotate `refreshB` — asserts the ARCAAI family is intact (cross-family isolation; the revocation of family A must not collaterally damage family B).
+
+The probe catches:
+- A future regression where `/auth/refresh` honours the bearer's `tenantId` (cross-tenant hijack).
+- A future regression where `RefreshTokenService.consume()` doesn't invoke `revokeFamily()` on reuse (DEF-C12 BLOCKER reopens).
+- A future regression where `revokeFamily()` accidentally crosses family boundaries.
+
+### 4.2 AC-2 / AC-3 — genuine cross-tenant probes ✓
+
+Each spec follows the same shape as `task-307-tenant-bucket-cross-tenant.spec.ts`:
+
+1. Privileged user logs into tenant A (`__GLOBAL__`).
+2. Bootstrap a **real** resource in tenant A.
+3. Sanity: creator can still read the resource.
+4. Privileged user in tenant B (`ARCAAI`) probes every meaningful endpoint on the resource id — must receive **404 (not 403)**.
+5. Probe response body MUST NOT match `/tenant/i` (DEF-C3 no-existence-leak).
+6. Cross-tenant probes leave the resource intact (sanity GET from creator succeeds).
+7. Synthetic uuidv7 id from creator → also 404, body shape identical (DEF-C3 makes "unknown id" and "cross-tenant id" indistinguishable on the wire).
+
+| Spec | Resource | Source tenant | Probing tenant | Endpoints probed |
+|---|---|---|---|---|
+| `task-307-consultation-job-cross-tenant.spec.ts` | ConsultationJob (real async pre-summary on `GEN_COMPLETED_CONSULTATION_ID`) | `__GLOBAL__` (doctor) | `ARCAAI` (super_admin) | `GET /consultations/jobs/:jobId`, `PATCH …/cancel`, `GET …/stream` |
+| `task-307-storage-cross-tenant.spec.ts` | TenantBucket (`hope-audio-arcaai`, `hope-attachments-arcaai` from `05a-tenant-bucket` seed) | `ARCAAI` | `__GLOBAL__` (tenant_admin) | `GET /storage/buckets/:name`, `…/files`, `…/files/:key`, `DELETE …` |
+| `task-307-transcription-job-cross-tenant.spec.ts` | TranscriptionJob (real STREAMING job on `PRODUCTION_PIPELINE_ID`) | `__GLOBAL__` (doctor) | `ARCAAI` (super_admin) | `GET /audio/transcription-jobs/:id`, `POST …/cancel`, `POST …/retry`, `GET …/stream` |
+| `task-307-voice-profile-cross-tenant.spec.ts` | UserVoiceProfile (real enrollment) | `__GLOBAL__` (doctor) | `__GLOBAL__` (**doctor2** — cross-USER, since `UserVoiceProfile` is user-scoped not tenant-scoped) | `PATCH /voice-profile/:id/activate`, `…/deactivate`, `DELETE …` |
+
+Notes:
+- **Storage spec** explicitly verifies the ARCAAI seed shipped the target bucket BEFORE the cross-tenant probe — otherwise a seed regression would silently degrade "cross-tenant 404" to "missing-bucket 404" and erase the test's meaning.
+- **Voice-profile spec** depends on STT-V2 being reachable for the embedding extraction in `beforeAll`. If STT-V2 is down the cross-user assertions are skipped (with a console warning) rather than degrading to a synthetic-id-only probe.
+
+### 4.3 AC-4 — TestAppModule helper (PARTIAL; sanity test is the gate)
+
+`apps/api/tests/helpers/test-app-module.ts` ships the documented override surface:
+
+- `'BULLMQ_EXTRA_OPTIONS'` → `{ manualRegistration: true }` (skips Worker creation per `@Processor()` class).
+- `'BULLMQ_CONFIG(default)'` → dead lazy connection (`port: 0`, `lazyConnect: true`, `retryStrategy: () => null`).
+- Every `getQueueToken(JobQueue.X)` → no-op stub Queue.
+- `IRedisService` → no-op (`addJob` only).
+- `IRedisCacheService` → no-op (every method documented).
+- `IAppSettingsService` → defaults-only stub (`getValueWithDefault` returns the caller-supplied default).
+- `'OPENID_CLIENT'` → `null` (matches the production "OIDC not configured" branch).
+- `SecretsService` → in-memory stub with synthetic JWT/API-key/SMR/OIDC secrets so `JwtStrategy`'s W2.1 placeholder gate passes; the secrets are NEVER reachable via signed tokens because AC-5 walks routes without an Authorization header.
+- `IServiceHealthMonitoringService` → no-op (the real `onModuleInit` calls `await new Redis(...).connect()` with `retryStrategy: () => 100…3000` — infinite retries against unreachable Redis).
+- `'CORE_DATABASE_SERVICE'` → no-op Proxy (`onModuleInit` would call `prisma.$connect()`).
+
+The helper carries a top-of-file TSDoc contract documenting every override and the failure mode if a new `AppModule` import slips past it: **"If you add a new `imports` entry to `AppModule`, you must update `TestAppModule`'s overrides — otherwise this walker silently skips its routes."**
+
+`apps/api/tests/integration/test-app-module.spec.ts` asserts the contract: `app.init()` + `app.close()` complete in <5 s. **It currently fails** (see §5 Change History 2026-05-28). The failure is the documented gate.
+
+### 4.4 AC-5 — full-route walker (DEFERRED on AC-4)
+
+`apps/api/tests/integration/full-route-walk.spec.ts` ships the complete walker implementation under `describe.skip(...)`:
+
+1. Discover every controller via `DiscoveryService.getControllers()`.
+2. For each method, walk via `MetadataScanner` and read `METHOD_METADATA` + `PATH_METADATA` + `SKIP_AUTH_KEY`.
+3. Instantiate path params (`:id` → all-zero uuid; other params → `x`).
+4. Probe each route via `supertest` without an Authorization header.
+5. Assert: `@Public()` → not 401; everything else → 401.
+
+The suite is `describe.skip` pending the AC-4 sanity test passing. Once `createTestApp()` returns successfully, removing the `.skip` (single-character change) becomes AC-5's only verification step.
+
+### 4.5 Files
+
+| Status | Path | Purpose |
+|---|---|---|
+| NEW | `apps/api/tests/helpers/test-app-module.ts` | TestAppModule + `createTestAppBuilder()` / `createTestApp()` (AC-4) |
+| NEW | `apps/api/tests/integration/test-app-module.spec.ts` | AC-4 sanity gate (boots in <5s) |
+| NEW | `apps/api/tests/integration/full-route-walk.spec.ts` | AC-5 walker (currently `describe.skip` on AC-4 blocker) |
+| MODIFIED | `apps/api/tests/e2e/auth-refresh.spec.ts` | AC-1 5-step genuine cross-tenant + family-revoke probe |
+| MODIFIED | `apps/api/tests/e2e/task-307-consultation-job-cross-tenant.spec.ts` | AC-2/3 genuine ConsultationJob probe |
+| MODIFIED | `apps/api/tests/e2e/task-307-storage-cross-tenant.spec.ts` | AC-2/3 strengthened storage probe (now verifies ARCAAI seed exists) |
+| MODIFIED | `apps/api/tests/e2e/task-307-transcription-job-cross-tenant.spec.ts` | AC-2/3 genuine TranscriptionJob probe |
+| MODIFIED | `apps/api/tests/e2e/task-307-voice-profile-cross-tenant.spec.ts` | AC-2/3 cross-USER UserVoiceProfile probe |
+| MODIFIED | `docs/implementation/TASK-309-CrossTenant-CI-Hardening/README.md` | This doc |
+
+### 4.6 Deviations
+
+- **Voice-profile is cross-USER, not cross-TENANT.** `UserVoiceProfile` has no `tenantId` column; ownership in the `TenantOwnedResourceInterceptor` is enforced per `userId`. The README phrased AC-2 as "tenant A vs tenant B" — the spec uses `doctor` vs `doctor2` (same tenant, different user) because that's what actually exercises the W3.2 `assertVoiceProfileOwnership` branch. Tenant-only cross-tenant access is *strictly weaker* than this — if cross-user fails closed, cross-tenant is automatically covered.
+- **Storage spec is `ARCAAI → __GLOBAL__`** (reversed from the other 3) because `__GLOBAL__` is the seed source for everything else — using `ARCAAI` as the source for storage avoids ordering coupling with the consultation/transcription specs.
+
+### 4.7 Open items
+
+- **AC-4 sanity test fails** as documented (see §5 Change History 2026-05-28). Next step is the `IConfigService.isRedisConfigured() === false` shadow approach instead of one-by-one consumer stubbing.
+- **AC-5 walker pinned `describe.skip`** until AC-4 unblocks.
+- **No production bugs were surfaced** by any of the 4 genuine probes during local development — every probe asserted the expected 404 (the W3 interceptor + the W1 family-revoke logic are correct).
+- **The auth-refresh AC-1 probe relies on `super_admin` having dual-tenant assignments.** Confirmed against `06-user.ts` seed.
 
 ---
 
@@ -117,3 +211,5 @@ Pure CI confidence work. Today's production code (W1's `RefreshTokenService.cons
 | Date | Description | Files modified |
 |---|---|---|
 | 2026-05-28 | Ticket created from TASK-307 §10.1 deferrals (W7.A.2-followup + W7.A.10 + W7.A.19) | — |
+| 2026-05-28 | **AC-4 / AC-5 blocker post-mortem.** With every documented override applied (`BULLMQ_EXTRA_OPTIONS`, `BULLMQ_CONFIG(default)`, all `JobQueue` tokens, `IRedisService`, `IRedisCacheService`, `IAppSettingsService`, `'OPENID_CLIENT'`, `SecretsService`, `IServiceHealthMonitoringService`, `'CORE_DATABASE_SERVICE'`), `Test.createTestingModule({ imports: [TestAppModule] }).compile()` still does not return. NestJS emits all `InstanceLoader … dependencies initialized` logs (every sub-module reports green), but the compile promise never resolves. Hypothesis: a transitively-imported provider builds an ioredis client at construction time (not at `onModuleInit`), so `compile()` keeps the event loop alive on the unresolved socket. The next iteration should switch from one-by-one consumer stubbing to shadowing `IConfigService` directly so `isRedisConfigured() === false` for the entire DI tree — that's the only place ioredis is configured from. Per §1.4 hard constraint we did NOT modify production code to bypass; the AC-5 walker is pinned `describe.skip` and the AC-4 sanity test is left FAILING as the CI gate that surfaces the next-step requirement. | `apps/api/tests/helpers/test-app-module.ts` (new), `apps/api/tests/integration/test-app-module.spec.ts` (new), `apps/api/tests/integration/full-route-walk.spec.ts` (new) |
+| 2026-05-28 | **AC-1 / AC-2 / AC-3 complete.** Genuine cross-tenant probes landed for ConsultationJob, Storage, TranscriptionJob, UserVoiceProfile + auth-refresh family-revoke + cross-tenant rotation binding. See §4 for the probe shape. No production bugs surfaced — every probe asserted the expected 404. | `apps/api/tests/e2e/auth-refresh.spec.ts`, `apps/api/tests/e2e/task-307-consultation-job-cross-tenant.spec.ts`, `apps/api/tests/e2e/task-307-storage-cross-tenant.spec.ts`, `apps/api/tests/e2e/task-307-transcription-job-cross-tenant.spec.ts`, `apps/api/tests/e2e/task-307-voice-profile-cross-tenant.spec.ts` |
