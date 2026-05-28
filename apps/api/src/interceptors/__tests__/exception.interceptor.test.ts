@@ -17,6 +17,7 @@ import { Counter } from 'prom-client';
 
 import { ExceptionInterceptor } from '../exception.interceptor';
 import { DataNotFoundException, OptimisticConcurrencyException, BaseException } from '@arcaai/exceptions';
+import { PrismaClientKnownRequestError } from '@arcaai/database';
 import { optimisticLockConflictTotal } from '../../observability/metrics';
 
 describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412 (TASK-302 Stream D Phase C C.5)', () => {
@@ -362,5 +363,152 @@ describe('ExceptionInterceptor — optimistic_lock_conflict_total counter (TASK-
     // No model label exists yet → no series at all.
     const value = await (optimisticLockConflictTotal as Counter<'model' | 'route'>).get();
     expect(value.values.length).toBe(0);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// TASK-307 W5.6 (AC-20, audit D-6) — Prisma error meta & raw-message strip.
+//
+// Pre-W5.6 the PrismaClientKnownRequestError branch passed `err.meta` and
+// `err.message` straight to the client response body, which leaks column
+// names, constraint names, and (depending on the Prisma version) row id
+// values. The server-side log MUST keep the full detail; only the public
+// body needs sanitising.
+//
+// Deploy-time gate (executed before this work landed):
+//   rg "err\.meta"    packages/ apps/ --type ts  -> only the interceptor
+//   rg "modelName"    packages/ apps/ --type ts  -> no Prisma-error consumer
+// ───────────────────────────────────────────────────────────────────────────
+describe('TASK-307 W5.6 — Prisma error sanitisation (AC-20, audit D-6)', () => {
+  let interceptor: ExceptionInterceptor;
+
+  beforeEach(() => {
+    const cls: any = {
+      getId: () => 'corr-1',
+      get: () => undefined,
+    };
+    interceptor = new ExceptionInterceptor(cls);
+  });
+
+  function createMockContext(): ExecutionContext {
+    return {
+      switchToHttp: () => ({
+        getRequest: () => ({ method: 'POST', url: '/api/v1/users' }),
+        getResponse: () => ({}),
+      }),
+    } as unknown as ExecutionContext;
+  }
+  function createErrorHandler(err: unknown): CallHandler {
+    return { handle: () => throwError(() => err) };
+  }
+
+  function makePrismaError(opts: {
+    code: string;
+    meta: Record<string, unknown>;
+    message: string;
+  }): PrismaClientKnownRequestError {
+    const err = Object.assign(new Error(opts.message), {
+      code: opts.code,
+      meta: opts.meta,
+      clientVersion: '0.0.0-test',
+    });
+    Object.setPrototypeOf(err, PrismaClientKnownRequestError.prototype);
+    return err as unknown as PrismaClientKnownRequestError;
+  }
+
+  it('client body for a PrismaClientKnownRequestError contains NO err.meta (no column / constraint / id leaks)', async () => {
+    const err = makePrismaError({
+      code: 'P2002',
+      meta: {
+        modelName: 'User',
+        target: ['email_confidential_field'],
+        constraint: 'unique_user_email_constraint_x',
+      },
+      message: 'Unique constraint failed on the fields: (`email_confidential_field`)',
+    });
+
+    let caught: HttpException | undefined;
+    try {
+      await firstValueFrom(
+        interceptor.intercept(createMockContext(), createErrorHandler(err)),
+      );
+    } catch (e) {
+      caught = e as HttpException;
+    }
+    expect(caught).toBeInstanceOf(HttpException);
+    const body = caught!.getResponse() as Record<string, unknown>;
+
+    expect(body).not.toHaveProperty('meta');
+    expect(JSON.stringify(body)).not.toContain('email_confidential_field');
+    expect(JSON.stringify(body)).not.toContain('unique_user_email_constraint_x');
+    expect(JSON.stringify(body)).not.toContain('modelName');
+  });
+
+  it('client body for a PrismaClientKnownRequestError does NOT echo err.message raw text', async () => {
+    const err = makePrismaError({
+      code: 'P2002',
+      meta: { target: ['email'] },
+      message: 'Unique constraint failed on the fields: (`email`) — internal hint xyz',
+    });
+
+    let caught: HttpException | undefined;
+    try {
+      await firstValueFrom(
+        interceptor.intercept(createMockContext(), createErrorHandler(err)),
+      );
+    } catch (e) {
+      caught = e as HttpException;
+    }
+    const body = caught!.getResponse() as Record<string, unknown>;
+
+    expect(JSON.stringify(body)).not.toContain('internal hint xyz');
+    expect(JSON.stringify(body)).not.toContain('Unique constraint failed');
+  });
+
+  it('client body shape is {statusCode, error, correlationId} only (no message, no meta)', async () => {
+    const err = makePrismaError({
+      code: 'P2002',
+      meta: { target: ['email'] },
+      message: 'leaky message',
+    });
+
+    let caught: HttpException | undefined;
+    try {
+      await firstValueFrom(
+        interceptor.intercept(createMockContext(), createErrorHandler(err)),
+      );
+    } catch (e) {
+      caught = e as HttpException;
+    }
+    const body = caught!.getResponse() as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(['correlationId', 'error', 'statusCode'].sort());
+    expect(body.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    expect(body.error).toBe('Bad Request');
+    expect(body.correlationId).toBe('corr-1');
+  });
+
+  it('server-side log STILL carries the full err.meta + err.message + errorCode (observability preserved)', async () => {
+    const err = makePrismaError({
+      code: 'P2002',
+      meta: { modelName: 'User', target: ['email'] },
+      message: 'Unique constraint failed on (`email`)',
+    });
+    const errorSpy = vi.spyOn((interceptor as any).logger, 'error').mockImplementation(() => undefined);
+
+    try {
+      await firstValueFrom(
+        interceptor.intercept(createMockContext(), createErrorHandler(err)),
+      );
+    } catch {
+      /* expected */
+    }
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Prisma database error',
+        errorCode: 'P2002',
+        errorMeta: expect.objectContaining({ modelName: 'User', target: ['email'] }),
+      }),
+    );
   });
 });
