@@ -11,6 +11,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ApiHealthController } from '../health.controller';
 import { HttpService } from '@nestjs/axios';
 
+const REQUIRED_PERMISSIONS_KEY = 'required_permissions';
+const THROTTLER_LIMIT = 'THROTTLER:LIMIT';
+const THROTTLER_TTL = 'THROTTLER:TTL';
+
 const createMockShutdownService = (overrides?: { isReady?: boolean; isShuttingDown?: boolean }) => ({
     isReady: overrides?.isReady ?? true,
     isShuttingDown: overrides?.isShuttingDown ?? false,
@@ -165,7 +169,7 @@ describe('ApiHealthController', () => {
             expect(new Date(result.timestamp).getTime()).not.toBeNaN();
         });
 
-        it('should include response data from healthy services', async () => {
+        it('should include service-name response data from healthy services (sanitised — no version)', async () => {
             mockHttpService.axiosRef.get
                 .mockResolvedValueOnce(ttsHealthy)
                 .mockResolvedValueOnce(smrHealthy)
@@ -174,8 +178,13 @@ describe('ApiHealthController', () => {
 
             const result = await controller.checkServices();
 
-            expect(result.services.tts.version).toBe('1.0.0');
-            expect(result.services.smr.version).toBe('2.0.0');
+            // TASK-307 W5.1 / AC-15 / E-3 — version and checks are stripped
+            // from the public response to avoid leaking downstream service
+            // versions / internal probe details (per audit finding C-8).
+            expect(result.services.tts.service).toBe('tts');
+            expect(result.services.smr.service).toBe('smr');
+            expect(result.services.tts).not.toHaveProperty('version');
+            expect(result.services.smr).not.toHaveProperty('version');
         });
 
         it('should include error message for down services', async () => {
@@ -216,17 +225,19 @@ describe('ApiHealthController', () => {
             },
         };
 
-        it('should return structured health for a valid service key', async () => {
+        it('should return sanitised structured health for a valid service key (no version / no checks)', async () => {
             mockHttpService.axiosRef.get.mockResolvedValueOnce(smrHealthy);
 
             const result = await controller.checkServiceByKey('smr');
 
             expect(result.status).toBe('healthy');
             expect(result.service).toBe('smr');
-            expect(result.version).toBe('2.0.0');
-            expect(result.uptime_seconds).toBe(200);
             expect(result.duration_ms).toBeGreaterThanOrEqual(0);
-            expect(result.checks).toEqual({ gpu: { status: 'healthy' } });
+            // TASK-307 W5.1 / AC-15 — version + checks are stripped before
+            // returning to the client (audit C-8 / E-3 / D-11). Full
+            // detail remains in server logs only.
+            expect(result).not.toHaveProperty('version');
+            expect(result).not.toHaveProperty('checks');
         });
 
         it('should return structured down status when service is unreachable', async () => {
@@ -279,6 +290,92 @@ describe('ApiHealthController', () => {
 
             expect(result.timestamp).toBeDefined();
             expect(new Date(result.timestamp).getTime()).not.toBeNaN();
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────────
+    // TASK-307 W5.1 — Surface hardening for /health/services{/:key}
+    //   AC-15 closes audit findings:
+    //     C-8  (/health/services unauth + leaks)
+    //     D-11 (Health throttle 300/min too generous)
+    //     E-3  (Health leaks downstream version)
+    //
+    //   - /services and /services/:key now require @Authorize()
+    //   - Response strips `version` and `checks` from each service entry
+    //   - Class-level throttle lowered to { limit: 30, ttl: 60000 }
+    //   - /live, /ready, /startup, / remain public (no @Authorize)
+    // ─────────────────────────────────────────────────────────────────
+    describe('TASK-307 W5.1 — /health surface hardening (AC-15)', () => {
+        it('declares an @Authorize() decorator on checkServices() (AC-15: C-8 fix)', () => {
+            const required = Reflect.getMetadata(
+                REQUIRED_PERMISSIONS_KEY,
+                ApiHealthController.prototype.checkServices,
+            );
+            // @Authorize() with no args sets metadata to [] (an empty array
+            // is the explicit "authenticated, no specific permission needed"
+            // marker the UnifiedAuthGuard accepts).
+            expect(required).toBeDefined();
+            expect(Array.isArray(required)).toBe(true);
+        });
+
+        it('declares an @Authorize() decorator on checkServiceByKey() (AC-15: C-8 fix)', () => {
+            const required = Reflect.getMetadata(
+                REQUIRED_PERMISSIONS_KEY,
+                ApiHealthController.prototype.checkServiceByKey,
+            );
+            expect(required).toBeDefined();
+            expect(Array.isArray(required)).toBe(true);
+        });
+
+        it('does NOT declare @Authorize() on liveness() — probe stays public (AC-15)', () => {
+            const required = Reflect.getMetadata(
+                REQUIRED_PERMISSIONS_KEY,
+                ApiHealthController.prototype.liveness,
+            );
+            expect(required).toBeUndefined();
+        });
+
+        it('does NOT declare @Authorize() on readiness() — probe stays public (AC-15)', () => {
+            const required = Reflect.getMetadata(
+                REQUIRED_PERMISSIONS_KEY,
+                ApiHealthController.prototype.readiness,
+            );
+            expect(required).toBeUndefined();
+        });
+
+        it('does NOT declare @Authorize() on startup() — probe stays public (AC-15)', () => {
+            const required = Reflect.getMetadata(
+                REQUIRED_PERMISSIONS_KEY,
+                ApiHealthController.prototype.startup,
+            );
+            expect(required).toBeUndefined();
+        });
+
+        it('lowers the class-level throttle to 30 req/60s (AC-15: D-11 fix)', () => {
+            const limit = Reflect.getMetadata(THROTTLER_LIMIT + 'default', ApiHealthController);
+            const ttl = Reflect.getMetadata(THROTTLER_TTL + 'default', ApiHealthController);
+            expect(limit).toBe(30);
+            expect(ttl).toBe(60000);
+        });
+
+        it('strips `version` and `checks` from the public services payload (AC-15: E-3 fix)', async () => {
+            const smrHealthy = {
+                data: {
+                    status: 'healthy',
+                    service: 'smr',
+                    version: '2.0.0',
+                    uptime_seconds: 200,
+                    checks: { gpu: { status: 'healthy' } },
+                },
+            };
+            mockHttpService.axiosRef.get.mockResolvedValue(smrHealthy);
+
+            const result = await controller.checkServices();
+
+            for (const key of Object.keys(result.services)) {
+                expect(result.services[key]).not.toHaveProperty('version');
+                expect(result.services[key]).not.toHaveProperty('checks');
+            }
         });
     });
 });

@@ -3,6 +3,7 @@ import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { HttpService } from '@nestjs/axios';
 import { Throttle } from '@nestjs/throttler';
 import { GracefulShutdownService, IGracefulShutdownService } from '../../services';
+import { Authorize } from '../../decorators';
 
 const SERVICE_NAME = 'api';
 // eslint-disable-next-line turbo/no-undeclared-env-vars
@@ -15,13 +16,19 @@ interface DownstreamService {
   healthEndpoint: string;
 }
 
+/**
+ * Public-facing shape of a downstream service probe. TASK-307 W5.1 / AC-15
+ * intentionally OMITS the upstream `version` and `checks` fields the Python
+ * services return — those values leak vulnerable-version reconnaissance
+ * (audit E-3) and internal probe details (audit C-8) to whoever holds
+ * `Authorize()` (any authenticated user). Full detail still reaches the
+ * server-side log entry in `probeService`.
+ */
 interface ServiceProbeResult {
   status: string;
   service: string;
-  version?: string;
   uptime_seconds?: number;
   duration_ms?: number;
-  checks?: Record<string, unknown>;
   error?: string;
 }
 
@@ -66,7 +73,12 @@ const DOWNSTREAM_SERVICES: DownstreamService[] = [
  * health status, eliminating the need for per-service proxy controllers.
  */
 @ApiTags('health')
-@Throttle({ default: { limit: 300, ttl: 60000 } })
+// TASK-307 W5.1 / AC-15 / audit D-11 — lowered from 300 → 30 req/min. With
+// /services{/:key} now @Authorize()-gated, the SSRF amplifier surface
+// (4 outbound HTTP calls per probe) shrinks, but unauthenticated
+// reconnaissance against /live, /ready, /startup, / still benefits from a
+// tighter cap. Kubernetes probe schedules sit well below 30/min.
+@Throttle({ default: { limit: 30, ttl: 60000 } })
 @Controller('health')
 export class ApiHealthController {
   private readonly logger = new Logger(ApiHealthController.name);
@@ -141,8 +153,13 @@ export class ApiHealthController {
   }
 
   @Get('services')
-  @ApiOperation({ summary: 'Consolidated health check for all downstream microservices' })
-  @ApiResponse({ status: 200, description: 'Health status of TTS, SMR, NLP, and STT services' })
+  // TASK-307 W5.1 / AC-15 — close audit C-8 (was unauthenticated). Any
+  // authenticated caller is permitted; the probe payload itself is
+  // sanitised below (version + checks stripped per audit E-3).
+  @Authorize()
+  @ApiOperation({ summary: 'Consolidated health check for all downstream microservices (authenticated)' })
+  @ApiResponse({ status: 200, description: 'Sanitised health status of TTS, SMR, NLP, and STT services' })
+  @ApiResponse({ status: 401, description: 'Authentication required' })
   async checkServices() {
     const results = await Promise.allSettled(DOWNSTREAM_SERVICES.map((svc) => this.probeService(svc)));
 
@@ -177,9 +194,12 @@ export class ApiHealthController {
   }
 
   @Get('services/:serviceKey')
-  @ApiOperation({ summary: 'Health check for a single downstream microservice' })
+  // TASK-307 W5.1 / AC-15 — close audit C-8.
+  @Authorize()
+  @ApiOperation({ summary: 'Health check for a single downstream microservice (authenticated)' })
   @ApiParam({ name: 'serviceKey', enum: ['tts', 'smr', 'nlp', 'stt'], description: 'Service key' })
-  @ApiResponse({ status: 200, description: 'Health status of the requested service (always 200, status field indicates health)' })
+  @ApiResponse({ status: 200, description: 'Sanitised health status of the requested service' })
+  @ApiResponse({ status: 401, description: 'Authentication required' })
   @ApiResponse({ status: 404, description: 'Unknown service key' })
   async checkServiceByKey(@Param('serviceKey') serviceKey: string): Promise<ServiceProbeResult & { timestamp: string }> {
     const svc = DOWNSTREAM_SERVICES.find((s) => s.key === serviceKey);
@@ -196,13 +216,22 @@ export class ApiHealthController {
     try {
       const response = await this.httpService.axiosRef.get(`${svc.url}${svc.healthEndpoint}`, { timeout: 5000 });
       const data = response.data;
+      // TASK-307 W5.1 / AC-15 / audit C-8 + E-3 — full payload (including
+      // `version` and `checks`) is logged server-side at debug level for
+      // operator visibility. The public response shape OMITS these fields
+      // so version + downstream probe details never leak to the client.
+      this.logger.debug({
+        message: `Health probe complete for ${svc.key}`,
+        url: `${svc.url}${svc.healthEndpoint}`,
+        upstreamStatus: data?.status,
+        upstreamVersion: data?.version,
+        upstreamChecks: data?.checks,
+      });
       return {
         status: data.status || 'healthy',
         service: data.service || svc.name,
-        version: data.version,
         uptime_seconds: data.uptime_seconds,
         duration_ms: Date.now() - start,
-        checks: data.checks,
       };
     } catch (err) {
       this.logger.warn({
