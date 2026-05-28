@@ -818,10 +818,13 @@ Final wave. Closed the API gateway audit `04-api-design-review.md`, finalized th
 
 **Files modified in W7** (18): see §5.2 W7 row.
 
-**Final test counts** (post-W7, vs. pre-W7 baseline `@arcaai/api` 1368 / `@arcaai/applications` 4377):
-- `@arcaai/api`: `<api-final>` (Δ vs. baseline: `<api-delta>`)
-- `@arcaai/applications`: `<applications-final>` (Δ vs. baseline: `<applications-delta>`)
+**Final test counts** (W7.E verification):
+- `@arcaai/api`: **1325 passed (1325)** across 72 test files (`pnpm --filter @arcaai/api test --run`). Measured at HEAD `c9c42e19` (pre-W7) and post-W7 — W7 added 0 tests to apps/api (carryover items only added TSDoc / comment / synthetic-stub-removal changes).
+- `@arcaai/applications`: **4380 passed | 4 skipped (4384)** across 171 files passed | 1 skipped (`pnpm --filter @arcaai/applications test --run`). Pre-W7 baseline at HEAD `c9c42e19` was 4377 passed; W7 added **+3** tests (the new `scan()` describe block in `redis-cache.service.test.ts` — empty/connected-cursor-walk/error paths). Δ +3, no regressions.
+- Targeted floors (all green): `auth-coverage.spec.ts` 5/5; `@arcaai/applications` -t "TASK-306" 91 passed; `@arcaai/applications` -t "TASK-307" 65 passed; `@arcaai/api` -t "TASK-307" 166 passed.
+- Build: `pnpm build --filter @arcaai/api --filter @arcaai/applications` → 7 tasks successful.
+- Lint: `pnpm lint --filter @arcaai/api --filter @arcaai/applications` → 1 pre-existing error in `packages/applications/scripts/rotation-smoke.ts` (parserOptions.project config issue from Vault commit `c4219db3`, NOT introduced by W7) + 170 pre-existing prettier warnings (e.g., `webhook.response.ts`, `voice-profile-extraction.service.ts`). `ReadLints` on every file touched by W7 reports zero issues.
 
-(Counts filled in by the W7.E verification commit.)
+(The user-supplied baseline of `@arcaai/api 1368 / @arcaai/applications 4377` in the W7 dispatch matched only on the applications number. Re-running `pnpm --filter @arcaai/api test --run` at HEAD `c9c42e19` returns 1325 — the 1368 figure was likely measured against a different commit or with a different include glob; W7 introduced no api test deltas.)
 
 **Status**: `Completed`.
