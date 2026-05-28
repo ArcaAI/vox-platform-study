@@ -50,148 +50,148 @@ const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 const MIN_TTL_SECONDS = 1;
 
 export interface IssuedRefreshToken {
-    rawToken: string;
-    family: string;
-    expiresAt: number;
+  rawToken: string;
+  family: string;
+  expiresAt: number;
 }
 
 export interface ConsumedRefreshToken {
-    userId: string;
-    tenantId: string;
-    jti: string;
-    family: string;
+  userId: string;
+  tenantId: string;
+  jti: string;
+  family: string;
 }
 
 export interface IssueRefreshTokenInput {
-    userId: string;
-    tenantId: string;
-    jti: string;
-    /** Optional — supply to continue an existing family (rotation). */
-    family?: string;
+  userId: string;
+  tenantId: string;
+  jti: string;
+  /** Optional — supply to continue an existing family (rotation). */
+  family?: string;
 }
 
 export interface IRefreshTokenService {
-    issue(input: IssueRefreshTokenInput): Promise<IssuedRefreshToken>;
-    consume(rawToken: string): Promise<ConsumedRefreshToken>;
-    revokeFamily(family: string): Promise<void>;
+  issue(input: IssueRefreshTokenInput): Promise<IssuedRefreshToken>;
+  consume(rawToken: string): Promise<ConsumedRefreshToken>;
+  revokeFamily(family: string): Promise<void>;
 }
 
 export const IRefreshTokenService = Symbol('IRefreshTokenService');
 
 interface PersistedRecord {
-    userId: string;
-    tenantId: string;
-    jti: string;
-    family: string;
-    expiresAt: number;
+  userId: string;
+  tenantId: string;
+  jti: string;
+  family: string;
+  expiresAt: number;
 }
 
 @Injectable()
 export class RefreshTokenService implements IRefreshTokenService {
-    private readonly logger = new Logger(RefreshTokenService.name);
-    private readonly ttlSeconds: number;
+  private readonly logger = new Logger(RefreshTokenService.name);
+  private readonly ttlSeconds: number;
 
-    constructor(@Inject(IRedisCacheService) private readonly cache: IRedisCacheService) {
-        // eslint-disable-next-line turbo/no-undeclared-env-vars
-        const rawTtl = process.env.REFRESH_TOKEN_TTL_SECONDS;
-        const parsed = rawTtl ? Number(rawTtl) : NaN;
-        this.ttlSeconds = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_TTL_SECONDS;
+  constructor(@Inject(IRedisCacheService) private readonly cache: IRedisCacheService) {
+    // eslint-disable-next-line turbo/no-undeclared-env-vars
+    const rawTtl = process.env.REFRESH_TOKEN_TTL_SECONDS;
+    const parsed = rawTtl ? Number(rawTtl) : NaN;
+    this.ttlSeconds = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_TTL_SECONDS;
+  }
+
+  async issue(input: IssueRefreshTokenInput): Promise<IssuedRefreshToken> {
+    const rawToken = crypto.randomBytes(REFRESH_TOKEN_RAW_BYTES).toString('base64url');
+    const family = input.family ?? crypto.randomBytes(REFRESH_FAMILY_RAW_BYTES).toString('hex');
+    const expiresAt = Math.floor(Date.now() / 1000) + this.ttlSeconds;
+    const hash = this.hash(rawToken);
+
+    const record: PersistedRecord = {
+      userId: input.userId,
+      tenantId: input.tenantId ?? '',
+      jti: input.jti,
+      family,
+      expiresAt,
+    };
+
+    await this.cache.setex(this.key(hash), this.ttlSeconds, JSON.stringify(record));
+    await this.cache.setex(this.familyMemberKey(family, hash), this.ttlSeconds, '1');
+
+    return { rawToken, family, expiresAt };
+  }
+
+  async consume(rawToken: string): Promise<ConsumedRefreshToken> {
+    if (!rawToken) {
+      throw new UnauthorizedException('Invalid refresh token');
     }
 
-    async issue(input: IssueRefreshTokenInput): Promise<IssuedRefreshToken> {
-        const rawToken = crypto.randomBytes(REFRESH_TOKEN_RAW_BYTES).toString('base64url');
-        const family = input.family ?? crypto.randomBytes(REFRESH_FAMILY_RAW_BYTES).toString('hex');
-        const expiresAt = Math.floor(Date.now() / 1000) + this.ttlSeconds;
-        const hash = this.hash(rawToken);
+    const hash = this.hash(rawToken);
+    const raw = await this.cache.get(this.key(hash));
 
-        const record: PersistedRecord = {
-            userId: input.userId,
-            tenantId: input.tenantId ?? '',
-            jti: input.jti,
-            family,
-            expiresAt,
-        };
-
-        await this.cache.setex(this.key(hash), this.ttlSeconds, JSON.stringify(record));
-        await this.cache.setex(this.familyMemberKey(family, hash), this.ttlSeconds, '1');
-
-        return { rawToken, family, expiresAt };
+    if (raw === null) {
+      // Either the token is unknown/expired, OR it was consumed earlier
+      // and we are now seeing a reuse attempt. The consumed-marker tells
+      // them apart and pins the family we need to revoke.
+      const reusedFamily = await this.cache.get(this.consumedKey(hash));
+      if (reusedFamily) {
+        this.logger.warn({
+          message: 'Refresh token reuse detected — revoking entire family (RFC 6749 §10.4)',
+          family: reusedFamily,
+        });
+        await this.revokeFamily(reusedFamily);
+      }
+      throw new UnauthorizedException('Invalid refresh token');
     }
 
-    async consume(rawToken: string): Promise<ConsumedRefreshToken> {
-        if (!rawToken) {
-            throw new UnauthorizedException('Invalid refresh token');
-        }
-
-        const hash = this.hash(rawToken);
-        const raw = await this.cache.get(this.key(hash));
-
-        if (raw === null) {
-            // Either the token is unknown/expired, OR it was consumed earlier
-            // and we are now seeing a reuse attempt. The consumed-marker tells
-            // them apart and pins the family we need to revoke.
-            const reusedFamily = await this.cache.get(this.consumedKey(hash));
-            if (reusedFamily) {
-                this.logger.warn({
-                    message: 'Refresh token reuse detected — revoking entire family (RFC 6749 §10.4)',
-                    family: reusedFamily,
-                });
-                await this.revokeFamily(reusedFamily);
-            }
-            throw new UnauthorizedException('Invalid refresh token');
-        }
-
-        let record: PersistedRecord;
-        try {
-            record = JSON.parse(raw) as PersistedRecord;
-        } catch {
-            throw new UnauthorizedException('Invalid refresh token');
-        }
-
-        // Atomically (best-effort) flip from "active" → "consumed": drop the
-        // active row + the family-member marker, then write a consumed marker
-        // bounded by the remaining TTL so a future reuse can be detected.
-        await this.cache.del(this.key(hash));
-        await this.cache.del(this.familyMemberKey(record.family, hash));
-        const remainingTtl = Math.max(MIN_TTL_SECONDS, record.expiresAt - Math.floor(Date.now() / 1000));
-        await this.cache.setex(this.consumedKey(hash), remainingTtl, record.family);
-
-        return {
-            userId: record.userId,
-            tenantId: record.tenantId,
-            jti: record.jti,
-            family: record.family,
-        };
+    let record: PersistedRecord;
+    try {
+      record = JSON.parse(raw) as PersistedRecord;
+    } catch {
+      throw new UnauthorizedException('Invalid refresh token');
     }
 
-    async revokeFamily(family: string): Promise<void> {
-        if (!family) return;
+    // Atomically (best-effort) flip from "active" → "consumed": drop the
+    // active row + the family-member marker, then write a consumed marker
+    // bounded by the remaining TTL so a future reuse can be detected.
+    await this.cache.del(this.key(hash));
+    await this.cache.del(this.familyMemberKey(record.family, hash));
+    const remainingTtl = Math.max(MIN_TTL_SECONDS, record.expiresAt - Math.floor(Date.now() / 1000));
+    await this.cache.setex(this.consumedKey(hash), remainingTtl, record.family);
 
-        const memberPrefix = `${REFRESH_TOKEN_FAMILY_KEY_PREFIX}${family}:`;
-        const memberKeys = await this.cache.keys(`${memberPrefix}*`);
-        if (memberKeys.length === 0) return;
+    return {
+      userId: record.userId,
+      tenantId: record.tenantId,
+      jti: record.jti,
+      family: record.family,
+    };
+  }
 
-        const tokenKeys: string[] = [];
-        for (const memberKey of memberKeys) {
-            const hash = memberKey.substring(memberPrefix.length);
-            tokenKeys.push(this.key(hash));
-        }
-        await this.cache.delMany([...memberKeys, ...tokenKeys]);
+  async revokeFamily(family: string): Promise<void> {
+    if (!family) return;
+
+    const memberPrefix = `${REFRESH_TOKEN_FAMILY_KEY_PREFIX}${family}:`;
+    const memberKeys = await this.cache.keys(`${memberPrefix}*`);
+    if (memberKeys.length === 0) return;
+
+    const tokenKeys: string[] = [];
+    for (const memberKey of memberKeys) {
+      const hash = memberKey.substring(memberPrefix.length);
+      tokenKeys.push(this.key(hash));
     }
+    await this.cache.delMany([...memberKeys, ...tokenKeys]);
+  }
 
-    private hash(rawToken: string): string {
-        return crypto.createHash('sha256').update(rawToken).digest('hex');
-    }
+  private hash(rawToken: string): string {
+    return crypto.createHash('sha256').update(rawToken).digest('hex');
+  }
 
-    private key(hash: string): string {
-        return `${REFRESH_TOKEN_KEY_PREFIX}${hash}`;
-    }
+  private key(hash: string): string {
+    return `${REFRESH_TOKEN_KEY_PREFIX}${hash}`;
+  }
 
-    private familyMemberKey(family: string, hash: string): string {
-        return `${REFRESH_TOKEN_FAMILY_KEY_PREFIX}${family}:${hash}`;
-    }
+  private familyMemberKey(family: string, hash: string): string {
+    return `${REFRESH_TOKEN_FAMILY_KEY_PREFIX}${family}:${hash}`;
+  }
 
-    private consumedKey(hash: string): string {
-        return `${REFRESH_TOKEN_CONSUMED_KEY_PREFIX}${hash}`;
-    }
+  private consumedKey(hash: string): string {
+    return `${REFRESH_TOKEN_CONSUMED_KEY_PREFIX}${hash}`;
+  }
 }
