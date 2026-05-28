@@ -29,11 +29,15 @@ export function assertJwtSecretNotPlaceholder(secretsService: SecretsService): v
   const jwtSecret = secretsService.getSecretSync('JWT_SECRET_KEY');
 
   if (jwtSecret === undefined || jwtSecret === PLACEHOLDER) {
-    new Logger('JwtSecretPlaceholderAudit').error(
+    // TASK-307 W7.A.7 — disambiguate "undefined" (warmup miss) from
+    // "literal placeholder" in both the log AND the thrown Error so a
+    // crash-loop reading container logs can pin the root cause without
+    // re-running with debug logging.
+    const reason =
       jwtSecret === undefined
-        ? 'JWT_SECRET_KEY is not warmed in SecretsService. Set a real secret in Vault / SecretsService before booting.'
-        : 'JWT_SECRET_KEY resolved to the literal placeholder. Replace the development default with a real secret in Vault / SecretsService.',
-    );
-    throw new Error('JWT_SECRET_KEY is the literal placeholder; refusing to boot. Set a real secret in Vault / SecretsService.');
+        ? 'JWT_SECRET_KEY is not warmed in SecretsService (undefined). Set a real secret in Vault / SecretsService before booting.'
+        : 'JWT_SECRET_KEY resolved to the literal development placeholder. Replace the development default with a real secret in Vault / SecretsService.';
+    new Logger('JwtSecretPlaceholderAudit').error(reason);
+    throw new Error(`Refusing to boot: ${reason}`);
   }
 }

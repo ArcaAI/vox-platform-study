@@ -21,14 +21,19 @@ const fakeSecrets = (value: string | undefined) => ({
 
 describe('TASK-307 W2.2 — bootstrap refuses placeholder secret', () => {
   it('throws when SecretsService returns the literal placeholder', () => {
+    // TASK-307 W7.A.7 — error message disambiguates the literal-placeholder
+    // branch from the undefined branch so a crash-loop reading container
+    // logs can pin the root cause without re-running with debug logging.
     expect(() => assertJwtSecretNotPlaceholder(fakeSecrets(PLACEHOLDER) as never)).toThrowError(
-      /JWT_SECRET_KEY is the literal placeholder.*refusing to boot/,
+      /Refusing to boot.*literal development placeholder/,
     );
   });
 
   it('throws when SecretsService returns undefined (warmup miss)', () => {
+    // TASK-307 W7.A.7 — disambiguated message names the undefined branch
+    // explicitly instead of reusing the placeholder message.
     expect(() => assertJwtSecretNotPlaceholder(fakeSecrets(undefined) as never)).toThrowError(
-      /JWT_SECRET_KEY is the literal placeholder.*refusing to boot/,
+      /Refusing to boot.*not warmed in SecretsService.*undefined/,
     );
   });
 
