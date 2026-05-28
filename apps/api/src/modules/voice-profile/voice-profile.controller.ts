@@ -18,6 +18,7 @@ import {
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
+import { TenantOwnedResource } from '../../common';
 import { Authorize } from '../../decorators';
 import { EnrollBodyDto, VoiceProfileResponse } from './dto';
 
@@ -86,6 +87,7 @@ export class VoiceProfileController {
   }
 
   @Patch(':id/activate')
+  @TenantOwnedResource({ modelName: 'UserVoiceProfile', paramName: 'id' })
   @Authorize(['update', 'UserVoiceProfile'])
   @ApiOperation({ summary: 'Activate a voice profile' })
   @ApiParam({ name: 'id', description: 'Voice profile ID', type: String })
@@ -96,6 +98,7 @@ export class VoiceProfileController {
   }
 
   @Patch(':id/deactivate')
+  @TenantOwnedResource({ modelName: 'UserVoiceProfile', paramName: 'id' })
   @Authorize(['update', 'UserVoiceProfile'])
   @ApiOperation({ summary: 'Deactivate a voice profile' })
   @ApiParam({ name: 'id', description: 'Voice profile ID', type: String })
@@ -106,6 +109,7 @@ export class VoiceProfileController {
   }
 
   @Delete(':id')
+  @TenantOwnedResource({ modelName: 'UserVoiceProfile', paramName: 'id' })
   @Authorize(['delete', 'UserVoiceProfile'])
   @ApiOperation({ summary: 'Delete a voice profile' })
   @ApiParam({ name: 'id', description: 'Voice profile ID', type: String })

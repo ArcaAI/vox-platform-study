@@ -11,6 +11,10 @@ import { PATH_METADATA, METHOD_METADATA, SSE_METADATA } from '@nestjs/common/con
 import { RequestMethod } from '@nestjs/common';
 import { of } from 'rxjs';
 import { ConsultationJobController } from '../consultation-job.controller';
+import {
+  TENANT_OWNED_RESOURCE_KEY,
+  type TenantOwnedResourceOptions,
+} from '../../../common/tenant-owned-resource.decorator';
 
 type MockJobService = {
   getJobStatus: ReturnType<typeof vi.fn>;
@@ -134,6 +138,30 @@ describe('ConsultationJobController', () => {
     it('@Controller is mounted at "consultations/jobs"', () => {
       const path = Reflect.getMetadata(PATH_METADATA, ConsultationJobController);
       expect(path).toBe('consultations/jobs');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // TASK-307 W3.4 — every per-job handler must carry @TenantOwnedResource so the
+  // global TenantOwnedResourceInterceptor can 404 cross-tenant probes (AC-10).
+  // ---------------------------------------------------------------------------
+  describe('TASK-307 W3.4 — @TenantOwnedResource metadata', () => {
+    const meta = (m: keyof ConsultationJobController): TenantOwnedResourceOptions | undefined =>
+      Reflect.getMetadata(
+        TENANT_OWNED_RESOURCE_KEY,
+        ConsultationJobController.prototype[m] as object,
+      ) as TenantOwnedResourceOptions | undefined;
+
+    it('getJob is annotated with modelName ConsultationJob + paramName jobId', () => {
+      expect(meta('getJob')).toEqual({ modelName: 'ConsultationJob', paramName: 'jobId' });
+    });
+
+    it('cancelJob is annotated with modelName ConsultationJob + paramName jobId', () => {
+      expect(meta('cancelJob')).toEqual({ modelName: 'ConsultationJob', paramName: 'jobId' });
+    });
+
+    it('streamJob is annotated with modelName ConsultationJob + paramName jobId', () => {
+      expect(meta('streamJob')).toEqual({ modelName: 'ConsultationJob', paramName: 'jobId' });
     });
   });
 });

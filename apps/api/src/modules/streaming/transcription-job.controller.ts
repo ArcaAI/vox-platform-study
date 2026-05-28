@@ -35,6 +35,7 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiRespon
 import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
 import { uuidv7 } from 'uuidv7';
+import { TenantOwnedResource } from '../../common';
 import {
   ALLOWED_AUDIO_MIMES,
   AUDIO_BUCKET,
@@ -359,6 +360,7 @@ export class TranscriptionJobController {
   }
 
   @Get(':id')
+  @TenantOwnedResource({ modelName: 'TranscriptionJob', paramName: 'id' })
   @ApiOperation({ summary: 'Get transcription job by ID' })
   @ApiParam({ name: 'id', description: 'Transcription job ID' })
   async getById(@Param('id') id: string) {
@@ -371,6 +373,7 @@ export class TranscriptionJobController {
 
   @Get(':id/stream')
   @Sse()
+  @TenantOwnedResource({ modelName: 'TranscriptionJob', paramName: 'id' })
   @ApiOperation({ summary: 'Stream transcription job events via SSE' })
   @ApiParam({ name: 'id', description: 'Transcription job ID' })
   streamJob(@Param('id') id: string): Observable<MessageEvent> {
@@ -381,6 +384,7 @@ export class TranscriptionJobController {
   }
 
   @Post(':id/cancel')
+  @TenantOwnedResource({ modelName: 'TranscriptionJob', paramName: 'id' })
   @ApiOperation({ summary: 'Cancel a transcription job' })
   @ApiParam({ name: 'id', description: 'Transcription job ID' })
   async cancel(@Param('id') id: string) {
@@ -388,6 +392,7 @@ export class TranscriptionJobController {
   }
 
   @Post(':id/retry')
+  @TenantOwnedResource({ modelName: 'TranscriptionJob', paramName: 'id' })
   @ApiOperation({ summary: 'Retry a failed transcription job' })
   @ApiParam({ name: 'id', description: 'Transcription job ID' })
   async retry(@Param('id') id: string) {
