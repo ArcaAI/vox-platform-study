@@ -10,6 +10,7 @@ import {
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
+import { TenantOwnedResourceModule } from '../../common';
 import { SmrProxyController } from './smr-proxy.controller';
 import { SttWsGateway } from './stt-ws.gateway';
 import { TranscriptionJobController } from './transcription-job.controller';
@@ -28,6 +29,9 @@ import { TranscriptionJobController } from './transcription-job.controller';
     S3ServiceModule,
     PipelineServiceModule,
     CoreDatabaseModule,
+    // TASK-310 W7.A.9 (AC-3): exposes `StreamSessionTenantBindingService`
+    // to `TranscriptionJobController` so it can bind on create / clear on close.
+    TenantOwnedResourceModule,
   ],
   controllers: [TranscriptionJobController, SmrProxyController],
   providers: [SttWsGateway],
