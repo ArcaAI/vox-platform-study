@@ -1,3 +1,4 @@
+import { IConfigService } from '@arcaai/applications';
 import { Controller, Get, HttpCode, HttpStatus, Inject, Logger, NotFoundException, Param, ServiceUnavailableException } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { HttpService } from '@nestjs/axios';
@@ -33,35 +34,6 @@ interface ServiceProbeResult {
   error?: string;
 }
 
-const DOWNSTREAM_SERVICES: DownstreamService[] = [
-  {
-    key: 'tts',
-    name: 'Text to Speech',
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
-    url: process.env.TTS_URL || 'http://localhost:8863',
-    healthEndpoint: '/api/v1/health',
-  },
-  {
-    key: 'smr',
-    name: 'Summarization',
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
-    url: process.env.SMR_SERVICE_URL || process.env.SMR_URL || 'http://localhost:8862',
-    healthEndpoint: '/api/v1/health',
-  },
-  {
-    key: 'nlp',
-    name: 'Medical NLP',
-    url: process.env.NLP_URL || 'http://localhost:8864',
-    healthEndpoint: '/api/v1/health',
-  },
-  {
-    key: 'stt',
-    name: 'Speech to Text',
-    url: process.env.STT_V2_URL || 'http://localhost:8861',
-    healthEndpoint: '/api/v1/health',
-  },
-];
-
 /**
  * Health Controller for Kubernetes-compatible health checks.
  *
@@ -83,12 +55,49 @@ const DOWNSTREAM_SERVICES: DownstreamService[] = [
 @Controller('health')
 export class ApiHealthController {
   private readonly logger = new Logger(ApiHealthController.name);
+  private readonly downstreamServices: DownstreamService[];
 
   constructor(
     @Inject(IGracefulShutdownService)
     private readonly shutdownService: GracefulShutdownService,
     private readonly httpService: HttpService,
-  ) {}
+    @Inject(IConfigService)
+    private readonly configService: IConfigService,
+  ) {
+    // TASK-310 E-5 (AC-5): downstream URLs resolve through the typed
+    // `IConfigService.getConfigValue(...)` accessor. The pre-W7 direct
+    // `process.env.{SMR,STT_V2,TTS,NLP}_URL` reads are forbidden by
+    // the `no-direct-downstream-url-env` lint rule; the env-or-fallback
+    // resolution happens once at bootstrap in
+    // `ConfigService.loadBaseConfig()`. Built once per controller
+    // instance — the URLs do not change at runtime.
+    this.downstreamServices = [
+      {
+        key: 'tts',
+        name: 'Text to Speech',
+        url: this.configService.getConfigValue('TTS_URL'),
+        healthEndpoint: '/api/v1/health',
+      },
+      {
+        key: 'smr',
+        name: 'Summarization',
+        url: this.configService.getConfigValue('SMR_URL'),
+        healthEndpoint: '/api/v1/health',
+      },
+      {
+        key: 'nlp',
+        name: 'Medical NLP',
+        url: this.configService.getConfigValue('NLP_URL'),
+        healthEndpoint: '/api/v1/health',
+      },
+      {
+        key: 'stt',
+        name: 'Speech to Text',
+        url: this.configService.getConfigValue('STT_V2_URL'),
+        healthEndpoint: '/api/v1/health',
+      },
+    ];
+  }
 
   @Get('live')
   @Public()
@@ -166,13 +175,13 @@ export class ApiHealthController {
   @ApiResponse({ status: 200, description: 'Sanitised health status of TTS, SMR, NLP, and STT services' })
   @ApiResponse({ status: 401, description: 'Authentication required' })
   async checkServices() {
-    const results = await Promise.allSettled(DOWNSTREAM_SERVICES.map((svc) => this.probeService(svc)));
+    const results = await Promise.allSettled(this.downstreamServices.map((svc) => this.probeService(svc)));
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const services: Record<string, any> = {};
     let healthyCount = 0;
 
-    DOWNSTREAM_SERVICES.forEach((svc, i) => {
+    this.downstreamServices.forEach((svc, i) => {
       const result = results[i];
       if (result.status === 'fulfilled') {
         services[svc.key] = result.value;
@@ -187,7 +196,7 @@ export class ApiHealthController {
     });
 
     let overallStatus: string;
-    if (healthyCount === DOWNSTREAM_SERVICES.length) overallStatus = 'healthy';
+    if (healthyCount === this.downstreamServices.length) overallStatus = 'healthy';
     else if (healthyCount === 0) overallStatus = 'unhealthy';
     else overallStatus = 'degraded';
 
@@ -207,9 +216,9 @@ export class ApiHealthController {
   @ApiResponse({ status: 401, description: 'Authentication required' })
   @ApiResponse({ status: 404, description: 'Unknown service key' })
   async checkServiceByKey(@Param('serviceKey') serviceKey: string): Promise<ServiceProbeResult & { timestamp: string }> {
-    const svc = DOWNSTREAM_SERVICES.find((s) => s.key === serviceKey);
+    const svc = this.downstreamServices.find((s) => s.key === serviceKey);
     if (!svc) {
-      throw new NotFoundException(`Unknown service key '${serviceKey}'. Valid keys: ${DOWNSTREAM_SERVICES.map((s) => s.key).join(', ')}`);
+      throw new NotFoundException(`Unknown service key '${serviceKey}'. Valid keys: ${this.downstreamServices.map((s) => s.key).join(', ')}`);
     }
 
     const result = await this.probeService(svc);
