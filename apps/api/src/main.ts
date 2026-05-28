@@ -2,7 +2,7 @@ import { ILoggingService, SecretsService } from '@arcaai/applications';
 import { LogLevel, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { auditAdminRoutePermissions } from './bootstrap/admin-route-permission-audit';
 import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholder-audit';
@@ -13,6 +13,9 @@ import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholde
 import { getCorsOrigins, isOriginAllowed } from './cors.config';
 import { ETagInterceptor } from './interceptors';
 import { GracefulShutdownService } from './services';
+// TASK-310 E-8 (AC-8): Swagger config extracted so the security-scheme
+// list (bearer + api-key) is unit-testable.
+import { buildSwaggerConfig } from './swagger.config';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import session = require('express-session');
 
@@ -65,7 +68,7 @@ async function bootstrap() {
   });
 
   if (!isProduction) {
-    const config = new DocumentBuilder().setTitle('Api').setDescription('Main api backend').setVersion('1.0').addBearerAuth().build();
+    const config = buildSwaggerConfig().build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/v1/docs', app, document);
   }
