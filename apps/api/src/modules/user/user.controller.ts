@@ -23,7 +23,12 @@ import {
 import { Body, Controller, Delete, HttpCode, HttpStatus, Inject, Param, Post, Query, Get, Patch } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { ApiEndpoint, CanManage } from '../../decorators';
-import { UpdateUserStatusRequest, BulkDeleteUsersRequest } from './dto';
+import {
+  UpdateUserStatusRequest,
+  BulkDeleteUsersRequest,
+  BulkDeleteUsersResponse,
+  BulkDeleteUserFailure,
+} from './dto';
 
 @ApiBearerAuth()
 @ApiTags('admin-users')
@@ -134,19 +139,47 @@ export class UserController {
     return UserDtoMapper.ToResponse(result);
   }
 
+  /**
+   * Bulk delete users with partial-failure semantics (TASK-310 E-11 / AC-10).
+   *
+   * Pre-W7 this method threw on the first failing id, leaving the caller
+   * with no signal about which preceding deletes had landed or which later
+   * ids never ran. It now catches per-id and returns the structured
+   * `BulkDeleteUsersResponse` so admin tooling can report exact partial
+   * progress and retry only the failed ids idempotently.
+   *
+   * Why per-id catch (not a Prisma `$transaction`):
+   *   - `IUserService.deleteById` doesn't accept a transaction client; the
+   *     `applications` layer would need a new overload to thread one
+   *     through. That's a cross-package surface change and out of scope
+   *     for an apps/api hygiene sweep.
+   *   - Admin UX wants visibility into _which_ id failed; transactional
+   *     roll-back collapses that into a single error message.
+   *
+   * If a future requirement demands all-or-nothing semantics, callers can
+   * inspect `failed.length > 0` and trigger their own compensating
+   * workflow against the `succeeded` set.
+   */
   @ApiEndpoint({
-    returnedModel: UserResponse,
+    returnedModel: BulkDeleteUsersResponse,
     method: HttpMethod.DELETE,
     path: 'bulk',
     append: '(bulk delete)',
   })
-  async bulkDelete(@Body() body: BulkDeleteUsersRequest): Promise<UserResponse[]> {
-    const results: UserResponse[] = [];
+  async bulkDelete(@Body() body: BulkDeleteUsersRequest): Promise<BulkDeleteUsersResponse> {
+    const succeeded: UserResponse[] = [];
+    const failed: BulkDeleteUserFailure[] = [];
+
     for (const id of body.ids) {
-      const result = await this.userService.deleteById(id);
-      results.push(UserDtoMapper.ToResponse(result));
+      try {
+        const result = await this.userService.deleteById(id);
+        succeeded.push(UserDtoMapper.ToResponse(result));
+      } catch (err) {
+        failed.push({ id, reason: err instanceof Error ? err.message : String(err) });
+      }
     }
-    return results;
+
+    return { succeeded, failed };
   }
 
   @ApiEndpoint({
