@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, HttpException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SmrProxyController } from '../smr-proxy.controller';
 
@@ -383,7 +383,11 @@ describe('SmrProxyController', () => {
       ]);
     });
 
-    it('should resolve global tenant config when user is SUPER_ADMIN without tenantId', async () => {
+    // TASK-307 W5.9 (AC-23, audit D-12) retuned this from an implicit
+    // SUPER_ADMIN → __GLOBAL__ fallback to an EXPLICIT
+    // ?tenantKey=__GLOBAL__ query parameter. Behaviour beyond the
+    // resolver remains identical.
+    it('should resolve global tenant config when SUPER_ADMIN passes ?tenantKey=__GLOBAL__ (W5.9)', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return undefined;
         if (key === 'user') return { roles: ['SUPER_ADMIN'] };
@@ -401,7 +405,7 @@ describe('SmrProxyController', () => {
         page: 1,
       });
 
-      const result = await controller.getProviders();
+      const result = await controller.getProviders('__GLOBAL__');
 
       expect(mockTenantService.fetchByCodeName).toHaveBeenCalledWith('__GLOBAL__');
       expect(mockTenantService.fetchTenantConfigs).toHaveBeenCalledWith({
@@ -464,6 +468,88 @@ describe('SmrProxyController', () => {
       mockHttpService.axiosRef.get.mockRejectedValue(new Error('ECONNREFUSED'));
 
       await expect(controller.getProviders()).resolves.toEqual([]);
+    });
+  });
+
+  // TASK-307 W5.9 (AC-23, audit D-12) — the GLOBAL-tenant fallback must
+  // be requested EXPLICITLY via `?tenantKey=__GLOBAL__`. The old
+  // implicit "SUPER_ADMIN without a CLS tenantId silently reads
+  // __GLOBAL__" path is removed because operators rarely intend it and
+  // tenant admins debugging an issue can land on it by mistake when CLS
+  // resolution misfires.
+  describe('TASK-307 W5.9 — explicit ?tenantKey=__GLOBAL__ on getProviders (AC-23, audit D-12)', () => {
+    beforeEach(() => {
+      mockTenantService.fetchTenantConfigs.mockResolvedValue({
+        data: [{ key: 'default-smr-provider', value: 'azure-openai' }, { key: 'default-smr-model', value: 'gpt-4o-mini' }],
+        count: 2,
+        limit: 200,
+        page: 1,
+      });
+    });
+
+    it('SUPER_ADMIN with ?tenantKey=__GLOBAL__ resolves to the GLOBAL tenant', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return undefined;
+        if (key === 'user') return { id: 'admin', roles: ['SUPER_ADMIN'] };
+        return undefined;
+      });
+      mockTenantService.fetchByCodeName.mockResolvedValue({ id: 'global-tenant' });
+
+      await controller.getProviders('__GLOBAL__');
+
+      expect(mockTenantService.fetchByCodeName).toHaveBeenCalledWith('__GLOBAL__');
+      expect(mockTenantService.fetchTenantConfigs).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: 'global-tenant' }),
+      );
+    });
+
+    it('non-SUPER_ADMIN with ?tenantKey=__GLOBAL__ is FORBIDDEN', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return 'tenant-1';
+        if (key === 'user') return { id: 'u-1', roles: ['DOCTOR'] };
+        return undefined;
+      });
+
+      await expect(controller.getProviders('__GLOBAL__')).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockTenantService.fetchByCodeName).not.toHaveBeenCalled();
+    });
+
+    it('any tenantKey OTHER than __GLOBAL__ is rejected as a BAD REQUEST', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return 'tenant-1';
+        if (key === 'user') return { id: 'admin', roles: ['SUPER_ADMIN'] };
+        return undefined;
+      });
+
+      await expect(controller.getProviders('other-tenant')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(controller.getProviders('__global__')).rejects.toBeInstanceOf(BadRequestException);
+      expect(mockTenantService.fetchByCodeName).not.toHaveBeenCalled();
+    });
+
+    it('SUPER_ADMIN WITHOUT an explicit ?tenantKey AND no CLS tenantId is REJECTED (no implicit fallback)', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return undefined;
+        if (key === 'user') return { id: 'admin', roles: ['SUPER_ADMIN'] };
+        return undefined;
+      });
+
+      await expect(controller.getProviders()).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(mockTenantService.fetchByCodeName).not.toHaveBeenCalled();
+    });
+
+    it('non-admin without ?tenantKey defaults to the CLS tenant (the common path)', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return 'tenant-cls';
+        if (key === 'user') return { id: 'u-1', roles: ['DOCTOR'] };
+        return undefined;
+      });
+
+      await controller.getProviders();
+
+      expect(mockTenantService.fetchByCodeName).not.toHaveBeenCalled();
+      expect(mockTenantService.fetchTenantConfigs).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: 'tenant-cls' }),
+      );
     });
   });
 
