@@ -140,6 +140,25 @@ GREEN — `pnpm --filter @arcaai/api exec vitest run src/modules/consultation/__
        Tests  13 passed (13)
 ```
 
+### 4.3 AC-4 — E2E spec `consultation-job-cross-user.spec.ts`
+
+**Files added**
+
+| File | Purpose |
+|---|---|
+| `apps/api/tests/e2e/consultation-job-cross-user.spec.ts` | NEW. Playwright spec covering AC-4: tenant-A creator cancels own job → 200; tenant-A peer cancels → 404; tenant-A peer GETs same job → 200 (read still tenant-only). |
+
+**Test design**
+
+- Uses both seeded same-tenant doctors (`doctor` as creator, `doctor2` as peer) — both live in `__GLOBAL__` per `91-user.ts`.
+- Seeds Redis directly with a `consultation_job:<jobId>` JSON shaped exactly like `JobService.updateJobStatus` writes (TASK-307 W3.3 `ConsultationJobStatus` payload — tenantId + userId carried through). Cleanup in `afterAll`.
+- Declaration order is intentional: peer-cancel-404 runs BEFORE creator-cancel-200 so the peer 404 lands on a still-`RUNNING` row, not a CANCELLED terminal one. Within a Playwright file the same worker executes tests sequentially in declaration order.
+- Cross-tenant 404 is NOT re-proven here — it is already covered by `task-307-consultation-job-cross-tenant.spec.ts` (TASK-307 W3.4) plus the `cross-tenant probe regardless of scope:"creator"` unit test in this ticket.
+
+**Execution constraint (worktree)**
+
+The dev infra Redis (`hope-redis` on `:6379`) is running on this host, but the test infra stack (`hope-redis-test` on `:6380`, API on `:8868` via `./scripts/start-test-api.sh`) is not. The spec is authored and lints clean; it will be executed against the parent repo's running test stack once this branch merges back to `fix/2605-review` (or earlier via `pnpm docker:test:up && pnpm test:api:up && pnpm test:e2e --grep consultation-job-cross-user`). The unit-level coverage of the same logic in §4.1 is the immediate verification.
+
 ---
 
 ## 5. Change History
