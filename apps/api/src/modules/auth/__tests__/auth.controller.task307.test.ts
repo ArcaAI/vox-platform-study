@@ -495,6 +495,116 @@ describe('AuthController — TASK-307 W1.3 — refresh endpoint defense', () => 
     });
 });
 
+// ---------------------------------------------------------------------------
+// W1.4 — logout revokes both the access-token jti AND the refresh-token
+// family. Closes audit finding C-11 (logout doesn't revoke jti) and AC-2
+// (logout terminates the full session, not just the in-flight request).
+// ---------------------------------------------------------------------------
+describe('AuthController — TASK-307 W1.4 — logout session-revocation', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    function buildLogoutController(sessionOverrides: any = {}) {
+        const session = {
+            id: 'doctor-001',
+            tenantId: 'tenant-A',
+            jti: 'jti-abc-123',
+            exp: Math.floor(Date.now() / 1000) + 3600,
+            refreshFamily: 'family-xyz',
+            ...sessionOverrides,
+        };
+        const clsService = createMockClsService(session);
+        const jwtRevocationService = createMockJwtRevocationService();
+        const refreshTokenService = createMockRefreshTokenService();
+        const authService = createMockAuthService();
+
+        const controller = buildController({
+            clsService,
+            jwtRevocationService,
+            refreshTokenService,
+            authService,
+        });
+        return { controller, session, clsService, jwtRevocationService, refreshTokenService, authService };
+    }
+
+    it('W1.4 / C-11 — revokes the access-token jti via JwtRevocationService.revoke(jti, exp)', async () => {
+        const { controller, jwtRevocationService } = buildLogoutController();
+        await controller.logout(createMockRequest() as any);
+
+        expect(jwtRevocationService.revoke).toHaveBeenCalledTimes(1);
+        const [jti, exp] = jwtRevocationService.revoke.mock.calls[0];
+        expect(jti).toBe('jti-abc-123');
+        expect(typeof exp).toBe('number');
+        expect(exp).toBeGreaterThan(Math.floor(Date.now() / 1000));
+    });
+
+    it('W1.4 / AC-2 — revokes the entire refresh-token family via RefreshTokenService.revokeFamily(family)', async () => {
+        const { controller, refreshTokenService } = buildLogoutController();
+        await controller.logout(createMockRequest() as any);
+
+        expect(refreshTokenService.revokeFamily).toHaveBeenCalledTimes(1);
+        expect(refreshTokenService.revokeFamily).toHaveBeenCalledWith('family-xyz');
+    });
+
+    it('W1.4 — logout is idempotent: a session WITHOUT jti / refreshFamily still returns success', async () => {
+        const { controller, jwtRevocationService, refreshTokenService } = buildLogoutController({
+            jti: undefined,
+            refreshFamily: undefined,
+        });
+        const response = await controller.logout(createMockRequest() as any);
+
+        expect(response.success).toBe(true);
+        // No jti and no family → nothing to revoke. Both calls must be SKIPPED, not invoked with undefined.
+        expect(jwtRevocationService.revoke).not.toHaveBeenCalled();
+        expect(refreshTokenService.revokeFamily).not.toHaveBeenCalled();
+    });
+
+    it('W1.4 — logout still tracks the authentication event (anti-regression for TASK-224)', async () => {
+        const { controller, authService } = buildLogoutController();
+        await controller.logout(createMockRequest() as any);
+
+        expect(authService.trackAuthentication).toHaveBeenCalledTimes(1);
+        expect(authService.trackAuthentication).toHaveBeenCalledWith(
+            'doctor-001',
+            expect.objectContaining({ endpoint: '/auth/logout', method: 'POST' }),
+        );
+    });
+
+    it('W1.4 — non-fatal: JwtRevocationService.revoke failure does NOT bubble (defense in depth)', async () => {
+        // Logout must NEVER fail because of a downstream revocation outage —
+        // the client has already discarded its tokens; failing the call would
+        // leave the user UI in a broken state. We still attempt both revokes
+        // independently — refreshTokenService.revokeFamily must still run.
+        const { controller, jwtRevocationService, refreshTokenService } = buildLogoutController();
+        jwtRevocationService.revoke.mockRejectedValueOnce(new Error('Redis down'));
+
+        const response = await controller.logout(createMockRequest() as any);
+
+        expect(response.success).toBe(true);
+        expect(refreshTokenService.revokeFamily).toHaveBeenCalledWith('family-xyz');
+    });
+
+    it('W1.4 — non-fatal: RefreshTokenService.revokeFamily failure does NOT bubble', async () => {
+        const { controller, jwtRevocationService, refreshTokenService } = buildLogoutController();
+        refreshTokenService.revokeFamily.mockRejectedValueOnce(new Error('Redis down'));
+
+        const response = await controller.logout(createMockRequest() as any);
+
+        expect(response.success).toBe(true);
+        // jti revoke still runs even if family revoke later fails.
+        expect(jwtRevocationService.revoke).toHaveBeenCalledWith('jti-abc-123', expect.any(Number));
+    });
+
+    it('W1.4 — does NOT call JwtRevocationService.revoke when the JWT has no jti claim (legacy tokens issued before W1.6)', async () => {
+        // Defensive: an older session might be pre-W1.6 and lack a jti. The
+        // controller must NOT pass `undefined` as the jti or it would poison
+        // the revocation set. It must skip the call entirely.
+        const { controller, jwtRevocationService } = buildLogoutController({ jti: undefined });
+        await controller.logout(createMockRequest() as any);
+
+        expect(jwtRevocationService.revoke).not.toHaveBeenCalled();
+    });
+});
+
 // Anti-regression: every existing AuthController invariant that the
 // TASK-307 refactor MUST preserve. The login still validates credentials,
 // still throws BadRequest on missing tenantKey for non-admins, etc.

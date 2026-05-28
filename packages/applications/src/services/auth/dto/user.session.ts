@@ -77,6 +77,17 @@ export class UserSession {
   @IsOptional()
   exp?: number;
 
+  /**
+   * Refresh-token family id carried through the access-token JWT (TASK-307
+   * W1.2 / W1.4). Set at login (and preserved across refresh rotations) so
+   * `/auth/logout` can call `RefreshTokenService.revokeFamily(family)` and
+   * kill every still-active refresh token in the chain (RFC 6749 §10.4).
+   */
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  refreshFamily?: string;
+
   constructor(init: UserSession) {
     this.id = init.id;
     this.firstName = init.firstName;
@@ -91,5 +102,6 @@ export class UserSession {
     this.impersonatedBy = init.impersonatedBy;
     this.jti = init.jti;
     this.exp = init.exp;
+    this.refreshFamily = init.refreshFamily;
   }
 }
