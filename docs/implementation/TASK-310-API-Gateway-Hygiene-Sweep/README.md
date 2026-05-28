@@ -5,7 +5,7 @@
 | **Ticket** | TASK-310-API-Gateway-Hygiene-Sweep |
 | **Created** | 2026-05-28 |
 | **Updated** | 2026-05-28 |
-| **Status** | `Pending` |
+| **Status** | `In Progress` |
 | **Classification** | Refactor (hygiene, defense-in-depth, observability) |
 | **Priority** | Low — none affect SDK behavior; can be picked up opportunistically |
 | **Source** | TASK-307 §10.1 deferrals W7.A.4 + W7.A.9 + W7.A.14 + E-2 + E-5 + E-6 + E-7 + E-8 + E-10 + E-11 |
@@ -114,7 +114,21 @@ Not strictly ordered — each sub-task is independent. Suggested by impact:
 ---
 
 ## 4. Implementation Summary
-*(to be filled in at close-out)*
+
+### 4.1 Sub-task status
+
+| # | Sub-id / AC | Status | Notes |
+|---|---|---|---|
+| 1 | W7.A.14 / AC-1 | Completed | Code-to-status mapping moved into `ExceptionInterceptor` (the registered handler); filter remains as dead-code defense-in-depth with updated TSDoc. 5 new tests pin P2002→409, P2025→404, P2003/P2014→400, default→400, no-leak. |
+| 2 | E-6 / AC-6 | Pending | — |
+| 3 | E-5 / AC-5 | Pending | — |
+| 4 | E-2 / AC-4 | Pending | — |
+| 5 | E-10 / AC-9 | Pending | — |
+| 6 | E-7 / AC-7 | Pending | — |
+| 7 | E-8 / AC-8 | Pending | — |
+| 8 | W7.A.4 / AC-2 | Pending | — |
+| 9 | W7.A.9 / AC-3 | Pending | — |
+| 10 | E-11 / AC-10 | Pending | — |
 
 ---
 
@@ -123,3 +137,4 @@ Not strictly ordered — each sub-task is independent. Suggested by impact:
 | Date | Description | Files modified |
 |---|---|---|
 | 2026-05-28 | Ticket created from TASK-307 §10.1 deferrals (W7.A.4 + W7.A.9 + W7.A.14 + E-2 + E-5 + E-6 + E-7 + E-8 + E-10 + E-11) | — |
+| 2026-05-28 | W7.A.14 / AC-1: map Prisma error codes to proper HTTP status in `ExceptionInterceptor` (P2002→409, P2025→404, P2003/P2014→400, default→400). Updated filter TSDoc to reflect that the live mapping is in the interceptor. | `apps/api/src/interceptors/exception.interceptor.ts`, `apps/api/src/interceptors/__tests__/exception.interceptor.test.ts`, `apps/api/src/filters/prisma.filter.ts` |
