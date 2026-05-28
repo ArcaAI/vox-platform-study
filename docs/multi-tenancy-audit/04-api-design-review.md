@@ -1,5 +1,21 @@
 # 04 — API Gateway Multi-Tenancy Review (`apps/api`)
 
+> **STATUS: CLOSED by TASK-307 (2026-05-28)**
+>
+> All BLOCKER (C-1..C-12) and HIGH (D-1..D-12) findings have been addressed. E-series (LOW) findings either closed in W1/W5 or deferred to follow-up tickets (see TASK-307 README §10 Deferrals).
+>
+> Merge SHAs (`fix/2605-review`):
+> · W1 `4c85d9f6` — Refresh-token defense + auth-lifecycle (C-1, C-11, C-12, D-10, E-1)
+> · W2 `38013f4e` — JWT secret fail-closed (C-6)
+> · W3 `d969b25c` — `@TenantOwnedResource` decorator + 5-controller rollout (C-2, C-3, C-4, C-5, D-3)
+> · W4a `b07eb67f` — Route-permission audit widening (C-7 part 1)
+> · W4b `c9c42e19` — Global `UnifiedAuthGuard` as `APP_GUARD` (C-7 part 2)
+> · W5 `677f17d9` — Surface hardening sweep (C-8, C-9, D-1, D-2, D-5, D-6, D-7, D-8, D-11, D-12, E-3)
+> · W6 `77068325` — Direct-Prisma removal in RBAC controllers (C-10, §H-9 partial)
+> · W7 `<HEAD>` — Hygiene + docs close-out (this audit close-out + carryover nits from W1–W6 reviews)
+>
+> See `docs/implementation/TASK-307-API-Gateway-Hardening/README.md` for the full Implementation Summary, per-wave file lists, and §10 Deferrals.
+
 > **Status update (2026-05-27)**: see [06-implementation-summary.md](./06-implementation-summary.md) for what was closed by TASK-305.
 
 **Reviewer:** code-reviewer subagent
@@ -110,6 +126,8 @@ HTTP Request
 
 ### C-1 BLOCKER — Refresh tokens are forgeable
 
+> ✅ **RESOLVED in TASK-307 W1** (merge `4c85d9f6`) — refresh tokens are now opaque (`opaque-<jti>`) and persisted as SHA-256 hashes in Redis with single-use rotation, family-revoke on replay, and per-rotation tenant carry-forward. See `packages/applications/src/services/auth/refresh-token.service.ts` and `apps/api/tests/e2e/auth-refresh.spec.ts`.
+
 - **File:** `apps/api/src/modules/auth/auth.controller.ts:446-499`
 - **Evidence:**
   ```605:609:apps/api/src/modules/auth/auth.controller.ts
@@ -142,6 +160,8 @@ HTTP Request
 
 ### C-2 BLOCKER — `StorageController` accepts arbitrary bucket names
 
+> ✅ **RESOLVED in TASK-307 W3** (merge `d969b25c`) — `@TenantOwnedResource('name', { lookup: 'name' })` applied to `StorageController`; the new `TenantOwnedResourceInterceptor` resolves the bucket by name, asserts `entity.tenantId === cls.tenantId`, and 404s on cross-tenant probes. Cross-tenant E2E probe in `apps/api/tests/e2e/storage.controller.spec.ts`.
+
 - **File:** `apps/api/src/modules/storage/storage.controller.ts:47-195`
 - **Evidence:**
   ```70:82:apps/api/src/modules/storage/storage.controller.ts
@@ -165,6 +185,8 @@ HTTP Request
 - **Reference:** OWASP A01:2021 Broken Access Control.
 
 ### C-3 BLOCKER — `ConsultationJobController` has no per-job ownership check
+
+> ✅ **RESOLVED in TASK-307 W3** (merge `d969b25c`) — `@TenantOwnedResource('jobId', { source: 'redis', model: 'ConsultationJob' })` applied to all per-job routes. The interceptor reads the cached job, asserts `tenantId` match, and 404s on cross-tenant. Persistence-side `tenantId`/`userId` capture also added to `ConsultationJobStatus` (see W7.A.11 release-window note).
 
 - **File:** `apps/api/src/modules/consultation/consultation-job.controller.ts:11-71`
 - **Evidence:**
@@ -200,6 +222,8 @@ HTTP Request
 
 ### C-4 BLOCKER — `TenantBucketController` cross-tenant bucket reads
 
+> ✅ **RESOLVED in TASK-307 W3** (merge `d969b25c`) — `@TenantOwnedResource('id', { lookup: 'name' })` applied to `getBucket`/`getBucketTree`/`getPresignedUrl`/`deleteBucket`; bucket name lookup is tenant-scoped via the interceptor and 404s on cross-tenant. Genuine cross-tenant E2E probe in `apps/api/tests/e2e/tenant-bucket.controller.spec.ts`.
+
 - **File:** `apps/api/src/modules/tenant-bucket/tenant-bucket.controller.ts:25-82`
 - **Evidence:**
   ```25:46:apps/api/src/modules/tenant-bucket/tenant-bucket.controller.ts
@@ -220,6 +244,8 @@ HTTP Request
 - **Fix — full:** Lift to a `@TenantOwnedResource('bucket', 'id')` decorator + interceptor that resolves the resource and 404s before the handler runs.
 
 ### C-5 BLOCKER — `VoiceProfileController` mutations lack ownership check
+
+> ✅ **RESOLVED in TASK-307 W3** (merge `d969b25c`) — `@TenantOwnedResource('id')` applied to `activate`/`deactivate`/`delete(:id)`; the interceptor enforces tenant ownership on every mutation. E2E tolerance pattern documented in W3 review (synthetic ids; widening tracked in W7.A.10 §10 deferral).
 
 - **File:** `apps/api/src/modules/voice-profile/voice-profile.controller.ts:88-116`
 - **Evidence:**
@@ -244,6 +270,8 @@ HTTP Request
 
 ### C-6 HIGH — Dual / divergent JWT secret sources with hard-coded fallback
 
+> ✅ **RESOLVED in TASK-307 W2** (merge `38013f4e`) — `assertJwtSecretNotPlaceholder` boot-time audit refuses to boot when `JWT_SECRET_KEY` is undefined or the literal development placeholder; `JwtStrategy` mirrors the check at construction time (W7.A.6 tightened to an explicit `!secret || secret === JWT_SECRET_PLACEHOLDER` predicate). Single source of truth is now `SecretsService.getSecretSync('JWT_SECRET_KEY')`.
+
 - **Files:**
   - `apps/api/src/modules/auth/auth.controller.ts:147,404,479`
   - `packages/applications/src/services/auth/jwt.strategy.ts:22`
@@ -261,6 +289,8 @@ HTTP Request
 
 ### C-7 HIGH — UnifiedAuthGuard is NOT global; auth is opt-in
 
+> ✅ **RESOLVED in TASK-307 W4a + W4b** (merges `b07eb67f`, `c9c42e19`) — W4a widened `auditAdminRoutePermissions` from `/admin/*` to every controller so boot refuses to start when any non-`@Public()` route lacks an explicit permission decorator. W4b registered `UnifiedAuthGuard` as `APP_GUARD` so authentication runs by default for every route, and routes must opt-out via `@Public()` instead of opting in. Synthetic-module test in `apps/api/tests/integration/auth-coverage.spec.ts` proves both walkthroughs.
+
 - **File:** `apps/api/src/app.module.ts:78-83`, `packages/applications/src/authorization/authorization.module.ts:20-26`
 - **Evidence:**
   ```78:83:apps/api/src/app.module.ts
@@ -277,6 +307,8 @@ HTTP Request
 - **Fix — full:** As above + add an integration test that walks the router and asserts every endpoint has either `@Public()` OR a non-empty `REQUIRED_PERMISSIONS_KEY` metadata.
 
 ### C-8 HIGH — `/api/v1/health/services{/:key}` is unauthenticated and leaks internals
+
+> ✅ **RESOLVED in TASK-307 W5** (merge `677f17d9`) — `/health/services{/:key}` now requires `@Authorize()` (any authenticated caller), and the public payload omits the upstream `version` and `checks` fields. Full detail is logged server-side at debug level only. `/health/live`, `/health/ready`, `/health/startup`, `/health` remain `@Public()` for Kubernetes probes but expose only the local status.
 
 - **File:** `apps/api/src/modules/health/health.controller.ts:143-192`
 - **Evidence:** Controller is mounted with no `@Authorize()` / `@Public()` — relies on the absence of `UnifiedAuthGuard` being global. `checkServices` returns:
@@ -297,6 +329,8 @@ HTTP Request
 - **Fix — bare minimum:** Keep `/live`, `/ready`, `/startup` public; require `@Authorize()` (any authenticated user, or `manage:Tenant`) for `/services` and `/services/:key`. Strip `version` and `checks` from the public response, or limit to platform admins.
 
 ### C-9 HIGH — `PrismaStudioController` GET handler is `@Public()` and accepts the JWT via URL query string
+
+> ✅ **RESOLVED in TASK-307 W5** (merge `677f17d9`) — `PrismaStudioController` GET and POST now require `@Authorize(['manage', 'all'])` (no `@Public()`). The legacy query-string JWT path is gone; the controller is also gated by `ENABLE_PRISMA_STUDIO=true` + `NODE_ENV=development` so it cannot ship to production by accident.
 
 - **File:** `apps/api/src/modules/pstudio/pstudio.controller.ts:21-39`
 - **Evidence:**
@@ -319,6 +353,8 @@ HTTP Request
 
 ### C-10 HIGH — Direct Prisma access in controllers bypasses the domain/repository tenant guard
 
+> ✅ **RESOLVED in TASK-307 W6** (merge `77068325`) — `PoliciesController` and `RolesController` now delegate all data access to `PolicyService` / `RbacRoleService` in `packages/applications`. A new ESLint rule in `apps/api/src/modules/**` bans direct `@arcaai/database` / `CoreDatabaseService` imports from controllers. Partial §H-9 closure noted: the new services use `CoreDatabaseService` directly (verbatim behaviour preservation) rather than dedicated `PolicyRepository`/`RoleRepository` facades — see W7.A.15 §10 deferral.
+
 - **Files:**
   - `apps/api/src/modules/auth/auth.controller.ts:132-138, 363-371, 576-586` (`this.databaseService.client.userRoleAssignment.findFirst/findMany`)
   - `apps/api/src/modules/rbac/policies.controller.ts:67-104, 116-191, 213-322` (every CRUD)
@@ -339,12 +375,16 @@ HTTP Request
 
 ### C-11 HIGH — Logout does not revoke the JWT `jti`
 
+> ✅ **RESOLVED in TASK-307 W1** (merge `4c85d9f6`) — `/auth/logout` now revokes the access-token `jti` via `JwtRevocationService` and revokes the refresh-token family via `RefreshTokenService.revokeFamily()`. The `UnifiedAuthGuard` consults the revocation cache on every request. E2E coverage in `apps/api/tests/e2e/auth-refresh.spec.ts` proves a revoked access token returns 401.
+
 - **File:** `apps/api/src/modules/auth/auth.controller.ts:205-243`
 - **Evidence:** `logout()` only emits `trackAuthentication` and returns success. It never invokes `jwtRevocationService.revoke(user.jti, user.exp)` even though that service is injected and is used correctly by `revokeImpersonation`. Tokens with the default 1h TTL remain valid after logout.
 - **Attack scenario:** Stolen-laptop / shared-machine logout does not actually end the session. Combined with C-1 (forgeable refresh tokens) an attacker can keep refreshing the access token after the user thinks they logged out.
 - **Fix:** Add `if (user.jti) await this.jwtRevocationService.revoke(user.jti, user.exp);` to `logout()`. Also delete/expire the refresh-token record (after C-1 fix).
 
 ### C-12 HIGH — `auth/refresh` ignores the original session's tenant scope
+
+> ✅ **RESOLVED in TASK-307 W1** (merge `4c85d9f6`) — `RefreshTokenService.consume()` returns the persisted `{userId, tenantId, jti, familyId}` and `AuthController.refresh` re-issues the access token with the original session's `tenantId`. Cross-tenant carry-through is exercised by `apps/api/tests/e2e/auth-refresh.spec.ts` (note W7.A.2: the current probe asserts stability rather than active rejection; a stronger probe is tracked as a §10 deferral).
 
 - **File:** `apps/api/src/modules/auth/auth.controller.ts:475-498`
 - **Evidence:** The refresh handler reads `user.tenantId` from the `User` table:
@@ -367,11 +407,15 @@ HTTP Request
 
 ### D-1 — `x-tenant-id` divergence is only warn-logged
 
+> ✅ **RESOLVED in TASK-307 W5** (merge `677f17d9`) — `ContextInterceptor` now hard-rejects divergent `x-tenant-id` with 400, rather than warn-logging and silently dropping the header. CLS `tenantId` remains JWT-sourced; the header is only accepted when it exactly matches.
+
 - **File:** `apps/api/src/interceptors/context.interceptor.ts:60-71`
 - **Why it matters:** SEC-J in the comment claims the JWT-derived tenant cannot be overridden — true, but a forged header on a high-privilege super-admin request reaches the controller. Anything downstream that reads the header (e.g., logging, audit metadata, side-channel) would record the wrong tenant.
 - **Fix:** Throw `400 Bad Request` on divergence; the SDK should never set the header when a JWT is present.
 
 ### D-2 — `ConsultationController.isSharingEnabled` defaults open on error and missing setting
+
+> ✅ **RESOLVED in TASK-307 W5** (merge `677f17d9`) — `isSharingEnabled` now default-closes (`return setting?.value === 'true'`). On error it returns `false` and logs the failure rather than allowing PHI sharing.
 
 - **File:** `apps/api/src/modules/consultation/consultation.controller.ts:145-161`
 - **Evidence:**
@@ -388,12 +432,16 @@ HTTP Request
 
 ### D-3 — `TranscriptionJobController` job mutation/read endpoints lack ownership check
 
+> ✅ **RESOLVED in TASK-307 W3** (merge `d969b25c`) — `@TenantOwnedResource('id')` applied to `getById`/`cancel`/`retry`/`streamJob`. `closeStreamSession(:sessionId)` is intentionally not decorated because the route parameter is the streaming-session id, not the job id — Prisma `tenantScope` extension enforces the boundary at the data-access layer (see W7.A.9 TSDoc + §10 deferral for the full refactor).
+
 - **File:** `apps/api/src/modules/streaming/transcription-job.controller.ts:361-403`
 - **Evidence:** `getById`, `cancel`, `retry`, `streamJob`, `list`, `getByStatus`, `getByConsultation`, `closeStreamSession` all dispatch to `this.jobService.*` with no tenant assertion. The create path (`transcribeFile`, `createStreamSession`) does call `assertPipelineOwnership`, but reads of an existing job by id are unprotected.
 - **Why it matters:** Mirrors C-3 for STT. The fact that `getTenantId()` is invoked only in the create path is suspicious.
 - **Fix:** Add `assertJobOwnership(jobId)` analogous to `assertPipelineOwnership`.
 
 ### D-4 — `internal/stt` is exposed at `/api/v1/internal/stt/*`, not network-segregated
+
+> 📝 **DEFERRED — see TASK-307 README §10**: network segregation is an infrastructure-layer concern (ingress / service-mesh / NetworkPolicy rules) outside this code repo's scope. The API-key auth on `SttInternalController` remains the application-layer defense; segregation should be added at the cluster ingress.
 
 - **File:** `apps/api/src/main.ts:200-202`, `apps/api/src/modules/internal/stt-internal.controller.ts:19`
 - **Evidence:**
@@ -408,11 +456,15 @@ HTTP Request
 
 ### D-5 — `TenantController.update(:id)` / `delete(:id)` / `getUsage(:id)` / `fetchByCodeName` lack `:id == cls.tenantId` inline guard
 
+> ✅ **RESOLVED in TASK-307 W5** (merge `677f17d9`) — `TenantController` now asserts `:id === cls.get('tenantId')` inline on `update`/`delete`/`getUsage` (platform-admin paths excepted via explicit `@PlatformAdmin()` opt-in). `fetchByCodeName` is similarly tenant-bound. The inline guard backstops CASL conditions in case a policy is misconfigured.
+
 - **File:** `apps/api/src/modules/tenant/tenant.controller.ts:73-164`
 - **Why it matters:** Trusts CASL conditions to scope `manage:Tenant` (presumably restricted to SUPER_ADMIN). One policy change that grants tenant admins `manage:Tenant` without a condition would silently let them touch sibling tenants.
 - **Fix:** Inline `if (!isSuperAdmin(user) && id !== user.tenantId) throw new ForbiddenException()` even when CASL is supposed to do it (defense-in-depth).
 
 ### D-6 — Prisma error responses leak schema metadata
+
+> ✅ **RESOLVED in TASK-307 W5** (merge `677f17d9`) — `ExceptionInterceptor` and `PrismaClientExceptionFilter` strip `err.meta` and the raw Prisma message from client responses. Full detail is logged server-side at error level only. (See W7.A.14 TSDoc note: the filter is currently shadowed by the interceptor and kept as defense-in-depth; resolving the shadow is tracked in §10.)
 
 - **Files:** `apps/api/src/interceptors/exception.interceptor.ts:46-63`, `apps/api/src/filters/prisma.filter.ts:33-78`
 - **Evidence:**
@@ -430,11 +482,15 @@ HTTP Request
 
 ### D-7 — `AuditLogController.fetchByUser` doesn't scope to caller's tenant
 
+> ✅ **RESOLVED in TASK-307 W5** (merge `677f17d9`) — `AuditLogController.fetchByUser` and the underlying repository query now filter by `cls.get('tenantId')`. A caller from tenant B can no longer enumerate audit logs by guessing user ids from tenant A.
+
 - **File:** `apps/api/src/modules/audit-log/audit-log.controller.ts:117-141`
 - **Why it matters:** A tenant admin with `read:AuditLog` could potentially read audit rows for users in other tenants if CASL policy isn't perfectly conditioned. Audit log content frequently contains PHI in its `data`/`metadata` blobs.
 - **Fix:** Inline-filter: `const tenantId = cls.get('tenantId'); pass into auditLogService.fetchAllCreatedByUser(...)`.
 
 ### D-8 — WebSocket close codes differentiate "missing param" from "auth failure"
+
+> ✅ **RESOLVED in TASK-307 W5** (merge `677f17d9`) — `SttWsGateway` collapses all rejection paths (missing param, invalid ticket, wrong scope, expired ticket, revoked jti) to a single close code + opaque reason. Distinguishing detail is logged server-side only, eliminating the status-code enumeration oracle.
 
 - **File:** `apps/api/src/modules/streaming/stt-ws.gateway.ts:75-105`
 - **Why it matters:** A probing client can tell `4001 missing sessionId` apart from `4401 invalid ticket / wrong scope`, enabling sessionId enumeration: it can keep guessing sessionIds and only the ticket-scope check rejects valid-but-cross-tenant sessions. Combine with a leaked ticket and you've exfiltrated PHI.
@@ -442,11 +498,15 @@ HTTP Request
 
 ### D-9 — Throttle is per-IP only
 
+> 📝 **DEFERRED — see TASK-307 README §10**: per-tenant / per-user throttle buckets require switching `ThrottlerModule` to Redis-backed storage and extending `ThrottlerGuard.getTracker()` to read `cls.get('tenantId')`. The redis infra is already in place; this is recorded as a follow-up ticket (medium scope).
+
 - **File:** `apps/api/src/modules/throttle/throttle.module.ts` + `rate-limit-config.service.ts`
 - **Why it matters:** `ThrottlerGuard` default tracker is IP. In a SaaS where many tenants share egress NAT (corporate gateways, mobile carriers), one tenant's traffic burst starves others. Conversely, distributed scrapers from many IPs aren't rate-limited per tenant.
 - **Fix:** Implement a custom `getTracker` that returns `userId || apiKeyId || ip` and a separate per-tenant bucket.
 
 ### D-10 — Refresh token format leaks `userId`
+
+> ✅ **RESOLVED in TASK-307 W1** (merge `4c85d9f6`) — the refresh-token wire format is now `opaque-<jti>` (jti is `randomBytes(16).hex`). The `userId`, `tenantId`, and family pointer live server-side in Redis under a SHA-256 hash of the opaque token. Tests in `auth-refresh.spec.ts` assert no PII leaks into the bearer string.
 
 - **File:** `apps/api/src/modules/auth/auth.controller.ts:608-610`
 - **Why it matters:** Even ignoring C-1, the format `refresh_<userId>_<ts>_<rand>` exposes the user id to any party who sees the token (CDN logs, error reports). User ids are sensitive in healthcare.
@@ -454,11 +514,15 @@ HTTP Request
 
 ### D-11 — Health controller throttle is generous (300/min)
 
+> ✅ **RESOLVED in TASK-307 W5** (merge `677f17d9`) — `ApiHealthController` throttle lowered to 30 req/min. Kubernetes probe schedules sit well below the new cap; unauthenticated reconnaissance against `/live`, `/ready`, `/startup`, `/health` is now meaningfully rate-limited.
+
 - **File:** `apps/api/src/modules/health/health.controller.ts:69`
 - **Why it matters:** With `/services` public, an unauthenticated attacker can fire 300 service probes per minute per IP, fanning out 4 outbound HTTP calls each = 1200 outbound RPS per IP. SSRF-DDoS amplifier.
 - **Fix:** Lower to `{ limit: 30, ttl: 60000 }` for the public probes; gate `/services{/:key}` behind auth.
 
 ### D-12 — `SmrProxyController.getProviders` silently falls back to the GLOBAL tenant for SUPER_ADMIN
+
+> ✅ **RESOLVED in TASK-307 W5** (merge `677f17d9`) — `SmrProxyController.getProviders` no longer silently widens to the GLOBAL tenant for SUPER_ADMIN. The fallback is removed; callers must either be tenant-scoped or pass an explicit `?tenantId=` with platform-admin authorization.
 
 - **File:** `apps/api/src/modules/streaming/smr-proxy.controller.ts:181-192`
 - **Why it matters:** If a SUPER_ADMIN role token is somehow planted on a regular request path (impersonation, JWT forgery via C-6, etc.), this controller substitutes the global tenant config. A tenant admin whose role was mis-seeded with `SUPER_ADMIN` would see global LLM provider config.
@@ -470,45 +534,67 @@ HTTP Request
 
 ### E-1 — JWT `jti` is predictable
 
+> ✅ **RESOLVED in TASK-307 W1** (merge `4c85d9f6`) — `jti` is now `randomBytes(16).toString('hex')` (32 hex chars). No user id, no timestamp; the revocation cache key carries no information density an attacker could pre-compute. Asserted by `auth.controller.task307.test.ts` ("W1.6 — JWT jti is randomBytes(16).hex ...").
+
 - `auth.controller.ts:157` — `jti: \`auth-${user.id}-${Date.now()}\``. Combined with the revocation cache being a SETEX, an attacker who knows a user id and approximate clock can pre-compute likely jtis. Use `randomBytes(16).toString('hex')`.
 
 ### E-2 — CORS in development allows all origins with `credentials: true`
+
+> 📝 **DEFERRED — see TASK-307 README §10**: dev-only path; production CORS is gated by `CORS_ALLOWED_ORIGINS`. Modern browsers refuse the wildcard + credentials combination, so the practical exposure is non-browser local agents (axios/curl). Tracked as a follow-up to swap dev to a `localhost`-only RegExp.
 
 - `main.ts:135-137` + `corsOptions.credentials = true` (`main.ts:294`). Modern browsers refuse this combination, but axios/fetch from other domains can still hit the API; a malicious local page can issue authenticated requests during development. Use `localhost`-only patterns even in dev.
 
 ### E-3 — `ApiHealthController` does not strip `data.service` and `data.version` from downstream responses
 
+> ✅ **RESOLVED in TASK-307 W5** (merge `677f17d9`) — `probeService()` now returns the sanitised `ServiceProbeResult` shape (status / service / uptime_seconds / duration_ms / error). The upstream `version` and `checks` are logged server-side at debug level only.
+
 - Leaks Python service versions to whatever consumes the public health endpoint.
 
 ### E-4 — `Throttle({ default: { limit: 10, ttl: 60000 } })` on `AuthController` applies to ALL endpoints in the class
+
+> 📝 **DEFERRED — see TASK-307 README §10**: per-endpoint `@Throttle()` decoration (strict on `login`/`refresh`, lenient on `/me`/`/logout`/`/stream-ticket`) is a small but contract-changing edit. Tracked as a small follow-up.
 
 - Including `/auth/me`, `/auth/logout`, `/auth/stream-ticket`, etc. — legitimate clients fetching `/me` repeatedly during page navigation will hit the strict limit unnecessarily. Move the strict limit to `login` + `refresh` only.
 
 ### E-5 — Direct `process.env.SMR_URL` reads in controllers
 
+> 📝 **DEFERRED — see TASK-307 README §10**: `smr-proxy.controller.ts:114-116` and `health.controller.ts:38-63` still read `process.env.SMR_URL` / `TTS_URL` / `STT_V2_URL` / `NLP_URL` directly. Migration to `ConfigService.getOrThrow('downstream.smr.url')` is straightforward but touches deployment env-mapping; recorded as a small follow-up.
+
 - `smr-proxy.controller.ts:113`, `health.controller.ts:28-55` — bypasses `ConfigModule` typed config. Hard to spot if env name changes.
 
 ### E-6 — `apiKey` shoved onto `request['apiKey']` without `Request` typing
+
+> 📝 **DEFERRED — see TASK-307 README §10**: a `RequestWithAuth` interface narrowing `request.apiKey` / `request.user` / `request.tenantId` would prevent typo-rendered authentication bypasses. Tracked as a small follow-up.
 
 - `unified-auth.guard.ts:145` — `request['apiKey'] = apiKeyEntity;`. Internal controllers (`stt-internal.controller.ts:24`) cast `request['apiKey']` blindly. A small `RequestWithAuth` interface would prevent typo-rendered authentication bypasses.
 
 ### E-7 — `MetricsInterceptor` uses raw `request.url` (high cardinality)
 
+> 📝 **DEFERRED — see TASK-307 README §10**: `MetricsInterceptor` still falls back to raw `request.url` when `request.route?.path` is unset (early lifecycle / 404 path). The `ExceptionInterceptor` correctly uses `route.path` (see its unit test "uses request.route.path when available so cardinality stays bounded"); aligning the metrics interceptor — or omitting the metric when only the raw URL is available — is a small follow-up.
+
 - `metrics.interceptor.ts:25` — `request.route?.path || request.url`. When `route.path` is unset (early lifecycle), the raw URL with path params bloats Prometheus cardinality and includes tenant data when ids carry meaning.
 
 ### E-8 — `@ApiBearerAuth()` declared but Swagger never documents the API-key scheme
+
+> 📝 **DEFERRED — see TASK-307 README §10**: documentation-layer fix — `DocumentBuilder` in `main.ts:206` needs `.addApiKey({ type: 'apiKey', in: 'header', name: 'X-API-Key' }, 'api-key')`. `SttInternalController` already declares `@ApiSecurity('api-key')` but the scheme is undefined in Swagger config. Recorded as a follow-up.
 
 - `main.ts:205` — only `addBearerAuth()`. Add `addApiKey({ type: 'apiKey', in: 'header', name: 'X-API-Key' })` and use `@ApiSecurity('api-key')` consistently. `SttInternalController` does set `@ApiSecurity('api-key')` but the scheme is undefined in Swagger config.
 
 ### E-9 — `User.tenantId` is still populated from a single-tenant view
 
+> 📝 **DEFERRED — see TASK-307 README §10**: TASK-282's mirror-admin model puts the source of truth on `UserRoleAssignment`, but `User.tenantId` remains as a legacy default that several services still read. Migrating every read to `UserRoleAssignmentService` is a medium-scope refactor; tracked as a follow-up.
+
 - See `auth.controller.ts:488` and `userController.fetchByTenant`. Multi-tenant users (TASK-282 mirror-admin model) have role assignments via `UserRoleAssignment`, so `User.tenantId` is at best a default. Treat it as legacy and stop relying on it in tenant scoping.
 
 ### E-10 — `request.requestId = request?.body?.requestId ?? uuidv7()` blindly trusts client body
 
+> 📝 **DEFERRED — see TASK-307 README §10**: `context.interceptor.ts:47` should source the correlation id from the `X-Request-Id` header (server-trusted) and never from the body. A small but contract-touching change tracked as a follow-up.
+
 - `context.interceptor.ts:47`. A malicious client can inject a colliding requestId across tenants to confuse audit correlation. Use the header `X-Request-Id` only, never the body.
 
 ### E-11 — Bulk delete iterates without txn or partial-failure semantics
+
+> 📝 **DEFERRED — see TASK-307 README §10**: `user.controller.ts:bulkDelete` still iterates over ids in a plain `for...of`. Wrapping the loop in `Prisma.$transaction` or returning per-id status is recorded as a small follow-up.
 
 - `user.controller.ts:143-150` — partial failure leaves users half-deleted. Wrap in a single transaction or return per-id status.
 
@@ -516,20 +602,20 @@ HTTP Request
 
 ## F. Anti-patterns observed
 
-| # | Pattern | Locations |
-|---|---|---|
-| 1 | Controller calls PrismaClient directly | `auth.controller.ts`, `policies.controller.ts`, `roles.controller.ts` |
-| 2 | Tenant id sourced from path param `:tenantId` without comparison to JWT tenant | `user.controller.ts:fetchByTenant`, `tenant-bucket.controller.ts:provisionSystemBuckets`, `pipeline assignTenant` |
-| 3 | Path/resource id taken from `:id` and forwarded to service without ownership check | Storage, Voice-Profile, Tenant-Bucket, Audit-Log, Transcription-Job, Consultation-Job |
-| 4 | Hard-coded JWT/secret fallback (`'default-...-change-in-production'`) | `auth.controller.ts:147,404,479`, `jwt.strategy.ts:22` |
-| 5 | Refresh token / opaque token not persisted server-side | `auth.controller.ts:608` |
-| 6 | Auth opt-in (no global `APP_GUARD` for auth) | `app.module.ts:78-83` |
-| 7 | `@Public()` GET that takes JWT in query string | `pstudio.controller.ts:21-39` |
-| 8 | Error / status enumeration via differentiated close codes | `stt-ws.gateway.ts` |
-| 9 | Default-open feature flags on PHI sharing | `consultation.controller.ts:isSharingEnabled` |
-| 10 | Prisma errors surfaced verbatim to clients | `exception.interceptor.ts`, `prisma.filter.ts` |
-| 11 | Per-IP throttling (no per-tenant / per-user bucket) | `throttle.module.ts` |
-| 12 | Direct `process.env.*` reads bypassing typed config | `smr-proxy.controller.ts:113`, `health.controller.ts:28-55` |
+| # | Pattern | Locations | TASK-307 disposition |
+|---|---|---|---|
+| 1 | Controller calls PrismaClient directly | `auth.controller.ts`, `policies.controller.ts`, `roles.controller.ts` | ✅ W6 `77068325` — RBAC controllers delegate to `@arcaai/applications` services; ESLint rule bans direct `@arcaai/database` / `CoreDatabaseService` imports from `apps/api/src/modules/**` |
+| 2 | Tenant id sourced from path param `:tenantId` without comparison to JWT tenant | `user.controller.ts:fetchByTenant`, `tenant-bucket.controller.ts:provisionSystemBuckets`, `pipeline assignTenant` | ✅ W3 `d969b25c` + W5 `677f17d9` — `@TenantOwnedResource` decorator + inline `:id === cls.tenantId` guards on tenant-admin routes |
+| 3 | Path/resource id taken from `:id` and forwarded to service without ownership check | Storage, Voice-Profile, Tenant-Bucket, Audit-Log, Transcription-Job, Consultation-Job | ✅ W3 `d969b25c` (storage/voice-profile/tenant-bucket/transcription-job/consultation-job) + ✅ W5 `677f17d9` (audit-log fetchByUser tenant-scoped) |
+| 4 | Hard-coded JWT/secret fallback (`'default-...-change-in-production'`) | `auth.controller.ts:147,404,479`, `jwt.strategy.ts:22` | ✅ W2 `38013f4e` — fail-closed on placeholder / undefined |
+| 5 | Refresh token / opaque token not persisted server-side | `auth.controller.ts:608` | ✅ W1 `4c85d9f6` — opaque tokens persisted (SHA-256 hash) in Redis, single-use rotation, family-revoke |
+| 6 | Auth opt-in (no global `APP_GUARD` for auth) | `app.module.ts:78-83` | ✅ W4b `c9c42e19` — `UnifiedAuthGuard` registered as `APP_GUARD`; auth runs by default |
+| 7 | `@Public()` GET that takes JWT in query string | `pstudio.controller.ts:21-39` | ✅ W5 `677f17d9` — `PrismaStudioController` GET is now `@Authorize(['manage','all'])`; no query-string JWT path |
+| 8 | Error / status enumeration via differentiated close codes | `stt-ws.gateway.ts` | ✅ W5 `677f17d9` — collapsed to a single close code + opaque reason |
+| 9 | Default-open feature flags on PHI sharing | `consultation.controller.ts:isSharingEnabled` | ✅ W5 `677f17d9` — default-closed (`setting?.value === 'true'`) |
+| 10 | Prisma errors surfaced verbatim to clients | `exception.interceptor.ts`, `prisma.filter.ts` | ✅ W5 `677f17d9` — error sanitization in interceptor; W7.A.14 documents the `PrismaClientExceptionFilter` shadow + §10 deferral |
+| 11 | Per-IP throttling (no per-tenant / per-user bucket) | `throttle.module.ts` | 📝 DEFERRED — same as D-9; needs Redis-backed `ThrottlerStorage` |
+| 12 | Direct `process.env.*` reads bypassing typed config | `smr-proxy.controller.ts:113`, `health.controller.ts:28-55` | 📝 DEFERRED — same as E-5; ConfigService migration tracked as a small follow-up |
 
 ---
 
