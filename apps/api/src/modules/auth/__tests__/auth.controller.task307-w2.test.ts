@@ -66,6 +66,40 @@ const createMockDatabaseService = (roleAssignments: any[] = []) => ({
     },
 });
 
+// TASK-307 W6.1 — controller no longer touches Prisma directly. The 4th
+// constructor arg is now IUserRoleAssignmentService. This helper accepts
+// the same legacy `[{ Role: { name, permissions } }, ...]` shape the W2
+// tests already pass and unwraps it for `findActiveRolesForUser`.
+const createMockUserRoleAssignmentService = (roleAssignments: any[] = []) => {
+    const roles = roleAssignments.map((a) => a?.Role).filter((r) => !!r);
+    return {
+        findActiveRolesForUser: vi.fn(async () => roles),
+        findActiveAssignmentForUserInTenant: vi.fn(async () => ({ id: 'ura-1' })),
+        findActiveTenantIdsForUser: vi.fn(async () => []),
+    };
+};
+
+// TASK-307 W1 — RefreshTokenService is now the source of refresh-token
+// issuance. Default mock issues a deterministic opaque token + family
+// and consumes it back into the user-001/tenant-001 default the W2
+// refresh path expects.
+const createMockRefreshTokenService = (defaultUserId = 'user-123', tenantId = 'tenant-001') => ({
+    issue: vi.fn(async ({ jti, family }: any) => ({
+        rawToken: `opaque-${jti}`,
+        family: family ?? `family-for-${jti}`,
+        expiresAt: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+    })),
+    // Parse `refresh_<userId>_<ts>_<rand>` if the test passes a legacy-shaped
+    // token (so the combined login/refresh regression test resolves to its
+    // own seeded user); otherwise return the default. The W2 surface only
+    // cares about which secret store is consulted.
+    consume: vi.fn(async (rawToken: string) => {
+        const m = typeof rawToken === 'string' ? rawToken.match(/^refresh_([^_]+)_/) : null;
+        return { userId: m ? m[1] : defaultUserId, tenantId, family: 'family-default' };
+    }),
+    revokeFamily: vi.fn().mockResolvedValue(undefined),
+});
+
 const createMockAuthService = () => ({ trackAuthentication: vi.fn() });
 const createMockUserService = () => ({});
 
@@ -140,7 +174,7 @@ function buildController(opts: {
         createMockUserService() as any,
         createMockAuthService() as any,
         opts.appSettingsService as any,
-        createMockDatabaseService(opts.roleAssignments ?? []) as any,
+        createMockUserRoleAssignmentService(opts.roleAssignments ?? []) as any,
         createMockUserRepository(opts.users ?? new Map()) as any,
         {} as any,
         {} as any,
@@ -149,6 +183,7 @@ function buildController(opts: {
         { issueTicket: vi.fn(), consumeTicket: vi.fn() } as any,
         { revoke: vi.fn(), isRevoked: vi.fn().mockResolvedValue(false) } as any,
         opts.secretsService as any,
+        createMockRefreshTokenService() as any,
     );
 }
 
@@ -211,28 +246,24 @@ describe('TASK-307 W2.3 — auth.controller uses SecretsService only', () => {
             const target = createUser({ id: 'doctor-001', username: 'dr_smith' });
             const users = new Map([[target.id, target]]);
 
-            // databaseService.userRoleAssignment.findMany returns either
-            // role assignments (for getUserRoles, with `include: { Role }`)
-            // OR tenant assignments (for the H-3 lookup, with `select`).
-            const userRoleAssignment = {
-                findMany: vi.fn(async (args: any) => {
-                    if (args?.select?.tenantId) return [{ tenantId: 'tenant-001' }];
-                    const userId = args?.where?.userId;
-                    if (userId === 'admin-001')
-                        return [{ Role: createRole('SUPER_ADMIN', []) }];
-                    if (userId === 'doctor-001')
-                        return [{ Role: createRole('doctor', []) }];
+            // TASK-307 W6 — controller no longer touches Prisma directly. Instead,
+            // it asks IUserRoleAssignmentService for roles + tenant ids. Wire the
+            // SUPER_ADMIN admin / doctor target shape via service methods.
+            const uraService = {
+                findActiveRolesForUser: vi.fn(async (userId: string) => {
+                    if (userId === 'admin-001') return [createRole('SUPER_ADMIN', [])];
+                    if (userId === 'doctor-001') return [createRole('doctor', [])];
                     return [];
                 }),
-                findFirst: vi.fn(),
+                findActiveTenantIdsForUser: vi.fn(async () => ['tenant-001']),
+                findActiveAssignmentForUserInTenant: vi.fn(async () => ({ id: 'ura-1' })),
             };
-            const dbServiceWithImpersonation = { client: { userRoleAssignment } };
 
             const controller = new AuthController(
                 createMockUserService() as any,
                 createMockAuthService() as any,
                 appSettings as any,
-                dbServiceWithImpersonation as any,
+                uraService as any,
                 createMockUserRepository(users) as any,
                 {} as any,
                 {} as any,
@@ -241,6 +272,7 @@ describe('TASK-307 W2.3 — auth.controller uses SecretsService only', () => {
                 { issueTicket: vi.fn(), consumeTicket: vi.fn() } as any,
                 { revoke: vi.fn(), isRevoked: vi.fn().mockResolvedValue(false) } as any,
                 secrets as any,
+                createMockRefreshTokenService() as any,
             );
 
             await controller.impersonate(

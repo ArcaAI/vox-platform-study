@@ -53,6 +53,21 @@ const createMockDatabaseService = (roleAssignments: any[] = [], tenantAssignment
     },
 });
 
+// TASK-307 W6.1 — controller position 4 is now IUserRoleAssignmentService.
+// This factory accepts the same legacy `[{Role: {name, permissions}}, ...]`
+// shape the W1 tests already pass and unwraps it for `findActiveRolesForUser`.
+const createMockUserRoleAssignmentService = (
+    roleAssignments: any[] = [],
+    tenantAssignment: any = { id: 'ura-1' },
+) => {
+    const roles = roleAssignments.map((a) => a?.Role).filter((r) => !!r);
+    return {
+        findActiveRolesForUser: vi.fn(async () => roles),
+        findActiveAssignmentForUserInTenant: vi.fn(async () => tenantAssignment),
+        findActiveTenantIdsForUser: vi.fn(async () => []),
+    };
+};
+
 const createMockTenantRepository = (tenants: Map<string, any> = new Map()) => ({
     findFirst: vi.fn(async (props: any) => {
         const key = props?.filters?.key;
@@ -133,12 +148,37 @@ const createMockSecretsService = () => ({
     }),
 });
 
+// TASK-307 W6.1 — translates the legacy `databaseService` override (which
+// previously carried `[{Role: ...}]` rows) into a userRoleAssignmentService
+// mock with the same role-assignment data, so existing test cases keep
+// working without a per-test rewrite. Tests that need finer control can
+// pass `userRoleAssignmentService:` directly.
+function deriveUraServiceFromLegacyDb(legacyDb: any): any {
+    const findMany = legacyDb?.client?.userRoleAssignment?.findMany;
+    const findFirst = legacyDb?.client?.userRoleAssignment?.findFirst;
+    return {
+        findActiveRolesForUser: vi.fn(async () => {
+            if (!findMany) return [];
+            const rows = await findMany();
+            return (rows ?? []).map((a: any) => a?.Role).filter((r: any) => !!r);
+        }),
+        findActiveAssignmentForUserInTenant: vi.fn(async () => (findFirst ? await findFirst() : { id: 'ura-1' })),
+        findActiveTenantIdsForUser: vi.fn(async () => []),
+    };
+}
+
 function buildController(overrides: any = {}) {
+    const uraService =
+        overrides.userRoleAssignmentService ??
+        (overrides.databaseService
+            ? deriveUraServiceFromLegacyDb(overrides.databaseService)
+            : createMockUserRoleAssignmentService());
+
     return new AuthController(
         ({} as any), // userService
         (overrides.authService ?? createMockAuthService()) as any,
         (overrides.appSettingsService ?? createMockAppSettings()) as any,
-        (overrides.databaseService ?? createMockDatabaseService()) as any,
+        uraService as any,
         (overrides.userRepository ?? createMockUserRepository()) as any,
         ({} as any), // userRoleAssignmentRepository
         ({} as any), // roleRepository

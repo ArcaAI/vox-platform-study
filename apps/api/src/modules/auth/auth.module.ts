@@ -1,4 +1,4 @@
-import { AuthServiceModule, UserServiceModule } from '@arcaai/applications';
+import { AuthServiceModule, UserRoleAssignmentServiceModule, UserServiceModule } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
 import { AuthController } from './auth.controller';
@@ -9,8 +9,10 @@ import { StreamTicketModule } from './stream-ticket.module';
  *
  * Uses AuthServiceModule for JWT/OIDC strategies and IAuthService.
  * Uses UserServiceModule for IUserService.
- * CoreDatabaseModule is kept because AuthController still directly uses
- * repositories for login logic (to be refactored in a follow-up task).
+ * TASK-307 W6.1 — UserRoleAssignmentServiceModule replaces the previous
+ * direct Prisma access in `AuthController` (audit C-10); `CoreDatabaseModule`
+ * is still imported because the controller continues to use the User /
+ * Tenant / Role repositories for login lookups.
  *
  * StreamTicketModule (TASK-263 W0-1) is `@Global`. Importing it here
  * triggers its initialisation so that `JwtAuthGuard` (registered globally
@@ -21,7 +23,7 @@ import { StreamTicketModule } from './stream-ticket.module';
  * UnifiedAuthGuard can resolve it across all feature modules.
  */
 @Module({
-  imports: [AuthServiceModule, UserServiceModule, CoreDatabaseModule, StreamTicketModule],
+  imports: [AuthServiceModule, UserServiceModule, UserRoleAssignmentServiceModule, CoreDatabaseModule, StreamTicketModule],
   controllers: [AuthController],
 })
 export class AuthModule {}

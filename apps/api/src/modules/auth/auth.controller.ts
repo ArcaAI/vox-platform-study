@@ -4,18 +4,12 @@ import {
   IAuthService,
   IJwtRevocationService,
   IRefreshTokenService,
+  IUserRoleAssignmentService,
   IUserService,
   SecretsService,
   createJwt,
 } from '@arcaai/applications';
-import {
-  CoreDatabaseService,
-  ResourceStatusType,
-  RoleRepository,
-  TenantRepository,
-  UserRepository,
-  UserRoleAssignmentRepository,
-} from '@arcaai/domains';
+import { ResourceStatusType, RoleRepository, TenantRepository, UserRepository, UserRoleAssignmentRepository } from '@arcaai/domains';
 import {
   BadRequestException,
   Body,
@@ -62,7 +56,7 @@ export class AuthController {
     @Inject(IUserService) private readonly userService: IUserService,
     @Inject(IAuthService) private readonly authService: IAuthService,
     @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
-    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
+    @Inject(IUserRoleAssignmentService) private readonly userRoleAssignmentService: IUserRoleAssignmentService,
     private readonly userRepository: UserRepository,
     private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
     private readonly roleRepository: RoleRepository,
@@ -140,14 +134,9 @@ export class AuthController {
         resolvedTenantId = tenant.id;
         resolvedTenantKey = tenant.key;
 
-        // Verify the user has at least one role assignment for this tenant
-        const tenantRoleAssignment = await this.databaseService.client.userRoleAssignment.findFirst({
-          where: {
-            userId: user.id,
-            tenantId: resolvedTenantId,
-            resourceStatus: ResourceStatusType.ENABLED,
-          },
-        });
+        // TASK-307 W6.1 (audit C-10) — tenant validation now flows through
+        // `UserRoleAssignmentService` instead of touching Prisma directly.
+        const tenantRoleAssignment = await this.userRoleAssignmentService.findActiveAssignmentForUserInTenant(user.id, resolvedTenantId);
 
         if (!tenantRoleAssignment) {
           throw new UnauthorizedException('User does not have access to the specified tenant');
@@ -420,23 +409,12 @@ export class AuthController {
 
     const targetPermissions = await this.getUserPermissions(targetRoles);
 
-    // TASK-295 H-3: resolve the impersonation tenant from the target user's
-    // ENABLED userRoleAssignments. Caller may pin a specific tenant via
-    // `targetTenantId`; otherwise we pick the oldest assignment for backward
-    // compatibility with the previous behavior.
-    const targetAssignments = await this.databaseService.client.userRoleAssignment.findMany({
-      where: {
-        userId: targetUser.id,
-        resourceStatus: ResourceStatusType.ENABLED,
-        tenantId: { not: null },
-      },
-      select: { tenantId: true },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    const targetTenantIds = Array.from(
-      new Set(targetAssignments.map((row) => row.tenantId).filter((id): id is string => typeof id === 'string' && id.length > 0)),
-    );
+    // TASK-295 H-3 + TASK-307 W6.1 (audit C-10): resolve the impersonation
+    // tenant from the target user's ENABLED userRoleAssignments via the
+    // application service (no direct Prisma access). Caller may pin a
+    // specific tenant via `targetTenantId`; otherwise we pick the oldest
+    // assignment for backward compatibility with the previous behavior.
+    const targetTenantIds = await this.userRoleAssignmentService.findActiveTenantIdsForUser(targetUser.id);
 
     let resolvedTenantId: string;
     if (request.targetTenantId) {
@@ -661,21 +639,15 @@ export class AuthController {
   }
 
   /**
-   * Get user roles from database
+   * Get user roles from database.
+   *
+   * TASK-307 W6.1 (audit C-10) — delegates to `UserRoleAssignmentService`
+   * which performs the `include: { Role: true }` join behind a typed
+   * application-service boundary. Returned shape preserves the legacy
+   * (`{ id, name, permissions? }`) contract `getUserPermissions` consumes.
    */
   private async getUserRoles(userId: string) {
-    // Use Prisma directly to include Roles relation (repository doesn't support dynamic includes)
-    const userRoleAssignments = await this.databaseService.client.userRoleAssignment.findMany({
-      where: {
-        userId: userId,
-        resourceStatus: ResourceStatusType.ENABLED,
-      },
-      include: {
-        Role: true,
-      },
-    });
-
-    return userRoleAssignments.map((assignment) => assignment.Role).filter((role) => role);
+    return this.userRoleAssignmentService.findActiveRolesForUser(userId);
   }
 
   /**

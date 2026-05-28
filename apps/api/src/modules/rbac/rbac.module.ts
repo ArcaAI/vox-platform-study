@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
+import { PolicyServiceModule, RbacRoleServiceModule } from '@arcaai/applications';
 import { RolesController } from './roles.controller';
 import { PoliciesController } from './policies.controller';
 import { PermissionCheckController } from './permission-check.controller';
@@ -17,9 +18,14 @@ import { PermissionCheckController } from './permission-check.controller';
  * - POST /rbac/check - Check single permission
  * - POST /rbac/check/bulk - Check multiple permissions
  * - POST /rbac/check/my-permissions - Get current user's permissions
+ *
+ * TASK-307 W6.2 / W6.3 — `PolicyServiceModule` + `RbacRoleServiceModule`
+ * are wired so `PoliciesController` and `RolesController` can drop their
+ * direct `CoreDatabaseService` dependency (closes audit C-10 / F-1 /
+ * H-9).
  */
 @Module({
-  imports: [CoreDatabaseModule],
+  imports: [CoreDatabaseModule, PolicyServiceModule, RbacRoleServiceModule],
   controllers: [RolesController, PoliciesController, PermissionCheckController],
 })
 export class RbacModule {}
