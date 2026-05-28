@@ -79,6 +79,7 @@ export class ApiHealthController {
   ) {}
 
   @Get('live')
+  @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Liveness probe - is the process running?' })
   @ApiResponse({ status: 200, description: 'Service is alive' })
@@ -87,6 +88,7 @@ export class ApiHealthController {
   }
 
   @Get('ready')
+  @Public()
   @ApiOperation({ summary: 'Readiness probe - is the service ready for traffic?' })
   @ApiResponse({ status: 200, description: 'Service is ready' })
   @ApiResponse({ status: 503, description: 'Service is not ready' })
@@ -101,6 +103,7 @@ export class ApiHealthController {
   }
 
   @Get('startup')
+  @Public()
   @ApiOperation({ summary: 'Startup probe - has the service finished initialization?' })
   @ApiResponse({ status: 200, description: 'Service has started' })
   @ApiResponse({ status: 503, description: 'Service is still starting' })
