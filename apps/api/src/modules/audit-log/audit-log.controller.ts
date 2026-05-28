@@ -1,6 +1,7 @@
-import { HttpMethod, IAuditLogService, PaginatedQuery, PaginatedAuditLogResponse, AuditLogDtoMapper, AuditLogResponse } from '@arcaai/applications';
-import { Controller, Inject, Param, Query } from '@nestjs/common';
+import { HttpMethod, IAuditLogService, PaginatedQuery, PaginatedAuditLogResponse, AuditLogDtoMapper, AuditLogResponse, isSuperAdmin, IActiveUserContext } from '@arcaai/applications';
+import { Controller, ForbiddenException, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanRead, CanDelete } from '../../decorators';
 
 /**
@@ -28,6 +29,7 @@ export class AuditLogController {
   constructor(
     @Inject(IAuditLogService)
     private readonly auditLogService: IAuditLogService,
+    private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
   /**
@@ -132,6 +134,18 @@ export class AuditLogController {
   })
   @CanRead('AuditLog')
   async fetchByUser(@Param('userId') userId: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedAuditLogResponse> {
+    // TASK-307 W5.7 (AC-21, audit D-7): defence-in-depth tenant scope.
+    // The service-side `buildTenantWhere` already throws when a
+    // non-super-admin has no CLS tenantId, but the audit asks for an
+    // explicit controller-layer assertion so the rule is observable at
+    // the request entry point. SUPER_ADMIN keeps the cross-tenant
+    // read (mirrors TASK-305 W1.4).
+    const user = this.cls.get('user');
+    const callerTenantId = this.cls.get('tenantId');
+    if (!isSuperAdmin(user) && !callerTenantId) {
+      throw new ForbiddenException('Tenant context required to query audit logs');
+    }
+
     const result = await this.auditLogService.fetchAllCreatedByUser({
       ...queryParams,
       userId,
