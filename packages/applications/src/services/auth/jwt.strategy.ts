@@ -70,6 +70,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       impersonatedBy: payload.impersonatedBy,
       jti: payload.jti,
       exp: payload.exp,
+      // TASK-307 W1.4: propagate the refresh-token family so /auth/logout
+      // can revoke the full chain via RefreshTokenService.revokeFamily.
+      refreshFamily: payload.refreshFamily,
     });
 
     this.clsService.set('user', userSession);

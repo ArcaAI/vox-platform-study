@@ -3,6 +3,7 @@ import {
   IAppSettingsService,
   IAuthService,
   IJwtRevocationService,
+  IRefreshTokenService,
   IUserService,
   SecretsService,
   createJwt,
@@ -70,6 +71,7 @@ export class AuthController {
     private readonly streamTicketService: StreamTicketService,
     @Inject(IJwtRevocationService) private readonly jwtRevocationService: IJwtRevocationService,
     @Inject(SecretsService) private readonly secretsService: SecretsService,
+    @Inject(IRefreshTokenService) private readonly refreshTokenService: IRefreshTokenService,
   ) {}
 
   @Post('login')
@@ -166,6 +168,22 @@ export class AuthController {
       }
       const jwtExpiresIn = this.appSettingsService.getValueWithDefault('JWT_EXPIRES_IN', '1h') as string;
 
+      // TASK-307 W1.6 / E-1: jti is randomBytes(16).hex — unpredictable, no
+      // userId or timestamp leak. The legacy `auth-${user.id}-${Date.now()}`
+      // shape was guessable and tied the jti's information density to the
+      // user id, which is itself sometimes assumed-public elsewhere.
+      const jti = randomBytes(16).toString('hex');
+
+      // TASK-307 W1.2 / C-1 / C-12: persist the refresh token in Redis so it
+      // can be validated server-side on refresh. Carry the resolvedTenantId
+      // (active session) — NOT user.tenantId — so multi-tenant users keep
+      // their selected tenant across refreshes.
+      const issued = await this.refreshTokenService.issue({
+        userId: user.id,
+        tenantId: resolvedTenantId,
+        jti,
+      });
+
       const tokenPayload = {
         id: user.id,
         username: user.username,
@@ -173,7 +191,11 @@ export class AuthController {
         roles,
         permissions,
         tenantId: resolvedTenantId,
-        jti: `auth-${user.id}-${Date.now()}`,
+        jti,
+        // TASK-307 W1.4 / AC-2: ride the family id through the access-token
+        // JWT so `logout` can revoke every refresh token in this session
+        // family without a Redis lookup.
+        refreshFamily: issued.family,
         jwtSecretKey,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         expiresIn: jwtExpiresIn as any,
@@ -181,7 +203,7 @@ export class AuthController {
 
       const token = createJwt(tokenPayload);
 
-      const refreshToken = this.generateRefreshToken(user.id);
+      const refreshToken = issued.rawToken;
 
       await this.authService.trackAuthentication(user.id, {
         ip: req.ip || '127.0.0.1',
@@ -237,28 +259,51 @@ export class AuthController {
   })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async logout(@Request() req: any): Promise<LogoutResponse> {
-    try {
-      const user = this.clsService.get('user');
-      if (user) {
-        // Track the logout
+    const user = this.clsService.get('user');
+
+    // TASK-307 W1.4 / C-11: revoke the access token's jti so any in-flight
+    // request bearing this token is rejected at the very next hop. Mirrors
+    // the `revokeImpersonation` pattern. Best-effort — a Redis outage must
+    // NOT leave the client stuck (the tokens have already been discarded
+    // client-side).
+    if (user?.jti) {
+      try {
+        await this.jwtRevocationService.revoke(user.jti, user.exp);
+      } catch {
+        // Swallow — see comment above.
+      }
+    }
+
+    // TASK-307 W1.4 / AC-2: revoke the ENTIRE refresh-token family so the
+    // chain of rotated refresh tokens (login → refresh → refresh → …) is
+    // dead. Without this, an attacker who exfiltrated any token earlier
+    // in the chain could still rotate forward.
+    if (user?.refreshFamily) {
+      try {
+        await this.refreshTokenService.revokeFamily(user.refreshFamily);
+      } catch {
+        // Swallow — independent of the jti revoke above.
+      }
+    }
+
+    // Best-effort tracking of the logout event (TASK-224 behaviour).
+    if (user) {
+      try {
         await this.authService.trackAuthentication(user.id, {
           ip: req.ip || '127.0.0.1',
           userAgent: req.headers['user-agent'] || 'Unknown',
           endpoint: '/auth/logout',
           method: 'POST',
         });
+      } catch {
+        // Non-fatal — already revoked tokens, response stays success.
       }
-      return {
-        success: true,
-        message: 'Successfully logged out',
-      };
-    } catch {
-      // Non-fatal: proceed with logout even if tracking fails
-      return {
-        success: true,
-        message: 'Successfully logged out',
-      };
     }
+
+    return {
+      success: true,
+      message: 'Successfully logged out',
+    };
   }
 
   @Get('me')
@@ -477,15 +522,19 @@ export class AuthController {
       throw new BadRequestException('Refresh token is required');
     }
 
-    const parts = body.refreshToken.split('_');
-    if (parts.length < 3 || parts[0] !== 'refresh') {
-      throw new UnauthorizedException('Invalid refresh token format');
-    }
+    // TASK-307 W1.3 / C-1 / C-12: server-side validation through
+    // RefreshTokenService. The old `parts.split('_')` parser is RETIRED —
+    // it took client-supplied input as the userId, which is the audit
+    // finding itself. RefreshTokenService.consume:
+    //   - looks the token up by sha256(token)
+    //   - returns the ORIGINAL session's userId, tenantId, jti, and family
+    //   - deletes the record (single-use) and flags reuse for family-revoke
+    //   - throws UnauthorizedException on miss / reuse (let it bubble up)
+    const consumed = await this.refreshTokenService.consume(body.refreshToken);
 
-    const userId = parts[1];
     const user = await this.userRepository.findFirst({
       filters: {
-        id: userId,
+        id: consumed.userId,
         resourceStatus: { equals: ResourceStatusType.ENABLED },
       },
       relations: { UserProfile: true },
@@ -507,23 +556,38 @@ export class AuthController {
     }
     const jwtExpiresIn = this.appSettingsService.getValueWithDefault('JWT_EXPIRES_IN', '1h') as string;
 
+    // TASK-307 W1.6 / E-1: fresh unpredictable jti per rotation.
+    const newJti = randomBytes(16).toString('hex');
+
+    // TASK-307 W1.3 / C-12: refresh stays scoped to the tenant that ORIGINALLY
+    // issued the token — NOT a tenant the user has since been moved into.
+    // The cross-tenant carry-through is the whole point.
+    const issued = await this.refreshTokenService.issue({
+      userId: consumed.userId,
+      tenantId: consumed.tenantId,
+      jti: newJti,
+      // Keep the family stable across the rotation so logout-by-family
+      // continues to nuke the full chain (RFC 6749 §10.4).
+      family: consumed.family,
+    });
+
     const tokenPayload = {
       id: user.id,
       username: user.username,
       email: user.UserProfile?.email || '',
       roles,
       permissions,
-      tenantId: user.tenantId || '',
-      jti: `auth-${user.id}-${Date.now()}`,
+      tenantId: consumed.tenantId,
+      jti: newJti,
+      refreshFamily: issued.family,
       jwtSecretKey,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expiresIn: jwtExpiresIn as any,
     };
 
     const token = createJwt(tokenPayload);
-    const refreshToken = this.generateRefreshToken(user.id);
 
-    return { token, refreshToken };
+    return { token, refreshToken: issued.rawToken };
   }
 
   @Post('stream-ticket')
@@ -628,13 +692,6 @@ export class AuthController {
     }
 
     return Array.from(permissions);
-  }
-
-  /**
-   * Generate refresh token
-   */
-  private generateRefreshToken(userId: string): string {
-    return `refresh_${userId}_${Date.now()}_${randomBytes(32).toString('hex')}`;
   }
 
   /**

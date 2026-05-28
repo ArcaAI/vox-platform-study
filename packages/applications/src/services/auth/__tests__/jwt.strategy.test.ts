@@ -127,6 +127,23 @@ describe('JwtStrategy', () => {
             expect(result.impersonatedBy).toBeUndefined();
         });
 
+        it('TASK-307 W1.4 — should propagate refreshFamily from JWT payload into UserSession (logout uses it to revoke the whole chain)', async () => {
+            const payloadWithFamily = {
+                ...fullPayload,
+                refreshFamily: 'family-abc-123',
+            };
+
+            const result = await strategy.validate(payloadWithFamily);
+
+            expect(result.refreshFamily).toBe('family-abc-123');
+        });
+
+        it('TASK-307 W1.4 — should leave refreshFamily undefined when payload omits it (legacy tokens issued before W1.2)', async () => {
+            const result = await strategy.validate(fullPayload);
+
+            expect(result.refreshFamily).toBeUndefined();
+        });
+
         it('should throw UnauthorizedException when the jti has been revoked (C-4)', async () => {
             mockJwtRevocationService.isRevoked.mockResolvedValueOnce(true);
             const payloadWithJti = { ...fullPayload, jti: 'impersonate-admin-007-doctor-001-1234567890' };
