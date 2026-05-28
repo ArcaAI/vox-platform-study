@@ -26,16 +26,33 @@ const createMockHttpService = () => ({
     },
 });
 
+// TASK-310 E-5 (AC-5): stubbed IConfigService so the controller's
+// `downstreamServices` array can resolve URLs the same way as production
+// (env-or-fallback at bootstrap, frozen at construction).
+const createMockConfigService = () => ({
+    getConfigValue: vi.fn((key: string) => {
+        const map: Record<string, string> = {
+            TTS_URL: 'http://localhost:8863',
+            SMR_URL: 'http://localhost:8862',
+            NLP_URL: 'http://localhost:8864',
+            STT_V2_URL: 'http://localhost:8861',
+        };
+        return map[key];
+    }),
+});
+
 describe('ApiHealthController', () => {
     let controller: ApiHealthController;
     let mockShutdownService: ReturnType<typeof createMockShutdownService>;
     let mockHttpService: ReturnType<typeof createMockHttpService>;
+    let mockConfigService: ReturnType<typeof createMockConfigService>;
 
     beforeEach(() => {
         vi.clearAllMocks();
         mockShutdownService = createMockShutdownService();
         mockHttpService = createMockHttpService();
-        controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any);
+        mockConfigService = createMockConfigService();
+        controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any);
     });
 
     describe('GET /health/live', () => {
@@ -51,14 +68,14 @@ describe('ApiHealthController', () => {
 
         it('should throw 503 when service is shutting down', () => {
             mockShutdownService = createMockShutdownService({ isReady: false, isShuttingDown: true });
-            controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any);
+            controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any);
 
             expect(() => controller.readiness()).toThrow();
         });
 
         it('should throw 503 when service is not ready', () => {
             mockShutdownService = createMockShutdownService({ isReady: false });
-            controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any);
+            controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any);
 
             expect(() => controller.readiness()).toThrow();
         });
@@ -71,7 +88,7 @@ describe('ApiHealthController', () => {
 
         it('should throw 503 when service is initializing', () => {
             mockShutdownService = createMockShutdownService({ isReady: false, isShuttingDown: false });
-            controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any);
+            controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any);
 
             expect(() => controller.startup()).toThrow();
         });
@@ -91,7 +108,7 @@ describe('ApiHealthController', () => {
 
         it('should return unhealthy when shutting down', () => {
             mockShutdownService = createMockShutdownService({ isReady: false, isShuttingDown: true });
-            controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any);
+            controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any);
 
             const result = controller.check();
             expect(result.status).toBe('unhealthy');
@@ -99,7 +116,7 @@ describe('ApiHealthController', () => {
 
         it('should return degraded when not ready and not shutting down', () => {
             mockShutdownService = createMockShutdownService({ isReady: false, isShuttingDown: false });
-            controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any);
+            controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any);
 
             const result = controller.check();
             expect(result.status).toBe('degraded');

@@ -49,6 +49,29 @@ module.exports = {
                 'arcaai-internal/no-controller-direct-prisma': 'error',
             },
         },
+        {
+            // TASK-310 E-5 (AC-5) — Forbid direct `process.env.<DOWNSTREAM_URL_KEY>`
+            // reads inside `apps/api/src/modules/**`. All callsites must
+            // resolve URLs through the typed `IConfigService.getConfigValue(...)`
+            // accessor so env-loading + validation happens once at
+            // bootstrap (config.service.ts) instead of per-request. The
+            // `arcaai-internal/no-direct-downstream-url-env` rule fires on
+            // both dot (`process.env.SMR_URL`) and bracket
+            // (`process.env['SMR_URL']`) access for the five known
+            // downstream URL keys (SMR_URL, SMR_SERVICE_URL, STT_V2_URL,
+            // TTS_URL, NLP_URL). Other env reads (NODE_ENV,
+            // npm_package_version, ...) stay legal.
+            //
+            // Scope mirrors `no-controller-direct-prisma`: `**/modules/**/*.ts`
+            // — the only consumer with that path shape is `apps/api`. The
+            // config service that ESTABLISHES the env fallback values lives
+            // in `packages/applications/src/services/baseServices/_meta/config/`
+            // and is correctly excluded by the modules glob.
+            files: ['**/modules/**/*.ts'],
+            rules: {
+                'arcaai-internal/no-direct-downstream-url-env': 'error',
+            },
+        },
     ],
     rules: {
         // TASK-305 B.5 — Guard the unscoped Prisma client.

@@ -1,4 +1,4 @@
-import { Authorize, IActiveUserContext, ITenantService, SecretsService, isSuperAdmin } from '@arcaai/applications';
+import { Authorize, IActiveUserContext, IConfigService, ITenantService, SecretsService, isSuperAdmin } from '@arcaai/applications';
 import { ContextItemRepository, DepartmentRepository, DnaWritingStyleReportRepository, PromptTemplateRepository } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import {
@@ -108,11 +108,18 @@ export class SmrProxyController {
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly dnaWritingStyleRepository: DnaWritingStyleReportRepository,
     private readonly departmentRepository: DepartmentRepository,
+    @Inject(IConfigService) private readonly configService: IConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
 
+  // TASK-310 E-5 (AC-5): the SMR base URL now resolves through the
+  // typed `IConfigService.getConfigValue('SMR_URL')` accessor. The
+  // pre-W7 direct `process.env.SMR_URL || 'http://localhost:8862'`
+  // read is forbidden by the `no-direct-downstream-url-env` lint
+  // rule; the env-or-fallback resolution happens once at bootstrap
+  // in `ConfigService.loadBaseConfig()`.
   private getSmrBaseUrl(): string {
-    return process.env.SMR_URL || 'http://localhost:8862';
+    return this.configService.getConfigValue('SMR_URL');
   }
 
   private getForwardHeaders(): Record<string, string> {
