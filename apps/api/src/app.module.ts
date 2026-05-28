@@ -38,7 +38,7 @@ import { InternalModule } from './modules/internal/internal.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
 import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { PromptManagementModule } from './modules/prompt-management/prompt-management.module';
-import { PrismaStudioModule } from './modules/pstudio/pstudio.module';
+import { PrismaStudioModule, shouldEnablePrismaStudio } from './modules/pstudio/pstudio.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { StorageAccessKeyModule } from './modules/storage-access-key/storage-access-key.module';
 import { StorageModule } from './modules/storage/storage.module';
@@ -181,11 +181,12 @@ const featureModules: any[] = [
   VoiceProfileModule,
 ];
 
-// Dev-only: Embedded Prisma Studio database browser at /api/pstudio
-const enableStudio =
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
-  process.env.ENABLE_PRISMA_STUDIO === 'true' || (process.env.NODE_ENV !== 'production' && process.env.ENABLE_PRISMA_STUDIO !== 'false');
-if (enableStudio) {
+// TASK-307 W5.2 (AC-16, audit C-9): Embedded Prisma Studio is gated
+// fail-closed — both NODE_ENV=development AND ENABLE_PRISMA_STUDIO=true
+// must be set, so it can never accidentally surface in staging /
+// preview / production.
+// eslint-disable-next-line turbo/no-undeclared-env-vars
+if (shouldEnablePrismaStudio({ NODE_ENV: process.env.NODE_ENV, ENABLE_PRISMA_STUDIO: process.env.ENABLE_PRISMA_STUDIO })) {
   featureModules.push(PrismaStudioModule);
 }
 
