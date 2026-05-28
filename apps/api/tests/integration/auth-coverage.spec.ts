@@ -44,6 +44,11 @@ import { RequestMethod, type DynamicModule, type Type } from '@nestjs/common';
 import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY } from '@arcaai/applications';
 import { AppModule } from '../../src/app.module';
 
+// Side-effect import — applies @Public() to third-party controllers.
+// Same import the production audit pulls in; keeps the test in sync
+// with what AuthorizationGuard sees at request time.
+import '../../src/bootstrap/third-party-public-routes';
+
 interface RouteHit {
   controllerName: string;
   methodName: string;
