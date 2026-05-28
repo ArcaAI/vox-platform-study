@@ -1,4 +1,4 @@
-import { IActiveUserContext, IAppSettingsService, IAuthService, IJwtRevocationService, IUserService, createJwt } from '@arcaai/applications';
+import { IActiveUserContext, IAppSettingsService, IAuthService, IJwtRevocationService, IRefreshTokenService, IUserService, createJwt } from '@arcaai/applications';
 import {
   CoreDatabaseService,
   ResourceStatusType,
@@ -61,6 +61,7 @@ export class AuthController {
     private readonly clsService: ClsService<IActiveUserContext>,
     private readonly streamTicketService: StreamTicketService,
     @Inject(IJwtRevocationService) private readonly jwtRevocationService: IJwtRevocationService,
+    @Inject(IRefreshTokenService) private readonly refreshTokenService: IRefreshTokenService,
   ) {}
 
   @Post('login')
@@ -147,6 +148,22 @@ export class AuthController {
       const jwtSecretKey = this.appSettingsService.getValueWithDefault('JWT_SECRET_KEY', 'default-jwt-secret-key-change-in-production');
       const jwtExpiresIn = this.appSettingsService.getValueWithDefault('JWT_EXPIRES_IN', '1h') as string;
 
+      // TASK-307 W1.6 / E-1: jti is randomBytes(16).hex — unpredictable, no
+      // userId or timestamp leak. The legacy `auth-${user.id}-${Date.now()}`
+      // shape was guessable and tied the jti's information density to the
+      // user id, which is itself sometimes assumed-public elsewhere.
+      const jti = randomBytes(16).toString('hex');
+
+      // TASK-307 W1.2 / C-1 / C-12: persist the refresh token in Redis so it
+      // can be validated server-side on refresh. Carry the resolvedTenantId
+      // (active session) — NOT user.tenantId — so multi-tenant users keep
+      // their selected tenant across refreshes.
+      const issued = await this.refreshTokenService.issue({
+        userId: user.id,
+        tenantId: resolvedTenantId,
+        jti,
+      });
+
       const tokenPayload = {
         id: user.id,
         username: user.username,
@@ -154,7 +171,11 @@ export class AuthController {
         roles,
         permissions,
         tenantId: resolvedTenantId,
-        jti: `auth-${user.id}-${Date.now()}`,
+        jti,
+        // TASK-307 W1.4 / AC-2: ride the family id through the access-token
+        // JWT so `logout` can revoke every refresh token in this session
+        // family without a Redis lookup.
+        refreshFamily: issued.family,
         jwtSecretKey,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         expiresIn: jwtExpiresIn as any,
@@ -162,7 +183,7 @@ export class AuthController {
 
       const token = createJwt(tokenPayload);
 
-      const refreshToken = this.generateRefreshToken(user.id);
+      const refreshToken = issued.rawToken;
 
       await this.authService.trackAuthentication(user.id, {
         ip: req.ip || '127.0.0.1',
@@ -493,7 +514,7 @@ export class AuthController {
     };
 
     const token = createJwt(tokenPayload);
-    const refreshToken = this.generateRefreshToken(user.id);
+    const refreshToken = this.generateRefreshToken();
 
     return { token, refreshToken };
   }
@@ -603,10 +624,20 @@ export class AuthController {
   }
 
   /**
-   * Generate refresh token
+   * Generate an opaque refresh token (TASK-307 W1.5 / AC-1 / D-10).
+   *
+   * Returns a 48-byte base64url payload — opaque, server-side persisted
+   * only as `sha256(token)` by `RefreshTokenService`. The legacy
+   * `refresh_<userId>_<timestamp>_<hex>` format is RETIRED — it leaked
+   * the userId in plaintext and was forgeable because nothing
+   * server-side verified the random tail.
+   *
+   * @internal — retained only as a transition shim for the refresh()
+   * endpoint; W1.3 will retire it entirely once refresh() goes through
+   * `RefreshTokenService.consume` + `RefreshTokenService.issue`.
    */
-  private generateRefreshToken(userId: string): string {
-    return `refresh_${userId}_${Date.now()}_${randomBytes(32).toString('hex')}`;
+  private generateRefreshToken(): string {
+    return randomBytes(48).toString('base64url');
   }
 
   /**

@@ -106,6 +106,20 @@ const createMockJwtRevocationService = () => ({
     isRevoked: vi.fn().mockResolvedValue(false),
 });
 
+// TASK-307 W1.2 — replaces the legacy `generateRefreshToken` controller
+// helper. Default mock issues a deterministic opaque token + family so
+// existing TASK-224 login / refresh tests can keep their `result.refreshToken`
+// assertions (e.g. `toBeDefined()` / `toBe(string)`) without re-wiring.
+const createMockRefreshTokenService = () => ({
+    issue: vi.fn(async ({ jti, family }: any) => ({
+        rawToken: `opaque-${jti}`,
+        family: family ?? `family-for-${jti}`,
+        expiresAt: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+    })),
+    consume: vi.fn(),
+    revokeFamily: vi.fn().mockResolvedValue(undefined),
+});
+
 describe('AuthController — TASK-224 Security Tests', () => {
     let controller: AuthController;
     let mockClsService: any;
@@ -120,61 +134,16 @@ describe('AuthController — TASK-224 Security Tests', () => {
 
     // =========================================================================
     // Refresh Token Security
+    //
+    // The `generateRefreshToken` private helper that TASK-224 pinned has
+    // been removed by TASK-307 W1.5 — the legacy `refresh_<userId>_<ts>_<hex>`
+    // format is itself the audit-flagged finding (C-1 / D-10). The
+    // refresh-token surface is now owned by `RefreshTokenService`, with
+    // tighter invariants (opaque base64url, server-side persistence,
+    // single-use + family-revoke) pinned in
+    // `packages/applications/src/services/auth/__tests__/refresh-token.service.test.ts`
+    // and `apps/api/src/modules/auth/__tests__/auth.controller.task307.test.ts`.
     // =========================================================================
-
-    describe('generateRefreshToken security', () => {
-        it('should generate a refresh token with at least 64 hex chars of randomness', () => {
-            const adminUser = createAdminUser();
-            const adminRole = createRole('SUPER_ADMIN');
-            const targetUser = createTargetUser();
-
-            mockClsService = createMockClsService(adminUser);
-            const users = new Map([
-                [adminUser.id, { ...adminUser, password: '$2a$10$hash', tenantId: 't1', UserProfile: { email: 'admin@a.com' }, resourceStatus: 'ENABLED', lastLoginAt: null, lastActiveAt: null }],
-            ]);
-            mockUserRepository = createMockUserRepository(users);
-            mockDatabaseService = createMockDatabaseService([]);
-            mockAuthService = createMockAuthService();
-            mockAppSettingsService = createMockAppSettingsService();
-
-            controller = new AuthController(
-                createMockUserService() as any,
-                mockAuthService as any,
-                mockAppSettingsService as any,
-                mockDatabaseService as any,
-                mockUserRepository as any,
-                {} as any,
-                {} as any,
-                {} as any,
-                mockClsService as any,
-                createMockStreamTicketService() as any,
-                createMockJwtRevocationService() as any,
-            );
-
-            const token = (controller as any).generateRefreshToken('user-123');
-            expect(token).toMatch(/^refresh_user-123_\d+_[0-9a-f]{64}$/);
-        });
-
-        it('should generate unique tokens on consecutive calls', () => {
-            controller = new AuthController(
-                createMockUserService() as any,
-                createMockAuthService() as any,
-                createMockAppSettingsService() as any,
-                createMockDatabaseService() as any,
-                createMockUserRepository() as any,
-                {} as any,
-                {} as any,
-                {} as any,
-                createMockClsService() as any,
-                createMockStreamTicketService() as any,
-                createMockJwtRevocationService() as any,
-            );
-
-            const token1 = (controller as any).generateRefreshToken('user-123');
-            const token2 = (controller as any).generateRefreshToken('user-123');
-            expect(token1).not.toBe(token2);
-        });
-    });
 
     // =========================================================================
     // Impersonation JWT payload must include impersonatedBy
@@ -234,6 +203,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 mockClsService as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             const response = await controller.impersonate(
@@ -274,6 +244,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 mockClsService as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await expect(
@@ -316,6 +287,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 mockClsService as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await expect(
@@ -362,6 +334,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 mockClsService as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             const result = await controller.impersonate(
@@ -409,6 +382,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 mockClsService as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await expect(
@@ -452,6 +426,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 mockClsService as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await expect(
@@ -504,6 +479,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 mockClsService as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await controller.impersonate(
@@ -536,6 +512,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             expect(typeof (controller as any).revokeImpersonation).toBe('function');
@@ -565,6 +542,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 mockClsService as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             const result = await controller.revokeImpersonation(createMockRequest());
@@ -593,6 +571,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 mockClsService as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await controller.revokeImpersonation(createMockRequest());
@@ -622,6 +601,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 mockClsService as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await expect(
@@ -649,6 +629,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await expect(
@@ -669,6 +650,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await expect(
@@ -693,6 +675,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await expect(
@@ -721,6 +704,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             const result = await controller.refresh({
@@ -730,7 +714,10 @@ describe('AuthController — TASK-224 Security Tests', () => {
             expect(result).toHaveProperty('token');
             expect(result).toHaveProperty('refreshToken');
             expect(typeof result.token).toBe('string');
-            expect(result.refreshToken).toMatch(/^refresh_user-123_/);
+            // TASK-307 W1.5 / D-10: opaque refresh token — no userId leak
+            // in plaintext. Full rotation + reuse-detection lands in W1.3.
+            expect(result.refreshToken).not.toMatch(/^refresh_/);
+            expect(result.refreshToken).not.toContain('user-123');
         });
 
         it('should extract userId correctly from multi-segment refresh token', async () => {
@@ -751,6 +738,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             const result = await controller.refresh({
@@ -779,6 +767,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await expect(
@@ -799,6 +788,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await expect(
@@ -821,6 +811,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await expect(
@@ -853,6 +844,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             const result = await controller.login(
@@ -864,7 +856,10 @@ describe('AuthController — TASK-224 Security Tests', () => {
             expect(result).toHaveProperty('refreshToken');
             expect(result).toHaveProperty('user');
             expect(result.user.id).toBe('user-001');
-            expect(result.refreshToken).toMatch(/^refresh_user-001_/);
+            // TASK-307 W1.2 / D-10: opaque refresh token — no userId or
+            // legacy `refresh_<userId>_<ts>` prefix in the wire format.
+            expect(result.refreshToken).not.toMatch(/^refresh_/);
+            expect(result.refreshToken).not.toContain('user-001');
         });
 
         it('should track authentication on successful login', async () => {
@@ -892,6 +887,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await controller.login(
@@ -929,6 +925,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 mockClsService as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await expect(
@@ -958,6 +955,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 mockClsService as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
+                createMockRefreshTokenService() as any,
             );
 
             await expect(
