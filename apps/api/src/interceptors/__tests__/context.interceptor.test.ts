@@ -417,6 +417,92 @@ describe('ContextInterceptor', () => {
         });
     });
 
+    /**
+     * TASK-310 E-10 (AC-9) — requestId must come from the `x-request-id`
+     * header, never from the client-controlled JSON body. Pre-W7 the code
+     * was `request?.body?.requestId ?? uuidv7()`, which let any client pin
+     * its own correlation id by simply POSTing `{ "requestId": "..." }`,
+     * polluting CLS / logs and letting two unrelated requests share a
+     * correlation id. The fix sources the value from the standard header
+     * a load balancer / CDN would already set, falls back to uuidv7().
+     */
+    describe('TASK-310 E-10 — requestId precedence (AC-9)', () => {
+        beforeEach(async () => {
+            vi.clearAllMocks();
+            vi.resetModules();
+            vi.doUnmock('@opentelemetry/api');
+            mockClsService = {
+                get: vi.fn().mockReturnValue(undefined),
+                set: vi.fn(),
+                getId: vi.fn().mockReturnValue('test-request-id'),
+            };
+            const { ContextInterceptor } = await import('../context.interceptor');
+            interceptor = new ContextInterceptor(mockClsService);
+        });
+
+        it('uses the x-request-id header verbatim when present', async () => {
+            const context = createMockContext({
+                headers: { 'x-request-id': 'header-correlation-id-123' },
+            });
+            const handler = createMockHandler();
+
+            const result$ = interceptor.intercept(context, handler);
+            await firstValueFrom(result$);
+
+            const request = context.switchToHttp().getRequest();
+            expect(request.requestId).toBe('header-correlation-id-123');
+            expect(mockClsService.set).toHaveBeenCalledWith('correlationId', 'header-correlation-id-123');
+        });
+
+        it('IGNORES request.body.requestId (no longer client-controlled)', async () => {
+            const context = createMockContext({
+                body: { requestId: 'attacker-controlled-id' },
+            });
+            const handler = createMockHandler();
+
+            const result$ = interceptor.intercept(context, handler);
+            await firstValueFrom(result$);
+
+            const request = context.switchToHttp().getRequest();
+            expect(request.requestId).not.toBe('attacker-controlled-id');
+            const correlationIdCalls = mockClsService.set.mock.calls.filter(
+                (call: unknown[]) => call[0] === 'correlationId',
+            );
+            expect(correlationIdCalls).toHaveLength(1);
+            expect(correlationIdCalls[0][1]).not.toBe('attacker-controlled-id');
+        });
+
+        it('prefers the x-request-id header over the body field even when both are set', async () => {
+            const context = createMockContext({
+                headers: { 'x-request-id': 'header-wins' },
+                body: { requestId: 'body-loses' },
+            });
+            const handler = createMockHandler();
+
+            const result$ = interceptor.intercept(context, handler);
+            await firstValueFrom(result$);
+
+            const request = context.switchToHttp().getRequest();
+            expect(request.requestId).toBe('header-wins');
+        });
+
+        it('falls back to a generated uuidv7 when neither header nor body is set', async () => {
+            const context = createMockContext({ headers: {}, body: {} });
+            const handler = createMockHandler();
+
+            const result$ = interceptor.intercept(context, handler);
+            await firstValueFrom(result$);
+
+            const request = context.switchToHttp().getRequest();
+            // uuidv7 -> 36 chars, dashes at the expected positions, version
+            // nibble '7' at the 15th char (index 14). This pins "generated"
+            // without coupling to a specific value.
+            expect(typeof request.requestId).toBe('string');
+            expect(request.requestId).toHaveLength(36);
+            expect(request.requestId[14]).toBe('7');
+        });
+    });
+
     describe('request completion logging when CLS is unavailable', () => {
         beforeEach(async () => {
             vi.clearAllMocks();
