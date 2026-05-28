@@ -637,7 +637,16 @@ describe('AuthController — TASK-224 Security Tests', () => {
             ).rejects.toThrow(BadRequestException);
         });
 
-        it('should throw UnauthorizedException for invalid token format (no refresh_ prefix)', async () => {
+        it('should throw UnauthorizedException for an unknown / forged token (RefreshTokenService rejects)', async () => {
+            // TASK-307 W1.3: the format is no longer client-verifiable —
+            // the server determines validity via sha256 lookup in Redis.
+            // RefreshTokenService.consume throws UnauthorizedException for
+            // any token it does not recognise.
+            const refreshTokenService = createMockRefreshTokenService();
+            refreshTokenService.consume.mockRejectedValueOnce(
+                new UnauthorizedException('Invalid refresh token'),
+            );
+
             controller = new AuthController(
                 createMockUserService() as any,
                 createMockAuthService() as any,
@@ -650,7 +659,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
-                createMockRefreshTokenService() as any,
+                refreshTokenService as any,
             );
 
             await expect(
@@ -658,7 +667,18 @@ describe('AuthController — TASK-224 Security Tests', () => {
             ).rejects.toThrow(UnauthorizedException);
         });
 
-        it('should throw UnauthorizedException when user extracted from token is not found', async () => {
+        it('should throw UnauthorizedException when the consumed-token userId no longer matches an enabled user', async () => {
+            // The token was issued for a user that has since been disabled
+            // or deleted. RefreshTokenService.consume still resolves (token
+            // was valid Redis-side) but the user-repository lookup fails.
+            const refreshTokenService = createMockRefreshTokenService();
+            refreshTokenService.consume.mockResolvedValueOnce({
+                userId: 'nonexistent-user',
+                tenantId: 't-1',
+                jti: 'old-jti',
+                family: 'family-1',
+            });
+
             mockUserRepository = createMockUserRepository(new Map());
             mockAppSettingsService = createMockAppSettingsService();
             mockDatabaseService = createMockDatabaseService([]);
@@ -675,18 +695,29 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
-                createMockRefreshTokenService() as any,
+                refreshTokenService as any,
             );
 
             await expect(
-                controller.refresh({ refreshToken: 'refresh_nonexistent-user_12345_abcdef' }),
+                controller.refresh({ refreshToken: 'opaque-old-token' }),
             ).rejects.toThrow(UnauthorizedException);
         });
 
         it('should return new token pair for valid refresh token with existing user', async () => {
+            // TASK-307 W1.3: server-side single-use rotation through
+            // RefreshTokenService.consume + .issue. The new refresh token
+            // is opaque (D-10) and the response shape stays { token, refreshToken }.
             const targetUser = createTargetUser('user-123');
             const doctorRole = createRole('doctor');
             const users = new Map([['user-123', targetUser]]);
+
+            const refreshTokenService = createMockRefreshTokenService();
+            refreshTokenService.consume.mockResolvedValueOnce({
+                userId: 'user-123',
+                tenantId: 't-1',
+                jti: 'old-jti',
+                family: 'family-original',
+            });
 
             mockUserRepository = createMockUserRepository(users);
             mockAppSettingsService = createMockAppSettingsService();
@@ -704,48 +735,17 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockClsService() as any,
                 createMockStreamTicketService() as any,
                 createMockJwtRevocationService() as any,
-                createMockRefreshTokenService() as any,
+                refreshTokenService as any,
             );
 
-            const result = await controller.refresh({
-                refreshToken: 'refresh_user-123_12345_' + 'a'.repeat(64),
-            });
+            const result = await controller.refresh({ refreshToken: 'opaque-old-token' });
 
             expect(result).toHaveProperty('token');
             expect(result).toHaveProperty('refreshToken');
             expect(typeof result.token).toBe('string');
-            // TASK-307 W1.5 / D-10: opaque refresh token — no userId leak
-            // in plaintext. Full rotation + reuse-detection lands in W1.3.
+            // TASK-307 W1.5 / D-10: opaque refresh token — no userId leak in plaintext.
             expect(result.refreshToken).not.toMatch(/^refresh_/);
             expect(result.refreshToken).not.toContain('user-123');
-        });
-
-        it('should extract userId correctly from multi-segment refresh token', async () => {
-            const users = new Map([['user-with-dashes', createTargetUser('user-with-dashes')]]);
-            mockUserRepository = createMockUserRepository(users);
-            mockDatabaseService = createMockDatabaseService([{ Role: createRole('doctor') }]);
-            mockAppSettingsService = createMockAppSettingsService();
-
-            controller = new AuthController(
-                createMockUserService() as any,
-                createMockAuthService() as any,
-                mockAppSettingsService as any,
-                mockDatabaseService as any,
-                mockUserRepository as any,
-                {} as any,
-                {} as any,
-                {} as any,
-                createMockClsService() as any,
-                createMockStreamTicketService() as any,
-                createMockJwtRevocationService() as any,
-                createMockRefreshTokenService() as any,
-            );
-
-            const result = await controller.refresh({
-                refreshToken: 'refresh_user-with-dashes_12345_' + 'b'.repeat(64),
-            });
-
-            expect(result).toHaveProperty('token');
         });
     });
 
