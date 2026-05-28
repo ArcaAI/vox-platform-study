@@ -239,28 +239,51 @@ export class AuthController {
   })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async logout(@Request() req: any): Promise<LogoutResponse> {
-    try {
-      const user = this.clsService.get('user');
-      if (user) {
-        // Track the logout
+    const user = this.clsService.get('user');
+
+    // TASK-307 W1.4 / C-11: revoke the access token's jti so any in-flight
+    // request bearing this token is rejected at the very next hop. Mirrors
+    // the `revokeImpersonation` pattern. Best-effort — a Redis outage must
+    // NOT leave the client stuck (the tokens have already been discarded
+    // client-side).
+    if (user?.jti) {
+      try {
+        await this.jwtRevocationService.revoke(user.jti, user.exp);
+      } catch {
+        // Swallow — see comment above.
+      }
+    }
+
+    // TASK-307 W1.4 / AC-2: revoke the ENTIRE refresh-token family so the
+    // chain of rotated refresh tokens (login → refresh → refresh → …) is
+    // dead. Without this, an attacker who exfiltrated any token earlier
+    // in the chain could still rotate forward.
+    if (user?.refreshFamily) {
+      try {
+        await this.refreshTokenService.revokeFamily(user.refreshFamily);
+      } catch {
+        // Swallow — independent of the jti revoke above.
+      }
+    }
+
+    // Best-effort tracking of the logout event (TASK-224 behaviour).
+    if (user) {
+      try {
         await this.authService.trackAuthentication(user.id, {
           ip: req.ip || '127.0.0.1',
           userAgent: req.headers['user-agent'] || 'Unknown',
           endpoint: '/auth/logout',
           method: 'POST',
         });
+      } catch {
+        // Non-fatal — already revoked tokens, response stays success.
       }
-      return {
-        success: true,
-        message: 'Successfully logged out',
-      };
-    } catch {
-      // Non-fatal: proceed with logout even if tracking fails
-      return {
-        success: true,
-        message: 'Successfully logged out',
-      };
     }
+
+    return {
+      success: true,
+      message: 'Successfully logged out',
+    };
   }
 
   @Get('me')
