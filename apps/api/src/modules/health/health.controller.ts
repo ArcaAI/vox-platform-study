@@ -2,6 +2,7 @@ import { Controller, Get, HttpCode, HttpStatus, Inject, Logger, NotFoundExceptio
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { HttpService } from '@nestjs/axios';
 import { Throttle } from '@nestjs/throttler';
+import { Public } from '../../decorators';
 import { GracefulShutdownService, IGracefulShutdownService } from '../../services';
 
 const SERVICE_NAME = 'api';
@@ -114,6 +115,7 @@ export class ApiHealthController {
   }
 
   @Get()
+  @Public()
   @ApiOperation({ summary: 'Detailed health check' })
   @ApiResponse({ status: 200, description: 'Health check information' })
   check() {
@@ -141,6 +143,7 @@ export class ApiHealthController {
   }
 
   @Get('services')
+  @Public()
   @ApiOperation({ summary: 'Consolidated health check for all downstream microservices' })
   @ApiResponse({ status: 200, description: 'Health status of TTS, SMR, NLP, and STT services' })
   async checkServices() {
@@ -177,6 +180,7 @@ export class ApiHealthController {
   }
 
   @Get('services/:serviceKey')
+  @Public()
   @ApiOperation({ summary: 'Health check for a single downstream microservice' })
   @ApiParam({ name: 'serviceKey', enum: ['tts', 'smr', 'nlp', 'stt'], description: 'Service key' })
   @ApiResponse({ status: 200, description: 'Health status of the requested service (always 200, status field indicates health)' })
