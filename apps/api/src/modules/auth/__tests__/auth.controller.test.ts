@@ -35,14 +35,31 @@ const createMockUserRepository = (users: Map<string, any> = new Map()) => ({
     update: vi.fn(),
 });
 
-const createMockDatabaseService = (roleAssignments: any[] = [], tenantAssignment: any = { id: 'ura-1' }) => ({
-    client: {
-        userRoleAssignment: {
-            findMany: vi.fn(async () => roleAssignments),
-            findFirst: vi.fn(async () => tenantAssignment),
-        },
-    },
-});
+/**
+ * TASK-307 W6.1 — replaces the previous `createMockDatabaseService` factory.
+ * The 4th constructor arg of `AuthController` is now `IUserRoleAssignmentService`,
+ * not the raw `CoreDatabaseService`. This mock derives its three methods'
+ * return values from the same `roleAssignments` / `tenantAssignment` fixture
+ * inputs the previous tests already used, so call sites need only a rename.
+ */
+const createMockUserRoleAssignmentService = (
+    roleAssignments: any[] = [],
+    tenantAssignment: any = { id: 'ura-1' },
+) => {
+    const roles = roleAssignments.map((a) => a?.Role).filter((r) => !!r);
+    const tenantIds = Array.from(
+        new Set(
+            roleAssignments
+                .map((a) => a?.Role?.tenantId)
+                .filter((id: any): id is string => typeof id === 'string' && id.length > 0),
+        ),
+    );
+    return {
+        findActiveRolesForUser: vi.fn(async () => roles),
+        findActiveAssignmentForUserInTenant: vi.fn(async () => tenantAssignment),
+        findActiveTenantIdsForUser: vi.fn(async () => tenantIds),
+    };
+};
 
 const createMockAuthService = () => ({
     trackAuthentication: vi.fn(),
@@ -107,7 +124,7 @@ function buildController(overrides: {
     userService?: any;
     authService?: any;
     appSettingsService?: any;
-    databaseService?: any;
+    userRoleAssignmentService?: any;
     userRepository?: any;
     userRoleAssignmentRepository?: any;
     roleRepository?: any;
@@ -120,7 +137,7 @@ function buildController(overrides: {
         (overrides.userService ?? createMockUserService()) as any,
         (overrides.authService ?? createMockAuthService()) as any,
         (overrides.appSettingsService ?? createMockAppSettingsService()) as any,
-        (overrides.databaseService ?? createMockDatabaseService()) as any,
+        (overrides.userRoleAssignmentService ?? createMockUserRoleAssignmentService()) as any,
         (overrides.userRepository ?? createMockUserRepository()) as any,
         (overrides.userRoleAssignmentRepository ?? {}) as any,
         (overrides.roleRepository ?? {}) as any,
@@ -161,7 +178,7 @@ describe('AuthController', () => {
             controller = buildController({
                 userRepository: createMockUserRepository(users),
                 tenantRepository: tenantRepo(),
-                databaseService: createMockDatabaseService([{ Role: createRole('doctor') }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
             });
 
             await expect(
@@ -183,7 +200,7 @@ describe('AuthController', () => {
                 userRepository: createMockUserRepository(users),
                 authService: createMockAuthService(),
                 tenantRepository: tenantRepo(),
-                databaseService: createMockDatabaseService([
+                userRoleAssignmentService: createMockUserRoleAssignmentService([
                     { Role: doctorRole },
                     { Role: nurseRole },
                 ]),
@@ -210,7 +227,7 @@ describe('AuthController', () => {
                 userRepository: mockUserRepo,
                 authService: createMockAuthService(),
                 tenantRepository: tenantRepo(),
-                databaseService: createMockDatabaseService([{ Role: createRole('doctor') }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
             });
 
             await controller.login(
@@ -238,7 +255,7 @@ describe('AuthController', () => {
                 userRepository: mockUserRepo,
                 authService: createMockAuthService(),
                 tenantRepository: tenantRepo(),
-                databaseService: createMockDatabaseService([{ Role: createRole('doctor') }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
             });
 
             const result = await controller.login(
@@ -264,7 +281,7 @@ describe('AuthController', () => {
                 userRepository: createMockUserRepository(users),
                 authService: mockAuthService,
                 tenantRepository: tenantRepo(),
-                databaseService: createMockDatabaseService([{ Role: createRole('doctor') }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
             });
 
             await expect(
@@ -287,7 +304,7 @@ describe('AuthController', () => {
                 userRepository: createMockUserRepository(users),
                 authService: createMockAuthService(),
                 tenantRepository: tenantRepo(),
-                databaseService: createMockDatabaseService([{ Role: createRole('doctor') }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
             });
 
             const result = await controller.login(
@@ -310,7 +327,7 @@ describe('AuthController', () => {
                 userRepository: createMockUserRepository(users),
                 authService: createMockAuthService(),
                 tenantRepository: tenantRepo(),
-                databaseService: createMockDatabaseService([{ Role: createRole('doctor') }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
             });
 
             const result = await controller.login(
@@ -331,7 +348,7 @@ describe('AuthController', () => {
                 userRepository: createMockUserRepository(users),
                 authService: createMockAuthService(),
                 tenantRepository: tenantRepo(),
-                databaseService: createMockDatabaseService([{ Role: roleNoPerms }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: roleNoPerms }]),
             });
 
             const result = await controller.login(
@@ -351,7 +368,7 @@ describe('AuthController', () => {
                 userRepository: createMockUserRepository(users),
                 authService: createMockAuthService(),
                 tenantRepository: tenantRepo(),
-                databaseService: createMockDatabaseService([{ Role: createRole('doctor') }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
             });
 
             const result = await controller.login(
@@ -379,7 +396,7 @@ describe('AuthController', () => {
             controller = buildController({
                 userRepository: createMockUserRepository(users),
                 tenantRepository: createMockTenantRepository(tenantMap),
-                databaseService: createMockDatabaseService([{ Role: createRole('doctor') }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
             });
 
             await expect(
@@ -398,7 +415,7 @@ describe('AuthController', () => {
             controller = buildController({
                 userRepository: createMockUserRepository(users),
                 tenantRepository: createMockTenantRepository(new Map()),
-                databaseService: createMockDatabaseService([{ Role: createRole('doctor') }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
             });
 
             await expect(
@@ -417,7 +434,7 @@ describe('AuthController', () => {
             controller = buildController({
                 userRepository: createMockUserRepository(users),
                 tenantRepository: createMockTenantRepository(tenantMap),
-                databaseService: createMockDatabaseService([{ Role: createRole('doctor') }], null),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }], null),
             });
 
             await expect(
@@ -437,7 +454,7 @@ describe('AuthController', () => {
                 userRepository: createMockUserRepository(users),
                 authService: createMockAuthService(),
                 tenantRepository: createMockTenantRepository(tenantMap),
-                databaseService: createMockDatabaseService([{ Role: createRole('SUPER_ADMIN', ['*']) }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('SUPER_ADMIN', ['*']) }]),
             });
 
             const result = await controller.login(
@@ -460,7 +477,7 @@ describe('AuthController', () => {
                 userRepository: createMockUserRepository(users),
                 authService: createMockAuthService(),
                 tenantRepository: createMockTenantRepository(tenantMap),
-                databaseService: createMockDatabaseService([{ Role: createRole('SUPER_ADMIN', ['*']) }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('SUPER_ADMIN', ['*']) }]),
             });
 
             const result = await controller.login(
@@ -481,7 +498,7 @@ describe('AuthController', () => {
             controller = buildController({
                 userRepository: createMockUserRepository(users),
                 tenantRepository: createMockTenantRepository(new Map()),
-                databaseService: createMockDatabaseService([{ Role: createRole('SUPER_ADMIN', ['*']) }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('SUPER_ADMIN', ['*']) }]),
             });
 
             await expect(
@@ -505,7 +522,7 @@ describe('AuthController', () => {
             controller = buildController({
                 clsService: createMockClsService({ id: user.id }),
                 userRepository: createMockUserRepository(users),
-                databaseService: createMockDatabaseService([{ Role: doctorRole }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: doctorRole }]),
             });
 
             const result = await controller.me(createMockRequest());
@@ -545,7 +562,7 @@ describe('AuthController', () => {
             controller = buildController({
                 clsService: createMockClsService({ id: user.id }),
                 userRepository: createMockUserRepository(users),
-                databaseService: createMockDatabaseService([
+                userRoleAssignmentService: createMockUserRoleAssignmentService([
                     { Role: adminRole },
                     { Role: doctorRole },
                 ]),
@@ -566,7 +583,7 @@ describe('AuthController', () => {
             controller = buildController({
                 clsService: createMockClsService({ id: user.id }),
                 userRepository: createMockUserRepository(users),
-                databaseService: createMockDatabaseService([{ Role: createRole('doctor') }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
             });
 
             const result = await controller.me(createMockRequest());
@@ -669,24 +686,20 @@ describe('AuthController', () => {
             const validRole = createRole('doctor');
             const tenant = createTenant();
 
-            const mockDbService = {
-                client: {
-                    userRoleAssignment: {
-                        findMany: vi.fn(async () => [
-                            { Role: validRole },
-                            { Role: null },
-                            { Role: undefined },
-                        ]),
-                        findFirst: vi.fn(async () => ({ id: 'ura-1' })),
-                    },
-                },
+            // TASK-307 W6.1 — controller no longer touches Prisma; service
+            // returns the already-filtered list so the controller's previous
+            // `.filter(Boolean)` is now centralised in the service mock.
+            const mockUraService = {
+                findActiveRolesForUser: vi.fn(async () => [validRole]),
+                findActiveAssignmentForUserInTenant: vi.fn(async () => ({ id: 'ura-1' })),
+                findActiveTenantIdsForUser: vi.fn(async () => []),
             };
 
             controller = buildController({
                 userRepository: createMockUserRepository(users),
                 authService: createMockAuthService(),
                 tenantRepository: createMockTenantRepository(new Map([[tenant.id, tenant]])),
-                databaseService: mockDbService,
+                userRoleAssignmentService: mockUraService,
             });
 
             const result = await controller.login(
@@ -716,7 +729,7 @@ describe('AuthController', () => {
                 userRepository: createMockUserRepository(users),
                 authService: createMockAuthService(),
                 tenantRepository: createMockTenantRepository(tenantMap),
-                databaseService: createMockDatabaseService([
+                userRoleAssignmentService: createMockUserRoleAssignmentService([
                     { Role: roleA },
                     { Role: roleB },
                 ]),
@@ -749,7 +762,7 @@ describe('AuthController', () => {
                 userRepository: createMockUserRepository(users),
                 authService: createMockAuthService(),
                 tenantRepository: createMockTenantRepository(tenantMap),
-                databaseService: createMockDatabaseService([
+                userRoleAssignmentService: createMockUserRoleAssignmentService([
                     { Role: roleA },
                     { Role: roleB },
                 ]),
@@ -788,7 +801,7 @@ describe('AuthController', () => {
                 userRepository: createMockUserRepository(users),
                 authService: createMockAuthService(),
                 tenantRepository: createMockTenantRepository(tenantMap),
-                databaseService: createMockDatabaseService([
+                userRoleAssignmentService: createMockUserRoleAssignmentService([
                     { Role: roleNull },
                     { Role: roleUndefined },
                     { Role: roleValid },
@@ -814,7 +827,7 @@ describe('AuthController', () => {
                 userRepository: createMockUserRepository(users),
                 authService: createMockAuthService(),
                 tenantRepository: createMockTenantRepository(tenantMap),
-                databaseService: createMockDatabaseService([
+                userRoleAssignmentService: createMockUserRoleAssignmentService([
                     { Role: roleEmpty },
                     { Role: roleNull },
                 ]),

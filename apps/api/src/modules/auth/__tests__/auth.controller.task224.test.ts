@@ -66,14 +66,46 @@ const createMockTenantRepository = () => ({
     }),
 });
 
-const createMockDatabaseService = (roleAssignments: any[] = [], tenantAssignment: any = { id: 'ura-1' }) => ({
-    client: {
-        userRoleAssignment: {
-            findMany: vi.fn(async () => roleAssignments),
-            findFirst: vi.fn(async () => tenantAssignment),
-        },
-    },
-});
+/**
+ * TASK-307 W6.1 — replaces the previous `createMockDatabaseService` factory.
+ * `AuthController` no longer touches Prisma directly; its 4th constructor
+ * arg is now `IUserRoleAssignmentService`. This helper preserves the
+ * `(roleAssignments, tenantAssignment)` signature the existing tests use:
+ *   - `roleAssignments` (legacy shape `[{ Role: { name, permissions } }, ...]`)
+ *     drives `findActiveRolesForUser`
+ *   - `tenantAssignment` drives `findActiveAssignmentForUserInTenant`
+ *
+ * Impersonation tests that previously needed `.mockResolvedValueOnce` chains
+ * on the raw `findMany` mock now use `createMockUraServiceSeq` (below) which
+ * accepts an array of return values for `findActiveRolesForUser` plus an
+ * optional `tenantIds` for `findActiveTenantIdsForUser`.
+ */
+const createMockUserRoleAssignmentService = (roleAssignments: any[] = [], tenantAssignment: any = { id: 'ura-1' }) => {
+    const roles = roleAssignments.map((a) => a?.Role).filter((r) => !!r);
+    return {
+        findActiveRolesForUser: vi.fn(async () => roles),
+        findActiveAssignmentForUserInTenant: vi.fn(async () => tenantAssignment),
+        findActiveTenantIdsForUser: vi.fn(async () => []),
+    };
+};
+
+/**
+ * TASK-307 W6.1 — sequential-mock helper for impersonation tests. The
+ * controller calls `findActiveRolesForUser` twice per impersonation
+ * (admin first, target second). Pass an array of [adminRoles, targetRoles]
+ * and an optional list of `targetTenantIds`.
+ */
+const createMockUraServiceSeq = (rolesCallSequence: any[][], targetTenantIds: string[] = []) => {
+    const rolesFn = vi.fn();
+    for (const ret of rolesCallSequence) {
+        rolesFn.mockResolvedValueOnce(ret);
+    }
+    return {
+        findActiveRolesForUser: rolesFn,
+        findActiveTenantIdsForUser: vi.fn(async () => targetTenantIds),
+        findActiveAssignmentForUserInTenant: vi.fn(async () => null),
+    };
+};
 
 const createMockAuthService = () => ({
     trackAuthentication: vi.fn(),
@@ -110,7 +142,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
     let controller: AuthController;
     let mockClsService: any;
     let mockUserRepository: any;
-    let mockDatabaseService: any;
+    let mockUserRoleAssignmentService: any;
     let mockAuthService: any;
     let mockAppSettingsService: any;
 
@@ -133,7 +165,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 [adminUser.id, { ...adminUser, password: '$2a$10$hash', tenantId: 't1', UserProfile: { email: 'admin@a.com' }, resourceStatus: 'ENABLED', lastLoginAt: null, lastActiveAt: null }],
             ]);
             mockUserRepository = createMockUserRepository(users);
-            mockDatabaseService = createMockDatabaseService([]);
+            mockUserRoleAssignmentService = createMockUserRoleAssignmentService([]);
             mockAuthService = createMockAuthService();
             mockAppSettingsService = createMockAppSettingsService();
 
@@ -141,7 +173,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockUserService() as any,
                 mockAuthService as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -160,7 +192,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockUserService() as any,
                 createMockAuthService() as any,
                 createMockAppSettingsService() as any,
-                createMockDatabaseService() as any,
+                createMockUserRoleAssignmentService() as any,
                 createMockUserRepository() as any,
                 {} as any,
                 {} as any,
@@ -209,24 +241,16 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 };
             });
 
-            mockDatabaseService = {
-                client: {
-                    userRoleAssignment: {
-                        findMany: vi.fn()
-                            .mockResolvedValueOnce([{ Role: adminRole }])
-                            .mockResolvedValueOnce([{ Role: doctorRole }])
-                            // TASK-295 H-3: third findMany call resolves the target's enabled tenants.
-                            .mockResolvedValueOnce([{ tenantId: 'tenant-001' }]),
-                        findFirst: vi.fn().mockResolvedValue({ tenantId: 'tenant-001' }),
-                    },
-                },
-            };
+            mockUserRoleAssignmentService = createMockUraServiceSeq(
+                [[adminRole], [doctorRole]],
+                ['tenant-001'],
+            );
 
             controller = new AuthController(
                 createMockUserService() as any,
                 mockAuthService as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -254,19 +278,13 @@ describe('AuthController — TASK-224 Security Tests', () => {
             mockUserRepository = createMockUserRepository(new Map([[regularUser.id, regularUser]]));
             mockAuthService = createMockAuthService();
             mockAppSettingsService = createMockAppSettingsService();
-            mockDatabaseService = {
-                client: {
-                    userRoleAssignment: {
-                        findMany: vi.fn().mockResolvedValue([{ Role: regularRole }]),
-                    },
-                },
-            };
+            mockUserRoleAssignmentService = createMockUserRoleAssignmentService([{ Role: regularRole }]);
 
             controller = new AuthController(
                 createMockUserService() as any,
                 mockAuthService as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -294,21 +312,15 @@ describe('AuthController — TASK-224 Security Tests', () => {
             mockUserRepository = createMockUserRepository(users);
             mockAuthService = createMockAuthService();
             mockAppSettingsService = createMockAppSettingsService();
-            mockDatabaseService = {
-                client: {
-                    userRoleAssignment: {
-                        findMany: vi.fn()
-                            .mockResolvedValueOnce([{ Role: superAdminRole }])
-                            .mockResolvedValueOnce([{ Role: superAdminRole }]),
-                    },
-                },
-            };
+            mockUserRoleAssignmentService = createMockUraServiceSeq(
+                [[superAdminRole], [superAdminRole]],
+            );
 
             controller = new AuthController(
                 createMockUserService() as any,
                 mockAuthService as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -337,24 +349,16 @@ describe('AuthController — TASK-224 Security Tests', () => {
             mockUserRepository = createMockUserRepository(users);
             mockAuthService = createMockAuthService();
             mockAppSettingsService = createMockAppSettingsService();
-            mockDatabaseService = {
-                client: {
-                    userRoleAssignment: {
-                        findMany: vi.fn()
-                            .mockResolvedValueOnce([{ Role: superAdminRole }])
-                            .mockResolvedValueOnce([{ Role: tenantAdminRole }])
-                            // TASK-295 H-3
-                            .mockResolvedValueOnce([{ tenantId: 'tenant-001' }]),
-                        findFirst: vi.fn().mockResolvedValue({ tenantId: 'tenant-001' }),
-                    },
-                },
-            };
+            mockUserRoleAssignmentService = createMockUraServiceSeq(
+                [[superAdminRole], [tenantAdminRole]],
+                ['tenant-001'],
+            );
 
             controller = new AuthController(
                 createMockUserService() as any,
                 mockAuthService as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -387,21 +391,15 @@ describe('AuthController — TASK-224 Security Tests', () => {
             mockUserRepository = createMockUserRepository(users);
             mockAuthService = createMockAuthService();
             mockAppSettingsService = createMockAppSettingsService();
-            mockDatabaseService = {
-                client: {
-                    userRoleAssignment: {
-                        findMany: vi.fn()
-                            .mockResolvedValueOnce([{ Role: tenantAdminRole }])
-                            .mockResolvedValueOnce([{ Role: tenantAdminRole }]),
-                    },
-                },
-            };
+            mockUserRoleAssignmentService = createMockUraServiceSeq(
+                [[tenantAdminRole], [tenantAdminRole]],
+            );
 
             controller = new AuthController(
                 createMockUserService() as any,
                 mockAuthService as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -430,21 +428,15 @@ describe('AuthController — TASK-224 Security Tests', () => {
             mockUserRepository = createMockUserRepository(users);
             mockAuthService = createMockAuthService();
             mockAppSettingsService = createMockAppSettingsService();
-            mockDatabaseService = {
-                client: {
-                    userRoleAssignment: {
-                        findMany: vi.fn()
-                            .mockResolvedValueOnce([{ Role: tenantAdminRole }])
-                            .mockResolvedValueOnce([{ Role: superAdminRole }]),
-                    },
-                },
-            };
+            mockUserRoleAssignmentService = createMockUraServiceSeq(
+                [[tenantAdminRole], [superAdminRole]],
+            );
 
             controller = new AuthController(
                 createMockUserService() as any,
                 mockAuthService as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -479,24 +471,16 @@ describe('AuthController — TASK-224 Security Tests', () => {
             mockUserRepository = createMockUserRepository(users);
             mockAuthService = createMockAuthService();
             mockAppSettingsService = createMockAppSettingsService();
-            mockDatabaseService = {
-                client: {
-                    userRoleAssignment: {
-                        findMany: vi.fn()
-                            .mockResolvedValueOnce([{ Role: adminRole }])
-                            .mockResolvedValueOnce([{ Role: doctorRole }])
-                            // TASK-295 H-3
-                            .mockResolvedValueOnce([{ tenantId: 'tenant-001' }]),
-                        findFirst: vi.fn().mockResolvedValue({ tenantId: 'tenant-001' }),
-                    },
-                },
-            };
+            mockUserRoleAssignmentService = createMockUraServiceSeq(
+                [[adminRole], [doctorRole]],
+                ['tenant-001'],
+            );
 
             controller = new AuthController(
                 createMockUserService() as any,
                 mockAuthService as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -528,7 +512,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockUserService() as any,
                 createMockAuthService() as any,
                 createMockAppSettingsService() as any,
-                createMockDatabaseService() as any,
+                createMockUserRoleAssignmentService() as any,
                 createMockUserRepository() as any,
                 {} as any,
                 {} as any,
@@ -557,7 +541,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockUserService() as any,
                 mockAuthService as any,
                 createMockAppSettingsService() as any,
-                createMockDatabaseService() as any,
+                createMockUserRoleAssignmentService() as any,
                 createMockUserRepository() as any,
                 {} as any,
                 {} as any,
@@ -585,7 +569,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockUserService() as any,
                 mockAuthService as any,
                 createMockAppSettingsService() as any,
-                createMockDatabaseService() as any,
+                createMockUserRoleAssignmentService() as any,
                 createMockUserRepository() as any,
                 {} as any,
                 {} as any,
@@ -614,7 +598,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockUserService() as any,
                 mockAuthService as any,
                 createMockAppSettingsService() as any,
-                createMockDatabaseService() as any,
+                createMockUserRoleAssignmentService() as any,
                 createMockUserRepository() as any,
                 {} as any,
                 {} as any,
@@ -641,7 +625,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockUserService() as any,
                 createMockAuthService() as any,
                 createMockAppSettingsService() as any,
-                createMockDatabaseService() as any,
+                createMockUserRoleAssignmentService() as any,
                 createMockUserRepository() as any,
                 {} as any,
                 {} as any,
@@ -661,7 +645,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockUserService() as any,
                 createMockAuthService() as any,
                 createMockAppSettingsService() as any,
-                createMockDatabaseService() as any,
+                createMockUserRoleAssignmentService() as any,
                 createMockUserRepository() as any,
                 {} as any,
                 {} as any,
@@ -679,13 +663,13 @@ describe('AuthController — TASK-224 Security Tests', () => {
         it('should throw UnauthorizedException when user extracted from token is not found', async () => {
             mockUserRepository = createMockUserRepository(new Map());
             mockAppSettingsService = createMockAppSettingsService();
-            mockDatabaseService = createMockDatabaseService([]);
+            mockUserRoleAssignmentService = createMockUserRoleAssignmentService([]);
 
             controller = new AuthController(
                 createMockUserService() as any,
                 createMockAuthService() as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -707,13 +691,13 @@ describe('AuthController — TASK-224 Security Tests', () => {
 
             mockUserRepository = createMockUserRepository(users);
             mockAppSettingsService = createMockAppSettingsService();
-            mockDatabaseService = createMockDatabaseService([{ Role: doctorRole }]);
+            mockUserRoleAssignmentService = createMockUserRoleAssignmentService([{ Role: doctorRole }]);
 
             controller = new AuthController(
                 createMockUserService() as any,
                 createMockAuthService() as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -736,14 +720,14 @@ describe('AuthController — TASK-224 Security Tests', () => {
         it('should extract userId correctly from multi-segment refresh token', async () => {
             const users = new Map([['user-with-dashes', createTargetUser('user-with-dashes')]]);
             mockUserRepository = createMockUserRepository(users);
-            mockDatabaseService = createMockDatabaseService([{ Role: createRole('doctor') }]);
+            mockUserRoleAssignmentService = createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]);
             mockAppSettingsService = createMockAppSettingsService();
 
             controller = new AuthController(
                 createMockUserService() as any,
                 createMockAuthService() as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -771,7 +755,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockUserService() as any,
                 createMockAuthService() as any,
                 createMockAppSettingsService() as any,
-                createMockDatabaseService() as any,
+                createMockUserRoleAssignmentService() as any,
                 createMockUserRepository() as any,
                 {} as any,
                 {} as any,
@@ -791,7 +775,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockUserService() as any,
                 createMockAuthService() as any,
                 createMockAppSettingsService() as any,
-                createMockDatabaseService() as any,
+                createMockUserRoleAssignmentService() as any,
                 createMockUserRepository() as any,
                 {} as any,
                 {} as any,
@@ -813,7 +797,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockUserService() as any,
                 createMockAuthService() as any,
                 createMockAppSettingsService() as any,
-                createMockDatabaseService() as any,
+                createMockUserRoleAssignmentService() as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -839,13 +823,13 @@ describe('AuthController — TASK-224 Security Tests', () => {
             mockUserRepository = createMockUserRepository(users);
             mockAuthService = createMockAuthService();
             mockAppSettingsService = createMockAppSettingsService();
-            mockDatabaseService = createMockDatabaseService([{ Role: createRole('doctor') }]);
+            mockUserRoleAssignmentService = createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]);
 
             controller = new AuthController(
                 createMockUserService() as any,
                 mockAuthService as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -878,13 +862,13 @@ describe('AuthController — TASK-224 Security Tests', () => {
             mockUserRepository = createMockUserRepository(users);
             mockAuthService = createMockAuthService();
             mockAppSettingsService = createMockAppSettingsService();
-            mockDatabaseService = createMockDatabaseService([{ Role: createRole('doctor') }]);
+            mockUserRoleAssignmentService = createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]);
 
             controller = new AuthController(
                 createMockUserService() as any,
                 mockAuthService as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
@@ -921,7 +905,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockUserService() as any,
                 createMockAuthService() as any,
                 createMockAppSettingsService() as any,
-                createMockDatabaseService() as any,
+                createMockUserRoleAssignmentService() as any,
                 createMockUserRepository() as any,
                 {} as any,
                 {} as any,
@@ -944,13 +928,13 @@ describe('AuthController — TASK-224 Security Tests', () => {
             mockUserRepository = createMockUserRepository(new Map([[adminUser.id, adminUser]]));
             mockAuthService = createMockAuthService();
             mockAppSettingsService = createMockAppSettingsService();
-            mockDatabaseService = createMockDatabaseService([{ Role: adminRole }]);
+            mockUserRoleAssignmentService = createMockUserRoleAssignmentService([{ Role: adminRole }]);
 
             controller = new AuthController(
                 createMockUserService() as any,
                 mockAuthService as any,
                 mockAppSettingsService as any,
-                mockDatabaseService as any,
+                mockUserRoleAssignmentService as any,
                 mockUserRepository as any,
                 {} as any,
                 {} as any,
