@@ -131,10 +131,7 @@ export class AuthController {
 
         // TASK-307 W6.1 (audit C-10) — tenant validation now flows through
         // `UserRoleAssignmentService` instead of touching Prisma directly.
-        const tenantRoleAssignment = await this.userRoleAssignmentService.findActiveAssignmentForUserInTenant(
-          user.id,
-          resolvedTenantId,
-        );
+        const tenantRoleAssignment = await this.userRoleAssignmentService.findActiveAssignmentForUserInTenant(user.id, resolvedTenantId);
 
         if (!tenantRoleAssignment) {
           throw new UnauthorizedException('User does not have access to the specified tenant');

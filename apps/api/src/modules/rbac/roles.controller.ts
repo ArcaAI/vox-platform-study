@@ -1,29 +1,8 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Patch,
-  Delete,
-  Body,
-  Param,
-  Query,
-  HttpCode,
-  HttpStatus,
-  Inject,
-  NotFoundException,
-} from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Inject, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { IRbacRoleService } from '@arcaai/applications';
 import { CanManage } from '../../decorators';
-import {
-  CreateRoleDto,
-  UpdateRoleDto,
-  AssignPolicyToRoleDto,
-  RoleResponse,
-  PaginatedRoleResponse,
-  AssignPolicyResponse,
-} from './dto';
+import { CreateRoleDto, UpdateRoleDto, AssignPolicyToRoleDto, RoleResponse, PaginatedRoleResponse, AssignPolicyResponse } from './dto';
 
 /**
  * RBAC Roles Controller

@@ -7,7 +7,7 @@ module.exports = {
         'prettier',
         'turbo',
     ],
-    plugins: ['@typescript-eslint/eslint-plugin'],
+    plugins: ['@typescript-eslint/eslint-plugin', 'arcaai-internal'],
     parser: '@typescript-eslint/parser',
     ignorePatterns: [
         '.*.js',
@@ -17,6 +17,26 @@ module.exports = {
         'dist/',
         'coverage/',
         'node_modules/',
+    ],
+    overrides: [
+        {
+            // TASK-307 W6.4 (AC-24) — Controllers must route data access
+            // through a service or repository. The `arcaai-internal` plugin
+            // (packages/config-eslint/eslint-plugin-arcaai-internal/) hosts
+            // the custom rule; the escape hatch is `/** @allowedDirectPrisma
+            // <reason> */` immediately above the offending line. Allow-list
+            // SHOULD be empty after W6 ships — every entry is a deliberate
+            // exception that must be reviewed.
+            //
+            // Scope is intentionally narrow:
+            //   apps/api/src/modules/**/*.controller.ts  — the offender surface
+            // Service-layer / repository-layer direct-Prisma access remains
+            // legitimate and is not restricted.
+            files: ['**/apps/api/src/modules/**/*.controller.ts'],
+            rules: {
+                'arcaai-internal/no-controller-direct-prisma': 'error',
+            },
+        },
     ],
     rules: {
         // TASK-305 B.5 — Guard the unscoped Prisma client.
