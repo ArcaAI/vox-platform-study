@@ -188,6 +188,29 @@ Regression — `pnpm --filter @arcaai/api exec vitest run src/modules/{auth,thro
 Build — `pnpm --filter @arcaai/api build` → exit 0.
 ```
 
+### 4.5 AC-6 — E2E spec `auth-throttle-per-endpoint.spec.ts`
+
+**Files added**
+
+| File | Purpose |
+|---|---|
+| `apps/api/tests/e2e/auth-throttle-per-endpoint.spec.ts` | NEW. Playwright spec covering AC-6: `/auth/login` at 5/min, `/auth/refresh` at 60/min, `/auth/me` rides default 100/min. |
+
+**Test design**
+
+- Three serial tests inside one `describe`, with `mode: 'serial'` so they don't race the in-process throttle counter.
+- A `beforeAll` issues the doctor `/auth/login` first (so the /me test has a valid token before the login-throttle test consumes the 5/min budget).
+- Order is `/me` (default tier) → `/refresh` (60/min tier) → `/login` (5/min tier), so the login probe runs LAST and its budget burn doesn't interfere with the other tests' preconditions.
+- Assertions are bound-based, not exact-count-based: "≥1 of 6 login attempts 429s" and "0 of 11 refresh attempts 429" — robust against any prior-test counter consumption (other than the login one, which is mitigated by the in-`beforeAll` precondition).
+
+**Execution constraint (worktree)**
+
+Same constraint as AC-4: the test stack (test API on `:8868`) is not running here. The spec is authored, lints clean, and is structured to be run via `pnpm test:e2e --grep auth-throttle-per-endpoint` against a fresh test API. The §4.4 unit-level metadata pin is the immediate verification.
+
+**Known follow-up — pre-existing tests may need tuning**
+
+Lowering `/auth/login` from 10/min (class-wide) to 5/min (per-endpoint) tightens the bound for legitimate login calls from other specs that share the same API process. `apps/api/tests/e2e/auth.spec.ts` already issues ≥9 `/auth/login` calls. Whether the pre-existing test suite remains green under the new 5/min limit can only be confirmed by running the full E2E suite against the test stack; this is flagged here as a follow-up to verify post-merge. The decorator change itself is correct (it satisfies AC-5) and is the actionable deliverable; any test fixture adjustments are out-of-scope for this ticket (see "Hard constraints" in the execution prompt: "DO NOT modify files outside the scope of TASK-308").
+
 ---
 
 ## 5. Change History
