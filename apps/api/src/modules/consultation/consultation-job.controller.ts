@@ -9,10 +9,14 @@
  *   PATCH  /consultations/jobs/:jobId/cancel     → cancel pending job
  *   GET    /consultations/jobs/:jobId/stream     → SSE real-time updates
  *
- * Authorisation: any authenticated user (existing pattern for the async
- * summary endpoints in `ConsultationController`). Per-job ownership checks
- * are tracked as a follow-up (TASK-263 §6) once `ConsultationJobStatus`
- * carries `userId`/`tenantId` fields.
+ * Authorisation: `@Authorize()` at the class level + per-method
+ * `@TenantOwnedResource({ modelName: 'ConsultationJob', paramName: 'jobId' })`
+ * applied in TASK-307 W3 (closes audit C-3). The W3 carry-through pushed
+ * `userId` / `tenantId` onto `ConsultationJobStatus` (see
+ * `packages/applications/src/services/consultation/jobs/dto/job.dto.ts`)
+ * so the interceptor can resolve the per-job tenant from Redis and 404 on
+ * cross-tenant mismatch. The `TODO(TASK-263 §6)` that previously lived
+ * here is closed.
  */
 import { Controller, Get, Inject, NotFoundException, Param, Patch, Sse, type MessageEvent } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';

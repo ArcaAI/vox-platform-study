@@ -146,6 +146,17 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
   // ---------------------------------------------------------------------------
   // 3. Cross-tenant carry-through — AC-3 / C-12
   // ---------------------------------------------------------------------------
+  //
+  // TASK-307 W7.A.2 — known gap: this test verifies the *stability* contract
+  // of AC-3 (the refreshed access token keeps the same tenantId as the
+  // original login), which is sufficient to pin the C-12 fix today.
+  // A stronger "actual rejection" probe would mint a tenant-A refresh
+  // token and POST it from a tenant-B context to confirm 401, or seed a
+  // multi-tenant user with assignments in two different tenants and
+  // verify that a refresh stays bound to the originally-selected tenant.
+  // The seed harness does not currently expose that fixture; flagged as a
+  // §10 deferral in `docs/implementation/TASK-307-API-Gateway-Hardening/
+  // README.md` for a future E2E enhancement.
   test('TASK-307 W1.7 — refreshed access token stays scoped to the original issuing tenant', async ({
     request,
   }) => {

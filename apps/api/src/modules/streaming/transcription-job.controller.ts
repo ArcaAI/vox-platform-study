@@ -324,6 +324,24 @@ export class TranscriptionJobController {
     };
   }
 
+  /**
+   * TASK-307 W7.A.9 (carryover note from W3 review) — this endpoint takes
+   * a `sessionId` (the STT-V2 streaming session, opaque to the gateway),
+   * not a `jobId` (the `TranscriptionJob` row). `@TenantOwnedResource`
+   * cannot be applied directly with `modelName: 'TranscriptionJob'`
+   * because there is no foreign-key relationship from `sessionId`
+   * back to a Prisma model — the session record lives in STT-V2 / Redis,
+   * not the API gateway DB. Tenant scoping today relies on the
+   * downstream `StreamingSessionService.removeSession(sessionId)` honoring
+   * the Prisma `tenantScope` extension on whatever rows it touches
+   * (TASK-305 W2.B extension fans tenantId out from CLS to every
+   * `findMany/findFirst/update/delete`). Closing the gap end-to-end
+   * needs either: (a) a dedicated `StreamSessionTenantBindingService`
+   * that resolves sessionId → tenantId and runs an explicit equality
+   * check, or (b) reshaping the URL to nest under `/jobs/:id/stream-
+   * session/:sessionId` so the parent `jobId` carries the tenant scope.
+   * Both are out of W7 scope — see §10 deferral.
+   */
   @Delete('stream/session/:sessionId')
   @HttpCode(204)
   @ApiOperation({ summary: 'Close a WebSocket streaming session' })

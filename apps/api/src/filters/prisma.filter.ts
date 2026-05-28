@@ -3,6 +3,30 @@ import { ArgumentsHost, Catch, HttpStatus, Logger } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import { Request, Response } from 'express';
 
+/**
+ * TASK-307 W7.A.14 (carryover from W5 review) — known shadow:
+ *
+ * `ExceptionInterceptor` (registered as a global `APP_INTERCEPTOR`) maps
+ * every `PrismaClientKnownRequestError` to a generic
+ * `400 { statusCode, error: 'Bad Request', correlationId }` BEFORE any
+ * exception filter sees it (see `apps/api/src/interceptors/
+ * exception.interceptor.ts` lines 46–73). The status-code-specific
+ * branches below (`P2002` → 409 Conflict, `P2025` → 404 Not Found,
+ * etc.) therefore NEVER run in production today — every Prisma known-
+ * error returns a generic 400.
+ *
+ * The filter is kept registered as defense-in-depth: if a future
+ * refactor unregisters the interceptor (or extracts a non-Prisma
+ * branch from it), this filter still produces sanitised 4xx responses
+ * without leaking `err.meta` or constraint names. Per TASK-307 §10
+ * deferral, the long-term fix is to either:
+ *   (a) extend `ExceptionInterceptor` to honor the same code → status
+ *       mapping (preserving the better-classification UX the filter
+ *       intends), OR
+ *   (b) drop this filter entirely and treat the interceptor as the
+ *       single source of truth.
+ * Both are out of W7 scope (touches W5's hardening surface).
+ */
 @Catch(PrismaClientKnownRequestError)
 export class PrismaClientExceptionFilter extends BaseExceptionFilter {
   private readonly logger = new Logger(PrismaClientExceptionFilter.name);

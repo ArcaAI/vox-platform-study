@@ -223,6 +223,85 @@ describe('RedisCacheService', () => {
         });
     });
 
+    // TASK-307 W7.A.1 — non-blocking SCAN alternative to `keys()`.
+    describe('scan', () => {
+        it('should return empty array when not connected', async () => {
+            service = new RedisCacheService();
+            await service.onModuleInit();
+
+            const result = await service.scan('test:*');
+            expect(result).toEqual([]);
+        });
+
+        it('should walk the keyspace via cursor until it wraps to "0"', async () => {
+            // Two-iteration SCAN: first call returns cursor "42" + two keys,
+            // second call returns cursor "0" + one more key. The service
+            // should concatenate and return all three keys.
+            mockRedisInstance.scan = vi
+                .fn()
+                .mockResolvedValueOnce(['42', ['refresh-token-family:fam-a:hash1', 'refresh-token-family:fam-a:hash2']])
+                .mockResolvedValueOnce(['0', ['refresh-token-family:fam-a:hash3']]);
+
+            (Redis as unknown as Mock).mockImplementation(function () {
+                return mockRedisInstance;
+            });
+            mockRedisInstance.on = vi.fn().mockImplementation((event: string, cb: Function) => {
+                if (event === 'connect') {
+                    setImmediate(() => cb());
+                }
+                return mockRedisInstance;
+            });
+            service = new RedisCacheService(mockConfigService);
+            await service.onModuleInit();
+            await new Promise((r) => setImmediate(r));
+
+            const result = await service.scan('refresh-token-family:fam-a:*', { count: 200 });
+
+            expect(result).toEqual([
+                'refresh-token-family:fam-a:hash1',
+                'refresh-token-family:fam-a:hash2',
+                'refresh-token-family:fam-a:hash3',
+            ]);
+            expect(mockRedisInstance.scan).toHaveBeenCalledTimes(2);
+            expect(mockRedisInstance.scan).toHaveBeenNthCalledWith(
+                1,
+                '0',
+                'MATCH',
+                'refresh-token-family:fam-a:*',
+                'COUNT',
+                200,
+            );
+            expect(mockRedisInstance.scan).toHaveBeenNthCalledWith(
+                2,
+                '42',
+                'MATCH',
+                'refresh-token-family:fam-a:*',
+                'COUNT',
+                200,
+            );
+        });
+
+        it('should return [] and not throw when Redis scan errors', async () => {
+            mockRedisInstance.scan = vi.fn().mockRejectedValueOnce(new Error('Redis scan error'));
+
+            (Redis as unknown as Mock).mockImplementation(function () {
+                return mockRedisInstance;
+            });
+            mockRedisInstance.on = vi.fn().mockImplementation((event: string, cb: Function) => {
+                if (event === 'connect') {
+                    setImmediate(() => cb());
+                }
+                return mockRedisInstance;
+            });
+            service = new RedisCacheService(mockConfigService);
+            await service.onModuleInit();
+            await new Promise((r) => setImmediate(r));
+
+            const result = await service.scan('test:*');
+            expect(result).toEqual([]);
+        });
+    });
+
     describe('exists', () => {
         it('should return false when not connected', async () => {
             service = new RedisCacheService();
