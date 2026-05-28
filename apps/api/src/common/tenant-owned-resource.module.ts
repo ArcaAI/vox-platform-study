@@ -26,11 +26,18 @@ import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConsultationJobServiceModule } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
+import { StreamSessionTenantBindingService } from './stream-session-tenant-binding.service';
 import { TenantOwnedResourceInterceptor } from './tenant-owned-resource.interceptor';
 
+// TASK-310 W7.A.9 (AC-3): the new `StreamSessionTenantBindingService`
+// depends on `IRedisCacheService`. That provider is registered by
+// `RedisCacheModule.register()` inside `StreamTicketModule`, which is
+// `@Global()` — so the binding constructor can resolve it without us
+// re-importing the cache module here.
 @Module({
   imports: [CoreDatabaseModule, ConsultationJobServiceModule],
   providers: [
+    StreamSessionTenantBindingService,
     TenantOwnedResourceInterceptor,
     // Register the interceptor as APP_INTERCEPTOR via useExisting so the
     // same instance handles every request — keeps the per-request work to
@@ -40,5 +47,9 @@ import { TenantOwnedResourceInterceptor } from './tenant-owned-resource.intercep
       useExisting: TenantOwnedResourceInterceptor,
     },
   ],
+  // Re-export the binding service so feature modules (streaming module)
+  // can inject the same instance the interceptor uses, keeping
+  // bind / lookup / clear talking to the same Redis keyspace.
+  exports: [StreamSessionTenantBindingService],
 })
 export class TenantOwnedResourceModule {}

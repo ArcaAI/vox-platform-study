@@ -14,5 +14,6 @@
 module.exports = {
   rules: {
     'no-controller-direct-prisma': require('./rules/no-controller-direct-prisma'),
+    'no-direct-downstream-url-env': require('./rules/no-direct-downstream-url-env'),
   },
 };

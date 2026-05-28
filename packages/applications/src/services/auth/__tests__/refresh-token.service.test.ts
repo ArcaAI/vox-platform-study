@@ -15,7 +15,7 @@
  * mock `IRedisCacheService`, no Nest container.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { RefreshTokenService } from '../refresh-token.service';
+import { REFRESH_TOKEN_CONSUME_LUA, RefreshTokenService } from '../refresh-token.service';
 
 interface MockCache {
   get: ReturnType<typeof vi.fn>;
@@ -32,6 +32,12 @@ interface MockCache {
   hset: ReturnType<typeof vi.fn>;
   incr: ReturnType<typeof vi.fn>;
   expire: ReturnType<typeof vi.fn>;
+  // TASK-310 W7.A.4 (AC-2) — atomic Lua eval support. The mock
+  // implementation in `createMockCache` interprets the
+  // `REFRESH_TOKEN_CONSUME_LUA` script JS-side; this single helper
+  // mirrors the Redis-side guarantee that the GET / DEL / DEL / SETEX
+  // sequence runs without interleaving against the in-memory store.
+  eval: ReturnType<typeof vi.fn>;
   isConnected: ReturnType<typeof vi.fn>;
 }
 
@@ -75,8 +81,45 @@ function createMockCache(): { mock: MockCache; store: Map<string, string> } {
     hset: vi.fn(),
     incr: vi.fn(),
     expire: vi.fn(),
+    eval: vi.fn(),
     isConnected: vi.fn().mockReturnValue(true),
   };
+
+  // TASK-310 W7.A.4 (AC-2) — mock the Lua eval the service ships.
+  // Mirrors the script body in JS against the same in-memory store so
+  // the consume call is atomic from the test's point of view (the
+  // GET / DEL / DEL / SETEX sequence runs without any micro-task
+  // interleaving — same guarantee Redis gives via `EVAL`).
+  mock.eval.mockImplementation(async (script: string, _numKeys: number, ...args: (string | number)[]) => {
+    if (script !== REFRESH_TOKEN_CONSUME_LUA) {
+      throw new Error(`Unexpected Lua script: ${script.slice(0, 40)}…`);
+    }
+    const [activeKey, consumedKey, familyMemberPrefix, hashSuffix, nowArg] = args as [string, string, string, string, string];
+    const now = parseInt(nowArg, 10);
+    const raw = store.get(activeKey);
+    if (raw === undefined) return null;
+    let record: { family?: string; expiresAt?: number };
+    try {
+      record = JSON.parse(raw);
+    } catch {
+      // Corrupt — drop the active row, return null so the caller surfaces 401.
+      store.delete(activeKey);
+      return null;
+    }
+    if (typeof record.family !== 'string' || typeof record.expiresAt !== 'number') {
+      store.delete(activeKey);
+      return null;
+    }
+    const memberKey = `${familyMemberPrefix}${record.family}${hashSuffix}`;
+    const remainingTtl = Math.max(1, record.expiresAt - now);
+    store.delete(activeKey);
+    store.delete(memberKey);
+    // SETEX written through the same store; TTL ignored (in-memory mock).
+    void remainingTtl;
+    store.set(consumedKey, record.family);
+    return raw;
+  });
+
   return { mock, store };
 }
 
@@ -274,6 +317,66 @@ describe('TASK-307 W1.1 — RefreshTokenService', () => {
       await expect(service.consume('')).rejects.toMatchObject({ status: 401 });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await expect(service.consume(undefined as any)).rejects.toMatchObject({ status: 401 });
+    });
+
+    /**
+     * TASK-310 W7.A.4 (AC-2) — race-replay test.
+     *
+     * Pre-W7 `consume()` was a non-atomic sequence:
+     *   get(activeKey) → del(activeKey) → del(memberKey) → setex(consumedKey)
+     *
+     * Two concurrent calls each saw the active row from their own `get`
+     * (the awaits between calls let the second `get` land before the
+     * first `del`), so BOTH resolved with the same record — the
+     * legitimate user and an attacker who got their hands on the token
+     * could each mint a fresh access token. The fix collapses the
+     * sequence into a single Lua `EVAL` so Redis serialises it.
+     *
+     * Assertion: exactly one of `Promise.allSettled([consume, consume])`
+     * resolves; the other rejects with 401. Promise.all WOULD reject
+     * fast on the loser, but `allSettled` lets us inspect both outcomes.
+     */
+    it('atomic Promise.all([consume(t), consume(t)]) → exactly one resolves, the other 401s (AC-2)', async () => {
+      const { rawToken } = await service.issue({
+        userId: 'race-user',
+        tenantId: 'race-tenant',
+        jti: 'race-jti',
+      });
+
+      const results = await Promise.allSettled([service.consume(rawToken), service.consume(rawToken)]);
+
+      const fulfilled = results.filter((r): r is PromiseFulfilledResult<unknown> => r.status === 'fulfilled');
+      const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      const err = rejected[0].reason as { status?: number };
+      expect(err.status).toBe(401);
+    });
+
+    it('the Lua eval is called once per consume with the expected key/argv layout (AC-2)', async () => {
+      const { rawToken } = await service.issue({
+        userId: 'u1',
+        tenantId: 't1',
+        jti: 'j1',
+      });
+
+      cache.mock.eval.mockClear();
+      await service.consume(rawToken);
+
+      expect(cache.mock.eval).toHaveBeenCalledTimes(1);
+      const [script, numKeys, ...args] = cache.mock.eval.mock.calls[0];
+      expect(script).toBe(REFRESH_TOKEN_CONSUME_LUA);
+      expect(numKeys).toBe(2);
+      const [activeKey, consumedKey, familyMemberPrefix, hashSuffix, nowArg] = args as string[];
+      expect(activeKey).toMatch(/^refresh-token:[0-9a-f]{64}$/);
+      expect(consumedKey).toMatch(/^refresh-token-consumed:[0-9a-f]{64}$/);
+      expect(familyMemberPrefix).toBe('refresh-token-family:');
+      // hashSuffix = ':<sha>' matches the sha embedded in the active key.
+      const sha = activeKey.split(':')[1];
+      expect(hashSuffix).toBe(`:${sha}`);
+      // now is the current epoch seconds as a string.
+      expect(parseInt(nowArg, 10)).toBeGreaterThan(1_700_000_000);
     });
   });
 

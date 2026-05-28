@@ -66,6 +66,15 @@ const createMockStreamTicketService = () => ({
     consumeTicket: vi.fn(),
 });
 
+// TASK-310 W7.A.9 (AC-3): the controller now binds on session create and
+// clears on close. Tests stub the binding so we can assert the dependency
+// is invoked (and used in the new annotation contract).
+const createMockStreamSessionTenantBinding = () => ({
+    bind: vi.fn().mockResolvedValue(undefined),
+    lookup: vi.fn().mockResolvedValue(null),
+    clear: vi.fn().mockResolvedValue(undefined),
+});
+
 describe('TranscriptionJobController', () => {
     let controller: TranscriptionJobController;
     let mockJobService: ReturnType<typeof createMockJobService>;
@@ -76,6 +85,7 @@ describe('TranscriptionJobController', () => {
     let mockTenantBucketService: ReturnType<typeof createMockTenantBucketService>;
     let mockPipelineService: ReturnType<typeof createMockPipelineService>;
     let mockStreamTicketService: ReturnType<typeof createMockStreamTicketService>;
+    let mockStreamSessionTenantBinding: ReturnType<typeof createMockStreamSessionTenantBinding>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -87,6 +97,7 @@ describe('TranscriptionJobController', () => {
         mockTenantBucketService = createMockTenantBucketService();
         mockPipelineService = createMockPipelineService();
         mockStreamTicketService = createMockStreamTicketService();
+        mockStreamSessionTenantBinding = createMockStreamSessionTenantBinding();
         controller = new TranscriptionJobController(
             mockJobService as any,
             mockRealtimeService as any,
@@ -96,6 +107,7 @@ describe('TranscriptionJobController', () => {
             mockTenantBucketService as any,
             mockPipelineService as any,
             mockStreamTicketService as any,
+            mockStreamSessionTenantBinding as any,
         );
     });
 
@@ -464,7 +476,7 @@ describe('TranscriptionJobController', () => {
             expect(meta('streamJob')).toEqual(expected);
         });
 
-        it('list / create / createBatch / createStreaming / transcribeFile / getStats / getByStatus / getByConsultation / createStreamSession / closeStreamSession / refreshStreamTicket are NOT annotated (no :id route param)', () => {
+        it('list / create / createBatch / createStreaming / transcribeFile / getStats / getByStatus / getByConsultation / createStreamSession / refreshStreamTicket are NOT annotated (no :id route param)', () => {
             // Bulk negative — they either have no :id, or have a non-job id (sessionId / consultationId).
             // Service-layer tenant filtering covers them via the W5.1 Prisma extension.
             expect(meta('list')).toBeUndefined();
@@ -476,8 +488,48 @@ describe('TranscriptionJobController', () => {
             expect(meta('getByStatus')).toBeUndefined();
             expect(meta('getByConsultation')).toBeUndefined();
             expect(meta('createStreamSession')).toBeUndefined();
-            expect(meta('closeStreamSession')).toBeUndefined();
             expect(meta('refreshStreamTicket')).toBeUndefined();
+        });
+
+        // TASK-310 W7.A.9 (AC-3) — closeStreamSession IS now annotated with
+        // the new `StreamSession` resolver branch.
+        it('closeStreamSession IS annotated with {modelName: StreamSession, paramName: sessionId, lookup: "session"} (TASK-310 W7.A.9)', () => {
+            expect(meta('closeStreamSession')).toEqual({
+                modelName: 'StreamSession',
+                paramName: 'sessionId',
+                lookup: 'session',
+            });
+        });
+    });
+
+    // ------------------------------------------------------------------------
+    // TASK-310 W7.A.9 (AC-3) — createStreamSession binds sessionId → tenantId
+    // in the gateway-side `StreamSessionTenantBindingService` so the
+    // interceptor can 404 cross-tenant probes on closeStreamSession.
+    // closeStreamSession clears the binding after the downstream remove
+    // succeeds.
+    // ------------------------------------------------------------------------
+    describe('TASK-310 W7.A.9 — StreamSessionTenantBindingService integration', () => {
+        it('createStreamSession binds the returned sessionId to the caller tenant', async () => {
+            mockSessionService.createSession.mockResolvedValueOnce({
+                sessionId: 'sess-xyz',
+                status: 'ACTIVE',
+                maxConcurrent: 4,
+                currentActive: 1,
+            });
+
+            await controller.createStreamSession({ pipelineId: 'pipeline-1' } as CreateStreamSessionRequest);
+
+            expect(mockStreamSessionTenantBinding.bind).toHaveBeenCalledWith('sess-xyz', 'tenant-1');
+        });
+
+        it('closeStreamSession clears the binding after a successful downstream remove', async () => {
+            mockSessionService.removeSession.mockResolvedValueOnce(undefined);
+
+            await controller.closeStreamSession('sess-xyz');
+
+            expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-xyz');
+            expect(mockStreamSessionTenantBinding.clear).toHaveBeenCalledWith('sess-xyz');
         });
     });
 });

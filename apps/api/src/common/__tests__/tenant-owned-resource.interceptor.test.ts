@@ -45,6 +45,8 @@ interface MockRepoSet {
 
 interface MockServices {
   consultationJob: { getJobStatus: ReturnType<typeof vi.fn> };
+  // TASK-310 W7.A.9 (AC-3): mocks the `StreamSession` resolver branch.
+  streamSessionTenantBinding: { lookup: ReturnType<typeof vi.fn> };
 }
 
 function buildHarness(opts: {
@@ -77,6 +79,9 @@ function buildHarness(opts: {
     consultationJob: {
       getJobStatus: vi.fn(),
     },
+    streamSessionTenantBinding: {
+      lookup: vi.fn(),
+    },
   };
 
   const interceptor = new TenantOwnedResourceInterceptor(
@@ -86,6 +91,7 @@ function buildHarness(opts: {
     repos.userVoiceProfile as never,
     repos.transcriptionJob as never,
     services.consultationJob as never,
+    services.streamSessionTenantBinding as never,
   );
 
   const next: CallHandler = {
@@ -520,6 +526,72 @@ describe('TASK-307 W3.2 — TenantOwnedResourceInterceptor', () => {
       await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  /**
+   * TASK-310 W7.A.9 (AC-3) — StreamSession resolver branch.
+   *
+   * The sessionId is opaque to Prisma; the interceptor consults the
+   * gateway-side `StreamSessionTenantBindingService.lookup(sessionId)`
+   * and 404s on missing binding or tenant mismatch. The handler must
+   * never run for a cross-tenant probe (DEF-C3 no-existence-leak).
+   */
+  describe('TASK-310 W7.A.9 — StreamSession (lookup: "session")', () => {
+    it('passes through when the bound tenant matches CLS tenantId', async () => {
+      const harness = buildHarness({
+        reflectorReturns: { modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session' },
+        clsState: { tenantId: SENTINEL_TENANT_A },
+        params: { sessionId: 'sess-1' },
+      });
+      harness.services.streamSessionTenantBinding.lookup.mockResolvedValueOnce(SENTINEL_TENANT_A);
+
+      const result = await firstValueFrom(await harness.interceptor.intercept(harness.ctx, harness.next));
+
+      expect(result).toBe(NEXT_VALUE);
+      expect(harness.services.streamSessionTenantBinding.lookup).toHaveBeenCalledWith('sess-1');
+      expect(harness.next.handle).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws 404 on cross-tenant probe (bound tenant != caller)', async () => {
+      const harness = buildHarness({
+        reflectorReturns: { modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session' },
+        clsState: { tenantId: SENTINEL_TENANT_A },
+        params: { sessionId: 'sess-1' },
+      });
+      harness.services.streamSessionTenantBinding.lookup.mockResolvedValueOnce(SENTINEL_TENANT_B);
+
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(harness.next.handle).not.toHaveBeenCalled();
+    });
+
+    it('throws 404 when no binding exists (lookup returns null)', async () => {
+      const harness = buildHarness({
+        reflectorReturns: { modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session' },
+        clsState: { tenantId: SENTINEL_TENANT_A },
+        params: { sessionId: 'unbound-sess' },
+      });
+      harness.services.streamSessionTenantBinding.lookup.mockResolvedValueOnce(null);
+
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(harness.next.handle).not.toHaveBeenCalled();
+    });
+
+    it('throws 404 when CLS tenantId is missing (guard runs before binding lookup)', async () => {
+      const harness = buildHarness({
+        reflectorReturns: { modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session' },
+        clsState: {},
+        params: { sessionId: 'sess-1' },
+      });
+
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(harness.services.streamSessionTenantBinding.lookup).not.toHaveBeenCalled();
     });
   });
 
