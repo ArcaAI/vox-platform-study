@@ -159,6 +159,35 @@ GREEN — `pnpm --filter @arcaai/api exec vitest run src/modules/consultation/__
 
 The dev infra Redis (`hope-redis` on `:6379`) is running on this host, but the test infra stack (`hope-redis-test` on `:6380`, API on `:8868` via `./scripts/start-test-api.sh`) is not. The spec is authored and lints clean; it will be executed against the parent repo's running test stack once this branch merges back to `fix/2605-review` (or earlier via `pnpm docker:test:up && pnpm test:api:up && pnpm test:e2e --grep consultation-job-cross-user`). The unit-level coverage of the same logic in §4.1 is the immediate verification.
 
+### 4.4 AC-5 — `AuthController` per-endpoint throttle
+
+**Files modified**
+
+| File | Change |
+|---|---|
+| `apps/api/src/modules/auth/auth.controller.ts` | Removed class-wide `@Throttle({ default: { limit: 10, ttl: 60000 } })`; added per-handler decorators: `login` → 5/min, `refresh` → 60/min, `impersonate` → 10/min. `me`, `logout`, `issueStreamTicket`, `revokeImpersonation` ride the app-wide default throttler (no per-endpoint decorator). |
+| `apps/api/src/modules/throttle/__tests__/throttle-decorators.test.ts` | Replaced "AuthController has class-wide 10/min" assertion with "AuthController has NO class-wide throttle"; added 7 new per-handler metadata assertions under `TASK-308 AC-5 — AuthController per-endpoint throttle`. |
+
+**Test evidence (RED → GREEN)**
+
+```text
+RED — 4 of 10 throttle-decorators cases fail:
+  ✗ AuthController carries NO class-wide throttle (still has 10/min)
+  ✗ login is decorated with 5 req / 60s (currently undecorated)
+  ✗ refresh is decorated with 60 req / 60s (currently undecorated)
+  ✗ impersonate is decorated with 10 req / 60s (currently undecorated)
+
+GREEN — `pnpm --filter @arcaai/api exec vitest run src/modules/throttle/__tests__/throttle-decorators.test.ts`
+  Test Files  1 passed (1)
+       Tests  10 passed (10)
+
+Regression — `pnpm --filter @arcaai/api exec vitest run src/modules/{auth,throttle,consultation} src/common`
+  Test Files  16 passed (16)
+       Tests  260 passed (260)
+
+Build — `pnpm --filter @arcaai/api build` → exit 0.
+```
+
 ---
 
 ## 5. Change History
