@@ -151,13 +151,18 @@ describe('Runtime @Controller metadata (Reflect.getMetadata)', () => {
     );
 });
 
-// ─── Pstudio Mixed Auth Decorators ───────────────────────────────────────
+// ─── Pstudio Auth Decorators (retuned by TASK-307 W5.2) ─────────────────
+//
+// Pre-W5.2 the GET handler carried @Public() and accepted the JWT via
+// ?token=. W5.2 removes the public exemption and the URL-token form
+// entirely — both verbs now require @Authorize(['manage','all']) and
+// the JWT must arrive via the Authorization: Bearer header.
 
-describe('Pstudio mixed auth decorators survive rename', () => {
-    it('serveStudio should have @Public() decorator', async () => {
+describe('Pstudio auth decorators (post-TASK-307 W5.2)', () => {
+    it('serveStudio NO LONGER carries @Public() metadata', async () => {
         const { PrismaStudioController } = await import('../modules/pstudio/pstudio.controller');
         const isPublic = Reflect.getMetadata('skip_auth', PrismaStudioController.prototype.serveStudio);
-        expect(isPublic).toBe(true);
+        expect(isPublic).toBeFalsy();
     });
 
     it('handleStudioRequest should have @Authorize decorator', () => {
@@ -166,12 +171,12 @@ describe('Pstudio mixed auth decorators survive rename', () => {
     });
 });
 
-// ─── Pstudio Hardcoded URL Regression Guards ─────────────────────────────
+// ─── Pstudio Hardcoded URL Regression Guards (retuned by W5.2) ──────────
 
 describe('Pstudio hardcoded URL regression guards', () => {
     it('should reference /api/v1/admin/pstudio in usage message', () => {
         const source = readController('pstudio/pstudio.controller.ts');
-        expect(source).toContain('/api/v1/admin/pstudio?token=');
+        expect(source).toContain('/api/v1/admin/pstudio');
     });
 
     it('should NOT reference old /api/pstudio in usage message', () => {
@@ -187,6 +192,11 @@ describe('Pstudio hardcoded URL regression guards', () => {
     it('should NOT construct studioEndpointUrl with old /api/pstudio', () => {
         const source = readController('pstudio/pstudio.controller.ts');
         expect(source).not.toMatch(/`\$\{protocol\}:\/\/\$\{host\}\/api\/pstudio`/);
+    });
+
+    it('post-W5.2 — should NOT carry `?token=` query parameter (URL-token form removed)', () => {
+        const source = readController('pstudio/pstudio.controller.ts');
+        expect(source).not.toContain('/api/v1/admin/pstudio?token=');
     });
 });
 
