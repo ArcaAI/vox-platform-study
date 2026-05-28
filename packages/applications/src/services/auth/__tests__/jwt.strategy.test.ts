@@ -195,4 +195,50 @@ describe('JwtStrategy', () => {
             expect(result).toBe(clsArg);
         });
     });
+
+    describe('TASK-307 W2.1 — JwtStrategy refuses placeholder secret', () => {
+        const PLACEHOLDER = 'default-jwt-secret-key-change-in-production';
+
+        it('throws when SecretsService resolves JWT_SECRET_KEY to the literal placeholder', () => {
+            const placeholderSecrets = {
+                getSecretSync: vi.fn().mockReturnValue(PLACEHOLDER),
+            };
+
+            expect(() =>
+                new JwtStrategy(
+                    placeholderSecrets as any,
+                    mockClsService as any,
+                    mockJwtRevocationService as any,
+                ),
+            ).toThrowError(/JWT_SECRET_KEY is the literal placeholder.*refusing to boot/);
+        });
+
+        it('throws when SecretsService returns undefined (warmup miss falls through to placeholder)', () => {
+            const missingSecrets = {
+                getSecretSync: vi.fn().mockReturnValue(undefined),
+            };
+
+            expect(() =>
+                new JwtStrategy(
+                    missingSecrets as any,
+                    mockClsService as any,
+                    mockJwtRevocationService as any,
+                ),
+            ).toThrowError(/JWT_SECRET_KEY is the literal placeholder.*refusing to boot/);
+        });
+
+        it('constructs successfully when SecretsService returns a real secret', () => {
+            const realSecrets = {
+                getSecretSync: vi.fn().mockReturnValue('a-real-32-byte-jwt-signing-secret-aaaa'),
+            };
+
+            expect(() =>
+                new JwtStrategy(
+                    realSecrets as any,
+                    mockClsService as any,
+                    mockJwtRevocationService as any,
+                ),
+            ).not.toThrow();
+        });
+    });
 });
