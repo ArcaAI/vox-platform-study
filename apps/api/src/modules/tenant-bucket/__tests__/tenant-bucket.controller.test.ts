@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TenantBucketController } from '../tenant-bucket.controller';
+import {
+    TENANT_OWNED_RESOURCE_KEY,
+    type TenantOwnedResourceOptions,
+} from '../../../common/tenant-owned-resource.decorator';
 
 const BUCKET_TYPE_SYSTEM = 'SYSTEM';
 const BUCKET_TYPE_CUSTOM = 'CUSTOM';
@@ -143,6 +147,40 @@ describe('TenantBucketController', () => {
 
             expect(result).toHaveLength(2);
             expect(mockTenantBucketService.provisionSystemBuckets).toHaveBeenCalledWith('tenant-1');
+        });
+    });
+
+    // ------------------------------------------------------------------------
+    // TASK-307 W3.5 — every bucket-by-id handler must carry @TenantOwnedResource
+    // (AC-8). Closes audit C-4 (TenantBucketController cross-tenant — BLOCKER).
+    // ------------------------------------------------------------------------
+    describe('TASK-307 W3.5 — @TenantOwnedResource metadata', () => {
+        const meta = (m: keyof TenantBucketController): TenantOwnedResourceOptions | undefined =>
+            Reflect.getMetadata(
+                TENANT_OWNED_RESOURCE_KEY,
+                TenantBucketController.prototype[m] as object,
+            ) as TenantOwnedResourceOptions | undefined;
+
+        it('getBucket is annotated with modelName TenantBucket + paramName id', () => {
+            expect(meta('getBucket')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
+        });
+
+        it('getBucketTree is annotated with modelName TenantBucket + paramName id', () => {
+            expect(meta('getBucketTree')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
+        });
+
+        it('getPresignedUrl is annotated with modelName TenantBucket + paramName id', () => {
+            expect(meta('getPresignedUrl')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
+        });
+
+        it('deleteBucket is annotated with modelName TenantBucket + paramName id', () => {
+            expect(meta('deleteBucket')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
+        });
+
+        it('listBuckets and createBucket and provisionSystemBuckets are NOT annotated (no :id route param)', () => {
+            expect(meta('listBuckets')).toBeUndefined();
+            expect(meta('createBucket')).toBeUndefined();
+            expect(meta('provisionSystemBuckets')).toBeUndefined();
         });
     });
 });

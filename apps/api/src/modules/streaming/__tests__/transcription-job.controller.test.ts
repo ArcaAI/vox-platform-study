@@ -4,6 +4,10 @@ import { Observable, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CreateStreamSessionRequest, TranscribeFileRequest } from '../dto';
 import { TranscriptionJobController } from '../transcription-job.controller';
+import {
+    TENANT_OWNED_RESOURCE_KEY,
+    type TenantOwnedResourceOptions,
+} from '../../../common/tenant-owned-resource.decorator';
 
 const createMockJobService = () => ({
     create: vi.fn(),
@@ -427,6 +431,53 @@ describe('TranscriptionJobController', () => {
 
             expect(mockJobService.retryJob).toHaveBeenCalledWith('job-1');
             expect(result).toEqual(retried);
+        });
+    });
+
+    // ------------------------------------------------------------------------
+    // TASK-307 W3.8 — every transcription-job-by-id handler must carry
+    // @TenantOwnedResource so the global interceptor 404s cross-tenant probes
+    // (AC-12). Closes audit D-3.
+    // ------------------------------------------------------------------------
+    describe('TASK-307 W3.8 — @TenantOwnedResource metadata', () => {
+        const meta = (m: keyof TranscriptionJobController): TenantOwnedResourceOptions | undefined =>
+            Reflect.getMetadata(
+                TENANT_OWNED_RESOURCE_KEY,
+                TranscriptionJobController.prototype[m] as object,
+            ) as TenantOwnedResourceOptions | undefined;
+
+        const expected = { modelName: 'TranscriptionJob', paramName: 'id' };
+
+        it('getById is annotated', () => {
+            expect(meta('getById')).toEqual(expected);
+        });
+
+        it('cancel is annotated', () => {
+            expect(meta('cancel')).toEqual(expected);
+        });
+
+        it('retry is annotated', () => {
+            expect(meta('retry')).toEqual(expected);
+        });
+
+        it('streamJob is annotated', () => {
+            expect(meta('streamJob')).toEqual(expected);
+        });
+
+        it('list / create / createBatch / createStreaming / transcribeFile / getStats / getByStatus / getByConsultation / createStreamSession / closeStreamSession / refreshStreamTicket are NOT annotated (no :id route param)', () => {
+            // Bulk negative — they either have no :id, or have a non-job id (sessionId / consultationId).
+            // Service-layer tenant filtering covers them via the W5.1 Prisma extension.
+            expect(meta('list')).toBeUndefined();
+            expect(meta('create')).toBeUndefined();
+            expect(meta('createBatch')).toBeUndefined();
+            expect(meta('createStreaming')).toBeUndefined();
+            expect(meta('transcribeFile')).toBeUndefined();
+            expect(meta('getStats')).toBeUndefined();
+            expect(meta('getByStatus')).toBeUndefined();
+            expect(meta('getByConsultation')).toBeUndefined();
+            expect(meta('createStreamSession')).toBeUndefined();
+            expect(meta('closeStreamSession')).toBeUndefined();
+            expect(meta('refreshStreamTicket')).toBeUndefined();
         });
     });
 });

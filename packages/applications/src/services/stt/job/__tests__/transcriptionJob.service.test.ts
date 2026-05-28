@@ -643,4 +643,45 @@ describe('TranscriptionJobService', () => {
             expect(job.progress).toBe(100);
         });
     });
+
+    // ------------------------------------------------------------------------
+    // TASK-307 W3.8 — service-layer tenant filtering for getByConsultation
+    // (AC-12). The TASK-305 Prisma tenantScope extension is the primary
+    // defense; this adds an explicit per-tenant filter at the service layer
+    // for defense-in-depth, matching the existing posture of `list`,
+    // `getByStatus`, and `getStatusCounts`.
+    // ------------------------------------------------------------------------
+    describe('TASK-307 W3.8 — getByConsultation enforces tenant filter', () => {
+        it('passes the CLS tenantId alongside consultationId to a tenant-scoped findAll', async () => {
+            mockJobRepository.findAll.mockResolvedValue([]);
+
+            await service.getByConsultation('consultation-1');
+
+            expect(mockJobRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    filters: expect.objectContaining({
+                        consultationId: 'consultation-1',
+                        tenantId: 'tenant-1',
+                    }),
+                }),
+            );
+        });
+
+        it('throws BadRequestException when tenantId is missing', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                return null;
+            });
+
+            await expect(service.getByConsultation('consultation-1')).rejects.toThrow(BadRequestException);
+        });
+
+        it('does NOT call the unfiltered findByConsultation (defense-in-depth — drops the W3.8 cross-tenant exposure)', async () => {
+            mockJobRepository.findAll.mockResolvedValue([]);
+
+            await service.getByConsultation('consultation-1');
+
+            expect(mockJobRepository.findByConsultation).not.toHaveBeenCalled();
+        });
+    });
 });

@@ -1758,4 +1758,63 @@ describe('ConsultationJobService', () => {
             expect(mockPreSummaryQueue.add).toHaveBeenCalled();
         });
     });
+
+    // ===========================================================================
+    // TASK-307 W3.3 — tenant + user carry-through to ConsultationJobStatus
+    // ===========================================================================
+
+    describe('TASK-307 W3 — ConsultationJobStatus carries tenantId + userId', () => {
+        const stored = (): Record<string, unknown> => {
+            const calls = mockCacheService.setex.mock.calls.filter((args) =>
+                String(args[0]).startsWith('consultation_job:'),
+            );
+            expect(calls.length).toBeGreaterThan(0);
+            return JSON.parse(String(calls[0][2])) as Record<string, unknown>;
+        };
+
+        it('persists tenantId + userId when storing a PRE_SUMMARY job status', async () => {
+            await service.createPreSummaryJob('c-1', 'tenant-A', 'user-A', { dnaStyleId: 's' });
+            const payload = stored();
+            expect(payload.tenantId).toBe('tenant-A');
+            expect(payload.userId).toBe('user-A');
+        });
+
+        it('persists tenantId + userId when storing a SUMMARY job status', async () => {
+            await service.createSummaryJob('c-1', 'tenant-B', 'user-B', { includeNER: false });
+            const payload = stored();
+            expect(payload.tenantId).toBe('tenant-B');
+            expect(payload.userId).toBe('user-B');
+        });
+
+        it('persists tenantId + userId when storing a COMPREHENSIVE_SUMMARY job status', async () => {
+            await service.createComprehensiveSummaryJob('c-1', 'tenant-C', 'user-C', {});
+            const payload = stored();
+            expect(payload.tenantId).toBe('tenant-C');
+            expect(payload.userId).toBe('user-C');
+        });
+
+        it('persists tenantId + userId when storing a NER job status', async () => {
+            await service.createNerJob('ctx-1', 'c-1', 'tenant-D', 'user-D');
+            const payload = stored();
+            expect(payload.tenantId).toBe('tenant-D');
+            expect(payload.userId).toBe('user-D');
+        });
+
+        it('returns tenantId + userId from getJobStatus so interceptors can ownership-check', async () => {
+            mockCacheService.get.mockResolvedValueOnce(
+                JSON.stringify({
+                    jobId: 'jobX',
+                    type: 'SUMMARY',
+                    status: 'RUNNING',
+                    consultationId: 'c-1',
+                    progress: 30,
+                    createdAt: new Date().toISOString(),
+                    tenantId: 'tenant-A',
+                    userId: 'user-A',
+                }),
+            );
+            const status = await service.getJobStatus('jobX');
+            expect(status).toMatchObject({ tenantId: 'tenant-A', userId: 'user-A' });
+        });
+    });
 });

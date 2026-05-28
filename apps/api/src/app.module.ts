@@ -21,6 +21,7 @@ import { uuidv7 } from 'uuidv7';
 import { DataNotFoundExceptionFilter } from './filters';
 import { JwtAuthGuard } from './guards';
 import { ContextInterceptor, ExceptionInterceptor, ImpersonationAuditInterceptor, MaintenanceInterceptor, MetricsInterceptor } from './interceptors';
+import { TenantOwnedResourceModule } from './common';
 import { GracefulShutdownModule } from './services';
 import { TenantContextProviderModule } from './database/tenant-context.provider';
 import { VaultPrismaFactoryModule } from './vault-prisma.module';
@@ -156,6 +157,11 @@ const common = [
   // extension treats every query as super-admin pass-through (the
   // safe default for CLI / seed scripts that run without CLS).
   TenantContextProviderModule,
+  // TASK-307 W3.2 — Registers the global TenantOwnedResourceInterceptor as
+  // APP_INTERCEPTOR. Runs AFTER the existing auth chain so the CLS
+  // tenantId is already populated. The interceptor is a no-op for any
+  // handler not annotated with `@TenantOwnedResource(...)`.
+  TenantOwnedResourceModule,
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
