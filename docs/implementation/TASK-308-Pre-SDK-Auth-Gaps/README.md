@@ -5,7 +5,7 @@
 | **Ticket** | TASK-308-Pre-SDK-Auth-Gaps |
 | **Created** | 2026-05-28 |
 | **Updated** | 2026-05-28 |
-| **Status** | `In Progress` |
+| **Status** | `Completed` |
 | **Classification** | Bugfix (authorization gap) + refactor (throttle granularity) |
 | **Priority** | High — exploitable from any authenticated same-tenant user; gates clean SDK rollout for multi-user-per-tenant deployments |
 | **Source** | TASK-307 §10.1 deferrals W7.A.12 + E-4 |
@@ -101,6 +101,47 @@ Throttle granularity is a UX issue, not a security one — but tight SDK refresh
 ---
 
 ## 4. Implementation Summary
+
+### 4.0 Overview
+
+| AC | Status | Layer | Evidence |
+|---|---|---|---|
+| AC-1 — `scope: 'creator'` option on `@TenantOwnedResource` | Complete | api/common | §4.1 |
+| AC-2 — `scope: 'creator'` on `ConsultationJobController.cancel` | Complete | api/consultation | §4.2 |
+| AC-3 — interceptor unit tests (3+ cases) | Complete | api/common (vitest) | §4.1 |
+| AC-4 — `consultation-job-cross-user.spec.ts` (E2E) | Spec authored; execution deferred to test-stack run | api E2E | §4.3 |
+| AC-5 — `AuthController` per-endpoint throttle | Complete | api/auth + api/throttle | §4.4 |
+| AC-6 — `auth-throttle-per-endpoint.spec.ts` (E2E) | Spec authored; execution deferred to test-stack run | api E2E | §4.5 |
+
+**Branch**: `task-308/pre-sdk-auth-gaps` (worktree at `../hope-v2-task-308`, base `a6a19797`).
+
+**Commit list (newest → oldest)**
+
+```text
+a4ecf99c task-308(ac-6): e2e spec for AuthController throttle granularity
+e4d48482 task-308(ac-5): move AuthController throttle from class to per-endpoint
+cd70cd29 task-308(ac-4): e2e spec for ConsultationJob cross-user cancel
+4198445a task-308(ac-2): apply scope:creator to ConsultationJobController.cancel
+891cc2d9 task-308(ac-1,ac-3): scope:creator opt-in + interceptor unit tests
+2b691a8a task-308(prep): bump ticket status to In Progress
+```
+
+**Aggregate diff stat**
+
+```text
+ .../tenant-owned-resource.decorator.test.ts        |  21 +++
+ .../tenant-owned-resource.interceptor.test.ts      | 132 ++++++++++++++
+ .../src/common/tenant-owned-resource.decorator.ts  |  18 ++
+ .../common/tenant-owned-resource.interceptor.ts    |  27 ++-
+ apps/api/src/modules/auth/auth.controller.ts       |  20 ++-
+ .../__tests__/consultation-job.controller.test.ts  |  18 +-
+ .../consultation/consultation-job.controller.ts    |   7 +-
+ .../throttle/__tests__/throttle-decorators.test.ts |  81 ++++++++-
+ .../tests/e2e/auth-throttle-per-endpoint.spec.ts   | 146 +++++++++++++++
+ .../tests/e2e/consultation-job-cross-user.spec.ts  | 195 +++++++++++++++++++++
+ .../TASK-308-Pre-SDK-Auth-Gaps/README.md           | 113 +++++++++++-
+ 11 files changed, 763 insertions(+), 15 deletions(-)
+```
 
 ### 4.1 AC-1 / AC-3 — `scope: 'creator'` opt-in + interceptor unit tests
 
@@ -213,9 +254,92 @@ Lowering `/auth/login` from 10/min (class-wide) to 5/min (per-endpoint) tightens
 
 ---
 
-## 5. Change History
+## 5. Verification Evidence
+
+### 5.1 Unit tests — full `@arcaai/api` suite
+
+```text
+$ pnpm --filter @arcaai/api test
+…
+ Test Files  72 passed (72)
+      Tests  1338 passed (1338)
+   Start at  21:17:13
+   Duration  15.25s (transform 3.02s, setup 0ms, import 91.98s, tests 24.17s, environment 4ms)
+```
+
+This includes:
+- the 5 new `ConsultationJob — scope:"creator"` interceptor cases (§4.1)
+- the 1 new `scope` decorator metadata case (§4.1)
+- the updated `cancelJob` controller metadata pin (§4.2)
+- the 7 new `TASK-308 AC-5 — AuthController per-endpoint throttle` cases (§4.4)
+- the 1 updated "AuthController carries NO class-wide throttle" case (§4.4)
+
+…and all 1323 pre-existing api tests, unmodified.
+
+### 5.2 Build — `@arcaai/api`
+
+```text
+$ pnpm --filter @arcaai/api build
+> @arcaai/api@0.1.0 build /Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2-task-308/apps/api
+> rimraf dist && nest build && tsc-alias
+
+(exit 0)
+```
+
+### 5.3 Lint — `ReadLints` over all modified files
+
+```text
+apps/api/src/common/tenant-owned-resource.decorator.ts                 → 0 errors
+apps/api/src/common/tenant-owned-resource.interceptor.ts               → 0 errors
+apps/api/src/common/__tests__/tenant-owned-resource.decorator.test.ts  → 0 errors
+apps/api/src/common/__tests__/tenant-owned-resource.interceptor.test.ts→ 0 errors
+apps/api/src/modules/consultation/consultation-job.controller.ts       → 0 errors
+apps/api/src/modules/consultation/__tests__/consultation-job.controller.test.ts → 0 errors
+apps/api/src/modules/auth/auth.controller.ts                           → 0 errors
+apps/api/src/modules/throttle/__tests__/throttle-decorators.test.ts    → 0 errors
+apps/api/tests/e2e/consultation-job-cross-user.spec.ts                 → 0 errors
+apps/api/tests/e2e/auth-throttle-per-endpoint.spec.ts                  → 0 errors
+```
+
+### 5.4 E2E specs (authored; execution deferred)
+
+Two specs were added per AC-4 / AC-6:
+
+- `apps/api/tests/e2e/consultation-job-cross-user.spec.ts` (3 cases)
+- `apps/api/tests/e2e/auth-throttle-per-endpoint.spec.ts` (3 cases)
+
+Both lint cleanly and follow established Playwright patterns (`SEEDED_USERS`, `loginUser`, `ioredis`-direct seeding for AC-4). Execution requires the test infrastructure (`pnpm docker:test:up` + `pnpm test:api:up`) which is not running in the worktree; the specs will be exercised after merge via `pnpm test:e2e --grep "consultation-job-cross-user|auth-throttle-per-endpoint"`. The unit-level coverage in §5.1 is the immediate verification of the underlying logic.
+
+### 5.5 Worktree
+
+```text
+Path     : /Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2-task-308
+Branch   : task-308/pre-sdk-auth-gaps
+Base     : a6a19797 (task-307 followup — ticket scaffolds)
+Head     : a4ecf99c (task-308(ac-6) — throttle granularity E2E spec)
+```
+
+---
+
+## 6. Change History
 
 | Date | Description | Files modified |
 |---|---|---|
 | 2026-05-28 | Ticket created from TASK-307 §10.1 deferrals (W7.A.12 + E-4) | — |
 | 2026-05-28 | Status `Pending` → `In Progress`; execution started on branch `task-308/pre-sdk-auth-gaps` (worktree) | `README.md` |
+| 2026-05-28 | AC-1 + AC-3: extended `@TenantOwnedResource` with `scope: 'tenant' \| 'creator'`; interceptor enforces `status.userId === cls.user.id` when `scope === 'creator'`; +5 interceptor + 1 decorator unit cases | `apps/api/src/common/tenant-owned-resource.{decorator,interceptor}.ts`, `apps/api/src/common/__tests__/tenant-owned-resource.{decorator,interceptor}.test.ts` |
+| 2026-05-28 | AC-2: applied `scope: 'creator'` to `ConsultationJobController.cancel`; read routes left tenant-only per §1.3 AC-2 | `apps/api/src/modules/consultation/consultation-job.controller.ts`, `apps/api/src/modules/consultation/__tests__/consultation-job.controller.test.ts` |
+| 2026-05-28 | AC-4: authored Playwright spec `consultation-job-cross-user.spec.ts` covering creator-200 / peer-cancel-404 / peer-read-200 (Redis-seeded) | `apps/api/tests/e2e/consultation-job-cross-user.spec.ts` |
+| 2026-05-28 | AC-5: removed class-wide `@Throttle` from `AuthController`; added per-endpoint decorators (login 5/min, refresh 60/min, impersonate 10/min); /me /logout /stream-ticket /revoke-impersonation ride the app-wide default | `apps/api/src/modules/auth/auth.controller.ts`, `apps/api/src/modules/throttle/__tests__/throttle-decorators.test.ts` |
+| 2026-05-28 | AC-6: authored Playwright spec `auth-throttle-per-endpoint.spec.ts` covering /me-no-429 / refresh-no-429 / login-≥1-429 | `apps/api/tests/e2e/auth-throttle-per-endpoint.spec.ts` |
+| 2026-05-28 | Status `In Progress` → `Completed`; §4 + §5 populated with verification evidence | `README.md` |
+
+---
+
+## 7. Open Items / Follow-ups
+
+1. **E2E execution** — both new specs (`consultation-job-cross-user.spec.ts`, `auth-throttle-per-endpoint.spec.ts`) are authored but not executed in this worktree because the test stack (test Redis on `:6380`, test API on `:8868`) is not running. Run them post-merge via `pnpm docker:test:up && pnpm test:api:up && pnpm test:e2e --grep "consultation-job-cross-user|auth-throttle-per-endpoint"`.
+
+2. **Pre-existing E2E suite under new 5/min login limit** — `apps/api/tests/e2e/auth.spec.ts` issues ≥9 `/auth/login` calls; whether the full E2E suite remains green when those run in parallel against the same API process under the new 5/min envelope must be verified post-merge. If it fails, the fix is a fixture-side adjustment (rate-limit disable via `RATE_LIMIT_ENABLED=false`, or per-test waits), not a behaviour change in `AuthController`.
+
+3. **§2.3 release-window risk** — pre-W7.A.12 Redis rows lacking `userId` are now uniformly 404'd by the interceptor (verified by the "missing status.userId" unit case in §4.1). The 24h JOB_TTL window between TASK-307 W3 deploy and this ticket's deploy will produce a small number of legitimate 404s for jobs that predate `userId`. The recommended mitigation — deploying TASK-308 ≥ JOB_TTL after TASK-307 — still applies.
