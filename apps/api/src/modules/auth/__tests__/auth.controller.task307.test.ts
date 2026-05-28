@@ -246,24 +246,6 @@ describe('AuthController — TASK-307 W1.2 / W1.5 / W1.6 — login token issuanc
         expect(issueArg.jti).toBe(decoded.jti);
     });
 
-    it('W1.5 — the transition `generateRefreshToken` shim emits an opaque 48-byte base64url token (D-10 closure)', () => {
-        const controller = buildController();
-        // W1.5 closes the audit finding D-10 by rewriting the legacy
-        // `refresh_<userId>_<ts>_<hex>` format into an opaque 48-byte
-        // base64url payload — userId no longer leaks in plaintext, and the
-        // token is no longer client-forgeable. W1.3 will retire the helper
-        // entirely once `refresh()` consumes via RefreshTokenService.
-        const shim = (controller as any).generateRefreshToken;
-        expect(typeof shim).toBe('function');
-        const token = shim.call(controller) as string;
-        // 48 random bytes → 64 base64url chars (no padding).
-        expect(token).toMatch(/^[A-Za-z0-9_-]{64}$/);
-        expect(token).not.toMatch(/^refresh_/);
-        // Two calls must produce two distinct tokens (no monotonic prefix).
-        const second = shim.call(controller) as string;
-        expect(second).not.toBe(token);
-    });
-
     it('W1.2 — failing refresh-token persistence aborts the login (UnauthorizedException)', async () => {
         const refreshTokenService = createMockRefreshTokenService();
         refreshTokenService.issue.mockRejectedValueOnce(new Error('Redis down'));
@@ -307,6 +289,209 @@ describe('AuthController — TASK-307 W1.2 / W1.5 / W1.6 — login token issuanc
         expect(refreshTokenService.issue).toHaveBeenCalledWith(
             expect.objectContaining({ tenantId: '' }),
         );
+    });
+});
+
+// ---------------------------------------------------------------------------
+// W1.3 — refresh endpoint goes through RefreshTokenService.consume + .issue
+// Closes audit findings C-1 (forgery on the refresh surface) and C-12
+// (refresh ignores the issuing tenant). Tenant context is carried forward
+// from the consumed record — NOT re-read from User.tenantId, which can
+// drift if the user has since been moved between tenants.
+// ---------------------------------------------------------------------------
+describe('AuthController — TASK-307 W1.3 — refresh endpoint defense', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    function buildRefreshController(overrides: any = {}) {
+        const refreshTokenService = overrides.refreshTokenService ?? createMockRefreshTokenService();
+        const user = overrides.user ?? createUser();
+        const users = new Map<string, any>([[user.id, user]]);
+
+        const controller = buildController({
+            ...overrides,
+            refreshTokenService,
+            userRepository: overrides.userRepository ?? createMockUserRepository(users),
+            databaseService:
+                overrides.databaseService ?? createMockDatabaseService([{ Role: createRole('doctor') }]),
+        });
+        return { controller, refreshTokenService, user };
+    }
+
+    it('W1.3 — calls RefreshTokenService.consume with the raw token (server-side validation, not client-trusted parsing)', async () => {
+        const refreshTokenService = createMockRefreshTokenService();
+        refreshTokenService.consume.mockResolvedValueOnce({
+            userId: 'doctor-001',
+            tenantId: 'tenant-A',
+            jti: 'old-jti',
+            family: 'family-xyz',
+        });
+        const { controller } = buildRefreshController({ refreshTokenService });
+
+        await controller.refresh({ refreshToken: 'opaque-server-issued-token' });
+
+        expect(refreshTokenService.consume).toHaveBeenCalledTimes(1);
+        expect(refreshTokenService.consume).toHaveBeenCalledWith('opaque-server-issued-token');
+    });
+
+    it('W1.3 / C-12 — mints the new access token with the tenantId from the consumed record, NOT from User.tenantId', async () => {
+        // User has since been moved to tenant-B in the DB, but the original
+        // refresh token was issued under tenant-A. The new access token MUST
+        // stay scoped to tenant-A (the original session's tenant).
+        const refreshTokenService = createMockRefreshTokenService();
+        refreshTokenService.consume.mockResolvedValueOnce({
+            userId: 'doctor-001',
+            tenantId: 'tenant-A',
+            jti: 'old-jti',
+            family: 'family-original',
+        });
+        const userMovedToB = createUser({ tenantId: 'tenant-B' });
+        const { controller } = buildRefreshController({
+            refreshTokenService,
+            user: userMovedToB,
+        });
+
+        const result = await controller.refresh({ refreshToken: 'opaque-server-issued-token' });
+
+        const decoded = decodeJwt(result.token);
+        expect(decoded.tenantId).toBe('tenant-A');
+        expect(decoded.tenantId).not.toBe('tenant-B');
+    });
+
+    it('W1.3 — rotates the refresh token within the SAME family (single-use rotation, RFC 6749 §10.4)', async () => {
+        const refreshTokenService = createMockRefreshTokenService();
+        refreshTokenService.consume.mockResolvedValueOnce({
+            userId: 'doctor-001',
+            tenantId: 'tenant-A',
+            jti: 'old-jti',
+            family: 'family-original',
+        });
+        const { controller } = buildRefreshController({ refreshTokenService });
+
+        const result = await controller.refresh({ refreshToken: 'opaque-old-token' });
+
+        expect(refreshTokenService.issue).toHaveBeenCalledTimes(1);
+        const issueArg = refreshTokenService.issue.mock.calls[0][0];
+        expect(issueArg).toMatchObject({
+            userId: 'doctor-001',
+            tenantId: 'tenant-A',
+            family: 'family-original',
+        });
+        // The newly issued refresh token replaces the old one — it's the
+        // mocked rawToken keyed off the new jti.
+        expect(result.refreshToken).toBe(`opaque-${issueArg.jti}`);
+    });
+
+    it('W1.3 / W1.6 — refresh mints a fresh randomBytes(16).hex jti distinct from the consumed jti', async () => {
+        const refreshTokenService = createMockRefreshTokenService();
+        refreshTokenService.consume.mockResolvedValueOnce({
+            userId: 'doctor-001',
+            tenantId: 'tenant-A',
+            jti: 'old-jti-aaaa',
+            family: 'family-original',
+        });
+        const { controller } = buildRefreshController({ refreshTokenService });
+
+        const result = await controller.refresh({ refreshToken: 'opaque-old-token' });
+
+        const decoded = decodeJwt(result.token);
+        expect(decoded.jti).toMatch(/^[0-9a-f]{32}$/);
+        expect(decoded.jti).not.toBe('old-jti-aaaa');
+        expect(decoded.jti).not.toMatch(/^auth-/);
+    });
+
+    it('W1.3 — JWT payload carries the SAME refreshFamily so subsequent logout can revoke the chain', async () => {
+        const refreshTokenService = createMockRefreshTokenService();
+        refreshTokenService.consume.mockResolvedValueOnce({
+            userId: 'doctor-001',
+            tenantId: 'tenant-A',
+            jti: 'old-jti',
+            family: 'family-original',
+        });
+        const { controller } = buildRefreshController({ refreshTokenService });
+
+        const result = await controller.refresh({ refreshToken: 'opaque-old-token' });
+        const decoded = decodeJwt(result.token);
+
+        expect(decoded.refreshFamily).toBe('family-original');
+    });
+
+    it('W1.3 — missing refresh token throws BadRequestException', async () => {
+        const { controller } = buildRefreshController();
+        await expect(
+            controller.refresh({ refreshToken: '' } as any),
+        ).rejects.toThrow(BadRequestException);
+    });
+
+    it('W1.3 / C-1 — RefreshTokenService.consume rejection bubbles up as UnauthorizedException (forged / reused tokens)', async () => {
+        const refreshTokenService = createMockRefreshTokenService();
+        refreshTokenService.consume.mockRejectedValueOnce(
+            new UnauthorizedException('Invalid refresh token'),
+        );
+        const { controller } = buildRefreshController({ refreshTokenService });
+
+        await expect(
+            controller.refresh({ refreshToken: 'forged-or-reused-token' }),
+        ).rejects.toThrow(UnauthorizedException);
+        // No new token must be issued when consume rejects.
+        expect(refreshTokenService.issue).not.toHaveBeenCalled();
+    });
+
+    it('W1.3 — refusing to refresh for a disabled user (resourceStatus check still holds)', async () => {
+        const refreshTokenService = createMockRefreshTokenService();
+        refreshTokenService.consume.mockResolvedValueOnce({
+            userId: 'doctor-001',
+            tenantId: 'tenant-A',
+            jti: 'old-jti',
+            family: 'family-original',
+        });
+        // Empty user repo — user has been disabled / deleted since the refresh token was issued.
+        const controller = buildController({
+            refreshTokenService,
+            userRepository: createMockUserRepository(new Map()),
+            databaseService: createMockDatabaseService([{ Role: createRole('doctor') }]),
+        });
+
+        await expect(
+            controller.refresh({ refreshToken: 'opaque-old-token' }),
+        ).rejects.toThrow(UnauthorizedException);
+        expect(refreshTokenService.issue).not.toHaveBeenCalled();
+    });
+
+    it('W1.3 — the legacy private generateRefreshToken helper has been removed (W1.5 final closure)', () => {
+        // Once refresh() goes through RefreshTokenService.issue, NO controller
+        // method has a reason to mint a refresh token directly. The transition
+        // shim must be deleted to close audit D-10 structurally.
+        const controller = buildController();
+        expect((controller as any).generateRefreshToken).toBeUndefined();
+    });
+
+    it('W1.3 — does NOT parse the refresh token by splitting on underscores (legacy attack surface removed)', async () => {
+        // The legacy behaviour took `parts = body.refreshToken.split('_')` and
+        // trusted parts[1] as userId. That made tokens like `refresh_admin_1_x`
+        // a privilege-escalation primitive. Pin the new contract: the controller
+        // MUST NOT derive userId from the token string — it MUST come from
+        // RefreshTokenService.consume's response.
+        const refreshTokenService = createMockRefreshTokenService();
+        refreshTokenService.consume.mockResolvedValueOnce({
+            userId: 'doctor-001',
+            tenantId: 'tenant-A',
+            jti: 'old-jti',
+            family: 'family-original',
+        });
+        const userRepository = createMockUserRepository(new Map([['doctor-001', createUser()]]));
+        const controller = buildController({
+            refreshTokenService,
+            userRepository,
+            databaseService: createMockDatabaseService([{ Role: createRole('doctor') }]),
+        });
+
+        // Pass an attacker-crafted token claiming to be `admin`. The new
+        // contract IGNORES this entirely and uses the consumed record's userId.
+        await controller.refresh({ refreshToken: 'refresh_admin_99999_aaaa' });
+
+        const findCall = userRepository.findFirst.mock.calls[0][0];
+        expect(findCall.filters.id).toBe('doctor-001');
+        expect(findCall.filters.id).not.toBe('admin');
     });
 });
 

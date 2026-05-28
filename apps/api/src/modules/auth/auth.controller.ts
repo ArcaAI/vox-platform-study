@@ -474,15 +474,19 @@ export class AuthController {
       throw new BadRequestException('Refresh token is required');
     }
 
-    const parts = body.refreshToken.split('_');
-    if (parts.length < 3 || parts[0] !== 'refresh') {
-      throw new UnauthorizedException('Invalid refresh token format');
-    }
+    // TASK-307 W1.3 / C-1 / C-12: server-side validation through
+    // RefreshTokenService. The old `parts.split('_')` parser is RETIRED —
+    // it took client-supplied input as the userId, which is the audit
+    // finding itself. RefreshTokenService.consume:
+    //   - looks the token up by sha256(token)
+    //   - returns the ORIGINAL session's userId, tenantId, jti, and family
+    //   - deletes the record (single-use) and flags reuse for family-revoke
+    //   - throws UnauthorizedException on miss / reuse (let it bubble up)
+    const consumed = await this.refreshTokenService.consume(body.refreshToken);
 
-    const userId = parts[1];
     const user = await this.userRepository.findFirst({
       filters: {
-        id: userId,
+        id: consumed.userId,
         resourceStatus: { equals: ResourceStatusType.ENABLED },
       },
       relations: { UserProfile: true },
@@ -500,23 +504,38 @@ export class AuthController {
     const jwtSecretKey = this.appSettingsService.getValueWithDefault('JWT_SECRET_KEY', 'default-jwt-secret-key-change-in-production');
     const jwtExpiresIn = this.appSettingsService.getValueWithDefault('JWT_EXPIRES_IN', '1h') as string;
 
+    // TASK-307 W1.6 / E-1: fresh unpredictable jti per rotation.
+    const newJti = randomBytes(16).toString('hex');
+
+    // TASK-307 W1.3 / C-12: refresh stays scoped to the tenant that ORIGINALLY
+    // issued the token — NOT a tenant the user has since been moved into.
+    // The cross-tenant carry-through is the whole point.
+    const issued = await this.refreshTokenService.issue({
+      userId: consumed.userId,
+      tenantId: consumed.tenantId,
+      jti: newJti,
+      // Keep the family stable across the rotation so logout-by-family
+      // continues to nuke the full chain (RFC 6749 §10.4).
+      family: consumed.family,
+    });
+
     const tokenPayload = {
       id: user.id,
       username: user.username,
       email: user.UserProfile?.email || '',
       roles,
       permissions,
-      tenantId: user.tenantId || '',
-      jti: `auth-${user.id}-${Date.now()}`,
+      tenantId: consumed.tenantId,
+      jti: newJti,
+      refreshFamily: issued.family,
       jwtSecretKey,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expiresIn: jwtExpiresIn as any,
     };
 
     const token = createJwt(tokenPayload);
-    const refreshToken = this.generateRefreshToken();
 
-    return { token, refreshToken };
+    return { token, refreshToken: issued.rawToken };
   }
 
   @Post('stream-ticket')
@@ -621,23 +640,6 @@ export class AuthController {
     }
 
     return Array.from(permissions);
-  }
-
-  /**
-   * Generate an opaque refresh token (TASK-307 W1.5 / AC-1 / D-10).
-   *
-   * Returns a 48-byte base64url payload — opaque, server-side persisted
-   * only as `sha256(token)` by `RefreshTokenService`. The legacy
-   * `refresh_<userId>_<timestamp>_<hex>` format is RETIRED — it leaked
-   * the userId in plaintext and was forgeable because nothing
-   * server-side verified the random tail.
-   *
-   * @internal — retained only as a transition shim for the refresh()
-   * endpoint; W1.3 will retire it entirely once refresh() goes through
-   * `RefreshTokenService.consume` + `RefreshTokenService.issue`.
-   */
-  private generateRefreshToken(): string {
-    return randomBytes(48).toString('base64url');
   }
 
   /**
