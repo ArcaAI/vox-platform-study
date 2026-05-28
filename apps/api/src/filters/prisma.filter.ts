@@ -4,28 +4,23 @@ import { BaseExceptionFilter } from '@nestjs/core';
 import { Request, Response } from 'express';
 
 /**
- * TASK-307 W7.A.14 (carryover from W5 review) — known shadow:
+ * TASK-310 W7.A.14 (AC-1) — Prisma error code → HTTP status mapping
+ * now lives in `ExceptionInterceptor` (the single registered handler).
+ * The interceptor maps each known code (`P2002` → 409, `P2025` → 404,
+ * `P2003`/`P2014` → 400) to the same body shape and `error` labels as
+ * this filter. The interceptor's branch is the live code path; this
+ * filter is NOT currently wired as `APP_FILTER` and so does not run in
+ * production.
  *
- * `ExceptionInterceptor` (registered as a global `APP_INTERCEPTOR`) maps
- * every `PrismaClientKnownRequestError` to a generic
- * `400 { statusCode, error: 'Bad Request', correlationId }` BEFORE any
- * exception filter sees it (see `apps/api/src/interceptors/
- * exception.interceptor.ts` lines 46–73). The status-code-specific
- * branches below (`P2002` → 409 Conflict, `P2025` → 404 Not Found,
- * etc.) therefore NEVER run in production today — every Prisma known-
- * error returns a generic 400.
- *
- * The filter is kept registered as defense-in-depth: if a future
- * refactor unregisters the interceptor (or extracts a non-Prisma
- * branch from it), this filter still produces sanitised 4xx responses
- * without leaking `err.meta` or constraint names. Per TASK-307 §10
- * deferral, the long-term fix is to either:
- *   (a) extend `ExceptionInterceptor` to honor the same code → status
- *       mapping (preserving the better-classification UX the filter
- *       intends), OR
- *   (b) drop this filter entirely and treat the interceptor as the
- *       single source of truth.
- * Both are out of W7 scope (touches W5's hardening surface).
+ * The file is retained as defense-in-depth and as a reference shape: if
+ * a future refactor unregisters the interceptor's Prisma branch (or
+ * wires this filter as `APP_FILTER`), the same sanitised response
+ * contract (no `err.meta` / raw `err.message` leak) is preserved.
+ * Per TASK-310 carryover, the long-term cleanup is to either:
+ *   (a) wire this filter as `APP_FILTER` and remove the interceptor's
+ *       Prisma branch (single source of truth in the filter), OR
+ *   (b) delete this file (interceptor is the only handler).
+ * Both are out of TASK-310 scope (touches filter-registration wiring).
  */
 @Catch(PrismaClientKnownRequestError)
 export class PrismaClientExceptionFilter extends BaseExceptionFilter {
