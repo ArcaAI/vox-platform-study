@@ -466,6 +466,8 @@ describe('TASK-307 W5.6 — Prisma error sanitisation (AC-20, audit D-6)', () =>
   });
 
   it('client body shape is {statusCode, error, correlationId} only (no message, no meta)', async () => {
+    // TASK-310 W7.A.14 (AC-1): P2002 maps to 409 with the proper error label.
+    // Pre-W7.A.14 every PrismaClientKnownRequestError collapsed to 400 / 'Bad Request'.
     const err = makePrismaError({
       code: 'P2002',
       meta: { target: ['email'] },
@@ -482,8 +484,8 @@ describe('TASK-307 W5.6 — Prisma error sanitisation (AC-20, audit D-6)', () =>
     }
     const body = caught!.getResponse() as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual(['correlationId', 'error', 'statusCode'].sort());
-    expect(body.statusCode).toBe(HttpStatus.BAD_REQUEST);
-    expect(body.error).toBe('Bad Request');
+    expect(body.statusCode).toBe(HttpStatus.CONFLICT);
+    expect(body.error).toBe('Unique constraint violation');
     expect(body.correlationId).toBe('corr-1');
   });
 
@@ -510,5 +512,136 @@ describe('TASK-307 W5.6 — Prisma error sanitisation (AC-20, audit D-6)', () =>
         errorMeta: expect.objectContaining({ modelName: 'User', target: ['email'] }),
       }),
     );
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// TASK-310 W7.A.14 (AC-1) — Prisma error code → HTTP status mapping.
+//
+// Pre-W7.A.14, every `PrismaClientKnownRequestError` collapsed to
+// `HttpException(400, { error: 'Bad Request' })` in the interceptor. The
+// `PrismaClientExceptionFilter` had the proper code-to-status branches but
+// never ran because the interceptor runs first and converts the error
+// before any filter sees it. AC-1 brings the code-to-status mapping into
+// the interceptor (the single registered handler) so clients see the
+// classification matching RFC semantics:
+//   P2002 (unique constraint)        → 409 Conflict
+//   P2025 (record not found)         → 404 Not Found
+//   P2003 (foreign key constraint)   → 400 Bad Request
+//   P2014 (required relation)        → 400 Bad Request
+//   <other / unknown code>           → 400 Bad Request (legacy default)
+//
+// Sanitisation from W5.6 is preserved: the public body stays
+// `{ statusCode, error, correlationId }` with no `err.meta` / raw message
+// leak. Server-side log retains the full Prisma detail for SRE debugging.
+// ───────────────────────────────────────────────────────────────────────────
+describe('TASK-310 W7.A.14 — Prisma error code → HTTP status mapping (AC-1)', () => {
+  let interceptor: ExceptionInterceptor;
+
+  beforeEach(() => {
+    const cls: any = {
+      getId: () => 'corr-ac1',
+      get: () => undefined,
+    };
+    interceptor = new ExceptionInterceptor(cls);
+  });
+
+  function createMockContext(): ExecutionContext {
+    return {
+      switchToHttp: () => ({
+        getRequest: () => ({ method: 'POST', url: '/api/v1/users' }),
+        getResponse: () => ({}),
+      }),
+    } as unknown as ExecutionContext;
+  }
+  function createErrorHandler(err: unknown): CallHandler {
+    return { handle: () => throwError(() => err) };
+  }
+  function makePrismaError(opts: {
+    code: string;
+    meta: Record<string, unknown>;
+    message: string;
+  }): PrismaClientKnownRequestError {
+    const err = Object.assign(new Error(opts.message), {
+      code: opts.code,
+      meta: opts.meta,
+      clientVersion: '0.0.0-test',
+    });
+    Object.setPrototypeOf(err, PrismaClientKnownRequestError.prototype);
+    return err as unknown as PrismaClientKnownRequestError;
+  }
+
+  async function catchHttp(err: unknown): Promise<HttpException> {
+    try {
+      await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(err)));
+    } catch (e) {
+      return e as HttpException;
+    }
+    throw new Error('expected interceptor to throw');
+  }
+
+  it('maps P2002 (unique constraint) to 409 Conflict + "Unique constraint violation"', async () => {
+    const caught = await catchHttp(
+      makePrismaError({ code: 'P2002', meta: { target: ['email'] }, message: 'm' }),
+    );
+    expect(caught.getStatus()).toBe(HttpStatus.CONFLICT);
+    const body = caught.getResponse() as Record<string, unknown>;
+    expect(body.statusCode).toBe(HttpStatus.CONFLICT);
+    expect(body.error).toBe('Unique constraint violation');
+    expect(body.correlationId).toBe('corr-ac1');
+  });
+
+  it('maps P2025 (record not found) to 404 Not Found + "Not found"', async () => {
+    const caught = await catchHttp(
+      makePrismaError({ code: 'P2025', meta: { cause: 'x' }, message: 'm' }),
+    );
+    expect(caught.getStatus()).toBe(HttpStatus.NOT_FOUND);
+    const body = caught.getResponse() as Record<string, unknown>;
+    expect(body.statusCode).toBe(HttpStatus.NOT_FOUND);
+    expect(body.error).toBe('Not found');
+  });
+
+  it('maps P2003 (foreign key) to 400 Bad Request + "Foreign key constraint violation"', async () => {
+    const caught = await catchHttp(
+      makePrismaError({ code: 'P2003', meta: { field_name: 'fk' }, message: 'm' }),
+    );
+    expect(caught.getStatus()).toBe(HttpStatus.BAD_REQUEST);
+    const body = caught.getResponse() as Record<string, unknown>;
+    expect(body.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    expect(body.error).toBe('Foreign key constraint violation');
+  });
+
+  it('maps P2014 (required relation) to 400 Bad Request + "Required relation violation"', async () => {
+    const caught = await catchHttp(
+      makePrismaError({ code: 'P2014', meta: { relation_name: 'rel' }, message: 'm' }),
+    );
+    expect(caught.getStatus()).toBe(HttpStatus.BAD_REQUEST);
+    const body = caught.getResponse() as Record<string, unknown>;
+    expect(body.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    expect(body.error).toBe('Required relation violation');
+  });
+
+  it('falls back to 400 Bad Request for any other Prisma error code (legacy default preserved)', async () => {
+    const caught = await catchHttp(
+      makePrismaError({ code: 'P9999', meta: {}, message: 'm' }),
+    );
+    expect(caught.getStatus()).toBe(HttpStatus.BAD_REQUEST);
+    const body = caught.getResponse() as Record<string, unknown>;
+    expect(body.statusCode).toBe(HttpStatus.BAD_REQUEST);
+    expect(body.error).toBe('Bad Request');
+  });
+
+  it('does NOT leak err.meta or err.message text in the response body for any mapped code', async () => {
+    const cases = [
+      { code: 'P2002', meta: { target: ['secret_field'] }, message: 'secret unique fail' },
+      { code: 'P2025', meta: { cause: 'secret cause' }, message: 'secret not found' },
+      { code: 'P2003', meta: { field_name: 'secret_fk' }, message: 'secret fk fail' },
+      { code: 'P2014', meta: { relation_name: 'secret_rel' }, message: 'secret rel fail' },
+    ];
+    for (const c of cases) {
+      const caught = await catchHttp(makePrismaError(c));
+      const body = JSON.stringify(caught.getResponse());
+      expect(body).not.toContain('secret');
+    }
   });
 });

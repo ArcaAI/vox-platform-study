@@ -1,160 +1,25 @@
 import { ILoggingService, SecretsService } from '@arcaai/applications';
-import { Logger, LogLevel, ValidationPipe } from '@nestjs/common';
+import { LogLevel, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { auditAdminRoutePermissions } from './bootstrap/admin-route-permission-audit';
 import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholder-audit';
+// TASK-310 E-2 (AC-4): CORS helpers extracted to `cors.config.ts` so the
+// dev / staging / production branches can be unit-tested without booting
+// the Nest application. `isOriginAllowed` is re-exported so historic
+// external consumers (docs reference) still have a working import.
+import { getCorsOrigins, isOriginAllowed } from './cors.config';
 import { ETagInterceptor } from './interceptors';
 import { GracefulShutdownService } from './services';
+// TASK-310 E-8 (AC-8): Swagger config extracted so the security-scheme
+// list (bearer + api-key) is unit-testable.
+import { buildSwaggerConfig } from './swagger.config';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import session = require('express-session');
 
-// Bootstrap-level logger for CORS decisions (temporary Logger until app is initialized)
-const corsLogger = new Logger('CORS');
-
-/**
- * CORS origin logger - only logs in debug mode with structured metadata
- */
-function logCorsDecision(origin: string | undefined, allowed: boolean, reason: string): boolean {
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
-  if (process.env.LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
-    corsLogger.debug({
-      message: 'CORS decision',
-      origin: origin || 'none',
-      allowed,
-      reason,
-    });
-  }
-  return allowed;
-}
-
-/**
- * Shared CORS configuration for both HTTP and WebSocket
- */
-export function isOriginAllowed(origin: string | undefined, nodeEnv: string): boolean {
-  // Allow requests with no origin (mobile apps, server-to-server, etc.)
-  if (!origin) {
-    return logCorsDecision(origin, true, 'no_origin_provided');
-  }
-
-  if (nodeEnv === 'production') {
-    // Get allowed origins from environment variable
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
-    const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS;
-    if (allowedOrigins) {
-      const originList = allowedOrigins.split(',').map((o) => o.trim());
-      if (originList.includes(origin)) {
-        return logCorsDecision(origin, true, 'cors_allowed_origins_match');
-      }
-    }
-
-    // Default allowed origins (your own domains)
-    const defaultAllowedOrigins = ['https://app.arcaai.com', 'https://dashboard.arcaai.com', 'https://admin.arcaai.com'];
-
-    if (defaultAllowedOrigins.includes(origin)) {
-      return logCorsDecision(origin, true, 'default_allowed_domain');
-    }
-
-    // Allow development tools in production for SDK testing
-    const devToolPatterns = [
-      /\.ngrok\.io$/, // ngrok.io domains
-      /\.ngrok-free\.app$/, // ngrok free tier domains
-      /\.loca\.lt$/, // localtunnel domains
-      /\.vercel\.app$/, // Vercel preview deployments
-      /\.netlify\.app$/, // Netlify preview deployments
-    ];
-
-    if (devToolPatterns.some((pattern) => pattern.test(origin))) {
-      return logCorsDecision(origin, true, 'dev_tool_pattern_match');
-    }
-
-    // For SDK usage: Allow any HTTPS origin
-    if (origin.startsWith('https://')) {
-      // Block suspicious origins
-      const blockedPatterns = [
-        /\.onion$/, // Tor domains
-        /localhost/, // Localhost in production
-        /127\.0\.0\.1/, // Local IPs
-        /192\.168\./, // Private networks
-        /10\./, // Private networks
-        /172\.(1[6-9]|2[0-9]|3[0-1])\./, // Private networks
-      ];
-
-      const isBlocked = blockedPatterns.some((pattern) => pattern.test(origin));
-      if (isBlocked) {
-        return logCorsDecision(origin, false, 'suspicious_pattern_blocked');
-      }
-
-      return logCorsDecision(origin, true, 'https_sdk_allowed');
-    }
-
-    return logCorsDecision(origin, false, 'not_https');
-  } else if (nodeEnv === 'staging') {
-    // Allow localhost patterns
-    const localhostPatterns = [
-      /^http:\/\/localhost:\d+$/,
-      /^https:\/\/localhost:\d+$/,
-      /^http:\/\/127\.0\.0\.1:\d+$/,
-      /^https:\/\/127\.0\.0\.1:\d+$/,
-    ];
-
-    // Allow staging domains
-    const stagingDomains = ['https://staging.arcaai.com', 'https://staging-app.arcaai.com', 'https://staging-dashboard.arcaai.com'];
-
-    // Allow development tools (ngrok, localtunnel, etc.)
-    const devToolPatterns = [
-      /\.ngrok\.io$/, // ngrok.io domains
-      /\.ngrok-free\.app$/, // ngrok free tier domains
-      /\.loca\.lt$/, // localtunnel domains
-      /\.cloudflare\.com$/, // Cloudflare tunnel domains
-      /\.vercel\.app$/, // Vercel preview deployments
-      /\.netlify\.app$/, // Netlify preview deployments
-      /\.surge\.sh$/, // Surge.sh domains
-      /\.repl\.co$/, // Repl.it domains
-      /\.gitpod\.io$/, // Gitpod workspace domains
-      /\.codesandbox\.io$/, // CodeSandbox domains
-    ];
-
-    const isLocalhost = localhostPatterns.some((pattern) => pattern.test(origin));
-    const isStagingDomain = stagingDomains.includes(origin);
-    const isDevTool = devToolPatterns.some((pattern) => pattern.test(origin));
-
-    if (isLocalhost) {
-      return logCorsDecision(origin, true, 'localhost_pattern_match');
-    }
-    if (isStagingDomain) {
-      return logCorsDecision(origin, true, 'staging_domain');
-    }
-    if (isDevTool) {
-      return logCorsDecision(origin, true, 'dev_tool_pattern_match');
-    }
-
-    return logCorsDecision(origin, false, 'staging_not_allowed');
-  } else {
-    // Development: Allow all origins
-    return logCorsDecision(origin, true, 'development_all_allowed');
-  }
-}
-
-/**
- * Get CORS origins based on environment
- */
-function getCorsOrigins(
-  nodeEnv: string,
-): string[] | boolean | ((origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => void) {
-  if (nodeEnv === 'development') {
-    // Development: Allow all origins for local development
-    return true;
-  } else {
-    // Production and Staging: Use callback for flexible origin validation
-    return (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      const isAllowed = isOriginAllowed(origin, nodeEnv);
-      callback(null, isAllowed);
-    };
-  }
-}
+export { isOriginAllowed };
 
 async function bootstrap() {
   // Disable colors in NestJS built-in logger
@@ -203,7 +68,7 @@ async function bootstrap() {
   });
 
   if (!isProduction) {
-    const config = new DocumentBuilder().setTitle('Api').setDescription('Main api backend').setVersion('1.0').addBearerAuth().build();
+    const config = buildSwaggerConfig().build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/v1/docs', app, document);
   }

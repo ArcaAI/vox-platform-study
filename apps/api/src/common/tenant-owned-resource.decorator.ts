@@ -36,19 +36,26 @@ export type TenantOwnedResourceModelName =
   | 'TenantBucket'
   | 'UserVoiceProfile'
   | 'ConsultationJob'
-  | 'TranscriptionJob';
+  | 'TranscriptionJob'
+  // TASK-310 W7.A.9 (AC-3): opaque STT-V2 streaming session. The
+  // interceptor resolves the sessionId → tenantId mapping through
+  // `StreamSessionTenantBindingService`, NOT a Prisma repository — the
+  // session row lives in STT-V2 / Redis, not the API gateway DB.
+  | 'StreamSession';
 
 export interface TenantOwnedResourceOptions {
   /** Domain model name the interceptor uses to pick a repository / service. */
   modelName: TenantOwnedResourceModelName;
-  /** Route param key (e.g. `'id'`, `'jobId'`, `'name'`). */
+  /** Route param key (e.g. `'id'`, `'jobId'`, `'name'`, `'sessionId'`). */
   paramName: string;
   /**
    * Lookup strategy:
    *   - `'id'` (default) → repository.findById(paramValue)
    *   - `'name'`         → repository.findByName(paramValue)  (TenantBucket only)
+   *   - `'session'`      → StreamSessionTenantBindingService.lookup(paramValue)
+   *                        (StreamSession only — TASK-310 W7.A.9 / AC-3)
    */
-  lookup?: 'id' | 'name';
+  lookup?: 'id' | 'name' | 'session';
   /**
    * Ownership scope (TASK-308 AC-1):
    *   - `'tenant'` (default) → only the tenant boundary is enforced. Any

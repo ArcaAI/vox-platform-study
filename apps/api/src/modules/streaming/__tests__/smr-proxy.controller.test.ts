@@ -34,6 +34,18 @@ const createMockDepartmentRepository = () => ({
   findById: vi.fn(),
 });
 
+// TASK-310 E-5 (AC-5): stubbed IConfigService so the controller resolves
+// the SMR base URL through the typed accessor (matching production), not
+// process.env.
+const createMockConfigService = () => ({
+  getConfigValue: vi.fn((key: string) => {
+    const map: Record<string, string> = {
+      SMR_URL: 'http://localhost:8862',
+    };
+    return map[key];
+  }),
+});
+
 describe('SmrProxyController', () => {
   let controller: SmrProxyController;
   let mockHttpService: ReturnType<typeof createMockHttpService>;
@@ -43,6 +55,7 @@ describe('SmrProxyController', () => {
   let mockPromptTemplateRepo: ReturnType<typeof createMockPromptTemplateRepository>;
   let mockDnaStyleRepo: ReturnType<typeof createMockDnaWritingStyleRepository>;
   let mockDepartmentRepo: ReturnType<typeof createMockDepartmentRepository>;
+  let mockConfigService: ReturnType<typeof createMockConfigService>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,6 +66,7 @@ describe('SmrProxyController', () => {
     mockPromptTemplateRepo = createMockPromptTemplateRepository();
     mockDnaStyleRepo = createMockDnaWritingStyleRepository();
     mockDepartmentRepo = createMockDepartmentRepository();
+    mockConfigService = createMockConfigService();
 
     mockClsService.get.mockImplementation((key: string) => {
       if (key === 'tenantId') return 'tenant-1';
@@ -80,6 +94,7 @@ describe('SmrProxyController', () => {
       mockPromptTemplateRepo as any,
       mockDnaStyleRepo as any,
       mockDepartmentRepo as any,
+      mockConfigService as any,
     );
   });
 

@@ -246,8 +246,16 @@ describe('UserController', () => {
         });
     });
 
+    // ------------------------------------------------------------------------
+    // TASK-310 E-11 (AC-10) — bulkDelete partial-failure semantics.
+    //
+    // Pre-W7 the loop threw on the first error and left the caller without
+    // any signal about which ids did delete. The new shape catches per-id
+    // and returns `{ succeeded: UserResponse[], failed: Array<{ id, reason }> }`
+    // so partial failures are observable + idempotent retries are tractable.
+    // ------------------------------------------------------------------------
     describe('DELETE /admin/users/bulk (bulkDelete)', () => {
-        it('should call userService.deleteById for each id', async () => {
+        it('calls userService.deleteById once per id', async () => {
             mockUserService.deleteById.mockResolvedValue(fakeUserEntity);
 
             await controller.bulkDelete({ ids: ['user-1', 'user-2'] });
@@ -257,19 +265,53 @@ describe('UserController', () => {
             expect(mockUserService.deleteById).toHaveBeenCalledWith('user-2');
         });
 
-        it('should return array of mapped responses', async () => {
+        it('returns { succeeded: UserResponse[], failed: [] } when every id deletes cleanly', async () => {
             mockUserService.deleteById.mockResolvedValue(fakeUserEntity);
 
             const result = await controller.bulkDelete({ ids: ['user-1', 'user-2'] });
 
-            expect(result).toHaveLength(2);
+            expect(result.succeeded).toHaveLength(2);
+            expect(result.failed).toEqual([]);
         });
 
-        it('should return empty array when no ids provided', async () => {
+        it('returns { succeeded: [], failed: [] } when no ids provided', async () => {
             const result = await controller.bulkDelete({ ids: [] });
 
-            expect(result).toEqual([]);
+            expect(result).toEqual({ succeeded: [], failed: [] });
             expect(mockUserService.deleteById).not.toHaveBeenCalled();
+        });
+
+        it('records the failing id under `failed` and KEEPS PROCESSING the rest (no early throw)', async () => {
+            mockUserService.deleteById
+                .mockResolvedValueOnce(fakeUserEntity)
+                .mockRejectedValueOnce(new Error('row locked'))
+                .mockResolvedValueOnce(fakeUserEntity);
+
+            const result = await controller.bulkDelete({ ids: ['user-1', 'user-2', 'user-3'] });
+
+            expect(mockUserService.deleteById).toHaveBeenCalledTimes(3);
+            expect(result.succeeded).toHaveLength(2);
+            expect(result.failed).toEqual([{ id: 'user-2', reason: 'row locked' }]);
+        });
+
+        it('captures all failures when every id fails — call never throws', async () => {
+            mockUserService.deleteById.mockRejectedValue(new Error('downstream unavailable'));
+
+            const result = await controller.bulkDelete({ ids: ['user-1', 'user-2'] });
+
+            expect(result.succeeded).toEqual([]);
+            expect(result.failed).toEqual([
+                { id: 'user-1', reason: 'downstream unavailable' },
+                { id: 'user-2', reason: 'downstream unavailable' },
+            ]);
+        });
+
+        it('serialises non-Error throw values into a string reason (no [object Object] leaks)', async () => {
+            mockUserService.deleteById.mockRejectedValueOnce('plain string reason');
+
+            const result = await controller.bulkDelete({ ids: ['user-1'] });
+
+            expect(result.failed).toEqual([{ id: 'user-1', reason: 'plain string reason' }]);
         });
     });
 

@@ -35,7 +35,7 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiRespon
 import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
 import { uuidv7 } from 'uuidv7';
-import { TenantOwnedResource } from '../../common';
+import { StreamSessionTenantBindingService, TenantOwnedResource } from '../../common';
 import {
   ALLOWED_AUDIO_MIMES,
   AUDIO_BUCKET,
@@ -79,6 +79,10 @@ export class TranscriptionJobController {
     @Inject(ITenantBucketService) private readonly tenantBucketService: ITenantBucketService,
     private readonly pipelineService: PipelineService,
     private readonly streamTicketService: StreamTicketService,
+    // TASK-310 W7.A.9 (AC-3): persists sessionId → tenantId on create
+    // and clears it on close, so the `@TenantOwnedResource('StreamSession')`
+    // route guard on `closeStreamSession` can 404 cross-tenant probes.
+    private readonly streamSessionTenantBinding: StreamSessionTenantBindingService,
   ) {}
 
   private getTenantId(): string {
@@ -299,6 +303,12 @@ export class TranscriptionJobController {
       throw new ServiceUnavailableException('STT-V2 streaming service at capacity');
     }
 
+    // TASK-310 W7.A.9 (AC-3): persist the sessionId → tenantId mapping so
+    // the global `TenantOwnedResourceInterceptor` can 404 cross-tenant
+    // probes against `DELETE /stream/session/:sessionId`. Default 24h TTL
+    // matches the longest reasonable streaming-session lifetime.
+    await this.streamSessionTenantBinding.bind(result.sessionId, tenantId);
+
     // TASK-298 D-1 — mint a one-shot stream ticket scoped to this session.
     // The SDK appends it to the WS URL; the gateway consumes it on first
     // open and rejects (4401) every subsequent attempt.
@@ -325,29 +335,35 @@ export class TranscriptionJobController {
   }
 
   /**
-   * TASK-307 W7.A.9 (carryover note from W3 review) — this endpoint takes
-   * a `sessionId` (the STT-V2 streaming session, opaque to the gateway),
-   * not a `jobId` (the `TranscriptionJob` row). `@TenantOwnedResource`
-   * cannot be applied directly with `modelName: 'TranscriptionJob'`
-   * because there is no foreign-key relationship from `sessionId`
-   * back to a Prisma model — the session record lives in STT-V2 / Redis,
-   * not the API gateway DB. Tenant scoping today relies on the
-   * downstream `StreamingSessionService.removeSession(sessionId)` honoring
-   * the Prisma `tenantScope` extension on whatever rows it touches
-   * (TASK-305 W2.B extension fans tenantId out from CLS to every
-   * `findMany/findFirst/update/delete`). Closing the gap end-to-end
-   * needs either: (a) a dedicated `StreamSessionTenantBindingService`
-   * that resolves sessionId → tenantId and runs an explicit equality
-   * check, or (b) reshaping the URL to nest under `/jobs/:id/stream-
-   * session/:sessionId` so the parent `jobId` carries the tenant scope.
-   * Both are out of W7 scope — see §10 deferral.
+   * TASK-310 W7.A.9 (AC-3) — closes the carryover gap from TASK-307 W7.A.9.
+   *
+   * Because `sessionId` is opaque to Prisma (the STT-V2 session row lives in
+   * STT-V2 / Redis, not the gateway DB), `@TenantOwnedResource` cannot use
+   * any of the repository-backed resolvers. Instead, `createStreamSession`
+   * now writes a gateway-side `sessionId → tenantId` binding via
+   * `StreamSessionTenantBindingService`, and the decorator's `'StreamSession'`
+   * branch reads it. Cross-tenant probes 404 with no existence leak
+   * (DEF-C3), matching the posture every other resource model uses.
+   *
+   * The binding is best-effort cleared after the downstream
+   * `removeSession` succeeds; the binding's TTL (default 24h) is the
+   * fallback when this clear is skipped (e.g. removeSession throws).
+   *
+   * Alternative designs that were considered and rejected:
+   *   - Reshape the URL to `/jobs/:id/stream-session/:sessionId` so the
+   *     parent jobId carries the tenant scope. Out of scope — would break
+   *     the live SDK contract documented in TASK-298 D-1.
+   *   - Modify STT-V2 to return `tenantId` on its status endpoint.
+   *     Out of scope — touches `apps/stt-v2` (sibling Python service).
    */
   @Delete('stream/session/:sessionId')
   @HttpCode(204)
+  @TenantOwnedResource({ modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session' })
   @ApiOperation({ summary: 'Close a WebSocket streaming session' })
   @ApiParam({ name: 'sessionId', description: 'Streaming session ID' })
   async closeStreamSession(@Param('sessionId') sessionId: string): Promise<void> {
     await this.sessionService.removeSession(sessionId);
+    await this.streamSessionTenantBinding.clear(sessionId);
   }
 
   /**

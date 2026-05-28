@@ -125,6 +125,28 @@ export interface IRedisCacheService {
   expire(key: string, ttlSeconds: number): Promise<boolean>;
 
   /**
+   * Execute a Lua script atomically (Redis EVAL).
+   *
+   * TASK-310 W7.A.4 (AC-2): used by `RefreshTokenService.consume()` to
+   * collapse the GET / DEL / DEL / SETEX flip into a single atomic
+   * operation. Redis serialises Lua scripts so two concurrent invocations
+   * race-replay each other deterministically — exactly one observes the
+   * active row, the other sees the post-DEL state.
+   *
+   * No `script-load` / `evalsha` caching: refresh-token consumes are
+   * low-frequency and the script body is small, so the extra round-trip
+   * to script-load doesn't pay off relative to the simpler API.
+   *
+   * @param script   Lua source.
+   * @param numKeys  Number of `KEYS[]` entries; remaining args populate `ARGV[]`.
+   * @param args     Keys followed by argv values, in the order Redis expects.
+   * @returns        Whatever the script's `return` evaluates to (string,
+   *                 number, array, or null when the script returns nil /
+   *                 false / when Redis is unavailable).
+   */
+  eval(script: string, numKeys: number, ...args: (string | number)[]): Promise<unknown>;
+
+  /**
    * Check if Redis is connected and available
    */
   isConnected(): boolean;
@@ -595,6 +617,34 @@ export class RedisCacheService implements IRedisCacheService, OnModuleInit, OnMo
         error: error instanceof Error ? error.message : String(error),
       });
       return false;
+    }
+  }
+
+  /**
+   * Execute a Lua script atomically against Redis.
+   *
+   * TASK-310 W7.A.4 (AC-2): see interface TSDoc. Returns `null` when
+   * Redis is unavailable (graceful degradation, mirroring the rest of
+   * this service) — callers must treat `null` as "missing record".
+   */
+  async eval(script: string, numKeys: number, ...args: (string | number)[]): Promise<unknown> {
+    if (!this.isConnected()) {
+      return null;
+    }
+
+    try {
+      // ioredis types the variadic eval as `(script, numKeys, ...keysAndArgs)`.
+      // `as never` defeats the union-of-overloads issue without weakening
+      // the public surface we expose to consumers.
+      return await this.redis!.eval(script, numKeys, ...(args as never[]));
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to eval Lua script',
+        scriptPrefix: script.slice(0, 60),
+        numKeys,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 

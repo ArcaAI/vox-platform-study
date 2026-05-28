@@ -9,3 +9,8 @@ export {
 } from './tenant-owned-resource.decorator';
 export { TenantOwnedResourceInterceptor } from './tenant-owned-resource.interceptor';
 export { TenantOwnedResourceModule } from './tenant-owned-resource.module';
+export {
+  StreamSessionTenantBindingService,
+  STREAM_SESSION_TENANT_KEY_PREFIX,
+  STREAM_SESSION_TENANT_DEFAULT_TTL_SECONDS,
+} from './stream-session-tenant-binding.service';

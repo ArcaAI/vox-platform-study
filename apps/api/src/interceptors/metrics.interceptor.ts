@@ -3,6 +3,19 @@ import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { IMonitoringService } from '@arcaai/applications';
 
+/**
+ * TASK-310 E-7 (AC-7) — when a request never matched a NestJS route
+ * (404 fall-throughs, OPTIONS preflights handled by middleware, scanner
+ * noise) `request.route?.path` is undefined. Pre-W7 we fell back to
+ * `request.url`, which expanded to the raw URL and minted a new
+ * Prometheus series per unique `/api/v1/<random>` — cardinality grew
+ * linearly with traffic, eventually breaking the metrics scrape.
+ *
+ * Labelling unmatched requests with this constant keeps the series
+ * count bounded by the templated-route set + 1.
+ */
+const UNMATCHED_ROUTE_LABEL = '<unmatched>';
+
 @Injectable()
 export class MetricsInterceptor implements NestInterceptor {
   constructor(
@@ -15,6 +28,7 @@ export class MetricsInterceptor implements NestInterceptor {
     const httpContext = context.switchToHttp();
     const request = httpContext.getRequest();
     const start = Date.now();
+    const routeLabel = request.route?.path ?? UNMATCHED_ROUTE_LABEL;
 
     return next.handle().pipe(
       tap({
@@ -22,7 +36,7 @@ export class MetricsInterceptor implements NestInterceptor {
           const response = httpContext.getResponse();
           this.monitoringService.recordHttpRequest(
             request.method,
-            request.route?.path || request.url,
+            routeLabel,
             response.statusCode,
             (Date.now() - start) / 1000,
           );
@@ -30,7 +44,7 @@ export class MetricsInterceptor implements NestInterceptor {
         error: (err) => {
           this.monitoringService.recordHttpRequest(
             request.method,
-            request.route?.path || request.url,
+            routeLabel,
             err?.status || err?.statusCode || 500,
             (Date.now() - start) / 1000,
           );

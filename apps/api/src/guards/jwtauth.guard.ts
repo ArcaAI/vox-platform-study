@@ -1,10 +1,11 @@
 import { ExecutionContext, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
-import { SKIP_AUTH_KEY } from '@arcaai/applications';
+import { SKIP_AUTH_KEY, type UserSession } from '@arcaai/applications';
 import { ClsService } from 'nestjs-cls';
 import { STREAM_SCOPE_METADATA, type StreamScopeConfig } from '../modules/auth/decorators/stream-scope.decorator';
 import { StreamTicketService } from '../modules/auth/stream-ticket.service';
+import type { RequestWithAuth } from '../types/request-with-auth';
 
 /**
  * JwtAuthGuard (TASK-263 W0-1 extension)
@@ -40,11 +41,11 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest<{
-      query?: Record<string, unknown>;
-      params?: Record<string, string>;
-      user?: unknown;
-    }>();
+    // TASK-310 E-6 (AC-6): typed RequestWithAuth replaces the pre-W7
+    // inline anonymous structural type. The ticket path writes to
+    // `request.user`; using the typed interface keeps the assignment
+    // type-checked against the canonical `UserSession` shape.
+    const request = context.switchToHttp().getRequest<RequestWithAuth>();
 
     const ticket = this.extractTicket(request?.query?.ticket);
     if (ticket) {
@@ -68,7 +69,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
   private async handleTicketAuth(
     context: ExecutionContext,
-    request: { params?: Record<string, string>; user?: unknown },
+    request: RequestWithAuth,
     ticket: string,
   ): Promise<boolean> {
     const stored = await this.streamTicketService.consumeTicket(ticket);
@@ -111,12 +112,20 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     // impersonation, restore the `impersonatedBy` claim on `req.user`. This
     // is the only signal `ImpersonationAuditInterceptor` consults to decide
     // whether to emit an impersonation audit event for streaming requests.
-    const restoredUser = {
+    //
+    // TASK-310 E-6 (AC-6): the cast is deliberate — the ticket-auth path
+    // only restores the three claims downstream consumers
+    // (`ImpersonationAuditInterceptor`, CLS lookups) actually read.
+    // Building a full `UserSession` here would require re-fetching email /
+    // roles / permissions just to satisfy the type, which is wasted work
+    // for a session that's already pre-authenticated upstream by the
+    // ticket issuer.
+    const restoredUser: Partial<UserSession> & { id: string } = {
       id: stored.userId,
       tenantId: stored.tenantId,
       ...(stored.impersonatedBy ? { impersonatedBy: stored.impersonatedBy } : {}),
     };
-    request.user = restoredUser;
+    request.user = restoredUser as UserSession;
 
     // Make the restored user visible to CLS-aware interceptors
     // (ImpersonationAuditInterceptor, BaseService.tenantId, etc.). Wrapped in

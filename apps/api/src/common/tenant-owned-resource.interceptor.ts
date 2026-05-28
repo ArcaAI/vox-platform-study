@@ -50,6 +50,7 @@ import {
   TranscriptionJobRepository,
   UserVoiceProfileRepository,
 } from '@arcaai/domains';
+import { StreamSessionTenantBindingService } from './stream-session-tenant-binding.service';
 import {
   TENANT_OWNED_RESOURCE_KEY,
   type TenantOwnedResourceOptions,
@@ -68,6 +69,10 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     private readonly transcriptionJobRepository: TranscriptionJobRepository,
     @Inject(IConsultationJobService)
     private readonly consultationJobService: IConsultationJobService,
+    // TASK-310 W7.A.9 (AC-3): drives the `StreamSession` resolver branch.
+    // The binding is written by `TranscriptionJobController.createStreamSession`
+    // and removed by `closeStreamSession` — the interceptor only reads it.
+    private readonly streamSessionTenantBinding: StreamSessionTenantBindingService,
   ) {}
 
   async intercept(context: ExecutionContext, next: CallHandler): Promise<Observable<unknown>> {
@@ -119,12 +124,25 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
       case 'UserVoiceProfile':
         await this.assertVoiceProfileOwnership(paramValue);
         return;
+      case 'StreamSession':
+        // TASK-310 W7.A.9 (AC-3): sessionId → tenantId lookup via the
+        // gateway-side binding service (the session itself lives in
+        // STT-V2 / Redis, not Prisma — there is no repository to call).
+        await this.assertStreamSessionOwnership(paramValue, callerTenantId);
+        return;
       default:
         // Exhaustiveness — the union covers every branch. Throwing the
         // generic 404 here protects against future drift between the
         // decorator's union and the switch (e.g. a new modelName added to
         // the decorator without a matching branch).
         throw new NotFoundException(RESOURCE_NOT_FOUND);
+    }
+  }
+
+  private async assertStreamSessionOwnership(sessionId: string, callerTenantId: string): Promise<void> {
+    const boundTenantId = await this.streamSessionTenantBinding.lookup(sessionId);
+    if (boundTenantId === null || boundTenantId !== callerTenantId) {
+      throw new NotFoundException(RESOURCE_NOT_FOUND);
     }
   }
 

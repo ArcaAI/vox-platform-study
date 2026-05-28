@@ -51,17 +51,14 @@ import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
  *     server-side. See TASK-307 §10 deferrals for the "absolute family
  *     lifetime" follow-up if a hard cap is ever needed.
  *
- *   - **Non-atomic `consume()` flip.** The active → consumed transition
- *     is three Redis round-trips (`del(activeKey)` + `del(memberKey)` +
- *     `setex(consumedKey, …)`). A concurrent reuse landing in the
- *     microsecond window between the first `del` and the `setex` would
- *     race with the legitimate rotation. In practice the legitimate
- *     consumer is always single-threaded per refresh token (browser tabs
- *     coordinate via the SDK's `RefreshTokenManager` mutex), and the
- *     attacker presenting a stale token after rotation is the very case
- *     the reuse-detection branch in `consume()` handles. Promoting this
- *     to a Lua-script atomic ops is a follow-up — see TASK-307 §10
- *     (deferred to a future hardening pass; complexity > benefit today).
+ *   - **Atomic `consume()` flip via Lua (TASK-310 W7.A.4 / AC-2).** The
+ *     active → consumed transition is collapsed into a single
+ *     `EVAL`-driven script (`REFRESH_TOKEN_CONSUME_LUA`) so the
+ *     GET / DEL / DEL / SETEX sequence runs as one atomic Redis op.
+ *     This closes the microsecond race window that previously made two
+ *     concurrent `consume()` calls each return the same record (legit
+ *     rotation + attacker replay both winning). Race-replay covered by
+ *     the `Promise.all([consume(t), consume(t)])` unit test.
  *
  *   - **`REFRESH_TOKEN_TTL_SECONDS` read via `process.env` in the
  *     constructor** (see implementation). `IConfigService` is the
@@ -82,7 +79,59 @@ export const REFRESH_TOKEN_CONSUMED_KEY_PREFIX = 'refresh-token-consumed:';
 const REFRESH_TOKEN_RAW_BYTES = 48;
 const REFRESH_FAMILY_RAW_BYTES = 16;
 const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
-const MIN_TTL_SECONDS = 1;
+
+/**
+ * TASK-310 W7.A.4 (AC-2) — atomic consume Lua script.
+ *
+ * Inputs:
+ *   KEYS[1] = active-token key   (e.g. `refresh-token:<sha256>`)
+ *   KEYS[2] = consumed-marker key (e.g. `refresh-token-consumed:<sha256>`)
+ *   ARGV[1] = family-member key prefix (`refresh-token-family:`)
+ *   ARGV[2] = `:<sha256>` suffix used to compose the family-member key
+ *   ARGV[3] = current epoch seconds (for remaining-TTL calculation)
+ *
+ * Returns:
+ *   - the persisted JSON record (string) when the active row existed and
+ *     was consumed by this call.
+ *   - `false` when the active row was missing (Redis returns false → ioredis
+ *     surfaces it as `null` to the JS caller).
+ *
+ * Behaviour:
+ *   - Decodes the record via `cjson.decode`. If the JSON is missing
+ *     `family` / `expiresAt`, drops the active row (corrupt) and returns
+ *     false so the caller surfaces a 401 — same outcome as the legacy
+ *     try/catch around `JSON.parse`.
+ *   - Computes `remainingTtl = max(1, expiresAt - now)` so the consumed
+ *     marker only lives as long as the legitimate active row would have.
+ *   - DELs the active row + the family-member marker, then SETEXes the
+ *     consumed-marker key to the family id so reuse-detection still works.
+ *
+ * The script is sent verbatim per call (no SCRIPT LOAD / EVALSHA). The
+ * call frequency for refresh-token consumes is low and the script body
+ * is small (~25 lines including blank lines), so the EVALSHA cache hit
+ * is not worth the extra `NOSCRIPT` fallback complexity.
+ */
+export const REFRESH_TOKEN_CONSUME_LUA = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+  return false
+end
+local ok, record = pcall(cjson.decode, raw)
+if not ok or type(record) ~= 'table' or type(record.family) ~= 'string' or type(record.expiresAt) ~= 'number' then
+  redis.call('DEL', KEYS[1])
+  return false
+end
+local memberKey = ARGV[1] .. record.family .. ARGV[2]
+local now = tonumber(ARGV[3])
+local remainingTtl = record.expiresAt - now
+if remainingTtl < 1 then
+  remainingTtl = 1
+end
+redis.call('DEL', KEYS[1])
+redis.call('DEL', memberKey)
+redis.call('SETEX', KEYS[2], remainingTtl, record.family)
+return raw
+`.trim();
 
 export interface IssuedRefreshToken {
   rawToken: string;
@@ -159,12 +208,27 @@ export class RefreshTokenService implements IRefreshTokenService {
     }
 
     const hash = this.hash(rawToken);
-    const raw = await this.cache.get(this.key(hash));
+
+    // TASK-310 W7.A.4 (AC-2): atomic GET / DEL / DEL / SETEX via Lua.
+    // Redis serialises EVAL scripts, so two concurrent `consume()` calls
+    // race-replay deterministically: exactly one observes the active row
+    // and wins, the other sees null and falls through to the reuse-
+    // detection branch below.
+    const raw = (await this.cache.eval(
+      REFRESH_TOKEN_CONSUME_LUA,
+      2,
+      this.key(hash),
+      this.consumedKey(hash),
+      REFRESH_TOKEN_FAMILY_KEY_PREFIX,
+      `:${hash}`,
+      String(Math.floor(Date.now() / 1000)),
+    )) as string | null;
 
     if (raw === null) {
       // Either the token is unknown/expired, OR it was consumed earlier
-      // and we are now seeing a reuse attempt. The consumed-marker tells
-      // them apart and pins the family we need to revoke.
+      // (by this call's loser sibling, by a previous flip, or by an
+      // attacker replay). The consumed-marker pins the family we need
+      // to revoke.
       const reusedFamily = await this.cache.get(this.consumedKey(hash));
       if (reusedFamily) {
         this.logger.warn({
@@ -182,14 +246,6 @@ export class RefreshTokenService implements IRefreshTokenService {
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
-
-    // Atomically (best-effort) flip from "active" → "consumed": drop the
-    // active row + the family-member marker, then write a consumed marker
-    // bounded by the remaining TTL so a future reuse can be detected.
-    await this.cache.del(this.key(hash));
-    await this.cache.del(this.familyMemberKey(record.family, hash));
-    const remainingTtl = Math.max(MIN_TTL_SECONDS, record.expiresAt - Math.floor(Date.now() / 1000));
-    await this.cache.setex(this.consumedKey(hash), remainingTtl, record.family);
 
     return {
       userId: record.userId,

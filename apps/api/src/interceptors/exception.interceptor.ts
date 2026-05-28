@@ -59,15 +59,27 @@ export class ExceptionInterceptor implements NestInterceptor {
             stack: err.stack,
           });
 
+          // TASK-310 W7.A.14 (AC-1): map Prisma codes to RFC-correct HTTP
+          // statuses at the interceptor (the registered handler — the
+          // `PrismaClientExceptionFilter` is dead code because it isn't
+          // wired as APP_FILTER). Pre-W7.A.14 every code collapsed to 400
+          // / 'Bad Request'; clients couldn't distinguish a duplicate
+          // (409) from a missing row (404) from a generic validation
+          // failure (400). The `error` labels mirror the filter's labels
+          // so any future filter-revival doesn't introduce a body-shape
+          // skew. Sanitisation is preserved: only the label changes per
+          // code; `err.meta` and raw `err.message` never reach the
+          // client.
+          const { status, label } = mapPrismaCodeToHttp(err.code);
           return throwError(
             () =>
               new HttpException(
                 {
-                  statusCode: HttpStatus.BAD_REQUEST,
-                  error: 'Bad Request',
+                  statusCode: status,
+                  error: label,
                   correlationId: requestId,
                 },
-                HttpStatus.BAD_REQUEST,
+                status,
               ),
           );
         }
@@ -219,5 +231,28 @@ export class ExceptionInterceptor implements NestInterceptor {
         return throwError(err);
       }),
     );
+  }
+}
+
+// TASK-310 W7.A.14 (AC-1) — Prisma error code → HTTP status mapping.
+//
+// Mirrors the labels in `apps/api/src/filters/prisma.filter.ts` so the
+// dead filter and the live interceptor produce identical body shapes —
+// if/when the filter is wired up (or the interceptor's branch is
+// removed), the response contract doesn't shift. Any code outside the
+// table below falls back to 400 / 'Bad Request' to preserve the legacy
+// generic-default behaviour.
+function mapPrismaCodeToHttp(code: string): { status: HttpStatus; label: string } {
+  switch (code) {
+    case 'P2002':
+      return { status: HttpStatus.CONFLICT, label: 'Unique constraint violation' };
+    case 'P2025':
+      return { status: HttpStatus.NOT_FOUND, label: 'Not found' };
+    case 'P2003':
+      return { status: HttpStatus.BAD_REQUEST, label: 'Foreign key constraint violation' };
+    case 'P2014':
+      return { status: HttpStatus.BAD_REQUEST, label: 'Required relation violation' };
+    default:
+      return { status: HttpStatus.BAD_REQUEST, label: 'Bad Request' };
   }
 }
