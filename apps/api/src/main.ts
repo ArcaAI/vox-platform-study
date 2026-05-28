@@ -5,6 +5,7 @@ import { WsAdapter } from '@nestjs/platform-ws';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { auditAdminRoutePermissions } from './bootstrap/admin-route-permission-audit';
+import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholder-audit';
 import { ETagInterceptor } from './interceptors';
 import { GracefulShutdownService } from './services';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -230,6 +231,13 @@ async function bootstrap() {
     ],
   });
   loggingService.info('Secrets warmed up', { keyCount: 11 }, 'Bootstrap');
+
+  // TASK-307 W2.2 (closes audit C-6 part 2) — refuse to start if
+  // JWT_SECRET_KEY resolved to the literal placeholder or never warmed.
+  // Mirrors the in-strategy assertion in `JwtStrategy` so a
+  // misconfigured deploy fails BEFORE the Nest container finishes
+  // wiring (defense-in-depth — strategy + bootstrap both refuse).
+  assertJwtSecretNotPlaceholder(secretsService);
 
   // Session configuration (debug logging removed - session config is sensitive)
   // TASK-302 Phase 3 Task 3.2: SESSION_SECRET_KEY now comes from
