@@ -18,6 +18,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { TenantOwnedResource } from '../../common';
 import { CanCreate, CanDelete, CanRead, CanUpdate } from '../../decorators';
 import {
   BucketInfoResponse,
@@ -68,6 +69,7 @@ export class StorageController {
   }
 
   @Delete('buckets/:name')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'name', lookup: 'name' })
   @ApiOperation({ summary: 'Delete a storage bucket' })
   @ApiParam({ name: 'name', description: 'Bucket name', type: String })
   @ApiResponse({ status: 200, description: 'Bucket deleted', type: DeleteBucketResponse })
@@ -81,6 +83,7 @@ export class StorageController {
   }
 
   @Patch('buckets/:name')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'name', lookup: 'name' })
   @ApiOperation({ summary: 'Update bucket metadata' })
   @ApiParam({ name: 'name', description: 'Bucket name', type: String })
   @ApiResponse({ status: 200, description: 'Bucket metadata updated', type: UpdateBucketResponse })
@@ -93,6 +96,7 @@ export class StorageController {
   }
 
   @Get('buckets/:name')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'name', lookup: 'name' })
   @ApiOperation({ summary: 'Get bucket info' })
   @ApiParam({ name: 'name', description: 'Bucket name', type: String })
   @ApiResponse({ status: 200, description: 'Bucket info', type: BucketWithFilesResponse })
@@ -106,6 +110,7 @@ export class StorageController {
   }
 
   @Get('buckets/:name/files')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'name', lookup: 'name' })
   @ApiOperation({ summary: 'List files in bucket' })
   @ApiParam({ name: 'name', description: 'Bucket name', type: String })
   @ApiQuery({ name: 'prefix', required: false, type: String, description: 'Path prefix filter' })
@@ -116,6 +121,7 @@ export class StorageController {
   }
 
   @Post('buckets/:name/files')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'name', lookup: 'name' })
   @ApiOperation({ summary: 'Upload file to bucket' })
   @ApiParam({ name: 'name', description: 'Bucket name', type: String })
   @ApiConsumes('multipart/form-data')
@@ -173,6 +179,7 @@ export class StorageController {
   }
 
   @Get('buckets/:name/files/:key')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'name', lookup: 'name' })
   @ApiOperation({ summary: 'Get file info with presigned download URL' })
   @ApiParam({ name: 'name', description: 'Bucket name', type: String })
   @ApiParam({ name: 'key', description: 'File key/path', type: String })
@@ -184,6 +191,7 @@ export class StorageController {
   }
 
   @Delete('buckets/:name/files/:key')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'name', lookup: 'name' })
   @ApiOperation({ summary: 'Delete file from bucket' })
   @ApiParam({ name: 'name', description: 'Bucket name', type: String })
   @ApiParam({ name: 'key', description: 'File key/path', type: String })
