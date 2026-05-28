@@ -5,7 +5,7 @@
 | **Ticket** | TASK-308-Pre-SDK-Auth-Gaps |
 | **Created** | 2026-05-28 |
 | **Updated** | 2026-05-28 |
-| **Status** | `Pending` |
+| **Status** | `In Progress` |
 | **Classification** | Bugfix (authorization gap) + refactor (throttle granularity) |
 | **Priority** | High — exploitable from any authenticated same-tenant user; gates clean SDK rollout for multi-user-per-tenant deployments |
 | **Source** | TASK-307 §10.1 deferrals W7.A.12 + E-4 |
@@ -110,3 +110,4 @@ Throttle granularity is a UX issue, not a security one — but tight SDK refresh
 | Date | Description | Files modified |
 |---|---|---|
 | 2026-05-28 | Ticket created from TASK-307 §10.1 deferrals (W7.A.12 + E-4) | — |
+| 2026-05-28 | Status `Pending` → `In Progress`; execution started on branch `task-308/pre-sdk-auth-gaps` (worktree) | `README.md` |
