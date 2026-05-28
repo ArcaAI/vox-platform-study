@@ -122,6 +122,24 @@ GREEN — `pnpm --filter @arcaai/api exec vitest run src/common/__tests__/tenant
        Tests  29 passed (29)
 ```
 
+### 4.2 AC-2 — Apply `scope: 'creator'` to `ConsultationJobController.cancel`
+
+**Files modified**
+
+| File | Change |
+|---|---|
+| `apps/api/src/modules/consultation/consultation-job.controller.ts` | `cancelJob` decorator upgraded from `{ modelName, paramName }` to `{ modelName, paramName, scope: 'creator' }`. Read routes (`getJob`, `streamJob`) intentionally left tenant-only per README §1.3 AC-2 — shared-room reads from peer users are legitimate. |
+| `apps/api/src/modules/consultation/__tests__/consultation-job.controller.test.ts` | Metadata sanity-pin for `cancelJob` updated to require `scope: 'creator'`; `getJob` / `streamJob` pins kept tenant-only with explanatory comments. |
+
+**Test evidence (RED → GREEN)**
+
+```text
+RED — controller test for cancelJob metadata fails: expected scope:"creator", received {modelName, paramName} only.
+GREEN — `pnpm --filter @arcaai/api exec vitest run src/modules/consultation/__tests__/consultation-job.controller.test.ts`
+  Test Files  1 passed (1)
+       Tests  13 passed (13)
+```
+
 ---
 
 ## 5. Change History
