@@ -152,15 +152,25 @@ describe('ConsultationJobController', () => {
         ConsultationJobController.prototype[m] as object,
       ) as TenantOwnedResourceOptions | undefined;
 
-    it('getJob is annotated with modelName ConsultationJob + paramName jobId', () => {
+    it('getJob is annotated with modelName ConsultationJob + paramName jobId (tenant-only)', () => {
+      // README §1.3 AC-2: read routes keep tenant-only scope (shared-room
+      // reads from peer users are legitimate).
       expect(meta('getJob')).toEqual({ modelName: 'ConsultationJob', paramName: 'jobId' });
     });
 
-    it('cancelJob is annotated with modelName ConsultationJob + paramName jobId', () => {
-      expect(meta('cancelJob')).toEqual({ modelName: 'ConsultationJob', paramName: 'jobId' });
+    it('cancelJob is annotated with scope:"creator" (TASK-308 AC-2 — mutating route)', () => {
+      // README §1.3 AC-2: cancel is a mutating route; same-tenant cross-user
+      // probes must 404 instead of cancelling a peer's job.
+      expect(meta('cancelJob')).toEqual({
+        modelName: 'ConsultationJob',
+        paramName: 'jobId',
+        scope: 'creator',
+      });
     });
 
-    it('streamJob is annotated with modelName ConsultationJob + paramName jobId', () => {
+    it('streamJob is annotated with modelName ConsultationJob + paramName jobId (tenant-only)', () => {
+      // Stream is a read surface — kept tenant-only for the same reason as
+      // getJob.
       expect(meta('streamJob')).toEqual({ modelName: 'ConsultationJob', paramName: 'jobId' });
     });
   });

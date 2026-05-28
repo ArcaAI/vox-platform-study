@@ -49,6 +49,24 @@ export interface TenantOwnedResourceOptions {
    *   - `'name'`         → repository.findByName(paramValue)  (TenantBucket only)
    */
   lookup?: 'id' | 'name';
+  /**
+   * Ownership scope (TASK-308 AC-1):
+   *   - `'tenant'` (default) → only the tenant boundary is enforced. Any
+   *     authenticated user in the same tenant may proceed.
+   *   - `'creator'`          → in addition to the tenant check, the resolved
+   *     resource's `userId` must equal the caller's `cls.user.id`. Used on
+   *     mutating routes whose semantics belong to the original creator
+   *     (e.g. cancel-my-job) so a same-tenant peer cannot mutate via id
+   *     enumeration. Resolution still 404s on mismatch (DEF-C3) — there is
+   *     no 403, by design.
+   *
+   * Only `ConsultationJob` carries a `userId` today, so `'creator'` is a
+   * no-op for the other model names (the tenant check still runs). Add new
+   * `userId`-carrying models to the switch in
+   * `TenantOwnedResourceInterceptor.assertOwnership` if/when they grow a
+   * creator-scoped route.
+   */
+  scope?: 'tenant' | 'creator';
 }
 
 export const TenantOwnedResource = (opts: TenantOwnedResourceOptions): MethodDecorator =>

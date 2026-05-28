@@ -51,7 +51,12 @@ export class ConsultationJobController {
   }
 
   @Patch(':jobId/cancel')
-  @TenantOwnedResource({ modelName: 'ConsultationJob', paramName: 'jobId' })
+  // TASK-308 AC-2 — `scope: 'creator'` upgrades the tenant-only check to an
+  // intra-tenant owner check on this mutating route. A same-tenant peer
+  // probing this jobId now 404s (DEF-C3) instead of cancelling someone
+  // else's job. The read routes (`getJob`, `streamJob`) intentionally stay
+  // tenant-only because shared-room reads from peer users are legitimate.
+  @TenantOwnedResource({ modelName: 'ConsultationJob', paramName: 'jobId', scope: 'creator' })
   @ApiOperation({ summary: 'Cancel a pending or running async consultation job' })
   @ApiParam({ name: 'jobId', description: 'Job ID to cancel' })
   @ApiResponse({ status: 200, description: 'Cancellation acknowledgement' })

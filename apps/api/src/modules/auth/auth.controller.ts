@@ -48,8 +48,16 @@ import { StreamTicketService } from './stream-ticket.service';
 
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
+// TASK-308 AC-5 — the previous class-wide `@Throttle({ default: { limit: 10,
+// ttl: 60000 } })` lumped `/login`, `/refresh`, `/me`, `/logout`,
+// `/stream-ticket`, `/impersonate`, and `/revoke-impersonation` into a single
+// 10 req/min counter. The SDK polls `/me` + rotates `/refresh` more
+// aggressively than that envelope allows, while `/login` needs a tighter
+// bound to defend against credential stuffing. The decorator now lives on
+// each handler that needs a non-default limit; `/me`, `/logout`,
+// `/stream-ticket`, and `/revoke-impersonation` ride the app-wide default
+// throttler instead.
 @ApiTags('auth')
-@Throttle({ default: { limit: 10, ttl: 60000 } })
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -69,6 +77,8 @@ export class AuthController {
   ) {}
 
   @Post('login')
+  // TASK-308 AC-5 — 5 req/min: tight bound vs credential stuffing.
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'User login' })
@@ -354,6 +364,10 @@ export class AuthController {
   }
 
   @Post('impersonate')
+  // TASK-308 AC-5 — 10 req/min: same envelope as the retired class-wide
+  // throttle, kept explicit. Impersonation is an admin-tier action and
+  // does not need the more permissive SDK-poll bound.
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   @Authorize()
   @ApiBearerAuth()
@@ -490,6 +504,10 @@ export class AuthController {
   }
 
   @Post('refresh')
+  // TASK-308 AC-5 — 60 req/min: the SDK rotates refresh tokens aggressively
+  // (single-use refresh per TASK-307 W1.3); the previous 10/min class-wide
+  // limit tripped legitimate clients in production.
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token' })

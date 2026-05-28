@@ -114,7 +114,7 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
         );
         return;
       case 'ConsultationJob':
-        await this.assertConsultationJob(paramValue, callerTenantId);
+        await this.assertConsultationJob(opts, paramValue, callerTenantId);
         return;
       case 'UserVoiceProfile':
         await this.assertVoiceProfileOwnership(paramValue);
@@ -153,11 +153,15 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     }
   }
 
-  private async assertConsultationJob(jobId: string, callerTenantId: string): Promise<void> {
-    let status: { tenantId?: string | null } | null;
+  private async assertConsultationJob(
+    opts: TenantOwnedResourceOptions,
+    jobId: string,
+    callerTenantId: string,
+  ): Promise<void> {
+    let status: { tenantId?: string | null; userId?: string | null } | null;
     try {
       status = (await this.consultationJobService.getJobStatus(jobId)) as
-        | { tenantId?: string | null }
+        | { tenantId?: string | null; userId?: string | null }
         | null;
     } catch (err) {
       if (err instanceof DataNotFoundException) {
@@ -170,6 +174,21 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     }
     if (!status.tenantId || status.tenantId !== callerTenantId) {
       throw new NotFoundException(RESOURCE_NOT_FOUND);
+    }
+
+    // TASK-308 AC-1 — `scope: 'creator'` adds the intra-tenant owner check.
+    // The `userId` on `ConsultationJobStatus` was introduced in TASK-307
+    // W3.3; pre-W7.A.12 Redis rows may still lack it (24h JOB_TTL window).
+    // Treating a missing `userId` as a mismatch keeps the 404 shape uniform
+    // and avoids leaking the legacy-row distinction. See ticket §2.3.
+    if (opts.scope === 'creator') {
+      const callerUserId = this.cls.get('user')?.id;
+      if (!callerUserId || typeof callerUserId !== 'string') {
+        throw new NotFoundException(RESOURCE_NOT_FOUND);
+      }
+      if (!status.userId || status.userId !== callerUserId) {
+        throw new NotFoundException(RESOURCE_NOT_FOUND);
+      }
     }
   }
 
