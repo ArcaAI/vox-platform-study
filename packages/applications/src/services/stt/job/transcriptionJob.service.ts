@@ -127,10 +127,25 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   }
 
   /**
-   * Get jobs by consultation
+   * Get jobs by consultation.
+   *
+   * TASK-307 W3.8 (AC-12) — defense-in-depth: the TASK-305 Prisma
+   * `tenantScopeFilter` extension already auto-applies `tenantId` for
+   * any caller bound to a tenant, but super-admins bypass that extension
+   * by design. Explicitly anchor the tenant filter at the service layer
+   * (matching the `list`/`getByStatus`/`getStatusCounts` posture) so a
+   * super-admin call can never return cross-tenant rows by mistake.
    */
   async getByConsultation(consultationId: string): Promise<TranscriptionJobResponse[]> {
-    const jobs = await this.jobRepository.findByConsultation(consultationId);
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const jobs = await this.jobRepository.findAll({
+      filters: { consultationId, tenantId } as Record<string, unknown>,
+      sort: [{ createdAt: 'desc' }],
+    });
     return jobs.map(TranscriptionJobDtoMapper.toResponse);
   }
 
