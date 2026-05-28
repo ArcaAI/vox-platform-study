@@ -44,7 +44,16 @@ export class ContextInterceptor implements NestInterceptor {
     }
 
     if (!request.requestId) {
-      request.requestId = request?.body?.requestId ?? uuidv7();
+      // TASK-310 E-10 (AC-9): source the correlation id from the
+      // standard `x-request-id` header (set by an upstream LB / CDN /
+      // gateway), NOT from `request.body.requestId`. The pre-W7 read of
+      // a body field let any client pin its own correlation id with a
+      // POST payload, polluting CLS / logs and letting two unrelated
+      // requests share an id. Fallback stays uuidv7() so the logs always
+      // get a strictly-increasing identifier.
+      const headerRequestId = request.headers?.['x-request-id'];
+      const normalisedHeader = Array.isArray(headerRequestId) ? headerRequestId[0] : headerRequestId;
+      request.requestId = (typeof normalisedHeader === 'string' && normalisedHeader.length > 0 ? normalisedHeader : undefined) ?? uuidv7();
       this.tryClsSet('correlationId', request.requestId);
     }
 
