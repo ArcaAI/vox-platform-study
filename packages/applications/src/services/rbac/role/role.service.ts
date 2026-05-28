@@ -30,6 +30,17 @@ import {
  * The class is prefixed `Rbac` to disambiguate from the legacy
  * `services/security/role/RoleService` (unused but still exported via
  * the package barrel; renaming the legacy skeleton was out of W6 scope).
+ *
+ * TASK-307 W7.A.15 (carryover note from W6 review) — §H-9 partial
+ * closure: the original audit recommended migrating role + role-
+ * policy management through `RoleRepository` / `RolePolicyRepository`
+ * facades so soft-delete, audit hooks, and tenant scoping land
+ * uniformly with the rest of the domain layer. W6 chose verbatim
+ * behaviour preservation to keep the RBAC E2E suite green without
+ * introducing repository surface that no other consumer needs today.
+ * A dedicated `RoleRepository` + extraction PR is tracked as a §10
+ * deferral in `docs/implementation/TASK-307-API-Gateway-Hardening/
+ * README.md`.
  */
 @Injectable()
 export class RbacRoleService extends BaseService implements IRbacRoleService {
