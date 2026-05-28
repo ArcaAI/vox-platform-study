@@ -1,24 +1,30 @@
 /**
- * TASK-307 W6.2 — `PolicyService` pins the behaviour that used to live
- * inside `PoliciesController` (C-10 / F-1 / H-9 from the multi-tenancy API
- * audit). The controller is the offender being refactored; these tests
- * pin the new service so the controller can become a thin transport-layer
- * wrapper.
+ * TASK-307 W6.2 → TASK-311 — `PolicyService` regression tests. The
+ * service was originally TDD'd against a `databaseService.client.policy.*`
+ * mock; TASK-311 moves the persistence layer behind `PolicyRepository`,
+ * so the mocks here now stub the repository instead. The OBSERVABLE
+ * behaviour (audit-event payloads, log messages, exception types and
+ * messages, returned shape) is unchanged.
  *
  * Coverage targets:
  *   - `validateRules`     — pure, moved verbatim from the controller
  *   - `findAll`           — pagination, search, scope filter, count parity
- *   - `findOne`           — `findUnique` lookup
- *   - `create`            — RED on invalid rules; valid path emits
+ *   - `findOne`           — `findById` lookup
+ *   - `create`            — RED on invalid rules; valid path calls
+ *                           `policyRepository.create` with the
+ *                           factory-built payload and emits
  *                           `SysEventType.ResourceCreated` with
- *                           `ResourceType.Permission` and stamps `createdBy`
- *                           from CLS
- *   - `update`/`patch`    — invalidates the policy cache and emits
+ *                           `ResourceType.Permission`
+ *   - `update`/`patch`    — calls `policyRepository.update(id, data)`
+ *                           where `data` is the factory output, then
+ *                           invalidates the policy cache and emits
  *                           `SysEventType.ResourceUpdated`; `patch` also
  *                           supports `resourceStatus` + emits
  *                           `previousData` for diff audits
- *   - `softDelete`        — flips `resourceStatus → DELETED`, invalidates
- *                           cache, emits `SysEventType.ResourceDeleted`
+ *   - `softDelete`        — pre-checks existence via `findById`, then
+ *                           calls `policyRepository.softDelete(id, user.id)`,
+ *                           invalidates the cache, emits
+ *                           `SysEventType.ResourceDeleted`
  */
 import { vi, describe, beforeEach, it, expect } from 'vitest';
 import { ResourceStatusType, ResourceType, SysEventType } from '@arcaai/domains';
@@ -56,24 +62,23 @@ function makeMocks() {
 
   const eventEmitter = { emit: vi.fn() };
 
-  const prisma = {
-    policy: {
-      findMany: vi.fn(),
-      count: vi.fn(),
-      findUnique: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-    },
+  const policyRepo = {
+    findMany: vi.fn(),
+    count: vi.fn(),
+    findById: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    softDelete: vi.fn().mockResolvedValue(undefined),
   };
 
   const engine = { invalidatePolicy: vi.fn().mockResolvedValue(undefined) };
 
-  return { cls, eventEmitter, prisma, engine };
+  return { cls, eventEmitter, policyRepo, engine };
 }
 
 function buildService(mocks: ReturnType<typeof makeMocks>) {
   return new PolicyService(
-    { client: mocks.prisma } as never,
+    mocks.policyRepo as never,
     mocks.engine as never,
     mocks.eventEmitter as never,
     mocks.cls as never,
@@ -119,13 +124,13 @@ describe('TASK-307 W6.2 — PolicyService (closes C-10 / H-9 / AC-24)', () => {
     it('runs findMany + count under the same where clause and returns both', async () => {
       const mocks = makeMocks();
       const row = makePolicyRow();
-      mocks.prisma.policy.findMany.mockResolvedValue([row]);
-      mocks.prisma.policy.count.mockResolvedValue(1);
+      mocks.policyRepo.findMany.mockResolvedValue([row]);
+      mocks.policyRepo.count.mockResolvedValue(1);
       const service = buildService(mocks);
 
       const result = await service.findAll({ page: 2, pageSize: 10, search: 'team', scope: 'TENANT' as PolicyScope });
 
-      expect(mocks.prisma.policy.findMany).toHaveBeenCalledWith({
+      expect(mocks.policyRepo.findMany).toHaveBeenCalledWith({
         where: {
           resourceStatus: ResourceStatusType.ENABLED,
           OR: [
@@ -138,7 +143,7 @@ describe('TASK-307 W6.2 — PolicyService (closes C-10 / H-9 / AC-24)', () => {
         take: 10,
         orderBy: { name: 'asc' },
       });
-      expect(mocks.prisma.policy.count).toHaveBeenCalledWith({
+      expect(mocks.policyRepo.count).toHaveBeenCalledWith({
         where: {
           resourceStatus: ResourceStatusType.ENABLED,
           OR: [
@@ -153,15 +158,15 @@ describe('TASK-307 W6.2 — PolicyService (closes C-10 / H-9 / AC-24)', () => {
   });
 
   describe('findOne', () => {
-    it('returns the row via findUnique', async () => {
+    it('returns the row via policyRepository.findById', async () => {
       const mocks = makeMocks();
       const row = makePolicyRow();
-      mocks.prisma.policy.findUnique.mockResolvedValue(row);
+      mocks.policyRepo.findById.mockResolvedValue(row);
       const service = buildService(mocks);
 
       const result = await service.findOne('policy-1');
 
-      expect(mocks.prisma.policy.findUnique).toHaveBeenCalledWith({ where: { id: 'policy-1' } });
+      expect(mocks.policyRepo.findById).toHaveBeenCalledWith('policy-1');
       expect(result).toBe(row);
     });
   });
@@ -178,13 +183,13 @@ describe('TASK-307 W6.2 — PolicyService (closes C-10 / H-9 / AC-24)', () => {
           rules: [{ subject: 'User' } as never],
         }),
       ).rejects.toThrow(/Invalid policy rules/);
-      expect(mocks.prisma.policy.create).not.toHaveBeenCalled();
+      expect(mocks.policyRepo.create).not.toHaveBeenCalled();
     });
 
     it('persists with createdBy from CLS and emits a Permission audit event', async () => {
       const mocks = makeMocks();
       const row = makePolicyRow({ id: 'policy-99' });
-      mocks.prisma.policy.create.mockResolvedValue(row);
+      mocks.policyRepo.create.mockResolvedValue(row);
       const service = buildService(mocks);
 
       const result = await service.create({
@@ -194,15 +199,13 @@ describe('TASK-307 W6.2 — PolicyService (closes C-10 / H-9 / AC-24)', () => {
         rules: [{ action: 'read', subject: 'User' }],
       });
 
-      expect(mocks.prisma.policy.create).toHaveBeenCalledWith({
-        data: {
-          name: 'team-policy',
-          description: 'Team rules',
-          scope: 'TENANT',
-          rules: [{ action: 'read', subject: 'User' }],
-          resourceStatus: ResourceStatusType.ENABLED,
-          createdBy: ADMIN_USER.id,
-        },
+      expect(mocks.policyRepo.create).toHaveBeenCalledWith({
+        name: 'team-policy',
+        description: 'Team rules',
+        scope: 'TENANT',
+        rules: [{ action: 'read', subject: 'User' }],
+        resourceStatus: ResourceStatusType.ENABLED,
+        createdBy: ADMIN_USER.id,
       });
       expect(mocks.eventEmitter.emit).toHaveBeenCalledWith(
         SysEventType.ResourceCreated,
@@ -221,14 +224,14 @@ describe('TASK-307 W6.2 — PolicyService (closes C-10 / H-9 / AC-24)', () => {
     it('invalidates cache and emits Updated event after the write', async () => {
       const mocks = makeMocks();
       const row = makePolicyRow({ name: 'team-policy-v2' });
-      mocks.prisma.policy.update.mockResolvedValue(row);
+      mocks.policyRepo.update.mockResolvedValue(row);
       const service = buildService(mocks);
 
       await service.update('policy-1', { name: 'team-policy-v2' });
 
-      expect(mocks.prisma.policy.update).toHaveBeenCalledWith({
-        where: { id: 'policy-1' },
-        data: { name: 'team-policy-v2', updatedBy: ADMIN_USER.id },
+      expect(mocks.policyRepo.update).toHaveBeenCalledWith('policy-1', {
+        name: 'team-policy-v2',
+        updatedBy: ADMIN_USER.id,
       });
       expect(mocks.engine.invalidatePolicy).toHaveBeenCalledWith('policy-1');
       expect(mocks.eventEmitter.emit).toHaveBeenCalledWith(
@@ -245,28 +248,29 @@ describe('TASK-307 W6.2 — PolicyService (closes C-10 / H-9 / AC-24)', () => {
   describe('patch', () => {
     it('throws NotFound when the policy does not exist', async () => {
       const mocks = makeMocks();
-      mocks.prisma.policy.findUnique.mockResolvedValue(null);
+      mocks.policyRepo.findById.mockResolvedValue(null);
       const service = buildService(mocks);
       await expect(service.patch('missing', { name: 'x' })).rejects.toThrow(/Policy not found/);
-      expect(mocks.prisma.policy.update).not.toHaveBeenCalled();
+      expect(mocks.policyRepo.update).not.toHaveBeenCalled();
     });
 
     it('stamps resource-status fields when resourceStatus is provided and emits previousData', async () => {
       const mocks = makeMocks();
       const existing = makePolicyRow();
       const updated = makePolicyRow({ resourceStatus: 'DISABLED' });
-      mocks.prisma.policy.findUnique.mockResolvedValue(existing);
-      mocks.prisma.policy.update.mockResolvedValue(updated);
+      mocks.policyRepo.findById.mockResolvedValue(existing);
+      mocks.policyRepo.update.mockResolvedValue(updated);
       const service = buildService(mocks);
 
       await service.patch('policy-1', { resourceStatus: 'DISABLED' });
 
-      const callArg = mocks.prisma.policy.update.mock.calls[0][0];
-      expect(callArg.where).toEqual({ id: 'policy-1' });
-      expect(callArg.data.resourceStatus).toBe('DISABLED');
-      expect(callArg.data.resourceStatusUpdatedAt).toBeInstanceOf(Date);
-      expect(callArg.data.resourceStatusUpdatedBy).toBe(ADMIN_USER.id);
-      expect(callArg.data.updatedBy).toBe(ADMIN_USER.id);
+      expect(mocks.policyRepo.findById).toHaveBeenCalledWith('policy-1');
+      const [updateId, updateData] = mocks.policyRepo.update.mock.calls[0];
+      expect(updateId).toBe('policy-1');
+      expect(updateData.resourceStatus).toBe('DISABLED');
+      expect(updateData.resourceStatusUpdatedAt).toBeInstanceOf(Date);
+      expect(updateData.resourceStatusUpdatedBy).toBe(ADMIN_USER.id);
+      expect(updateData.updatedBy).toBe(ADMIN_USER.id);
 
       expect(mocks.engine.invalidatePolicy).toHaveBeenCalledWith('policy-1');
       expect(mocks.eventEmitter.emit).toHaveBeenCalledWith(
@@ -284,29 +288,21 @@ describe('TASK-307 W6.2 — PolicyService (closes C-10 / H-9 / AC-24)', () => {
   describe('softDelete', () => {
     it('throws NotFound when the policy does not exist', async () => {
       const mocks = makeMocks();
-      mocks.prisma.policy.findUnique.mockResolvedValue(null);
+      mocks.policyRepo.findById.mockResolvedValue(null);
       const service = buildService(mocks);
       await expect(service.softDelete('missing')).rejects.toThrow(/Policy not found/);
-      expect(mocks.prisma.policy.update).not.toHaveBeenCalled();
+      expect(mocks.policyRepo.softDelete).not.toHaveBeenCalled();
     });
 
     it('flips resourceStatus to DELETED, invalidates cache, and emits Deleted event', async () => {
       const mocks = makeMocks();
-      mocks.prisma.policy.findUnique.mockResolvedValue({ name: 'team-policy' });
-      mocks.prisma.policy.update.mockResolvedValue(makePolicyRow({ resourceStatus: ResourceStatusType.DELETED }));
+      mocks.policyRepo.findById.mockResolvedValue({ name: 'team-policy' });
       const service = buildService(mocks);
 
       const result = await service.softDelete('policy-1');
 
-      expect(mocks.prisma.policy.findUnique).toHaveBeenCalledWith({
-        where: { id: 'policy-1' },
-        select: { name: true },
-      });
-      const updateCall = mocks.prisma.policy.update.mock.calls[0][0];
-      expect(updateCall.where).toEqual({ id: 'policy-1' });
-      expect(updateCall.data.resourceStatus).toBe(ResourceStatusType.DELETED);
-      expect(updateCall.data.resourceStatusUpdatedAt).toBeInstanceOf(Date);
-      expect(updateCall.data.resourceStatusUpdatedBy).toBe(ADMIN_USER.id);
+      expect(mocks.policyRepo.findById).toHaveBeenCalledWith('policy-1');
+      expect(mocks.policyRepo.softDelete).toHaveBeenCalledWith('policy-1', ADMIN_USER.id);
 
       expect(mocks.engine.invalidatePolicy).toHaveBeenCalledWith('policy-1');
       expect(mocks.eventEmitter.emit).toHaveBeenCalledWith(
