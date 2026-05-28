@@ -144,46 +144,131 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // 3. Cross-tenant carry-through — AC-3 / C-12
+  // 3. Cross-tenant carry-through — AC-3 / C-12 (TASK-309 AC-1 upgrade)
   // ---------------------------------------------------------------------------
   //
-  // TASK-307 W7.A.2 — known gap: this test verifies the *stability* contract
-  // of AC-3 (the refreshed access token keeps the same tenantId as the
-  // original login), which is sufficient to pin the C-12 fix today.
-  // A stronger "actual rejection" probe would mint a tenant-A refresh
-  // token and POST it from a tenant-B context to confirm 401, or seed a
-  // multi-tenant user with assignments in two different tenants and
-  // verify that a refresh stays bound to the originally-selected tenant.
-  // The seed harness does not currently expose that fixture; flagged as a
-  // §10 deferral in `docs/implementation/TASK-307-API-Gateway-Hardening/
-  // README.md` for a future E2E enhancement.
-  test('TASK-307 W1.7 — refreshed access token stays scoped to the original issuing tenant', async ({
+  // TASK-309 AC-1 — replaces the TASK-307 W7.A.2 stability test. The
+  // older test logged in a single tenant and asserted that the rotated
+  // access token kept the same tenantId — which was sufficient to pin
+  // the C-12 fix but did not actively prove that rotation is BOUND to
+  // the refresh token's stored tenantId (and not, say, derived from a
+  // bearer header or from `user.tenantId`).
+  //
+  // The genuine probe in this revision:
+  //
+  //   1. Logs `super_admin` into BOTH `__GLOBAL__` and `ARCAAI` (the
+  //      seed already grants super_admin platform-wide membership).
+  //      This gives two refresh tokens for the SAME user, each bound
+  //      to a different tenant in Redis.
+  //   2. Confirms each login's access token actually carries the
+  //      requested tenantId — sanity for the assertion that follows.
+  //   3. Rotates `refreshA` (the `__GLOBAL__` token) while sending
+  //      `tokenB` (the `ARCAAI` access token) as the bearer header.
+  //      If a future regression made `/auth/refresh` honour the
+  //      bearer (e.g. by deriving tenantId from it), the rotated token
+  //      would carry the ARCAAI id — which is the cross-tenant
+  //      hijack this test must catch. The current production code
+  //      ignores the bearer on `/auth/refresh` and reads tenantId off
+  //      the stored refresh-token record, so the rotated token must
+  //      stay scoped to `__GLOBAL__`.
+  //   4. Replays the original `refreshA` to trigger the RFC 6749 §10.4
+  //      family-revoke path; asserts the replay 401s AND the rotated
+  //      successor 401s on its next rotation (family revoked).
+  //   5. Independently rotates `refreshB` — the ARCAAI family must
+  //      remain untouched by the `__GLOBAL__` family revocation
+  //      (cross-family isolation).
+  test('TASK-309 AC-1 — refresh-token rotation is bound to the issuing tenant even when a foreign-tenant bearer is sent', async ({
     request,
   }) => {
-    // tenant_admin logs in scoped to __GLOBAL__. The refreshed token MUST
-    // remain scoped to __GLOBAL__'s tenant id, NOT default to whatever
-    // User.tenantId currently resolves to (which is the audit finding C-12).
-    const login = await loginUser(
+    // ---- Step 1: dual-tenant bootstrap ----
+    const globalLogin = await loginUser(
       request,
-      SEEDED_USERS.admin.username,
-      SEEDED_USERS.admin.password,
+      SEEDED_USERS.superAdmin.username,
+      SEEDED_USERS.superAdmin.password,
       DEFAULT_TENANT_KEY,
     );
-    expect(login, 'admin login failed').toBeTruthy();
+    expect(globalLogin, 'super_admin login (__GLOBAL__) failed').toBeTruthy();
 
-    const originalTenantId = decodeJwtPayload(login!.token).tenantId;
-    expect(originalTenantId, 'login token must carry a tenantId').toBeDefined();
-
-    const rotation = await request.post('/api/v1/auth/refresh', {
-      data: { refreshToken: login!.refreshToken },
-    });
-    expect(rotation.status(), 'rotation must succeed').toBe(200);
-    const { token: rotatedAccessToken } = await rotation.json();
-
-    const rotatedTenantId = decodeJwtPayload(rotatedAccessToken).tenantId;
-    expect(rotatedTenantId, 'rotated access token preserves the original tenant scope').toBe(
-      originalTenantId,
+    const arcaaiLogin = await loginUser(
+      request,
+      SEEDED_USERS.superAdmin.username,
+      SEEDED_USERS.superAdmin.password,
+      'ARCAAI',
     );
+    expect(arcaaiLogin, 'super_admin login (ARCAAI) failed').toBeTruthy();
+
+    const tokenA = globalLogin!.token;
+    const refreshA = globalLogin!.refreshToken;
+    const tokenB = arcaaiLogin!.token;
+    const refreshB = arcaaiLogin!.refreshToken;
+
+    // ---- Step 2: sanity — the two tenant ids must actually differ ----
+    const tenantIdA = decodeJwtPayload(tokenA).tenantId;
+    const tenantIdB = decodeJwtPayload(tokenB).tenantId;
+    expect(tenantIdA, '__GLOBAL__ access token must carry a tenantId').toBeTruthy();
+    expect(tenantIdB, 'ARCAAI access token must carry a tenantId').toBeTruthy();
+    expect(
+      tenantIdA,
+      'sanity: the two logins should produce different tenantIds — otherwise this test is not actually cross-tenant',
+    ).not.toBe(tenantIdB);
+
+    // ---- Step 3: cross-tenant rotation attempt ----
+    // Attacker carries refreshA (stolen from tenant __GLOBAL__) and
+    // tokenB (their own ARCAAI access token), and sends the refresh
+    // request with the ARCAAI bearer attached. Production must read
+    // tenantId from the stored refresh record, NOT the bearer — so
+    // the rotated token stays scoped to __GLOBAL__.
+    const crossTenantRotation = await request.post('/api/v1/auth/refresh', {
+      headers: { Authorization: `Bearer ${tokenB}` },
+      data: { refreshToken: refreshA },
+    });
+    expect(
+      crossTenantRotation.status(),
+      'a refresh token is its own authority — the endpoint must rotate it regardless of the bearer',
+    ).toBe(200);
+    const rotatedA = await crossTenantRotation.json();
+    const rotatedTenantA = decodeJwtPayload(rotatedA.token).tenantId;
+    expect(
+      rotatedTenantA,
+      'cross-tenant carry-through: the rotated access token must stay scoped to the ORIGINAL tenant even when the bearer claims a different tenant',
+    ).toBe(tenantIdA);
+    expect(rotatedTenantA, 'rotated token must NOT drift to the bearer\'s tenant (ARCAAI)').not.toBe(tenantIdB);
+
+    // ---- Step 4: replay refreshA → 401 + family revoke ----
+    // refreshA was consumed in Step 3. Replaying it must trigger the
+    // reuse-detection branch in RefreshTokenService.consume — return
+    // 401 AND revoke every token in family A.
+    const replayA = await request.post('/api/v1/auth/refresh', {
+      data: { refreshToken: refreshA },
+    });
+    expect(replayA.status(), 'replaying a consumed refresh token must be 401').toBe(401);
+
+    // The rotated successor (rotatedA.refreshToken) is part of family A
+    // and must also be dead now — even though it has never been used.
+    const followUpA = await request.post('/api/v1/auth/refresh', {
+      data: { refreshToken: rotatedA.refreshToken },
+    });
+    expect(
+      followUpA.status(),
+      'family-revoke: rotated successor of the reused token must also be rejected',
+    ).toBe(401);
+
+    // ---- Step 5: cross-family isolation — refreshB still works ----
+    // Revoking family A must not collaterally damage family B (the
+    // ARCAAI session). The ARCAAI refresh token still rotates and the
+    // rotated access token stays ARCAAI-scoped.
+    const rotateB = await request.post('/api/v1/auth/refresh', {
+      data: { refreshToken: refreshB },
+    });
+    expect(
+      rotateB.status(),
+      'cross-family isolation: revoking family A must not affect family B',
+    ).toBe(200);
+    const rotatedB = await rotateB.json();
+    expect(
+      decodeJwtPayload(rotatedB.token).tenantId,
+      'rotated ARCAAI token must stay scoped to ARCAAI',
+    ).toBe(tenantIdB);
   });
 
   // ---------------------------------------------------------------------------
