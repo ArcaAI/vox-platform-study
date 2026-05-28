@@ -391,6 +391,138 @@ describe('TASK-307 W3.2 — TenantOwnedResourceInterceptor', () => {
     });
   });
 
+  // ─────────────────────────────────────────────────────────────────────
+  // TASK-308 AC-1 / AC-3 — `scope: 'creator'` opt-in (intra-tenant ownership).
+  //
+  // The default `scope` (omitted, or `'tenant'`) keeps the W3 tenant-only
+  // semantic. Setting `scope: 'creator'` additionally requires
+  // `status.userId === cls.user.id` after the tenant check passes. The 404
+  // (no-existence-leak) shape stays identical so a same-tenant probe of a
+  // peer's job is indistinguishable from a probe of a non-existent job.
+  // ─────────────────────────────────────────────────────────────────────
+  describe('ConsultationJob — scope:"creator" (TASK-308 AC-1 / AC-3)', () => {
+    it('passes through when same-tenant AND same-user (job owner)', async () => {
+      const harness = buildHarness({
+        reflectorReturns: {
+          modelName: 'ConsultationJob',
+          paramName: 'jobId',
+          scope: 'creator',
+        },
+        clsState: {
+          tenantId: SENTINEL_TENANT_A,
+          user: { id: 'user-1', tenantId: SENTINEL_TENANT_A },
+        },
+        params: { jobId: 'job-1' },
+      });
+      harness.services.consultationJob.getJobStatus.mockResolvedValueOnce({
+        jobId: 'job-1',
+        tenantId: SENTINEL_TENANT_A,
+        userId: 'user-1',
+      });
+
+      const result = await firstValueFrom(await harness.interceptor.intercept(harness.ctx, harness.next));
+
+      expect(result).toBe(NEXT_VALUE);
+      expect(harness.next.handle).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws 404 on same-tenant cross-user probe (peer cannot mutate)', async () => {
+      const harness = buildHarness({
+        reflectorReturns: {
+          modelName: 'ConsultationJob',
+          paramName: 'jobId',
+          scope: 'creator',
+        },
+        clsState: {
+          tenantId: SENTINEL_TENANT_A,
+          user: { id: 'attacker-user', tenantId: SENTINEL_TENANT_A },
+        },
+        params: { jobId: 'job-1' },
+      });
+      harness.services.consultationJob.getJobStatus.mockResolvedValueOnce({
+        jobId: 'job-1',
+        tenantId: SENTINEL_TENANT_A,
+        userId: 'victim-user',
+      });
+
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(harness.next.handle).not.toHaveBeenCalled();
+    });
+
+    it('throws 404 on cross-tenant probe regardless of scope:"creator"', async () => {
+      const harness = buildHarness({
+        reflectorReturns: {
+          modelName: 'ConsultationJob',
+          paramName: 'jobId',
+          scope: 'creator',
+        },
+        clsState: {
+          tenantId: SENTINEL_TENANT_A,
+          user: { id: 'user-1', tenantId: SENTINEL_TENANT_A },
+        },
+        params: { jobId: 'job-1' },
+      });
+      harness.services.consultationJob.getJobStatus.mockResolvedValueOnce({
+        jobId: 'job-1',
+        tenantId: SENTINEL_TENANT_B,
+        userId: 'user-1',
+      });
+
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(harness.next.handle).not.toHaveBeenCalled();
+    });
+
+    it('throws 404 when scope:"creator" but CLS user is missing', async () => {
+      const harness = buildHarness({
+        reflectorReturns: {
+          modelName: 'ConsultationJob',
+          paramName: 'jobId',
+          scope: 'creator',
+        },
+        clsState: { tenantId: SENTINEL_TENANT_A },
+        params: { jobId: 'job-1' },
+      });
+      harness.services.consultationJob.getJobStatus.mockResolvedValueOnce({
+        jobId: 'job-1',
+        tenantId: SENTINEL_TENANT_A,
+        userId: 'user-1',
+      });
+
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('throws 404 when scope:"creator" but the job status carries no userId (pre-W7.A.12 Redis row)', async () => {
+      const harness = buildHarness({
+        reflectorReturns: {
+          modelName: 'ConsultationJob',
+          paramName: 'jobId',
+          scope: 'creator',
+        },
+        clsState: {
+          tenantId: SENTINEL_TENANT_A,
+          user: { id: 'user-1', tenantId: SENTINEL_TENANT_A },
+        },
+        params: { jobId: 'job-1' },
+      });
+      // Pre-W7.A.12 Redis row — tenantId present (from a TASK-307 W3 deploy
+      // window), but userId absent. The interceptor must 404, not crash.
+      harness.services.consultationJob.getJobStatus.mockResolvedValueOnce({
+        jobId: 'job-1',
+        tenantId: SENTINEL_TENANT_A,
+      });
+
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
   describe('Reflector contract', () => {
     it('looks up the metadata using TENANT_OWNED_RESOURCE_KEY via getAllAndOverride(handler, class)', async () => {
       const harness = buildHarness({ reflectorReturns: undefined });

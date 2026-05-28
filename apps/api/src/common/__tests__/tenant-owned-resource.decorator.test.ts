@@ -51,6 +51,27 @@ describe('TASK-307 W3.1 — @TenantOwnedResource decorator', () => {
     expect(meta).toEqual({ modelName: 'TenantBucket', paramName: 'name', lookup: 'name' });
   });
 
+  // TASK-308 AC-1 — `scope` field carries the intra-tenant ownership opt-in.
+  it('preserves the optional `scope` field on the metadata payload', () => {
+    class JobLike {
+      @TenantOwnedResource({ modelName: 'ConsultationJob', paramName: 'jobId', scope: 'creator' })
+      cancelJob(): void {
+        // marker handler
+      }
+    }
+
+    const meta = Reflect.getMetadata(
+      TENANT_OWNED_RESOURCE_KEY,
+      JobLike.prototype.cancelJob,
+    ) as TenantOwnedResourceOptions;
+
+    expect(meta).toEqual({
+      modelName: 'ConsultationJob',
+      paramName: 'jobId',
+      scope: 'creator',
+    });
+  });
+
   it('supports each of the four model names enumerated by AC-7', () => {
     class CoverageController {
       @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
