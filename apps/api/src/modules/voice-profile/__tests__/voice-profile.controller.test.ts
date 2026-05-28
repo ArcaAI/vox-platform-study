@@ -1,6 +1,10 @@
 import { ResourceStatusType } from '@arcaai/domains';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { VoiceProfileController } from '../voice-profile.controller';
+import {
+  TENANT_OWNED_RESOURCE_KEY,
+  type TenantOwnedResourceOptions,
+} from '../../../common/tenant-owned-resource.decorator';
 
 const mockVoiceProfileService = {
   enroll: vi.fn(),
@@ -161,6 +165,38 @@ describe('VoiceProfileController', () => {
         VoiceProfileController.prototype.deleteById,
       );
       expect(permissions).toEqual([{ action: 'delete', subject: 'UserVoiceProfile' }]);
+    });
+  });
+
+  // ------------------------------------------------------------------------
+  // TASK-307 W3.7 — every voice-profile-by-id mutation must carry
+  // @TenantOwnedResource so the global interceptor 404s probes of a profile
+  // owned by another user (AC-11). Closes audit C-5 (BLOCKER).
+  // ------------------------------------------------------------------------
+  describe('TASK-307 W3.7 — @TenantOwnedResource metadata', () => {
+    const meta = (m: keyof VoiceProfileController): TenantOwnedResourceOptions | undefined =>
+      Reflect.getMetadata(
+        TENANT_OWNED_RESOURCE_KEY,
+        VoiceProfileController.prototype[m] as object,
+      ) as TenantOwnedResourceOptions | undefined;
+
+    const expected = { modelName: 'UserVoiceProfile', paramName: 'id' };
+
+    it('activate is annotated', () => {
+      expect(meta('activate')).toEqual(expected);
+    });
+
+    it('deactivate is annotated', () => {
+      expect(meta('deactivate')).toEqual(expected);
+    });
+
+    it('deleteById is annotated', () => {
+      expect(meta('deleteById')).toEqual(expected);
+    });
+
+    it('enroll and list are NOT annotated (no :id route param — list returns only the caller’s rows)', () => {
+      expect(meta('enroll')).toBeUndefined();
+      expect(meta('list')).toBeUndefined();
     });
   });
 });
