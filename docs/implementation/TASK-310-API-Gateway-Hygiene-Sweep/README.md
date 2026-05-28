@@ -120,7 +120,7 @@ Not strictly ordered — each sub-task is independent. Suggested by impact:
 | # | Sub-id / AC | Status | Notes |
 |---|---|---|---|
 | 1 | W7.A.14 / AC-1 | Completed | Code-to-status mapping moved into `ExceptionInterceptor` (the registered handler); filter remains as dead-code defense-in-depth with updated TSDoc. 5 new tests pin P2002→409, P2025→404, P2003/P2014→400, default→400, no-leak. |
-| 2 | E-6 / AC-6 | Pending | — |
+| 2 | E-6 / AC-6 | Completed | `apps/api/src/types/request-with-auth.ts` adds the narrowed `Request` extension; `stt-internal.controller.ts` and `jwtauth.guard.ts` updated to use it. Type test pins typo rejection via `@ts-expect-error`; runtime test pins behaviour in `stt-internal.controller.test.ts`. Cross-package callsite in `unified-auth.guard.ts:145` left untouched (out of scope per ticket constraints). |
 | 3 | E-5 / AC-5 | Pending | — |
 | 4 | E-2 / AC-4 | Pending | — |
 | 5 | E-10 / AC-9 | Pending | — |
@@ -138,3 +138,4 @@ Not strictly ordered — each sub-task is independent. Suggested by impact:
 |---|---|---|
 | 2026-05-28 | Ticket created from TASK-307 §10.1 deferrals (W7.A.4 + W7.A.9 + W7.A.14 + E-2 + E-5 + E-6 + E-7 + E-8 + E-10 + E-11) | — |
 | 2026-05-28 | W7.A.14 / AC-1: map Prisma error codes to proper HTTP status in `ExceptionInterceptor` (P2002→409, P2025→404, P2003/P2014→400, default→400). Updated filter TSDoc to reflect that the live mapping is in the interceptor. | `apps/api/src/interceptors/exception.interceptor.ts`, `apps/api/src/interceptors/__tests__/exception.interceptor.test.ts`, `apps/api/src/filters/prisma.filter.ts` |
+| 2026-05-28 | E-6 / AC-6: introduce `RequestWithAuth` typed Express `Request` extension. Replaces `request['apiKey']` bracket-lookups and inline anonymous shapes in `stt-internal.controller.ts` + `jwtauth.guard.ts`. Type test pins typo rejection (`request.aip_key` no longer compiles); runtime test pins behaviour. | `apps/api/src/types/request-with-auth.ts` (NEW), `apps/api/src/types/__tests__/request-with-auth.test.ts` (NEW), `apps/api/src/modules/internal/stt-internal.controller.ts`, `apps/api/src/modules/internal/__tests__/stt-internal.controller.test.ts` (NEW), `apps/api/src/guards/jwtauth.guard.ts` |
