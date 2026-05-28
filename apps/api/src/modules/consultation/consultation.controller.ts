@@ -141,6 +141,12 @@ export class ConsultationController {
   /**
    * Check if consultation sharing is enabled for the current tenant.
    * Reads the `enable-consultation-sharing` feature flag from GlobalSetting.
+   *
+   * TASK-307 W5.4 (AC-18, audit D-2): default-CLOSED. The flag must be
+   * EXPLICITLY set to the string `'true'` to enable shared-patient reads.
+   *   - missing row    -> false
+   *   - any other value -> false
+   *   - DB error       -> false (fail-closed, log for ops)
    */
   private async isSharingEnabled(): Promise<boolean> {
     const tenantId = this.cls.get('tenantId');
@@ -152,11 +158,14 @@ export class ConsultationController {
           key: 'enable-consultation-sharing',
         },
       });
-      const setting = settings[0];
-      if (!setting) return true;
-      return setting.value !== 'false';
-    } catch {
-      return true;
+      return settings[0]?.value === 'true';
+    } catch (err) {
+      this.logger.warn({
+        message: 'isSharingEnabled lookup failed; defaulting to CLOSED',
+        tenantId,
+        error: (err as Error)?.message,
+      });
+      return false;
     }
   }
 

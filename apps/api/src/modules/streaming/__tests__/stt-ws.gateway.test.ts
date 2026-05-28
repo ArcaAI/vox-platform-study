@@ -110,24 +110,28 @@ describe('SttWsGateway', () => {
             expect(mockStreamTicketService.consumeTicket).toHaveBeenCalledWith('valid-ticket');
         });
 
-        it('should reject connection without sessionId (TASK-298 D-1)', async () => {
+        // TASK-307 W5.8 (AC-22, audit D-8) updated these from per-cause
+        // (MISSING_PARAM / AUTH_FAILED with descriptive reasons) to the
+        // single generic 4401 + "Authentication failed". The per-cause
+        // truth table now lives in the W5.8 describe block below.
+        it('should reject connection without sessionId (TASK-298 D-1, retuned by W5.8)', async () => {
             const client = createMockSocket();
             await gateway.handleConnection(client as any, { url: '/ws/stt-v2/stream' } as any);
 
             expect(client.close).toHaveBeenCalledWith(
-                WS_CLOSE_CODES.MISSING_PARAM,
-                expect.stringContaining('sessionId'),
+                WS_CLOSE_CODES.AUTH_FAILED,
+                'Authentication failed',
             );
             expect(mockStreamTicketService.consumeTicket).not.toHaveBeenCalled();
         });
 
-        it('should reject connection without ticket (TASK-298 D-1)', async () => {
+        it('should reject connection without ticket (TASK-298 D-1, retuned by W5.8)', async () => {
             const client = createMockSocket();
             await gateway.handleConnection(client as any, { url: '/ws/stt-v2/stream?sessionId=foo' } as any);
 
             expect(client.close).toHaveBeenCalledWith(
-                WS_CLOSE_CODES.MISSING_PARAM,
-                expect.stringContaining('ticket'),
+                WS_CLOSE_CODES.AUTH_FAILED,
+                'Authentication failed',
             );
             expect(mockStreamTicketService.consumeTicket).not.toHaveBeenCalled();
         });
@@ -143,12 +147,12 @@ describe('SttWsGateway', () => {
 
             expect(client.close).toHaveBeenCalledWith(
                 WS_CLOSE_CODES.AUTH_FAILED,
-                expect.stringContaining('Invalid'),
+                'Authentication failed',
             );
             expect(mockBridgeService.subscribeToResults).not.toHaveBeenCalled();
         });
 
-        it('should reject connection when ticket scope does not match sessionId (TASK-298 D-1)', async () => {
+        it('should reject connection when ticket scope does not match sessionId (TASK-298 D-1, retuned by W5.8)', async () => {
             const client = createMockSocket();
             mockStreamTicketService.consumeTicket.mockResolvedValueOnce({
                 userId: 'u-1',
@@ -165,7 +169,7 @@ describe('SttWsGateway', () => {
 
             expect(client.close).toHaveBeenCalledWith(
                 WS_CLOSE_CODES.AUTH_FAILED,
-                expect.stringContaining('scope'),
+                'Authentication failed',
             );
             expect(mockBridgeService.subscribeToResults).not.toHaveBeenCalled();
         });
@@ -179,6 +183,148 @@ describe('SttWsGateway', () => {
                 mockBridgeService.subscribeToResults as any,
             );
             expect(mockBridgeService.subscribeToResults).toHaveBeenCalledWith('sess-sub');
+        });
+
+        // TASK-307 W5.8 (AC-22, audit D-8) — every handshake-rejection
+        // path must close with the SAME generic code (4401) and the same
+        // constant reason, regardless of cause. Differentiating
+        // `4001 missing param` from `4401 invalid ticket` lets a probing
+        // client enumerate valid session ids. The real reason still
+        // lives in the server-side warn log.
+        describe('TASK-307 W5.8 — generic 4401 close code on EVERY handshake failure (AC-22, audit D-8)', () => {
+            const GENERIC_CODE = 4401;
+            const GENERIC_REASON_RE = /^Authentication failed$/;
+
+            it('missing sessionId -> 4401 with the generic reason (no "sessionId" in the wire reason)', async () => {
+                const client = createMockSocket();
+                await gateway.handleConnection(client as any, { url: '/ws/stt-v2/stream' } as any);
+
+                const [code, reason] = (client.close as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+                expect(code).toBe(GENERIC_CODE);
+                expect(String(reason)).toMatch(GENERIC_REASON_RE);
+            });
+
+            it('missing ticket -> 4401 with the generic reason (no "ticket" in the wire reason)', async () => {
+                const client = createMockSocket();
+                await gateway.handleConnection(
+                    client as any,
+                    { url: '/ws/stt-v2/stream?sessionId=sess-x' } as any,
+                );
+
+                const [code, reason] = (client.close as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+                expect(code).toBe(GENERIC_CODE);
+                expect(String(reason)).toMatch(GENERIC_REASON_RE);
+            });
+
+            it('invalid ticket -> 4401 (unchanged, but reason now generic, not "Invalid …")', async () => {
+                const client = createMockSocket();
+                mockStreamTicketService.consumeTicket.mockResolvedValueOnce(null);
+
+                await gateway.handleConnection(
+                    client as any,
+                    { url: '/ws/stt-v2/stream?sessionId=sess-x&ticket=invalid' } as any,
+                );
+
+                const [code, reason] = (client.close as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+                expect(code).toBe(GENERIC_CODE);
+                expect(String(reason)).toMatch(GENERIC_REASON_RE);
+            });
+
+            it('scope mismatch -> 4401 (unchanged code, but reason now generic, not "… scope …")', async () => {
+                const client = createMockSocket();
+                mockStreamTicketService.consumeTicket.mockResolvedValueOnce({
+                    userId: 'u-1',
+                    tenantId: 't-1',
+                    scope: 'stt_session:OTHER_SESSION',
+                    exp: Date.now() + 30_000,
+                    impersonatedBy: null,
+                });
+
+                await gateway.handleConnection(
+                    client as any,
+                    { url: '/ws/stt-v2/stream?sessionId=sess-x&ticket=t' } as any,
+                );
+
+                const [code, reason] = (client.close as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+                expect(code).toBe(GENERIC_CODE);
+                expect(String(reason)).toMatch(GENERIC_REASON_RE);
+            });
+
+            it('all four rejection paths emit identical (code, reason) tuples (no enumeration signal)', async () => {
+                const cases: Array<() => Promise<unknown>> = [
+                    // missing sessionId
+                    async () => {
+                        const c = createMockSocket();
+                        await gateway.handleConnection(c as any, { url: '/ws/stt-v2/stream' } as any);
+                        return (c.close as ReturnType<typeof vi.fn>).mock.calls[0];
+                    },
+                    // missing ticket
+                    async () => {
+                        const c = createMockSocket();
+                        await gateway.handleConnection(
+                            c as any,
+                            { url: '/ws/stt-v2/stream?sessionId=s' } as any,
+                        );
+                        return (c.close as ReturnType<typeof vi.fn>).mock.calls[0];
+                    },
+                    // invalid ticket
+                    async () => {
+                        mockStreamTicketService.consumeTicket.mockResolvedValueOnce(null);
+                        const c = createMockSocket();
+                        await gateway.handleConnection(
+                            c as any,
+                            { url: '/ws/stt-v2/stream?sessionId=s&ticket=invalid' } as any,
+                        );
+                        return (c.close as ReturnType<typeof vi.fn>).mock.calls[0];
+                    },
+                    // scope mismatch
+                    async () => {
+                        mockStreamTicketService.consumeTicket.mockResolvedValueOnce({
+                            userId: 'u-1',
+                            tenantId: 't-1',
+                            scope: 'stt_session:OTHER',
+                            exp: Date.now() + 30_000,
+                            impersonatedBy: null,
+                        });
+                        const c = createMockSocket();
+                        await gateway.handleConnection(
+                            c as any,
+                            { url: '/ws/stt-v2/stream?sessionId=s&ticket=t' } as any,
+                        );
+                        return (c.close as ReturnType<typeof vi.fn>).mock.calls[0];
+                    },
+                ];
+
+                const tuples = await Promise.all(cases.map((fn) => fn()));
+                const first = JSON.stringify(tuples[0]);
+                for (const t of tuples) {
+                    expect(JSON.stringify(t)).toBe(first);
+                }
+            });
+
+            it('server-side warn log STILL records the REAL reason for ops (observability preserved)', async () => {
+                const warnSpy = vi.spyOn(Logger.prototype, 'warn');
+                warnSpy.mockClear();
+
+                const c1 = createMockSocket();
+                await gateway.handleConnection(c1 as any, { url: '/ws/stt-v2/stream' } as any);
+
+                mockStreamTicketService.consumeTicket.mockResolvedValueOnce(null);
+                const c2 = createMockSocket();
+                await gateway.handleConnection(
+                    c2 as any,
+                    { url: '/ws/stt-v2/stream?sessionId=s&ticket=bad' } as any,
+                );
+
+                // At least two distinct warn logs — one per cause — so SRE
+                // dashboards can still tell apart "missing sessionId" from
+                // "invalid ticket" even though the wire close is identical.
+                const messages = warnSpy.mock.calls
+                    .map((args) => (typeof args[0] === 'object' && args[0] !== null ? (args[0] as { message?: string }).message : String(args[0])))
+                    .filter(Boolean);
+                expect(messages.length).toBeGreaterThanOrEqual(2);
+                expect(new Set(messages).size).toBeGreaterThanOrEqual(2);
+            });
         });
     });
 

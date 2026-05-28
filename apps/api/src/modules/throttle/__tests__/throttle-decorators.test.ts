@@ -19,11 +19,17 @@ describe('Controller @Throttle() decorator overrides', () => {
         expect(ttl).toBe(60000);
     });
 
-    it('should apply relaxed throttle (300 req/60s) on ApiHealthController', async () => {
+    // TASK-307 W5.1 / AC-15 / audit D-11 — health throttle lowered from
+    // 300 → 30 req/min. With `/services{/:key}` now @Authorize()-gated
+    // and the SSRF amplifier surface (4 outbound calls per probe)
+    // shrinking accordingly, the generous default for the remaining
+    // probe endpoints (`/live`, `/ready`, `/startup`, `/`) is no
+    // longer necessary; Kubernetes probes operate well under 30/min.
+    it('should apply strict throttle (30 req/60s) on ApiHealthController', async () => {
         const { ApiHealthController } = await import('../../health/health.controller');
         const limit = Reflect.getMetadata(THROTTLER_LIMIT + 'default', ApiHealthController);
         const ttl = Reflect.getMetadata(THROTTLER_TTL + 'default', ApiHealthController);
-        expect(limit).toBe(300);
+        expect(limit).toBe(30);
         expect(ttl).toBe(60000);
     });
 

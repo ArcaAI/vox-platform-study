@@ -10,9 +10,12 @@ import {
   PaginatedTenantConfigResponse,
   GlobalSettingDtoMapper,
   UpdateTenantConfigRequest,
+  IActiveUserContext,
+  isSuperAdmin,
 } from '@arcaai/applications';
-import { Controller, Body, Param, Get, Inject, Query } from '@nestjs/common';
+import { Controller, Body, Param, Get, Inject, Query, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanManage } from '../../decorators';
 // TASK-302 Stream D Phase E.1 — `@RequiresIfMatch()` route marker +
 // `@ExpectedVersion()` param decorator. The route guard fires 428 when
@@ -30,7 +33,24 @@ export class TenantController {
   constructor(
     @Inject(ITenantService)
     private readonly tenantService: ITenantService,
+    private readonly cls: ClsService<IActiveUserContext>,
   ) {}
+
+  /**
+   * TASK-307 W5.5 (AC-19, audit D-5): the class-level `@CanManage('Tenant')`
+   * authorises any caller with `manage:Tenant` to reach the per-row routes,
+   * but the underlying CASL policy is `tenantId: ${user.tenantId}`. The
+   * `:id` path param breaks that condition silently — so each per-row
+   * handler must inline-assert the tenant scope itself. SUPER_ADMIN
+   * bypasses (cross-tenant ops are an operator's job).
+   */
+  private assertTenantInScope(targetTenantId: string): void {
+    const user = this.cls.get('user');
+    if (isSuperAdmin(user)) return;
+    if (!user?.tenantId || user.tenantId !== targetTenantId) {
+      throw new ForbiddenException('You do not have access to this tenant');
+    }
+  }
 
   @ApiEndpoint({
     returnedModel: TenantResponse,
@@ -76,6 +96,7 @@ export class TenantController {
   @ApiResponse({ status: 200, description: 'Tenant usage statistics', type: TenantUsageResponse })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
   async getUsage(@Param('id') id: string): Promise<TenantUsageResponse> {
+    this.assertTenantInScope(id);
     return this.tenantService.getUsageStats(id);
   }
 
@@ -100,6 +121,10 @@ export class TenantController {
   @ApiResponse({ status: 404, description: 'Tenant not found' })
   async fetchByCodeName(@Param('code-name') codeName: string): Promise<TenantResponse> {
     const result = await this.tenantService.fetchByCodeName(codeName);
+    // Guard runs AFTER the lookup because code-name is not the same as the
+    // tenant's UUID — we need the loaded row's `id` to compare against the
+    // caller's tenant.
+    this.assertTenantInScope(result.id);
     return TenantDtoMapper.ToResponse(result);
   }
 
@@ -137,6 +162,7 @@ export class TenantController {
     @Body() request: UpdateTenantRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<TenantResponse> {
+    this.assertTenantInScope(id);
     // TASK-302 Stream D Phase E.1 — header takes precedence over body
     // when both are present. On a `@RequiresIfMatch()` route, the param
     // decorator already fired 428 if the header would have been
@@ -159,6 +185,7 @@ export class TenantController {
   @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
   async delete(@Param('id') id: string): Promise<TenantResponse> {
+    this.assertTenantInScope(id);
     const result = await this.tenantService.deleteById(id);
     return TenantDtoMapper.ToResponse(result);
   }

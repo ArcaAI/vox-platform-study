@@ -44,22 +44,32 @@ export class ExceptionInterceptor implements NestInterceptor {
         };
 
         if (err instanceof PrismaClientKnownRequestError) {
+          // TASK-307 W5.6 (AC-20, audit D-6): the full Prisma error
+          // detail (code + meta + raw message) stays in the server-side
+          // log so SREs can debug, but the public response body collapses
+          // to {statusCode, error, correlationId} only — Prisma's meta
+          // and raw message leak column names, constraint names, and row
+          // ids.
           this.logger.error({
             message: 'Prisma database error',
             ...baseContext,
             errorCode: err.code,
             errorMeta: err.meta,
+            errorMessage: err.message,
             stack: err.stack,
           });
 
-          const errorResponse = {
-            status: HttpStatus.BAD_REQUEST,
-            error: 'Prisma Error',
-            message: err.message,
-            meta: err.meta,
-            correlationId: requestId,
-          };
-          return throwError(() => new HttpException(errorResponse, HttpStatus.BAD_REQUEST));
+          return throwError(
+            () =>
+              new HttpException(
+                {
+                  statusCode: HttpStatus.BAD_REQUEST,
+                  error: 'Bad Request',
+                  correlationId: requestId,
+                },
+                HttpStatus.BAD_REQUEST,
+              ),
+          );
         }
 
         if (err instanceof PrismaClientValidationError) {
@@ -70,13 +80,16 @@ export class ExceptionInterceptor implements NestInterceptor {
             stack: err.stack,
           });
 
+          // TASK-307 W5.6 — same sanitisation: no Prisma message in the
+          // public body. The pre-W5.6 body shape also already omitted
+          // `meta`, so this only flips `status` → `statusCode` and drops
+          // the raw validation message string.
           return throwError(
             () =>
               new HttpException(
                 {
-                  status: HttpStatus.BAD_REQUEST,
-                  error: 'Validation Error',
-                  message: 'Data validation failed before the database operation.',
+                  statusCode: HttpStatus.BAD_REQUEST,
+                  error: 'Bad Request',
                   correlationId: requestId,
                 },
                 HttpStatus.BAD_REQUEST,

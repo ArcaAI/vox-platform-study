@@ -1,16 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Test, TestingModule } from '@nestjs/testing';
-import { ITenantService, UnifiedAuthGuard } from '@arcaai/applications';
+import { ForbiddenException } from '@nestjs/common';
 import { TenantController } from '../tenant.controller';
 
 const REQUIRED_PERMISSIONS_KEY = 'required_permissions';
 const PERMISSION_MODE_KEY = 'permission_mode';
-
-class AlwaysAllowGuard {
-    canActivate() {
-        return true;
-    }
-}
 
 function createMockTenantService() {
     return {
@@ -27,32 +20,30 @@ function createMockTenantService() {
     };
 }
 
+// Direct construction mirrors the pattern used by every other controller
+// test in apps/api/src/modules/**/__tests__ (consultation, auth, etc.).
+// Default CLS = super-admin so the existing pre-W5.5 test blocks below
+// remain agnostic to the W5.5 tenant-scope guard.
+function createMockCls(user: { id?: string; tenantId?: string | null; roles?: string[] } | null = { id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }) {
+    return {
+        get: vi.fn((key: string) => {
+            if (key === 'user') return user;
+            if (key === 'tenantId') return user?.tenantId ?? undefined;
+            return undefined;
+        }),
+    };
+}
+
 describe('TenantController', () => {
     let controller: TenantController;
     let tenantService: ReturnType<typeof createMockTenantService>;
-    let module: TestingModule;
 
-    beforeEach(async () => {
+    beforeEach(() => {
         tenantService = createMockTenantService();
-
-        module = await Test.createTestingModule({
-            controllers: [TenantController],
-            providers: [
-                {
-                    provide: ITenantService,
-                    useValue: tenantService,
-                },
-            ],
-        })
-            // Replace the real authorization guard so the testing module does
-            // not need to wire IApiKeyService / PolicyEngine / Reflector / CLS.
-            // Class-level @CanManage('Tenant') metadata is asserted separately
-            // in the "Authorization metadata" test block.
-            .overrideGuard(UnifiedAuthGuard)
-            .useClass(AlwaysAllowGuard)
-            .compile();
-
-        controller = module.get<TenantController>(TenantController);
+        controller = new TenantController(
+            tenantService as never,
+            createMockCls() as never,
+        );
     });
 
     describe('Smoke', () => {
@@ -184,6 +175,163 @@ describe('TenantController', () => {
             // The version round-trips so the SDK can set
             // `If-Match: "<version>"` on the next PATCH without another GET.
             expect(response.version).toBe(8);
+        });
+    });
+
+    // TASK-307 W5.5 (AC-19, audit D-5) — every per-row endpoint must
+    // inline-assert that the caller is either a SUPER_ADMIN or operating
+    // on their own tenant. The class-level @CanManage('Tenant') was
+    // insufficient because that policy is `tenantId: ${user.tenantId}`
+    // and these methods take an arbitrary `:id` path parameter.
+    describe('TASK-307 W5.5 — inline tenant guards on per-row endpoints (AC-19, audit D-5)', () => {
+        function buildWithCls(user: { id?: string; tenantId?: string | null; roles?: string[] } | null) {
+            const svc = createMockTenantService();
+            svc.fetchById.mockResolvedValue({ id: 't-A', name: 'A', toObject: () => ({ id: 't-A' }) });
+            svc.fetchByCodeName.mockResolvedValue({ id: 't-A', name: 'A', toObject: () => ({ id: 't-A' }) });
+            svc.update.mockResolvedValue({ id: 't-A', name: 'A', version: 1, toObject: () => ({ id: 't-A', version: 1 }) });
+            svc.deleteById.mockResolvedValue({ id: 't-A', name: 'A', toObject: () => ({ id: 't-A' }) });
+            svc.getUsageStats.mockResolvedValue({ tenantId: 't-A', totalConsultations: 0 } as any);
+            const cls = createMockCls(user);
+            const c = new TenantController(svc as never, cls as never);
+            return { controller: c, tenantService: svc, cls };
+        }
+
+        describe('update(:id)', () => {
+            it('throws ForbiddenException when caller is NOT super-admin AND id != user.tenantId', async () => {
+                const { controller, tenantService } = buildWithCls({
+                    id: 'u-1',
+                    tenantId: 't-OWN',
+                    roles: ['DOCTOR'],
+                });
+                await expect(
+                    controller.update('t-OTHER', { name: 'x' } as any, 1),
+                ).rejects.toBeInstanceOf(ForbiddenException);
+                expect(tenantService.update).not.toHaveBeenCalled();
+            });
+
+            it('allows the call when caller is SUPER_ADMIN even if id != user.tenantId', async () => {
+                const { controller, tenantService } = buildWithCls({
+                    id: 'u-1',
+                    tenantId: 't-OWN',
+                    roles: ['SUPER_ADMIN'],
+                });
+                await controller.update('t-OTHER', { name: 'x' } as any, 1);
+                expect(tenantService.update).toHaveBeenCalledTimes(1);
+            });
+
+            it('allows the call when id === user.tenantId (own-tenant)', async () => {
+                const { controller, tenantService } = buildWithCls({
+                    id: 'u-1',
+                    tenantId: 't-OWN',
+                    roles: ['DOCTOR'],
+                });
+                await controller.update('t-OWN', { name: 'x' } as any, 1);
+                expect(tenantService.update).toHaveBeenCalledTimes(1);
+            });
+        });
+
+        describe('delete(:id)', () => {
+            it('throws ForbiddenException when caller is NOT super-admin AND id != user.tenantId', async () => {
+                const { controller, tenantService } = buildWithCls({
+                    id: 'u-1',
+                    tenantId: 't-OWN',
+                    roles: ['DOCTOR'],
+                });
+                await expect(controller.delete('t-OTHER')).rejects.toBeInstanceOf(ForbiddenException);
+                expect(tenantService.deleteById).not.toHaveBeenCalled();
+            });
+
+            it('allows the call when caller is SUPER_ADMIN', async () => {
+                const { controller, tenantService } = buildWithCls({
+                    id: 'u-1',
+                    tenantId: 't-OWN',
+                    roles: ['SUPER_ADMIN'],
+                });
+                await controller.delete('t-OTHER');
+                expect(tenantService.deleteById).toHaveBeenCalledTimes(1);
+            });
+        });
+
+        describe('getUsage(:id)', () => {
+            it('throws ForbiddenException when caller is NOT super-admin AND id != user.tenantId', async () => {
+                const { controller, tenantService } = buildWithCls({
+                    id: 'u-1',
+                    tenantId: 't-OWN',
+                    roles: ['DOCTOR'],
+                });
+                await expect(controller.getUsage('t-OTHER')).rejects.toBeInstanceOf(ForbiddenException);
+                expect(tenantService.getUsageStats).not.toHaveBeenCalled();
+            });
+
+            it('allows the call when caller is SUPER_ADMIN', async () => {
+                const { controller, tenantService } = buildWithCls({
+                    id: 'u-1',
+                    tenantId: 't-OWN',
+                    roles: ['SUPER_ADMIN'],
+                });
+                await controller.getUsage('t-OTHER');
+                expect(tenantService.getUsageStats).toHaveBeenCalledTimes(1);
+            });
+
+            it('allows the call when id === user.tenantId', async () => {
+                const { controller, tenantService } = buildWithCls({
+                    id: 'u-1',
+                    tenantId: 't-OWN',
+                    roles: ['DOCTOR'],
+                });
+                await controller.getUsage('t-OWN');
+                expect(tenantService.getUsageStats).toHaveBeenCalledTimes(1);
+            });
+        });
+
+        describe('fetchByCodeName(:code-name)', () => {
+            // codeName guard compares the LOADED tenant's id to the caller's
+            // tenantId — code-name is not the same as the row's UUID id.
+            it('throws ForbiddenException when caller is NOT super-admin AND loaded tenant.id != user.tenantId', async () => {
+                const { controller, tenantService } = buildWithCls({
+                    id: 'u-1',
+                    tenantId: 't-OWN',
+                    roles: ['DOCTOR'],
+                });
+                tenantService.fetchByCodeName.mockResolvedValue({
+                    id: 't-OTHER',
+                    name: 'Other',
+                    toObject: () => ({ id: 't-OTHER' }),
+                });
+                await expect(controller.fetchByCodeName('other-clinic')).rejects.toBeInstanceOf(
+                    ForbiddenException,
+                );
+            });
+
+            it('allows the call when caller is SUPER_ADMIN even for foreign code-name', async () => {
+                const { controller, tenantService } = buildWithCls({
+                    id: 'u-1',
+                    tenantId: 't-OWN',
+                    roles: ['SUPER_ADMIN'],
+                });
+                tenantService.fetchByCodeName.mockResolvedValue({
+                    id: 't-OTHER',
+                    name: 'Other',
+                    toObject: () => ({ id: 't-OTHER' }),
+                });
+                const r = await controller.fetchByCodeName('other-clinic');
+                expect(r.id).toBe('t-OTHER');
+            });
+
+            it('allows the call when loaded tenant.id === user.tenantId (own-tenant lookup by code-name)', async () => {
+                const { controller, tenantService } = buildWithCls({
+                    id: 'u-1',
+                    tenantId: 't-OWN',
+                    roles: ['DOCTOR'],
+                });
+                tenantService.fetchByCodeName.mockResolvedValue({
+                    id: 't-OWN',
+                    name: 'Own',
+                    toObject: () => ({ id: 't-OWN' }),
+                });
+                const r = await controller.fetchByCodeName('own-clinic');
+                expect(r.id).toBe('t-OWN');
+            });
         });
     });
 });
