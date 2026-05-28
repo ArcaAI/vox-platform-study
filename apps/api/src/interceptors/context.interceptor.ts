@@ -1,4 +1,4 @@
-import { Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
@@ -52,21 +52,24 @@ export class ContextInterceptor implements NestInterceptor {
     const clientIp = request.ip?.startsWith('::ffff:') ? request.ip.split(':').pop() : request.ip;
     this.tryClsSet('requestIp', clientIp);
 
-    // SEC-J / TASK-295 C-2: the `x-tenant-id` header MUST NOT override the
-    // JWT-derived CLS `tenantId` (`JwtStrategy.validate` is the single source
-    // of truth). The header is informational only — if a client supplies one
-    // that disagrees with the JWT we warn-log so monitoring can flag the
-    // misconfiguration or attack attempt.
+    // SEC-J / TASK-295 C-2 + TASK-307 W5.3 (AC-17, audit D-1): the
+    // `x-tenant-id` header MUST NOT override the JWT-derived CLS
+    // `tenantId` (`JwtStrategy.validate` is the single source of truth).
+    // Previously we warn-logged divergence and silently dropped the
+    // header — that turned the audit's "tenant confusion" probe into
+    // a noisy-but-passing request. We now reject it as 400 Bad Request
+    // so the caller cannot pretend they're in a different tenant.
     const tenantIdHeader = request.headers['x-tenant-id'];
     if (tenantIdHeader) {
       const clsUser = this.tryClsGet('user') as { tenantId?: string | null } | undefined;
       const jwtTenantId = clsUser?.tenantId ?? undefined;
       if (jwtTenantId && tenantIdHeader !== jwtTenantId) {
         this.logger.warn({
-          message: 'x-tenant-id header diverges from JWT-derived tenant; ignoring header',
+          message: 'x-tenant-id header diverges from JWT-derived tenant; rejecting request',
           tenantIdHeader,
           jwtTenantId,
         });
+        throw new BadRequestException('x-tenant-id header does not match the authenticated tenant');
       }
     }
 
