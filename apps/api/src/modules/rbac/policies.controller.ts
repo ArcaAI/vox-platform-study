@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Inject } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Inject, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { IPolicyService } from '@arcaai/applications';
 import { CanManage } from '../../decorators';
@@ -73,7 +73,13 @@ export class PoliciesController {
   async findOne(@Param('id') id: string): Promise<PolicyResponse> {
     const policy = await this.policyService.findOne(id);
     if (!policy) {
-      throw new Error('Policy not found');
+      // TASK-307 W7.A.17 — was `throw new Error('Policy not found')` which
+      // surfaced as a generic 500 to clients. Aligned with the `remove()`
+      // handler below (which already maps the service-thrown
+      // NestJS `NotFoundException` to 404 via the global filter) and with
+      // the existing RBAC E2E expectation pattern of `[404, 500]`
+      // (apps/api/tests/e2e/rbac.spec.ts).
+      throw new NotFoundException('Policy not found');
     }
     return this.toResponse(policy);
   }

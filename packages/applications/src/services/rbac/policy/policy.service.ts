@@ -26,6 +26,17 @@ import {
  * Direct `CoreDatabaseService` access here is legitimate (service layer)
  * and intentionally NOT a candidate for the W6.4 ESLint allow-list —
  * that rule scopes the ban to `apps/api/src/modules/**`.
+ *
+ * TASK-307 W7.A.15 (carryover note from W6 review) — §H-9 partial
+ * closure: the original audit recommended migrating policy + role
+ * management through `PolicyRepository` / `RolePolicyRepository`
+ * facades (so soft-delete, audit hooks, and tenant scoping are
+ * uniform with the rest of the domain layer). W6 chose verbatim
+ * behaviour preservation to keep the RBAC E2E suite green without
+ * introducing repository surface that no other consumer needs today.
+ * A dedicated `PolicyRepository` + extraction PR is tracked as a §10
+ * deferral in `docs/implementation/TASK-307-API-Gateway-Hardening/
+ * README.md`.
  */
 @Injectable()
 export class PolicyService extends BaseService implements IPolicyService {
@@ -50,6 +61,16 @@ export class PolicyService extends BaseService implements IPolicyService {
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
+    // TASK-307 W7.A.16 (carryover note from W6 review) — `BaseService`
+    // is initialized with `ResourceType.Permission`, NOT
+    // `ResourceType.Policy`. This is intentional behaviour
+    // preservation: the pre-W6 `PoliciesController` emitted SysEvents
+    // (`ResourceCreated`, `ResourceUpdated`, `ResourceDeleted`) with
+    // `resourceType: 'Permission'` so downstream audit-log readers and
+    // notification subscribers are wired against that string. Changing
+    // it would silently break those consumers. If/when the RBAC audit
+    // wire format is migrated to `Policy`, do it as a coordinated
+    // event-schema change (see TASK-307 §10 deferrals).
     super(eventEmitter, clsService, ResourceType.Permission);
   }
 

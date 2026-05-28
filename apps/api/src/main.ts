@@ -360,10 +360,14 @@ async function bootstrap() {
     'Bootstrap',
   );
 
-  // Phase 0 Item 3 (TASK-302 Stream A) — refuse to start if any admin
-  // route lacks an explicit permission decorator. Throws an Error that
-  // propagates out of bootstrap() and terminates the process before
-  // any request can be served.
+  // TASK-307 W4a.1 — refuse to start if ANY HTTP route lacks both
+  // `@Public()` and a permission decorator (`@Authorize` / `@CanXxx`).
+  // Originally `Phase 0 Item 3 (TASK-302 Stream A)` covered only
+  // `/admin/*`; W4a.1 widened the walk to every route so drift surfaces
+  // at boot rather than silently leaking PHI in production. Throws an
+  // Error that propagates out of bootstrap() and terminates the process
+  // before any request can be served. The runtime guard flip (W4b) made
+  // the same posture authoritative at request time via `APP_GUARD`.
   auditAdminRoutePermissions(app);
 
   await app.listen(port);
