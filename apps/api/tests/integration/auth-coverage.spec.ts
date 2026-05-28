@@ -37,11 +37,22 @@
  * `UnifiedAuthGuard` as `APP_GUARD` to make the runtime default deny.
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
-import { Reflector, MetadataScanner } from '@nestjs/core';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { Reflector, MetadataScanner, APP_GUARD } from '@nestjs/core';
 import { METHOD_METADATA, MODULE_METADATA, PATH_METADATA } from '@nestjs/common/constants';
-import { RequestMethod, type DynamicModule, type Type } from '@nestjs/common';
-import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY } from '@arcaai/applications';
+import { Controller, Get, RequestMethod, type DynamicModule, type INestApplication, type Type } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { ClsModule } from 'nestjs-cls';
+import request from 'supertest';
+import {
+  Authorize,
+  IApiKeyService,
+  PolicyEngine,
+  Public,
+  REQUIRED_PERMISSIONS_KEY,
+  SKIP_AUTH_KEY,
+  UnifiedAuthGuard,
+} from '@arcaai/applications';
 import { AppModule } from '../../src/app.module';
 
 // Side-effect import — applies @Public() to third-party controllers.
@@ -222,5 +233,126 @@ describe('TASK-307 W4a.2 / AC-13 part 1 — every AppModule route is labeled (@P
     }
 
     expect(drift).toEqual([]);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// TASK-307 W4b — Global APP_GUARD runtime walk (synthetic module).
+//
+// Why a synthetic module instead of `Test.createTestingModule({ imports:
+// [AppModule] }).compile()` (which the plan README §3 lists for AC-13
+// part 2): booting AppModule from a unit/integration test hangs.
+// AppModule's eager DI graph opens BullMQ workers (each ioredis-backed),
+// runs `Issuer.discover()` against an external OIDC provider, and fires
+// `AppSettingsService.initializeCache()` (Prisma calls). `compile()`
+// never returns in this environment. See W4b dispatch prompt Step 0 for
+// the previous agent's full investigation summary.
+//
+// Option A (locked in by user, 2026-05-28): validate the guard CONTRACT
+// directly with a synthetic test module that wires `UnifiedAuthGuard`
+// as `APP_GUARD` + the three minimal fixture controllers needed to
+// observe the runtime behaviour. Route-table coverage against the
+// production AppModule remains the responsibility of W4a's static
+// metadata walk above + the boot-time `auditAdminRoutePermissions`
+// check (widened in W4a).
+//
+// W7 follow-up: file a deferred task to build a proper AppModule
+// integration test harness — likely a `TestAppModule` that re-exports
+// AppModule's controllers + providers but stubs the infra-heavy
+// modules. Not in TASK-307 scope.
+// ────────────────────────────────────────────────────────────────────────────
+
+@Controller('test/unprotected')
+class _UnprotectedFixtureController {
+  @Get()
+  get() {
+    return { ok: true };
+  }
+}
+
+@Controller('test/public')
+class _PublicFixtureController {
+  @Get()
+  @Public()
+  get() {
+    return { ok: true };
+  }
+}
+
+@Controller('test/authorized')
+class _AuthorizedFixtureController {
+  @Get()
+  @Authorize()
+  get() {
+    return { ok: true };
+  }
+}
+
+describe('TASK-307 W4b / AC-13 part 2 — global APP_GUARD runtime walk (synthetic module)', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        ClsModule.forRoot({
+          global: true,
+          middleware: { mount: true },
+        }),
+      ],
+      controllers: [_UnprotectedFixtureController, _PublicFixtureController, _AuthorizedFixtureController],
+      providers: [
+        Reflector,
+        {
+          provide: IApiKeyService,
+          useValue: {
+            extractApiKeyFromRequest: () => null,
+            authenticateByRawKey: () => {
+              throw new Error('IApiKeyService.authenticateByRawKey should not be called in W4b synthetic tests');
+            },
+            hasScope: () => false,
+          },
+        },
+        // Stub PolicyEngine so UnifiedAuthGuard can resolve its dependency;
+        // never invoked because the synthetic flow never reaches JWT post-auth
+        // (no JWT_AUTH_GUARD provider → guard short-circuits to 401).
+        {
+          provide: PolicyEngine,
+          useValue: {
+            buildAbility: () => {
+              throw new Error('PolicyEngine.buildAbility should not be called in W4b synthetic tests');
+            },
+          },
+        },
+        // The runtime flip — registers `UnifiedAuthGuard` as the
+        // application-wide guard. With this in place, the unprotected
+        // fixture controller now returns 401 by default; @Public() opts
+        // out; @Authorize() routes still require auth.
+        { provide: APP_GUARD, useClass: UnifiedAuthGuard },
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    if (app) await app.close();
+  });
+
+  it('unprotected fixture controller returns 401 without Authorization header', async () => {
+    const res = await request(app.getHttpServer()).get('/test/unprotected');
+    expect(res.status).toBe(401);
+  });
+
+  it('@Public() fixture controller returns NOT 401 without Authorization header', async () => {
+    const res = await request(app.getHttpServer()).get('/test/public');
+    expect(res.status).not.toBe(401);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+  });
+
+  it('@Authorize() fixture controller returns 401 without Authorization header', async () => {
+    const res = await request(app.getHttpServer()).get('/test/authorized');
+    expect(res.status).toBe(401);
   });
 });
