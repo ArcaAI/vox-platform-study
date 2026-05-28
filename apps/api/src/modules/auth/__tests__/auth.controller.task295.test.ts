@@ -49,6 +49,17 @@ function createMockAppSettings() {
     };
 }
 
+// TASK-307 W2.3 — AuthController now reads JWT_SECRET_KEY exclusively
+// from SecretsService. Tests inject this mock as the 12th constructor
+// arg.
+function createMockSecrets() {
+    return {
+        getSecretSync: vi.fn((key: string) =>
+            key === 'JWT_SECRET_KEY' ? 'test-secret-key' : undefined,
+        ),
+    };
+}
+
 function createMockAuthService() {
     return {
         trackAuthentication: vi.fn().mockResolvedValue(undefined),
@@ -112,6 +123,7 @@ function buildController(opts: {
         opts.jwtRevocationService ?? { revoke: vi.fn(), isRevoked: vi.fn().mockResolvedValue(false) };
     const streamTicketService = { issueTicket: vi.fn(), consumeTicket: vi.fn() };
 
+    const secretsService = createMockSecrets();
     const controller = new AuthController(
         {} as never, // userService
         authService as never,
@@ -124,6 +136,7 @@ function buildController(opts: {
         cls as never,
         streamTicketService as never,
         jwtRevocationService as never,
+        secretsService as never,
     );
     return { controller, cls, jwtRevocationService, databaseService, userRepository, authService };
 }
