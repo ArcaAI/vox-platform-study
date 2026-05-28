@@ -1,4 +1,4 @@
-import { IActiveUserContext, IAppSettingsService, IAuthService, IJwtRevocationService, IUserService, createJwt } from '@arcaai/applications';
+import { IActiveUserContext, IAppSettingsService, IAuthService, IJwtRevocationService, IUserService, SecretsService, createJwt } from '@arcaai/applications';
 import {
   CoreDatabaseService,
   ResourceStatusType,
@@ -61,6 +61,7 @@ export class AuthController {
     private readonly clsService: ClsService<IActiveUserContext>,
     private readonly streamTicketService: StreamTicketService,
     @Inject(IJwtRevocationService) private readonly jwtRevocationService: IJwtRevocationService,
+    @Inject(SecretsService) private readonly secretsService: SecretsService,
   ) {}
 
   @Post('login')
@@ -144,7 +145,16 @@ export class AuthController {
 
       const permissions = await this.getUserPermissions(userRoles);
 
-      const jwtSecretKey = this.appSettingsService.getValueWithDefault('JWT_SECRET_KEY', 'default-jwt-secret-key-change-in-production');
+      // TASK-307 W2.3 (closes audit C-6) — JWT_SECRET_KEY now sourced
+      // from SecretsService (cache-warmed at bootstrap, placeholder
+      // refused by main.ts W2.2 assertion). Unifies the sign-path with
+      // JwtStrategy.verify-path so the two cannot diverge.
+      // JWT_EXPIRES_IN stays on AppSettings (it's a tunable, not a
+      // secret — same rationale as oidc.strategy.ts:82-83).
+      const jwtSecretKey = this.secretsService.getSecretSync('JWT_SECRET_KEY');
+      if (!jwtSecretKey) {
+        throw new UnauthorizedException('Authentication system not configured');
+      }
       const jwtExpiresIn = this.appSettingsService.getValueWithDefault('JWT_EXPIRES_IN', '1h') as string;
 
       const tokenPayload = {
@@ -401,7 +411,11 @@ export class AuthController {
       }
     }
 
-    const jwtSecretKey = this.appSettingsService.getValueWithDefault('JWT_SECRET_KEY', 'default-jwt-secret-key-change-in-production');
+    // TASK-307 W2.3 (closes audit C-6) — see login() for rationale.
+    const jwtSecretKey = this.secretsService.getSecretSync('JWT_SECRET_KEY');
+    if (!jwtSecretKey) {
+      throw new UnauthorizedException('Authentication system not configured');
+    }
     const jwtImpersonationExpiresIn = this.appSettingsService.getValueWithDefault('JWT_IMPERSONATION_EXPIRES_IN', '15m') as string;
 
     const tokenPayload = {
@@ -476,7 +490,11 @@ export class AuthController {
     const roles = userRoles.map((role) => role.name);
     const permissions = await this.getUserPermissions(userRoles);
 
-    const jwtSecretKey = this.appSettingsService.getValueWithDefault('JWT_SECRET_KEY', 'default-jwt-secret-key-change-in-production');
+    // TASK-307 W2.3 (closes audit C-6) — see login() for rationale.
+    const jwtSecretKey = this.secretsService.getSecretSync('JWT_SECRET_KEY');
+    if (!jwtSecretKey) {
+      throw new UnauthorizedException('Authentication system not configured');
+    }
     const jwtExpiresIn = this.appSettingsService.getValueWithDefault('JWT_EXPIRES_IN', '1h') as string;
 
     const tokenPayload = {

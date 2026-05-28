@@ -47,6 +47,7 @@ function buildController(opts: {
       cls as never, // clsService
       streamTicketService as never, // streamTicketService
       jwtRevocationService as never, // jwtRevocationService
+      {} as never, // secretsService (TASK-307 W2.3; not exercised by stream-ticket paths)
     ),
     streamTicketService,
     jwtRevocationService,
