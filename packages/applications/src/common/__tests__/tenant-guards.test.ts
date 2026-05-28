@@ -13,7 +13,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DataNotFoundException } from '@arcaai/exceptions';
 import { ResourceStatusType } from '@arcaai/domains';
 
-import { assertEqualTenants, assertUserBelongsToTenant, assertParentInScope } from '../tenant-guards';
+import { assertEqualTenants, assertUserBelongsToTenant, assertParentInScope, isSuperAdmin } from '../tenant-guards';
 
 describe('tenant-guards', () => {
   describe('assertEqualTenants', () => {
@@ -209,6 +209,41 @@ describe('tenant-guards', () => {
       const boom = new Error('DB connection lost');
       repo.findById.mockRejectedValue(boom);
       await expect(assertParentInScope(repo, 'parent-1', 'tenant-a')).rejects.toBe(boom);
+    });
+  });
+
+  // TASK-307 W5.5 (AC-19) — pure predicate used by inline controller
+  // guards (W5.5 TenantController, W5.7 AuditLogController, W5.9 SmrProxy).
+  describe('isSuperAdmin', () => {
+    it('returns false for null / undefined user', () => {
+      expect(isSuperAdmin(null)).toBe(false);
+      expect(isSuperAdmin(undefined)).toBe(false);
+    });
+
+    it('returns false when user has no roles property', () => {
+      expect(isSuperAdmin({})).toBe(false);
+    });
+
+    it('returns false when user.roles is null', () => {
+      expect(isSuperAdmin({ roles: null })).toBe(false);
+    });
+
+    it('returns false when user.roles is empty', () => {
+      expect(isSuperAdmin({ roles: [] })).toBe(false);
+    });
+
+    it('returns false when user.roles contains other roles but not SUPER_ADMIN', () => {
+      expect(isSuperAdmin({ roles: ['DOCTOR', 'NURSE', 'ADMIN'] })).toBe(false);
+    });
+
+    it('returns true when user.roles includes the exact "SUPER_ADMIN" literal', () => {
+      expect(isSuperAdmin({ roles: ['SUPER_ADMIN'] })).toBe(true);
+      expect(isSuperAdmin({ roles: ['DOCTOR', 'SUPER_ADMIN'] })).toBe(true);
+    });
+
+    it('is case-sensitive — "super_admin" or "SuperAdmin" does NOT grant the bypass', () => {
+      expect(isSuperAdmin({ roles: ['super_admin'] })).toBe(false);
+      expect(isSuperAdmin({ roles: ['SuperAdmin'] })).toBe(false);
     });
   });
 });

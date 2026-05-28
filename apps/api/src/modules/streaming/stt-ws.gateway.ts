@@ -8,16 +8,32 @@ import type { Server } from 'ws';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 
 /**
- * TASK-298 D-1 / D-17 — STT WebSocket close codes.
+ * TASK-298 D-1 / D-17 + TASK-307 W5.8 (AC-22, audit D-8) — STT WebSocket
+ * handshake-rejection close codes.
  *
- * 4001 — missing required query parameter (sessionId or ticket)
- * 4401 — invalid / expired / scope-mismatched stream ticket
+ * Pre-W5.8 we used `4001 missing param` (sessionId / ticket) and
+ * `4401 invalid ticket` (invalid / scope-mismatched). That gave a
+ * probing client an enumeration signal: it could tell apart a valid
+ * sessionId from an invalid one based on which 4xxx code came back.
+ *
+ * W5.8 collapses ALL handshake-failure paths to a single generic
+ * `4401 Authentication failed` over the wire. The real reason for the
+ * failure still flows into the server-side warn log so SRE dashboards
+ * remain useful.
+ *
+ * 4401 — handshake failure (any cause)
  * 1011 — internal error (resume buffer corruption etc.)
  */
 export const WS_CLOSE_CODES = {
-  MISSING_PARAM: 4001,
   AUTH_FAILED: 4401,
 } as const;
+
+/**
+ * The literal that goes onto the wire when we close a handshake.
+ * Identical for every failure cause so it cannot be used to enumerate
+ * sessions, tickets, or scope mismatches.
+ */
+export const WS_GENERIC_AUTH_REASON = 'Authentication failed';
 
 /**
  * TASK-298 D-17 — bounded per-session transcript replay buffer.
@@ -69,16 +85,25 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const sessionId = url.searchParams.get('sessionId');
     const ticket = url.searchParams.get('ticket');
 
-    // TASK-298 D-1 — auth gate runs BEFORE we register the session or
-    // subscribe to the result stream. A failed gate must NOT leak any
-    // transcript or even the session id.
+    // TASK-298 D-1 + TASK-307 W5.8 — auth gate runs BEFORE we register
+    // the session or subscribe to the result stream, and every
+    // rejection path closes with the SAME generic (code, reason) so
+    // the client cannot enumerate sessions / tickets / scopes by
+    // probing. The real cause goes to the warn log.
     if (!sessionId) {
-      client.close(WS_CLOSE_CODES.MISSING_PARAM, 'Missing required query parameter: sessionId');
+      this.logger.warn({
+        message: 'WS handshake rejected — missing sessionId',
+      });
+      client.close(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
       return;
     }
 
     if (!ticket) {
-      client.close(WS_CLOSE_CODES.MISSING_PARAM, 'Missing required query parameter: ticket');
+      this.logger.warn({
+        message: 'WS handshake rejected — missing ticket',
+        sessionId,
+      });
+      client.close(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
       return;
     }
 
@@ -88,7 +113,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         message: 'WS handshake rejected — invalid stream ticket',
         sessionId,
       });
-      client.close(WS_CLOSE_CODES.AUTH_FAILED, 'Invalid or expired stream ticket');
+      client.close(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
       return;
     }
 
@@ -100,7 +125,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         expectedScope,
         actualScope: stored.scope,
       });
-      client.close(WS_CLOSE_CODES.AUTH_FAILED, 'Stream ticket scope does not match session');
+      client.close(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
       return;
     }
 

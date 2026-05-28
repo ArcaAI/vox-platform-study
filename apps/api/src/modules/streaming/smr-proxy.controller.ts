@@ -1,4 +1,4 @@
-import { Authorize, IActiveUserContext, ITenantService, SecretsService } from '@arcaai/applications';
+import { Authorize, IActiveUserContext, ITenantService, SecretsService, isSuperAdmin } from '@arcaai/applications';
 import { ContextItemRepository, DepartmentRepository, DnaWritingStyleReportRepository, PromptTemplateRepository } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import {
@@ -15,6 +15,7 @@ import {
   Optional,
   Param,
   Post,
+  Query,
   Res,
   UnauthorizedException,
   UseGuards,
@@ -178,15 +179,35 @@ export class SmrProxyController {
     throw lastErr;
   }
 
-  private async resolveTenantId(): Promise<string> {
-    const tenantId = this.clsService.get('tenantId');
-    if (tenantId) return tenantId;
-
-    const user = this.clsService.get('user') as { roles?: string[] } | undefined;
-    if (user?.roles?.includes(SUPER_ADMIN_ROLE)) {
+  /**
+   * TASK-307 W5.9 (AC-23, audit D-12) — the GLOBAL-tenant fallback used
+   * to fire implicitly whenever a SUPER_ADMIN happened to have no CLS
+   * tenantId. That made it easy for a SUPER_ADMIN debugging an issue
+   * to accidentally read or mutate __GLOBAL__ provider settings while
+   * trying to inspect a tenant. The fallback is now EXPLICIT: callers
+   * pass `?tenantKey=__GLOBAL__`, and only SUPER_ADMINs may do so.
+   * Any other tenantKey value is a BadRequest (we never want a caller
+   * to spell another tenant's id into this controller).
+   */
+  private async resolveTenantId(tenantKey?: string): Promise<string> {
+    if (tenantKey !== undefined && tenantKey !== '') {
+      if (tenantKey !== GLOBAL_TENANT_KEY) {
+        throw new BadRequestException(
+          `Only the literal '${GLOBAL_TENANT_KEY}' is accepted as a tenantKey override`,
+        );
+      }
+      const user = this.clsService.get('user');
+      if (!isSuperAdmin(user)) {
+        throw new ForbiddenException(
+          `Only ${SUPER_ADMIN_ROLE} may use ?tenantKey=${GLOBAL_TENANT_KEY}`,
+        );
+      }
       const globalTenant = await this.tenantService.fetchByCodeName(GLOBAL_TENANT_KEY);
       return globalTenant.id;
     }
+
+    const tenantId = this.clsService.get('tenantId');
+    if (tenantId) return tenantId;
 
     throw new UnauthorizedException('No tenant context available');
   }
@@ -644,10 +665,14 @@ export class SmrProxyController {
 
   @Get('providers')
   @Authorize()
-  @ApiOperation({ summary: 'List configured LLM providers from tenant settings, with SMR service fallback' })
+  @ApiOperation({
+    summary:
+      'List configured LLM providers from tenant settings, with SMR service fallback. ' +
+      `SUPER_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=${GLOBAL_TENANT_KEY}.`,
+  })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async getProviders(): Promise<any[]> {
-    const tenantId = await this.resolveTenantId();
+  async getProviders(@Query('tenantKey') tenantKey?: string): Promise<any[]> {
+    const tenantId = await this.resolveTenantId(tenantKey);
     const configs = await this.tenantService.fetchTenantConfigs({
       tenantId,
       limit: TENANT_PROVIDER_SETTINGS_LIMIT,

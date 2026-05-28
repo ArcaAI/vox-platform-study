@@ -316,7 +316,7 @@ describe('ConsultationController', () => {
                 );
             });
 
-            it('should default to sharing enabled when globalSettingRepo throws', async () => {
+            it('TASK-307 W5.4 — should default to sharing CLOSED when globalSettingRepo throws (fail-closed)', async () => {
                 const { controller, consultationService, globalSettingRepo } = buildController({
                     userId: DOCTOR_B,
                 });
@@ -326,9 +326,10 @@ describe('ConsultationController', () => {
                 consultationService.doctorHasPatientRelationship.mockResolvedValue(true);
                 globalSettingRepo.findAll.mockRejectedValue(new Error('DB error'));
 
-                const result = await controller.getById(CONSULTATION_OWN);
-
-                expect(result).toEqual(consultation);
+                await expect(controller.getById(CONSULTATION_OWN)).rejects.toThrow(
+                    ForbiddenException,
+                );
+                expect(consultationService.doctorHasPatientRelationship).not.toHaveBeenCalled();
             });
 
             it('should deny access when tenantId is null and sharing check runs', async () => {
@@ -537,19 +538,57 @@ describe('ConsultationController', () => {
             expect(consultationService.doctorHasPatientRelationship).not.toHaveBeenCalled();
         });
 
-        it('should default to true when globalSettingRepo returns empty array', async () => {
+        // TASK-307 W5.4 — flag must be default-CLOSED (AC-18, audit D-2).
+        // Previously the missing-setting path returned `true` (default-OPEN)
+        // which silently enabled shared-patient reads for tenants that had
+        // never made a sharing decision.
+        it('TASK-307 W5.4 — defaults FALSE when globalSettingRepo returns empty array (default-CLOSED)', async () => {
             const { controller, consultationService, globalSettingRepo } = buildController({
                 userId: DOCTOR_B,
             });
             const consultation = makeConsultation({ doctorId: DOCTOR_A });
             consultationService.getById.mockResolvedValue(consultation);
-            consultationService.doctorHasPatientRelationship.mockResolvedValue(false);
             globalSettingRepo.findAll.mockResolvedValue([]);
 
             await expect(controller.getById(CONSULTATION_OWN)).rejects.toThrow(
                 ForbiddenException,
             );
-            expect(consultationService.doctorHasPatientRelationship).toHaveBeenCalled();
+            // Sharing is off → fallback short-circuits BEFORE the
+            // relationship lookup runs.
+            expect(consultationService.doctorHasPatientRelationship).not.toHaveBeenCalled();
+        });
+
+        it('TASK-307 W5.4 — defaults FALSE when the GlobalSetting repository throws (fail-closed)', async () => {
+            const { controller, consultationService, globalSettingRepo } = buildController({
+                userId: DOCTOR_B,
+            });
+            const consultation = makeConsultation({ doctorId: DOCTOR_A });
+            consultationService.getById.mockResolvedValue(consultation);
+            globalSettingRepo.findAll.mockRejectedValue(new Error('DB unavailable'));
+
+            await expect(controller.getById(CONSULTATION_OWN)).rejects.toThrow(
+                ForbiddenException,
+            );
+            expect(consultationService.doctorHasPatientRelationship).not.toHaveBeenCalled();
+        });
+
+        it('TASK-307 W5.4 — returns FALSE for non-"true" truthy strings (strict equality)', async () => {
+            const cases = ['TRUE', '1', 'yes', 'on', ' true', ''];
+            for (const value of cases) {
+                const { controller, consultationService, globalSettingRepo } = buildController({
+                    userId: DOCTOR_B,
+                });
+                const consultation = makeConsultation({ doctorId: DOCTOR_A });
+                consultationService.getById.mockResolvedValue(consultation);
+                globalSettingRepo.findAll.mockResolvedValue([
+                    { value, key: 'enable-consultation-sharing' },
+                ]);
+
+                await expect(controller.getById(CONSULTATION_OWN)).rejects.toThrow(
+                    ForbiddenException,
+                );
+                expect(consultationService.doctorHasPatientRelationship).not.toHaveBeenCalled();
+            }
         });
     });
 

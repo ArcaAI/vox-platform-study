@@ -13,15 +13,19 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
     const response = ctx.getResponse<Response>();
     const message = exception.message.replace(/\n/g, '');
 
-    // Build structured log context
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const correlationId = (request as any)?.requestId;
+
+    // Build structured log context — server-side keeps the full Prisma
+    // detail so SREs can debug. The public body below is sanitised per
+    // TASK-307 W5.6 (AC-20, audit D-6).
     const logContext = {
       errorCode: exception.code,
       errorMessage: message,
       errorMeta: exception.meta,
       method: request?.method,
       path: request?.url,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      requestId: (request as any)?.requestId,
+      requestId: correlationId,
     };
 
     this.logger.error({
@@ -30,14 +34,18 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
       stack: exception.stack,
     });
 
+    // TASK-307 W5.6 (AC-20): generic public body — never echo the raw
+    // exception.message (it embeds column / constraint / row id names)
+    // or exception.meta (same problem). The `error` label is the only
+    // hint we surface to clients about what went wrong.
     switch (exception.code) {
       case 'P2002': {
         // Unique constraint violation
         const status = HttpStatus.CONFLICT;
         response.status(status).json({
           statusCode: status,
-          message: message,
           error: 'Unique constraint violation',
+          correlationId,
         });
         break;
       }
@@ -46,8 +54,8 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
         const status = HttpStatus.NOT_FOUND;
         response.status(status).json({
           statusCode: status,
-          message: message || 'Record not found',
           error: 'Not found',
+          correlationId,
         });
         break;
       }
@@ -56,8 +64,8 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
         const status = HttpStatus.BAD_REQUEST;
         response.status(status).json({
           statusCode: status,
-          message: message,
           error: 'Foreign key constraint violation',
+          correlationId,
         });
         break;
       }
@@ -66,8 +74,8 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
         const status = HttpStatus.BAD_REQUEST;
         response.status(status).json({
           statusCode: status,
-          message: message,
           error: 'Required relation violation',
+          correlationId,
         });
         break;
       }

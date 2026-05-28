@@ -179,7 +179,7 @@ describe('ContextInterceptor', () => {
             expect(tenantSetCalls).toHaveLength(0);
         });
 
-        it('logs a warn when x-tenant-id diverges from the JWT-derived tenantId', async () => {
+        it('logs a warn AND rejects (post-TASK-307 W5.3: 400) when x-tenant-id diverges from the JWT-derived tenantId', async () => {
             // CLS user already populated by JwtStrategy with a different tenant.
             mockClsService.get = vi.fn((key: string) => {
                 if (key === 'user') return { tenantId: 'tenant-A' };
@@ -194,8 +194,13 @@ describe('ContextInterceptor', () => {
             });
             const handler = createMockHandler();
 
-            const result$ = interceptor.intercept(context, handler);
-            await firstValueFrom(result$);
+            // Warn fires BEFORE the throw, then the request is rejected.
+            let thrown: unknown;
+            try {
+                interceptor.intercept(context, handler);
+            } catch (e) {
+                thrown = e;
+            }
 
             expect(warnSpy).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -204,6 +209,7 @@ describe('ContextInterceptor', () => {
                     jwtTenantId: 'tenant-A',
                 }),
             );
+            expect(thrown).toBeDefined();
         });
 
         it('does NOT warn when x-tenant-id matches the JWT-derived tenantId', async () => {
@@ -224,6 +230,81 @@ describe('ContextInterceptor', () => {
             await firstValueFrom(result$);
 
             expect(warnSpy).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('TASK-307 W5.3 — x-tenant-id divergence -> 400 BadRequest (AC-17, audit D-1)', () => {
+        beforeEach(async () => {
+            vi.clearAllMocks();
+            vi.resetModules();
+            mockClsService = {
+                get: vi.fn((key: string) => {
+                    if (key === 'user') return { tenantId: 'tenant-A' };
+                    return undefined;
+                }),
+                set: vi.fn(),
+                getId: vi.fn().mockReturnValue('test-request-id'),
+            };
+            const { ContextInterceptor } = await import('../context.interceptor');
+            interceptor = new ContextInterceptor(mockClsService);
+        });
+
+        it('throws BadRequestException when x-tenant-id header diverges from JWT-derived tenantId', async () => {
+            const context = createMockContext({
+                headers: { 'x-tenant-id': 'tenant-B' },
+            });
+            const handler = createMockHandler();
+
+            expect(() => interceptor.intercept(context, handler)).toThrow();
+        });
+
+        it('the thrown exception is HTTP 400 (BadRequestException, not 401 / 403 / 500)', async () => {
+            const { BadRequestException } = await import('@nestjs/common');
+            const context = createMockContext({
+                headers: { 'x-tenant-id': 'tenant-B' },
+            });
+            const handler = createMockHandler();
+
+            let caught: unknown;
+            try {
+                interceptor.intercept(context, handler);
+            } catch (e) {
+                caught = e;
+            }
+            expect(caught).toBeInstanceOf(BadRequestException);
+            expect((caught as InstanceType<typeof BadRequestException>).getStatus()).toBe(400);
+        });
+
+        it('does NOT throw when x-tenant-id matches the JWT-derived tenantId', async () => {
+            const context = createMockContext({
+                headers: { 'x-tenant-id': 'tenant-A' },
+            });
+            const handler = createMockHandler();
+
+            expect(() => interceptor.intercept(context, handler)).not.toThrow();
+        });
+
+        it('does NOT throw when x-tenant-id header is absent (no header, no divergence)', async () => {
+            const context = createMockContext({ headers: {} });
+            const handler = createMockHandler();
+
+            expect(() => interceptor.intercept(context, handler)).not.toThrow();
+        });
+
+        it('does NOT throw when JWT has no tenantId (e.g., super-admin) even if x-tenant-id is present', async () => {
+            mockClsService.get = vi.fn((key: string) => {
+                if (key === 'user') return { tenantId: null };
+                return undefined;
+            });
+            const { ContextInterceptor } = await import('../context.interceptor');
+            interceptor = new ContextInterceptor(mockClsService);
+
+            const context = createMockContext({
+                headers: { 'x-tenant-id': 'tenant-Z' },
+            });
+            const handler = createMockHandler();
+
+            expect(() => interceptor.intercept(context, handler)).not.toThrow();
         });
     });
 
