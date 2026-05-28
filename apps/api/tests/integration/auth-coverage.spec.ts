@@ -301,15 +301,25 @@ describe('TASK-307 W4b / AC-13 part 2 — global APP_GUARD runtime walk (synthet
       ],
       controllers: [_UnprotectedFixtureController, _PublicFixtureController, _AuthorizedFixtureController],
       providers: [
-        Reflector,
+        // TASK-307 W7.A.18 — the explicit `Reflector` provider previously
+        // here was redundant: `@nestjs/core`'s `InternalCoreModule`
+        // already exports a global `Reflector` so the runtime guard
+        // resolves the same instance either way. Removed to keep the
+        // synthetic module minimal.
         {
           provide: IApiKeyService,
           useValue: {
+            // TASK-307 W7.A.18 — the prior `hasScope` stub was unreachable:
+            // the synthetic flow never has an API key (no X-API-Key
+            // header), so `UnifiedAuthGuard` short-circuits to the JWT
+            // path before `hasScope` could ever be called. Dropped to
+            // keep the fixture honest about what the guard actually
+            // exercises (`extractApiKeyFromRequest` → null →
+            // JWT-strategy 401).
             extractApiKeyFromRequest: () => null,
             authenticateByRawKey: () => {
               throw new Error('IApiKeyService.authenticateByRawKey should not be called in W4b synthetic tests');
             },
-            hasScope: () => false,
           },
         },
         // Stub PolicyEngine so UnifiedAuthGuard can resolve its dependency;
