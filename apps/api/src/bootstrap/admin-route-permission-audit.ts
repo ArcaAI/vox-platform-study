@@ -5,6 +5,12 @@ import { MetadataScanner, Reflector } from '@nestjs/core';
 import { ModulesContainer } from '@nestjs/core/injector/modules-container';
 import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY } from '@arcaai/applications';
 
+// Side-effect import — patches @Public() metadata onto third-party
+// controllers (e.g. willsoto's PrometheusController) that we cannot
+// decorate at the source. Must run before the audit walk so the
+// metadata is in place when the walk reads it.
+import './third-party-public-routes';
+
 /**
  * Boot-time route permission audit (originally Phase 0 Item 3 / TASK-302
  * Stream A; widened by TASK-307 W4a.1).
