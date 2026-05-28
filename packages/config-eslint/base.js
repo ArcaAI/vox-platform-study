@@ -29,10 +29,22 @@ module.exports = {
             // exception that must be reviewed.
             //
             // Scope is intentionally narrow:
-            //   apps/api/src/modules/**/*.controller.ts  — the offender surface
-            // Service-layer / repository-layer direct-Prisma access remains
-            // legitimate and is not restricted.
-            files: ['**/apps/api/src/modules/**/*.controller.ts'],
+            //   <any-prefix>/modules/**/*.controller.ts
+            // — the only consumer of `@arcaai/config-eslint` with that
+            // path shape is `apps/api` (NestJS module convention).
+            //
+            // The `files` glob is evaluated against the file path
+            // RELATIVE to the directory of the config that contains the
+            // override (here: `packages/config-eslint/`). A pattern like
+            // `**/apps/api/src/modules/**` would never match because
+            // `apps/api/` is not a descendant of `packages/config-eslint/`.
+            // Anchoring on the trailing `modules/**/*.controller.ts`
+            // segment matches the absolute path correctly via ESLint's
+            // path matcher.
+            //
+            // Service-layer / repository-layer direct-Prisma access
+            // remains legitimate and is not restricted.
+            files: ['**/modules/**/*.controller.ts'],
             rules: {
                 'arcaai-internal/no-controller-direct-prisma': 'error',
             },
