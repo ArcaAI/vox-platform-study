@@ -69,31 +69,42 @@ function createMockAuthService() {
 interface DatabaseFixture {
     adminRoles: string[]; // role names of the admin user
     targetRoles: string[]; // role names of the impersonation target
-    targetAssignments: Array<{ tenantId: string | null }>; // findMany result
+    targetAssignments: Array<{ tenantId: string | null }>; // pre-W6.1: findMany result; W6.1+: input for findActiveTenantIdsForUser
 }
 
-function createMockDatabaseService(fixture: DatabaseFixture) {
-    const userRoleAssignment = {
-        findMany: vi.fn(async (args: any) => {
-            // The controller calls findMany twice with different shapes:
-            // 1) getUserRoles(adminId) and getUserRoles(targetId) — both `include: { Role: true }`
-            // 2) the H-3 tenant lookup — `select: { tenantId: true }`
-            if (args?.select?.tenantId) {
-                return fixture.targetAssignments;
-            }
-            // Role lookup — match by userId in `where`
-            const userId = args?.where?.userId;
+/**
+ * TASK-307 W6.1 — replaces the previous `createMockDatabaseService` helper.
+ * Same `DatabaseFixture` shape (so existing test setups stay unchanged); the
+ * three methods of `IUserRoleAssignmentService` mirror the prior raw-Prisma
+ * answer shapes:
+ *   - `findActiveRolesForUser` ⇐ prior `findMany({include:{Role:true}})`
+ *   - `findActiveTenantIdsForUser` ⇐ prior `findMany({select:{tenantId:true}})`
+ *   - `findActiveAssignmentForUserInTenant` ⇐ prior `findFirst` (unused here;
+ *     impersonation never exercised it — kept for parity with the interface).
+ */
+function createMockUserRoleAssignmentService(fixture: DatabaseFixture) {
+    return {
+        findActiveRolesForUser: vi.fn(async (userId: string) => {
             const roles = userId === 'admin-A'
                 ? fixture.adminRoles
                 : userId === 'target-B'
                     ? fixture.targetRoles
                     : [];
-            return roles.map((name) => ({ Role: { name, permissions: [] } }));
+            return roles.map((name) => ({ id: `role-${name}`, name, permissions: [] }));
         }),
-        findFirst: vi.fn(),
-    };
-    return {
-        client: { userRoleAssignment },
+        findActiveTenantIdsForUser: vi.fn(async () => {
+            const seen = new Set<string>();
+            const ordered: string[] = [];
+            for (const row of fixture.targetAssignments) {
+                const tenantId = row.tenantId;
+                if (typeof tenantId !== 'string' || tenantId.length === 0) continue;
+                if (seen.has(tenantId)) continue;
+                seen.add(tenantId);
+                ordered.push(tenantId);
+            }
+            return ordered;
+        }),
+        findActiveAssignmentForUserInTenant: vi.fn(async () => null),
     };
 }
 
@@ -112,7 +123,7 @@ function buildController(opts: {
     );
     const appSettingsService = createMockAppSettings();
     const authService = createMockAuthService();
-    const databaseService = createMockDatabaseService(
+    const userRoleAssignmentService = createMockUserRoleAssignmentService(
         opts.fixture ?? {
             adminRoles: [TENANT_ADMIN],
             targetRoles: [DOCTOR],
@@ -128,7 +139,7 @@ function buildController(opts: {
         {} as never, // userService
         authService as never,
         appSettingsService as never,
-        databaseService as never,
+        userRoleAssignmentService as never,
         userRepository as never,
         {} as never, // userRoleAssignmentRepository
         {} as never, // roleRepository
@@ -138,7 +149,7 @@ function buildController(opts: {
         jwtRevocationService as never,
         secretsService as never,
     );
-    return { controller, cls, jwtRevocationService, databaseService, userRepository, authService };
+    return { controller, cls, jwtRevocationService, userRoleAssignmentService, userRepository, authService };
 }
 
 describe('AuthController — TASK-295 impersonation security', () => {

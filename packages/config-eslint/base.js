@@ -7,7 +7,7 @@ module.exports = {
         'prettier',
         'turbo',
     ],
-    plugins: ['@typescript-eslint/eslint-plugin'],
+    plugins: ['@typescript-eslint/eslint-plugin', 'arcaai-internal'],
     parser: '@typescript-eslint/parser',
     ignorePatterns: [
         '.*.js',
@@ -17,6 +17,38 @@ module.exports = {
         'dist/',
         'coverage/',
         'node_modules/',
+    ],
+    overrides: [
+        {
+            // TASK-307 W6.4 (AC-24) — Controllers must route data access
+            // through a service or repository. The `arcaai-internal` plugin
+            // (packages/config-eslint/eslint-plugin-arcaai-internal/) hosts
+            // the custom rule; the escape hatch is `/** @allowedDirectPrisma
+            // <reason> */` immediately above the offending line. Allow-list
+            // SHOULD be empty after W6 ships — every entry is a deliberate
+            // exception that must be reviewed.
+            //
+            // Scope is intentionally narrow:
+            //   <any-prefix>/modules/**/*.controller.ts
+            // — the only consumer of `@arcaai/config-eslint` with that
+            // path shape is `apps/api` (NestJS module convention).
+            //
+            // The `files` glob is evaluated against the file path
+            // RELATIVE to the directory of the config that contains the
+            // override (here: `packages/config-eslint/`). A pattern like
+            // `**/apps/api/src/modules/**` would never match because
+            // `apps/api/` is not a descendant of `packages/config-eslint/`.
+            // Anchoring on the trailing `modules/**/*.controller.ts`
+            // segment matches the absolute path correctly via ESLint's
+            // path matcher.
+            //
+            // Service-layer / repository-layer direct-Prisma access
+            // remains legitimate and is not restricted.
+            files: ['**/modules/**/*.controller.ts'],
+            rules: {
+                'arcaai-internal/no-controller-direct-prisma': 'error',
+            },
+        },
     ],
     rules: {
         // TASK-305 B.5 — Guard the unscoped Prisma client.
