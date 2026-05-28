@@ -20,6 +20,34 @@ import { DataNotFoundException } from '@arcaai/exceptions';
 import { ResourceStatusType, type UserRoleAssignmentRepository } from '@arcaai/domains';
 
 /**
+ * Role string for the operator with cross-tenant administrative rights.
+ * Mirrors the same literal already in use in
+ * `services/tenant/constants.SUPER_ADMIN_ROLE` and the seven services that
+ * each duplicate the `roles.includes('SUPER_ADMIN')` check (kept local here
+ * so `common/` does not import from `services/`).
+ */
+const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
+
+/**
+ * TASK-307 W5.5 / W5.7 / W5.9 — pure predicate that names the
+ * "is the caller cross-tenant privileged?" check used by inline
+ * controller guards. Mirrors the existing service-side pattern
+ * `Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE)` so we don't
+ * scatter the role literal across more controller files.
+ *
+ * @example
+ *   const user = this.cls.get('user');
+ *   if (!isSuperAdmin(user) && id !== user?.tenantId) {
+ *     throw new ForbiddenException();
+ *   }
+ */
+export function isSuperAdmin(user: { roles?: string[] | null } | null | undefined): boolean {
+  if (!user) return false;
+  const roles = user.roles;
+  return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
+}
+
+/**
  * Assert that a child entity shares the same tenant as its parent.
  *
  * Use BEFORE any cross-aggregate write where a child row references a parent
