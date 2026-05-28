@@ -34,9 +34,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       new Logger(JwtStrategy.name).error(
         'JWT_SECRET_KEY resolved to the literal placeholder. SecretsService either has no value warmed under this key, or the warmed value is the development default. Refusing to boot.',
       );
-      throw new Error(
-        'JWT_SECRET_KEY is the literal placeholder; refusing to boot. Set a real secret in Vault / SecretsService.',
-      );
+      throw new Error('JWT_SECRET_KEY is the literal placeholder; refusing to boot. Set a real secret in Vault / SecretsService.');
     }
 
     super({
