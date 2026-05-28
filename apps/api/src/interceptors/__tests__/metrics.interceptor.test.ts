@@ -77,9 +77,21 @@ describe('MetricsInterceptor', () => {
         expect(duration).toBeLessThan(1);
     });
 
-    it('should use request.url as fallback when route.path is unavailable', async () => {
+    /**
+     * TASK-310 E-7 (AC-7) — Prometheus cardinality fix.
+     *
+     * Pre-W7 the interceptor labelled the `http_requests_total` metric
+     * with `request.route?.path || request.url`. Unmatched / 404 / OPTIONS
+     * requests have an undefined `route`, so the fallback expanded to the
+     * raw URL — every `/api/v1/<scanner-noise>/<uuid>` shipped a new
+     * Prometheus series. Cardinality blew up linearly with traffic.
+     *
+     * The fix labels unmatched routes with the literal `<unmatched>` so
+     * the series count stays bounded by the templated-route set.
+     */
+    it('falls back to "<unmatched>" (not request.url) when route.path is unavailable', async () => {
         const context = createMockContext({
-            url: '/api/v1/fallback',
+            url: '/api/v1/some-noise-9c7f4',
             method: 'POST',
         });
         const handler = createMockHandler();
@@ -89,8 +101,29 @@ describe('MetricsInterceptor', () => {
 
         expect(mockMonitoringService.recordHttpRequest).toHaveBeenCalledWith(
             'POST',
-            '/api/v1/fallback',
+            '<unmatched>',
             200,
+            expect.any(Number),
+        );
+    });
+
+    it('still emits "<unmatched>" on the error path when route.path is unavailable', async () => {
+        const error = new Error('Bad route') as Error & { status: number };
+        error.status = 404;
+        const context = createMockContext({
+            url: '/api/v1/<unique-noise-1c9e3>',
+            method: 'GET',
+        });
+        const handler = createErrorHandler(error);
+
+        const result$ = interceptor.intercept(context, handler);
+
+        await expect(firstValueFrom(result$)).rejects.toThrow('Bad route');
+
+        expect(mockMonitoringService.recordHttpRequest).toHaveBeenCalledWith(
+            'GET',
+            '<unmatched>',
+            404,
             expect.any(Number),
         );
     });
