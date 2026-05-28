@@ -323,10 +323,11 @@ describe('TASK-307 W4b / AC-13 part 2 — global APP_GUARD runtime walk (synthet
             },
           },
         },
-        // NOTE: `{ provide: APP_GUARD, useClass: UnifiedAuthGuard }` is
-        // intentionally OMITTED in the RED step so we can observe the
-        // guard contract failure for the unprotected fixture (it returns
-        // 200 instead of 401). The GREEN step adds this line back.
+        // The runtime flip — registers `UnifiedAuthGuard` as the
+        // application-wide guard. With this in place, the unprotected
+        // fixture controller now returns 401 by default; @Public() opts
+        // out; @Authorize() routes still require auth.
+        { provide: APP_GUARD, useClass: UnifiedAuthGuard },
       ],
     }).compile();
 
