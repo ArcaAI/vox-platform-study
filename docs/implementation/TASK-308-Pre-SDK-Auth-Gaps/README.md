@@ -101,7 +101,26 @@ Throttle granularity is a UX issue, not a security one — but tight SDK refresh
 ---
 
 ## 4. Implementation Summary
-*(to be filled in at close-out)*
+
+### 4.1 AC-1 / AC-3 — `scope: 'creator'` opt-in + interceptor unit tests
+
+**Files modified**
+
+| File | Change |
+|---|---|
+| `apps/api/src/common/tenant-owned-resource.decorator.ts` | Added optional `scope?: 'tenant' \| 'creator'` to `TenantOwnedResourceOptions`. Default behaviour (omitted / `'tenant'`) is unchanged — non-breaking. |
+| `apps/api/src/common/tenant-owned-resource.interceptor.ts` | `assertConsultationJob` now reads `opts.scope` and, when set to `'creator'`, additionally requires `status.userId === cls.user.id` after the tenant check. Missing CLS `user.id` or missing `status.userId` → uniform 404 (DEF-C3 no-existence-leak; documented inline against ticket §2.3 release-window risk). |
+| `apps/api/src/common/__tests__/tenant-owned-resource.interceptor.test.ts` | +5 cases under `ConsultationJob — scope:"creator"`: same-tenant same-user → 200, same-tenant cross-user → 404, cross-tenant → 404, missing CLS user → 404, pre-W7.A.12 row with no `userId` → 404. |
+| `apps/api/src/common/__tests__/tenant-owned-resource.decorator.test.ts` | +1 case pinning the `scope` field in the metadata payload. |
+
+**Test evidence (RED → GREEN)**
+
+```text
+RED — 3/5 new interceptor cases fail (cross-user, missing CLS user, missing status.userId)
+GREEN — `pnpm --filter @arcaai/api exec vitest run src/common/__tests__/tenant-owned-resource.{interceptor,decorator}.test.ts`
+  Test Files  2 passed (2)
+       Tests  29 passed (29)
+```
 
 ---
 
