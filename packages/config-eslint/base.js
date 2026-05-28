@@ -49,6 +49,80 @@ module.exports = {
                 'arcaai-internal/no-controller-direct-prisma': 'error',
             },
         },
+        {
+            // TASK-311 AC-8 — Services in @arcaai/applications must route
+            // data access through a domain-layer repository (UserRepository,
+            // PolicyRepository, RbacRoleRepository, RolePolicyRepository,
+            // etc.). This is the service-layer analogue of the controller-
+            // layer rule above (W6).
+            //
+            // Implementation note: the W6 plugin's
+            // `arcaai-internal/no-controller-direct-prisma` rule is
+            // hard-coded to controllers only, and the plugin lives in
+            // `packages/eslint-plugin-arcaai-internal/` which is OUTSIDE
+            // the modifiable scope for TASK-311 (the plugin is shared
+            // infra, owned by W6). TASK-311 therefore implements the
+            // service-layer guard via ESLint's built-in
+            // `no-restricted-syntax` rule with an AST selector that
+            // matches the canonical `<...>.databaseService.client`
+            // member-expression chain — exactly the pattern the W6
+            // plugin's `isDirectPrismaAccess()` walker detects.
+            //
+            // Escape hatch: services with a documented exception use the
+            // standard ESLint mechanism:
+            //
+            //     // eslint-disable-next-line no-restricted-syntax
+            //     const prisma = this.databaseService.client; // TASK-XXX: <reason>
+            //
+            // Scope: every `**/services/**/*.service.ts` file inside the
+            // packages that extend this config (`packages/applications`
+            // via `library.js`, `apps/api` directly). The trailing-segment
+            // glob mirrors the controller rule above; ESLint's path
+            // matcher resolves it against the file path RELATIVE to the
+            // consuming `.eslintrc.js`'s package root (NOT to the
+            // config-eslint package), so for `packages/applications` the
+            // path it sees is `src/services/rbac/policy/policy.service.ts`.
+            // `**/services/**/*.service.ts` matches that correctly.
+            //
+            // The only `*.service.ts` files in `apps/api` are infra
+            // services that don't access Prisma (audited 2026-05-28),
+            // so the broad pattern is safe.
+            //
+            // `excludedFiles` pins:
+            //   - Sibling tickets running concurrently with TASK-311
+            //     (TASK-308 / TASK-309 / TASK-310 own the extractions
+            //     for these other services per the ticket plan §1.4 and
+            //     project guard-rails). Each entry MUST be removed when
+            //     its owning ticket closes, and the corresponding file
+            //     must then be clean.
+            //   - `baseServices/**` is permanently allowed: it hosts the
+            //     `CoreDatabaseService` / unit-of-work plumbing that
+            //     LEGITIMATELY exposes `databaseService.client` to the
+            //     repositories.
+            files: ['**/services/**/*.service.ts'],
+            excludedFiles: [
+                '**/services/audit/**',
+                '**/services/tenant/**',
+                '**/services/user/userRoleAssignment/**',
+                '**/services/baseServices/**',
+            ],
+            rules: {
+                'no-restricted-syntax': [
+                    'error',
+                    {
+                        // Matches `<receiver>.databaseService.client` — the
+                        // canonical Prisma client access path. The chain
+                        // ENDS at `.client`; downstream `.user.findMany(...)`
+                        // etc. are wrappers around the same MemberExpression
+                        // so we don't need to match them separately.
+                        selector:
+                            "MemberExpression[computed=false][property.name='client'][object.type='MemberExpression'][object.computed=false][object.property.name='databaseService']",
+                        message:
+                            'TASK-311 AC-8: services in @arcaai/applications must not access `this.databaseService.client` directly. Route through a domain-layer repository (UserRepository, PolicyRepository, RbacRoleRepository, RolePolicyRepository, ...). If this access is genuinely unavoidable, silence with `// eslint-disable-next-line no-restricted-syntax` and document the reason on the same block.',
+                    },
+                ],
+            },
+        },
     ],
     rules: {
         // TASK-305 B.5 — Guard the unscoped Prisma client.

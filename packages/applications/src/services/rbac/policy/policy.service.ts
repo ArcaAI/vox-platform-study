@@ -1,7 +1,7 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { CoreDatabaseService, ResourceStatusType, ResourceType, SysEventType } from '@arcaai/domains';
+import { PolicyFactory, PolicyRepository, ResourceStatusType, ResourceType, SysEventType } from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PolicyEngine, type PolicyRule } from '../../../authorization/policy.engine';
@@ -17,60 +17,40 @@ import {
 
 /**
  * TASK-307 W6.2 — Service that absorbs the direct-Prisma access that
- * `PoliciesController` used to perform (C-10 / F-1 / H-9). The
- * implementation is intentionally a thin port of the prior controller
- * logic so the existing E2E RBAC suite (`apps/api/tests/e2e/rbac.spec.ts`)
- * keeps passing — every Prisma call, every audit-event payload, every
- * cache invalidation matches the pre-W6 wiring.
+ * `PoliciesController` used to perform (C-10 / F-1 / H-9).
  *
- * Direct `CoreDatabaseService` access here is legitimate (service layer)
- * and intentionally NOT a candidate for the W6.4 ESLint allow-list —
- * that rule scopes the ban to `apps/api/src/modules/**`.
- *
- * TASK-307 W7.A.15 (carryover note from W6 review) — §H-9 partial
- * closure: the original audit recommended migrating policy + role
- * management through `PolicyRepository` / `RolePolicyRepository`
- * facades (so soft-delete, audit hooks, and tenant scoping are
- * uniform with the rest of the domain layer). W6 chose verbatim
- * behaviour preservation to keep the RBAC E2E suite green without
- * introducing repository surface that no other consumer needs today.
- * A dedicated `PolicyRepository` + extraction PR is tracked as a §10
- * deferral in `docs/implementation/TASK-307-API-Gateway-Hardening/
- * README.md`.
+ * TASK-311 (closes the §H-9 deferral W7.A.15) — the direct
+ * `CoreDatabaseService` access that W6 deliberately left behind has
+ * been routed through `PolicyRepository` + `PolicyFactory`. Behaviour
+ * is unchanged: every audit-event payload, every cache invalidation,
+ * every log message matches the W6 wiring; the repository internally
+ * issues the same Prisma calls (see
+ * `packages/domains/src/repositories/policy/PolicyRepository.ts`).
+ * See `docs/implementation/TASK-311-Policy-Role-Repository-Extraction/README.md`
+ * for the inventory + design decisions.
  */
 @Injectable()
 export class PolicyService extends BaseService implements IPolicyService {
   private readonly logger = new Logger(PolicyService.name);
 
-  private static readonly VALID_ACTIONS = [
-    'manage',
-    'create',
-    'read',
-    'list',
-    'update',
-    'delete',
-    'archive',
-    'export',
-  ];
+  private static readonly VALID_ACTIONS = ['manage', 'create', 'read', 'list', 'update', 'delete', 'archive', 'export'];
 
   private static readonly VALID_TEMPLATE_VARIABLES = ['user.id', 'user.tenantId', 'context.tenantId'];
 
   constructor(
-    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
+    private readonly policyRepository: PolicyRepository,
     private readonly policyEngine: PolicyEngine,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
-    // TASK-307 W7.A.16 (carryover note from W6 review) — `BaseService`
-    // is initialized with `ResourceType.Permission`, NOT
-    // `ResourceType.Policy`. This is intentional behaviour
-    // preservation: the pre-W6 `PoliciesController` emitted SysEvents
-    // (`ResourceCreated`, `ResourceUpdated`, `ResourceDeleted`) with
-    // `resourceType: 'Permission'` so downstream audit-log readers and
-    // notification subscribers are wired against that string. Changing
-    // it would silently break those consumers. If/when the RBAC audit
-    // wire format is migrated to `Policy`, do it as a coordinated
-    // event-schema change (see TASK-307 §10 deferrals).
+    // TASK-307 W7.A.16 — `BaseService` is initialised with
+    // `ResourceType.Permission`, NOT `ResourceType.Policy`. The
+    // pre-W6 `PoliciesController` emitted SysEvents with
+    // `resourceType: 'Permission'`; downstream audit-log readers
+    // and notification subscribers are wired against that literal
+    // string. TASK-311 AC-5 explicitly pins this. Migrating the wire
+    // format to `Policy` requires a coordinated event-schema change
+    // (see TASK-307 §10 deferrals).
     super(eventEmitter, clsService, ResourceType.Permission);
   }
 
@@ -126,35 +106,26 @@ export class PolicyService extends BaseService implements IPolicyService {
 
   async findAll(query: PolicyListQuery): Promise<PolicyListResult> {
     const { page, pageSize, search, scope } = query;
-    const prisma = this.databaseService.client;
     const skip = (page - 1) * pageSize;
 
     const where = {
       resourceStatus: ResourceStatusType.ENABLED,
       ...(search && {
-        OR: [
-          { name: { contains: search, mode: 'insensitive' as const } },
-          { description: { contains: search, mode: 'insensitive' as const } },
-        ],
+        OR: [{ name: { contains: search, mode: 'insensitive' as const } }, { description: { contains: search, mode: 'insensitive' as const } }],
       }),
       ...(scope && { scope }),
     };
 
     const [data, total] = await Promise.all([
-      prisma.policy.findMany({
-        where,
-        skip,
-        take: pageSize,
-        orderBy: { name: 'asc' },
-      }),
-      prisma.policy.count({ where }),
+      this.policyRepository.findMany({ where, skip, take: pageSize, orderBy: { name: 'asc' } }),
+      this.policyRepository.count({ where }),
     ]);
 
     return { data: data as unknown as PolicyRecord[], total };
   }
 
   async findOne(id: string): Promise<PolicyRecord | null> {
-    const policy = await this.databaseService.client.policy.findUnique({ where: { id } });
+    const policy = await this.policyRepository.findById(id);
     return (policy as PolicyRecord | null) ?? null;
   }
 
@@ -165,17 +136,14 @@ export class PolicyService extends BaseService implements IPolicyService {
     }
 
     const user = this.requestUser;
-    const policy = await this.databaseService.client.policy.create({
-      data: {
-        name: request.name,
-        description: request.description,
-        scope: request.scope,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        rules: request.rules as any,
-        resourceStatus: ResourceStatusType.ENABLED,
-        createdBy: user?.id,
-      },
+    const data = PolicyFactory.buildCreateInput({
+      name: request.name,
+      description: request.description,
+      scope: request.scope,
+      rules: request.rules,
+      createdBy: user?.id,
     });
+    const policy = (await this.policyRepository.create(data)) as PolicyRecord;
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: policy.id,
@@ -191,7 +159,7 @@ export class PolicyService extends BaseService implements IPolicyService {
       createdBy: user?.id,
     });
 
-    return policy as unknown as PolicyRecord;
+    return policy;
   }
 
   async update(id: string, request: UpdatePolicyRequest): Promise<PolicyRecord> {
@@ -203,17 +171,8 @@ export class PolicyService extends BaseService implements IPolicyService {
     }
 
     const user = this.requestUser;
-    const policy = await this.databaseService.client.policy.update({
-      where: { id },
-      data: {
-        ...(request.name && { name: request.name }),
-        ...(request.description !== undefined && { description: request.description }),
-        ...(request.scope && { scope: request.scope }),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ...(request.rules && { rules: request.rules as any }),
-        updatedBy: user?.id,
-      },
-    });
+    const data = PolicyFactory.buildUpdateInput(request, user?.id);
+    const policy = (await this.policyRepository.update(id, data)) as PolicyRecord;
 
     await this.policyEngine.invalidatePolicy(id);
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -228,11 +187,11 @@ export class PolicyService extends BaseService implements IPolicyService {
       updatedBy: user?.id,
     });
 
-    return policy as unknown as PolicyRecord;
+    return policy;
   }
 
   async patch(id: string, request: UpdatePolicyRequest): Promise<PolicyRecord> {
-    const existing = await this.databaseService.client.policy.findUnique({ where: { id } });
+    const existing = await this.policyRepository.findById(id);
     if (!existing) {
       throw new NotFoundException('Policy not found');
     }
@@ -245,22 +204,8 @@ export class PolicyService extends BaseService implements IPolicyService {
     }
 
     const user = this.requestUser;
-    const policy = await this.databaseService.client.policy.update({
-      where: { id },
-      data: {
-        ...(request.name && { name: request.name }),
-        ...(request.description !== undefined && { description: request.description }),
-        ...(request.scope && { scope: request.scope }),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ...(request.rules && { rules: request.rules as any }),
-        ...(request.resourceStatus && {
-          resourceStatus: request.resourceStatus as ResourceStatusType,
-          resourceStatusUpdatedAt: new Date(),
-          resourceStatusUpdatedBy: user?.id,
-        }),
-        updatedBy: user?.id,
-      },
-    });
+    const data = PolicyFactory.buildUpdateInput(request, user?.id);
+    const policy = (await this.policyRepository.update(id, data)) as PolicyRecord;
 
     await this.policyEngine.invalidatePolicy(id);
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -276,28 +221,18 @@ export class PolicyService extends BaseService implements IPolicyService {
       updatedBy: user?.id,
     });
 
-    return policy as unknown as PolicyRecord;
+    return policy;
   }
 
   async softDelete(id: string): Promise<{ id: string; name: string }> {
-    const existing = await this.databaseService.client.policy.findUnique({
-      where: { id },
-      select: { name: true },
-    });
+    const existing = (await this.policyRepository.findById(id)) as { name: string } | null;
 
     if (!existing) {
       throw new NotFoundException('Policy not found');
     }
 
     const user = this.requestUser;
-    await this.databaseService.client.policy.update({
-      where: { id },
-      data: {
-        resourceStatus: ResourceStatusType.DELETED,
-        resourceStatusUpdatedAt: new Date(),
-        resourceStatusUpdatedBy: user?.id,
-      },
-    });
+    await this.policyRepository.softDelete(id, user?.id);
 
     await this.policyEngine.invalidatePolicy(id);
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
@@ -315,11 +250,7 @@ export class PolicyService extends BaseService implements IPolicyService {
     return { id, name: existing.name };
   }
 
-  private checkConditionsForVariables(
-    conditions: Record<string, unknown>,
-    ruleIndex: number,
-    warnings: string[],
-  ): void {
+  private checkConditionsForVariables(conditions: Record<string, unknown>, ruleIndex: number, warnings: string[]): void {
     const checkValue = (value: unknown, path: string) => {
       if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
         const varName = value.slice(2, -1);

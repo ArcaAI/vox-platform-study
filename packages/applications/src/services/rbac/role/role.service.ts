@@ -1,7 +1,16 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { CoreDatabaseService, ResourceStatusType, ResourceType, SysEventType } from '@arcaai/domains';
+import {
+  RbacRoleFactory,
+  RbacRoleRepository,
+  ResourceStatusType,
+  ResourceType,
+  ROLE_POLICIES_INCLUDE,
+  RolePolicyFactory,
+  RolePolicyRepository,
+  SysEventType,
+} from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PolicyEngine } from '../../../authorization/policy.engine';
@@ -17,49 +26,26 @@ import {
 
 /**
  * TASK-307 W6.3 — Service that absorbs the direct-Prisma access that
- * `RolesController` used to perform (audit C-10 / F-1 / H-9). The
- * implementation is a straight port of the prior controller logic to
- * preserve the existing E2E RBAC suite (`apps/api/tests/e2e/rbac.spec.ts`):
- * every Prisma call, every audit-event payload, every cache invalidation
- * matches the pre-W6 wiring.
+ * `RolesController` used to perform (audit C-10 / F-1 / H-9). Prefixed
+ * `Rbac` to disambiguate from the legacy `services/security/role/RoleService`
+ * (still in the barrel, unused; renaming was out of W6 scope).
  *
- * Direct `CoreDatabaseService` access here is legitimate (service layer)
- * and intentionally NOT a candidate for the W6.4 ESLint allow-list —
- * that rule scopes the ban to `apps/api/src/modules/**`.
- *
- * The class is prefixed `Rbac` to disambiguate from the legacy
- * `services/security/role/RoleService` (unused but still exported via
- * the package barrel; renaming the legacy skeleton was out of W6 scope).
- *
- * TASK-307 W7.A.15 (carryover note from W6 review) — §H-9 partial
- * closure: the original audit recommended migrating role + role-
- * policy management through `RoleRepository` / `RolePolicyRepository`
- * facades so soft-delete, audit hooks, and tenant scoping land
- * uniformly with the rest of the domain layer. W6 chose verbatim
- * behaviour preservation to keep the RBAC E2E suite green without
- * introducing repository surface that no other consumer needs today.
- * A dedicated `RoleRepository` + extraction PR is tracked as a §10
- * deferral in `docs/implementation/TASK-307-API-Gateway-Hardening/
- * README.md`.
+ * TASK-311 (closes the §H-9 deferral W7.A.15) — direct
+ * `CoreDatabaseService` access removed. Persistence now flows through
+ * `RbacRoleRepository` + `RolePolicyRepository` (plus their factories).
+ * Behaviour is unchanged: every Prisma call shape, every audit-event
+ * payload, every cache invalidation matches the W6 wiring (verified by
+ * the existing TASK-307 W6.3 test suite, re-pointed at the new
+ * repository mocks). See `docs/implementation/TASK-311-Policy-Role-
+ * Repository-Extraction/README.md` for the inventory + design rationale.
  */
 @Injectable()
 export class RbacRoleService extends BaseService implements IRbacRoleService {
   private readonly logger = new Logger(RbacRoleService.name);
 
-  private static readonly ROLE_POLICIES_INCLUDE = {
-    RolePolicies: {
-      where: { resourceStatus: ResourceStatusType.ENABLED },
-      include: {
-        Policy: {
-          select: { id: true, name: true },
-        },
-      },
-      orderBy: { priority: 'asc' as const },
-    },
-  };
-
   constructor(
-    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
+    private readonly roleRepository: RbacRoleRepository,
+    private readonly rolePolicyRepository: RolePolicyRepository,
     private readonly policyEngine: PolicyEngine,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
@@ -69,38 +55,31 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
 
   async findAll(query: RbacRoleListQuery): Promise<RbacRoleListResult> {
     const { page, pageSize, search } = query;
-    const prisma = this.databaseService.client;
     const skip = (page - 1) * pageSize;
 
     const where = {
       resourceStatus: ResourceStatusType.ENABLED,
       ...(search && {
-        OR: [
-          { name: { contains: search, mode: 'insensitive' as const } },
-          { description: { contains: search, mode: 'insensitive' as const } },
-        ],
+        OR: [{ name: { contains: search, mode: 'insensitive' as const } }, { description: { contains: search, mode: 'insensitive' as const } }],
       }),
     };
 
     const [data, total] = await Promise.all([
-      prisma.role.findMany({
+      this.roleRepository.findMany({
         where,
         skip,
         take: pageSize,
-        include: RbacRoleService.ROLE_POLICIES_INCLUDE,
+        include: ROLE_POLICIES_INCLUDE,
         orderBy: { name: 'asc' },
       }),
-      prisma.role.count({ where }),
+      this.roleRepository.count({ where }),
     ]);
 
     return { data: data as unknown as RbacRoleRecord[], total };
   }
 
   async findOne(id: string): Promise<RbacRoleRecord | null> {
-    const role = await this.databaseService.client.role.findUnique({
-      where: { id },
-      include: RbacRoleService.ROLE_POLICIES_INCLUDE,
-    });
+    const role = await this.roleRepository.findByIdWithPolicies(id);
     return (role as RbacRoleRecord | null) ?? null;
   }
 
@@ -110,18 +89,15 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     }
 
     const user = this.requestUser;
-    const role = await this.databaseService.client.role.create({
-      data: {
-        name: request.name,
-        description: request.description,
-        externalName: request.externalName,
-        externalId: request.externalId,
-        parentRoleId: request.parentRoleId,
-        isSystemRole: false,
-        resourceStatus: ResourceStatusType.ENABLED,
-        createdBy: user?.id,
-      },
+    const data = RbacRoleFactory.buildCreateInput({
+      name: request.name,
+      description: request.description,
+      externalName: request.externalName,
+      externalId: request.externalId,
+      parentRoleId: request.parentRoleId,
+      createdBy: user?.id,
     });
+    const role = (await this.roleRepository.create(data)) as RbacRoleRecord;
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: role.id,
@@ -135,23 +111,18 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       createdBy: user?.id,
     });
 
-    return { ...(role as unknown as RbacRoleRecord), RolePolicies: [] };
+    return { ...role, RolePolicies: [] };
   }
 
   async update(id: string, request: UpdateRbacRoleRequest): Promise<RbacRoleRecord> {
-    const existing = await this.databaseService.client.role.findUnique({
-      where: { id },
-      select: { isSystemRole: true, name: true },
-    });
+    const existing = await this.roleRepository.findByIdGuardSelect(id);
 
     if (!existing) {
       throw new NotFoundException('Role not found');
     }
 
     if (existing.isSystemRole) {
-      throw new BadRequestException(
-        `Cannot modify system role '${existing.name}'. System roles are protected from modification.`,
-      );
+      throw new BadRequestException(`Cannot modify system role '${existing.name}'. System roles are protected from modification.`);
     }
 
     if (request.parentRoleId !== undefined && request.parentRoleId !== null) {
@@ -159,18 +130,8 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     }
 
     const user = this.requestUser;
-    const role = await this.databaseService.client.role.update({
-      where: { id },
-      data: {
-        ...(request.name && { name: request.name }),
-        ...(request.description !== undefined && { description: request.description }),
-        ...(request.externalName !== undefined && { externalName: request.externalName }),
-        ...(request.externalId !== undefined && { externalId: request.externalId }),
-        ...(request.parentRoleId !== undefined && { parentRoleId: request.parentRoleId }),
-        updatedBy: user?.id,
-      },
-      include: RbacRoleService.ROLE_POLICIES_INCLUDE,
-    });
+    const data = RbacRoleFactory.buildUpdateInput(request, user?.id);
+    const role = (await this.roleRepository.update(id, data)) as RbacRoleRecord;
 
     await this.policyEngine.invalidateRole(id);
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -186,23 +147,18 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       updatedBy: user?.id,
     });
 
-    return role as unknown as RbacRoleRecord;
+    return role;
   }
 
   async patch(id: string, request: UpdateRbacRoleRequest): Promise<RbacRoleRecord> {
-    const existing = await this.databaseService.client.role.findUnique({
-      where: { id },
-      select: { isSystemRole: true, name: true },
-    });
+    const existing = await this.roleRepository.findByIdGuardSelect(id);
 
     if (!existing) {
       throw new NotFoundException('Role not found');
     }
 
     if (existing.isSystemRole) {
-      throw new BadRequestException(
-        `Cannot modify system role '${existing.name}'. System roles are protected from modification.`,
-      );
+      throw new BadRequestException(`Cannot modify system role '${existing.name}'. System roles are protected from modification.`);
     }
 
     if (request.parentRoleId !== undefined && request.parentRoleId !== null) {
@@ -210,23 +166,8 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     }
 
     const user = this.requestUser;
-    const role = await this.databaseService.client.role.update({
-      where: { id },
-      data: {
-        ...(request.name && { name: request.name }),
-        ...(request.description !== undefined && { description: request.description }),
-        ...(request.externalName !== undefined && { externalName: request.externalName }),
-        ...(request.externalId !== undefined && { externalId: request.externalId }),
-        ...(request.parentRoleId !== undefined && { parentRoleId: request.parentRoleId }),
-        ...(request.resourceStatus && {
-          resourceStatus: request.resourceStatus as ResourceStatusType,
-          resourceStatusUpdatedAt: new Date(),
-          resourceStatusUpdatedBy: user?.id,
-        }),
-        updatedBy: user?.id,
-      },
-      include: RbacRoleService.ROLE_POLICIES_INCLUDE,
-    });
+    const data = RbacRoleFactory.buildUpdateInput(request, user?.id);
+    const role = (await this.roleRepository.update(id, data)) as RbacRoleRecord;
 
     await this.policyEngine.invalidateRole(id);
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -242,14 +183,11 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       updatedBy: user?.id,
     });
 
-    return role as unknown as RbacRoleRecord;
+    return role;
   }
 
   async softDelete(id: string): Promise<{ id: string; name: string }> {
-    const role = await this.databaseService.client.role.findUnique({
-      where: { id },
-      select: { isSystemRole: true, name: true },
-    });
+    const role = await this.roleRepository.findByIdGuardSelect(id);
 
     if (!role) {
       throw new NotFoundException('Role not found');
@@ -260,14 +198,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     }
 
     const user = this.requestUser;
-    await this.databaseService.client.role.update({
-      where: { id },
-      data: {
-        resourceStatus: ResourceStatusType.DELETED,
-        resourceStatusUpdatedAt: new Date(),
-        resourceStatusUpdatedBy: user?.id,
-      },
-    });
+    await this.roleRepository.softDelete(id, user?.id);
 
     await this.policyEngine.invalidateRole(id);
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
@@ -286,32 +217,27 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   async assignPolicy(roleId: string, policyId: string, dto: RbacRolePolicyAssignmentInput): Promise<void> {
-    const prisma = this.databaseService.client;
     const user = this.requestUser;
 
-    const existing = await prisma.rolePolicy.findFirst({
-      where: { roleId, policyId },
-    });
+    const existing = (await this.rolePolicyRepository.findFirstByRoleAndPolicy(roleId, policyId)) as { id: string; priority: number } | null;
 
     if (existing) {
-      await prisma.rolePolicy.update({
-        where: { id: existing.id },
-        data: {
+      await this.rolePolicyRepository.reEnable(
+        existing.id,
+        RolePolicyFactory.buildReEnableInput({
           priority: dto.priority ?? existing.priority,
-          resourceStatus: ResourceStatusType.ENABLED,
           updatedBy: user?.id,
-        },
-      });
+        }),
+      );
     } else {
-      await prisma.rolePolicy.create({
-        data: {
+      await this.rolePolicyRepository.create(
+        RolePolicyFactory.buildCreateInput({
           roleId,
           policyId,
           priority: dto.priority ?? 0,
-          resourceStatus: ResourceStatusType.ENABLED,
           createdBy: user?.id,
-        },
-      });
+        }),
+      );
     }
 
     await this.policyEngine.invalidateRole(roleId);
@@ -333,14 +259,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   async removePolicy(roleId: string, policyId: string): Promise<void> {
     const user = this.requestUser;
 
-    await this.databaseService.client.rolePolicy.updateMany({
-      where: { roleId, policyId },
-      data: {
-        resourceStatus: ResourceStatusType.DELETED,
-        resourceStatusUpdatedAt: new Date(),
-        resourceStatusUpdatedBy: user?.id,
-      },
-    });
+    await this.rolePolicyRepository.softDeleteByRoleAndPolicy(roleId, policyId, user?.id);
 
     await this.policyEngine.invalidateRole(roleId);
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
@@ -359,9 +278,9 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
 
   /**
    * Validates parentRoleId: ensures the parent exists and there are no
-   * circular references. Behaviour mirrors the prior controller helper
-   * verbatim — only the receiver changed (CoreDatabaseService injected
-   * via constructor rather than passed by argument).
+   * circular references. Behaviour mirrors the prior W6 helper
+   * verbatim — TASK-311 moved the two `findUnique` lookups behind
+   * `roleRepository.findParentRoleById` / `findParentRoleIdById`.
    *
    * @param currentRoleId - The ID of the role being updated (for cycle
    *                        detection). Omit for create operations.
@@ -371,11 +290,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       throw new BadRequestException('A role cannot be its own parent');
     }
 
-    const prisma = this.databaseService.client;
-    const parent = await prisma.role.findUnique({
-      where: { id: parentRoleId },
-      select: { id: true, parentRoleId: true },
-    });
+    const parent = await this.roleRepository.findParentRoleById(parentRoleId);
 
     if (!parent) {
       throw new NotFoundException(`Parent role '${parentRoleId}' not found`);
@@ -390,10 +305,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
         }
         if (visited.has(ancestorId)) break;
         visited.add(ancestorId);
-        const ancestor = await prisma.role.findUnique({
-          where: { id: ancestorId },
-          select: { parentRoleId: true },
-        });
+        const ancestor = await this.roleRepository.findParentRoleIdById(ancestorId);
         ancestorId = ancestor?.parentRoleId ?? null;
       }
     }
