@@ -162,28 +162,25 @@ Renaming or replacing the stale generated files in place is therefore not possib
 
 This is a literal deviation from AC-1 ("three new repositories … `PolicyRepository`, `RoleRepository`, `RolePolicyRepository`") that has been folded into D-1; everything else about AC-1 — count, location under `packages/domains/src/repositories/`, separate factory + mapper per repo — is satisfied.
 
-#### D-2. Co-located DDD layers per repository
+#### D-2. Co-located, lightweight repository / factory / mapper per aggregate
 
-Per the hard-constraint ("DO NOT modify files outside `packages/domains/src/repositories/**`, `packages/applications/src/services/rbac/**`, `packages/config-eslint/base.js`, and the ticket README"), the new entity classes, factories, and mappers cannot be added under the canonical `entities/`/`factories/`/`mappers/` trees. They are co-located beside their repository in a per-aggregate subfolder under `repositories/`:
+Per the hard-constraint ("DO NOT modify files outside `packages/domains/src/repositories/**`, `packages/applications/src/services/rbac/**`, `packages/config-eslint/base.js`, and the ticket README"), the new factories and mappers cannot be added under the canonical `entities/`/`factories/`/`mappers/`/`models/` trees. They are co-located beside their repository in a per-aggregate subfolder under `repositories/`:
 
 ```
 packages/domains/src/repositories/
 ├── policy/
-│   ├── PolicyEntity.ts
 │   ├── PolicyFactory.ts
 │   ├── PolicyEntityMapper.ts
 │   ├── PolicyRepository.ts
 │   ├── index.ts
 │   └── __tests__/PolicyRepository.test.ts
 ├── role/
-│   ├── RbacRoleEntity.ts
 │   ├── RbacRoleFactory.ts
 │   ├── RbacRoleEntityMapper.ts
 │   ├── RbacRoleRepository.ts
 │   ├── index.ts
 │   └── __tests__/RbacRoleRepository.test.ts
 └── role-policy/
-    ├── RolePolicyEntity.ts
     ├── RolePolicyFactory.ts
     ├── RolePolicyEntityMapper.ts
     ├── RolePolicyRepository.ts
@@ -191,7 +188,18 @@ packages/domains/src/repositories/
     └── __tests__/RolePolicyRepository.test.ts
 ```
 
-Each `<Aggregate>EntityMapper` extends `BaseMapper<DomainEntity, DataModel>` directly and implements `toPersistence`/`toDomainEntity` with explicit field assignments (skipping `AutoClassMapper`/`AutoEntityChangeMapper` because no local `Models.Policy`/`Models.RolePolicy` class exists — those would need to live in `packages/domains/src/models/`, which is outside scope). The mapper output is a Prisma-shaped plain object (`Prisma.PolicyCreateInput`-compatible for `toPersistence`; `Prisma.PolicyGetPayload<{}>`-compatible for `toDomainEntity`).
+**Deviation from the literal `UserRepository<UserEntity, User>` shape** (karpathy "Simplicity First"): the three new repositories are concrete `@Injectable()` classes that wrap `CoreDatabaseService.client.<model>` directly via typed CRUD methods (`findMany`, `count`, `findById`, `findByIdWithSelect`, `create`, `update`, `softDelete`, plus the join-table specifics on `RolePolicyRepository`). They do **not** extend `Repository<DomainEntity extends BaseEntity, DataModel>` and do **not** introduce a `PolicyEntity`/`RbacRoleEntity`/`RolePolicyEntity` aggregate class for these reasons:
+
+1. The constraint blocks adding new files under `packages/domains/src/entities/` or `packages/domains/src/models/`, which `Repository<E,M>` requires (it calls `new target(props)` via `AutoClassMapper` against a runtime class extending `BaseDataModel`).
+2. The two consuming services already speak in flat `PolicyRecord`/`RbacRoleRecord` interfaces declared in `IPolicyService`/`IRoleService` (TASK-307 W6 design choice — see W6.3 TSDoc: *"raw Prisma row shape returned to the controller. We avoid binding to the generated `Policy` model so the service stays decoupled from `@arcaai/database`"*). There is no behaviour to encapsulate in an entity class.
+3. Building a parallel `BaseEntity`-backed aggregate just to satisfy the literal shape of the `UserRepository` pattern would add ~200 lines of boilerplate per aggregate (entity + factory + mapper + tests) that the services do not consume.
+
+The "factory + mapper" split required by AC-2 is satisfied as:
+
+- **Factory** (`<Aggregate>Factory.ts`): pure functions like `buildPolicyCreateInput({ name, scope, rules, createdBy }) → Prisma.PolicyCreateInput` and `buildPolicyUpdateInput(request, updatedBy) → Prisma.PolicyUpdateInput`. They centralise the "build the Prisma `data` payload" responsibility that used to live inline in `PolicyService`.
+- **Mapper** (`<Aggregate>EntityMapper.ts`): pure functions like `mapPolicyRowToRecord(row) → PolicyRecord` that translate the Prisma payload to the service's structural record. For aggregates where the record shape is a strict subset/projection of the Prisma row, the mapper is largely an identity-shaped projection; this is still useful as a single recorded site where the shape contract is pinned (so if the Prisma schema gains a column, the mapper makes the decision to surface or hide it).
+
+This deviation from AC-2's literal `BaseEntity`-backed pattern is a karpathy-driven simplification. The literal interpretation would require a full `Repository<E,M>`-rooted DDD slab. If a future ticket wants to introduce real domain behaviour on Policy/Role/RolePolicy (e.g. `RoleEntity.canBeAssignedTo(user)`), that ticket should also touch the canonical `entities/`/`factories/`/`mappers/`/`models/` folders, which TASK-311 is constraint-locked out of.
 
 #### D-3. DI registration in service modules (not `CoreDatabaseModule`)
 
@@ -221,3 +229,4 @@ The first three lines (8 matches) are in the **stale** `Permission`/`RolePermiss
 |---|---|---|
 | 2026-05-28 | Ticket created from TASK-307 §10.1 deferral W7.A.15 (closes the partial §H-9 closure from W6) | — |
 | 2026-05-28 | Phase 1 inventory + Phase 2 delete-semantics audit recorded inline in §4.1/§4.2. Phase-3 design decisions (D-1 naming, D-2 layout, D-3 DI, D-4 SysEvent preservation) recorded in §4.3. Status → `In Progress`. | `docs/implementation/TASK-311-Policy-Role-Repository-Extraction/README.md` |
+| 2026-05-28 | Phase 3a — `PolicyRepository` + `PolicyFactory` + `PolicyEntityMapper` implemented under `packages/domains/src/repositories/policy/` with 15 TDD unit tests (CRUD pass-through + `softDelete` audit-stamp + factory input-shaping + mapper projection). Re-exported via `repositories/index.ts`. | `packages/domains/src/repositories/policy/{PolicyRepository,PolicyFactory,PolicyEntityMapper,index}.ts`, `packages/domains/src/repositories/policy/__tests__/PolicyRepository.test.ts`, `packages/domains/src/repositories/index.ts` |
