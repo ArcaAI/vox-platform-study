@@ -1,6 +1,7 @@
 import { CreateTenantBucketRequest, ITenantBucketService, TenantBucketResponse, TenantBucketTreeResponse } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { TenantOwnedResource } from '../../common';
 import { CanCreate, CanDelete, CanManage, CanRead } from '../../decorators';
 
 @ApiBearerAuth()
@@ -23,6 +24,7 @@ export class TenantBucketController {
   }
 
   @Get(':id')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
   @ApiOperation({ summary: 'Get bucket by ID' })
   @ApiParam({ name: 'id', description: 'Bucket ID' })
   @ApiResponse({ status: 200, description: 'Bucket details' })
@@ -32,6 +34,7 @@ export class TenantBucketController {
   }
 
   @Get(':id/tree')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
   @ApiOperation({ summary: 'Get bucket folder/file tree for UI tree view' })
   @ApiParam({ name: 'id', description: 'Bucket ID' })
   @ApiQuery({
@@ -54,6 +57,7 @@ export class TenantBucketController {
   }
 
   @Delete(':id')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
   @ApiOperation({ summary: 'Delete a custom storage bucket (system buckets cannot be deleted)' })
   @ApiParam({ name: 'id', description: 'Bucket ID' })
   @ApiResponse({ status: 200, description: 'Bucket deleted' })
@@ -72,6 +76,7 @@ export class TenantBucketController {
   }
 
   @Get(':id/presigned-url')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
   @ApiOperation({ summary: 'Get presigned download URL for a file in a tenant bucket' })
   @ApiParam({ name: 'id', description: 'Bucket ID' })
   @ApiQuery({ name: 'key', description: 'File key/path (e.g. 2026/04/08/streaming/file.wav)', required: true })
