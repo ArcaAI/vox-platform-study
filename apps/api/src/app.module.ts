@@ -9,6 +9,7 @@ import {
   ObservabilityModule,
   RedisServiceModule,
   SysEventServiceModule,
+  UnifiedAuthGuard,
 } from '@arcaai/applications';
 import { JobQueue } from '@arcaai/domains';
 import { Global, Module } from '@nestjs/common';
@@ -72,6 +73,16 @@ const interceptors = [
   },
 ];
 
+// Guards execute in declaration order. UnifiedAuthGuard MUST come first
+// so authentication is established before any concurrency / ownership
+// check that depends on the resolved CLS user / tenant context.
+//
+// TASK-307 W4b (AC-13, audit C-7 part 2) — register UnifiedAuthGuard as
+// APP_GUARD so the application default is deny. `@Public()` is the
+// explicit opt-out (read via SKIP_AUTH_KEY metadata); `@Authorize()` /
+// `@CanXxx()` decorators continue to gate per-route authorization on
+// top of the unified auth pass.
+//
 // TASK-302 Stream D Phase D (D.2) — global guard that propagates the
 // `@RequiresIfMatch()` marker onto `req._requiresIfMatch`. The companion
 // `@ExpectedVersion()` param decorator then throws `428 Precondition
@@ -79,6 +90,10 @@ const interceptors = [
 // route. Non-annotated routes pay only one `Reflector.getAllAndOverride`
 // call per request — effectively free.
 const guards = [
+  {
+    provide: APP_GUARD,
+    useClass: UnifiedAuthGuard,
+  },
   {
     provide: APP_GUARD,
     useClass: RequiresIfMatchGuard,
