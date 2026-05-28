@@ -12,7 +12,7 @@
 > · W4b `c9c42e19` — Global `UnifiedAuthGuard` as `APP_GUARD` (C-7 part 2)
 > · W5 `677f17d9` — Surface hardening sweep (C-8, C-9, D-1, D-2, D-5, D-6, D-7, D-8, D-11, D-12, E-3)
 > · W6 `77068325` — Direct-Prisma removal in RBAC controllers (C-10, §H-9 partial)
-> · W7 `<HEAD>` — Hygiene + docs close-out (this audit close-out + carryover nits from W1–W6 reviews)
+> · W7 `454c71d0` — Hygiene + docs close-out (this audit close-out + carryover nits from W1–W6 reviews)
 >
 > See `docs/implementation/TASK-307-API-Gateway-Hardening/README.md` for the full Implementation Summary, per-wave file lists, and §10 Deferrals.
 
@@ -645,6 +645,8 @@ HTTP Request
 7. **CORS allowlist sourced from `tenant.allowedOrigins`** instead of an env flag — already collected per-tenant during tenant onboarding.
 8. **OpenTelemetry tenant baggage** — propagate `tenantId` as a baggage key so downstream Python services and SQL traces are tenant-tagged.
 9. **Migrate `RolesController` and `PoliciesController` to repositories + services** with `BaseService.broadcastSysEvent` and CASL-aware authorization; the current direct-Prisma pattern dramatically increases the chance of cross-tenant policy leak.
+
+> ✅ **RESOLVED in TASK-307 W6 (partial)** (merge `77068325`) — `PoliciesController` / `RolesController` now delegate to `PolicyService` / `RbacRoleService` (encapsulating Prisma access + `BaseService.broadcastSysEvent`). The underlying `PolicyRepository` / `RoleRepository` / `RolePolicyRepository` facade extraction is deferred (see TASK-307 README §10.1 W7.A.15).
 10. **Per-controller tenant-scoping contract tests** — Playwright or supertest tests that, for every `/admin/*` and PHI-bearing route, prove a tenant-B token returns 404/403 when probing tenant-A resources. The test suite currently has very little of this (TASK-298 spot-checks pipelines only).
 
 ---

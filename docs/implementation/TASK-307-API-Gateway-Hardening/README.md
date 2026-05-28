@@ -13,7 +13,7 @@
 | **Predecessor closure docs** | [`06-implementation-summary.md`](../../multi-tenancy-audit/06-implementation-summary.md), [`07-ddd-layers-followup-closure.md`](../../multi-tenancy-audit/07-ddd-layers-followup-closure.md) |
 | **Companion tickets** | TASK-302 (PgBouncer + Vault — owns RS256 / Vault Transit signer + RLS) |
 | **Base branch** | `fix/2605-review` (HEAD `c9c42e19` — TASK-307 W4b merge) |
-| **Merge SHAs** | W1 `4c85d9f6` · W2 `38013f4e` · W3 `d969b25c` · W4a `b07eb67f` · W4b `c9c42e19` · W5 `677f17d9` · W6 `77068325` · W7 `<HEAD-of-w7>` |
+| **Merge SHAs** | W1 `4c85d9f6` · W2 `38013f4e` · W3 `d969b25c` · W4a `b07eb67f` · W4b `c9c42e19` · W5 `677f17d9` · W6 `77068325` · W7 `454c71d0` |
 
 ---
 
@@ -559,7 +559,7 @@ Closed C-10 (direct Prisma access in `auth.controller.ts`, `policies.controller.
 - W7.A.17 hygiene: `PoliciesController.findOne` now throws `NotFoundException` instead of bare `Error` (404 vs 500).
 - W7.A.16 hygiene: `PolicyService` extends `BaseService` with `ResourceType.Permission` (NOT `Policy`) — verbatim behaviour preservation for the pre-W6 SysEvent `resourceType` string. Documented in TSDoc.
 
-#### W7 — Hygiene + docs close-out (merge `<HEAD-of-w7>`)
+#### W7 — Hygiene + docs close-out (merge `454c71d0`)
 
 This wave. Closed the API gateway audit `04-api-design-review.md` (closure banner + per-finding markers in §A/§B/§C/§D/§E/§F), filed §10 deferrals for the LOW E-series + the medium-scope carryovers, fixed the 19 carryover code nits from W1–W6 reviews. See §10 below for the full carryover/deferral table and §11 Change History for the per-finding closure mapping.
 
@@ -636,7 +636,7 @@ Each row is the union of files touched by every commit reachable from the wave's
 - NEW `packages/eslint-plugin-arcaai-internal/` (custom plugin: `index.js`, `rules/no-controller-direct-prisma.js`, `__tests__/no-controller-direct-prisma.test.js`, `package.json`)
 - `packages/config-eslint/{base.js,package.json}` + `apps/api/package.json` + `pnpm-lock.yaml`
 
-#### W7 (`<HEAD-of-w7>`) — 18 files
+#### W7 (`454c71d0`) — 18 files
 - `apps/api/src/bootstrap/jwt-secret-placeholder-audit.ts` + test (W7.A.7 — tighter error messages)
 - `apps/api/src/filters/prisma.filter.ts` (W7.A.14 — shadowed-filter TSDoc + §10 deferral)
 - `apps/api/src/main.ts` (W7.A.13 — stale comment fix)
