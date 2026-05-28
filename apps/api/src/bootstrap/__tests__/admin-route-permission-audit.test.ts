@@ -1,68 +1,218 @@
 /**
- * Phase 0 Item 3 (TASK-302 Stream A) — boot-time admin route audit pin.
+ * Boot-time route permission audit.
  *
- * The audit walks the Express router after Nest is built and refuses
- * to start if any path matching ^/(api/v\d+/)?admin/ lacks both
- * REQUIRED_PERMISSIONS_KEY and SKIP_AUTH_KEY metadata. Tests use a
- * minimal mock that mirrors the real Express + Nest layer shape.
+ * Original — Phase 0 Item 3 (TASK-302 Stream A): walked the Express
+ * router after Nest is built and refused to start if any path matching
+ * ^/(api/v\d+/)?admin/ lacked both REQUIRED_PERMISSIONS_KEY and
+ * SKIP_AUTH_KEY metadata.
+ *
+ * TASK-307 W4a.1 widens the scope from `/admin/*` to ALL routes and
+ * fixes a latent bug where class-level decorators (e.g. a controller-
+ * level `@CanManage('Tenant')` with no method-level decorator on a
+ * given route) were invisible to the audit. The widened audit uses
+ * `DiscoveryService` + `Reflector.getAllAndOverride([method, class])`
+ * so class-level decorators are honoured the same way the
+ * `AuthorizationGuard` honours them at runtime.
+ *
+ * "Labeled" means: `SKIP_AUTH_KEY === true` (i.e. `@Public()`) OR
+ * `REQUIRED_PERMISSIONS_KEY` metadata is set to an array (any value,
+ * including an empty array — `@Authorize()` with no permission tuples
+ * is still an explicit "auth-required" label per the runtime guard's
+ * semantics in `AuthorizationGuard.canActivate`).
  */
 
 import { describe, it, expect } from 'vitest';
+import { Test, TestingModule } from '@nestjs/testing';
+import { Controller, Get, Module, Post } from '@nestjs/common';
 import { auditAdminRoutePermissions } from '../admin-route-permission-audit';
-import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY } from '@arcaai/applications';
+import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY, UnifiedAuthGuard } from '@arcaai/applications';
+import { Authorize, CanManage, Public } from '../../decorators';
 
-const fakeApp = (
-  routes: Array<{ path: string; method: string; metadata: Record<string, unknown> }>,
-) => ({
-  getHttpAdapter: () => ({
-    getInstance: () => ({
-      _router: {
-        stack: routes.map((r) => ({
-          route: { path: r.path, methods: { [r.method.toLowerCase()]: true } },
-          handle: Object.assign(() => undefined, { __metadata: r.metadata }),
-        })),
-      },
-    }),
-  }),
-});
+/**
+ * Build a tiny Nest application context (no `listen`) from a list of
+ * controller classes so the audit walks the same `ModulesContainer`
+ * surface it sees in production. We avoid `app.init()` because it
+ * triggers full module initialisation (DB, Redis, secrets); `compile()`
+ * is sufficient for metadata discovery.
+ *
+ * `Authorize`/`CanXxx` decorators apply `@UseGuards(UnifiedAuthGuard)`,
+ * which Nest tries to instantiate at compile time. We stub the guard so
+ * the testing module compiles without the full auth-stack DI graph
+ * (Reflector, IApiKeyService, PolicyEngine, ClsService, ...).
+ */
+async function buildAppFromControllers(controllers: Array<new (...args: unknown[]) => unknown>) {
+  @Module({ controllers })
+  class _SyntheticModule {}
 
-describe('Phase 0 Item 3 — boot-time admin route permission audit', () => {
-  it('passes when every admin route declares required_permissions', () => {
-    const app = fakeApp([
-      {
-        path: '/api/v1/admin/users',
-        method: 'GET',
-        metadata: { [REQUIRED_PERMISSIONS_KEY]: [{ action: 'manage', subject: 'User' }] },
-      },
-    ]);
-    expect(() => auditAdminRoutePermissions(app as never)).not.toThrow();
+  const moduleRef: TestingModule = await Test.createTestingModule({
+    imports: [_SyntheticModule],
+  })
+    .overrideGuard(UnifiedAuthGuard)
+    .useValue({ canActivate: () => true })
+    .compile();
+
+  return moduleRef as unknown as Parameters<typeof auditAdminRoutePermissions>[0];
+}
+
+describe('TASK-307 W4a.1 — boot-time route permission audit (widened to ALL routes)', () => {
+  describe('admin route coverage (regression — Phase 0 Item 3)', () => {
+    it('passes when every admin route declares required_permissions via class-level @CanManage', async () => {
+      @CanManage('User')
+      @Controller('admin/users')
+      class AdminUsersOk {
+        @Get()
+        list() {
+          return [];
+        }
+
+        @Get(':id')
+        getOne() {
+          return {};
+        }
+      }
+      const app = await buildAppFromControllers([AdminUsersOk]);
+      expect(() => auditAdminRoutePermissions(app)).not.toThrow();
+    });
+
+    it('passes on a public admin route marked @Public()', async () => {
+      @Controller('admin/pstudio')
+      class AdminPublic {
+        @Get()
+        @Public()
+        page() {
+          return 'html';
+        }
+      }
+      const app = await buildAppFromControllers([AdminPublic]);
+      expect(() => auditAdminRoutePermissions(app)).not.toThrow();
+    });
+
+    it('throws when an admin route is missing required_permissions', async () => {
+      @Controller('admin/orphans')
+      class AdminOrphan {
+        @Get()
+        list() {
+          return [];
+        }
+      }
+      const app = await buildAppFromControllers([AdminOrphan]);
+      expect(() => auditAdminRoutePermissions(app)).toThrow(
+        /admin\/orphans.*has neither @Public\(\) nor REQUIRED_PERMISSIONS_KEY/,
+      );
+    });
   });
 
-  it('passes on a public admin route marked @Public()', () => {
-    const app = fakeApp([
-      {
-        path: '/api/v1/admin/pstudio',
-        method: 'GET',
-        metadata: { [SKIP_AUTH_KEY]: true },
-      },
-    ]);
-    expect(() => auditAdminRoutePermissions(app as never)).not.toThrow();
+  describe('non-admin route coverage (W4a.1 widening)', () => {
+    it('throws when a non-admin route has neither @Public() nor any permission decorator', async () => {
+      @Controller('consultations')
+      class ConsultationsOrphan {
+        @Get()
+        list() {
+          return [];
+        }
+      }
+      const app = await buildAppFromControllers([ConsultationsOrphan]);
+      expect(() => auditAdminRoutePermissions(app)).toThrow(
+        /ConsultationsOrphan\.list.*has neither @Public\(\) nor REQUIRED_PERMISSIONS_KEY/,
+      );
+    });
+
+    it('throws when an auth route (login) has no decorator at all', async () => {
+      @Controller('auth')
+      class AuthOrphan {
+        @Post('login')
+        login() {
+          return { ok: true };
+        }
+      }
+      const app = await buildAppFromControllers([AuthOrphan]);
+      expect(() => auditAdminRoutePermissions(app)).toThrow(/AuthOrphan\.login.*has neither @Public/);
+    });
+
+    it('passes on a non-admin route marked @Public()', async () => {
+      @Controller('health')
+      class HealthOk {
+        @Get('live')
+        @Public()
+        live() {
+          return { status: 'healthy' };
+        }
+      }
+      const app = await buildAppFromControllers([HealthOk]);
+      expect(() => auditAdminRoutePermissions(app)).not.toThrow();
+    });
+
+    it('passes on a non-admin route guarded by class-level @Authorize() (empty)', async () => {
+      @Authorize()
+      @Controller('consultations/jobs')
+      class ConsultationJobsOk {
+        @Get(':id')
+        getJob() {
+          return {};
+        }
+      }
+      const app = await buildAppFromControllers([ConsultationJobsOk]);
+      expect(() => auditAdminRoutePermissions(app)).not.toThrow();
+    });
+
+    it('passes on a non-admin route with method-level specific permissions', async () => {
+      @Controller('voice-profile')
+      class VoiceProfileOk {
+        @Post(':id/activate')
+        @CanManage('UserVoiceProfile')
+        activate() {
+          return {};
+        }
+      }
+      const app = await buildAppFromControllers([VoiceProfileOk]);
+      expect(() => auditAdminRoutePermissions(app)).not.toThrow();
+    });
   });
 
-  it('throws when an admin route is missing required_permissions', () => {
-    const app = fakeApp([
-      { path: '/api/v1/admin/orphans', method: 'GET', metadata: {} },
-    ]);
-    expect(() => auditAdminRoutePermissions(app as never)).toThrow(
-      /admin\/orphans.*missing.*permission/i,
-    );
+  describe('error message shape', () => {
+    it('includes the controller name, method name, and the suggested decorators', async () => {
+      @Controller('foo')
+      class FooOrphan {
+        @Get('bar/:id')
+        bar() {
+          return {};
+        }
+      }
+      const app = await buildAppFromControllers([FooOrphan]);
+      expect(() => auditAdminRoutePermissions(app)).toThrow(
+        /Route GET .*\/foo\/bar\/:id on FooOrphan\.bar has neither @Public\(\) nor REQUIRED_PERMISSIONS_KEY\. This is a security risk\. Add @Public\(\) or @Authorize\(\) \/ @CanXxx\(\)\./,
+      );
+    });
+
+    it('lists all offenders in a single error when multiple controllers drift', async () => {
+      @Controller('a')
+      class A {
+        @Get()
+        a() {
+          return {};
+        }
+      }
+      @Controller('b')
+      class B {
+        @Get()
+        b() {
+          return {};
+        }
+      }
+      const app = await buildAppFromControllers([A, B]);
+      expect(() => auditAdminRoutePermissions(app)).toThrow(/A\.a[\s\S]*B\.b|B\.b[\s\S]*A\.a/);
+    });
   });
 
-  it('ignores non-admin routes even when they have no metadata', () => {
-    const app = fakeApp([
-      { path: '/api/v1/consultations', method: 'GET', metadata: {} },
-      { path: '/api/v1/auth/login', method: 'POST', metadata: {} },
-    ]);
-    expect(() => auditAdminRoutePermissions(app as never)).not.toThrow();
+  describe('honours metadata key constants', () => {
+    it('uses the @arcaai/applications SKIP_AUTH_KEY symbol exactly', () => {
+      expect(typeof SKIP_AUTH_KEY).toBe('string');
+      expect(SKIP_AUTH_KEY).toBe('skip_auth');
+    });
+
+    it('uses the @arcaai/applications REQUIRED_PERMISSIONS_KEY symbol exactly', () => {
+      expect(typeof REQUIRED_PERMISSIONS_KEY).toBe('string');
+      expect(REQUIRED_PERMISSIONS_KEY).toBe('required_permissions');
+    });
   });
 });
