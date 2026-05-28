@@ -5,8 +5,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['tests/unit/**/*.test.ts', 'src/**/*.test.ts'],
-    exclude: ['tests/e2e/**', 'tests/integration/**', 'node_modules/**', 'dist/**'],
+    include: ['tests/unit/**/*.test.ts', 'tests/integration/**/*.spec.ts', 'src/**/*.test.ts'],
+    exclude: ['tests/e2e/**', 'node_modules/**', 'dist/**'],
     // Provide DATABASE_URL for unit tests that transitively import Prisma
     // (e.g., via @arcaai/applications barrel exports). No actual DB calls are made.
     env: {
