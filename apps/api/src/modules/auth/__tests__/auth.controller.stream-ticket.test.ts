@@ -39,7 +39,7 @@ function buildController(opts: {
       {} as never, // userService
       {} as never, // authService
       {} as never, // appSettingsService
-      {} as never, // databaseService
+      {} as never, // userRoleAssignmentService
       {} as never, // userRepository
       {} as never, // userRoleAssignmentRepository
       {} as never, // roleRepository

@@ -1,7 +1,8 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  CoreDatabaseService,
   ResourceType,
   ResourceStatusType,
   SysEventType,
@@ -11,7 +12,7 @@ import {
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
-import { IUserRoleAssignmentService } from './IUserRoleAssignmentService';
+import { ActiveUserRoleAssignmentRow, AuthRoleSummary, IUserRoleAssignmentService } from './IUserRoleAssignmentService';
 import { CreateUserRoleAssignmentRequest, UpdateUserRoleAssignmentRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
@@ -25,8 +26,74 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
     private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-307 W6.1 — Prisma access at the service layer is legitimate; the
+    // controllers that previously did this directly (audit C-10) now route
+    // through here. The two new read methods need a join (`include: Role`)
+    // and a `select` projection that the generated `Repository<E,M>` base
+    // class cannot express, so we fall back to the raw client at this single
+    // boundary — same precedent as `TenantService.getTenantUsage`.
+    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
   ) {
     super(eventEmitter, clsService, ResourceType.UserRoleAssignment);
+  }
+
+  async findActiveAssignmentForUserInTenant(
+    userId: string,
+    tenantId: string,
+  ): Promise<ActiveUserRoleAssignmentRow | null> {
+    const row = await this.databaseService.client.userRoleAssignment.findFirst({
+      where: {
+        userId,
+        tenantId,
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+    });
+    return (row as ActiveUserRoleAssignmentRow | null) ?? null;
+  }
+
+  async findActiveTenantIdsForUser(userId: string): Promise<string[]> {
+    const rows = await this.databaseService.client.userRoleAssignment.findMany({
+      where: {
+        userId,
+        resourceStatus: ResourceStatusType.ENABLED,
+        tenantId: { not: null },
+      },
+      select: { tenantId: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    for (const row of rows as Array<{ tenantId: string | null }>) {
+      const tenantId = row.tenantId;
+      if (typeof tenantId !== 'string' || tenantId.length === 0) continue;
+      if (seen.has(tenantId)) continue;
+      seen.add(tenantId);
+      ordered.push(tenantId);
+    }
+    return ordered;
+  }
+
+  async findActiveRolesForUser(userId: string): Promise<AuthRoleSummary[]> {
+    const rows = await this.databaseService.client.userRoleAssignment.findMany({
+      where: {
+        userId,
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      include: { Role: true },
+    });
+
+    const result: AuthRoleSummary[] = [];
+    for (const row of rows as Array<{ Role: { id: string; name: string; permissions?: string[] } | null }>) {
+      const role = row.Role;
+      if (!role) continue;
+      result.push({
+        id: role.id,
+        name: role.name,
+        permissions: role.permissions,
+      });
+    }
+    return result;
   }
 
   async create(request: CreateUserRoleAssignmentRequest): Promise<UserRoleAssignmentEntity> {
