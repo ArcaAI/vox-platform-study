@@ -67,6 +67,23 @@ export interface ExtractNerJobPayload {
 // Job Status Interface (Stored in Redis)
 // =============================================================================
 
+/**
+ * In-memory + Redis-persisted job status struct used by
+ * `ConsultationJobService` and surfaced over HTTP via `JobStatusResponse`.
+ *
+ * TASK-307 W7.A.11 (carryover from W3 review) — release-window risk:
+ * `tenantId` and `userId` are typed as REQUIRED, but jobs created BEFORE
+ * the W3 deploy (`d969b25c`) were persisted to Redis without these
+ * fields. The JOB_TTL is 24h, so for up to 24h after the deploy
+ * `getJobStatus()` may return a parsed struct whose `tenantId` /
+ * `userId` are actually `undefined` at runtime even though the TS type
+ * says otherwise. Downstream consumers (the `@TenantOwnedResource`
+ * interceptor) will treat an `undefined` tenantId as a tenant-mismatch
+ * → 404, so old jobs are not leaked cross-tenant; they are merely
+ * unreadable for the remaining 24h of their TTL. See
+ * `docs/implementation/TASK-307-API-Gateway-Hardening/README.md` §7
+ * (Risks) and §10 (Deferrals).
+ */
 export interface ConsultationJobStatus {
   jobId: string;
   type: JobType;
