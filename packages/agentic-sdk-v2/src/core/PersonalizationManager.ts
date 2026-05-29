@@ -24,11 +24,15 @@ export const PERSONALIZATION_CACHE_KEY_PREFIX = 'arcaai-personalization' as cons
 /**
  * Compose the personalization cache key for a given namespace. Mirrors the
  * `USER_PREFERENCES_STORE` namespacing AgenticProvider already applies.
- * When no namespace is supplied the bare prefix is used (the SDK always
- * supplies one in production; this fallback only serves direct construction).
+ *
+ * TASK-317 M-3 — fail-closed: a missing/empty namespace maps to the `pre-login`
+ * bootstrap namespace, NEVER the bare prefix. The bare prefix is exactly the
+ * legacy global row that the configDB v3 upgrade deletes and that every user on
+ * an origin would otherwise share, so that path must be unreachable.
  */
 export function personalizationCacheKey(namespace?: string): string {
-  return namespace ? `${PERSONALIZATION_CACHE_KEY_PREFIX}/${namespace}` : PERSONALIZATION_CACHE_KEY_PREFIX;
+  const ns = namespace && namespace.length > 0 ? namespace : 'pre-login';
+  return `${PERSONALIZATION_CACHE_KEY_PREFIX}/${ns}`;
 }
 
 /**
@@ -95,14 +99,20 @@ export class PersonalizationManager {
   private impersonationReadOnly = false;
   /** TASK-297 DEF-H4 — optional cascade sink. */
   private configManager?: PersonalizationConfigManager;
-  /** TASK-317 W1.1 (AC-1) — per-`${tenantId}::${userId}` IDB cache key. */
-  private readonly cacheKey: string;
+  /**
+   * TASK-317 W1.1/W1.2 (AC-1) — resolves the active `${tenantId}::${userId}`
+   * namespace. AgenticProvider passes a live accessor (`() => namespaceRef`),
+   * so this manager follows the real namespace once `/auth/me` resolves it
+   * instead of capturing `pre-login` by value at construction (review C-1).
+   * A plain string is still accepted for direct construction in unit tests.
+   */
+  private readonly resolveNamespace: () => string | null | undefined;
 
-  constructor(config: PersonalizationConfig, apiClient: AgenticClient, logger?: ISDKLogger, namespace?: string) {
+  constructor(config: PersonalizationConfig, apiClient: AgenticClient, logger?: ISDKLogger, namespace?: string | (() => string | null | undefined)) {
     this.config = config;
     this.apiClient = apiClient;
     this.logger = logger;
-    this.cacheKey = personalizationCacheKey(namespace);
+    this.resolveNamespace = typeof namespace === 'function' ? namespace : () => namespace;
 
     // TASK-304 Wave 2D — constructor stays synchronous; the IDB hydrate
     // step is exposed as the async `hydrate()` method so AgenticProvider
@@ -118,6 +128,16 @@ export class PersonalizationManager {
         syncInterval: config.syncInterval,
       },
     });
+  }
+
+  /**
+   * TASK-317 W1.2 (AC-1) — per-access IDB cache key, computed from the live
+   * namespace so a re-key (after `/auth/me`, on tenant/user switch) takes
+   * effect without reconstructing the manager. `personalizationCacheKey`
+   * fail-closes a missing namespace to `pre-login` (M-3).
+   */
+  private get cacheKey(): string {
+    return personalizationCacheKey(this.resolveNamespace() ?? undefined);
   }
 
   /**
