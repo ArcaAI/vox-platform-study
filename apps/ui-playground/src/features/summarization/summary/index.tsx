@@ -29,7 +29,7 @@ import type { PromptTemplate } from '@/features/admin/api/prompts';
 import { usePromptTemplates } from '@/features/admin/api/prompts';
 import type { DnaReport } from '@/features/dna-writing-style/api/dna-writing-styles';
 import { useMyDnaStyle, useDnaStyleByDoctor } from '@/features/dna-writing-style/api/dna-writing-styles';
-import { CONTEXT_ENDPOINTS, useAgenticStore, useArca, type ContextItem } from '@arcaai/vox';
+import { CONTEXT_ENDPOINTS, useStoreApi, useArca, type ContextItem } from '@arcaai/vox';
 import { buildAssembledPayload } from '../utils/build-assembled-payload';
 import { filterContextItems, type ContextRecency } from '../utils/filter-context-items';
 
@@ -66,6 +66,7 @@ Echocardiogram (2026-02-20):
 type InputMode = 'context_item' | 'message';
 
 export default function SummaryPage() {
+  const storeApi = useStoreApi();
   const ctx = useDoctorContext();
   const { session } = useArca();
   const debugMode = usePlaygroundStore((s) => s.debugMode);
@@ -322,7 +323,7 @@ export default function SummaryPage() {
           appointmentDate: consultation.appointmentDate,
         };
         await session.load(consultation.id);
-        const freshState = useAgenticStore.getState();
+        const freshState = storeApi.getState();
         const { apiClient: freshClient, consultation: freshConsultation } = freshState;
         if (!freshClient || !freshConsultation) continue;
 
@@ -345,7 +346,7 @@ export default function SummaryPage() {
     } finally {
       setContextSuggestionsLoading(false);
     }
-  }, [contextSuggestionsLoading, ctx.effectiveUserId, ctx.requiresImpersonation, session]);
+  }, [contextSuggestionsLoading, ctx.effectiveUserId, ctx.requiresImpersonation, session, storeApi]);
 
   const toggleContextSelection = useCallback(
     async (item: ContextItem) => {

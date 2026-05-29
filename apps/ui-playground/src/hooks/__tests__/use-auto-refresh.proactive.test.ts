@@ -10,7 +10,10 @@ const mockApiClient = {
 
 vi.mock('@arcaai/vox', () => ({
     useAuth: () => ({ refreshToken: mockRefreshToken }),
-    useAgenticStore: () => ({ apiClient: mockApiClient }),
+    useArcaStore: (selector?: (s: { apiClient: typeof mockApiClient }) => unknown) => {
+        const state = { apiClient: mockApiClient };
+        return selector ? selector(state) : state;
+    },
 }));
 
 vi.mock('@/lib/auth-refresh', async (importOriginal) => {
