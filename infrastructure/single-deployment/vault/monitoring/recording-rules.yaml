@@ -1,0 +1,32 @@
+# =============================================================================
+# HOPE — Vault recording rules (TASK-312 Phase E, E.3)    [PrometheusRule CRD]
+# =============================================================================
+# Pre-aggregations the Grafana dashboard + alerts read so panels stay cheap and
+# expressions stay readable. Apply:  kubectl apply -f monitoring/recording-rules.yaml
+# -----------------------------------------------------------------------------
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vault-recording-rules
+  namespace: vault-system
+  labels:
+    app.kubernetes.io/name: vault
+    app.kubernetes.io/part-of: hope
+    release: kube-prometheus-stack # <-- match your operator's ruleSelector
+spec:
+  groups:
+    - name: vault.recording
+      interval: 30s
+      rules:
+        - record: vault:nodes_reachable:count
+          expr: count(up{job=~".*vault.*"} == 1)
+        - record: vault:nodes_unsealed:count
+          expr: sum(vault_core_unsealed)
+        - record: vault:has_leader:bool
+          expr: clamp_max(sum(vault_core_active), 1)
+        - record: vault:audit_write_failures:rate5m
+          expr: sum(rate(vault_audit_log_request_failure[5m]))
+        - record: vault:leases:count
+          expr: max(vault_expire_num_leases)
+        - record: vault:tokens:count
+          expr: max(vault_token_count)

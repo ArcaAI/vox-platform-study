@@ -1,0 +1,52 @@
+# =============================================================================
+# HOPE — seal-Vault NetworkPolicy (TASK-312 Phase C, C.6b)
+# =============================================================================
+# The seal Vault is the cluster's ROOT OF TRUST (holds the `autounseal` transit
+# key). Lock its network surface to the bare minimum: default-deny, then allow
+# INGRESS only from the HA Vault server pods on :8200 (the transit encrypt/decrypt
+# calls that perform auto-unseal). Nothing else needs to reach it.
+#
+#   - Bootstrap (seal-bootstrap.sh init/unseal) uses `kubectl exec`, which flows
+#     API-server -> kubelet -> runtime, NOT the pod network, so it is unaffected.
+#   - Kubelet liveness probes originate from the NODE, not a pod, so they bypass
+#     pod-to-pod NetworkPolicy in standard CNIs.
+#
+# Egress is DNS-only: the seal Vault uses FILE storage, has no service_registration
+# and makes no outbound Vault calls, so it never needs the k8s API or peers.
+#
+# Same caveat as network-policy.yaml: needs a CNI that enforces NetworkPolicy
+# (Calico/Cilium; k3s default Flannel does NOT). Treat as defense-in-depth.
+# In production, prefer running the seal Vault in its OWN namespace/node-pool
+# (see ../README.md "Hardening the seal Vault") and scope this policy there.
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-seal
+  namespace: vault-system
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault-seal
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # ONLY the HA Vault server pods perform transit encrypt/decrypt (auto-unseal).
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+              component: server
+      ports:
+        - protocol: TCP
+          port: 8200
+  egress:
+    # DNS only.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

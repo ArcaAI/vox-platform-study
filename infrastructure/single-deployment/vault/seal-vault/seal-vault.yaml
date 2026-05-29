@@ -1,0 +1,150 @@
+# =============================================================================
+# HOPE — "seal" Vault (TASK-312 Phase C, C.3)
+# =============================================================================
+# A SINGLE-NODE Vault whose ONLY job is to hold one Transit key (`autounseal`)
+# that the 3-node HA cluster uses to auto-unseal. This is the only Vault in the
+# system that is sealed by Shamir key-shares (held offline by the ops team).
+#
+# Why a separate Vault instead of cloud KMS: on self-hosted Proxmox there is no
+# KMS. Transit auto-unseal via a tiny dedicated Vault is HashiCorp's documented
+# answer (https://developer.hashicorp.com/vault/tutorials/auto-unseal/autounseal-transit).
+#
+# Blast radius: the token handed to the HA cluster can ONLY encrypt/decrypt the
+# `autounseal` key (see policy in seal-bootstrap.sh). It cannot read any HOPE
+# secret. Still: in production, run this on a SEPARATE node pool (ideally a
+# separate cluster) and lock it down hard. Here it shares vault-system to match
+# the seal address in helm/values.yaml; see ../README.md to split it out.
+#
+# Apply:  kubectl apply -f seal-vault.yaml
+# Then:   ./seal-bootstrap.sh   (init + unseal + transit + token Secret)
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vault-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-seal
+  namespace: vault-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-seal-config
+  namespace: vault-system
+  labels:
+    app.kubernetes.io/name: vault-seal
+data:
+  seal.hcl: |
+    ui = false
+    disable_mlock = true
+
+    listener "tcp" {
+      address     = "[::]:8200"
+      tls_disable = 1
+    }
+
+    storage "file" {
+      path = "/vault/data"
+    }
+
+    # NO seal stanza here: this Vault is the root of trust and is unsealed by
+    # Shamir key-shares (manual, by ops) — never auto-unsealed itself.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault-seal
+  namespace: vault-system
+  labels:
+    app.kubernetes.io/name: vault-seal
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8200
+      targetPort: 8200
+  selector:
+    app.kubernetes.io/name: vault-seal
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vault-seal
+  namespace: vault-system
+  labels:
+    app.kubernetes.io/name: vault-seal
+spec:
+  serviceName: vault-seal
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vault-seal
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vault-seal
+    spec:
+      serviceAccountName: vault-seal
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: vault
+          # PROD pins this by digest via `kubectl apply -k seal-vault/` (kustomization.yaml
+          # rewrites -> hashicorp/vault@sha256:eb0ba6…ea0). Tag here is for the kind E2E.
+          image: hashicorp/vault:1.21.2
+          imagePullPolicy: IfNotPresent
+          command: ["vault", "server", "-config=/vault/config/seal.hcl"]
+          securityContext:
+            capabilities:
+              add: ["IPC_LOCK"] # honored only if disable_mlock=false; harmless here
+            allowPrivilegeEscalation: false
+          ports:
+            - name: http
+              containerPort: 8200
+          env:
+            - name: VAULT_ADDR
+              value: "http://127.0.0.1:8200"
+            - name: VAULT_API_ADDR
+              value: "http://$(POD_IP):8200"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          # No readiness gate on "unsealed": a sealed seal-Vault must still be
+          # reachable so ops can unseal it. Liveness only checks the process.
+          livenessProbe:
+            httpGet:
+              path: "/v1/sys/health?uninitcode=204&sealedcode=204&standbycode=204"
+              port: 8200
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /vault/config
+            - name: data
+              mountPath: /vault/data
+      volumes:
+        - name: config
+          configMap:
+            name: vault-seal-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

@@ -1,0 +1,141 @@
+# =============================================================================
+# HOPE — HA cluster init Job (TASK-312 Phase C, C.5)
+# =============================================================================
+# Runs ONCE after `helm install`. Because the cluster is Transit-auto-unsealed,
+# `vault operator init` yields RECOVERY keys (not unseal keys) and every node
+# auto-unseals + joins via retry_join with no manual step. This Job:
+#   1. inits vault-0 (recovery 5/3) if not already initialised,
+#   2. stores root token + recovery keys in Secret `vault-init-keys`,
+#   3. enables the file audit device against the auditStorage PVC.
+#
+# Implementation: a kubectl image drives Vault via `kubectl exec` into vault-0
+# (consistent with seal-bootstrap.sh / configure-app-auth.sh) and writes the
+# Secret with native `kubectl apply` — no hand-rolled k8s REST from busybox.
+#
+# !!! SECURITY: Secret `vault-init-keys` lands in etcd in PLAINTEXT. Treat it as
+# !!! break-glass only: copy it OFFLINE (split the recovery keys among ops), then
+# !!!   kubectl delete secret vault-init-keys -n vault-system
+# !!! In production, seal it with sealed-secrets / external-secrets instead.
+#
+# App-level auth (kv-v2, transit, AppRole, hope-app policy/role) is configured
+# separately by ../bootstrap/configure-app-auth.sh (idempotent), so this Job
+# stays platform-only and re-runnable.
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-bootstrap
+  namespace: vault-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-bootstrap
+  namespace: vault-system
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-bootstrap
+  namespace: vault-system
+subjects:
+  - kind: ServiceAccount
+    name: vault-bootstrap
+    namespace: vault-system
+roleRef:
+  kind: Role
+  name: vault-bootstrap
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-init
+  namespace: vault-system
+  labels:
+    app.kubernetes.io/name: vault-init
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vault-init
+    spec:
+      serviceAccountName: vault-bootstrap
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          # has sh + kubectl + base64 (distroless kubectl images lack a shell).
+          # PROD pins this by digest via `kubectl apply -k bootstrap/` (kustomization.yaml
+          # rewrites -> alpine/k8s@sha256:7f8133…f40). Tag here is for the kind E2E.
+          image: alpine/k8s:1.33.1
+          env:
+            - name: NS
+              value: vault-system
+            - name: POD
+              value: vault-0
+            - name: RECOVERY_SHARES
+              value: "5"
+            - name: RECOVERY_THRESHOLD
+              value: "3"
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              vex() { kubectl -n "$NS" exec "$POD" -- sh -ec "export VAULT_ADDR=http://127.0.0.1:8200; $1"; }
+
+              echo "[init] waiting for vault-0 API ..."
+              i=0
+              until vex 'vault status 2>/dev/null' | grep -q 'Initialized'; do
+                i=$((i+1)); [ "$i" -gt 60 ] && { echo "[init] vault-0 never answered"; exit 1; }
+                sleep 3
+              done
+
+              if vex 'vault status -format=json 2>/dev/null' | grep -q '"initialized": true'; then
+                echo "[init] already initialised — skipping operator init"
+                if ! kubectl -n "$NS" get secret vault-init-keys >/dev/null 2>&1; then
+                  echo "[init] FATAL: vault is initialised but Secret vault-init-keys is missing."
+                  echo "[init] The root/recovery material is unrecoverable from here — manual"
+                  echo "[init] intervention required (restore from snapshot or re-key)."
+                  exit 1
+                fi
+              else
+                echo "[init] operator init (recovery $RECOVERY_SHARES/$RECOVERY_THRESHOLD)"
+                INIT="$(vex "vault operator init -recovery-shares=$RECOVERY_SHARES -recovery-threshold=$RECOVERY_THRESHOLD -format=json")"
+                ROOT="$(printf '%s' "$INIT" | tr '\n' ' ' | grep -o '"root_token": *"[^"]*"' | sed 's/.*: *"//;s/"$//')"
+                [ -n "$ROOT" ] || { echo "[init] could not parse root token"; exit 1; }
+                printf '%s' "$INIT" > /tmp/init.json
+                echo "[init] storing Secret vault-init-keys"
+                kubectl -n "$NS" create secret generic vault-init-keys \
+                  --from-file=init.json=/tmp/init.json \
+                  --from-literal=root-token="$ROOT" \
+                  --dry-run=client -o yaml | kubectl apply -f -
+              fi
+
+              echo "[init] waiting for transit auto-unseal ..."
+              i=0
+              until vex 'vault status -format=json 2>/dev/null' | grep -q '"sealed": false'; do
+                i=$((i+1)); [ "$i" -gt 40 ] && { echo "[init] still sealed — check seal Vault + VAULT_TOKEN secret"; exit 1; }
+                sleep 3
+              done
+
+              ROOT="$(kubectl -n "$NS" get secret vault-init-keys -o jsonpath='{.data.root-token}' | base64 -d)"
+              echo "[init] enabling file audit device at /vault/audit/vault-audit.log"
+              # Token on STDIN (read by the in-pod shell), never in the exec argv —
+              # keeps it out of `ps` inside the vault container.
+              printf '%s\n' "$ROOT" | kubectl -n "$NS" exec -i "$POD" -- sh -ec '
+                IFS= read -r VAULT_TOKEN; export VAULT_TOKEN VAULT_ADDR=http://127.0.0.1:8200
+                vault audit enable file file_path=/vault/audit/vault-audit.log' 2>/dev/null \
+                || echo "[init] audit device already enabled"
+
+              echo "[init] DONE. Cluster initialised, unsealed, audited."

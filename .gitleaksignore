@@ -56,3 +56,14 @@
 #   2. If a future PR rewrites .gitlab-ci.yml history, drop these lines.
 275223be9ec992160662f417bb00d4d28316629e:.gitlab-ci.yml:github-pat:183
 70adcb9ccef5ad11a81fd2f5fc1ab36b618a5c6d:.gitlab-ci.yml:github-pat:185
+
+# ─── TASK-312 Stream B — dev Vault seed placeholder (NOT a real credential) ──
+#
+# Category: PLACEHOLDER (safe). infrastructure/docker/configs/vault/dev-init.sh
+# seeds the local dev Vault with throwaway warmup values so the LRU cache lands
+# a non-empty value. The literal is `dev-redis-pass-not-for-prod` — a dev-only
+# placeholder, never used in prod (prod reads REDIS_PASS from Vault). The global
+# [allowlist].regexes `not-for-prod` filter does not fire here because the
+# hope-redis-password rule has a capture group `(REDIS_PASS|REDIS_URL)`, so the
+# allowlist's secret-target sees the var name, not the value. Fingerprint pin:
+infrastructure/docker/configs/vault/dev-init.sh:hope-redis-password:84

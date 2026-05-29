@@ -4,7 +4,7 @@
 // `(p as unknown as { client: ... }).client = ...`) so they run with no
 // network. The dev-container integration test lives in
 // vault-secrets.provider.integration.test.ts.
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   VaultSecretsProvider,
   VaultProviderConfig,
@@ -369,5 +369,180 @@ describe('VaultSecretsProvider transit helpers', () => {
     const p = provider({ read: mockRead });
     await p.boot();
     await expect(p.issueDbCredential('r')).rejects.toThrow(/empty creds/);
+  });
+});
+
+// TASK-312 Phase B (B.1–B.4) — AppRole token renewal. boot() captures the
+// login lease_duration/renewable but the pre-B build never renewed, so a prod
+// pod 403s when the token hits token_max_ttl. These tests pin the renew-at-50%
+// loop, degraded-after-N-failures health signal, recovery, and shutdown cancel.
+describe('VaultSecretsProvider AppRole token renewal', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Boot a provider with a controllable login + renew + health mock client. */
+  async function bootRenewable(opts: {
+    loginTtl?: number;
+    renewable?: boolean;
+    renewSelf?: ReturnType<typeof vi.fn>;
+    health?: ReturnType<typeof vi.fn>;
+  }) {
+    const p = new VaultSecretsProvider(cfg());
+    const client: Record<string, unknown> & { token: string } = {
+      token: '',
+      approleLogin: vi.fn().mockResolvedValue({
+        auth: {
+          client_token: 'hvs.session',
+          lease_duration: opts.loginTtl ?? 3600,
+          renewable: opts.renewable ?? true,
+        },
+      }),
+      tokenRenewSelf:
+        opts.renewSelf ??
+        vi.fn().mockResolvedValue({ auth: { lease_duration: 3600, renewable: true } }),
+      health: opts.health ?? vi.fn().mockResolvedValue({ initialized: true, sealed: false }),
+    };
+    (p as unknown as { client: unknown }).client = client;
+    await p.boot();
+    return { p, client };
+  }
+
+  it('schedules tokenRenewSelf at 50% of the AppRole token TTL', async () => {
+    const renewSelf = vi
+      .fn()
+      .mockResolvedValue({ auth: { lease_duration: 3600, renewable: true } });
+    const { p } = await bootRenewable({ loginTtl: 3600, renewSelf });
+
+    expect(renewSelf).not.toHaveBeenCalled();
+    // Just shy of 50% — must NOT have fired yet.
+    await vi.advanceTimersByTimeAsync(1_799_000);
+    expect(renewSelf).toHaveBeenCalledTimes(0);
+    // Crossing 50% (1800s) fires the first renewal.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(renewSelf).toHaveBeenCalledTimes(1);
+
+    await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
+  });
+
+  it('reschedules at 50% of the freshly-returned TTL after each renewal', async () => {
+    // login TTL 3600 → first tick at 1800s; renewal returns 60 → next at 30s.
+    const renewSelf = vi
+      .fn()
+      .mockResolvedValue({ auth: { lease_duration: 60, renewable: true } });
+    const { p } = await bootRenewable({ loginTtl: 3600, renewSelf });
+
+    await vi.advanceTimersByTimeAsync(1_800_000);
+    expect(renewSelf).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(renewSelf).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(renewSelf).toHaveBeenCalledTimes(3);
+
+    await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
+  });
+
+  it('does not schedule renewal for a non-renewable token', async () => {
+    const renewSelf = vi.fn();
+    const { p } = await bootRenewable({ loginTtl: 3600, renewable: false, renewSelf });
+
+    await vi.advanceTimersByTimeAsync(10_000_000);
+    expect(renewSelf).not.toHaveBeenCalled();
+
+    await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
+  });
+
+  it('reports degraded=true in health() after 3 consecutive renewal failures', async () => {
+    const renewSelf = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('500'), { response: { statusCode: 500 } }));
+    const health = vi.fn().mockResolvedValue({ initialized: true, sealed: false });
+    const { p } = await bootRenewable({ loginTtl: 3600, renewSelf, health });
+
+    // Each failure reschedules at 50% of the last-known TTL (3600 → 1800s).
+    await vi.advanceTimersByTimeAsync(1_800_000); // failure 1
+    await vi.advanceTimersByTimeAsync(1_800_000); // failure 2
+    expect((await p.health()).degraded).toBeFalsy();
+    await vi.advanceTimersByTimeAsync(1_800_000); // failure 3 → degraded
+    expect(renewSelf).toHaveBeenCalledTimes(3);
+
+    const h = await p.health();
+    expect(h.degraded).toBe(true);
+    // Vault itself is healthy; degraded is a warning, not a hard failure.
+    expect(h.ok).toBe(true);
+
+    await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
+  });
+
+  it('clears degraded after a renewal succeeds again', async () => {
+    const renewSelf = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error('500'), { response: { statusCode: 500 } }))
+      .mockRejectedValueOnce(Object.assign(new Error('500'), { response: { statusCode: 500 } }))
+      .mockRejectedValueOnce(Object.assign(new Error('500'), { response: { statusCode: 500 } }))
+      .mockResolvedValue({ auth: { lease_duration: 3600, renewable: true } });
+    const { p } = await bootRenewable({ loginTtl: 3600, renewSelf });
+
+    await vi.advanceTimersByTimeAsync(1_800_000); // fail 1
+    await vi.advanceTimersByTimeAsync(1_800_000); // fail 2
+    await vi.advanceTimersByTimeAsync(1_800_000); // fail 3 → degraded
+    expect((await p.health()).degraded).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1_800_000); // success → recover
+    expect((await p.health()).degraded).toBeFalsy();
+
+    await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
+  });
+
+  it('cancels the renewal loop on shutdown (onModuleDestroy)', async () => {
+    const renewSelf = vi
+      .fn()
+      .mockResolvedValue({ auth: { lease_duration: 3600, renewable: true } });
+    const { p } = await bootRenewable({ loginTtl: 3600, renewSelf });
+
+    await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
+    await vi.advanceTimersByTimeAsync(10_000_000);
+    expect(renewSelf).not.toHaveBeenCalled();
+  });
+});
+
+// TASK-312 Phase B (B.7/B.8) — fail-closed boot. A sealed/unreachable Vault
+// at startup must abort the boot with ONE clear, secret-free FATAL line (k8s
+// then restarts the pod) rather than leaking a raw node-vault stack/body.
+describe('VaultSecretsProvider.boot() fail-closed', () => {
+  it('throws a single FATAL-shaped error when AppRole login hits a sealed/unreachable Vault', async () => {
+    const p = new VaultSecretsProvider(cfg());
+    (p as unknown as { client: unknown }).client = {
+      approleLogin: vi
+        .fn()
+        .mockRejectedValue(Object.assign(new Error('Status 503'), { response: { statusCode: 503 } })),
+    };
+    await expect(p.boot()).rejects.toThrow(/FATAL/);
+    await expect(p.boot()).rejects.toThrow(/vault/i);
+  });
+
+  it('does not retry AppRole login on boot (fails fast, single attempt)', async () => {
+    const approleLogin = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('Status 503'), { response: { statusCode: 503 } }));
+    const p = new VaultSecretsProvider(cfg());
+    (p as unknown as { client: unknown }).client = { approleLogin };
+    await expect(p.boot()).rejects.toThrow(/FATAL/);
+    expect(approleLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not leak the wrapped secret_id in the boot failure message', async () => {
+    const p = new VaultSecretsProvider(cfg({ secretId: undefined, wrappedSecretId: 'super-secret-wrap-token' }));
+    (p as unknown as { client: unknown }).client = {
+      token: '',
+      unwrap: vi.fn().mockRejectedValue(new Error('unwrap failed')),
+      approleLogin: vi.fn(),
+    };
+    const error = await p.boot().catch((e: Error) => e);
+    expect((error as Error).message).toMatch(/FATAL/);
+    expect((error as Error).message).not.toContain('super-secret-wrap-token');
   });
 });

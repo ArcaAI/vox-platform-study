@@ -31,7 +31,16 @@ export class SecretsHealthIndicator extends HealthIndicator {
       provider: h.provider,
       latencyMs: h.latencyMs,
     };
-    if (!h.ok && h.detail) detail.detail = h.detail;
+    // Surface the stale-while-revalidate degraded latch (TASK-312 B.4 token
+    // renewal / Phase 5 DB-lease renewal). `ok` stays true so readiness keeps
+    // the pod in rotation, but the flag + diagnostic must reach Terminus so a
+    // dashboard/alert can recycle the pod before the lease actually expires.
+    if (h.degraded) {
+      detail.degraded = true;
+      if (h.detail) detail.detail = h.detail;
+    } else if (!h.ok && h.detail) {
+      detail.detail = h.detail;
+    }
     const result = this.getStatus(key, h.ok, detail);
     if (!h.ok) {
       throw new HealthCheckError(

@@ -28,12 +28,16 @@ vault secrets enable -path=transit transit 2>/dev/null || true
 echo "[vault-init] enabling database at path 'database'"
 vault secrets enable -path=database database 2>/dev/null || true
 
-# Audit device writes from the *vault server* process; the path must be
-# writable by the `vault` user inside the hope-vault container. /vault/file
-# is the existing dev-mode storage dir owned by vault:vault and persists
-# across container restarts via the vault-data volume.
-echo "[vault-init] enabling file audit device"
-vault audit enable file file_path=/vault/file/vault-audit.log 2>/dev/null || true
+# Audit device writes from the *vault server* process. TASK-312 A.4 moves
+# the file to /vault/audit, which docker-compose.dev.yml bind-mounts from the
+# host (/tmp/hope-vault-audit). This makes the audit log readable by the API
+# process running on the HOST (`pnpm dev:api`), which the VaultRotationWorker
+# tails for cluster-wide cache invalidation. A named volume (the old
+# /vault/file location) is not host-readable at a stable path.
+# Dev-mode Vault state is in-memory, so this re-enables fresh on every
+# `start-infra.sh --all`; no volume reset is needed to pick up the new path.
+echo "[vault-init] enabling file audit device at /vault/audit (host bind-mount)"
+vault audit enable file file_path=/vault/audit/vault-audit.log 2>/dev/null || true
 
 echo "[vault-init] enabling AppRole auth"
 vault auth enable approle 2>/dev/null || true
@@ -42,17 +46,30 @@ echo "[vault-init] writing hope-app policy"
 vault policy write hope-app /vault/init/policies/hope-app.hcl
 
 echo "[vault-init] creating hope-app role"
+# TASK-312 Phase A.1 — DEV-MODE config. Production overlay (Phase D)
+# tightens to secret_id_num_uses=1, secret_id_ttl=24h. Dev posture below
+# trades single-use for daily-iteration ergonomics (laptop threat model):
+#   secret_id_ttl=720h        — one wrapped secret_id lasts 30 days
+#   secret_id_num_uses=0      — unlimited reuse within that window
+#   token_ttl=1h              — short access tokens (Phase B adds renewal)
+#   token_max_ttl=24h         — cap; renewal loop keeps long-running pods alive
+# DO NOT copy these settings to any production AppRole role.
 vault write auth/approle/role/hope-app \
   token_policies="hope-app" \
   token_ttl=1h \
   token_max_ttl=24h \
-  secret_id_ttl=24h \
-  secret_id_num_uses=1
+  secret_id_ttl=720h \
+  secret_id_num_uses=0
 
 echo "[vault-init] role_id (committable):"
 vault read -field=role_id auth/approle/role/hope-app/role-id
 
 echo "[vault-init] seeding dev placeholder secrets"
+# TASK-312 Phase A.2 — full COMMON_SERVICE_WARMUP_KEYS coverage (11/11).
+# S3_* aliases MINIO_* in dev (HOPE talks S3 protocol to MinIO).
+# MQTT_PASS / REDIS_PASS use dev placeholders instead of empty strings so the
+# warmup pre-fetch lands a real value into the LRU cache (empty values pass
+# through but trigger needless re-fetches under stale-while-revalidate).
 for kv in \
   "JWT_SECRET_KEY=dev-jwt-secret-not-for-prod" \
   "SESSION_SECRET_KEY=dev-session-secret-not-for-prod" \
@@ -60,9 +77,11 @@ for kv in \
   "OIDC_CLIENT_SECRET=dev-oidc-client-secret-not-for-prod" \
   "MINIO_ACCESS_KEY=minio_admin" \
   "MINIO_SECRET_KEY=minio_admin" \
+  "S3_ACCESS_KEY=minio_admin" \
+  "S3_SECRET_KEY=minio_admin" \
   "SMR_SERVICE_TOKEN=dev-smr-service-token-not-for-prod" \
-  "MQTT_PASS=" \
-  "REDIS_PASS="; do
+  "MQTT_PASS=dev-mqtt-pass-not-for-prod" \
+  "REDIS_PASS=dev-redis-pass-not-for-prod"; do
   k=${kv%%=*}
   v=${kv#*=}
   vault kv put "secret/hope/${k}" value="${v}" >/dev/null
@@ -104,7 +123,11 @@ vault write transit/keys/hope-globalsetting/config \
 # below.
 VAULT_DB_HOST="${VAULT_DB_HOST:-host.docker.internal}"
 VAULT_DB_PORT="${VAULT_DB_PORT:-5432}"
-VAULT_DB_NAME="${VAULT_DB_NAME:-hope_main}"
+# TASK-312 review: dev default is `hope` (the local dev DB created by
+# `pnpm db:all`). The old `hope_main` default never matched any dev DB, so the
+# engine connection test silently failed until setup-dev-vault-db.sh re-applied
+# it. Production sets VAULT_DB_NAME explicitly.
+VAULT_DB_NAME="${VAULT_DB_NAME:-hope}"
 VAULT_DB_ADMIN_USER="${VAULT_DB_ADMIN_USER:-vault_admin}"
 VAULT_DB_ADMIN_PASS="${VAULT_DB_ADMIN_PASS:-vault_admin_dev_pw}"
 
@@ -129,7 +152,7 @@ echo "[vault-init] creating database/roles/hope-app-role"
 vault write database/roles/hope-app-role \
   db_name=hope-main \
   creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' INHERIT IN ROLE hope_app_template;" \
-  revocation_statements="REVOKE ALL PRIVILEGES ON DATABASE hope_main FROM \"{{name}}\"; REASSIGN OWNED BY \"{{name}}\" TO hope_app_template; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+  revocation_statements="REVOKE ALL PRIVILEGES ON DATABASE ${VAULT_DB_NAME} FROM \"{{name}}\"; REASSIGN OWNED BY \"{{name}}\" TO hope_app_template; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
   default_ttl="1h" \
   max_ttl="24h" \
   max_open_connections=50 2>/dev/null || true

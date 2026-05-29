@@ -1,0 +1,52 @@
+# =============================================================================
+# HOPE — Vault ServiceMonitor (TASK-312 Phase C, C.7)
+# =============================================================================
+# Prometheus Operator CRD. Scrapes Vault's native telemetry at
+# /v1/sys/metrics?format=prometheus. Unauthenticated scrape works because
+# helm/values.yaml sets `unauthenticated_metrics_access = true` in the listener.
+#
+# Targets the headless `vault-internal` service so EVERY node is scraped for its
+# OWN telemetry (seal status, resource usage, Raft follower state). /v1/sys/metrics
+# is per-node and is NOT forwarded by standbys, so an active-only scrape would
+# blind you to standby/follower health — scrape all three and let Prometheus label
+# by pod/instance.
+#
+# Requires the Prometheus Operator CRDs (monitoring.coreos.com/v1) to be present;
+# `kubectl apply` will fail with "no matches for kind ServiceMonitor" otherwise.
+# Ensure your Prometheus' serviceMonitorSelector matches the label below
+# (release: kube-prometheus-stack is the common default).
+#
+# Custom HOPE app metrics (arca_vault_lease_renewal_failure_total,
+# arca_vault_token_ttl_remaining_seconds) are exposed by the API, not Vault, and
+# are scraped via the app's own ServiceMonitor (Phase E.3).
+# -----------------------------------------------------------------------------
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vault
+  namespace: vault-system
+  labels:
+    app.kubernetes.io/name: vault
+    release: kube-prometheus-stack # match your Prometheus serviceMonitorSelector
+spec:
+  namespaceSelector:
+    matchNames:
+      - vault-system
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vault
+      vault-internal: "true" # headless svc fronting ALL server pods (per-node scrape)
+  endpoints:
+    - port: http
+      interval: 30s
+      scrapeTimeout: 10s
+      scheme: http
+      path: /v1/sys/metrics
+      params:
+        format:
+          - prometheus
+      # Drop the high-cardinality Go GC histograms to keep TSDB lean.
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: go_gc_duration_seconds.*
+          action: drop

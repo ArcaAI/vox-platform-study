@@ -1,0 +1,150 @@
+# =============================================================================
+# HOPE — Vault alert rules (TASK-312 Phase E, E.4)        [PrometheusRule CRD]
+# =============================================================================
+# Consumed by the Prometheus Operator (same operator that owns the Phase C
+# ServiceMonitor at manifests/service-monitor.yaml). Apply:
+#   kubectl apply -f monitoring/alerts.yaml
+#
+# The `release` label MUST match your kube-prometheus-stack `ruleSelector`
+# (default: release=kube-prometheus-stack). Check with:
+#   kubectl -n monitoring get prometheus -o yaml | grep -A3 ruleSelector
+#
+# Every expr below uses a metric Vault actually exports (verified against the
+# HashiCorp telemetry reference) or a kubelet volume metric — no invented
+# series. App-side signals (token TTL, lease-renew failures) live in the
+# separate alerts-app.yaml and require the API to export arca_vault_* first.
+#
+# IMPORTANT (metric disappearance): a sealed/standby node can STOP exporting
+# vault_core_unsealed / vault_core_active entirely, so a bare `== 0` may never
+# fire. Cluster-wide alerts therefore pair the comparison with absent().
+# -----------------------------------------------------------------------------
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vault-alerts
+  namespace: vault-system
+  labels:
+    app.kubernetes.io/name: vault
+    app.kubernetes.io/part-of: hope
+    release: kube-prometheus-stack # <-- match your operator's ruleSelector
+spec:
+  groups:
+    - name: vault.critical
+      rules:
+        - alert: VaultSealed
+          expr: vault_core_unsealed == 0
+          for: 1m
+          labels: { severity: critical, component: vault }
+          annotations:
+            summary: "Vault node {{ $labels.pod }} is SEALED"
+            description: >-
+              vault_core_unsealed==0 on {{ $labels.pod }} for >1m. Transit
+              auto-unseal may be failing or the seal Vault is down.
+              Runbook: docs/operations/vault/README.md#emergency-unseal-quorum-lost
+
+        - alert: VaultClusterSealedOrUnreachable
+          expr: (sum(vault_core_unsealed) == 0) or (absent(vault_core_unsealed) == 1)
+          for: 2m
+          labels: { severity: critical, component: vault }
+          annotations:
+            summary: "Vault cluster has NO unsealed node (or stopped exporting metrics)"
+            description: >-
+              No vault_core_unsealed==1 series anywhere for >2m — full outage or
+              total scrape loss. Check the seal Vault, transit key, and targets.
+
+        - alert: VaultNoActiveLeader
+          expr: (sum(vault_core_active) < 1) or (absent(vault_core_active) == 1)
+          for: 2m
+          labels: { severity: critical, component: vault }
+          annotations:
+            summary: "Vault has no active leader"
+            description: >-
+              sum(vault_core_active)<1 for >2m — Raft has not elected a leader;
+              writes fail. Runbook: docs/operations/vault/README.md#leader-failover-manual
+
+        - alert: VaultNodeDown
+          expr: up{job=~".*vault.*"} == 0
+          for: 2m
+          labels: { severity: critical, component: vault }
+          annotations:
+            summary: "Vault target {{ $labels.instance }} is down"
+            description: "Prometheus cannot scrape {{ $labels.instance }} for >2m."
+
+        - alert: VaultQuorumAtRisk
+          # count() over an empty vector returns NO data, so a bare `< 2` cannot
+          # fire when ALL targets are down (the worst case). The absent() arm
+          # covers "zero vault targets are up" (total outage / scrape loss).
+          expr: (count(up{job=~".*vault.*"} == 1) < 2) or (absent(up{job=~".*vault.*"} == 1) == 1)
+          for: 1m
+          labels: { severity: critical, component: vault }
+          annotations:
+            summary: "Vault Raft quorum at risk (<2 reachable nodes)"
+            description: >-
+              Fewer than 2 of 3 Vault nodes are reachable (or none are — total
+              outage / scrape loss) — one more failure loses quorum.
+              Runbook: docs/operations/vault/README.md#emergency-unseal-quorum-lost
+
+    - name: vault.warning
+      rules:
+        - alert: VaultLeaderFlapping
+          expr: sum(changes(vault_core_active[10m])) > 4
+          labels: { severity: warning, component: vault }
+          annotations:
+            summary: "Vault leadership is flapping"
+            description: >-
+              >4 active-state transitions across the cluster in 10m — unstable
+              Raft/leader election (network, disk latency, or OOM). Investigate
+              vault-* pod restarts and Raft latency.
+
+        - alert: VaultAutopilotUnhealthy
+          expr: vault_autopilot_healthy == 0
+          for: 5m
+          labels: { severity: warning, component: vault }
+          annotations:
+            summary: "Vault Raft autopilot reports the cluster unhealthy"
+            description: >-
+              vault_autopilot_healthy==0 for >5m — a voter is unhealthy or
+              lagging. Check `vault operator raft list-peers` and node disk/CPU.
+
+        - alert: VaultAuditLogWriteFailures
+          expr: increase(vault_audit_log_request_failure[5m]) > 0
+          labels: { severity: critical, component: vault }
+          annotations:
+            summary: "Vault audit-log WRITE failures"
+            description: >-
+              Audit device write failures in the last 5m. If the ONLY audit
+              device fails, Vault BLOCKS all requests (availability + compliance
+              risk). Check the audit PVC + sidecars.
+              Runbook: docs/operations/vault/README.md#audit-log-retention
+
+        - alert: VaultAuditResponseFailures
+          expr: increase(vault_audit_log_response_failure[5m]) > 0
+          labels: { severity: warning, component: vault }
+          annotations:
+            summary: "Vault audit-log RESPONSE failures"
+            description: "Audit response-logging failures in the last 5m — investigate the audit device."
+
+        - alert: VaultAuditPVCLowSpace
+          expr: |-
+            kubelet_volume_stats_available_bytes{namespace="vault-system", persistentvolumeclaim=~"audit-vault-.*"}
+            / kubelet_volume_stats_capacity_bytes{namespace="vault-system", persistentvolumeclaim=~"audit-vault-.*"} < 0.20
+          for: 5m
+          labels: { severity: warning, component: vault }
+          annotations:
+            summary: "Vault audit PVC {{ $labels.persistentvolumeclaim }} <20% free"
+            description: >-
+              The audit volume is filling. The audit-log-rotator sidecar should
+              copytruncate at 100Mi — verify it is running and the live log is
+              capped. Runbook: docs/operations/vault/README.md#audit-log-retention
+
+        - alert: VaultDataPVCLowSpace
+          expr: |-
+            kubelet_volume_stats_available_bytes{namespace="vault-system", persistentvolumeclaim=~"data-vault-.*"}
+            / kubelet_volume_stats_capacity_bytes{namespace="vault-system", persistentvolumeclaim=~"data-vault-.*"} < 0.15
+          for: 5m
+          labels: { severity: critical, component: vault }
+          annotations:
+            summary: "Vault Raft data PVC {{ $labels.persistentvolumeclaim }} <15% free"
+            description: >-
+              Raft storage is nearly full — risk of write failure / node crash.
+              Expand the PVC or investigate snapshot/WAL growth.

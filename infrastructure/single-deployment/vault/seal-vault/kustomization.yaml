@@ -1,0 +1,19 @@
+# =============================================================================
+# HOPE — seal Vault, PRODUCTION digest-pinned apply (TASK-312 Phase E)
+# =============================================================================
+# Enforces the image digest pin (not just a comment): the `images:` transformer
+# rewrites `hashicorp/vault:1.21.2` -> `hashicorp/vault@sha256:…` at apply time.
+#
+#   PRODUCTION:  kubectl apply -k seal-vault/        (immutable digest)
+#   kind E2E:    kubectl apply -f seal-vault/seal-vault.yaml  (tag — so the image
+#                can be `kind load`ed without a slow/flaky live digest pull)
+#
+# Verify/bump the digest with: docker buildx imagetools inspect hashicorp/vault:1.21.2
+# -----------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - seal-vault.yaml
+images:
+  - name: hashicorp/vault
+    digest: sha256:eb0ba6836e8d4699b7a1e8ca70d8433f7b87dcd067e6d82dff237d3ed2600ea0

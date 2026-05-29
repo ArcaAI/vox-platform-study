@@ -13,6 +13,7 @@
         "clean": "turbo run clean && rimraf \"**/dist\" \"**/tsconfig.tsbuildinfo\"",
         "nuke": "rimraf pnpm-lock.yaml && turbo run nuke && pnpm install",
         "------------ DEV SERVERS ------------": "",
+        "dev:setup": "./scripts/dev-setup.sh",
         "dev:api": "NODE_ENV=development turbo run dev --filter=@arcaai/api",
         "dev:api:test": "dotenv -e .env.test -- pnpm --filter @arcaai/api dev",
         "dev:api:watch": "NODE_ENV=development turbo run dev:watch --filter=@arcaai/api --filter=@arcaai/applications",
