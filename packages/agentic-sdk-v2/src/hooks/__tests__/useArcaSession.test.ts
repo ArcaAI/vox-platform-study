@@ -225,7 +225,49 @@ describe('useArcaSession', () => {
                 expect.objectContaining({
                     patientId: mockConsultation.patientId,
                     doctorId: mockConsultation.doctorId,
-                })
+                }),
+                // TASK-317 D-5 (AC-9) — options arg is always present; this test
+                // seeds no tenant, so it only asserts the call shape (the strict
+                // tenantId assertion lives in the dedicated AC-9 test below).
+                expect.objectContaining({})
+            );
+        });
+
+        // =====================================================================
+        // TASK-317 W3.3 — AC-9: cross-tab sync MUST be namespaced per tenant.
+        //
+        // SimpleCrossTabSync already supports `options.tenantId` (channel name
+        // becomes `agentic.<tenantId>`), but useArcaSession never passed it, so
+        // every tenant shared the hashed-consultation channel — a cross-tenant
+        // context-bleed risk. This asserts the hook forwards the active tenant
+        // id (resolved from the api client) into createCrossTabSync options.
+        // =====================================================================
+        it('TASK-317 W3.3 — AC-9 passes the active tenantId into createCrossTabSync options', async () => {
+            mockApiClient.updateTenantId('tenant-xyz');
+
+            const mockConsultation = createMockConsultation({
+                id: 'cons-tenant',
+                patientId: 'p1',
+                doctorId: 'd1',
+                appointmentDate: '2026-02-17',
+            });
+            mockFetch.mockResolvedValueOnce(createMockResponse(mockConsultation));
+
+            const { result } = renderHook(() => useArcaSession());
+
+            await act(async () => {
+                await result.current.open({
+                    patientId: 'p1',
+                    appointmentDate: '2026-02-17',
+                });
+            });
+
+            expect(createCrossTabSync).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    patientId: mockConsultation.patientId,
+                    doctorId: mockConsultation.doctorId,
+                }),
+                expect.objectContaining({ tenantId: 'tenant-xyz' })
             );
         });
 
