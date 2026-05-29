@@ -91,12 +91,11 @@ test.describe('@arcaai/vox E2E Tests', () => {
     test('should have STORAGE_KEYS', async ({ page }) => {
       const constants = await page.evaluate(() => window.sdkConstants);
 
-      // TASK-317 W1.7 (AC-6) — `PREFERENCES` was removed (dead key); its
-      // assertion is dropped here so AC-6 has no dangling reference.
+      // TASK-317 W1.7 (AC-6) — `PREFERENCES` and `SESSION_STATE` were removed as
+      // dead keys (no live writer); their assertions are dropped here so this
+      // suite carries no dangling reference. The unit suite (constants.test.ts)
+      // asserts both keys are absent from STORAGE_KEYS.
       expect(constants.STORAGE_KEYS.SELECTED_MODELS).toBe('arcaai-selected-models');
-      // NOTE: `SESSION_STATE` is a pre-existing stale ref from TASK-297 (the
-      // key was removed there); left as-is — out of scope for TASK-317.
-      expect(constants.STORAGE_KEYS.SESSION_STATE).toBe('arcaai-session-state');
     });
   });
 

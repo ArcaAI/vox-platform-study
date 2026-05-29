@@ -130,6 +130,18 @@ export class ModelRegistry {
   }
 
   /**
+   * TASK-317 W1.2 (review min-A) — true once the live namespace resolves to a
+   * real `${tenantId}::${userId}` (not the `pre-login` bootstrap / empty). Used
+   * to gate background PERSISTS so a pre-login auto-select cannot write the
+   * shared `arcaai-selected-models/pre-login` row (every user on the origin
+   * shares it until `/auth/me` resolves).
+   */
+  private isNamespaceAuthenticated(): boolean {
+    const ns = this.resolveNamespace();
+    return !!ns && ns.length > 0 && ns !== 'pre-login';
+  }
+
+  /**
    * TASK-317 W1.2 — re-read the persisted selection under the (now-current)
    * namespace. AgenticProvider calls this after `/auth/me` resolves the real
    * `${tenantId}::${userId}` and on a tenant/user switch, because `this.selected`
@@ -295,8 +307,18 @@ export class ModelRegistry {
       if (parsed.defaultSttModel) {
         const match = this.findModelByIdOrName(parsed.defaultSttModel, 'stt');
         if (match && !this.selected.stt) {
+          // TASK-317 W1.2 (review min-A) — apply the tenant-default in memory,
+          // but only PERSIST once the namespace is authenticated. AgenticProvider
+          // dispatches loadTenantConfig() before `/auth/me` resolves the real
+          // `${tenantId}::${userId}`, so persisting here while still `pre-login`
+          // would write the tenant-default model id to the shared
+          // `arcaai-selected-models/pre-login` row. The post-`/auth/me`
+          // `reloadSelected()` re-reads the authenticated row, so dropping the
+          // pre-login persist costs nothing.
           this.selected.stt = match.id;
-          this.saveSelectedToStorage();
+          if (this.isNamespaceAuthenticated()) {
+            this.saveSelectedToStorage();
+          }
         }
       }
 
