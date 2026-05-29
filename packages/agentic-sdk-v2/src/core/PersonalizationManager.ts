@@ -12,12 +12,24 @@ import { configDBGet, configDBSet, PERSONALIZATION_STORE } from './configDB';
 import type { ISDKLogger } from './logger';
 
 /**
- * TASK-304 Wave 2D — IDB cache key inside the shared `arcaai-config` DB.
- * Single global key (matches the legacy `arcaai-preferences` localStorage
- * key's scope); per-user namespacing is intentionally NOT introduced here
- * because the source of truth for user-scoped data is the backend.
+ * TASK-317 W1.1 (AC-1) — prefix for the personalization IDB cache row inside
+ * the shared `arcaai-config` DB's `personalization` store. The row is keyed
+ * per `${tenantId}::${userId}` namespace via {@link personalizationCacheKey}
+ * so a shared workstation cannot hydrate the next user from the previous
+ * user's voice-profile / model ids (closes audit C-3). Matches the legacy
+ * unscoped key, which the configDB v3 upgrade deletes one-time (AC-2).
  */
-const PERSONALIZATION_CACHE_KEY = 'arcaai-personalization';
+export const PERSONALIZATION_CACHE_KEY_PREFIX = 'arcaai-personalization' as const;
+
+/**
+ * Compose the personalization cache key for a given namespace. Mirrors the
+ * `USER_PREFERENCES_STORE` namespacing AgenticProvider already applies.
+ * When no namespace is supplied the bare prefix is used (the SDK always
+ * supplies one in production; this fallback only serves direct construction).
+ */
+export function personalizationCacheKey(namespace?: string): string {
+  return namespace ? `${PERSONALIZATION_CACHE_KEY_PREFIX}/${namespace}` : PERSONALIZATION_CACHE_KEY_PREFIX;
+}
 
 /**
  * Personalization change callback
@@ -83,11 +95,14 @@ export class PersonalizationManager {
   private impersonationReadOnly = false;
   /** TASK-297 DEF-H4 — optional cascade sink. */
   private configManager?: PersonalizationConfigManager;
+  /** TASK-317 W1.1 (AC-1) — per-`${tenantId}::${userId}` IDB cache key. */
+  private readonly cacheKey: string;
 
-  constructor(config: PersonalizationConfig, apiClient: AgenticClient, logger?: ISDKLogger) {
+  constructor(config: PersonalizationConfig, apiClient: AgenticClient, logger?: ISDKLogger, namespace?: string) {
     this.config = config;
     this.apiClient = apiClient;
     this.logger = logger;
+    this.cacheKey = personalizationCacheKey(namespace);
 
     // TASK-304 Wave 2D — constructor stays synchronous; the IDB hydrate
     // step is exposed as the async `hydrate()` method so AgenticProvider
@@ -120,7 +135,7 @@ export class PersonalizationManager {
     if (typeof window === 'undefined') return;
 
     try {
-      const cached = await configDBGet<UserPreferences>(PERSONALIZATION_STORE, PERSONALIZATION_CACHE_KEY);
+      const cached = await configDBGet<UserPreferences>(PERSONALIZATION_STORE, this.cacheKey);
       if (!cached) return;
 
       this.preferences = { ...this.preferences, ...cached };
@@ -289,7 +304,7 @@ export class PersonalizationManager {
     if (typeof window === 'undefined') return;
 
     try {
-      await configDBSet(PERSONALIZATION_STORE, PERSONALIZATION_CACHE_KEY, this.preferences);
+      await configDBSet(PERSONALIZATION_STORE, this.cacheKey, this.preferences);
       this.logger?.trace('Saved preferences to IDB cache', {
         operation: 'saveLocal',
         component: 'PersonalizationManager',
