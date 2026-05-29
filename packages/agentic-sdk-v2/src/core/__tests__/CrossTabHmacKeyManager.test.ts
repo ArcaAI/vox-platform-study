@@ -212,6 +212,47 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
       mgr.close();
     });
 
+    // =========================================================================
+    // TASK-317 W3.4 — AC-11: per-tenant HMAC subkey (SharedWorker path).
+    //
+    // TASK-280 made the secret per-Worker (shared across tabs). AC-11 layers a
+    // per-tenant HKDF subkey on top so two tenants sharing the SAME worker (and
+    // thus the same master secret) cannot forge each other's envelopes. The
+    // worker derives HKDF(masterSecret, tenantId); the master secret never
+    // leaves the worker.
+    // =========================================================================
+    it('TASK-317 W3.4 — AC-11 cross-tenant verify FAILS over the SharedWorker (forged message rejected)', async () => {
+      const tabA = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
+      const tabB = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
+      tabA.setTenantId('tenant-A');
+      tabB.setTenantId('tenant-B');
+
+      const payload = bytes(32, 9);
+      const sigFromA = await tabA.sign(payload);
+
+      // tenant-B subkey must reject a signature minted under tenant-A.
+      expect(await tabB.verify(payload, sigFromA)).toBe(false);
+      // Same-tenant verify still passes.
+      expect(await tabA.verify(payload, sigFromA)).toBe(true);
+
+      tabA.close();
+      tabB.close();
+    });
+
+    it('TASK-317 W3.4 — AC-11 two tabs on the SAME tenant still agree (SharedWorker cross-tab)', async () => {
+      const tabA = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
+      const tabB = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
+      tabA.setTenantId('tenant-A');
+      tabB.setTenantId('tenant-A');
+
+      const payload = bytes(24, 3);
+      const sigFromA = await tabA.sign(payload);
+      expect(await tabB.verify(payload, sigFromA)).toBe(true);
+
+      tabA.close();
+      tabB.close();
+    });
+
     it('__resetForTests() wipes the shared secret so old HMACs no longer verify', async () => {
       const mgr = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
       const payload = bytes(24);
@@ -293,6 +334,48 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
       const mgr = new CrossTabHmacKeyManager();
       const sig = await mgr.sign(bytes(4));
       expect(sig.byteLength).toBe(32);
+      mgr.close();
+    });
+
+    // =========================================================================
+    // TASK-317 W3.4 — AC-11: per-tenant HMAC subkey (fallback path).
+    //
+    // In fallback mode two managers on the same page share FALLBACK_SECRET, but
+    // each derives a DISTINCT HKDF subkey from its tenantId. A message signed
+    // under tenant-A's subkey must therefore FAIL verification under tenant-B's
+    // subkey (fail-closed cross-tenant rejection), while same-tenant verify
+    // still succeeds. The subkey rotates whenever setTenantId changes.
+    // =========================================================================
+    it('TASK-317 W3.4 — AC-11 cross-tenant subkey: A-signed message is REJECTED under tenant-B', async () => {
+      const a = new CrossTabHmacKeyManager();
+      const b = new CrossTabHmacKeyManager();
+      a.setTenantId('tenant-A');
+      b.setTenantId('tenant-B');
+
+      const payload = bytes(32, 5);
+      const sigFromA = await a.sign(payload);
+
+      // Forged cross-tenant envelope: tenant-B subkey must reject it.
+      expect(await b.verify(payload, sigFromA)).toBe(false);
+      // Same-tenant verify still passes.
+      expect(await a.verify(payload, sigFromA)).toBe(true);
+
+      a.close();
+      b.close();
+    });
+
+    it('TASK-317 W3.4 — AC-11 setTenantId rotates the subkey (old-tenant signature stops verifying)', async () => {
+      const mgr = new CrossTabHmacKeyManager();
+      mgr.setTenantId('tenant-A');
+      const payload = bytes(28, 6);
+      const sigUnderA = await mgr.sign(payload);
+      expect(await mgr.verify(payload, sigUnderA)).toBe(true);
+
+      // Rotate the active tenant — the previous tenant's signature must no
+      // longer verify under the new subkey.
+      mgr.setTenantId('tenant-B');
+      expect(await mgr.verify(payload, sigUnderA)).toBe(false);
+
       mgr.close();
     });
   });
