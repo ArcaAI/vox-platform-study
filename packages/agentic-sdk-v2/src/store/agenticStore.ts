@@ -6,6 +6,7 @@
  */
 
 import { create } from 'zustand';
+import { createStore, type StateCreator, type StoreApi } from 'zustand/vanilla';
 import type {
   Consultation,
   ContextItem,
@@ -322,7 +323,12 @@ const initialState: AgenticState = {
 // Store Creation
 // =============================================================================
 
-export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) => ({
+// TASK-317 W4.1 (AC-12) — the store config is extracted into a named
+// `StateCreator` so it can be instantiated either as the module singleton
+// (`useAgenticStore`, retained for external importers) OR per-provider via
+// `createAgenticStore()`. The slice/action bodies below are UNCHANGED from
+// W1–W3; only the wrapper around them moved.
+const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (set, get) => ({
   ...initialState,
 
   // Initialization
@@ -558,7 +564,33 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
       personalizationManager: null,
     });
   },
-}));
+});
+
+// =============================================================================
+// Store factory + singleton (TASK-317 W4.1, AC-12)
+// =============================================================================
+
+/** A vanilla Zustand store instance for the agentic SDK. */
+export type AgenticStoreApi = StoreApi<AgenticState & AgenticActions>;
+
+/**
+ * TASK-317 W4.1 (AC-12) — build a fresh, fully-independent store instance.
+ *
+ * `AgenticProvider` calls this exactly once per mount (held in a `useRef`) so
+ * each provider — and therefore each concurrent tenant in a multi-tenant
+ * operator console / impersonation tree — owns isolated state. This closes
+ * audit finding C-1 (cross-tenant state bleed via a shared module singleton).
+ *
+ * It wraps the SAME `agenticStoreInitializer` config as the module singleton,
+ * using vanilla `createStore` (no React binding) so non-React consumers
+ * (managers, plugin manager, cross-tab sync) can call
+ * `getState`/`setState`/`subscribe` on the per-instance store.
+ */
+export function createAgenticStore(): AgenticStoreApi {
+  return createStore<AgenticState & AgenticActions>(agenticStoreInitializer);
+}
+
+export const useAgenticStore = create<AgenticState & AgenticActions>(agenticStoreInitializer);
 
 // =============================================================================
 // Selectors (derived state)
