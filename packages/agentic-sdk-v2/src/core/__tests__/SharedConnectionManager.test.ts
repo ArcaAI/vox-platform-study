@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SharedConnectionManager } from '../SharedConnectionManager';
+import { __handleMessageForTests, __resetConnectionsForTests } from '../SharedConnectionWorker';
 import { createMockLogger } from '../../__tests__/setup';
 
 class MockEventSource {
@@ -497,6 +498,93 @@ describe('SharedConnectionManager', () => {
       expect(typeof unsubscribe).toBe('function');
       unsubscribe();
       manager.dispose();
+    });
+  });
+
+  // ===========================================================================
+  // TASK-317 W3.1/3.2 — AC-8: SharedWorker WebSocket dedup keys on (id, userId)
+  //
+  // The SharedWorker shares ONE upstream WebSocket across tabs that subscribe
+  // with the same connection id. Before TASK-317 the dedup key was the bare
+  // `id`, so two DIFFERENT users (or tenants) that happened to subscribe with
+  // the same id were silently wired onto a SINGLE socket — a cross-user PHI
+  // leak. AC-8 mirrors the SSE `sseDedupKey(id, userId)` fix: WS now keys on
+  // `(id, userId)`, so distinct users get distinct sockets.
+  //
+  // These drive the real worker message handler (`__handleMessageForTests`)
+  // against the global WebSocket mock installed in the outer beforeEach, so
+  // the assertion observes the actual upstream sockets the worker opens.
+  // Mirrors the cross-tenant no-leak style of SimpleCrossTabSync.test.ts:491.
+  // ===========================================================================
+  describe('TASK-317 W3.1/3.2 — AC-8 WebSocket dedup keyed on (id, userId)', () => {
+    beforeEach(() => {
+      __resetConnectionsForTests();
+    });
+    afterEach(() => {
+      __resetConnectionsForTests();
+    });
+
+    function mkPort(): MessagePort {
+      return { postMessage: vi.fn() } as unknown as MessagePort;
+    }
+
+    it('opens TWO separate sockets for two users sharing the SAME connection id (no cross-user sharing)', () => {
+      const portA = mkPort();
+      const portB = mkPort();
+
+      __handleMessageForTests(portA, {
+        type: 'subscribe_ws',
+        id: 'stream-1',
+        payload: { url: 'wss://api.example.com/ws/stt-v2/stream', userId: 'user-A', tenantId: 'tenant-A' },
+      });
+      __handleMessageForTests(portB, {
+        type: 'subscribe_ws',
+        id: 'stream-1',
+        payload: { url: 'wss://api.example.com/ws/stt-v2/stream', userId: 'user-B', tenantId: 'tenant-B' },
+      });
+
+      // Two distinct user contexts → two distinct upstream sockets, never shared.
+      expect(createdWebSockets).toHaveLength(2);
+    });
+
+    it('still SHARES one socket across two tabs of the SAME user + id (dedup preserved)', () => {
+      const portA = mkPort();
+      const portB = mkPort();
+      const sub = { url: 'wss://api.example.com/ws/stt-v2/stream', userId: 'user-A', tenantId: 'tenant-A' };
+
+      __handleMessageForTests(portA, { type: 'subscribe_ws', id: 'stream-1', payload: { ...sub } });
+      __handleMessageForTests(portB, { type: 'subscribe_ws', id: 'stream-1', payload: { ...sub } });
+
+      expect(createdWebSockets).toHaveLength(1);
+    });
+
+    it('routes ws_send to the sender-user socket only (no cross-user send leak)', async () => {
+      vi.useFakeTimers();
+      const portA = mkPort();
+      const portB = mkPort();
+
+      __handleMessageForTests(portA, {
+        type: 'subscribe_ws',
+        id: 'stream-1',
+        payload: { url: 'wss://api.example.com/ws/stt-v2/stream', userId: 'user-A', tenantId: 'tenant-A' },
+      });
+      __handleMessageForTests(portB, {
+        type: 'subscribe_ws',
+        id: 'stream-1',
+        payload: { url: 'wss://api.example.com/ws/stt-v2/stream', userId: 'user-B', tenantId: 'tenant-B' },
+      });
+
+      // Let both mock sockets transition to OPEN.
+      await vi.advanceTimersByTimeAsync(5);
+
+      __handleMessageForTests(portA, { type: 'ws_send', id: 'stream-1', payload: 'from-user-A' });
+
+      const socketA = createdWebSockets[0]!;
+      const socketB = createdWebSockets[1]!;
+      expect(socketA.sentMessages).toEqual(['from-user-A']);
+      expect(socketB.sentMessages).toEqual([]);
+
+      vi.useRealTimers();
     });
   });
 });
