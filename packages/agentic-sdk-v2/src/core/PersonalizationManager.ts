@@ -141,7 +141,8 @@ export class PersonalizationManager {
   }
 
   /**
-   * Hydrate the in-memory preferences from the IDB cache.
+   * Hydrate the in-memory preferences from the IDB cache for the CURRENT
+   * namespace.
    *
    * Safe to call multiple times. Failures are logged at `warn` level and
    * leave the existing in-memory state intact, so the SDK can still
@@ -150,19 +151,30 @@ export class PersonalizationManager {
    * TASK-304 Wave 2D — replaces the sync `localStorage` read used by
    * earlier versions; legacy `arcaai-preferences` localStorage data is
    * intentionally NOT migrated (user choice: `ignore-old-data`).
+   *
+   * TASK-317 W1.2 (review I-1) — AUTHORITATIVE per namespace: reset to the
+   * constructor baseline (config defaults) BEFORE applying the cached row, and
+   * do NOT early-return on an empty row. AgenticProvider now calls `hydrate()`
+   * on every tenant/user switch and after `/auth/me`, so the previous merge
+   * (`{ ...this.preferences, ...cached }`) accumulated state across namespaces:
+   * on the impersonation round-trip (admin → impersonate(user) →
+   * `endImpersonation`) the impersonated user's `dnaStyleId` / `custom` /
+   * `localConfig` leaked back into the admin's in-memory prefs (and into the
+   * admin's next `saveLocal()`). Mirrors `ModelRegistry.reloadSelected()`,
+   * which already REPLACES `this.selected`. The baseline matches the ctor's
+   * `{ ...config.defaults }` exactly.
    */
   async hydrate(): Promise<void> {
     if (typeof window === 'undefined') return;
 
     try {
       const cached = await configDBGet<UserPreferences>(PERSONALIZATION_STORE, this.cacheKey);
-      if (!cached) return;
 
-      this.preferences = { ...this.preferences, ...cached };
-      this.logger?.debug('Loaded preferences from IDB cache', {
+      this.preferences = { ...this.config.defaults, ...(cached ?? {}) };
+      this.logger?.debug('Hydrated preferences from IDB cache (authoritative per namespace)', {
         operation: 'hydrate',
         component: 'PersonalizationManager',
-        attributes: { preferenceKeys: Object.keys(cached) },
+        attributes: { preferenceKeys: cached ? Object.keys(cached) : [], hadCachedRow: !!cached },
       });
       this.notifyListeners();
     } catch (error) {
