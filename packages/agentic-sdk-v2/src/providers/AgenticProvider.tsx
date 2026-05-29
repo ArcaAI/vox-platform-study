@@ -506,6 +506,24 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     if (namespaceRef.current === nextNamespace) return;
     namespaceRef.current = nextNamespace;
 
+    // TASK-317 W2.1 (AC-7, audit C-5; review C-1) — reset the OUTGOING tenant's
+    // FULL PHI/session set SYNCHRONOUSLY, the instant the effective tenant/user
+    // changes and BEFORE the async re-hydrate below resolves the new tenant's
+    // config. This closes the window where tenant B is already active in the
+    // same tab while tenant A's PHI — consultation, relatedConsultations,
+    // contextItems, sharedContext, entities (medical NER), currentTranscript
+    // (raw transcript), transcriptSegments, summaries, dnaStyle — plus the
+    // tenant-scoped model/audio config (tenantConfig) remain resident and
+    // visible through useArca()/useArcaConfig(). `clearTenantSessionData()` is
+    // the single source of truth for that set and DELIBERATELY does NOT touch
+    // auth/impersonation (authUser / authImpersonatedUser / effectiveTenantId),
+    // which drive this in-flight switch. Uses the store API the provider already
+    // holds (rule 08-vox-sdk: access via the store, never import it directly).
+    // The registry selection itself is re-keyed by `modelRegistry.reloadSelected()`
+    // (below); `incrementModelRegistryVersion()` refreshes the model config that
+    // `useArcaConfig` surfaces so consumers stop rendering tenant A's data.
+    store.clearTenantSessionData();
+
     const providerLogger = (loggerRef.current ?? createSDKLogger({ level: 'info' })).child('AgenticProvider');
     providerLogger.info('Rehydrating ConfigManager for new user namespace', {
       operation: 'rehydrateUserNamespace',
@@ -523,6 +541,38 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     (async () => {
       try {
         modelRegistry?.reloadSelected();
+        // TASK-317 W2.1 (AC-7) — `reloadSelected()` replaced the registry's
+        // in-memory selection with the incoming namespace's (or empty); bump
+        // the version so the `useArcaConfig` `models` memo recomputes and
+        // consumers immediately stop rendering the previous tenant's selection.
+        store.incrementModelRegistryVersion();
+
+        // TASK-317 W2.1 (review M-2) — `clearTenantSessionData()` nulled
+        // `tenantConfig` synchronously above, but the mount-time
+        // `loadTenantConfig()` promise resolved the OUTGOING tenant's audio/AI
+        // config and is never re-run on a same-tab switch. Re-fetch the INCOMING
+        // tenant's config (the apiClient now carries the switched identity, the
+        // same assumption the department fetch below relies on) and refresh the
+        // shared promise ref so `useArcaConfig().tenantConfig` reflects tenant B
+        // instead of staying null until a remount. The extra version bump
+        // publishes any tenant-default model the reload applied. Isolated in its
+        // own try/catch (mirrors the department block) so a config-fetch failure
+        // never blocks `configReady`.
+        if (modelRegistry) {
+          try {
+            const nextTenantConfigPromise = modelRegistry.loadTenantConfig();
+            tenantConfigPromiseRef.current = nextTenantConfigPromise;
+            store.setTenantConfig(await nextTenantConfigPromise);
+            store.incrementModelRegistryVersion();
+          } catch (error) {
+            providerLogger.warn('Tenant config reload after switch failed', {
+              operation: 'rehydrateUserNamespace',
+              component: 'AgenticProvider',
+              error: error as Error,
+            });
+          }
+        }
+
         if (personalizationManager) {
           await personalizationManager.hydrate();
           store.setPreferences(personalizationManager.getPreferences());
