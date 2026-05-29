@@ -83,7 +83,8 @@ async function renderProvider(configOverride: Record<string, unknown> = {}) {
   const { useAgenticStore } = await import('../../store/agenticStore');
 
   // Make sure each test starts from a clean store snapshot.
-  useAgenticStore.getState().clearOnLogout();
+  // TASK-317 W1.4 (AC-3) — clearOnLogout now takes the outgoing namespace.
+  useAgenticStore.getState().clearOnLogout('pre-login');
 
   const child = React.createElement('div', null, 'child');
   const element = React.createElement(

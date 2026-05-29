@@ -86,7 +86,9 @@ describe('ModelRegistry', () => {
         });
 
         it('should load selected models from localStorage', () => {
-            registryStorageData['arcaai-selected-models'] = JSON.stringify({ vad: 'silero-vad-v5' });
+            // TASK-317 M-3 — a registry with no namespace fail-closes to
+            // `pre-login`, never the bare global key.
+            registryStorageData['arcaai-selected-models/pre-login'] = JSON.stringify({ vad: 'silero-vad-v5' });
 
             const registry = new ModelRegistry({}, mockApiClient);
 
@@ -155,7 +157,7 @@ describe('ModelRegistry', () => {
 
             registry.selectModel('stt', 'whisper-tiny');
 
-            const stored = registryStorageData['arcaai-selected-models'];
+            const stored = registryStorageData['arcaai-selected-models/pre-login'];
             expect(stored).toBeDefined();
             expect(stored).toContain('whisper-tiny');
         });

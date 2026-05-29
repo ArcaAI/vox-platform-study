@@ -5,6 +5,7 @@
  * Supports public (HuggingFace) and custom organization models.
  */
 
+import * as v from 'valibot';
 import type { ModelDefinition, ModelRegistryConfig, ModelLoadProgress, SelectedModels, TenantAudioConfig } from '../types';
 import { DEFAULT_MODELS, DEFAULT_TENANT_FEATURES, parseTenantConfig } from '../types';
 import { AgenticError } from '../types';
@@ -17,6 +18,17 @@ import type { ISDKLogger } from './logger';
  * Model load progress callback
  */
 export type ModelLoadProgressCallback = (progress: ModelLoadProgress) => void;
+
+/**
+ * TASK-317 W1.6 (AC-5) — valibot schema for the persisted `SelectedModels`
+ * payload. Guards `loadSelectedFromStorage` against poisoned / typed-wrong
+ * `localStorage` JSON: only `{ stt?, vad?, ner? }` of strings is accepted.
+ */
+const SELECTED_MODELS_SCHEMA = v.object({
+  stt: v.optional(v.string()),
+  vad: v.optional(v.string()),
+  ner: v.optional(v.string()),
+});
 
 /**
  * Model registry for discovering and selecting ML models.
@@ -58,11 +70,21 @@ export class ModelRegistry {
   private errors: Map<string, Error> = new Map();
   private logger?: ISDKLogger;
   private tenantConfig: TenantAudioConfig | null = null;
+  /**
+   * TASK-317 W1.2/W1.5 (AC-4) — resolves the active `${tenantId}::${userId}`
+   * namespace for the selected-models localStorage key. AgenticProvider passes
+   * a live accessor (`() => namespaceRef`), so the registry follows the real
+   * namespace once `/auth/me` resolves it instead of capturing `pre-login` by
+   * value at construction (review C-1). A plain string is still accepted for
+   * direct construction in unit tests.
+   */
+  private readonly resolveNamespace: () => string | null | undefined;
 
-  constructor(config: ModelRegistryConfig, apiClient: AgenticClient, logger?: ISDKLogger) {
+  constructor(config: ModelRegistryConfig, apiClient: AgenticClient, logger?: ISDKLogger, namespace?: string | (() => string | null | undefined)) {
     this.config = config;
     this.apiClient = apiClient;
     this.logger = logger;
+    this.resolveNamespace = typeof namespace === 'function' ? namespace : () => namespace;
 
     // Initialize with default models
     for (const model of DEFAULT_MODELS) {
@@ -94,6 +116,39 @@ export class ModelRegistry {
         selectedModels: Object.keys(this.selected),
       },
     });
+  }
+
+  /**
+   * TASK-317 W1.2/W1.5 (AC-4) — per-access namespaced localStorage key, computed
+   * from the live namespace so a re-key takes effect without reconstructing the
+   * registry. M-3 fail-closes a missing namespace to `pre-login`, never the bare
+   * global key (audit D-1 / the configDB v3 legacy row).
+   */
+  private get selectedModelsStorageKey(): string {
+    const ns = this.resolveNamespace();
+    return `${STORAGE_KEYS.SELECTED_MODELS}/${ns && ns.length > 0 ? ns : 'pre-login'}`;
+  }
+
+  /**
+   * TASK-317 W1.2 (review min-A) — true once the live namespace resolves to a
+   * real `${tenantId}::${userId}` (not the `pre-login` bootstrap / empty). Used
+   * to gate background PERSISTS so a pre-login auto-select cannot write the
+   * shared `arcaai-selected-models/pre-login` row (every user on the origin
+   * shares it until `/auth/me` resolves).
+   */
+  private isNamespaceAuthenticated(): boolean {
+    const ns = this.resolveNamespace();
+    return !!ns && ns.length > 0 && ns !== 'pre-login';
+  }
+
+  /**
+   * TASK-317 W1.2 — re-read the persisted selection under the (now-current)
+   * namespace. AgenticProvider calls this after `/auth/me` resolves the real
+   * `${tenantId}::${userId}` and on a tenant/user switch, because `this.selected`
+   * was loaded once at construction when the namespace was still `pre-login`.
+   */
+  reloadSelected(): void {
+    this.selected = this.loadSelectedFromStorage() || {};
   }
 
   /**
@@ -252,8 +307,18 @@ export class ModelRegistry {
       if (parsed.defaultSttModel) {
         const match = this.findModelByIdOrName(parsed.defaultSttModel, 'stt');
         if (match && !this.selected.stt) {
+          // TASK-317 W1.2 (review min-A) — apply the tenant-default in memory,
+          // but only PERSIST once the namespace is authenticated. AgenticProvider
+          // dispatches loadTenantConfig() before `/auth/me` resolves the real
+          // `${tenantId}::${userId}`, so persisting here while still `pre-login`
+          // would write the tenant-default model id to the shared
+          // `arcaai-selected-models/pre-login` row. The post-`/auth/me`
+          // `reloadSelected()` re-reads the authenticated row, so dropping the
+          // pre-login persist costs nothing.
           this.selected.stt = match.id;
-          this.saveSelectedToStorage();
+          if (this.isNamespaceAuthenticated()) {
+            this.saveSelectedToStorage();
+          }
         }
       }
 
@@ -457,31 +522,74 @@ export class ModelRegistry {
   }
 
   /**
-   * Load selected models from local storage
+   * Load selected models from the namespaced local-storage key.
+   *
+   * TASK-317 W1.5 (AC-4) — reads `arcaai-selected-models/${ns}`.
+   * TASK-317 W1.6 (AC-5) — validates the parsed JSON with a valibot schema;
+   * any unparseable / non-object / typed-wrong payload returns `null` and logs
+   * a `warn` (never throws), so a poisoned key cannot crash construction.
    */
   private loadSelectedFromStorage(): SelectedModels | null {
     if (typeof window === 'undefined') return null;
 
+    let stored: string | null;
     try {
-      const stored = localStorage.getItem(STORAGE_KEYS.SELECTED_MODELS);
-      return stored ? JSON.parse(stored) : null;
+      stored = localStorage.getItem(this.selectedModelsStorageKey);
     } catch {
       return null;
     }
+    if (!stored) return null;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stored);
+    } catch {
+      this.logger?.warn('Discarded unparseable selected-models payload from storage', {
+        operation: 'loadSelectedFromStorage',
+        component: 'ModelRegistry',
+        attributes: { key: this.selectedModelsStorageKey },
+      });
+      return null;
+    }
+
+    // valibot's object schema treats arrays/non-objects loosely; reject the
+    // gross shape first, then schema-validate the field types.
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      this.logger?.warn('Discarded malformed selected-models payload from storage', {
+        operation: 'loadSelectedFromStorage',
+        component: 'ModelRegistry',
+        attributes: { key: this.selectedModelsStorageKey },
+      });
+      return null;
+    }
+
+    const result = v.safeParse(SELECTED_MODELS_SCHEMA, parsed);
+    if (!result.success) {
+      this.logger?.warn('Discarded malformed selected-models payload from storage', {
+        operation: 'loadSelectedFromStorage',
+        component: 'ModelRegistry',
+        attributes: { key: this.selectedModelsStorageKey },
+      });
+      return null;
+    }
+
+    return result.output;
   }
 
   /**
-   * Save selected models to local storage
+   * Save selected models to the namespaced local-storage key.
+   *
+   * TASK-317 W1.5 (AC-4) — writes `arcaai-selected-models/${ns}`.
    */
   private saveSelectedToStorage(): void {
     if (typeof window === 'undefined') return;
 
     try {
-      localStorage.setItem(STORAGE_KEYS.SELECTED_MODELS, JSON.stringify(this.selected));
+      localStorage.setItem(this.selectedModelsStorageKey, JSON.stringify(this.selected));
       this.logger?.trace('Selected models saved to storage', {
         operation: 'saveSelectedToStorage',
         component: 'ModelRegistry',
-        attributes: { selected: this.selected },
+        attributes: { selected: this.selected, key: this.selectedModelsStorageKey },
       });
     } catch (error) {
       this.logger?.warn('Failed to save selected models to storage', {

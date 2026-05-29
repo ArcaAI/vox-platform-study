@@ -35,6 +35,7 @@ describe('TASK-264 W0-3: store impersonation token removed', () => {
 
   it('clearOnLogout should not throw and should not reference the removed field', () => {
     const state = useAgenticStore.getState();
-    expect(() => state.clearOnLogout()).not.toThrow();
+    // TASK-317 W1.4 (AC-3) — clearOnLogout now takes the outgoing namespace.
+    expect(() => state.clearOnLogout('pre-login')).not.toThrow();
   });
 });
