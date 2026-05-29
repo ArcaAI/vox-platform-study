@@ -9,10 +9,19 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import React from 'react';
 import { AgenticProvider } from '../AgenticProvider';
-import { useAgenticStore } from '../../store/agenticStore';
+import { useStoreApi, type AgenticStoreApi } from '../../store/agenticStore';
 import type { AgenticConfig } from '../../types';
 import { mockFetch, createMockResponse } from '../../__tests__/setup';
 import { PluginManager } from '../../core/PluginManager';
+
+// TASK-317 W4.2/W4.3 (AC-12) — the provider owns a per-instance store, so tests
+// capture THIS provider's StoreApi via `useStoreApi()` from a child instead of
+// reading the module singleton.
+let capturedStore: AgenticStoreApi | null = null;
+function StoreProbe() {
+  capturedStore = useStoreApi();
+  return null;
+}
 
 describe('AgenticProvider NER config placement', () => {
   const baseConfig: AgenticConfig = {
@@ -32,7 +41,9 @@ describe('AgenticProvider NER config placement', () => {
   };
 
   beforeEach(() => {
-    useAgenticStore.getState().reset();
+    // Each render builds a fresh per-provider store, so no singleton reset is
+    // needed; just drop the previous capture.
+    capturedStore = null;
     mockFetch.mockReset();
     mockFetch.mockResolvedValue(createMockResponse([]));
   });
@@ -55,12 +66,13 @@ describe('AgenticProvider NER config placement', () => {
 
     render(
       <AgenticProvider config={configWithPluginsNer}>
+        <StoreProbe />
         <div>Test</div>
       </AgenticProvider>
     );
 
     await waitFor(() => {
-      expect(useAgenticStore.getState().initialized).toBe(true);
+      expect(capturedStore!.getState().initialized).toBe(true);
     });
 
     expect(setNERConfigSpy).toHaveBeenCalledWith(
@@ -77,12 +89,13 @@ describe('AgenticProvider NER config placement', () => {
 
     render(
       <AgenticProvider config={baseConfig}>
+        <StoreProbe />
         <div>Test</div>
       </AgenticProvider>
     );
 
     await waitFor(() => {
-      expect(useAgenticStore.getState().initialized).toBe(true);
+      expect(capturedStore!.getState().initialized).toBe(true);
     });
 
     expect(initKnowledgeSpy).not.toHaveBeenCalled();
@@ -101,12 +114,13 @@ describe('AgenticProvider NER config placement', () => {
 
     render(
       <AgenticProvider config={configWithDisabledNer}>
+        <StoreProbe />
         <div>Test</div>
       </AgenticProvider>
     );
 
     await waitFor(() => {
-      expect(useAgenticStore.getState().initialized).toBe(true);
+      expect(capturedStore!.getState().initialized).toBe(true);
     });
 
     expect(initKnowledgeSpy).not.toHaveBeenCalled();

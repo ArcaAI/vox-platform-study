@@ -28,7 +28,8 @@ import { ModelRegistry } from '../core/ModelRegistry';
 import { ConfigManager } from '../core/ConfigManager';
 import type { AppConfig, DeepPartial } from '../core/ConfigSchema';
 import { createSDKLogger, type SDKLogger, type ISDKLogger } from '../core/logger';
-import { useAgenticStore } from '../store';
+import { useStore } from 'zustand';
+import { createAgenticStore, AgenticStoreContext, type AgenticStoreApi } from '../store';
 import { DEFAULT_AUDIO_CONFIG, DEFAULT_PERSONALIZATION_CONFIG } from '../types';
 import { AUTH_ENDPOINTS, DEPARTMENT_ENDPOINTS } from '../core/constants';
 // TASK-304 Wave 2D — single source of truth for the `arcaai-config` IDB
@@ -130,7 +131,20 @@ export interface AgenticProviderProps {
  * Wraps your application and provides SDK functionality via hooks.
  */
 export function AgenticProvider({ config, children }: AgenticProviderProps) {
-  const store = useAgenticStore();
+  // TASK-317 W4.2 (AC-12) — own ONE isolated store instance per provider mount
+  // (lazy-init into a ref so it survives re-renders) instead of the shared
+  // module singleton. Each concurrent tenant in a multi-tenant tree therefore
+  // gets independent state (audit C-1). The instance is published via
+  // `AgenticStoreContext` below so descendant hooks bind to THIS store; the
+  // provider's own reactive reads use `useStore(storeApi)`, and its imperative
+  // writes / the managers it wires go through `storeApi.getState()` (same
+  // `store.*` accessor as before — the slice/action calls are unchanged).
+  const storeRef = useRef<AgenticStoreApi | null>(null);
+  if (!storeRef.current) {
+    storeRef.current = createAgenticStore();
+  }
+  const storeApi = storeRef.current;
+  const store = useStore(storeApi);
   const loggerRef = useRef<SDKLogger | null>(null);
   const configManagerRef = useRef<ConfigManager | null>(null);
   const namespaceRef = useRef<string>('pre-login');
@@ -611,7 +625,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         });
       }
     })();
-    // eslint-disable-next-line -- store is a stable singleton; rerun only on user identity change.
+    // eslint-disable-next-line -- store actions are stable (per-provider instance); rerun only on user identity change.
   }, [effectiveUserId, effectiveTenantId, effectiveDepartmentId]);
 
   // Synchronously sync auth/tenant config to the existing AgenticClient on every
@@ -656,7 +670,15 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     [store.initialized, config],
   );
 
-  return <AgenticContext.Provider value={contextValue}>{children}</AgenticContext.Provider>;
+  // TASK-317 W4.2 (AC-12) — publish the per-provider store instance so every
+  // descendant hook (`useArca`, `useArcaConfig`, …) binds to THIS tenant's
+  // store via `useStoreApi()`/the context-backed `useAgenticStore`, never the
+  // module singleton.
+  return (
+    <AgenticStoreContext.Provider value={storeApi}>
+      <AgenticContext.Provider value={contextValue}>{children}</AgenticContext.Provider>
+    </AgenticStoreContext.Provider>
+  );
 }
 
 // =============================================================================

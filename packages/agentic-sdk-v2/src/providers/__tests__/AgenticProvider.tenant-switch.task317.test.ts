@@ -27,7 +27,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as React from 'react';
 import { render, waitFor, act } from '@testing-library/react';
 import { AgenticProvider } from '../AgenticProvider';
-import { useAgenticStore } from '../../store/agenticStore';
+import { useStoreApi, type AgenticStoreApi } from '../../store/agenticStore';
 import type { AgenticConfig, Consultation, ContextItem, DNAStyle, MedicalEntity, SummaryResponse, TenantAudioConfig } from '../../types';
 import type { TranscriptSegment } from '../../types/audio';
 
@@ -124,19 +124,23 @@ const TENANT_B = 'tenant-2';
 const USER_B = 'user-99';
 
 function renderProvider() {
-  // Clean store snapshot. clearOnLogout takes the outgoing namespace (W1.4).
-  useAgenticStore.getState().clearOnLogout('pre-login');
+  // TASK-317 W4.2/W4.3 (AC-12) — capture THIS provider's per-instance StoreApi
+  // (fresh `createAgenticStore()` already at initial state, so no pre-render
+  // reset needed). The test body's `store.getState()` then observes exactly the
+  // store the provider writes to.
+  const captured: { api: AgenticStoreApi | null } = { api: null };
+  const Capture: React.FC = () => {
+    captured.api = useStoreApi();
+    return null;
+  };
 
   const config: AgenticConfig = {
     api: { baseUrl: 'https://api.example.com', apiKey: 'k', accessToken: 'access', tenantId: TENANT_A },
     personalization: { storage: 'local' },
   };
-  const element = React.createElement(AgenticProvider, {
-    config,
-    children: React.createElement('div', null, 'child'),
-  });
-  render(element);
-  return useAgenticStore;
+  render(React.createElement(AgenticProvider, { config, children: React.createElement(Capture) }));
+  if (!captured.api) throw new Error('AgenticProvider store API was not captured');
+  return captured.api;
 }
 
 function meHandler(me: { id?: string; tenantId?: string; departmentId?: string }): FetchHandler {

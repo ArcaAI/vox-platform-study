@@ -7,16 +7,14 @@
  * admin impersonation side-by-side) share ONE store and leak state across the
  * tenant boundary. E-5: there was no concurrent-provider test guarding this.
  *
- * RED (this commit): the probe captures the store each provider exposes. Against
- * the current module singleton BOTH providers resolve to the SAME store object,
- * so (a) the two captured stores are identical and (b) state written through
- * tenant-A's store is immediately visible through tenant-B's store. The
- * isolation assertions below therefore FAIL — proving C-1.
+ * The RED proof (against the module singleton) was committed earlier in W4: a
+ * probe that captured each provider's store resolved BOTH providers to the SAME
+ * object, so state written via tenant-A immediately appeared in tenant-B.
  *
- * GREEN (W4.4): once `AgenticProvider` owns a per-instance store
+ * GREEN (W4.2/W4.3): `AgenticProvider` now owns a per-instance store
  * (`createAgenticStore()` in a `useRef`, exposed via `AgenticStoreContext` /
- * `useStoreApi()`), the probe captures two independent stores and isolation
- * holds.
+ * `useStoreApi()`). Each probe captures an INDEPENDENT `StoreApi`, so the two
+ * providers' state stays isolated.
  *
  * NOTE: this file is `.test.ts` (not `.tsx`) and builds its tree with
  * `React.createElement` — the canonical AgenticProvider integration-test
@@ -30,9 +28,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as React from 'react';
 import { render, waitFor, act } from '@testing-library/react';
 import { AgenticProvider } from '../AgenticProvider';
-// RED: the only store available pre-fix is the module-level singleton. The
-// GREEN rewrite (W4.4) swaps this for the per-provider `useStoreApi()` handle.
-import { useAgenticStore } from '../../store/agenticStore';
+// Each provider exposes its own store instance through `useStoreApi()`.
+import { useStoreApi, type AgenticStoreApi } from '../../store/agenticStore';
 import type { AgenticConfig, Consultation } from '../../types';
 
 vi.mock('@arcaai/noise-filter', () => ({
@@ -135,48 +132,51 @@ const consultationA = {
 } as Consultation;
 
 /**
- * Capture the store object the surrounding provider exposes. In the current
- * (pre-fix) code the only store is the module singleton, so every capture
- * resolves to the same object — which is exactly what makes the isolation
- * assertions RED.
+ * Capture the per-provider `StoreApi` the surrounding `AgenticProvider` exposes
+ * via `AgenticStoreContext`. Two providers → two independent stores.
  */
-function makeCaptureStore(onStore: (store: typeof useAgenticStore) => void): React.FC {
-  return function CaptureStore() {
-    onStore(useAgenticStore);
+function makeStoreProbe(onStore: (store: AgenticStoreApi) => void): React.FC {
+  return function StoreProbe() {
+    onStore(useStoreApi());
     return null;
   };
 }
 
+/** Render tenant-A and tenant-B providers side by side; return their stores. */
+async function renderTwoProviders(): Promise<{ a: AgenticStoreApi; b: AgenticStoreApi }> {
+  const capturedA: { api: AgenticStoreApi | null } = { api: null };
+  const capturedB: { api: AgenticStoreApi | null } = { api: null };
+
+  const CaptureA = makeStoreProbe((s) => {
+    capturedA.api = s;
+  });
+  const CaptureB = makeStoreProbe((s) => {
+    capturedB.api = s;
+  });
+
+  render(
+    React.createElement(
+      React.Fragment,
+      null,
+      React.createElement(AgenticProvider, { config: makeConfig(TENANT_A), children: React.createElement(CaptureA) }),
+      React.createElement(AgenticProvider, { config: makeConfig(TENANT_B), children: React.createElement(CaptureB) }),
+    ),
+  );
+
+  await waitFor(() => {
+    expect(capturedA.api).not.toBeNull();
+    expect(capturedB.api).not.toBeNull();
+  });
+
+  if (!capturedA.api || !capturedB.api) throw new Error('AgenticProvider store API was not captured');
+  return { a: capturedA.api, b: capturedB.api };
+}
+
 describe('TASK-317 W4 — multi-instance store isolation (C-1, E-5): two AgenticProviders in one tree must own independent stores', () => {
   it('two providers expose two DISTINCT store instances and do not share session state', async () => {
-    let storeA: typeof useAgenticStore | null = null;
-    let storeB: typeof useAgenticStore | null = null;
+    const { a, b } = await renderTwoProviders();
 
-    const CaptureA = makeCaptureStore((s) => {
-      storeA = s;
-    });
-    const CaptureB = makeCaptureStore((s) => {
-      storeB = s;
-    });
-
-    render(
-      React.createElement(
-        React.Fragment,
-        null,
-        React.createElement(AgenticProvider, { config: makeConfig(TENANT_A) }, React.createElement(CaptureA), React.createElement('div', null, 'tenant-A')),
-        React.createElement(AgenticProvider, { config: makeConfig(TENANT_B) }, React.createElement(CaptureB), React.createElement('div', null, 'tenant-B')),
-      ),
-    );
-
-    await waitFor(() => {
-      expect(storeA).not.toBeNull();
-      expect(storeB).not.toBeNull();
-    });
-
-    const a = storeA!;
-    const b = storeB!;
-
-    // (a) Independent instances — RED today (both are the module singleton).
+    // (a) Each provider owns an independent store instance.
     expect(a).not.toBe(b);
 
     // (a cont.) State written through tenant-A must NOT appear in tenant-B.
