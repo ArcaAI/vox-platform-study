@@ -226,8 +226,7 @@ export class AudioContextManager {
 
     // referenceCount already includes the current acquire() at this point, so
     // `> 1` means at least one other reference is live.
-    const heldByDifferentTenant =
-      this.referenceCount > 1 && [...this.acquiredTenantIds].some((id) => id !== tenantId);
+    const heldByDifferentTenant = this.referenceCount > 1 && [...this.acquiredTenantIds].some((id) => id !== tenantId);
 
     if (heldByDifferentTenant) {
       console.warn(
