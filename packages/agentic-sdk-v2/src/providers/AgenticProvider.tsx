@@ -506,6 +506,23 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     if (namespaceRef.current === nextNamespace) return;
     namespaceRef.current = nextNamespace;
 
+    // TASK-317 W2.1 (AC-7, audit C-5) — reset the OUTGOING tenant's session
+    // slices SYNCHRONOUSLY, the instant the effective tenant/user changes and
+    // BEFORE the async re-hydrate below resolves the new tenant's config. This
+    // closes the window where tenant B is already active in the same tab while
+    // tenant A's PHI (consultation / context / transcript / summaries) and
+    // tenant-scoped model config remain resident and visible. Uses the store
+    // API the provider already holds (rule 08-vox-sdk: access via the store,
+    // never import it directly). The registry selection itself is re-keyed by
+    // `modelRegistry.reloadSelected()` (below); `setTenantConfig(null)` +
+    // `incrementModelRegistryVersion()` clear/refresh the model config that
+    // `useArcaConfig` surfaces so consumers stop rendering tenant A's data.
+    store.setConsultation(null);
+    store.setContextItems([]);
+    store.setTranscriptSegments([]);
+    store.setSummaries([]);
+    store.setTenantConfig(null);
+
     const providerLogger = (loggerRef.current ?? createSDKLogger({ level: 'info' })).child('AgenticProvider');
     providerLogger.info('Rehydrating ConfigManager for new user namespace', {
       operation: 'rehydrateUserNamespace',
@@ -523,6 +540,11 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     (async () => {
       try {
         modelRegistry?.reloadSelected();
+        // TASK-317 W2.1 (AC-7) — `reloadSelected()` replaced the registry's
+        // in-memory selection with the incoming namespace's (or empty); bump
+        // the version so the `useArcaConfig` `models` memo recomputes and
+        // consumers immediately stop rendering the previous tenant's selection.
+        store.incrementModelRegistryVersion();
         if (personalizationManager) {
           await personalizationManager.hydrate();
           store.setPreferences(personalizationManager.getPreferences());

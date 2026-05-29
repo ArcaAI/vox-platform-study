@@ -209,7 +209,10 @@ export interface AgenticActions {
   incrementModelRegistryVersion: () => void;
 
   // Tenant config
-  setTenantConfig: (config: TenantAudioConfig) => void;
+  // TASK-317 W2.1 (AC-7) — accepts `null` so a same-tab tenant switch can reset
+  // the outgoing tenant's resolved audio/AI config (the state field is already
+  // `TenantAudioConfig | null`).
+  setTenantConfig: (config: TenantAudioConfig | null) => void;
 
   // Runtime config (ENH-05)
   updateRuntimeConfig: (patch: { logLevel?: string }) => void;
