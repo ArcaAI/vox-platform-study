@@ -320,6 +320,15 @@ const initialState: AgenticState = {
   profileReady: false,
 };
 
+// TASK-317 W4 (review M-2) — every store instance (the @deprecated singleton AND
+// each per-provider `createAgenticStore()`) must start from its OWN deep copy of
+// the initial state. Spreading the shared `initialState` const directly would
+// alias its mutable members (`preferences`, the `[]` slices, `audioPlugins`)
+// across instances; isolation would then rely on every action updating
+// immutably (true today, but convention-dependent). A fresh structuredClone per
+// instance makes that isolation structural rather than incidental.
+const createInitialState = (): AgenticState => structuredClone(initialState);
+
 // =============================================================================
 // Store Creation
 // =============================================================================
@@ -330,7 +339,7 @@ const initialState: AgenticState = {
 // `createAgenticStore()`. The slice/action bodies below are UNCHANGED from
 // W1–W3; only the wrapper around them moved.
 const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (set, get) => ({
-  ...initialState,
+  ...createInitialState(),
 
   // Initialization
   initialize: (config, apiClient, pluginManager, personalizationManager, modelRegistry, logger) =>
@@ -347,7 +356,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
 
   reset: () =>
     set({
-      ...initialState,
+      ...createInitialState(),
       // Keep managers during reset
       initialized: get().initialized,
       config: get().config,
@@ -619,7 +628,7 @@ export function useStoreApi(): AgenticStoreApi {
   return api;
 }
 
-const identitySelector = <T,>(state: T): T => state;
+const identitySelector = <T>(state: T): T => state;
 
 /**
  * TASK-317 W4.3 (AC-12) — the INTERNAL store hook. Reads the per-provider store
