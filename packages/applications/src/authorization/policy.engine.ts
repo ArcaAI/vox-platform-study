@@ -5,6 +5,13 @@ import { CoreDatabaseService, ResourceStatusType } from '@arcaai/domains';
 import { IRedisCacheService } from '../services/baseServices/redis';
 
 /**
+ * Reserved system tenant for platform-wide rows (TASK-305 Phase A).
+ * Role assignments that used to be global (`tenantId = NULL`) now live under
+ * this tenant; NULL is no longer a valid `UserRoleAssignment.tenantId`.
+ */
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+/**
  * CASL Ability type for the application
  */
 export type AppAbility = PureAbility<[string, string], PrismaQuery>;
@@ -226,16 +233,25 @@ export class PolicyEngine {
   private async loadUserPolicies(context: PolicyContext): Promise<PolicyRule[]> {
     const prisma = this.databaseService.client;
 
-    // 1. Get user's direct role assignments with policies
-    // Using separate queries for Prisma 7 compatibility
+    // 1. Get user's direct role assignments with policies.
+    //
+    // Tenant scope (TASK-305 Phase A): `UserRoleAssignment.tenantId` is a
+    // required, non-nullable column. Platform-wide assignments (e.g.
+    // SUPER_ADMIN) live under SYSTEM_TENANT_ID, not NULL. We always include
+    // the system tenant and add the request tenant only when present. A bare
+    // `undefined` must never reach the filter — Prisma 7 rejects
+    // `{ tenantId: undefined }` ("Argument `tenantId` is missing"), so an
+    // `in` list (built without undefined) keeps the tenant-less path safe.
+    const tenantScopes = [SYSTEM_TENANT_ID];
+    if (context.tenantId && context.tenantId !== SYSTEM_TENANT_ID) {
+      tenantScopes.push(context.tenantId);
+    }
+
     const directAssignments = await prisma.userRoleAssignment.findMany({
       where: {
         userId: context.userId,
         resourceStatus: ResourceStatusType.ENABLED,
-        OR: [
-          { tenantId: null }, // Global assignments
-          { tenantId: context.tenantId }, // Tenant-specific
-        ],
+        tenantId: { in: tenantScopes },
       },
     });
 
