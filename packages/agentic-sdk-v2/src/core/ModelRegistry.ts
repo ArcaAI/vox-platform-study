@@ -71,17 +71,20 @@ export class ModelRegistry {
   private logger?: ISDKLogger;
   private tenantConfig: TenantAudioConfig | null = null;
   /**
-   * TASK-317 W1.5 (AC-4) — per-`${tenantId}::${userId}` localStorage key for
-   * the selected-models payload. Falls back to the bare global key when no
-   * namespace is supplied (the SDK always supplies one in production).
+   * TASK-317 W1.2/W1.5 (AC-4) — resolves the active `${tenantId}::${userId}`
+   * namespace for the selected-models localStorage key. AgenticProvider passes
+   * a live accessor (`() => namespaceRef`), so the registry follows the real
+   * namespace once `/auth/me` resolves it instead of capturing `pre-login` by
+   * value at construction (review C-1). A plain string is still accepted for
+   * direct construction in unit tests.
    */
-  private readonly selectedModelsStorageKey: string;
+  private readonly resolveNamespace: () => string | null | undefined;
 
-  constructor(config: ModelRegistryConfig, apiClient: AgenticClient, logger?: ISDKLogger, namespace?: string) {
+  constructor(config: ModelRegistryConfig, apiClient: AgenticClient, logger?: ISDKLogger, namespace?: string | (() => string | null | undefined)) {
     this.config = config;
     this.apiClient = apiClient;
     this.logger = logger;
-    this.selectedModelsStorageKey = namespace ? `${STORAGE_KEYS.SELECTED_MODELS}/${namespace}` : STORAGE_KEYS.SELECTED_MODELS;
+    this.resolveNamespace = typeof namespace === 'function' ? namespace : () => namespace;
 
     // Initialize with default models
     for (const model of DEFAULT_MODELS) {
@@ -113,6 +116,27 @@ export class ModelRegistry {
         selectedModels: Object.keys(this.selected),
       },
     });
+  }
+
+  /**
+   * TASK-317 W1.2/W1.5 (AC-4) — per-access namespaced localStorage key, computed
+   * from the live namespace so a re-key takes effect without reconstructing the
+   * registry. M-3 fail-closes a missing namespace to `pre-login`, never the bare
+   * global key (audit D-1 / the configDB v3 legacy row).
+   */
+  private get selectedModelsStorageKey(): string {
+    const ns = this.resolveNamespace();
+    return `${STORAGE_KEYS.SELECTED_MODELS}/${ns && ns.length > 0 ? ns : 'pre-login'}`;
+  }
+
+  /**
+   * TASK-317 W1.2 — re-read the persisted selection under the (now-current)
+   * namespace. AgenticProvider calls this after `/auth/me` resolves the real
+   * `${tenantId}::${userId}` and on a tenant/user switch, because `this.selected`
+   * was loaded once at construction when the namespace was still `pre-login`.
+   */
+  reloadSelected(): void {
+    this.selected = this.loadSelectedFromStorage() || {};
   }
 
   /**

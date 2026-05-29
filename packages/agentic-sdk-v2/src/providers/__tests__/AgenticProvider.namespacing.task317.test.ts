@@ -23,6 +23,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as React from 'react';
 import { render, waitFor, act } from '@testing-library/react';
+import { AgenticProvider } from '../AgenticProvider';
+import { useAgenticStore } from '../../store/agenticStore';
+import type { AgenticConfig } from '../../types';
 
 vi.mock('@arcaai/noise-filter', () => ({
   createNoiseFilter: vi.fn(() => ({
@@ -116,26 +119,18 @@ const TENANT = 'tenant-1';
 const USER = 'user-77';
 const NS = `${TENANT}::${USER}`;
 
-async function renderProvider(configOverride: Record<string, unknown> = {}) {
-  const { AgenticProvider } = await import('../AgenticProvider');
-  const { useAgenticStore } = await import('../../store/agenticStore');
-
+function renderProvider() {
   // Clean store snapshot. clearOnLogout takes the outgoing namespace (W1.4).
   useAgenticStore.getState().clearOnLogout('pre-login');
 
-  const child = React.createElement('div', null, 'child');
-  const element = React.createElement(
-    AgenticProvider,
-    {
-      config: {
-        api: { baseUrl: 'https://api.example.com', apiKey: 'k', accessToken: 'access', tenantId: TENANT },
-        audio: undefined,
-        personalization: { storage: 'local' },
-        ...configOverride,
-      },
-    } as never,
-    child,
-  );
+  const config: AgenticConfig = {
+    api: { baseUrl: 'https://api.example.com', apiKey: 'k', accessToken: 'access', tenantId: TENANT },
+    personalization: { storage: 'local' },
+  };
+  const element = React.createElement(AgenticProvider, {
+    config,
+    children: React.createElement('div', null, 'child'),
+  });
   render(element);
   return useAgenticStore;
 }
@@ -154,7 +149,7 @@ describe('TASK-317 W1.2 — provider namespace wiring (AC-1/AC-4) re-keys manage
   it('AC-1: personalization IDB row is written under the authenticated namespace, never pre-login', async () => {
     handler = meHandler({ id: USER, tenantId: TENANT });
 
-    const store = await renderProvider();
+    const store = renderProvider();
     await waitFor(() => expect(store.getState().configReady).toBe(true), { timeout: 2000 });
 
     const pm = store.getState().personalizationManager!;
@@ -170,7 +165,7 @@ describe('TASK-317 W1.2 — provider namespace wiring (AC-1/AC-4) re-keys manage
     idbStore.set(`arcaai-personalization/${NS}`, { dnaStyleId: 'USER_77_PROFILE' });
     handler = meHandler({ id: USER, tenantId: TENANT });
 
-    const store = await renderProvider();
+    const store = renderProvider();
     await waitFor(() => expect(store.getState().configReady).toBe(true), { timeout: 2000 });
 
     const pm = store.getState().personalizationManager!;
@@ -181,7 +176,7 @@ describe('TASK-317 W1.2 — provider namespace wiring (AC-1/AC-4) re-keys manage
   it('AC-4: selected-models localStorage key is the authenticated namespace, never pre-login', async () => {
     handler = meHandler({ id: USER, tenantId: TENANT });
 
-    const store = await renderProvider();
+    const store = renderProvider();
     await waitFor(() => expect(store.getState().configReady).toBe(true), { timeout: 2000 });
 
     const mr = store.getState().modelRegistry!;
@@ -195,7 +190,7 @@ describe('TASK-317 W1.2 — provider namespace wiring (AC-1/AC-4) re-keys manage
   it('AC-1/AC-4: switching tenant/user re-keys storage — reads the incoming row, writes the new namespace, leaves the outgoing row intact', async () => {
     handler = meHandler({ id: USER, tenantId: TENANT });
 
-    const store = await renderProvider();
+    const store = renderProvider();
     await waitFor(() => expect(store.getState().configReady).toBe(true), { timeout: 2000 });
 
     const mr = store.getState().modelRegistry!;

@@ -184,17 +184,17 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     const pluginManager = new PluginManager(audioConfig, logger.child('PluginManager'), apiClient, cfg.debug);
 
     const personalizationConfig = cfg.personalization ?? DEFAULT_PERSONALIZATION_CONFIG;
-    // TASK-317 W1.1/W1.2 (AC-1) — seed the per-`${tenantId}::${userId}` namespace
-    // up-front (user-id arrives later from /auth/me) so PersonalizationManager and
-    // ModelRegistry key their browser storage by the SAME `ns` used for
-    // USER_PREFERENCES_STORE, rather than a shared global key (audit C-3 / D-1).
+    // TASK-317 W1.1/W1.2 (AC-1/AC-4, review C-1) — the namespace starts at
+    // `pre-login` (the user-id arrives later from /auth/me). PersonalizationManager
+    // and ModelRegistry are handed a LIVE accessor over `namespaceRef`, so they
+    // derive their browser-storage keys per access and follow the real
+    // `${tenantId}::${userId}` once it is known — instead of capturing `pre-login`
+    // by value at construction. The managers are re-hydrated after /auth/me
+    // resolves (below) and on tenant/user switch (rehydrate effect). Mirrors the
+    // `nsRef` closure already used for USER_PREFERENCES_STORE.
     namespaceRef.current = makeNamespace(cfg.api.tenantId, null);
-    const personalizationManager = new PersonalizationManager(
-      personalizationConfig,
-      apiClient,
-      logger.child('PersonalizationManager'),
-      namespaceRef.current,
-    );
+    const nsAccessor = () => namespaceRef.current;
+    const personalizationManager = new PersonalizationManager(personalizationConfig, apiClient, logger.child('PersonalizationManager'), nsAccessor);
 
     // TASK-304 Wave 2D — hydrate the IDB cache asynchronously. We don't
     // await here so the rest of init (which is mostly synchronous) is
@@ -217,8 +217,8 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
       });
 
     // TASK-317 W1.5 (AC-4) — key the selected-models localStorage entry by the
-    // same `${tenantId}::${userId}` namespace seeded above.
-    const modelRegistry = new ModelRegistry(cfg.models ?? {}, apiClient, logger.child('ModelRegistry'), namespaceRef.current);
+    // same live `${tenantId}::${userId}` accessor; re-keyed after /auth/me.
+    const modelRegistry = new ModelRegistry(cfg.models ?? {}, apiClient, logger.child('ModelRegistry'), nsAccessor);
 
     store.initialize(cfg, apiClient, pluginManager, personalizationManager, modelRegistry, logger);
 
@@ -279,8 +279,9 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     // 4-tier ConfigManager + cascade init (TASK-244 + TASK-297 DEF-C5/C6/H1/H4/H5)
     // -----------------------------------------------------------------------
 
-    // Namespace seeded above (TASK-317 W1.1/W1.2) before the managers were
-    // constructed; user-id is applied later from /auth/me.
+    // Namespace bootstrapped to `pre-login` above (TASK-317 W1.1/W1.2); the
+    // managers follow `namespaceRef` lazily and are re-hydrated once /auth/me
+    // resolves the real `${tenantId}::${userId}`.
     const configManager = new ConfigManager({
       onLoadUserPreferences: makeLoadUserPreferencesFromStorage(namespaceRef),
       onPersistUserPreferences: makePersistUserPreferencesToStorage(namespaceRef),
@@ -353,6 +354,20 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         store.setIsAuthenticated(true);
         store.setProfileReady(true);
         namespaceRef.current = makeNamespace(me.tenantId ?? cfg.api.tenantId, me.id);
+        // TASK-317 W1.2 (AC-1/AC-4, review C-1) — the namespace is now the real
+        // `${tenantId}::${userId}`. Re-key the managers (they read the live
+        // accessor) and re-hydrate from the authenticated rows so a shared
+        // workstation never serves the previous user's cached personalization
+        // or model selection.
+        modelRegistry.reloadSelected();
+        try {
+          await personalizationManager.hydrate();
+          const rekeyed = personalizationManager.getPreferences();
+          store.setPreferences(rekeyed);
+          pluginManager.setUserPreferences(rekeyed);
+        } catch {
+          // `hydrate()` already logs at warn; keep init resilient.
+        }
       }
 
       // ---- Step 2: apply tenant config from the cached promise.
@@ -498,8 +513,21 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
       attributes: { namespace: nextNamespace },
     });
 
+    // TASK-317 W1.2 (AC-1/AC-4, review C-1) — managers read the live namespace
+    // accessor; re-key them to the incoming namespace so a tenant/user switch
+    // in the same tab reads the new user's rows (and writes under their
+    // namespace), never the outgoing user's.
+    const personalizationManager = store.personalizationManager;
+    const modelRegistry = store.modelRegistry;
+
     (async () => {
       try {
+        modelRegistry?.reloadSelected();
+        if (personalizationManager) {
+          await personalizationManager.hydrate();
+          store.setPreferences(personalizationManager.getPreferences());
+        }
+
         configManager.clearUserPreferences();
         await configManager.loadUserPreferences();
 
