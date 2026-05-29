@@ -14,6 +14,7 @@ import { seedDnaWritingStyle } from './08-dna-writing-style';
 import { seedConsultation } from './09-consultation';
 import { seedAuditLog } from './10-audit-log';
 import { seedGlobalSetting } from './11-global-setting';
+import { seedRateLimitSettings } from './12-rate-limit-settings';
 import { seedUser } from './91-user';
 
 /**
@@ -88,6 +89,9 @@ export const seed = async () => {
         await seedApiKey(client);
         console.log('');
         await seedGlobalSetting(client);
+        console.log('');
+        // TASK-316 — platform-wide rate-limit config (single-tenant rows).
+        await seedRateLimitSettings(client);
         console.log('');
 
         // Phase 5: Depends on Phase 4

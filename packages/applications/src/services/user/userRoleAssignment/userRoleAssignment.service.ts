@@ -41,7 +41,12 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
     userId: string,
     tenantId: string,
   ): Promise<ActiveUserRoleAssignmentRow | null> {
-    const row = await this.databaseService.client.userRoleAssignment.findFirst({
+    // TASK-314 — baseClient (tenant-scope bypass). This is a pre-auth identity
+    // lookup: the login flow calls it BEFORE any tenant context exists in CLS,
+    // so the scoped client would throw "tenant context required for model
+    // UserRoleAssignment". The tenant boundary is enforced explicitly by the
+    // `tenantId` filter in the WHERE below, not by the `$extends`.
+    const row = await this.databaseService.baseClient.userRoleAssignment.findFirst({
       where: {
         userId,
         tenantId,
@@ -52,7 +57,11 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   }
 
   async findActiveTenantIdsForUser(userId: string): Promise<string[]> {
-    const rows = await this.databaseService.client.userRoleAssignment.findMany({
+    // TASK-314 — baseClient (tenant-scope bypass). This resolves EVERY tenant
+    // the user is assigned to (impersonation target resolution); scoping it to
+    // a single CLS tenant would defeat its purpose and it also runs in flows
+    // without a tenant context. Cross-tenant by design.
+    const rows = await this.databaseService.baseClient.userRoleAssignment.findMany({
       where: {
         userId,
         resourceStatus: ResourceStatusType.ENABLED,
@@ -75,7 +84,12 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   }
 
   async findActiveRolesForUser(userId: string): Promise<AuthRoleSummary[]> {
-    const rows = await this.databaseService.client.userRoleAssignment.findMany({
+    // TASK-314 — baseClient (tenant-scope bypass). Runs at login BEFORE the
+    // user/tenant is in CLS (and for /me, /refresh, impersonation), so the
+    // scoped client throws "tenant context required for model
+    // UserRoleAssignment". Identity resolution is inherently cross-tenant: we
+    // need ALL of the user's roles to determine SUPER_ADMIN and build claims.
+    const rows = await this.databaseService.baseClient.userRoleAssignment.findMany({
       where: {
         userId,
         resourceStatus: ResourceStatusType.ENABLED,

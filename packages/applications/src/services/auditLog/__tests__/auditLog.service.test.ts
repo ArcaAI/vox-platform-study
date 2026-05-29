@@ -47,6 +47,24 @@ const mockAuditLogRepository = {
     softDelete: vi.fn(),
 };
 
+// Mock CoreDatabaseService (dependency boundary).
+// TASK-314 §7: the authentication-audit write must bypass the tenant-scope
+// `$extends`, so it goes through the UNSCOPED `baseClient` rather than the
+// tenant-scoped repository. The scoped `client` is intentionally distinct so
+// tests can assert the bypass invariant (it must never be touched here).
+const mockDatabaseService = {
+    client: {
+        auditLog: {
+            create: vi.fn(),
+        },
+    },
+    baseClient: {
+        auditLog: {
+            create: vi.fn(),
+        },
+    },
+};
+
 /**
  * Creates a complete mock AuditLogEntity matching the real entity structure.
  * Includes all fields to prevent incomplete mock anti-pattern.
@@ -128,6 +146,15 @@ vi.mock('@arcaai/domains', async () => {
                 toObject: vi.fn().mockReturnValue({ id: 'new-audit-log-id', ...data }),
             })),
         },
+        // TASK-314 §7: the service maps the entity to its persistence shape
+        // before the baseClient create. Pass the entity through unchanged so
+        // the create payload stays deterministic and assertions can match the
+        // factory-built fields directly.
+        AuditLogEntityMapper: {
+            getInstance: () => ({
+                toPersistence: (entity: Record<string, unknown>) => entity,
+            }),
+        },
     };
 });
 
@@ -158,6 +185,7 @@ describe('AuditLogService', () => {
             mockAuditLogRepository as any,
             mockEventEmitter as any,
             mockClsService as any,
+            mockDatabaseService as any,
         );
     });
 
@@ -608,15 +636,17 @@ describe('AuditLogService', () => {
 
                 await service.handleUserAuthenticatedEvent(event);
 
-                expect(mockAuditLogRepository.create).toHaveBeenCalledWith(
+                expect(mockDatabaseService.baseClient.auditLog.create).toHaveBeenCalledWith(
                     expect.objectContaining({
-                        action: AuditAction.LOGIN,
-                        eventType: 'AUTHENTICATION',
-                        success: true,
-                        responsibleUserId: 'user-123',
-                        responsibleIp: '10.0.0.1',
-                        resourceId: 'user-123',
-                        resourceType: ResourceType.User,
+                        data: expect.objectContaining({
+                            action: AuditAction.LOGIN,
+                            eventType: 'AUTHENTICATION',
+                            success: true,
+                            responsibleUserId: 'user-123',
+                            responsibleIp: '10.0.0.1',
+                            resourceId: 'user-123',
+                            resourceType: ResourceType.User,
+                        }),
                     })
                 );
             });
@@ -628,9 +658,11 @@ describe('AuditLogService', () => {
 
                 await service.handleUserAuthenticatedEvent(event);
 
-                expect(mockAuditLogRepository.create).toHaveBeenCalledWith(
+                expect(mockDatabaseService.baseClient.auditLog.create).toHaveBeenCalledWith(
                     expect.objectContaining({
-                        responsibleIp: '192.168.1.1', // From CLS context
+                        data: expect.objectContaining({
+                            responsibleIp: '192.168.1.1', // From CLS context
+                        }),
                     })
                 );
             });
@@ -642,10 +674,12 @@ describe('AuditLogService', () => {
 
                 await service.handleUserAuthenticatedEvent(event);
 
-                expect(mockAuditLogRepository.create).toHaveBeenCalledWith(
+                expect(mockDatabaseService.baseClient.auditLog.create).toHaveBeenCalledWith(
                     expect.objectContaining({
-                        responsibleUserId: 'fallback-user-id',
-                        resourceId: 'fallback-user-id',
+                        data: expect.objectContaining({
+                            responsibleUserId: 'fallback-user-id',
+                            resourceId: 'fallback-user-id',
+                        }),
                     })
                 );
             });
@@ -657,17 +691,19 @@ describe('AuditLogService', () => {
 
                 await service.handleUserAuthenticatedEvent(event);
 
-                expect(mockAuditLogRepository.create).toHaveBeenCalledWith(
+                expect(mockDatabaseService.baseClient.auditLog.create).toHaveBeenCalledWith(
                     expect.objectContaining({
                         data: expect.objectContaining({
-                            method: 'oauth',
+                            data: expect.objectContaining({
+                                method: 'oauth',
+                            }),
                         }),
                     })
                 );
             });
 
             it('should handle errors gracefully without throwing', async () => {
-                mockAuditLogRepository.create.mockRejectedValue(new Error('DB error'));
+                mockDatabaseService.baseClient.auditLog.create.mockRejectedValue(new Error('DB error'));
 
                 const event = {
                     userId: 'user-123',
@@ -691,19 +727,21 @@ describe('AuditLogService', () => {
 
                     await service.handleUserAuthenticatedEvent(event);
 
-                    expect(mockAuditLogRepository.create).toHaveBeenCalledWith(
+                    expect(mockDatabaseService.baseClient.auditLog.create).toHaveBeenCalledWith(
                         expect.objectContaining({
-                            action: AuditAction.IMPERSONATED_ACTION,
-                            eventType: 'IMPERSONATION',
-                            success: true,
-                            responsibleUserId: 'admin-001',
-                            resourceId: 'doctor-001',
-                            resourceType: ResourceType.User,
                             data: expect.objectContaining({
-                                endpoint: '/api/v1/consultations',
-                                httpMethod: 'POST',
-                                impersonatedUserId: 'doctor-001',
-                                userAgent: 'Mozilla/5.0',
+                                action: AuditAction.IMPERSONATED_ACTION,
+                                eventType: 'IMPERSONATION',
+                                success: true,
+                                responsibleUserId: 'admin-001',
+                                resourceId: 'doctor-001',
+                                resourceType: ResourceType.User,
+                                data: expect.objectContaining({
+                                    endpoint: '/api/v1/consultations',
+                                    httpMethod: 'POST',
+                                    impersonatedUserId: 'doctor-001',
+                                    userAgent: 'Mozilla/5.0',
+                                }),
                             }),
                         }),
                     );
@@ -721,12 +759,14 @@ describe('AuditLogService', () => {
 
                     await service.handleUserAuthenticatedEvent(event);
 
-                    expect(mockAuditLogRepository.create).toHaveBeenCalledWith(
+                    expect(mockDatabaseService.baseClient.auditLog.create).toHaveBeenCalledWith(
                         expect.objectContaining({
-                            action: AuditAction.LOGIN,
-                            eventType: 'AUTHENTICATION',
-                            responsibleUserId: 'user-123',
-                            resourceId: 'user-123',
+                            data: expect.objectContaining({
+                                action: AuditAction.LOGIN,
+                                eventType: 'AUTHENTICATION',
+                                responsibleUserId: 'user-123',
+                                resourceId: 'user-123',
+                            }),
                         }),
                     );
                 });
@@ -743,15 +783,61 @@ describe('AuditLogService', () => {
 
                 await service.handleUserAuthenticatedEvent(event);
 
-                expect(mockAuditLogRepository.create).toHaveBeenCalledWith(
+                expect(mockDatabaseService.baseClient.auditLog.create).toHaveBeenCalledWith(
                     expect.objectContaining({
                         data: expect.objectContaining({
-                            method: 'saml',
-                            timestamp: timestamp.toISOString(),
-                            userAgent: 'TestAgent/1.0',
+                            data: expect.objectContaining({
+                                method: 'saml',
+                                timestamp: timestamp.toISOString(),
+                                userAgent: 'TestAgent/1.0',
+                            }),
                         }),
                     })
                 );
+            });
+
+            /**
+             * TASK-314 §7 — tenant-scope bypass invariant for the auth audit.
+             *
+             * `AuthService.trackAuthentication` emits `user.authenticated` while
+             * CLS still has NO tenant context (login is a public route handled
+             * before any user/tenant is hydrated). `AuditLog` is tenant-scoped
+             * (TASK-305 Phase B), so the normal repository write would throw
+             * "tenant context required for model AuditLog" and the row would be
+             * silently dropped. The fix routes the create through the UNSCOPED
+             * `baseClient`; the audit's tenantId is already resolved by the
+             * factory (CLS tenant, or SYSTEM_TENANT_ID for tenant-less/system
+             * logins), so the scope filter adds nothing here.
+             */
+            describe('tenant-scope bypass invariant (TASK-314 §7)', () => {
+                it('persists the LOGIN audit via the unscoped baseClient when CLS has no tenant context', async () => {
+                    // Clean-boot login: no user, no tenantId in CLS.
+                    mockClsService.get.mockImplementation((key: string) => {
+                        switch (key) {
+                            case 'requestIp': return '203.0.113.7';
+                            default: return null;
+                        }
+                    });
+
+                    await service.handleUserAuthenticatedEvent({ userId: 'super-admin-1' });
+
+                    expect(mockDatabaseService.baseClient.auditLog.create).toHaveBeenCalledTimes(1);
+                    expect(mockDatabaseService.baseClient.auditLog.create).toHaveBeenCalledWith(
+                        expect.objectContaining({
+                            data: expect.objectContaining({
+                                action: AuditAction.LOGIN,
+                                responsibleUserId: 'super-admin-1',
+                            }),
+                        }),
+                    );
+                });
+
+                it('never routes the auth audit through the tenant-scoped repository or client', async () => {
+                    await service.handleUserAuthenticatedEvent({ userId: 'user-123' });
+
+                    expect(mockAuditLogRepository.create).not.toHaveBeenCalled();
+                    expect(mockDatabaseService.client.auditLog.create).not.toHaveBeenCalled();
+                });
             });
         });
     });

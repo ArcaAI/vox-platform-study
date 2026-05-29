@@ -109,9 +109,9 @@ Throttle granularity is a UX issue, not a security one — but tight SDK refresh
 | AC-1 — `scope: 'creator'` option on `@TenantOwnedResource` | Complete | api/common | §4.1 |
 | AC-2 — `scope: 'creator'` on `ConsultationJobController.cancel` | Complete | api/consultation | §4.2 |
 | AC-3 — interceptor unit tests (3+ cases) | Complete | api/common (vitest) | §4.1 |
-| AC-4 — `consultation-job-cross-user.spec.ts` (E2E) | Spec authored; execution deferred to test-stack run | api E2E | §4.3 |
-| AC-5 — `AuthController` per-endpoint throttle | Complete | api/auth + api/throttle | §4.4 |
-| AC-6 — `auth-throttle-per-endpoint.spec.ts` (E2E) | Spec authored; execution deferred to test-stack run | api E2E | §4.5 |
+| AC-4 — `consultation-job-cross-user.spec.ts` (E2E) | **Executed ✅ 3/3** against test stack (2026-05-29) | api E2E | §4.3, §6 |
+| AC-5 — `AuthController` per-endpoint throttle | Decorators complete, **but inert at runtime** — see AC-6 | api/auth + api/throttle | §4.4, §6 |
+| AC-6 — `auth-throttle-per-endpoint.spec.ts` (E2E) | **Executed ❌ 2/3** — login 5/min not enforced; root cause: throttle guard never wired (TASK-315) | api E2E | §4.5, §6 |
 
 **Branch**: `task-308/pre-sdk-auth-gaps` (worktree at `../hope-v2-task-308`, base `a6a19797`).
 
@@ -333,6 +333,7 @@ Head     : a4ecf99c (task-308(ac-6) — throttle granularity E2E spec)
 | 2026-05-28 | AC-5: removed class-wide `@Throttle` from `AuthController`; added per-endpoint decorators (login 5/min, refresh 60/min, impersonate 10/min); /me /logout /stream-ticket /revoke-impersonation ride the app-wide default | `apps/api/src/modules/auth/auth.controller.ts`, `apps/api/src/modules/throttle/__tests__/throttle-decorators.test.ts` |
 | 2026-05-28 | AC-6: authored Playwright spec `auth-throttle-per-endpoint.spec.ts` covering /me-no-429 / refresh-no-429 / login-≥1-429 | `apps/api/tests/e2e/auth-throttle-per-endpoint.spec.ts` |
 | 2026-05-28 | Status `In Progress` → `Completed`; §4 + §5 populated with verification evidence | `README.md` |
+| 2026-05-29 | **E2E executed against the live test stack** (test API `:8868`, test DB `:5433`, test Redis `:6380`). **AC-4 `consultation-job-cross-user.spec.ts` → 3/3 ✅** (creator-200 / peer-cancel-404 / peer-read-200). **AC-6 `auth-throttle-per-endpoint.spec.ts` → 2/3** (/me + /refresh pass; **login 5/min FAILS** — 6 rapid attempts returned `[401×6]`, zero `429`). Root cause: `ThrottleConfigModule` (the only `ThrottlerModule`/`ThrottlerGuard` registration) is **never imported into `AppModule`** — verified via `git log -S` (never wired in any commit). So AC-5's per-endpoint `@Throttle` decorators are metadata-only with no guard to enforce them → **no rate limiting is active in the running API**. Closes the §7.2 "pre-existing suite under 5/min" concern: `auth.spec.ts` (17/17 ✅) stays green precisely because the limit is inert. Tracked for a real fix as **TASK-315**. (Login itself was separately unblocked by **TASK-314** — pre-auth `UserRoleAssignment` reads were throwing in the tenant-scope `$extends`.) | `README.md` |
 
 ---
 
