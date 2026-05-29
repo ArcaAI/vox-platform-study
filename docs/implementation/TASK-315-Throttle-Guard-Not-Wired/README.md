@@ -107,7 +107,7 @@ Options to resolve (to be decided in planning):
   mean the non-`default` tiers (`strict`/`heavy`/`relaxed`) do not gate routes
   that did not opt in; verified by an in-process integration test.
 - **AC-5 — DECIDED: Redis-backed with in-memory fallback.** Rate-limit counters
-  use `@nestjs/throttler-storage-redis` backed by the existing Redis (resolved
+  use `@nest-lab/throttler-storage-redis` backed by the existing Redis (resolved
   from `REDIS_URL`, else `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASS`). In-memory
   storage is used when Redis is not configured and in test environments
   (`VITEST` / `NODE_ENV=test`) so unit/integration tests run without Redis.
@@ -164,7 +164,7 @@ Decision, AC-5). Followed strict TDD (RED → GREEN → verify):
    `TieredThrottlerGuard` as the **first** `APP_GUARD` (throttle-first ordering,
    before `UnifiedAuthGuard`).
 6. Export `TieredThrottlerGuard` from `apps/api/src/modules/throttle/index.ts`.
-7. Add `@nestjs/throttler-storage-redis` to `apps/api/package.json`.
+7. Add `@nest-lab/throttler-storage-redis` to `apps/api/package.json`.
 
 **VERIFY**
 
@@ -180,7 +180,7 @@ Decision, AC-5). Followed strict TDD (RED → GREEN → verify):
 | Date | Description | Files modified |
 |---|---|---|
 | 2026-05-29 | Ticket opened. Root-caused TASK-308 AC-6 login-throttle failure to `ThrottleConfigModule` never being imported into `AppModule` (verified via `git log -S` — never wired). Documented the named-throttler over-throttling risk that makes the fix a design decision rather than a one-line import. Status `Pending` awaiting approach approval. | `README.md` |
-| 2026-05-29 | Approved **Option 2** (keep 4 named throttlers; non-`default` tiers opt-in via a custom `TieredThrottlerGuard`) and **AC-5 = Redis** storage (`@nestjs/throttler-storage-redis` with in-memory fallback in test envs / when Redis unconfigured; `RATE_LIMIT_ENABLED=false` disables via `skipIf`). Implemented in parallel in the sibling code worktree: new `TieredThrottlerGuard`, throttle module wiring + storage selection, `AppModule` registers the guard as the first `APP_GUARD` (throttle-first), and the throttle-guard unit test was rewritten into a real `@nestjs/testing` + supertest integration test (removing fabricated assertions / non-existent controllers). Marked ACs 1/3/4 MET and AC-2 covered (AC-6 Playwright run against the live stack pending). Status → `Completed`. | `README.md` (this worktree); code in sibling worktree `hope-v2-wt-task315-code` — see §5 |
+| 2026-05-29 | Approved **Option 2** (keep 4 named throttlers; non-`default` tiers opt-in via a custom `TieredThrottlerGuard`) and **AC-5 = Redis** storage (`@nest-lab/throttler-storage-redis` with in-memory fallback in test envs / when Redis unconfigured; `RATE_LIMIT_ENABLED=false` disables via `skipIf`). Implemented in parallel in the sibling code worktree: new `TieredThrottlerGuard`, throttle module wiring + storage selection, `AppModule` registers the guard as the first `APP_GUARD` (throttle-first), and the throttle-guard unit test was rewritten into a real `@nestjs/testing` + supertest integration test (removing fabricated assertions / non-existent controllers). Marked ACs 1/3/4 MET and AC-2 covered (AC-6 Playwright run against the live stack pending). Status → `Completed`. | `README.md` (this worktree); code in sibling worktree `hope-v2-wt-task315-code` — see §5 |
 
 ---
 
@@ -202,27 +202,31 @@ Decision, AC-5). Followed strict TDD (RED → GREEN → verify):
   effect on today's routes is identical to the simpler Option 1.
 - The guard is registered as the **first** `APP_GUARD`, so throttling runs before
   `UnifiedAuthGuard` — brute-force / DoS protection precedes auth resolution.
-- **Storage (AC-5):** Redis via `@nestjs/throttler-storage-redis` (resolved from
-  `REDIS_URL`, else `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASS`) for multi-instance
-  correctness, with in-memory fallback when Redis is not configured and in test
-  environments (`VITEST` / `NODE_ENV=test`) so unit/integration tests run without
-  a Redis dependency.
+- **Storage (AC-5):** Redis via `@nest-lab/throttler-storage-redis@^1.2.0`
+  (resolved from `REDIS_URL`, else `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASS`) for
+  multi-instance correctness, with in-memory fallback when Redis is not configured
+  and in test environments (`VITEST` / `NODE_ENV=test`) so unit/integration tests
+  run without a Redis dependency. Package note: the original
+  `@nestjs/throttler-storage-redis` was removed from npm (404); `@nest-lab/throttler-storage-redis`
+  is its maintained `@nestjs/throttler` v6 successor (same `ThrottlerStorageRedisService`
+  export, reuses the existing `ioredis ^5.10.1`).
 
 ### 5.2 Files changed
 
-> Code changes land in the sibling worktree `hope-v2-wt-task315-code`
-> (branch `task-315/throttle-code`); this docs worktree only edits the README.
-> Intended set:
+> Implemented in worktree `hope-v2-wt-task315-code` (branch `task-315/throttle-code`,
+> commit `f67975f9`) and **merged into `fix/2605-review`** alongside this doc.
+> Confirmed set (`rate-limit-config.service.ts` was left unchanged — the 4-named-throttler
+> contract still holds):
 
 | File | Change |
 |---|---|
 | `apps/api/src/modules/throttle/tiered-throttler.guard.ts` | **NEW** — custom guard; non-`default` tiers are opt-in (only enforced when a route declares them via `@Throttle`). |
 | `apps/api/src/modules/throttle/throttle.module.ts` | Register the 4 throttlers + `skipIf` (honours `RATE_LIMIT_ENABLED=false`) + Redis/in-memory storage selection; export `ThrottlerModule` + guard; remove the inert in-module `APP_GUARD(ThrottlerGuard)`. |
-| `apps/api/src/modules/throttle/rate-limit-config.service.ts` | Unchanged contract (still provides the 4 named throttlers) — confirm at reconcile. |
+| `apps/api/src/modules/throttle/rate-limit-config.service.ts` | Unchanged — still provides the 4 named throttlers (contract verified at merge). |
 | `apps/api/src/app.module.ts` | Import `ThrottleConfigModule` into `common[]`; register `TieredThrottlerGuard` as the **first** `APP_GUARD` (throttle-first ordering). |
 | `apps/api/src/modules/throttle/index.ts` | Export `TieredThrottlerGuard`. |
 | `apps/api/src/modules/throttle/__tests__/throttle-guard.test.ts` | **REWRITTEN** into a real `@nestjs/testing` + supertest integration test: default override 429s after limit; named-tier opt-in works; non-opted routes are NOT gated by `strict`/`heavy`/`relaxed`; `@SkipThrottle` never 429s. |
-| `apps/api/package.json` | Add `@nestjs/throttler-storage-redis`. |
+| `apps/api/package.json` | Add `@nest-lab/throttler-storage-redis`. |
 | `apps/api/src/modules/throttle/__tests__/throttle.module.test.ts` | Minor cleanup of fabricated assertions. |
 
 ### 5.3 Testing anti-patterns fixed
