@@ -20,6 +20,7 @@ import {
   CrossTabHmacKeyManager,
   __resetSessionHmacSecretForTests,
 } from '../CrossTabHmacKeyManager';
+import { deriveTenantHmacKey } from '../CrossTabHmacSharedWorker';
 
 // =============================================================================
 // MockSharedWorker — a minimal SharedWorker stand-in. All instances sharing
@@ -28,8 +29,8 @@ import {
 // =============================================================================
 
 type Req =
-  | { id: string; op: 'sign'; payload: ArrayBuffer }
-  | { id: string; op: 'verify'; payload: ArrayBuffer; hmac: ArrayBuffer }
+  | { id: string; op: 'sign'; payload: ArrayBuffer; tenantId?: string }
+  | { id: string; op: 'verify'; payload: ArrayBuffer; hmac: ArrayBuffer; tenantId?: string }
   | { id: string; op: 'reset' };
 
 type Res =
@@ -39,18 +40,24 @@ type Res =
 class MockSharedWorkerImpl {
   private secret: Uint8Array | null = null;
   private keyPromise: Promise<CryptoKey> | null = null;
+  // Mirrors the real worker's per-tenant subkey cache (TASK-317 AC-11).
+  private tenantKeys = new Map<string, Promise<CryptoKey>>();
   shouldStall = false;
+
+  private ensureSecret(): Uint8Array {
+    if (this.secret === null) {
+      const buf = new Uint8Array(32);
+      crypto.getRandomValues(buf);
+      this.secret = buf;
+    }
+    return this.secret;
+  }
 
   private async getKey(): Promise<CryptoKey> {
     if (this.keyPromise === null) {
-      if (this.secret === null) {
-        const buf = new Uint8Array(32);
-        crypto.getRandomValues(buf);
-        this.secret = buf;
-      }
       this.keyPromise = crypto.subtle.importKey(
         'raw',
-        this.secret as unknown as ArrayBuffer,
+        this.ensureSecret() as unknown as ArrayBuffer,
         { name: 'HMAC', hash: 'SHA-256' },
         false,
         ['sign', 'verify'],
@@ -59,20 +66,31 @@ class MockSharedWorkerImpl {
     return this.keyPromise;
   }
 
+  private keyFor(tenantId: string | undefined): Promise<CryptoKey> {
+    if (!tenantId) return this.getKey();
+    let cached = this.tenantKeys.get(tenantId);
+    if (cached === undefined) {
+      cached = deriveTenantHmacKey(this.ensureSecret(), tenantId);
+      this.tenantKeys.set(tenantId, cached);
+    }
+    return cached;
+  }
+
   reset(): void {
     this.secret = null;
     this.keyPromise = null;
+    this.tenantKeys.clear();
   }
 
   async handle(req: Req, respond: (res: Res) => void): Promise<void> {
     if (this.shouldStall) return;
     try {
       if (req.op === 'sign') {
-        const key = await this.getKey();
+        const key = await this.keyFor(req.tenantId);
         const sig = await crypto.subtle.sign('HMAC', key, req.payload);
         respond({ id: req.id, ok: true, result: sig });
       } else if (req.op === 'verify') {
-        const key = await this.getKey();
+        const key = await this.keyFor(req.tenantId);
         const ok = await crypto.subtle.verify('HMAC', key, req.hmac, req.payload);
         respond({ id: req.id, ok: true, result: ok });
       } else if (req.op === 'reset') {

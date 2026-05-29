@@ -26,6 +26,7 @@
  * public SDK barrel.
  */
 
+import { deriveTenantHmacKey } from './CrossTabHmacSharedWorker';
 import type { CrossTabHmacReq, CrossTabHmacRes } from './CrossTabHmacSharedWorker';
 
 // =============================================================================
@@ -166,6 +167,11 @@ export class CrossTabHmacKeyManager {
   private readonly pending = new Map<string, PendingRpc>();
   private readonly rpcTimeoutMs: number;
   private closed = false;
+  // TASK-317 E-4 (AC-11) — active tenant. When set, sign/verify use the
+  // per-tenant HKDF subkey instead of the bare master/fallback secret.
+  private tenantId?: string;
+  // Cached per-tenant fallback subkey; invalidated on setTenantId (rotation).
+  private fallbackTenantKeyPromise: Promise<CryptoKey> | null = null;
 
   constructor(options: CrossTabHmacKeyManagerOptions = {}) {
     this.logger = options.logger;
@@ -207,6 +213,34 @@ export class CrossTabHmacKeyManager {
   }
 
   /**
+   * TASK-317 E-4 (AC-11) — set the active tenant. Subsequent sign/verify use
+   * the per-tenant HKDF subkey so a signature minted for one tenant cannot be
+   * forged onto another tenant's channel. Changing the tenant rotates the
+   * cached fallback subkey (fail-closed: old-tenant signatures stop verifying).
+   * In SharedWorker mode the tenant is threaded per-RPC and the worker derives
+   * the subkey, so the master secret never leaves the worker.
+   */
+  setTenantId(tenantId: string): void {
+    if (this.tenantId === tenantId) return;
+    this.tenantId = tenantId;
+    this.fallbackTenantKeyPromise = null;
+  }
+
+  /**
+   * Resolve the fallback (non-SharedWorker) signing key: the per-tenant HKDF
+   * subkey when a tenant is set, otherwise the legacy global per-session key.
+   */
+  private getFallbackSigningKey(): Promise<CryptoKey> {
+    if (this.tenantId === undefined) {
+      return getFallbackKey();
+    }
+    if (this.fallbackTenantKeyPromise === null) {
+      this.fallbackTenantKeyPromise = deriveTenantHmacKey(ensureFallbackSecret(), this.tenantId);
+    }
+    return this.fallbackTenantKeyPromise;
+  }
+
+  /**
    * Sign `payload` with HMAC-SHA-256. Routes via the SharedWorker when
    * available, otherwise uses the per-session fallback secret.
    */
@@ -214,11 +248,11 @@ export class CrossTabHmacKeyManager {
     if (this.closed) throw new Error('CrossTabHmacKeyManager: instance is closed');
 
     if (this.port !== null) {
-      const result = await this.rpc({ op: 'sign', payload: toArrayBuffer(payload) });
+      const result = await this.rpc({ op: 'sign', payload: toArrayBuffer(payload), tenantId: this.tenantId });
       return new Uint8Array(result as ArrayBuffer);
     }
 
-    const key = await getFallbackKey();
+    const key = await this.getFallbackSigningKey();
     const sig = await crypto.subtle.sign('HMAC', key, payload as unknown as ArrayBuffer);
     return new Uint8Array(sig);
   }
@@ -232,11 +266,12 @@ export class CrossTabHmacKeyManager {
         op: 'verify',
         payload: toArrayBuffer(payload),
         hmac: toArrayBuffer(hmac),
+        tenantId: this.tenantId,
       });
       return result === true;
     }
 
-    const key = await getFallbackKey();
+    const key = await this.getFallbackSigningKey();
     return crypto.subtle.verify('HMAC', key, hmac as unknown as ArrayBuffer, payload as unknown as ArrayBuffer);
   }
 
