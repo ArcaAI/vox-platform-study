@@ -85,11 +85,18 @@ export function useArcaSession(): UseArcaSessionReturn {
       if (crossTabSyncRef.current) {
         crossTabSyncRef.current.close();
       }
-      crossTabSyncRef.current = createCrossTabSync({
-        patientId: consultation.patientId,
-        doctorId: consultation.doctorId,
-        appointmentDate: consultation.appointmentDate,
-      });
+      // TASK-317 D-5 (AC-9) — namespace the cross-tab channel per tenant
+      // (`agentic.<tenantId>`) so context never bleeds across tenants sharing
+      // an origin. Resolve the active tenant from the api client.
+      const tenantId = store.apiClient?.getTenantId();
+      crossTabSyncRef.current = createCrossTabSync(
+        {
+          patientId: consultation.patientId,
+          doctorId: consultation.doctorId,
+          appointmentDate: consultation.appointmentDate,
+        },
+        { tenantId },
+      );
       crossTabSyncRef.current.onContextAdded((context) => {
         store.addContextItem(context as ContextItem);
       });
