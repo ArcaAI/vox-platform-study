@@ -55,6 +55,19 @@ function debugLogTranscript(logger: ISDKLogger | undefined, source: string, entr
 export interface WsConnectOptions {
   /** Connection timeout in ms (default: 10000). Rejects if server doesn't respond in time. */
   timeoutMs?: number;
+  /**
+   * TASK-317 E-4 (AC-10) — explicit tenant claim for this connection. When
+   * `requireTenantClaim` is set and this is absent, the claim is resolved
+   * from the URL (`tenantId` / `tenant` query params) instead.
+   */
+  tenantClaim?: string;
+  /**
+   * TASK-317 E-4 (AC-10) — opt-in fail-closed guard. When `true`, `connect()`
+   * rejects (before opening any socket) unless a tenant claim is resolvable
+   * from `tenantClaim` or the URL. Defaults to `false` so existing callers
+   * that pass bare URLs keep working unchanged.
+   */
+  requireTenantClaim?: boolean;
 }
 
 /**
@@ -191,6 +204,17 @@ export class SttV2WebSocketClient {
   connect(url: string, options?: WsConnectOptions): Promise<void> {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       return Promise.reject(new Error('WebSocket already connected. Call disconnect() first.'));
+    }
+
+    // TASK-317 E-4 (AC-10) — fail-closed tenant-claim guard. Reject BEFORE
+    // creating a socket when enforcement is requested and no claim resolves.
+    if (options?.requireTenantClaim && SttV2WebSocketClient.resolveTenantClaim(url, options) === null) {
+      this.logger?.error('WebSocket connect blocked: no tenant claim resolvable from connect context', {
+        operation: 'connect',
+        component: 'SttV2WebSocketClient',
+        attributes: { url: SttV2WebSocketClient.stripQueryParams(url) },
+      });
+      return Promise.reject(new Error('WebSocket connect blocked: no tenant claim resolvable from connect context'));
     }
 
     const timeoutMs = options?.timeoutMs ?? 10_000;
@@ -542,6 +566,28 @@ export class SttV2WebSocketClient {
     } catch {
       return url.split('?')[0] ?? url;
     }
+  }
+
+  /**
+   * TASK-317 E-4 (AC-10) — resolve the tenant claim for a connection. Prefers
+   * an explicit `options.tenantClaim`, then falls back to the URL `tenantId`
+   * or `tenant` query param. Returns null when no non-empty claim is found, so
+   * the caller can fail-closed. Empty/whitespace values never count as a claim.
+   */
+  private static resolveTenantClaim(url: string, options?: WsConnectOptions): string | null {
+    const explicit = options?.tenantClaim?.trim();
+    if (explicit) return explicit;
+
+    let raw: string | null = null;
+    try {
+      const parsed = new URL(url);
+      raw = parsed.searchParams.get('tenantId') ?? parsed.searchParams.get('tenant');
+    } catch {
+      const match = url.match(/[?&](?:tenantId|tenant)=([^&]+)/);
+      raw = match?.[1] ? decodeURIComponent(match[1]) : null;
+    }
+    const claim = raw?.trim();
+    return claim ? claim : null;
   }
 
   private requireConnection(): void {
