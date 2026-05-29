@@ -397,7 +397,7 @@ describe('PolicyEngine', () => {
       expect(ability.can('create', 'Document')).toBe(true);
     });
 
-    it('should handle global role assignments (null tenantId)', async () => {
+    it('should handle platform-wide role assignments (SYSTEM_TENANT_ID)', async () => {
       const context: PolicyContext = {
         userId: 'user-123',
         tenantId: 'tenant-456',
@@ -412,7 +412,8 @@ describe('PolicyEngine', () => {
           id: 'ura-global',
           userId: 'user-123',
           roleId: 'global-role',
-          tenantId: null, // Global assignment
+          // TASK-305 Phase A: platform-wide rows live under SYSTEM_TENANT_ID (was NULL).
+          tenantId: '00000000-0000-0000-0000-000000000000',
           scopeOverrides: null,
           resourceStatus: 'ENABLED',
         },
@@ -710,6 +711,61 @@ describe('PolicyEngine', () => {
 
       expect(ability).toBeDefined();
       expect(mockPrismaClient.userRoleAssignment.findMany).toHaveBeenCalled();
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Tenant scoping of the role-assignment lookup (TASK-305 Phase A alignment).
+  //
+  // `UserRoleAssignment.tenantId` became a required, non-nullable column;
+  // platform-wide assignments (e.g. SUPER_ADMIN) live under SYSTEM_TENANT_ID
+  // ('00000000-…'), not NULL. The loader must (a) always include the system
+  // tenant, (b) add the request tenant only when present, and (c) never put a
+  // raw `undefined` into the Prisma filter — Prisma 7 rejects
+  // `{ tenantId: undefined }` with "Argument `tenantId` is missing", which
+  // crashed every tenant-less admin request (super_admin → /admin/*).
+  // ───────────────────────────────────────────────────────────────────────
+  describe('loadUserPolicies — tenant scoping (TASK-305 schema alignment)', () => {
+    const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+    it('queries only the system tenant when context has no tenantId (no undefined leaks to Prisma)', async () => {
+      await policyEngine.buildAbility({ userId: 'user-123' });
+
+      expect(mockPrismaClient.userRoleAssignment.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-123',
+          resourceStatus: 'ENABLED',
+          tenantId: { in: [SYSTEM_TENANT_ID] },
+        },
+      });
+
+      const passedWhere = mockPrismaClient.userRoleAssignment.findMany.mock.calls[0][0].where;
+      expect(JSON.stringify(passedWhere)).not.toContain('null');
+      expect(passedWhere.OR).toBeUndefined();
+    });
+
+    it('includes both the system tenant and the request tenant when context has a tenantId', async () => {
+      await policyEngine.buildAbility({ userId: 'user-123', tenantId: 'tenant-456' });
+
+      expect(mockPrismaClient.userRoleAssignment.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-123',
+          resourceStatus: 'ENABLED',
+          tenantId: { in: [SYSTEM_TENANT_ID, 'tenant-456'] },
+        },
+      });
+    });
+
+    it('does not duplicate the system tenant when context.tenantId === SYSTEM_TENANT_ID', async () => {
+      await policyEngine.buildAbility({ userId: 'user-123', tenantId: SYSTEM_TENANT_ID });
+
+      expect(mockPrismaClient.userRoleAssignment.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-123',
+          resourceStatus: 'ENABLED',
+          tenantId: { in: [SYSTEM_TENANT_ID] },
+        },
+      });
     });
   });
 });
