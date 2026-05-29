@@ -355,11 +355,15 @@ export const DEFAULT_SYNC_INTERVAL = 60000;
  * Local storage keys.
  *
  * TASK-297 DEF-L1 — `SESSION_STATE` removed; it was unused dead code.
- * Per-user namespacing (DEF-H1) is applied at the call site in
- * `AgenticProvider.tsx` rather than as a fixed constant.
+ * TASK-317 W1.7 (AC-6) — dead `PREFERENCES` ('arcaai-preferences') key removed;
+ * it had no live writer (personalization moved to IndexedDB in TASK-304, and
+ * any legacy localStorage row is ignored).
+ *
+ * `SELECTED_MODELS` is the BASE key — `ModelRegistry` namespaces it per
+ * `${tenantId}::${userId}` as `arcaai-selected-models/${ns}` (TASK-317 W1.5),
+ * so selections isolate per tenant/user instead of sharing one global key.
  */
 export const STORAGE_KEYS = {
-  PREFERENCES: 'arcaai-preferences',
   SELECTED_MODELS: 'arcaai-selected-models',
 } as const;
 

@@ -184,7 +184,17 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     const pluginManager = new PluginManager(audioConfig, logger.child('PluginManager'), apiClient, cfg.debug);
 
     const personalizationConfig = cfg.personalization ?? DEFAULT_PERSONALIZATION_CONFIG;
-    const personalizationManager = new PersonalizationManager(personalizationConfig, apiClient, logger.child('PersonalizationManager'));
+    // TASK-317 W1.1/W1.2 (AC-1) — seed the per-`${tenantId}::${userId}` namespace
+    // up-front (user-id arrives later from /auth/me) so PersonalizationManager and
+    // ModelRegistry key their browser storage by the SAME `ns` used for
+    // USER_PREFERENCES_STORE, rather than a shared global key (audit C-3 / D-1).
+    namespaceRef.current = makeNamespace(cfg.api.tenantId, null);
+    const personalizationManager = new PersonalizationManager(
+      personalizationConfig,
+      apiClient,
+      logger.child('PersonalizationManager'),
+      namespaceRef.current,
+    );
 
     // TASK-304 Wave 2D — hydrate the IDB cache asynchronously. We don't
     // await here so the rest of init (which is mostly synchronous) is
@@ -206,7 +216,9 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         });
       });
 
-    const modelRegistry = new ModelRegistry(cfg.models ?? {}, apiClient, logger.child('ModelRegistry'));
+    // TASK-317 W1.5 (AC-4) — key the selected-models localStorage entry by the
+    // same `${tenantId}::${userId}` namespace seeded above.
+    const modelRegistry = new ModelRegistry(cfg.models ?? {}, apiClient, logger.child('ModelRegistry'), namespaceRef.current);
 
     store.initialize(cfg, apiClient, pluginManager, personalizationManager, modelRegistry, logger);
 
@@ -267,10 +279,8 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     // 4-tier ConfigManager + cascade init (TASK-244 + TASK-297 DEF-C5/C6/H1/H4/H5)
     // -----------------------------------------------------------------------
 
-    // Seed namespace from the SDK config if a tenantId is known up-front;
-    // user-id will be set later from /auth/me.
-    namespaceRef.current = makeNamespace(cfg.api.tenantId, null);
-
+    // Namespace seeded above (TASK-317 W1.1/W1.2) before the managers were
+    // constructed; user-id is applied later from /auth/me.
     const configManager = new ConfigManager({
       onLoadUserPreferences: makeLoadUserPreferencesFromStorage(namespaceRef),
       onPersistUserPreferences: makePersistUserPreferencesToStorage(namespaceRef),

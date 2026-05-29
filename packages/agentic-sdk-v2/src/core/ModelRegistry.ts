@@ -5,6 +5,7 @@
  * Supports public (HuggingFace) and custom organization models.
  */
 
+import * as v from 'valibot';
 import type { ModelDefinition, ModelRegistryConfig, ModelLoadProgress, SelectedModels, TenantAudioConfig } from '../types';
 import { DEFAULT_MODELS, DEFAULT_TENANT_FEATURES, parseTenantConfig } from '../types';
 import { AgenticError } from '../types';
@@ -17,6 +18,17 @@ import type { ISDKLogger } from './logger';
  * Model load progress callback
  */
 export type ModelLoadProgressCallback = (progress: ModelLoadProgress) => void;
+
+/**
+ * TASK-317 W1.6 (AC-5) — valibot schema for the persisted `SelectedModels`
+ * payload. Guards `loadSelectedFromStorage` against poisoned / typed-wrong
+ * `localStorage` JSON: only `{ stt?, vad?, ner? }` of strings is accepted.
+ */
+const SELECTED_MODELS_SCHEMA = v.object({
+  stt: v.optional(v.string()),
+  vad: v.optional(v.string()),
+  ner: v.optional(v.string()),
+});
 
 /**
  * Model registry for discovering and selecting ML models.
@@ -58,11 +70,18 @@ export class ModelRegistry {
   private errors: Map<string, Error> = new Map();
   private logger?: ISDKLogger;
   private tenantConfig: TenantAudioConfig | null = null;
+  /**
+   * TASK-317 W1.5 (AC-4) — per-`${tenantId}::${userId}` localStorage key for
+   * the selected-models payload. Falls back to the bare global key when no
+   * namespace is supplied (the SDK always supplies one in production).
+   */
+  private readonly selectedModelsStorageKey: string;
 
-  constructor(config: ModelRegistryConfig, apiClient: AgenticClient, logger?: ISDKLogger) {
+  constructor(config: ModelRegistryConfig, apiClient: AgenticClient, logger?: ISDKLogger, namespace?: string) {
     this.config = config;
     this.apiClient = apiClient;
     this.logger = logger;
+    this.selectedModelsStorageKey = namespace ? `${STORAGE_KEYS.SELECTED_MODELS}/${namespace}` : STORAGE_KEYS.SELECTED_MODELS;
 
     // Initialize with default models
     for (const model of DEFAULT_MODELS) {
@@ -457,31 +476,74 @@ export class ModelRegistry {
   }
 
   /**
-   * Load selected models from local storage
+   * Load selected models from the namespaced local-storage key.
+   *
+   * TASK-317 W1.5 (AC-4) — reads `arcaai-selected-models/${ns}`.
+   * TASK-317 W1.6 (AC-5) — validates the parsed JSON with a valibot schema;
+   * any unparseable / non-object / typed-wrong payload returns `null` and logs
+   * a `warn` (never throws), so a poisoned key cannot crash construction.
    */
   private loadSelectedFromStorage(): SelectedModels | null {
     if (typeof window === 'undefined') return null;
 
+    let stored: string | null;
     try {
-      const stored = localStorage.getItem(STORAGE_KEYS.SELECTED_MODELS);
-      return stored ? JSON.parse(stored) : null;
+      stored = localStorage.getItem(this.selectedModelsStorageKey);
     } catch {
       return null;
     }
+    if (!stored) return null;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stored);
+    } catch {
+      this.logger?.warn('Discarded unparseable selected-models payload from storage', {
+        operation: 'loadSelectedFromStorage',
+        component: 'ModelRegistry',
+        attributes: { key: this.selectedModelsStorageKey },
+      });
+      return null;
+    }
+
+    // valibot's object schema treats arrays/non-objects loosely; reject the
+    // gross shape first, then schema-validate the field types.
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      this.logger?.warn('Discarded malformed selected-models payload from storage', {
+        operation: 'loadSelectedFromStorage',
+        component: 'ModelRegistry',
+        attributes: { key: this.selectedModelsStorageKey },
+      });
+      return null;
+    }
+
+    const result = v.safeParse(SELECTED_MODELS_SCHEMA, parsed);
+    if (!result.success) {
+      this.logger?.warn('Discarded malformed selected-models payload from storage', {
+        operation: 'loadSelectedFromStorage',
+        component: 'ModelRegistry',
+        attributes: { key: this.selectedModelsStorageKey },
+      });
+      return null;
+    }
+
+    return result.output;
   }
 
   /**
-   * Save selected models to local storage
+   * Save selected models to the namespaced local-storage key.
+   *
+   * TASK-317 W1.5 (AC-4) — writes `arcaai-selected-models/${ns}`.
    */
   private saveSelectedToStorage(): void {
     if (typeof window === 'undefined') return;
 
     try {
-      localStorage.setItem(STORAGE_KEYS.SELECTED_MODELS, JSON.stringify(this.selected));
+      localStorage.setItem(this.selectedModelsStorageKey, JSON.stringify(this.selected));
       this.logger?.trace('Selected models saved to storage', {
         operation: 'saveSelectedToStorage',
         component: 'ModelRegistry',
-        attributes: { selected: this.selected },
+        attributes: { selected: this.selected, key: this.selectedModelsStorageKey },
       });
     } catch (error) {
       this.logger?.warn('Failed to save selected models to storage', {
