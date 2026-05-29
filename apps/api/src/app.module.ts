@@ -27,6 +27,7 @@ import { GracefulShutdownModule } from './services';
 import { TenantContextProviderModule } from './database/tenant-context.provider';
 import { VaultPrismaFactoryModule } from './vault-prisma.module';
 import { VaultRotationWorkerModule } from './workers/vault-rotation.worker.module';
+import { ThrottleConfigModule, TieredThrottlerGuard } from './modules/throttle';
 
 // Feature modules
 import { ApiKeyModule } from './modules/api-key/api-key.module';
@@ -90,6 +91,14 @@ const interceptors = [
 // route. Non-annotated routes pay only one `Reflector.getAllAndOverride`
 // call per request — effectively free.
 const guards = [
+  // TASK-315 — TieredThrottlerGuard runs FIRST (before auth resolution) so
+  // brute-force / DoS protection rejects abusive traffic before the heavier
+  // authentication + tenant/CLS resolution work executes. Only the `default`
+  // tier gates every route; strict/heavy/relaxed are opt-in per route.
+  {
+    provide: APP_GUARD,
+    useClass: TieredThrottlerGuard,
+  },
   {
     provide: APP_GUARD,
     useClass: UnifiedAuthGuard,
@@ -148,6 +157,11 @@ const common = [
       idGenerator: (req: any) => req.headers['X-Request-Id'] ?? uuidv7(),
     },
   }),
+  // TASK-315 — registers the global ThrottlerModule (named throttlers + Redis/
+  // in-memory storage) and exports TieredThrottlerGuard so the APP_GUARD wired
+  // in `guards[]` below can be constructed via DI. Placed early so the guard's
+  // dependencies resolve before the feature modules load.
+  ThrottleConfigModule,
   ScheduleModule.forRoot(),
   EventEmitterModule.forRoot(),
   SysEventServiceModule,
