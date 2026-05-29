@@ -197,6 +197,11 @@ export class SimpleCrossTabSync {
   setTenantId(tenantId: string): void {
     if (this.tenantId === tenantId) return;
     this.tenantId = tenantId;
+    // TASK-317 E-4 (AC-11) — rotate the HMAC subkey alongside the channel so
+    // post-switch envelopes can't be forged with the prior tenant's subkey.
+    if (this.hmacKey) {
+      this.hmacKey.setTenantId(tenantId);
+    }
     if (this.channel) {
       try {
         this.channel.close();
@@ -270,6 +275,11 @@ export class SimpleCrossTabSync {
   private ensureHmacKey(): CrossTabHmacKeyManager {
     if (this.hmacKey === null) {
       this.hmacKey = new CrossTabHmacKeyManager({ logger: this.logger });
+      // TASK-317 E-4 (AC-11) — bind the HMAC subkey to the active tenant so
+      // envelopes are signed/verified with HKDF(secret, tenantId).
+      if (this.tenantId !== undefined) {
+        this.hmacKey.setTenantId(this.tenantId);
+      }
     }
     return this.hmacKey;
   }
