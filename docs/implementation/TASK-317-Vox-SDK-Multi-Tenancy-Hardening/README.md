@@ -5,7 +5,7 @@
 | **Ticket** | TASK-317-Vox-SDK-Multi-Tenancy-Hardening |
 | **Created** | 2026-05-29 |
 | **Updated** | 2026-05-30 |
-| **Status** | `In Progress` — strict-sequential execution approved 2026-05-30 (per §3.0); W1 (storage namespacing) underway |
+| **Status** | `In Progress` — W1 merged (`6947fd96`); W2 (tenant-switch reset) underway |
 | **Classification** | Refactor + bugfix (security / multi-tenancy / browser-side data isolation) |
 | **Priority** | High — closes 4 BLOCKER/Critical (C-1..C-4) + 1 HIGH (C-5) + 6 MED (D-1..D-6) + 5 LOW (E-1..E-5) from the 2026-05-25 vox-SDK audit |
 | **Audit driver** | [`docs/multi-tenancy-audit/05-vox-sdk-review.md`](../../multi-tenancy-audit/05-vox-sdk-review.md) |
@@ -254,3 +254,4 @@ W4 wraps `create(...)` in a factory; the W1–W2 logic written inside the store 
 |---|---|---|
 | 2026-05-29 | Initial plan drafted post-TASK-307. Re-verified all 16 findings against current code (statuses in §1.2 differ from the 2026-05-25 review — line drift + TASK-304 partial changes). Confirmed scope decisions D-A..D-D (TASK-317 number; override TASK-304 on C-3 → namespace; C-1 store-per-provider in scope; include D-3/D-4). 5 sequential waves. Awaiting approval to begin W1. | this file |
 | 2026-05-30 | Execution kickoff. Reconfirmed strict-sequential waves (§3.0) over parallel worktrees after overlap analysis (`AgenticProvider.tsx` touched by W1/W2/W4/W5; `agenticStore.ts` by W1/W2/W4; `useArcaSession.ts` by W3/W4). Branch `task-317/w1-storage-namespacing` created off `fix/2605-review` @ `4bc4697d`. Each wave: fresh impl subagent (TDD) → `code-reviewer` gate → local merge. | this file |
+| 2026-05-30 | **W1 merged** (`6947fd96` into `fix/2605-review`). AC-1..AC-6 closed; vox suite 2928 green; W1 diff typecheck-neutral (13 pre-existing tsc errors untouched). `code-reviewer` APPROVED-WITH-MINOR-NITS after 2 fix cycles: C-1 (managers wired to constant `pre-login` ns → live namespace accessor + re-hydrate after `/auth/me`/switch, fail-closed); I-1 (personalization `hydrate()` merged → authoritative per-namespace reset, fixes impersonation round-trip bleed). **Deferred follow-ups** (→ W5 `09` closure doc): M-1 `loadFromBackend` race in opt-in `hybrid`/`backend` storage (non-security; default `local`); M-4 `clearOnLogout` has no production caller (pre-existing). | `agentic-sdk-v2` storage/provider + tests |
