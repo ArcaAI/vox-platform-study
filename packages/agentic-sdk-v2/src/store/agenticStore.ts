@@ -196,6 +196,15 @@ export interface AgenticActions {
   setGlobalError: (error: Error | null) => void;
 
   // Security actions
+  /**
+   * TASK-317 W2.1 (AC-7, review C-1) — reset ONLY the tenant-scoped PHI/session
+   * slices (consultation / relatedConsultations / context / sharedContext /
+   * entities / summaries / transcript / dnaStyle / tenantConfig), leaving auth
+   * and impersonation fields untouched. Used by the same-tab tenant-switch
+   * handler, which must NOT touch the auth/impersonation state driving the
+   * in-flight switch. Shared base for `clearSensitiveData()`.
+   */
+  clearTenantSessionData: () => void;
   clearSensitiveData: () => void;
   /**
    * TASK-317 W1.4 (AC-3) — scope logout cleanup to the OUTGOING
@@ -435,7 +444,15 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
 
   setGlobalError: (error) => set({ globalError: error }),
 
-  clearSensitiveData: () =>
+  // TASK-317 W2.1 (AC-7, review C-1) — single source of truth for the
+  // tenant-scoped PHI/session reset. Clears EVERY tenant-A slice surfaced
+  // through useArca()/useArcaConfig() (consultation, relatedConsultations,
+  // contextItems, sharedContext, entities [medical NER PHI], summaries,
+  // currentTranscript [raw transcript PHI], transcriptSegments, dnaStyle,
+  // tenantConfig) but NEVER touches auth/impersonation state — those drive the
+  // in-flight tenant switch and must survive it. Empty values mirror
+  // `initialState`.
+  clearTenantSessionData: () =>
     set({
       consultation: null,
       relatedConsultations: [],
@@ -446,6 +463,16 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
       currentTranscript: '',
       transcriptSegments: [],
       dnaStyle: null,
+      tenantConfig: null,
+    }),
+
+  clearSensitiveData: () => {
+    // DRY (review C-1): reuse the tenant-scoped PHI/session reset, then null the
+    // auth/impersonation state plus the residual error/audio-resource fields
+    // this security wipe owns. `clearTenantSessionData` additionally nulls
+    // `tenantConfig`, which is correct for a full sensitive-data wipe.
+    get().clearTenantSessionData();
+    set({
       authUser: null,
       authIsAuthenticated: false,
       authImpersonatedUser: null,
@@ -457,7 +484,8 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
       globalError: null,
       activeStream: null,
       activeAudioContext: null,
-    }),
+    });
+  },
 
   incrementModelRegistryVersion: () => set((state) => ({ modelRegistryVersion: state.modelRegistryVersion + 1 })),
 
