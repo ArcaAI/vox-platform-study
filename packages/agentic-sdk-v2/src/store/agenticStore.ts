@@ -22,7 +22,8 @@ import type { TranscriptSegment } from '../types/audio';
 import { DEFAULT_AUDIO_PLUGIN_STATES } from '../types';
 import type { AgenticClient } from '../core/AgenticClient';
 import type { PluginManager } from '../core/PluginManager';
-import type { PersonalizationManager } from '../core/PersonalizationManager';
+import { personalizationCacheKey, type PersonalizationManager } from '../core/PersonalizationManager';
+import { configDBDelete, PERSONALIZATION_STORE } from '../core/configDB';
 import type { ModelRegistry } from '../core/ModelRegistry';
 import type { ConfigManager } from '../core/ConfigManager';
 import type { AppConfig } from '../core/ConfigSchema';
@@ -196,7 +197,13 @@ export interface AgenticActions {
 
   // Security actions
   clearSensitiveData: () => void;
-  clearOnLogout: () => void;
+  /**
+   * TASK-317 W1.4 (AC-3) — scope logout cleanup to the OUTGOING
+   * `${tenantId}::${userId}` namespace only. Removes the outgoing
+   * `arcaai-user-preferences/${ns}` localStorage key and the
+   * `arcaai-personalization/${ns}` IDB row; never sweeps other namespaces.
+   */
+  clearOnLogout: (ns: string) => void;
 
   // Model registry version (M-001)
   incrementModelRegistryVersion: () => void;
@@ -467,50 +474,26 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
   setProfileReady: (ready) => set({ profileReady: ready }),
   setPersonalizationManager: (manager) => set({ personalizationManager: manager }),
 
-  clearOnLogout: () => {
+  clearOnLogout: (ns: string) => {
     if (typeof window !== 'undefined') {
       try {
-        // Legacy global keys (kept for backward-compat cleanup).
-        localStorage.removeItem('arcaai-preferences');
-        localStorage.removeItem('arcaai-selected-models');
-        // TASK-297 DEF-H1 — remove every per-user/per-tenant namespaced key.
-        const removable: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith('arcaai-user-preferences/')) removable.push(k);
-        }
-        for (const k of removable) localStorage.removeItem(k);
+        // TASK-317 W1.4 (AC-3) — remove ONLY the outgoing namespace's
+        // localStorage key. The previous iterate-and-delete-all sweep wiped
+        // every tenant's `arcaai-user-preferences/*` data on a shared
+        // workstation (audit C-2). Mirrors `LS_NAMESPACE_PREFIX` in
+        // AgenticProvider.
+        localStorage.removeItem(`arcaai-user-preferences/${ns}`);
       } catch {
         /* SSR or restricted storage */
       }
 
-      // TASK-297 DEF-H1 + DEF-H6 — clear the IDB records holding user
-      // preferences and (TASK-304 Wave 2D) personalization. Fire-and-forget;
-      // failures are swallowed (storage may be unavailable in SSR / private
-      // mode). We open without specifying a version so we attach to whatever
-      // schema this browser already has — `configDB.ts` owns upgrades.
-      try {
-        if (typeof indexedDB !== 'undefined') {
-          const open = indexedDB.open('arcaai-config');
-          open.onsuccess = () => {
-            const db = open.result;
-            try {
-              for (const storeName of ['user-preferences', 'personalization']) {
-                if (db.objectStoreNames.contains(storeName)) {
-                  const tx = db.transaction(storeName, 'readwrite');
-                  tx.objectStore(storeName).clear();
-                }
-              }
-            } catch {
-              /* schema mismatch — ignore */
-            } finally {
-              db.close();
-            }
-          };
-        }
-      } catch {
-        /* IDB unavailable */
-      }
+      // TASK-317 W1.4 (AC-3) — delete ONLY the outgoing namespace's
+      // personalization IDB row instead of wholesale-clearing the stores
+      // (which also wiped other tenants). Fire-and-forget; failures are
+      // swallowed (storage may be unavailable in SSR / private mode).
+      void configDBDelete(PERSONALIZATION_STORE, personalizationCacheKey(ns)).catch(() => {
+        /* IDB unavailable or schema mismatch — ignore */
+      });
     }
     set({
       consultation: null,
