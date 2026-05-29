@@ -202,9 +202,16 @@ export class SharedConnectionManager {
     }
   }
 
-  unsubscribeWS(id: string): void {
+  unsubscribeWS(id: string, userId?: string): void {
     if (this.isUsingSharedWorker()) {
-      this.postMessage({ type: 'unsubscribe_ws', id });
+      // TASK-317 C-4 (AC-8) — forward the userId so the worker only collapses
+      // the matching `(id, userId)` slot. When userId is omitted, the worker
+      // unsubscribes the port from every (id, *) slot.
+      this.postMessage({
+        type: 'unsubscribe_ws',
+        id,
+        payload: userId !== undefined ? { userId } : undefined,
+      });
     } else {
       const fb = this.fallbackWS.get(id);
       if (fb) {

@@ -207,6 +207,66 @@ describe('SttV2WebSocketClient', () => {
   });
 
   // =========================================================================
+  // TASK-317 W3.5 — AC-10: WS must not open without a tenant claim.
+  //
+  // The stt-v2 upgrade carried no client-side assertion that the connection
+  // is bound to a tenant, so a misconfigured caller could open a socket with
+  // no tenant context. AC-10 adds an OPT-IN fail-closed guard: when
+  // `requireTenantClaim` is set, connect() must reject BEFORE creating the
+  // socket unless a claim is resolvable from the options or the URL
+  // (`tenantId` / `tenant`). The opt-in keeps the ~30 existing bare-URL
+  // connect tests working unchanged.
+  // =========================================================================
+  describe('TASK-317 W3.5 — AC-10 tenant-claim guard', () => {
+    it('rejects connect() when requireTenantClaim is set but no claim is resolvable (no socket created)', async () => {
+      const connectPromise = client.connect('wss://api.example.com/ws/stt-v2/stream', {
+        requireTenantClaim: true,
+      });
+      // Capture the rejection up-front so a slow GREEN reject can't leak as an
+      // unhandled rejection, and so the RED run doesn't hang on a pending socket.
+      const settled = connectPromise.then(() => 'resolved' as const).catch((e: unknown) => e);
+
+      // Fail-closed: the guard must trip synchronously, before any socket exists.
+      expect(lastMockWs).toBeNull();
+
+      const result = await settled;
+      expect(result).toBeInstanceOf(Error);
+      expect((result as Error).message).toMatch(/tenant claim/i);
+      expect(client.isConnected()).toBe(false);
+    });
+
+    it('connects when requireTenantClaim is set and a tenantId is present in the URL', async () => {
+      const connectPromise = client.connect('wss://api.example.com/ws/stt-v2/stream?tenantId=tenant-A&ticket=t1', {
+        requireTenantClaim: true,
+      });
+      // Claim resolved → a socket is created and the open handshake proceeds.
+      expect(lastMockWs).not.toBeNull();
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+      expect(client.isConnected()).toBe(true);
+    });
+
+    it('connects when requireTenantClaim is set and an explicit tenantClaim option is provided', async () => {
+      const connectPromise = client.connect('wss://api.example.com/ws/stt-v2/stream?ticket=t1', {
+        requireTenantClaim: true,
+        tenantClaim: 'tenant-A',
+      });
+      expect(lastMockWs).not.toBeNull();
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+      expect(client.isConnected()).toBe(true);
+    });
+
+    it('still connects on a bare URL when requireTenantClaim is NOT set (backward compatible)', async () => {
+      const connectPromise = client.connect('wss://example.com/ws');
+      expect(lastMockWs).not.toBeNull();
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+      expect(client.isConnected()).toBe(true);
+    });
+  });
+
+  // =========================================================================
   // sendAudioFrame (binary PCM)
   // =========================================================================
 
