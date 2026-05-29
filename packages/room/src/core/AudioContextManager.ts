@@ -22,10 +22,15 @@ import { RoomResumeTimeoutError, RoomSampleRateMismatchError } from './RoomError
  *   `sampleRate` against this value.
  * - `allowMismatch` (default `false`) — when `true`, a mismatch logs
  *   `console.warn` instead of throwing.
+ * - `tenantId` — TASK-317 W5.2 (AC-15): optional caller identity used purely to
+ *   emit a dev-mode warning when the process-wide singleton is acquired
+ *   concurrently by a different tenant (see {@link AudioContextManager.acquire}).
+ *   It has no effect on the context lifecycle and is safe to omit.
  */
 export interface AudioContextAcquireOptions {
   requireSampleRate?: number;
   allowMismatch?: boolean;
+  tenantId?: string;
 }
 
 /**
@@ -70,6 +75,14 @@ export class AudioContextManager {
    * the deferred microtask itself when it executes the close.
    */
   private pendingClose = false;
+
+  /**
+   * TASK-317 W5.2 (AC-15): tenant ids of the current holders, tracked solely to
+   * power the dev-mode cross-tenant warning in {@link acquire}. Cleared whenever
+   * the reference count returns to zero (no holders). Has no bearing on the
+   * AudioContext lifecycle.
+   */
+  private readonly acquiredTenantIds = new Set<string>();
 
   private readonly options: RoomOptions;
   private creationOptions: { sampleRate?: number; latencyHint?: AudioContextLatencyCategory } | null = null;
@@ -140,6 +153,10 @@ export class AudioContextManager {
     this.pendingClose = false;
     this.referenceCount++;
 
+    // TASK-317 W5.2 (AC-15): surface concurrent cross-tenant use of the
+    // process-wide singleton in development (warning only — no behaviour change).
+    this.warnOnCrossTenantAcquire(opts.tenantId);
+
     // If custom AudioContext is provided in options, use it
     if (this.options.audioContext) {
       this.audioContext = this.options.audioContext;
@@ -187,6 +204,46 @@ export class AudioContextManager {
   }
 
   /**
+   * TASK-317 W5.2 (AC-15 / audit D-6): emit a development-only warning when the
+   * shared, process-wide AudioContext is acquired by a tenant while it is still
+   * held by a *different* tenant.
+   *
+   * The singleton is structurally correct (browsers cap the number of
+   * AudioContexts), but combined with concurrent `AgenticProvider`s it means
+   * audio frames flow through a context conceptually owned by "whichever tenant
+   * last acquired it". This warning makes that multi-tenant smell visible during
+   * development without changing any lifecycle behaviour.
+   *
+   * Dev-guard matches the SDK convention (`process.env.NODE_ENV !== 'production'`,
+   * tolerant of an undefined `process`). Callers that omit `tenantId` are not
+   * tracked (no warning) so existing callers are unaffected.
+   */
+  private warnOnCrossTenantAcquire(tenantId?: string): void {
+    const nodeEnv = typeof process !== 'undefined' ? process.env?.NODE_ENV : undefined;
+    if (nodeEnv === 'production') return;
+
+    if (!tenantId) return;
+
+    // referenceCount already includes the current acquire() at this point, so
+    // `> 1` means at least one other reference is live.
+    const heldByDifferentTenant =
+      this.referenceCount > 1 && [...this.acquiredTenantIds].some((id) => id !== tenantId);
+
+    if (heldByDifferentTenant) {
+      console.warn(
+        `[AudioContextManager] acquire() called by tenant "${tenantId}" while the ` +
+          `process-wide AudioContext is still held by a different tenant ` +
+          `(${[...this.acquiredTenantIds].join(', ')}). The AudioContext is a single ` +
+          `shared instance; concurrent multi-tenant use in one tab can cross audio ` +
+          `paths and trigger teardown for the wrong tenant. Use one AgenticProvider ` +
+          `per tab, or fully release the prior tenant's context first.`,
+      );
+    }
+
+    this.acquiredTenantIds.add(tenantId);
+  }
+
+  /**
    * Release the AudioContext.
    *
    * Decrements the reference count. When the count reaches zero, the close
@@ -203,6 +260,12 @@ export class AudioContextManager {
   release(): void {
     if (this.referenceCount > 0) {
       this.referenceCount--;
+    }
+
+    // TASK-317 W5.2 (AC-15): no holders left → forget tracked tenants so the
+    // next acquire() starts a fresh cross-tenant warning window.
+    if (this.referenceCount === 0) {
+      this.acquiredTenantIds.clear();
     }
 
     // Don't close if there are still references or if it's a custom context.
@@ -279,6 +342,7 @@ export class AudioContextManager {
     this.removeClickHandler();
     this.closeContext();
     this.referenceCount = 0;
+    this.acquiredTenantIds.clear();
   }
 
   /**
