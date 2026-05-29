@@ -1,7 +1,7 @@
 import { recordSpeakerObservation, resolveSpeakerLabel } from '@/features/audio/lib/speaker-profiles';
 import { upsertTranscriptEntry } from '@/features/audio/lib/transcript-state';
 import type { TranscriptEntry } from '@/store/audio-store';
-import { FileTranscriptionService, SSEClient, useAgenticStore, type TranscriptionJobResponse } from '@arcaai/vox';
+import { FileTranscriptionService, SSEClient, useArcaStore, type TranscriptionJobResponse } from '@arcaai/vox';
 import type { ISDKLogger } from '@arcaai/vox';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -70,8 +70,8 @@ function asNumber(value: unknown): number | undefined {
 }
 
 export function useFileTranscription(): UseFileTranscriptionReturn {
-  const apiClient = useAgenticStore((s) => s.apiClient);
-  const logger = useAgenticStore((s) => s.logger);
+  const apiClient = useArcaStore((s) => s.apiClient);
+  const logger = useArcaStore((s) => s.logger);
 
   const [status, setStatus] = useState<FileTranscriptionStatus>('idle');
   const [jobId, setJobId] = useState<string | null>(null);

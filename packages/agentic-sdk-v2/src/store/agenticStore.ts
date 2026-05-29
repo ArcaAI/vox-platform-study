@@ -5,7 +5,9 @@
  * This store is NOT exported publicly - state is accessed via hooks.
  */
 
-import { create } from 'zustand';
+import { createContext, useContext } from 'react';
+import { create, useStore } from 'zustand';
+import { createStore, type StateCreator, type StoreApi } from 'zustand/vanilla';
 import type {
   Consultation,
   ContextItem,
@@ -318,12 +320,26 @@ const initialState: AgenticState = {
   profileReady: false,
 };
 
+// TASK-317 W4 (review M-2) — every store instance (the @deprecated singleton AND
+// each per-provider `createAgenticStore()`) must start from its OWN deep copy of
+// the initial state. Spreading the shared `initialState` const directly would
+// alias its mutable members (`preferences`, the `[]` slices, `audioPlugins`)
+// across instances; isolation would then rely on every action updating
+// immutably (true today, but convention-dependent). A fresh structuredClone per
+// instance makes that isolation structural rather than incidental.
+const createInitialState = (): AgenticState => structuredClone(initialState);
+
 // =============================================================================
 // Store Creation
 // =============================================================================
 
-export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) => ({
-  ...initialState,
+// TASK-317 W4.1 (AC-12) — the store config is extracted into a named
+// `StateCreator` so it can be instantiated either as the module singleton
+// (`useAgenticStore`, retained for external importers) OR per-provider via
+// `createAgenticStore()`. The slice/action bodies below are UNCHANGED from
+// W1–W3; only the wrapper around them moved.
+const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (set, get) => ({
+  ...createInitialState(),
 
   // Initialization
   initialize: (config, apiClient, pluginManager, personalizationManager, modelRegistry, logger) =>
@@ -340,7 +356,7 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
 
   reset: () =>
     set({
-      ...initialState,
+      ...createInitialState(),
       // Keep managers during reset
       initialized: get().initialized,
       config: get().config,
@@ -558,7 +574,91 @@ export const useAgenticStore = create<AgenticState & AgenticActions>((set, get) 
       personalizationManager: null,
     });
   },
-}));
+});
+
+// =============================================================================
+// Store factory (TASK-317 W4.1, AC-12)
+// =============================================================================
+
+/** A vanilla Zustand store instance for the agentic SDK. */
+export type AgenticStoreApi = StoreApi<AgenticState & AgenticActions>;
+
+/**
+ * TASK-317 W4.1 (AC-12) — build a fresh, fully-independent store instance.
+ *
+ * `AgenticProvider` calls this exactly once per mount (held in a `useRef`) so
+ * each provider — and therefore each concurrent tenant in a multi-tenant
+ * operator console / impersonation tree — owns isolated state. This closes
+ * audit finding C-1 (cross-tenant state bleed via a shared module singleton).
+ *
+ * It wraps the SAME `agenticStoreInitializer` config as the module singleton,
+ * using vanilla `createStore` (no React binding) so non-React consumers
+ * (managers, plugin manager, cross-tab sync) can call
+ * `getState`/`setState`/`subscribe` on the per-instance store.
+ */
+export function createAgenticStore(): AgenticStoreApi {
+  return createStore<AgenticState & AgenticActions>(agenticStoreInitializer);
+}
+
+// =============================================================================
+// Per-provider store context + hooks (TASK-317 W4.2/W4.3, AC-12)
+// =============================================================================
+
+/**
+ * React context carrying the `StoreApi` owned by the nearest `AgenticProvider`.
+ * Defaults to `null` (outside any provider) so `useStoreApi()` can fail loud
+ * instead of silently falling back to a global singleton.
+ */
+export const AgenticStoreContext = createContext<AgenticStoreApi | null>(null);
+AgenticStoreContext.displayName = 'AgenticStoreContext';
+
+/**
+ * TASK-317 W4.2 (AC-12) — read the per-provider `StoreApi` from context.
+ *
+ * Throws when used outside an `<AgenticProvider>` (fail-loud: never silently
+ * fall back to the module singleton, which would reintroduce the C-1 leak).
+ * Use this for imperative, non-reactive access (`getState`/`setState`/
+ * `subscribe`); for reactive reads, use `useAgenticStore(selector)`.
+ */
+export function useStoreApi(): AgenticStoreApi {
+  const api = useContext(AgenticStoreContext);
+  if (!api) {
+    throw new Error('useStoreApi() (and the @arcaai/vox hooks built on it) must be used within an <AgenticProvider>.');
+  }
+  return api;
+}
+
+const identitySelector = <T>(state: T): T => state;
+
+/**
+ * TASK-317 W4.3 (AC-12) — the INTERNAL store hook. Reads the per-provider store
+ * from `AgenticStoreContext`, so every concurrent tenant gets isolated state.
+ *
+ * `useAgenticStore(selector)` is sugar for `useStore(useStoreApi(), selector)`;
+ * with no selector it returns the whole state — behaviourally identical to the
+ * previous singleton hook, only now scoped to the provider. Throws (via
+ * `useStoreApi`) if used outside an `<AgenticProvider>`.
+ *
+ * The SDK's own hooks/components import THIS from `../store`. The PUBLIC
+ * `useAgenticStore` re-exported from `@arcaai/vox` is the @deprecated module
+ * singleton below (kept for external importers).
+ */
+export function useAgenticStore(): AgenticState & AgenticActions;
+export function useAgenticStore<U>(selector: (state: AgenticState & AgenticActions) => U): U;
+export function useAgenticStore<U>(selector?: (state: AgenticState & AgenticActions) => U): U | (AgenticState & AgenticActions) {
+  return useStore(useStoreApi(), (selector ?? identitySelector) as (state: AgenticState & AgenticActions) => U);
+}
+
+/**
+ * @deprecated TASK-317 W4.3 (AC-12) — module-level singleton store retained
+ * ONLY so external importers (`import { useAgenticStore } from '@arcaai/vox'`)
+ * keep compiling and working as before. INTERNAL SDK code MUST NOT read this —
+ * use the context-backed `useAgenticStore` hook / `useStoreApi()` instead.
+ * Reading this singleton inside a multi-tenant tree reintroduces audit finding
+ * C-1 (cross-tenant state bleed). Exposed publicly via `core.ts` under the
+ * legacy name `useAgenticStore`.
+ */
+export const agenticStoreSingleton = create<AgenticState & AgenticActions>(agenticStoreInitializer);
 
 // =============================================================================
 // Selectors (derived state)

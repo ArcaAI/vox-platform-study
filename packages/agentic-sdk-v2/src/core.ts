@@ -421,8 +421,26 @@ export { SttV2WebSocketClient, type WsConnectOptions, type WsReconnectOptions } 
 // Store (Advanced Usage)
 // =============================================================================
 
-export { useAgenticStore } from './store/agenticStore';
+// TASK-317 W4.3 (AC-12) — the PUBLIC `useAgenticStore` stays the @deprecated
+// module singleton so external importers (`import { useAgenticStore } from
+// '@arcaai/vox'`) keep working without an <AgenticProvider>. Internal SDK code
+// uses the context-backed `useAgenticStore` from `./store` instead (per-tenant
+// isolation, audit C-1).
+export { agenticStoreSingleton as useAgenticStore } from './store/agenticStore';
 export type { AgenticActions, AgenticState } from './store/agenticStore';
+
+// TASK-317 W4 (review C-1) — publicly expose the per-provider, context-backed
+// store accessors. Consuming apps (e.g. apps/ui-playground) MUST read
+// provider-initialized state through these, NOT the inert @deprecated
+// `useAgenticStore` singleton above (no provider initializes it, so its
+// `apiClient`/`configManager`/`logger` stay `null` forever).
+// - `useArcaStore` is the SAME context-backed hook the SDK uses internally
+//   (`useStore(useStoreApi(), selector)`), just under the public name.
+// - `useStoreApi` returns the nearest provider's `StoreApi` for imperative
+//   `.getState()` reads inside callbacks/loops.
+// Both fail loud (throw) outside an <AgenticProvider>, never the singleton.
+export { useAgenticStore as useArcaStore, useStoreApi } from './store/agenticStore';
+export type { AgenticStoreApi } from './store/agenticStore';
 
 // Constants — defaults and plugin configs (endpoints exported above)
 export {

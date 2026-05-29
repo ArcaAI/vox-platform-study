@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useUsers, useAuth, useAgenticStore, PAGE_SIZE_OPTIONS, DEFAULT_PAGE_SIZE, type User } from '@arcaai/vox';
+import { useUsers, useAuth, useStoreApi, PAGE_SIZE_OPTIONS, DEFAULT_PAGE_SIZE, type User } from '@arcaai/vox';
 import type { DeepPartial, AppConfig } from '@arcaai/vox';
 import { useAuthStore } from '@/store/auth-store';
 import { adminClient } from '@/features/admin/api/admin-client';
@@ -30,6 +30,7 @@ function getRoles(user: User): string {
 export function UserList() {
   const { isLoading: usersLoading, listPaginated, search } = useUsers();
   const { isImpersonating: sdkImpersonating, impersonatedUser: sdkImpersonatedUser, impersonate, endImpersonation } = useAuth();
+  const storeApi = useStoreApi();
   const localUser = useAuthStore((s) => s.user);
   const persistedImpersonating = useAuthStore((s) => s.isImpersonating);
   const persistedImpersonatedUser = useAuthStore((s) => s.impersonatedUser);
@@ -196,7 +197,7 @@ export function UserList() {
       useAuthStore.getState().startImpersonation(result.user, result.token, tenantId);
 
       // TASK-245: Isolate impersonated user's preferences
-      const cm = useAgenticStore.getState().configManager;
+      const cm = storeApi.getState().configManager;
       if (cm) {
         adminPrefsSnapshot.current = cm.snapshotUserPreferences();
         cm.setReadOnly(true);
@@ -243,7 +244,7 @@ export function UserList() {
     setIsActionLoading(true);
     try {
       // TASK-245: Restore admin's original preferences
-      const cm = useAgenticStore.getState().configManager;
+      const cm = storeApi.getState().configManager;
       if (cm) {
         cm.setReadOnly(false);
         if (adminPrefsSnapshot.current) {
