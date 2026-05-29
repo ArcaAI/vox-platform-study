@@ -6,6 +6,9 @@
 
 export {
   useAgenticStore,
+  createAgenticStore,
+  useStoreApi,
+  AgenticStoreContext,
   selectTranscriptions,
   selectCaseNotes,
   selectWorknotes,
@@ -48,3 +51,5 @@ export {
   selectContextLoading,
   selectContextError,
 } from './agenticStore';
+
+export type { AgenticStoreApi } from './agenticStore';

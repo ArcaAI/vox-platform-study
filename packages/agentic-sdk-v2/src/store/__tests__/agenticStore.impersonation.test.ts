@@ -9,7 +9,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { useAgenticStore } from '../agenticStore';
+// TASK-317 W4.3 (AC-12) — store-logic unit test binds to the module singleton
+// directly (the `useAgenticStore` name now refers to the context-backed hook).
+import { agenticStoreSingleton as useAgenticStore } from '../agenticStore';
 
 describe('TASK-264 W0-3: store impersonation token removed', () => {
   it('state object should NOT contain `authOriginalToken` field', () => {

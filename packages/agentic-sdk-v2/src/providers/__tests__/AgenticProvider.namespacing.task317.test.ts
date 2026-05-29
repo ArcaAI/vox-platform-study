@@ -24,7 +24,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as React from 'react';
 import { render, waitFor, act } from '@testing-library/react';
 import { AgenticProvider } from '../AgenticProvider';
-import { useAgenticStore } from '../../store/agenticStore';
+import { useStoreApi, type AgenticStoreApi } from '../../store/agenticStore';
 import type { AgenticConfig } from '../../types';
 
 vi.mock('@arcaai/noise-filter', () => ({
@@ -120,19 +120,24 @@ const USER = 'user-77';
 const NS = `${TENANT}::${USER}`;
 
 function renderProvider() {
-  // Clean store snapshot. clearOnLogout takes the outgoing namespace (W1.4).
-  useAgenticStore.getState().clearOnLogout('pre-login');
+  // TASK-317 W4.2/W4.3 (AC-12) — the provider now owns a per-instance store; a
+  // fresh `createAgenticStore()` is already at the initial state, so no
+  // pre-render reset is needed. Capture THIS provider's StoreApi via
+  // `useStoreApi()` from a child and return it; the test body's `store.getState()`
+  // calls then observe exactly the store the provider writes to.
+  const captured: { api: AgenticStoreApi | null } = { api: null };
+  const Capture: React.FC = () => {
+    captured.api = useStoreApi();
+    return null;
+  };
 
   const config: AgenticConfig = {
     api: { baseUrl: 'https://api.example.com', apiKey: 'k', accessToken: 'access', tenantId: TENANT },
     personalization: { storage: 'local' },
   };
-  const element = React.createElement(AgenticProvider, {
-    config,
-    children: React.createElement('div', null, 'child'),
-  });
-  render(element);
-  return useAgenticStore;
+  render(React.createElement(AgenticProvider, { config, children: React.createElement(Capture) }));
+  if (!captured.api) throw new Error('AgenticProvider store API was not captured');
+  return captured.api;
 }
 
 function meHandler(me: { id?: string; tenantId?: string; departmentId?: string }): FetchHandler {

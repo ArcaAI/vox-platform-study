@@ -8,14 +8,27 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { AgenticProvider, useAgenticContext, useSDKLogger } from '../AgenticProvider';
-import { useAgenticStore } from '../../store/agenticStore';
+import { useStoreApi, type AgenticStoreApi } from '../../store/agenticStore';
 import type { AgenticConfig } from '../../types';
 import { mockFetch, createMockResponse } from '../../__tests__/setup';
 import { PluginManager } from '../../core/PluginManager';
 
+// TASK-317 W4.2/W4.3 (AC-12) — the provider owns a per-instance store, so these
+// tests capture THIS provider's StoreApi via `useStoreApi()` from a descendant
+// (`TestComponent`, or `StoreProbe` where no `TestComponent` is rendered)
+// instead of reading the module singleton.
+let capturedStore: AgenticStoreApi | null = null;
+function StoreProbe() {
+    capturedStore = useStoreApi();
+    return null;
+}
+
 // Test component to access context
 function TestComponent() {
+    // `useAgenticContext()` runs first so the "outside provider" test still sees
+    // its expected error before `useStoreApi()` would throw.
     const context = useAgenticContext();
+    capturedStore = useStoreApi();
     return (
         <div data-testid="test-component">
             <span data-testid="initialized">{context.initialized.toString()}</span>
@@ -56,8 +69,9 @@ describe('AgenticProvider', () => {
     };
 
     beforeEach(() => {
-        // Reset store before each test
-        useAgenticStore.getState().reset();
+        // Each render builds a fresh per-provider store, so no singleton reset is
+        // needed; just drop the previous capture.
+        capturedStore = null;
         mockFetch.mockReset();
         // Mock successful responses for initialization
         mockFetch.mockResolvedValue(createMockResponse([]));
@@ -100,7 +114,7 @@ describe('AgenticProvider', () => {
             );
 
             await waitFor(() => {
-                const state = useAgenticStore.getState();
+                const state = capturedStore!.getState();
                 expect(state.initialized).toBe(true);
             });
         });
@@ -113,7 +127,7 @@ describe('AgenticProvider', () => {
             );
 
             await waitFor(() => {
-                const state = useAgenticStore.getState();
+                const state = capturedStore!.getState();
                 expect(state.apiClient).toBeDefined();
             });
         });
@@ -126,7 +140,7 @@ describe('AgenticProvider', () => {
             );
 
             await waitFor(() => {
-                const state = useAgenticStore.getState();
+                const state = capturedStore!.getState();
                 expect(state.pluginManager).toBeDefined();
             });
         });
@@ -139,7 +153,7 @@ describe('AgenticProvider', () => {
             );
 
             await waitFor(() => {
-                const state = useAgenticStore.getState();
+                const state = capturedStore!.getState();
                 expect(state.personalizationManager).toBeDefined();
             });
         });
@@ -152,7 +166,7 @@ describe('AgenticProvider', () => {
             );
 
             await waitFor(() => {
-                const state = useAgenticStore.getState();
+                const state = capturedStore!.getState();
                 expect(state.modelRegistry).toBeDefined();
             });
         });
@@ -199,7 +213,7 @@ describe('AgenticProvider', () => {
             );
 
             await waitFor(() => {
-                const state = useAgenticStore.getState();
+                const state = capturedStore!.getState();
                 expect(state.logger).toBeDefined();
             });
         });
@@ -222,7 +236,7 @@ describe('AgenticProvider', () => {
             );
 
             await waitFor(() => {
-                const state = useAgenticStore.getState();
+                const state = capturedStore!.getState();
                 expect(state.initialized).toBe(true);
             });
         });
@@ -261,11 +275,11 @@ describe('AgenticProvider', () => {
             );
 
             await waitFor(() => {
-                const state = useAgenticStore.getState();
+                const state = capturedStore!.getState();
                 expect(state.initialized).toBe(true);
             });
 
-            const state = useAgenticStore.getState();
+            const state = capturedStore!.getState();
             const pluginManager = state.pluginManager;
             expect(pluginManager).toBeDefined();
 
@@ -296,7 +310,7 @@ describe('AgenticProvider', () => {
             );
 
             await waitFor(() => {
-                const state = useAgenticStore.getState();
+                const state = capturedStore!.getState();
                 expect(state.initialized).toBe(true);
             });
 
@@ -321,7 +335,7 @@ describe('AgenticProvider', () => {
             );
 
             await waitFor(() => {
-                const state = useAgenticStore.getState();
+                const state = capturedStore!.getState();
                 expect(state.initialized).toBe(true);
             });
 
@@ -339,7 +353,7 @@ describe('AgenticProvider', () => {
             );
 
             await waitFor(() => {
-                const state = useAgenticStore.getState();
+                const state = capturedStore!.getState();
                 expect(state.initialized).toBe(true);
             });
 
@@ -360,12 +374,13 @@ describe('AgenticProvider', () => {
 
             render(
                 <AgenticProvider config={nerConfig}>
+                    <StoreProbe />
                     <div data-testid="still-here">Content</div>
                 </AgenticProvider>
             );
 
             await waitFor(() => {
-                const state = useAgenticStore.getState();
+                const state = capturedStore!.getState();
                 expect(state.initialized).toBe(true);
             });
 

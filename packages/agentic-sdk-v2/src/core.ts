@@ -421,7 +421,12 @@ export { SttV2WebSocketClient, type WsConnectOptions, type WsReconnectOptions } 
 // Store (Advanced Usage)
 // =============================================================================
 
-export { useAgenticStore } from './store/agenticStore';
+// TASK-317 W4.3 (AC-12) — the PUBLIC `useAgenticStore` stays the @deprecated
+// module singleton so external importers (`import { useAgenticStore } from
+// '@arcaai/vox'`) keep working without an <AgenticProvider>. Internal SDK code
+// uses the context-backed `useAgenticStore` from `./store` instead (per-tenant
+// isolation, audit C-1).
+export { agenticStoreSingleton as useAgenticStore } from './store/agenticStore';
 export type { AgenticActions, AgenticState } from './store/agenticStore';
 
 // Constants — defaults and plugin configs (endpoints exported above)

@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as React from 'react';
 import { render, waitFor } from '@testing-library/react';
+import type { AgenticStoreApi } from '../../store/agenticStore';
 
 vi.mock('@arcaai/noise-filter', () => ({
   createNoiseFilter: vi.fn(() => ({
@@ -80,13 +81,18 @@ afterEach(() => {
 
 async function renderProvider(configOverride: Record<string, unknown> = {}) {
   const { AgenticProvider } = await import('../AgenticProvider');
-  const { useAgenticStore } = await import('../../store/agenticStore');
+  const { useStoreApi } = await import('../../store/agenticStore');
 
-  // Make sure each test starts from a clean store snapshot.
-  // TASK-317 W1.4 (AC-3) — clearOnLogout now takes the outgoing namespace.
-  useAgenticStore.getState().clearOnLogout('pre-login');
+  // TASK-317 W4.2/W4.3 (AC-12) — the provider owns a per-instance store (fresh
+  // `createAgenticStore()` at the initial state), so no pre-render reset is
+  // needed. Capture this provider's StoreApi via `useStoreApi()` and return it;
+  // the test body's `useAgenticStore.getState()` then observes the provider's store.
+  const captured: { api: AgenticStoreApi | null } = { api: null };
+  const Capture: React.FC = () => {
+    captured.api = useStoreApi();
+    return null;
+  };
 
-  const child = React.createElement('div', null, 'child');
   const element = React.createElement(
     AgenticProvider,
     {
@@ -96,11 +102,12 @@ async function renderProvider(configOverride: Record<string, unknown> = {}) {
         personalization: { storage: 'local' },
         ...configOverride,
       },
+      children: React.createElement(Capture),
     } as never,
-    child,
   );
   render(element);
-  return useAgenticStore;
+  if (!captured.api) throw new Error('AgenticProvider store API was not captured');
+  return captured.api;
 }
 
 describe('TASK-297 AgenticProvider', () => {
