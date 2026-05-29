@@ -396,6 +396,35 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
 
       mgr.close();
     });
+
+    // =========================================================================
+    // TASK-317 W3.1 (M-1) — empty/whitespace tenantId behaves like no tenant.
+    //
+    // The SharedWorker `keyFor('')` is falsy → master key, but the fallback
+    // derived HKDF(secret, '') for ANY non-undefined tenantId. So a blank /
+    // whitespace tenant signed under a derived subkey in fallback mode but the
+    // master secret in worker mode — an asymmetry. setTenantId now normalises
+    // empty/whitespace → undefined so BOTH modes fall back to the master/global
+    // secret identically (cosmetic fail-closed symmetry).
+    // =========================================================================
+    it('TASK-317 W3.1 (M-1) — whitespace/empty tenantId behaves like no tenant (master-secret parity with worker keyFor)', async () => {
+      const noTenant = new CrossTabHmacKeyManager();
+      const blankTenant = new CrossTabHmacKeyManager();
+      // Whitespace-only must normalise to undefined → master/global key,
+      // NOT a derived HKDF(secret, '   ') subkey.
+      blankTenant.setTenantId('   ');
+
+      const payload = bytes(32, 8);
+      const sig = await blankTenant.sign(payload);
+
+      // Same-page managers share FALLBACK_SECRET; with the blank tenant
+      // normalised away both use the global key, so the no-tenant manager
+      // verifies the blank-tenant manager's signature.
+      expect(await noTenant.verify(payload, sig)).toBe(true);
+
+      noTenant.close();
+      blankTenant.close();
+    });
   });
 
   describe('Constructor robustness', () => {

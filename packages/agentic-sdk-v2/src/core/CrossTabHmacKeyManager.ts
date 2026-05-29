@@ -221,8 +221,14 @@ export class CrossTabHmacKeyManager {
    * the subkey, so the master secret never leaves the worker.
    */
   setTenantId(tenantId: string): void {
-    if (this.tenantId === tenantId) return;
-    this.tenantId = tenantId;
+    // TASK-317 W3.1 (M-1) — normalize empty/whitespace tenantId to undefined so
+    // the fallback and SharedWorker paths behave identically. The worker's
+    // `keyFor('')` is falsy and uses the master key, whereas the fallback would
+    // otherwise derive HKDF(secret, '') for a blank string; collapsing blanks to
+    // undefined makes both modes fall back to the master/global secret.
+    const normalized = tenantId.trim() === '' ? undefined : tenantId;
+    if (this.tenantId === normalized) return;
+    this.tenantId = normalized;
     this.fallbackTenantKeyPromise = null;
   }
 
