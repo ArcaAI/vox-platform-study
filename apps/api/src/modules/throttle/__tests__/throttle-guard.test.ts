@@ -1,126 +1,113 @@
 /**
- * ThrottleGuard integration tests (TDD RED phase)
+ * TASK-315 — TieredThrottlerGuard in-process integration test.
  *
- * Tests that the ThrottlerGuard is properly configured as a global guard
- * and that controller-level overrides work correctly.
+ * Proves the global throttler is actually wired into the guard chain and that
+ * "Option 2" (named throttlers, non-default opt-in) behaves correctly:
  *
- * These tests verify the decorator metadata applied to controllers,
- * ensuring the throttling contract is enforced at the module level.
+ *   - the `default` tier gates every route (honouring per-route overrides),
+ *   - non-default tiers (strict/heavy/relaxed) ONLY gate routes that opt in via
+ *     `@Throttle({ <tier>: {...} })`,
+ *   - `@SkipThrottle()` disables throttling for the route.
+ *
+ * Runs fully in-memory: the module's storage selection skips Redis whenever
+ * VITEST / NODE_ENV=test is set (see throttle.module.ts). The default IP-based
+ * tracker keys every in-process supertest call on 127.0.0.1, so per-route
+ * counters accumulate as expected.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { Controller, Get, type INestApplication } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
+import { Test } from '@nestjs/testing';
+import request from 'supertest';
+import { ThrottleConfigModule } from '../throttle.module';
+import { TieredThrottlerGuard } from '../tiered-throttler.guard';
 
-// ============================================================================
-// Metadata extraction helpers
-// ============================================================================
+@Controller('t')
+class ThrottleTestController {
+  @Get('open')
+  open() {
+    return { ok: 'open' };
+  }
 
-/**
- * Simulates checking if a controller class has throttle metadata.
- * In production, this is set by @Throttle() and @SkipThrottle() decorators.
- */
-interface ThrottleMetadata {
-    [throttlerName: string]: { limit: number; ttl: number } | boolean;
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Get('tight')
+  tight() {
+    return { ok: 'tight' };
+  }
+
+  @Throttle({ strict: { limit: 2, ttl: 60000 } })
+  @Get('strict-optin')
+  strictOptin() {
+    return { ok: 'strict-optin' };
+  }
+
+  @SkipThrottle()
+  @Get('skip')
+  skip() {
+    return { ok: 'skip' };
+  }
 }
 
-function createThrottleMetadata(overrides: Record<string, { limit: number; ttl: number }>): ThrottleMetadata {
-    return overrides;
-}
+describe('TieredThrottlerGuard (integration)', () => {
+  let app: INestApplication;
+  const prevEnabled = process.env.RATE_LIMIT_ENABLED;
 
-function createSkipMetadata(throttlerNames?: string[]): ThrottleMetadata {
-    if (!throttlerNames) {
-        return { default: true, strict: true, heavy: true, relaxed: true };
+  const hit = (path: string) => request(app.getHttpServer()).get(path);
+
+  beforeAll(async () => {
+    // Throttling defaults to ON; make it explicit so a stray env can't disable
+    // the guard under test. `isEnabled()` reads this live via `skipIf`.
+    process.env.RATE_LIMIT_ENABLED = 'true';
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [ThrottleConfigModule],
+      controllers: [ThrottleTestController],
+      providers: [{ provide: APP_GUARD, useClass: TieredThrottlerGuard }],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    if (app) await app.close();
+    if (prevEnabled === undefined) {
+      delete process.env.RATE_LIMIT_ENABLED;
+    } else {
+      process.env.RATE_LIMIT_ENABLED = prevEnabled;
     }
-    const meta: ThrottleMetadata = {};
-    for (const name of throttlerNames) {
-        meta[name] = true;
+  });
+
+  it('(a) per-route default override: /t/tight allows 3 then 429s on the 4th', async () => {
+    for (let i = 1; i <= 3; i++) {
+      const res = await hit('/t/tight');
+      expect(res.status).toBe(200);
     }
-    return meta;
-}
+    const fourth = await hit('/t/tight');
+    expect(fourth.status).toBe(429);
+  });
 
-// ============================================================================
-// Tests
-// ============================================================================
+  it('(b) opt-in strict tier: /t/strict-optin 429s on the 3rd call (strict limit = 2)', async () => {
+    expect((await hit('/t/strict-optin')).status).toBe(200);
+    expect((await hit('/t/strict-optin')).status).toBe(200);
+    expect((await hit('/t/strict-optin')).status).toBe(429);
+  });
 
-describe('ThrottlerGuard global configuration', () => {
-    it('should define ThrottlerGuard as APP_GUARD provider', () => {
-        // This test documents the requirement that ThrottlerGuard
-        // must be registered as a global guard in app.module.ts
-        const globalGuardConfig = {
-            provide: 'APP_GUARD',
-            useClass: 'ThrottlerGuard',
-        };
-        expect(globalGuardConfig.provide).toBe('APP_GUARD');
-        expect(globalGuardConfig.useClass).toBe('ThrottlerGuard');
-    });
-});
+  it('(c) non-default tiers do NOT gate opt-out routes: /t/open never 429s in 12 rapid calls', async () => {
+    for (let i = 0; i < 12; i++) {
+      const res = await hit('/t/open');
+      expect(res.status).not.toBe(429);
+      expect(res.status).toBe(200);
+    }
+  });
 
-describe('Controller throttle metadata contracts', () => {
-    describe('AuthController', () => {
-        it('should override with strict throttle (10 req/60s)', () => {
-            const metadata = createThrottleMetadata({
-                default: { limit: 10, ttl: 60000 },
-            });
-            expect(metadata.default).toEqual({ limit: 10, ttl: 60000 });
-        });
-
-        it('should have lower limit than default for brute-force protection', () => {
-            const strictLimit = 10;
-            const defaultLimit = 100;
-            expect(strictLimit).toBeLessThan(defaultLimit);
-        });
-    });
-
-    describe('SummaryController', () => {
-        it('should override with heavy throttle (20 req/60s)', () => {
-            const metadata = createThrottleMetadata({
-                default: { limit: 20, ttl: 60000 },
-            });
-            expect(metadata.default).toEqual({ limit: 20, ttl: 60000 });
-        });
-    });
-
-    describe('ApiHealthController', () => {
-        it('should override with relaxed throttle (300 req/60s)', () => {
-            const metadata = createThrottleMetadata({
-                default: { limit: 300, ttl: 60000 },
-            });
-            expect(metadata.default).toEqual({ limit: 300, ttl: 60000 });
-        });
-    });
-
-    describe('SttInternalController', () => {
-        it('should skip all throttling for internal service-to-service calls', () => {
-            const metadata = createSkipMetadata();
-            expect(metadata.default).toBe(true);
-            expect(metadata.strict).toBe(true);
-            expect(metadata.heavy).toBe(true);
-            expect(metadata.relaxed).toBe(true);
-        });
-    });
-
-    describe('MonitoringController', () => {
-        it('should override with relaxed throttle (300 req/60s)', () => {
-            const metadata = createThrottleMetadata({
-                default: { limit: 300, ttl: 60000 },
-            });
-            expect(metadata.default).toEqual({ limit: 300, ttl: 60000 });
-        });
-    });
-});
-
-describe('Rate limit capacity for 200+ concurrent users', () => {
-    it('should support 200 users at 100 req/min default rate', () => {
-        const usersCount = 200;
-        const perUserLimit = 100;
-        const totalCapacity = usersCount * perUserLimit;
-        // 20,000 req/min is achievable with Redis sub-ms lookups
-        expect(totalCapacity).toBe(20000);
-    });
-
-    it('should use per-user keying so users do not share rate limit buckets', () => {
-        // Validates the keying strategy: each user/IP gets their own counter
-        const user1Key = 'throttle:user:user-1';
-        const user2Key = 'throttle:user:user-2';
-        expect(user1Key).not.toBe(user2Key);
-    });
+  it('(d) @SkipThrottle disables throttling: /t/skip never 429s in 12 rapid calls', async () => {
+    for (let i = 0; i < 12; i++) {
+      const res = await hit('/t/skip');
+      expect(res.status).not.toBe(429);
+      expect(res.status).toBe(200);
+    }
+  });
 });
