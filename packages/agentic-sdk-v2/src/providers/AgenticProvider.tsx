@@ -506,22 +506,23 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     if (namespaceRef.current === nextNamespace) return;
     namespaceRef.current = nextNamespace;
 
-    // TASK-317 W2.1 (AC-7, audit C-5) — reset the OUTGOING tenant's session
-    // slices SYNCHRONOUSLY, the instant the effective tenant/user changes and
-    // BEFORE the async re-hydrate below resolves the new tenant's config. This
-    // closes the window where tenant B is already active in the same tab while
-    // tenant A's PHI (consultation / context / transcript / summaries) and
-    // tenant-scoped model config remain resident and visible. Uses the store
-    // API the provider already holds (rule 08-vox-sdk: access via the store,
-    // never import it directly). The registry selection itself is re-keyed by
-    // `modelRegistry.reloadSelected()` (below); `setTenantConfig(null)` +
-    // `incrementModelRegistryVersion()` clear/refresh the model config that
+    // TASK-317 W2.1 (AC-7, audit C-5; review C-1) — reset the OUTGOING tenant's
+    // FULL PHI/session set SYNCHRONOUSLY, the instant the effective tenant/user
+    // changes and BEFORE the async re-hydrate below resolves the new tenant's
+    // config. This closes the window where tenant B is already active in the
+    // same tab while tenant A's PHI — consultation, relatedConsultations,
+    // contextItems, sharedContext, entities (medical NER), currentTranscript
+    // (raw transcript), transcriptSegments, summaries, dnaStyle — plus the
+    // tenant-scoped model/audio config (tenantConfig) remain resident and
+    // visible through useArca()/useArcaConfig(). `clearTenantSessionData()` is
+    // the single source of truth for that set and DELIBERATELY does NOT touch
+    // auth/impersonation (authUser / authImpersonatedUser / effectiveTenantId),
+    // which drive this in-flight switch. Uses the store API the provider already
+    // holds (rule 08-vox-sdk: access via the store, never import it directly).
+    // The registry selection itself is re-keyed by `modelRegistry.reloadSelected()`
+    // (below); `incrementModelRegistryVersion()` refreshes the model config that
     // `useArcaConfig` surfaces so consumers stop rendering tenant A's data.
-    store.setConsultation(null);
-    store.setContextItems([]);
-    store.setTranscriptSegments([]);
-    store.setSummaries([]);
-    store.setTenantConfig(null);
+    store.clearTenantSessionData();
 
     const providerLogger = (loggerRef.current ?? createSDKLogger({ level: 'info' })).child('AgenticProvider');
     providerLogger.info('Rehydrating ConfigManager for new user namespace', {
