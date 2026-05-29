@@ -65,6 +65,20 @@ export interface SSESubscription {
 export interface WSSubscription {
   url: string;
   protocols?: string[];
+  /**
+   * TASK-317 C-4 (AC-8) — owner user id. WebSocket deduplication keys on
+   * `(id, userId)` (see `wsDedupKey`) so we never share one upstream socket
+   * across distinct user contexts even when the base id collides — mirrors
+   * the SSE `(id, userId)` dedup added under TASK-297 H-SSE-5.
+   */
+  userId?: string;
+  /**
+   * TASK-317 C-4 (AC-8) — active tenant id, carried alongside `userId` for
+   * diagnostics / defense-in-depth. The dedup key itself is `(id, userId)`;
+   * `tenantId` travels with the subscription so a future cross-tenant guard
+   * has the discriminator without another round-trip.
+   */
+  tenantId?: string;
 }
 
 interface ManagedSSE {
@@ -79,6 +93,8 @@ interface ManagedWS {
   socket: WebSocket;
   subscribers: Set<MessagePort>;
   url: string;
+  /** TASK-317 C-4 (AC-8) — owner user id for the upstream connection. */
+  userId?: string;
 }
 
 const sseConnections = new Map<string, ManagedSSE>();
@@ -111,6 +127,17 @@ function broadcastToAll(message: WorkerMessage): void {
  * and their owner user ids match.
  */
 function sseDedupKey(id: string, userId: string | undefined): string {
+  return `${id}::${userId ?? 'anon'}`;
+}
+
+/**
+ * TASK-317 C-4 (AC-8) — Compose the WebSocket dedup key from `(id, userId)`,
+ * symmetric to `sseDedupKey`. Two tabs may share an upstream WebSocket only
+ * when both their ids and their owner user ids match; distinct users that
+ * collide on `id` get distinct sockets and never cross-wire each other's
+ * audio / transcript stream.
+ */
+function wsDedupKey(id: string, userId: string | undefined): string {
   return `${id}::${userId ?? 'anon'}`;
 }
 
@@ -205,8 +232,21 @@ function handleSSEUnsubscribe(port: MessagePort, id: string, userId?: string): v
 }
 
 function handleWSSubscribe(port: MessagePort, id: string, sub: WSSubscription): void {
-  const existing = wsConnections.get(id);
+  // TASK-317 C-4 (AC-8) — dedup on `(id, userId)`, not the bare id.
+  const dedupKey = wsDedupKey(id, sub.userId);
+  const existing = wsConnections.get(dedupKey);
   if (existing) {
+    // TASK-317 C-4 (AC-8) — refuse to share when the user id mismatches
+    // (mirrors the SSE H-SSE-5 guard). With a `(id, userId)` key this is a
+    // defense-in-depth invariant: a shared slot always has one owner user.
+    if (existing.userId !== sub.userId) {
+      port.postMessage({
+        type: 'ws_error',
+        id,
+        payload: { reason: 'USER_MISMATCH', expected: existing.userId, got: sub.userId },
+      });
+      return;
+    }
     existing.subscribers.add(port);
     if (existing.socket.readyState === WebSocket.OPEN) {
       port.postMessage({ type: 'ws_open', id });
@@ -220,6 +260,7 @@ function handleWSSubscribe(port: MessagePort, id: string, sub: WSSubscription): 
     socket: ws,
     subscribers: new Set([port]),
     url: sub.url,
+    userId: sub.userId,
   };
 
   ws.onopen = () => {
@@ -240,39 +281,60 @@ function handleWSSubscribe(port: MessagePort, id: string, sub: WSSubscription): 
       id,
       payload: { code: event.code, reason: event.reason },
     });
-    wsConnections.delete(id);
+    wsConnections.delete(dedupKey);
   };
 
   ws.onerror = () => {
     broadcastToSubscribers(managed.subscribers, { type: 'ws_error', id });
   };
 
-  wsConnections.set(id, managed);
+  wsConnections.set(dedupKey, managed);
   port.postMessage({ type: 'connection_count', id, payload: { count: 1 } });
 }
 
-function handleWSUnsubscribe(port: MessagePort, id: string): void {
-  const managed = wsConnections.get(id);
-  if (!managed) return;
-
-  managed.subscribers.delete(port);
-
-  if (managed.subscribers.size === 0) {
-    managed.socket.close(1000, 'All tabs unsubscribed');
-    wsConnections.delete(id);
+function handleWSUnsubscribe(port: MessagePort, id: string, userId?: string): void {
+  // TASK-317 C-4 (AC-8) — caller may supply userId; if absent, scan every
+  // entry sharing the base id and remove the port from each (mirrors SSE).
+  if (userId !== undefined) {
+    const dedupKey = wsDedupKey(id, userId);
+    const managed = wsConnections.get(dedupKey);
+    if (!managed) return;
+    managed.subscribers.delete(port);
+    if (managed.subscribers.size === 0) {
+      managed.socket.close(1000, 'All tabs unsubscribed');
+      wsConnections.delete(dedupKey);
+    }
+    return;
+  }
+  const matchPrefix = `${id}::`;
+  for (const [key, managed] of wsConnections) {
+    if (!key.startsWith(matchPrefix)) continue;
+    managed.subscribers.delete(port);
+    if (managed.subscribers.size === 0) {
+      managed.socket.close(1000, 'All tabs unsubscribed');
+      wsConnections.delete(key);
+    }
   }
 }
 
-function handleWSSend(id: string, data: unknown): void {
-  const managed = wsConnections.get(id);
-  if (!managed || managed.socket.readyState !== WebSocket.OPEN) return;
+function handleWSSend(port: MessagePort, id: string, data: unknown): void {
+  // TASK-317 C-4 (AC-8) — multiple users may share a base id, so route the
+  // send to the socket the SENDER port is subscribed to. This fail-closes a
+  // cross-user send leak: a tab can only write to its own user's socket.
+  const matchPrefix = `${id}::`;
+  for (const [key, managed] of wsConnections) {
+    if (!key.startsWith(matchPrefix)) continue;
+    if (!managed.subscribers.has(port)) continue;
+    if (managed.socket.readyState !== WebSocket.OPEN) continue;
 
-  if (typeof data === 'string') {
-    managed.socket.send(data);
-  } else if (data instanceof ArrayBuffer || data instanceof Blob) {
-    managed.socket.send(data as ArrayBuffer | Blob);
-  } else {
-    managed.socket.send(JSON.stringify(data));
+    if (typeof data === 'string') {
+      managed.socket.send(data);
+    } else if (data instanceof ArrayBuffer || data instanceof Blob) {
+      managed.socket.send(data as ArrayBuffer | Blob);
+    } else {
+      managed.socket.send(JSON.stringify(data));
+    }
+    return;
   }
 }
 
@@ -287,11 +349,11 @@ function handlePortDisconnect(port: MessagePort): void {
     }
   }
 
-  for (const [id, managed] of wsConnections) {
+  for (const [dedupKey, managed] of wsConnections) {
     managed.subscribers.delete(port);
     if (managed.subscribers.size === 0) {
       managed.socket.close(1000, 'All tabs disconnected');
-      wsConnections.delete(id);
+      wsConnections.delete(dedupKey);
     }
   }
 
@@ -316,10 +378,16 @@ function handleMessage(port: MessagePort, msg: WorkerMessage): void {
       if (msg.id && msg.payload) handleWSSubscribe(port, msg.id, msg.payload as WSSubscription);
       break;
     case 'unsubscribe_ws':
-      if (msg.id) handleWSUnsubscribe(port, msg.id);
+      if (msg.id) {
+        const u =
+          msg.payload && typeof msg.payload === 'object' && 'userId' in msg.payload
+            ? ((msg.payload as { userId?: string }).userId ?? undefined)
+            : undefined;
+        handleWSUnsubscribe(port, msg.id, u);
+      }
       break;
     case 'ws_send':
-      if (msg.id) handleWSSend(msg.id, msg.payload);
+      if (msg.id) handleWSSend(port, msg.id, msg.payload);
       break;
     case 'ping':
       port.postMessage({ type: 'pong' });
@@ -355,3 +423,36 @@ self.onconnect = (event: MessageEvent) => {
   port.postMessage({ type: 'tab_count', payload: { count: allPorts.size } });
   port.start();
 };
+
+// ---------------------------------------------------------------------------
+// Test-only surface (TASK-317 C-4 / AC-8).
+//
+// In jsdom the SharedWorker `self.onconnect` lifecycle never fires, so the
+// dedup logic is otherwise unreachable from a unit test. These thin hooks let
+// tests drive the real `handleMessage` dispatcher and reset module state
+// between cases. They are intentionally not part of the public SDK surface and
+// must not be imported by production code.
+// ---------------------------------------------------------------------------
+export function __handleMessageForTests(port: MessagePort, msg: WorkerMessage): void {
+  handleMessage(port, msg);
+}
+
+export function __resetConnectionsForTests(): void {
+  for (const managed of wsConnections.values()) {
+    try {
+      managed.socket.close();
+    } catch {
+      /* noop — best-effort teardown in tests */
+    }
+  }
+  wsConnections.clear();
+  for (const managed of sseConnections.values()) {
+    try {
+      managed.eventSource.close();
+    } catch {
+      /* noop — best-effort teardown in tests */
+    }
+  }
+  sseConnections.clear();
+  allPorts.clear();
+}

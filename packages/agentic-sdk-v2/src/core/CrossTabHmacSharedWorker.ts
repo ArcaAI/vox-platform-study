@@ -30,6 +30,12 @@ export interface CrossTabHmacSignReq {
   id: string;
   op: 'sign';
   payload: ArrayBuffer;
+  /**
+   * TASK-317 E-4 (AC-11) — when present, sign with the per-tenant HKDF subkey
+   * `HKDF(masterSecret, tenantId)` instead of the bare master secret, so two
+   * tenants sharing this worker cannot forge each other's envelopes.
+   */
+  tenantId?: string;
 }
 
 export interface CrossTabHmacVerifyReq {
@@ -37,6 +43,8 @@ export interface CrossTabHmacVerifyReq {
   op: 'verify';
   payload: ArrayBuffer;
   hmac: ArrayBuffer;
+  /** TASK-317 E-4 (AC-11) — verify against the per-tenant HKDF subkey. */
+  tenantId?: string;
 }
 
 export interface CrossTabHmacResetReq {
@@ -61,11 +69,38 @@ export interface CrossTabHmacResErr {
 export type CrossTabHmacRes = CrossTabHmacResOk | CrossTabHmacResErr;
 
 // =============================================================================
+// Per-tenant HKDF derivation (TASK-317 E-4 / AC-11).
+//
+// Shared by the worker (master secret) and the fallback path in
+// CrossTabHmacKeyManager (per-page secret) so the SAME subkey is produced for
+// a given (secret, tenantId) regardless of which backend is active. Exported
+// (not on the public SDK barrel) purely so the manager can reuse it.
+// =============================================================================
+
+/** Fixed application salt for the cross-tab HMAC HKDF (RFC 5869). */
+const CROSS_TAB_HKDF_SALT = new TextEncoder().encode('arcaai-cross-tab-hmac-hkdf-salt:v1');
+
+export async function deriveTenantHmacKey(secret: Uint8Array, tenantId: string): Promise<CryptoKey> {
+  const ikm = await crypto.subtle.importKey('raw', secret as unknown as ArrayBuffer, 'HKDF', false, ['deriveKey']);
+  const info = new TextEncoder().encode(`arcaai-cross-tab-hmac:tenant:${tenantId}`);
+  return crypto.subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt: CROSS_TAB_HKDF_SALT as unknown as ArrayBuffer, info: info as unknown as ArrayBuffer },
+    ikm,
+    { name: 'HMAC', hash: 'SHA-256', length: 256 },
+    false,
+    ['sign', 'verify'],
+  );
+}
+
+// =============================================================================
 // Worker-scoped HMAC secret. Shared across all ports (== all tabs).
 // =============================================================================
 
 let SECRET: Uint8Array | null = null;
 let KEY_PROMISE: Promise<CryptoKey> | null = null;
+// TASK-317 E-4 (AC-11) — cache of per-tenant HKDF subkeys derived from the
+// master secret. Cleared on reset alongside the master key.
+const TENANT_KEYS = new Map<string, Promise<CryptoKey>>();
 
 function ensureSecret(): Uint8Array {
   if (SECRET === null) {
@@ -84,9 +119,29 @@ function getKey(): Promise<CryptoKey> {
   return KEY_PROMISE;
 }
 
+/**
+ * TASK-317 E-4 (AC-11) — derive (and cache) the per-tenant HMAC signing key
+ * `HKDF(masterSecret, tenantId)`. Distinct tenants yield distinct subkeys, so
+ * a signature minted for tenant-A never verifies under tenant-B even though
+ * both share this worker's master secret.
+ */
+function getTenantKey(tenantId: string): Promise<CryptoKey> {
+  let cached = TENANT_KEYS.get(tenantId);
+  if (cached === undefined) {
+    cached = deriveTenantHmacKey(ensureSecret(), tenantId);
+    TENANT_KEYS.set(tenantId, cached);
+  }
+  return cached;
+}
+
+function keyFor(tenantId: string | undefined): Promise<CryptoKey> {
+  return tenantId ? getTenantKey(tenantId) : getKey();
+}
+
 function resetSecret(): void {
   SECRET = null;
   KEY_PROMISE = null;
+  TENANT_KEYS.clear();
 }
 
 // =============================================================================
@@ -109,12 +164,12 @@ if (typeof self !== 'undefined' && typeof (globalThis as { window?: unknown }).w
       const req = msg.data as CrossTabHmacReq;
       try {
         if (req.op === 'sign') {
-          const key = await getKey();
+          const key = await keyFor(req.tenantId);
           const sig = await crypto.subtle.sign('HMAC', key, req.payload);
           const res: CrossTabHmacResOk = { id: req.id, ok: true, result: sig };
           port.postMessage(res);
         } else if (req.op === 'verify') {
-          const key = await getKey();
+          const key = await keyFor(req.tenantId);
           const ok = await crypto.subtle.verify('HMAC', key, req.hmac, req.payload);
           const res: CrossTabHmacResOk = { id: req.id, ok: true, result: ok };
           port.postMessage(res);

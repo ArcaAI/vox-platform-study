@@ -20,6 +20,7 @@ import {
   CrossTabHmacKeyManager,
   __resetSessionHmacSecretForTests,
 } from '../CrossTabHmacKeyManager';
+import { deriveTenantHmacKey } from '../CrossTabHmacSharedWorker';
 
 // =============================================================================
 // MockSharedWorker — a minimal SharedWorker stand-in. All instances sharing
@@ -28,8 +29,8 @@ import {
 // =============================================================================
 
 type Req =
-  | { id: string; op: 'sign'; payload: ArrayBuffer }
-  | { id: string; op: 'verify'; payload: ArrayBuffer; hmac: ArrayBuffer }
+  | { id: string; op: 'sign'; payload: ArrayBuffer; tenantId?: string }
+  | { id: string; op: 'verify'; payload: ArrayBuffer; hmac: ArrayBuffer; tenantId?: string }
   | { id: string; op: 'reset' };
 
 type Res =
@@ -39,18 +40,24 @@ type Res =
 class MockSharedWorkerImpl {
   private secret: Uint8Array | null = null;
   private keyPromise: Promise<CryptoKey> | null = null;
+  // Mirrors the real worker's per-tenant subkey cache (TASK-317 AC-11).
+  private tenantKeys = new Map<string, Promise<CryptoKey>>();
   shouldStall = false;
+
+  private ensureSecret(): Uint8Array {
+    if (this.secret === null) {
+      const buf = new Uint8Array(32);
+      crypto.getRandomValues(buf);
+      this.secret = buf;
+    }
+    return this.secret;
+  }
 
   private async getKey(): Promise<CryptoKey> {
     if (this.keyPromise === null) {
-      if (this.secret === null) {
-        const buf = new Uint8Array(32);
-        crypto.getRandomValues(buf);
-        this.secret = buf;
-      }
       this.keyPromise = crypto.subtle.importKey(
         'raw',
-        this.secret as unknown as ArrayBuffer,
+        this.ensureSecret() as unknown as ArrayBuffer,
         { name: 'HMAC', hash: 'SHA-256' },
         false,
         ['sign', 'verify'],
@@ -59,20 +66,31 @@ class MockSharedWorkerImpl {
     return this.keyPromise;
   }
 
+  private keyFor(tenantId: string | undefined): Promise<CryptoKey> {
+    if (!tenantId) return this.getKey();
+    let cached = this.tenantKeys.get(tenantId);
+    if (cached === undefined) {
+      cached = deriveTenantHmacKey(this.ensureSecret(), tenantId);
+      this.tenantKeys.set(tenantId, cached);
+    }
+    return cached;
+  }
+
   reset(): void {
     this.secret = null;
     this.keyPromise = null;
+    this.tenantKeys.clear();
   }
 
   async handle(req: Req, respond: (res: Res) => void): Promise<void> {
     if (this.shouldStall) return;
     try {
       if (req.op === 'sign') {
-        const key = await this.getKey();
+        const key = await this.keyFor(req.tenantId);
         const sig = await crypto.subtle.sign('HMAC', key, req.payload);
         respond({ id: req.id, ok: true, result: sig });
       } else if (req.op === 'verify') {
-        const key = await this.getKey();
+        const key = await this.keyFor(req.tenantId);
         const ok = await crypto.subtle.verify('HMAC', key, req.hmac, req.payload);
         respond({ id: req.id, ok: true, result: ok });
       } else if (req.op === 'reset') {
@@ -212,6 +230,47 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
       mgr.close();
     });
 
+    // =========================================================================
+    // TASK-317 W3.4 — AC-11: per-tenant HMAC subkey (SharedWorker path).
+    //
+    // TASK-280 made the secret per-Worker (shared across tabs). AC-11 layers a
+    // per-tenant HKDF subkey on top so two tenants sharing the SAME worker (and
+    // thus the same master secret) cannot forge each other's envelopes. The
+    // worker derives HKDF(masterSecret, tenantId); the master secret never
+    // leaves the worker.
+    // =========================================================================
+    it('TASK-317 W3.4 — AC-11 cross-tenant verify FAILS over the SharedWorker (forged message rejected)', async () => {
+      const tabA = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
+      const tabB = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
+      tabA.setTenantId('tenant-A');
+      tabB.setTenantId('tenant-B');
+
+      const payload = bytes(32, 9);
+      const sigFromA = await tabA.sign(payload);
+
+      // tenant-B subkey must reject a signature minted under tenant-A.
+      expect(await tabB.verify(payload, sigFromA)).toBe(false);
+      // Same-tenant verify still passes.
+      expect(await tabA.verify(payload, sigFromA)).toBe(true);
+
+      tabA.close();
+      tabB.close();
+    });
+
+    it('TASK-317 W3.4 — AC-11 two tabs on the SAME tenant still agree (SharedWorker cross-tab)', async () => {
+      const tabA = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
+      const tabB = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
+      tabA.setTenantId('tenant-A');
+      tabB.setTenantId('tenant-A');
+
+      const payload = bytes(24, 3);
+      const sigFromA = await tabA.sign(payload);
+      expect(await tabB.verify(payload, sigFromA)).toBe(true);
+
+      tabA.close();
+      tabB.close();
+    });
+
     it('__resetForTests() wipes the shared secret so old HMACs no longer verify', async () => {
       const mgr = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
       const payload = bytes(24);
@@ -294,6 +353,77 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
       const sig = await mgr.sign(bytes(4));
       expect(sig.byteLength).toBe(32);
       mgr.close();
+    });
+
+    // =========================================================================
+    // TASK-317 W3.4 — AC-11: per-tenant HMAC subkey (fallback path).
+    //
+    // In fallback mode two managers on the same page share FALLBACK_SECRET, but
+    // each derives a DISTINCT HKDF subkey from its tenantId. A message signed
+    // under tenant-A's subkey must therefore FAIL verification under tenant-B's
+    // subkey (fail-closed cross-tenant rejection), while same-tenant verify
+    // still succeeds. The subkey rotates whenever setTenantId changes.
+    // =========================================================================
+    it('TASK-317 W3.4 — AC-11 cross-tenant subkey: A-signed message is REJECTED under tenant-B', async () => {
+      const a = new CrossTabHmacKeyManager();
+      const b = new CrossTabHmacKeyManager();
+      a.setTenantId('tenant-A');
+      b.setTenantId('tenant-B');
+
+      const payload = bytes(32, 5);
+      const sigFromA = await a.sign(payload);
+
+      // Forged cross-tenant envelope: tenant-B subkey must reject it.
+      expect(await b.verify(payload, sigFromA)).toBe(false);
+      // Same-tenant verify still passes.
+      expect(await a.verify(payload, sigFromA)).toBe(true);
+
+      a.close();
+      b.close();
+    });
+
+    it('TASK-317 W3.4 — AC-11 setTenantId rotates the subkey (old-tenant signature stops verifying)', async () => {
+      const mgr = new CrossTabHmacKeyManager();
+      mgr.setTenantId('tenant-A');
+      const payload = bytes(28, 6);
+      const sigUnderA = await mgr.sign(payload);
+      expect(await mgr.verify(payload, sigUnderA)).toBe(true);
+
+      // Rotate the active tenant — the previous tenant's signature must no
+      // longer verify under the new subkey.
+      mgr.setTenantId('tenant-B');
+      expect(await mgr.verify(payload, sigUnderA)).toBe(false);
+
+      mgr.close();
+    });
+
+    // =========================================================================
+    // TASK-317 W3.1 (M-1) — empty/whitespace tenantId behaves like no tenant.
+    //
+    // The SharedWorker `keyFor('')` is falsy → master key, but the fallback
+    // derived HKDF(secret, '') for ANY non-undefined tenantId. So a blank /
+    // whitespace tenant signed under a derived subkey in fallback mode but the
+    // master secret in worker mode — an asymmetry. setTenantId now normalises
+    // empty/whitespace → undefined so BOTH modes fall back to the master/global
+    // secret identically (cosmetic fail-closed symmetry).
+    // =========================================================================
+    it('TASK-317 W3.1 (M-1) — whitespace/empty tenantId behaves like no tenant (master-secret parity with worker keyFor)', async () => {
+      const noTenant = new CrossTabHmacKeyManager();
+      const blankTenant = new CrossTabHmacKeyManager();
+      // Whitespace-only must normalise to undefined → master/global key,
+      // NOT a derived HKDF(secret, '   ') subkey.
+      blankTenant.setTenantId('   ');
+
+      const payload = bytes(32, 8);
+      const sig = await blankTenant.sign(payload);
+
+      // Same-page managers share FALLBACK_SECRET; with the blank tenant
+      // normalised away both use the global key, so the no-tenant manager
+      // verifies the blank-tenant manager's signature.
+      expect(await noTenant.verify(payload, sig)).toBe(true);
+
+      noTenant.close();
+      blankTenant.close();
     });
   });
 

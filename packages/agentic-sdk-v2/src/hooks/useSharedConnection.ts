@@ -144,6 +144,21 @@ export function useSharedSSE(connectionId: string, options: UseSharedSSEOptions,
 export interface UseSharedWSOptions {
   url: string;
   protocols?: string[];
+  /**
+   * TASK-317 C-4 (AC-8) — owner user id. Mirrors `UseSharedSSEOptions.userId`
+   * (TASK-297 H-SSE-5): the SharedWorker WebSocket dedup key is `(id, userId)`,
+   * so an upstream socket is never shared across distinct user contexts even
+   * when the base connection id collides. Without it every subscription
+   * collapses to the worker key `id::anon` and two users on the same id share
+   * one socket — the C-4 cross-user leak.
+   */
+  userId?: string;
+  /**
+   * TASK-317 C-4 (AC-8) — active tenant id, carried alongside `userId` for
+   * diagnostics / defense-in-depth and forwarded into the `WSSubscription`
+   * so a future cross-tenant guard has the discriminator without a round-trip.
+   */
+  tenantId?: string;
   enabled?: boolean;
   onMessage?: (data: unknown) => void;
   onOpen?: () => void;
@@ -178,6 +193,8 @@ export function useSharedWS(connectionId: string, options: UseSharedWSOptions, m
       {
         url: options.url,
         protocols: options.protocols,
+        userId: options.userId,
+        tenantId: options.tenantId,
       },
       {
         onMessage: (data) => optionsRef.current.onMessage?.(data),
@@ -198,10 +215,10 @@ export function useSharedWS(connectionId: string, options: UseSharedWSOptions, m
     );
 
     return () => {
-      manager.unsubscribeWS(connectionId);
+      manager.unsubscribeWS(connectionId, options.userId);
       setIsConnected(false);
     };
-  }, [connectionId, options.url, options.enabled, manager]);
+  }, [connectionId, options.url, options.userId, options.tenantId, options.enabled, manager]);
 
   return useMemo(() => ({ isConnected, error, send }), [isConnected, error, send]);
 }
