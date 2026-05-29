@@ -27,6 +27,27 @@ import {
 } from '../agenticStore';
 import type { ContextItem, SummaryResponse, PipelineStateInfo } from '../../types';
 
+// TASK-317 W1.4 (AC-3) — mock the shared `arcaai-config` IDB helpers so the
+// rewritten `clearOnLogout` contract can assert the outgoing personalization
+// row is deleted by namespace (and that no wholesale `.clear()` runs) without a
+// real IndexedDB. Only `clearOnLogout` touches configDB; other store actions do
+// not, so this mock is inert for the rest of the suite.
+vi.mock('../../core/configDB', () => ({
+    ARCAAI_CONFIG_DB_NAME: 'arcaai-config',
+    ARCAAI_CONFIG_DB_VERSION: 3,
+    USER_PREFERENCES_STORE: 'user-preferences',
+    PERSONALIZATION_STORE: 'personalization',
+    LEGACY_PERSONALIZATION_GLOBAL_KEY: 'arcaai-personalization',
+    openConfigDB: vi.fn(),
+    applyConfigDBUpgrade: vi.fn(),
+    configDBGet: vi.fn(async () => undefined),
+    configDBSet: vi.fn(async () => {}),
+    configDBDelete: vi.fn(async () => {}),
+    configDBClear: vi.fn(async () => {}),
+}));
+
+import { configDBDelete, configDBClear } from '../../core/configDB';
+
 // Reset store before each test
 const initialStoreState = useAgenticStore.getState();
 
@@ -902,30 +923,56 @@ describe('agenticStore', () => {
     });
 
     // =========================================================================
-    // ENH-07: clearOnLogout should remove all SDK localStorage keys
+    // TASK-317 W1.4 (AC-3) — clearOnLogout is scoped to the OUTGOING namespace.
+    //
+    // CONTRACT INVERSION (was ENH-07 / audit C-2): clearOnLogout previously
+    // swept EVERY `arcaai-user-preferences/*` key and wholesale-cleared the IDB
+    // stores, wiping OTHER tenants'/users' browser data on a shared workstation.
+    // It now removes ONLY the outgoing `arcaai-user-preferences/${ns}`
+    // localStorage key and the `arcaai-personalization/${ns}` IDB row. The
+    // assertions below were rewritten (not extended) to lock in that scoping —
+    // tenant-B's data MUST survive tenant-A's logout.
     // =========================================================================
 
-    describe('ENH-07: clearOnLogout', () => {
-        it('should clear all SDK localStorage keys and reset sensitive state', () => {
-            localStorage.setItem('arcaai-preferences', '{"theme":"dark"}');
-            localStorage.setItem('arcaai-selected-models', '{"stt":"model-1"}');
-            // TASK-297 DEF-H1 — per-user namespaced keys are also cleared.
+    describe('TASK-317 W1.4 — clearOnLogout outgoing-namespace scoping (AC-3)', () => {
+        it('removes ONLY the outgoing namespace localStorage key, leaving other tenants intact', () => {
             localStorage.setItem('arcaai-user-preferences/t1::u1', '{"lang":"en"}');
             localStorage.setItem('arcaai-user-preferences/t2::u2', '{"lang":"th"}');
-            // TASK-297 DEF-L1 — `arcaai-session-state` is dead and NOT touched
-            // by clearOnLogout (the constant was removed entirely).
             localStorage.setItem('unrelated-key', 'keep-me');
 
-            useAgenticStore.getState().clearOnLogout();
+            useAgenticStore.getState().clearOnLogout('t1::u1');
 
-            expect(localStorage.getItem('arcaai-preferences')).toBeNull();
-            expect(localStorage.getItem('arcaai-selected-models')).toBeNull();
+            // Outgoing tenant/user key is gone...
             expect(localStorage.getItem('arcaai-user-preferences/t1::u1')).toBeNull();
-            expect(localStorage.getItem('arcaai-user-preferences/t2::u2')).toBeNull();
+            // ...but tenant B's namespaced data SURVIVES (the old C-2 sweep wiped it).
+            expect(localStorage.getItem('arcaai-user-preferences/t2::u2')).toBe('{"lang":"th"}');
             expect(localStorage.getItem('unrelated-key')).toBe('keep-me');
         });
 
-        // TASK-297 DEF-H6 — clearOnLogout drops the personalization tier too.
+        it('does NOT iterate-and-delete every arcaai-user-preferences/* key or touch legacy globals', () => {
+            localStorage.setItem('arcaai-preferences', '{"theme":"dark"}');
+            localStorage.setItem('arcaai-selected-models', '{"stt":"m1"}');
+            localStorage.setItem('arcaai-user-preferences/t2::u2', '{"lang":"th"}');
+
+            useAgenticStore.getState().clearOnLogout('t1::u1');
+
+            // No wholesale sweep — a different tenant's namespaced key survives.
+            expect(localStorage.getItem('arcaai-user-preferences/t2::u2')).toBe('{"lang":"th"}');
+            // Legacy global keys are no longer this action's concern (the v3
+            // configDB upgrade handles the legacy personalization row).
+            expect(localStorage.getItem('arcaai-preferences')).toBe('{"theme":"dark"}');
+            expect(localStorage.getItem('arcaai-selected-models')).toBe('{"stt":"m1"}');
+        });
+
+        it('deletes ONLY the outgoing namespace personalization IDB row, never a wholesale .clear()', () => {
+            useAgenticStore.getState().clearOnLogout('t1::u1');
+
+            expect(configDBDelete).toHaveBeenCalledWith('personalization', 'arcaai-personalization/t1::u1');
+            expect(configDBDelete).not.toHaveBeenCalledWith('personalization', 'arcaai-personalization/t2::u2');
+            expect(configDBClear).not.toHaveBeenCalled();
+        });
+
+        // TASK-297 DEF-H6 — clearOnLogout still drops the in-memory personalization tier.
         it('TASK-297 DEF-H6: clearOnLogout resets the personalization tier', () => {
             useAgenticStore.setState({
                 preferences: { language: 'th' } as unknown as never,
@@ -937,7 +984,7 @@ describe('agenticStore', () => {
                 personalizationManager: { fake: true } as unknown as never,
             });
 
-            useAgenticStore.getState().clearOnLogout();
+            useAgenticStore.getState().clearOnLogout('t1::u1');
 
             const s = useAgenticStore.getState();
             expect(s.preferences).toEqual({});
@@ -957,7 +1004,7 @@ describe('agenticStore', () => {
                 timestamp: Date.now(),
             } as unknown as ContextItem);
 
-            useAgenticStore.getState().clearOnLogout();
+            useAgenticStore.getState().clearOnLogout('t1::u1');
 
             const state = useAgenticStore.getState();
             expect(state.contextItems).toEqual([]);
