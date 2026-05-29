@@ -49,6 +49,17 @@ run individually:
 | `scripts/setup-dev-vault-db.sh` | Creates the `vault_admin` + `hope_app_template` PG roles (via `vault-admin-bootstrap.sql`), (re-)points Vault's DB engine at the real dev DB (`hope`), and smoke-tests credential issuance. | After a Docker volume reset, or whenever migrations recreate the schema. |
 | `pnpm db:all` | Prisma migrations + seed (creates the `hope` DB + `core` schema the DB engine grants against). | Standard migration workflow. |
 
+> **`pnpm db:all` RESETS the database.** It runs `prisma db push --force-reset
+> --accept-data-loss`, which **drops and recreates** the schema (and trips
+> Prisma's built-in agent guard that refuses the reset without explicit
+> consent). That's the intended behaviour for a fresh/empty DB. On a DB whose
+> data you want to keep, use the **non-destructive** push instead:
+>
+> ```bash
+> pnpm gen:prisma push --all   # plain `prisma db push` — no reset / data loss
+> pnpm db:seed
+> ```
+
 ### Why you don't re-run the refresh script on every restart
 
 The dev AppRole is provisioned with `secret_id_ttl=720h` and
@@ -88,6 +99,32 @@ The `hope-app` policy and AppRole are pre-provisioned.
 To run without Vault, set `SECRETS_PROVIDER=env` and `PG_DYNAMIC_CREDS=false`
 in `.env.dev`; the app then reads secrets directly from `.env.dev` and connects
 with the static `DATABASE_URL`. The Vault containers can stay down in this mode.
+
+### Troubleshooting a failed `pnpm dev:api` boot
+
+The errors below are the common first-boot failures on a fresh checkout (or
+after `docker compose down -v`, which wipes the in-memory dev Vault). They
+surface in boot order — fixing one reveals the next — so the fastest path is
+just `pnpm dev:setup`, which performs every step idempotently. To debug a
+single stage:
+
+| Symptom in the boot log | Root cause | Fix |
+|---|---|---|
+| `SecretsModule: VAULT_ROLE_ID (or VAULT_ROLE_ID_FILE) is required when SECRETS_PROVIDER=vault` | `.env.dev` defaults to `SECRETS_PROVIDER=vault` but `VAULT_ROLE_ID` / `VAULT_SECRET_ID` are blank (fresh clone, or the Vault container was recreated). | `./scripts/refresh-vault-creds.sh` (needs the `hope-vault` container up). |
+| `CoreDatabaseService … failed to find entry for connection with name: "hope-main"` | Vault's `database` engine has the `hope-app-role` role but **no** `database/config/hope-main` connection — `setup-dev-vault-db.sh` hasn't run (or ran before migrations existed). | `./scripts/setup-dev-vault-db.sh`. |
+| `setup-dev-vault-db.sh` → `ERROR: schema 'core' not found in database 'hope'` | The dev DB was never migrated/seeded. | `pnpm gen:prisma push --all && pnpm db:seed`, then re-run `setup-dev-vault-db.sh`. |
+| `Starting inspector on 127.0.0.1:9229 failed: address already in use`, or the API can't bind `8868` | A stale `nest start --watch` from a previous session is still holding the port — watch-mode children outlive the shell that started them. | `lsof -nP -iTCP:8868 -iTCP:9229 -sTCP:LISTEN` → `kill -9 <pid>` (or `pkill -9 -f 'hope-v2/apps/api'`), then retry. |
+| `wrapping token is not valid` on the **2nd** boot (first `--watch` reload) | `VAULT_WRAPPED_SECRET_ID` (the single-use prod shape) is set in dev. | Blank it and use the raw, reusable `VAULT_SECRET_ID`: re-run `refresh-vault-creds.sh`. |
+
+A clean boot ends with:
+
+```text
+[VaultSecretsProvider] Vault AppRole login successful (lease_duration=3600s, renewable=true)
+[NestApplication] Nest application successfully started
+[Bootstrap] Application started { environment=development, port=8868, … }
+```
+
+Verify it serves traffic: `curl -s http://localhost:8868/api/v1/health` → `{"status":"healthy",…}`.
 
 ### Manual AppRole bootstrap (reference / debugging)
 

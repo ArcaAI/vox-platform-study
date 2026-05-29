@@ -7,6 +7,7 @@ import {
   JWT_AUTH_GUARD,
   LoggingServiceModule,
   ObservabilityModule,
+  RateLimitServiceModule,
   RedisServiceModule,
   SysEventServiceModule,
   UnifiedAuthGuard,
@@ -30,6 +31,7 @@ import { VaultRotationWorkerModule } from './workers/vault-rotation.worker.modul
 import { ThrottleConfigModule, TieredThrottlerGuard } from './modules/throttle';
 
 // Feature modules
+import { RateLimitAdminModule } from './modules/admin-rate-limit/rate-limit-admin.module';
 import { ApiKeyModule } from './modules/api-key/api-key.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -162,6 +164,10 @@ const common = [
   // in `guards[]` below can be constructed via DI. Placed early so the guard's
   // dependencies resolve before the feature modules load.
   ThrottleConfigModule,
+  // TASK-316 — DB-backed rate-limit settings. Exports IRateLimitSettingsService
+  // so the TieredThrottlerGuard (APP_GUARD above) resolves live limits from the
+  // GlobalSetting cache, and IRateLimitAdminService for the admin endpoint.
+  RateLimitServiceModule,
   ScheduleModule.forRoot(),
   EventEmitterModule.forRoot(),
   SysEventServiceModule,
@@ -195,6 +201,7 @@ const common = [
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const featureModules: any[] = [
+  RateLimitAdminModule,
   ApiKeyModule,
   AuthModule,
   AuditLogModule,

@@ -25,5 +25,7 @@ export * from './pstudio';
 export * from './tenant-bucket';
 export * from './storage-access-key';
 export * from './queue-admin';
+// TASK-316 — DB-backed, admin-controlled rate-limit configuration.
+export * from './rate-limit';
 // TASK-307 W6.2 — RBAC services exposed for controllers (closes C-10 / H-9).
 export * from './rbac';

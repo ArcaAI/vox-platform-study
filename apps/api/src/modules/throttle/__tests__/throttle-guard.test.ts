@@ -21,6 +21,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { IRateLimitSettingsService } from '@arcaai/applications';
 import { ThrottleConfigModule } from '../throttle.module';
 import { TieredThrottlerGuard } from '../tiered-throttler.guard';
 
@@ -108,6 +109,132 @@ describe('TieredThrottlerGuard (integration)', () => {
       const res = await hit('/t/skip');
       expect(res.status).not.toBe(429);
       expect(res.status).toBe(200);
+    }
+  });
+});
+
+/**
+ * TASK-316 — DB-backed live overrides.
+ *
+ * Wires a STUB `IRateLimitSettingsService` so the guard resolves limits from
+ * "the database" without any real DB/cache. Controllers are named to match the
+ * `KNOWN_THROTTLED_ROUTES` registry (`AuthController.login` → `auth.login`,
+ * `ApiHealthController` → `health`) so the guard's `resolveRouteId` maps onto
+ * them. Each assertion targets a distinct route so the in-memory counters never
+ * bleed across tests.
+ */
+@Controller('auth')
+class AuthController {
+  // Decorator baseline = 5; a per-endpoint DB override of 2 must win.
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Get('login')
+  login() {
+    return { ok: 'login' };
+  }
+}
+
+@Controller('hc')
+class ApiHealthController {
+  @Get('ping')
+  ping() {
+    return { ok: 'ping' };
+  }
+}
+
+@Controller('live')
+class LiveController {
+  @Get('open')
+  open() {
+    return { ok: 'open' };
+  }
+
+  @Get('kill')
+  kill() {
+    return { ok: 'kill' };
+  }
+}
+
+describe('TieredThrottlerGuard (DB-backed live overrides)', () => {
+  let app: INestApplication;
+  const prevEnabled = process.env.RATE_LIMIT_ENABLED;
+
+  // Mutable stub state, reconfigured per test.
+  const stub = {
+    enabled: true,
+    tier: { limit: 1000, ttl: 60000 } as { limit: number; ttl: number },
+    routeOverride: undefined as { limit?: number; ttl?: number; enabled?: boolean } | undefined,
+  };
+
+  const settings: IRateLimitSettingsService = {
+    isEnabled: () => stub.enabled,
+    getTier: () => stub.tier,
+    getRouteOverride: () => stub.routeOverride,
+  };
+
+  const hit = (path: string) => request(app.getHttpServer()).get(path);
+
+  beforeAll(async () => {
+    process.env.RATE_LIMIT_ENABLED = 'true';
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [ThrottleConfigModule],
+      controllers: [AuthController, ApiHealthController, LiveController],
+      providers: [
+        { provide: APP_GUARD, useClass: TieredThrottlerGuard },
+        { provide: IRateLimitSettingsService, useValue: settings },
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    if (app) await app.close();
+    if (prevEnabled === undefined) {
+      delete process.env.RATE_LIMIT_ENABLED;
+    } else {
+      process.env.RATE_LIMIT_ENABLED = prevEnabled;
+    }
+  });
+
+  it('(a) DB tier baseline changes the effective default-tier limit live: /live/open 429s on the 3rd call when tier.default.limit = 2', async () => {
+    stub.enabled = true;
+    stub.routeOverride = undefined;
+    stub.tier = { limit: 2, ttl: 60000 };
+
+    expect((await hit('/live/open')).status).toBe(200);
+    expect((await hit('/live/open')).status).toBe(200);
+    expect((await hit('/live/open')).status).toBe(429);
+  });
+
+  it('(b) per-endpoint DB override beats the @Throttle decorator: /auth/login (decorator 5) 429s on the 3rd call when override limit = 2', async () => {
+    stub.enabled = true;
+    stub.tier = { limit: 1000, ttl: 60000 };
+    stub.routeOverride = { limit: 2 };
+
+    expect((await hit('/auth/login')).status).toBe(200);
+    expect((await hit('/auth/login')).status).toBe(200);
+    expect((await hit('/auth/login')).status).toBe(429);
+  });
+
+  it('(c) global kill-switch: enabled=false never 429s /live/kill in 12 rapid calls', async () => {
+    stub.enabled = false;
+    stub.tier = { limit: 1, ttl: 60000 };
+    stub.routeOverride = undefined;
+
+    for (let i = 0; i < 12; i++) {
+      expect((await hit('/live/kill')).status).toBe(200);
+    }
+  });
+
+  it('(d) per-route disable: route override enabled=false never 429s /hc/ping in 12 rapid calls', async () => {
+    stub.enabled = true;
+    stub.tier = { limit: 1, ttl: 60000 };
+    stub.routeOverride = { enabled: false };
+
+    for (let i = 0; i < 12; i++) {
+      expect((await hit('/hc/ping')).status).toBe(200);
     }
   });
 });

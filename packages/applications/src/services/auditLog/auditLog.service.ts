@@ -1,7 +1,7 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { IAuditLogService } from './IAuditLogService';
-import { AuditLogRepository } from '@arcaai/domains';
+import { AuditLogRepository, AuditLogEntityMapper, CoreDatabaseService } from '@arcaai/domains';
 import { EventTypes, AuditAction, AuditLogEntity, ResourceType, AuditLogFactory, SysEventType } from '@arcaai/domains';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -46,6 +46,11 @@ export class AuditLogService extends BaseService implements IAuditLogService {
     private readonly auditLogRepository: AuditLogRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-314 §7 — the authentication-audit write must bypass the tenant-scope
+    // `$extends` via the unscoped `baseClient` (see handleUserAuthenticatedEvent).
+    // Same sanctioned escape hatch UserRoleAssignmentService uses for the
+    // pre-auth identity reads.
+    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
   ) {
     super(eventEmitter, clsService, ResourceType.AuditLog);
   }
@@ -332,7 +337,23 @@ export class AuditLogService extends BaseService implements IAuditLogService {
         // IMPERSONATION audits are platform-level events per the cursor rule.
         tenantId: this.tenantId ?? '00000000-0000-0000-0000-000000000000',
       });
-      await this.auditLogRepository.create(auditLog);
+
+      // TASK-314 §7 — baseClient (tenant-scope bypass). `trackAuthentication`
+      // emits `user.authenticated` while CLS still has NO tenant context (login
+      // is a public route, so this @OnEvent handler runs in the unauthenticated
+      // request scope). `AuditLog` is tenant-scoped (TASK-305 Phase B), so the
+      // scoped repository write throws "tenant context required for model
+      // AuditLog" and the LOGIN/IMPERSONATION row is silently dropped by the
+      // catch below. The row's tenantId is already resolved above (CLS tenant,
+      // or SYSTEM_TENANT_ID for tenant-less/system logins), so the scope filter
+      // adds nothing here — the unscoped create is the sanctioned path, mirroring
+      // the pre-auth identity reads in UserRoleAssignmentService (TASK-314).
+      const persistence = AuditLogEntityMapper.getInstance().toPersistence(auditLog) as unknown as Record<string, unknown>;
+      // Drop null scalars so Prisma's JSON columns (`data`/`metadata`) accept the
+      // payload, matching Repository.create's `removeNullValues` behaviour.
+      const data = Object.fromEntries(Object.entries(persistence).filter(([, value]) => value !== null));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await this.databaseService.baseClient.auditLog.create({ data: data as any });
 
       this.logger.debug({
         message: isImpersonatedRequest
