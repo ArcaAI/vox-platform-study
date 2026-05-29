@@ -131,6 +131,15 @@ const consultationA = {
   updatedAt: '2026-05-30T00:00:00.000Z',
 } as Consultation;
 
+const consultationB = {
+  id: 'consult-B',
+  patientId: 'patient-B',
+  doctorId: 'doctor-B',
+  appointmentDate: '2026-05-30',
+  createdAt: '2026-05-30T00:00:00.000Z',
+  updatedAt: '2026-05-30T00:00:00.000Z',
+} as Consultation;
+
 /**
  * Capture the per-provider `StoreApi` the surrounding `AgenticProvider` exposes
  * via `AgenticStoreContext`. Two providers → two independent stores.
@@ -185,5 +194,64 @@ describe('TASK-317 W4 — multi-instance store isolation (C-1, E-5): two Agentic
     });
     expect(a.getState().consultation).toMatchObject({ id: 'consult-A' });
     expect(b.getState().consultation).toBeNull();
+  });
+
+  it('(b) a mid-session tenant switch in one provider does not disturb the other', async () => {
+    const { a, b } = await renderTwoProviders();
+
+    // Both tenants have an active session (consultation PHI + raw transcript).
+    act(() => {
+      a.getState().setConsultation(consultationA);
+      a.getState().setCurrentTranscript('tenant-A raw transcript — PHI');
+      b.getState().setConsultation(consultationB);
+      b.getState().setCurrentTranscript('tenant-B raw transcript — PHI');
+    });
+
+    // Tenant A switches tenant mid-session → its PHI/session slices reset
+    // (`clearTenantSessionData()` is exactly what the provider runs on switch).
+    act(() => {
+      a.getState().clearTenantSessionData();
+    });
+
+    // A's session is gone; B's session is fully intact (no cross-tenant reset).
+    expect(a.getState().consultation).toBeNull();
+    expect(a.getState().currentTranscript).toBe('');
+    expect(b.getState().consultation).toMatchObject({ id: 'consult-B' });
+    expect(b.getState().currentTranscript).toBe('tenant-B raw transcript — PHI');
+  });
+
+  it('(c) impersonation start→stop in one provider keeps the other isolated', async () => {
+    const { a, b } = await renderTwoProviders();
+
+    // Tenant B has its own authenticated user + personalization.
+    act(() => {
+      b.getState().setAuthUser({ id: 'user-B', tenantId: TENANT_B });
+      b.getState().setPreferences({ dnaStyleId: 'B-voice' });
+    });
+
+    // Tenant A's admin impersonates a different user and loads their profile.
+    act(() => {
+      a.getState().setAuthUser({ id: 'admin-A', tenantId: TENANT_A });
+      a.getState().setOriginalUser(a.getState().authUser);
+      a.getState().setImpersonatedUser({ id: 'patient-X', tenantId: TENANT_A });
+      a.getState().setPreferences({ dnaStyleId: 'impersonated-voice' });
+    });
+
+    // A reflects impersonation; B is completely untouched.
+    expect(a.getState().authImpersonatedUser).toMatchObject({ id: 'patient-X' });
+    expect(a.getState().preferences).toMatchObject({ dnaStyleId: 'impersonated-voice' });
+    expect(b.getState().authImpersonatedUser).toBeNull();
+    expect(b.getState().authUser).toMatchObject({ id: 'user-B' });
+    expect(b.getState().preferences).toMatchObject({ dnaStyleId: 'B-voice' });
+
+    // A ends impersonation → reverts to the admin; B STILL isolated throughout.
+    act(() => {
+      a.getState().setImpersonatedUser(null);
+      a.getState().setOriginalUser(null);
+    });
+    expect(a.getState().authImpersonatedUser).toBeNull();
+    expect(a.getState().authUser).toMatchObject({ id: 'admin-A' });
+    expect(b.getState().authUser).toMatchObject({ id: 'user-B' });
+    expect(b.getState().preferences).toMatchObject({ dnaStyleId: 'B-voice' });
   });
 });
