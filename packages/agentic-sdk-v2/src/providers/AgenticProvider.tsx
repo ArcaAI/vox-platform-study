@@ -179,7 +179,8 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     // TASK-317 W5.3 (AC-16 / audit E-1): the `console` path here is the
     // INTENDED fail-safe base case, not an incidental error handler.
     //
-    // `createSDKLogger` always installs an always-on ConsoleTransport whose
+    // `createSDKLogger` installs a ConsoleTransport by default (unless a
+    // consumer opts out via `config.logging.console.enabled = false`) whose
     // `initialize()` is a guaranteed no-op (see console.transport.ts), so it
     // can never fail and is functional regardless of `logger.initialize()`.
     // Only the OPTIONAL remote transports (highlight / loki / otel) perform
