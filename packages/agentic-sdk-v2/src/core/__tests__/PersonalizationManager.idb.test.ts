@@ -70,7 +70,9 @@ describe('PersonalizationManager · IDB cache (Wave 2D)', () => {
   });
 
   it('hydrate() merges cached preferences from the personalization IDB store', async () => {
-    idbStore.set('arcaai-personalization', {
+    // TASK-317 M-3 — a manager with no namespace fail-closes to `pre-login`,
+    // never the bare global key.
+    idbStore.set('arcaai-personalization/pre-login', {
       language: 'th',
       localConfig: { stt: { modelId: 'whisper-tiny' } },
     });
@@ -114,7 +116,7 @@ describe('PersonalizationManager · IDB cache (Wave 2D)', () => {
 
     await manager.updatePreferences({ language: 'th' });
 
-    expect(idbStore.get('arcaai-personalization')).toEqual({ language: 'th' });
+    expect(idbStore.get('arcaai-personalization/pre-login')).toEqual({ language: 'th' });
   });
 
   it('hydrate() recovers from IDB read failures by keeping the in-memory defaults', async () => {

@@ -91,7 +91,7 @@ describe('PersonalizationManager', () => {
 
         it('should hydrate cached preferences from the IDB personalization store', async () => {
             // TASK-304 Wave 2D — cache lives in IDB, not localStorage.
-            idbStore.set('arcaai-personalization', { theme: 'dark' });
+            idbStore.set('arcaai-personalization/pre-login', { theme: 'dark' });
 
             const manager = new PersonalizationManager(
                 { storage: 'local', defaults: { language: 'en' } },
@@ -158,7 +158,7 @@ describe('PersonalizationManager', () => {
             await manager.updatePreferences({ language: 'th' });
 
             expect(manager.get('language')).toBe('th');
-            expect(idbStore.get('arcaai-personalization')).toEqual({ language: 'th' });
+            expect(idbStore.get('arcaai-personalization/pre-login')).toEqual({ language: 'th' });
         });
 
         it('should sync to backend in backend mode', async () => {
@@ -626,7 +626,7 @@ describe('PersonalizationManager', () => {
                 },
             });
 
-            const stored = idbStore.get('arcaai-personalization') as {
+            const stored = idbStore.get('arcaai-personalization/pre-login') as {
                 workflowMode?: string;
                 localConfig?: { stt?: { modelId?: string } };
             };
@@ -635,7 +635,7 @@ describe('PersonalizationManager', () => {
         });
 
         it('should load workflow preferences from the IDB cache on hydrate', async () => {
-            idbStore.set('arcaai-personalization', {
+            idbStore.set('arcaai-personalization/pre-login', {
                 workflowMode: 'remote',
                 language: 'th',
             });
@@ -1023,7 +1023,7 @@ describe('PersonalizationManager', () => {
 
             await manager.loadFromBackend();
 
-            const stored = idbStore.get('arcaai-personalization') as {
+            const stored = idbStore.get('arcaai-personalization/pre-login') as {
                 language?: string;
                 workflowMode?: string;
             };

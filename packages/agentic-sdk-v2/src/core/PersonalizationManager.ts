@@ -12,12 +12,28 @@ import { configDBGet, configDBSet, PERSONALIZATION_STORE } from './configDB';
 import type { ISDKLogger } from './logger';
 
 /**
- * TASK-304 Wave 2D — IDB cache key inside the shared `arcaai-config` DB.
- * Single global key (matches the legacy `arcaai-preferences` localStorage
- * key's scope); per-user namespacing is intentionally NOT introduced here
- * because the source of truth for user-scoped data is the backend.
+ * TASK-317 W1.1 (AC-1) — prefix for the personalization IDB cache row inside
+ * the shared `arcaai-config` DB's `personalization` store. The row is keyed
+ * per `${tenantId}::${userId}` namespace via {@link personalizationCacheKey}
+ * so a shared workstation cannot hydrate the next user from the previous
+ * user's voice-profile / model ids (closes audit C-3). Matches the legacy
+ * unscoped key, which the configDB v3 upgrade deletes one-time (AC-2).
  */
-const PERSONALIZATION_CACHE_KEY = 'arcaai-personalization';
+export const PERSONALIZATION_CACHE_KEY_PREFIX = 'arcaai-personalization' as const;
+
+/**
+ * Compose the personalization cache key for a given namespace. Mirrors the
+ * `USER_PREFERENCES_STORE` namespacing AgenticProvider already applies.
+ *
+ * TASK-317 M-3 — fail-closed: a missing/empty namespace maps to the `pre-login`
+ * bootstrap namespace, NEVER the bare prefix. The bare prefix is exactly the
+ * legacy global row that the configDB v3 upgrade deletes and that every user on
+ * an origin would otherwise share, so that path must be unreachable.
+ */
+export function personalizationCacheKey(namespace?: string): string {
+  const ns = namespace && namespace.length > 0 ? namespace : 'pre-login';
+  return `${PERSONALIZATION_CACHE_KEY_PREFIX}/${ns}`;
+}
 
 /**
  * Personalization change callback
@@ -83,11 +99,20 @@ export class PersonalizationManager {
   private impersonationReadOnly = false;
   /** TASK-297 DEF-H4 — optional cascade sink. */
   private configManager?: PersonalizationConfigManager;
+  /**
+   * TASK-317 W1.1/W1.2 (AC-1) — resolves the active `${tenantId}::${userId}`
+   * namespace. AgenticProvider passes a live accessor (`() => namespaceRef`),
+   * so this manager follows the real namespace once `/auth/me` resolves it
+   * instead of capturing `pre-login` by value at construction (review C-1).
+   * A plain string is still accepted for direct construction in unit tests.
+   */
+  private readonly resolveNamespace: () => string | null | undefined;
 
-  constructor(config: PersonalizationConfig, apiClient: AgenticClient, logger?: ISDKLogger) {
+  constructor(config: PersonalizationConfig, apiClient: AgenticClient, logger?: ISDKLogger, namespace?: string | (() => string | null | undefined)) {
     this.config = config;
     this.apiClient = apiClient;
     this.logger = logger;
+    this.resolveNamespace = typeof namespace === 'function' ? namespace : () => namespace;
 
     // TASK-304 Wave 2D — constructor stays synchronous; the IDB hydrate
     // step is exposed as the async `hydrate()` method so AgenticProvider
@@ -106,7 +131,18 @@ export class PersonalizationManager {
   }
 
   /**
-   * Hydrate the in-memory preferences from the IDB cache.
+   * TASK-317 W1.2 (AC-1) — per-access IDB cache key, computed from the live
+   * namespace so a re-key (after `/auth/me`, on tenant/user switch) takes
+   * effect without reconstructing the manager. `personalizationCacheKey`
+   * fail-closes a missing namespace to `pre-login` (M-3).
+   */
+  private get cacheKey(): string {
+    return personalizationCacheKey(this.resolveNamespace() ?? undefined);
+  }
+
+  /**
+   * Hydrate the in-memory preferences from the IDB cache for the CURRENT
+   * namespace.
    *
    * Safe to call multiple times. Failures are logged at `warn` level and
    * leave the existing in-memory state intact, so the SDK can still
@@ -115,19 +151,30 @@ export class PersonalizationManager {
    * TASK-304 Wave 2D — replaces the sync `localStorage` read used by
    * earlier versions; legacy `arcaai-preferences` localStorage data is
    * intentionally NOT migrated (user choice: `ignore-old-data`).
+   *
+   * TASK-317 W1.2 (review I-1) — AUTHORITATIVE per namespace: reset to the
+   * constructor baseline (config defaults) BEFORE applying the cached row, and
+   * do NOT early-return on an empty row. AgenticProvider now calls `hydrate()`
+   * on every tenant/user switch and after `/auth/me`, so the previous merge
+   * (`{ ...this.preferences, ...cached }`) accumulated state across namespaces:
+   * on the impersonation round-trip (admin → impersonate(user) →
+   * `endImpersonation`) the impersonated user's `dnaStyleId` / `custom` /
+   * `localConfig` leaked back into the admin's in-memory prefs (and into the
+   * admin's next `saveLocal()`). Mirrors `ModelRegistry.reloadSelected()`,
+   * which already REPLACES `this.selected`. The baseline matches the ctor's
+   * `{ ...config.defaults }` exactly.
    */
   async hydrate(): Promise<void> {
     if (typeof window === 'undefined') return;
 
     try {
-      const cached = await configDBGet<UserPreferences>(PERSONALIZATION_STORE, PERSONALIZATION_CACHE_KEY);
-      if (!cached) return;
+      const cached = await configDBGet<UserPreferences>(PERSONALIZATION_STORE, this.cacheKey);
 
-      this.preferences = { ...this.preferences, ...cached };
-      this.logger?.debug('Loaded preferences from IDB cache', {
+      this.preferences = { ...this.config.defaults, ...(cached ?? {}) };
+      this.logger?.debug('Hydrated preferences from IDB cache (authoritative per namespace)', {
         operation: 'hydrate',
         component: 'PersonalizationManager',
-        attributes: { preferenceKeys: Object.keys(cached) },
+        attributes: { preferenceKeys: cached ? Object.keys(cached) : [], hadCachedRow: !!cached },
       });
       this.notifyListeners();
     } catch (error) {
@@ -289,7 +336,7 @@ export class PersonalizationManager {
     if (typeof window === 'undefined') return;
 
     try {
-      await configDBSet(PERSONALIZATION_STORE, PERSONALIZATION_CACHE_KEY, this.preferences);
+      await configDBSet(PERSONALIZATION_STORE, this.cacheKey, this.preferences);
       this.logger?.trace('Saved preferences to IDB cache', {
         operation: 'saveLocal',
         component: 'PersonalizationManager',
