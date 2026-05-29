@@ -5,7 +5,13 @@ import type { SecretsService } from '../SecretsService';
 
 function makeSvc(
   resp:
-    | { ok: true; latencyMs: number; provider: string }
+    | {
+        ok: true;
+        latencyMs: number;
+        provider: string;
+        degraded?: boolean;
+        detail?: string;
+      }
     | { ok: false; latencyMs: number; provider: string; detail: string },
 ): SecretsService {
   return {
@@ -39,5 +45,24 @@ describe('SecretsHealthIndicator', () => {
     const ind = new SecretsHealthIndicator(svc);
     const res = await ind.isHealthy('secrets');
     expect(res.secrets).not.toHaveProperty('detail');
+  });
+
+  // TASK-312 B.4 — the AppRole token-renewal / DB-lease-renewal SWR latch sets
+  // degraded=true while ok stays true. Readiness must NOT 503 (the pod still
+  // serves on cached creds), but the flag + diagnostic MUST reach Terminus so a
+  // dashboard/alert can recycle the pod before the lease actually expires.
+  it('surfaces degraded=true (with detail) on the result while staying up (SWR)', async () => {
+    const svc = makeSvc({
+      ok: true,
+      latencyMs: 7,
+      provider: 'vault',
+      degraded: true,
+      detail: 'token-renewal failing (3 consecutive)',
+    });
+    const ind = new SecretsHealthIndicator(svc);
+    const res = await ind.isHealthy('secrets');
+    expect(res.secrets.status).toBe('up');
+    expect(res.secrets.degraded).toBe(true);
+    expect(res.secrets.detail).toMatch(/token-renewal/);
   });
 });

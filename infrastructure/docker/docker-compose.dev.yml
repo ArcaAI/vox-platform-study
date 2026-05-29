@@ -50,6 +50,12 @@ services:
       - '8200:8200'
     volumes:
       - vault-data:/vault/file
+      # TASK-312 A.4 — audit log on a host bind-mount so the API process
+      # (which runs on the HOST via `pnpm dev:api`, not in a container) can
+      # tail it for the VaultRotationWorker. A named volume would not be
+      # host-readable at a stable path. /tmp is portable across dev machines
+      # and keeps a committed .env.dev free of machine-specific absolute paths.
+      - /tmp/hope-vault-audit:/vault/audit
       - ./configs/vault/dev-init.sh:/vault/init/dev-init.sh:ro
     environment:
       VAULT_ADDR: 'http://0.0.0.0:8200'
@@ -80,6 +86,14 @@ services:
     environment:
       VAULT_ADDR: 'http://vault:8200'
       VAULT_DEV_ROOT_TOKEN: ${VAULT_DEV_ROOT_TOKEN:-root}
+      # Phase 5 database-engine target. Defaults point at the *host* PG so
+      # the dynamic-credential path can mint users against the developer's
+      # local Postgres without joining the docker network.
+      VAULT_DB_HOST: ${VAULT_DB_HOST:-host.docker.internal}
+      VAULT_DB_PORT: ${VAULT_DB_PORT:-5432}
+      VAULT_DB_NAME: ${VAULT_DB_NAME:-hope}
+      VAULT_DB_ADMIN_USER: ${VAULT_DB_ADMIN_USER:-vault_admin}
+      VAULT_DB_ADMIN_PASS: ${VAULT_DB_ADMIN_PASS:-vault_admin_dev_pw}
     volumes:
       - ./configs/vault/dev-init.sh:/vault/init/dev-init.sh:ro
       - ./configs/vault/policies:/vault/init/policies:ro

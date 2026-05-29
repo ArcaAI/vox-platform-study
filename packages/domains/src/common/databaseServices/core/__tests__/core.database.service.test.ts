@@ -243,6 +243,46 @@ describe('CoreDatabaseService — Vault-backed prisma factory (Phase 5 Task 5.6)
     expect(getPlatformAdminPrismaClient_Unscoped).not.toHaveBeenCalled();
     expect(getExtendedPrismaClient).not.toHaveBeenCalled();
   });
+
+  // TASK-312 A.5e — the async DI provider awaits ensureInitialized() before the
+  // service is injected; NestJS then ALSO calls onModuleInit() on the instance.
+  // The _initPromise memoization must make the Vault round-trip happen exactly
+  // once across both entry points, and a failed init must fail-fast rather than
+  // silently retry on a half-built service.
+  it('memoizes initialization across ensureInitialized + onModuleInit (single Vault round-trip)', async () => {
+    const vaultPrisma = {
+      $connect: vi.fn().mockResolvedValue(undefined),
+      $disconnect: vi.fn().mockResolvedValue(undefined),
+      $queryRawUnsafe: vi.fn(),
+      $queryRaw: vi.fn(),
+    };
+    const vaultFactory = vi.fn(async () => ({
+      client: vaultPrisma,
+      extendedClient: { ...vaultPrisma },
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const { CoreDatabaseService } = await import('../core.database.service');
+    const svc = new CoreDatabaseService(vaultFactory as never);
+    await svc.ensureInitialized();
+    await svc.onModuleInit();
+    await svc.ensureInitialized();
+
+    expect(vaultFactory).toHaveBeenCalledTimes(1);
+  });
+
+  it('caches a rejected init so subsequent calls do not retry the failed factory', async () => {
+    const vaultFactory = vi.fn(async () => {
+      throw new Error('vault-down');
+    });
+
+    const { CoreDatabaseService } = await import('../core.database.service');
+    const svc = new CoreDatabaseService(vaultFactory as never);
+
+    await expect(svc.ensureInitialized()).rejects.toThrow('vault-down');
+    await expect(svc.onModuleInit()).rejects.toThrow('vault-down');
+    expect(vaultFactory).toHaveBeenCalledTimes(1);
+  });
 });
 
 /**

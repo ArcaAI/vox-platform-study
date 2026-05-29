@@ -5421,6 +5421,15 @@ Add a test that sending the same audit line twice publishes exactly two events (
 
 # Phase 7 — Production Cutover + Decommission of Env-Var Secrets
 
+> **Update (2026-05-29) — superseded/partially delivered by [TASK-312](../TASK-312-Vault-Workflow-Hardening/README.md).**
+> The app-level Day-1 hardening that Phase 7 deferred is now **done in TASK-312 §B**:
+> AppRole **token self-renewal** (renew at 50% TTL, degraded-after-3-failures
+> surfaced in `SecretsService.health()`, cancel on shutdown), **transient-error
+> retry** on reads (250/500/1000 ms, 4xx fails fast), **fail-closed boot**, the
+> `VAULT_*_FILE` read-from-file AppRole pattern, and a secret-free
+> `apps/api/.env.production`. The remaining Phase 7 work (staging→prod cutover,
+> soak, and the user-gated env/DB decommission) is tracked by TASK-312 Phases C–F.
+
 **Phase Goal**: Flip prod from `SECRETS_PROVIDER=env` to `SECRETS_PROVIDER=vault`, soak, then remove env-var fallbacks (with user-gated DELETE for any DB rows). End-state: prod reads every secret from Vault; env vars carry only bootstrap (`VAULT_ADDR`, `VAULT_ROLE_ID`, wrapped `secret_id`).
 
 **Entry Criteria**: Phases 1–6 verified in staging.

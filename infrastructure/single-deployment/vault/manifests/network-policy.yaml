@@ -1,0 +1,90 @@
+# =============================================================================
+# HOPE — Vault NetworkPolicy (TASK-312 Phase C, C.6)
+# =============================================================================
+# Default-deny ingress to the Vault SERVER pods, then allow exactly:
+#   - app namespace (default: hope)            -> 8200 (API)
+#   - the agent-injector (same ns, webhook)    -> 8200
+#   - monitoring namespace (Prometheus)        -> 8200 (/v1/sys/metrics)
+#   - peer Vault server pods                    -> 8201 (Raft) + 8200
+# Egress is left open for DNS, the k8s API (service_registration), peer Raft,
+# and the seal Vault (transit auto-unseal). Tighten egress further if your CNI
+# and threat model require it.
+#
+# Requires a CNI that enforces NetworkPolicy (Calico/Cilium; k3s default Flannel
+# does NOT — install one, or treat this as defense-in-depth documentation).
+# Namespace matching uses the auto-applied `kubernetes.io/metadata.name` label.
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-server
+  namespace: vault-system
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault
+      component: server
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # App pods (NestJS API) calling the Vault API.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: hope
+      ports:
+        - protocol: TCP
+          port: 8200
+    # Agent injector (same namespace) rendering tokens into app pods.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault-agent-injector
+      ports:
+        - protocol: TCP
+          port: 8200
+    # Prometheus scraping metrics.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8200
+    # Peer Vault servers: Raft cluster traffic (8201) + request forwarding (8200).
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+              component: server
+      ports:
+        - protocol: TCP
+          port: 8201
+        - protocol: TCP
+          port: 8200
+  egress:
+    # DNS.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # k8s API (service_registration "kubernetes").
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    # Peer Raft + the seal Vault (transit auto-unseal), both on the pod network.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault-system
+      ports:
+        - protocol: TCP
+          port: 8200
+        - protocol: TCP
+          port: 8201

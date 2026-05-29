@@ -1,0 +1,189 @@
+# =============================================================================
+# HOPE — HashiCorp Vault HA values (TASK-312 Phase C)
+# =============================================================================
+# Target: self-hosted Proxmox k3s. Official chart `hashicorp/vault`.
+#   helm repo add hashicorp https://helm.releases.hashicorp.com
+#   helm upgrade --install vault hashicorp/vault \
+#     --version 0.32.0 -n vault-system --create-namespace \
+#     -f infrastructure/single-deployment/vault/helm/values.yaml
+#
+# Pinned chart: 0.32.0  (Vault app 1.21.2).  Bump deliberately — Raft on-disk
+# format + seal migration are version-sensitive; read the chart CHANGELOG first.
+#
+# Topology: 3-node Raft (integrated storage, no Consul). Sealed by a SEPARATE
+# single-node "seal" Vault via the Transit engine (see ../seal-vault/), so the
+# HA cluster auto-unseals on every pod restart with NO manual key entry — this
+# is what makes k8s self-healing actually work (a Shamir-only cluster wedges on
+# any restart until an operator pastes unseal keys). The seal Vault itself is
+# the only thing holding Shamir keys; keep its blast radius tiny.
+#
+# TLS: terminated by the service mesh / ingress (mTLS via Linkerd/Istio assumed
+# at the platform layer). In-pod listener is plaintext on the pod network only;
+# NetworkPolicy (../manifests/network-policy.yaml) restricts who can reach it.
+# If you do NOT run a mesh, enable chart-native TLS (global.tlsDisable: false)
+# before exposing Vault beyond the pod network.
+# =============================================================================
+
+global:
+  enabled: true
+  tlsDisable: true # mesh-terminated; see header note before changing
+
+# -----------------------------------------------------------------------------
+# Agent Injector (C.4) — renders the AppRole token + secrets into app pods.
+# -----------------------------------------------------------------------------
+# HOPE's app reads role_id + a wrapped secret_id from FILES (VAULT_ROLE_ID_FILE
+# / VAULT_WRAPPED_SECRET_ID_FILE — shipped in apps/api/.env.production, TASK-312
+# B.9/B.10). We therefore use the injector ONLY to deliver those two bootstrap
+# files; the app then performs its own AppRole login + token self-renewal
+# (TASK-312 B.1–B.4). We do NOT delegate full secret templating to the agent —
+# that keeps a single, testable secrets code path (SecretsService) across local
+# dev, Docker, and every cloud. See ../README.md "Credential delivery".
+injector:
+  enabled: true
+  replicas: 1 # bump to 2 + leaderElector for injector HA in large clusters
+  logLevel: info
+  logFormat: json
+  metrics:
+    enabled: true
+  # Pin the injector agent image to the same Vault minor as the server.
+  agentImage:
+    repository: hashicorp/vault
+    tag: "1.21.2"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
+server:
+  image:
+    repository: hashicorp/vault
+    tag: "1.21.2"
+
+  logLevel: info
+  logFormat: json
+
+  # Readiness gates LB membership. standbyok=true so non-leader (standby) nodes
+  # still pass; sealed/uninitialized nodes return 503 and are pulled from the
+  # Service (raft peer discovery still works via the publishNotReadyAddresses
+  # headless service).
+  readinessProbe:
+    enabled: true
+    path: "/v1/sys/health?standbyok=true"
+  # Liveness is deliberately LENIENT: a sealed/uninitialised Vault is still
+  # ALIVE. Mapping sealed/uninit to 204 stops the kubelet from killing a node
+  # mid-bootstrap (before the init Job runs) or during a transient seal-Vault
+  # outage — both would otherwise crash-loop. Only a hung process (no HTTP
+  # response at all) fails liveness.
+  livenessProbe:
+    enabled: true
+    path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
+    initialDelaySeconds: 60
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  # Raft data PVC (one per replica).
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    mountPath: "/vault/data"
+    storageClass: null # use cluster default (k3s: local-path)
+    accessMode: ReadWriteOnce
+
+  # Audit-log PVC (C.8). Vault must be told to USE it after init:
+  #   vault audit enable file file_path=/vault/audit/vault-audit.log
+  # (done by ../bootstrap/init-job.yaml). The optional log-shipper sidecar that
+  # tails this file lives in ../manifests/audit-sidecar.values.yaml (merge with
+  # an extra `-f` — operator choice: stdout vs Loki).
+  auditStorage:
+    enabled: true
+    size: 10Gi
+    mountPath: "/vault/audit"
+    accessMode: ReadWriteOnce
+
+  # Transit-seal token is injected as VAULT_TOKEN from a k8s Secret created by
+  # ../seal-vault/seal-bootstrap.sh. The `seal "transit"` stanza below reads the
+  # token from this env var (no secret material in the ConfigMap-backed config).
+  extraSecretEnvironmentVars:
+    - envName: VAULT_TOKEN
+      secretName: vault-seal-transit
+      secretKey: token
+
+  # ServiceMonitor is shipped as a standalone manifest (../manifests/
+  # service-monitor.yaml) so it can be applied independently of this release;
+  # the chart-native one stays off to avoid a duplicate scrape target.
+  serverTelemetry:
+    serviceMonitor:
+      enabled: false
+
+  ha:
+    enabled: true
+    replicas: 3
+
+    raft:
+      enabled: true
+      setNodeId: true # node_id = pod name (vault-0/1/2)
+      config: |
+        ui = true
+
+        listener "tcp" {
+          tls_disable = 1
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+          # Prometheus scrapes /v1/sys/metrics unauthenticated (ServiceMonitor).
+          telemetry {
+            unauthenticated_metrics_access = "true"
+          }
+        }
+
+        storage "raft" {
+          path = "/vault/data"
+          retry_join {
+            leader_api_addr = "http://vault-0.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-1.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-2.vault-internal:8200"
+          }
+        }
+
+        # Transit auto-unseal (C.3). `address` is the separate seal Vault; the
+        # token comes from VAULT_TOKEN (extraSecretEnvironmentVars above). The
+        # seal Vault's `autounseal` policy grants ONLY transit encrypt/decrypt on
+        # this one key — losing this token cannot read any HOPE secret.
+        seal "transit" {
+          address         = "http://vault-seal.vault-system.svc.cluster.local:8200"
+          disable_renewal = "false"
+          key_name        = "autounseal"
+          mount_path      = "transit/"
+        }
+
+        service_registration "kubernetes" {}
+
+        telemetry {
+          prometheus_retention_time = "30s"
+          disable_hostname = true
+        }
+
+    disruptionBudget:
+      enabled: true
+      maxUnavailable: 1 # tolerate exactly one voluntary disruption (keeps quorum)
+
+  # The server pod's ServiceAccount; the bootstrap Job + injector bind to it.
+  serviceAccount:
+    create: true
+
+# UI is internal-only; expose via the mesh/ingress, never a bare LoadBalancer.
+ui:
+  enabled: true
+  serviceType: "ClusterIP"

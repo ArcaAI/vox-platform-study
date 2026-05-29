@@ -1,0 +1,39 @@
+# =============================================================================
+# HOPE — Vault image DIGEST pins (TASK-312 Phase E)  [PRODUCTION VALUES OVERLAY]
+# =============================================================================
+# Supply-chain hardening: pin the chart-managed images by immutable digest so a
+# mutated/republished tag can never silently change what runs. These are the
+# multi-arch INDEX digests (arch-independent) as of 2026-05-29 — verify before a
+# bump with:  docker buildx imagetools inspect hashicorp/vault:<tag>
+#
+# Merge LAST, AFTER helm/values.yaml (+ audit overlay), in PRODUCTION only:
+#   helm upgrade --install vault hashicorp/vault --version 0.32.0 -n vault-system \
+#     -f helm/values.yaml -f manifests/audit-sidecar.values.yaml \
+#     -f helm/values.digests.yaml
+#
+# NOTE: the kind E2E (test/kind-e2e.sh) deliberately does NOT merge this file — it
+# `kind load`s single-arch images by TAG, and the index-digest blob isn't imported
+# into the node store, so a digest ref would force a (slow/flaky) live pull. Tags
+# are fine there; digests are for the real, registry-backed production path.
+#
+# The directly-applied manifests ENFORCE their digests via kustomize overlays —
+# production applies them with `-k` (not `-f`), which rewrites the tag to a digest:
+#   kubectl apply -k seal-vault/   -> hashicorp/vault@sha256:eb0ba6…ea0
+#   kubectl apply -k bootstrap/    -> alpine/k8s@sha256:7f8133…f40
+# The audit sidecars (manifests/audit-sidecar.values.yaml) use busybox:1.37; it is
+# helm-values-embedded (no clean prod-only overlay) so it stays a tag — pin it inline
+# (busybox@sha256:9532d8…028) only where policy mandates, accepting that the kind E2E
+# would then live-pull it.
+# -----------------------------------------------------------------------------
+server:
+  image:
+    repository: hashicorp/vault
+    tag: "1.21.2@sha256:eb0ba6836e8d4699b7a1e8ca70d8433f7b87dcd067e6d82dff237d3ed2600ea0"
+
+injector:
+  image:
+    repository: hashicorp/vault-k8s
+    tag: "1.7.2@sha256:ae3d307658b72a1cf35dab9bdf92c995d45cdc7183af0516857714b5bd0ba84d"
+  agentImage:
+    repository: hashicorp/vault
+    tag: "1.21.2@sha256:eb0ba6836e8d4699b7a1e8ca70d8433f7b87dcd067e6d82dff237d3ed2600ea0"

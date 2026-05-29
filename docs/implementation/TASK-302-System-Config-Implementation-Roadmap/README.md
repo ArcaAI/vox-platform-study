@@ -27,6 +27,8 @@ This umbrella ticket coordinates the execution of **four implementation streams*
 | C | **PgBouncer Validation & Rollout** (transaction mode if Prisma validation passes) | [`03-pgbouncer-rollout.md`](./03-pgbouncer-rollout.md) | [`03-pgbouncer-prisma.md`](../../../research/architecture/system-config-multi-tenancy/03-pgbouncer-prisma.md) | ~10–15 | ~30 |
 | D | **Optimistic Locking on Config Writes** (existing `_version` column → CAS + ETag) | [`04-optimistic-locking.md`](./04-optimistic-locking.md) | [`04-optimistic-locking.md`](../../../research/architecture/system-config-multi-tenancy/04-optimistic-locking.md) | ~13.5 | ~40 |
 
+> **Vault operational hardening — delivered in [TASK-312](../TASK-312-Vault-Workflow-Hardening/README.md).** Stream B (above) covers the app-level secrets *migration*; TASK-312 hardens it for day-1 production: AppRole token auto-renewal + retry/fail-closed (Phase B), HA Raft on Proxmox k3s with Transit auto-unseal (Phase C), and the runbook + chaos drill + monitoring/alerts (Phase E). Production Vault deployment lives in [`infrastructure/single-deployment/vault/`](../../../infrastructure/single-deployment/vault/README.md); day-2 operations in [`docs/operations/vault/`](../../operations/vault/README.md).
+
 **Explicitly out of scope** (per user decision 2026-05-24): `research/architecture/system-config-multi-tenancy/01-layered-resolution-migration.md` — the layered read-time resolution migration is **archived as reference only**. `__GLOBAL__` clone-on-create stays as the current model.
 
 ---

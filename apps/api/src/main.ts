@@ -73,35 +73,26 @@ async function bootstrap() {
     SwaggerModule.setup('api/v1/docs', app, document);
   }
 
-  // TASK-302 Phase 3 Task 3.1 — boot the SecretsService BEFORE any
-  // middleware or downstream service that reads a secret. boot() does
-  // two things: (1) delegate to the underlying provider's boot
-  // (VaultSecretsProvider performs the AppRole login here) and (2)
-  // pre-warm the cache for the keys read during bootstrap so the
-  // first request does not pay a Vault round-trip.
+  // TASK-302 Phase 3 Task 3.1 / TASK-307 W2.1 follow-up — the
+  // SecretsService cache is now warmed inside `SecretsModule.forRoot`'s
+  // async useFactory (driven by COMMON_SERVICE_WARMUP_KEYS in
+  // packages/applications/src/services/baseServices/common.service.module.ts).
+  // NestJS awaits the factory before instantiating any dependent
+  // provider, so JwtStrategy / GatewayJwtStrategy / the OPENID_CLIENT
+  // factory / AuthController already observe a warm cache by the
+  // time NestFactory.create() returns. The previous `secretsService
+  // .boot(...)` call here ran AFTER those constructors and could
+  // never satisfy them — that ordering gap is what made the strategy
+  // throw "JWT_SECRET_KEY is the literal placeholder" at every boot.
   const secretsService = app.get(SecretsService);
-  await secretsService.boot({
-    warmupKeys: [
-      'JWT_SECRET_KEY',
-      'SESSION_SECRET_KEY',
-      'API_KEY_PEPPER',
-      'OIDC_CLIENT_SECRET',
-      'MINIO_ACCESS_KEY',
-      'MINIO_SECRET_KEY',
-      'S3_ACCESS_KEY',
-      'S3_SECRET_KEY',
-      'SMR_SERVICE_TOKEN',
-      'MQTT_PASS',
-      'REDIS_PASS',
-    ],
-  });
-  loggingService.info('Secrets warmed up', { keyCount: 11 }, 'Bootstrap');
 
   // TASK-307 W2.2 (closes audit C-6 part 2) — refuse to start if
   // JWT_SECRET_KEY resolved to the literal placeholder or never warmed.
-  // Mirrors the in-strategy assertion in `JwtStrategy` so a
-  // misconfigured deploy fails BEFORE the Nest container finishes
-  // wiring (defense-in-depth — strategy + bootstrap both refuse).
+  // Mirrors the in-strategy assertion in `JwtStrategy` (defense-in-depth
+  // — strategy + bootstrap both refuse). With the factory-driven warmup
+  // above, reaching this line means the strategy already passed its
+  // own check, so this is a redundant sanity gate retained for the
+  // audit trail.
   assertJwtSecretNotPlaceholder(secretsService);
 
   // Session configuration (debug logging removed - session config is sensitive)

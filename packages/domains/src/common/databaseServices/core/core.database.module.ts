@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ClsModule } from 'nestjs-cls';
 import { CoreUnitOfWorkService } from '../../unitsOfWork/core/core.unitOfWork';
-import { CoreDatabaseService } from './core.database.service';
+import { CoreDatabaseService, VAULT_PRISMA_FACTORY, type VaultPrismaFactory } from './core.database.service';
 
 import { AiModelRepository } from '../../../repositories/generated/core/AiModelRepository';
 import { ApiKeyRepository } from '../../../repositories/generated/core/ApiKeyRepository';
@@ -41,9 +41,24 @@ import { UserVoiceProfileRepository } from '../../../repositories/generated/core
 import { WebhookRepository } from '../../../repositories/generated/core/WebhookRepository';
 import { WebhookRunHistoryRepository } from '../../../repositories/generated/core/WebhookRunHistoryRepository';
 
+// TASK-312 A.5 — async provider so the (possibly Vault-backed) Prisma client
+// is fully resolved BEFORE the service is injected into the UnitOfWork /
+// repositories / AppSettingsService graph. With the previous `useClass` form
+// the Vault client was only set in onModuleInit, so consumers that touch the
+// DB during construction or their own onModuleInit observed an undefined
+// client. apps/api's VaultPrismaFactoryModule always binds VAULT_PRISMA_FACTORY,
+// but only resolves it to a real factory fn when PG_DYNAMIC_CREDS=true &&
+// SECRETS_PROVIDER=vault; otherwise the token resolves to null. In test/non-api
+// graphs the token is absent entirely, so `optional: true` yields undefined.
+// Either way (null | undefined) the service falls back to the env-mode singletons.
 const databaseProvider = {
   provide: 'CORE_DATABASE_SERVICE',
-  useClass: CoreDatabaseService,
+  useFactory: async (vaultFactory?: VaultPrismaFactory) => {
+    const service = new CoreDatabaseService(vaultFactory);
+    await service.ensureInitialized();
+    return service;
+  },
+  inject: [{ token: VAULT_PRISMA_FACTORY, optional: true }],
 };
 
 const repositories = [

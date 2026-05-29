@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import vault from 'node-vault';
 import {
   ISecretsProvider,
@@ -25,6 +25,9 @@ interface VaultClientLike {
   ): Promise<unknown>;
   approleLogin(options: { role_id: string; secret_id: string }): Promise<{
     auth: { client_token: string; lease_duration: number; renewable: boolean };
+  }>;
+  tokenRenewSelf(options?: { increment?: number | string }): Promise<{
+    auth: { lease_duration: number; renewable: boolean };
   }>;
   unwrap(options?: { token?: string }): Promise<{
     data: Record<string, unknown>;
@@ -79,10 +82,20 @@ export interface VaultProviderConfig {
  * upgrading to getSecretJson().
  */
 @Injectable()
-export class VaultSecretsProvider implements ISecretsProvider {
+export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
   private readonly logger = new Logger(VaultSecretsProvider.name);
   private client: VaultClientLike;
   private booted = false;
+
+  // TASK-312 Phase B (B.1–B.4) — AppRole token self-renewal state. The pre-B
+  // build captured lease_duration/renewable from the login but never renewed,
+  // so a prod pod's token expired at token_max_ttl and every read then 403'd.
+  private tokenRenewTimer: ReturnType<typeof setTimeout> | null = null;
+  private tokenRenewable = false;
+  private lastTokenTtlSec = 0;
+  private tokenRenewFailures = 0;
+  private tokenRenewDegraded = false;
+  private readonly tokenRenewFailureThreshold = 3;
 
   constructor(private readonly config: VaultProviderConfig) {
     if (!config.addr) throw new Error('VaultSecretsProvider: VAULT_ADDR is required');
@@ -102,6 +115,36 @@ export class VaultSecretsProvider implements ISecretsProvider {
 
   // ---------- boot ----------
   async boot(): Promise<void> {
+    try {
+      await this.doBoot();
+    } catch (err: unknown) {
+      // Fail closed (Phase B B.7/B.8): one clear, secret-free FATAL line so a
+      // sealed/unreachable Vault aborts startup (k8s recycles the pod) instead
+      // of surfacing a raw node-vault stack/body.
+      throw this.bootFailure(err);
+    }
+  }
+
+  /**
+   * Map any boot failure to a single FATAL-shaped, secret-free Error. The
+   * wrapped/raw secret_id and the session token are NEVER included. A sealed
+   * Vault (HTTP 501/503) is named explicitly; other failures carry the
+   * underlying message, which node-vault populates from the Vault *response
+   * body* (e.g. "permission denied") — never the request payload, so no
+   * secret material leaks.
+   */
+  private bootFailure(err: unknown): Error {
+    const status = (err as { response?: { statusCode?: number } })?.response?.statusCode;
+    const sealedish = status === 503 || status === 501;
+    const reason = sealedish
+      ? `Vault is sealed or unavailable (HTTP ${status})`
+      : ((err as Error)?.message ?? String(err));
+    return new Error(
+      `VaultSecretsProvider.boot() FATAL: cannot authenticate to Vault (${this.config.addr}) — ${reason}. Refusing to start without a Vault session.`,
+    );
+  }
+
+  private async doBoot(): Promise<void> {
     let secretId = this.config.secretId;
     if (this.config.wrappedSecretId) {
       // Vault's /sys/wrapping/unwrap requires the caller to be authenticated
@@ -131,6 +174,85 @@ export class VaultSecretsProvider implements ISecretsProvider {
     this.logger.log(
       `Vault AppRole login successful (lease_duration=${login.auth.lease_duration}s, renewable=${login.auth.renewable})`,
     );
+    this.scheduleTokenRenewal(login.auth.lease_duration, login.auth.renewable);
+  }
+
+  // ---------- AppRole token renewal (Phase B B.1–B.4) ----------
+  /**
+   * Start the token self-renewal loop, mirroring VaultLeaseRenewer: renew at
+   * 50% of the latest TTL, reschedule against the freshly-returned TTL, and on
+   * failure keep retrying against the last-known TTL. Non-renewable or zero-TTL
+   * tokens (root/dev) have nothing to renew, so we no-op — which also keeps the
+   * provider-construction unit tests timer-free.
+   */
+  private scheduleTokenRenewal(ttlSec: number, renewable: boolean): void {
+    if (!renewable || !ttlSec || ttlSec <= 0) return;
+    this.tokenRenewable = true;
+    this.lastTokenTtlSec = ttlSec;
+    this.armTokenRenewTimer(ttlSec);
+  }
+
+  private armTokenRenewTimer(ttlSec: number): void {
+    if (this.tokenRenewTimer) clearTimeout(this.tokenRenewTimer);
+    const intervalMs = Math.max(1, Math.floor((ttlSec * 1000) / 2));
+    this.tokenRenewTimer = setTimeout(() => void this.renewTokenTick(), intervalMs);
+    // Never keep the event loop alive solely for renewal: prod is held open by
+    // the HTTP server; short-lived CLI/test processes should still exit cleanly.
+    this.tokenRenewTimer.unref?.();
+  }
+
+  /**
+   * One renewal cycle. Observable side-effects are limited to the three health
+   * bits (lastTokenTtlSec, tokenRenewFailures, tokenRenewDegraded). After
+   * `tokenRenewFailureThreshold` consecutive failures `tokenRenewDegraded`
+   * latches true so health() can warn (stale-while-revalidate) while k8s
+   * liveness/readiness recycles the pod — which re-boots with a fresh AppRole
+   * login. The first success resets the run and clears degraded.
+   */
+  private async renewTokenTick(): Promise<void> {
+    if (!this.booted || !this.tokenRenewable) return;
+    try {
+      const res = await this.client.tokenRenewSelf();
+      const newTtl = res?.auth?.lease_duration;
+      const wasDegraded = this.tokenRenewDegraded;
+      this.tokenRenewFailures = 0;
+      this.tokenRenewDegraded = false;
+      if (newTtl && newTtl > 0) this.lastTokenTtlSec = newTtl;
+      if (wasDegraded) {
+        this.logger.log(
+          `Vault token renewal recovered (lease_duration=${this.lastTokenTtlSec}s)`,
+        );
+      }
+    } catch (err: unknown) {
+      this.tokenRenewFailures += 1;
+      this.logger.warn(
+        `Vault token renewal failed (attempt=${this.tokenRenewFailures}): ${(err as Error).message}`,
+      );
+      if (
+        this.tokenRenewFailures >= this.tokenRenewFailureThreshold &&
+        !this.tokenRenewDegraded
+      ) {
+        this.tokenRenewDegraded = true;
+        this.logger.error(
+          `Vault token renewal DEGRADED after ${this.tokenRenewFailures} consecutive failures; secrets-health reports degraded until renewal succeeds or the pod is recycled.`,
+        );
+      }
+    } finally {
+      // Keep renewing while booted; on failure reuse the last-known TTL so
+      // attempts cluster close enough to recover before the token expires.
+      if (this.booted && this.tokenRenewable) {
+        this.armTokenRenewTimer(this.lastTokenTtlSec);
+      }
+    }
+  }
+
+  /** Cancel the renewal loop on app shutdown. Idempotent. */
+  async onModuleDestroy(): Promise<void> {
+    this.tokenRenewable = false;
+    if (this.tokenRenewTimer) {
+      clearTimeout(this.tokenRenewTimer);
+      this.tokenRenewTimer = null;
+    }
   }
 
   private ensureBooted(): void {
@@ -143,12 +265,65 @@ export class VaultSecretsProvider implements ISecretsProvider {
     return `${this.config.kvMount}/data/${this.config.kvPrefix}/${key}`;
   }
 
+  // ---------- transient-error retry (Phase B B.5/B.6) ----------
+  /** Total attempts (1 initial + retries) for a transient Vault read. */
+  private static readonly RETRY_MAX_ATTEMPTS = 3;
+
+  /**
+   * A transient failure is a Vault 5xx OR a transport error with no HTTP
+   * status (ECONNREFUSED / ETIMEDOUT / socket hang up). 4xx is NOT transient:
+   * 403/404/400 are authz / not-found / malformed and must surface immediately
+   * so a misconfigured pod fails fast instead of hammering Vault on a backoff.
+   */
+  private isTransient(err: unknown): boolean {
+    const status = (err as { response?: { statusCode?: number } })?.response?.statusCode;
+    if (typeof status === 'number') return status >= 500 && status <= 599;
+    return true;
+  }
+
+  /**
+   * Exponential backoff per retry. With RETRY_MAX_ATTEMPTS=3 only attempts 0 and
+   * 1 actually sleep (250ms, then 500ms); the 3rd attempt is the last and
+   * rethrows without sleeping. The formula extends (1000ms, …) if the cap rises.
+   */
+  private backoffMs(attempt: number): number {
+    return 250 * 2 ** attempt;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Run a Vault read with bounded exponential-backoff retries on transient
+   * errors. Wraps only the network call; the caller's 404/empty-value handling
+   * runs against the final outcome. This closes the "100ms Vault blip → 5xx to
+   * the user" gap (plan §2.2 #7) without masking auth errors.
+   */
+  private async withRetry<T>(op: () => Promise<T>): Promise<T> {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < VaultSecretsProvider.RETRY_MAX_ATTEMPTS; attempt++) {
+      try {
+        return await op();
+      } catch (err: unknown) {
+        lastErr = err;
+        const isLast = attempt === VaultSecretsProvider.RETRY_MAX_ATTEMPTS - 1;
+        if (!this.isTransient(err) || isLast) throw err;
+        this.logger.warn(
+          `Vault read transient error (attempt=${attempt + 1}/${VaultSecretsProvider.RETRY_MAX_ATTEMPTS}); retrying in ${this.backoffMs(attempt)}ms`,
+        );
+        await this.delay(this.backoffMs(attempt));
+      }
+    }
+    throw lastErr;
+  }
+
   // ---------- reads ----------
   async getSecret(key: string, opts?: SecretFetchOptions): Promise<string> {
     this.ensureBooted();
     const path = this.kvPath(key);
     try {
-      const res = (await this.client.read(path)) as
+      const res = (await this.withRetry(() => this.client.read(path))) as
         | { data?: { data?: { value?: string } } }
         | undefined;
       const value = res?.data?.data?.value;
@@ -171,7 +346,7 @@ export class VaultSecretsProvider implements ISecretsProvider {
     this.ensureBooted();
     const path = this.kvPath(key);
     try {
-      const res = (await this.client.read(path)) as
+      const res = (await this.withRetry(() => this.client.read(path))) as
         | { data?: { data?: { value?: string } } }
         | undefined;
       const value = res?.data?.data?.value;
@@ -227,17 +402,22 @@ export class VaultSecretsProvider implements ISecretsProvider {
         sealed: boolean;
       };
       const ok = !!h?.initialized && !h?.sealed;
+      const baseDetail = ok ? 'active' : `initialized=${h?.initialized} sealed=${h?.sealed}`;
       return {
         ok,
         latencyMs: Date.now() - t0,
         provider: 'vault',
-        detail: ok ? 'active' : `initialized=${h?.initialized} sealed=${h?.sealed}`,
+        degraded: this.tokenRenewDegraded,
+        detail: this.tokenRenewDegraded
+          ? `${baseDetail}; token-renew degraded (failures=${this.tokenRenewFailures})`
+          : baseDetail,
       };
     } catch (err: unknown) {
       return {
         ok: false,
         latencyMs: Date.now() - t0,
         provider: 'vault',
+        degraded: this.tokenRenewDegraded,
         detail: (err as Error).message,
       };
     }

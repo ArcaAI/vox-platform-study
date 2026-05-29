@@ -1,5 +1,6 @@
 import { DynamicModule, Global, Logger, Module } from '@nestjs/common';
 import { TerminusModule } from '@nestjs/terminus';
+import { readFileSync } from 'node:fs';
 import { SecretsService, SECRETS_SERVICE_OPTIONS } from './SecretsService';
 import { SecretsHealthIndicator } from './secrets.health';
 import {
@@ -28,6 +29,22 @@ export interface SecretsModuleOptions {
   defaultTtlSec?: number;
   /** LRU max entries. */
   lruMax?: number;
+  /**
+   * Keys to warm during DI construction. When non-empty, the
+   * `SecretsService` provider becomes an async useFactory that
+   * `await`s `SecretsService.boot({warmupKeys})` BEFORE the service
+   * is injectable. NestJS awaits async factories before instantiating
+   * dependent providers, so consumers that read the cache
+   * synchronously in their constructor (e.g. `JwtStrategy`,
+   * `GatewayJwtStrategy`, the `OPENID_CLIENT` factory) observe a
+   * warm cache — closes the boot-order gap left by the previous
+   * design where `secretsService.boot()` ran in `main.ts` AFTER
+   * `NestFactory.create(AppModule)` had already wired the strategy.
+   *
+   * Unset / empty → no boot is performed (preserves the
+   * provider-type-only tests that don't have a live Vault).
+   */
+  warmupKeys?: string[];
 }
 
 const VALID_NAMES: ReadonlyArray<SecretsProviderName> = [
@@ -60,14 +77,47 @@ function requireEnv(envKey: string): string {
   return v;
 }
 
+/**
+ * TASK-312 B.10 — resolve a value from `${envKey}` OR, if that is unset/empty,
+ * from the file named by `${envKey}_FILE`. The file form is how production
+ * (systemd-creds / k8s Secret mounts) delivers AppRole credentials without
+ * inlining secret material in `.env.production`. The file is read once at
+ * module boot; a trailing newline (common in mounted secrets) is trimmed.
+ */
+function readEnvOrFile(envKey: string): string | undefined {
+  const direct = process.env[envKey];
+  if (direct !== undefined && direct !== '') return direct;
+  const filePath = process.env[`${envKey}_FILE`];
+  if (filePath) {
+    try {
+      return readFileSync(filePath, 'utf8').trim();
+    } catch (err) {
+      throw new Error(
+        `SecretsModule: ${envKey}_FILE=${filePath} could not be read: ${(err as Error).message}`,
+      );
+    }
+  }
+  return undefined;
+}
+
+function requireEnvOrFile(envKey: string): string {
+  const v = readEnvOrFile(envKey);
+  if (!v) {
+    throw new Error(
+      `SecretsModule: ${envKey} (or ${envKey}_FILE) is required when SECRETS_PROVIDER=vault`,
+    );
+  }
+  return v;
+}
+
 function createProvider(name: SecretsProviderName): ISecretsProvider {
   switch (name) {
     case 'vault':
       return new VaultSecretsProvider({
         addr: requireEnv('VAULT_ADDR'),
-        roleId: requireEnv('VAULT_ROLE_ID'),
-        wrappedSecretId: process.env.VAULT_WRAPPED_SECRET_ID,
-        secretId: process.env.VAULT_SECRET_ID,
+        roleId: requireEnvOrFile('VAULT_ROLE_ID'),
+        wrappedSecretId: readEnvOrFile('VAULT_WRAPPED_SECRET_ID'),
+        secretId: readEnvOrFile('VAULT_SECRET_ID'),
         namespace: process.env.VAULT_NAMESPACE,
         kvMount: process.env.VAULT_KV_MOUNT ?? 'secret',
         kvPrefix: process.env.VAULT_KV_PREFIX ?? 'hope',
@@ -126,7 +176,25 @@ export class SecretsModule {
           provide: SECRETS_PROVIDER_TOKEN,
           useExisting: SECRETS_PROVIDER_INSTANCE,
         },
-        SecretsService,
+        {
+          provide: SecretsService,
+          useFactory: async (
+            provider: ISecretsProvider,
+            svcOptions: { defaultTtlSec?: number; lruMax?: number },
+          ): Promise<SecretsService> => {
+            const svc = new SecretsService(provider, svcOptions);
+            // Boot only when the caller actually asked for warmup. For
+            // Vault provider in production, the warmup list also drives
+            // the AppRole login (provider.boot()). For test modules that
+            // just check provider wiring, skipping boot keeps them from
+            // dialling a non-existent Vault.
+            if (options.warmupKeys && options.warmupKeys.length > 0) {
+              await svc.boot({ warmupKeys: options.warmupKeys });
+            }
+            return svc;
+          },
+          inject: [SECRETS_PROVIDER_TOKEN, SECRETS_SERVICE_OPTIONS],
+        },
         SecretsHealthIndicator,
       ],
       exports: [

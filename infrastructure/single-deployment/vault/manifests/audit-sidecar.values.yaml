@@ -1,0 +1,99 @@
+# =============================================================================
+# HOPE — audit-log shipper sidecar (TASK-312 Phase C, C.8)  [VALUES OVERLAY]
+# =============================================================================
+# This is a Helm VALUES overlay, not a standalone manifest: a sidecar on the
+# chart-managed StatefulSet must be added via `server.extraContainers`, so a raw
+# Pod manifest can't do it. Merge it AFTER the base values:
+#
+#   helm upgrade --install vault hashicorp/vault --version 0.32.0 \
+#     -n vault-system \
+#     -f infrastructure/single-deployment/vault/helm/values.yaml \
+#     -f infrastructure/single-deployment/vault/manifests/audit-sidecar.values.yaml
+#
+# Two sidecars:
+#   1. audit-log-shipper — `tail -F` to stdout so the cluster's existing log agent
+#      (Promtail / Grafana Agent / Vector) forwards it to Loki (the DURABLE store).
+#      To push directly to Loki, swap busybox for promtail/vector (operator choice).
+#   2. audit-log-rotator — bounds the audit PVC via COPYTRUNCATE: when the live log
+#      exceeds MAX_BYTES it is copied to a timestamped archive, then truncated in
+#      place. This is SAFE because Vault opens the audit file with O_APPEND, so the
+#      next write goes to EOF (offset 0 after truncation) — no SIGHUP/reopen needed
+#      and no sparse-file hole. On-PVC archives are a forensic backstop (KEEP newest);
+#      the shipper above is the primary path off-box.
+#
+# Depends on: server.auditStorage.enabled=true (base values) AND the audit
+# device being enabled at /vault/audit/vault-audit.log (done by init-job.yaml).
+# -----------------------------------------------------------------------------
+server:
+  extraContainers:
+    - name: audit-log-shipper
+      image: busybox:1.37
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          echo "[audit-shipper] waiting for audit log file ..."
+          until [ -f /vault/audit/vault-audit.log ]; do sleep 5; done
+          echo "[audit-shipper] streaming /vault/audit/vault-audit.log to stdout"
+          exec tail -n+1 -F /vault/audit/vault-audit.log
+      volumeMounts:
+        - name: audit
+          mountPath: /vault/audit
+          readOnly: true
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 50m
+          memory: 64Mi
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+    - name: audit-log-rotator
+      image: busybox:1.37
+      imagePullPolicy: IfNotPresent
+      env:
+        - name: MAX_BYTES # rotate when the live log exceeds this (default 100Mi)
+          value: "104857600"
+        - name: KEEP # retain this many rotated archives on the PVC
+          value: "5"
+        - name: INTERVAL # size-check cadence, seconds
+          value: "300"
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          LOG=/vault/audit/vault-audit.log
+          until [ -f "$LOG" ]; do sleep 5; done
+          echo "[audit-rotator] watching $LOG (max=${MAX_BYTES}B keep=${KEEP} every=${INTERVAL}s)"
+          while true; do
+            sleep "$INTERVAL"
+            sz=$(wc -c < "$LOG" 2>/dev/null || echo 0)
+            [ "$sz" -lt "$MAX_BYTES" ] && continue
+            ts=$(date +%Y%m%d-%H%M%S)
+            cp "$LOG" "$LOG.$ts" && : > "$LOG"   # copytruncate (Vault O_APPEND-safe)
+            echo "[audit-rotator] rotated at ${sz}B -> $LOG.$ts"
+            ls -1t "$LOG".* 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r f; do rm -f "$f"; done
+          done
+      volumeMounts:
+        - name: audit
+          mountPath: /vault/audit # RW: must truncate the live file + write archives
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 50m
+          memory: 64Mi
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000 # match the chart fsGroup so the audit dir is writable
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]

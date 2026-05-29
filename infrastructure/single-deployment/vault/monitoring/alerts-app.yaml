@@ -1,0 +1,64 @@
+# =============================================================================
+# HOPE — App-side Vault alert rules (TASK-312 Phase E)    [PrometheusRule CRD]
+# =============================================================================
+# These alert on metrics the HOPE **API** exports about ITS OWN Vault client
+# (token TTL, AppRole-token / lease renewal health) — complementary to the
+# server-side signals in alerts.yaml.
+#
+#   ⚠️  DO NOT APPLY until the API exports the arca_vault_* series. Every expr
+#       below keys off arca_vault_* metrics that DO NOT EXIST yet, so applying
+#       this early makes the rules sit permanently INACTIVE (empty vectors never
+#       fire) — that is silent, false "all-clear" confidence, not a safety net.
+#       The API already serves prom-client at GET /metrics
+#       (apps/api/src/observability/metrics.ts) and SecretsService.health()
+#       already tracks `degraded` + lease-renew `failureCount`; exporting them is
+#       a small follow-up documented in
+#       docs/operations/vault/README.md#app-side-vault-metrics-future.
+#
+# Apply (after the API exports them):
+#   kubectl apply -f monitoring/alerts-app.yaml
+# -----------------------------------------------------------------------------
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vault-app-alerts
+  namespace: vault-system
+  labels:
+    app.kubernetes.io/name: vault
+    app.kubernetes.io/part-of: hope
+    release: kube-prometheus-stack # <-- match your operator's ruleSelector
+spec:
+  groups:
+    - name: vault.app
+      rules:
+        - alert: VaultAppSecretsDegraded
+          expr: max(arca_vault_degraded) >= 1
+          for: 5m
+          labels: { severity: critical, component: hope-api }
+          annotations:
+            summary: "HOPE API secrets layer is DEGRADED"
+            description: >-
+              SecretsService reports degraded for >5m — AppRole-token renewal or
+              a dynamic-DB lease renewal is failing. The app still serves cached
+              secrets (stale-while-revalidate) but will fail-closed when they
+              expire. Runbook: docs/operations/vault/README.md#secret--credential-rotation
+
+        - alert: VaultAppTokenExpirySoon
+          expr: min(arca_vault_token_ttl_remaining_seconds) < 900
+          for: 1m
+          labels: { severity: warning, component: hope-api }
+          annotations:
+            summary: "HOPE API Vault token TTL < 15m and not renewing"
+            description: >-
+              The AppRole token is within 15m of expiry and the renew loop has
+              not extended it. If it expires the API loses Vault access.
+
+        - alert: VaultAppLeaseRenewalFailing
+          expr: rate(arca_vault_lease_renewal_failure_total[10m]) > 0
+          for: 10m
+          labels: { severity: warning, component: hope-api }
+          annotations:
+            summary: "HOPE API Vault lease renewals are failing"
+            description: >-
+              Non-zero lease-renewal failure rate over 10m — dynamic DB creds may
+              expire mid-flight. Check Vault reachability + DB engine health.

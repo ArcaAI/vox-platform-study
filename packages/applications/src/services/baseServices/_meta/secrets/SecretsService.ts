@@ -247,7 +247,10 @@ export class SecretsService {
   async health(): Promise<SecretsHealth> {
     const base = await this.provider.health();
     if (!this.leaseRenewer || !this.leaseRenewer.degraded) {
-      return { ...base, degraded: false };
+      // TASK-312 B.4: preserve a provider-level degraded signal (e.g. the
+      // Vault AppRole token-renew loop crossing its failure threshold) rather
+      // than hard-coding false, which previously swallowed it.
+      return { ...base, degraded: base.degraded === true };
     }
     const merged: SecretsHealth = {
       ...base,

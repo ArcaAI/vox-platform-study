@@ -68,6 +68,10 @@ export class CoreDatabaseService implements OnModuleInit, OnModuleDestroy {
   private extendedPrisma!: ExtendedCorePrismaClient;
   private vaultDisconnect: (() => Promise<void>) | null = null;
   private readonly useVault: boolean;
+  // TASK-312 A.5 — memoizes the (possibly async, Vault-backed) client
+  // resolution so it runs exactly once whether invoked by the async DI
+  // provider (core.database.module.ts) or the NestJS onModuleInit hook.
+  private _initPromise: Promise<void> | null = null;
 
   constructor(
     @Optional()
@@ -139,6 +143,30 @@ export class CoreDatabaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
+    await this.ensureInitialized();
+  }
+
+  /**
+   * Resolve the active Prisma client exactly once (memoized).
+   *
+   * TASK-312 A.5: in Vault mode the client is produced by an async factory
+   * (a Vault round-trip), so it is NOT available at construction time the
+   * way the env-mode singletons are. The async DI provider in
+   * core.database.module.ts awaits this BEFORE the service is injected
+   * anywhere, restoring the env-mode invariant that `client`/`baseClient`
+   * are usable by the time any consumer (repositories, AppSettingsService,
+   * …) touches the database — including from their own constructors and
+   * onModuleInit hooks. NestJS also invokes onModuleInit on the instance;
+   * the memoization makes that second call a no-op.
+   */
+  ensureInitialized(): Promise<void> {
+    if (!this._initPromise) {
+      this._initPromise = this.initialize();
+    }
+    return this._initPromise;
+  }
+
+  private async initialize(): Promise<void> {
     if (this.useVault && this.vaultFactory) {
       try {
         const result = await this.vaultFactory();
