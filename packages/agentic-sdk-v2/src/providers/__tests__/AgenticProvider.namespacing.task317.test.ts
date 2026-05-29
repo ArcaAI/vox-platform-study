@@ -214,3 +214,98 @@ describe('TASK-317 W1.2 — provider namespace wiring (AC-1/AC-4) re-keys manage
     expect(localStorage.getItem(`arcaai-selected-models/${NS}`)).toContain('whisper-tiny');
   });
 });
+
+// =============================================================================
+// TASK-317 W1.2 (review I-1) — personalization re-hydrate must be AUTHORITATIVE
+// per namespace. The provider now calls `personalizationManager.hydrate()` on
+// every tenant/user switch (re-hydrate effect) and after `/auth/me`. Because the
+// old `hydrate()` MERGED the cached row over the in-memory state (and early-
+// returned on an empty row), the previous namespace's personalization
+// accumulated across switches — and on the supported impersonation round-trip
+// (admin → impersonate(user) → endImpersonation) the impersonated user's
+// voice-profile (`dnaStyleId`) + `custom` blob leaked back into the admin.
+// `ModelRegistry.reloadSelected()` already REPLACES; the asymmetry was the bug.
+// =============================================================================
+
+describe('TASK-317 W1.2 — personalization re-hydrate is authoritative (review I-1) — no cross-namespace bleed on switch / impersonation round-trip', () => {
+  const NS_B = 'tenant-2::user-99';
+
+  it('switch user A→B: A-only fields (dnaStyleId/custom) are GONE from in-memory prefs and a save under B does not carry them', async () => {
+    // User A (the authenticated user) has a rich cached profile.
+    idbStore.set(`arcaai-personalization/${NS}`, {
+      dnaStyleId: 'USER_A_VOICE',
+      custom: { secretA: true },
+    });
+    // User B's row LACKS dnaStyleId/custom entirely.
+    idbStore.set(`arcaai-personalization/${NS_B}`, { language: 'th' });
+    handler = meHandler({ id: USER, tenantId: TENANT });
+
+    const store = renderProvider();
+    await waitFor(() => expect(store.getState().configReady).toBe(true), { timeout: 2000 });
+
+    const pm = store.getState().personalizationManager!;
+    // After /auth/me the manager hydrates user A's authenticated row.
+    await waitFor(() => expect(pm.getPreferences().dnaStyleId).toBe('USER_A_VOICE'), { timeout: 2000 });
+    expect(pm.getPreferences().custom).toEqual({ secretA: true });
+
+    // Switch to user B in the same tab — drives the provider re-hydrate effect.
+    act(() => {
+      store.getState().setImpersonatedUser({ id: 'user-99', tenantId: 'tenant-2' });
+    });
+
+    // The re-key reads user B's row (language: 'th').
+    await waitFor(() => expect(pm.getPreferences().language).toBe('th'), { timeout: 2000 });
+
+    // I-1: user A's unique fields must NOT survive the switch (authoritative replace).
+    expect(pm.getPreferences().dnaStyleId).toBeUndefined();
+    expect(pm.getPreferences().custom).toBeUndefined();
+
+    // A subsequent save under B must not persist user A's fields back into B's row.
+    await pm.updatePreferences({ language: 'es' });
+    const savedB = idbStore.get(`arcaai-personalization/${NS_B}`) as Record<string, unknown> | undefined;
+    expect(savedB?.language).toBe('es');
+    expect(savedB?.dnaStyleId).toBeUndefined();
+    expect(savedB?.custom).toBeUndefined();
+  });
+
+  it("impersonation round-trip: after endImpersonation the admin carries NONE of the impersonated user's unique fields", async () => {
+    // Admin (user A) baseline row — no dnaStyleId / custom.
+    idbStore.set(`arcaai-personalization/${NS}`, { language: 'en' });
+    // Impersonated user (user-99) has a distinct voice-profile + custom blob.
+    idbStore.set(`arcaai-personalization/${NS_B}`, {
+      dnaStyleId: 'IMPERSONATED_VOICE',
+      custom: { impersonatedSecret: 'x' },
+    });
+    handler = meHandler({ id: USER, tenantId: TENANT });
+
+    const store = renderProvider();
+    await waitFor(() => expect(store.getState().configReady).toBe(true), { timeout: 2000 });
+
+    const pm = store.getState().personalizationManager!;
+    await waitFor(() => expect(pm.getPreferences().language).toBe('en'), { timeout: 2000 });
+    expect(pm.getPreferences().dnaStyleId).toBeUndefined();
+
+    // ---- impersonate(user-99): mirror useAuth.impersonate's store wiring (H-4).
+    act(() => {
+      store.getState().setOriginalUser(store.getState().authUser);
+      store.getState().setImpersonatedUser({ id: 'user-99', tenantId: 'tenant-2' });
+      pm.setImpersonationReadOnly(true);
+    });
+    // The view reflects the impersonated user's profile (read-only).
+    await waitFor(() => expect(pm.getPreferences().dnaStyleId).toBe('IMPERSONATED_VOICE'), { timeout: 2000 });
+
+    // ---- endImpersonation(): mirror useAuth.endImpersonation's store wiring.
+    act(() => {
+      store.getState().setImpersonatedUser(null);
+      store.getState().setOriginalUser(null);
+      pm.setImpersonationReadOnly(false);
+    });
+
+    // The namespace reverts to the admin and re-hydrates the admin's row.
+    await waitFor(() => expect(pm.getPreferences().language).toBe('en'), { timeout: 2000 });
+
+    // I-1: the impersonated user's unique fields must NOT leak back into the admin.
+    expect(pm.getPreferences().dnaStyleId).toBeUndefined();
+    expect(pm.getPreferences().custom).toBeUndefined();
+  });
+});
