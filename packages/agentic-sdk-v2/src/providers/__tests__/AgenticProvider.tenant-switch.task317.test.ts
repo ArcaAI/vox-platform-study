@@ -28,7 +28,7 @@ import * as React from 'react';
 import { render, waitFor, act } from '@testing-library/react';
 import { AgenticProvider } from '../AgenticProvider';
 import { useAgenticStore } from '../../store/agenticStore';
-import type { AgenticConfig, Consultation, ContextItem, SummaryResponse, TenantAudioConfig } from '../../types';
+import type { AgenticConfig, Consultation, ContextItem, DNAStyle, MedicalEntity, SummaryResponse, TenantAudioConfig } from '../../types';
 import type { TranscriptSegment } from '../../types/audio';
 
 vi.mock('@arcaai/noise-filter', () => ({
@@ -188,8 +188,53 @@ const summariesA = [
 
 const tenantConfigA = { defaultSttModel: 'whisper-tiny', features: {} } as TenantAudioConfig;
 
+// review C-1 — additional tenant-A PHI/session slices that `useArca()` surfaces
+// (relatedConsultations / sharedContext / entities / currentTranscript / dnaStyle)
+// but the original 5-setter switch reset did NOT clear, so they lingered after
+// an A->B switch.
+const relatedConsultationsA = [
+  {
+    id: 'consult-A2',
+    patientId: 'patient-A',
+    doctorId: 'doctor-A',
+    appointmentDate: '2026-05-29',
+    createdAt: '2026-05-29T00:00:00.000Z',
+    updatedAt: '2026-05-29T00:00:00.000Z',
+  },
+] as Consultation[];
+
+const sharedContextA = [
+  {
+    id: 'shared-A',
+    consultationId: 'consult-A',
+    type: 'case_note',
+    content: 'Tenant A shared context — PHI',
+    source: 'human',
+    isSummary: false,
+    isTranscript: false,
+    isAiGenerated: false,
+    isCaseNote: true,
+    isWorknote: false,
+  },
+] as unknown as ContextItem[];
+
+const entitiesA = [
+  {
+    id: 'ent-A',
+    entityType: 'MEDICATION',
+    text: 'Tenant A medication — PHI',
+    confidence: 0.99,
+    startOffset: 0,
+    endOffset: 10,
+  },
+] as MedicalEntity[];
+
+const currentTranscriptA = 'Tenant A raw transcript text — PHI';
+
+const dnaStyleA = { id: 'dna-A', name: 'Tenant A writing style', styleData: {} } as unknown as DNAStyle;
+
 describe('TASK-317 W2.1 — tenant-switch session reset (C-5): same-tab tenant switch clears PHI + model/tenant config before the new tenant config resolves (AC-7)', () => {
-  it('switch A->B resets consultation / contextItems / transcriptSegments / summaries / tenantConfig synchronously, before the async re-hydrate resolves', async () => {
+  it('switch A->B resets the FULL tenant PHI/session set (consultation / relatedConsultations / contextItems / sharedContext / entities / currentTranscript / transcriptSegments / summaries / dnaStyle / tenantConfig) synchronously, before the async re-hydrate resolves', async () => {
     handler = meHandler({ id: USER_A, tenantId: TENANT_A });
 
     const store = renderProvider();
@@ -202,6 +247,12 @@ describe('TASK-317 W2.1 — tenant-switch session reset (C-5): same-tab tenant s
       store.getState().setTranscriptSegments(transcriptSegmentsA);
       store.getState().setSummaries(summariesA);
       store.getState().setTenantConfig(tenantConfigA);
+      // review C-1 — additional PHI/session slices `useArca()` exposes.
+      store.getState().setRelatedConsultations(relatedConsultationsA);
+      store.getState().setSharedContext(sharedContextA);
+      store.getState().setEntities(entitiesA);
+      store.getState().setCurrentTranscript(currentTranscriptA);
+      store.getState().setDNAStyle(dnaStyleA);
     });
 
     const mr = store.getState().modelRegistry!;
@@ -214,6 +265,12 @@ describe('TASK-317 W2.1 — tenant-switch session reset (C-5): same-tab tenant s
     expect(store.getState().transcriptSegments).toHaveLength(1);
     expect(store.getState().summaries).toHaveLength(1);
     expect(store.getState().tenantConfig).not.toBeNull();
+    // review C-1 — additional PHI/session slices are resident before the switch.
+    expect(store.getState().relatedConsultations).toHaveLength(1);
+    expect(store.getState().sharedContext).toHaveLength(1);
+    expect(store.getState().entities).toHaveLength(1);
+    expect(store.getState().currentTranscript).not.toBe('');
+    expect(store.getState().dnaStyle).not.toBeNull();
 
     const versionBefore = store.getState().modelRegistryVersion;
 
@@ -232,6 +289,15 @@ describe('TASK-317 W2.1 — tenant-switch session reset (C-5): same-tab tenant s
     expect(after.transcriptSegments).toEqual([]);
     expect(after.summaries).toEqual([]);
     expect(after.tenantConfig).toBeNull();
+    // review C-1 — the FULL tenant PHI/session set surfaced by useArca() must be
+    // gone too, not just the original five slices. These are the fields that
+    // lingered under the 5-setter reset (entities = medical NER PHI,
+    // currentTranscript = raw transcript text, etc.).
+    expect(after.relatedConsultations).toEqual([]);
+    expect(after.sharedContext).toEqual([]);
+    expect(after.entities).toEqual([]);
+    expect(after.currentTranscript).toBe('');
+    expect(after.dnaStyle).toBeNull();
     // modelRegistry: the outgoing tenant's selection is gone and the
     // useArcaConfig memo-bust signal has advanced.
     expect(after.modelRegistry!.getSelected()).toEqual({});
@@ -244,5 +310,10 @@ describe('TASK-317 W2.1 — tenant-switch session reset (C-5): same-tab tenant s
     });
     expect(store.getState().consultation).toBeNull();
     expect(store.getState().summaries).toEqual([]);
+    // review C-1 — the broader PHI set stays cleared once the new tenant's
+    // config resolves (the re-hydrate tail must not resurrect tenant A's data).
+    expect(store.getState().entities).toEqual([]);
+    expect(store.getState().currentTranscript).toBe('');
+    expect(store.getState().relatedConsultations).toEqual([]);
   });
 });
