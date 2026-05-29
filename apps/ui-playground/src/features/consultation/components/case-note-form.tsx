@@ -4,7 +4,7 @@ import { Textarea } from '@arcaai/ui/textarea';
 import { Input } from '@arcaai/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/tabs';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
-import { useArca, useStorage, useAgenticStore, CONTEXT_ENDPOINTS, type ContextItem, type AddContextInput } from '@arcaai/vox';
+import { useArca, useStorage, useStoreApi, CONTEXT_ENDPOINTS, type ContextItem, type AddContextInput } from '@arcaai/vox';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -73,9 +73,10 @@ interface CaseNoteFormProps {
 export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
   const { context } = useArca();
   const storage = useStorage();
+  const storeApi = useStoreApi();
 
   const addContextItem = async (input: AddContextInput): Promise<ContextItem> => {
-    const state = useAgenticStore.getState();
+    const state = storeApi.getState();
     const apiClient = state.apiClient;
     const consultation = state.consultation;
     if (!apiClient) throw new Error('SDK not initialized');

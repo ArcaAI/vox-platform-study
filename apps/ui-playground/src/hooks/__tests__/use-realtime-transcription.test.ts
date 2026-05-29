@@ -42,7 +42,7 @@ vi.mock('@arcaai/vox', async (importOriginal) => {
 
     return {
         ...actual,
-        useAgenticStore: vi.fn(),
+        useArcaStore: vi.fn(),
         StreamingSessionManager: MockStreamingSessionManager,
         SttV2WebSocketClient: MockSttV2WebSocketClient,
     };
@@ -63,7 +63,7 @@ const mockLogger = {
     child: vi.fn().mockReturnThis(),
 };
 
-import { useAgenticStore } from '@arcaai/vox';
+import { useArcaStore } from '@arcaai/vox';
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -84,7 +84,7 @@ beforeEach(() => {
         } as unknown as typeof AudioContext,
     );
 
-    (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) => selector({
+    (useArcaStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) => selector({
         apiClient: mockApiClient,
         logger: mockLogger,
     }));
@@ -124,7 +124,7 @@ describe('useRealtimeTranscription', () => {
     });
 
     it('should throw when SDK is not initialized', async () => {
-        (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) => selector({
+        (useArcaStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) => selector({
             apiClient: null,
             logger: null,
         }));

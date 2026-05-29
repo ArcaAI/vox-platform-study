@@ -1,6 +1,6 @@
 import { getTokenExpiryMs, isTokenExpired, registerOnTokenRefreshed, tryRefreshToken, unregisterOnTokenRefreshed } from '@/lib/auth-refresh';
 import { useAuthStore } from '@/store/auth-store';
-import { useAgenticStore, useAuth } from '@arcaai/vox';
+import { useArcaStore, useAuth } from '@arcaai/vox';
 import { useCallback, useEffect, useRef } from 'react';
 
 const REFRESH_THRESHOLD = 0.8;
@@ -22,12 +22,12 @@ const AUTH_IMPERSONATE_ENDPOINT = '/auth/impersonate';
  * impersonation token. If re-impersonation fails, impersonation ends and
  * the admin token is used instead.
  *
- * Must be rendered inside <AgenticProvider> so useAuth() and useAgenticStore() resolve.
+ * Must be rendered inside <AgenticProvider> so useAuth() and useArcaStore() resolve.
  */
 export function useAutoRefresh(): void {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { refreshToken: _sdkRefreshToken } = useAuth();
-  const { apiClient } = useAgenticStore();
+  const apiClient = useArcaStore((s) => s.apiClient);
   const authMethod = useAuthStore((s) => s.authMethod);
   const accessToken = useAuthStore((s) => s.accessToken);
 

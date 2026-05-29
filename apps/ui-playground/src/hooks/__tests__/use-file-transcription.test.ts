@@ -7,7 +7,7 @@ vi.mock('@arcaai/vox', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@arcaai/vox')>();
     return {
         ...actual,
-        useAgenticStore: vi.fn(),
+        useArcaStore: vi.fn(),
         FileTranscriptionService: vi.fn().mockImplementation(() => ({
             uploadAndTranscribe: vi.fn(),
             buildJobStreamUrl: vi.fn().mockReturnValue('http://localhost:8868/api/v1/audio/transcription-jobs/job-1/stream'),
@@ -38,7 +38,7 @@ const mockLogger = {
     child: vi.fn().mockReturnThis(),
 };
 
-import { useAgenticStore } from '@arcaai/vox';
+import { useArcaStore } from '@arcaai/vox';
 
 let mockStoreState: { apiClient: typeof mockApiClient | null; logger: typeof mockLogger | null };
 
@@ -48,7 +48,7 @@ beforeEach(() => {
         apiClient: mockApiClient,
         logger: mockLogger,
     };
-    (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector?: (state: typeof mockStoreState) => unknown) =>
+    (useArcaStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector?: (state: typeof mockStoreState) => unknown) =>
         selector ? selector(mockStoreState) : mockStoreState,
     );
 });
