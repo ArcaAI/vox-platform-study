@@ -7,7 +7,11 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-    useAgenticStore,
+    // TASK-317 W4.3 (AC-12) — these unit tests exercise the store-creator logic
+    // (clearOnLogout/clearTenantSessionData/slices) in isolation, so they bind to
+    // the module singleton directly. Production code uses the context-backed
+    // `useAgenticStore` instead; the singleton no longer carries the `useAgenticStore` name.
+    agenticStoreSingleton as useAgenticStore,
     selectTranscriptions,
     selectCaseNotes,
     selectSummaryItems,

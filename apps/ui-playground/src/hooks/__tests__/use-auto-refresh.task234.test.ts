@@ -17,7 +17,10 @@ const mockApiClient = {
 
 vi.mock('@arcaai/vox', () => ({
     useAuth: () => ({ refreshToken: vi.fn() }),
-    useAgenticStore: () => ({ apiClient: mockApiClient }),
+    useArcaStore: (selector?: (s: { apiClient: typeof mockApiClient }) => unknown) => {
+        const state = { apiClient: mockApiClient };
+        return selector ? selector(state) : state;
+    },
 }));
 
 import { renderHook } from '@testing-library/react';

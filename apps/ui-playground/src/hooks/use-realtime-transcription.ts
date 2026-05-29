@@ -2,7 +2,7 @@ import { recordSpeakerObservation, resolveSpeakerLabel } from '@/features/audio/
 import { upsertTranscriptEntry } from '@/features/audio/lib/transcript-state';
 import type { TranscriptEntry } from '@/store/audio-store';
 import { usePlaygroundStore } from '@/store/playground-store';
-import { StreamingSessionManager, SttV2WebSocketClient, useAgenticStore, type WsTranscriptResult } from '@arcaai/vox';
+import { StreamingSessionManager, SttV2WebSocketClient, useArcaStore, type WsTranscriptResult } from '@arcaai/vox';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type RealtimeStatus = 'idle' | 'creating_session' | 'connecting' | 'streaming' | 'reconnecting' | 'stopping' | 'error';
@@ -71,8 +71,8 @@ export interface UseRealtimeTranscriptionReturn {
 }
 
 export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
-  const apiClient = useAgenticStore((s: { apiClient: ApiClientLike | null }) => s.apiClient);
-  const logger = useAgenticStore((s: { logger: LoggerLike | null }) => s.logger);
+  const apiClient = useArcaStore((s: { apiClient: ApiClientLike | null }) => s.apiClient);
+  const logger = useArcaStore((s: { logger: LoggerLike | null }) => s.logger);
   const debugMode = usePlaygroundStore((s) => s.debugMode);
 
   const [status, setStatus] = useState<RealtimeStatus>('idle');
