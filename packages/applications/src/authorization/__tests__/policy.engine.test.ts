@@ -21,8 +21,14 @@ const mockPrismaClient = {
   },
 };
 
+// `loadUserPolicies` reads the RBAC control-plane via the UNSCOPED
+// `baseClient` (bypasses tenant-scope so the SYSTEM + request-tenant
+// `in` filter survives); cache-invalidation helpers still use `.client`.
+// Pointing both at the same spy keeps every behavioural assertion valid
+// regardless of which getter a given method reaches for.
 const mockDatabaseService = {
   client: mockPrismaClient,
+  baseClient: mockPrismaClient,
 };
 
 const mockCacheService = {
@@ -766,6 +772,42 @@ describe('PolicyEngine', () => {
           tenantId: { in: [SYSTEM_TENANT_ID] },
         },
       });
+    });
+
+    // Regression — the control-plane lookup MUST use the unscoped baseClient.
+    //
+    // PolicyEngine resolves SYSTEM + request-tenant assignments with a
+    // `tenantId: { in: [...] }` filter. If it went through the extended
+    // (tenant-scoped) client, the tenant-scope `$extends` rejects the
+    // non-scalar `tenantId` ("TenantScope: tenantId mismatch"), buildAbility
+    // throws, and every permissioned request 403s once a tenant context is
+    // present. Reading via the unscoped `baseClient` is the sanctioned
+    // cross-tenant control-plane path that avoids that throw.
+    it('reads role assignments via the unscoped baseClient, never the tenant-scoped client', async () => {
+      const baseClientPrisma = {
+        userRoleAssignment: { findMany: vi.fn().mockResolvedValue([]) },
+        role: { findMany: vi.fn().mockResolvedValue([]) },
+      };
+      const extendedClientPrisma = {
+        userRoleAssignment: { findMany: vi.fn().mockResolvedValue([]) },
+        role: { findMany: vi.fn().mockResolvedValue([]) },
+      };
+      const splitDatabaseService = {
+        client: extendedClientPrisma,
+        baseClient: baseClientPrisma,
+      };
+      const engine = new PolicyEngine(splitDatabaseService as any, mockCacheService as any);
+
+      await engine.buildAbility({ userId: 'user-123', tenantId: 'tenant-456' });
+
+      expect(baseClientPrisma.userRoleAssignment.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-123',
+          resourceStatus: 'ENABLED',
+          tenantId: { in: [SYSTEM_TENANT_ID, 'tenant-456'] },
+        },
+      });
+      expect(extendedClientPrisma.userRoleAssignment.findMany).not.toHaveBeenCalled();
     });
   });
 });

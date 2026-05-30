@@ -231,7 +231,19 @@ export class PolicyEngine {
    * 2. Parent role inheritance
    */
   private async loadUserPolicies(context: PolicyContext): Promise<PolicyRule[]> {
-    const prisma = this.databaseService.client;
+    // Use the UNSCOPED platform-admin client for the RBAC control-plane read.
+    //
+    // Resolving a user's effective policies is an authorization-bootstrap step
+    // that must span BOTH the SYSTEM tenant (platform-wide assignments such as
+    // SUPER_ADMIN) and the request tenant — see the `tenantId: { in: [...] }`
+    // filter below. The tenant-scope `$extends` (TASK-305 B.1) is designed for
+    // tenant *data* and rejects any non-scalar `where.tenantId` (it throws
+    // "TenantScope: tenantId mismatch" on an `in` list), which would make every
+    // permissioned request fail with 403 once a tenant context is present.
+    // The RBAC control plane is precisely the "cross-tenant maintenance" path
+    // `baseClient` is sanctioned for; both queries already pin
+    // `resourceStatus: ENABLED`, so bypassing the soft-delete filter is a no-op.
+    const prisma = this.databaseService.baseClient;
 
     // 1. Get user's direct role assignments with policies.
     //

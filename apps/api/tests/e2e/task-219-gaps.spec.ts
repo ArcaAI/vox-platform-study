@@ -13,7 +13,10 @@ import { test, expect } from '@playwright/test';
 import {
   createTestDataRegistry,
   loginSeededUsers,
+  loginUser,
   cleanupTestData,
+  DEFAULT_TENANT_KEY,
+  SEEDED_USERS,
   type TestDataRegistry,
 } from '../../../../tests/helpers';
 
@@ -22,11 +25,6 @@ const TENANT_ID = '50000000-0000-0000-0000-000000000001';
 test.describe('TASK-219: Admin Panel Gaps', () => {
   let superAdminToken: string;
   const testDataRegistry: TestDataRegistry = createTestDataRegistry();
-  const cleanupIds: {
-    bucketNames: string[];
-  } = {
-    bucketNames: [],
-  };
 
   test.beforeAll(async ({ request }) => {
     const tokens = await loginSeededUsers(request);
@@ -38,12 +36,6 @@ test.describe('TASK-219: Admin Panel Gaps', () => {
     if (!superAdminToken) return;
 
     await cleanupTestData(request, superAdminToken, testDataRegistry);
-
-    for (const name of cleanupIds.bucketNames) {
-      await request.delete(`/api/v1/storage/buckets/${name}`, {
-        headers: { Authorization: `Bearer ${superAdminToken}` },
-      });
-    }
   });
 
   // ==========================================================================
@@ -180,19 +172,40 @@ test.describe('TASK-219: Admin Panel Gaps', () => {
 
   test.describe('A7: PATCH /storage/buckets/{name}', () => {
     const bucketName = `task219-bucket-${Date.now()}`;
+    // The storage management routes are tenant-owned (@TenantOwnedResource,
+    // no super-admin bypass — TASK-307 W3.2): a super_admin WITHOUT a tenant
+    // context 404s on PATCH/DELETE because there is no tenant to match. Use a
+    // tenant-scoped super_admin so POST registers a TenantBucket row owned by a
+    // real tenant and the ownership interceptor can resolve it on PATCH.
+    let storageToken: string;
 
     test.beforeAll(async ({ request }) => {
+      const login = await loginUser(
+        request,
+        SEEDED_USERS.superAdmin.username,
+        SEEDED_USERS.superAdmin.password,
+        DEFAULT_TENANT_KEY,
+      );
+      expect(login, 'tenant-scoped super_admin login failed').toBeTruthy();
+      storageToken = login!.token;
+
       const res = await request.post('/api/v1/storage/buckets', {
-        headers: { Authorization: `Bearer ${superAdminToken}` },
+        headers: { Authorization: `Bearer ${storageToken}` },
         data: { name: bucketName },
       });
       expect(res.status()).toBe(201);
-      cleanupIds.bucketNames.push(bucketName);
+    });
+
+    test.afterAll(async ({ request }) => {
+      if (!storageToken) return;
+      await request.delete(`/api/v1/storage/buckets/${bucketName}`, {
+        headers: { Authorization: `Bearer ${storageToken}` },
+      });
     });
 
     test('should update bucket via PATCH', async ({ request }) => {
       const res = await request.patch(`/api/v1/storage/buckets/${bucketName}`, {
-        headers: { Authorization: `Bearer ${superAdminToken}` },
+        headers: { Authorization: `Bearer ${storageToken}` },
         data: { description: 'Updated bucket description' },
       });
       expect(res.status()).toBe(200);
@@ -200,7 +213,7 @@ test.describe('TASK-219: Admin Panel Gaps', () => {
 
     test('should disable bucket via PATCH with resourceStatus', async ({ request }) => {
       const res = await request.patch(`/api/v1/storage/buckets/${bucketName}`, {
-        headers: { Authorization: `Bearer ${superAdminToken}` },
+        headers: { Authorization: `Bearer ${storageToken}` },
         data: { resourceStatus: 'DISABLED' },
       });
       expect(res.status()).toBe(200);

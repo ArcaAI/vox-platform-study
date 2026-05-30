@@ -76,6 +76,23 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
   ) {}
 
   async intercept(context: ExecutionContext, next: CallHandler): Promise<Observable<unknown>> {
+    await this.assertAccess(context);
+    return next.handle();
+  }
+
+  /**
+   * Resolve + ownership-assert the `@TenantOwnedResource` target for `context`,
+   * throwing `404` on any mismatch (DEF-C3 no-existence-leak). A no-op for
+   * handlers that don't carry the decorator.
+   *
+   * Extracted from `intercept` so the companion `TenantOwnedResourceSseGuard`
+   * can run the SAME assertion BEFORE the handler executes. Interceptors throw
+   * AFTER an `@Sse()` handler has already returned its event stream, so the
+   * thrown 404 never reaches the client and the cross-tenant stream opens with
+   * a 200 (TASK-309 SSE leak). A guard runs ahead of the handler, so re-running
+   * the assertion there closes the stream with a 404 before it opens.
+   */
+  async assertAccess(context: ExecutionContext): Promise<void> {
     const opts = this.reflector.getAllAndOverride<TenantOwnedResourceOptions | undefined>(
       TENANT_OWNED_RESOURCE_KEY,
       [context.getHandler(), context.getClass()],
@@ -84,7 +101,7 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     if (!opts) {
       // Handler not annotated — pass-through. Avoids any CLS/repo cost for
       // the overwhelming majority of routes that don't use the decorator.
-      return next.handle();
+      return;
     }
 
     const callerTenantId = this.cls.get('tenantId');
@@ -99,8 +116,6 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     }
 
     await this.assertOwnership(opts, paramValue, callerTenantId);
-
-    return next.handle();
   }
 
   private async assertOwnership(

@@ -222,6 +222,49 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     return TenantBucketDtoMapper.toResponse(saved);
   }
 
+  /**
+   * Persist a TenantBucket row for an already-named S3 bucket created via
+   * `POST /storage/buckets`. Without this row the bucket is invisible to the
+   * `@TenantOwnedResource('TenantBucket', lookup: 'name')` guard on the
+   * GET/PATCH/DELETE routes, so a freshly-created bucket would 404 on every
+   * management call. Idempotent: re-registering an existing name owned by the
+   * caller returns it unchanged; a name owned by another tenant is rejected.
+   *
+   * When there is no tenant context (e.g. a platform SUPER_ADMIN creating a
+   * bucket without a tenant-scoped JWT) there is no owner to attribute the row
+   * to, so registration is skipped and `null` is returned — the S3 bucket is
+   * still created by the caller, it just isn't a tenant-owned managed resource.
+   * This keeps `POST /storage/buckets` succeeding for platform admins while the
+   * tenant-owned management routes stay 404 for non-tenant callers (W3.2).
+   */
+  async registerBucket(name: string, description?: string): Promise<TenantBucketResponse | null> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      this.logger.debug(`registerBucket skipped for '${name}': no tenant context (platform-level caller)`);
+      return null;
+    }
+
+    const existing = await this.tenantBucketRepository.findByName(name);
+    if (existing) {
+      if (existing.tenantId !== tenantId) {
+        throw new BadRequestException(`Bucket '${name}' already exists`);
+      }
+      return TenantBucketDtoMapper.toResponse(existing);
+    }
+
+    const userId = this.requestUserId;
+    const bucket = TenantBucketFactory.CreateNamedBucket(tenantId, name, description, userId ?? undefined);
+    const saved = await this.tenantBucketRepository.create(bucket);
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      createdAt: saved.createdAt,
+      data: { slug: saved.slug, name: saved.name },
+    });
+
+    return TenantBucketDtoMapper.toResponse(saved);
+  }
+
   async deleteBucket(id: string): Promise<TenantBucketResponse> {
     const bucket = await this.tenantBucketRepository.findById(id);
     if (!bucket) {

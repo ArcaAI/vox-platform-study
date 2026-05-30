@@ -65,6 +65,11 @@ export class StorageController {
       throw new BadRequestException('Invalid bucket name');
     }
     await this.s3Service.createBucket(body.name);
+    // Register the TenantBucket row so the bucket is owned by the caller's
+    // tenant and addressable by name on the GET/PATCH/DELETE routes (which
+    // resolve via @TenantOwnedResource('TenantBucket')). Without this the
+    // bucket exists in S3 but 404s on every management call.
+    await this.tenantBucketService.registerBucket(body.name);
     return { name: body.name, created: true };
   }
 

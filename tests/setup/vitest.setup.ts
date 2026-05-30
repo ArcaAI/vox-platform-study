@@ -44,6 +44,117 @@ if (typeof globalThis.localStorage === 'undefined' ||
   });
 }
 
+// ---------------------------------------------------------------------------
+// Browser audio-API mocks for jsdom-environment packages (room / stt / vad).
+//
+// Vitest 4 removed `vitest.workspace.ts` support, so the per-package
+// `vitest.setup.ts` files (which used to register these globals) no longer
+// run under the single-project root config used by `pnpm test:unit`. jsdom
+// does not implement the Web Audio / MediaStream APIs, so we register the
+// same mocks here, scoped to browser-like environments only (so node-env
+// suites are left untouched). Defined as `configurable`/`writable` so tests
+// can override and restore them (e.g. AudioContextManager save/restore specs).
+// ---------------------------------------------------------------------------
+if (typeof window !== 'undefined') {
+  class MockAudioContext {
+    sampleRate = 48000;
+    state: AudioContextState = 'running';
+    currentTime = 0;
+    destination = { channelCount: 2, maxChannelCount: 2 };
+    audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
+
+    createMediaStreamSource = vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() }));
+    createMediaStreamDestination = vi.fn(() => ({
+      stream: { getAudioTracks: vi.fn(() => [{}]) },
+    }));
+    createScriptProcessor = vi.fn(() => ({
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      onaudioprocess: null,
+    }));
+    createAnalyser = vi.fn(() => ({
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      fftSize: 2048,
+      getFloatTimeDomainData: vi.fn(),
+      getByteFrequencyData: vi.fn(),
+    }));
+    createGain = vi.fn(() => ({
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      gain: { value: 1, setValueAtTime: vi.fn() },
+    }));
+    createBiquadFilter = vi.fn(() => ({
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      type: 'lowpass',
+      frequency: { value: 350, setValueAtTime: vi.fn() },
+      Q: { value: 1, setValueAtTime: vi.fn() },
+    }));
+
+    close = vi.fn().mockResolvedValue(undefined);
+    suspend = vi.fn().mockResolvedValue(undefined);
+    resume = vi.fn().mockResolvedValue(undefined);
+  }
+
+  class MockAudioWorkletNode {
+    port = { postMessage: vi.fn(), onmessage: null as ((event: MessageEvent) => void) | null };
+    connect = vi.fn();
+    disconnect = vi.fn();
+    parameters = new Map();
+  }
+
+  class MockMediaStreamTrack {
+    id = 'mock-track-id';
+    kind: 'audio' | 'video' = 'audio';
+    enabled = true;
+    muted = false;
+    readyState: MediaStreamTrackState = 'live';
+    label = 'Mock Audio Track';
+
+    stop = vi.fn();
+    clone = vi.fn(() => new MockMediaStreamTrack());
+    getConstraints = vi.fn(() => ({}));
+    getSettings = vi.fn(() => ({ sampleRate: 48000 }));
+    applyConstraints = vi.fn().mockResolvedValue(undefined);
+    addEventListener = vi.fn();
+    removeEventListener = vi.fn();
+    dispatchEvent = vi.fn();
+  }
+
+  class MockMediaStream {
+    id = 'mock-stream-id';
+    active = true;
+    private tracks: MockMediaStreamTrack[];
+
+    constructor(tracks?: MediaStreamTrack[]) {
+      this.tracks = tracks
+        ? (tracks as unknown as MockMediaStreamTrack[])
+        : [new MockMediaStreamTrack()];
+    }
+
+    getAudioTracks = () => this.tracks;
+    getVideoTracks = () => [] as MockMediaStreamTrack[];
+    getTracks = () => this.tracks;
+    addTrack = vi.fn();
+    removeTrack = vi.fn();
+    clone = vi.fn(() => new MockMediaStream());
+  }
+
+  for (const [name, value] of [
+    ['AudioContext', MockAudioContext],
+    ['AudioWorkletNode', MockAudioWorkletNode],
+    ['MediaStreamTrack', MockMediaStreamTrack],
+    ['MediaStream', MockMediaStream],
+  ] as const) {
+    Object.defineProperty(globalThis, name, {
+      value,
+      writable: true,
+      configurable: true,
+    });
+  }
+}
+
 // Global test setup
 beforeAll(async () => {
   // Any global setup needed before all tests

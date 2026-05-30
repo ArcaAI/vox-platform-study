@@ -35,16 +35,30 @@ const CORE_SUFFIXES = [
 
 const PREFIXES_WITH_GENERAL = new Set(['FOURBITS', 'MUMBAI', 'GLOBAL']);
 
+// TASK-316 — platform-wide (NOT per-tenant) settings: DB-backed gateway
+// rate-limit config. These live on the platform tenant only and therefore
+// fall outside the per-prefix model above, so they're counted separately.
+const PLATFORM_WIDE_KEYS = [
+  'RATE_LIMIT_ENABLED',
+  'RATE_LIMIT_TIER_DEFAULT_LIMIT',
+  'RATE_LIMIT_TIER_DEFAULT_TTL',
+  'RATE_LIMIT_TIER_STRICT_LIMIT',
+  'RATE_LIMIT_TIER_STRICT_TTL',
+  'RATE_LIMIT_TIER_HEAVY_LIMIT',
+  'RATE_LIMIT_TIER_HEAVY_TTL',
+  'RATE_LIMIT_TIER_RELAXED_LIMIT',
+  'RATE_LIMIT_TIER_RELAXED_TTL',
+] as const;
+
 function suffixesFor(prefix: string) {
   return PREFIXES_WITH_GENERAL.has(prefix)
     ? [...GENERAL_SUFFIXES, ...CORE_SUFFIXES]
     : [...CORE_SUFFIXES];
 }
 
-const TOTAL_IDS = SETTING_PREFIXES.reduce(
-  (sum, p) => sum + suffixesFor(p).length,
-  0,
-);
+const TOTAL_IDS =
+  SETTING_PREFIXES.reduce((sum, p) => sum + suffixesFor(p).length, 0) +
+  PLATFORM_WIDE_KEYS.length;
 
 describe('Global Settings Seed Data (11-global-setting)', () => {
   describe('every tenant has all expected setting IDs', () => {
@@ -118,6 +132,16 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
       const allIds = Object.values(SEED_GLOBAL_SETTING_IDS);
       expect(allIds.length).toBe(TOTAL_IDS);
     });
+  });
+
+  describe('platform-wide settings (TASK-316 rate-limit)', () => {
+    for (const key of PLATFORM_WIDE_KEYS) {
+      it(`should define ${key}`, () => {
+        const id = SEED_GLOBAL_SETTING_IDS[key as keyof typeof SEED_GLOBAL_SETTING_IDS];
+        expect(id).toBeDefined();
+        expect(id).toMatch(UUID_REGEX);
+      });
+    }
   });
 
   describe('Tenant ID constants', () => {
