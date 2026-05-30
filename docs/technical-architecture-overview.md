@@ -16,7 +16,7 @@ decisions behind each one.
 
 ## Document map
 
-- [§ Multi-tenancy enforcement layers](#-multi-tenancy-enforcement-layers) — TASK-305 (2026-05-27), extended by TASK-306 (2026-05-27)
+- [§ Multi-tenancy enforcement layers](#-multi-tenancy-enforcement-layers) — TASK-305 (2026-05-27), extended by TASK-306 (2026-05-27) + TASK-317 browser-SDK client layer (2026-05-30)
 - Future chapters will be added as cross-cutting concerns are
   formalised (auth + RBAC, observability, eventing).
 
@@ -194,6 +194,34 @@ isolation invariant in production. RLS is defence-in-depth — it
 backstops any future escape route (ad-hoc `psql`, BI dashboards,
 raw `$queryRawUnsafe`, etc.).
 
+#### 5 — Browser-side SDK isolation (client defense-in-depth, TASK-317)
+
+The four layers above are **server-side** and remain authoritative.
+The browser SDK `@arcaai/vox` (`packages/agentic-sdk-v2`) adds a
+*client-side* tenant/user isolation layer so a shared workstation, a
+fast tenant switch, or a concurrent multi-tenant operator console
+cannot bleed PHI across tenants **in the browser** before a request
+ever reaches the server:
+
+- **Per-provider store** — each `<AgenticProvider>` owns its own
+  Zustand store (`createAgenticStore()` + `AgenticStoreContext`); there
+  is no module-level singleton shared across concurrent tenants.
+- **Namespaced persistence** — IndexedDB personalization and
+  `localStorage` selected-models/preferences are keyed
+  `${tenantId}::${userId}` and re-keyed (with a one-time legacy-row
+  drop) on auth/tenant switch; a tenant switch clears tenant-scoped
+  PHI/session via `clearTenantSessionData()`.
+- **Per-tenant cross-tab / WS keys** — BroadcastChannel
+  `agentic.<tenantId>`, a per-tenant HKDF HMAC subkey, and
+  `wsDedupKey(id, userId)` (fail-closed on user mismatch).
+
+This closes the 2026-05-25 vox-SDK audit
+([`05-vox-sdk-review.md`](./multi-tenancy-audit/05-vox-sdk-review.md)).
+The **server boundary stays the source of truth** — the SDK layer is a
+defense-in-depth complement, not a replacement. Canonical closure
+record:
+[`docs/multi-tenancy-audit/09-vox-sdk-followup-closure.md`](./multi-tenancy-audit/09-vox-sdk-followup-closure.md).
+
 ### Decision log
 
 | Decision | Choice | Rationale |
@@ -255,6 +283,14 @@ raw `$queryRawUnsafe`, etc.).
 - [`docs/multi-tenancy-audit/07-ddd-layers-followup-closure.md`](./multi-tenancy-audit/07-ddd-layers-followup-closure.md)
   — canonical TASK-306 closure record (per-finding ledger, deferrals,
   wave sequence, lessons learned).
+- [`docs/multi-tenancy-audit/05-vox-sdk-review.md`](./multi-tenancy-audit/05-vox-sdk-review.md)
+  — the browser-SDK audit that drove the TASK-317 plan (TASK-317 closure
+  banner at top + per-finding `[CLOSED W<n> <sha>]` markers on every
+  §C/§D/§E heading).
+- [`docs/multi-tenancy-audit/09-vox-sdk-followup-closure.md`](./multi-tenancy-audit/09-vox-sdk-followup-closure.md)
+  — canonical TASK-317 closure record for the browser-side SDK isolation
+  layer (per-provider store, namespaced persistence, per-tenant
+  cross-tab/WS keys; deferrals + lessons learned).
 - [`docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md`](./implementation/TASK-305-Multi-Tenancy-Hardening/README.md)
   — the implementation plan, §1.5 has the user-locked decisions and
   §3.3 has the (deferred) RLS rollout.

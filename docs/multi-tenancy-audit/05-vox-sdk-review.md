@@ -2,6 +2,22 @@
 
 > **Status update (2026-05-27)**: see [06-implementation-summary.md](./06-implementation-summary.md) for what was closed by TASK-305.
 
+> **TASK-317 closure (2026-05-30):** Closed finding codes — C-1, C-2,
+> C-3, C-4, C-5, D-1, D-2, D-3, D-4, D-5, D-6, E-1, E-2, E-3, E-4, E-5
+> (all 16). Production-wiring deferred to follow-up: **D-3** (tenant-scoped
+> transformers cache mechanism shipped + unit-tested but dormant — no
+> in-repo caller) and **E-4** (`requireTenantClaim` opt-in, not wired
+> into the prod streaming callers) — see
+> [`09-vox-sdk-followup-closure.md`](./09-vox-sdk-followup-closure.md) §2.1.
+> Wave merges: W1 `6947fd96`, W2 `15c3072a`, W3 `d9e961a5`,
+> W4 `83f1db7b`, W5 `<W5-merge-sha — filled at close-out>` (pending
+> merge — W5 fixes ship as code commits D-3 `db46a669`, D-6 `f2fbdcaf`,
+> E-1 `478c61b2`, E-3 `6814c6fd`). Canonical closure record:
+> [`09-vox-sdk-followup-closure.md`](./09-vox-sdk-followup-closure.md).
+> In-line closure markers `[CLOSED W<n> <sha>]` appear on each finding
+> heading in §C / §D / §E below (`[DEFERRED → 09 §2.1]` on D-3 + E-4) —
+> finding bodies are preserved for historical lineage.
+
 **Reviewer**: code-reviewer subagent
 **Date**: 2026-05-25
 **Scope**: `packages/agentic-sdk-v2`, `packages/room`, `packages/stt`, `packages/vad`, `packages/noise-filter`, `packages/pipeline`, `packages/ui`, `apps/ui-playground`, `apps/example`
@@ -108,7 +124,7 @@ apps/example         → does NOT consume @arcaai/vox; rolls its own fetch+WS de
 
 ## C. Critical Findings (BLOCKER / HIGH)
 
-### C-1 — Module-level Zustand store is a singleton (cross-instance state bleed)
+### C-1 — Module-level Zustand store is a singleton (cross-instance state bleed) [CLOSED W4 `83f1db7b`]
 
 **File**: `packages/agentic-sdk-v2/src/store/agenticStore.ts:306`
 **Severity**: Critical
@@ -155,7 +171,7 @@ warning while migrating consumers.
 
 ---
 
-### C-2 — `clearOnLogout` clears the *other* tenant's storage too
+### C-2 — `clearOnLogout` clears the *other* tenant's storage too [CLOSED W1 `6947fd96`]
 
 **File**: `packages/agentic-sdk-v2/src/store/agenticStore.ts:470-514`
 **Severity**: Critical (compounding with C-1; also bites on single-instance
@@ -199,7 +215,7 @@ still logged in.
 
 ---
 
-### C-3 — `PersonalizationManager` IndexedDB key is global, not per-user
+### C-3 — `PersonalizationManager` IndexedDB key is global, not per-user [CLOSED W1 `6947fd96`]
 
 **File**: `packages/agentic-sdk-v2/src/core/PersonalizationManager.ts:20`
 **Severity**: Critical
@@ -268,7 +284,7 @@ upgrade (one-time loss is acceptable; the backend remains authoritative).
 
 ---
 
-### C-4 — `SharedConnectionWorker` deduplicates WebSockets by `id` only (no userId)
+### C-4 — `SharedConnectionWorker` deduplicates WebSockets by `id` only (no userId) [CLOSED W3 `d9e961a5`]
 
 **File**: `packages/agentic-sdk-v2/src/core/SharedConnectionWorker.ts:84-115, 207`
 **Severity**: Critical
@@ -334,7 +350,7 @@ other than the unique sessionId, collisions silently happen.
 
 ---
 
-### C-5 — Tenant switch does not reset Zustand state
+### C-5 — Tenant switch does not reset Zustand state [CLOSED W2 `15c3072a`]
 
 **File**: `packages/agentic-sdk-v2/src/providers/AgenticProvider.tsx:527-560`
 **Severity**: High
@@ -383,7 +399,7 @@ store.setModelRegistry(null);  // force re-init from new tenant config
 
 ## D. Medium Findings
 
-### D-1 — `STORAGE_KEYS.SELECTED_MODELS` in `ModelRegistry` is a global `localStorage` key
+### D-1 — `STORAGE_KEYS.SELECTED_MODELS` in `ModelRegistry` is a global `localStorage` key [CLOSED W1 `6947fd96`]
 
 **File**: `packages/agentic-sdk-v2/src/core/ModelRegistry.ts:466,480`; constants
 in `packages/agentic-sdk-v2/src/core/constants.ts:361-364`.
@@ -418,7 +434,7 @@ across tenants on the same browser. Risk classification is **medium** because:
 
 ---
 
-### D-2 — `STORAGE_KEYS.PREFERENCES` is also a global `localStorage` key
+### D-2 — `STORAGE_KEYS.PREFERENCES` is also a global `localStorage` key [CLOSED W1 `6947fd96`]
 
 **File**: `packages/agentic-sdk-v2/src/core/constants.ts:362`,
 removed by `clearOnLogout` at
@@ -435,7 +451,7 @@ implying there *is* a writer somewhere. Either:
 
 ---
 
-### D-3 — Transformers.js model cache is not tenant-scoped
+### D-3 — Transformers.js model cache is not tenant-scoped [CLOSED W5 `db46a669`] [DEFERRED → 09 §2.1]
 
 **File**: `packages/utils/src/transformers-cache.ts:18-26`
 
@@ -461,7 +477,7 @@ and clean orphans on tenant switch. Effort: Full.
 
 ---
 
-### D-4 — SharedConnectionWorker HMAC secret is per-Worker, not per-tenant
+### D-4 — SharedConnectionWorker HMAC secret is per-Worker, not per-tenant [CLOSED W3 `d9e961a5`]
 
 **File**: `packages/agentic-sdk-v2/src/core/CrossTabHmacKeyManager.ts`
 
@@ -478,7 +494,7 @@ and rotate on `setTenantId`. Effort: Full.
 
 ---
 
-### D-5 — `SimpleCrossTabSync` not given `tenantId` from `useArcaSession`
+### D-5 — `SimpleCrossTabSync` not given `tenantId` from `useArcaSession` [CLOSED W3 `d9e961a5`]
 
 **File**: `packages/agentic-sdk-v2/src/hooks/useArcaSession.ts:88-92`
 
@@ -503,7 +519,7 @@ channels collide.
 
 ---
 
-### D-6 — `AudioContextManager` is a process-wide singleton
+### D-6 — `AudioContextManager` is a process-wide singleton [CLOSED W5 `f2fbdcaf`]
 
 **File**: `packages/room/src/core/AudioContextManager.ts:58-65`
 
@@ -529,7 +545,7 @@ debug flag is set so multi-instance bugs surface during development.
 
 ## E. Low / Hygiene Findings
 
-### E-1 — Logger init failure falls back to `console.error`
+### E-1 — Logger init failure falls back to `console.error` [CLOSED W5 `478c61b2`]
 
 **File**: `packages/agentic-sdk-v2/src/providers/AgenticProvider.tsx:165`
 
@@ -545,7 +561,7 @@ fallback would be nicer.
 
 ---
 
-### E-2 — `selectedModels` JSON in `localStorage` not validated on read
+### E-2 — `selectedModels` JSON in `localStorage` not validated on read [CLOSED W1 `6947fd96`]
 
 **File**: `packages/agentic-sdk-v2/src/core/ModelRegistry.ts:462-470`
 
@@ -555,7 +571,7 @@ A tampered entry can crash the manager on construction. Use `valibot`
 
 ---
 
-### E-3 — `LiveTranscriptionDemo` (apps/example) does not use the SDK
+### E-3 — `LiveTranscriptionDemo` (apps/example) does not use the SDK [CLOSED W5 `6814c6fd`]
 
 **File**: `apps/example/src/LiveTranscriptionDemo.tsx:1-309`
 
@@ -566,7 +582,7 @@ rename it `apps/raw-ws-demo`.
 
 ---
 
-### E-4 — `STT_V2_ENDPOINTS.WS_STREAM` path may be hardcoded without tenant claim
+### E-4 — `STT_V2_ENDPOINTS.WS_STREAM` path may be hardcoded without tenant claim [CLOSED W3 `d9e961a5`] [DEFERRED → 09 §2.1]
 
 **File**: `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts:149-160`
 
@@ -578,7 +594,7 @@ from the connect call (currently no such check).
 
 ---
 
-### E-5 — Tests do not cover concurrent multi-`AgenticProvider`
+### E-5 — Tests do not cover concurrent multi-`AgenticProvider` [CLOSED W4 `83f1db7b`]
 
 There is no test under `packages/agentic-sdk-v2/src/**/__tests__/` that
 mounts two providers with different tenants in the same render tree to
