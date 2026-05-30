@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import 'reflect-metadata';
+import { getSecretFields } from '../common';
 
 describe('StorageAccessKey Domain Layer', () => {
     describe('StorageAccessKeyEntity', () => {
@@ -27,6 +29,13 @@ describe('StorageAccessKey Domain Layer', () => {
             expect(entity.accessKeyId).toBe('AKIAIOSFODNN7EXAMPLE');
             expect(entity.permissions).toEqual(['read', 'list']);
             expect(entity.bucketIds).toEqual(['bucket-1']);
+        });
+
+        it('should mark secretAccessKey as @Secret for audit-log scrubbing', async () => {
+            const { StorageAccessKeyEntity } = await import('../entities/generated/core/StorageAccessKeyEntity');
+
+            const secretFields = getSecretFields(StorageAccessKeyEntity.prototype);
+            expect(secretFields).toContain('secretAccessKey');
         });
 
         it('should track changes via setProperty', async () => {
@@ -149,15 +158,29 @@ describe('StorageAccessKey Domain Layer', () => {
     });
 
     describe('StorageAccessKeyFactory', () => {
-        it('should create a key with generated id and credentials', async () => {
+        it('should generate a raw plaintext secret (43-char base64url) separately from storage', async () => {
             const { StorageAccessKeyFactory } = await import('../factories/generated/core/StorageAccessKeyFactory');
 
+            const raw = StorageAccessKeyFactory.generateRawSecret();
+
+            expect(typeof raw).toBe('string');
+            // 32 random bytes encoded as base64url => 43 chars, url-safe alphabet
+            expect(raw).toMatch(/^[A-Za-z0-9_-]{43}$/);
+            // Two generations must not collide.
+            expect(StorageAccessKeyFactory.generateRawSecret()).not.toBe(raw);
+        });
+
+        it('should persist the provided secret HASH, never a generated plaintext (F-2)', async () => {
+            const { StorageAccessKeyFactory } = await import('../factories/generated/core/StorageAccessKeyFactory');
+
+            const secretHash = 'a'.repeat(64); // shaped like a sha256 hex digest
             const entity = StorageAccessKeyFactory.CreateKey({
                 tenantId: 'tenant-1',
                 name: 'My Key',
                 permissions: ['read', 'write'],
                 bucketIds: ['bucket-1'],
                 createdBy: 'user-1',
+                secretAccessKey: secretHash,
             });
 
             expect(entity.id).toBeDefined();
@@ -166,8 +189,11 @@ describe('StorageAccessKey Domain Layer', () => {
             expect(entity.name).toBe('My Key');
             expect(entity.accessKeyId).toBeDefined();
             expect(entity.accessKeyId.length).toBeGreaterThanOrEqual(20);
-            expect(entity.secretAccessKey).toBeDefined();
-            expect(entity.secretAccessKey.length).toBeGreaterThanOrEqual(32);
+            // The stored secret is exactly the hash we passed in — the factory
+            // must NOT generate its own plaintext secret anymore (F-2).
+            expect(entity.secretAccessKey).toBe(secretHash);
+            // ...and it must not look like the 43-char base64url raw secret.
+            expect(entity.secretAccessKey).not.toMatch(/^[A-Za-z0-9_-]{43}$/);
             expect(entity.permissions).toEqual(['read', 'write']);
             expect(entity.bucketIds).toEqual(['bucket-1']);
         });
@@ -178,6 +204,7 @@ describe('StorageAccessKey Domain Layer', () => {
             const entity = StorageAccessKeyFactory.CreateKey({
                 tenantId: 'tenant-1',
                 name: 'Default Key',
+                secretAccessKey: 'b'.repeat(64),
             });
 
             expect(entity.permissions).toEqual(['read']);
