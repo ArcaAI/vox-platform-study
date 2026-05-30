@@ -614,3 +614,77 @@ describe('AudioContextManager.acquire sample-rate enforcement (TASK-300 L-1)', (
     warnSpy.mockRestore();
   });
 });
+
+// ============================================================================
+// TASK-317 W5.2 — cross-tenant acquire() dev-warning (AC-15 / audit D-6)
+// ============================================================================
+
+describe('TASK-317 W5.2 — AudioContextManager cross-tenant acquire warning (AC-15)', () => {
+  let mockContext: AudioContext;
+
+  beforeEach(() => {
+    AudioContextManager.resetInstance();
+    mockContext = createMockAudioContext('running');
+  });
+
+  afterEach(() => {
+    AudioContextManager.resetInstance();
+    vi.unstubAllGlobals();
+  });
+
+  it('warns when a second acquire() comes from a DIFFERENT tenant while the context is still held', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const manager = AudioContextManager.getInstance({ audioContext: mockContext });
+
+    await manager.acquire({ tenantId: 'tenant-a' });
+    await manager.acquire({ tenantId: 'tenant-b' });
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]![0]).toMatch(/different tenant/i);
+    warnSpy.mockRestore();
+  });
+
+  it('does NOT warn on the first acquire()', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const manager = AudioContextManager.getInstance({ audioContext: mockContext });
+
+    await manager.acquire({ tenantId: 'tenant-a' });
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('does NOT warn when the same tenant acquires again', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const manager = AudioContextManager.getInstance({ audioContext: mockContext });
+
+    await manager.acquire({ tenantId: 'tenant-a' });
+    await manager.acquire({ tenantId: 'tenant-a' });
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('does NOT warn when no tenantId is supplied (back-compat for existing callers)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const manager = AudioContextManager.getInstance({ audioContext: mockContext });
+
+    await manager.acquire();
+    await manager.acquire();
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('does NOT warn for a different tenant once the prior tenant has fully released', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const manager = AudioContextManager.getInstance({ audioContext: mockContext });
+
+    await manager.acquire({ tenantId: 'tenant-a' });
+    manager.release(); // referenceCount → 0, holder tracking cleared
+    await manager.acquire({ tenantId: 'tenant-b' });
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});

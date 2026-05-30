@@ -332,3 +332,94 @@ descriptions in [TASK-306 plan README §6.7](../implementation/TASK-306-DDD-Laye
 - Canonical closure record: [`07-ddd-layers-followup-closure.md`](./07-ddd-layers-followup-closure.md)
 - Audit driver: [`03-ddd-layers-review.md`](./03-ddd-layers-review.md) (TASK-306 closure banner at top; per-finding `[CLOSED W5.x <sha>]` markers in §A/§B/§C/§D/§E)
 - Architecture overview: [`docs/technical-architecture-overview.md`](../technical-architecture-overview.md) § Multi-tenancy enforcement layers (TASK-306 finale noted in Layer 3)
+
+---
+
+## 7. TASK-317 — `@arcaai/vox` SDK Multi-Tenancy Hardening (2026-05-30)
+
+TASK-305/306/307 hardened the **server** (schema, DDD layers, API
+gateway). TASK-317 closes the **last** unaddressed audit doc in the
+2026-05-25 series — the browser SDK review
+([`05-vox-sdk-review.md`](./05-vox-sdk-review.md)). These are
+*defense-in-depth client fixes*; the server-side tenant boundary
+(TASK-305/306/307) remains authoritative. The canonical per-finding
+closure record is
+[`09-vox-sdk-followup-closure.md`](./09-vox-sdk-followup-closure.md);
+this section is the wave-by-wave summary in the same style as §1/§6.
+
+| Field | Value |
+|---|---|
+| **Plan** | [`docs/implementation/TASK-317-Vox-SDK-Multi-Tenancy-Hardening/README.md`](../implementation/TASK-317-Vox-SDK-Multi-Tenancy-Hardening/README.md) |
+| **Audit driver** | [`05-vox-sdk-review.md`](./05-vox-sdk-review.md) |
+| **Status** | **In Progress** — W1–W4 merged into `fix/2605-review`; **W5 pending merge** (cache scoping + hygiene + closure docs) |
+| **Scope** | `packages/agentic-sdk-v2` (`@arcaai/vox`), `packages/room`, `packages/utils`, `apps/example` — browser-side only; no API/server/Prisma changes |
+| **Approach** | 5 sequential waves per `executing-plans` skill — fresh implementation subagent per wave (strict TDD) + mandatory `code-reviewer` subagent between waves + `--no-ff` merges into `fix/2605-review`. All merged reviews returned **APPROVED** / **APPROVED-WITH-MINOR-NITS** (0 critical, 0 important at merge) |
+
+### 7.1 Wave breakdown (merge SHAs)
+
+| Wave | Merge SHA | What |
+|---|---|---|
+| W1 | `6947fd96` | **Browser-storage tenant/user namespacing.** Closes **C-2** (`clearOnLogout(ns)` scoped to the outgoing namespace only — no `*`-sweep, no wholesale IDB `.clear()`), **C-3** (`PersonalizationManager` namespace ctor + IDB key `arcaai-personalization/${ns}` + configDB v2→3 legacy-row drop), **D-1** (`SELECTED_MODELS` → `arcaai-selected-models/${ns}`), **D-2** (dead `PREFERENCES` retained only as documented legacy-cleanup), **E-2** (valibot validation on `selectedModels` read). vox suite 2928 green; typecheck-neutral. |
+| W2 | `15c3072a` | **Tenant-switch session reset.** Closes **C-5** — `clearTenantSessionData()` store action clears the 10-field tenant PHI/session set synchronously on `effectiveTenantId` change before the async re-hydrate tail (auth/impersonation untouched). vox suite 2929 green. |
+| W3 | `d9e961a5` | **Cross-tab / WebSocket isolation.** Closes **C-4** (`wsDedupKey(id,userId)`; user-mismatch refuses to share a socket), **D-4** (per-tenant `HKDF(secret, tenantId)` HMAC subkey; master secret never leaves the SharedWorker), **D-5** (`useArcaSession` threads `tenantId` into `createCrossTabSync`), **E-4** (opt-in `requireTenantClaim` on `SttV2WebSocketClient.connect`). vox suite 2945 green. |
+| W4 | `83f1db7b` | **Store-per-provider refactor + multi-instance tests.** Closes **C-1** (`createAgenticStore()` factory + `AgenticStoreContext`; per-provider store in `useRef`; internal `useAgenticStore` → context hook; module singleton `@deprecated`-shimmed; public `useArcaStore`/`useStoreApi` accessors) and **E-5** (`multi-instance.test.ts` — two providers/two tenants isolation + switch-mid-session + impersonation start→stop). vox suite 2948 green; ui-playground `vite build` ✓. |
+| W5 | `<W5-merge-sha — filled at close-out>` | **Cache scoping + hygiene (pending merge).** Closes **D-3** (`getTransformersCacheName`/`clearTenantCustomTransformersCache` — `vox/${tenantId}/transformers`; `db46a669`; **mechanism only, live-wiring deferred**), **D-6** (`AudioContextManager` cross-tenant dev-warning; `f2fbdcaf`), **E-1** (logger console fail-safe TSDoc; `478c61b2` + nit `1c50137d`), **E-3** (`apps/example/README.md` marks the app as a raw-WS demo, not a vox consumer; `6814c6fd`). utils suite 145 green; room suite 493 green. |
+
+### 7.2 Audit findings closed (from `05-vox-sdk-review.md`)
+
+All 16 findings closed (2 with production-wiring deferred). Severity:
+4 Critical (C-1..C-4) + 1 High (C-5) + 6 Medium (D-1..D-6) + 5 Low
+(E-1..E-5).
+
+| Code | Closure path | Wave | Marker SHA |
+|---|---|---|---|
+| **C-1** | store-per-provider (`createAgenticStore()` + context) | W4 | `83f1db7b` |
+| **C-2** | `clearOnLogout(ns)` outgoing-namespace-only | W1 | `6947fd96` |
+| **C-3** | `PersonalizationManager` namespaced IDB key + configDB v3 | W1 | `6947fd96` |
+| **C-4** | `wsDedupKey(id, userId)` fail-closed | W3 | `d9e961a5` |
+| **C-5** | `clearTenantSessionData()` synchronous tenant-switch reset | W2 | `15c3072a` |
+| **D-1** | namespaced `arcaai-selected-models/${ns}` | W1 | `6947fd96` |
+| **D-2** | dead `PREFERENCES` key documented as legacy-cleanup only | W1 | `6947fd96` |
+| **D-3** | tenant-scoped custom transformers cache **(mechanism only; wiring deferred — `09` §2.1)** | W5 | `db46a669` |
+| **D-4** | per-tenant `HKDF(secret, tenantId)` HMAC subkey | W3 | `d9e961a5` |
+| **D-5** | `useArcaSession` threads `tenantId` into `createCrossTabSync` | W3 | `d9e961a5` |
+| **D-6** | `AudioContextManager` cross-tenant dev-warning | W5 | `f2fbdcaf` |
+| **E-1** | logger console fail-safe TSDoc note | W5 | `478c61b2` |
+| **E-2** | valibot validation on `selectedModels` read | W1 | `6947fd96` |
+| **E-3** | `apps/example` documented as raw-WS demo (rename declined) | W5 | `6814c6fd` |
+| **E-4** | opt-in `requireTenantClaim` **(prod-wiring deferred — `09` §2.1)** | W3 | `d9e961a5` |
+| **E-5** | `multi-instance.test.ts` concurrent-provider isolation suite | W4 | `83f1db7b` |
+
+### 7.3 Deferred (TASK-317)
+
+Production-wiring deferred (mechanism shipped + unit-tested):
+
+- **D-3 / AC-14** — `getTransformersCacheName` + `clearTenantCustomTransformersCache`
+  are dormant (no in-repo caller); not wired into the live tenant-switch
+  and Transformers.js isn't yet configured to write the tenant-scoped
+  name. Future integration ticket.
+- **E-4 / AC-10** — `requireTenantClaim` is opt-in, not wired into the
+  prod streaming callers (`PluginManager.buildStreamingTransport` /
+  `StreamingSessionManager`), and `resolveTenantClaim` doesn't yet
+  accept the prod discriminator (`ticket`/`sessionId`). Follow-up.
+
+Plus per-wave review-time minor nits (one-frame `useEffect` paint
+window; transient `*Error` slices not reset; rapid double-switch
+generation guard; `@deprecated agenticStoreSingleton` shim removal;
+pre-existing ui-playground `tsc` errors + 3 mock/source-drift test
+failures; `AudioContextManager` phantom-holder over-warn). Full list in
+[`09-vox-sdk-followup-closure.md`](./09-vox-sdk-followup-closure.md) §2.
+
+### 7.4 Final gate status
+
+vox **2948** / utils **145** / room **493** green; typecheck-neutral
+(13 pre-existing vox `tsc` errors unchanged); lint 0 errors
+(pre-existing prettier warnings only). W1–W4 merged; W5 pending merge.
+
+### 7.5 Cross-links (TASK-317 addendum)
+
+- TASK-317 plan: [`docs/implementation/TASK-317-Vox-SDK-Multi-Tenancy-Hardening/README.md`](../implementation/TASK-317-Vox-SDK-Multi-Tenancy-Hardening/README.md)
+- Canonical closure record: [`09-vox-sdk-followup-closure.md`](./09-vox-sdk-followup-closure.md)
+- Audit driver: [`05-vox-sdk-review.md`](./05-vox-sdk-review.md) (TASK-317 closure banner at top; per-finding `[CLOSED W<n> <sha>]` markers on every §C/§D/§E heading)
+- SDK rule reference: [`.cursor/rules/08-vox-sdk.mdc`](../../.cursor/rules/08-vox-sdk.mdc) § "Multi-Tenancy & Data Isolation"
+- Architecture overview: [`docs/technical-architecture-overview.md`](../technical-architecture-overview.md) § Multi-tenancy enforcement layers (browser-side SDK isolation noted as client defense-in-depth)

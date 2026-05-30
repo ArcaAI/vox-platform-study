@@ -176,6 +176,22 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     });
     loggerRef.current = logger;
 
+    // TASK-317 W5.3 (AC-16 / audit E-1): the `console` path here is the
+    // INTENDED fail-safe base case, not an incidental error handler.
+    //
+    // `createSDKLogger` installs a ConsoleTransport by default (unless a
+    // consumer opts out via `config.logging.console.enabled = false`) whose
+    // `initialize()` is a guaranteed no-op (see console.transport.ts), so it
+    // can never fail and is functional regardless of `logger.initialize()`.
+    // Only the OPTIONAL remote transports (highlight / loki / otel) perform
+    // async init that can reject (network / SDK-load failures); this `.catch`
+    // contains any such rejection so it can never throw past the provider
+    // effect, while the console transport keeps logging. At runtime,
+    // `SDKLogger.dispatch()` likewise wraps every per-entry `transport.log()`
+    // in try/catch → `console.error`, so a transport that breaks later
+    // degrades to console rather than throwing. A separate fallback transport
+    // is therefore deliberately NOT wired — the console transport already
+    // serves as the base sink.
     logger.initialize().catch((err) => {
       console.error('[AgenticProvider] Logger initialization failed:', err);
     });
