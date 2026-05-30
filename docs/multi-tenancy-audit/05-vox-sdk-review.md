@@ -10,9 +10,9 @@
 > into the prod streaming callers) — see
 > [`09-vox-sdk-followup-closure.md`](./09-vox-sdk-followup-closure.md) §2.1.
 > Wave merges: W1 `6947fd96`, W2 `15c3072a`, W3 `d9e961a5`,
-> W4 `83f1db7b`, W5 `<W5-merge-sha — filled at close-out>` (pending
-> merge — W5 fixes ship as code commits D-3 `db46a669`, D-6 `f2fbdcaf`,
-> E-1 `478c61b2`, E-3 `6814c6fd`). Canonical closure record:
+> W4 `83f1db7b`, W5 `f19ef6fb` (W5 fixes ship as code commits D-3
+> `db46a669`, D-6 `f2fbdcaf`, E-1 `478c61b2`, E-3 `6814c6fd`).
+> Canonical closure record:
 > [`09-vox-sdk-followup-closure.md`](./09-vox-sdk-followup-closure.md).
 > In-line closure markers `[CLOSED W<n> <sha>]` appear on each finding
 > heading in §C / §D / §E below (`[DEFERRED → 09 §2.1]` on D-3 + E-4) —

@@ -351,7 +351,7 @@ this section is the wave-by-wave summary in the same style as §1/§6.
 |---|---|
 | **Plan** | [`docs/implementation/TASK-317-Vox-SDK-Multi-Tenancy-Hardening/README.md`](../implementation/TASK-317-Vox-SDK-Multi-Tenancy-Hardening/README.md) |
 | **Audit driver** | [`05-vox-sdk-review.md`](./05-vox-sdk-review.md) |
-| **Status** | **In Progress** — W1–W4 merged into `fix/2605-review`; **W5 pending merge** (cache scoping + hygiene + closure docs) |
+| **Status** | **Completed** — W1–W5 merged into `fix/2605-review` (W5 `f19ef6fb`) |
 | **Scope** | `packages/agentic-sdk-v2` (`@arcaai/vox`), `packages/room`, `packages/utils`, `apps/example` — browser-side only; no API/server/Prisma changes |
 | **Approach** | 5 sequential waves per `executing-plans` skill — fresh implementation subagent per wave (strict TDD) + mandatory `code-reviewer` subagent between waves + `--no-ff` merges into `fix/2605-review`. All merged reviews returned **APPROVED** / **APPROVED-WITH-MINOR-NITS** (0 critical, 0 important at merge) |
 
@@ -363,7 +363,7 @@ this section is the wave-by-wave summary in the same style as §1/§6.
 | W2 | `15c3072a` | **Tenant-switch session reset.** Closes **C-5** — `clearTenantSessionData()` store action clears the 10-field tenant PHI/session set synchronously on `effectiveTenantId` change before the async re-hydrate tail (auth/impersonation untouched). vox suite 2929 green. |
 | W3 | `d9e961a5` | **Cross-tab / WebSocket isolation.** Closes **C-4** (`wsDedupKey(id,userId)`; user-mismatch refuses to share a socket), **D-4** (per-tenant `HKDF(secret, tenantId)` HMAC subkey; master secret never leaves the SharedWorker), **D-5** (`useArcaSession` threads `tenantId` into `createCrossTabSync`), **E-4** (opt-in `requireTenantClaim` on `SttV2WebSocketClient.connect`). vox suite 2945 green. |
 | W4 | `83f1db7b` | **Store-per-provider refactor + multi-instance tests.** Closes **C-1** (`createAgenticStore()` factory + `AgenticStoreContext`; per-provider store in `useRef`; internal `useAgenticStore` → context hook; module singleton `@deprecated`-shimmed; public `useArcaStore`/`useStoreApi` accessors) and **E-5** (`multi-instance.test.ts` — two providers/two tenants isolation + switch-mid-session + impersonation start→stop). vox suite 2948 green; ui-playground `vite build` ✓. |
-| W5 | `<W5-merge-sha — filled at close-out>` | **Cache scoping + hygiene (pending merge).** Closes **D-3** (`getTransformersCacheName`/`clearTenantCustomTransformersCache` — `vox/${tenantId}/transformers`; `db46a669`; **mechanism only, live-wiring deferred**), **D-6** (`AudioContextManager` cross-tenant dev-warning; `f2fbdcaf`), **E-1** (logger console fail-safe TSDoc; `478c61b2` + nit `1c50137d`), **E-3** (`apps/example/README.md` marks the app as a raw-WS demo, not a vox consumer; `6814c6fd`). utils suite 145 green; room suite 493 green. |
+| W5 | `f19ef6fb` | **Cache scoping + hygiene.** Closes **D-3** (`getTransformersCacheName`/`clearTenantCustomTransformersCache` — `vox/${tenantId}/transformers`; `db46a669`; **mechanism only, live-wiring deferred**), **D-6** (`AudioContextManager` cross-tenant dev-warning; `f2fbdcaf`), **E-1** (logger console fail-safe TSDoc; `478c61b2` + nit `1c50137d`), **E-3** (`apps/example/README.md` marks the app as a raw-WS demo, not a vox consumer; `6814c6fd`). utils suite 145 green; room suite 493 green. |
 
 ### 7.2 Audit findings closed (from `05-vox-sdk-review.md`)
 
@@ -414,7 +414,7 @@ failures; `AudioContextManager` phantom-holder over-warn). Full list in
 
 vox **2948** / utils **145** / room **493** green; typecheck-neutral
 (13 pre-existing vox `tsc` errors unchanged); lint 0 errors
-(pre-existing prettier warnings only). W1–W4 merged; W5 pending merge.
+(pre-existing prettier warnings only). W1–W5 merged (W5 `f19ef6fb`).
 
 ### 7.5 Cross-links (TASK-317 addendum)
 
