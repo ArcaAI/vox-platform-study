@@ -5,12 +5,12 @@
 | **Ticket** | TASK-317 — Vox SDK Multi-Tenancy Hardening |
 | **Plan** | [`docs/implementation/TASK-317-Vox-SDK-Multi-Tenancy-Hardening/README.md`](../implementation/TASK-317-Vox-SDK-Multi-Tenancy-Hardening/README.md) |
 | **Audit driver** | [`05-vox-sdk-review.md`](./05-vox-sdk-review.md) (this doc cross-walks every TASK-317-closed fix back into the audit) |
-| **Status** | **In Progress — W1–W4 merged; W5 pending merge** _(the orchestrator flips this to **Completed** and fills the W5 merge SHA post-merge)_ |
+| **Status** | **Completed** — W1–W5 merged into `fix/2605-review` (W5 `f19ef6fb`, 2026-05-30) |
 | **Plan approved** | 2026-05-29 |
 | **Created** | 2026-05-30 |
 | **Updated** | 2026-05-30 |
 | **Engineer-hours (estimated)** | ≈ 16–20 (plan §3 — the C-1 store-per-provider refactor dominates) |
-| **Wave merge SHAs** | W1 `6947fd96`, W2 `15c3072a`, W3 `d9e961a5`, W4 `83f1db7b`, W5 `<W5-merge-sha — filled at close-out>` (pending — this wave) |
+| **Wave merge SHAs** | W1 `6947fd96`, W2 `15c3072a`, W3 `d9e961a5`, W4 `83f1db7b`, W5 `f19ef6fb` |
 | **Approach** | 5 sequential implementation waves + 1 documentation step per the `executing-plans` skill — fresh implementation subagent per wave + mandatory `code-reviewer` subagent between waves + `--no-ff` merges back into `fix/2605-review`. All merged reviews returned **APPROVED** or **APPROVED-WITH-MINOR-NITS** (0 critical, 0 important issues at merge) |
 | **Predecessor** | TASK-305 (audit 02 — schema) ✅, TASK-306 (audit 03 — DDD layers) ✅, TASK-307 (audit 04 — API gateway) ✅ — `05` is the **last unaddressed audit doc** in the 2026-05-25 multi-tenancy series |
 | **Companion** | Server-side tenant boundary (TASK-305/306/307) remains **authoritative**; these `@arcaai/vox` fixes are *browser-side defense-in-depth* complements |
@@ -24,12 +24,10 @@ rationale and follow-up pointer. Read
 for the cross-cutting wave summary; this doc is the granular
 per-finding ledger.
 
-> **W5 not yet merged.** W1–W4 are merged into `fix/2605-review`. W5
-> (cache scoping + hygiene + these closure docs) ships its fixes as the
-> code commits cited in §1 (D-3 `db46a669`, D-6 `f2fbdcaf`, E-1
-> `478c61b2`, E-3 `6814c6fd`) but has **no merge SHA yet** — every W5
-> merge-SHA cell carries the `<W5-merge-sha — filled at close-out>`
-> placeholder for the orchestrator to fill post-merge.
+> **All waves merged.** W1–W5 are merged into `fix/2605-review` — W5 at
+> `f19ef6fb` (2026-05-30). The W5 fixes are the code commits cited in §1
+> (D-3 `db46a669`, D-6 `f2fbdcaf`, E-1 `478c61b2`, E-3 `6814c6fd`),
+> brought into `fix/2605-review` by merge `f19ef6fb`.
 
 ---
 
@@ -124,8 +122,8 @@ block any AC. The substantive deferrals above are tracked in §2.1.
 | 2 | **W2** Tenant-switch session reset (C-5) | `task-317/w2-tenant-switch-reset` | 5 | AC-7 (vox → 2929) | APPROVED-WITH-MINOR-NITS (C-1 full PHI coverage confirmed; M-2 `tenantConfig` reload) | `15c3072a` |
 | 3 | **W3** Cross-tab / WebSocket isolation (C-4, D-5, D-4, E-4) | `task-317/w3-crosstab-ws-isolation` | 12 | AC-8..AC-11 (+16 → vox 2945) | APPROVED (1 fix cycle: I-1 `useSharedWS` threading; M-1 HKDF empty-tenant parity) | `d9e961a5` |
 | 4 | **W4** Store-per-provider refactor + multi-instance tests (C-1, E-5) | `task-317/w4-store-per-provider` | 8 | AC-12/AC-13 (+3 → vox 2948) | APPROVED (1 fix cycle: C-1 ui-playground migrated off the inert singleton onto public context accessors) | `83f1db7b` |
-| 5 | **W5** Cache scoping + hygiene (D-3, D-6, E-1, E-3) | `task-317/w5-cache-hygiene-docs` | 8 (W5.1–W5.4 + RED/prettier/nit) | AC-14..AC-17 (utils +5 → 145; room +5 → 493) | APPROVED-WITH-MINOR-NITS (3 nits — §2.2 317-W5-a..c) | `<W5-merge-sha — filled at close-out>` |
-| 6 | **W5.5** Closure documentation | `task-317/w5-cache-hygiene-docs` | this step | 0 (doc-only) | (this step) | `<W5-merge-sha — filled at close-out>` |
+| 5 | **W5** Cache scoping + hygiene (D-3, D-6, E-1, E-3) | `task-317/w5-cache-hygiene-docs` | 8 (W5.1–W5.4 + RED/prettier/nit) | AC-14..AC-17 (utils +5 → 145; room +5 → 493) | APPROVED-WITH-MINOR-NITS (3 nits — §2.2 317-W5-a..c) | `f19ef6fb` |
+| 6 | **W5.5** Closure documentation | `task-317/w5-cache-hygiene-docs` | this step | 0 (doc-only) | (folded into the W5 merge) | `f19ef6fb` |
 
 Per-wave methodology (uniform across all 5 implementation waves):
 
