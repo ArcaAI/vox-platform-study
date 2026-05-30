@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { StorageAccessKeyService } from '../storage-access-key.service';
+
+// Hoisted so the `vi.mock` factory below can reference the same fixed raw
+// secret the test bodies assert against.
+const { RAW_SECRET } = vi.hoisted(() => ({ RAW_SECRET: 'RAW_PLAINTEXT_STORAGE_SECRET_FOR_TESTS' }));
 
 const BUCKET_TYPE_SYSTEM = 'SYSTEM';
 
@@ -59,12 +64,17 @@ vi.mock('@arcaai/domains', async (importOriginal) => {
     return {
         ...actual,
         StorageAccessKeyFactory: {
+            // Raw-secret generation now lives in the factory; the service hashes
+            // the result before persistence.
+            generateRawSecret: vi.fn(() => RAW_SECRET),
             CreateKey: vi.fn((props) => ({
                 id: 'new-key-id',
                 tenantId: props.tenantId,
                 name: props.name,
                 accessKeyId: 'HOPENEWKEY123',
-                secretAccessKey: 'new-secret-key',
+                // Reflect whatever the service passed in so tests can assert the
+                // persisted value is the HASH, not the plaintext.
+                secretAccessKey: props.secretAccessKey,
                 permissions: props.permissions ?? ['read'],
                 bucketIds: props.bucketIds ?? [],
                 isExpired: false,
@@ -147,17 +157,31 @@ describe('StorageAccessKeyService', () => {
             })).rejects.toThrow(NotFoundException);
         });
 
-        it('should create key and return it with secret (only on creation)', async () => {
-            mockStorageAccessKeyRepository.create.mockImplementation((entity: any) => entity);
+        it('should persist only a HASH and return the plaintext secret exactly once (F-2)', async () => {
+            let createdEntity: any;
+            mockStorageAccessKeyRepository.create.mockImplementation((entity: any) => {
+                createdEntity = entity;
+                return entity;
+            });
 
             const result = await service.generateKey({
                 name: 'Production Key',
                 permissions: ['read', 'write'],
             });
 
+            // No SecretsService is injected in this test, so the service falls
+            // back to plain SHA-256 (matching ApiKeyService's legacy fallback).
+            const expectedHash = createHash('sha256').update(RAW_SECRET).digest('hex');
+
+            // The caller receives the raw plaintext exactly once on creation.
+            expect(result.secretAccessKey).toBe(RAW_SECRET);
+
+            // What we persisted is the HASH — never the plaintext.
+            expect(createdEntity.secretAccessKey).toBe(expectedHash);
+            expect(createdEntity.secretAccessKey).not.toBe(RAW_SECRET);
+
             expect(result.name).toBe('Production Key');
             expect(result.accessKeyId).toBeDefined();
-            expect(result.secretAccessKey).toBeDefined();
         });
     });
 
@@ -202,12 +226,37 @@ describe('StorageAccessKeyService', () => {
         it('should return key info when valid', async () => {
             const validKey = createMockKeyEntity({ isExpired: false });
             mockStorageAccessKeyRepository.findByAccessKeyId.mockResolvedValue(validKey);
+            mockStorageAccessKeyRepository.update.mockResolvedValue(validKey);
 
             const result = await service.validateKey('HOPEABC123');
 
             expect(result).not.toBeNull();
             expect(result!.tenantId).toBe('tenant-1');
             expect(result!.permissions).toEqual(['read']);
+        });
+
+        it('should record lastUsedAt and lastUsedIp on successful validation (F-2b)', async () => {
+            const validKey = createMockKeyEntity({ id: 'key-77', isExpired: false });
+            mockStorageAccessKeyRepository.findByAccessKeyId.mockResolvedValue(validKey);
+            mockStorageAccessKeyRepository.update.mockResolvedValue(validKey);
+
+            const result = await service.validateKey('HOPEABC123', '203.0.113.7');
+
+            expect(result).not.toBeNull();
+            // last-used metadata is recorded via a repository update.
+            expect(mockStorageAccessKeyRepository.update).toHaveBeenCalledTimes(1);
+            const [idArg, entityArg] = mockStorageAccessKeyRepository.update.mock.calls[0];
+            expect(idArg).toBe('key-77');
+            expect(entityArg.lastUsedAt).toBeInstanceOf(Date);
+            expect(entityArg.lastUsedIp).toBe('203.0.113.7');
+        });
+
+        it('should not record usage when the key is invalid', async () => {
+            mockStorageAccessKeyRepository.findByAccessKeyId.mockResolvedValue(null);
+
+            await service.validateKey('INVALID', '203.0.113.7');
+
+            expect(mockStorageAccessKeyRepository.update).not.toHaveBeenCalled();
         });
     });
 });

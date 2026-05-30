@@ -8,6 +8,7 @@ import {
   Get,
   Inject,
   MaxFileSizeValidator,
+  NotFoundException,
   Param,
   ParseFilePipe,
   Patch,
@@ -50,7 +51,12 @@ export class StorageController {
   @ApiResponse({ status: 200, description: 'List of all buckets', type: [BucketInfoResponse] })
   @CanRead('Storage')
   async listBuckets(): Promise<BucketInfoResponse[]> {
-    return this.s3Service.listAllBuckets();
+    // Tenant-scoped: only the caller's tenant-owned buckets. Using
+    // s3Service.listAllBuckets() here would leak every physical bucket across
+    // all tenants (TASK-318 W2, F-1). `creationDate` maps from the tenant
+    // bucket record's createdAt; physical-only fields are not surfaced here.
+    const buckets = await this.tenantBucketService.listBuckets();
+    return buckets.map((bucket) => ({ name: bucket.name, creationDate: bucket.createdAt }));
   }
 
   @Post('buckets')
@@ -151,10 +157,17 @@ export class StorageController {
       throw new BadRequestException('Invalid file key: path traversal not allowed');
     }
 
-    const tenantBucket = await this.tenantBucketService.getBucketBySlug(bucketName);
-    const resolvedBucketName = tenantBucket?.name ?? bucketName;
+    // The route is @TenantOwnedResource-guarded on :name, so `bucketName` is an
+    // already-validated, tenant-owned PHYSICAL bucket. Resolve the record by
+    // physical name and 404 when absent — never resolve by slug or fall back to
+    // the raw param, which could route the upload to an unintended bucket
+    // (TASK-318 W2, F-8).
+    const bucket = await this.tenantBucketService.getBucketByName(bucketName);
+    if (!bucket) {
+      throw new NotFoundException(`Bucket '${bucketName}' not found`);
+    }
 
-    await this.s3Service.putFile(resolvedBucketName, fileKey, file.buffer, file.mimetype);
+    await this.s3Service.putFile(bucketName, fileKey, file.buffer, file.mimetype);
 
     const response: FileUploadResponse = {
       key: fileKey,
@@ -163,19 +176,16 @@ export class StorageController {
     };
 
     try {
-      const bucket = tenantBucket ?? (await this.tenantBucketService.getBucketByName(resolvedBucketName));
-      if (bucket) {
-        const ext = fileKey.includes('.') ? fileKey.split('.').pop()! : '';
-        const media = await this.mediaService.create({
-          name: fileKey,
-          uri: `s3://${resolvedBucketName}/${fileKey}`,
-          extension: ext,
-          mimeType: file.mimetype,
-          size: file.size,
-          hash: '',
-        });
-        response.mediaId = media.id;
-      }
+      const ext = fileKey.includes('.') ? fileKey.split('.').pop()! : '';
+      const media = await this.mediaService.create({
+        name: fileKey,
+        uri: `s3://${bucketName}/${fileKey}`,
+        extension: ext,
+        mimeType: file.mimetype,
+        size: file.size,
+        hash: '',
+      });
+      response.mediaId = media.id;
     } catch {
       // Media record creation is best-effort; do not fail the upload
     }
@@ -191,6 +201,9 @@ export class StorageController {
   @ApiResponse({ status: 200, description: 'File info with presigned download URL', type: FileInfoResponse })
   @CanRead('Storage')
   async getFileInfo(@Param('name') bucketName: string, @Param('key') key: string): Promise<FileInfoResponse> {
+    if (/[.]{2}|[/\\]/.test(key)) {
+      throw new BadRequestException('Invalid file key: path traversal not allowed');
+    }
     const url = await this.s3Service.signUrl(bucketName, key, 'get');
     return { key, url };
   }
@@ -203,6 +216,9 @@ export class StorageController {
   @ApiResponse({ status: 200, description: 'File deleted', type: DeleteFileResponse })
   @CanDelete('Storage')
   async deleteFile(@Param('name') bucketName: string, @Param('key') key: string): Promise<DeleteFileResponse> {
+    if (/[.]{2}|[/\\]/.test(key)) {
+      throw new BadRequestException('Invalid file key: path traversal not allowed');
+    }
     await this.s3Service.deleteFile(bucketName, key);
     return { deleted: true, key };
   }
