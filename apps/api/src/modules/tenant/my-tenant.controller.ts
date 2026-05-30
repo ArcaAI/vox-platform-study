@@ -7,7 +7,7 @@ import {
   IActiveUserContext,
   UpdateTenantConfigRequest,
 } from '@arcaai/applications';
-import { Controller, Get, Patch, Body, Inject, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Patch, Body, Inject, BadRequestException, ParseArrayPipe } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiHeader } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
@@ -90,7 +90,14 @@ export class MyTenantController {
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   async updateMyConfig(
-    @Body() configs: UpdateTenantConfigRequest[],
+    // Phase 0 Item 1 (TASK-302 Stream A) — the global ValidationPipe does NOT
+    // validate top-level array bodies element-wise (NestJS treats the metatype
+    // as `Array`, so class-validator never runs per item). ParseArrayPipe
+    // re-applies the same `whitelist` + `forbidNonWhitelisted` posture to each
+    // element so smuggled keys (e.g. key/locked/defaultValue) are rejected with
+    // 400 at the HTTP boundary, not silently dropped by the service allowlist.
+    @Body(new ParseArrayPipe({ items: UpdateTenantConfigRequest, whitelist: true, forbidNonWhitelisted: true }))
+    configs: UpdateTenantConfigRequest[],
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<PaginatedTenantConfigResponse> {
     const tenantId = this.resolveTenantId();

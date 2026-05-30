@@ -8,6 +8,7 @@ export {
   type TenantOwnedResourceModelName,
 } from './tenant-owned-resource.decorator';
 export { TenantOwnedResourceInterceptor } from './tenant-owned-resource.interceptor';
+export { TenantOwnedResourceSseGuard } from './tenant-owned-resource-sse.guard';
 export { TenantOwnedResourceModule } from './tenant-owned-resource.module';
 export {
   StreamSessionTenantBindingService,

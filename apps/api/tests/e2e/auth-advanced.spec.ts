@@ -256,7 +256,10 @@ test.describe('Auth Advanced Controller', () => {
       expect(response.status()).toBe(401);
     });
 
-    test('should return success when called with valid token', async ({ request }) => {
+    test('should reject with 400 when the token is not an impersonation session', async ({ request }) => {
+      // Contract: revoke-impersonation is strict — a non-impersonation bearer
+      // has no active impersonation to revoke, so the endpoint returns 400
+      // ("Not currently impersonating") rather than a no-op success.
       const loginResult = await loginUser(
         request,
         SEEDED_USERS.admin.username,
@@ -269,9 +272,9 @@ test.describe('Auth Advanced Controller', () => {
         headers: { Authorization: `Bearer ${loginResult!.token}` },
       });
 
-      expect(response.status()).toBe(200);
+      expect(response.status()).toBe(400);
       const body = await response.json();
-      expect(body.success).toBe(true);
+      expect(String(body.message ?? '')).toMatch(/impersonat/i);
     });
 
     test('should return success with impersonation token', async ({ request }) => {

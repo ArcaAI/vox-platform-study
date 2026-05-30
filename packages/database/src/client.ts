@@ -108,6 +108,10 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   'AudioRecording',
   'SummaryMeta',
   'NamedEntity',
+  // TranscriptionJob tracks lifecycle via its own `status` enum (QUEUED →
+  // COMPLETED/FAILED/CANCELLED) and has no `resourceStatus` column, so the
+  // soft-delete filter would otherwise emit an invalid Prisma `where`.
+  'TranscriptionJob',
 ]);
 
 /**

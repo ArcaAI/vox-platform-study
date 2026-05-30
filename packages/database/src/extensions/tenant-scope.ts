@@ -101,6 +101,49 @@ export function isTenantScopedModel(model: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// SYSTEM-tenant read inheritance
+// ---------------------------------------------------------------------------
+
+/**
+ * Reserved system tenant that owns platform-wide catalog rows (NOT customer
+ * data). Mirrors `SYSTEM_TENANT_ID` in
+ * `packages/database/src/prisma/db_main/seed/00-constants.ts`; duplicated here
+ * as a literal so the extension carries no dependency on the seed module.
+ */
+export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Subset of TENANT_SCOPED_MODELS whose SYSTEM-tenant rows are a shared,
+ * read-only platform catalog that EVERY tenant is allowed to read (e.g. the
+ * seeded production ASR pipelines / AI models in `seed/06-stt.ts`, all owned
+ * by `SYSTEM_TENANT_ID`).
+ *
+ * For these models a READ widens the tenant filter to
+ * `tenantId IN [caller, SYSTEM]` so a customer tenant can resolve the shared
+ * catalog entry it references (e.g. `POST /audio/transcription-jobs` validates
+ * its `pipelineId` against the SYSTEM-owned pipeline before persisting a
+ * tenant-owned job).
+ *
+ * SCOPE IS DELIBERATELY NARROW — only platform catalog tables belong here:
+ *   - Reads still EXCLUDE every other tenant's rows (the `IN` list is exactly
+ *     [caller, SYSTEM]), so cross-customer isolation is unchanged.
+ *   - WRITES are NOT widened (see makeReadHandler vs the mutation handlers):
+ *     a tenant can read but never create/update/delete a SYSTEM-owned row.
+ *   - Customer-data models (Consultation, TranscriptionJob, TenantBucket, …)
+ *     are intentionally absent — their cross-tenant 404 contracts must hold.
+ */
+export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
+  'AsrPipeline',
+  'AiModel',
+]);
+
+export function isSystemSharedReadModel(model: string): boolean {
+  if (SYSTEM_SHARED_READ_MODELS.has(model)) return true;
+  const pascal = model.charAt(0).toUpperCase() + model.slice(1);
+  return SYSTEM_SHARED_READ_MODELS.has(pascal);
+}
+
+// ---------------------------------------------------------------------------
 // Context provider — singleton registered by the host application
 // ---------------------------------------------------------------------------
 
@@ -199,7 +242,13 @@ export function applyTenantScopeExtension(
         `TenantScope: tenant context required for model ${params.model} operation ${op}`,
       );
     }
-    mergeTenantIntoWhere(params.args, tenantId, params.model, op);
+    // SYSTEM-tenant read inheritance: shared catalog models resolve rows
+    // owned by the caller OR the SYSTEM tenant. Writes are NOT widened.
+    if (isSystemSharedReadModel(params.model)) {
+      mergeSharedReadTenantIntoWhere(params.args, tenantId, params.model, op);
+    } else {
+      mergeTenantIntoWhere(params.args, tenantId, params.model, op);
+    }
     return params.query(params.args);
   };
 
@@ -332,6 +381,32 @@ function mergeTenantIntoWhere(
     return;
   }
   args.where = { ...where, tenantId };
+}
+
+/**
+ * Read-path tenant merge for SYSTEM-shared catalog models: widen the filter to
+ * `tenantId IN [caller, SYSTEM]` so the caller resolves both its own rows and
+ * the shared platform catalog. A caller may still pin an explicit `tenantId`,
+ * but only to the caller's own tenant or SYSTEM — any other value is the same
+ * cross-tenant violation `mergeTenantIntoWhere` rejects.
+ */
+function mergeSharedReadTenantIntoWhere(
+  args: Record<string, unknown>,
+  tenantId: string,
+  model: string,
+  op: string,
+): void {
+  const where = (args.where ?? {}) as Record<string, unknown>;
+  if ('tenantId' in where && where.tenantId !== undefined) {
+    if (where.tenantId !== tenantId && where.tenantId !== SYSTEM_TENANT_ID) {
+      throw new Error(
+        `TenantScope: tenantId mismatch on ${model}.${op} — caller passed ${JSON.stringify(where.tenantId)} but context is ${JSON.stringify(tenantId)} (SYSTEM inheritance allows only [caller, SYSTEM])`,
+      );
+    }
+    args.where = where;
+    return;
+  }
+  args.where = { ...where, tenantId: { in: [tenantId, SYSTEM_TENANT_ID] } };
 }
 
 function enforceTenantInData(

@@ -23,7 +23,7 @@ import { uuidv7 } from 'uuidv7';
 import { DataNotFoundExceptionFilter } from './filters';
 import { JwtAuthGuard } from './guards';
 import { ContextInterceptor, ExceptionInterceptor, ImpersonationAuditInterceptor, MaintenanceInterceptor, MetricsInterceptor } from './interceptors';
-import { TenantOwnedResourceModule } from './common';
+import { TenantOwnedResourceModule, TenantOwnedResourceSseGuard } from './common';
 import { GracefulShutdownModule } from './services';
 import { TenantContextProviderModule } from './database/tenant-context.provider';
 import { VaultPrismaFactoryModule } from './vault-prisma.module';
@@ -104,6 +104,15 @@ const guards = [
   {
     provide: APP_GUARD,
     useClass: UnifiedAuthGuard,
+  },
+  // TASK-309 — runs AFTER UnifiedAuthGuard so the CLS tenantId is populated.
+  // Closes the @Sse() cross-tenant leak: the global
+  // TenantOwnedResourceInterceptor throws 404 too late for SSE (the stream has
+  // already opened), so this guard re-runs the ownership assertion BEFORE the
+  // handler executes. No-op on every non-SSE route.
+  {
+    provide: APP_GUARD,
+    useClass: TenantOwnedResourceSseGuard,
   },
   {
     provide: APP_GUARD,

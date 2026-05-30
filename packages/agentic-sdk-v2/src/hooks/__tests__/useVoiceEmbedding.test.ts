@@ -43,6 +43,11 @@ describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
     let mockStore: ReturnType<typeof createMockStore>;
 
     beforeEach(() => {
+        // The hook hydrates profiles from a localStorage-backed SecureStorage
+        // cache on mount. Clear it so cached profiles from a prior test cannot
+        // leak into the next one (the per-package setup that normally does this
+        // is not loaded under the single-project root config).
+        localStorage.clear();
         mockStore = createMockStore();
         (useAgenticStore as any).mockReturnValue(mockStore);
     });

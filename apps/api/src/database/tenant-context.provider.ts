@@ -50,7 +50,14 @@ export class ClsTenantContextProvider
 
   getTenantId(): string | undefined {
     if (!this.cls.isActive()) return undefined;
-    return this.cls.get('tenantId') ?? this.cls.get('user')?.tenantId ?? undefined;
+    // An empty-string tenantId — super-admins authenticate without a tenant
+    // binding, so their JWT/CLS carries `tenantId: ''` — means "no tenant
+    // context", identical to `undefined`. Using `??` would leak the empty
+    // string through, bypassing the extension's `tenantId == null` super-admin
+    // pass-through and tripping `mergeTenantIntoWhere`'s mismatch guard on
+    // legitimate admin cross-tenant reads (GET /admin/tenants/configs/:id).
+    const resolved = this.cls.get('tenantId') ?? this.cls.get('user')?.tenantId;
+    return resolved && resolved.length > 0 ? resolved : undefined;
   }
 
   isSuperAdmin(): boolean {

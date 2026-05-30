@@ -71,6 +71,33 @@ export class TenantBucketFactory {
     });
   }
 
+  /**
+   * Create a CUSTOM bucket whose physical S3 name is supplied verbatim
+   * (rather than derived from `tenantKey`+`slug`). Used by the storage
+   * controller's `POST /storage/buckets`, where the caller names the S3
+   * bucket directly and the DB row must mirror that exact name so the
+   * bucket is addressable by name on the GET/PATCH/DELETE routes.
+   *
+   * The slug is sanitized from the name to satisfy the per-tenant
+   * `(tenantId, slug)` uniqueness constraint; `name` is globally unique
+   * (matching the S3 namespace).
+   */
+  static CreateNamedBucket(tenantId: string, name: string, description?: string, createdBy?: string): TenantBucketEntity {
+    return new TenantBucketEntity({
+      id: generateId(),
+      tenantId,
+      name,
+      slug: sanitizeBucketName(name),
+      description: description ?? null,
+      bucketType: TenantBucketType.CUSTOM,
+      pathPattern: '{yyyy}/{MM}/{dd}/{user_name}',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: createdBy ?? null,
+      updatedBy: null,
+    });
+  }
+
   static CreateDefaultSystemBuckets(tenantId: string, tenantKey: string, createdBy?: string): TenantBucketEntity[] {
     return [
       this.CreateSystemBucket(tenantId, tenantKey, SYSTEM_BUCKET_SLUGS.AUDIO, undefined, createdBy),

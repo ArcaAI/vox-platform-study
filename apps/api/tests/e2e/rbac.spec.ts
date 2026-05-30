@@ -235,7 +235,6 @@ test.describe('RBAC Controllers', () => {
           data: {
             name: roleName,
             description: 'E2E test role',
-            isSystemRole: false,
           },
         });
 

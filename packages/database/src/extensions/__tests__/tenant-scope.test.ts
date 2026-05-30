@@ -37,7 +37,10 @@ vi.mock('../../env.js', () => ({}));
 import {
   applyTenantScopeExtension,
   TENANT_SCOPED_MODELS,
+  SYSTEM_SHARED_READ_MODELS,
+  SYSTEM_TENANT_ID,
   isTenantScopedModel,
+  isSystemSharedReadModel,
   setTenantContextProvider,
   type TenantContextProvider,
 } from '../tenant-scope';
@@ -102,6 +105,135 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     expect(isTenantScopedModel('consultation')).toBe(true);
     expect(isTenantScopedModel('tenant')).toBe(false);
     expect(isTenantScopedModel('Tenant')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SYSTEM-shared read inheritance allow-list
+// ---------------------------------------------------------------------------
+
+describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
+  it('contains only the platform catalog models (AsrPipeline, AiModel)', () => {
+    expect(new Set(SYSTEM_SHARED_READ_MODELS)).toEqual(
+      new Set(['AsrPipeline', 'AiModel']),
+    );
+  });
+
+  it('every shared-read model is also a tenant-scoped model', () => {
+    for (const m of SYSTEM_SHARED_READ_MODELS) {
+      expect(TENANT_SCOPED_MODELS.has(m)).toBe(true);
+    }
+  });
+
+  it('does NOT include customer-data models whose cross-tenant 404 must hold', () => {
+    for (const m of ['Consultation', 'TranscriptionJob', 'TenantBucket', 'AuditLog']) {
+      expect(SYSTEM_SHARED_READ_MODELS.has(m)).toBe(false);
+    }
+  });
+
+  it('isSystemSharedReadModel accepts camelCase and PascalCase', () => {
+    expect(isSystemSharedReadModel('AsrPipeline')).toBe(true);
+    expect(isSystemSharedReadModel('asrPipeline')).toBe(true);
+    expect(isSystemSharedReadModel('Consultation')).toBe(false);
+  });
+});
+
+describe('SYSTEM-tenant read inheritance on shared catalog models', () => {
+  const READ_OPS = [
+    'findFirst', 'findFirstOrThrow',
+    'findUnique', 'findUniqueOrThrow',
+    'findMany', 'count', 'aggregate', 'groupBy',
+  ];
+
+  it.each(READ_OPS)('%s widens AsrPipeline tenantId to IN [caller, SYSTEM]', async (op) => {
+    const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
+    const query = vi.fn().mockResolvedValue(null);
+
+    await config.query.$allModels[op]({
+      model: 'AsrPipeline',
+      args: { where: { id: 'pipeline-1' } },
+      query,
+    });
+
+    expect(query).toHaveBeenCalledWith({
+      where: { id: 'pipeline-1', tenantId: { in: ['tenant-A', SYSTEM_TENANT_ID] } },
+    });
+  });
+
+  it('AiModel.findMany seeds the inheritance filter when no where supplied', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
+    const query = vi.fn().mockResolvedValue([]);
+
+    await config.query.$allModels.findMany({ model: 'AiModel', args: {}, query });
+
+    expect(query).toHaveBeenCalledWith({
+      where: { tenantId: { in: ['tenant-A', SYSTEM_TENANT_ID] } },
+    });
+  });
+
+  it('allows an explicit SYSTEM tenantId on a shared-read model', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
+    const query = vi.fn().mockResolvedValue(null);
+
+    await config.query.$allModels.findFirst({
+      model: 'AsrPipeline',
+      args: { where: { tenantId: SYSTEM_TENANT_ID } },
+      query,
+    });
+
+    expect(query).toHaveBeenCalledWith({ where: { tenantId: SYSTEM_TENANT_ID } });
+  });
+
+  it('rejects an explicit foreign tenantId on a shared-read model', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
+
+    await expect(
+      config.query.$allModels.findFirst({
+        model: 'AsrPipeline',
+        args: { where: { tenantId: 'tenant-B' } },
+        query: vi.fn(),
+      }),
+    ).rejects.toThrow(/tenantId mismatch/i);
+  });
+
+  it('does NOT widen WRITES — create stays pinned to the caller tenant', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
+    const query = vi.fn().mockResolvedValue({});
+
+    await config.query.$allModels.create({
+      model: 'AsrPipeline',
+      args: { data: { id: 'x' } },
+      query,
+    });
+
+    expect(query).toHaveBeenCalledWith({ data: { id: 'x', tenantId: 'tenant-A' } });
+  });
+
+  it('does NOT widen WRITES — delete stays pinned to the caller tenant', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
+    const query = vi.fn().mockResolvedValue({});
+
+    await config.query.$allModels.delete({
+      model: 'AsrPipeline',
+      args: { where: { id: 'x' } },
+      query,
+    });
+
+    const callArgs = query.mock.calls[0][0] as { where: Record<string, unknown> };
+    expect(callArgs.where).toEqual({ id: 'x', tenantId: 'tenant-A' });
+  });
+
+  it('a non-shared model (Consultation) keeps the exact-match scalar filter', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
+    const query = vi.fn().mockResolvedValue(null);
+
+    await config.query.$allModels.findUnique({
+      model: 'Consultation',
+      args: { where: { id: 'c-1' } },
+      query,
+    });
+
+    expect(query).toHaveBeenCalledWith({ where: { id: 'c-1', tenantId: 'tenant-A' } });
   });
 });
 

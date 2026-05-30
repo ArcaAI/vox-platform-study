@@ -14,6 +14,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Phase 0 — Item 1+2: mass-assignment chain', () => {
   let doctorToken: string;
   let doctorTenantConfigId: string;
+  let doctorTenantConfigVersion: number;
 
   test.beforeAll(async ({ request }) => {
     const login = await request.post('/api/v1/auth/login', {
@@ -29,14 +30,24 @@ test.describe('Phase 0 — Item 1+2: mass-assignment chain', () => {
     });
     expect(configs.status(), 'tenant config fetch failed').toBe(200);
     const body = await configs.json();
-    const unlocked = body.data.find((c: { locked?: boolean }) => c.locked !== true);
+    const unlocked = body.data.find(
+      (c: { locked?: boolean; version?: number }) => c.locked !== true,
+    );
     expect(unlocked, 'no unlocked GlobalSetting found for doctor — test seed gap').toBeDefined();
     doctorTenantConfigId = unlocked.id;
+    doctorTenantConfigVersion = unlocked.version;
   });
 
   test('PATCH /tenant/me/config with extra fields (key, tenantId, locked) is rejected with 400', async ({ request }) => {
+    // The route is guarded by @RequiresIfMatch (TASK-302 Stream D Phase D), so a
+    // valid strong-validator If-Match is required to clear the 428 gate and let
+    // the request reach the ValidationPipe — which is where the mass-assignment
+    // (smuggled key/locked/tenantId/defaultValue) is rejected with 400.
     const response = await request.patch('/api/v1/tenant/me/config', {
-      headers: { Authorization: `Bearer ${doctorToken}` },
+      headers: {
+        Authorization: `Bearer ${doctorToken}`,
+        'If-Match': `"${doctorTenantConfigVersion}"`,
+      },
       data: [
         {
           id: doctorTenantConfigId,
@@ -86,10 +97,10 @@ test.describe('Phase 0 — Item 3: privilege escalation via admin/users', () => 
       headers: { Authorization: `Bearer ${adminToken}` },
     });
     const roles = (await rolesResp.json()).data;
-    superAdminRoleId = roles.find((r: { key: string }) => r.key === 'SUPER_ADMIN')?.id;
+    superAdminRoleId = roles.find((r: { name: string }) => r.name === 'SUPER_ADMIN')?.id;
     expect(superAdminRoleId, 'SUPER_ADMIN role id not discoverable').toBeDefined();
 
-    const usersResp = await request.get('/api/v1/admin/users?page=1&pageSize=10', {
+    const usersResp = await request.get('/api/v1/admin/users?page=1&limit=10', {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
     const users = (await usersResp.json()).data;
@@ -106,7 +117,7 @@ test.describe('Phase 0 — Item 3: privilege escalation via admin/users', () => 
   });
 
   test('GET /admin/users from DOCTOR is rejected with 403', async ({ request }) => {
-    const response = await request.get('/api/v1/admin/users?page=1&pageSize=10', {
+    const response = await request.get('/api/v1/admin/users?page=1&limit=10', {
       headers: { Authorization: `Bearer ${doctorToken}` },
     });
     expect(response.status(), 'DOCTOR must NOT list users').toBe(403);

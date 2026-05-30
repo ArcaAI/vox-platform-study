@@ -63,6 +63,18 @@ async function probeStatuses(
 test.describe.configure({ mode: 'serial' });
 
 test.describe('TASK-308 AC-6 — Auth throttle granularity', () => {
+    // This spec is the ONLY one that requires throttling ENABLED: it asserts
+    // `/auth/login` 429s after its 5/min budget. The full E2E suite runs with
+    // `RATE_LIMIT_ENABLED=false` (.env.test) because the shared per-IP login
+    // budget cannot survive dozens of parallel specs logging in. So skip here
+    // and run this spec in isolation with throttling ON (see the file header):
+    //   RATE_LIMIT_ENABLED=true pnpm dev:api:test
+    //   RATE_LIMIT_ENABLED=true pnpm test:e2e --grep auth-throttle-per-endpoint
+    test.skip(
+        process.env.RATE_LIMIT_ENABLED === 'false',
+        'Throttling disabled for the full suite (RATE_LIMIT_ENABLED=false); run this spec in isolation with RATE_LIMIT_ENABLED=true.',
+    );
+
     // The doctor login is the FIRST `/auth/login` call this spec makes —
     // it must succeed (and get its token) BEFORE the rapid-login probe
     // consumes the 5/min budget. Running it in `beforeAll` keeps the

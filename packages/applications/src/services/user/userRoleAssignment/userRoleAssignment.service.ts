@@ -61,11 +61,14 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
     // the user is assigned to (impersonation target resolution); scoping it to
     // a single CLS tenant would defeat its purpose and it also runs in flows
     // without a tenant context. Cross-tenant by design.
+    // `tenantId` is a non-nullable column (TASK-305 §B4 retired the NULL =
+    // global semantics), so a `{ not: null }` filter is both invalid in
+    // Prisma 7 ("Argument `not` must not be null") and redundant — the loop
+    // below already skips empty/blank tenantIds.
     const rows = await this.databaseService.baseClient.userRoleAssignment.findMany({
       where: {
         userId,
         resourceStatus: ResourceStatusType.ENABLED,
-        tenantId: { not: null },
       },
       select: { tenantId: true },
       orderBy: { createdAt: 'asc' },

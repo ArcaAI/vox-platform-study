@@ -157,6 +157,7 @@ describe('modelHasSoftDelete', () => {
       'AudioRecording',
       'SummaryMeta',
       'NamedEntity',
+      'TranscriptionJob',
     ];
 
     expected.forEach((model) => {
@@ -180,6 +181,7 @@ describe('modelHasSoftDelete', () => {
       'audioRecording',
       'summaryMeta',
       'namedEntity',
+      'transcriptionJob',
     ];
 
     camelCaseModels.forEach((model) => {

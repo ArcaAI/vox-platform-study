@@ -50,6 +50,11 @@ import { TenantOwnedResourceInterceptor } from './tenant-owned-resource.intercep
   // Re-export the binding service so feature modules (streaming module)
   // can inject the same instance the interceptor uses, keeping
   // bind / lookup / clear talking to the same Redis keyspace.
-  exports: [StreamSessionTenantBindingService],
+  //
+  // Re-export the interceptor itself so `AppModule` can inject it into the
+  // `TenantOwnedResourceSseGuard` registered in its `guards` array (the guard
+  // delegates to `interceptor.assertAccess` to enforce ownership before an
+  // @Sse() stream opens — TASK-309 SSE leak fix).
+  exports: [StreamSessionTenantBindingService, TenantOwnedResourceInterceptor],
 })
 export class TenantOwnedResourceModule {}
