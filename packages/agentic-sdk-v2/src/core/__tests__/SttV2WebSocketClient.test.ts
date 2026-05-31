@@ -122,18 +122,18 @@ describe('SttV2WebSocketClient', () => {
 
   describe('connect', () => {
     it('should open a WebSocket connection to the given URL', async () => {
-      const connectPromise = client.connect('wss://api.example.com/ws/stt-v2/stream?sessionId=abc&token=jwt');
+      const connectPromise = client.connect('wss://api.example.com/ws/stt-v2/stream?sessionId=abc&token=jwt&tenantId=test-tenant');
 
       // Simulate server accepting connection
       lastMockWs!.simulateOpen();
       await connectPromise;
 
       expect(client.isConnected()).toBe(true);
-      expect(lastMockWs!.url).toBe('wss://api.example.com/ws/stt-v2/stream?sessionId=abc&token=jwt');
+      expect(lastMockWs!.url).toBe('wss://api.example.com/ws/stt-v2/stream?sessionId=abc&token=jwt&tenantId=test-tenant');
     });
 
     it('should set binaryType to arraybuffer', async () => {
-      const connectPromise = client.connect('wss://example.com/ws');
+      const connectPromise = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -141,7 +141,7 @@ describe('SttV2WebSocketClient', () => {
     });
 
     it('should reject if connection fails', async () => {
-      const connectPromise = client.connect('wss://example.com/ws');
+      const connectPromise = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateError();
       lastMockWs!.close(1006, 'Connection failed');
 
@@ -149,19 +149,19 @@ describe('SttV2WebSocketClient', () => {
     });
 
     it('should not allow connecting when already connected', async () => {
-      const p1 = client.connect('wss://example.com/ws');
+      const p1 = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p1;
 
       await expect(
-        client.connect('wss://example.com/ws')
+        client.connect('wss://example.com/ws?tenantId=test-tenant')
       ).rejects.toThrow(/already connected/i);
     });
 
     it('should reject with timeout error if server does not respond within timeoutMs', async () => {
       vi.useFakeTimers();
 
-      const connectPromise = client.connect('wss://example.com/ws', { timeoutMs: 5000 });
+      const connectPromise = client.connect('wss://example.com/ws?tenantId=test-tenant', { timeoutMs: 5000 });
 
       // Advance past the timeout without simulating open
       vi.advanceTimersByTime(5001);
@@ -175,7 +175,7 @@ describe('SttV2WebSocketClient', () => {
     it('should use default timeout of 10000ms when no timeoutMs is provided', async () => {
       vi.useFakeTimers();
 
-      const connectPromise = client.connect('wss://example.com/ws');
+      const connectPromise = client.connect('wss://example.com/ws?tenantId=test-tenant');
 
       // 9 seconds — should not have timed out
       vi.advanceTimersByTime(9000);
@@ -191,7 +191,7 @@ describe('SttV2WebSocketClient', () => {
     it('should clear the timeout when connection succeeds', async () => {
       vi.useFakeTimers();
 
-      const connectPromise = client.connect('wss://example.com/ws', { timeoutMs: 5000 });
+      const connectPromise = client.connect('wss://example.com/ws?tenantId=test-tenant', { timeoutMs: 5000 });
 
       // Succeed before timeout
       lastMockWs!.simulateOpen();
@@ -207,26 +207,32 @@ describe('SttV2WebSocketClient', () => {
   });
 
   // =========================================================================
-  // TASK-317 W3.5 — AC-10: WS must not open without a tenant claim.
+  // TASK-317 W3.5 (AC-10) + TASK-320 B5 — WS must not open without a tenant claim.
   //
-  // The stt-v2 upgrade carried no client-side assertion that the connection
-  // is bound to a tenant, so a misconfigured caller could open a socket with
-  // no tenant context. AC-10 adds an OPT-IN fail-closed guard: when
-  // `requireTenantClaim` is set, connect() must reject BEFORE creating the
-  // socket unless a claim is resolvable from the options or the URL
-  // (`tenantId` / `tenant`). The opt-in keeps the ~30 existing bare-URL
-  // connect tests working unchanged.
+  // The stt-v2 upgrade carried no client-side assertion that the connection is
+  // bound to a tenant, so a misconfigured caller could open a socket with no
+  // tenant context. AC-10 added a fail-closed guard that rejects connect()
+  // BEFORE creating the socket unless a claim is resolvable from the options
+  // (`tenantClaim`) or the URL (`tenantId` / `tenant`).
+  //
+  // TASK-320 B5 flips the EFFECTIVE DEFAULT to fail-closed: `requireTenantClaim`
+  // now defaults to `true`, so a bare connect() with no resolvable claim
+  // rejects. Callers opt out explicitly with `requireTenantClaim: false`. The
+  // SDK's own streaming flow always carries `?tenantId=` (see
+  // StreamingSessionManager.getWebSocketUrl), which is why the connect tests
+  // throughout this file now pass `?tenantId=test-tenant`. The tests below use
+  // a distinct `wss://no-claim.example/ws` host so they are unaffected by that
+  // file-wide tenant-id injection.
   // =========================================================================
-  describe('TASK-317 W3.5 — AC-10 tenant-claim guard', () => {
-    it('rejects connect() when requireTenantClaim is set but no claim is resolvable (no socket created)', async () => {
-      const connectPromise = client.connect('wss://api.example.com/ws/stt-v2/stream', {
-        requireTenantClaim: true,
-      });
-      // Capture the rejection up-front so a slow GREEN reject can't leak as an
-      // unhandled rejection, and so the RED run doesn't hang on a pending socket.
+  describe('TASK-317 W3.5 / TASK-320 B5 — tenant-claim guard', () => {
+    // --- default-on (TASK-320 B5) ---------------------------------------
+    it('rejects a bare connect() BY DEFAULT when no claim is resolvable (no socket created)', async () => {
+      const connectPromise = client.connect('wss://no-claim.example/ws');
+      // Capture the rejection up-front so a slow reject can't leak as an
+      // unhandled rejection, and so the run doesn't hang on a pending socket.
       const settled = connectPromise.then(() => 'resolved' as const).catch((e: unknown) => e);
 
-      // Fail-closed: the guard must trip synchronously, before any socket exists.
+      // Fail-closed by default: the guard trips synchronously, before any socket.
       expect(lastMockWs).toBeNull();
 
       const result = await settled;
@@ -235,30 +241,58 @@ describe('SttV2WebSocketClient', () => {
       expect(client.isConnected()).toBe(false);
     });
 
-    it('connects when requireTenantClaim is set and a tenantId is present in the URL', async () => {
-      const connectPromise = client.connect('wss://api.example.com/ws/stt-v2/stream?tenantId=tenant-A&ticket=t1', {
-        requireTenantClaim: true,
-      });
-      // Claim resolved → a socket is created and the open handshake proceeds.
+    it('connects BY DEFAULT (no requireTenantClaim option) when a tenantId is in the URL', async () => {
+      const connectPromise = client.connect('wss://api.example.com/ws/stt-v2/stream?tenantId=tenant-A&ticket=t1');
+      // Claim resolved from the URL → a socket is created.
       expect(lastMockWs).not.toBeNull();
       lastMockWs!.simulateOpen();
       await connectPromise;
       expect(client.isConnected()).toBe(true);
     });
 
-    it('connects when requireTenantClaim is set and an explicit tenantClaim option is provided', async () => {
+    it('connects BY DEFAULT when an explicit tenantClaim option is provided (bare URL)', async () => {
+      const connectPromise = client.connect('wss://no-claim.example/ws', { tenantClaim: 'tenant-A' });
+      expect(lastMockWs).not.toBeNull();
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+      expect(client.isConnected()).toBe(true);
+    });
+
+    // --- explicit opt-out escape hatch (only the DEFAULT changed) -------
+    it('still connects on a bare URL when requireTenantClaim is explicitly false (escape hatch)', async () => {
+      const connectPromise = client.connect('wss://no-claim.example/ws', { requireTenantClaim: false });
+      expect(lastMockWs).not.toBeNull();
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+      expect(client.isConnected()).toBe(true);
+    });
+
+    // --- explicit opt-in (unchanged from TASK-317 AC-10) ----------------
+    it('rejects connect() when requireTenantClaim is explicitly true but no claim is resolvable', async () => {
+      const connectPromise = client.connect('wss://no-claim.example/ws', { requireTenantClaim: true });
+      const settled = connectPromise.then(() => 'resolved' as const).catch((e: unknown) => e);
+      expect(lastMockWs).toBeNull();
+      const result = await settled;
+      expect(result).toBeInstanceOf(Error);
+      expect((result as Error).message).toMatch(/tenant claim/i);
+      expect(client.isConnected()).toBe(false);
+    });
+
+    it('connects when requireTenantClaim is explicitly true and a tenantId is in the URL', async () => {
+      const connectPromise = client.connect('wss://api.example.com/ws/stt-v2/stream?tenantId=tenant-A&ticket=t1', {
+        requireTenantClaim: true,
+      });
+      expect(lastMockWs).not.toBeNull();
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+      expect(client.isConnected()).toBe(true);
+    });
+
+    it('connects when requireTenantClaim is explicitly true and an explicit tenantClaim option is provided', async () => {
       const connectPromise = client.connect('wss://api.example.com/ws/stt-v2/stream?ticket=t1', {
         requireTenantClaim: true,
         tenantClaim: 'tenant-A',
       });
-      expect(lastMockWs).not.toBeNull();
-      lastMockWs!.simulateOpen();
-      await connectPromise;
-      expect(client.isConnected()).toBe(true);
-    });
-
-    it('still connects on a bare URL when requireTenantClaim is NOT set (backward compatible)', async () => {
-      const connectPromise = client.connect('wss://example.com/ws');
       expect(lastMockWs).not.toBeNull();
       lastMockWs!.simulateOpen();
       await connectPromise;
@@ -272,7 +306,7 @@ describe('SttV2WebSocketClient', () => {
 
   describe('sendAudioFrame', () => {
     it('should send raw PCM buffer as binary', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -295,7 +329,7 @@ describe('SttV2WebSocketClient', () => {
 
   describe('sendAudioFrameJson', () => {
     it('should send JSON audio frame with seq and base64 data', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -309,7 +343,7 @@ describe('SttV2WebSocketClient', () => {
     });
 
     it('should include optional microphoneId', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -326,7 +360,7 @@ describe('SttV2WebSocketClient', () => {
 
   describe('sendStop', () => {
     it('should send stop message', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -343,7 +377,7 @@ describe('SttV2WebSocketClient', () => {
 
   describe('sendClose', () => {
     it('should send close message', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -370,7 +404,7 @@ describe('SttV2WebSocketClient', () => {
 
   describe('onTranscript', () => {
     it('should fire callback when a transcript message is received', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -390,7 +424,7 @@ describe('SttV2WebSocketClient', () => {
     });
 
     it('should distinguish final vs partial transcripts', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -412,7 +446,7 @@ describe('SttV2WebSocketClient', () => {
 
   describe('onStatus', () => {
     it('should fire callback for status messages', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -432,7 +466,7 @@ describe('SttV2WebSocketClient', () => {
 
   describe('onWsError', () => {
     it('should fire callback for error messages from server', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -456,7 +490,7 @@ describe('SttV2WebSocketClient', () => {
 
   describe('message edge cases', () => {
     it('should not throw on malformed JSON from server', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -471,7 +505,7 @@ describe('SttV2WebSocketClient', () => {
     });
 
     it('should warn on unknown message type from server', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -486,7 +520,7 @@ describe('SttV2WebSocketClient', () => {
     });
 
     it('should warn on non-string (binary) message from server', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -499,7 +533,7 @@ describe('SttV2WebSocketClient', () => {
     });
 
     it('should not fire any callback for unknown message types', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -524,7 +558,7 @@ describe('SttV2WebSocketClient', () => {
 
   describe('server-initiated close', () => {
     it('should fire onDisconnect when server closes after connection', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -545,7 +579,7 @@ describe('SttV2WebSocketClient', () => {
 
   describe('multiple rapid sends', () => {
     it('should preserve order of multiple audio frames', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -566,7 +600,7 @@ describe('SttV2WebSocketClient', () => {
 
   describe('disconnect', () => {
     it('should close the WebSocket connection', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -580,7 +614,7 @@ describe('SttV2WebSocketClient', () => {
     });
 
     it('should fire onDisconnect callback', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -593,12 +627,12 @@ describe('SttV2WebSocketClient', () => {
     });
 
     it('should allow reconnecting after disconnect', async () => {
-      const p1 = client.connect('wss://example.com/ws');
+      const p1 = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p1;
       client.disconnect();
 
-      const p2 = client.connect('wss://example.com/ws');
+      const p2 = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p2;
 
@@ -626,7 +660,7 @@ describe('SttV2WebSocketClient', () => {
       vi.useFakeTimers();
 
       // Default client has no reconnect options
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -649,7 +683,7 @@ describe('SttV2WebSocketClient', () => {
       vi.useFakeTimers();
       const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
 
-      const p = reconnectClient.connect('wss://example.com/ws');
+      const p = reconnectClient.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -673,7 +707,7 @@ describe('SttV2WebSocketClient', () => {
     it('should not auto-reconnect on intentional disconnect', async () => {
       vi.useFakeTimers();
 
-      const p = reconnectClient.connect('wss://example.com/ws');
+      const p = reconnectClient.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -694,7 +728,7 @@ describe('SttV2WebSocketClient', () => {
       const onReconnect = vi.fn();
       reconnectClient.onReconnect(onReconnect);
 
-      const p = reconnectClient.connect('wss://example.com/ws');
+      const p = reconnectClient.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -721,7 +755,7 @@ describe('SttV2WebSocketClient', () => {
       });
       zeroAttemptsClient.onReconnectFailed(onReconnectFailed);
 
-      const p = zeroAttemptsClient.connect('wss://example.com/ws');
+      const p = zeroAttemptsClient.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -741,7 +775,7 @@ describe('SttV2WebSocketClient', () => {
       vi.useFakeTimers();
       const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
 
-      const p = reconnectClient.connect('wss://example.com/ws');
+      const p = reconnectClient.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -796,7 +830,7 @@ describe('SttV2WebSocketClient', () => {
         maxDelayMs: 30000,
       });
 
-      const p = jitterClient.connect('wss://example.com/ws');
+      const p = jitterClient.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -835,7 +869,7 @@ describe('SttV2WebSocketClient', () => {
       const onReconnect = vi.fn();
       reconnectClient.onReconnect(onReconnect);
 
-      const p = reconnectClient.connect('wss://example.com/ws');
+      const p = reconnectClient.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -868,7 +902,7 @@ describe('SttV2WebSocketClient', () => {
       const onReconnect = vi.fn();
       reconnectClient.onReconnect(onReconnect);
 
-      const p = reconnectClient.connect('wss://example.com/ws');
+      const p = reconnectClient.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -893,7 +927,7 @@ describe('SttV2WebSocketClient', () => {
       const onReconnect = vi.fn();
       reconnectClient.onReconnect(onReconnect);
 
-      const p = reconnectClient.connect('wss://example.com/ws');
+      const p = reconnectClient.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -920,7 +954,7 @@ describe('SttV2WebSocketClient', () => {
         maxDelayMs: 5000,
       });
 
-      const p = failClient.connect('wss://example.com/ws');
+      const p = failClient.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -929,7 +963,7 @@ describe('SttV2WebSocketClient', () => {
       expect(failClient.isConnected()).toBe(false);
 
       // Manual reconnect should still work
-      const p2 = failClient.connect('wss://example.com/ws');
+      const p2 = failClient.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p2;
 
@@ -943,7 +977,7 @@ describe('SttV2WebSocketClient', () => {
 
   describe('sendAudioFrameJson without microphoneId', () => {
     it('should not include microphoneId key when not provided', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -955,7 +989,7 @@ describe('SttV2WebSocketClient', () => {
     });
 
     it('should not include microphoneId when passed as empty string', async () => {
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -987,7 +1021,7 @@ describe('SttV2WebSocketClient', () => {
         client.onReconnectFailed(failedCb);
 
         // Initial connect
-        const connectPromise = client.connect('ws://test/stream');
+        const connectPromise = client.connect('ws://test/stream?tenantId=test-tenant');
         lastMockWs!.simulateOpen();
         await connectPromise;
 
@@ -1029,7 +1063,7 @@ describe('SttV2WebSocketClient', () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const connectPromise = client.connect('wss://api.example.com/ws/stream?sessionId=secret-123&token=jwt-abc');
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?sessionId=secret-123&token=jwt-abc&tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1040,6 +1074,9 @@ describe('SttV2WebSocketClient', () => {
       const loggedUrl = connectLog[1]?.attributes?.url;
       expect(loggedUrl).not.toContain('secret-123');
       expect(loggedUrl).not.toContain('jwt-abc');
+      // stripQueryParams removes ALL query params (sessionId, token, tenantId),
+      // leaving only the base; tenantId is non-secret but still must not be logged.
+      expect(loggedUrl).not.toContain('test-tenant');
       expect(loggedUrl).toContain('wss://api.example.com/ws/stream');
 
       client.disconnect();
@@ -1055,7 +1092,7 @@ describe('SttV2WebSocketClient', () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const connectPromise = client.connect('wss://api.example.com/ws/stream');
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1077,7 +1114,7 @@ describe('SttV2WebSocketClient', () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const connectPromise = client.connect('wss://api.example.com/ws/stream');
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1098,7 +1135,7 @@ describe('SttV2WebSocketClient', () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const connectPromise = client.connect('wss://api.example.com/ws/stream');
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1120,7 +1157,7 @@ describe('SttV2WebSocketClient', () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const connectPromise = client.connect('wss://api.example.com/ws/stream');
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1146,7 +1183,7 @@ describe('SttV2WebSocketClient', () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const connectPromise = client.connect('wss://api.example.com/ws/stream');
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1182,7 +1219,7 @@ describe('SttV2WebSocketClient', () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const connectPromise = client.connect('wss://api.example.com/ws/stream');
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1216,7 +1253,7 @@ describe('SttV2WebSocketClient', () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const connectPromise = client.connect('wss://api.example.com/ws/stream');
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1253,7 +1290,7 @@ describe('SttV2WebSocketClient', () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const connectPromise = client.connect('wss://api.example.com/ws/stream');
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1275,7 +1312,7 @@ describe('SttV2WebSocketClient', () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const connectPromise = client.connect('wss://api.example.com/ws/stream');
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1317,7 +1354,7 @@ describe('SttV2WebSocketClient', () => {
     it('routes transcript debug through SDKLogger.debug (NOT console.log) when debugMode=true', async () => {
       const debugClient = new SttV2WebSocketClient(mockLogger, undefined, true);
 
-      const connectPromise = debugClient.connect('wss://api.example.com/ws/stream');
+      const connectPromise = debugClient.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1360,7 +1397,7 @@ describe('SttV2WebSocketClient', () => {
     it('does NOT log transcript debug when debugMode is false', async () => {
       const noDebugClient = new SttV2WebSocketClient(mockLogger, undefined, false);
 
-      const connectPromise = noDebugClient.connect('wss://api.example.com/ws/stream');
+      const connectPromise = noDebugClient.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1387,7 +1424,7 @@ describe('SttV2WebSocketClient', () => {
     it('does NOT log transcript for non-final results even in debug mode', async () => {
       const debugClient = new SttV2WebSocketClient(mockLogger, undefined, true);
 
-      const connectPromise = debugClient.connect('wss://api.example.com/ws/stream');
+      const connectPromise = debugClient.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1414,7 +1451,7 @@ describe('SttV2WebSocketClient', () => {
     it('increments the segment counter across multiple final transcripts (via logger.debug)', async () => {
       const debugClient = new SttV2WebSocketClient(mockLogger, undefined, true);
 
-      const connectPromise = debugClient.connect('wss://api.example.com/ws/stream');
+      const connectPromise = debugClient.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await connectPromise;
 
@@ -1462,7 +1499,7 @@ describe('SttV2WebSocketClient', () => {
       const onDrop = vi.fn();
       client.onBackpressureDrop(onDrop);
 
-      const p = client.connect('wss://example.com/ws?sessionId=s1&ticket=t1');
+      const p = client.connect('wss://example.com/ws?sessionId=s1&ticket=t1&tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -1488,7 +1525,7 @@ describe('SttV2WebSocketClient', () => {
       const onDrop = vi.fn();
       client.onBackpressureDrop(onDrop);
 
-      const p = client.connect('wss://example.com/ws?sessionId=s1');
+      const p = client.connect('wss://example.com/ws?sessionId=s1&tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -1504,7 +1541,7 @@ describe('SttV2WebSocketClient', () => {
         bufferedAmountHighWatermark: 10,
       });
 
-      const p = client.connect('wss://example.com/ws');
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -1514,7 +1551,7 @@ describe('SttV2WebSocketClient', () => {
 
       client.disconnect();
 
-      const p2 = client.connect('wss://example.com/ws');
+      const p2 = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p2;
       expect(client.getDroppedFrameCount()).toBe(0);
@@ -1528,7 +1565,7 @@ describe('SttV2WebSocketClient', () => {
     it('records the highest transcript seq and exposes it via getLastReceivedSeq', async () => {
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const p = client.connect('wss://example.com/ws?sessionId=s-1');
+      const p = client.connect('wss://example.com/ws?sessionId=s-1&tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
       client.onTranscript(vi.fn());
@@ -1552,7 +1589,7 @@ describe('SttV2WebSocketClient', () => {
         maxDelayMs: 5000,
       });
 
-      const p = reconnectClient.connect('wss://example.com/ws?sessionId=sess-abc&ticket=tkt-1');
+      const p = reconnectClient.connect('wss://example.com/ws?sessionId=sess-abc&ticket=tkt-1&tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -1581,7 +1618,7 @@ describe('SttV2WebSocketClient', () => {
     it('does NOT send a resume handshake on the FIRST connect', async () => {
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const p = client.connect('wss://example.com/ws?sessionId=s-only');
+      const p = client.connect('wss://example.com/ws?sessionId=s-only&tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -1592,7 +1629,7 @@ describe('SttV2WebSocketClient', () => {
     it('handles a `resumed` server response without error', async () => {
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const p = client.connect('wss://example.com/ws?sessionId=s-1');
+      const p = client.connect('wss://example.com/ws?sessionId=s-1&tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -1611,7 +1648,7 @@ describe('SttV2WebSocketClient', () => {
     it('surfaces a `resume_failed` server response via onWsError and resets lastReceivedSeq', async () => {
       const client = new SttV2WebSocketClient(mockLogger);
 
-      const p = client.connect('wss://example.com/ws?sessionId=s-1');
+      const p = client.connect('wss://example.com/ws?sessionId=s-1&tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -1652,7 +1689,7 @@ describe('SttV2WebSocketClient', () => {
         refreshTicket,
       });
 
-      const p = reconnectClient.connect('wss://example.com/ws?sessionId=sess-1&ticket=stale-ticket');
+      const p = reconnectClient.connect('wss://example.com/ws?sessionId=sess-1&ticket=stale-ticket&tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
 
@@ -1687,7 +1724,7 @@ describe('SttV2WebSocketClient', () => {
       const failedCb = vi.fn();
       reconnectClient.onReconnectFailed(failedCb);
 
-      const p = reconnectClient.connect('wss://example.com/ws?sessionId=sess-1&ticket=tkt');
+      const p = reconnectClient.connect('wss://example.com/ws?sessionId=sess-1&ticket=tkt&tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
       const initialMock = lastMockWs;

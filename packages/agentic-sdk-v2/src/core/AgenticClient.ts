@@ -30,6 +30,20 @@ import { classifyHttpError } from '../utils/errorUtils';
 const impersonationTokens = new WeakMap<AgenticClient, string>();
 
 /**
+ * Module-level WeakMap holding the session refresh token in memory.
+ *
+ * TASK-320 B2: the auto-refresh handler (wired by `AgenticProvider`) needs the
+ * refresh token to mint a new access token on a 401. The backend
+ * `/auth/refresh` is BODY-based (`{ refreshToken }`), so the SDK must hold the
+ * token client-side. We mirror the impersonation-token discipline above and
+ * keep it in a module-level WeakMap keyed by `this` — NOT an instance field,
+ * the Zustand store, or localStorage — so it cannot leak via `Object.keys`,
+ * `JSON.stringify`, DevTools, BroadcastChannel structured clone, or persisted
+ * snapshots. Captured from the login response and rotated on every refresh.
+ */
+const refreshTokens = new WeakMap<AgenticClient, string>();
+
+/**
  * HTTP client for ARCAAI API communication.
  */
 export class AgenticClient {
@@ -941,5 +955,48 @@ export class AgenticClient {
    */
   isImpersonating(): boolean {
     return impersonationTokens.has(this);
+  }
+
+  // =========================================================================
+  // Session refresh token (TASK-320 B2)
+  //
+  // Held in a module-level WeakMap keyed by `this`, mirroring the
+  // impersonation-token discipline above. Captured from the login response
+  // (`useAuth.login`) and consumed by the `onUnauthorized` handler that
+  // `AgenticProvider` registers so a 401 transparently refreshes the access
+  // token. Never stored on the instance, in the store, or in localStorage.
+  // =========================================================================
+
+  /**
+   * Stash the session refresh token in the in-memory WeakMap. Passing an
+   * empty string clears it (treated as "no token").
+   */
+  setRefreshToken(token: string): void {
+    if (typeof token !== 'string' || token.length === 0) {
+      refreshTokens.delete(this);
+      return;
+    }
+    refreshTokens.set(this, token);
+  }
+
+  /**
+   * Read the in-memory session refresh token, or `undefined` when absent.
+   */
+  getRefreshToken(): string | undefined {
+    return refreshTokens.get(this);
+  }
+
+  /**
+   * Whether an in-memory session refresh token is currently held.
+   */
+  hasRefreshToken(): boolean {
+    return refreshTokens.has(this);
+  }
+
+  /**
+   * Clear the in-memory session refresh token (e.g. on logout).
+   */
+  clearRefreshToken(): void {
+    refreshTokens.delete(this);
   }
 }
