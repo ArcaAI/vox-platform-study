@@ -1,6 +1,5 @@
 import {
   PipelineServiceModule,
-  S3ServiceModule,
   StreamingSessionServiceModule,
   TenantBucketServiceModule,
   TenantServiceModule,
@@ -26,7 +25,6 @@ import { TranscriptionJobController } from './transcription-job.controller';
     StreamingSessionServiceModule,
     TenantServiceModule,
     TenantBucketServiceModule,
-    S3ServiceModule,
     PipelineServiceModule,
     CoreDatabaseModule,
     // TASK-310 W7.A.9 (AC-3): exposes `StreamSessionTenantBindingService`

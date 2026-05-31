@@ -912,3 +912,61 @@ class TestWorkerWithPublisherDisabled:
 
         # Job completed via API despite Redis failure
         api.complete_job.assert_awaited_once()
+
+
+# =============================================================================
+# Per-tenant storage descriptor (TASK-318 W3-C)
+# =============================================================================
+
+
+class TestWorkerStorageDescriptor:
+    """The `storage` kwarg drives per-tenant provider/bucket registration."""
+
+    @staticmethod
+    def _blob_with_resolver() -> AsyncMock:
+        blob = AsyncMock()
+        blob.download_audio = AsyncMock(return_value=b"audio")
+        blob.upload_transcript = AsyncMock(return_value="s3://t/transcript.json")
+        blob.upload_batch_metadata = AsyncMock(return_value="s3://t/metadata.json")
+        # Sync resolver so registration calls are plain (non-coroutine) mocks.
+        blob._resolver = MagicMock()
+        return blob
+
+    @pytest.mark.asyncio
+    async def test_storage_descriptor_registers_tenant_storage(self, pubsub_capture):
+        blob = self._blob_with_resolver()
+        descriptor = {"provider": "azure_blob", "bucket": "c1", "connection_string": "conn"}
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(blob_service=blob)
+
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
+            await _transcribe_file_async(
+                job_id="j-stg-1",
+                tenant_id="t-1",
+                pipeline_id="p-1",
+                audio_uri="s3://c1/audio.wav",
+                storage=descriptor,
+            )
+
+        blob._resolver.set_tenant_storage.assert_called_once_with("t-1", descriptor)
+        blob._resolver.set_tenant_bucket.assert_not_called()
+        # tenant_id is threaded to download so the right provider is selected.
+        blob.download_audio.assert_awaited_once_with("s3://c1/audio.wav", tenant_id="t-1")
+
+    @pytest.mark.asyncio
+    async def test_audio_bucket_name_fallback_when_no_storage(self, pubsub_capture):
+        blob = self._blob_with_resolver()
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(blob_service=blob)
+
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
+            await _transcribe_file_async(
+                job_id="j-stg-2",
+                tenant_id="t-1",
+                pipeline_id="p-1",
+                audio_uri="s3://audio.wav",
+                audio_bucket_name="hope-audio-acme",
+            )
+
+        blob._resolver.set_tenant_bucket.assert_called_once_with(
+            "t-1", "audio", "hope-audio-acme"
+        )
+        blob._resolver.set_tenant_storage.assert_not_called()

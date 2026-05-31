@@ -1,11 +1,12 @@
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
-import { TenantBucketType } from '../../../enums';
+import { TenantBucketPurpose, TenantBucketType } from '../../../enums';
 
 export interface ITenantBucketEntity extends IBaseTenantEntity {
   name: string;
   slug: string;
   description?: string | null;
   bucketType: TenantBucketType;
+  purpose?: TenantBucketPurpose;
   pathPattern: string;
 }
 
@@ -14,6 +15,7 @@ export class TenantBucketEntity extends BaseTenantEntity {
   private _slug: string;
   private _description?: string | null;
   private _bucketType: TenantBucketType;
+  private _purpose: TenantBucketPurpose;
   private _pathPattern: string;
 
   constructor(init: ITenantBucketEntity) {
@@ -22,6 +24,7 @@ export class TenantBucketEntity extends BaseTenantEntity {
     this._slug = init.slug;
     this._description = init.description;
     this._bucketType = init.bucketType;
+    this._purpose = init.purpose ?? TenantBucketPurpose.CUSTOM;
     this._pathPattern = init.pathPattern;
   }
 
@@ -55,6 +58,14 @@ export class TenantBucketEntity extends BaseTenantEntity {
 
   set bucketType(value: TenantBucketType) {
     this.setProperty('bucketType', value);
+  }
+
+  get purpose(): TenantBucketPurpose {
+    return this._purpose;
+  }
+
+  set purpose(value: TenantBucketPurpose) {
+    this.setProperty('purpose', value);
   }
 
   get pathPattern(): string {

@@ -83,9 +83,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // prompt-template.prisma (2)
   'PromptTemplate',
   'PromptVersion',
-  // tenant-bucket.prisma (2)
+  // tenant-bucket.prisma (3)
   'TenantBucket',
   'StorageAccessKey',
+  'TenantStorageConfig',
   // media.prisma (1)
   'Media',
 ]);

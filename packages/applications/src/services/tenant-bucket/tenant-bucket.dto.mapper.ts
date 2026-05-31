@@ -10,6 +10,7 @@ export class TenantBucketDtoMapper {
       slug: entity.slug,
       description: entity.description ?? undefined,
       bucketType: entity.bucketType,
+      purpose: entity.purpose,
       pathPattern: entity.pathPattern,
       isSystemBucket: entity.isSystemBucket,
       resourceStatus: entity.resourceStatus ?? undefined,

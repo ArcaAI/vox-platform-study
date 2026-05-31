@@ -9,6 +9,7 @@ from datetime import timedelta
 from ..core.config.settings import get_settings
 from ..core.exceptions import StorageError
 from ..core.storage.minio_client import get_minio_client
+from ..core.storage.providers import BlobStorageProvider, build_provider, default_provider
 from .path_resolver import StoragePathResolver, get_path_resolver
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,27 @@ class BlobService:
         }
         return defaults.get(bucket_type, self._resolver.audio_bucket)
 
+    def _provider_for(self, tenant_id: str | None) -> BlobStorageProvider | None:
+        """Resolve the storage provider for a tenant, if one is needed.
+
+        Resolution order:
+        1. A per-tenant ``storage`` descriptor registered on the resolver wins
+           (multi-provider / multi-tenant routing).
+        2. Otherwise, when the platform default is ``azure_blob`` the global
+           default Azure provider is used.
+        3. Otherwise ``None`` is returned, signalling the caller to use the
+           existing global MinIO client path (unchanged legacy behaviour).
+        """
+        if tenant_id:
+            descriptor = self._resolver.resolve_tenant_storage(tenant_id)
+            if descriptor:
+                return build_provider(descriptor)
+
+        if getattr(self._settings, "storage_provider", "minio") == "azure_blob":
+            return default_provider()
+
+        return None
+
     async def upload_audio(
         self,
         audio_bytes: bytes,
@@ -91,6 +113,7 @@ class BlobService:
             path=path,
             data=audio_bytes,
             content_type=content_type,
+            tenant_id=tenant_id,
         )
 
         uri = self._resolver.get_full_uri(bucket, path)
@@ -140,6 +163,7 @@ class BlobService:
             path=path,
             data=audio_bytes,
             content_type=content_type,
+            tenant_id=tenant_id,
         )
 
         uri = self._resolver.get_full_uri(bucket, path)
@@ -211,6 +235,7 @@ class BlobService:
             path=path,
             data=chunk_bytes,
             content_type="application/octet-stream",
+            tenant_id=tenant_id,
         )
 
         uri = self._resolver.get_full_uri(bucket, path)
@@ -249,6 +274,7 @@ class BlobService:
             path=path,
             data=chunk_bytes,
             content_type="application/octet-stream",
+            tenant_id=tenant_id,
         )
 
         uri = self._resolver.get_full_uri(bucket, path)
@@ -284,6 +310,7 @@ class BlobService:
             path=path,
             data=wav_bytes,
             content_type="audio/wav",
+            tenant_id=tenant_id,
         )
 
         uri = self._resolver.get_full_uri(bucket, path)
@@ -319,6 +346,7 @@ class BlobService:
             path=path,
             data=wav_bytes,
             content_type="audio/wav",
+            tenant_id=tenant_id,
         )
 
         uri = self._resolver.get_full_uri(bucket, path)
@@ -354,6 +382,7 @@ class BlobService:
             path=path,
             data=transcript_bytes,
             content_type="application/json",
+            tenant_id=tenant_id,
         )
 
         uri = self._resolver.get_full_uri(bucket, path)
@@ -389,6 +418,7 @@ class BlobService:
             path=path,
             data=metadata_bytes,
             content_type="application/json",
+            tenant_id=tenant_id,
         )
 
         uri = self._resolver.get_full_uri(bucket, path)
@@ -439,6 +469,7 @@ class BlobService:
             path=path,
             data=transcript_data,
             content_type=content_types.get(format, "application/octet-stream"),
+            tenant_id=tenant_id,
         )
 
         return self._resolver.get_full_uri(bucket, path)
@@ -476,24 +507,27 @@ class BlobService:
             path=path,
             data=metadata_data,
             content_type="application/json",
+            tenant_id=tenant_id,
         )
 
         uri = self._resolver.get_full_uri(bucket, path)
         logger.info(f"Uploaded batch metadata to: {uri} ({len(metadata_data)} bytes)")
         return uri
 
-    async def download_audio(self, uri: str) -> bytes:
+    async def download_audio(self, uri: str, tenant_id: str | None = None) -> bytes:
         """
         Download audio file from storage.
 
         Args:
             uri: Full storage URI
+            tenant_id: Optional tenant ID used to select a per-tenant storage
+                provider (falls back to the global MinIO client when omitted).
 
         Returns:
             Audio bytes
         """
         bucket, path = self._resolver.parse_uri(uri)
-        return await self._download_bytes(bucket, path)
+        return await self._download_bytes(bucket, path, tenant_id=tenant_id)
 
     async def download_audio_stream(
         self,
@@ -646,28 +680,42 @@ class BlobService:
         path: str,
         data: bytes,
         content_type: str,
+        tenant_id: str | None = None,
     ) -> None:
-        """Upload bytes to MinIO.
+        """Upload bytes to object storage.
 
-        The MinIO SDK is synchronous, so the actual I/O is offloaded
-        to the default thread-pool executor to avoid blocking the
-        event loop (and stalling frame processing / inference).
+        When the tenant has a registered storage descriptor (or the platform
+        default provider is non-MinIO), the resolved provider is used;
+        otherwise the global MinIO client is used (unchanged behaviour).
+
+        The underlying SDKs are synchronous, so the actual I/O is offloaded
+        to the default thread-pool executor to avoid blocking the event loop
+        (and stalling frame processing / inference).
         """
-        client = get_minio_client()
+        provider = self._provider_for(tenant_id)
 
-        def _sync_upload() -> None:
-            # Ensure bucket exists
-            if not client.client.bucket_exists(bucket):
-                client.client.make_bucket(bucket)
+        if provider is not None:
 
-            # Upload
-            client.client.put_object(
-                bucket,
-                path,
-                io.BytesIO(data),
-                len(data),
-                content_type=content_type,
-            )
+            def _sync_upload() -> None:
+                provider.ensure_bucket(bucket)
+                provider.put_bytes(bucket, path, data, content_type)
+
+        else:
+            client = get_minio_client()
+
+            def _sync_upload() -> None:
+                # Ensure bucket exists
+                if not client.client.bucket_exists(bucket):
+                    client.client.make_bucket(bucket)
+
+                # Upload
+                client.client.put_object(
+                    bucket,
+                    path,
+                    io.BytesIO(data),
+                    len(data),
+                    content_type=content_type,
+                )
 
         try:
             loop = asyncio.get_running_loop()
@@ -675,8 +723,25 @@ class BlobService:
         except Exception as e:
             raise StorageError(f"Failed to upload to {bucket}/{path}: {e}") from e
 
-    async def _download_bytes(self, bucket: str, path: str) -> bytes:
-        """Download bytes from MinIO."""
+    async def _download_bytes(
+        self,
+        bucket: str,
+        path: str,
+        tenant_id: str | None = None,
+    ) -> bytes:
+        """Download bytes from object storage.
+
+        Uses the tenant's resolved provider when one is registered; otherwise
+        falls back to the global MinIO client (unchanged behaviour).
+        """
+        provider = self._provider_for(tenant_id)
+
+        if provider is not None:
+            try:
+                return provider.get_bytes(bucket, path)
+            except Exception as e:
+                raise StorageError(f"Failed to download {bucket}/{path}: {e}") from e
+
         client = get_minio_client()
 
         try:

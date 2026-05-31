@@ -25,6 +25,7 @@ export * from './StorageAccessKeyModel';
 export * from './SummaryMetaModel';
 export * from './TagModel';
 export * from './TenantBucketModel';
+export * from './TenantStorageConfigModel';
 export * from './TenantModel';
 export * from './TranscriptionJobModel';
 export * from './UserMediaModel';

@@ -16,6 +16,8 @@
  *
  *   - `TenantBucket`      — repo.findById(id) OR repo.findByName(name);
  *                           assert `entity.tenantId === cls.tenantId`.
+ *   - `TenantStorageConfig` — repo.findById(id); assert
+ *                           `entity.tenantId === cls.tenantId` (TASK-318 R5).
  *   - `TranscriptionJob`  — repo.findById(id); assert
  *                           `entity.tenantId === cls.tenantId`.
  *   - `ConsultationJob`   — `jobService.getJobStatus(jobId)`; status struct
@@ -47,6 +49,7 @@ import { DataNotFoundException } from '@arcaai/exceptions';
 import { IConsultationJobService, type IActiveUserContext } from '@arcaai/applications';
 import {
   TenantBucketRepository,
+  TenantStorageConfigRepository,
   TranscriptionJobRepository,
   UserVoiceProfileRepository,
 } from '@arcaai/domains';
@@ -65,6 +68,7 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     private readonly reflector: Reflector,
     private readonly cls: ClsService<IActiveUserContext>,
     private readonly tenantBucketRepository: TenantBucketRepository,
+    private readonly tenantStorageConfigRepository: TenantStorageConfigRepository,
     private readonly userVoiceProfileRepository: UserVoiceProfileRepository,
     private readonly transcriptionJobRepository: TranscriptionJobRepository,
     @Inject(IConsultationJobService)
@@ -126,6 +130,12 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     switch (opts.modelName) {
       case 'TenantBucket':
         await this.assertTenantBucket(opts, paramValue, callerTenantId);
+        return;
+      case 'TenantStorageConfig':
+        await this.assertTenantScoped(
+          () => this.tenantStorageConfigRepository.findById(paramValue),
+          callerTenantId,
+        );
         return;
       case 'TranscriptionJob':
         await this.assertTenantScoped(

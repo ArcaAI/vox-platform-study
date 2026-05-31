@@ -45,7 +45,10 @@ dependencies = [
     "dramatiq[redis]>=2.0.0",
     "redis[hiredis]>=5.2.0,<7.0",
     # --- Object storage ---
+    # minio SDK backs both the `minio` and `aws_s3` providers (S3-compatible).
     "minio>=7.2.20",
+    # Azure Blob Storage SDK backs the per-tenant `azure_blob` provider (TASK-318 W3-C).
+    "azure-storage-blob>=12.23.0",
     # --- Configuration ---
     "python-dotenv>=1.2.0",
     "pyyaml>=6.0.3",

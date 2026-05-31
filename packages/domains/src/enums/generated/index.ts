@@ -20,3 +20,6 @@ export * from './AiModelDownloadStatus';
 export * from './TranscriptionJobType';
 export * from './TranscriptionJobStatus';
 export * from './TenantBucketType';
+export * from './TenantBucketPurpose';
+export * from './StorageProviderType';
+export * from './StorageTopologyType';

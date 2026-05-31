@@ -13,6 +13,7 @@ export interface CreateContextItemProps extends BaseEntityFactoryCreateProps {
   source?: IContextItemEntity['source'];
   currentVersionNumber?: IContextItemEntity['currentVersionNumber'];
   content?: IContextItemEntity['content'];
+  mediaId?: IContextItemEntity['mediaId'];
   dnaWritingStyleId?: IContextItemEntity['dnaWritingStyleId'];
   qdrantSynced?: IContextItemEntity['qdrantSynced'];
   tenantId: IContextItemEntity['tenantId'];
@@ -44,6 +45,7 @@ export class ContextItemFactory {
       source: props.source ?? Enums.ContextItemSource.USER,
       currentVersionNumber: props.currentVersionNumber ?? 1,
       content: props.content ?? null,
+      mediaId: props.mediaId ?? null,
       dnaWritingStyleId: props.dnaWritingStyleId ?? null,
       qdrantSynced: props.qdrantSynced ?? false,
       qdrantSyncedAt: null,
@@ -186,12 +188,20 @@ export class ContextItemFactory {
   /**
    * Create an attachment context item
    */
-  static CreateAttachment(tenantId: string, consultationId: string, createdBy: string): ContextItemEntity {
+  static CreateAttachment(
+    tenantId: string,
+    consultationId: string,
+    createdBy: string,
+    mediaId?: string,
+    content?: string,
+  ): ContextItemEntity {
     return this.CreateContextItem({
       tenantId,
       consultationId,
       type: Enums.ContextItemType.ATTACHMENT,
       source: Enums.ContextItemSource.USER,
+      mediaId,
+      content,
       createdBy,
     });
   }

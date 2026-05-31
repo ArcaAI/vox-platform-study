@@ -14,16 +14,25 @@ import { ALL_TENANTS } from './05-tenant';
 export const SYSTEM_BUCKET_SLUGS = {
   AUDIO: 'audio',
   ATTACHMENTS: 'attachments',
+  MISC: 'misc',
 } as const;
 
 const SYSTEM_BUCKET_DESCRIPTIONS: Record<string, string> = {
   [SYSTEM_BUCKET_SLUGS.AUDIO]: 'Tenant audio storage (streaming and batch jobs)',
   [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: 'Tenant attachment storage (consultation files)',
+  [SYSTEM_BUCKET_SLUGS.MISC]: 'Tenant misc assets (background, avatars, images)',
 };
 
 const SYSTEM_BUCKET_PATH_PATTERNS: Record<string, string> = {
   [SYSTEM_BUCKET_SLUGS.AUDIO]: '{yyyy}/{MM}',
   [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: '{yyyy}/{MM}/{dd}',
+  [SYSTEM_BUCKET_SLUGS.MISC]: '{category}',
+};
+
+const SYSTEM_BUCKET_PURPOSES: Record<string, 'AUDIO' | 'ATTACHMENTS' | 'MISC'> = {
+  [SYSTEM_BUCKET_SLUGS.AUDIO]: 'AUDIO',
+  [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: 'ATTACHMENTS',
+  [SYSTEM_BUCKET_SLUGS.MISC]: 'MISC',
 };
 
 function sanitizeBucketName(input: string): string {
@@ -47,6 +56,7 @@ export const seedTenantBucket = async (client: CorePrismaClient): Promise<void> 
         const name = buildBucketName(tenant.key, slug);
         const description = SYSTEM_BUCKET_DESCRIPTIONS[slug] ?? null;
         const pathPattern = SYSTEM_BUCKET_PATH_PATTERNS[slug] ?? '{yyyy}/{MM}/{dd}/{user_name}';
+        const purpose = SYSTEM_BUCKET_PURPOSES[slug] ?? 'CUSTOM';
         await client.tenantBucket.upsert({
           where: {
             TenantBucket_tenant_slug_unique: {
@@ -60,11 +70,13 @@ export const seedTenantBucket = async (client: CorePrismaClient): Promise<void> 
             slug,
             description,
             bucketType: 'SYSTEM',
+            purpose,
             pathPattern,
           },
           update: {
             name,
             description,
+            purpose,
             pathPattern,
           },
         });

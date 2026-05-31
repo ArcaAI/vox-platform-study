@@ -34,18 +34,27 @@ function makeProvider() {
 
 describe('BlobStorageService', () => {
   let provider: ReturnType<typeof makeProvider>;
-  let factory: { getProvider: ReturnType<typeof vi.fn> };
+  let factory: { getProvider: ReturnType<typeof vi.fn>; getProviderForBucket: ReturnType<typeof vi.fn> };
   let service: BlobStorageService;
 
   beforeEach(() => {
     provider = makeProvider();
-    factory = { getProvider: vi.fn().mockResolvedValue(provider) };
+    factory = {
+      // Data-plane calls resolve per tenant + bucket; health uses the global provider.
+      getProvider: vi.fn().mockResolvedValue(provider),
+      getProviderForBucket: vi.fn().mockResolvedValue(provider),
+    };
     service = new BlobStorageService(factory as unknown as BlobStorageProviderFactory);
   });
 
   it('resolves the provider through the factory before delegating', async () => {
     await service.putObject({ bucket: 'b', key: 'k', body: Buffer.from('data') });
-    expect(factory.getProvider).toHaveBeenCalledTimes(1);
+    expect(factory.getProviderForBucket).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves the provider for the request bucket (no tenant context → undefined tenant)', async () => {
+    await service.getObject({ bucket: 'audio', key: 'k' });
+    expect(factory.getProviderForBucket).toHaveBeenCalledWith(undefined, 'audio');
   });
 
   it('delegates putObject verbatim', async () => {

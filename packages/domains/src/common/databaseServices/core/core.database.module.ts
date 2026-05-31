@@ -31,6 +31,7 @@ import { SummaryMetaRepository } from '../../../repositories/generated/core/Summ
 import { TagRepository } from '../../../repositories/generated/core/TagRepository';
 import { TenantBucketRepository } from '../../../repositories/generated/core/TenantBucketRepository';
 import { TenantRepository } from '../../../repositories/generated/core/TenantRepository';
+import { TenantStorageConfigRepository } from '../../../repositories/generated/core/TenantStorageConfigRepository';
 import { TranscriptionJobRepository } from '../../../repositories/generated/core/TranscriptionJobRepository';
 import { UserMediaRepository } from '../../../repositories/generated/core/UserMediaRepository';
 import { UserProfileRepository } from '../../../repositories/generated/core/UserProfileRepository';
@@ -105,6 +106,7 @@ const repositories = [
   // Storage domain
   TenantBucketRepository,
   StorageAccessKeyRepository,
+  TenantStorageConfigRepository,
   // Voice profile domain
   UserVoiceProfileRepository,
 ];

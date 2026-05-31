@@ -9,6 +9,7 @@ import {
   PresignGetParams,
   PresignPutParams,
   PutObjectParams,
+  StorageDescriptor,
 } from './providers/IBlobStorageProvider';
 
 /**
@@ -32,6 +33,12 @@ export interface IBlobStorageService {
   bucketExists(bucket: string): Promise<boolean>;
   setLifecycle(bucket: string, rules: LifecycleRule[]): Promise<void>;
   healthCheck(): Promise<boolean>;
+  /**
+   * Resolve a serializable storage descriptor for the current tenant's bucket,
+   * for propagation to out-of-process workers (Python STT). Returns `null` for
+   * SHARED/global tenants (worker uses its env-default client + bucket name).
+   */
+  resolveDescriptor(bucket: string): Promise<StorageDescriptor | null>;
 }
 
 /** DI token for {@link IBlobStorageService}. */

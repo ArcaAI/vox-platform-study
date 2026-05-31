@@ -1,13 +1,14 @@
-import type { IActiveUserContext, IS3Service as IS3ServiceType } from '@arcaai/applications';
+import type { IActiveUserContext, IBlobStorageService as IBlobStorageServiceType, StorageDescriptor } from '@arcaai/applications';
 import {
   Authorize,
-  IS3Service,
+  IBlobStorageService,
   ITenantBucketService,
   PipelineService,
   StreamingSessionService,
   TranscriptionJobService,
   TranscriptionRealtimeService,
 } from '@arcaai/applications';
+import { TenantBucketPurpose } from '@arcaai/domains';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 import type { MessageEvent } from '@nestjs/common';
 import {
@@ -63,6 +64,7 @@ export class TranscriptionJobController {
     language?: string;
     userId?: string;
     audioBucketName?: string;
+    storage?: StorageDescriptor | null;
   }): Promise<void> {
     const service = this.realtimeService as unknown as {
       dispatchDramatiqJob: (args: typeof params) => Promise<void>;
@@ -75,7 +77,7 @@ export class TranscriptionJobController {
     private readonly realtimeService: TranscriptionRealtimeService,
     private readonly sessionService: StreamingSessionService,
     private readonly cls: ClsService<IActiveUserContext>,
-    @Inject(IS3Service) private readonly s3Service: IS3ServiceType,
+    @Inject(IBlobStorageService) private readonly blobStorage: IBlobStorageServiceType,
     @Inject(ITenantBucketService) private readonly tenantBucketService: ITenantBucketService,
     private readonly pipelineService: PipelineService,
     private readonly streamTicketService: StreamTicketService,
@@ -174,10 +176,13 @@ export class TranscriptionJobController {
       consultationId: body.consultationId,
     });
 
-    // 3. Resolve tenant bucket (prefer tenant-scoped, fallback to global)
+    // 3. Resolve the tenant's default audio bucket: configured purpose → legacy
+    //    slug → global constant.
     let uploadBucket = AUDIO_BUCKET;
     try {
-      const tenantBucket = await this.tenantBucketService.getBucketBySlug('audio');
+      const tenantBucket =
+        (await this.tenantBucketService.getBucketByPurpose(TenantBucketPurpose.AUDIO)) ??
+        (await this.tenantBucketService.getBucketBySlug('audio'));
       if (tenantBucket) {
         uploadBucket = tenantBucket.name;
       }
@@ -198,12 +203,25 @@ export class TranscriptionJobController {
     const audioUri = `s3://${uploadBucket}/${pathSegment}`;
 
     try {
-      // 5. Upload audio to MinIO (tenant bucket)
-      await this.s3Service.putFile(uploadBucket, pathSegment, file.buffer, file.mimetype);
+      // 5. Upload audio to the tenant-resolved store (S3/MinIO or Azure)
+      await this.blobStorage.putObject({
+        bucket: uploadBucket,
+        key: pathSegment,
+        body: file.buffer,
+        contentType: file.mimetype,
+      });
 
       this.logger.log(`Uploaded audio to ${audioUri} for job ${job.id}`);
 
-      // 6. Dispatch Dramatiq message to stt_batch queue
+      // 6. Resolve a per-tenant storage descriptor so a DEDICATED (S3/Azure)
+      //    tenant's worker connects to the right backend. `null` for SHARED
+      //    tenants — the worker then uses its env-default client + bucket name.
+      const storage = await this.blobStorage.resolveDescriptor(uploadBucket).catch((err) => {
+        this.logger.warn(`Failed to resolve storage descriptor for ${uploadBucket}: ${err}`);
+        return null;
+      });
+
+      // 7. Dispatch Dramatiq message to stt_batch queue
       const user = this.cls.get('user');
       await this.dispatchBatchJob({
         jobId: job.id,
@@ -215,6 +233,7 @@ export class TranscriptionJobController {
         language: body.language,
         userId: user?.id,
         audioBucketName: uploadBucket,
+        storage,
       });
     } catch (error) {
       // If upload or dispatch fails, mark the job as failed
@@ -276,12 +295,19 @@ export class TranscriptionJobController {
     // BEFORE we forward to STT-V2 (which is itself defended by D-3).
     await this.assertPipelineOwnership(body.pipelineId);
 
-    // Resolve tenant-scoped audio bucket so STT-v2 writes audio to the
-    // tenant's bucket instead of falling back to the global 'hope-audio'.
+    // Resolve the tenant's default audio bucket (configured purpose → legacy
+    // slug) so STT-v2 writes audio to the tenant's bucket instead of the global
+    // 'hope-audio', plus a storage descriptor for DEDICATED (S3/Azure) tenants.
     let audioBucketName: string | undefined;
+    let storage: StorageDescriptor | null = null;
     try {
-      const tenantBucket = await this.tenantBucketService.getBucketBySlug('audio');
+      const tenantBucket =
+        (await this.tenantBucketService.getBucketByPurpose(TenantBucketPurpose.AUDIO)) ??
+        (await this.tenantBucketService.getBucketBySlug('audio'));
       audioBucketName = tenantBucket?.name;
+      if (audioBucketName) {
+        storage = await this.blobStorage.resolveDescriptor(audioBucketName);
+      }
     } catch (err) {
       this.logger.warn(`Failed to resolve tenant audio bucket for streaming: ${err}`);
     }
@@ -295,6 +321,7 @@ export class TranscriptionJobController {
       language: body.language,
       userId: user?.id,
       audioBucketName,
+      storage,
     } as Parameters<StreamingSessionService['createSession']>[0];
 
     const result = await this.sessionService.createSession(sessionPayload);

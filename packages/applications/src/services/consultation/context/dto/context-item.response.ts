@@ -200,6 +200,9 @@ export class ContextItemResponse {
   @ApiPropertyOptional({ description: 'Text content (for non-media types)' })
   content?: string;
 
+  @ApiPropertyOptional({ description: 'Media ID of the uploaded file (for ATTACHMENT type)' })
+  mediaId?: string;
+
   @ApiPropertyOptional({ description: 'DNA Writing Style ID' })
   dnaWritingStyleId?: string;
 

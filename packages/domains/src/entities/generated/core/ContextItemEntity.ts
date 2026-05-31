@@ -13,6 +13,7 @@ export interface IContextItemEntity extends IBaseTenantEntity {
   source: Enums.ContextItemSource;
   currentVersionNumber: number;
   content?: string | null;
+  mediaId?: string | null;
   dnaWritingStyleId?: string | null;
   qdrantSynced: boolean;
   qdrantSyncedAt?: Date | null;
@@ -29,6 +30,7 @@ export class ContextItemEntity extends BaseTenantEntity {
   private _source: IContextItemEntity['source'];
   private _currentVersionNumber: IContextItemEntity['currentVersionNumber'];
   private _content?: IContextItemEntity['content'];
+  private _mediaId?: IContextItemEntity['mediaId'];
   private _dnaWritingStyleId?: IContextItemEntity['dnaWritingStyleId'];
   private _qdrantSynced: IContextItemEntity['qdrantSynced'];
   private _qdrantSyncedAt?: IContextItemEntity['qdrantSyncedAt'];
@@ -45,6 +47,7 @@ export class ContextItemEntity extends BaseTenantEntity {
     this._source = init.source ?? Enums.ContextItemSource.USER;
     this._currentVersionNumber = init.currentVersionNumber ?? 1;
     this._content = init.content;
+    this._mediaId = init.mediaId;
     this._dnaWritingStyleId = init.dnaWritingStyleId;
     this._qdrantSynced = init.qdrantSynced ?? false;
     this._qdrantSyncedAt = init.qdrantSyncedAt;
@@ -93,6 +96,14 @@ export class ContextItemEntity extends BaseTenantEntity {
 
   set content(value: IContextItemEntity['content']) {
     this.setProperty('content', value);
+  }
+
+  get mediaId(): IContextItemEntity['mediaId'] {
+    return this._mediaId;
+  }
+
+  set mediaId(value: IContextItemEntity['mediaId']) {
+    this.setProperty('mediaId', value);
   }
 
   get dnaWritingStyleId(): IContextItemEntity['dnaWritingStyleId'] {

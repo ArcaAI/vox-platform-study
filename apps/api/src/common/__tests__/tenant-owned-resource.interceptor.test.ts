@@ -39,6 +39,7 @@ const SENTINEL_TENANT_B = 'tenant-B';
 
 interface MockRepoSet {
   tenantBucket: { findById: ReturnType<typeof vi.fn>; findByName: ReturnType<typeof vi.fn> };
+  tenantStorageConfig: { findById: ReturnType<typeof vi.fn> };
   userVoiceProfile: { findById: ReturnType<typeof vi.fn> };
   transcriptionJob: { findById: ReturnType<typeof vi.fn> };
 }
@@ -67,6 +68,9 @@ function buildHarness(opts: {
       findById: vi.fn(),
       findByName: vi.fn(),
     },
+    tenantStorageConfig: {
+      findById: vi.fn(),
+    },
     userVoiceProfile: {
       findById: vi.fn(),
     },
@@ -88,6 +92,7 @@ function buildHarness(opts: {
     reflector,
     cls as never,
     repos.tenantBucket as never,
+    repos.tenantStorageConfig as never,
     repos.userVoiceProfile as never,
     repos.transcriptionJob as never,
     services.consultationJob as never,
@@ -394,6 +399,34 @@ describe('TASK-307 W3.2 — TenantOwnedResourceInterceptor', () => {
       await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  // TASK-318 R5 — per-tenant storage config row, resolved by repo.findById.
+  describe('TenantStorageConfig — tenant-scoped lookup', () => {
+    it('passes through when the config tenant matches the caller', async () => {
+      const harness = buildHarness({
+        reflectorReturns: { modelName: 'TenantStorageConfig', paramName: 'id' },
+        clsState: { tenantId: SENTINEL_TENANT_A },
+        params: { id: 'cfg-1' },
+      });
+      harness.repos.tenantStorageConfig.findById.mockResolvedValueOnce({ id: 'cfg-1', tenantId: SENTINEL_TENANT_A });
+
+      const result = await firstValueFrom(await harness.interceptor.intercept(harness.ctx, harness.next));
+
+      expect(result).toBe(NEXT_VALUE);
+      expect(harness.repos.tenantStorageConfig.findById).toHaveBeenCalledWith('cfg-1');
+    });
+
+    it('throws 404 on a cross-tenant storage-config probe', async () => {
+      const harness = buildHarness({
+        reflectorReturns: { modelName: 'TenantStorageConfig', paramName: 'id' },
+        clsState: { tenantId: SENTINEL_TENANT_A },
+        params: { id: 'cfg-1' },
+      });
+      harness.repos.tenantStorageConfig.findById.mockResolvedValueOnce({ id: 'cfg-1', tenantId: SENTINEL_TENANT_B });
+
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
     });
   });
 

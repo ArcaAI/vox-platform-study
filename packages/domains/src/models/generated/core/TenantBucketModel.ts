@@ -6,6 +6,7 @@ export class TenantBucket extends BaseTenantDataModel {
   public slug: string;
   public description: string | null;
   public bucketType: Enums.TenantBucketType;
+  public purpose: Enums.TenantBucketPurpose;
   public pathPattern: string;
 
   public resourceStatus: Enums.ResourceStatusType;
@@ -18,6 +19,7 @@ export class TenantBucket extends BaseTenantDataModel {
     this.slug = data.slug;
     this.description = data.description;
     this.bucketType = data.bucketType;
+    this.purpose = data.purpose;
     this.pathPattern = data.pathPattern;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;

@@ -1,8 +1,15 @@
-import { CreateTenantBucketRequest, ITenantBucketService, TenantBucketResponse, TenantBucketTreeResponse } from '@arcaai/applications';
-import { Body, Controller, Delete, Get, Inject, Param, Post, Query } from '@nestjs/common';
+import {
+  CreateTenantBucketRequest,
+  ITenantBucketService,
+  SetTenantBucketDefaultsRequest,
+  TenantBucketDefaultsResponse,
+  TenantBucketResponse,
+  TenantBucketTreeResponse,
+} from '@arcaai/applications';
+import { Body, Controller, Delete, Get, Inject, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { TenantOwnedResource } from '../../common';
-import { CanCreate, CanDelete, CanManage, CanRead } from '../../decorators';
+import { CanCreate, CanDelete, CanManage, CanRead, CanUpdate } from '../../decorators';
 
 @ApiBearerAuth()
 @ApiTags('tenant-storage')
@@ -21,6 +28,24 @@ export class TenantBucketController {
   @CanRead('Storage')
   async listBuckets(): Promise<TenantBucketResponse[]> {
     return this.tenantBucketService.listBuckets();
+  }
+
+  // NOTE: declared before `@Get(':id')` so the literal `defaults` segment is not
+  // captured by the `:id` param route.
+  @Get('defaults')
+  @ApiOperation({ summary: 'Get the default bucket for each purpose (audio / attachments / misc)' })
+  @ApiResponse({ status: 200, description: 'Default buckets per purpose' })
+  @CanRead('Storage')
+  async getDefaultBuckets(): Promise<TenantBucketDefaultsResponse> {
+    return this.tenantBucketService.getDefaultBuckets();
+  }
+
+  @Put('defaults')
+  @ApiOperation({ summary: 'Configure the default bucket for audio / attachments / misc' })
+  @ApiResponse({ status: 200, description: 'Updated default buckets per purpose' })
+  @CanUpdate('Storage')
+  async setDefaultBuckets(@Body() request: SetTenantBucketDefaultsRequest): Promise<TenantBucketDefaultsResponse> {
+    return this.tenantBucketService.setDefaultBuckets(request);
   }
 
   @Get(':id')

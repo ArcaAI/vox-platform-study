@@ -15,6 +15,11 @@ export class AddContextRequest {
   @IsString()
   content?: string;
 
+  @ApiPropertyOptional({ description: 'Media ID of an uploaded file (for ATTACHMENT type)' })
+  @IsOptional()
+  @IsString()
+  mediaId?: string;
+
   @ApiPropertyOptional({ description: 'DNA Writing Style ID (for summaries)' })
   @IsOptional()
   @IsString()

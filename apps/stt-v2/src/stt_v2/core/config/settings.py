@@ -90,6 +90,33 @@ class Settings(BaseSettings):
     minio_audio_bucket: str = "hope-audio"
     minio_chunk_bucket: str = "hope-audio-chunks"
 
+    # Object storage provider (platform default for the no-descriptor path).
+    # Per-tenant requests may override this via a `storage` descriptor.
+    storage_provider: Literal["minio", "aws_s3", "azure_blob"] = Field(
+        default="minio",
+        description=(
+            "Default object-storage provider when no per-tenant storage "
+            "descriptor is supplied. The default keeps using the global MinIO "
+            "client unless set to 'azure_blob'."
+        ),
+    )
+    azure_storage_account: str = Field(
+        default="",
+        description="Default Azure storage account name (used when STORAGE_PROVIDER=azure_blob).",
+    )
+    azure_storage_account_key: str = Field(
+        default="",
+        description="Default Azure storage account shared key.",
+    )
+    azure_storage_connection_string: str = Field(
+        default="",
+        description="Default Azure connection string (preferred over account/key when set).",
+    )
+    azure_storage_endpoint_suffix: str = Field(
+        default="core.windows.net",
+        description="Default Azure storage endpoint suffix.",
+    )
+
     # API Gateway (internal communication)
     api_gateway_url: str = Field(
         default="http://localhost:8868/api/v1",

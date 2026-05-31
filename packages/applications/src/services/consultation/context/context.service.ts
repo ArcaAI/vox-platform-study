@@ -91,6 +91,7 @@ export class ContextService extends BaseService implements IContextService {
       type: request.type,
       source: request.source ?? ContextItemSource.USER,
       content: request.content,
+      mediaId: request.mediaId,
       dnaWritingStyleId: request.dnaWritingStyleId,
       createdBy: userId ?? undefined,
     });
@@ -760,11 +761,12 @@ export class ContextService extends BaseService implements IContextService {
   /**
    * Add attachment to consultation
    */
-  async addAttachment(consultationId: string, content?: string): Promise<ContextItemResponse> {
+  async addAttachment(consultationId: string, content?: string, mediaId?: string): Promise<ContextItemResponse> {
     return this.addContext(consultationId, {
       type: ContextItemType.ATTACHMENT,
       source: ContextItemSource.USER,
       content,
+      mediaId,
     });
   }
 

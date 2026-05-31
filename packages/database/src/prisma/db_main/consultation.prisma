@@ -83,6 +83,11 @@ model ContextItem {
     // Common content field (for text-based types: worknotes, summaries, transcripts)
     content String? @db.Text
 
+    // Attachment media reference (reference ID, same soft-reference pattern as
+    // dnaWritingStyleId). Set for ATTACHMENT-type items pointing to an uploaded
+    // file in object storage; resolved to bucket+key via the Media record.
+    mediaId String?
+
     // DNA Writing Style (reference ID, similar to mediaId pattern)
     dnaWritingStyleId String?
 
@@ -113,6 +118,7 @@ model ContextItem {
     @@index([createdAt], name: "ContextItem_createdAt_idx")
     @@index([qdrantSynced], name: "ContextItem_qdrantSynced_idx")
     @@index([dnaWritingStyleId], name: "ContextItem_dnaWritingStyleId_idx")
+    @@index([mediaId], name: "ContextItem_mediaId_idx")
     // Composite for common queries
     @@index([consultationId, type], name: "ContextItem_consultation_type_idx")
     @@index([tenantId, type, createdAt], name: "ContextItem_tenant_type_created_idx")
