@@ -1,5 +1,5 @@
 import { ConsultationEntity, ContextItemEntity, UserEntity, DepartmentEntity } from '@arcaai/domains';
-import { ConsultationResponse, DoctorInfo, DepartmentInfo } from './dto';
+import { ConsultationResponse, DoctorInfo, DepartmentInfo, CONSULTATION_STATUS } from './dto';
 import { ContextDtoMapper } from '../context/context.dto.mapper';
 
 /**
@@ -12,6 +12,10 @@ export class ConsultationDtoMapper {
    * Convert entity to response
    */
   static toResponse(entity: ConsultationEntity, isNew = false): ConsultationResponse {
+    const metadata = entity.metadata as Record<string, unknown> | null | undefined;
+    // TASK-321 — lifecycle status lives in metadata.status; absent ⇒ OPEN.
+    const status = (metadata?.status as string | undefined) ?? CONSULTATION_STATUS.OPEN;
+
     return {
       id: entity.id,
       patientId: entity.patientId,
@@ -21,6 +25,7 @@ export class ConsultationDtoMapper {
       department: entity.Department ? this.mapDepartment(entity.Department) : undefined,
       appointmentDate: entity.appointmentDate.toISOString().split('T')[0],
       parentConsultationId: entity.parentConsultationId ?? undefined,
+      status,
       metadata: entity.metadata as Record<string, unknown> | undefined,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),

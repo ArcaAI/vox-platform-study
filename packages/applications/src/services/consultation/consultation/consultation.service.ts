@@ -10,7 +10,14 @@ import {
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
 import { IConsultationService } from './IConsultationService';
-import { OpenConsultationRequest, ConsultationResponse, PaginatedConsultationResponse } from './dto';
+import {
+  OpenConsultationRequest,
+  UpdateConsultationRequest,
+  ConsultationResponse,
+  PaginatedConsultationResponse,
+  CONSULTATION_STATUS,
+  ConsultationLifecycleStatus,
+} from './dto';
 import { ConsultationDtoMapper } from './consultation.dto.mapper';
 import { BaseService, assertEqualTenants, assertParentInScope, assertUserBelongsToTenant } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
@@ -519,5 +526,145 @@ export class ConsultationService extends BaseService implements IConsultationSer
       filters: { tenantId, doctorId, patientId } as any,
     });
     return count > 0;
+  }
+
+  // ============================================
+  // TASK-321 — Lifecycle (close / reopen / update)
+  //
+  // The Consultation model has no dedicated open/closed column, so the
+  // lifecycle status lives in `metadata.status` (OPEN | CLOSED; absent ⇒
+  // OPEN) and is surfaced via `ConsultationResponse.status`. close/reopen
+  // are idempotent — when the consultation is already in the target state
+  // they short-circuit with NO write and NO SysEvent (avoids version churn
+  // and audit noise on UI double-clicks / retries).
+  // ============================================
+
+  /**
+   * Read the current lifecycle status from an entity's metadata.
+   * Absent / unrecognised ⇒ treated as OPEN.
+   */
+  private readStatus(metadata: Record<string, unknown> | null | undefined): ConsultationLifecycleStatus {
+    return (metadata?.status as ConsultationLifecycleStatus | undefined) ?? CONSULTATION_STATUS.OPEN;
+  }
+
+  /**
+   * Shared close/reopen path. Loads the consultation (tenant-asserted as
+   * defense-in-depth on top of the Prisma tenantScope extension), and if a
+   * transition is needed, writes the new `metadata.status` (+ audit
+   * timestamp) and broadcasts `ResourceUpdated`.
+   */
+  private async transitionStatus(
+    id: string,
+    target: ConsultationLifecycleStatus,
+    action: 'closeConsultation' | 'reopenConsultation',
+  ): Promise<ConsultationResponse> {
+    if (!this.tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const consultation = await this.consultationRepository.findWithRelations(id);
+    if (!consultation) {
+      throw new NotFoundException('Consultation not found');
+    }
+    assertEqualTenants(consultation, { tenantId: this.tenantId });
+
+    const currentMeta = (consultation.metadata as Record<string, unknown> | null) ?? {};
+    const currentStatus = this.readStatus(currentMeta);
+
+    // Idempotent: already in the target state → return current state untouched.
+    if (currentStatus === target) {
+      return ConsultationDtoMapper.toResponseWithContext(consultation);
+    }
+
+    const timestampKey = target === CONSULTATION_STATUS.CLOSED ? 'closedAt' : 'reopenedAt';
+    consultation.metadata = {
+      ...currentMeta,
+      status: target,
+      [timestampKey]: new Date().toISOString(),
+    } as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'];
+    if (this.requestUserId) {
+      consultation.updatedBy = this.requestUserId;
+    }
+
+    await this.consultationRepository.update(id, consultation);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: id,
+      data: { action, status: target },
+    });
+
+    return ConsultationDtoMapper.toResponseWithContext(consultation);
+  }
+
+  /**
+   * Close a consultation (transition lifecycle status to CLOSED). Idempotent.
+   */
+  async closeConsultation(id: string): Promise<ConsultationResponse> {
+    return this.transitionStatus(id, CONSULTATION_STATUS.CLOSED, 'closeConsultation');
+  }
+
+  /**
+   * Reopen a consultation (transition lifecycle status back to OPEN). Idempotent.
+   */
+  async reopenConsultation(id: string): Promise<ConsultationResponse> {
+    return this.transitionStatus(id, CONSULTATION_STATUS.OPEN, 'reopenConsultation');
+  }
+
+  /**
+   * Update safely-mutable fields of an existing consultation.
+   *
+   * Allowed: `appointmentDate`, `departmentId` (tenant-checked, audit C-2),
+   * `metadata` (shallow-merged so other keys / lifecycle status are preserved),
+   * and `status` (written into metadata.status). Identity / ownership fields
+   * (`patientId`, `doctorId`, `tenantId`) and `parentConsultationId` are NOT
+   * mutable here.
+   */
+  async updateConsultation(id: string, request: UpdateConsultationRequest): Promise<ConsultationResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const consultation = await this.consultationRepository.findWithRelations(id);
+    if (!consultation) {
+      throw new NotFoundException('Consultation not found');
+    }
+    assertEqualTenants(consultation, { tenantId });
+
+    // Audit C-2 — a re-assigned department must live in the caller's tenant.
+    // `assertParentInScope` throws NotFoundException on miss / cross-tenant.
+    if (request.departmentId) {
+      await assertParentInScope(this.departmentRepository, request.departmentId, tenantId);
+    }
+
+    if (request.appointmentDate !== undefined) {
+      consultation.appointmentDate = new Date(request.appointmentDate);
+    }
+    if (request.departmentId !== undefined) {
+      consultation.departmentId = request.departmentId;
+    }
+
+    const currentMeta = (consultation.metadata as Record<string, unknown> | null) ?? {};
+    let nextMeta: Record<string, unknown> = { ...currentMeta };
+    if (request.metadata !== undefined) {
+      nextMeta = { ...nextMeta, ...request.metadata };
+    }
+    if (request.status !== undefined) {
+      nextMeta.status = request.status;
+    }
+    consultation.metadata = nextMeta as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'];
+
+    if (this.requestUserId) {
+      consultation.updatedBy = this.requestUserId;
+    }
+
+    await this.consultationRepository.update(id, consultation);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: id,
+      data: { action: 'updateConsultation', fields: Object.keys(request ?? {}) },
+    });
+
+    return ConsultationDtoMapper.toResponseWithContext(consultation);
   }
 }
