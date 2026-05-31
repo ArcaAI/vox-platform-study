@@ -72,8 +72,7 @@ export class DiarizationConfigDto {
  */
 export class VoiceProfileConfigDto {
   @ApiPropertyOptional({
-    description:
-      'When a new enrollment succeeds and no profile is currently active, auto-activate it.',
+    description: 'When a new enrollment succeeds and no profile is currently active, auto-activate it.',
   })
   @IsOptional()
   @IsBoolean()
@@ -91,8 +90,7 @@ export class VoiceProfileConfigDto {
   similarityThreshold?: number;
 
   @ApiPropertyOptional({
-    description:
-      'Whether to anchor the local diarizer to the user\'s active voice profile (when one exists).',
+    description: "Whether to anchor the local diarizer to the user's active voice profile (when one exists).",
   })
   @IsOptional()
   @IsBoolean()

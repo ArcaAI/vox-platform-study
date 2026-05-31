@@ -917,9 +917,7 @@ export default function PromptManagementPage() {
       // backend hasn't stamped yet; once the migration is deployed the
       // server always returns a number.
       const expectedVersion =
-        typeof (selectedPrompt as { version?: number }).version === 'number'
-          ? (selectedPrompt as { version: number }).version
-          : 1;
+        typeof (selectedPrompt as { version?: number }).version === 'number' ? (selectedPrompt as { version: number }).version : 1;
       updateMutation.mutate(
         {
           id: selectedPrompt.id,
@@ -962,10 +960,7 @@ export default function PromptManagementPage() {
       const next = current === 'ENABLED' ? 'DISABLED' : 'ENABLED';
       // TASK-302 Stream D Phase E.3 — toggle still goes through the
       // `@RequiresIfMatch()` PATCH route, so supply the CAS predicate.
-      const expectedVersion =
-        typeof (prompt as { version?: number }).version === 'number'
-          ? (prompt as { version: number }).version
-          : 1;
+      const expectedVersion = typeof (prompt as { version?: number }).version === 'number' ? (prompt as { version: number }).version : 1;
       toggleMutation.mutate(
         { id: prompt.id, resourceStatus: next, expectedVersion, ifMatch: `"${expectedVersion}"` },
         {

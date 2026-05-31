@@ -34,10 +34,7 @@ export class PrismaStudioController {
       // Defensive: the guard normally catches missing/invalid bearer
       // tokens before this handler runs. If reached anyway, refuse
       // without naming a "?token=" alternative.
-      res
-        .status(401)
-        .type('text/plain')
-        .send('Access denied. A valid Authorization: Bearer <jwt> header is required.');
+      res.status(401).type('text/plain').send('Access denied. A valid Authorization: Bearer <jwt> header is required.');
       return;
     }
     const token = match[1].trim();

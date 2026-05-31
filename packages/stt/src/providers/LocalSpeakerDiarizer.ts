@@ -153,10 +153,7 @@ export class LocalSpeakerDiarizer {
   }
 
   private createProfile(feature: Float32Array): SpeakerProfile {
-    const id =
-      this.profiles.length === 0 && this.reservedSpeakerId
-        ? this.reservedSpeakerId
-        : `speaker-${this.profiles.length + 1}`;
+    const id = this.profiles.length === 0 && this.reservedSpeakerId ? this.reservedSpeakerId : `speaker-${this.profiles.length + 1}`;
     const profile: SpeakerProfile = {
       id,
       centroid: feature.slice(),

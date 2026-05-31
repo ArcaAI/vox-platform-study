@@ -168,10 +168,7 @@ export class TenantController {
     // decorator already fired 428 if the header would have been
     // undefined, so the fallback below is only reachable in tests /
     // off-route service-to-service traffic.
-    const effectiveRequest: UpdateTenantRequest =
-      expectedFromHeader !== undefined
-        ? { ...request, expectedVersion: expectedFromHeader }
-        : request;
+    const effectiveRequest: UpdateTenantRequest = expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
     const result = await this.tenantService.update(id, effectiveRequest);
     return TenantDtoMapper.ToResponse(result);
   }

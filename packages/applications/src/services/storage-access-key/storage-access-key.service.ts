@@ -134,10 +134,7 @@ export class StorageAccessKeyService extends BaseService implements IStorageAcce
     return StorageAccessKeyDtoMapper.toResponse(deleted);
   }
 
-  async validateKey(
-    accessKeyId: string,
-    ipAddress?: string,
-  ): Promise<{ tenantId: string; permissions: string[]; bucketIds: string[] } | null> {
+  async validateKey(accessKeyId: string, ipAddress?: string): Promise<{ tenantId: string; permissions: string[]; bucketIds: string[] } | null> {
     const key = await this.storageAccessKeyRepository.findByAccessKeyId(accessKeyId);
     if (!key) return null;
     if (key.isExpired) return null;

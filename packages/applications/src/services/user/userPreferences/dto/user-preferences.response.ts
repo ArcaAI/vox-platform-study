@@ -48,8 +48,7 @@ class LocalConfigResponseDto {
   };
 
   @ApiPropertyOptional({
-    description:
-      'Voice profile preferences (active profile lives in UserVoiceProfile). User-controlled.',
+    description: 'Voice profile preferences (active profile lives in UserVoiceProfile). User-controlled.',
   })
   voiceProfile?: {
     autoActivateLatest?: boolean;
@@ -108,8 +107,7 @@ export class UserPreferencesResponse {
   remoteConfig?: RemoteConfigResponseDto;
 
   @ApiPropertyOptional({
-    description:
-      'Read-only summary of the currently active voice profile (resolved from UserVoiceProfile at read time)',
+    description: 'Read-only summary of the currently active voice profile (resolved from UserVoiceProfile at read time)',
     type: ActiveVoiceProfileDto,
   })
   activeVoiceProfile?: ActiveVoiceProfileDto;

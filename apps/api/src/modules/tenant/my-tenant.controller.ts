@@ -64,10 +64,10 @@ export class MyTenantController {
   @ApiOperation({
     summary: 'Update current tenant configuration',
     description:
-      'Updates one or more configuration values for the caller\'s tenant. ' +
+      "Updates one or more configuration values for the caller's tenant. " +
       'Optimistic concurrency is enforced (TASK-302 Stream D): the `If-Match` ' +
       'header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set ' +
-      'against the row\'s `_version`. When the header is present, its value ' +
+      "against the row's `_version`. When the header is present, its value " +
       'is applied as the `expectedVersion` for EVERY row in the request — ' +
       'the SDK should set `If-Match: "<min(versions)>"` (the most conservative ' +
       'choice) for bulk updates, OR omit per-row body fields and rely on the ' +
@@ -79,7 +79,7 @@ export class MyTenantController {
     name: 'If-Match',
     description:
       'RFC 7232 strong validator carrying the version the client read (e.g. `"7"`). ' +
-      'The server CAS\'es against this value; if `_version` has drifted, a `412 ' +
+      "The server CAS'es against this value; if `_version` has drifted, a `412 " +
       'Precondition Failed` is returned with the current version in the response body. ' +
       'If absent on this route, the response is `428 Precondition Required`.',
     required: true,
@@ -108,9 +108,7 @@ export class MyTenantController {
     // path stays in service-to-service traffic. On a `@RequiresIfMatch()`
     // route, `expectedFromHeader` is guaranteed to be a number — the
     // 428 fired in the param decorator if it would have been undefined.
-    const effectiveConfigs = expectedFromHeader !== undefined
-      ? configs.map((c) => ({ ...c, expectedVersion: expectedFromHeader }))
-      : configs;
+    const effectiveConfigs = expectedFromHeader !== undefined ? configs.map((c) => ({ ...c, expectedVersion: expectedFromHeader })) : configs;
     const result = await this.tenantService.updateTenantConfigs(tenantId, effectiveConfigs);
     return GlobalSettingDtoMapper.ToPaginatedResponse(result) as PaginatedTenantConfigResponse;
   }

@@ -555,12 +555,7 @@ export class ConsultationJobService implements IConsultationJobService {
    * `null` when no key was provided or when no prior call exists; callers
    * proceed to create a new job in that case.
    */
-  private async lookupIdempotentJobId(
-    jobType: string,
-    tenantId: string,
-    userId: string,
-    idempotencyKey?: string,
-  ): Promise<string | null> {
+  private async lookupIdempotentJobId(jobType: string, tenantId: string, userId: string, idempotencyKey?: string): Promise<string | null> {
     if (!idempotencyKey) return null;
     try {
       const cached = await this.cacheService.get(this.buildIdempotencyRedisKey(jobType, tenantId, userId, idempotencyKey));
@@ -599,11 +594,7 @@ export class ConsultationJobService implements IConsultationJobService {
   ): Promise<void> {
     if (!idempotencyKey) return;
     try {
-      await this.cacheService.setex(
-        this.buildIdempotencyRedisKey(jobType, tenantId, userId, idempotencyKey),
-        this.IDEMPOTENCY_TTL,
-        jobId,
-      );
+      await this.cacheService.setex(this.buildIdempotencyRedisKey(jobType, tenantId, userId, idempotencyKey), this.IDEMPOTENCY_TTL, jobId);
     } catch (err) {
       this.logger.warn({
         message: 'Idempotency recording failed — duplicate POSTs may create duplicate jobs',

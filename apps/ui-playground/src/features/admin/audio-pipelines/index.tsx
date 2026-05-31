@@ -361,10 +361,7 @@ function PipelineDetail({ pipeline, onDeleted, tenantId }: { pipeline: AudioPipe
         // Default to 1 only as a defensive fallback for pre-OCC rows the
         // backend hasn't stamped yet; once the migration is deployed the
         // server always returns a number.
-        const expectedVersion =
-          typeof (pipeline as { version?: number }).version === 'number'
-            ? (pipeline as { version: number }).version
-            : 1;
+        const expectedVersion = typeof (pipeline as { version?: number }).version === 'number' ? (pipeline as { version: number }).version : 1;
         await updateMutation.mutateAsync({
           id: pipeline.id,
           name: values.name,

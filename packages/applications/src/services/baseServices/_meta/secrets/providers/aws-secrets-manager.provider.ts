@@ -14,9 +14,7 @@ import { ISecretsProvider, SecretsHealth } from '../ISecretsProvider';
 @Injectable()
 export class AwsSecretsManagerProvider implements ISecretsProvider {
   private fail(): never {
-    throw new NotImplementedException(
-      'AwsSecretsManagerProvider is a future-option stub. Set SECRETS_PROVIDER=vault or =env.',
-    );
+    throw new NotImplementedException('AwsSecretsManagerProvider is a future-option stub. Set SECRETS_PROVIDER=vault or =env.');
   }
   async getSecret(): Promise<string> {
     this.fail();

@@ -4,14 +4,7 @@
  * Type definitions for STT engine implementations.
  */
 
-import type {
-  ComputeDevice,
-  WhisperModelSize,
-  TranscriptionResult,
-  ModelLoadProgress,
-  LanguageLocale,
-  WhisperTask,
-} from '../types/index.js';
+import type { ComputeDevice, WhisperModelSize, TranscriptionResult, ModelLoadProgress, LanguageLocale, WhisperTask } from '../types/index.js';
 
 /**
  * Configuration for STT engines.

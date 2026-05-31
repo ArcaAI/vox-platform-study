@@ -1,19 +1,10 @@
-import {
-  Inject,
-  Injectable,
-  BadRequestException,
-  ConflictException,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import type { SchedulerInfo } from '@arcaai/domains';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 
-const DYNAMIC_SCHEDULER_SETTINGS: Record<
-  string,
-  { enabledKey: string; cronKey: string }
-> = {
+const DYNAMIC_SCHEDULER_SETTINGS: Record<string, { enabledKey: string; cronKey: string }> = {
   'dna-regeneration': {
     enabledKey: 'dna-regen.enabled',
     cronKey: 'dna-regen.cron',
@@ -43,7 +34,7 @@ export class SchedulerAdminService {
         running: job.isActive ?? false,
         lastExecution: job.lastDate()?.toISOString() ?? null,
         nextExecution: this.safeNextDate(job),
-        timeZone: (job as any).cronTime?.zone ?? null,
+        timeZone: (job as unknown as { cronTime?: { zone?: string | null } }).cronTime?.zone ?? null,
         settingsKey: dynamic?.cronKey ?? null,
       });
     }
@@ -87,16 +78,12 @@ export class SchedulerAdminService {
     try {
       const job = this.schedulerRegistry.getCronJob(schedulerName);
       if (!job.isActive) {
-        throw new ConflictException(
-          `Scheduler '${schedulerName}' is already paused`,
-        );
+        throw new ConflictException(`Scheduler '${schedulerName}' is already paused`);
       }
       job.stop();
     } catch (e) {
       if (e instanceof ConflictException) throw e;
-      throw new NotFoundException(
-        `Scheduler '${schedulerName}' not found`,
-      );
+      throw new NotFoundException(`Scheduler '${schedulerName}' not found`);
     }
   }
 
@@ -104,28 +91,19 @@ export class SchedulerAdminService {
     try {
       const job = this.schedulerRegistry.getCronJob(schedulerName);
       if (job.isActive) {
-        throw new ConflictException(
-          `Scheduler '${schedulerName}' is already running`,
-        );
+        throw new ConflictException(`Scheduler '${schedulerName}' is already running`);
       }
       job.start();
     } catch (e) {
       if (e instanceof ConflictException) throw e;
-      throw new NotFoundException(
-        `Scheduler '${schedulerName}' not found`,
-      );
+      throw new NotFoundException(`Scheduler '${schedulerName}' not found`);
     }
   }
 
-  async updateSchedulerCron(
-    schedulerName: string,
-    cronExpression: string,
-  ): Promise<SchedulerInfo> {
+  async updateSchedulerCron(schedulerName: string, cronExpression: string): Promise<SchedulerInfo> {
     const dynamic = DYNAMIC_SCHEDULER_SETTINGS[schedulerName];
     if (!dynamic) {
-      throw new BadRequestException(
-        `Scheduler '${schedulerName}' is static and cannot be modified at runtime`,
-      );
+      throw new BadRequestException(`Scheduler '${schedulerName}' is static and cannot be modified at runtime`);
     }
 
     this.validateCronExpression(cronExpression);
@@ -142,15 +120,13 @@ export class SchedulerAdminService {
     return this.getScheduler(schedulerName);
   }
 
-  async toggleScheduler(
-    schedulerName: string,
-    enabled: boolean,
-  ): Promise<SchedulerInfo> {
+  // NOTE: the enabled flag is not persisted here — the caller is expected to
+  // write the setting (dynamic.enabledKey) before invoking this method, which
+  // then refreshes the cache so the @OnEvent handler reconfigures the job.
+  async toggleScheduler(schedulerName: string, _enabled: boolean): Promise<SchedulerInfo> {
     const dynamic = DYNAMIC_SCHEDULER_SETTINGS[schedulerName];
     if (!dynamic) {
-      throw new BadRequestException(
-        `Scheduler '${schedulerName}' is static and cannot be toggled`,
-      );
+      throw new BadRequestException(`Scheduler '${schedulerName}' is static and cannot be toggled`);
     }
 
     await this.appSettingsService.refreshCache();
@@ -172,15 +148,13 @@ export class SchedulerAdminService {
       // eslint-disable-next-line no-new
       new CronJob(expression, () => {});
     } catch {
-      throw new BadRequestException(
-        `Invalid cron expression: '${expression}'`,
-      );
+      throw new BadRequestException(`Invalid cron expression: '${expression}'`);
     }
   }
 
   private extractCronExpression(job: CronJob): string | null {
     try {
-      return (job as any).cronTime?.source ?? null;
+      return (job as unknown as { cronTime?: { source?: string | null } }).cronTime?.source ?? null;
     } catch {
       return null;
     }

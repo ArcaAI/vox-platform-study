@@ -150,11 +150,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     // (Phase D ExceptionFilter) renders `412 Precondition Failed` with
     // `{ currentVersion, expectedVersion }`. No `$transaction` here because
     // this is the single-row path (vs. the multi-row tenant config batch).
-    const updatedGlobalSetting = await this.globalSettingRepository.updateWithVersion(
-      id,
-      globalSetting,
-      request.expectedVersion,
-    );
+    const updatedGlobalSetting = await this.globalSettingRepository.updateWithVersion(id, globalSetting, request.expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updatedGlobalSetting.id,

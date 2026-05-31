@@ -15,13 +15,7 @@ export interface QueueStats {
   workerCount: number;
 }
 
-export type QueueEventType =
-  | 'job:completed'
-  | 'job:failed'
-  | 'job:stalled'
-  | 'job:active'
-  | 'job:waiting'
-  | 'job:progress';
+export type QueueEventType = 'job:completed' | 'job:failed' | 'job:stalled' | 'job:active' | 'job:waiting' | 'job:progress';
 
 export interface QueueEventPayload {
   type: QueueEventType;

@@ -67,11 +67,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return null;
   }
 
-  private async handleTicketAuth(
-    context: ExecutionContext,
-    request: RequestWithAuth,
-    ticket: string,
-  ): Promise<boolean> {
+  private async handleTicketAuth(context: ExecutionContext, request: RequestWithAuth, ticket: string): Promise<boolean> {
     const stored = await this.streamTicketService.consumeTicket(ticket);
     if (!stored) {
       this.logger.warn({ message: 'Stream ticket invalid or already consumed' });

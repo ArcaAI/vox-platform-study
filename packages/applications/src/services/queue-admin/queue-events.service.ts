@@ -11,14 +11,9 @@ export class QueueEventsService implements OnModuleDestroy {
   private readonly subjects = new Map<string, Subject<QueueEventPayload>>();
   private readonly refCounts = new Map<string, number>();
 
-  constructor(
-    @Inject(IConfigService) private readonly configService: IConfigService,
-  ) {}
+  constructor(@Inject(IConfigService) private readonly configService: IConfigService) {}
 
-  getEventStream(
-    queueNames?: string[],
-    eventTypes?: QueueEventType[],
-  ): Observable<MessageEvent> {
+  getEventStream(queueNames?: string[], eventTypes?: QueueEventType[]): Observable<MessageEvent> {
     const targetQueues = queueNames ?? Object.values(JobQueue);
 
     for (const name of targetQueues) {
@@ -32,10 +27,7 @@ export class QueueEventsService implements OnModuleDestroy {
       .map((subject) => subject.asObservable());
 
     return merge(...streams).pipe(
-      filter(
-        (event) =>
-          !eventTypes?.length || eventTypes.includes(event.type),
-      ),
+      filter((event) => !eventTypes?.length || eventTypes.includes(event.type)),
       map(
         (event) =>
           ({

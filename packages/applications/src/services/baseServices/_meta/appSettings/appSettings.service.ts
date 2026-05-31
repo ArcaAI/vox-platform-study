@@ -203,23 +203,17 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
       // TASK-301 §P0-1: if >1 row exists for the same platform key
       // (tenantId === GLOBAL_TENANT_ID), the Map<key>-keyed cache silently
       // resolves to a non-deterministic winner. Refuse to start.
-      const allowSkip =
-        process.env.NODE_ENV === 'development' &&
-        process.env.APP_SETTINGS_BOOT_INVARIANT === 'skip';
+      const allowSkip = process.env.NODE_ENV === 'development' && process.env.APP_SETTINGS_BOOT_INVARIANT === 'skip';
 
       if (!allowSkip) {
-        const platformOnly = globalSettings.filter(
-          (s) => s.tenantId === GLOBAL_TENANT_ID,
-        );
+        const platformOnly = globalSettings.filter((s) => s.tenantId === GLOBAL_TENANT_ID);
         const seen = new Map<string, number>();
         for (const s of platformOnly) {
           seen.set(s.key, (seen.get(s.key) ?? 0) + 1);
         }
         const duplicates = Array.from(seen.entries()).filter(([, n]) => n > 1);
         if (duplicates.length > 0) {
-          const list = duplicates
-            .map(([k, n]) => `${k} (${n} rows)`)
-            .join(', ');
+          const list = duplicates.map(([k, n]) => `${k} (${n} rows)`).join(', ');
           throw new Error(
             `Phase 0 Item 5 (TASK-302): duplicate platform key(s) detected — ${list}. ` +
               `Refuse to start. See TASK-301 §P0-1 for context. Set ` +

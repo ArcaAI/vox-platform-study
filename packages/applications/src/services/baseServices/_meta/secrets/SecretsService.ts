@@ -1,11 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { LRUCacheWithDelete } from 'mnemonist';
-import {
-  ISecretsProvider,
-  SECRETS_PROVIDER_TOKEN,
-  SecretFetchOptions,
-  SecretsHealth,
-} from './ISecretsProvider';
+import { ISecretsProvider, SECRETS_PROVIDER_TOKEN, SecretFetchOptions, SecretsHealth } from './ISecretsProvider';
 
 export interface SecretsServiceOptions {
   /** Default TTL applied to every cached secret. Default 300s. */
@@ -66,10 +61,7 @@ export class SecretsService {
     return v;
   }
 
-  async getSecretOptional(
-    key: string,
-    opts?: SecretFetchOptions,
-  ): Promise<string | undefined> {
+  async getSecretOptional(key: string, opts?: SecretFetchOptions): Promise<string | undefined> {
     try {
       return await this.getSecret(key, opts);
     } catch {
@@ -104,10 +96,7 @@ export class SecretsService {
     }
   }
 
-  async getSecrets(
-    keys: string[],
-    opts?: SecretFetchOptions,
-  ): Promise<Record<string, string>> {
+  async getSecrets(keys: string[], opts?: SecretFetchOptions): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
     const missing: string[] = [];
     for (const k of keys) {
@@ -144,23 +133,15 @@ export class SecretsService {
    * misconfigured key doesn't block boot.
    */
   async boot(opts: { warmupKeys?: string[] } = {}): Promise<void> {
-    const providerBoot = (
-      this.provider as unknown as { boot?: () => Promise<void> }
-    ).boot;
+    const providerBoot = (this.provider as unknown as { boot?: () => Promise<void> }).boot;
     if (typeof providerBoot === 'function') {
       await providerBoot.call(this.provider);
     }
     if (opts.warmupKeys && opts.warmupKeys.length > 0) {
-      const results = await Promise.allSettled(
-        opts.warmupKeys.map((k) => this.getSecret(k)),
-      );
-      const failed = results
-        .map((r, i) => (r.status === 'rejected' ? opts.warmupKeys![i] : null))
-        .filter((k): k is string => k !== null);
+      const results = await Promise.allSettled(opts.warmupKeys.map((k) => this.getSecret(k)));
+      const failed = results.map((r, i) => (r.status === 'rejected' ? opts.warmupKeys![i] : null)).filter((k): k is string => k !== null);
       if (failed.length > 0) {
-        this.logger.warn(
-          `SecretsService.boot(): warmup miss for ${failed.length}/${opts.warmupKeys.length} key(s): ${failed.join(', ')}`,
-        );
+        this.logger.warn(`SecretsService.boot(): warmup miss for ${failed.length}/${opts.warmupKeys.length} key(s): ${failed.join(', ')}`);
       }
     }
   }
@@ -189,17 +170,12 @@ export class SecretsService {
    * a structural minimum so unit tests do not need to spin up Redis.
    */
   attachRedisSubscriber(sub: {
-    subscribe: (
-      channel: string,
-      cb: (err: Error | null, count: number) => void,
-    ) => void;
+    subscribe: (channel: string, cb: (err: Error | null, count: number) => void) => void;
     on: (event: 'message', handler: (channel: string, raw: string) => void) => void;
   }): void {
     sub.subscribe(SecretsService.INVALIDATION_CHANNEL, (err) => {
       if (err) {
-        this.logger.error(
-          `Failed to subscribe to ${SecretsService.INVALIDATION_CHANNEL}: ${err.message}`,
-        );
+        this.logger.error(`Failed to subscribe to ${SecretsService.INVALIDATION_CHANNEL}: ${err.message}`);
       }
     });
     sub.on('message', (channel: string, raw: string) => {
@@ -208,9 +184,7 @@ export class SecretsService {
       try {
         msg = JSON.parse(raw) as { key?: string; all?: boolean };
       } catch {
-        this.logger.warn(
-          `Bad ${SecretsService.INVALIDATION_CHANNEL} payload (ignored): ${raw.slice(0, 64)}`,
-        );
+        this.logger.warn(`Bad ${SecretsService.INVALIDATION_CHANNEL} payload (ignored): ${raw.slice(0, 64)}`);
         return;
       }
       if (msg?.all) {
@@ -229,14 +203,9 @@ export class SecretsService {
    * `vault-lease-renewer.ts` at type-resolution time, keeping the
    * import graph one-directional.
    */
-  private leaseRenewer:
-    | { readonly degraded: boolean; readonly failureCount: number }
-    | null = null;
+  private leaseRenewer: { readonly degraded: boolean; readonly failureCount: number } | null = null;
 
-  setLeaseRenewer(renewer: {
-    readonly degraded: boolean;
-    readonly failureCount: number;
-  }): void {
+  setLeaseRenewer(renewer: { readonly degraded: boolean; readonly failureCount: number }): void {
     this.leaseRenewer = renewer;
   }
 
@@ -283,9 +252,7 @@ export class SecretsService {
       encrypt?: (b: Buffer) => Promise<string>;
     };
     if (typeof maybe.encrypt !== 'function') {
-      throw new Error(
-        'SecretsService.encrypt() requires Vault provider (SECRETS_PROVIDER=vault); current provider has no transit support',
-      );
+      throw new Error('SecretsService.encrypt() requires Vault provider (SECRETS_PROVIDER=vault); current provider has no transit support');
     }
     return maybe.encrypt(plaintext);
   }
@@ -295,9 +262,7 @@ export class SecretsService {
       decrypt?: (s: string) => Promise<Buffer>;
     };
     if (typeof maybe.decrypt !== 'function') {
-      throw new Error(
-        'SecretsService.decrypt() requires Vault provider (SECRETS_PROVIDER=vault); current provider has no transit support',
-      );
+      throw new Error('SecretsService.decrypt() requires Vault provider (SECRETS_PROVIDER=vault); current provider has no transit support');
     }
     return maybe.decrypt(ciphertext);
   }

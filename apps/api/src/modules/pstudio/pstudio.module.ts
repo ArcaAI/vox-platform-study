@@ -8,10 +8,7 @@ import { PrismaStudioController } from './pstudio.controller';
  * environment. Both signals are required so a misconfigured staging /
  * preview host cannot accidentally enable it.
  */
-export function shouldEnablePrismaStudio(env: {
-  NODE_ENV?: string;
-  ENABLE_PRISMA_STUDIO?: string;
-}): boolean {
+export function shouldEnablePrismaStudio(env: { NODE_ENV?: string; ENABLE_PRISMA_STUDIO?: string }): boolean {
   return env.NODE_ENV === 'development' && env.ENABLE_PRISMA_STUDIO === 'true';
 }
 

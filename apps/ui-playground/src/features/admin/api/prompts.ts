@@ -228,11 +228,7 @@ export function useUpdatePrompt(tenantId: string) {
     // `expectedVersion` as the body fallback before the header guard
     // lands in CI).
     mutationFn: ({ id, ifMatch, ...input }: UpdatePromptInput & { id: string; ifMatch?: string }) =>
-      adminClient.patch<PromptTemplate>(
-        `/prompt-templates/${id}`,
-        input,
-        ifMatch ? { tenantId, ifMatch } : { tenantId },
-      ),
+      adminClient.patch<PromptTemplate>(`/prompt-templates/${id}`, input, ifMatch ? { tenantId, ifMatch } : { tenantId }),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all(tenantId) });
       qc.invalidateQueries({ queryKey: keys.detail(tenantId, variables.id) });
@@ -258,7 +254,17 @@ export function useTogglePromptStatus(tenantId: string) {
     // as `useUpdatePrompt`. The caller must supply `expectedVersion` and
     // (in production) `ifMatch`. Toggle is a status-only mutation that
     // still bumps `_version` like any other write.
-    mutationFn: ({ id, resourceStatus, expectedVersion, ifMatch }: { id: string; resourceStatus: string; expectedVersion: number; ifMatch?: string }) =>
+    mutationFn: ({
+      id,
+      resourceStatus,
+      expectedVersion,
+      ifMatch,
+    }: {
+      id: string;
+      resourceStatus: string;
+      expectedVersion: number;
+      ifMatch?: string;
+    }) =>
       adminClient.patch<PromptTemplate>(
         `/prompt-templates/${id}`,
         { resourceStatus, expectedVersion },

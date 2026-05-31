@@ -21,10 +21,7 @@
 // answer may be Vault Enterprise's static-role rotation.
 import { Injectable, Logger } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import type {
-  RotationPolicy,
-  LastRotatedMap,
-} from '@arcaai/applications';
+import type { RotationPolicy, LastRotatedMap } from '@arcaai/applications';
 import { policyDueKeys } from '@arcaai/applications';
 
 interface RotationPublisher {
@@ -36,12 +33,7 @@ interface VaultPutFn {
 }
 
 interface AuditAppendFn {
-  (entry: {
-    action: 'vault.kv.rotate';
-    key: string;
-    keyVersion: number;
-    timestamp: number;
-  }): Promise<void>;
+  (entry: { action: 'vault.kv.rotate'; key: string; keyVersion: number; timestamp: number }): Promise<void>;
 }
 
 interface NewSecretFn {
@@ -86,9 +78,7 @@ export class ScheduledRotationProcessor {
   async processOnce(): Promise<ScheduledRotationResult> {
     const now = this.opts.now();
     const due = policyDueKeys(now, this.opts.policies, this.opts.lastRotated);
-    const skipped = this.opts.policies
-      .map((p) => p.key)
-      .filter((k) => !due.includes(k));
+    const skipped = this.opts.policies.map((p) => p.key).filter((k) => !due.includes(k));
 
     const rotated: string[] = [];
     const failed: Array<{ key: string; error: string }> = [];

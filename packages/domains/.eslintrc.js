@@ -14,6 +14,7 @@ module.exports = {
         "src/integration/",
         "**/generated/**",
         "**/__tests__/",
+        "vitest.config.ts",
     ],
     overrides: [
         {

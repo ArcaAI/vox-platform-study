@@ -117,11 +117,7 @@ export function useUpdateAudioPipeline(tenantId: string) {
     // `expectedVersion` as the body fallback before deploy ordering
     // catches up).
     mutationFn: ({ id, ifMatch, ...input }: UpdateAudioPipelineInput & { id: string; ifMatch?: string }) =>
-      adminClient.patch<AudioPipeline>(
-        `/admin/audio/pipelines/${id}`,
-        input,
-        ifMatch ? { tenantId, ifMatch } : { tenantId },
-      ),
+      adminClient.patch<AudioPipeline>(`/admin/audio/pipelines/${id}`, input, ifMatch ? { tenantId, ifMatch } : { tenantId }),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: audioPipelineKeys.all(tenantId) });
       qc.invalidateQueries({

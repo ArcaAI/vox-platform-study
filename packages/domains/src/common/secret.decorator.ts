@@ -21,8 +21,7 @@ export const SECRET_FIELDS_KEY = Symbol('phase-0-item-4:secret-fields');
 
 export function Secret(): PropertyDecorator {
   return (target: object, propertyKey: string | symbol) => {
-    const existing: Array<string | symbol> =
-      Reflect.getMetadata(SECRET_FIELDS_KEY, target) ?? [];
+    const existing: Array<string | symbol> = Reflect.getMetadata(SECRET_FIELDS_KEY, target) ?? [];
     if (!existing.includes(propertyKey)) {
       Reflect.defineMetadata(SECRET_FIELDS_KEY, [...existing, propertyKey], target);
     }
@@ -30,7 +29,6 @@ export function Secret(): PropertyDecorator {
 }
 
 export function getSecretFields(prototype: object): Array<string> {
-  const fields: Array<string | symbol> =
-    Reflect.getMetadata(SECRET_FIELDS_KEY, prototype) ?? [];
+  const fields: Array<string | symbol> = Reflect.getMetadata(SECRET_FIELDS_KEY, prototype) ?? [];
   return fields.filter((f): f is string => typeof f === 'string');
 }

@@ -23,12 +23,7 @@ import {
 import { Body, Controller, Delete, HttpCode, HttpStatus, Inject, Param, Post, Query, Get, Patch } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { ApiEndpoint, CanManage } from '../../decorators';
-import {
-  UpdateUserStatusRequest,
-  BulkDeleteUsersRequest,
-  BulkDeleteUsersResponse,
-  BulkDeleteUserFailure,
-} from './dto';
+import { UpdateUserStatusRequest, BulkDeleteUsersRequest, BulkDeleteUsersResponse, BulkDeleteUserFailure } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('admin-users')

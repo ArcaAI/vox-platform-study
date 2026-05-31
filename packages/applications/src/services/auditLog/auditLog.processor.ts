@@ -19,17 +19,7 @@ export class AuditLogProcessor extends WorkerHost {
   }
 
   async process(job: Job<AuditLogJob>): Promise<void> {
-    const {
-      action,
-      responsibleUserId,
-      responsibleIp,
-      resourceId,
-      resourceType,
-      data,
-      previousData,
-      correlationId,
-      tenantId,
-    } = job.data;
+    const { action, responsibleUserId, responsibleIp, resourceId, resourceType, data, previousData, correlationId, tenantId } = job.data;
 
     // TASK-305 D.9.3 follow-up — fail-closed when tenantId is missing.
     // Guards against legacy queue entries that predate the multi-tenancy

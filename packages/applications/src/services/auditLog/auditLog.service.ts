@@ -356,9 +356,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       await this.databaseService.baseClient.auditLog.create({ data: data as any });
 
       this.logger.debug({
-        message: isImpersonatedRequest
-          ? 'Impersonated request audit log created'
-          : 'User authenticated audit log created',
+        message: isImpersonatedRequest ? 'Impersonated request audit log created' : 'User authenticated audit log created',
         userId,
         impersonatedUserId: impersonatedUserId ?? null,
         endpoint: event.endpoint ?? null,

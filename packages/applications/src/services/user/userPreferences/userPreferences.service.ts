@@ -287,9 +287,7 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
    * so that the SDK can read both workflow settings and the active voice sample in a
    * single round-trip and cache them together in IndexedDB.
    */
-  private async resolveActiveVoiceProfile(
-    userId: string,
-  ): Promise<UserPreferencesResponse['activeVoiceProfile']> {
+  private async resolveActiveVoiceProfile(userId: string): Promise<UserPreferencesResponse['activeVoiceProfile']> {
     if (!this.voiceProfileRepository) return undefined;
 
     try {

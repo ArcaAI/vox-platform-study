@@ -122,9 +122,7 @@ export class RateLimitAdminService implements IRateLimitAdminService {
 
   async setRoute(routeId: string, input: SetRouteInput): Promise<RateLimitPolicy> {
     if (!findKnownRoute(routeId)) {
-      throw new BadRequestException(
-        `Unknown route '${routeId}'. Valid routes: ${KNOWN_THROTTLED_ROUTES.map((r) => r.routeId).join(', ')}.`,
-      );
+      throw new BadRequestException(`Unknown route '${routeId}'. Valid routes: ${KNOWN_THROTTLED_ROUTES.map((r) => r.routeId).join(', ')}.`);
     }
     if (input.limit === undefined && input.ttl === undefined && input.enabled === undefined) {
       throw new BadRequestException('At least one of `limit`, `ttl`, or `enabled` must be provided.');
@@ -132,14 +130,29 @@ export class RateLimitAdminService implements IRateLimitAdminService {
 
     if (input.limit !== undefined) {
       this.assertPositiveInt(input.limit, 'limit');
-      await this.writeSetting(rateLimitRouteLimitKey(routeId), String(input.limit), ValueType.Integer, `Rate limit override for '${routeId}' max requests`);
+      await this.writeSetting(
+        rateLimitRouteLimitKey(routeId),
+        String(input.limit),
+        ValueType.Integer,
+        `Rate limit override for '${routeId}' max requests`,
+      );
     }
     if (input.ttl !== undefined) {
       this.assertPositiveInt(input.ttl, 'ttl');
-      await this.writeSetting(rateLimitRouteTtlKey(routeId), String(input.ttl), ValueType.Integer, `Rate limit override for '${routeId}' window (ms)`);
+      await this.writeSetting(
+        rateLimitRouteTtlKey(routeId),
+        String(input.ttl),
+        ValueType.Integer,
+        `Rate limit override for '${routeId}' window (ms)`,
+      );
     }
     if (input.enabled !== undefined) {
-      await this.writeSetting(rateLimitRouteEnabledKey(routeId), String(Boolean(input.enabled)), ValueType.Boolean, `Rate limit toggle for '${routeId}'`);
+      await this.writeSetting(
+        rateLimitRouteEnabledKey(routeId),
+        String(Boolean(input.enabled)),
+        ValueType.Boolean,
+        `Rate limit toggle for '${routeId}'`,
+      );
     }
     return this.getPolicy();
   }

@@ -77,7 +77,12 @@ export function isOriginAllowed(origin: string | undefined, nodeEnv: string): bo
 
     return logCorsDecision(origin, false, 'not_https');
   } else if (nodeEnv === 'staging') {
-    const localhostPatterns = [/^http:\/\/localhost:\d+$/, /^https:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/, /^https:\/\/127\.0\.0\.1:\d+$/];
+    const localhostPatterns = [
+      /^http:\/\/localhost:\d+$/,
+      /^https:\/\/localhost:\d+$/,
+      /^http:\/\/127\.0\.0\.1:\d+$/,
+      /^https:\/\/127\.0\.0\.1:\d+$/,
+    ];
 
     const stagingDomains = ['https://staging.arcaai.com', 'https://staging-app.arcaai.com', 'https://staging-dashboard.arcaai.com'];
 

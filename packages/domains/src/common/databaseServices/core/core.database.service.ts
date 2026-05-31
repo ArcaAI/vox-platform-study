@@ -86,9 +86,7 @@ export class CoreDatabaseService implements OnModuleInit, OnModuleDestroy {
       this.prisma = getPlatformAdminPrismaClient_Unscoped();
       this.extendedPrisma = getExtendedPrismaClient();
     }
-    this.logger.log(
-      `${CoreDatabaseService.name} has been created! (mode=${this.useVault ? 'vault' : 'env'})`,
-    );
+    this.logger.log(`${CoreDatabaseService.name} has been created! (mode=${this.useVault ? 'vault' : 'env'})`);
   }
 
   /**

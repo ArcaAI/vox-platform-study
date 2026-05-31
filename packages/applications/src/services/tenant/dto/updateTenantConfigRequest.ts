@@ -27,8 +27,7 @@ export class UpdateTenantConfigRequest extends BaseRequest {
    * @see TASK-302 Stream D `04-optimistic-locking.md`
    */
   @ApiProperty({
-    description:
-      "Current version of the row (from the prior GET). The PATCH fails with 412 if any row's version drifted.",
+    description: "Current version of the row (from the prior GET). The PATCH fails with 412 if any row's version drifted.",
     example: 7,
   })
   @IsInt()

@@ -1,9 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  ISecretsProvider,
-  SecretFetchOptions,
-  SecretsHealth,
-} from '../ISecretsProvider';
+import { ISecretsProvider, SecretFetchOptions, SecretsHealth } from '../ISecretsProvider';
 
 /**
  * Phase 2A Task 2.4 (TASK-302 Stream B) — InMemorySecretsProvider.
@@ -31,9 +27,7 @@ export class InMemorySecretsProvider implements ISecretsProvider {
     const v = this.store.get(key);
     if (v === undefined) {
       if (opts?.required === false) return '';
-      throw new Error(
-        `InMemorySecretsProvider: required secret '${key}' is not seeded`,
-      );
+      throw new Error(`InMemorySecretsProvider: required secret '${key}' is not seeded`);
     }
     return v;
   }

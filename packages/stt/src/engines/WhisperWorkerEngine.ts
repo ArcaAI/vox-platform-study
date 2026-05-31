@@ -353,8 +353,7 @@ export class WhisperWorkerEngine extends BaseEngine {
     const task = options?.task ?? this.config.task;
     if (task === 'translate') {
       const modelId =
-        this.config.modelPath ??
-        this.getModelId(this.config.model, this.config.language, this.config.quantized, this.config.returnTimestamps);
+        this.config.modelPath ?? this.getModelId(this.config.model, this.config.language, this.config.quantized, this.config.returnTimestamps);
       if (modelId.endsWith('.en')) {
         throw new STTError(
           STTErrorCode.NOT_SUPPORTED,

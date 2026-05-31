@@ -120,9 +120,7 @@ export class LocalSTTProvider extends BaseSTTProvider {
       maxSpeakers: config.numSpeakers,
       // TASK-304 Wave 2 W2-STT-4: forward the user-tuned similarity threshold.
       ...(typeof config.voiceProfile?.similarityThreshold === 'number' ? { similarityThreshold: config.voiceProfile.similarityThreshold } : {}),
-      ...(config.voiceProfile?.reservedSpeakerId
-        ? { reservedSpeakerId: config.voiceProfile.reservedSpeakerId }
-        : {}),
+      ...(config.voiceProfile?.reservedSpeakerId ? { reservedSpeakerId: config.voiceProfile.reservedSpeakerId } : {}),
     });
 
     this.initialized = true;

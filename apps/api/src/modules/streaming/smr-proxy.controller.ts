@@ -1,4 +1,12 @@
-import { Authorize, IActiveUserContext, IBlobStorageService, IConfigService, ITenantService, SecretsService, isSuperAdmin } from '@arcaai/applications';
+import {
+  Authorize,
+  IActiveUserContext,
+  IBlobStorageService,
+  IConfigService,
+  ITenantService,
+  SecretsService,
+  isSuperAdmin,
+} from '@arcaai/applications';
 import type { IBlobStorageService as IBlobStorageServiceType } from '@arcaai/applications';
 import {
   ContextItemRepository,
@@ -212,15 +220,11 @@ export class SmrProxyController {
   private async resolveTenantId(tenantKey?: string): Promise<string> {
     if (tenantKey !== undefined && tenantKey !== '') {
       if (tenantKey !== GLOBAL_TENANT_KEY) {
-        throw new BadRequestException(
-          `Only the literal '${GLOBAL_TENANT_KEY}' is accepted as a tenantKey override`,
-        );
+        throw new BadRequestException(`Only the literal '${GLOBAL_TENANT_KEY}' is accepted as a tenantKey override`);
       }
       const user = this.clsService.get('user');
       if (!isSuperAdmin(user)) {
-        throw new ForbiddenException(
-          `Only ${SUPER_ADMIN_ROLE} may use ?tenantKey=${GLOBAL_TENANT_KEY}`,
-        );
+        throw new ForbiddenException(`Only ${SUPER_ADMIN_ROLE} may use ?tenantKey=${GLOBAL_TENANT_KEY}`);
       }
       const globalTenant = await this.tenantService.fetchByCodeName(GLOBAL_TENANT_KEY);
       return globalTenant.id;

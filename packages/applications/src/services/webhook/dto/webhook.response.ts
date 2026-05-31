@@ -28,8 +28,7 @@ export class WebhookResponse extends BaseResponse {
   // (the `ETagInterceptor` also renders this as `ETag: "<n>"`) or via
   // the body's `expectedVersion` on the next PATCH.
   @ApiProperty({
-    description:
-      'Row version for optimistic concurrency control. Echo back as `If-Match: "<version>"` or `expectedVersion` on PATCH.',
+    description: 'Row version for optimistic concurrency control. Echo back as `If-Match: "<version>"` or `expectedVersion` on PATCH.',
     example: 7,
   })
   version!: number;

@@ -1,10 +1,4 @@
-import {
-  BadRequestException,
-  createParamDecorator,
-  ExecutionContext,
-  HttpException,
-  HttpStatus,
-} from '@nestjs/common';
+import { BadRequestException, createParamDecorator, ExecutionContext, HttpException, HttpStatus } from '@nestjs/common';
 
 /**
  * RFC 7232 strong-validator pattern: `"<digits>"` — exactly one set of
@@ -51,9 +45,7 @@ const STRONG_VALIDATOR_RE = /^"(0|[1-9][0-9]*)"$/;
  * @see https://www.rfc-editor.org/rfc/rfc6585.html
  */
 export function extractExpectedVersion(_data: unknown, ctx: ExecutionContext): number | undefined {
-  const req = ctx
-    .switchToHttp()
-    .getRequest<{ headers: Record<string, string | undefined>; _requiresIfMatch?: boolean }>();
+  const req = ctx.switchToHttp().getRequest<{ headers: Record<string, string | undefined>; _requiresIfMatch?: boolean }>();
   const raw = req.headers['if-match'];
 
   if (raw === undefined || raw === '') {
@@ -76,17 +68,13 @@ export function extractExpectedVersion(_data: unknown, ctx: ExecutionContext): n
 
   const match = STRONG_VALIDATOR_RE.exec(raw);
   if (!match) {
-    throw new BadRequestException(
-      `Invalid If-Match header: ${raw}. Expected a strong validator of the form "<positive integer>" (RFC 7232 §3.1).`,
-    );
+    throw new BadRequestException(`Invalid If-Match header: ${raw}. Expected a strong validator of the form "<positive integer>" (RFC 7232 §3.1).`);
   }
   const parsed = Number.parseInt(match[1], 10);
   if (!Number.isInteger(parsed) || parsed < 1) {
     // The regex catches negative / non-numeric; this guard is defense in
     // depth for the zero case + future regex relaxations.
-    throw new BadRequestException(
-      `Invalid If-Match header: ${raw}. Version must be a positive integer (>= 1).`,
-    );
+    throw new BadRequestException(`Invalid If-Match header: ${raw}. Version must be a positive integer (>= 1).`);
   }
   return parsed;
 }

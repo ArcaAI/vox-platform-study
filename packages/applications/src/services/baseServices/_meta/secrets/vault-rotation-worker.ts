@@ -76,9 +76,7 @@ export class VaultRotationWorker {
     try {
       entry = JSON.parse(line) as AuditEntry;
     } catch (e) {
-      this.logger.debug(
-        `bad audit line ignored: ${(e as Error).message} :: ${line.slice(0, 64)}`,
-      );
+      this.logger.debug(`bad audit line ignored: ${(e as Error).message} :: ${line.slice(0, 64)}`);
       return;
     }
     if (entry.type !== 'request') return;
@@ -119,18 +117,14 @@ export class VaultRotationWorker {
         size = statSync(auditLogPath).size;
       } catch (e) {
         // File may have been rotated away momentarily; log and retry.
-        this.logger.warn(
-          `audit log stat failed (will retry): ${(e as Error).message}`,
-        );
+        this.logger.warn(`audit log stat failed (will retry): ${(e as Error).message}`);
         continue;
       }
       if (size <= position) {
         if (size < position) {
           // Log got truncated/rotated. Re-anchor at the new EOF so we
           // don't replay the entire (now smaller) file.
-          this.logger.log(
-            `audit log truncated (${position} → ${size}); re-anchoring at new EOF`,
-          );
+          this.logger.log(`audit log truncated (${position} → ${size}); re-anchoring at new EOF`);
           position = size;
         }
         continue;

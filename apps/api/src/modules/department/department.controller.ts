@@ -121,9 +121,7 @@ export class DepartmentController {
     // decorator fired 428 if the header was missing, so the fallback
     // only fires in unit tests / off-route service-to-service traffic.
     const effectiveRequest: UpdateDepartmentRequest =
-      expectedFromHeader !== undefined
-        ? { ...request, expectedVersion: expectedFromHeader }
-        : request;
+      expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
     return this.departmentService.update(id, effectiveRequest);
   }
 
@@ -152,9 +150,7 @@ export class DepartmentController {
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<DepartmentResponse> {
     const effectiveRequest: UpdateDepartmentPromptConfigRequest =
-      expectedFromHeader !== undefined
-        ? { ...request, expectedVersion: expectedFromHeader }
-        : request;
+      expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
     return this.departmentService.updatePromptConfig(id, effectiveRequest);
   }
 

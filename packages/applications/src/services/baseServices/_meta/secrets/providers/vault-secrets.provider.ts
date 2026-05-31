@@ -1,10 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import vault from 'node-vault';
-import {
-  ISecretsProvider,
-  SecretFetchOptions,
-  SecretsHealth,
-} from '../ISecretsProvider';
+import { ISecretsProvider, SecretFetchOptions, SecretsHealth } from '../ISecretsProvider';
 
 /**
  * Internal client shape used by VaultSecretsProvider. node-vault ships a
@@ -18,11 +14,7 @@ import {
 interface VaultClientLike {
   token: string;
   read(path: string, requestOptions?: Record<string, unknown>): Promise<unknown>;
-  write(
-    path: string,
-    data: unknown,
-    requestOptions?: Record<string, unknown>,
-  ): Promise<unknown>;
+  write(path: string, data: unknown, requestOptions?: Record<string, unknown>): Promise<unknown>;
   approleLogin(options: { role_id: string; secret_id: string }): Promise<{
     auth: { client_token: string; lease_duration: number; renewable: boolean };
   }>;
@@ -101,9 +93,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     if (!config.addr) throw new Error('VaultSecretsProvider: VAULT_ADDR is required');
     if (!config.roleId) throw new Error('VaultSecretsProvider: VAULT_ROLE_ID is required');
     if (!config.wrappedSecretId && !config.secretId) {
-      throw new Error(
-        'VaultSecretsProvider: either VAULT_WRAPPED_SECRET_ID or VAULT_SECRET_ID is required (secret_id missing)',
-      );
+      throw new Error('VaultSecretsProvider: either VAULT_WRAPPED_SECRET_ID or VAULT_SECRET_ID is required (secret_id missing)');
     }
     this.client = vault({
       apiVersion: 'v1',
@@ -136,9 +126,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
   private bootFailure(err: unknown): Error {
     const status = (err as { response?: { statusCode?: number } })?.response?.statusCode;
     const sealedish = status === 503 || status === 501;
-    const reason = sealedish
-      ? `Vault is sealed or unavailable (HTTP ${status})`
-      : ((err as Error)?.message ?? String(err));
+    const reason = sealedish ? `Vault is sealed or unavailable (HTTP ${status})` : ((err as Error)?.message ?? String(err));
     return new Error(
       `VaultSecretsProvider.boot() FATAL: cannot authenticate to Vault (${this.config.addr}) — ${reason}. Refusing to start without a Vault session.`,
     );
@@ -171,9 +159,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     });
     this.client.token = login.auth.client_token;
     this.booted = true;
-    this.logger.log(
-      `Vault AppRole login successful (lease_duration=${login.auth.lease_duration}s, renewable=${login.auth.renewable})`,
-    );
+    this.logger.log(`Vault AppRole login successful (lease_duration=${login.auth.lease_duration}s, renewable=${login.auth.renewable})`);
     this.scheduleTokenRenewal(login.auth.lease_duration, login.auth.renewable);
   }
 
@@ -219,19 +205,12 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
       this.tokenRenewDegraded = false;
       if (newTtl && newTtl > 0) this.lastTokenTtlSec = newTtl;
       if (wasDegraded) {
-        this.logger.log(
-          `Vault token renewal recovered (lease_duration=${this.lastTokenTtlSec}s)`,
-        );
+        this.logger.log(`Vault token renewal recovered (lease_duration=${this.lastTokenTtlSec}s)`);
       }
     } catch (err: unknown) {
       this.tokenRenewFailures += 1;
-      this.logger.warn(
-        `Vault token renewal failed (attempt=${this.tokenRenewFailures}): ${(err as Error).message}`,
-      );
-      if (
-        this.tokenRenewFailures >= this.tokenRenewFailureThreshold &&
-        !this.tokenRenewDegraded
-      ) {
+      this.logger.warn(`Vault token renewal failed (attempt=${this.tokenRenewFailures}): ${(err as Error).message}`);
+      if (this.tokenRenewFailures >= this.tokenRenewFailureThreshold && !this.tokenRenewDegraded) {
         this.tokenRenewDegraded = true;
         this.logger.error(
           `Vault token renewal DEGRADED after ${this.tokenRenewFailures} consecutive failures; secrets-health reports degraded until renewal succeeds or the pod is recycled.`,
@@ -323,9 +302,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     this.ensureBooted();
     const path = this.kvPath(key);
     try {
-      const res = (await this.withRetry(() => this.client.read(path))) as
-        | { data?: { data?: { value?: string } } }
-        | undefined;
+      const res = (await this.withRetry(() => this.client.read(path))) as { data?: { data?: { value?: string } } } | undefined;
       const value = res?.data?.data?.value;
       if (value === undefined || value === '') {
         if (opts?.required === false) return '';
@@ -346,9 +323,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     this.ensureBooted();
     const path = this.kvPath(key);
     try {
-      const res = (await this.withRetry(() => this.client.read(path))) as
-        | { data?: { data?: { value?: string } } }
-        | undefined;
+      const res = (await this.withRetry(() => this.client.read(path))) as { data?: { data?: { value?: string } } } | undefined;
       const value = res?.data?.data?.value;
       return value === '' ? undefined : value;
     } catch (err: unknown) {
@@ -367,10 +342,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     }
   }
 
-  async getSecrets(
-    keys: string[],
-    opts?: SecretFetchOptions,
-  ): Promise<Record<string, string>> {
+  async getSecrets(keys: string[], opts?: SecretFetchOptions): Promise<Record<string, string>> {
     this.ensureBooted();
     const entries = await Promise.all(
       keys.map(async (k) => {
@@ -408,9 +380,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
         latencyMs: Date.now() - t0,
         provider: 'vault',
         degraded: this.tokenRenewDegraded,
-        detail: this.tokenRenewDegraded
-          ? `${baseDetail}; token-renew degraded (failures=${this.tokenRenewFailures})`
-          : baseDetail,
+        detail: this.tokenRenewDegraded ? `${baseDetail}; token-renew degraded (failures=${this.tokenRenewFailures})` : baseDetail,
       };
     } catch (err: unknown) {
       return {

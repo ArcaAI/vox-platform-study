@@ -37,10 +37,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
     super(eventEmitter, clsService, ResourceType.UserRoleAssignment);
   }
 
-  async findActiveAssignmentForUserInTenant(
-    userId: string,
-    tenantId: string,
-  ): Promise<ActiveUserRoleAssignmentRow | null> {
+  async findActiveAssignmentForUserInTenant(userId: string, tenantId: string): Promise<ActiveUserRoleAssignmentRow | null> {
     // TASK-314 — baseClient (tenant-scope bypass). This is a pre-auth identity
     // lookup: the login flow calls it BEFORE any tenant context exists in CLS,
     // so the scoped client would throw "tenant context required for model

@@ -228,20 +228,8 @@ export function useDeleteTenant() {
 export function useUpdateTenantConfigs() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      identifier,
-      configs,
-      ifMatch,
-    }: {
-      identifier: string;
-      configs: UpdateTenantConfigItem[];
-      ifMatch?: string;
-    }) =>
-      adminClient.patch<PaginatedResponse<TenantConfig>>(
-        `/admin/tenants/configs/${identifier}`,
-        configs,
-        ifMatch ? { ifMatch } : undefined,
-      ),
+    mutationFn: ({ identifier, configs, ifMatch }: { identifier: string; configs: UpdateTenantConfigItem[]; ifMatch?: string }) =>
+      adminClient.patch<PaginatedResponse<TenantConfig>>(`/admin/tenants/configs/${identifier}`, configs, ifMatch ? { ifMatch } : undefined),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({
         queryKey: keys.configs(variables.identifier),
@@ -270,11 +258,7 @@ export function useUpdateMyTenantConfigs() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ configs, ifMatch }: { configs: UpdateTenantConfigItem[]; ifMatch?: string }) =>
-      adminClient.patch<PaginatedResponse<TenantConfig>>(
-        '/tenant/me/config',
-        configs,
-        ifMatch ? { ifMatch } : undefined,
-      ),
+      adminClient.patch<PaginatedResponse<TenantConfig>>('/tenant/me/config', configs, ifMatch ? { ifMatch } : undefined),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: myTenantKeys.config });
     },

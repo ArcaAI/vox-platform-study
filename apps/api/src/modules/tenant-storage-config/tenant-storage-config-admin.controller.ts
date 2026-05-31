@@ -1,8 +1,4 @@
-import {
-  ITenantStorageConfigService,
-  TenantStorageConfigResponse,
-  UpsertTenantStorageConfigRequest,
-} from '@arcaai/applications';
+import { ITenantStorageConfigService, TenantStorageConfigResponse, UpsertTenantStorageConfigRequest } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { TenantOwnedResource } from '../../common';

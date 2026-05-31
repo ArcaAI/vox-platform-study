@@ -1,4 +1,13 @@
-import { HttpMethod, IAuditLogService, PaginatedQuery, PaginatedAuditLogResponse, AuditLogDtoMapper, AuditLogResponse, isSuperAdmin, IActiveUserContext } from '@arcaai/applications';
+import {
+  HttpMethod,
+  IAuditLogService,
+  PaginatedQuery,
+  PaginatedAuditLogResponse,
+  AuditLogDtoMapper,
+  AuditLogResponse,
+  isSuperAdmin,
+  IActiveUserContext,
+} from '@arcaai/applications';
 import { Controller, ForbiddenException, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
