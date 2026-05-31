@@ -91,7 +91,7 @@ interface DoctorInfo {
 
 function getDoctorDisplayName(c: Consultation): string | undefined {
   if (c.doctorName) return c.doctorName;
-  const doc = (c as Record<string, unknown>).doctor as DoctorInfo | undefined;
+  const doc = (c as unknown as Record<string, unknown>).doctor as DoctorInfo | undefined;
   if (!doc) return undefined;
   const parts = [doc.firstName, doc.lastName].filter(Boolean);
   return parts.length > 0 ? parts.join(' ') : doc.username;
@@ -174,7 +174,7 @@ export function ConsultationWorkspace() {
       });
     },
     getNextPageParam: (lastPage, allPages) => {
-      const total = lastPage?.total ?? lastPage?.count ?? 0;
+      const total = lastPage?.total ?? 0;
       const loaded = allPages.reduce((sum, page) => sum + (page?.data?.length ?? 0), 0);
       if (loaded >= total) return undefined;
       return allPages.length + 1;
@@ -186,7 +186,7 @@ export function ConsultationWorkspace() {
 
   const totalCount = useMemo(() => {
     const firstPage = consultationsQuery.data?.pages[0];
-    return firstPage?.total ?? firstPage?.count ?? 0;
+    return firstPage?.total ?? 0;
   }, [consultationsQuery.data?.pages]);
 
   const sortedConsultations = useMemo(() => {

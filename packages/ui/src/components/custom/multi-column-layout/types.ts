@@ -113,7 +113,14 @@ export interface MultiColumnContentConfig {
 // Union of all column types that go into the `columns` array
 // ---------------------------------------------------------------------------
 
-export type AnyColumnConfig = MultiColumnConfig | MultiColumnContentConfig;
+// `MultiColumnConfig<any>` (not the default `<unknown>`) so a column parameterized
+// over a concrete item type — e.g. `MultiColumnConfig<Tenant>` — stays assignable
+// into a heterogeneous `columns` array. `MultiColumnConfig<T>` is invariant in `T`
+// (its `keyExtractor`/`renderItem` consume `T` contravariantly), and the layout
+// erases the item type internally (see `col as MultiColumnConfig<unknown>`), so
+// `any` is correct here while full type-safety is kept at each column's definition.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyColumnConfig = MultiColumnConfig<any> | MultiColumnContentConfig;
 
 // ---------------------------------------------------------------------------
 // List column runtime state (controlled by parent)

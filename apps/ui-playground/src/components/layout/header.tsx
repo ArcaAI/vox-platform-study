@@ -15,7 +15,6 @@ import { Building2, UserCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 const routeMeta: Record<string, { label: string; parent?: { label: string; path: string } }> = {
-  '/_authenticated/': { label: 'Introduction' },
   '/_authenticated/installation/': {
     label: 'Installation',
   },

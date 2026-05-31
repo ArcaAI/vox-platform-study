@@ -18,7 +18,11 @@ type ConfigEventHandler = (config: AppConfig) => void;
  * in from the provider.
  */
 export interface ConfigManagerLogger {
-  warn: (message: string, context?: unknown) => void;
+  // TASK-321 E — method syntax (not an arrow property) so parameter checking is
+  // bivariant. This lets a full `ISDKLogger` (whose `warn(message, meta?: LogMeta)`
+  // is narrower in its 2nd param) be passed where a `ConfigManagerLogger` is
+  // expected, without coupling ConfigManager to the SDK logger's `LogMeta` type.
+  warn(message: string, context?: unknown): void;
 }
 
 export interface ConfigManagerOptions {

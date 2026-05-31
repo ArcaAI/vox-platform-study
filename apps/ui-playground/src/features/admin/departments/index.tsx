@@ -348,6 +348,9 @@ function InlineDepartmentDetail({
 
   const handleDetailsSave = useCallback(
     (values: DepartmentFormValues) => {
+      // TASK-302 Stream D — supply the row version we were editing for the
+      // server's Compare-And-Set (default to 1 until the backend stamps one).
+      const expectedVersion = typeof dept?.version === 'number' ? dept.version : 1;
       updateMutation.mutate(
         {
           id: departmentId,
@@ -356,6 +359,8 @@ function InlineDepartmentDetail({
           description: values.description || undefined,
           parentDepartmentId: values.parentDepartmentId || null,
           defaultSummaryTemplate: values.defaultSummaryTemplate || undefined,
+          expectedVersion,
+          ifMatch: `"${expectedVersion}"`,
         },
         {
           onSuccess: (d) => toast.success(`Department "${d.name}" updated`),
@@ -363,17 +368,20 @@ function InlineDepartmentDetail({
         },
       );
     },
-    [departmentId, updateMutation],
+    [departmentId, updateMutation, dept],
   );
 
   const handlePromptSave = useCallback(
     (values: PromptConfigValues) => {
+      const expectedVersion = typeof dept?.version === 'number' ? dept.version : 1;
       promptConfigMutation.mutate(
         {
           id: departmentId,
           preSummaryPromptId: values.preSummaryPromptId || undefined,
           newPatientPromptId: values.newPatientPromptId || undefined,
           revisitPromptId: values.revisitPromptId || undefined,
+          expectedVersion,
+          ifMatch: `"${expectedVersion}"`,
         },
         {
           onSuccess: () => toast.success('Prompt configuration updated'),
@@ -381,7 +389,7 @@ function InlineDepartmentDetail({
         },
       );
     },
-    [departmentId, promptConfigMutation],
+    [departmentId, promptConfigMutation, dept],
   );
 
   if (isLoading) {
@@ -854,8 +862,9 @@ export default function DepartmentManagementPage() {
     (dept: Department) => {
       const current = (dept.resourceStatus ?? 'ENABLED').toUpperCase();
       const next = current === 'ENABLED' ? 'DISABLED' : 'ENABLED';
+      const expectedVersion = typeof dept.version === 'number' ? dept.version : 1;
       toggleMutation.mutate(
-        { id: dept.id, resourceStatus: next },
+        { id: dept.id, resourceStatus: next, expectedVersion, ifMatch: `"${expectedVersion}"` },
         {
           onSuccess: () => toast.success(`Department ${next === 'ENABLED' ? 'enabled' : 'disabled'}`),
           onError: (err) => toast.error(`Status update failed: ${err.message}`),

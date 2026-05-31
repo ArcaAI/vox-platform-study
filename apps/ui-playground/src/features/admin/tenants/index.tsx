@@ -679,10 +679,13 @@ function ConfigsTab({ tenantIdentifier }: { tenantIdentifier: string }) {
 
   const saveConfig = useCallback(
     (cfg: TenantConfig) => {
+      // TASK-302 Stream D — CAS predicate from the row version we were editing.
+      const expectedVersion = typeof cfg.version === 'number' ? cfg.version : 1;
       updateConfigs.mutate(
         {
           identifier: tenantIdentifier,
-          configs: [{ id: cfg.id, value: editingValue }],
+          configs: [{ id: cfg.id, value: editingValue, expectedVersion }],
+          ifMatch: `"${expectedVersion}"`,
         },
         {
           onSuccess: () => {
@@ -698,10 +701,12 @@ function ConfigsTab({ tenantIdentifier }: { tenantIdentifier: string }) {
 
   const restoreDefault = useCallback(
     (cfg: TenantConfig) => {
+      const expectedVersion = typeof cfg.version === 'number' ? cfg.version : 1;
       updateConfigs.mutate(
         {
           identifier: tenantIdentifier,
-          configs: [{ id: cfg.id, value: cfg.defaultValue ?? '' }],
+          configs: [{ id: cfg.id, value: cfg.defaultValue ?? '', expectedVersion }],
+          ifMatch: `"${expectedVersion}"`,
         },
         {
           onSuccess: () => toast.success('Restored to default'),
@@ -1967,6 +1972,7 @@ function DepartmentsTab({ tenantId, refreshSignal }: { tenantId: string; refresh
     (values: DeptCreateFormValues | DeptEditFormValues) => {
       if (!selectedDept) return;
       const editValues = values as DeptEditFormValues;
+      const expectedVersion = typeof selectedDept.version === 'number' ? selectedDept.version : 1;
       updateMutation.mutate(
         {
           id: selectedDept.id,
@@ -1975,6 +1981,8 @@ function DepartmentsTab({ tenantId, refreshSignal }: { tenantId: string; refresh
           description: editValues.description || undefined,
           parentDepartmentId: editValues.parentDepartmentId || null,
           defaultSummaryTemplate: editValues.defaultSummaryTemplate || undefined,
+          expectedVersion,
+          ifMatch: `"${expectedVersion}"`,
         },
         {
           onSuccess: (dept) => {
@@ -1992,12 +2000,15 @@ function DepartmentsTab({ tenantId, refreshSignal }: { tenantId: string; refresh
   const handlePromptConfig = useCallback(
     (values: DeptPromptConfigValues) => {
       if (!selectedDept) return;
+      const expectedVersion = typeof selectedDept.version === 'number' ? selectedDept.version : 1;
       promptConfigMutation.mutate(
         {
           id: selectedDept.id,
           preSummaryPromptId: values.preSummaryPromptId || undefined,
           newPatientPromptId: values.newPatientPromptId || undefined,
           revisitPromptId: values.revisitPromptId || undefined,
+          expectedVersion,
+          ifMatch: `"${expectedVersion}"`,
         },
         {
           onSuccess: () => {
@@ -2028,8 +2039,9 @@ function DepartmentsTab({ tenantId, refreshSignal }: { tenantId: string; refresh
     (dept: Department) => {
       const current = (dept.resourceStatus ?? 'ENABLED').toUpperCase();
       const next = current === 'ENABLED' ? 'DISABLED' : 'ENABLED';
+      const expectedVersion = typeof dept.version === 'number' ? dept.version : 1;
       updateMutation.mutate(
-        { id: dept.id, resourceStatus: next },
+        { id: dept.id, resourceStatus: next, expectedVersion, ifMatch: `"${expectedVersion}"` },
         {
           onSuccess: () => toast.success(`Department ${next === 'ENABLED' ? 'enabled' : 'disabled'}`),
           onError: (err) => toast.error(`Status update failed: ${err.message}`),
@@ -2401,7 +2413,7 @@ function TenantDetailView({ tenantId, onDeleted, refreshSignal }: { tenantId: st
             <StatusBadge status={tenant.resourceStatus || 'ENABLED'} />
           </div>
           <p className="text-muted-foreground mt-0.5 font-mono text-xs">{tenant.key}</p>
-          {(tenant as Record<string, unknown>).description && (
+          {Boolean((tenant as Record<string, unknown>).description) && (
             <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">{String((tenant as Record<string, unknown>).description)}</p>
           )}
         </div>

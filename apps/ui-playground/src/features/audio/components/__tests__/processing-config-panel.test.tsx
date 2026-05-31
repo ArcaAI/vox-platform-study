@@ -7,6 +7,7 @@
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import React from 'react';
+import type { ProcessingMethod, NoiseCancellationLevel } from '@/store/audio-store';
 
 // ── shadcn/ui mocks ────────────────────────────────────────────────
 
@@ -136,7 +137,7 @@ const mockUsePipelinesReturn = {
     ],
     selectedPipeline: null,
     isLoading: false,
-    error: null,
+    error: null as Error | null,
     list: mockListPipelines,
     get: vi.fn(),
     getBySlug: vi.fn(),
@@ -172,9 +173,12 @@ const mockSetLanguage = vi.fn();
 const mockSetSelectedPipelineId = vi.fn();
 
 const defaultStoreState = {
-    processingMethod: 'backend_socket' as const,
+    // TASK-321 F — annotate with the store's union types (not `as const`) so
+    // `renderPanel({ processingMethod: 'local_ai' })` / `noiseFilterLevel: 'high'`
+    // overrides type-check instead of being narrowed to a single literal.
+    processingMethod: 'backend_socket' as ProcessingMethod,
     noiseFilterEnabled: false,
-    noiseFilterLevel: 'medium' as const,
+    noiseFilterLevel: 'medium' as NoiseCancellationLevel,
     vadEnabled: false,
     vadThreshold: 0.5,
     diarizationEnabled: false,
@@ -291,7 +295,7 @@ describe('ProcessingConfigPanel', () => {
         it('should disable Select-based controls when configReady is false', () => {
             renderPanel({ configReady: false, processingMethod: 'local_ai' });
 
-            const modelCard = screen.getByText('Local AI Model').closest('[data-testid="card"]')!;
+            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
             const modelSelect = within(modelCard).getByTestId('select-root');
             expect(modelSelect.dataset.disabled).toBeDefined();
         });
@@ -322,7 +326,7 @@ describe('ProcessingConfigPanel', () => {
             mockIsLocked.mockImplementation((path) => path === 'stt.language');
             renderPanel({ processingMethod: 'local_ai' });
 
-            const languageCard = screen.getByText('Language').closest('[data-testid="card"]')!;
+            const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
             const lockIcon = within(languageCard).queryByTestId('icon-lock');
             expect(lockIcon).toBeInTheDocument();
         });
@@ -363,7 +367,7 @@ describe('ProcessingConfigPanel', () => {
             mockIsLocked.mockImplementation((path) => path === 'stt.defaultModel');
             renderPanel({ processingMethod: 'local_ai' });
 
-            const modelCard = screen.getByText('Local AI Model').closest('[data-testid="card"]')!;
+            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
             const lockIcon = within(modelCard).queryByTestId('icon-lock');
             expect(lockIcon).toBeInTheDocument();
         });
@@ -372,7 +376,7 @@ describe('ProcessingConfigPanel', () => {
             mockIsLocked.mockImplementation((path) => path === 'stt.language');
             renderPanel({ processingMethod: 'local_ai' });
 
-            const languageCard = screen.getByText('Language').closest('[data-testid="card"]')!;
+            const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
             const selectRoot = within(languageCard).getByTestId('select-root');
             expect(selectRoot.dataset.disabled).toBeDefined();
         });
@@ -428,7 +432,7 @@ describe('ProcessingConfigPanel', () => {
         it('should display available model options', () => {
             renderPanel({ processingMethod: 'local_ai' });
 
-            const modelCard = screen.getByText('Local AI Model').closest('[data-testid="card"]')!;
+            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
             const selectItems = within(modelCard).getAllByTestId('select-item');
             const labels = selectItems.map((el) => el.textContent?.trim());
             expect(labels).toEqual(
@@ -452,7 +456,7 @@ describe('ProcessingConfigPanel', () => {
             mockIsLocked.mockImplementation((path) => path === 'stt.defaultModel');
             renderPanel({ processingMethod: 'local_ai' });
 
-            const modelCard = screen.getByText('Local AI Model').closest('[data-testid="card"]')!;
+            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
             const selectRoot = within(modelCard).getByTestId('select-root');
             expect(selectRoot.dataset.disabled).toBeDefined();
         });
@@ -477,7 +481,7 @@ describe('ProcessingConfigPanel', () => {
         it('should call setUserPreference and setLanguage on language change', () => {
             renderPanel({ processingMethod: 'local_ai' });
 
-            const languageCard = screen.getByText('Language').closest('[data-testid="card"]')!;
+            const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
             const frenchItem = within(languageCard).getByText('French');
             fireEvent.click(frenchItem);
 
@@ -489,7 +493,7 @@ describe('ProcessingConfigPanel', () => {
             mockSetUserPreference.mockReturnValue(false);
             renderPanel({ processingMethod: 'local_ai' });
 
-            const languageCard = screen.getByText('Language').closest('[data-testid="card"]')!;
+            const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
             const frenchItem = within(languageCard).getByText('French');
             fireEvent.click(frenchItem);
 
@@ -636,10 +640,10 @@ describe('ProcessingConfigPanel', () => {
         it('should mark the active level badge with default variant', () => {
             renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: true, noiseFilterLevel: 'high' });
 
-            const highBadge = screen.getByText('high').closest('[data-testid="badge"]')!;
+            const highBadge = screen.getByText('high').closest<HTMLElement>('[data-testid="badge"]')!;
             expect(highBadge.dataset.variant).toBe('default');
 
-            const lowBadge = screen.getByText('low').closest('[data-testid="badge"]')!;
+            const lowBadge = screen.getByText('low').closest<HTMLElement>('[data-testid="badge"]')!;
             expect(lowBadge.dataset.variant).toBe('outline');
         });
 
@@ -813,7 +817,7 @@ describe('ProcessingConfigPanel', () => {
         it('should display available pipelines in the dropdown', () => {
             renderPanel();
 
-            const pipelineCard = screen.getByText('Audio Pipeline').closest('[data-testid="card"]')!;
+            const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
             const selectItems = within(pipelineCard).getAllByTestId('select-item');
             const labels = selectItems.map((el) => el.textContent?.trim());
             expect(labels).toEqual(
@@ -827,7 +831,7 @@ describe('ProcessingConfigPanel', () => {
         it('should enable pipeline select when processingMethod is backend_socket', () => {
             renderPanel({ processingMethod: 'backend_socket' });
 
-            const pipelineCard = screen.getByText('Audio Pipeline').closest('[data-testid="card"]')!;
+            const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
             const selectRoot = within(pipelineCard).getByTestId('select-root');
             expect(selectRoot.dataset.disabled).toBeUndefined();
         });
@@ -842,7 +846,7 @@ describe('ProcessingConfigPanel', () => {
         it('should disable pipeline select when isCapturing is true', () => {
             renderPanel({ processingMethod: 'backend_socket', isCapturing: true });
 
-            const pipelineCard = screen.getByText('Audio Pipeline').closest('[data-testid="card"]')!;
+            const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
             const selectRoot = within(pipelineCard).getByTestId('select-root');
             expect(selectRoot.dataset.disabled).toBeDefined();
         });
@@ -850,8 +854,8 @@ describe('ProcessingConfigPanel', () => {
         it('should call setSelectedPipelineId when a pipeline is selected', () => {
             renderPanel({ processingMethod: 'backend_socket' });
 
-            const pipelineCard = screen.getByText('Audio Pipeline').closest('[data-testid="card"]')!;
-            const item = within(pipelineCard).getByText('Pipeline Beta').closest('[data-testid="select-item"]')!;
+            const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
+            const item = within(pipelineCard).getByText('Pipeline Beta').closest<HTMLElement>('[data-testid="select-item"]')!;
             fireEvent.click(item);
 
             expect(mockSetSelectedPipelineId).toHaveBeenCalledWith('pipe-2');
@@ -861,7 +865,7 @@ describe('ProcessingConfigPanel', () => {
             pipelinesOverrides = { isLoading: true };
             renderPanel();
 
-            const pipelineCard = screen.getByText('Audio Pipeline').closest('[data-testid="card"]')!;
+            const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
             const skeleton = pipelineCard.querySelector('.animate-pulse');
             expect(skeleton).toBeTruthy();
         });

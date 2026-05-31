@@ -248,11 +248,12 @@ export function useFileTranscription(): UseFileTranscriptionReturn {
       });
 
       const streamUrl = fileService.buildJobStreamUrl(targetJobId);
-      const token = apiClient?.getAccessToken?.() || apiClient?.getApiKey?.() || '';
+      // TASK-321 G — SSE auth is ticket-based (TASK-264 W0-1): the SSEClient mints
+      // a single-use `?ticket=` per connect. The legacy `authToken` option was
+      // removed from SSEConnectOptions, so no raw token is passed here.
       sseClient.connect(streamUrl, {
         autoReconnect: true,
         maxReconnectAttempts: 10,
-        authToken: token,
       });
     },
     [apiClient, cleanupSSE],
