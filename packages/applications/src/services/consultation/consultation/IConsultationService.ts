@@ -86,19 +86,19 @@ export abstract class IConsultationService {
   abstract doctorHasPatientRelationship(doctorId: string, patientId: string, tenantId: string): Promise<boolean>;
 
   /**
-   * TASK-321 — Close a consultation (transition lifecycle status to CLOSED).
+   * TASK-322 — Close a consultation (transition lifecycle status to CLOSED).
    * Idempotent: a no-op (no write, no event) when already CLOSED.
    */
   abstract closeConsultation(id: string): Promise<ConsultationResponse>;
 
   /**
-   * TASK-321 — Reopen a consultation (transition lifecycle status back to OPEN).
+   * TASK-322 — Reopen a consultation (transition lifecycle status back to OPEN).
    * Idempotent: a no-op (no write, no event) when already OPEN.
    */
   abstract reopenConsultation(id: string): Promise<ConsultationResponse>;
 
   /**
-   * TASK-321 — Update safely-mutable fields of an existing consultation
+   * TASK-322 — Update safely-mutable fields of an existing consultation
    * (appointmentDate / departmentId / metadata-merge / status).
    */
   abstract updateConsultation(id: string, request: UpdateConsultationRequest): Promise<ConsultationResponse>;

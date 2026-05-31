@@ -1445,7 +1445,7 @@ describe('ConsultationService', () => {
     });
 
     // ============================================================
-    // TASK-321 — Consultation lifecycle (close / reopen / update)
+    // TASK-322 — Consultation lifecycle (close / reopen / update)
     //
     // The Consultation model has no dedicated open/closed column, so
     // lifecycle status lives in `metadata.status` (OPEN | CLOSED;
@@ -1453,7 +1453,7 @@ describe('ConsultationService', () => {
     // already in the target state). PATCH updates safely-mutable fields
     // only (appointmentDate / departmentId / metadata-merge / status).
     // ============================================================
-    describe('TASK-321 — lifecycle (close / reopen / update)', () => {
+    describe('TASK-322 — lifecycle (close / reopen / update)', () => {
         describe('closeConsultation', () => {
             it('transitions OPEN → CLOSED, persists, emits ResourceUpdated, returns status CLOSED', async () => {
                 const entity = createMockConsultationEntity({ id: 'c-1', metadata: null });
