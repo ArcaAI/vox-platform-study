@@ -45,6 +45,11 @@ describe('useAuth', () => {
                 startImpersonation: vi.fn(),
                 stopImpersonation: vi.fn(),
                 isImpersonating: vi.fn().mockReturnValue(false),
+                // TASK-320 B2: AgenticClient in-memory refresh-token API
+                setRefreshToken: vi.fn(),
+                getRefreshToken: vi.fn(),
+                hasRefreshToken: vi.fn().mockReturnValue(false),
+                clearRefreshToken: vi.fn(),
             },
             logger: mockLogger,
             authUser: null as unknown,
@@ -286,6 +291,49 @@ describe('useAuth', () => {
             await act(async () => { await result.current.logout(); });
 
             expect(mockClearAccessToken).toHaveBeenCalled();
+        });
+    });
+
+    // =========================================================================
+    // TASK-320 B2: login captures the refresh token in AgenticClient memory so
+    // the auto-refresh handler can use it; logout clears it.
+    // =========================================================================
+
+    describe('TASK-320 B2: in-memory refresh-token capture', () => {
+        it('should stash the refresh token via apiClient.setRefreshToken after login', async () => {
+            const loginResponse = {
+                user: { id: 'u-1', username: 'doc', email: 'doc@e.com', roles: ['doctor'], permissions: [] },
+                token: 'jwt-token-abc123',
+                refreshToken: 'refresh-xyz-789',
+            };
+            mockPost.mockResolvedValue(loginResponse);
+
+            const { result } = renderHook(() => useAuth());
+            await act(async () => { await result.current.login('doc', 'pass'); });
+
+            expect(mockStore.apiClient.setRefreshToken).toHaveBeenCalledWith('refresh-xyz-789');
+        });
+
+        it('should NOT stash a refresh token when the login response omits it', async () => {
+            const loginResponse = {
+                user: { id: 'u-1', username: 'doc', email: 'doc@e.com', roles: ['doctor'], permissions: [] },
+                token: 'jwt-token-abc123',
+            };
+            mockPost.mockResolvedValue(loginResponse);
+
+            const { result } = renderHook(() => useAuth());
+            await act(async () => { await result.current.login('doc', 'pass'); });
+
+            expect(mockStore.apiClient.setRefreshToken).not.toHaveBeenCalled();
+        });
+
+        it('should clear the in-memory refresh token on logout', async () => {
+            mockPost.mockResolvedValue({ success: true, message: 'Logged out' });
+
+            const { result } = renderHook(() => useAuth());
+            await act(async () => { await result.current.logout(); });
+
+            expect(mockStore.apiClient.clearRefreshToken).toHaveBeenCalled();
         });
     });
 
