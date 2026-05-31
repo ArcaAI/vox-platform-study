@@ -73,6 +73,11 @@ describe('TASK-224: Auth Security Enhancement', () => {
                     return t;
                 }),
                 isImpersonating: vi.fn(() => stashedAdminToken !== undefined),
+                // TASK-320 B2: AgenticClient in-memory refresh-token API
+                setRefreshToken: vi.fn(),
+                getRefreshToken: vi.fn(),
+                hasRefreshToken: vi.fn().mockReturnValue(false),
+                clearRefreshToken: vi.fn(),
             },
             logger: mockLogger,
             authUser: adminUser,

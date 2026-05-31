@@ -62,10 +62,17 @@ export interface WsConnectOptions {
    */
   tenantClaim?: string;
   /**
-   * TASK-317 E-4 (AC-10) — opt-in fail-closed guard. When `true`, `connect()`
-   * rejects (before opening any socket) unless a tenant claim is resolvable
-   * from `tenantClaim` or the URL. Defaults to `false` so existing callers
-   * that pass bare URLs keep working unchanged.
+   * Fail-closed tenant-claim guard. When enforced, `connect()` rejects
+   * (before opening any socket) unless a tenant claim is resolvable from
+   * `tenantClaim` or the URL.
+   *
+   * TASK-317 E-4 (AC-10) introduced this as an opt-in (default `false`).
+   * TASK-320 B5 flips the EFFECTIVE default to `true` (fail-closed by
+   * default) — connections without a resolvable tenant claim now reject.
+   * Callers that genuinely need to skip the check must opt out explicitly
+   * with `requireTenantClaim: false`. The SDK's own streaming flow always
+   * supplies a tenant claim via `StreamingSessionManager.getWebSocketUrl()`
+   * (it appends `?tenantId=`), so it keeps working unchanged.
    */
   requireTenantClaim?: boolean;
 }
@@ -206,9 +213,12 @@ export class SttV2WebSocketClient {
       return Promise.reject(new Error('WebSocket already connected. Call disconnect() first.'));
     }
 
-    // TASK-317 E-4 (AC-10) — fail-closed tenant-claim guard. Reject BEFORE
-    // creating a socket when enforcement is requested and no claim resolves.
-    if (options?.requireTenantClaim && SttV2WebSocketClient.resolveTenantClaim(url, options) === null) {
+    // TASK-317 E-4 (AC-10) + TASK-320 B5 — fail-closed tenant-claim guard.
+    // The guard is now ON BY DEFAULT (`requireTenantClaim` defaults to `true`);
+    // callers opt out explicitly with `requireTenantClaim: false`. Reject
+    // BEFORE creating a socket when enforcement is active and no claim resolves.
+    const requireTenantClaim = options?.requireTenantClaim ?? true;
+    if (requireTenantClaim && SttV2WebSocketClient.resolveTenantClaim(url, options) === null) {
       this.logger?.error('WebSocket connect blocked: no tenant claim resolvable from connect context', {
         operation: 'connect',
         component: 'SttV2WebSocketClient',

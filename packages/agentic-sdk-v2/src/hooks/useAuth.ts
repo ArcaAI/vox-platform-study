@@ -75,6 +75,12 @@ export function useAuth(): UseAuthReturn {
         if (data.token) {
           apiClient.updateAccessToken(data.token);
         }
+        // TASK-320 B2 — capture the refresh token in AgenticClient's in-memory
+        // store so the auto-refresh handler (wired by AgenticProvider) can mint
+        // a new access token on a 401 without the host app wiring anything.
+        if (data.refreshToken) {
+          apiClient.setRefreshToken(data.refreshToken);
+        }
         store.setAuthUser(data.user);
         store.setIsAuthenticated(true);
         timer?.end(true);
@@ -99,6 +105,9 @@ export function useAuth(): UseAuthReturn {
     try {
       await apiClient.post(AUTH_ENDPOINTS.LOGOUT, {});
       apiClient.clearAccessToken();
+      // TASK-320 B2 — drop the in-memory refresh token so a logged-out client
+      // can't auto-refresh back into an authenticated state.
+      apiClient.clearRefreshToken();
       // TASK-264 W0-3: discard any stashed admin token defensively.
       if (apiClient.isImpersonating()) apiClient.stopImpersonation();
       store.setAuthUser(null);
