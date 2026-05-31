@@ -1,4 +1,4 @@
-import { OpenConsultationRequest, ConsultationResponse, PaginatedConsultationResponse } from './dto';
+import { OpenConsultationRequest, UpdateConsultationRequest, ConsultationResponse, PaginatedConsultationResponse } from './dto';
 
 /**
  * Consultation Service Interface
@@ -84,6 +84,24 @@ export abstract class IConsultationService {
    * doctors who share a patient can see each other's consultations.
    */
   abstract doctorHasPatientRelationship(doctorId: string, patientId: string, tenantId: string): Promise<boolean>;
+
+  /**
+   * TASK-321 — Close a consultation (transition lifecycle status to CLOSED).
+   * Idempotent: a no-op (no write, no event) when already CLOSED.
+   */
+  abstract closeConsultation(id: string): Promise<ConsultationResponse>;
+
+  /**
+   * TASK-321 — Reopen a consultation (transition lifecycle status back to OPEN).
+   * Idempotent: a no-op (no write, no event) when already OPEN.
+   */
+  abstract reopenConsultation(id: string): Promise<ConsultationResponse>;
+
+  /**
+   * TASK-321 — Update safely-mutable fields of an existing consultation
+   * (appointmentDate / departmentId / metadata-merge / status).
+   */
+  abstract updateConsultation(id: string, request: UpdateConsultationRequest): Promise<ConsultationResponse>;
 }
 
 export const IConsultationServiceToken = Symbol('IConsultationService');

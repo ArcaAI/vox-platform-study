@@ -252,6 +252,31 @@ describe('ConsultationDtoMapper', () => {
 
             expect(result.appointmentDate).toBe('2026-12-25');
         });
+
+        // TASK-321 — derived lifecycle status
+        it('should default status to OPEN when metadata is null', () => {
+            const entity = createMockConsultationEntity({ metadata: null });
+
+            const result = ConsultationDtoMapper.toResponse(entity as any);
+
+            expect(result.status).toBe('OPEN');
+        });
+
+        it('should default status to OPEN when metadata has no status key', () => {
+            const entity = createMockConsultationEntity({ metadata: { visitType: 'follow-up' } });
+
+            const result = ConsultationDtoMapper.toResponse(entity as any);
+
+            expect(result.status).toBe('OPEN');
+        });
+
+        it('should derive status from metadata.status when present', () => {
+            const entity = createMockConsultationEntity({ metadata: { status: 'CLOSED' } });
+
+            const result = ConsultationDtoMapper.toResponse(entity as any);
+
+            expect(result.status).toBe('CLOSED');
+        });
     });
 
     describe('toResponseWithContext', () => {

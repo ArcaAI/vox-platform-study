@@ -5,6 +5,7 @@ import {
   TimelineService,
   ComprehensiveSummaryRequest,
   OpenConsultationRequest,
+  UpdateConsultationRequest,
   ConsultationResponse,
   PaginatedConsultationResponse,
   AddContextRequest,
@@ -352,6 +353,47 @@ export class ConsultationController {
   async getChain(@Param('id') id: string): Promise<ConsultationResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.consultationService.getConsultationChain(id);
+  }
+
+  // ─── Lifecycle (TASK-321) ────────────────────────────────────────
+
+  @ApiEndpoint({
+    returnedModel: ConsultationResponse,
+    method: HttpMethod.PATCH,
+    path: ':id',
+    by: ['id'],
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiResponse({ status: 404, description: 'Consultation not found' })
+  async update(@Param('id') id: string, @Body() request: UpdateConsultationRequest): Promise<ConsultationResponse> {
+    await this.verifyConsultationOwnership(id);
+    return this.consultationService.updateConsultation(id, request);
+  }
+
+  @ApiEndpoint({
+    returnedModel: ConsultationResponse,
+    method: HttpMethod.POST,
+    path: ':id/close',
+    by: ['id'],
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiResponse({ status: 404, description: 'Consultation not found' })
+  async close(@Param('id') id: string): Promise<ConsultationResponse> {
+    await this.verifyConsultationOwnership(id);
+    return this.consultationService.closeConsultation(id);
+  }
+
+  @ApiEndpoint({
+    returnedModel: ConsultationResponse,
+    method: HttpMethod.POST,
+    path: ':id/reopen',
+    by: ['id'],
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiResponse({ status: 404, description: 'Consultation not found' })
+  async reopen(@Param('id') id: string): Promise<ConsultationResponse> {
+    await this.verifyConsultationOwnership(id);
+    return this.consultationService.reopenConsultation(id);
   }
 
   // ─── Timeline ────────────────────────────────────────────────────
