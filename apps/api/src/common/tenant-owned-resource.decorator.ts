@@ -34,6 +34,9 @@ export const TENANT_OWNED_RESOURCE_KEY = 'tenant_owned_resource';
  */
 export type TenantOwnedResourceModelName =
   | 'TenantBucket'
+  // TASK-318 R5: per-tenant/per-bucket storage config row — repo.findById(id),
+  // tenant-scoped (the row carries `tenantId`).
+  | 'TenantStorageConfig'
   | 'UserVoiceProfile'
   | 'ConsultationJob'
   | 'TranscriptionJob'

@@ -403,6 +403,7 @@ class TestBlobServiceStreamingUpload:
                 path="2026/03/15/streams/s1/raw/chunk_0000.pcm",
                 data=b"\x00" * 100,
                 content_type="application/octet-stream",
+                tenant_id="t1",
             )
             assert "chunk_0000.pcm" in uri
 
@@ -420,6 +421,7 @@ class TestBlobServiceStreamingUpload:
                 path="2026/03/15/streams/s1/processed/chunk_0000.pcm",
                 data=b"\x00" * 100,
                 content_type="application/octet-stream",
+                tenant_id="t1",
             )
             assert "processed/chunk_0000.pcm" in uri
 
@@ -436,6 +438,7 @@ class TestBlobServiceStreamingUpload:
                 path="2026/03/15/streams/s1/raw/complete.wav",
                 data=b"wav-data",
                 content_type="audio/wav",
+                tenant_id="t1",
             )
             assert "complete.wav" in uri
 
@@ -452,6 +455,7 @@ class TestBlobServiceStreamingUpload:
                 path="2026/03/15/streams/s1/transcript.json",
                 data=b'{"segments":[]}',
                 content_type="application/json",
+                tenant_id="t1",
             )
             assert "transcript.json" in uri
 
@@ -468,6 +472,7 @@ class TestBlobServiceStreamingUpload:
                 path="2026/03/15/streams/s1/metadata.json",
                 data=b'{"session_id":"s1"}',
                 content_type="application/json",
+                tenant_id="t1",
             )
             assert "metadata.json" in uri
 

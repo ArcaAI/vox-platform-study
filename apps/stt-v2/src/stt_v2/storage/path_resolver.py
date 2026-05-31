@@ -29,6 +29,7 @@ class StoragePathResolver:
         self.chunk_bucket = chunk_bucket
         self.model_bucket = model_bucket
         self._tenant_bucket_cache: dict[str, str] = {}
+        self._tenant_storage_cache: dict[str, dict] = {}
 
     def audio_path(
         self,
@@ -459,6 +460,35 @@ class StoragePathResolver:
         """
         cache_key = f"{tenant_id}:{bucket_type}"
         self._tenant_bucket_cache[cache_key] = bucket_name
+
+    def set_tenant_storage(self, tenant_id: str, descriptor: dict) -> None:
+        """Register a per-tenant storage provider descriptor.
+
+        Mirrors :meth:`set_tenant_bucket`.  When the descriptor carries a
+        ``bucket`` it also wins as the tenant's audio bucket, so existing
+        bucket-resolution logic transparently routes to the right
+        bucket/container for that provider.
+
+        Args:
+            tenant_id: Tenant ID.
+            descriptor: Snake_case storage descriptor (provider, bucket, creds).
+        """
+        self._tenant_storage_cache[tenant_id] = descriptor
+        bucket = descriptor.get("bucket")
+        if bucket:
+            self.set_tenant_bucket(tenant_id, "audio", bucket)
+
+    def resolve_tenant_storage(self, tenant_id: str) -> dict | None:
+        """Return the registered storage descriptor for a tenant, if any.
+
+        Args:
+            tenant_id: Tenant ID.
+
+        Returns:
+            The descriptor dict, or ``None`` when the tenant uses the platform
+            default storage client.
+        """
+        return self._tenant_storage_cache.get(tenant_id)
 
     def parse_uri(self, uri: str) -> tuple[str, str]:
         """

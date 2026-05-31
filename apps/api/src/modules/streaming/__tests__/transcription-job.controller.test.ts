@@ -38,13 +38,15 @@ const createMockCls = () => ({
     get: vi.fn().mockReturnValue({ id: 'user-1', tenantId: 'tenant-1' }),
 });
 
-const createMockS3Service = () => ({
-    putFile: vi.fn(),
+const createMockBlobStorage = () => ({
+    putObject: vi.fn(),
+    resolveDescriptor: vi.fn().mockResolvedValue(null),
 });
 
 const createMockTenantBucketService = () => ({
     getBucketBySlug: vi.fn(),
     getBucketByName: vi.fn(),
+    getBucketByPurpose: vi.fn(),
 });
 
 const createMockPipelineService = () => ({
@@ -81,7 +83,7 @@ describe('TranscriptionJobController', () => {
     let mockRealtimeService: ReturnType<typeof createMockRealtimeService>;
     let mockSessionService: ReturnType<typeof createMockSessionService>;
     let mockCls: ReturnType<typeof createMockCls>;
-    let mockS3Service: ReturnType<typeof createMockS3Service>;
+    let mockBlobStorage: ReturnType<typeof createMockBlobStorage>;
     let mockTenantBucketService: ReturnType<typeof createMockTenantBucketService>;
     let mockPipelineService: ReturnType<typeof createMockPipelineService>;
     let mockStreamTicketService: ReturnType<typeof createMockStreamTicketService>;
@@ -93,7 +95,7 @@ describe('TranscriptionJobController', () => {
         mockRealtimeService = createMockRealtimeService();
         mockSessionService = createMockSessionService();
         mockCls = createMockCls();
-        mockS3Service = createMockS3Service();
+        mockBlobStorage = createMockBlobStorage();
         mockTenantBucketService = createMockTenantBucketService();
         mockPipelineService = createMockPipelineService();
         mockStreamTicketService = createMockStreamTicketService();
@@ -103,7 +105,7 @@ describe('TranscriptionJobController', () => {
             mockRealtimeService as any,
             mockSessionService as any,
             mockCls as any,
-            mockS3Service as any,
+            mockBlobStorage as any,
             mockTenantBucketService as any,
             mockPipelineService as any,
             mockStreamTicketService as any,
@@ -302,6 +304,40 @@ describe('TranscriptionJobController', () => {
             expect(mockSessionService.createSession).toHaveBeenCalledWith(
                 expect.objectContaining({
                     audioBucketName: 'hope-audio-arcaai',
+                }),
+            );
+        });
+
+        // TASK-318 W3-B — the configured AUDIO-purpose bucket is preferred over
+        // the legacy 'audio' slug, and a DEDICATED tenant's storage descriptor is
+        // forwarded to STT-v2 so the worker connects to the right backend.
+        it('prefers the AUDIO-purpose bucket and forwards the storage descriptor (W3-B)', async () => {
+            mockTenantBucketService.getBucketByPurpose.mockResolvedValue({
+                id: 'b-purpose',
+                name: 'tenant-audio-bucket',
+                slug: 'audio',
+            });
+            mockBlobStorage.resolveDescriptor.mockResolvedValue({
+                provider: 'azure_blob',
+                bucket: 'tenant-audio-bucket',
+                account_name: 'acct',
+            });
+            mockSessionService.createSession.mockResolvedValue({
+                sessionId: 'sess-1',
+                status: 'active',
+                maxConcurrent: 5,
+                currentActive: 1,
+            });
+
+            await controller.createStreamSession({ pipelineId: 'pipe-1' });
+
+            expect(mockTenantBucketService.getBucketByPurpose).toHaveBeenCalled();
+            expect(mockTenantBucketService.getBucketBySlug).not.toHaveBeenCalled();
+            expect(mockBlobStorage.resolveDescriptor).toHaveBeenCalledWith('tenant-audio-bucket');
+            expect(mockSessionService.createSession).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    audioBucketName: 'tenant-audio-bucket',
+                    storage: expect.objectContaining({ provider: 'azure_blob' }),
                 }),
             );
         });

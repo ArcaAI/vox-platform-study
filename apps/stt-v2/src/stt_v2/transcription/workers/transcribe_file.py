@@ -41,6 +41,7 @@ def transcribe_file(
     code_switching: bool | None = None,
     audio_bucket_name: str | None = None,
     user_id: str | None = None,
+    storage: dict | None = None,
 ) -> None:
     """
     Dramatiq actor for batch file transcription.
@@ -69,6 +70,11 @@ def transcribe_file(
         language: Optional language hint for ASR
         code_switching: Optional flag to enable code-switching mode
         audio_bucket_name: Optional tenant-scoped bucket name
+        user_id: Optional authenticated user ID
+        storage: Optional per-tenant storage provider descriptor. When present,
+            selects the provider (MinIO/S3/Azure) and bucket for this tenant;
+            when absent, the global MinIO client and ``audio_bucket_name`` are
+            used (unchanged behaviour).
     """
     # Run async code in event loop
     asyncio.run(
@@ -83,6 +89,7 @@ def transcribe_file(
             code_switching=code_switching,
             audio_bucket_name=audio_bucket_name,
             user_id=user_id,
+            storage=storage,
         )
     )
 
@@ -98,6 +105,7 @@ async def _transcribe_file_async(
     code_switching: bool | None = None,
     audio_bucket_name: str | None = None,
     user_id: str | None = None,
+    storage: dict | None = None,
 ) -> None:
     """Async implementation of file transcription.
 
@@ -111,7 +119,12 @@ async def _transcribe_file_async(
     pipeline_reader = get_pipeline_reader()
     batch_service = get_batch_service()
 
-    if audio_bucket_name and tenant_id:
+    # Register per-tenant storage routing. A `storage` descriptor (multi-provider
+    # S3/MinIO/Azure) wins and also pins the tenant audio bucket; otherwise fall
+    # back to the legacy `audio_bucket_name` bucket override.
+    if storage and tenant_id:
+        blob_service._resolver.set_tenant_storage(tenant_id, storage)
+    elif audio_bucket_name and tenant_id:
         blob_service._resolver.set_tenant_bucket(tenant_id, "audio", audio_bucket_name)
 
     worker_id = f"worker-{os.getpid()}"
@@ -155,7 +168,7 @@ async def _transcribe_file_async(
 
         # Step 3: Download audio from storage
         logger.info(f"[{job_id}] Downloading audio from {audio_uri}")
-        audio_bytes = await blob_service.download_audio(audio_uri)
+        audio_bytes = await blob_service.download_audio(audio_uri, tenant_id=tenant_id)
         logger.info(f"[{job_id}] Downloaded {len(audio_bytes)} bytes")
 
         # Check for cancellation before starting transcription

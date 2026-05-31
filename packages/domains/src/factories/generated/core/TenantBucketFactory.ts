@@ -1,20 +1,30 @@
 import { TenantBucketEntity } from '../../../entities/generated/core/TenantBucketEntity';
-import { TenantBucketType } from '../../../enums';
+import { TenantBucketPurpose, TenantBucketType } from '../../../enums';
 import { generateId } from '../../../utils';
 
 export const SYSTEM_BUCKET_SLUGS = {
   AUDIO: 'audio',
   ATTACHMENTS: 'attachments',
+  MISC: 'misc',
 } as const;
 
 const SYSTEM_BUCKET_DESCRIPTIONS: Record<string, string> = {
   [SYSTEM_BUCKET_SLUGS.AUDIO]: 'Tenant audio storage (streaming and batch jobs)',
   [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: 'Tenant attachment storage (consultation files)',
+  [SYSTEM_BUCKET_SLUGS.MISC]: 'Tenant misc assets (background, avatars, images)',
 };
 
 const SYSTEM_BUCKET_PATH_PATTERNS: Record<string, string> = {
   [SYSTEM_BUCKET_SLUGS.AUDIO]: '{yyyy}/{MM}',
   [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: '{yyyy}/{MM}/{dd}',
+  [SYSTEM_BUCKET_SLUGS.MISC]: '{category}',
+};
+
+/** Logical purpose for each system bucket slug (drives `findByPurpose` resolution). */
+const SYSTEM_BUCKET_PURPOSES: Record<string, TenantBucketPurpose> = {
+  [SYSTEM_BUCKET_SLUGS.AUDIO]: TenantBucketPurpose.AUDIO,
+  [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: TenantBucketPurpose.ATTACHMENTS,
+  [SYSTEM_BUCKET_SLUGS.MISC]: TenantBucketPurpose.MISC,
 };
 
 function sanitizeBucketName(input: string): string {
@@ -40,6 +50,7 @@ export class TenantBucketFactory {
       slug,
       description: description ?? SYSTEM_BUCKET_DESCRIPTIONS[slug] ?? null,
       bucketType: TenantBucketType.SYSTEM,
+      purpose: SYSTEM_BUCKET_PURPOSES[slug] ?? TenantBucketPurpose.CUSTOM,
       pathPattern: SYSTEM_BUCKET_PATH_PATTERNS[slug] ?? '{yyyy}/{MM}/{dd}/{user_name}',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -63,6 +74,7 @@ export class TenantBucketFactory {
       slug,
       description: description ?? null,
       bucketType: TenantBucketType.CUSTOM,
+      purpose: TenantBucketPurpose.CUSTOM,
       pathPattern: pathPattern ?? '{yyyy}/{MM}/{dd}/{user_name}',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -90,6 +102,7 @@ export class TenantBucketFactory {
       slug: sanitizeBucketName(name),
       description: description ?? null,
       bucketType: TenantBucketType.CUSTOM,
+      purpose: TenantBucketPurpose.CUSTOM,
       pathPattern: '{yyyy}/{MM}/{dd}/{user_name}',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -102,6 +115,7 @@ export class TenantBucketFactory {
     return [
       this.CreateSystemBucket(tenantId, tenantKey, SYSTEM_BUCKET_SLUGS.AUDIO, undefined, createdBy),
       this.CreateSystemBucket(tenantId, tenantKey, SYSTEM_BUCKET_SLUGS.ATTACHMENTS, undefined, createdBy),
+      this.CreateSystemBucket(tenantId, tenantKey, SYSTEM_BUCKET_SLUGS.MISC, undefined, createdBy),
     ];
   }
 }

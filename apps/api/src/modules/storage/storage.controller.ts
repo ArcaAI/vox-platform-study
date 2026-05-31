@@ -1,4 +1,4 @@
-import { IMediaService, IS3Service, ITenantBucketService, S3HealthService } from '@arcaai/applications';
+import { IBlobStorageService, IMediaService, IS3Service, ITenantBucketService, S3HealthService } from '@arcaai/applications';
 import {
   BadRequestException,
   Body,
@@ -34,13 +34,20 @@ import {
   UpdateBucketResponse,
 } from './dto';
 
+/** Lifetime of presigned download URLs (mirrors the S3 service default). */
+const PRESIGNED_GET_EXPIRY_SECONDS = 3600;
+
 @ApiBearerAuth()
 @ApiTags('storage')
 @Controller('storage')
 export class StorageController {
   constructor(
-    @Inject(IS3Service)
-    private readonly s3Service: IS3Service,
+    // Tenant-aware data plane: object create/list/presign/delete + bucket
+    // create/delete route to the per-tenant provider (S3/MinIO or Azure).
+    @Inject(IBlobStorageService) private readonly blobStorage: IBlobStorageService,
+    // Retained only for bucket-metadata tags (`updateBucket`), an S3/MinIO
+    // feature with no provider-agnostic equivalent.
+    @Inject(IS3Service) private readonly s3Service: IS3Service,
     @Inject(IMediaService) private readonly mediaService: IMediaService,
     @Inject(ITenantBucketService) private readonly tenantBucketService: ITenantBucketService,
     private readonly s3HealthService: S3HealthService,
@@ -70,7 +77,7 @@ export class StorageController {
     if (/[.]{2}|[/\\]/.test(body.name)) {
       throw new BadRequestException('Invalid bucket name');
     }
-    await this.s3Service.createBucket(body.name);
+    await this.blobStorage.createBucket(body.name);
     // Register the TenantBucket row so the bucket is owned by the caller's
     // tenant and addressable by name on the GET/PATCH/DELETE routes (which
     // resolve via @TenantOwnedResource('TenantBucket')). Without this the
@@ -89,7 +96,7 @@ export class StorageController {
     if (/[.]{2}|[/\\]/.test(name)) {
       throw new BadRequestException('Invalid bucket name');
     }
-    await this.s3Service.deleteBucket(name);
+    await this.blobStorage.deleteBucket(name);
     return { name, deleted: true };
   }
 
@@ -116,7 +123,7 @@ export class StorageController {
     if (/[.]{2}|[/\\]/.test(name)) {
       throw new BadRequestException('Invalid bucket name');
     }
-    const files = await this.s3Service.listFiles(name, '');
+    const { objects: files } = await this.blobStorage.listObjects({ bucket: name });
     return { name, files };
   }
 
@@ -128,7 +135,8 @@ export class StorageController {
   @ApiResponse({ status: 200, description: 'List of files in bucket' })
   @CanRead('Storage')
   async listFiles(@Param('name') name: string, @Query('prefix') prefix?: string): Promise<unknown[]> {
-    return this.s3Service.listFiles(name, prefix || '');
+    const { objects } = await this.blobStorage.listObjects({ bucket: name, prefix: prefix || undefined });
+    return objects;
   }
 
   @Post('buckets/:name/files')
@@ -167,7 +175,12 @@ export class StorageController {
       throw new NotFoundException(`Bucket '${bucketName}' not found`);
     }
 
-    await this.s3Service.putFile(bucketName, fileKey, file.buffer, file.mimetype);
+    await this.blobStorage.putObject({
+      bucket: bucketName,
+      key: fileKey,
+      body: file.buffer,
+      contentType: file.mimetype,
+    });
 
     const response: FileUploadResponse = {
       key: fileKey,
@@ -204,7 +217,7 @@ export class StorageController {
     if (/[.]{2}|[/\\]/.test(key)) {
       throw new BadRequestException('Invalid file key: path traversal not allowed');
     }
-    const url = await this.s3Service.signUrl(bucketName, key, 'get');
+    const url = await this.blobStorage.presignGet({ bucket: bucketName, key, expiresInSeconds: PRESIGNED_GET_EXPIRY_SECONDS });
     return { key, url };
   }
 
@@ -219,7 +232,7 @@ export class StorageController {
     if (/[.]{2}|[/\\]/.test(key)) {
       throw new BadRequestException('Invalid file key: path traversal not allowed');
     }
-    await this.s3Service.deleteFile(bucketName, key);
+    await this.blobStorage.deleteObject({ bucket: bucketName, key });
     return { deleted: true, key };
   }
 

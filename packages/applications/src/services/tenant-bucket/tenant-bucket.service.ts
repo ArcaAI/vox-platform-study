@@ -1,13 +1,24 @@
-import { ResourceType, SysEventType, TenantBucketFactory, TenantBucketRepository, TenantRepository } from '@arcaai/domains';
+import { ResourceType, SysEventType, TenantBucketFactory, TenantBucketPurpose, TenantBucketRepository, TenantRepository } from '@arcaai/domains';
 import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { IBlobStorageService } from '../baseServices/storage/IBlobStorageService';
 import { IS3Service } from '../baseServices/storage/s3/IS3Service';
 import { ITenantBucketService } from './ITenantBucketService';
-import { CreateTenantBucketRequest, TenantBucketResponse, TenantBucketTreeNodeResponse, TenantBucketTreeResponse } from './dto';
+import {
+  CreateTenantBucketRequest,
+  SetTenantBucketDefaultsRequest,
+  TenantBucketDefaultsResponse,
+  TenantBucketResponse,
+  TenantBucketTreeNodeResponse,
+  TenantBucketTreeResponse,
+} from './dto';
 import { TenantBucketDtoMapper } from './tenant-bucket.dto.mapper';
+
+/** Lifetime of presigned download URLs (mirrors the S3 service default). */
+const PRESIGNED_GET_EXPIRY_SECONDS = 3600;
 
 interface TreeNodeAccumulator {
   node: TenantBucketTreeNodeResponse;
@@ -21,6 +32,11 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
   constructor(
     private readonly tenantBucketRepository: TenantBucketRepository,
     private readonly tenantRepository: TenantRepository,
+    // Tenant-aware data plane (object list/upload/presign + bucket create) routes
+    // to the per-tenant provider (S3/MinIO or Azure) via the resolved config.
+    @Inject(IBlobStorageService) private readonly blobStorage: IBlobStorageService,
+    // Retained only for S3/MinIO bucket-policy hardening, which has no
+    // provider-agnostic equivalent (Azure containers are private by default).
     @Inject(IS3Service) private readonly s3Service: IS3Service,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
@@ -66,7 +82,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     }
 
     const normalizedPrefix = this.normalizePrefix(prefix);
-    const files = await this.s3Service.listFiles(bucket.name, normalizedPrefix);
+    const { objects: files } = await this.blobStorage.listObjects({ bucket: bucket.name, prefix: normalizedPrefix });
 
     const nodes = this.buildTreeNodes(files, normalizedPrefix);
 
@@ -114,6 +130,88 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     return TenantBucketDtoMapper.toResponse(bucket);
   }
 
+  async getBucketByPurpose(purpose: TenantBucketPurpose): Promise<TenantBucketResponse | null> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const bucket = await this.tenantBucketRepository.findByPurpose(tenantId, purpose);
+    return bucket ? TenantBucketDtoMapper.toResponse(bucket) : null;
+  }
+
+  async getDefaultBuckets(): Promise<TenantBucketDefaultsResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const [audio, attachments, misc] = await Promise.all([
+      this.tenantBucketRepository.findByPurpose(tenantId, TenantBucketPurpose.AUDIO),
+      this.tenantBucketRepository.findByPurpose(tenantId, TenantBucketPurpose.ATTACHMENTS),
+      this.tenantBucketRepository.findByPurpose(tenantId, TenantBucketPurpose.MISC),
+    ]);
+
+    return {
+      audio: audio ? TenantBucketDtoMapper.toResponse(audio) : null,
+      attachments: attachments ? TenantBucketDtoMapper.toResponse(attachments) : null,
+      misc: misc ? TenantBucketDtoMapper.toResponse(misc) : null,
+    };
+  }
+
+  async setDefaultBuckets(dto: SetTenantBucketDefaultsRequest): Promise<TenantBucketDefaultsResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    if (dto.audioBucketId) {
+      await this.assignPurpose(tenantId, dto.audioBucketId, TenantBucketPurpose.AUDIO);
+    }
+    if (dto.attachmentsBucketId) {
+      await this.assignPurpose(tenantId, dto.attachmentsBucketId, TenantBucketPurpose.ATTACHMENTS);
+    }
+    if (dto.miscBucketId) {
+      await this.assignPurpose(tenantId, dto.miscBucketId, TenantBucketPurpose.MISC);
+    }
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      data: {
+        audioBucketId: dto.audioBucketId ?? null,
+        attachmentsBucketId: dto.attachmentsBucketId ?? null,
+        miscBucketId: dto.miscBucketId ?? null,
+      },
+    });
+
+    return this.getDefaultBuckets();
+  }
+
+  /**
+   * Make `bucketId` the tenant's default bucket for `purpose`. Idempotent when
+   * the bucket already holds it; otherwise the previous holder is reverted to
+   * CUSTOM so `findByPurpose` resolution stays unambiguous.
+   */
+  private async assignPurpose(tenantId: string, bucketId: string, purpose: TenantBucketPurpose): Promise<void> {
+    const target = await this.tenantBucketRepository.findById(bucketId).catch(() => null);
+    if (!target || target.tenantId !== tenantId) {
+      throw new NotFoundException(`Bucket ${bucketId} not found`);
+    }
+    if (target.purpose === purpose) {
+      return;
+    }
+
+    const current = await this.tenantBucketRepository.findByPurpose(tenantId, purpose);
+    if (current && current.id !== target.id) {
+      current.purpose = TenantBucketPurpose.CUSTOM;
+      current.updatedBy = this.requestUserId ?? undefined;
+      await this.tenantBucketRepository.update(current.id, current);
+    }
+
+    target.purpose = purpose;
+    target.updatedBy = this.requestUserId ?? undefined;
+    await this.tenantBucketRepository.update(target.id, target);
+  }
+
   async provisionSystemBuckets(tenantId: string): Promise<TenantBucketResponse[]> {
     const tenant = await this.tenantRepository.findById(tenantId);
     if (!tenant) {
@@ -138,15 +236,18 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     const created: TenantBucketResponse[] = [];
     for (const bucket of toCreate) {
       try {
-        await this.s3Service.createBucket(bucket.name);
+        await this.blobStorage.createBucket(bucket.name);
       } catch (error) {
         this.logger.warn({
-          message: 'S3 bucket may already exist, continuing with DB record',
+          message: 'Bucket may already exist, continuing with DB record',
           bucketName: bucket.name,
           error: error instanceof Error ? error.message : String(error),
         });
       }
 
+      // Best-effort S3/MinIO tenant-isolation policy on the SHARED store. No-op
+      // for tenants on a DEDICATED Azure/S3 provider (no global bucket to target);
+      // failures are swallowed below.
       try {
         await this.s3Service.setBucketPolicy(bucket.name, {
           Version: '2012-10-17',
@@ -202,10 +303,10 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     const bucket = TenantBucketFactory.CreateCustomBucket(tenantId, tenant.key as string, dto.slug, dto.description, userId ?? undefined);
 
     try {
-      await this.s3Service.createBucket(bucket.name);
+      await this.blobStorage.createBucket(bucket.name);
     } catch (error) {
       this.logger.warn({
-        message: 'S3 bucket creation may have failed, continuing with DB record',
+        message: 'Bucket creation may have failed, continuing with DB record',
         bucketName: bucket.name,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -300,7 +401,11 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
       throw new BadRequestException('Invalid file key: path traversal not allowed');
     }
 
-    const url = await this.s3Service.signUrl(bucket.name, fileKey, 'get');
+    const url = await this.blobStorage.presignGet({
+      bucket: bucket.name,
+      key: fileKey,
+      expiresInSeconds: PRESIGNED_GET_EXPIRY_SECONDS,
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: bucket.id,

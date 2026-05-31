@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, MessageEvent } from '@nestjs/common';
 import { Observable, finalize, map, takeWhile } from 'rxjs';
 import { uuidv7 } from 'uuidv7';
 import { IRedisCacheService } from '../../baseServices/redis/redis-cache.service';
+import { StorageDescriptor } from '../../baseServices/storage/providers/IBlobStorageProvider';
 import { TranscriptionJobService } from '../job/transcriptionJob.service';
 import { TranscriptionEvent, TranscriptionEventType } from './dto';
 import { ITranscriptionRealtimeService } from './ITranscriptionRealtimeService';
@@ -352,6 +353,7 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
     language?: string;
     userId?: string;
     audioBucketName?: string;
+    storage?: StorageDescriptor | null;
   }): Promise<void> {
     const messageId = uuidv7();
     const redisMessageId = uuidv7(); // Required by Dramatiq protocol
@@ -370,7 +372,9 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
         params.audioBucketName ?? 'hope-audio',
         params.userId ?? null,
       ],
-      kwargs: {},
+      // Per-tenant storage descriptor passed as a Dramatiq kwarg (avoids
+      // reshuffling the positional args). Present only for DEDICATED tenants.
+      kwargs: params.storage ? { storage: params.storage } : {},
       options: {
         redis_message_id: redisMessageId,
       },

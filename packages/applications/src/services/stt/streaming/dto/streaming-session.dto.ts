@@ -5,6 +5,8 @@
  * by the StreamingSessionService to communicate with the STT-V2 service.
  */
 
+import { StorageDescriptor } from '../../../baseServices/storage/providers/IBlobStorageProvider';
+
 // ---------------------------------------------------------------------------
 // Requests
 // ---------------------------------------------------------------------------
@@ -28,6 +30,12 @@ export interface CreateStreamingSessionRequest {
   language?: string;
   /** Tenant-scoped audio bucket name forwarded to STT-v2 for storage isolation */
   audioBucketName?: string;
+  /**
+   * Per-tenant storage descriptor forwarded to STT-v2 so a DEDICATED (S3/Azure)
+   * tenant's worker connects to the right backend. Omitted/undefined for SHARED
+   * tenants — the worker uses its env-default client + `audioBucketName`.
+   */
+  storage?: StorageDescriptor | null;
 }
 
 // ---------------------------------------------------------------------------

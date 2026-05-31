@@ -30,13 +30,16 @@ const mockTenantRepository = {
     findById: vi.fn(),
 };
 
-const mockS3Service = {
+const mockBlobStorage = {
     createBucket: vi.fn(),
     deleteBucket: vi.fn(),
-    listAllBuckets: vi.fn(),
-    listFiles: vi.fn(),
+    listObjects: vi.fn(),
+    presignGet: vi.fn(),
+};
+
+// Retained only for the best-effort S3/MinIO setBucketPolicy hardening.
+const mockS3Service = {
     setBucketPolicy: vi.fn(),
-    signUrl: vi.fn(),
 };
 
 const createMockBucketEntity = (overrides: Partial<{
@@ -139,6 +142,7 @@ describe('TenantBucketService', () => {
         service = new TenantBucketService(
             mockTenantBucketRepository as any,
             mockTenantRepository as any,
+            mockBlobStorage as any,
             mockS3Service as any,
             mockEventEmitter as any,
             mockClsService as any,
@@ -184,7 +188,7 @@ describe('TenantBucketService', () => {
             mockTenantRepository.findById.mockResolvedValue(mockTenant);
             mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([]);
             mockTenantBucketRepository.create.mockImplementation((entity: any) => entity);
-            mockS3Service.createBucket.mockResolvedValue(undefined);
+            mockBlobStorage.createBucket.mockResolvedValue(undefined);
 
             const result = await service.provisionSystemBuckets('tenant-1');
 
@@ -195,7 +199,7 @@ describe('TenantBucketService', () => {
             expect(result).toHaveLength(2);
             expect(result.map((b) => b.slug).sort()).toEqual(['attachments', 'audio']);
             expect(mockTenantBucketRepository.create).toHaveBeenCalledTimes(2);
-            expect(mockS3Service.createBucket).toHaveBeenCalledTimes(2);
+            expect(mockBlobStorage.createBucket).toHaveBeenCalledTimes(2);
         });
 
         it('should only provision missing system buckets when some already exist', async () => {
@@ -206,14 +210,14 @@ describe('TenantBucketService', () => {
                 createMockBucketEntity({ slug: 'audio' }),
             ]);
             mockTenantBucketRepository.create.mockImplementation((entity: any) => entity);
-            mockS3Service.createBucket.mockResolvedValue(undefined);
+            mockBlobStorage.createBucket.mockResolvedValue(undefined);
 
             const result = await service.provisionSystemBuckets('tenant-1');
 
             expect(result).toHaveLength(1);
             expect(result[0].slug).toBe('attachments');
             expect(mockTenantBucketRepository.create).toHaveBeenCalledTimes(1);
-            expect(mockS3Service.createBucket).toHaveBeenCalledTimes(1);
+            expect(mockBlobStorage.createBucket).toHaveBeenCalledTimes(1);
         });
 
         it('should skip provisioning when all system buckets already exist', async () => {
@@ -228,7 +232,7 @@ describe('TenantBucketService', () => {
 
             expect(result).toHaveLength(0);
             expect(mockTenantBucketRepository.create).not.toHaveBeenCalled();
-            expect(mockS3Service.createBucket).not.toHaveBeenCalled();
+            expect(mockBlobStorage.createBucket).not.toHaveBeenCalled();
         });
 
         it('should throw NotFoundException when tenant not found', async () => {
@@ -270,7 +274,7 @@ describe('TenantBucketService', () => {
                 isSystemBucket: false,
             });
             mockTenantBucketRepository.create.mockResolvedValue(newBucket);
-            mockS3Service.createBucket.mockResolvedValue(undefined);
+            mockBlobStorage.createBucket.mockResolvedValue(undefined);
 
             const result = await service.createCustomBucket({
                 slug: 'reports',
@@ -279,7 +283,7 @@ describe('TenantBucketService', () => {
 
             expect(result.slug).toBe('reports');
             expect(result.bucketType).toBe(BUCKET_TYPE_CUSTOM);
-            expect(mockS3Service.createBucket).toHaveBeenCalled();
+            expect(mockBlobStorage.createBucket).toHaveBeenCalled();
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
                 'SysEvent.ResourceCreated',
                 expect.objectContaining({
@@ -366,12 +370,15 @@ describe('TenantBucketService', () => {
                     name: 'hope-audio-arcaai',
                 }),
             );
-            mockS3Service.listFiles.mockResolvedValue([
-                { key: 'patients/2026/report-1.txt', size: 1200 },
-                { key: 'patients/2026/report-2.txt', size: 2400 },
-                { key: 'patients/2025/summary.pdf', size: 3800 },
-                { key: 'root-file.txt', size: 512 },
-            ]);
+            mockBlobStorage.listObjects.mockResolvedValue({
+                objects: [
+                    { key: 'patients/2026/report-1.txt', size: 1200 },
+                    { key: 'patients/2026/report-2.txt', size: 2400 },
+                    { key: 'patients/2025/summary.pdf', size: 3800 },
+                    { key: 'root-file.txt', size: 512 },
+                ],
+                isTruncated: false,
+            });
 
             const result = await service.getBucketTree('bucket-1', '');
 
@@ -429,16 +436,16 @@ describe('TenantBucketService', () => {
                 name: 'hope-audio-arcaai',
             });
             mockTenantBucketRepository.findById.mockResolvedValue(bucket);
-            mockS3Service.signUrl.mockResolvedValue('https://minio.local/presigned-url');
+            mockBlobStorage.presignGet.mockResolvedValue('https://minio.local/presigned-url');
 
             const result = await service.getPresignedUrl('bucket-1', '2026/04/08/test.wav');
 
             expect(result.url).toBe('https://minio.local/presigned-url');
-            expect(mockS3Service.signUrl).toHaveBeenCalledWith(
-                'hope-audio-arcaai',
-                '2026/04/08/test.wav',
-                'get',
-            );
+            expect(mockBlobStorage.presignGet).toHaveBeenCalledWith({
+                bucket: 'hope-audio-arcaai',
+                key: '2026/04/08/test.wav',
+                expiresInSeconds: 3600,
+            });
         });
 
         it('should throw NotFoundException when bucket not found', async () => {
@@ -471,7 +478,7 @@ describe('TenantBucketService', () => {
             mockTenantRepository.findById.mockResolvedValue(mockTenant);
             mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([]);
             mockTenantBucketRepository.create.mockImplementation((entity: any) => entity);
-            mockS3Service.createBucket.mockResolvedValue(undefined);
+            mockBlobStorage.createBucket.mockResolvedValue(undefined);
             mockS3Service.setBucketPolicy.mockResolvedValue(undefined);
 
             await service.provisionSystemBuckets('tenant-1');
@@ -492,7 +499,7 @@ describe('TenantBucketService', () => {
             mockTenantRepository.findById.mockResolvedValue(mockTenant);
             mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([]);
             mockTenantBucketRepository.create.mockImplementation((entity: any) => entity);
-            mockS3Service.createBucket.mockResolvedValue(undefined);
+            mockBlobStorage.createBucket.mockResolvedValue(undefined);
             mockS3Service.setBucketPolicy.mockRejectedValue(new Error('Policy error'));
 
             const result = await service.provisionSystemBuckets('tenant-1');

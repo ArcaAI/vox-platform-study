@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { TenantBucketType, ResourceStatusType } from '@arcaai/domains';
+import { TenantBucketType, TenantBucketPurpose, ResourceStatusType } from '@arcaai/domains';
 
 export class TenantBucketResponse {
   @ApiProperty({ description: 'Bucket ID' })
@@ -19,6 +19,9 @@ export class TenantBucketResponse {
 
   @ApiProperty({ description: 'Bucket type', enum: TenantBucketType })
   bucketType: TenantBucketType;
+
+  @ApiProperty({ description: 'Logical purpose (drives default bucket resolution)', enum: TenantBucketPurpose })
+  purpose: TenantBucketPurpose;
 
   @ApiProperty({ description: 'Path pattern for file organization' })
   pathPattern: string;

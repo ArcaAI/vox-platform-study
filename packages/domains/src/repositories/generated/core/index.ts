@@ -30,6 +30,7 @@ export * from './StorageAccessKeyRepository';
 export * from './SummaryMetaRepository';
 export * from './TagRepository';
 export * from './TenantBucketRepository';
+export * from './TenantStorageConfigRepository';
 export * from './TenantRepository';
 export * from './TranscriptionJobRepository';
 export * from './UserMediaRepository';

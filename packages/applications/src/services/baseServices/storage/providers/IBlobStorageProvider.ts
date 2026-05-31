@@ -87,6 +87,31 @@ export interface LifecycleRule {
 }
 
 /**
+ * Serializable storage descriptor handed to out-of-process workers (e.g. the
+ * Python STT service) so they can connect to a DEDICATED tenant's S3/Azure
+ * backend directly. Keys are snake_case to match the worker-side contract.
+ *
+ * Only ever built for DEDICATED tenants — SHARED tenants resolve to `null`, so
+ * credentials are never distributed for the common shared-platform case (the
+ * worker uses its own env-configured default client + the bucket name).
+ */
+export interface StorageDescriptor {
+  provider: 'minio' | 'aws_s3' | 'azure_blob';
+  bucket: string;
+  // S3 / MinIO
+  endpoint?: string;
+  region?: string;
+  force_path_style?: boolean;
+  access_key_id?: string;
+  secret_access_key?: string;
+  // Azure Blob
+  account_name?: string;
+  endpoint_suffix?: string;
+  connection_string?: string;
+  account_key?: string;
+}
+
+/**
  * Thrown when an operation is not available on the active provider's data-plane
  * SDK (e.g. Azure blob lifecycle management, which is an account-level
  * management-plane operation). Provider-agnostic on purpose — it is not an

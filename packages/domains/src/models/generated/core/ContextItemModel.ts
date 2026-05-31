@@ -12,6 +12,7 @@ export class ContextItem extends BaseTenantDataModel {
   public source: Enums.ContextItemSource;
   public currentVersionNumber: number;
   public content: string | null;
+  public mediaId: string | null;
   public dnaWritingStyleId: string | null;
   public qdrantSynced: boolean;
   public qdrantSyncedAt: Date | null;
@@ -26,6 +27,7 @@ export class ContextItem extends BaseTenantDataModel {
     this.source = data.source ?? Enums.ContextItemSource.USER;
     this.currentVersionNumber = data.currentVersionNumber ?? 1;
     this.content = data.content;
+    this.mediaId = data.mediaId;
     this.dnaWritingStyleId = data.dnaWritingStyleId;
     this.qdrantSynced = data.qdrantSynced ?? false;
     this.qdrantSyncedAt = data.qdrantSyncedAt;

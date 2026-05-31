@@ -2,6 +2,7 @@ import {
   AuditLogServiceModule,
   AuthServiceModule,
   AuthorizationModule,
+  BlobStorageModule,
   CommonServiceModule,
   ConfigModule,
   JWT_AUTH_GUARD,
@@ -49,6 +50,7 @@ import { StorageAccessKeyModule } from './modules/storage-access-key/storage-acc
 import { StorageModule } from './modules/storage/storage.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
 import { TenantBucketModule } from './modules/tenant-bucket/tenant-bucket.module';
+import { TenantStorageConfigModule } from './modules/tenant-storage-config/tenant-storage-config.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { UserModule } from './modules/user/user.module';
 import { VoiceProfileModule } from './modules/voice-profile/voice-profile.module';
@@ -181,6 +183,11 @@ const common = [
   EventEmitterModule.forRoot(),
   SysEventServiceModule,
   CommonServiceModule,
+  // TASK-318 R5 — @Global() provider-agnostic blob storage. Registered once
+  // here (after CommonServiceModule provides AppSettings) so there is exactly
+  // ONE BlobStorageProviderFactory app-wide; required for tenant provider-cache
+  // coherence between the read path and TenantStorageConfigService.invalidate().
+  BlobStorageModule.forRoot(),
   RedisServiceModule.register(queueNames),
   ObservabilityModule,
   AuditLogServiceModule, // Event-driven audit logging (replaces Kafka audit topics)
@@ -228,6 +235,7 @@ const featureModules: any[] = [
   PipelineModule,
   TenantModule,
   TenantBucketModule,
+  TenantStorageConfigModule,
   UserModule,
   VoiceProfileModule,
 ];

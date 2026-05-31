@@ -19,12 +19,20 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorageController } from '../storage.controller';
 
+const mockBlobStorage = {
+  createBucket: vi.fn(),
+  deleteBucket: vi.fn(),
+  listObjects: vi.fn(),
+  putObject: vi.fn(),
+  presignGet: vi.fn(),
+  deleteObject: vi.fn(),
+};
+
+// Retained only for the F-1 assertion (the global listAllBuckets must never be
+// called) and the S3-only `updateBucket` metadata-tag path.
 const mockS3Service = {
   listAllBuckets: vi.fn(),
-  putFile: vi.fn(),
-  signUrl: vi.fn(),
-  deleteFile: vi.fn(),
-  listFiles: vi.fn(),
+  updateBucket: vi.fn(),
 };
 
 const mockMediaService = {
@@ -78,6 +86,7 @@ describe('TASK-318 W2 — StorageController tenant scoping & traversal hardening
   beforeEach(() => {
     vi.clearAllMocks();
     controller = new StorageController(
+      mockBlobStorage as any,
       mockS3Service as any,
       mockMediaService as any,
       mockTenantBucketService as any,
@@ -110,13 +119,18 @@ describe('TASK-318 W2 — StorageController tenant scoping & traversal hardening
       const bucket = createMockBucketResponse({ name: 'arcaai-custom-bucket' });
       mockTenantBucketService.getBucketByName.mockResolvedValue(bucket);
       mockMediaService.create.mockResolvedValue({ id: 'media-123' });
-      mockS3Service.putFile.mockResolvedValue(undefined);
+      mockBlobStorage.putObject.mockResolvedValue(undefined);
 
       const file = createMockFile({ originalname: 'note.txt', mimetype: 'text/plain', size: 10, buffer: Buffer.from('hi') });
 
       const result = await controller.uploadFile('arcaai-custom-bucket', file, 'note.txt');
 
-      expect(mockS3Service.putFile).toHaveBeenCalledWith('arcaai-custom-bucket', 'note.txt', file.buffer, 'text/plain');
+      expect(mockBlobStorage.putObject).toHaveBeenCalledWith({
+        bucket: 'arcaai-custom-bucket',
+        key: 'note.txt',
+        body: file.buffer,
+        contentType: 'text/plain',
+      });
       expect(mockTenantBucketService.getBucketByName).toHaveBeenCalledWith('arcaai-custom-bucket');
       expect(mockTenantBucketService.getBucketBySlug).not.toHaveBeenCalled();
       expect(result.key).toBe('note.txt');
@@ -133,7 +147,7 @@ describe('TASK-318 W2 — StorageController tenant scoping & traversal hardening
         NotFoundException,
       );
 
-      expect(mockS3Service.putFile).not.toHaveBeenCalled();
+      expect(mockBlobStorage.putObject).not.toHaveBeenCalled();
       expect(mockTenantBucketService.getBucketBySlug).not.toHaveBeenCalled();
     });
 
@@ -141,7 +155,7 @@ describe('TASK-318 W2 — StorageController tenant scoping & traversal hardening
       await expect(controller.uploadFile('arcaai-bucket', createMockFile(), '../escape.txt')).rejects.toBeInstanceOf(
         BadRequestException,
       );
-      expect(mockS3Service.putFile).not.toHaveBeenCalled();
+      expect(mockBlobStorage.putObject).not.toHaveBeenCalled();
     });
   });
 
@@ -149,32 +163,36 @@ describe('TASK-318 W2 — StorageController tenant scoping & traversal hardening
   describe('F-18 getFileInfo — rejects traversal keys', () => {
     it.each(TRAVERSAL_KEYS)('rejects key %j with BadRequestException', async (key) => {
       await expect(controller.getFileInfo('arcaai-bucket', key)).rejects.toBeInstanceOf(BadRequestException);
-      expect(mockS3Service.signUrl).not.toHaveBeenCalled();
+      expect(mockBlobStorage.presignGet).not.toHaveBeenCalled();
     });
 
     it('returns a presigned url for a safe key', async () => {
-      mockS3Service.signUrl.mockResolvedValue('https://signed.example/url');
+      mockBlobStorage.presignGet.mockResolvedValue('https://signed.example/url');
 
       const result = await controller.getFileInfo('arcaai-bucket', 'recording.wav');
 
       expect(result).toEqual({ key: 'recording.wav', url: 'https://signed.example/url' });
-      expect(mockS3Service.signUrl).toHaveBeenCalledWith('arcaai-bucket', 'recording.wav', 'get');
+      expect(mockBlobStorage.presignGet).toHaveBeenCalledWith({
+        bucket: 'arcaai-bucket',
+        key: 'recording.wav',
+        expiresInSeconds: 3600,
+      });
     });
   });
 
   describe('F-18 deleteFile — rejects traversal keys', () => {
     it.each(TRAVERSAL_KEYS)('rejects key %j with BadRequestException', async (key) => {
       await expect(controller.deleteFile('arcaai-bucket', key)).rejects.toBeInstanceOf(BadRequestException);
-      expect(mockS3Service.deleteFile).not.toHaveBeenCalled();
+      expect(mockBlobStorage.deleteObject).not.toHaveBeenCalled();
     });
 
     it('deletes a safe key', async () => {
-      mockS3Service.deleteFile.mockResolvedValue(undefined);
+      mockBlobStorage.deleteObject.mockResolvedValue(undefined);
 
       const result = await controller.deleteFile('arcaai-bucket', 'recording.wav');
 
       expect(result).toEqual({ deleted: true, key: 'recording.wav' });
-      expect(mockS3Service.deleteFile).toHaveBeenCalledWith('arcaai-bucket', 'recording.wav');
+      expect(mockBlobStorage.deleteObject).toHaveBeenCalledWith({ bucket: 'arcaai-bucket', key: 'recording.wav' });
     });
   });
 });

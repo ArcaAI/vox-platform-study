@@ -276,6 +276,46 @@ class TestCreateSession:
         kwargs = mock_session_manager.create_session.call_args.kwargs
         assert kwargs["audio_bucket_name"] == "hope-audio"
 
+    def test_create_session_forwards_storage_descriptor(self, client, mock_session_manager, mock_session):
+        """A `storage` descriptor should be forwarded verbatim to create_session."""
+        mock_session_manager.create_session = AsyncMock(return_value=mock_session)
+
+        descriptor = {
+            "provider": "azure_blob",
+            "bucket": "tenant-container",
+            "connection_string": "conn",
+        }
+        resp = client.post(
+            "/internal/streaming/sessions",
+            json={
+                "session_id": "sess-stg-1",
+                "tenant_id": "t-001",
+                "pipeline_id": "pipe-001",
+                "storage": descriptor,
+            },
+        )
+
+        assert resp.status_code == 201
+        kwargs = mock_session_manager.create_session.call_args.kwargs
+        assert kwargs["storage"] == descriptor
+
+    def test_create_session_storage_defaults_none(self, client, mock_session_manager, mock_session):
+        """Omitting `storage` should forward None (legacy single-provider path)."""
+        mock_session_manager.create_session = AsyncMock(return_value=mock_session)
+
+        resp = client.post(
+            "/internal/streaming/sessions",
+            json={
+                "session_id": "sess-stg-2",
+                "tenant_id": "t-001",
+                "pipeline_id": "pipe-001",
+            },
+        )
+
+        assert resp.status_code == 201
+        kwargs = mock_session_manager.create_session.call_args.kwargs
+        assert kwargs["storage"] is None
+
 
 # =========================================================================
 # Tests: GET /internal/streaming/sessions/{session_id}
@@ -714,6 +754,19 @@ class TestApiSchemas:
         assert req.consultation_id is None
         assert req.microphone_id is None
         assert req.user_id is None
+        assert req.storage is None
+
+    def test_create_request_accepts_storage_descriptor(self):
+        from stt_v2.streaming.api.schemas import CreateStreamingSessionRequest
+
+        descriptor = {"provider": "aws_s3", "bucket": "b", "region": "us-east-1"}
+        req = CreateStreamingSessionRequest(
+            session_id="s1",
+            tenant_id="t1",
+            pipeline_id="p1",
+            storage=descriptor,
+        )
+        assert req.storage == descriptor
 
     def test_create_request_all_fields(self):
         from stt_v2.streaming.api.schemas import CreateStreamingSessionRequest

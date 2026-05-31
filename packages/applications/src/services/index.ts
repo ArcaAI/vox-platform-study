@@ -24,6 +24,8 @@ export * from './stt';
 export * from './pstudio';
 export * from './tenant-bucket';
 export * from './storage-access-key';
+// TASK-318 R5 — per-tenant / per-bucket storage provider configuration.
+export * from './tenant-storage-config';
 export * from './queue-admin';
 // TASK-316 — DB-backed, admin-controlled rate-limit configuration.
 export * from './rate-limit';

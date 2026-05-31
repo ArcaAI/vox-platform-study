@@ -34,6 +34,14 @@ const createMockDepartmentRepository = () => ({
   findById: vi.fn(),
 });
 
+const createMockMediaRepository = () => ({
+  findById: vi.fn(),
+});
+
+const createMockBlobStorage = () => ({
+  getObject: vi.fn(),
+});
+
 // TASK-310 E-5 (AC-5): stubbed IConfigService so the controller resolves
 // the SMR base URL through the typed accessor (matching production), not
 // process.env.
@@ -55,6 +63,8 @@ describe('SmrProxyController', () => {
   let mockPromptTemplateRepo: ReturnType<typeof createMockPromptTemplateRepository>;
   let mockDnaStyleRepo: ReturnType<typeof createMockDnaWritingStyleRepository>;
   let mockDepartmentRepo: ReturnType<typeof createMockDepartmentRepository>;
+  let mockMediaRepo: ReturnType<typeof createMockMediaRepository>;
+  let mockBlobStorage: ReturnType<typeof createMockBlobStorage>;
   let mockConfigService: ReturnType<typeof createMockConfigService>;
 
   beforeEach(() => {
@@ -66,6 +76,8 @@ describe('SmrProxyController', () => {
     mockPromptTemplateRepo = createMockPromptTemplateRepository();
     mockDnaStyleRepo = createMockDnaWritingStyleRepository();
     mockDepartmentRepo = createMockDepartmentRepository();
+    mockMediaRepo = createMockMediaRepository();
+    mockBlobStorage = createMockBlobStorage();
     mockConfigService = createMockConfigService();
 
     mockClsService.get.mockImplementation((key: string) => {
@@ -94,6 +106,8 @@ describe('SmrProxyController', () => {
       mockPromptTemplateRepo as any,
       mockDnaStyleRepo as any,
       mockDepartmentRepo as any,
+      mockMediaRepo as any,
+      mockBlobStorage as any,
       mockConfigService as any,
     );
   });
@@ -841,6 +855,60 @@ describe('SmrProxyController', () => {
       expect(postedPrompt).toContain('Valid content');
       expect(postedPrompt).not.toContain('Case Note:');
       expect(result._debug.context_item_ids).toEqual(['ctx-1', 'ctx-2']);
+    });
+
+    it('should fetch + extract text from an ATTACHMENT item via blob storage (TASK-318 W3-D)', async () => {
+      mockContextItemRepo.findById.mockResolvedValue({
+        id: 'ctx-att',
+        content: null,
+        type: 'ATTACHMENT',
+        mediaId: 'media-1',
+      });
+      mockMediaRepo.findById.mockResolvedValue({
+        id: 'media-1',
+        name: 'lab-result.txt',
+        uri: 's3://hope-attachments-arcaai/2026/05/31/lab-result.txt',
+        mimeType: 'text/plain',
+      });
+      mockBlobStorage.getObject.mockResolvedValue(Buffer.from('WBC 6.1, Hemoglobin 14.2', 'utf-8'));
+
+      mockHttpService.axiosRef.post.mockResolvedValue({
+        data: { task_id: 'task-att', status: 'completed', content: 'Summary' },
+      });
+
+      await controller.generateAssembled({ type: 'summary', context_item_ids: ['ctx-att'] });
+
+      expect(mockMediaRepo.findById).toHaveBeenCalledWith('media-1');
+      expect(mockBlobStorage.getObject).toHaveBeenCalledWith({
+        bucket: 'hope-attachments-arcaai',
+        key: '2026/05/31/lab-result.txt',
+      });
+      const postedPrompt = mockHttpService.axiosRef.post.mock.calls[0][1].prompt;
+      expect(postedPrompt).toContain('Attachment (lab-result.txt):');
+      expect(postedPrompt).toContain('WBC 6.1, Hemoglobin 14.2');
+    });
+
+    it('should skip an ATTACHMENT whose file cannot be fetched without failing the request', async () => {
+      mockContextItemRepo.findById
+        .mockResolvedValueOnce({ id: 'ctx-1', content: 'Transcript here', type: 'TRANSCRIPT' })
+        .mockResolvedValueOnce({ id: 'ctx-att', content: null, type: 'ATTACHMENT', mediaId: 'media-x' });
+      mockMediaRepo.findById.mockResolvedValue({
+        id: 'media-x',
+        name: 'scan.pdf',
+        uri: 's3://hope-attachments-arcaai/scan.pdf',
+        mimeType: 'application/pdf',
+      });
+      mockBlobStorage.getObject.mockRejectedValue(new Error('NoSuchKey'));
+
+      mockHttpService.axiosRef.post.mockResolvedValue({
+        data: { task_id: 'task-skip-att', status: 'completed', content: 'Summary' },
+      });
+
+      const result = await controller.generateAssembled({ type: 'summary', context_item_ids: ['ctx-1', 'ctx-att'] });
+
+      const postedPrompt = mockHttpService.axiosRef.post.mock.calls[0][1].prompt;
+      expect(postedPrompt).toContain('Transcript here');
+      expect(result.task_id).toBe('task-skip-att');
     });
 
     it('should throw BadRequestException when all items have no content', async () => {

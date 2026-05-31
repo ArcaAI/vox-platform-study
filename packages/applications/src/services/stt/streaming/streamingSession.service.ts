@@ -78,6 +78,9 @@ export class StreamingSessionService implements IStreamingSessionService {
             user_id: dto.userId,
             language: dto.language ?? null,
             audio_bucket_name: dto.audioBucketName,
+            // Per-tenant storage descriptor (DEDICATED tenants only; null/omitted
+            // for SHARED). snake_case keys already match the Python worker schema.
+            storage: dto.storage ?? null,
           },
           { timeout: 15000 },
         ),

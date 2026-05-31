@@ -79,6 +79,7 @@ async def create_streaming_session(
             audio_bucket_name=request.audio_bucket_name or "hope-audio",
             user_id=request.user_id,
             language=request.language,
+            storage=request.storage,
         )
     except Exception as exc:
         logger.error(

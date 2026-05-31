@@ -248,6 +248,7 @@ class SessionManager:
         audio_bucket_name: str | None = None,
         user_id: str | None = None,
         language: str | None = None,
+        storage: dict | None = None,
     ) -> StreamSession | None:
         """Create a new streaming session.
 
@@ -261,13 +262,23 @@ class SessionManager:
             consultation_id: Optional consultation context.
             sample_rate: Audio sample rate in Hz.
             audio_bucket_name: Optional tenant-scoped audio bucket override.
+            user_id: Optional authenticated user ID.
+            language: Optional pipeline language override.
+            storage: Optional per-tenant storage provider descriptor. When
+                present, selects the provider (MinIO/S3/Azure) and bucket for
+                this tenant; when absent, ``audio_bucket_name`` is used.
         """
         # Check capacity
         if not await self._capacity_guard.try_acquire(session_id):
             return None
         try:
-            # Register tenant bucket override (mirrors batch transcription)
-            if audio_bucket_name and tenant_id:
+            # Register per-tenant storage routing before any audio I/O. A
+            # `storage` descriptor (multi-provider) wins and also pins the audio
+            # bucket; otherwise fall back to the legacy bucket override.
+            if storage and tenant_id:
+                blob = self._get_blob_service()
+                blob._resolver.set_tenant_storage(tenant_id, storage)
+            elif audio_bucket_name and tenant_id:
                 blob = self._get_blob_service()
                 blob._resolver.set_tenant_bucket(tenant_id, "audio", audio_bucket_name)
 

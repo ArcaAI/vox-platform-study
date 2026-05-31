@@ -25,6 +25,7 @@ export * from './StorageAccessKeyEntity';
 export * from './SummaryMetaEntity';
 export * from './TagEntity';
 export * from './TenantBucketEntity';
+export * from './TenantStorageConfigEntity';
 export * from './TenantEntity';
 export * from './TranscriptionJobEntity';
 export * from './UserEntity';

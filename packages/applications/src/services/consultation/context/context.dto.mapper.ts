@@ -12,6 +12,7 @@ export class ContextDtoMapper {
       type: entity.type,
       source: entity.source,
       content: entity.content ?? undefined,
+      mediaId: entity.mediaId ?? undefined,
       dnaWritingStyleId: entity.dnaWritingStyleId ?? undefined,
       currentVersionNumber: entity.currentVersionNumber,
       qdrantSynced: entity.qdrantSynced,

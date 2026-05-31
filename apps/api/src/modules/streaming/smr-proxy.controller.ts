@@ -1,5 +1,13 @@
-import { Authorize, IActiveUserContext, IConfigService, ITenantService, SecretsService, isSuperAdmin } from '@arcaai/applications';
-import { ContextItemRepository, DepartmentRepository, DnaWritingStyleReportRepository, PromptTemplateRepository } from '@arcaai/domains';
+import { Authorize, IActiveUserContext, IBlobStorageService, IConfigService, ITenantService, SecretsService, isSuperAdmin } from '@arcaai/applications';
+import type { IBlobStorageService as IBlobStorageServiceType } from '@arcaai/applications';
+import {
+  ContextItemRepository,
+  ContextItemType,
+  DepartmentRepository,
+  DnaWritingStyleReportRepository,
+  MediaRepository,
+  PromptTemplateRepository,
+} from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import {
   BadRequestException,
@@ -72,6 +80,9 @@ interface UpstreamErrorPayload {
 
 const RETRIABLE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EPIPE']);
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
+// Cap extracted attachment text injected into a summarization prompt so a large
+// document can't blow the SMR context window. ~200k chars ≈ 50k tokens.
+const ATTACHMENT_TEXT_LIMIT = 200_000;
 const GLOBAL_TENANT_KEY = '__GLOBAL__';
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 const TENANT_PROVIDER_SETTINGS_LIMIT = 200;
@@ -108,6 +119,8 @@ export class SmrProxyController {
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly dnaWritingStyleRepository: DnaWritingStyleReportRepository,
     private readonly departmentRepository: DepartmentRepository,
+    private readonly mediaRepository: MediaRepository,
+    @Inject(IBlobStorageService) private readonly blobStorage: IBlobStorageServiceType,
     @Inject(IConfigService) private readonly configService: IConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
@@ -576,8 +589,8 @@ export class SmrProxyController {
       RAW_SUMMARY: 'Summary',
       MODIFIED_SUMMARY: 'Edited Summary',
       PRE_SUMMARY: 'Pre-Summary',
+      ATTACHMENT: 'Attachment',
       // AUDIO_RECORDING: 'Audio',
-      // ATTACHMENT: 'Attachment',
     };
 
     let context: string;
@@ -588,9 +601,18 @@ export class SmrProxyController {
         if (!contextItem) {
           throw new NotFoundException(`Context item ${id} not found`);
         }
+        const label = TYPE_LABEL_MAP[contextItem.type] ?? 'Context';
         if (contextItem.content) {
-          const label = TYPE_LABEL_MAP[contextItem.type] ?? 'Context';
           contentBlocks.push(`${label}:\n${contextItem.content}`);
+        }
+        // ATTACHMENT items reference an uploaded file (mediaId) rather than
+        // inline text — fetch it from object storage and extract its text so
+        // SMR (which is text-in/text-out) can summarize the document.
+        if (contextItem.type === ContextItemType.ATTACHMENT && contextItem.mediaId) {
+          const attachment = await this.extractAttachmentText(contextItem.mediaId);
+          if (attachment) {
+            contentBlocks.push(`${label} (${attachment.name}):\n${attachment.text}`);
+          }
         }
       }
       if (contentBlocks.length === 0) {
@@ -668,6 +690,93 @@ export class SmrProxyController {
         dnaStyleId: body.dna_writing_style_id,
       },
     };
+  }
+
+  /**
+   * Resolve an ATTACHMENT context item's stored file and extract its text for
+   * summarization. Returns `null` (and logs) on any non-fatal problem — a single
+   * unreadable attachment must not fail the whole generation request.
+   */
+  private async extractAttachmentText(mediaId: string): Promise<{ name: string; text: string } | null> {
+    const media = await this.mediaRepository.findById(mediaId).catch(() => null);
+    if (!media) {
+      this.logger.warn({ message: 'Attachment media not found; skipping', mediaId });
+      return null;
+    }
+
+    const location = this.parseStorageUri(media.uri);
+    if (!location) {
+      this.logger.warn({ message: 'Unparseable media URI; skipping attachment', mediaId, uri: media.uri });
+      return null;
+    }
+
+    let buffer: Buffer;
+    try {
+      buffer = await this.blobStorage.getObject({ bucket: location.bucket, key: location.key });
+    } catch (err) {
+      this.logger.warn({
+        message: 'Failed to fetch attachment from storage; skipping',
+        mediaId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+
+    const text = await this.extractTextFromBuffer(buffer, media.mimeType, media.name);
+    if (!text || text.trim().length === 0) {
+      return null;
+    }
+
+    const trimmed = text.length > ATTACHMENT_TEXT_LIMIT ? `${text.slice(0, ATTACHMENT_TEXT_LIMIT)}\n…[truncated]` : text;
+    return { name: media.name, text: trimmed };
+  }
+
+  /** Parse an `s3://<bucket>/<key>` storage URI into its bucket + key parts. */
+  private parseStorageUri(uri: string): { bucket: string; key: string } | null {
+    const match = /^s3:\/\/([^/]+)\/(.+)$/.exec(uri ?? '');
+    if (!match) {
+      return null;
+    }
+    return { bucket: match[1], key: match[2] };
+  }
+
+  /**
+   * Extract plain text from an attachment buffer by MIME type. Pluggable: text
+   * formats are decoded directly (no dependency), PDFs go through `pdf-parse`.
+   * Image OCR / Office formats are intentionally deferred — they return `null`
+   * (skipped) rather than throwing.
+   */
+  private async extractTextFromBuffer(buffer: Buffer, mimeType: string, name: string): Promise<string | null> {
+    const mime = (mimeType ?? '').toLowerCase();
+
+    if (
+      mime.startsWith('text/') ||
+      mime === 'application/json' ||
+      mime === 'application/xml' ||
+      mime === 'application/x-ndjson' ||
+      mime === 'application/csv'
+    ) {
+      return buffer.toString('utf-8');
+    }
+
+    if (mime === 'application/pdf') {
+      try {
+        const mod = await import('pdf-parse');
+        const pdfParse = ((mod as { default?: unknown }).default ?? mod) as (data: Buffer) => Promise<{ text: string }>;
+        const parsed = await pdfParse(buffer);
+        return parsed.text;
+      } catch (err) {
+        this.logger.warn({
+          message: 'PDF text extraction failed; skipping attachment',
+          name,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
+    }
+
+    this.logger.warn({ message: 'Unsupported attachment type for summarization; skipping', name, mimeType });
+    return null;
   }
 
   @Get('providers')

@@ -34,21 +34,21 @@ HOPE's storage stack is a **single-provider, S3-compatible** design (one global 
 |---|---|---|---|
 | R-a | Tenant admins browse buckets/dirs/files | **Implemented** | `TenantBucketController` (`admin/tenants/storage/buckets`) list / `:id` / `:id/tree` / `:id/presigned-url`, all `@TenantOwnedResource`-guarded. No SDK hook (F-7). |
 | R-b | Doctor uploads batch audio (transcription) | **Implemented** | `POST /audio/transcription-jobs/transcribe` (100 MB cap) + SDK `FileTranscriptionService` (XHR progress). |
-| R-c | Doctor uploads session attachments (PDF/img/lab) | **Missing** | No endpoint, no `ContextItem.mediaId` link (F-8). |
+| R-c | Doctor uploads session attachments (PDF/img/lab) | **Implemented** (W3-D) | Upload via `storage.controller` → `Media`; linked through `addAttachment(…, mediaId)` (`ContextItem.mediaId`); **SMR reads + summarizes** the attachment (`smr-proxy` text extraction). Bespoke per-attachment upload endpoint not added (scope). |
 | R-d | Doctor uploads profile avatar | **Missing** | `UserProfile.avatarId` field exists; no upload endpoint (F-9). |
-| R-e | Live pipeline persists raw + processed audio | **Implemented, not tenant-keyed** | STT-v2 writes raw + processed + transcript + metadata, but `tenant_id` is **not in the object key** and bucket routing falls back to the global bucket (F-10). |
-| R-f | Tenant admins upload tenant config files (logo/bg) | **Missing** | Tenant config is K/V only; no media fields, no upload endpoint (F-11). |
+| R-e | Live pipeline persists raw + processed audio | **Implemented + tenant-routed** (W3-B/C) | STT-v2 writes raw + processed + transcript + metadata; bucket now resolved by **AUDIO purpose** and a per-tenant `storage` descriptor routes the provider. (`tenant_id`-in-object-key is a separate STT-v2 path concern — F-10.) |
+| R-f | Tenant admins upload tenant config files (logo/bg) | **Partial** | MISC default bucket now exists per tenant (W3-A) for backgrounds/avatars/images; dedicated tenant-config upload endpoint still absent (F-11). |
 | R-g | Self-hosted MinIO — shared | **Implemented** | Default deployment. |
-| R-h | Self-hosted MinIO — dedicated per tenant | **Not supported** | No per-tenant `endpoint` field (F-3, F-12). |
-| R-i | AWS S3 — shared | **Possible (untested)** | Works via `@aws-sdk/client-s3` + endpoint swap; no AWS-specific plumbing. |
-| R-j | AWS S3 — dedicated per tenant | **Not supported** | No per-tenant credential/endpoint routing (F-3, F-12). |
-| R-k | Azure Storage — shared | **Missing** | No `@azure/storage-blob` anywhere (F-4). |
-| R-l | Azure Storage — dedicated | **Missing** | Same. |
-| R-m | SDK developer file/bucket workflow API | **Partial** | `useStorage` (legacy routes only), no admin/key/attachment/avatar/presigned coverage (F-5..F-7). |
+| R-h | Self-hosted MinIO — dedicated per tenant | **Implemented (backend)** (W2/W3-C) | Per-tenant `endpoint`+creds via `TenantStorageConfig`; descriptor propagated to STT-v2. Not yet exercised against a live dedicated instance. |
+| R-i | AWS S3 — shared | **Implemented (backend)** | `@aws-sdk/client-s3` (TS) / `minio` SDK (Python) + endpoint swap. |
+| R-j | AWS S3 — dedicated per tenant | **Implemented (backend)** (W2/W3-C) | Per-tenant credential/endpoint routing via `TenantStorageConfig` + descriptor. Not yet exercised against live AWS. |
+| R-k | Azure Storage — shared | **Implemented (backend)** (W1/W3-C) | `@azure/storage-blob` (TS) + `azure-storage-blob` (Python). Not yet exercised against a live account. |
+| R-l | Azure Storage — dedicated | **Implemented (backend)** (W2/W3-C) | Per-tenant Azure config via `TenantStorageConfig` + descriptor → STT-v2. Not yet exercised against a live account. |
+| R-m | SDK developer file/bucket workflow API | **Partial** | `useStorage` (legacy routes only), no admin/key/attachment/avatar/presigned coverage (F-5..F-7, R9 not started). |
 | R-n | API split: end-user group + admin group | **Partial** | Split exists by convention; legacy `storage/` controller blurs it (F-1, F-6). |
-| R-o | Multi-tenancy | **Strong app-layer, weak storage-layer** | `$extends` + `@TenantOwnedResource` + CLS; storage-layer keys/credentials are shared (F-3, F-10). |
+| R-o | Multi-tenancy | **Strong app-layer; storage-layer now per-tenant** | `$extends` + `@TenantOwnedResource` + CLS; storage provider/creds now per-tenant via `TenantStorageConfig` + descriptor (was shared). |
 
-**8 of 12 provider×topology cells are unmet; 3 of 6 consumer flows are unimplemented; the SDK covers ~1 of the ~4 workflow groups developers need.**
+> **Status note (2026-05-31):** rows above reflect Wave 1–3. The authoritative per-wave detail + evidence lives in **§15 (Wave 1)**, **§16 (Wave 2 — per-tenant routing)**, and **§17.9 (Wave 3 — cross-service integration)**. "Implemented (backend)" = wired + unit-verified in this repo; live-cloud (AWS/Azure) end-to-end testing is still outstanding.
 
 ### 1.3 Provider × topology matrix (verified)
 
@@ -542,6 +542,10 @@ Week 8   ─ R6 avatar + branding, R9 (SDK surface)                 ← remainin
 | 2026-05-30 | Initial review (TASK-318). Re-verified all TASK-304 findings against current code (post TASK-305/307/310/317); added SDK file/bucket workflow analysis and the end-user/admin API split; produced reconciled findings (F-1..F-19), refactor (R1..R9), optimization (O-1..O-10), and target architecture. No source modified. | This document |
 | 2026-05-30 | **Wave 1 implementation kickoff.** Three file-disjoint streams launched in parallel in isolated git worktrees off `fix/2605-review`@`6041ff93`: **W1** provider abstraction (R4 — `IBlobStorageProvider` + S3 + Azure + config factory, official deps, additive); **W2** `StorageController` scoping (F-1, F-8, F-18); **W3** `StorageAccessKey` hardening (F-2, F-2b, F-4b, F-15). Decisions locked: Azure = first-class `@azure/storage-blob` adapter (OQ#1); secret = display-once HMAC hash (OQ#3). | (see §15) |
 | 2026-05-30 | **Wave 1 integrated & verified** (working tree, not yet committed). Applied all three disjoint branches; `pnpm build:api` 8/8; domains 1084✅; applications 4488✅ (7 pre-existing TASK-307 auth failures, proven identical on base); api storage 22/22✅; 61 new provider tests; lint clean. Required one cross-stream fix: `@arcaai/types` ESM re-export extensions (`packages/types/src/index.ts`) — pre-existing latent bug exposed by W1's first runtime enum import. | W1+W2+W3 files, `packages/types/src/index.ts` |
+| 2026-05-30 | **Wave 2 — R5 P5 admin API (additive).** New `apps/api` feature module `tenant-storage-config` exposing `/admin/tenants/storage/config` (GET list, GET `/effective`, PUT upsert, DELETE `:id`) mirroring `TenantBucketController` (`@CanManage('Tenant')` + `@Can*('Storage')`, reuses existing `Storage` subject — no seed changes). Registered `BlobStorageModule.forRoot()` in app-root `common[]` + `TenantStorageConfigModule` in `featureModules[]`; added `TenantStorageConfig` to the `@TenantOwnedResource` union + interceptor (tenant-scoped). `pnpm build:api` 8/8✅; new controller + interceptor-branch tests pass; lint clean. **P4 (consumer migration) + P1b (DB apply) remain gated.** | `apps/api/.../tenant-storage-config/**`, `app.module.ts`, `common/tenant-owned-resource.{decorator,interceptor}.ts` |
+| 2026-05-30 | **Wave 2 — R5 per-tenant provider routing (P1–P3 of 6).** Added the `TenantStorageConfig` model/enums (`StorageProviderType`, `StorageTopologyType`) + FK + additive migration; full domain layer (entity/model/mapper/factory/repository) + tenant-scope allow-list; extended `BlobStorageProviderFactory` with `getProviderForBucket()` (per-bucket → tenant default → global/shared) + bounded provider cache + `invalidate()`; made `BlobStorageService` tenant-aware via CLS; made `BlobStorageModule` `@Global()` (single shared factory ⇒ cache coherence); added `TenantStorageConfigService` (CRUD) + DTOs. Added `ResourceType.TenantStorageConfig` (Prisma + TS) for audit attribution. Verified: domains build✅, applications build✅, storage+config tests **165/165**✅, lint clean. DB apply (P1b) + consumer migration (P4) + admin API (P5) pending. | `packages/database/.../tenant-bucket.prisma`, `audit.prisma`, `enums.prisma`, migration; `packages/domains/.../TenantStorageConfig*`, `ResourceType.ts`, tenant-scope; `packages/applications/.../storage/**`, `tenant-storage-config/**` |
+| 2026-05-31 | **Wave 2 — R5 P1b + P4 complete; per-tenant routing now LIVE.** **P1b:** applied the additive schema to the (reset) dev DB — `prisma db push` reports *"already in sync"*; `TenantStorageConfig` table + both enums + `ResourceType.TenantStorageConfig` confirmed present. **P4:** migrated every file consumer off legacy `IS3Service` onto tenant-aware `IBlobStorageService` — `transcription-job.controller` (audio upload → `putObject`); `tenant-bucket.service` (browse → `listObjects`, presign → `presignGet`, provision/create → `createBucket`); `storage.controller` (create/delete bucket, list, upload, presign-get, delete). `S3Service` retained **only** for ops with no provider-agnostic equivalent: `setBucketPolicy` (best-effort SHARED-store hardening) + `updateBucket` (S3 metadata tags). Removed now-orphan `S3ServiceModule` from `streaming.module`. Verified: applications build✅, `pnpm build:api` **8/8**✅, tenant-bucket **26/26** + api storage/transcription **55/55**✅, lint clean; `dev:api` compiles **0 errors** and the **DI graph resolves** (boot then hit an *unrelated* `permission denied for schema core` — the Vault-managed runtime role lost its grants on the reset DB; re-run `packages/database/src/prisma/db_main/manual/vault-admin-bootstrap.sql`). | `storage.controller.ts`, `transcription-job.controller.ts`, `streaming.module.ts`, `tenant-bucket.service.ts` (+ their 3 test files) |
+| 2026-05-31 | **Wave 3 — cross-service storage integration complete (W3-A…W3-D).** End-to-end multi-provider storage across services + configurable per-tenant bucket purposes. **W3-A:** `TenantBucketPurpose` enum + `TenantBucket.purpose` (+ MISC system bucket, `findByPurpose`, `getDefaultBuckets`/`setDefaultBuckets`, admin `GET/PUT /admin/tenants/storage/buckets/defaults`). **W3-B:** `StorageDescriptor` resolved on the blob factory/service (snake_case, DEDICATED-only creds, `null` for SHARED) and propagated to STT-v2 — batch via `kwargs.storage`, streaming via a new POST `storage` field. **W3-C** (subagent, `apps/stt-v2`): provider abstraction (MinIO/AWS S3 via `minio`, Azure via `azure-storage-blob`) gated on the optional descriptor; no-descriptor path byte-for-byte unchanged. **W3-D:** `ContextItem.mediaId` soft reference + SMR proxy fetches the attachment from object storage and extracts text (text/JSON/XML/CSV native, PDF via `pdf-parse@1.1.1`, OCR deferred) and injects it; `mediaId` threaded through the add-context/attachment write path. Verified: `pnpm build:api` **8/8**✅; applications **661**✅ / domains **466**✅ / api streaming **95**✅ (incl. new descriptor + attachment tests); stt-v2 pytest **1845**✅. See §17.9 for deviations (factory-hosted descriptor vs. new service; app-layer purpose-uniqueness; `pdf-parse@1.1.1` vs v2). | See §17.9 "Files changed"; Prisma `enums/tenant-bucket/consultation.prisma`; `apps/api/package.json`; `apps/stt-v2/**` |
 
 ---
 
@@ -587,3 +591,211 @@ The three disjoint branches were applied into the working tree (no file overlap 
 - **W1 config keys introduced:** `STORAGE_PROVIDER` (AppSettings; `minio` default \| `aws_s3` \| `azure_blob`); Azure adds `AZURE_STORAGE_ACCOUNT`, `AZURE_STORAGE_ENDPOINT_SUFFIX` (AppSettings) + `AZURE_STORAGE_CONNECTION_STRING` / `AZURE_STORAGE_ACCOUNT_KEY` (SecretsService). S3 reuses existing `S3_*` keys.
 - **W1 Azure limitations (documented in code):** `setLifecycle()` throws `StorageNotSupportedError` (blob ILM is an account-level ARM/management-plane operation, absent from `@azure/storage-blob`); SAS presigning requires a shared-key/connection-string credential and is HTTPS-only (Azurite/local-HTTP would need relaxing).
 - **Status:** integrated in the **working tree, not committed** (per repo policy — awaiting your go-ahead to commit). Worktree branches `task-318/w1|w2|w3-*` remain available.
+
+---
+
+## 16. Implementation Log — Wave 2 (R5: per-tenant provider routing)
+
+**Goal (your clarification):** the **backend** handles all file management; each tenant runs on **S3 _or_ Azure** per its configuration; **by default every tenant shares one configuration**. Implemented as per-tenant + per-bucket overrides layered over the global/shared provider.
+
+**Resolution precedence** (read path, in `BlobStorageProviderFactory.getProviderForBucket`):
+
+```
+per-bucket override (TenantStorageConfig where bucketId = <bucket>)
+  → tenant default (TenantStorageConfig where bucketId IS NULL)
+    → global/shared provider (STORAGE_PROVIDER env, the W1 default)
+```
+
+A `topology = SHARED` row resolves straight to the global provider; `DEDICATED` builds a tenant-owned S3/Azure client from the row + a `credentialsRef` (a **SecretsService key name**, never the raw secret — credentials stay in the secrets manager).
+
+| Phase | Scope | Key files | Status |
+|---|---|---|---|
+| **P1 DB** | `TenantStorageConfig` model, `StorageProviderType`/`StorageTopologyType` enums, FK→`TenantBucket`, additive migration; `ResourceType.TenantStorageConfig` (enum + `ALTER TYPE … ADD VALUE`) | `tenant-bucket.prisma`, `enums.prisma`, `audit.prisma`, `migrations/20260530160000_add_tenant_storage_config/` | ✅ authored + **applied** (P1b: `db push` in sync) |
+| **P2 Domain** | entity/model/mapper/factory/repository (`findTenantDefault`/`findForBucket`/`findAllByTenant`) + barrels + tenant-scope allow-list + `CoreDatabaseModule` registration + unit tests | `packages/domains/src/**/TenantStorageConfig*`, `extensions/tenant-scope.ts` | ✅ build + tests pass |
+| **P3 Service+Factory** | factory `getProviderForBucket()` + bounded FIFO cache + `invalidate()`; tenant-aware `BlobStorageService` (CLS); `@Global()` `BlobStorageModule` (shared singleton factory); `TenantStorageConfigService` CRUD + DTOs + module | `storage/providers/blob-storage.provider.factory.ts`, `storage/blob-storage.service.ts`, `storage/blob-storage.module.ts`, `tenant-storage-config/**` | ✅ build + **165/165** storage tests |
+
+**Design decisions taken (noted, not blocking):**
+1. **`BlobStorageModule` is now `@Global()` with a single `forRoot()`** (W1's `forFeature()` removed — it was unused). A single factory instance is mandatory so the read-path cache and `TenantStorageConfigService.invalidate()` operate on the **same** cache. Mirrors the existing `@Global() AppSettingsModule` pattern.
+2. **Credentials are referenced, never stored.** `TenantStorageConfig.credentialsRef` holds a SecretsService key; `SecretsService` is read-only here, so DEDICATED credentials must be provisioned out-of-band (Vault/AWS/Azure). DTO responses expose only the key *name*.
+3. **`ResourceType.TenantStorageConfig`** added to both the Prisma enum (`audit.prisma`, via `ALTER TYPE … ADD VALUE IF NOT EXISTS`) and the TS enum, so config mutations emit first-class audit `SysEvent`s (avoids the "missing SysEvent after mutation" anti-pattern).
+4. **Additive & non-breaking (through P3):** the legacy `S3Service` and all consumers were left untouched until P4; per-tenant routing went live once consumers moved to `IBlobStorageService` (**P4, done — see §16.2**) and the modules were registered at the app root (P5).
+
+**Verification (actual):** `pnpm build --filter @arcaai/domains` ✅; `pnpm build --filter @arcaai/applications` ✅ (7/7); `vitest run src/services/baseServices/storage src/services/tenant-storage-config` → **8 files / 165 tests passed** (W1 145 + 20 new: 8 factory-tenant, 11 service, 1 service-delegation). Pre-existing TASK-307 auth failures (7) remain, proven unrelated in Wave 1. Lint clean on all touched files.
+
+### 16.1 P5 — Admin API (done, additive)
+
+New feature module `apps/api/src/modules/tenant-storage-config/` exposing **`/admin/tenants/storage/config`** (mirrors `TenantBucketController`: class `@CanManage('Tenant')`, method `@Can*('Storage')`, reuses the existing `Storage` CASL subject — **no seed changes**):
+
+| Method | Route | Auth | Notes |
+|---|---|---|---|
+| `GET` | `/admin/tenants/storage/config` | `@CanRead('Storage')` | list tenant configs (`?includeDisabled=true`) |
+| `GET` | `/admin/tenants/storage/config/effective` | `@CanRead('Storage')` | resolve effective config (`?bucketId=`) |
+| `PUT` | `/admin/tenants/storage/config` | `@CanUpdate('Storage')` | upsert (omit `bucketId` ⇒ tenant default) |
+| `DELETE` | `/admin/tenants/storage/config/:id` | `@CanDelete('Storage')` + `@TenantOwnedResource` | soft-delete |
+
+Wiring: `BlobStorageModule.forRoot()` added to the app-root `common[]` (after `CommonServiceModule`); `TenantStorageConfigModule` added to `featureModules[]`. `TenantStorageConfig` registered in the `@TenantOwnedResource` union + interceptor (tenant-scoped `findById`). **Verified:** `pnpm build:api` **8/8** ✅; api tests for the new controller + the modified interceptor + storage/tenant-bucket suites **all pass** (new: 6 controller + 2 interceptor branch tests); lint clean.
+
+### 16.2 P1b + P4 — completed (2026-05-31)
+
+**P1b — schema applied.** The DB was reset + reseeded (`pnpm db:all`, exit 0); `prisma db push` then reported **"The database is already in sync with the Prisma schema."** The new `TenantStorageConfig` table, `StorageProviderType` / `StorageTopologyType` enums, and the `ResourceType.TenantStorageConfig` value are present. No DROP/DELETE/TRUNCATE was run.
+
+**P4 — consumers migrated; routing live.** Every runtime file path now resolves its provider per-tenant via `IBlobStorageService` (→ `BlobStorageProviderFactory.getProviderForBucket`):
+
+| Consumer | Was (`IS3Service`) | Now (`IBlobStorageService`) |
+|---|---|---|
+| `transcription-job.controller` | `putFile` | `putObject` |
+| `tenant-bucket.service` · browse | `listFiles` | `listObjects().objects` |
+| `tenant-bucket.service` · presign | `signUrl(…, 'get')` | `presignGet({…, expiresInSeconds: 3600})` |
+| `tenant-bucket.service` · provision/create | `createBucket` | `createBucket` |
+| `storage.controller` · buckets | `createBucket` / `deleteBucket` | `createBucket` / `deleteBucket` |
+| `storage.controller` · files | `listFiles` / `putFile` / `signUrl` / `deleteFile` | `listObjects` / `putObject` / `presignGet` / `deleteObject` |
+
+**`S3Service` retained only where the provider abstraction has no equivalent** (both S3/MinIO-only, both best-effort and tenant-routing-agnostic):
+- `setBucketPolicy` — tenant-isolation IAM policy on the **SHARED** store (`tenant-bucket.service.provisionSystemBuckets`). Azure containers are private by default and have no bucket-policy concept; for a `DEDICATED` Azure/S3 tenant this is a harmless no-op (the call is wrapped in try/catch + warn). Hardening a dedicated tenant's own store is deferred (R6-adjacent).
+- `updateBucket` — description/status stored as S3 bucket **tags** (`storage.controller.updateBucket`). No provider-agnostic metadata API; bucket metadata arguably belongs on the `TenantBucket` row (future cleanup).
+
+Orphan cleanup: `S3ServiceModule` was removed from `streaming.module` (its only consumer there, `transcription-job.controller`, no longer injects `IS3Service`; `IBlobStorageService` is `@Global()`). `storage.module` keeps `S3ServiceModule` for the two retained ops + `S3HealthService`.
+
+**Verification (actual):**
+
+| Check | Result |
+|---|---|
+| `pnpm build --filter @arcaai/applications` (tsc) | ✅ clean |
+| `pnpm build:api` (`types→…→api`) | ✅ **8/8** |
+| `vitest` `tenant-bucket.service` | ✅ **26/26** |
+| `vitest` api `storage.controller.task318-w2` + `transcription-job.controller` | ✅ **55/55** |
+| ReadLints on all touched files | ✅ no new errors (2 **pre-existing** strict-TS warnings remain in `tenant-bucket.service.test.ts`: `...actual` spread + `patientsFolder?.children` — not authored here) |
+| `dev:api` boot | ✅ tsc **0 errors**, **DI graph resolves** (no `UnknownDependenciesException`) |
+
+**⚠️ Operational follow-up (NOT a code defect, blocks local `dev:api`):** after boot the app crashed with `Error: permission denied for schema core`. The privileged migrate/seed role (`postgres`, from `DATABASE_URL`) can write, but the **runtime** Prisma connection uses a **Vault-managed role** that lost its grants on the freshly-recreated `core` schema during the DB reset. Re-apply the grants (e.g. `packages/database/src/prisma/db_main/manual/vault-admin-bootstrap.sql`, or your normal post-reset Vault DB-role bootstrap) before running the API. Unit tests + builds are unaffected (they don't use the Vault role).
+
+**Remaining R5 niceties (optional, non-blocking):** dedicated-tenant bucket-policy/ACL hardening; moving bucket metadata off S3 tags onto `TenantBucket`; presigned-PUT upload flow (O-1 / R8); SDK `useStorage` surface (R9).
+
+---
+
+## 17. Wave 3 — Cross-service storage integration (IMPLEMENTED 2026-05-31)
+
+> **Status: COMPLETE.** All four workstreams (W3-A…W3-D) landed and verified — see the implementation summary in **§17.9**. The plan below (§17.1–17.8) is retained as the design of record; deviations are called out in §17.9.
+
+**Goal (user, 2026-05-31):** make storage work end-to-end across the Python services and add a configurable per-tenant "bucket purpose" model:
+- STT can **read** uploaded files for batch processing.
+- STT can **write** raw audio + processed audio (streaming).
+- SMR can **read** an uploaded consultation attachment for summarization.
+- A **default audio bucket** + a **default misc bucket** (tenant background / avatars / images) exist per tenant, auto-created at tenant creation.
+- Tenant admin can **configure** the default bucket for (a) audio and (b) consultation attachments.
+
+### 17.1 Decisions locked by user
+| # | Decision | Choice |
+|---|---|---|
+| D1 | Python per-tenant I/O for Azure tenants | **Full Azure in Python**: propagate `provider + endpoint + credentials` to the worker; add `azure-storage-blob` + a provider abstraction to stt-v2. |
+| D2 | Scope | **All** (purpose model + misc bucket + admin config + Python I/O + SMR attachment read). |
+| D3 | SMR attachment read | **NestJS-assembled**: API fetches the file, extracts text, passes text to SMR. SMR stays text-in/text-out. |
+
+### 17.2 Verified current state (evidence)
+- stt-v2 object storage = `minio` SDK only (`apps/stt-v2/pyproject.toml:48`); `azure-cognitiveservices-speech` is ASR, **not** Blob. **No Vault/secret client** — creds from bare env vars (`core/config/settings.py:84-91`).
+- Single SDK touchpoints to abstract: `BlobService._upload_bytes` / `_download_bytes`; tenant bucket injected by `StoragePathResolver.set_tenant_bucket(tenant_id, "audio", name)` (`storage/path_resolver.py:441-461`).
+- Batch dispatch = positional Dramatiq args **+ empty `kwargs:{}`** (`transcriptionRealtime.service.ts:358-379`); actor `transcribe_file(...)` (`transcription/workers/transcribe_file.py:33-44`). Streaming dispatch = internal HTTP POST body (`streamingSession.service.ts:66-84` → `streaming/api/schemas.py:8-24`).
+- Bucket purpose today = slug string only; `getBucketBySlug('audio')` in `transcription-job.controller.ts:178-186, 288-290`. `CreateDefaultSystemBuckets` makes only `audio` + `attachments` (`TenantBucketFactory.ts:5-8`); no purpose field on `TenantBucket`.
+- `ContextItem(ATTACHMENT)` has **no `mediaId`** link (`consultation.prisma`); `Media.uri = s3://bucket/key` (`media.prisma`); no TS text-extraction lib in any `package.json`.
+
+### 17.3 Contract — the storage descriptor (TS → Python)
+A single JSON object resolved per `(tenantId, bucket)` in NestJS and sent to Python. **SHARED tenants omit credentials** (Python uses its env-configured default client — unchanged from today); only **DEDICATED** tenants embed resolved credentials.
+```jsonc
+// AS BUILT — snake_case keys so the JSON maps 1:1 onto the Python worker schema
+// (no key translation layer). See IBlobStorageProvider.StorageDescriptor.
+{
+  "provider": "minio" | "aws_s3" | "azure_blob",
+  "bucket": "<physical bucket/container name>",
+  // S3 / MinIO (DEDICATED only):
+  "endpoint": "https://…", "region": "us-east-1", "force_path_style": true,
+  "access_key_id": "…", "secret_access_key": "…",
+  // Azure (DEDICATED only):
+  "account_name": "…", "endpoint_suffix": "core.windows.net",
+  "connection_string": "…", "account_key": "…"
+}
+```
+Resolved by `BlobStorageProviderFactory.resolveDescriptorForBucket()` (reusing `resolveConfig()` + `loadCredentials()` + `TenantStorageConfig`) and exposed via `IBlobStorageService.resolveDescriptor(bucket)`. Batch → carried in `kwargs.storage` (no positional reshuffle). Streaming → new `storage` field in the POST body. **Deviation from plan:** resolution lives on the existing factory/service rather than a separate `StorageDescriptorService` — the factory already owns config + credential resolution, so a new service would have been an empty pass-through.
+
+### 17.4 Workstreams (file-disjoint, parallelizable)
+**W3-A — Bucket-purpose model + misc bucket + admin config (TS-only, additive)**
+1. DB: add enum `TenantBucketPurpose {AUDIO, ATTACHMENTS, MISC, CUSTOM}` + `purpose` column on `TenantBucket` (default `CUSTOM`); partial unique index `(tenantId, purpose)` for non-CUSTOM. Migration + `db push`.
+2. Domain: regenerate model/entity/mapper; add `TenantBucketRepository.findByPurpose(tenantId, purpose)`.
+3. Factory + seed: add `MISC: 'misc'` to `SYSTEM_BUCKET_SLUGS`; set `purpose` on the 3 system buckets in `CreateDefaultSystemBuckets` + `seed/05a-tenant-bucket.ts`.
+4. Service: `TenantBucketService.getBucketByPurpose()`, `setBucketPurpose()` (move purpose, clear previous holder).
+5. Admin API: `GET/PUT /admin/tenants/storage/defaults` (set audio + attachment default bucket); guarded by existing CASL `Storage`.
+
+**W3-B — Descriptor resolution + propagation (TS)**
+1. `StorageDescriptorService.resolveForBucket(tenantId, bucketName)`.
+2. Batch: `transcription-job.controller.ts` resolve audio bucket by **purpose** (fallback slug), attach descriptor to `dispatchDramatiqJob` → `kwargs.storage`.
+3. Streaming: `createStreamSession` resolve by purpose + descriptor → `streamingSession.service.ts` adds `storage` to POST body + DTO.
+
+**W3-C — stt-v2 multi-provider (Python)**
+1. Add `azure-storage-blob` to `pyproject.toml`.
+2. New `core/storage/providers/{base,s3_provider,azure_provider,factory}.py` (ABC: `put_bytes/get_bytes/ensure_bucket/object_exists`). `factory.get_provider(descriptor)` with LRU cache keyed by descriptor identity; no-descriptor → current env/minio default.
+3. Refactor `BlobService` to resolve provider from a per-tenant descriptor registry (mirror `set_tenant_bucket` → add `set_tenant_storage(tenant_id, descriptor)`); route `_upload_bytes/_download_bytes` through provider.
+4. Consume descriptor: batch actor adds `storage: dict | None = None` kwarg → `set_tenant_storage`; streaming `schemas.py` + `routes.py` + `session_manager.create_session` add `storage`.
+5. Settings: add `STORAGE_PROVIDER` + Azure default fields for the global/SHARED default client.
+
+**W3-D — SMR attachment summarization (NestJS-assembled)**
+1. DB: add `mediaId String?` FK on `ContextItem` → `Media` (migration + `db push`); regenerate domain.
+2. Text extraction: add `pdf-parse` (PDF) + native UTF-8 (text); **decision needed** on images (OCR) — see 17.6.
+3. `smr-proxy.controller.ts`: un-comment `ATTACHMENT` in `TYPE_LABEL_MAP`; in `assemblePrompt`, for ATTACHMENT items with empty `content`, resolve `Media → parse uri → IBlobStorageService.getObject → extract text → inject`.
+4. Wire an upload path that links an attachment `Media` to its `ContextItem` (currently absent).
+
+### 17.5 Migrations (additive, reviewed before apply)
+- `TenantBucket.purpose` + enum `TenantBucketPurpose` + partial unique index.
+- `ContextItem.mediaId` nullable FK.
+- Backfill: set `purpose` on existing system buckets by slug (`audio`→AUDIO, `attachments`→ATTACHMENTS).
+
+### 17.6 Open sub-decisions (defaults chosen; flag for review)
+| # | Topic | Proposed default |
+|---|---|---|
+| S1 | Secret transport to workers | NestJS embeds resolved creds in descriptor **only for DEDICATED tenants**; SHARED sends none. (Redis-at-rest exposure for batch noted; Vault-in-Python deferred.) |
+| S2 | "bucket **or** folder" default | Implement at **bucket** granularity (purpose). Folder granularity = existing `TenantBucket.pathPattern`; not re-modeled now. |
+| S3 | Image/OCR attachments | **PDF + text now**; images/DOCX = pluggable extractor, OCR **deferred** (or delegate to NLP/Python later). |
+| S4 | AWS S3 in Python | Reuse `minio` SDK for both `minio` + `aws_s3` (S3-compatible); `azure-storage-blob` for Azure. |
+
+### 17.7 Risks
+- Secrets in Redis (batch) for DEDICATED tenants → mitigate with short msg TTL; harden later via Vault-in-Python.
+- stt-v2 resolver/registry are **in-memory** & lost on restart → descriptor must be re-sent per job/session (already the model for bucket).
+- ContextItem→attachment linkage is greenfield (no existing upload wires a Media to an ATTACHMENT item).
+
+### 17.8 Order & parallelization
+W3-A and W3-C have no file overlap → parallel. W3-B depends on W3-A (purpose resolver) + defines the contract W3-C consumes → land contract shape first. W3-D is independent (separate files) → parallel. Suggested: **wave 1** = W3-A + W3-C scaffolding (provider abstraction) + W3-D schema; **wave 2** = W3-B propagation + W3-C consumption + W3-D assemble; **wave 3** = integrated tests + docs.
+
+### 17.9 Implementation summary (completed 2026-05-31)
+
+**W3-A — Bucket-purpose model + misc bucket + admin config (TS)**
+- DB: `TenantBucketPurpose {AUDIO, ATTACHMENTS, MISC, CUSTOM}` enum + `TenantBucket.purpose` column (default `CUSTOM`) + index `(tenantId, purpose)`. Applied via `db push`.
+  - **Deviation:** plain (non-unique) index + **application-layer** "≤1 non-CUSTOM bucket per (tenantId, purpose)" enforcement (`TenantBucketService.assignPurpose` clears the previous holder), mirroring the existing `TenantStorageConfig` tenant-default rule. A declarative Prisma *partial* unique index isn't expressible without raw SQL; app-layer enforcement matches the codebase convention.
+- Domain: hand-edited `TenantBucket` model/entity/factory; added `TenantBucketRepository.findByPurpose()`. `TenantBucketPurpose` TS enum added to `enums/generated`.
+- Factory + seed: added `MISC` system bucket; `CreateDefaultSystemBuckets` now provisions audio + attachments + misc and stamps `purpose`; `seed/05a-tenant-bucket.ts` backfills purpose on upsert.
+- Service + admin API: `getBucketByPurpose`, `getDefaultBuckets`, `setDefaultBuckets`; `GET/PUT /admin/tenants/storage/buckets/defaults` (CASL `Storage`).
+
+**W3-B — Descriptor resolution + propagation (TS)**
+- `StorageDescriptor` contract on `IBlobStorageProvider`; `BlobStorageProviderFactory.resolveDescriptorForBucket()` (returns `null` for SHARED/global) + `IBlobStorageService.resolveDescriptor(bucket)`.
+- Batch (`transcription-job.controller.transcribeFile`): resolves the audio bucket **by purpose → slug fallback**, resolves the descriptor, and passes it through `dispatchBatchJob → dispatchDramatiqJob` into `kwargs.storage` (empty `{}` for SHARED).
+- Streaming (`createStreamSession`): same purpose-first resolution + descriptor → new optional `storage` field on `CreateStreamingSessionRequest` → `storage` in the STT-v2 POST body.
+
+**W3-C — stt-v2 multi-provider (Python)** — delegated to a background subagent; confined to `apps/stt-v2`.
+- `azure-storage-blob>=12.23.0` added; provider abstraction `core/storage/providers/{base,s3_provider,azure_provider,factory}.py` (S3 path serves both `minio` + `aws_s3`).
+- `BlobService` routes per-tenant via `path_resolver.set_tenant_storage`/`resolve_tenant_storage`; no-descriptor path is **byte-for-byte unchanged** (falls back to the env-default MinIO client + bucket name).
+- Descriptor consumed by the batch actor (`transcribe_file` `storage` kwarg) and streaming (`schemas.py`/`routes.py`/`session_manager.create_session`). Global-default Azure settings added to `settings.py`.
+- Evidence: **1845 passed** (2 pre-existing ML-weight tests deselected; confirmed unrelated); ruff clean.
+
+**W3-D — SMR attachment summarization (NestJS-assembled)**
+- DB: `ContextItem.mediaId String?` soft reference (matches the existing `dnaWritingStyleId` reference-ID convention; no hard FK) + index. Applied via `db push`; domain model/entity/factory hand-edited.
+- Read path: `smr-proxy.controller.assemblePrompt` labels `ATTACHMENT`, and for ATTACHMENT items with a `mediaId` resolves `Media → parse s3://bucket/key → IBlobStorageService.getObject → extractTextFromBuffer → inject`. Extraction is pluggable: text/JSON/XML/CSV decode natively; `application/pdf` via lazy `pdf-parse`; images/Office return `null` (skipped, OCR deferred). A single unreadable attachment **never fails** the request (logged + skipped); injected text capped at `ATTACHMENT_TEXT_LIMIT` (200k chars).
+  - **Deviation:** used **`pdf-parse@1.1.1`** (CJS + DefinitelyTyped `@types/pdf-parse`), not the latest v2 — v2 is ESM-first and pulls native `@napi-rs/canvas`, a poor fit for the API's `module: commonjs` / `moduleResolution: node` build and heavier to deploy for a text-only need.
+- Write path (enabling linkage): `mediaId` threaded through `AddContextRequest` → `addContext` → `ContextItemFactory.CreateContextItem/CreateAttachment`; `addAttachment(consultationId, content?, mediaId?)`; exposed on `ContextItemResponse` + mapper. The existing upload (`storage.controller`) → `Media` → `addAttachment(…, mediaId)` flow now links a file to a consultation; a bespoke upload endpoint was intentionally **not** added (scope).
+
+**Resolved sub-decisions (from §17.6):** S1 — creds embedded in the descriptor for DEDICATED only, SHARED sends `null`; S2 — bucket-granularity purpose; S3 — PDF + text now, pluggable extractor, OCR deferred; S4 — Python reuses the MinIO SDK for `minio` + `aws_s3`, `azure-storage-blob` for Azure.
+
+**Verification (evidence):**
+- Builds: `pnpm build:api` → **8/8 successful** (database → domains → applications → api).
+- Unit tests: `@arcaai/applications` **661 passed** (context / storage / stt / tenant-bucket); `@arcaai/domains` **466 passed** (entities / factories); `@arcaai/api` streaming controllers **95 passed** (incl. new W3-B descriptor + W3-D attachment-read/skip tests).
+- `apps/stt-v2` pytest **1845 passed** (subagent).
+
+**Files changed (TS):** `IBlobStorageProvider.ts`, `blob-storage.provider.factory.ts`, `blob-storage.service.ts`, `IBlobStorageService.ts`, `transcription-job.controller.ts`, `transcriptionRealtime.service.ts`, `streaming-session.dto.ts`, `streamingSession.service.ts`, `smr-proxy.controller.ts`; consultation context `add-context.request.ts` / `context.service.ts` / `context.dto.mapper.ts` / `context-item.response.ts`; `ContextItemFactory.ts` + `ContextItem{Model,Entity}.ts`; tenant-bucket `service` / `controller` / DTOs / repo / factory / seed; Prisma `enums.prisma`, `tenant-bucket.prisma`, `consultation.prisma`; `apps/api/package.json` (`pdf-parse`). **Python:** confined to `apps/stt-v2` (see W3-C).
+
+**Known follow-ups (unchanged from §17.7):** Redis-at-rest exposure of DEDICATED creds for batch (short TTL now; Vault-in-Python later); stt-v2 descriptor registry is in-memory (re-sent per job/session by design); image OCR / Office text extraction deferred.

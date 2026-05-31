@@ -22,6 +22,15 @@ class CreateStreamingSessionRequest(BaseModel):
         default=None,
         description="Tenant-scoped audio bucket name. Defaults to 'hope-audio' if not provided.",
     )
+    storage: dict | None = Field(
+        default=None,
+        description=(
+            "Optional per-tenant storage provider descriptor (provider, bucket, "
+            "credentials). When present, selects the MinIO/S3/Azure provider and "
+            "bucket for this tenant; when absent, the global MinIO client and "
+            "'audio_bucket_name' are used."
+        ),
+    )
 
 
 class StreamingSessionResponse(BaseModel):

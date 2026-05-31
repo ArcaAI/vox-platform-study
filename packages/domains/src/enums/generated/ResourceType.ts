@@ -34,5 +34,6 @@ export enum ResourceType {
   DnaWritingStyleReport = 'DnaWritingStyleReport',
   TenantBucket = 'TenantBucket',
   StorageAccessKey = 'StorageAccessKey',
+  TenantStorageConfig = 'TenantStorageConfig',
   UserVoiceProfile = 'UserVoiceProfile',
 }

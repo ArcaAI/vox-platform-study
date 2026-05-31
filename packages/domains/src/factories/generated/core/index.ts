@@ -25,6 +25,7 @@ export * from './StorageAccessKeyFactory';
 export * from './SummaryMetaFactory';
 export * from './TagFactory';
 export * from './TenantBucketFactory';
+export * from './TenantStorageConfigFactory';
 export * from './TenantFactory';
 export * from './TranscriptionJobFactory';
 export * from './UserFactory';

@@ -5,7 +5,7 @@ import { TenantBucketEntityMapper } from '../../../mappers';
 import { TenantBucketEntity } from '../../../entities';
 import { TenantBucket } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
-import { ResourceStatusType, TenantBucketType } from '../../../enums';
+import { ResourceStatusType, TenantBucketPurpose, TenantBucketType } from '../../../enums';
 
 @Injectable()
 export class TenantBucketRepository extends Repository<TenantBucketEntity, TenantBucket> {
@@ -32,6 +32,26 @@ export class TenantBucketRepository extends Repository<TenantBucketEntity, Tenan
           slug,
           resourceStatus: ResourceStatusType.ENABLED,
         },
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Resolve the tenant's default bucket for a given purpose (AUDIO / ATTACHMENTS
+   * / MISC). At most one non-CUSTOM bucket per purpose is expected; `findFirst`
+   * with a stable sort keeps resolution deterministic if that invariant slips.
+   */
+  async findByPurpose(tenantId: string, purpose: TenantBucketPurpose): Promise<TenantBucketEntity | null> {
+    try {
+      return await this.findFirst({
+        filters: {
+          tenantId,
+          purpose,
+          resourceStatus: ResourceStatusType.ENABLED,
+        },
+        sort: [{ createdAt: 'asc' }],
       });
     } catch {
       return null;
