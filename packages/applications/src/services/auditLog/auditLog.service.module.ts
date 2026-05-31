@@ -7,11 +7,7 @@ import { AuditLogProcessor } from './auditLog.processor';
 import { AuditLogService } from './auditLog.service';
 
 @Module({
-  imports: [
-    CommonServiceModule,
-    CoreDatabaseModule,
-    BullModule.registerQueue({ name: JobQueue.AuditLog }),
-  ],
+  imports: [CommonServiceModule, CoreDatabaseModule, BullModule.registerQueue({ name: JobQueue.AuditLog })],
   providers: [
     {
       provide: IAuditLogService,

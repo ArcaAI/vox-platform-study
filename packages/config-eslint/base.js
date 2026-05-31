@@ -148,6 +148,19 @@ module.exports = {
         },
     ],
     rules: {
+        // Honor the leading-underscore convention for intentionally-unused
+        // identifiers (e.g. interface-required parameters such as
+        // `rotateSecret(_key)` that a given provider does not use). Mirrors the
+        // TS compiler's `noUnusedParameters` exemption for `_`-prefixed names.
+        '@typescript-eslint/no-unused-vars': [
+            'error',
+            {
+                argsIgnorePattern: '^_',
+                varsIgnorePattern: '^_',
+                caughtErrorsIgnorePattern: '^_',
+                destructuredArrayIgnorePattern: '^_',
+            },
+        ],
         // TASK-305 B.5 — Guard the unscoped Prisma client.
         //
         // `getPlatformAdminPrismaClient_Unscoped` bypasses BOTH the tenant-scope

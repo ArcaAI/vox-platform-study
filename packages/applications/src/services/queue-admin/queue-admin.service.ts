@@ -12,15 +12,7 @@ export class QueueAdminService {
     const queue = this.getQueue(queueName);
     const [isPaused, counts, workers] = await Promise.all([
       queue.isPaused(),
-      queue.getJobCounts(
-        'waiting',
-        'active',
-        'completed',
-        'failed',
-        'delayed',
-        'paused',
-        'prioritized',
-      ),
+      queue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'paused', 'prioritized'),
       queue.getWorkers(),
     ]);
 
@@ -55,12 +47,7 @@ export class QueueAdminService {
     await queue.resume();
   }
 
-  async cleanQueue(
-    queueName: string,
-    status: 'completed' | 'failed',
-    gracePeriodMs: number,
-    limit = 1000,
-  ): Promise<string[]> {
+  async cleanQueue(queueName: string, status: 'completed' | 'failed', gracePeriodMs: number, limit = 1000): Promise<string[]> {
     const queue = this.getQueue(queueName);
     return queue.clean(gracePeriodMs, limit, status);
   }

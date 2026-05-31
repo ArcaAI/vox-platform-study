@@ -34,20 +34,10 @@ export class MetricsInterceptor implements NestInterceptor {
       tap({
         next: () => {
           const response = httpContext.getResponse();
-          this.monitoringService.recordHttpRequest(
-            request.method,
-            routeLabel,
-            response.statusCode,
-            (Date.now() - start) / 1000,
-          );
+          this.monitoringService.recordHttpRequest(request.method, routeLabel, response.statusCode, (Date.now() - start) / 1000);
         },
         error: (err) => {
-          this.monitoringService.recordHttpRequest(
-            request.method,
-            routeLabel,
-            err?.status || err?.statusCode || 500,
-            (Date.now() - start) / 1000,
-          );
+          this.monitoringService.recordHttpRequest(request.method, routeLabel, err?.status || err?.statusCode || 500, (Date.now() - start) / 1000);
         },
       }),
     );

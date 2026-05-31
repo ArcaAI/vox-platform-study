@@ -2,12 +2,7 @@ import { Body, Controller, Get, Inject, Param, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { IRateLimitAdminService, type RateLimitPolicy } from '@arcaai/applications';
 import { Authorize } from '../../decorators';
-import {
-  RateLimitPolicyResponse,
-  SetRateLimitEnabledRequest,
-  SetRateLimitRouteRequest,
-  SetRateLimitTierRequest,
-} from './dto';
+import { RateLimitPolicyResponse, SetRateLimitEnabledRequest, SetRateLimitRouteRequest, SetRateLimitTierRequest } from './dto';
 
 /**
  * TASK-316 — system-admin surface for live, DB-backed rate-limit configuration.

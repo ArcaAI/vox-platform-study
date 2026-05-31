@@ -22,17 +22,9 @@
  */
 
 import { SecretsService } from '@arcaai/applications';
-import {
-  VAULT_PRISMA_FACTORY,
-  type VaultPrismaFactory,
-  type VaultPrismaFactoryResult,
-} from '@arcaai/domains';
+import { VAULT_PRISMA_FACTORY, type VaultPrismaFactory, type VaultPrismaFactoryResult } from '@arcaai/domains';
 import { Global, Logger, Module } from '@nestjs/common';
-import {
-  applySoftDeleteExtension,
-  VaultPrismaClient,
-  type VaultDbSecretsLike,
-} from '@arcaai/database';
+import { applySoftDeleteExtension, VaultPrismaClient, type VaultDbSecretsLike } from '@arcaai/database';
 
 const logger = new Logger('VaultPrismaFactoryModule');
 
@@ -54,16 +46,12 @@ export function buildVaultPrismaFactory(secrets: VaultDbSecretsLike): VaultPrism
   // eslint-disable-next-line turbo/no-undeclared-env-vars
   const enabled = process.env.PG_DYNAMIC_CREDS;
   if (provider !== 'vault' || enabled !== 'true') {
-    logger.log(
-      `VAULT_PRISMA_FACTORY not enabled (SECRETS_PROVIDER=${provider ?? 'unset'}, PG_DYNAMIC_CREDS=${enabled ?? 'unset'})`,
-    );
+    logger.log(`VAULT_PRISMA_FACTORY not enabled (SECRETS_PROVIDER=${provider ?? 'unset'}, PG_DYNAMIC_CREDS=${enabled ?? 'unset'})`);
     return null;
   }
   // eslint-disable-next-line turbo/no-undeclared-env-vars
   const role = process.env.PG_VAULT_ROLE ?? 'hope-app-role';
-  logger.log(
-    `VAULT_PRISMA_FACTORY enabled; will mint short-lived PG credentials via Vault role '${role}'`,
-  );
+  logger.log(`VAULT_PRISMA_FACTORY enabled; will mint short-lived PG credentials via Vault role '${role}'`);
 
   return async (): Promise<VaultPrismaFactoryResult> => {
     const wrapper = await VaultPrismaClient.create(secrets, role);

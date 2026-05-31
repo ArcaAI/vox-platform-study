@@ -1,9 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  ISecretsProvider,
-  SecretFetchOptions,
-  SecretsHealth,
-} from '../ISecretsProvider';
+import { ISecretsProvider, SecretFetchOptions, SecretsHealth } from '../ISecretsProvider';
 
 /**
  * Phase 2A Task 2.3 (TASK-302 Stream B) — EnvSecretsProvider.
@@ -23,9 +19,7 @@ export class EnvSecretsProvider implements ISecretsProvider {
     const v = process.env[key];
     if (v === undefined || v === '') {
       if (opts?.required === false) return '';
-      throw new Error(
-        `EnvSecretsProvider: required secret '${key}' is not set in process.env`,
-      );
+      throw new Error(`EnvSecretsProvider: required secret '${key}' is not set in process.env`);
     }
     return v;
   }
@@ -54,9 +48,7 @@ export class EnvSecretsProvider implements ISecretsProvider {
   }
 
   async rotateSecret(_key: string): Promise<void> {
-    throw new Error(
-      'EnvSecretsProvider does not support rotation; restart pod with new env',
-    );
+    throw new Error('EnvSecretsProvider does not support rotation; restart pod with new env');
   }
 
   async health(): Promise<SecretsHealth> {

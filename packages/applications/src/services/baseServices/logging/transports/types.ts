@@ -238,7 +238,13 @@ export interface OTelLogBridgeTransportConfig extends BaseTransportConfig {
 /**
  * Union type for all transport configurations
  */
-export type TransportConfig = ConsoleTransportConfig | FileTransportConfig | HighlightTransportConfig | LokiTransportConfig | OTelTransportConfig | OTelLogBridgeTransportConfig;
+export type TransportConfig =
+  | ConsoleTransportConfig
+  | FileTransportConfig
+  | HighlightTransportConfig
+  | LokiTransportConfig
+  | OTelTransportConfig
+  | OTelLogBridgeTransportConfig;
 
 /**
  * Transport interface that all transports must implement

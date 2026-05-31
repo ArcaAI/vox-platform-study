@@ -156,9 +156,7 @@ function InfoRow({ label, value, icon, children }: { label: string; value?: stri
       {icon && <span className="text-muted-foreground mt-0.5 shrink-0">{icon}</span>}
       <div className="min-w-0 flex-1">
         <p className="text-muted-foreground text-xs leading-none">{label}</p>
-        <div className="mt-1 break-words">
-          {children ?? <p className="text-sm font-medium leading-snug break-all">{value ?? '—'}</p>}
-        </div>
+        <div className="mt-1 break-words">{children ?? <p className="text-sm font-medium leading-snug break-all">{value ?? '—'}</p>}</div>
       </div>
     </div>
   );
@@ -260,9 +258,7 @@ function UserFormDialog({
           <>
             <DialogHeader>
               <DialogTitle>{isEdit ? 'Edit User' : 'Create User'}</DialogTitle>
-              <DialogDescription>
-                {isEdit ? 'Update the user details below.' : 'Fill in the details to create a new user account.'}
-              </DialogDescription>
+              <DialogDescription>{isEdit ? 'Update the user details below.' : 'Fill in the details to create a new user account.'}</DialogDescription>
             </DialogHeader>
 
             <Form {...form}>
@@ -603,9 +599,7 @@ function RoleAssignmentSection({ user }: { user: AdminUser }) {
                     {roles.map((r) => (
                       <SelectItem key={r.id} value={r.id}>
                         <span className="font-medium">{r.name}</span>
-                        {r.description && (
-                          <span className="text-muted-foreground ml-1 block truncate text-xs">{r.description}</span>
-                        )}
+                        {r.description && <span className="text-muted-foreground ml-1 block truncate text-xs">{r.description}</span>}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -643,9 +637,7 @@ function RoleAssignmentSection({ user }: { user: AdminUser }) {
       {assignments.length > 0 ? (
         <div className="space-y-2">
           {assignments.map((a) => {
-            const tenantName = a.tenantId
-              ? (tenants.find((t) => t.id === a.tenantId)?.name ?? a.tenantId.slice(0, 8) + '…')
-              : null;
+            const tenantName = a.tenantId ? (tenants.find((t) => t.id === a.tenantId)?.name ?? a.tenantId.slice(0, 8) + '…') : null;
             const isRemoving = removingId === a.id;
             return (
               <div key={a.id} className="bg-muted/20 flex items-center gap-2 rounded-md border px-3 py-2">
@@ -956,9 +948,9 @@ function UserDetailDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader className="sr-only">
-              <DialogTitle>User Details</DialogTitle>
-              <DialogDescription>Account information, profile, roles, and API keys.</DialogDescription>
-                    </DialogHeader>
+          <DialogTitle>User Details</DialogTitle>
+          <DialogDescription>Account information, profile, roles, and API keys.</DialogDescription>
+        </DialogHeader>
 
         {userLoading ? (
           <div className="space-y-4 py-2">

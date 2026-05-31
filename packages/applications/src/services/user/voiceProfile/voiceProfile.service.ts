@@ -1,22 +1,7 @@
-import {
-  EntityId,
-  ResourceType,
-  SysEventType,
-  UserVoiceProfileEntity,
-  UserVoiceProfileFactory,
-  UserVoiceProfileRepository,
-} from '@arcaai/domains';
+import { EntityId, ResourceType, SysEventType, UserVoiceProfileEntity, UserVoiceProfileFactory, UserVoiceProfileRepository } from '@arcaai/domains';
 import { InternalServerErrorException } from '@arcaai/exceptions';
 import { HttpService } from '@nestjs/axios';
-import {
-  BadRequestException,
-  ForbiddenException,
-  Inject,
-  Injectable,
-  Logger,
-  Optional,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { isAxiosError } from 'axios';
 import { ClsService } from 'nestjs-cls';
@@ -163,13 +148,9 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
 
     try {
       const { data } = await firstValueFrom(
-        this.httpService.post<ExtractionResponse>(
-          `${this.sttBaseUrl}/internal/voice-profile/extract`,
-          formData,
-          {
-            timeout: 60000,
-          },
-        ),
+        this.httpService.post<ExtractionResponse>(`${this.sttBaseUrl}/internal/voice-profile/extract`, formData, {
+          timeout: 60000,
+        }),
       );
       return data;
     } catch (error: unknown) {
@@ -206,17 +187,13 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
     });
 
     if (!error.response) {
-      return new ServiceUnavailableException(
-        'Voice profile extraction service is unavailable. Please try again later.',
-      );
+      return new ServiceUnavailableException('Voice profile extraction service is unavailable. Please try again later.');
     }
     if (status === 400 && detail) {
       return new BadRequestException(detail);
     }
     if (status === 503) {
-      return new ServiceUnavailableException(
-        detail ?? 'Voice profile extraction service is unavailable',
-      );
+      return new ServiceUnavailableException(detail ?? 'Voice profile extraction service is unavailable');
     }
     return new InternalServerErrorException('Voice profile extraction failed');
   }

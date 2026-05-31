@@ -70,9 +70,7 @@ export class CoreUnitOfWorkService {
    * @returns The work callback's resolved value (committed).
    * @throws Whatever `work` throws — Prisma rolls back the tx first.
    */
-  async runInTransaction<T>(
-    work: (tx: CorePrisma.TransactionClient) => Promise<T>,
-  ): Promise<T> {
+  async runInTransaction<T>(work: (tx: CorePrisma.TransactionClient) => Promise<T>): Promise<T> {
     return this.databaseService.baseClient.$transaction(async (tx) => {
       this.cls.set(this.TRANSACTION_CLIENT_KEY, tx);
       try {

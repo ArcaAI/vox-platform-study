@@ -9,9 +9,7 @@ export class UserDtoMapper {
   static ToResponse(entity: UserEntity): UserResponse {
     const response = AutoClassMapper(entity, UserResponse);
     if (entity.UserRoleAssignments) {
-      response.UserRoleAssignments = entity.UserRoleAssignments.map((a) =>
-        UserRoleAssignmentDtoMapper.ToResponse(a),
-      );
+      response.UserRoleAssignments = entity.UserRoleAssignments.map((a) => UserRoleAssignmentDtoMapper.ToResponse(a));
     }
     return response;
   }

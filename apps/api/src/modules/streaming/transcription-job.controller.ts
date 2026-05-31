@@ -181,8 +181,7 @@ export class TranscriptionJobController {
     let uploadBucket = AUDIO_BUCKET;
     try {
       const tenantBucket =
-        (await this.tenantBucketService.getBucketByPurpose(TenantBucketPurpose.AUDIO)) ??
-        (await this.tenantBucketService.getBucketBySlug('audio'));
+        (await this.tenantBucketService.getBucketByPurpose(TenantBucketPurpose.AUDIO)) ?? (await this.tenantBucketService.getBucketBySlug('audio'));
       if (tenantBucket) {
         uploadBucket = tenantBucket.name;
       }
@@ -302,8 +301,7 @@ export class TranscriptionJobController {
     let storage: StorageDescriptor | null = null;
     try {
       const tenantBucket =
-        (await this.tenantBucketService.getBucketByPurpose(TenantBucketPurpose.AUDIO)) ??
-        (await this.tenantBucketService.getBucketBySlug('audio'));
+        (await this.tenantBucketService.getBucketByPurpose(TenantBucketPurpose.AUDIO)) ?? (await this.tenantBucketService.getBucketBySlug('audio'));
       audioBucketName = tenantBucket?.name;
       if (audioBucketName) {
         storage = await this.blobStorage.resolveDescriptor(audioBucketName);

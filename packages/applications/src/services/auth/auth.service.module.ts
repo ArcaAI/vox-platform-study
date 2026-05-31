@@ -34,10 +34,7 @@ const logger = new Logger('AuthServiceModule');
   providers: [
     {
       provide: 'OPENID_CLIENT',
-      useFactory: async (
-        appSettingsService: IAppSettingsService,
-        secretsService: SecretsService,
-      ) => {
+      useFactory: async (appSettingsService: IAppSettingsService, secretsService: SecretsService) => {
         try {
           const oidc_discovery_url = appSettingsService.getValueWithDefault(
             'OIDC_DISCOVERY_URL',
@@ -48,8 +45,7 @@ const logger = new Logger('AuthServiceModule');
           // this factory) now reads from SecretsService. The other three
           // (DISCOVERY_URL, CLIENT_ID, CALLBACK_URL) stay on AppSettings —
           // they're public OIDC config, not secrets.
-          const oidc_client_secret =
-            secretsService.getSecretSync('OIDC_CLIENT_SECRET') ?? 'default-client-secret';
+          const oidc_client_secret = secretsService.getSecretSync('OIDC_CLIENT_SECRET') ?? 'default-client-secret';
           const oidc_callback_url = appSettingsService.getValueWithDefault('OIDC_CALLBACK_URL', 'http://localhost:8001/auth/callback');
 
           if (!oidc_discovery_url || oidc_discovery_url === 'https://example.com/.well-known/openid_configuration') {

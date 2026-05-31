@@ -57,7 +57,8 @@ export class PromptTemplateResponse {
    * `If-Match` mechanism without parsing the body.
    */
   @ApiProperty({
-    description: 'Row version for optimistic concurrency control (NOT the PromptVersion counter). Echo back as `If-Match: "<version>"` or `expectedVersion` on PATCH.',
+    description:
+      'Row version for optimistic concurrency control (NOT the PromptVersion counter). Echo back as `If-Match: "<version>"` or `expectedVersion` on PATCH.',
     example: 7,
   })
   version!: number;

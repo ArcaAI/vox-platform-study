@@ -55,9 +55,7 @@ export class CoreUnitOfWorkService {
    * isolation in Prisma 7 (audit M-6). New callers must use this
    * method. TASK-306 P3.2 / AC-11.
    */
-  async runInTransaction<T>(
-    work: (tx: Prisma.TransactionClient) => Promise<T>,
-  ): Promise<T> {
+  async runInTransaction<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
     return this.databaseService.baseClient.$transaction(async (tx) => {
       this.cls.set(this.TRANSACTION_CLIENT_KEY, tx);
       try {

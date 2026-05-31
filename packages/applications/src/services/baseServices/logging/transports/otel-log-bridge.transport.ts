@@ -65,9 +65,7 @@ export class OTelLogBridgeTransport extends BaseTransport {
   }
 }
 
-export function createOTelLogBridgeTransport(
-  config: Omit<OTelLogBridgeTransportConfig, 'name'>,
-): OTelLogBridgeTransport {
+export function createOTelLogBridgeTransport(config: Omit<OTelLogBridgeTransportConfig, 'name'>): OTelLogBridgeTransport {
   return new OTelLogBridgeTransport({
     ...config,
     name: 'otel-bridge' as const,

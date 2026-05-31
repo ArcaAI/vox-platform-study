@@ -21,10 +21,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { CoreDatabaseService } from '../../common/databaseServices/core/core.database.service';
 import { ResourceStatusType } from '../../enums';
-import type {
-  RolePolicyCreateInputShape,
-  RolePolicyReEnableInputShape,
-} from './RolePolicyFactory';
+import type { RolePolicyCreateInputShape, RolePolicyReEnableInputShape } from './RolePolicyFactory';
 
 interface RolePolicyDelegateLike {
   findFirst: (args: unknown) => Promise<unknown>;
@@ -35,13 +32,10 @@ interface RolePolicyDelegateLike {
 
 @Injectable()
 export class RolePolicyRepository {
-  constructor(
-    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
-  ) {}
+  constructor(@Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService) {}
 
   private get delegate(): RolePolicyDelegateLike {
-    return (this.databaseService.client as unknown as { rolePolicy: RolePolicyDelegateLike })
-      .rolePolicy;
+    return (this.databaseService.client as unknown as { rolePolicy: RolePolicyDelegateLike }).rolePolicy;
   }
 
   async findFirstByRoleAndPolicy(roleId: string, policyId: string): Promise<unknown> {
@@ -56,11 +50,7 @@ export class RolePolicyRepository {
     return this.delegate.update({ where: { id }, data });
   }
 
-  async softDeleteByRoleAndPolicy(
-    roleId: string,
-    policyId: string,
-    updatedBy?: string,
-  ): Promise<unknown> {
+  async softDeleteByRoleAndPolicy(roleId: string, policyId: string, updatedBy?: string): Promise<unknown> {
     return this.delegate.updateMany({
       where: { roleId, policyId },
       data: {

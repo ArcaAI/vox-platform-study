@@ -99,18 +99,14 @@ export class VaultLeaseRenewer {
 
   /** Lease id, with the tail redacted (Gate 5 residency). */
   private redactedLeaseId(): string {
-    return this.leaseId.length <= 24
-      ? this.leaseId
-      : `${this.leaseId.slice(0, 24)}…`;
+    return this.leaseId.length <= 24 ? this.leaseId : `${this.leaseId.slice(0, 24)}…`;
   }
 
   /** Start the periodic renewal loop. Idempotent. */
   start(): void {
     if (this.running) return;
     this.running = true;
-    this.logger.log(
-      `VaultLeaseRenewer started (lease=${this.redactedLeaseId()}, ttl=${this.lastTtlSec}s)`,
-    );
+    this.logger.log(`VaultLeaseRenewer started (lease=${this.redactedLeaseId()}, ttl=${this.lastTtlSec}s)`);
     this.scheduleNext(this.lastTtlSec);
   }
 
@@ -152,16 +148,12 @@ export class VaultLeaseRenewer {
       this._failureCount = 0;
       this._degraded = false;
       if (wasDegraded) {
-        this.logger.log(
-          `VaultLeaseRenewer recovered (lease=${this.redactedLeaseId()}, ttl=${ttlSec}s)`,
-        );
+        this.logger.log(`VaultLeaseRenewer recovered (lease=${this.redactedLeaseId()}, ttl=${ttlSec}s)`);
       }
     } catch (err: unknown) {
       this._failureCount += 1;
       const msg = (err as Error).message;
-      this.logger.warn(
-        `VaultLeaseRenewer renewal failed (lease=${this.redactedLeaseId()}, attempt=${this._failureCount}): ${msg}`,
-      );
+      this.logger.warn(`VaultLeaseRenewer renewal failed (lease=${this.redactedLeaseId()}, attempt=${this._failureCount}): ${msg}`);
       if (this._failureCount >= this.failureThreshold && !this._degraded) {
         this._degraded = true;
         this.logger.error(
@@ -170,9 +162,7 @@ export class VaultLeaseRenewer {
         try {
           this.onDegraded?.(this._failureCount);
         } catch (cbErr) {
-          this.logger.error(
-            `VaultLeaseRenewer onDegraded callback threw: ${(cbErr as Error).message}`,
-          );
+          this.logger.error(`VaultLeaseRenewer onDegraded callback threw: ${(cbErr as Error).message}`);
         }
       }
     } finally {

@@ -27,23 +27,12 @@
 
 import { SUPER_ADMIN_ROLE } from '@arcaai/applications';
 import type { IActiveUserContext } from '@arcaai/applications';
-import {
-  setTenantContextProvider,
-  type TenantContextProvider,
-} from '@arcaai/database';
-import {
-  Injectable,
-  Logger,
-  Module,
-  OnApplicationBootstrap,
-  OnApplicationShutdown,
-} from '@nestjs/common';
+import { setTenantContextProvider, type TenantContextProvider } from '@arcaai/database';
+import { Injectable, Logger, Module, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
 import { ClsModule, ClsService } from 'nestjs-cls';
 
 @Injectable()
-export class ClsTenantContextProvider
-  implements TenantContextProvider, OnApplicationBootstrap, OnApplicationShutdown
-{
+export class ClsTenantContextProvider implements TenantContextProvider, OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(ClsTenantContextProvider.name);
 
   constructor(private readonly cls: ClsService<IActiveUserContext>) {}
@@ -67,9 +56,7 @@ export class ClsTenantContextProvider
 
   onApplicationBootstrap(): void {
     setTenantContextProvider(this);
-    this.logger.log(
-      'Tenant-scope Prisma extension wired: ClsService → setTenantContextProvider',
-    );
+    this.logger.log('Tenant-scope Prisma extension wired: ClsService → setTenantContextProvider');
   }
 
   onApplicationShutdown(): void {

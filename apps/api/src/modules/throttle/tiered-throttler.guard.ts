@@ -49,10 +49,7 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
 
     // The per-route `@Throttle` value for this tier (undefined = the route did
     // not decorate this tier). Doubles as the TASK-315 opt-in signal.
-    const decoratorLimit = this.reflector.getAllAndOverride<number>(THROTTLER_LIMIT + name, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const decoratorLimit = this.reflector.getAllAndOverride<number>(THROTTLER_LIMIT + name, [context.getHandler(), context.getClass()]);
 
     // TASK-315 — non-default tiers only gate routes that opted in.
     if (name !== 'default' && decoratorLimit === undefined) {
@@ -73,8 +70,7 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
 
     // (2) Per-endpoint override — only the always-on `default` tier is tunable
     // per endpoint; non-default tiers ride their decorator + tier baseline.
-    const routeId =
-      name === 'default' ? resolveRouteId(context.getClass().name, context.getHandler().name) : undefined;
+    const routeId = name === 'default' ? resolveRouteId(context.getClass().name, context.getHandler().name) : undefined;
     const override = routeId ? settings.getRouteOverride(routeId) : undefined;
 
     if (override?.enabled === false) {
@@ -83,10 +79,7 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
 
     // (3) Resolve effective limit/ttl by precedence.
     const tier = settings.getTier(name);
-    const decoratorTtl = this.reflector.getAllAndOverride<number>(THROTTLER_TTL + name, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const decoratorTtl = this.reflector.getAllAndOverride<number>(THROTTLER_TTL + name, [context.getHandler(), context.getClass()]);
 
     const limit = override?.limit ?? decoratorLimit ?? tier.limit;
     const ttl = override?.ttl ?? decoratorTtl ?? tier.ttl;

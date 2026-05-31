@@ -32,10 +32,7 @@ export class RequiresIfMatchGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const annotated = this.reflector.getAllAndOverride<boolean>(REQUIRES_IF_MATCH_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const annotated = this.reflector.getAllAndOverride<boolean>(REQUIRES_IF_MATCH_KEY, [context.getHandler(), context.getClass()]);
     if (annotated) {
       const req = context.switchToHttp().getRequest<{ _requiresIfMatch?: boolean }>();
       req._requiresIfMatch = true;

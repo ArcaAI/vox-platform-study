@@ -49,9 +49,7 @@ export class HealthCheckService implements IHealthCheckService, OnModuleInit {
     // backing secrets provider's state (sealed/unreachable -> 503).
     if (this.secretsHealthIndicator) {
       const secretsIndicator = this.secretsHealthIndicator;
-      this.registerHealthIndicator('secrets', () =>
-        secretsIndicator.isHealthy('secrets'),
-      );
+      this.registerHealthIndicator('secrets', () => secretsIndicator.isHealthy('secrets'));
     }
 
     this.logger.log({

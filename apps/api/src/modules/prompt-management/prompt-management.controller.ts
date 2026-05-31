@@ -93,10 +93,10 @@ export class PromptManagementController {
     summary: 'Update prompt template',
     description:
       'Updates one prompt template row. Optimistic concurrency is enforced ' +
-      "(TASK-302 Stream D Phase E.3): the `If-Match` header (RFC 7232) is " +
+      '(TASK-302 Stream D Phase E.3): the `If-Match` header (RFC 7232) is ' +
       "REQUIRED, and the server runs a Compare-And-Set against the row's " +
       '`_version` column (distinct from `currentVersionNumber`, the PromptVersion ' +
-      "history counter). When the header is present, its value overrides the " +
+      'history counter). When the header is present, its value overrides the ' +
       'body-field `expectedVersion`. On version drift the response is `412 ' +
       'Precondition Failed`; missing header is `428 Precondition Required`.',
   })
@@ -119,9 +119,7 @@ export class PromptManagementController {
     // when both are present. On a `@RequiresIfMatch()` route the param
     // decorator fired 428 if the header was missing.
     const effectiveRequest: UpdatePromptTemplateRequest =
-      expectedFromHeader !== undefined
-        ? { ...request, expectedVersion: expectedFromHeader }
-        : request;
+      expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
     return this.promptService.updatePromptTemplate(id, effectiveRequest);
   }
 

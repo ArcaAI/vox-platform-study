@@ -38,9 +38,7 @@ interface RoleDelegateLike {
 
 @Injectable()
 export class RbacRoleRepository {
-  constructor(
-    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
-  ) {}
+  constructor(@Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService) {}
 
   private get delegate(): RoleDelegateLike {
     return (this.databaseService.client as unknown as { role: RoleDelegateLike }).role;
@@ -61,18 +59,14 @@ export class RbacRoleRepository {
     });
   }
 
-  async findByIdGuardSelect(
-    id: string,
-  ): Promise<{ isSystemRole: boolean; name: string } | null> {
+  async findByIdGuardSelect(id: string): Promise<{ isSystemRole: boolean; name: string } | null> {
     return this.delegate.findUnique({
       where: { id },
       select: { isSystemRole: true, name: true },
     }) as Promise<{ isSystemRole: boolean; name: string } | null>;
   }
 
-  async findParentRoleById(
-    id: string,
-  ): Promise<{ id: string; parentRoleId: string | null } | null> {
+  async findParentRoleById(id: string): Promise<{ id: string; parentRoleId: string | null } | null> {
     return this.delegate.findUnique({
       where: { id },
       select: { id: true, parentRoleId: true },

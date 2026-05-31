@@ -619,12 +619,7 @@ export class TenantService extends BaseService implements ITenantService {
         // the callback, aborting the outer `$transaction` (C.4 atomicity).
         // The HTTP layer (Phase D ExceptionFilter) renders `412 Precondition
         // Failed` with `{ currentVersion, yourVersion }`.
-        const updatedConfig = await this.globalSettingRepository.updateWithVersion(
-          existingConfig.id,
-          existingConfig,
-          config.expectedVersion,
-          tx,
-        );
+        const updatedConfig = await this.globalSettingRepository.updateWithVersion(existingConfig.id, existingConfig, config.expectedVersion, tx);
 
         if (!updatedConfig) {
           throw new InternalServerErrorException(`Failed to update GlobalSettingEntity with id: ${config.id}`);

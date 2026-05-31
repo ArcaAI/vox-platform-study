@@ -80,14 +80,8 @@ export abstract class BaseTenantEntity extends BaseAggregate {
    * skip the override entirely) so the tenantId guard is not bypassed.
    */
   public override validate(): void {
-    if (
-      this._tenantId === null ||
-      this._tenantId === undefined ||
-      this._tenantId === ''
-    ) {
-      throw new BadRequestException(
-        `${this.constructor.name} is missing tenant context (tenantId is required).`,
-      );
+    if (this._tenantId === null || this._tenantId === undefined || this._tenantId === '') {
+      throw new BadRequestException(`${this.constructor.name} is missing tenant context (tenantId is required).`);
     }
   }
 }

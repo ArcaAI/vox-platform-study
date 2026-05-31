@@ -868,9 +868,7 @@ export class ContextService extends BaseService implements IContextService {
       consultation.patientId,
       consultation.appointmentDate,
     );
-    const sameDayIds = sameDayConsultations
-      .filter((c) => c.tenantId === callerTenantId)
-      .map((c) => c.id);
+    const sameDayIds = sameDayConsultations.filter((c) => c.tenantId === callerTenantId).map((c) => c.id);
 
     return [...new Set([...chainIds, ...sameDayIds])];
   }

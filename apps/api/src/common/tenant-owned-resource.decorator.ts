@@ -79,5 +79,4 @@ export interface TenantOwnedResourceOptions {
   scope?: 'tenant' | 'creator';
 }
 
-export const TenantOwnedResource = (opts: TenantOwnedResourceOptions): MethodDecorator =>
-  SetMetadata(TENANT_OWNED_RESOURCE_KEY, opts);
+export const TenantOwnedResource = (opts: TenantOwnedResourceOptions): MethodDecorator => SetMetadata(TENANT_OWNED_RESOURCE_KEY, opts);

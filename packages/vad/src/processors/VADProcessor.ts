@@ -648,8 +648,7 @@ export class VADProcessor extends BaseProcessor {
     }
 
     const changed =
-      this.options.positiveSpeechThreshold !== positiveSpeechThreshold ||
-      this.options.negativeSpeechThreshold !== negativeSpeechThreshold;
+      this.options.positiveSpeechThreshold !== positiveSpeechThreshold || this.options.negativeSpeechThreshold !== negativeSpeechThreshold;
 
     this.options.positiveSpeechThreshold = positiveSpeechThreshold;
     this.options.negativeSpeechThreshold = negativeSpeechThreshold;
@@ -661,10 +660,7 @@ export class VADProcessor extends BaseProcessor {
 
   private validateThreshold(name: string, value: number): void {
     if (!Number.isFinite(value) || value < 0 || value > 1) {
-      throw new VADError(
-        VADErrorCode.INVALID_CONFIG,
-        `${name} must be a finite number in [0, 1], got ${value}`,
-      );
+      throw new VADError(VADErrorCode.INVALID_CONFIG, `${name} must be a finite number in [0, 1], got ${value}`);
     }
   }
 

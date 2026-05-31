@@ -13,8 +13,7 @@
  */
 
 throw new Error(
-  '@arcaai/vad cannot be imported from a React Server Component. ' +
-    'Move usage to a Client Component (add "use client" at the top of the file).',
+  '@arcaai/vad cannot be imported from a React Server Component. ' + 'Move usage to a Client Component (add "use client" at the top of the file).',
 );
 
 export {};

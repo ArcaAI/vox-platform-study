@@ -41,9 +41,7 @@ interface PolicyDelegateLike {
 
 @Injectable()
 export class PolicyRepository {
-  constructor(
-    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
-  ) {}
+  constructor(@Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService) {}
 
   private get delegate(): PolicyDelegateLike {
     return (this.databaseService.client as unknown as { policy: PolicyDelegateLike }).policy;

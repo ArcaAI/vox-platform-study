@@ -16,10 +16,7 @@
 // keeps exactly one pod active.
 import { Inject, Injectable, Logger, Module, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import Redis from 'ioredis';
-import {
-  VaultRotationWorker,
-  type RotationPublisher,
-} from '@arcaai/applications';
+import { VaultRotationWorker, type RotationPublisher } from '@arcaai/applications';
 import { IConfigService } from '@arcaai/applications';
 
 /**
@@ -62,17 +59,13 @@ export class VaultRotationWorkerService implements OnApplicationBootstrap, OnMod
       return;
     }
     if (!this.publisher || !this.leaderRedis) {
-      this.logger.warn(
-        'Redis publisher / leader client not provided — rotation worker disabled',
-      );
+      this.logger.warn('Redis publisher / leader client not provided — rotation worker disabled');
       return;
     }
 
     const acquired = await this.tryAcquireLeaderLock();
     if (!acquired) {
-      this.logger.log(
-        `another pod holds ${LEADER_LOCK_KEY}; this pod will not run the rotation worker`,
-      );
+      this.logger.log(`another pod holds ${LEADER_LOCK_KEY}; this pod will not run the rotation worker`);
       // Periodically re-attempt — if the leader pod dies, the lease
       // expires and one of the followers takes over.
       this.refreshTimer = setInterval(() => {
@@ -108,13 +101,7 @@ export class VaultRotationWorkerService implements OnApplicationBootstrap, OnMod
   private async tryAcquireLeaderLock(): Promise<boolean> {
     if (!this.leaderRedis) return false;
     try {
-      const res = await this.leaderRedis.set(
-        LEADER_LOCK_KEY,
-        this.podId,
-        'EX',
-        LEADER_LOCK_TTL_SEC,
-        'NX',
-      );
+      const res = await this.leaderRedis.set(LEADER_LOCK_KEY, this.podId, 'EX', LEADER_LOCK_TTL_SEC, 'NX');
       const acquired = res === 'OK';
       this.isLeader = acquired;
       if (acquired) {
@@ -144,9 +131,7 @@ export class VaultRotationWorkerService implements OnApplicationBootstrap, OnMod
       // hiccup.
       const current = await this.leaderRedis.get(LEADER_LOCK_KEY);
       if (current !== this.podId) {
-        this.logger.warn(
-          'lost rotation-worker leader lock (taken over by another pod); stopping worker',
-        );
+        this.logger.warn('lost rotation-worker leader lock (taken over by another pod); stopping worker');
         this.isLeader = false;
         this.abortController?.abort();
         return;
@@ -176,9 +161,7 @@ export class VaultRotationWorkerService implements OnApplicationBootstrap, OnMod
     });
     this.abortController = new AbortController();
     this.logger.log(`starting rotation worker on ${auditPath} (kvPrefix=${process.env.VAULT_KV_PREFIX ?? 'hope'})`);
-    void this.worker
-      .run(auditPath, this.abortController.signal)
-      .catch((e) => this.logger.error(`rotation worker crashed: ${(e as Error).message}`));
+    void this.worker.run(auditPath, this.abortController.signal).catch((e) => this.logger.error(`rotation worker crashed: ${(e as Error).message}`));
   }
 }
 

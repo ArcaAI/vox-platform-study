@@ -9,9 +9,7 @@ import { ISecretsProvider, SecretsHealth } from '../ISecretsProvider';
 @Injectable()
 export class AzureKeyVaultProvider implements ISecretsProvider {
   private fail(): never {
-    throw new NotImplementedException(
-      'AzureKeyVaultProvider is a future-option stub. Set SECRETS_PROVIDER=vault or =env.',
-    );
+    throw new NotImplementedException('AzureKeyVaultProvider is a future-option stub. Set SECRETS_PROVIDER=vault or =env.');
   }
   async getSecret(): Promise<string> {
     this.fail();

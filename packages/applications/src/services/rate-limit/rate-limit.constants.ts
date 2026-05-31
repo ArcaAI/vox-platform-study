@@ -67,8 +67,24 @@ export interface KnownThrottledRoute {
 }
 
 export const KNOWN_THROTTLED_ROUTES: readonly KnownThrottledRoute[] = [
-  { routeId: 'auth.login', controller: 'AuthController', handler: 'login', tier: 'default', limit: 5, ttl: 60000, description: 'Login (credential-stuffing bound)' },
-  { routeId: 'auth.impersonate', controller: 'AuthController', handler: 'impersonate', tier: 'default', limit: 10, ttl: 60000, description: 'Admin impersonation' },
+  {
+    routeId: 'auth.login',
+    controller: 'AuthController',
+    handler: 'login',
+    tier: 'default',
+    limit: 5,
+    ttl: 60000,
+    description: 'Login (credential-stuffing bound)',
+  },
+  {
+    routeId: 'auth.impersonate',
+    controller: 'AuthController',
+    handler: 'impersonate',
+    tier: 'default',
+    limit: 10,
+    ttl: 60000,
+    description: 'Admin impersonation',
+  },
   { routeId: 'auth.refresh', controller: 'AuthController', handler: 'refresh', tier: 'default', limit: 60, ttl: 60000, description: 'Token refresh' },
   { routeId: 'health', controller: 'ApiHealthController', tier: 'default', limit: 30, ttl: 60000, description: 'Health probes' },
   { routeId: 'monitoring', controller: 'MonitoringController', tier: 'default', limit: 300, ttl: 60000, description: 'Monitoring endpoints' },
@@ -89,11 +105,9 @@ export const rateLimitRouteEnabledKey = (routeId: string): string => `${RATE_LIM
 // Lookups
 // ---------------------------------------------------------------------------
 
-export const isKnownTier = (name: string): name is RateLimitTierName =>
-  (RATE_LIMIT_TIERS as readonly string[]).includes(name);
+export const isKnownTier = (name: string): name is RateLimitTierName => (RATE_LIMIT_TIERS as readonly string[]).includes(name);
 
-export const findKnownRoute = (routeId: string): KnownThrottledRoute | undefined =>
-  KNOWN_THROTTLED_ROUTES.find((r) => r.routeId === routeId);
+export const findKnownRoute = (routeId: string): KnownThrottledRoute | undefined => KNOWN_THROTTLED_ROUTES.find((r) => r.routeId === routeId);
 
 /**
  * Resolve a live request (controller class + handler name) to a known

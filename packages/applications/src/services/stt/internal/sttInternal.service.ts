@@ -1,15 +1,15 @@
 import {
-    AudioRecordingFactory,
-    AudioRecordingRepository,
-    ContextItemFactory,
-    ContextItemRepository,
-    ContextItemSource,
-    ContextItemType,
-    MediaFactory,
-    MediaRepository,
-    ResourceType,
-    SysEventType,
-    TranscriptionJobRepository,
+  AudioRecordingFactory,
+  AudioRecordingRepository,
+  ContextItemFactory,
+  ContextItemRepository,
+  ContextItemSource,
+  ContextItemType,
+  MediaFactory,
+  MediaRepository,
+  ResourceType,
+  SysEventType,
+  TranscriptionJobRepository,
 } from '@arcaai/domains';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -21,13 +21,13 @@ import { TranscriptionJobResponse } from '../job/dto';
 import { TranscriptionJobDtoMapper } from '../job/transcriptionJob.dto.mapper';
 import { ISttInternalService } from './ISttInternalService';
 import {
-    AudioRecordResponse,
-    CreateAudioRecordRequest,
-    CreateTranscriptRequest,
-    InternalCompleteJobRequest,
-    InternalFailJobRequest,
-    InternalStartJobRequest,
-    InternalUpdateProgressRequest,
+  AudioRecordResponse,
+  CreateAudioRecordRequest,
+  CreateTranscriptRequest,
+  InternalCompleteJobRequest,
+  InternalFailJobRequest,
+  InternalStartJobRequest,
+  InternalUpdateProgressRequest,
 } from './dto';
 
 @Injectable()

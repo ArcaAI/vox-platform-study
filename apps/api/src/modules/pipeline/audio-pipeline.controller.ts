@@ -85,9 +85,9 @@ export class AudioPipelineController {
     summary: 'Update an ASR pipeline',
     description:
       'Updates one AsrPipeline row. Optimistic concurrency is enforced ' +
-      "(TASK-302 Stream D Phase E.4): the `If-Match` header (RFC 7232) is " +
+      '(TASK-302 Stream D Phase E.4): the `If-Match` header (RFC 7232) is ' +
       "REQUIRED, and the server runs a Compare-And-Set against the row's " +
-      "`_version` column. When the header is present, its value overrides the " +
+      '`_version` column. When the header is present, its value overrides the ' +
       'body-field `expectedVersion`. On version drift the response is `412 ' +
       'Precondition Failed`; missing header is `428 Precondition Required`.',
   })
@@ -110,10 +110,7 @@ export class AudioPipelineController {
     // TASK-302 Stream D Phase E.4 — header takes precedence over body
     // when both are present. On a `@RequiresIfMatch()` route the param
     // decorator fired 428 if the header was missing.
-    const effectiveRequest: UpdatePipelineRequest =
-      expectedFromHeader !== undefined
-        ? { ...request, expectedVersion: expectedFromHeader }
-        : request;
+    const effectiveRequest: UpdatePipelineRequest = expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
     return this.pipelineService.update(id, effectiveRequest);
   }
 

@@ -109,11 +109,7 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
     return TenantStorageConfigDtoMapper.toResponse(deleted);
   }
 
-  private async createNew(
-    tenantId: string,
-    bucketId: string | null,
-    dto: UpsertTenantStorageConfigRequest,
-  ): Promise<TenantStorageConfigEntity> {
+  private async createNew(tenantId: string, bucketId: string | null, dto: UpsertTenantStorageConfigRequest): Promise<TenantStorageConfigEntity> {
     const entity = TenantStorageConfigFactory.CreateConfig({
       tenantId,
       bucketId,
@@ -133,10 +129,7 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
     return this.configRepository.create(entity);
   }
 
-  private async applyUpdate(
-    entity: TenantStorageConfigEntity,
-    dto: UpsertTenantStorageConfigRequest,
-  ): Promise<TenantStorageConfigEntity> {
+  private async applyUpdate(entity: TenantStorageConfigEntity, dto: UpsertTenantStorageConfigRequest): Promise<TenantStorageConfigEntity> {
     entity.provider = dto.provider;
     if (dto.topology !== undefined) entity.topology = dto.topology;
     if (dto.endpoint !== undefined) entity.endpoint = dto.endpoint;

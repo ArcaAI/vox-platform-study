@@ -34,30 +34,15 @@
  * Any future `TenantOwnedResourceModelName` addition MUST extend
  * `resolveResource` here AND the union in `tenant-owned-resource.decorator.ts`.
  */
-import {
-  CallHandler,
-  ExecutionContext,
-  Inject,
-  Injectable,
-  NestInterceptor,
-  NotFoundException,
-} from '@nestjs/common';
+import { CallHandler, ExecutionContext, Inject, Injectable, NestInterceptor, NotFoundException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
 import { DataNotFoundException } from '@arcaai/exceptions';
 import { IConsultationJobService, type IActiveUserContext } from '@arcaai/applications';
-import {
-  TenantBucketRepository,
-  TenantStorageConfigRepository,
-  TranscriptionJobRepository,
-  UserVoiceProfileRepository,
-} from '@arcaai/domains';
+import { TenantBucketRepository, TenantStorageConfigRepository, TranscriptionJobRepository, UserVoiceProfileRepository } from '@arcaai/domains';
 import { StreamSessionTenantBindingService } from './stream-session-tenant-binding.service';
-import {
-  TENANT_OWNED_RESOURCE_KEY,
-  type TenantOwnedResourceOptions,
-} from './tenant-owned-resource.decorator';
+import { TENANT_OWNED_RESOURCE_KEY, type TenantOwnedResourceOptions } from './tenant-owned-resource.decorator';
 
 /** Generic 404 used everywhere (DEF-C3 no-existence-leak). */
 const RESOURCE_NOT_FOUND = 'Resource not found';
@@ -97,10 +82,10 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
    * the assertion there closes the stream with a 404 before it opens.
    */
   async assertAccess(context: ExecutionContext): Promise<void> {
-    const opts = this.reflector.getAllAndOverride<TenantOwnedResourceOptions | undefined>(
-      TENANT_OWNED_RESOURCE_KEY,
-      [context.getHandler(), context.getClass()],
-    );
+    const opts = this.reflector.getAllAndOverride<TenantOwnedResourceOptions | undefined>(TENANT_OWNED_RESOURCE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
 
     if (!opts) {
       // Handler not annotated — pass-through. Avoids any CLS/repo cost for
@@ -122,26 +107,16 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     await this.assertOwnership(opts, paramValue, callerTenantId);
   }
 
-  private async assertOwnership(
-    opts: TenantOwnedResourceOptions,
-    paramValue: string,
-    callerTenantId: string,
-  ): Promise<void> {
+  private async assertOwnership(opts: TenantOwnedResourceOptions, paramValue: string, callerTenantId: string): Promise<void> {
     switch (opts.modelName) {
       case 'TenantBucket':
         await this.assertTenantBucket(opts, paramValue, callerTenantId);
         return;
       case 'TenantStorageConfig':
-        await this.assertTenantScoped(
-          () => this.tenantStorageConfigRepository.findById(paramValue),
-          callerTenantId,
-        );
+        await this.assertTenantScoped(() => this.tenantStorageConfigRepository.findById(paramValue), callerTenantId);
         return;
       case 'TranscriptionJob':
-        await this.assertTenantScoped(
-          () => this.transcriptionJobRepository.findById(paramValue),
-          callerTenantId,
-        );
+        await this.assertTenantScoped(() => this.transcriptionJobRepository.findById(paramValue), callerTenantId);
         return;
       case 'ConsultationJob':
         await this.assertConsultationJob(opts, paramValue, callerTenantId);
@@ -171,22 +146,14 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     }
   }
 
-  private async assertTenantBucket(
-    opts: TenantOwnedResourceOptions,
-    paramValue: string,
-    callerTenantId: string,
-  ): Promise<void> {
+  private async assertTenantBucket(opts: TenantOwnedResourceOptions, paramValue: string, callerTenantId: string): Promise<void> {
     const lookup = opts.lookup ?? 'id';
-    const finder = lookup === 'name'
-      ? () => this.tenantBucketRepository.findByName(paramValue)
-      : () => this.tenantBucketRepository.findById(paramValue);
+    const finder =
+      lookup === 'name' ? () => this.tenantBucketRepository.findByName(paramValue) : () => this.tenantBucketRepository.findById(paramValue);
     await this.assertTenantScoped(finder, callerTenantId);
   }
 
-  private async assertTenantScoped(
-    finder: () => Promise<{ tenantId?: string | null } | null | undefined>,
-    callerTenantId: string,
-  ): Promise<void> {
+  private async assertTenantScoped(finder: () => Promise<{ tenantId?: string | null } | null | undefined>, callerTenantId: string): Promise<void> {
     const entity = await this.safeResolve(finder);
     if (entity === null || entity === undefined) {
       throw new NotFoundException(RESOURCE_NOT_FOUND);
@@ -196,16 +163,10 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     }
   }
 
-  private async assertConsultationJob(
-    opts: TenantOwnedResourceOptions,
-    jobId: string,
-    callerTenantId: string,
-  ): Promise<void> {
+  private async assertConsultationJob(opts: TenantOwnedResourceOptions, jobId: string, callerTenantId: string): Promise<void> {
     let status: { tenantId?: string | null; userId?: string | null } | null;
     try {
-      status = (await this.consultationJobService.getJobStatus(jobId)) as
-        | { tenantId?: string | null; userId?: string | null }
-        | null;
+      status = (await this.consultationJobService.getJobStatus(jobId)) as { tenantId?: string | null; userId?: string | null } | null;
     } catch (err) {
       if (err instanceof DataNotFoundException) {
         throw new NotFoundException(RESOURCE_NOT_FOUND);

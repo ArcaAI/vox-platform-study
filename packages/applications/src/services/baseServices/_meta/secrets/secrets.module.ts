@@ -3,11 +3,7 @@ import { TerminusModule } from '@nestjs/terminus';
 import { readFileSync } from 'node:fs';
 import { SecretsService, SECRETS_SERVICE_OPTIONS } from './SecretsService';
 import { SecretsHealthIndicator } from './secrets.health';
-import {
-  ISecretsProvider,
-  SECRETS_PROVIDER_TOKEN,
-  SecretsProviderName,
-} from './ISecretsProvider';
+import { ISecretsProvider, SECRETS_PROVIDER_TOKEN, SecretsProviderName } from './ISecretsProvider';
 import { EnvSecretsProvider } from './providers/env-secrets.provider';
 import { VaultSecretsProvider } from './providers/vault-secrets.provider';
 import { AwsSecretsManagerProvider } from './providers/aws-secrets-manager.provider';
@@ -47,13 +43,7 @@ export interface SecretsModuleOptions {
   warmupKeys?: string[];
 }
 
-const VALID_NAMES: ReadonlyArray<SecretsProviderName> = [
-  'env',
-  'vault',
-  'aws',
-  'azure',
-  'in-memory',
-];
+const VALID_NAMES: ReadonlyArray<SecretsProviderName> = ['env', 'vault', 'aws', 'azure', 'in-memory'];
 
 function pickProviderName(logger: Logger): SecretsProviderName {
   const raw = (process.env.SECRETS_PROVIDER ?? '').toLowerCase().trim();
@@ -61,18 +51,14 @@ function pickProviderName(logger: Logger): SecretsProviderName {
   if ((VALID_NAMES as readonly string[]).includes(raw)) {
     return raw as SecretsProviderName;
   }
-  logger.warn(
-    `SECRETS_PROVIDER='${raw}' is not recognised. Falling back to 'env'. Valid: ${VALID_NAMES.join(', ')}`,
-  );
+  logger.warn(`SECRETS_PROVIDER='${raw}' is not recognised. Falling back to 'env'. Valid: ${VALID_NAMES.join(', ')}`);
   return 'env';
 }
 
 function requireEnv(envKey: string): string {
   const v = process.env[envKey];
   if (!v) {
-    throw new Error(
-      `SecretsModule: ${envKey} is required when SECRETS_PROVIDER=vault`,
-    );
+    throw new Error(`SecretsModule: ${envKey} is required when SECRETS_PROVIDER=vault`);
   }
   return v;
 }
@@ -92,9 +78,7 @@ function readEnvOrFile(envKey: string): string | undefined {
     try {
       return readFileSync(filePath, 'utf8').trim();
     } catch (err) {
-      throw new Error(
-        `SecretsModule: ${envKey}_FILE=${filePath} could not be read: ${(err as Error).message}`,
-      );
+      throw new Error(`SecretsModule: ${envKey}_FILE=${filePath} could not be read: ${(err as Error).message}`);
     }
   }
   return undefined;
@@ -103,9 +87,7 @@ function readEnvOrFile(envKey: string): string | undefined {
 function requireEnvOrFile(envKey: string): string {
   const v = readEnvOrFile(envKey);
   if (!v) {
-    throw new Error(
-      `SecretsModule: ${envKey} (or ${envKey}_FILE) is required when SECRETS_PROVIDER=vault`,
-    );
+    throw new Error(`SecretsModule: ${envKey} (or ${envKey}_FILE) is required when SECRETS_PROVIDER=vault`);
   }
   return v;
 }
@@ -178,10 +160,7 @@ export class SecretsModule {
         },
         {
           provide: SecretsService,
-          useFactory: async (
-            provider: ISecretsProvider,
-            svcOptions: { defaultTtlSec?: number; lruMax?: number },
-          ): Promise<SecretsService> => {
+          useFactory: async (provider: ISecretsProvider, svcOptions: { defaultTtlSec?: number; lruMax?: number }): Promise<SecretsService> => {
             const svc = new SecretsService(provider, svcOptions);
             // Boot only when the caller actually asked for warmup. For
             // Vault provider in production, the warmup list also drives
@@ -197,12 +176,7 @@ export class SecretsModule {
         },
         SecretsHealthIndicator,
       ],
-      exports: [
-        SECRETS_PROVIDER_INSTANCE,
-        SECRETS_PROVIDER_TOKEN,
-        SecretsService,
-        SecretsHealthIndicator,
-      ],
+      exports: [SECRETS_PROVIDER_INSTANCE, SECRETS_PROVIDER_TOKEN, SecretsService, SecretsHealthIndicator],
     };
   }
 }

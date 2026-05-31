@@ -1,9 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  HealthCheckError,
-  HealthIndicator,
-  HealthIndicatorResult,
-} from '@nestjs/terminus';
+import { HealthCheckError, HealthIndicator, HealthIndicatorResult } from '@nestjs/terminus';
 import { SecretsService } from './SecretsService';
 
 /**
@@ -43,10 +39,7 @@ export class SecretsHealthIndicator extends HealthIndicator {
     }
     const result = this.getStatus(key, h.ok, detail);
     if (!h.ok) {
-      throw new HealthCheckError(
-        `Secrets provider unhealthy: ${h.detail ?? h.provider}`,
-        result,
-      );
+      throw new HealthCheckError(`Secrets provider unhealthy: ${h.detail ?? h.provider}`, result);
     }
     return result;
   }

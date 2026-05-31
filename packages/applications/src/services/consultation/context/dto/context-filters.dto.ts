@@ -3,8 +3,15 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 
 const VALID_CONTEXT_TYPES = [
-  'TRANSCRIPT', 'CASE_NOTE', 'RAW_SUMMARY', 'MODIFIED_SUMMARY',
-  'PRE_SUMMARY', 'NAMED_ENTITY', 'AUDIO_RECORDING', 'WORKNOTE', 'ATTACHMENT',
+  'TRANSCRIPT',
+  'CASE_NOTE',
+  'RAW_SUMMARY',
+  'MODIFIED_SUMMARY',
+  'PRE_SUMMARY',
+  'NAMED_ENTITY',
+  'AUDIO_RECORDING',
+  'WORKNOTE',
+  'ATTACHMENT',
 ] as const;
 
 export class ContextFiltersDto {

@@ -27,11 +27,7 @@ export type LastRotatedMap = Record<string, number | undefined>;
  *
  * Missing entries in `lastRotated` count as "rotate immediately".
  */
-export function policyDueKeys(
-  nowMs: number,
-  policies: RotationPolicy[],
-  lastRotated: LastRotatedMap,
-): string[] {
+export function policyDueKeys(nowMs: number, policies: RotationPolicy[], lastRotated: LastRotatedMap): string[] {
   const due: string[] = [];
   for (const policy of policies) {
     const last = lastRotated[policy.key];

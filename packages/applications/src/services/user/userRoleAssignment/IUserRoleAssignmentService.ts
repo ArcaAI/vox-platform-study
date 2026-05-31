@@ -47,10 +47,7 @@ export interface IUserRoleAssignmentService extends IBaseService {
    * assignment in the tenant key they're authenticating into. Returns the
    * matching assignment, or null when the user has no access to the tenant.
    */
-  findActiveAssignmentForUserInTenant(
-    userId: string,
-    tenantId: string,
-  ): Promise<ActiveUserRoleAssignmentRow | null>;
+  findActiveAssignmentForUserInTenant(userId: string, tenantId: string): Promise<ActiveUserRoleAssignmentRow | null>;
 
   /**
    * TASK-307 W6.1 — replaces the direct Prisma `findMany` previously used in

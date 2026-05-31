@@ -30,12 +30,6 @@ import { ISchedulerAdminService } from './ISchedulerAdminService';
       useClass: SchedulerAdminService,
     },
   ],
-  exports: [
-    IQueueAdminService,
-    IJobAdminService,
-    ISchedulerAdminService,
-    QueueEventsService,
-    JobDataRedactorService,
-  ],
+  exports: [IQueueAdminService, IJobAdminService, ISchedulerAdminService, QueueEventsService, JobDataRedactorService],
 })
 export class QueueAdminServiceModule {}
