@@ -163,9 +163,13 @@ export class TranscriptionJobRepository extends Repository<TranscriptionJobEntit
   }
 
   /**
-   * Count jobs by status for a tenant
+   * Count jobs by status for a tenant.
+   *
+   * TASK-319 F3 — optional `ownerId` narrows the counts to a single creator
+   * (`createdBy`) so the end-user surface reports only the caller's jobs while
+   * the admin surface (no `ownerId`) keeps the tenant-wide totals.
    */
-  async countByStatus(tenantId: string): Promise<Record<TranscriptionJobStatus, number>> {
+  async countByStatus(tenantId: string, ownerId?: string): Promise<Record<TranscriptionJobStatus, number>> {
     const counts: Record<TranscriptionJobStatus, number> = {
       [TranscriptionJobStatus.QUEUED]: 0,
       [TranscriptionJobStatus.PROCESSING]: 0,
@@ -175,9 +179,14 @@ export class TranscriptionJobRepository extends Repository<TranscriptionJobEntit
       [TranscriptionJobStatus.DEAD]: 0,
     };
 
+    const where: Record<string, unknown> = { tenantId };
+    if (ownerId) {
+      where.createdBy = ownerId;
+    }
+
     const results = await (this as any).db.groupBy({
       by: ['status'],
-      where: { tenantId },
+      where,
       _count: { status: true },
     });
 

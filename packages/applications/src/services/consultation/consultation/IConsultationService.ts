@@ -66,6 +66,19 @@ export abstract class IConsultationService {
   }): Promise<PaginatedConsultationResponse>;
 
   /**
+   * TASK-319 F1 — tenant-wide (admin) listing.
+   * Lists EVERY consultation in the caller's tenant with no owner/shared-patient
+   * scoping. Intended for the admin surface gated by `@CanManage('Consultation')`.
+   */
+  abstract listConsultationsForTenant(params: {
+    page: number;
+    pageSize: number;
+    patientId?: string;
+    doctorId?: string;
+    departmentId?: string;
+  }): Promise<PaginatedConsultationResponse>;
+
+  /**
    * Check whether a doctor has any consultation with a given patient
    * within the same tenant. Used for patient-scoped access control:
    * doctors who share a patient can see each other's consultations.

@@ -684,4 +684,68 @@ describe('TranscriptionJobService', () => {
             expect(mockJobRepository.findByConsultation).not.toHaveBeenCalled();
         });
     });
+
+    // ------------------------------------------------------------------------
+    // TASK-319 F3 — owner-scoped listings for the end-user surface.
+    //
+    // The tenant-wide `list` / `getByStatus` / `getStatusCounts` remain for the
+    // admin surface (/admin/audio/transcription-jobs). The end-user controller
+    // calls these *ForOwner variants so a caller only ever sees the jobs THEY
+    // created (`createdBy`), instead of every job in the tenant.
+    // ------------------------------------------------------------------------
+    describe('TASK-319 F3 — owner-scoped listings (end-user)', () => {
+        it('listForOwner filters by createdBy AND tenantId', async () => {
+            mockJobRepository.findAll.mockResolvedValue([createBehavioralJobEntity({ id: 'j1', createdBy: 'owner-1' })]);
+            mockJobRepository.count.mockResolvedValue(1);
+
+            const result = await service.listForOwner('owner-1', 1, 20);
+
+            expect(result.total).toBe(1);
+            expect(result.data).toHaveLength(1);
+            expect(mockJobRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    filters: expect.objectContaining({ tenantId: 'tenant-1', createdBy: 'owner-1' }),
+                    page: 1,
+                    limit: 20,
+                }),
+            );
+            expect(mockJobRepository.count).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: expect.objectContaining({ tenantId: 'tenant-1', createdBy: 'owner-1' }) }),
+            );
+        });
+
+        it('getByStatusForOwner filters by createdBy + status + tenantId', async () => {
+            mockJobRepository.findAll.mockResolvedValue([]);
+
+            await service.getByStatusForOwner('owner-1', TranscriptionJobStatus.COMPLETED as any);
+
+            expect(mockJobRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    filters: expect.objectContaining({ tenantId: 'tenant-1', createdBy: 'owner-1', status: 'COMPLETED' }),
+                }),
+            );
+        });
+
+        it('getStatusCountsForOwner passes the ownerId to countByStatus', async () => {
+            mockJobRepository.countByStatus.mockResolvedValue({
+                QUEUED: 1,
+                PROCESSING: 0,
+                COMPLETED: 2,
+                FAILED: 0,
+                CANCELLED: 0,
+                DEAD: 0,
+            });
+
+            const counts = await service.getStatusCountsForOwner('owner-1');
+
+            expect(mockJobRepository.countByStatus).toHaveBeenCalledWith('tenant-1', 'owner-1');
+            expect(counts.completed).toBe(2);
+            expect(counts.queued).toBe(1);
+        });
+
+        it('listForOwner throws BadRequestException when tenantId is missing', async () => {
+            mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? null : null));
+            await expect(service.listForOwner('owner-1', 1, 20)).rejects.toThrow(BadRequestException);
+        });
+    });
 });

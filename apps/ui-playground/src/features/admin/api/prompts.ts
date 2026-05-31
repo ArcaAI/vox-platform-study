@@ -141,7 +141,7 @@ export function usePromptTemplates(
 ) {
   return useQuery({
     queryKey: keys.list(tenantId, params),
-    queryFn: () => adminClient.get<PaginatedResponse<PromptTemplate>>(`/prompt-templates${qs(params)}`, { tenantId }),
+    queryFn: () => adminClient.get<PaginatedResponse<PromptTemplate>>(`/admin/prompt-templates${qs(params)}`, { tenantId }),
     enabled: !!tenantId,
     staleTime: PROMPT_TEMPLATES_STALE_TIME_MS,
     gcTime: PROMPT_TEMPLATES_GC_TIME_MS,
@@ -159,7 +159,7 @@ export function usePromptTemplatesInfinite(
   return useInfiniteQuery({
     queryKey: [...keys.lists(tenantId), 'infinite', params, pageSize] as const,
     queryFn: ({ pageParam }) =>
-      adminClient.get<PaginatedResponse<PromptTemplate>>(`/prompt-templates${qs({ ...params, page: pageParam, limit: pageSize })}`, { tenantId }),
+      adminClient.get<PaginatedResponse<PromptTemplate>>(`/admin/prompt-templates${qs({ ...params, page: pageParam, limit: pageSize })}`, { tenantId }),
     initialPageParam: 1,
     getNextPageParam: (lastPage, _allPages, lastPageParam) => {
       const fetched = lastPageParam * pageSize;
@@ -174,7 +174,7 @@ export function usePromptTemplatesInfinite(
 export function usePromptTemplate(tenantId: string, id: string, options?: Omit<UseQueryOptions<PromptTemplate>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.detail(tenantId, id),
-    queryFn: () => adminClient.get<PromptTemplate>(`/prompt-templates/${id}`, { tenantId }),
+    queryFn: () => adminClient.get<PromptTemplate>(`/admin/prompt-templates/${id}`, { tenantId }),
     enabled: !!id && !!tenantId,
     staleTime: PROMPT_TEMPLATES_STALE_TIME_MS,
     gcTime: PROMPT_TEMPLATES_GC_TIME_MS,
@@ -185,7 +185,7 @@ export function usePromptTemplate(tenantId: string, id: string, options?: Omit<U
 export function usePromptVersions(tenantId: string, templateId: string, options?: Omit<UseQueryOptions<PromptVersion[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.versions(tenantId, templateId),
-    queryFn: () => adminClient.get<PromptVersion[]>(`/prompt-templates/${templateId}/versions`, { tenantId }),
+    queryFn: () => adminClient.get<PromptVersion[]>(`/admin/prompt-templates/${templateId}/versions`, { tenantId }),
     enabled: !!templateId && !!tenantId,
     staleTime: PROMPT_TEMPLATES_STALE_TIME_MS,
     gcTime: PROMPT_TEMPLATES_GC_TIME_MS,
@@ -196,7 +196,7 @@ export function usePromptVersions(tenantId: string, templateId: string, options?
 export function usePromptUsageStats(tenantId: string, templateId: string, options?: Omit<UseQueryOptions<PromptUsageStats>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.usage(tenantId, templateId),
-    queryFn: () => adminClient.get<PromptUsageStats>(`/prompt-templates/${templateId}/usage`, { tenantId }),
+    queryFn: () => adminClient.get<PromptUsageStats>(`/admin/prompt-templates/${templateId}/usage`, { tenantId }),
     enabled: !!templateId && !!tenantId,
     staleTime: PROMPT_USAGE_STALE_TIME_MS,
     gcTime: PROMPT_TEMPLATES_GC_TIME_MS,
@@ -211,7 +211,7 @@ export function usePromptUsageStats(tenantId: string, templateId: string, option
 export function useCreatePrompt(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreatePromptInput) => adminClient.post<PromptTemplate>('/prompt-templates', input, { tenantId }),
+    mutationFn: (input: CreatePromptInput) => adminClient.post<PromptTemplate>('/admin/prompt-templates', input, { tenantId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all(tenantId) });
     },
@@ -228,7 +228,7 @@ export function useUpdatePrompt(tenantId: string) {
     // `expectedVersion` as the body fallback before the header guard
     // lands in CI).
     mutationFn: ({ id, ifMatch, ...input }: UpdatePromptInput & { id: string; ifMatch?: string }) =>
-      adminClient.patch<PromptTemplate>(`/prompt-templates/${id}`, input, ifMatch ? { tenantId, ifMatch } : { tenantId }),
+      adminClient.patch<PromptTemplate>(`/admin/prompt-templates/${id}`, input, ifMatch ? { tenantId, ifMatch } : { tenantId }),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all(tenantId) });
       qc.invalidateQueries({ queryKey: keys.detail(tenantId, variables.id) });
@@ -240,7 +240,7 @@ export function useUpdatePrompt(tenantId: string) {
 export function useDeletePrompt(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => adminClient.delete<void>(`/prompt-templates/${id}`, { tenantId }),
+    mutationFn: (id: string) => adminClient.delete<void>(`/admin/prompt-templates/${id}`, { tenantId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all(tenantId) });
     },
@@ -266,7 +266,7 @@ export function useTogglePromptStatus(tenantId: string) {
       ifMatch?: string;
     }) =>
       adminClient.patch<PromptTemplate>(
-        `/prompt-templates/${id}`,
+        `/admin/prompt-templates/${id}`,
         { resourceStatus, expectedVersion },
         ifMatch ? { tenantId, ifMatch } : { tenantId },
       ),
@@ -280,7 +280,7 @@ export function useTogglePromptStatus(tenantId: string) {
 export function useAssignDepartmentPrompt(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: AssignDepartmentPromptInput) => adminClient.post<void>('/prompt-templates/assign-department', input, { tenantId }),
+    mutationFn: (input: AssignDepartmentPromptInput) => adminClient.post<void>('/admin/prompt-templates/assign-department', input, { tenantId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all(tenantId) });
     },
@@ -291,7 +291,7 @@ export function useActivatePromptVersion(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ templateId, versionNumber }: { templateId: string; versionNumber: number }) =>
-      adminClient.post<PromptTemplate>(`/prompt-templates/${templateId}/versions/${versionNumber}/activate`, undefined, { tenantId }),
+      adminClient.post<PromptTemplate>(`/admin/prompt-templates/${templateId}/versions/${versionNumber}/activate`, undefined, { tenantId }),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all(tenantId) });
       qc.invalidateQueries({

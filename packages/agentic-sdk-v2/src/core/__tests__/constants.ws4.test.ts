@@ -68,40 +68,40 @@ describe('WS-4 endpoint constants', () => {
 
   describe('PROMPT_TEMPLATE_ENDPOINTS', () => {
     it('should have CREATE endpoint', () => {
-      expect(PROMPT_TEMPLATE_ENDPOINTS.CREATE).toBe('/prompt-templates');
+      expect(PROMPT_TEMPLATE_ENDPOINTS.CREATE).toBe('/admin/prompt-templates');
     });
 
     it('should have LIST endpoint', () => {
-      expect(PROMPT_TEMPLATE_ENDPOINTS.LIST).toBe('/prompt-templates');
+      expect(PROMPT_TEMPLATE_ENDPOINTS.LIST).toBe('/admin/prompt-templates');
     });
 
     it('should generate GET endpoint', () => {
-      expect(PROMPT_TEMPLATE_ENDPOINTS.GET('pt-1')).toBe('/prompt-templates/pt-1');
+      expect(PROMPT_TEMPLATE_ENDPOINTS.GET('pt-1')).toBe('/admin/prompt-templates/pt-1');
     });
 
     it('should generate UPDATE endpoint', () => {
-      expect(PROMPT_TEMPLATE_ENDPOINTS.UPDATE('pt-1')).toBe('/prompt-templates/pt-1');
+      expect(PROMPT_TEMPLATE_ENDPOINTS.UPDATE('pt-1')).toBe('/admin/prompt-templates/pt-1');
     });
 
     it('should generate DELETE endpoint', () => {
-      expect(PROMPT_TEMPLATE_ENDPOINTS.DELETE('pt-1')).toBe('/prompt-templates/pt-1');
+      expect(PROMPT_TEMPLATE_ENDPOINTS.DELETE('pt-1')).toBe('/admin/prompt-templates/pt-1');
     });
 
     it('should generate VERSIONS endpoint', () => {
       expect(PROMPT_TEMPLATE_ENDPOINTS.VERSIONS('pt-1')).toBe(
-        '/prompt-templates/pt-1/versions'
+        '/admin/prompt-templates/pt-1/versions'
       );
     });
 
     it('should generate VERSION endpoint for specific version number', () => {
       expect(PROMPT_TEMPLATE_ENDPOINTS.VERSION('pt-1', 3)).toBe(
-        '/prompt-templates/pt-1/versions/3'
+        '/admin/prompt-templates/pt-1/versions/3'
       );
     });
 
     it('should have ASSIGN_DEPARTMENT endpoint', () => {
       expect(PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT).toBe(
-        '/prompt-templates/assign-department'
+        '/admin/prompt-templates/assign-department'
       );
     });
   });
@@ -225,10 +225,10 @@ describe('WS-4 endpoint constants', () => {
     });
 
     it('should handle UUID-style IDs in PROMPT_TEMPLATE_ENDPOINTS', () => {
-      expect(PROMPT_TEMPLATE_ENDPOINTS.GET(uuid)).toBe(`/prompt-templates/${uuid}`);
-      expect(PROMPT_TEMPLATE_ENDPOINTS.UPDATE(uuid)).toBe(`/prompt-templates/${uuid}`);
-      expect(PROMPT_TEMPLATE_ENDPOINTS.DELETE(uuid)).toBe(`/prompt-templates/${uuid}`);
-      expect(PROMPT_TEMPLATE_ENDPOINTS.VERSIONS(uuid)).toBe(`/prompt-templates/${uuid}/versions`);
+      expect(PROMPT_TEMPLATE_ENDPOINTS.GET(uuid)).toBe(`/admin/prompt-templates/${uuid}`);
+      expect(PROMPT_TEMPLATE_ENDPOINTS.UPDATE(uuid)).toBe(`/admin/prompt-templates/${uuid}`);
+      expect(PROMPT_TEMPLATE_ENDPOINTS.DELETE(uuid)).toBe(`/admin/prompt-templates/${uuid}`);
+      expect(PROMPT_TEMPLATE_ENDPOINTS.VERSIONS(uuid)).toBe(`/admin/prompt-templates/${uuid}/versions`);
     });
 
     it('should handle UUID-style IDs in DEPARTMENT_ENDPOINTS', () => {
@@ -248,7 +248,7 @@ describe('WS-4 endpoint constants', () => {
 
     it('should handle empty string inputs without throwing', () => {
       expect(DNA_STYLE_ENDPOINTS.UPDATE('')).toBe('/dna-writing-styles/');
-      expect(PROMPT_TEMPLATE_ENDPOINTS.GET('')).toBe('/prompt-templates/');
+      expect(PROMPT_TEMPLATE_ENDPOINTS.GET('')).toBe('/admin/prompt-templates/');
       expect(DEPARTMENT_ENDPOINTS.GET('')).toBe('/admin/departments/');
       expect(CONSULTATION_ENDPOINTS.CHAIN('')).toBe('/consultations//chain');
       expect(MONITORING_ENDPOINTS.SERVICE_UPTIME('')).toBe('/monitoring/uptime/');
@@ -260,7 +260,7 @@ describe('WS-4 endpoint constants', () => {
     it('should handle IDs with special characters', () => {
       const specialId = 'id-with-special_chars.v2';
       expect(DNA_STYLE_ENDPOINTS.UPDATE(specialId)).toBe(`/dna-writing-styles/${specialId}`);
-      expect(PROMPT_TEMPLATE_ENDPOINTS.GET(specialId)).toBe(`/prompt-templates/${specialId}`);
+      expect(PROMPT_TEMPLATE_ENDPOINTS.GET(specialId)).toBe(`/admin/prompt-templates/${specialId}`);
       expect(MONITORING_ENDPOINTS.SERVICE_UPTIME('stt-v2')).toBe('/monitoring/uptime/stt-v2');
     });
 

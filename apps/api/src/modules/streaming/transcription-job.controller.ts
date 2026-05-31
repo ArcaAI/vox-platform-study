@@ -96,6 +96,20 @@ export class TranscriptionJobController {
   }
 
   /**
+   * TASK-319 F3 — the caller's identity, used to owner-scope the end-user
+   * list/stats/status reads so a user only ever sees the jobs THEY created.
+   * The tenant-wide view lives on the admin surface
+   * (`/admin/audio/transcription-jobs`).
+   */
+  private getUserId(): string {
+    const user = this.cls.get('user');
+    if (!user?.id) {
+      throw new BadRequestException('User context is required. Ensure you are authenticated.');
+    }
+    return user.id;
+  }
+
+  /**
    * TASK-298 D-2 — assert the caller's tenant owns `pipelineId` before the
    * controller forwards work to STT-V2. We translate cross-tenant pipelines
    * to `NotFoundException` so the error surface matches "unknown pipeline"
@@ -133,17 +147,19 @@ export class TranscriptionJobController {
   }
 
   @Get('stats')
-  @ApiOperation({ summary: 'Get transcription job status counts' })
+  @ApiOperation({ summary: 'Get transcription job status counts (caller-owned jobs)' })
   async getStats() {
-    return this.jobService.getStatusCounts();
+    // TASK-319 F3 — owner-scoped: the caller's jobs only.
+    return this.jobService.getStatusCountsForOwner(this.getUserId());
   }
 
   @Get('status/:status')
-  @ApiOperation({ summary: 'Get transcription jobs by status' })
+  @ApiOperation({ summary: 'Get transcription jobs by status (caller-owned jobs)' })
   @ApiParam({ name: 'status', description: 'Job status filter' })
   async getByStatus(@Param('status') status: string) {
+    // TASK-319 F3 — owner-scoped: the caller's jobs only.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return this.jobService.getByStatus(status as any);
+    return this.jobService.getByStatusForOwner(this.getUserId(), status as any);
   }
 
   @Post('transcribe')
@@ -459,10 +475,12 @@ export class TranscriptionJobController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List transcription jobs (paginated)' })
+  @ApiOperation({ summary: 'List transcription jobs (paginated, caller-owned jobs)' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async list(@Query('page') page: number = 1, @Query('limit') limit: number = 20) {
-    return this.jobService.list(page, limit);
+    // TASK-319 F3 — owner-scoped: the caller's jobs only. The tenant-wide
+    // listing lives on the admin surface (/admin/audio/transcription-jobs).
+    return this.jobService.listForOwner(this.getUserId(), page, limit);
   }
 }

@@ -41,19 +41,35 @@ export interface ITranscriptionJobService {
   getByConsultation(consultationId: string): Promise<TranscriptionJobResponse[]>;
 
   /**
-   * Get paginated list of jobs
+   * Get paginated list of jobs (tenant-wide — admin surface)
    */
   list(page: number, limit: number): Promise<PaginatedTranscriptionJobResponse>;
 
   /**
-   * Get jobs by status
+   * TASK-319 F3 — owner-scoped paginated list (end-user surface): only the
+   * jobs the given user created.
+   */
+  listForOwner(ownerId: string, page: number, limit: number): Promise<PaginatedTranscriptionJobResponse>;
+
+  /**
+   * Get jobs by status (tenant-wide — admin surface)
    */
   getByStatus(status: TranscriptionJobStatus): Promise<TranscriptionJobResponse[]>;
 
   /**
-   * Get job status counts
+   * TASK-319 F3 — owner-scoped variant of {@link getByStatus}.
+   */
+  getByStatusForOwner(ownerId: string, status: TranscriptionJobStatus): Promise<TranscriptionJobResponse[]>;
+
+  /**
+   * Get job status counts (tenant-wide — admin surface)
    */
   getStatusCounts(): Promise<TranscriptionJobStatusCountResponse>;
+
+  /**
+   * TASK-319 F3 — owner-scoped variant of {@link getStatusCounts}.
+   */
+  getStatusCountsForOwner(ownerId: string): Promise<TranscriptionJobStatusCountResponse>;
 
   /**
    * Update job status (for internal use)

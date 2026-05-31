@@ -369,9 +369,11 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(DNA_STYLE_ENDPOINTS.ADMIN_LIST).toBe('/admin/dna-writing-styles');
     });
 
-    it('PROMPT_TEMPLATE_ENDPOINTS should be unchanged', () => {
-      expect(PROMPT_TEMPLATE_ENDPOINTS.LIST).toBe('/prompt-templates');
-      expect(PROMPT_TEMPLATE_ENDPOINTS.CREATE).toBe('/prompt-templates');
+    // TASK-319 F4 — prompt-template management moved under the audited /admin
+    // prefix (was unprefixed through TASK-210).
+    it('PROMPT_TEMPLATE_ENDPOINTS should use the admin prefix', () => {
+      expect(PROMPT_TEMPLATE_ENDPOINTS.LIST).toBe('/admin/prompt-templates');
+      expect(PROMPT_TEMPLATE_ENDPOINTS.CREATE).toBe('/admin/prompt-templates');
     });
 
     it('DEPARTMENT_ENDPOINTS should use admin prefix', () => {

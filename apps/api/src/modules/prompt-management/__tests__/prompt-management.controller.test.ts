@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { PATH_METADATA } from '@nestjs/common/constants';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { PromptManagementController } from '../prompt-management.controller';
 
@@ -353,6 +354,14 @@ describe('PromptManagementController', () => {
             expect(getMethodMetadata('assignDepartment')).toEqual([
                 { action: 'manage', subject: 'Department' },
             ]);
+        });
+    });
+
+    // ─── TASK-319 F4: prompt-template management moved under /admin ───────
+    describe('TASK-319 F4 — mounted under the audited /admin prefix', () => {
+        it('is served at admin/prompt-templates (not the unprefixed path)', () => {
+            const path = Reflect.getMetadata(PATH_METADATA, PromptManagementController);
+            expect(path).toBe('admin/prompt-templates');
         });
     });
 

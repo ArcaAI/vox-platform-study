@@ -23,6 +23,12 @@ import './third-party-public-routes';
  *      including empty — counts as an explicit "auth-required" label,
  *      matching `AuthorizationGuard.canActivate`'s runtime semantics).
  *
+ * TASK-319 F6 narrows rule (2) for the `/admin/*` surface: an EMPTY permission
+ * array (`@Authorize()` with no tuple) is rejected on admin routes. Admin
+ * endpoints must declare a concrete permission (e.g. `@CanManage('Tenant')`),
+ * so an auth-only gate can never silently expose an admin route to every
+ * authenticated user. End-user routes keep the lenient "any array" rule.
+ *
  * Diagnostic-only — this function does NOT change runtime guard
  * behaviour. It surfaces drift before TASK-307 W4b registers
  * `UnifiedAuthGuard` as `APP_GUARD`, so any forgotten decorator is
@@ -45,6 +51,10 @@ import './third-party-public-routes';
  *   `DiscoveryModule` into `AppModule` (which would conflict with W4b's
  *   pending changes to that file).
  */
+// TASK-319 F6 — matches `/admin/...` and the versioned `/api/v<N>/admin/...`
+// prefix used in production. Anchored so only the admin surface is narrowed.
+const ADMIN_ROUTE_RE = /^\/(api\/v\d+\/)?admin\//;
+
 export function auditAdminRoutePermissions(app: INestApplicationContext): void {
   const modulesContainer = app.get(ModulesContainer);
   const reflector = app.get(Reflector);
@@ -74,14 +84,28 @@ export function auditAdminRoutePermissions(app: INestApplicationContext): void {
         if (skipAuth === true) continue;
 
         const required = reflector.getAllAndOverride<unknown>(REQUIRED_PERMISSIONS_KEY, [methodRef, ControllerClass]);
-        // Any array (including empty) means an explicit @Authorize() / @CanXxx()
-        // decorator is present — the runtime guard treats this as
-        // "authentication required, no specific permission".
-        if (Array.isArray(required)) continue;
 
         const methodPath = readMethodPath(methodRef);
         const fullPath = joinPath(controllerPath, methodPath);
         const httpMethod = mapRequestMethod(httpMethodCode as number);
+        const isAdminRoute = ADMIN_ROUTE_RE.test(fullPath);
+
+        // Any array (including empty) means an explicit @Authorize() / @CanXxx()
+        // decorator is present — the runtime guard treats this as
+        // "authentication required, no specific permission".
+        if (Array.isArray(required)) {
+          // TASK-319 F6: an empty @Authorize() (auth-only) is acceptable on
+          // end-user routes but a security smell on the /admin surface — every
+          // admin route must name the concrete permission it requires.
+          if (isAdminRoute && required.length === 0) {
+            offenders.push(
+              `Route ${httpMethod} ${fullPath} on ${ControllerClass.name}.${methodName} is an /admin route ` +
+                `with an empty @Authorize() (no specific permission). Admin routes MUST declare a concrete ` +
+                `permission — use @CanManage('Subject') or @Authorize(['action','Subject']).`,
+            );
+          }
+          continue;
+        }
 
         offenders.push(
           `Route ${httpMethod} ${fullPath} on ${ControllerClass.name}.${methodName} has neither ` +

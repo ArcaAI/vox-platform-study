@@ -10,6 +10,7 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { TenantOwnedResourceModule } from '../../common';
+import { AdminTranscriptionJobController } from './admin-transcription-job.controller';
 import { SmrProxyController } from './smr-proxy.controller';
 import { SttWsGateway } from './stt-ws.gateway';
 import { TranscriptionJobController } from './transcription-job.controller';
@@ -31,7 +32,7 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // to `TranscriptionJobController` so it can bind on create / clear on close.
     TenantOwnedResourceModule,
   ],
-  controllers: [TranscriptionJobController, SmrProxyController],
+  controllers: [TranscriptionJobController, AdminTranscriptionJobController, SmrProxyController],
   providers: [SttWsGateway],
   exports: [SttWsGateway],
 })

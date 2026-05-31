@@ -147,21 +147,23 @@ export const DNA_STYLE_ENDPOINTS = {
 /**
  * Prompt Template endpoints (SDK-207 WS-2)
  *
- * Matches PromptManagementController.
+ * Matches PromptManagementController at @Controller('admin/prompt-templates').
+ * TASK-319 F4 — moved under the audited `/admin` prefix (prompt-template
+ * management is an admin capability).
  */
 export const PROMPT_TEMPLATE_ENDPOINTS = {
-  CREATE: '/prompt-templates',
-  LIST: '/prompt-templates',
-  GET: (id: string) => `/prompt-templates/${encodeURIComponent(id)}`,
-  UPDATE: (id: string) => `/prompt-templates/${encodeURIComponent(id)}`,
-  DELETE: (id: string) => `/prompt-templates/${encodeURIComponent(id)}`,
-  VERSIONS: (id: string) => `/prompt-templates/${encodeURIComponent(id)}/versions`,
-  VERSION: (id: string, versionNumber: number) => `/prompt-templates/${encodeURIComponent(id)}/versions/${versionNumber}`,
-  ASSIGN_DEPARTMENT: '/prompt-templates/assign-department',
+  CREATE: '/admin/prompt-templates',
+  LIST: '/admin/prompt-templates',
+  GET: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}`,
+  UPDATE: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}`,
+  DELETE: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}`,
+  VERSIONS: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}/versions`,
+  VERSION: (id: string, versionNumber: number) => `/admin/prompt-templates/${encodeURIComponent(id)}/versions/${versionNumber}`,
+  ASSIGN_DEPARTMENT: '/admin/prompt-templates/assign-department',
   /** Get usage statistics for a prompt template (TASK-218) */
-  USAGE: (id: string) => `/prompt-templates/${encodeURIComponent(id)}/usage`,
+  USAGE: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}/usage`,
   /** Activate (rollback to) a specific version */
-  ACTIVATE_VERSION: (id: string, versionNumber: number) => `/prompt-templates/${encodeURIComponent(id)}/versions/${versionNumber}/activate`,
+  ACTIVATE_VERSION: (id: string, versionNumber: number) => `/admin/prompt-templates/${encodeURIComponent(id)}/versions/${versionNumber}/activate`,
 } as const;
 
 /**

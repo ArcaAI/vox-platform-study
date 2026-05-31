@@ -213,7 +213,7 @@ const users = await userRepository.$()
 Every tenant-aware entity includes a `tenantId` field. Tenant isolation is enforced at two levels:
 
 1. **RBAC Policy Conditions** — CASL rules inject `tenantId` filters into ability checks (see [Security](./security.md))
-2. **Repository Queries** — `AuthorizedBaseService.getAccessibleFilter()` generates Prisma `where` clauses scoped to the current tenant
+2. **Repository Queries** — the `tenantScopeFilter` Prisma extension injects `tenantId` into Prisma `where` clauses for every tenant-scoped read/write
 
 ## Code Generation
 

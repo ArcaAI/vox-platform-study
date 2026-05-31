@@ -79,11 +79,9 @@ RBAC is implemented with [CASL](https://casl.js.org/) and a policy-based model s
    (integrated) ──────► Reads @Authorize decorator metadata
                        ─► PolicyEngine.buildAbility()
                        ─► ability.can(action, subject)
-3. Controller ─────────► @UserAbility() for fine-grained checks
-4. Service ────────────► getAccessibleFilter() for Prisma queries
-                       ─► assertCanAccessResource() for record checks
-                       ─► filterFields() for field-level security
-5. Database ───────────► Queries filtered by CASL conditions
+3. Controller ─────────► @UserAbility() + manual ownership checks; end-user vs /admin/* split
+4. Service ────────────► BaseService scopes by tenantId (admin scope = separate controllers)
+5. Database ───────────► tenantScopeFilter Prisma extension injects tenantId on every query
 ```
 
 ### Core Concepts
@@ -210,15 +208,13 @@ export class SmrProxyController {
 
 ### Service-Level Authorization
 
-Services extend `AuthorizedBaseService` to get automatic query filtering:
+Services extend `BaseService`. There is no automatic CASL→Prisma filter; scope is enforced by:
 
-| Method | Purpose |
-|--------|---------|
-| `getAccessibleFilter(action, subject)` | Prisma `where` clause from CASL |
-| `assertCanAccessResource(action, subject, resource)` | Throws 403/404 if denied |
-| `filterFields(data, action, subject)` | Strips unauthorized fields |
-| `buildAuthorizedFilter(action, subject, filter?)` | Combines CASL + custom filters |
-| `isSuperAdmin()` / `isTenantAdmin()` | Role-level checks |
+| Mechanism | Purpose |
+|-----------|---------|
+| `tenantScopeFilter` Prisma extension | Always-on `tenantId` injection on every read/write (tenant-scoped models) |
+| Separate controllers (end-user vs `/admin/*`) | Admin surfaces gate on `@CanManage(...)` and call tenant-wide service methods |
+| Manual ownership / `@TenantOwnedResource` | Per-record checks and `404`-on-mismatch for id-addressed resources |
 
 ### RBAC Cache
 
@@ -288,7 +284,7 @@ Tab 2 ──subscribeSSE({ authToken })──► (reuses existing connection)
 All data queries are scoped by `tenantId`. Isolation is enforced at multiple levels:
 
 1. **CASL Policy Conditions** — Every tenant-scoped policy rule includes `{ tenantId: "${context.tenantId}" }`
-2. **AuthorizedBaseService** — `getAccessibleFilter()` injects tenant conditions into Prisma queries
+2. **`tenantScopeFilter` Prisma extension** — injects `tenantId` into Prisma queries for tenant-scoped models
 3. **User Role Assignments** — Users can have different roles in different tenants
 4. **API Keys** — Inherit the creating user's tenant context
 

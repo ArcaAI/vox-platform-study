@@ -905,6 +905,84 @@ describe('ConsultationService', () => {
     });
 
     // ============================================================
+    // TASK-319 F1 — tenant-wide admin listing (scope: all-in-tenant)
+    //
+    // listConsultationsForTenant is the admin counterpart to
+    // listConsultations: it MUST NOT scope to the caller's doctorId,
+    // so a tenant admin sees every consultation in their tenant. It
+    // reuses findPaginatedWithRelations + count (no shared-patient
+    // expansion) and is gated at the controller via @CanManage.
+    // ============================================================
+    describe('listConsultationsForTenant', () => {
+        it('lists ALL consultations in the tenant without scoping to a doctorId', async () => {
+            const consultations = [
+                createMockConsultationEntity({ id: 'c-1', doctorId: 'doctor-1' }),
+                createMockConsultationEntity({ id: 'c-2', doctorId: 'doctor-2' }),
+            ];
+            mockConsultationRepository.findPaginatedWithRelations.mockResolvedValue(consultations);
+            mockConsultationRepository.count.mockResolvedValue(2);
+
+            const result = await service.listConsultationsForTenant({ page: 1, pageSize: 10 });
+
+            expect(result.data).toHaveLength(2);
+            expect(result.count).toBe(2);
+            // The repository filter is tenant-only — never the caller's doctorId.
+            const callArg = mockConsultationRepository.findPaginatedWithRelations.mock.calls[0][0];
+            expect(callArg.filters).toEqual({ tenantId: 'tenant-1' });
+            expect(callArg.filters).not.toHaveProperty('doctorId');
+        });
+
+        it('applies optional patientId / doctorId / departmentId filters', async () => {
+            mockConsultationRepository.findPaginatedWithRelations.mockResolvedValue([]);
+            mockConsultationRepository.count.mockResolvedValue(0);
+
+            await service.listConsultationsForTenant({
+                page: 2,
+                pageSize: 5,
+                patientId: 'patient-9',
+                doctorId: 'doctor-7',
+                departmentId: 'dept-3',
+            });
+
+            expect(mockConsultationRepository.findPaginatedWithRelations).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    page: 2,
+                    limit: 5,
+                    sort: [{ appointmentDate: 'desc' }],
+                    filters: { tenantId: 'tenant-1', patientId: 'patient-9', doctorId: 'doctor-7', departmentId: 'dept-3' },
+                }),
+            );
+            expect(mockConsultationRepository.count).toHaveBeenCalledWith({
+                filters: { tenantId: 'tenant-1', patientId: 'patient-9', doctorId: 'doctor-7', departmentId: 'dept-3' },
+            });
+        });
+
+        it('throws BadRequestException when tenantId is missing', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return undefined;
+                if (key === 'user') return { id: 'user-1' };
+                return undefined;
+            });
+
+            await expect(service.listConsultationsForTenant({ page: 1, pageSize: 10 })).rejects.toThrow(BadRequestException);
+        });
+
+        it('broadcasts a ResourceViewed event with pagination metadata', async () => {
+            mockConsultationRepository.findPaginatedWithRelations.mockResolvedValue([]);
+            mockConsultationRepository.count.mockResolvedValue(13);
+
+            await service.listConsultationsForTenant({ page: 3, pageSize: 10 });
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    data: expect.objectContaining({ scope: 'tenant', page: 3, pageSize: 10, count: 13 }),
+                }),
+            );
+        });
+    });
+
+    // ============================================================
     // TASK-305 D.2 — Cross-aggregate tenant isolation
     //
     // The Consultation aggregate owns three cross-aggregate references
