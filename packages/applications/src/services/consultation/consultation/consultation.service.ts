@@ -529,7 +529,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   // ============================================
-  // TASK-321 — Lifecycle (close / reopen / update)
+  // TASK-322 — Lifecycle (close / reopen / update)
   //
   // The Consultation model has no dedicated open/closed column, so the
   // lifecycle status lives in `metadata.status` (OPEN | CLOSED; absent ⇒

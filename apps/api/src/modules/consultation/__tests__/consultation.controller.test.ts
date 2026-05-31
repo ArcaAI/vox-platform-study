@@ -736,7 +736,7 @@ describe('ConsultationController', () => {
             await expect(controller.approveSummary(CONSULTATION_OWN, 'ctx-1')).rejects.toThrow(ForbiddenException);
         });
 
-        // TASK-321 — lifecycle write endpoints
+        // TASK-322 — lifecycle write endpoints
         it('close should enforce ownership', async () => {
             await expect(controller.close(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
         });
@@ -751,10 +751,10 @@ describe('ConsultationController', () => {
     });
 
     // ═══════════════════════════════════════════════════════════════════════
-    // TASK-321 — lifecycle endpoints (close / reopen / update) wiring
+    // TASK-322 — lifecycle endpoints (close / reopen / update) wiring
     // ═══════════════════════════════════════════════════════════════════════
 
-    describe('TASK-321 lifecycle endpoints', () => {
+    describe('TASK-322 lifecycle endpoints', () => {
         it('close delegates to service and returns the updated consultation (owner)', async () => {
             const { controller, consultationService } = buildController();
             consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));

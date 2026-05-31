@@ -1,14 +1,18 @@
-# TASK-321 — Consultation Lifecycle Endpoints (close / reopen / update)
+# TASK-322 — Consultation Lifecycle Endpoints (close / reopen / update)
+
+> **Renumbered from TASK-321.** Originally filed as TASK-321 by a parallel backend agent, but
+> that number was concurrently claimed by the user's (Completed) `TASK-321-UI-Playground-TypeCheck-Baseline`
+> ticket. Renumbered to TASK-322 (next free) to resolve the collision; the implementation is unchanged.
 
 | Field | Value |
 |---|---|
-| Ticket | TASK-321 |
+| Ticket | TASK-322 |
 | Title | Consultation Lifecycle Endpoints (close / reopen / update) |
 | Type | feature (bugfix — SDK calls 404 at runtime) |
 | Created | 2026-05-31 |
 | Updated | 2026-05-31 |
-| Status | Completed |
-| Branch | `task-321-consultation-lifecycle` |
+| Status | Completed (merged to `fix/2605-review`) |
+| Branch | `fix/2605-review` (merged from `task-321-consultation-lifecycle`) |
 
 ---
 
@@ -188,3 +192,4 @@ Application Service (DTO + interface + impl + mapper) → API Controller.
 |---|---|---|
 | 2026-05-31 | Initial plan, status-model investigation, design decisions | this README |
 | 2026-05-31 | Implemented close/reopen/update (service + controller + DTO + mapper) TDD; builds + tests green | see Files changed |
+| 2026-05-31 | Merged to `fix/2605-review` (merge `3d49da96`). **Renumbered TASK-321 → TASK-322** (collision with parallel `TASK-321-UI-Playground-TypeCheck-Baseline`): folder renamed + self-referential `TASK-321`→`TASK-322` updated in the 10 consultation/api files (comments / JSDoc / decorator description / test `describe` names; no functional change). | this README + 9 consultation/api source & test files |

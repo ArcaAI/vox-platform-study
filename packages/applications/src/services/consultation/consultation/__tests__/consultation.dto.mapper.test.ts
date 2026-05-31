@@ -253,7 +253,7 @@ describe('ConsultationDtoMapper', () => {
             expect(result.appointmentDate).toBe('2026-12-25');
         });
 
-        // TASK-321 — derived lifecycle status
+        // TASK-322 — derived lifecycle status
         it('should default status to OPEN when metadata is null', () => {
             const entity = createMockConsultationEntity({ metadata: null });
 

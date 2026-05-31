@@ -13,7 +13,7 @@ export class ConsultationDtoMapper {
    */
   static toResponse(entity: ConsultationEntity, isNew = false): ConsultationResponse {
     const metadata = entity.metadata as Record<string, unknown> | null | undefined;
-    // TASK-321 — lifecycle status lives in metadata.status; absent ⇒ OPEN.
+    // TASK-322 — lifecycle status lives in metadata.status; absent ⇒ OPEN.
     const status = (metadata?.status as string | undefined) ?? CONSULTATION_STATUS.OPEN;
 
     return {

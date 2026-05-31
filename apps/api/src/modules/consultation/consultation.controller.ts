@@ -355,7 +355,7 @@ export class ConsultationController {
     return this.consultationService.getConsultationChain(id);
   }
 
-  // ─── Lifecycle (TASK-321) ────────────────────────────────────────
+  // ─── Lifecycle (TASK-322) ────────────────────────────────────────
 
   @ApiEndpoint({
     returnedModel: ConsultationResponse,
