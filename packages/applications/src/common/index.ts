@@ -6,7 +6,6 @@ export * from './apiResponseType.enum';
 export * from './applyChangesToEntity';
 export * from './authenticateJwt';
 export * from './base.service';
-export * from './authorized-base.service';
 export * from './fetchResponse';
 export * from './getPhoneNumberType';
 export * from './groups.enum';

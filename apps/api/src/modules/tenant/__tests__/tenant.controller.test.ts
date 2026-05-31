@@ -334,4 +334,64 @@ describe('TenantController', () => {
             });
         });
     });
+
+    // TASK-319 F5 — fetchAll tenant scoping.
+    //
+    // `Tenant` rows are NOT tenant-scoped by the Prisma extension, and the
+    // class-level @CanManage('Tenant') admits any TENANT_ADMIN (their policy is
+    // tenantId-conditioned). Without an explicit guard a tenant admin could
+    // enumerate EVERY tenant via GET /admin/tenants. Non-super-admins must see
+    // only their own tenant; SUPER_ADMIN keeps the full cross-tenant listing.
+    //
+    // (fetchById / fetchByCodeName / fetchTenantConfigs are already tenant-scoped
+    // at the service layer — TASK-306 P1.3 / P2.2 — so they are intentionally not
+    // re-guarded here; a controller 403 would weaken their no-existence-leak 404.)
+    describe('TASK-319 F5 — fetchAll tenant scoping', () => {
+        function build(user: { id?: string; tenantId?: string | null; roles?: string[] } | null) {
+            const svc = createMockTenantService();
+            const cls = createMockCls(user);
+            return { controller: new TenantController(svc as never, cls as never), svc };
+        }
+
+        it('non-super-admin sees ONLY their own tenant (never the full list)', async () => {
+            const { controller, svc } = build({ id: 'u-1', tenantId: 't-OWN', roles: ['TENANT_ADMIN'] });
+            svc.fetchById.mockResolvedValue({ id: 't-OWN', name: 'Own', toObject: () => ({ id: 't-OWN' }) });
+
+            const res = await controller.fetchAll({ page: 1, limit: 10 } as any);
+
+            expect(svc.fetchAll).not.toHaveBeenCalled();
+            expect(svc.fetchById).toHaveBeenCalledWith('t-OWN');
+            expect(res.count).toBe(1);
+            expect(res.data).toHaveLength(1);
+            expect(res.data[0].id).toBe('t-OWN');
+        });
+
+        it('SUPER_ADMIN gets the full tenant list via tenantService.fetchAll', async () => {
+            const { controller, svc } = build({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] });
+            svc.fetchAll.mockResolvedValue({
+                data: [
+                    { id: 't-1', toObject: () => ({ id: 't-1' }) },
+                    { id: 't-2', toObject: () => ({ id: 't-2' }) },
+                ],
+                count: 2,
+                page: 1,
+                limit: 10,
+            });
+
+            const res = await controller.fetchAll({ page: 1, limit: 10 } as any);
+
+            expect(svc.fetchAll).toHaveBeenCalledTimes(1);
+            expect(svc.fetchById).not.toHaveBeenCalled();
+            expect(res.count).toBe(2);
+            expect(res.data).toHaveLength(2);
+        });
+
+        it('throws ForbiddenException for a non-super-admin with no tenant context', async () => {
+            const { controller, svc } = build({ id: 'u-1', tenantId: null, roles: ['DOCTOR'] });
+
+            await expect(controller.fetchAll({ page: 1, limit: 10 } as any)).rejects.toBeInstanceOf(ForbiddenException);
+            expect(svc.fetchById).not.toHaveBeenCalled();
+            expect(svc.fetchAll).not.toHaveBeenCalled();
+        });
+    });
 });

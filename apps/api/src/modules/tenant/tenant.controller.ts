@@ -12,6 +12,7 @@ import {
   UpdateTenantConfigRequest,
   IActiveUserContext,
   isSuperAdmin,
+  FetchResponse,
 } from '@arcaai/applications';
 import { Controller, Body, Param, Get, Inject, Query, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
@@ -69,6 +70,22 @@ export class TenantController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   async fetchAll(@Query() queryParams: PaginatedQuery): Promise<PaginatedTenantResponse> {
+    // TASK-319 F5: `Tenant` rows are NOT covered by the tenantScopeFilter Prisma
+    // extension, and the class-level `@CanManage('Tenant')` admits any
+    // TENANT_ADMIN (their CASL policy is `tenantId: ${user.tenantId}`). Without
+    // this guard a tenant admin could enumerate every tenant on the platform.
+    // Non-super-admins are restricted to their own tenant; SUPER_ADMIN keeps the
+    // full cross-tenant listing (admin/operator surfaces). Mirrors the write-path
+    // posture on `update`/`delete`.
+    const user = this.cls.get('user');
+    if (!isSuperAdmin(user)) {
+      if (!user?.tenantId) {
+        throw new ForbiddenException('You do not have access to list tenants');
+      }
+      const own = await this.tenantService.fetchById(user.tenantId);
+      return TenantDtoMapper.ToPaginatedResponse(new FetchResponse({ data: [own], count: 1, page: 1, limit: 1 }));
+    }
+
     const result = await this.tenantService.fetchAll({
       ...queryParams,
     });

@@ -462,6 +462,57 @@ export class ConsultationService extends BaseService implements IConsultationSer
     };
   }
 
+  /**
+   * TASK-319 F1 — admin/tenant-wide listing.
+   *
+   * Lists EVERY consultation in the caller's tenant (no owner/shared-patient
+   * scoping). Reached only from the admin surface (`/admin/consultations`,
+   * gated by `@CanManage('Consultation')`). Tenant isolation is still enforced
+   * by the `tenantScopeFilter` Prisma extension, so the explicit `tenantId`
+   * filter here is defense-in-depth.
+   */
+  async listConsultationsForTenant(params: {
+    page: number;
+    pageSize: number;
+    patientId?: string;
+    doctorId?: string;
+    departmentId?: string;
+  }): Promise<PaginatedConsultationResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const { page, pageSize, patientId, doctorId, departmentId } = params;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filters: any = { tenantId };
+    if (patientId) filters.patientId = patientId;
+    if (doctorId) filters.doctorId = doctorId;
+    if (departmentId) filters.departmentId = departmentId;
+
+    const [consultations, count] = await Promise.all([
+      this.consultationRepository.findPaginatedWithRelations({
+        filters,
+        sort: [{ appointmentDate: 'desc' }],
+        page,
+        limit: pageSize,
+      }),
+      this.consultationRepository.count({ filters }),
+    ]);
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: { scope: 'tenant', page, pageSize, patientId, doctorId, departmentId, count },
+    });
+
+    return {
+      data: consultations.map((c) => ConsultationDtoMapper.toResponse(c)),
+      count,
+      page,
+      limit: pageSize,
+    };
+  }
+
   async doctorHasPatientRelationship(doctorId: string, patientId: string, tenantId: string): Promise<boolean> {
     const count = await this.consultationRepository.count({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

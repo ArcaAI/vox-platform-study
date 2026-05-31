@@ -15,9 +15,12 @@ const createMockJobService = () => ({
     createStreamingJob: vi.fn(),
     getById: vi.fn(),
     list: vi.fn(),
+    listForOwner: vi.fn(),
     getStatusCounts: vi.fn(),
+    getStatusCountsForOwner: vi.fn(),
     getByConsultation: vi.fn(),
     getByStatus: vi.fn(),
+    getByStatusForOwner: vi.fn(),
     cancelJob: vi.fn(),
     retryJob: vi.fn(),
 });
@@ -150,14 +153,30 @@ describe('TranscriptionJobController', () => {
     });
 
     describe('GET /stats', () => {
-        it('should return job status counts', async () => {
+        // TASK-319 F3 — end-user stats are owner-scoped (caller's jobs only).
+        it('should return OWNER-scoped job status counts (never tenant-wide)', async () => {
             const stats = { queued: 5, processing: 2, completed: 10, failed: 1, cancelled: 0, dead: 0 };
-            mockJobService.getStatusCounts.mockResolvedValue(stats);
+            mockJobService.getStatusCountsForOwner.mockResolvedValue(stats);
 
             const result = await controller.getStats();
 
-            expect(mockJobService.getStatusCounts).toHaveBeenCalled();
+            expect(mockJobService.getStatusCountsForOwner).toHaveBeenCalledWith('user-1');
+            expect(mockJobService.getStatusCounts).not.toHaveBeenCalled();
             expect(result).toEqual(stats);
+        });
+    });
+
+    describe('GET /status/:status', () => {
+        // TASK-319 F3 — end-user status listing is owner-scoped.
+        it('should return OWNER-scoped jobs for the given status', async () => {
+            const jobs = [{ id: 'job-1', status: 'COMPLETED' }];
+            mockJobService.getByStatusForOwner.mockResolvedValue(jobs);
+
+            const result = await controller.getByStatus('COMPLETED');
+
+            expect(mockJobService.getByStatusForOwner).toHaveBeenCalledWith('user-1', 'COMPLETED');
+            expect(mockJobService.getByStatus).not.toHaveBeenCalled();
+            expect(result).toEqual(jobs);
         });
     });
 
@@ -192,13 +211,15 @@ describe('TranscriptionJobController', () => {
     });
 
     describe('GET / (list)', () => {
-        it('should return paginated job list', async () => {
+        // TASK-319 F3 — end-user list is owner-scoped (caller's jobs only).
+        it('should return an OWNER-scoped paginated job list (never tenant-wide)', async () => {
             const paginated = { data: [], total: 0, page: 1, limit: 20, totalPages: 0 };
-            mockJobService.list.mockResolvedValue(paginated);
+            mockJobService.listForOwner.mockResolvedValue(paginated);
 
             const result = await controller.list(1, 20);
 
-            expect(mockJobService.list).toHaveBeenCalledWith(1, 20);
+            expect(mockJobService.listForOwner).toHaveBeenCalledWith('user-1', 1, 20);
+            expect(mockJobService.list).not.toHaveBeenCalled();
             expect(result).toEqual(paginated);
         });
     });

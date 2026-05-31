@@ -16,8 +16,12 @@ import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion } from '../../
 import { PaginatedPromptTemplateResponse, PromptUsageStatsResponse } from './dto';
 
 @ApiBearerAuth()
-@ApiTags('prompt-templates')
-@Controller('prompt-templates')
+@ApiTags('admin-prompt-templates')
+// TASK-319 F4 — prompt-template management is an admin capability; mounting it
+// under the audited `/admin` prefix brings it in line with the other admin
+// surfaces and the boot-time admin-route permission audit (F6). The existing
+// `@Authorize(['read','PromptTemplate'])` + per-method tuples are unchanged.
+@Controller('admin/prompt-templates')
 @Authorize(['read', 'PromptTemplate'])
 export class PromptManagementController {
   constructor(

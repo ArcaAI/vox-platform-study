@@ -169,6 +169,53 @@ describe('TASK-307 W4a.1 — boot-time route permission audit (widened to ALL ro
     });
   });
 
+  // TASK-319 F6 — admin routes must declare a CONCRETE permission. An empty
+  // @Authorize() (auth-only, no permission tuple) is an acceptable label on
+  // end-user routes but a security smell on the /admin surface, where every
+  // route should name the specific permission it requires.
+  describe('TASK-319 F6 — /admin routes require a non-empty permission', () => {
+    it('throws when an /admin route carries only an empty @Authorize() (no specific permission)', async () => {
+      @Authorize()
+      @Controller('admin/reports')
+      class AdminEmptyAuthorize {
+        @Get()
+        list() {
+          return [];
+        }
+      }
+      const app = await buildAppFromControllers([AdminEmptyAuthorize]);
+      expect(() => auditAdminRoutePermissions(app)).toThrow(
+        /admin\/reports.*empty @Authorize\(\)/,
+      );
+    });
+
+    it('passes when an /admin route declares a concrete permission via @CanManage', async () => {
+      @CanManage('Consultation')
+      @Controller('admin/consultations')
+      class AdminConsultationsOk {
+        @Get()
+        list() {
+          return [];
+        }
+      }
+      const app = await buildAppFromControllers([AdminConsultationsOk]);
+      expect(() => auditAdminRoutePermissions(app)).not.toThrow();
+    });
+
+    it('still allows an empty @Authorize() on a NON-admin route (regression)', async () => {
+      @Authorize()
+      @Controller('consultations')
+      class EndUserEmptyAuthorize {
+        @Get()
+        list() {
+          return [];
+        }
+      }
+      const app = await buildAppFromControllers([EndUserEmptyAuthorize]);
+      expect(() => auditAdminRoutePermissions(app)).not.toThrow();
+    });
+  });
+
   describe('error message shape', () => {
     it('includes the controller name, method name, and the suggested decorators', async () => {
       @Controller('foo')

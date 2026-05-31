@@ -598,7 +598,7 @@ Every tenant-aware entity includes a `tenantId` field with a default value point
 Isolation is enforced at multiple levels:
 
 1. **CASL Policy Conditions** — RBAC rules inject `{ tenantId: "${context.tenantId}" }` into ability checks
-2. **Service Layer** — `AuthorizedBaseService.getAccessibleFilter()` generates Prisma `where` clauses scoped to the current tenant
+2. **Prisma Extension** — the `tenantScopeFilter` extension injects `tenantId` into Prisma `where` clauses (and write `data`) for every tenant-scoped model
 3. **Unique Constraints** — Many models use `@@unique([tenantId, ...])` to prevent cross-tenant collisions (e.g., department codes, pipeline slugs, prompt names)
 
 Users with global role assignments (`tenantId: null` in `UserRoleAssignment`) have cross-tenant access (Super Admin only).

@@ -194,6 +194,70 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   }
 
   /**
+   * TASK-319 F3 — owner-scoped variant of {@link list}. Returns only the jobs
+   * the given user created (`createdBy`). Used by the end-user
+   * `/audio/transcription-jobs` surface so a caller never sees other users'
+   * jobs in their tenant.
+   */
+  async listForOwner(ownerId: string, page: number = 1, limit: number = 20): Promise<PaginatedTranscriptionJobResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filters = { tenantId, createdBy: ownerId } as any;
+
+    const jobs = await this.jobRepository.findAll({ filters, page, limit, sort: [{ createdAt: 'desc' }] });
+    const total = await this.jobRepository.count({ filters });
+
+    return {
+      data: jobs.map(TranscriptionJobDtoMapper.toResponse),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * TASK-319 F3 — owner-scoped variant of {@link getByStatus}.
+   */
+  async getByStatusForOwner(ownerId: string, status: TranscriptionJobStatus): Promise<TranscriptionJobResponse[]> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const jobs = await this.jobRepository.findAll({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      filters: { tenantId, createdBy: ownerId, status } as any,
+      sort: [{ createdAt: 'desc' }],
+    });
+    return jobs.map(TranscriptionJobDtoMapper.toResponse);
+  }
+
+  /**
+   * TASK-319 F3 — owner-scoped variant of {@link getStatusCounts}.
+   */
+  async getStatusCountsForOwner(ownerId: string): Promise<TranscriptionJobStatusCountResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const counts = await this.jobRepository.countByStatus(tenantId, ownerId);
+    return {
+      queued: counts[TranscriptionJobStatus.QUEUED],
+      processing: counts[TranscriptionJobStatus.PROCESSING],
+      completed: counts[TranscriptionJobStatus.COMPLETED],
+      failed: counts[TranscriptionJobStatus.FAILED],
+      cancelled: counts[TranscriptionJobStatus.CANCELLED],
+      dead: counts[TranscriptionJobStatus.DEAD],
+    };
+  }
+
+  /**
    * Get job status counts
    */
   async getStatusCounts(): Promise<TranscriptionJobStatusCountResponse> {

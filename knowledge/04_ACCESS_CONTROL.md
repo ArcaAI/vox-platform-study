@@ -34,13 +34,13 @@ Client Request
 UnifiedAuthGuard (Public → API Key → JWT → CASL)
     │
     ▼
-Controller (@Authorize decorators)
+Controller (@Authorize / @CanManage decorators; end-user vs /admin/* split)
     │
     ▼
-Service Layer (getAccessibleFilter, assertCanAccessResource, filterFields)
+Service Layer (BaseService: tenant scoping + ownership guards)
     │
     ▼
-Database (Prisma queries filtered by CASL conditions + tenantId)
+Database (tenantScopeFilter Prisma extension injects tenantId on every query)
 ```
 
 ---
@@ -110,11 +110,9 @@ RBAC is implemented with [CASL](https://casl.js.org/) and a policy-based model s
    (integrated) ──────► Reads @Authorize decorator metadata
                         ─► PolicyEngine.buildAbility()
                         ─► ability.can(action, subject)
-3. Controller ──────────► @UserAbility() for fine-grained checks
-4. Service ─────────────► getAccessibleFilter() for Prisma queries
-                        ─► assertCanAccessResource() for record checks
-                        ─► filterFields() for field-level security
-5. Database ────────────► Queries filtered by CASL conditions
+3. Controller ──────────► @UserAbility() + manual ownership checks (e.g. verifyConsultationAccess)
+4. Service ─────────────► BaseService scopes by tenantId; admin vs end-user scope = separate controllers
+5. Database ────────────► tenantScopeFilter Prisma extension injects tenantId on every query
 ```
 
 ### Core Concepts
@@ -261,7 +259,7 @@ The `PolicyEngine` computes the intersection of the user's CASL abilities and th
 All data queries are scoped by `tenantId`. Isolation is enforced at multiple levels:
 
 1. **CASL Policy Conditions** — Every tenant-scoped policy rule includes `{ tenantId: "${context.tenantId}" }`
-2. **AuthorizedBaseService** — `getAccessibleFilter()` automatically injects tenant conditions into Prisma queries
+2. **`tenantScopeFilter` Prisma extension** — automatically injects `tenantId` into every read/write for tenant-scoped models (`packages/database/src/extensions/tenant-scope.ts`); the primary, always-on enforcement layer
 3. **User Role Assignments** — Users can have different roles in different tenants
 4. **API Keys** — Inherit the creating user's tenant context
 
@@ -276,8 +274,8 @@ Request with JWT/API Key
     │
     ├──► CASL builds ability with tenantId conditions
     │
-    ├──► Service calls getAccessibleFilter()
-    │       └──► Returns Prisma WHERE clause: { tenantId: "..." }
+    ├──► tenantScopeFilter Prisma extension injects { tenantId: "..." }
+    │       └──► into every query's WHERE / data (tenant-scoped models)
     │
     └──► Database query executes with tenant filter
 ```
@@ -286,34 +284,59 @@ Request with JWT/API Key
 
 ## Authorization at the Service Layer
 
-Services extend `AuthorizedBaseService` to get automatic RBAC-filtered queries:
+Application services extend `BaseService` (`packages/applications/src/common/base.service.ts`),
+which provides the request-scoped `tenantId`, domain-event broadcasting
+(`broadcastSysEvent`), and tenant-guard helpers (`assertEqualTenants`,
+`assertParentInScope`, `assertUserBelongsToTenant`).
 
-| Method | Purpose |
-|--------|---------|
-| `getAccessibleFilter(action, subject)` | Returns a Prisma `where` clause derived from CASL abilities |
-| `assertCanAccessResource(action, subject, resource)` | Throws 403 (or 404 to prevent enumeration) if denied |
-| `filterFields(data, action, subject)` | Strips fields the user is not authorized to see |
-| `buildAuthorizedFilter(action, subject, filter?)` | Combines CASL conditions with custom business filters |
-| `isSuperAdmin()` | Returns true if current user has global manage access |
-| `isTenantAdmin()` | Returns true if current user has tenant-level manage access |
+There is **no** automatic CASL→Prisma filter at the service layer. Access scope is enforced
+by three concrete mechanisms:
 
-### Example: Filtering Consultations
+| Mechanism | Where | Purpose |
+|-----------|-------|---------|
+| `tenantScopeFilter` Prisma extension | `packages/database/src/extensions/tenant-scope.ts` | Always-on: injects `tenantId` into every read/write for tenant-scoped models. A cross-tenant id resolves to no rows (→ `404`, no existence leak). |
+| Separate controllers (end-user vs `/admin/*`) | `apps/api` | Scope is a routing concern. End-user controllers scope to the caller; admin controllers gate on `@CanManage(...)` and call a tenant-wide service method. |
+| Manual ownership / `@TenantOwnedResource` | controllers + `TenantOwnedResourceInterceptor` | Per-record checks (e.g. `verifyConsultationAccess`) and `404`-on-mismatch for resources addressed by id. |
+
+### Example: end-user vs admin consultation scope (separate controllers)
+
+A DOCTOR lists only their own (plus shared-patient) consultations; a TENANT_ADMIN lists every
+consultation in the tenant. This is expressed as **two controllers over one service** — not a
+single role-adaptive query:
 
 ```typescript
-async findAll(paginationDto: PaginationDto) {
-    const accessFilter = await this.getAccessibleFilter('list', 'Consultation');
-
-    return this.prisma.consultation.findMany({
-        where: {
-            ...accessFilter,
-            resourceStatus: { not: 'DELETED' },
-        },
-        ...paginationDto,
+// End-user: GET /consultations — scoped to the caller
+@Controller('consultations')
+@Authorize()
+export class ConsultationController {
+  async list(@Query() q: PaginatedQuery & { patientId?: string }) {
+    return this.consultationService.listConsultations({
+      page: Number(q.page) || 1,
+      pageSize: Number(q.limit) || 10,
+      doctorId: this.getDoctorId(),   // owner scope
+      patientId: q.patientId,
     });
+  }
+}
+
+// Admin: GET /admin/consultations — whole tenant, TENANT_ADMIN / SUPER_ADMIN only
+@Controller('admin/consultations')
+@CanManage('Consultation')            // DOCTOR holds only owner-scoped list/read → 403
+export class AdminConsultationController {
+  async list(@Query() q: PaginatedQuery & { patientId?: string; doctorId?: string; departmentId?: string }) {
+    return this.consultationService.listConsultationsForTenant({
+      page: Number(q.page) || 1,
+      pageSize: Number(q.limit) || 10,
+      patientId: q.patientId,
+      doctorId: q.doctorId,
+      departmentId: q.departmentId,
+    });
+  }
 }
 ```
 
-This ensures a DOCTOR only sees their own consultations, while a TENANT_ADMIN sees all consultations within their tenant.
+Both paths still pass through the `tenantScopeFilter` extension, so even a misconfigured gate
+cannot leak rows across tenants.
 
 ---
 
