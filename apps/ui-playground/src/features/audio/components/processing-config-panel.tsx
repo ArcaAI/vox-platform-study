@@ -1,4 +1,3 @@
-import { AudioPipeline } from '@/features/admin/api/audio-pipelines';
 import { cn } from '@/lib/utils';
 import { useAudioStore, type ProcessingMethod } from '@/store/audio-store';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@arcaai/ui';
@@ -216,7 +215,7 @@ export function ProcessingConfigPanel() {
                     <SelectValue placeholder="Select a pipeline..." className="truncate" />
                   </SelectTrigger>
                   <SelectContent>
-                    {pipelines.map((pipeline: AudioPipeline) => (
+                    {pipelines.map((pipeline) => (
                       <SelectItem key={pipeline.id} value={pipeline.id} className="text-xs">
                         <span className="block w-full truncate">{pipeline.name}</span>
                       </SelectItem>

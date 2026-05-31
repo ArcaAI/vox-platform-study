@@ -4,7 +4,10 @@ import { NotFoundError } from '@/features/errors/not-found-error';
 import { type QueryClient } from '@tanstack/react-query';
 import { createRootRouteWithContext, Outlet } from '@tanstack/react-router';
 
-interface RouterContext {
+// Exported so the inferred `Route` types in sibling route files (and the
+// generated routeTree) can name the root router context across module
+// boundaries (otherwise tsc raises TS4023 "cannot be named").
+export interface RouterContext {
   queryClient: QueryClient;
   isAuthenticated: boolean;
 }

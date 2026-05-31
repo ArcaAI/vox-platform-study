@@ -60,7 +60,7 @@ const initialState: AuthState = {
 
 export const useAuthStore = create<AuthState & AuthActions>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...initialState,
 
       setApiKeyAuth: (apiKey, tenantId) =>
@@ -122,7 +122,11 @@ export const useAuthStore = create<AuthState & AuthActions>()(
       logout: () => set(initialState),
 
       isSuperAdmin: () => {
-        const state = useAuthStore.getState();
+        // TASK-321 B — use zustand's `get()` instead of `useAuthStore.getState()`.
+        // Referencing `useAuthStore` inside its own `create()` initializer made the
+        // store type self-referential (TS7022), collapsing it to `any` and cascading
+        // implicit-any into every `useAuthStore((s) => …)` selector across the app.
+        const state = get();
         return state.user?.roles?.includes('SUPER_ADMIN') ?? false;
       },
     }),

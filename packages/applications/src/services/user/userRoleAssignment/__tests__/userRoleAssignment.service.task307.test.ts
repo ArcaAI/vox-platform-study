@@ -145,11 +145,13 @@ describe('TASK-307 W6.1 — UserRoleAssignmentService tenant-scoped reads', () =
             const result = await service.findActiveTenantIdsForUser('user-1');
 
             expect(result).toEqual(['tenant-A', 'tenant-B', 'tenant-C']);
+            // TASK-305 §B4 — `tenantId` is non-nullable, so the service does NOT
+            // push a `{ not: null }` filter (invalid in Prisma 7 + redundant); it
+            // skips empty/blank tenantIds in memory instead.
             expect(mockDatabaseService.baseClient.userRoleAssignment.findMany).toHaveBeenCalledWith({
                 where: {
                     userId: 'user-1',
                     resourceStatus: ResourceStatusType.ENABLED,
-                    tenantId: { not: null },
                 },
                 select: { tenantId: true },
                 orderBy: { createdAt: 'asc' },

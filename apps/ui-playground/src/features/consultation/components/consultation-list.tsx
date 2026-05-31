@@ -39,7 +39,7 @@ interface DepartmentInfo {
 
 function getDoctorDisplayName(c: Consultation): string | undefined {
   if (c.doctorName) return c.doctorName;
-  const doc = (c as Record<string, unknown>).doctor as DoctorInfo | undefined;
+  const doc = (c as unknown as Record<string, unknown>).doctor as DoctorInfo | undefined;
   if (!doc) return undefined;
   const parts = [doc.firstName, doc.lastName].filter(Boolean);
   return parts.length > 0 ? parts.join(' ') : doc.username;
@@ -47,7 +47,7 @@ function getDoctorDisplayName(c: Consultation): string | undefined {
 
 function getDepartmentDisplayName(c: Consultation): string | undefined {
   if (typeof c.department === 'string') return c.department;
-  const dept = (c as Record<string, unknown>).department as DepartmentInfo | undefined;
+  const dept = (c as unknown as Record<string, unknown>).department as DepartmentInfo | undefined;
   if (!dept) return undefined;
   return dept.name || dept.code || undefined;
 }
@@ -83,7 +83,7 @@ export function ConsultationList() {
         ...(patientId && { patientId }),
       });
       setConsultations(result?.data ?? []);
-      setTotalCount(result?.count ?? 0);
+      setTotalCount(result?.total ?? 0);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load consultations';
       setError(message);

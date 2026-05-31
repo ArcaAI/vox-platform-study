@@ -134,8 +134,10 @@ describe('Summary Page API Integration', () => {
     });
 
     it('should handle missing DNA style gracefully', () => {
-      const dnaReport = null;
-      const styleText = dnaReport?.styleText ?? '';
+      // Cast at the access site: a `const` initialized to `null` is CFA-narrowed
+      // to `null`, so the optional-chain's non-null branch would be `never`.
+      const dnaReport: { styleText: string } | null = null;
+      const styleText = (dnaReport as { styleText: string } | null)?.styleText ?? '';
       expect(styleText).toBe('');
     });
   });

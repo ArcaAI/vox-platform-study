@@ -281,7 +281,12 @@ export function TenantSettingsPanel({ tenantConfig, rawConfigs, onSave, isSaving
         const original = rawConfigs.find((c) => c.id === id);
         return original && original.value !== val;
       })
-      .map(([id, value]) => ({ id, value }));
+      .map(([id, value]) => {
+        // TASK-302 Stream D — carry each row's CAS version (default 1 if unstamped).
+        const original = rawConfigs.find((c) => c.id === id);
+        const expectedVersion = typeof original?.version === 'number' ? original.version : 1;
+        return { id, value, expectedVersion };
+      });
     if (changes.length > 0) onSave(changes);
   }, [edits, rawConfigs, onSave]);
 

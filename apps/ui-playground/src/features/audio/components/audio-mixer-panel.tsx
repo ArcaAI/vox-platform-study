@@ -78,7 +78,7 @@ export function AudioMixerPanel() {
                 <Play className="size-3" /> Mix
               </Button>
             ) : (
-              <Button variant="destructive" size="sm" onClick={stopMixing} className="h-7 gap-1 text-xs" disabled={isCapturing}>
+              <Button variant="destructive" size="sm" onClick={() => stopMixing()} className="h-7 gap-1 text-xs" disabled={isCapturing}>
                 <Square className="size-3" /> Stop
               </Button>
             )}

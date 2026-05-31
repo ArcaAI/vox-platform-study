@@ -47,8 +47,12 @@ const mockPrismaClient = {
   },
 };
 
+// TASK-305 B.1 — `PolicyEngine.loadUserPolicies` reads the UNSCOPED platform-admin
+// client (`baseClient`) for the cross-tenant RBAC control-plane query. Mock both
+// `client` and `baseClient` (same fake client) so the loader resolves.
 const mockDatabaseService = {
   client: mockPrismaClient,
+  baseClient: mockPrismaClient,
 };
 
 const mockCacheService = {

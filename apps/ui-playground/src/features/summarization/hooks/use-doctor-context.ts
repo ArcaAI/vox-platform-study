@@ -38,10 +38,10 @@ export function useDoctorContext(): DoctorContext {
     if (isImpersonating && impersonatedUser) {
       effectiveUserId = impersonatedUser.id;
       isImpersonated = true;
-      primaryDepartmentId = (impersonatedUser as Record<string, unknown>).primaryDepartmentId as string | undefined;
+      primaryDepartmentId = (impersonatedUser as unknown as Record<string, unknown>).primaryDepartmentId as string | undefined;
     } else if (localUser) {
       effectiveUserId = localUser.id;
-      primaryDepartmentId = (localUser as Record<string, unknown>).primaryDepartmentId as string | undefined;
+      primaryDepartmentId = (localUser as unknown as Record<string, unknown>).primaryDepartmentId as string | undefined;
     }
 
     return {

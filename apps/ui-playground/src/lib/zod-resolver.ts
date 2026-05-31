@@ -22,6 +22,7 @@ export function zodResolver<T extends FieldValues>(schema: ZodSchema): Resolver<
       }
     }
 
-    return { values: {} as T, errors: fieldErrors };
+    // react-hook-form's ResolverError requires `values: {}` (empty), not `T`.
+    return { values: {}, errors: fieldErrors };
   };
 }

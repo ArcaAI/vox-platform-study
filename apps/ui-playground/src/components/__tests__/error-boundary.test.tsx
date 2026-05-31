@@ -5,7 +5,7 @@ vi.mock('@/features/errors/general-error', () => ({
     GeneralError: () => <div data-testid="general-error">General Error Fallback</div>,
 }));
 
-function ThrowingComponent() {
+function ThrowingComponent(): never {
     throw new Error('Test error');
 }
 

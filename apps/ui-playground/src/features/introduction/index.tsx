@@ -42,7 +42,7 @@ export default function Introduction() {
   const updateMutation = useUpdateMyTenantConfigs();
   const handleSaveConfigs = useCallback(
     (changes: UpdateTenantConfigItem[]) => {
-      updateMutation.mutate(changes);
+      updateMutation.mutate({ configs: changes });
     },
     [updateMutation],
   );

@@ -2,19 +2,10 @@ import { recordSpeakerObservation, resolveSpeakerLabel } from '@/features/audio/
 import { upsertTranscriptEntry } from '@/features/audio/lib/transcript-state';
 import type { TranscriptEntry } from '@/store/audio-store';
 import { usePlaygroundStore } from '@/store/playground-store';
-import { StreamingSessionManager, SttV2WebSocketClient, useArcaStore, type WsTranscriptResult } from '@arcaai/vox';
+import { StreamingSessionManager, SttV2WebSocketClient, useArcaStore, type AgenticClient, type ISDKLogger, type WsTranscriptResult } from '@arcaai/vox';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type RealtimeStatus = 'idle' | 'creating_session' | 'connecting' | 'streaming' | 'reconnecting' | 'stopping' | 'error';
-
-type ApiClientLike = {
-  getAccessToken?: () => string | null | undefined;
-  getApiKey?: () => string | null | undefined;
-};
-
-type LoggerLike = {
-  child?: (name: string) => LoggerLike;
-};
 
 type WebSocketErrorLike = {
   message: string;
@@ -71,8 +62,8 @@ export interface UseRealtimeTranscriptionReturn {
 }
 
 export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
-  const apiClient = useArcaStore((s: { apiClient: ApiClientLike | null }) => s.apiClient);
-  const logger = useArcaStore((s: { logger: LoggerLike | null }) => s.logger);
+  const apiClient = useArcaStore((s: { apiClient: AgenticClient | null }) => s.apiClient);
+  const logger = useArcaStore((s: { logger: ISDKLogger | null }) => s.logger);
   const debugMode = usePlaygroundStore((s) => s.debugMode);
 
   const [status, setStatus] = useState<RealtimeStatus>('idle');
@@ -143,7 +134,8 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
         setError(null);
         setStatus('creating_session');
 
-        const childLogger = logger?.child?.('RealtimeTranscription') ?? logger;
+        // TASK-321 — SDK ctors take `logger?: ISDKLogger` (undefined, not null).
+        const childLogger = logger?.child?.('RealtimeTranscription') ?? logger ?? undefined;
         const sessionManager = new StreamingSessionManager(apiClient, childLogger);
         sessionManagerRef.current = sessionManager;
 
